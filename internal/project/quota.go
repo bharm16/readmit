@@ -141,6 +141,9 @@ func SetQuota(root string, q Quota) error {
 		return err
 	}
 	root = opened.Root
+	if _, _, err := ReadQuota(root); err != nil {
+		return err
+	}
 	if err := q.validate(); err != nil {
 		return err
 	}

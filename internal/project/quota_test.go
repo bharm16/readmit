@@ -60,4 +60,7 @@ func TestQuotaRefusesByteLimitAndUnsupportedDeclaration(t *testing.T) {
 	if err := p.Save(d); !errors.Is(err, project.ErrUnsupportedVersion) {
 		t.Fatalf("unknown quota was ignored: %v", err)
 	}
+	if err := project.SetQuota(p.Root, project.Quota{Schema: project.QuotaSchema, MaxBytes: 1000000, MaxFiles: 100}); !errors.Is(err, project.ErrUnsupportedVersion) {
+		t.Fatalf("unknown quota replaced: %v", err)
+	}
 }
