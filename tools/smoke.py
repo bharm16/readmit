@@ -51,6 +51,10 @@ REQUIRED_FILES = {
     "testdata/fixtures/redact-policy.json",
     "testdata/fixtures/redact-policy-blocked.json",
     "testdata/fixtures/redact-inventory.json",
+    "docs/diff.md",
+    "testdata/fixtures/diff-before.mllp",
+    "testdata/fixtures/diff-after.mllp",
+    "testdata/fixtures/diff-expected.json",
     "testdata/fixtures/test-reschedule.json",
     "testdata/fixtures/test-target.json",
     "testdata/fixtures/case-evidence.mllp",
@@ -253,6 +257,7 @@ def smoke(archive, target_os, release_tag=None):
         smoke_replay(binary, environment, work, run, family / "regression")
         smoke_test_runner(archive, binary, environment, work, run)
         smoke_redact(archive, binary, environment, work, run)
+        smoke_diff(archive, work, run)
     print(f"PASS: {archive.name}; checksum, version, inspection, capture, timeline, privacy, and byte preservation")
 
 
@@ -519,6 +524,52 @@ def smoke_redact(archive, binary, environment, work, run):
             assert not any(value in material for value in forbidden)
     assert (private / "state.json").is_file() and not (packet / "state.json").exists()
     assert original == {p.relative_to(source).as_posix(): p.read_bytes() for p in source.rglob("*") if p.is_file()}
+    derived_comparison = json.loads(run("diff", packet / "case", packet / "proof" / "postfix" / "result", "--format", "json").stdout)
+    assert derived_comparison["alignment"] == "source-occurrence"
+    assert derived_comparison["summary"]["unchanged"] == 2 and derived_comparison["summary"]["field_changes"] == 0
+
+
+def smoke_diff(archive, work, run):
+    """Use the packaged change oracle and real retained replay evidence."""
+    cases = []
+    for side in ("before", "after"):
+        source, case = work / f"diff-{side}.mllp", work / f"diff-{side}.case"
+        source.write_bytes(member_bytes(archive, f"testdata/fixtures/diff-{side}.mllp"))
+        run("capture", source, "--output", case)
+        cases.append(case)
+    identities = [(case / "identity.sha256").read_bytes() for case in cases]
+    expected = json.loads(member_bytes(archive, "testdata/fixtures/diff-expected.json"))
+    arguments = ("diff", *cases, "--key", "MSH-10", "--ignore", "MSH-7")
+    comparison = run(*arguments, "--format", "json")
+    report = json.loads(comparison.stdout)
+    assert not comparison.stderr and b"SECRET" not in comparison.stdout
+    assert report["schema"] == "readmit-diff/v1" and report["alignment"] == "declared-keys"
+    assert report["summary"] == expected["summary"] and report["unsupported"] == []
+    assert [field["selector"] for field in report["pairs"][0]["fields"]] == expected["changed_selectors"]
+    null_change = next(field for field in report["pairs"][0]["fields"] if field["selector"] == expected["null_selector"])
+    assert null_change["left"]["state"] == "null" and null_change["right"]["state"] == "omitted"
+    assert report["inserted"][0]["occurrence"] == expected["inserted_occurrence"]
+    assert report["ignore"] == [{"selector": "MSH[1]-7[1]", "compared": 2, "suppressed": 1}]
+    without_ignore = json.loads(run("diff", *cases, "--key", "MSH-10", "--format", "json").stdout)
+    assert without_ignore["summary"]["field_changes"] == 4
+    for format_name in ("terminal", "markdown"):
+        rendered = run(*arguments, "--format", format_name).stdout
+        assert b"SECRET" not in rendered
+        for marker in (b"field changes=3", b"inserted=1", b"suppressed differences=1", b"left=null; right=omitted"):
+            assert marker in rendered
+    assert b"SECRET" in run(*arguments, "--show-values").stdout
+    for case, identity in zip(cases, identities):
+        assert (case / "identity.sha256").read_bytes() == identity
+    # Regenerated control IDs cannot disturb explicit source-occurrence links.
+    source = work / "synthetic-family" / "regression"
+    for mode, changes in (("fixed", 0), ("defective", 6)):
+        mapped = json.loads(run("diff", source, work / f"replay-{mode}.run", "--format", "json").stdout)
+        assert mapped["alignment"] == "source-occurrence" and mapped["summary"]["paired"] == 2
+        assert mapped["summary"]["field_changes"] == changes and mapped["unsupported"] == []
+    results = json.loads(run("diff", work / "test-result-0", work / "test-result-1", "--format", "json").stdout)
+    assert results["left"]["result_status"] == "assertion_failure" and results["right"]["result_status"] == "pass"
+    assert results["summary"]["unchanged"] == 2 and results["summary"]["field_changes"] == 0
+    assert results["boundary"] == "messages"  # Identical input does not imply identical receiver behavior.
 
 
 def main():

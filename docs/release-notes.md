@@ -17,6 +17,8 @@ Unsigned preview of local HL7 inspection and case evidence capture.
 - `synth` creates a reproducible synthetic SIU family with separate regression,
   cancellation, and known-invalid bundles from four explicit generator inputs.
 - Five native-tested targets, SHA-256 checksums, and GitHub binary provenance.
+- `diff` compares fields with explicit source mappings or declared alignment keys,
+  reports ambiguous/inserted/missing occurrences, and lists scoped ignore rules.
 - `test` evaluates unchanged declarative assertions against wire ACKs and
   session-bound ledger observations, with distinct pass/failure/error codes
   and a verifiable result directory.

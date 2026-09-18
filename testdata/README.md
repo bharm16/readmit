@@ -68,3 +68,10 @@ consistent surrogates, private date shifts, and newly generated defective/fixed
 proof. Native archive checks additionally plant source filenames, diagnosis
 text, and values present only in original replay transformations. They require
 unchanged source evidence and an export containing none of those values.
+
+The issue #6 pair `diff-before.mllp` and `diff-after.mllp` includes an inserted
+message, repeated segments and identifiers, a changed timestamp, and a null
+field that becomes omitted. `diff-expected.json` independently states the
+changed selectors, occurrence alignment, and counts when only MSH-7 is ignored.
+Native archive checks exercise both the declared-key comparison and real
+source/run mappings, including replay with regenerated control IDs.

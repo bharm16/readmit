@@ -65,6 +65,7 @@ func Execute(version string, args []string, stdout, stderr io.Writer) error {
 	root.AddCommand(replayCommand(&ran))
 	root.AddCommand(testCommand(&ran))
 	root.AddCommand(redactCommand(&ran))
+	root.AddCommand(diffCommand(&ran))
 	root.SetArgs(args)
 	selected, err := root.ExecuteC()
 	if err != nil {
