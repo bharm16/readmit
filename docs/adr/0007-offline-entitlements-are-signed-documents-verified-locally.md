@@ -1,6 +1,7 @@
 ---
 status: accepted
 date: 2026-09-18
+amended: 2026-09-18
 ---
 
 # Organization entitlements are signed documents verified locally
@@ -118,3 +119,29 @@ test-only key pairs, and no readmit command signs an entitlement.
   integration, a hosted backend, an account system, a database and a licence
   server all remain absent. Access control is still the operating-system
   account, filesystem permissions and explicitly configured credentials.
+
+## Amendment: commercial policy and operation admission
+
+The [September 18 decisions](../product-decisions.md#d6--evaluation-and-clock-policy)
+now select the trial, renewal grace, named-author/device and active-runner
+policies that this ADR originally left to #116/#118/#119. Issuer configuration
+still carries those policies; the engine does not infer a plan or price.
+
+The original clock limitation above remains true of the implemented v1
+verifier. #116 will add visible local UTC high-water state and in-process
+monotonic time for admission of new paid operations, tolerating five minutes
+of backward correction without reducing effective time. Larger rollback needs
+explicit resolution. Missing/corrupt guard state needs defined handling; it
+cannot become a silent new trial. This supersedes the choice to keep *all*
+operation admission stateless, while preserving pure signature verification,
+offline operation and ungated access to existing evidence. It does not claim
+protection against every VM snapshot restoration.
+
+#119's separate R24.4a contract subtask will define a new entitlement version
+before #116/#118/#119 integrate two author devices per named human and active
+execution-instance capacity. v1 counts bound devices directly
+and keeps that exact meaning; its members, signatures and readers are unchanged.
+New state or claims require their own versioned contracts, not new members in
+v1. These policies are adopted requirements, not features already delivered by
+the closed #117. [ADR-0010](0010-vendor-billing-issues-offline-entitlements-without-evidence.md)
+records the separate vendor-billing boundary.

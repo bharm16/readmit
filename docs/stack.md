@@ -9,6 +9,13 @@ The choices below were agreed on 2026-09-17 from a stack review. The hard-to-rev
 - [ADR-0006](adr/0006-credentials-are-referenced-never-stored.md): credentials stay in an OS or customer-managed store; readmit registers references to them and never stores, writes or renders a value. Amended 2026-09-18: the same rule covers the key material behind storage protection.
 - [ADR-0007](adr/0007-offline-entitlements-are-signed-documents-verified-locally.md): organization entitlements are signed, versioned documents verified locally against an explicitly selected trust store.
 - [ADR-0008](adr/0008-the-case-index-is-a-derived-disposable-readmit-owned-file.md): the case index is a derived, disposable readmit-owned file rebuilt from canonical evidence, not a database.
+- [ADR-0009](adr/0009-profile-packs-are-offline-metadata-with-explicit-support.md): profile packs normalize pinned metadata offline and declare parsing, labels, structure and workflow support separately.
+- [ADR-0010](adr/0010-vendor-billing-issues-offline-entitlements-without-evidence.md): Paddle billing stays in a separate vendor service that issues Readmit's offline entitlements without receiving customer evidence.
+
+The [September 18 product decisions](product-decisions.md) also settle the
+remaining connector, database, packaging, trial and commercial directions.
+That page distinguishes selected future work from implemented capabilities;
+the [release checklist](release-acceptance.md) retains their acceptance gates.
 
 Everything else on this page is an ordinary choice. Change it when there is a reason. No ADR is needed unless the change is hard to reverse.
 
@@ -38,6 +45,11 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
 - Semantic support starts with one named profile: HL7 v2.5.1 SIU fixture profile, version 1. That is a readmit-supported profile, not a claim of v2.5.1 conformance.
 - Existing Go HL7 libraries (for example `kardianos/hl7`) are not used as the message model. Their lossless and malformed-input behaviour has not been verified against readmit's requirements.
 - Dictionary provenance and redistribution rights must be confirmed before bundling externally sourced definitions.
+- Selected expansion: pinned nHapi metadata for 2.3.1 through 2.7.1 and HL7apy
+  1.3.5 metadata for 2.8.2, normalized at build time with no added customer
+  runtime. Exact versions, source commits and separate support levels are in
+  [D1](product-decisions.md#d1--profile-metadata-and-supported-meaning); #45 owns
+  library delivery after the separate shared pack contract.
 
 ## Networking
 
@@ -53,6 +65,16 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
 
 ## External observations
 
+- Selected database collectors (#75): `database/sql` with `pgx/v5/stdlib`,
+  `go-mssqldb` and `go-ora/v2`. These drivers are not yet installed. Their
+  version/authentication tests and five-target static builds precede dependency
+  pins and support claims. Defaults are 30 seconds, 10,000 rows and 10 MiB per
+  query, explicitly adjustable under environment policy. Database grants over
+  approved views enforce SELECT-only access; reset credentials are separate.
+  See [D3](product-decisions.md#d3--database-observations) for the finite test
+  matrix and separately authorized Oracle 19c gate. This permits the scoped
+  pure-Go dependencies; today's Cobra-only module is not a permanent ban on
+  the selected collectors, and canonical evidence still is not a database.
 - What makes an observation trustworthy is source-neutral and lives in
   `internal/observewindow`, not in any collector. A
   `readmit-observation-window/v1` document declares the source identity and
@@ -281,8 +303,18 @@ GitHub Actions, with the declared release matrix mapped to native runners:
 
 - GoReleaser OSS builds the archives: `.tar.gz` for macOS and Linux, `.zip` for Windows, plus SHA-256 checksums, published as GitHub Releases.
 - `actions/attest` v4 for build provenance on the binaries. Attest only build outputs, never customer evidence.
-- No installers, package-manager distribution, or auto-update in v1.
-- Signing is deferred past v1. Apple Developer ID notarization (GoReleaser's macOS notarization support) and Azure Artifact Signing for Windows need accounts and identity validation. Prereleases are unsigned and documented as such. Signing does not guarantee that SmartScreen or an endpoint policy accepts a new binary without warnings.
+- Current CLI releases are standalone archives; desktop installers are not yet
+  delivered. There is no automatic update check.
+- Selected desktop delivery (#104): Windows MSI with WebView2 handling;
+  Developer ID-signed/notarized/stapled macOS DMG plus signed managed PKG;
+  Ubuntu `.deb` with WebKitGTK dependencies. The finite OS/architecture targets
+  are in [D5](product-decisions.md#d5--desktop-distribution-and-signing).
+- Package work can start before #88 engine-parity completion and signer
+  onboarding. Production release still requires both, native installation
+  tests, Apple Developer ID/notarytool and Azure Artifact Signing Public Trust.
+  Existing unsigned prereleases remain labelled previews; this decision does
+  not retroactively sign them. Signing cannot guarantee endpoint-policy or
+  SmartScreen acceptance.
 
 ## Version pins
 
@@ -307,6 +339,14 @@ compiler, and reads the compiler version from every packaged executable before
 upload. `GOTOOLCHAIN=local` prevents automatic switching; it does not enforce the
 pin by itself. Native smoke tests run without Go or other tools on PATH.
 
-## Deliberately absent
+## Absent from the current build
+
+The inventory below describes the implemented engine, not a veto on adopted
+work. [D2](product-decisions.md#d2--integration-engine-exports) selects the
+Mirth 4.5.2/OIE 4.6.0 file adapters;
+[D3](product-decisions.md#d3--database-observations) selects external database
+reads; [D6–D8](product-decisions.md#d6--evaluation-and-clock-policy) select trial,
+vendor billing and administration policies. A separate vendor service is not
+an evidence-engine dependency. None is implemented merely by being selected.
 
 No database, ORM, web application server, container runtime, hosted backend, external rules engine, message broker, Redis, search server, LLM API, payment integration, licence or activation server, or application authentication system. The case index of [ADR-0008](adr/0008-the-case-index-is-a-derived-disposable-readmit-owned-file.md) is not one of them: it is a derived, disposable file the engine writes and reads the way it writes and reads every other artifact, rebuilt from the canonical case directory and never the only home of anything. Entitlement verification is a local check of a signed file and introduces none of them. Access control is the operating-system account and filesystem permissions, plus the encrypted transfer packages an operator asks for. readmit has no credential or key store of its own: it registers references to credentials and encryption keys kept in an operating system credential store or a customer-managed secret provider, reads one by running the program the operator declared, and never writes to a store, so its own privilege is read access to the values a person registered. Nothing is encrypted implicitly, no key is escrowed or recoverable, and no deletion readmit performs is presented as erasure. The desktop application is a local webview over the same engine, not a hosted web application: it serves nothing over a network and has no accounts.
