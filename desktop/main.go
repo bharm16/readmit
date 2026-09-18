@@ -55,8 +55,12 @@ func (d *dialog) ChooseFolder(title string) (string, error) {
 }
 
 func main() {
+	// The two files of local shell state, each named explicitly. Neither holds
+	// evidence: one is the folders opened recently, the other the filters this
+	// person saved.
 	recent, err := desktop.DefaultRecentPath()
-	if err != nil {
+	filters, filtersErr := desktop.DefaultFiltersPath()
+	if err != nil || filtersErr != nil {
 		log.Fatal("readmit: cannot resolve the user configuration directory")
 	}
 	folders := &dialog{}
@@ -68,7 +72,7 @@ func main() {
 		MinHeight:   480,
 		AssetServer: &assetserver.Options{Assets: assets},
 		OnStartup:   folders.start,
-		Bind:        []any{desktop.New(folders, recent)},
+		Bind:        []any{desktop.New(folders, recent, filters)},
 		// The shell adds no logging of its own, reports no telemetry, no crash
 		// reports and no update checks, and sends nothing to a network. The
 		// window host is held to errors so it emits no routine output either.

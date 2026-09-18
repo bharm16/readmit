@@ -29,12 +29,17 @@ type recentList struct {
 }
 
 // DefaultRecentPath is the owner-only file the shell keeps the list in.
-func DefaultRecentPath() (string, error) {
+func DefaultRecentPath() (string, error) { return configPath("recent.json") }
+
+// configPath locates one file of local shell state. Both files the shell keeps
+// live beside each other under one owner-only directory, and neither is derived
+// from the other: each is named explicitly where the application is wired up.
+func configPath(name string) (string, error) {
 	directory, err := os.UserConfigDir()
 	if err != nil {
 		return "", errors.New("cannot resolve the user configuration directory")
 	}
-	return filepath.Join(directory, "readmit", "recent.json"), nil
+	return filepath.Join(directory, "readmit", name), nil
 }
 
 // readRecent treats a missing list as an empty one and returns every other

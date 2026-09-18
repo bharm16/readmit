@@ -3,6 +3,7 @@ package tests
 import (
 	"bytes"
 	"context"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +14,8 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/grid"
+	"github.com/bharm16/readmit/internal/index"
 )
 
 // chosenFolder stands in for the host's native folder dialog.
@@ -22,7 +25,7 @@ func (c chosenFolder) ChooseFolder(string) (string, error) { return string(c), n
 
 func desktopApp(t *testing.T, folder string) *desktop.App {
 	t.Helper()
-	return desktop.New(chosenFolder(folder), filepath.Join(t.TempDir(), "recent.json"))
+	return desktop.New(chosenFolder(folder), filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"))
 }
 
 // The desktop shell and the command line are two entry points into one engine.
@@ -145,7 +148,7 @@ func TestDesktopDependenciesStayOutOfTheReleasedModule(t *testing.T) {
 func TestRecentWorkspacesRecordFoldersAndNoEvidence(t *testing.T) {
 	store := filepath.Join(t.TempDir(), "recent.json")
 	parent := t.TempDir()
-	app := desktop.New(chosenFolder(parent), store)
+	app := desktop.New(chosenFolder(parent), store, filepath.Join(filepath.Dir(store), "filters.json"))
 	created := app.CreateSampleWorkspace()
 	if created.State != desktop.Completed {
 		t.Fatalf("sample workspace: %+v", created)
@@ -164,7 +167,7 @@ func TestRecentWorkspacesRecordFoldersAndNoEvidence(t *testing.T) {
 		}
 	}
 	// Reopening from the recorded folder returns the same workspace.
-	reopened := desktop.New(chosenFolder(""), store).OpenWorkspace(recent.Roots[0])
+	reopened := desktop.New(chosenFolder(""), store, filepath.Join(filepath.Dir(store), "filters.json")).OpenWorkspace(recent.Roots[0])
 	if reopened.State != desktop.Completed || reopened.Workspace == nil || reopened.Workspace.Root != created.Workspace.Root {
 		t.Fatalf("a recorded workspace could not be reopened: %+v", reopened)
 	}
@@ -185,4 +188,79 @@ func goCommand(t *testing.T, environment []string, args ...string) string {
 		t.Fatalf("go %s: %v %s", strings.Join(args, " "), err, stderr.String())
 	}
 	return stdout.String()
+}
+
+// The command line and the desktop shell are two entry points into one engine,
+// and the index is the one search path over a case. So the occurrences a
+// filtered message grid renders must be exactly the ones `readmit index search`
+// reports for the same question over the same index, and the grid must say how
+// many of the case it left out.
+func TestDesktopGridRendersExactlyWhatTheCommandLineIndexSearchFinds(t *testing.T) {
+	const occurrences = 120
+	const wanted = "MRN-0042^^^READMIT^MR"
+
+	workspace := t.TempDir()
+	evidence := filepath.Join(workspace, "incident")
+	if _, stderr, err := run(t, "capture", indexCorpus(t, occurrences), "--output", evidence); err != nil || stderr != "" {
+		t.Fatalf("capture: %v %s", err, stderr)
+	}
+	written := filepath.Join(workspace, "incident.index.json")
+	if _, stderr, err := run(t, "index", "build", evidence, "--output", written,
+		"--field", "PID-3", "--retain", "values", "--retain-until", "indefinite"); err != nil || stderr != "" {
+		t.Fatalf("index build: %v %s", err, stderr)
+	}
+	stdout, stderr, err := run(t, "index", "search", evidence, written, "--field", "PID-3", "--equals", wanted)
+	if err != nil || stderr != "" {
+		t.Fatalf("index search: %v %s", err, stderr)
+	}
+	reported := reportedOccurrences(stdout)
+	if len(reported) != 1 {
+		t.Fatalf("the command line found %v, want exactly one occurrence:\n%s", reported, stdout)
+	}
+
+	app := desktopApp(t, workspace)
+	saved := app.SaveFilter(grid.Filter{Name: "one patient", Fields: []grid.FieldPredicate{
+		{Selector: "PID[1]-3[1]", Match: index.Equals, Term: wanted},
+	}})
+	if saved.State != desktop.Completed || saved.Selected != "one patient" {
+		t.Fatalf("the filter was not saved: %+v", saved)
+	}
+	result := app.OpenGrid(workspace, "incident", "incident.index.json", 0, 50)
+	if result.State != desktop.Completed || result.Grid == nil {
+		t.Fatalf("the grid did not open: %+v", result)
+	}
+	rendered := make([]string, 0, len(result.Grid.Rows))
+	for _, row := range result.Grid.Rows {
+		rendered = append(rendered, row.ID)
+	}
+	if !reflect.DeepEqual(rendered, reported) {
+		t.Fatalf("the grid rendered %v and the command line found %v", rendered, reported)
+	}
+
+	// The case holds one occurrence this release cannot decode, and the grid
+	// separates that from the records the filter simply removed.
+	if result.Grid.Total != occurrences+1 || result.Grid.Matched != 1 {
+		t.Fatalf("the grid did not describe the whole case: %+v", result.Grid)
+	}
+	if result.Grid.Excluded != occurrences || result.Grid.Undecodable != 1 {
+		t.Fatalf("the grid did not name what it excluded: %+v", result.Grid)
+	}
+	if encoded, err := json.Marshal(result); err != nil {
+		t.Fatal(err)
+	} else if strings.Contains(string(encoded), "MRN-") || strings.Contains(string(encoded), "corpus.mllp") {
+		t.Fatalf("the grid disclosed evidence: %s", encoded)
+	}
+}
+
+// reportedOccurrences reads the occurrence IDs out of an `index search` report.
+// Each match is one indented line beginning with the occurrence it names.
+func reportedOccurrences(stdout string) []string {
+	found := []string{}
+	for _, line := range strings.Split(stdout, "\n") {
+		if !strings.HasPrefix(line, "  s") {
+			continue
+		}
+		found = append(found, strings.Fields(line)[0])
+	}
+	return found
 }

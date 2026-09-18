@@ -175,18 +175,21 @@ type FolderChooser interface {
 // rather than racing the first, and a finished operation always releases the
 // slot, including after a failure or a cancellation.
 type App struct {
-	chooser    FolderChooser
-	recentPath string
+	chooser     FolderChooser
+	recentPath  string
+	filtersPath string
 
 	mu      sync.Mutex
 	running bool
 	cancel  context.CancelFunc
 }
 
-// New binds the facade to a host folder dialog and to the file that holds
-// recently opened workspaces.
-func New(chooser FolderChooser, recentPath string) *App {
-	return &App{chooser: chooser, recentPath: recentPath}
+// New binds the facade to a host folder dialog and to the two files that hold
+// this viewer's local shell state: the workspaces they opened recently, and the
+// filters they saved. Both are named explicitly rather than derived from each
+// other, and neither holds evidence.
+func New(chooser FolderChooser, recentPath, filtersPath string) *App {
+	return &App{chooser: chooser, recentPath: recentPath, filtersPath: filtersPath}
 }
 
 // Cancel stops the operation that is running now, when that operation can be

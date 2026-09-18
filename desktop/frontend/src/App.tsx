@@ -3,15 +3,21 @@ import type { CSSProperties, ReactElement } from "react";
 import {
   cancel,
   createSampleWorkspace,
+  filters as readFilters,
   openCase,
+  openGrid,
   openProject,
   openWorkspace,
   recentWorkspaces,
+  saveFilter,
   search,
+  selectFilter,
   selectWorkspace,
   shell,
   type CaseResult,
   type CommandId,
+  type FiltersResult,
+  type GridResult,
   type Indicator,
   type ProjectResult,
   type RecentResult,
@@ -23,7 +29,7 @@ import {
   type Theme,
   type WorkspaceResult,
 } from "./bindings";
-import { Badge, Palette, Report, Separator, Status } from "./shell";
+import { Badge, GRID_WINDOW, MessageGrid, Palette, Report, Separator, Status } from "./shell";
 
 /** The panes never collapse to nothing: either one keeps a usable share of the
  * window, whether it is dragged or moved with a keyboard. */
@@ -33,7 +39,7 @@ const SPLIT_STEP = 5;
 
 /** Verifying a case, reading a project and searching all run to completion once
  * they start, so Cancel is offered only while an interruptible operation runs. */
-type Running = null | "workspace" | "case" | "project" | "search";
+type Running = null | "workspace" | "case" | "project" | "search" | "grid" | "filters";
 
 export default function App() {
   const [described, setDescribed] = useState<Shell | null>(null);
@@ -46,6 +52,8 @@ export default function App() {
   const [investigation, setInvestigation] = useState<ProjectResult | null>(null);
   const [recent, setRecent] = useState<RecentResult | null>(null);
   const [found, setFound] = useState<SearchResult | null>(null);
+  const [savedFilters, setSavedFilters] = useState<FiltersResult | null>(null);
+  const [gridResult, setGridResult] = useState<GridResult | null>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -83,6 +91,17 @@ export default function App() {
   useEffect(() => {
     void refreshRecent();
   }, [refreshRecent]);
+
+  // The saved filters and the selected one live in the facade, not here, so the
+  // view a person set up survives navigating to another case and reopening the
+  // window. They are read once and after every change.
+  const refreshFilters = useCallback(async () => {
+    setSavedFilters(await readFilters());
+  }, []);
+
+  useEffect(() => {
+    void refreshFilters();
+  }, [refreshFilters]);
 
   // The chosen theme and text size are applied to the document and written
   // nowhere: both follow the system again the next time the window opens.
@@ -138,6 +157,7 @@ export default function App() {
         setEvidence(null);
         setInvestigation(null);
         setFound(null);
+        setGridResult(null);
         setSelected(null);
         setWorkspace(null);
         setWorkspace(await operation());
@@ -152,6 +172,7 @@ export default function App() {
     async (folder: string, name: string) => {
       await operate("case", async () => {
         setEvidence(null);
+        setGridResult(null);
         setSelected(name);
         setEvidence(await openCase(folder, name));
       });
@@ -179,6 +200,40 @@ export default function App() {
       });
     },
     [operate],
+  );
+
+  // One window of the grid at a time. Asking for the next one re-reads the case
+  // and its index, so a window is never served from an index the evidence no
+  // longer supports.
+  const showGrid = useCallback(
+    async (folder: string, name: string, indexName: string, offset: number) => {
+      await operate("grid", async () => {
+        setGridResult(null);
+        setGridResult(await openGrid(folder, name, indexName, offset, GRID_WINDOW));
+      });
+    },
+    [operate],
+  );
+
+  // Changing the filter changes what the open grid is showing, so the window is
+  // rendered again from its first page rather than left showing the old view.
+  const changeFilters = useCallback(
+    async (work: () => Promise<FiltersResult>) => {
+      let stored = false;
+      await operate("filters", async () => {
+        const result = await work();
+        setSavedFilters(result);
+        stored = result.state === "completed" || result.state === "empty";
+      });
+      // A change that was refused left the selection as it was, so the open
+      // window is still the right one: rendering it again would only replace a
+      // correct view with an identical one and hide the refusal behind it.
+      const open = gridResult?.grid;
+      if (stored && root && open) {
+        await showGrid(root, open.case, open.index, 0);
+      }
+    },
+    [gridResult, operate, root, showGrid],
   );
 
   const busy = running !== null;
@@ -277,6 +332,7 @@ export default function App() {
 
   const opened = workspace?.workspace;
   const project = investigation?.project;
+  const verified = evidence?.case ?? null;
   const listed = (described?.commands ?? []).filter((command) => {
     const wanted = paletteQuery.trim().toLowerCase();
     return (
@@ -508,6 +564,25 @@ export default function App() {
             <dt>Unparsed</dt>
             <dd>{evidence.case.unparsed}</dd>
           </dl>
+        ) : null}
+        {verified ? (
+          <MessageGrid
+            indicators={indicators}
+            progress={running === "grid" ? "Reading this window of the case." : null}
+            result={gridResult}
+            filters={savedFilters}
+            entries={(opened?.artifacts ?? [])
+              .filter((artifact) => artifact.kind === "unsupported")
+              .map((artifact) => artifact.name)}
+            busy={busy}
+            onOpen={(indexName, offset) => {
+              if (root) {
+                void showGrid(root, verified.name, indexName, offset);
+              }
+            }}
+            onSelect={(name) => void changeFilters(() => selectFilter(name))}
+            onSave={(filter) => void changeFilters(() => saveFilter(filter))}
+          />
         ) : null}
         {!evidence && !busy ? <p className="hint">Open a case to see what it holds.</p> : null}
       </>

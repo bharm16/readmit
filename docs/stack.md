@@ -30,7 +30,7 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
 - [Wails 2](https://wails.io) renders a React and TypeScript interface in the platform webview. It is the only direct third-party dependency of the `desktop` module. Vite builds the interface, which is embedded in the executable; nothing is fetched at run time.
 - `internal/desktop` is the typed Go facade. Desktop operations return typed results with one explicit state each. The interface never parses command output and never reimplements HL7 or case bundle semantics. See [the desktop contract](desktop.md).
 - The desktop build needs cgo and a platform webview and has its own workflow. It never applies `CGO_ENABLED=0`, never changes the command-line build, and is not in the release archives.
-- Local shell state is one bounded, versioned list of recently opened folders. No telemetry, crash reporting, update checks, or evidence in browser storage.
+- Local shell state is two bounded, versioned documents: the list of recently opened folders, and the filters a viewer saved with the one selected now (`readmit-filters/v1`). A saved filter holds what a person typed to filter by, which for a field value is the same patient data that field holds, so it is owner-readable, named in the window's privacy status, and never written into evidence. No telemetry, crash reporting, update checks, or evidence in browser storage.
 
 ## HL7 core
 
@@ -91,6 +91,10 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
   digest of a short value is not de-identification.
 - Bounded at 16 declared fields, 128 retained bytes per value and 16 MiB per
   document. Past a bound the build is refused, never truncated.
+- The desktop message grid is a filtered, windowed view over one such index and
+  is not a second search path: every question it asks about a value or a decoded
+  state goes through `index.Document.Search`, and every window re-verifies the
+  case and re-checks the index against it. See [the desktop shell](desktop.md).
 
 ## Evidence protection
 

@@ -175,6 +175,24 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   endpoint nonproduction is not proof the address is safe to send to, and
   blocking on a recorded class is not in this release.
 
+- The desktop shell finds evidence through a filterable message grid over the
+  rebuildable case index. It renders one bounded window of occurrences at a time
+  and asks for the next, so a large case is never drawn at once, and every
+  window re-verifies the case and re-checks the index against it, so a view is
+  never served from an index the evidence no longer supports or one whose
+  declared retention has ended. Saved filters are a
+  versioned `readmit-filters/v1` document of this viewer's own local state,
+  narrowing by occurrence type, source, observed time, decoded field state, ACK
+  outcome and field values; the selected filter is kept when navigating from one
+  case to another and when the window is opened again. Every grid states how
+  many records the filter excluded, and separately how many the index could not
+  settle and how many the case itself could not decode, so a filtered view never
+  reads as though the case held nothing else. A saved filter holds what a person
+  typed to filter by and the window's privacy status names it; no message byte,
+  field value or original source path crosses the boundary into the interface.
+  `readmit-index/v1` and every case, project, run, result and report contract are
+  unchanged.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is

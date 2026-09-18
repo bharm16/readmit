@@ -1,8 +1,25 @@
 // The window furniture that renders the facade's description of the shell:
-// how a status reads, the command palette, and the pane separator. None of it
-// decides anything; it draws what internal/desktop declared.
-import { useEffect, useRef } from "react";
-import type { Command, CommandId, Indicator, State, StatusValue } from "./bindings";
+// how a status reads, the command palette, the pane separator, and the message
+// grid. None of it decides anything about evidence; it draws what
+// internal/desktop answered. The one thing the grid form settles here is what a
+// browser date input cannot express — an entry that is not a complete date and
+// time is refused rather than sent as no bound at all, because a time bound
+// that silently disappeared would widen the filter. Whether a filter is usable
+// is the facade's decision, and it reports it.
+import { useEffect, useRef, useState } from "react";
+import type {
+  Command,
+  CommandId,
+  FieldMatch,
+  FieldState,
+  Filter,
+  FiltersResult,
+  GridResult,
+  Indicator,
+  OccurrenceKind,
+  State,
+  StatusValue,
+} from "./bindings";
 
 export type Indicators = Map<StatusValue, Indicator>;
 
@@ -197,4 +214,360 @@ export function Palette({
       </button>
     </dialog>
   );
+}
+
+/** How many occurrences one window of the grid renders. The grid asks for the
+ * next window rather than drawing a large case at once. The facade's own bound
+ * is larger; this is what this window draws. */
+export const GRID_WINDOW = 50;
+
+/** The message grid: one window over one filtered case.
+ *
+ * It renders what the facade answered and decides nothing. Every counted fact
+ * below comes from the facade, including how many occurrences the selected
+ * filter removed from the view, which is shown whenever a grid is shown: a
+ * filtered view that hides records without saying how many would read as though
+ * the case held nothing else. Nothing read out of a message is here — a row
+ * carries where an occurrence is and what it is. */
+export function MessageGrid({
+  indicators,
+  progress,
+  result,
+  filters,
+  entries,
+  busy,
+  onOpen,
+  onSelect,
+  onSave,
+}: {
+  indicators: Indicators;
+  progress: string | null;
+  result: GridResult | null;
+  filters: FiltersResult | null;
+  /** The entries of the open folder that are neither a case bundle nor one of
+   * the project documents — an index is a file, so it is among these. Whether
+   * one really is an index of this case is the facade's decision. */
+  entries: string[];
+  busy: boolean;
+  onOpen: (indexName: string, offset: number) => void;
+  onSelect: (name: string) => void;
+  onSave: (filter: Filter) => void;
+}) {
+  const [indexName, setIndexName] = useState("");
+  const [draft, setDraft] = useState<Draft>(emptyDraft);
+  const [invalid, setInvalid] = useState<string | null>(null);
+  const grid = result?.grid ?? null;
+
+  return (
+    <section className="grid" aria-label="Message grid">
+      <h3>Message grid</h3>
+      <div className="grid-open">
+        <label htmlFor="grid-index">Index file in this folder</label>
+        <select
+          id="grid-index"
+          value={indexName}
+          disabled={busy || entries.length === 0}
+          onChange={(event) => setIndexName(event.target.value)}
+        >
+          <option value="">Choose an index built with readmit index build…</option>
+          {entries.map((entry) => (
+            <option key={entry} value={entry}>
+              {entry}
+            </option>
+          ))}
+        </select>
+        <button type="button" disabled={busy || indexName === ""} onClick={() => onOpen(indexName, 0)}>
+          Open the grid
+        </button>
+      </div>
+
+      <div className="grid-filter">
+        <label htmlFor="grid-filter">Saved filter</label>
+        <select
+          id="grid-filter"
+          value={filters?.selected ?? ""}
+          disabled={busy}
+          onChange={(event) => onSelect(event.target.value)}
+        >
+          <option value="">No filter — show every occurrence</option>
+          {(filters?.filters ?? []).map((saved) => (
+            <option key={saved.name} value={saved.name}>
+              {saved.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      {filters && filters.state !== "completed" ? (
+        <Status indicator={indicators.get(filters.state)} state={filters.state} reason={filters.reason} />
+      ) : null}
+
+      <Report indicators={indicators} progress={progress} result={result} />
+
+      {grid ? (
+        <>
+          <p className="counts">
+            <span>
+              Showing {grid.rows.length} of {grid.matched} matching
+            </span>
+            <span className="excluded">
+              {grid.excluded} of {grid.total} excluded by {grid.filter === "" ? "no filter" : grid.filter}
+            </span>
+            <span>{grid.undecided} values the index could not settle</span>
+            <span>{grid.undecodable} the case could not decode</span>
+          </p>
+          <div className="grid-window">
+            <button
+              type="button"
+              disabled={busy || grid.offset === 0}
+              onClick={() => onOpen(grid.index, Math.max(0, grid.offset - grid.limit))}
+            >
+              Previous {grid.limit}
+            </button>
+            <span>
+              Occurrences {grid.rows.length === 0 ? grid.offset : grid.offset + 1}–{grid.offset + grid.rows.length}
+            </span>
+            <button
+              type="button"
+              disabled={busy || grid.offset + grid.rows.length >= grid.matched}
+              onClick={() => onOpen(grid.index, grid.offset + grid.limit)}
+            >
+              Next {grid.limit}
+            </button>
+          </div>
+          <table className="rows">
+            <caption>
+              {grid.case} · {grid.index} · verified {grid.identity}
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Occurrence</th>
+                <th scope="col">Source</th>
+                <th scope="col">Type</th>
+                <th scope="col">Direction</th>
+                <th scope="col">Observed</th>
+                <th scope="col">Bytes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {grid.rows.map((row) => (
+                <tr key={row.id}>
+                  <th scope="row">{row.id}</th>
+                  <td>{row.source_id}</td>
+                  <td>
+                    <span className="kind">{row.kind}</span>
+                    {row.decoded ? null : <span className="unsupported">not decoded</span>}
+                  </td>
+                  <td>{row.direction}</td>
+                  <td>{row.observed_at ?? "not recorded"}</td>
+                  <td>
+                    {row.offset}+{row.size}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      ) : null}
+
+      <form
+        className="grid-save"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const filter = compose(draft);
+          if (!filter) {
+            setInvalid("A time bound has to be a complete date and time.");
+            return;
+          }
+          setInvalid(null);
+          onSave(filter);
+        }}
+      >
+        <h4>Save a filter</h4>
+        <label htmlFor="filter-name">Name</label>
+        <input
+          id="filter-name"
+          type="text"
+          value={draft.name}
+          onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+        />
+
+        <span id="filter-kinds-label">Occurrence type</span>
+        <div className="kinds" role="group" aria-labelledby="filter-kinds-label">
+          {(["message", "ack", "unparsed"] as OccurrenceKind[]).map((kind) => (
+            <label key={kind} htmlFor={`filter-kind-${kind}`}>
+              <input
+                id={`filter-kind-${kind}`}
+                type="checkbox"
+                checked={draft.kinds.includes(kind)}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    kinds: event.target.checked
+                      ? [...draft.kinds, kind]
+                      : draft.kinds.filter((chosen) => chosen !== kind),
+                  })
+                }
+              />
+              {kind}
+            </label>
+          ))}
+        </div>
+
+        <label htmlFor="filter-source">Source</label>
+        <input
+          id="filter-source"
+          type="text"
+          placeholder="s0001"
+          value={draft.source}
+          onChange={(event) => setDraft({ ...draft, source: event.target.value })}
+        />
+
+        <label htmlFor="filter-from">Observed from</label>
+        <input
+          id="filter-from"
+          type="datetime-local"
+          value={draft.from}
+          onChange={(event) => setDraft({ ...draft, from: event.target.value })}
+        />
+        <label htmlFor="filter-until">Observed before</label>
+        <input
+          id="filter-until"
+          type="datetime-local"
+          value={draft.until}
+          onChange={(event) => setDraft({ ...draft, until: event.target.value })}
+        />
+
+        <label htmlFor="filter-ack">ACK outcomes</label>
+        <input
+          id="filter-ack"
+          type="text"
+          placeholder="AA, AE, AR"
+          value={draft.ackCodes}
+          onChange={(event) => setDraft({ ...draft, ackCodes: event.target.value })}
+        />
+
+        <label htmlFor="filter-selector">Field</label>
+        <input
+          id="filter-selector"
+          type="text"
+          placeholder="PID[1]-3[1]"
+          value={draft.selector}
+          onChange={(event) => setDraft({ ...draft, selector: event.target.value })}
+        />
+        <label htmlFor="filter-match">Match</label>
+        <select
+          id="filter-match"
+          value={draft.match}
+          onChange={(event) => setDraft({ ...draft, match: event.target.value as FieldMatch })}
+        >
+          <option value="contains">contains</option>
+          <option value="equals">equals</option>
+          <option value="state">state</option>
+        </select>
+        {draft.match === "state" ? (
+          <>
+            <label htmlFor="filter-state">Decoded state</label>
+            <select
+              id="filter-state"
+              value={draft.state}
+              onChange={(event) => setDraft({ ...draft, state: event.target.value as FieldState })}
+            >
+              <option value="present">present</option>
+              <option value="empty">empty</option>
+              <option value="null">null</option>
+              <option value="omitted">omitted</option>
+            </select>
+          </>
+        ) : (
+          <>
+            <label htmlFor="filter-term">Value</label>
+            <input
+              id="filter-term"
+              type="text"
+              value={draft.term}
+              onChange={(event) => setDraft({ ...draft, term: event.target.value })}
+            />
+          </>
+        )}
+
+        <button type="submit" disabled={busy}>
+          Save and select
+        </button>
+        {invalid ? <p className="unsupported">{invalid}</p> : null}
+        <p className="hint">
+          A saved filter is kept on this machine, with whatever you typed to filter by. It is never
+          written into evidence and never leaves this computer.
+        </p>
+      </form>
+    </section>
+  );
+}
+
+/** The authoring form's own state. It is turned into one Filter on submit, so
+ * the typed contract is built in one place and never half-filled. */
+type Draft = {
+  name: string;
+  kinds: OccurrenceKind[];
+  source: string;
+  from: string;
+  until: string;
+  ackCodes: string;
+  selector: string;
+  match: FieldMatch;
+  term: string;
+  state: FieldState;
+};
+
+const emptyDraft: Draft = {
+  name: "",
+  kinds: [],
+  source: "",
+  from: "",
+  until: "",
+  ackCodes: "",
+  selector: "",
+  match: "contains",
+  term: "",
+  state: "present",
+};
+
+/** instant turns one local date and time into the UTC instant the facade
+ * stores. An entry that is not a complete date and time is refused rather than
+ * dropped: a time bound that silently disappeared would widen the filter. */
+function instant(value: string): string | null | undefined {
+  if (value === "") {
+    return null;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+}
+
+function compose(draft: Draft): Filter | null {
+  const from = instant(draft.from);
+  const until = instant(draft.until);
+  if (from === undefined || until === undefined) {
+    return null;
+  }
+  const asked = draft.selector.trim() !== "";
+  return {
+    name: draft.name.trim(),
+    kinds: draft.kinds,
+    sources: draft.source.trim() === "" ? [] : [draft.source.trim()],
+    observed_from: from,
+    observed_until: until,
+    ack_codes: draft.ackCodes
+      .split(",")
+      .map((code) => code.trim())
+      .filter((code) => code !== ""),
+    fields: asked
+      ? [
+          {
+            selector: draft.selector.trim(),
+            match: draft.match,
+            term: draft.match === "state" ? "" : draft.term,
+            state: draft.match === "state" ? draft.state : "",
+          },
+        ]
+      : [],
+  };
 }
