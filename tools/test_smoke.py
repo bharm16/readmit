@@ -21,6 +21,8 @@ DISTRIBUTION_FILES = (
     "testdata/README.md",
     "docs/case-bundle.md",
     "docs/listen.md",
+    "docs/replay.md",
+    "docs/run-bundle.md",
     "testdata/fixtures/case-evidence.mllp",
     "testdata/fixtures/listen-s12.hl7",
     "testdata/fixtures/listen-s13.hl7",

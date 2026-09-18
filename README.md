@@ -1,6 +1,6 @@
 # readmit
 
-Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `listen`, `synth`, and `diagnose` are available; later workflows are tracked in [GitHub issues](https://github.com/bharm16/readmit/issues).
+Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `listen`, `replay`, `synth`, and `diagnose` are available; later workflows are tracked in [GitHub issues](https://github.com/bharm16/readmit/issues).
 
 ```sh
 readmit inspect message.hl7
@@ -48,7 +48,15 @@ deterministic generated provenance for the future `synth` command. See the
 [complete case bundle contract](docs/case-bundle.md) for layout, field definitions,
 correlation rules, observation metadata, integrity checks, and limits.
 
-## Supported input
+## Available workflows
+
+`replay CASE --target CONFIG` previews a replay without opening a connection.
+Sending requires `--send --output NEW_RUN` and an explicit configuration marked
+as a test endpoint. Source values stay unchanged unless a named transformation
+is selected. Each run records intended, sent, and received bytes, source mappings,
+ACK outcomes, and uncertain delivery; ambiguous timeouts are never retried
+automatically. Run manifests contain source values and remain customer-local
+review artifacts. See [safe replay](docs/replay.md).
 
 `listen` is a controllable local **test fixture** for one SIU booking/rescheduling
 scenario. Its fixed mode updates an appointment; defective mode appends a
@@ -79,6 +87,8 @@ The family contains separate `regression` (S12/S13), `cancellation` (S12/S13/S15
 and `invalid` (reschedule with an unbooked filler identifier) case bundles.
 Identical declared inputs produce identical bytes. No current clock or machine
 path enters the generated evidence. See [synthetic generation](docs/synth.md).
+
+## Supported input
 
 | `--format` | Accepted layout |
 | --- | --- |

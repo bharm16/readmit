@@ -62,6 +62,7 @@ func Execute(version string, args []string, stdout, stderr io.Writer) error {
 	root.AddCommand(diagnoseCommand(&ran))
 
 	root.AddCommand(synthCommand(&ran))
+	root.AddCommand(replayCommand(&ran))
 	root.SetArgs(args)
 	err := root.Execute()
 	if err != nil {
