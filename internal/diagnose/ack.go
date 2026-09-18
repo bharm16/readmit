@@ -14,7 +14,11 @@ func (e *evaluator) ack(m message) {
 	if e.rules[ACKOutcome] {
 		for i := 1; i <= msaCount; i++ {
 			path := fmt.Sprintf("MSA[%d]-1", i)
-			if !e.singleRepetition(m, path) {
+			if _, supported := e.value(m, path); !supported {
+				continue
+			}
+			referencePath := fmt.Sprintf("MSA[%d]-2", i)
+			if _, supported := e.value(m, referencePath); !supported {
 				continue
 			}
 			code, ok := e.text(m, path)
@@ -24,7 +28,7 @@ func (e *evaluator) ack(m message) {
 				e.unsupportedItem("unsupported_ack_code", m.event.ID, path, "MSA-1 is missing or is not a supported acknowledgement code.")
 				continue
 			}
-			e.finding(ACKOutcome, "observed_fact", fmt.Sprintf("The captured ACK declares MSA-1 %s (%s). This is an acknowledgement outcome, not proof of business-state persistence.", code, outcome), "", m.evidence(path), m.evidence(fmt.Sprintf("MSA[%d]-2", i)))
+			e.finding(ACKOutcome, "observed_fact", fmt.Sprintf("The captured ACK declares MSA-1 %s (%s). This is an acknowledgement outcome, not proof of business-state persistence.", code, outcome), "", m.evidence(path), m.evidence(referencePath))
 		}
 		if msaCount == 0 {
 			e.unsupportedItem("missing_ack_outcome", m.event.ID, "MSA-1", "The ACK contains no MSA segment; its outcome could not be evaluated.")
@@ -33,11 +37,14 @@ func (e *evaluator) ack(m message) {
 	if e.rules[ACKError] {
 		for i := 1; i <= errCount; i++ {
 			codePath, severityPath := fmt.Sprintf("ERR[%d]-3.1", i), fmt.Sprintf("ERR[%d]-4", i)
-			if !e.singleRepetition(m, fmt.Sprintf("ERR[%d]-3", i)) || !e.singleRepetition(m, severityPath) {
+			if _, supported := e.value(m, severityPath); !supported {
 				continue
 			}
 			systemPath := fmt.Sprintf("ERR[%d]-3.3", i)
-			system := m.value(systemPath)
+			system, supported := e.value(m, systemPath)
+			if !supported {
+				continue
+			}
 			if system.State == hl7.Null {
 				e.unsupportedItem("unsupported_err_coding_system", m.event.ID, systemPath, "Explicit-null ERR coding system cannot be interpreted as the supported table.")
 				continue

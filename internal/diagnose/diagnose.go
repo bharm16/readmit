@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -104,7 +105,16 @@ func Run(path string, config Config) (Report, error) {
 		}
 		m := message{event: event, doc: doc}
 		wireProfileSupported := e.wireProfiles(m)
-		charset := m.value("MSH-18")
+		headerSupported := true
+		for _, path := range []string{"MSH-9", "MSH-12", "MSH-18"} {
+			if _, ok := e.value(m, path); !ok {
+				headerSupported = false
+			}
+		}
+		if !headerSupported {
+			continue
+		}
+		charset, _ := e.value(m, "MSH-18")
 		switch string(m.doc.Bytes(charset.Span)) {
 		case "", "ASCII":
 		case "UNICODE UTF-8":
@@ -113,10 +123,7 @@ func Run(path string, config Config) (Report, error) {
 			e.unsupportedItem("unsupported_character_set", event.ID, "MSH-18", "Only ASCII (the default) or declared UNICODE UTF-8 values are interpreted.")
 			continue
 		}
-		if !e.singleRepetition(m, "MSH-9") || !e.singleRepetition(m, "MSH-12") || !e.singleRepetition(m, "MSH-18") {
-			continue
-		}
-		if e.rules[DuplicateControl] && e.singleRepetition(m, "MSH-10") {
+		if e.rules[DuplicateControl] {
 			if id, ok := e.text(m, "MSH-10"); ok && id != "" {
 				if _, exists := controlIDs[id]; !exists {
 					controlOrder = append(controlOrder, id)
@@ -149,7 +156,9 @@ func Run(path string, config Config) (Report, error) {
 			continue
 		}
 		e.required(m)
-		if !e.singleRepetition(m, "SCH-1") || !e.singleRepetition(m, "SCH-2") {
+		_, placerSupported := e.value(m, "SCH-1")
+		_, fillerSupported := e.value(m, "SCH-2")
+		if !placerSupported || !fillerSupported {
 			continue
 		}
 		messages = append(messages, m)
@@ -231,8 +240,8 @@ func (m message) segmentCount(id string) int {
 }
 
 func (e *evaluator) text(m message, path string) (string, bool) {
-	v := m.value(path)
-	if v.State != hl7.Present {
+	v, supported := e.value(m, path)
+	if !supported || v.State != hl7.Present {
 		return "", false
 	}
 	decoded, err := hl7.Decode(m.doc.Bytes(v.Span), m.doc.Messages[0].Delimiters)
@@ -263,7 +272,10 @@ func (e *evaluator) required(m message) {
 	trigger, _ := e.profile.trigger(m.trigger)
 	paths := trigger.RequiredFields
 	for _, path := range paths {
-		v := m.value(path)
+		v, supported := e.value(m, path)
+		if !supported {
+			continue
+		}
 		if v.State != hl7.Present {
 			e.finding(RequiredField, "profile_violation", fmt.Sprintf("Profile %s requires %s for SIU %s; the captured field is %s.", Profile, path, m.trigger, v.State), "", m.evidence(path))
 			continue
@@ -283,7 +295,10 @@ func (e *evaluator) required(m message) {
 func (e *evaluator) authorityFor(m message, paths []string, reportMissing bool) (string, bool) {
 	parts := [3]string{}
 	for i, path := range paths {
-		v := m.value(path)
+		v, supported := e.value(m, path)
+		if !supported {
+			return "", false
+		}
 		if v.State == hl7.Null {
 			if reportMissing {
 				e.finding(RequiredField, "profile_violation", fmt.Sprintf("Profile %s requires an assigning authority; explicit null is not an authority.", Profile), "", m.evidence(path))
@@ -347,12 +362,16 @@ func (e *evaluator) bookings(messages []message) {
 	}
 }
 
-func (e *evaluator) singleRepetition(m message, path string) bool {
-	if m.value(path+"[2]").State == hl7.Omitted {
-		return true
+// value owns support checks before either field-state reasoning or decoding.
+// PID-3 deliberately selects the profile's first identifier repetition. Scalar
+// MSH, SCH, MSA and ERR fields may not acquire meaning from a first repetition.
+func (e *evaluator) value(m message, path string) (hl7.Value, bool) {
+	field, _, _ := strings.Cut(path, ".")
+	if field != "PID-3" && m.value(field+"[2]").State != hl7.Omitted {
+		e.unsupportedItem("unsupported_field_repetition", m.event.ID, field, "The fixture profile interprets this field only when it has a single repetition.")
+		return hl7.Value{}, false
 	}
-	e.unsupportedItem("unsupported_field_repetition", m.event.ID, path, "The fixture profile interprets this field only when it has a single repetition.")
-	return false
+	return m.value(path), true
 }
 
 // The local fixture profile has no registered on-wire MSH-21 EI mapping. Do not

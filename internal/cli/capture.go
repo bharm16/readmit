@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/spf13/cobra"
@@ -59,7 +59,7 @@ func captureCommand(ran *bool) *cobra.Command {
 				if total > bundle.MaxEvidenceBytes {
 					return errors.New("bundle evidence exceeds 64 MiB")
 				}
-				absolute, err := filepath.Abs(path)
+				absolute, err := artifactpath.Resolve(path)
 				if err != nil {
 					return errors.New("cannot resolve input source location")
 				}

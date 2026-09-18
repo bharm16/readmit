@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"unicode/utf8"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/testrunner"
@@ -38,7 +39,7 @@ func (t *transformer) reviewInventory(inventory Inventory, base, sourceIdentity 
 		}
 		// Resolve filesystem traversal before any lexical path cleaning. Seal
 		// the same location that is validated, reviewed, protected and reopened.
-		path, err := canonical(relative(base, artifact.Path))
+		path, err := artifactpath.Resolve(relative(base, artifact.Path))
 		if err != nil {
 			return err
 		}

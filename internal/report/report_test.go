@@ -189,7 +189,11 @@ func TestOpenRejectsResealedFalseSyntheticClaims(t *testing.T) {
 				if err := os.RemoveAll(filepath.Join(dir, "reproducer")); err != nil {
 					t.Fatal(err)
 				}
-				if _, err := bundle.Write(filepath.Join(dir, "reproducer"), []bundle.Input{{Data: raw, Options: hl7.Options{Format: hl7.MLLP, Terminator: hl7.CR}}}, source.Manifest.Provenance); err != nil {
+				replacement := filepath.Join(t.TempDir(), "reproducer")
+				if _, err := bundle.Write(replacement, []bundle.Input{{Data: raw, Options: hl7.Options{Format: hl7.MLLP, Terminator: hl7.CR}}}, source.Manifest.Provenance); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Rename(replacement, filepath.Join(dir, "reproducer")); err != nil {
 					t.Fatal(err)
 				}
 			case "mismatched-source", "extra-ack-content":

@@ -15,6 +15,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/redact"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/testrunner"
@@ -162,7 +163,13 @@ func redactRewriteReceiver(t *testing.T, path string, direction bundle.Direction
 	if err := os.Rename(path, filepath.Join(t.TempDir(), "previous-receiver.case")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := bundle.WriteRecorded(path, inputs, *received.Manifest.Provenance.StartedAt, *received.Observation); err != nil {
+	// Construct the forged case outside finalized evidence. Public writers must
+	// refuse the sealed packet; the test itself then installs the adversarial bytes.
+	replacement := filepath.Join(t.TempDir(), "replacement.case")
+	if _, err := bundle.WriteRecorded(replacement, inputs, *received.Manifest.Provenance.StartedAt, *received.Observation); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(replacement, path); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := bundle.Open(path); err != nil {
@@ -303,6 +310,77 @@ func TestRedactOpenExportValidatesTheEmbeddedReviewContract(t *testing.T) {
 			redactResealPacket(t, packet, manifest)
 			if _, err := redact.OpenExport(packet); err == nil {
 				t.Fatal("resealed packet accepted an invalid nested review contract")
+			}
+		})
+	}
+}
+
+func TestRedactOpenExportRejectsCoherentlyResealedLedger(t *testing.T) {
+	original := redactPacketFixture(t)
+	for _, field := range []string{"patient", "placer", "filler", "time", "authority"} {
+		t.Run(field, func(t *testing.T) {
+			packet := filepath.Join(t.TempDir(), "packet")
+			if err := os.CopyFS(packet, os.DirFS(original)); err != nil {
+				t.Fatal(err)
+			}
+			manifest := redactReadJSON[redact.ExportManifest](t, filepath.Join(packet, "export-review.json"))
+			approved := manifest.ApprovedReview
+			resultPath := filepath.Join(packet, "proof", "baseline", "result")
+			artifact, err := testrunner.Open(resultPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			change := func(record *observation.Record) {
+				switch field {
+				case "patient":
+					record.PatientID.Value = "PLANTED-PATIENT-7391"
+				case "placer":
+					record.PlacerID.Value = "UNAPPROVED-PLACER"
+				case "filler":
+					record.FillerID.Value = "UNAPPROVED-FILLER"
+				case "time":
+					record.AppointmentStart = "20260101000000+0000"
+				case "authority":
+					record.PatientID.Namespace = "UNAPPROVED-AUTHORITY"
+				}
+			}
+			change(&artifact.FinalObservation.Records[0])
+			raw, err := observation.Encode(*artifact.FinalObservation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, path := range []string{filepath.Join(resultPath, "observation.json"), filepath.Join(packet, "proof", "baseline", "observation.json")} {
+				if err := os.WriteFile(path, raw, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			artifact.Result.FinalObservation.Size, artifact.Result.FinalObservation.SHA256 = len(raw), redactDigest(raw)
+			for i := range artifact.Result.Assertions {
+				if value := artifact.Result.Assertions[i].Observed; value != nil && value.Records != nil {
+					change(&(*value.Records)[0])
+				}
+			}
+			redactJSON(t, filepath.Join(resultPath, "result.json"), artifact.Result)
+			redactReseal(t, resultPath, testrunner.Schema)
+			receiverPath := filepath.Join(packet, "proof", "baseline", "receiver.case")
+			recorded := redactReadJSON[bundle.Manifest](t, filepath.Join(receiverPath, "manifest.json"))
+			recorded.Observation.Size, recorded.Observation.SHA256 = len(raw), redactDigest(raw)
+			if err := os.WriteFile(filepath.Join(receiverPath, "observation.json"), raw, 0600); err != nil {
+				t.Fatal(err)
+			}
+			redactJSON(t, filepath.Join(receiverPath, "manifest.json"), recorded)
+			redactReseal(t, receiverPath, bundle.RecordedSchema)
+			if _, err := bundle.Open(receiverPath); err != nil {
+				t.Fatalf("recorded observation must remain coherent: %v", err)
+			}
+			// Generic result verification still agrees with the retained ledger and
+			// unchanged failures. Only fixture proof can reject the invented values.
+			redactResealPacket(t, packet, manifest)
+			if manifest.ApprovedReview != approved {
+				t.Fatal("test changed the review commitment")
+			}
+			if _, err := redact.OpenExport(packet); err == nil {
+				t.Fatal("accepted ledger values that cannot follow from the approved case")
 			}
 		})
 	}

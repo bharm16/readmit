@@ -438,6 +438,59 @@ func TestReaderRejectsSymlinksAndUnexpectedFiles(t *testing.T) {
 	}
 }
 
+func TestReaderAppliesWriterBudgetToRebuiltCorrelations(t *testing.T) {
+	message := []byte("\x0bMSH|^~\\&|A|B|C|D|20260101120000||SIU^S12|SAME|P|2.5.1\r\x1c\r")
+	ack := []byte("\x0bMSH|^~\\&|A|B|C|D|20260101120000||ACK|ACK|P|2.5.1\rMSA|AA|SAME\r\x1c\r")
+	path, sample := write(t, []bundle.Input{{Path: "synthetic", Data: append(bytes.Clone(message), ack...)}}, imported())
+	// 1,050 messages and ACKs fit the input/event limits, but their ambiguity
+	// expands to 1,102,500 references, beyond the 16 MiB correlation-file budget.
+	const count = 1050
+	source := append(bytes.Repeat(message, count), bytes.Repeat(ack, count)...)
+	if _, err := bundle.Write(filepath.Join(t.TempDir(), "too-large"), []bundle.Input{{Path: "synthetic", Data: source}}, imported()); err == nil || !strings.Contains(err.Error(), "size limit") {
+		t.Fatalf("writer did not enforce the record budget: %v", err)
+	}
+	// Independently repeat the valid occurrence descriptors, then seal an empty
+	// correlation file. The reader must budget reconstruction, not only disk bytes.
+	var events bytes.Buffer
+	offset := 0
+	for i := range 2 * count {
+		event, raw := sample.Events[0], message
+		if i >= count {
+			event, raw = sample.Events[1], ack
+		}
+		event.ID, event.Sequence, event.Offset = fmt.Sprintf("s0001-e%06d", i+1), i+1, offset
+		event.Payload.Path = "payloads/" + event.ID + ".bin"
+		if err := os.WriteFile(filepath.Join(path, event.Payload.Path), raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+		encoded, err := json.Marshal(event, json.Deterministic(true))
+		if err != nil {
+			t.Fatal(err)
+		}
+		events.Write(encoded)
+		events.WriteByte('\n')
+		offset += len(raw)
+	}
+	manifest := sample.Manifest
+	manifest.EventCount = 2 * count
+	manifest.Sources[0].Occurrences, manifest.Sources[0].Size = 2*count, len(source)
+	sum := sha256.Sum256(source)
+	manifest.Sources[0].SHA256 = hex.EncodeToString(sum[:])
+	raw, err := json.Marshal(manifest, json.Deterministic(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string][]byte{"manifest.json": raw, "events.jsonl": events.Bytes(), "correlations.jsonl": {}} {
+		if err := os.WriteFile(filepath.Join(path, name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reseal(t, path)
+	if _, err := bundle.Open(path); err == nil || !strings.Contains(err.Error(), "size limit") {
+		t.Fatalf("reader did not enforce the same reconstruction budget: %v", err)
+	}
+}
+
 func FuzzOpen(f *testing.F) {
 	path, _ := write(f, []bundle.Input{{Path: "fixture", Data: []byte("MSH|^~\\&|APP\r")}}, imported())
 	files := directoryFiles(f, path)

@@ -1,9 +1,8 @@
 package receiver
 
 import (
-	"bytes"
-
 	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/hl7"
 )
 
 type evidenceChunk struct {
@@ -17,14 +16,7 @@ type evidenceChunk struct {
 func (r *Receiver) frameObservations(input *bundle.Input) {
 	observations := make(map[int]bundle.Observation)
 	for start, sequence := 0, 1; start < len(input.Data); sequence++ {
-		end := len(input.Data)
-		if input.Data[start] == 0x0b {
-			length := bytes.IndexByte(input.Data[start+1:], 0x1c)
-			candidate := start + 1 + length
-			if length >= 0 && candidate+1 < len(input.Data) && input.Data[candidate+1] == '\r' {
-				end = candidate + 2
-			}
-		}
+		end, _ := bundle.NextOccurrence(input.Data, start, hl7.MLLP)
 		var observed bundle.Observation
 		for _, chunk := range r.chunks {
 			if chunk.end <= start || chunk.start >= end {

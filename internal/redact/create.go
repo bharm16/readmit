@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"slices"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/exportreview"
 	"github.com/bharm16/readmit/internal/hl7"
@@ -171,7 +172,7 @@ func prepare(request Request) (*transformer, *bundle.Bundle, testrunner.Spec, st
 	values := map[string][]byte{}
 	resolved := map[string]string{}
 	for _, entry := range paths {
-		path, err := canonical(entry.path)
+		path, err := artifactpath.Resolve(entry.path)
 		if err != nil {
 			return fail(err)
 		}
@@ -275,6 +276,10 @@ func revalidate(local localState) error {
 }
 
 func OpenReview(path string) (*Review, error) {
+	path, err := artifactpath.Directory(path)
+	if err != nil {
+		return nil, err
+	}
 	files, err := tree(path)
 	if err != nil {
 		return nil, err

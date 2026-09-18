@@ -53,39 +53,9 @@ func readLocal(path string, max int) ([]byte, error) {
 }
 
 func reserve(output string, source os.FileInfo) (string, error) {
-	var err error
-	if source != nil {
-		output, err = artifactpath.Outside(source, output)
-		if err != nil {
-			return "", err
-		}
-	} else {
-		// Even malformed specs must not allow an error artifact to be placed
-		// inside any finalized bundle. Resolve raw parents before cleaning .. .
-		parent, leaf := filepath.Split(output)
-		if leaf == "" || leaf == "." || leaf == ".." {
-			return "", errors.New("test output requires a new directory")
-		}
-		if parent == "" {
-			parent = "."
-		}
-		parent, err = filepath.EvalSymlinks(parent)
-		if err != nil {
-			return "", errors.New("cannot resolve test output parent")
-		}
-		parent, err = filepath.Abs(parent)
-		if err != nil {
-			return "", errors.New("cannot resolve test output parent")
-		}
-		output = filepath.Join(parent, leaf)
-	}
-	for current := filepath.Dir(output); ; current = filepath.Dir(current) {
-		if _, err := os.Lstat(filepath.Join(current, "identity.sha256")); !os.IsNotExist(err) {
-			return "", errors.New("test output must be outside immutable evidence")
-		}
-		if filepath.Dir(current) == current {
-			break
-		}
+	output, err := artifactpath.Destination(output, source)
+	if err != nil {
+		return "", err
 	}
 	if err := os.Mkdir(output, 0700); err != nil {
 		return "", errors.New("cannot create test output; destination must be new")

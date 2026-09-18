@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/dictionary"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/spf13/cobra"
@@ -112,6 +113,10 @@ func inspectFile(out io.Writer, path string, options hl7.Options, showValues boo
 }
 
 func writeEvidence(path string, data []byte) error {
+	path, err := artifactpath.Destination(path)
+	if err != nil {
+		return err
+	}
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return errors.New("cannot create round-trip file; destination must be new and writable")

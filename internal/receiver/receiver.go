@@ -12,10 +12,10 @@ import (
 	"io"
 	"net"
 	"os"
-	"path/filepath"
 	"slices"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/mllp"
@@ -58,13 +58,13 @@ func New(config Config) (*Receiver, error) {
 	if config.OutputPath == "" || config.ObservationPath == "" {
 		return nil, errors.New("receiver requires new case and observation destinations")
 	}
-	output, err := filepath.Abs(config.OutputPath)
+	output, err := artifactpath.Destination(config.OutputPath)
 	if err != nil {
-		return nil, errors.New("cannot resolve case destination")
+		return nil, err
 	}
-	observed, err := filepath.Abs(config.ObservationPath)
+	observed, err := artifactpath.Destination(config.ObservationPath)
 	if err != nil {
-		return nil, errors.New("cannot resolve observation destination")
+		return nil, err
 	}
 	if output == observed {
 		return nil, errors.New("case and observation destinations must differ")
@@ -72,10 +72,7 @@ func New(config Config) (*Receiver, error) {
 	if _, err := os.Lstat(output); !os.IsNotExist(err) {
 		return nil, errors.New("case destination must be new")
 	}
-	info, err := os.Stat(filepath.Dir(output))
-	if err != nil || !info.IsDir() {
-		return nil, errors.New("case parent must be an existing directory")
-	}
+	config.OutputPath, config.ObservationPath = output, observed
 	var entropy [16]byte
 	if _, err := rand.Read(entropy[:]); err != nil {
 		return nil, errors.New("cannot initialize receiver session")
@@ -88,6 +85,17 @@ func New(config Config) (*Receiver, error) {
 	r.snapshot = observation.Snapshot{Schema: observation.Schema, Profile: profile.Name, SessionID: hex.EncodeToString(entropy[:]), Mode: config.Mode, Consistent: true, Processed: []observation.Occurrence{}, Records: []observation.Record{}}
 	if err := observation.Create(config.ObservationPath, r.snapshot); err != nil {
 		return nil, err
+	}
+	// Case-insensitive filesystems can alias distinct resolved leaf spellings.
+	// Confirm exclusivity again before returning a receiver that can send ACKs;
+	// remove only the observation we just installed if it occupies both names.
+	if outputInfo, err := os.Lstat(output); !os.IsNotExist(err) {
+		if observedInfo, observedErr := os.Lstat(observed); err == nil && observedErr == nil && os.SameFile(outputInfo, observedInfo) {
+			if err := os.Remove(observed); err != nil {
+				return nil, errors.New("cannot remove conflicting startup observation")
+			}
+		}
+		return nil, errors.New("case destination is no longer new; receiver was not started")
 	}
 	return r, nil
 }

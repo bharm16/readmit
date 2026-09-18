@@ -106,7 +106,7 @@ func checkDestination(plan *Plan, path string) (string, error) {
 	if err != nil || !os.SameFile(plan.sourceInfo, sourceInfo) {
 		return "", errors.New("source bundle directory changed after replay preparation")
 	}
-	resolved, err := artifactpath.Outside(sourceInfo, path)
+	resolved, err := artifactpath.Destination(path, sourceInfo)
 	if err != nil {
 		return "", err
 	}

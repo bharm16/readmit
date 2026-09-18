@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/observation"
@@ -18,6 +19,10 @@ import (
 // assertion proofs, and regenerated diagnosis without opening original sources.
 // It cannot independently repeat the private known-value scan or confer status.
 func OpenExport(path string) (*ExportManifest, error) {
+	path, err := artifactpath.Directory(path)
+	if err != nil {
+		return nil, err
+	}
 	files, err := tree(path)
 	if err != nil {
 		return nil, err
@@ -79,10 +84,7 @@ func OpenExport(path string) (*ExportManifest, error) {
 		if result.Run == nil || !result.Run.Successful() || result.FinalObservation == nil || result.Result.Target == nil {
 			return nil, errors.New("export fixture proof is incomplete")
 		}
-		if err := verifyProofSources(derived, result.Run); err != nil {
-			return nil, err
-		}
-		if err := verifyFixtureACKs(derived, result); err != nil {
+		if err := verifyFixtureProof(derived, result); err != nil {
 			return nil, err
 		}
 		expectedMode := observation.Defective

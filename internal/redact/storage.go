@@ -53,47 +53,26 @@ func relative(base, path string) string {
 	return base + string(os.PathSeparator) + path
 }
 
-func canonical(path string) (string, error) {
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return "", errors.New("cannot resolve redaction input")
-	}
-	resolved, err = filepath.Abs(resolved)
-	if err != nil {
-		return "", errors.New("cannot resolve redaction input")
-	}
-	return resolved, nil
-}
-
 func destination(path string, protected []string) (string, error) {
 	if len(protected) == 0 {
 		return "", errors.New("artifact destination requires a source boundary")
 	}
+	sources := make([]os.FileInfo, 0, len(protected))
 	for _, source := range protected {
 		info, err := os.Stat(source)
 		if err != nil {
 			return "", errors.New("cannot inspect protected artifact")
 		}
-		if !info.IsDir() {
-			continue
-		}
-		path, err = artifactpath.Outside(info, path)
-		if err != nil {
-			return "", err
-		}
+		sources = append(sources, info)
 	}
-	for parent := filepath.Dir(path); ; parent = filepath.Dir(parent) {
-		if _, err := os.Lstat(filepath.Join(parent, "identity.sha256")); !os.IsNotExist(err) {
-			return "", errors.New("output must be outside immutable evidence")
-		}
-		if filepath.Dir(parent) == parent {
-			break
-		}
+	resolved, err := artifactpath.Destination(path, sources...)
+	if err != nil {
+		return "", err
 	}
-	if _, err := os.Lstat(path); !os.IsNotExist(err) {
+	if _, err := os.Lstat(resolved); !os.IsNotExist(err) {
 		return "", errors.New("redaction destination must be new")
 	}
-	return path, nil
+	return resolved, nil
 }
 
 func writeFile(dir, name string, raw []byte) error {
@@ -113,10 +92,11 @@ func writeFile(dir, name string, raw []byte) error {
 }
 
 func tree(dir string) (map[string][]byte, error) {
-	info, err := os.Lstat(dir)
-	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return nil, errors.New("artifact must be a regular directory")
+	dir, err := artifactpath.Directory(dir)
+	if err != nil {
+		return nil, err
 	}
+
 	files := map[string][]byte{}
 	directories := []string{}
 	total := 0
