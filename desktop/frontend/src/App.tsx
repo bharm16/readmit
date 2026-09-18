@@ -7,6 +7,8 @@ import {
   filters as readFilters,
   openCase,
   openGrid,
+  inspectOccurrence,
+  type InspectionResult,
   openProject,
   openWorkspace,
   recentWorkspaces,
@@ -30,6 +32,7 @@ import {
   type Theme,
   type WorkspaceResult,
 } from "./bindings";
+import { Inspector } from "./Inspector";
 import { Badge, GRID_WINDOW, MessageGrid, Palette, Report, Separator, Status } from "./shell";
 
 /** The panes never collapse to nothing: either one keeps a usable share of the
@@ -40,7 +43,7 @@ const SPLIT_STEP = 5;
 
 /** Verifying a case, reading a project and searching all run to completion once
  * they start, so Cancel is offered only while an interruptible operation runs. */
-type Running = null | "workspace" | "case" | "project" | "search" | "grid" | "filters";
+type Running = null | "workspace" | "case" | "project" | "search" | "grid" | "filters" | "inspect";
 
 export default function App() {
   const [described, setDescribed] = useState<Shell | null>(null);
@@ -54,6 +57,8 @@ export default function App() {
   const [recent, setRecent] = useState<RecentResult | null>(null);
   const [found, setFound] = useState<SearchResult | null>(null);
   const [savedFilters, setSavedFilters] = useState<FiltersResult | null>(null);
+  const [inspectionResult, setInspectionResult] = useState<InspectionResult | null>(null);
+  const [selectedOccurrence, setSelectedOccurrence] = useState<string | null>(null);
   const [gridResult, setGridResult] = useState<GridResult | null>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
@@ -159,6 +164,8 @@ export default function App() {
         setInvestigation(null);
         setFound(null);
         setGridResult(null);
+        setInspectionResult(null);
+        setSelectedOccurrence(null);
         setSelected(null);
         setWorkspace(null);
         setWorkspace(await operation());
@@ -174,6 +181,8 @@ export default function App() {
       await operate("case", async () => {
         setEvidence(null);
         setGridResult(null);
+        setInspectionResult(null);
+        setSelectedOccurrence(null);
         setSelected(name);
         setEvidence(await openCase(folder, name));
       });
@@ -210,10 +219,35 @@ export default function App() {
     async (folder: string, name: string, indexName: string, offset: number) => {
       await operate("grid", async () => {
         setGridResult(null);
+        setInspectionResult(null);
+        setSelectedOccurrence(null);
         setGridResult(await openGrid(folder, name, indexName, offset, GRID_WINDOW));
       });
     },
     [operate],
+  );
+
+  const inspect = useCallback(
+    async (occurrence: string, path: string, nodeOffset: number, byteOffset: number) => {
+      const grid = gridResult?.grid;
+      if (!root || !grid) return;
+      await operate("inspect", async () => {
+        setSelectedOccurrence(occurrence);
+        setInspectionResult(null);
+        setInspectionResult(
+          await inspectOccurrence({
+            workspace: root,
+            case: grid.case,
+            identity: grid.identity,
+            occurrence,
+            path,
+            node_offset: nodeOffset,
+            byte_offset: byteOffset,
+          }),
+        );
+      });
+    },
+    [gridResult, operate, root],
   );
 
   // Changing the filter changes what the open grid is showing, so the window is
@@ -584,6 +618,22 @@ export default function App() {
             }}
             onSelect={(name) => void changeFilters(() => selectFilter(name))}
             onSave={(filter) => void changeFilters(() => saveFilter(filter))}
+            selectedOccurrence={selectedOccurrence}
+            onInspect={(occurrence) => void inspect(occurrence, "", 0, -1)}
+          />
+        ) : null}
+        {gridResult?.grid ? (
+          <Inspector
+            result={inspectionResult}
+            busy={busy}
+            progress={
+              running === "inspect" ? "Verifying and inspecting the selected occurrence." : null
+            }
+            indicators={indicators}
+            onInspect={(path, nodeOffset, byteOffset) => {
+              if (selectedOccurrence)
+                void inspect(selectedOccurrence, path, nodeOffset, byteOffset);
+            }}
           />
         ) : null}
         {!evidence && !busy ? <p className="hint">Open a case to see what it holds.</p> : null}

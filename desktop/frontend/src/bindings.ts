@@ -8,13 +8,7 @@
 // machine. TestFrontendBindingsCoverTheFacade fails when a facade method is
 // added without a declaration here.
 
-export type State =
-  | "empty"
-  | "busy"
-  | "cancelled"
-  | "failed"
-  | "permission_denied"
-  | "completed";
+export type State = "empty" | "busy" | "cancelled" | "failed" | "permission_denied" | "completed";
 
 export type Kind = "case" | "project" | "revisions" | "unsupported";
 
@@ -27,12 +21,7 @@ export type StatusValue = State | Kind | CaseStatus;
 
 /** The focusable areas of the window, named by the facade. Focus moves through
  * them in the order the facade lists them. */
-export type RegionId =
-  | "commands"
-  | "navigation"
-  | "evidence"
-  | "inspector"
-  | "privacy";
+export type RegionId = "commands" | "navigation" | "evidence" | "inspector" | "privacy";
 
 /** Everything the window can be asked to do. The palette lists them all. */
 export type CommandId =
@@ -333,9 +322,67 @@ export interface GridResult {
   grid?: Grid;
 }
 
+export interface InspectRequest {
+  workspace: string;
+  case: string;
+  identity: string;
+  occurrence: string;
+  path: string;
+  node_offset: number;
+  byte_offset: number;
+}
+export interface InspectorNode {
+  segment: string;
+  field: number;
+  path: string;
+  parent: string;
+  kind: string;
+  state: FieldState;
+  start: number;
+  end: number;
+}
+export interface InspectorByte {
+  offset: number;
+  hex: string;
+  text: string;
+  selected: boolean;
+}
+export interface FieldMetadata {
+  label: string;
+  status: string;
+  hl7_version: string;
+  contract: string;
+  provenance: string;
+}
+export interface Inspection {
+  metadata: FieldMetadata;
+  identity: string;
+  occurrence: string;
+  source_id: string;
+  source_offset: number;
+  size: number;
+  selected: InspectorNode;
+  children: InspectorNode[];
+  node_offset: number;
+  child_count: number;
+  bytes: InspectorByte[];
+  byte_offset: number;
+  raw: string;
+  decoded: string;
+  encoding: string;
+  decode_state: string;
+  notice: string;
+}
+export interface InspectionResult {
+  state: State;
+  reason?: string;
+  inspection?: Inspection;
+}
+
 interface Facade {
   StartDurableRun(spec: string, output: string): Promise<DurableRunResult>;
   OpenDurableRun(path: string): Promise<DurableRunResult>;
+  InspectOccurrence(request: InspectRequest): Promise<InspectionResult>;
   Cancel(): Promise<void>;
   CreateSampleWorkspace(): Promise<WorkspaceResult>;
   Filters(): Promise<FiltersResult>;
@@ -418,10 +465,7 @@ export function openRevisions(path: string): Promise<RevisionsResult> {
 
 /** The only write the shell makes into a project. It replaces one editable
  * note; it never writes inside a case, a run, or any other retained artifact. */
-export function saveNote(
-  path: string,
-  note: ProjectNote,
-): Promise<RevisionsResult> {
+export function saveNote(path: string, note: ProjectNote): Promise<RevisionsResult> {
   return guard(() => facade().SaveNote(path, note), { state: "failed" });
 }
 
@@ -439,7 +483,9 @@ export function openGrid(
   offset: number,
   limit: number,
 ): Promise<GridResult> {
-  return guard(() => facade().OpenGrid(workspace, name, indexName, offset, limit), { state: "failed" });
+  return guard(() => facade().OpenGrid(workspace, name, indexName, offset, limit), {
+    state: "failed",
+  });
 }
 
 /** Stores one named filter and selects it. */
@@ -497,4 +543,9 @@ export function startDurableRun(spec: string, output: string): Promise<DurableRu
 }
 export function openDurableRun(path: string): Promise<DurableRunResult> {
  return guard(() => facade().OpenDurableRun(path), { state: "failed" });
+}
+
+/** Deliberately reveals one occurrence, with values escaped by the Go engine. */
+export function inspectOccurrence(request: InspectRequest): Promise<InspectionResult> {
+  return guard(() => facade().InspectOccurrence(request), { state: "failed" });
 }

@@ -49,6 +49,7 @@ artifacts are never reported as completed.
 | `SaveNote` | Creates or replaces one editable note of a project. |
 | `RecentWorkspaces` | Lists previously opened folders, most recent first. |
 | `Search` | Finds what one open workspace declares and what its project registers. |
+| `InspectOccurrence` | Verifies the grid identity again and reveals one selected occurrence, its navigable tree, escaped raw/decoded values and bounded hex bytes. |
 | `OpenGrid` | Renders one bounded window of one case through one index of it. |
 | `Filters` | Lists the filters this viewer saved and the one selected now. |
 | `SaveFilter` | Stores one named filter and selects it. |
@@ -71,7 +72,7 @@ than drawing itself with no commands and no privacy status.
 `Cancel` cannot retract bytes an operation has already written. Choosing a
 folder and listing it are interruptible; `OpenCase`, `OpenProject`,
 `OpenRevisions`, `SaveNote`, `Search`, `OpenGrid`, `SaveFilter` and
-`SelectFilter` are not, because each runs to completion under its own size
+`SelectFilter` and `InspectOccurrence` are not, because each runs to completion under its own size
 limits once it starts. The window enables the
 Cancel control only while an interruptible operation runs; `Escape` reaches the
 same operation whenever the palette is not open, and cancelling when nothing is
@@ -90,7 +91,45 @@ runs, which checks completion, identity, payload hashes and every record before
 any count is reported, and it refuses a workspace entry named by anything other
 than one entry of the open folder. Verified evidence is reported as counts and
 the bundle identity: no message bytes, field values, or original source paths
-cross the boundary into the interface.
+cross the boundary from `OpenCase`. Deliberately selecting a grid row reveals
+those occurrence bytes through `InspectOccurrence` without persisting them.
+
+## Inspecting original values
+
+Select **Inspect** on a grid occurrence, then choose a segment, field,
+repetition, component or subcomponent. The selection, its state and byte range,
+escaped raw value, decoded value and highlighted raw/hex window all come from
+one verified read. The exact-selector form can also address omitted positions;
+`empty`, explicit `null`, and `omitted` stay separate. The inspector uses the bundled `readmit-field-labels/v1` labels only when
+MSH-12 declares v2.5.1, with the nHapi revision and MPL-2.0 provenance displayed.
+Other versions, unknown segments and unknown positions stay explicitly
+unlabeled. The bundle contains field labels only, not segment names, datatypes,
+cardinality or semantic conformance rules.
+
+Tree navigation shows at most 100 immediate children; Next/Previous children
+reaches the rest. Original bytes are shown 256 at a time, including framing and
+terminators. Offsets are zero-based, half-open ranges within the original
+occurrence; add the displayed source offset for the original capture position.
+Selecting a part jumps to its bytes, and moving through byte pages preserves
+the selected range. Unparsed occurrences have no field tree but retain every
+byte. A selected value larger than 4096 bytes reports `too_large` rather than
+showing a truncated value; all original bytes remain available through pages.
+
+The inspector resolves the parser's standard HL7 escapes for selected values.
+It displays ASCII (including an omitted/empty MSH-18 default) and explicitly
+declared `UNICODE UTF-8`. Other character-set declarations, invalid bytes and
+unsupported escapes have distinct indicators and no fabricated decoded text.
+Controls, non-ASCII raw bytes and HTML metacharacters are escaped before entering
+the webview. Decoded Unicode is displayed with ASCII escapes too; this is a
+presentation over the original bytes, never a serialization of them.
+
+Every navigation call reopens the canonical case and compares its identity with
+the displayed grid. Changed, missing, incomplete or corrupt evidence refuses
+the read. Changing the case, grid page or filter clears the occurrence selection
+and inspector, so old values cannot remain beside a new grid. Failed reads clear
+the prior inspector result and retain the grid for recovery. This bounded read
+runs to completion and cannot be cancelled. No raw or decoded value is written
+to evidence, recent folders, saved filters, browser storage or logs.
 
 ## Projects
 
@@ -446,8 +485,8 @@ checked to hold no network call and no browser storage at all.
 - Building an index. The grid reads one that `readmit index build` wrote, so
   which fields are retained, in what form and until when stay three declarations
   an operator made explicitly.
-- Raw, decoded and hex views of one occurrence, and its segment tree. A grid row
-  locates the original bytes; reading them is not in this release.
+- Character-set transcoding, local/formatting HL7 escapes, and semantic dictionary definitions beyond the bundled field labels.
+  The inspector reports these limits explicitly and keeps original bytes accessible.
 - Removing a saved filter and sharing one between viewers.
 - Authoring more than one source or more than one field question per filter in
   the window. The stored contract holds up to 128 sources and 16 field

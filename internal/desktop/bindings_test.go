@@ -8,6 +8,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/grid"
+	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/project"
 )
 
@@ -81,6 +82,12 @@ func TestFrontendBindingsDeclareEveryResultMember(t *testing.T) {
 		reflect.TypeOf(desktop.GridResult{}),
 		reflect.TypeOf(desktop.Grid{}),
 		reflect.TypeOf(desktop.Row{}),
+		reflect.TypeOf(desktop.InspectRequest{}),
+		reflect.TypeOf(desktop.InspectionResult{}),
+		reflect.TypeOf(desktop.Inspection{}),
+		reflect.TypeOf(desktop.InspectorByte{}),
+		reflect.TypeOf(desktop.FieldMetadata{}),
+		reflect.TypeOf(hl7.Node{}),
 		reflect.TypeOf(grid.Filter{}),
 		reflect.TypeOf(grid.FieldPredicate{}),
 		reflect.TypeOf(project.Document{}),

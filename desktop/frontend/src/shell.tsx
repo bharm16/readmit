@@ -81,7 +81,9 @@ export function Report({
   if (!result) {
     return null;
   }
-  return <Status indicator={indicators.get(result.state)} state={result.state} reason={result.reason} />;
+  return (
+    <Status indicator={indicators.get(result.state)} state={result.state} reason={result.reason} />
+  );
 }
 
 /** The separator between the evidence and inspector panes. It is in the tab
@@ -239,6 +241,8 @@ export function MessageGrid({
   onOpen,
   onSelect,
   onSave,
+  selectedOccurrence,
+  onInspect,
 }: {
   indicators: Indicators;
   progress: string | null;
@@ -252,6 +256,8 @@ export function MessageGrid({
   onOpen: (indexName: string, offset: number) => void;
   onSelect: (name: string) => void;
   onSave: (filter: Filter) => void;
+  selectedOccurrence: string | null;
+  onInspect: (occurrence: string) => void;
 }) {
   const [indexName, setIndexName] = useState("");
   const [draft, setDraft] = useState<Draft>(emptyDraft);
@@ -310,7 +316,8 @@ export function MessageGrid({
               Showing {grid.rows.length} of {grid.matched} matching
             </span>
             <span className="excluded">
-              {grid.excluded} of {grid.total} excluded by {grid.filter === "" ? "no filter" : grid.filter}
+              {grid.excluded} of {grid.total} excluded by{" "}
+              {grid.filter === "" ? "no filter" : grid.filter}
             </span>
             <span>{grid.undecided} values the index could not settle</span>
             <span>{grid.undecodable} the case could not decode</span>
@@ -350,8 +357,17 @@ export function MessageGrid({
             </thead>
             <tbody>
               {grid.rows.map((row) => (
-                <tr key={row.id}>
-                  <th scope="row">{row.id}</th>
+                <tr key={row.id} aria-selected={selectedOccurrence === row.id}>
+                  <th scope="row">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      aria-pressed={selectedOccurrence === row.id}
+                      onClick={() => onInspect(row.id)}
+                    >
+                      Inspect {row.id}
+                    </button>
+                  </th>
                   <td>{row.source_id}</td>
                   <td>
                     <span className="kind">{row.kind}</span>
