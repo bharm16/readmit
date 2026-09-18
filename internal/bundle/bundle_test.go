@@ -281,6 +281,42 @@ func TestWriterRejectsInvalidDeclarationsAndExistingDestinations(t *testing.T) {
 	}
 }
 
+func TestGeneratedReaderRequiresDeclaredSeedAndPreservesExplicitZero(t *testing.T) {
+	provenance := bundle.Provenance{Mode: bundle.Generated, Generator: &bundle.GeneratorInputs{
+		Seed: 0, BaseTime: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), GeneratorVersion: "v1", ProfileVersion: "siu-v1",
+	}}
+	for _, tc := range []struct {
+		name, replacement string
+		valid             bool
+	}{
+		{"explicit zero", `"seed":0,`, true},
+		{"omitted", "", false},
+		{"null", `"seed":null,`, false},
+		{"unknown generator member", `"seed":0,"unknown":true,`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path, _ := write(t, []bundle.Input{{Data: fixture(t, "adt-cr.hl7")}}, provenance)
+			manifestPath := filepath.Join(path, "manifest.json")
+			data, err := os.ReadFile(manifestPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			data = bytes.Replace(data, []byte(`"seed":0,`), []byte(tc.replacement), 1)
+			if err := os.WriteFile(manifestPath, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			reseal(t, path)
+			b, err := bundle.Open(path)
+			if (err == nil) != tc.valid {
+				t.Fatalf("valid=%v, open error=%v", tc.valid, err)
+			}
+			if tc.valid && b.Manifest.Provenance.Generator.Seed != 0 {
+				t.Fatal("changed explicit seed zero")
+			}
+		})
+	}
+}
+
 func directoryFiles(t testing.TB, path string) map[string][]byte {
 	t.Helper()
 	files := make(map[string][]byte)

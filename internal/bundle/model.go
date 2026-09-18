@@ -4,6 +4,7 @@ package bundle
 
 import (
 	"bytes"
+	"encoding/json/v2"
 	"errors"
 	"time"
 
@@ -42,6 +43,24 @@ type GeneratorInputs struct {
 	BaseTime         time.Time `json:"base_time"`
 	GeneratorVersion string    `json:"generator_version"`
 	ProfileVersion   string    `json:"profile_version"`
+}
+
+// UnmarshalJSON distinguishes a declared zero seed from an absent/null seed.
+// A plain uint64 alone would silently fabricate seed zero during decoding.
+func (g *GeneratorInputs) UnmarshalJSON(data []byte) error {
+	var required struct {
+		Seed *uint64 `json:"seed"`
+	}
+	if err := json.Unmarshal(data, &required); err != nil || required.Seed == nil {
+		return errors.New("generator inputs require an explicit seed")
+	}
+	type plainInputs GeneratorInputs
+	var value plainInputs
+	if err := json.Unmarshal(data, &value, json.RejectUnknownMembers(true)); err != nil {
+		return errors.New("invalid generator inputs")
+	}
+	*g = GeneratorInputs(value)
+	return nil
 }
 
 type Provenance struct {
