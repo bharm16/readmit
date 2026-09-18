@@ -294,13 +294,13 @@ func TestRunSeparatesAnEndpointThatFailedFromOneItLearnedNothingAbout(t *testing
 		reason    Reason
 		diagnosis environment.Outcome
 	}{
-		"an endpoint that refused the connection": {closedEndpoint, Failed, EndpointNotQuiet, environment.ConnectionRefused},
+		"an endpoint that refused the connection": {closedEndpoint, Failed, EndpointRefusedConnection, environment.ConnectionRefused},
 		"an endpoint that spoke unprompted": {func(t *testing.T) string {
 			return endpoint(t, talkative)
 		}, Failed, EndpointNotQuiet, environment.UnsolicitedBytes},
 		"an endpoint that hung up": {func(t *testing.T) string {
 			return endpoint(t, abrupt)
-		}, Unconfirmed, EndpointUnconfirmed, environment.Disconnected},
+		}, Unconfirmed, EndpointNotConfirmed, environment.Disconnected},
 	} {
 		result, _ := Run(t.Context(), Request{
 			Target: target(expected.address(t)), PlanBytes: []byte(planWith(quietAction)), PlanDirectory: planDirectory(t, nil),

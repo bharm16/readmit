@@ -313,8 +313,11 @@ func writeResetLines(w io.Writer, result fixturereset.Result) {
 // instructions somebody wrote for themselves are of any use.
 func writeResetInstructionLines(w io.Writer, plan fixturereset.Plan, result fixturereset.Result) {
 	for _, action := range result.Actions {
+		if action.Reason != fixturereset.AwaitingOperator {
+			continue
+		}
 		prose := plan.Instructions(action.ID)
-		if action.Reason != fixturereset.AwaitingOperator || prose == "" {
+		if prose == "" {
 			continue
 		}
 		fmt.Fprintf(w, "Awaiting %s. Perform it, then run target reset again with --confirm %s and a new --outcome file:\n", action.ID, action.ID)

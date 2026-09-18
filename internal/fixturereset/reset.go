@@ -59,9 +59,14 @@ const (
 	AwaitingOperator      Reason = "awaiting_operator_confirmation"
 	ObservationUnreadable Reason = "observation_unreadable"
 	LedgerNotEmpty        Reason = "ledger_not_empty"
-	EndpointNotQuiet      Reason = "endpoint_not_quiet"
-	EndpointUnconfirmed   Reason = "endpoint_not_confirmed"
-	EndpointUnusable      Reason = "endpoint_configuration_unusable"
+	// EndpointRefusedConnection and EndpointNotQuiet are two different
+	// findings and are named separately: an endpoint that refused the
+	// connection was silent, and saying it was not quiet would assert
+	// something readmit never observed.
+	EndpointRefusedConnection Reason = "endpoint_refused_connection"
+	EndpointNotQuiet          Reason = "endpoint_not_quiet"
+	EndpointNotConfirmed      Reason = "endpoint_not_confirmed"
+	EndpointUnusable          Reason = "endpoint_configuration_unusable"
 
 	PlanRefused                Reason = "plan_refused"
 	PlanEnvironmentMismatch    Reason = "plan_environment_mismatch"
@@ -290,10 +295,12 @@ func quietEndpoint(ctx context.Context, target replay.Target) (Outcome, Reason, 
 		return Confirmed, EndpointReachable, report.Outcome
 	case environment.Cancelled:
 		return Cancelled, Interrupted, report.Outcome
-	case environment.ConnectionRefused, environment.UnsolicitedBytes:
+	case environment.ConnectionRefused:
+		return Failed, EndpointRefusedConnection, report.Outcome
+	case environment.UnsolicitedBytes:
 		return Failed, EndpointNotQuiet, report.Outcome
 	}
-	return Unconfirmed, EndpointUnconfirmed, report.Outcome
+	return Unconfirmed, EndpointNotConfirmed, report.Outcome
 }
 
 // approvalsNameOperatorActions reports whether every id a person confirmed

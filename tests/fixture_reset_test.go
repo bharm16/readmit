@@ -1,8 +1,10 @@
 package tests
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -60,6 +62,13 @@ func TestTargetResetConfirmsAReviewedFixtureReset(t *testing.T) {
 	retained, err := os.ReadFile(outcome)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// The retained outcome is an owner-only file, like every other artifact
+	// readmit writes outside evidence.
+	if info, err := os.Stat(outcome); err != nil {
+		t.Fatal(err)
+	} else if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
+		t.Errorf("the retained outcome has mode %v", info.Mode().Perm())
 	}
 	for _, want := range []string{`"schema":"readmit-reset-outcome/v1"`, `"state":"passed"`, `"outcome":"confirmed"`, `"decision":"send_not_explicit"`} {
 		if !strings.Contains(string(retained), want) {
@@ -162,6 +171,10 @@ func TestTargetResetRequiresItsDocumentsAndANewOutcomeFile(t *testing.T) {
 		"--outcome", outcome, "--confirm", "stop-listener"); err != nil {
 		t.Fatalf("the first reset must succeed: %v", err)
 	}
+	first, err := os.ReadFile(outcome)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for name, args := range map[string][]string{
 		"no plan":                {"target", "reset", "--target", targetFile, "--outcome", filepath.Join(directory, "b.json")},
 		"no outcome":             {"target", "reset", "--target", targetFile, "--plan", planFile},
@@ -173,6 +186,12 @@ func TestTargetResetRequiresItsDocumentsAndANewOutcomeFile(t *testing.T) {
 		if exitCode(t, err) != 2 {
 			t.Errorf("%s: expected exit 2, got %d; stdout=%s stderr=%s", name, exitCode(t, err), stdout, stderr)
 		}
+	}
+	// A refused rerun leaves the attempt that stopped exactly as it was, so it
+	// is still there to read.
+	again, err := os.ReadFile(outcome)
+	if err != nil || !bytes.Equal(first, again) {
+		t.Errorf("a second reset replaced the first one's retained outcome: %v", err)
 	}
 }
 

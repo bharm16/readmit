@@ -230,8 +230,10 @@ of the two. Nothing is implicit and nothing is ambient.
 | `endpoint_quiet` | `connect_approved_target` | Opens one connection to the selected target and confirms it is reachable and sends nothing unprompted. **It sends no HL7 payload.** |
 
 `endpoint_quiet` reports what it established and no more. A refused connection
-and bytes arriving unprompted are findings about the fixture, so they `fail` the
-step. Every other outcome that is not `reachable` leaves the step `unconfirmed`:
+(`endpoint_refused_connection`) and bytes arriving unprompted
+(`endpoint_not_quiet`) are two separate findings about the fixture, and each
+`fail`s the step. Every other outcome that is not `reachable` leaves the step
+`unconfirmed` (`endpoint_not_confirmed`):
 a timeout is not a negative result about the fixture, it is readmit not having
 established anything, and a certificate that would not verify says nothing about
 a ledger either way. The transport outcome is recorded beside the verdict, in
@@ -269,8 +271,9 @@ in the outcome. Select the policy with `--policy FILE`, exactly as `check` does.
 ### A failed reset is an execution error
 
 `reset` exits `0` only when every action is `confirmed`. Every other outcome, and
-every refusal the command reaches — an unreadable plan or policy, a destination
-it may not write the outcome to, a failed write — exits `2`. **No reset outcome
+every refusal the command reaches — a required flag nobody passed, an unreadable
+plan or policy, a destination it may not write the outcome to, a failed write —
+exits `2`. **No reset outcome
 exits `1`:** a fixture that did not reset is an execution error, never an
 assertion failure, because nothing about it is evidence that an expectation was
 wrong. An invalid command line, such as an unknown flag or a stray argument,
