@@ -31,11 +31,12 @@ func policy(t *testing.T, data string) collection.Policy {
 }
 
 type collecting struct {
-	address string
-	output  string
-	cancel  context.CancelFunc
-	done    chan struct{}
-	err     error
+	address   string
+	output    string
+	collector *receiver.Collector
+	cancel    context.CancelFunc
+	done      chan struct{}
+	err       error
 }
 
 func collect(t *testing.T, declared string, count int) *collecting {
@@ -55,7 +56,7 @@ func collectTimed(t *testing.T, declared string, count int, application time.Dur
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	h := &collecting{address: listener.Addr().String(), output: config.OutputPath, cancel: cancel, done: make(chan struct{})}
+	h := &collecting{address: listener.Addr().String(), output: config.OutputPath, collector: c, cancel: cancel, done: make(chan struct{})}
 	go func() { defer close(h.done); _, h.err = c.Serve(ctx, listener) }()
 	t.Cleanup(func() {
 		cancel()

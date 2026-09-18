@@ -5,7 +5,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/collection"
 	"github.com/bharm16/readmit/internal/mllp"
 )
@@ -16,8 +15,8 @@ const reasonInjectedDisconnect = "declared test fault disconnected before this s
 const reasonInjectedMalformed = "declared test fault sent a malformed acknowledgement"
 const reasonFaultCancelled = "declared test fault was interrupted"
 
-func (c *Collector) rejectStage(stage string) bool {
-	step := c.config.Policy.Faults.Step(c.received)
+func (c *Collector) rejectStage(stage string, ordinal int) bool {
+	step := c.config.Policy.Faults.Step(ordinal)
 	return step != nil && step.Stage == stage && step.Action == "reject"
 }
 
@@ -35,47 +34,47 @@ func waitFault(ctx context.Context, milliseconds int) bool {
 // answerStage applies a single declarative fault at an ordinary ACK seam.
 // It never manufactures an ACK when the sender did not request that stage.
 // true ends this connection; later connections may continue the ordinal plan.
-func (c *Collector) answerStage(ctx context.Context, input *bundle.Input, conn net.Conn, result outcome, stage string) bool {
+func (c *Collector) answerStage(ctx context.Context, state *stream, conn net.Conn, result outcome, stage string, ordinal int, entry *collection.Received) bool {
 	ack := result.acceptACK
-	recorded := &c.answering().Accept
+	recorded := &entry.Accept
 	if stage == collection.ApplicationStage {
 		ack = result.applicationACK
-		recorded = &c.answering().Application
+		recorded = &entry.Application
 	}
-	step := c.config.Policy.Faults.Step(c.received)
+	step := c.config.Policy.Faults.Step(ordinal)
 	selected := step != nil && step.Stage == stage
 	if ack == nil {
 		if selected {
-			c.answering().Fault.Status = "not-requested"
+			entry.Fault.Status = "not-requested"
 		}
 		return false
 	}
 	stop := false
 	if selected {
-		c.answering().Fault.Status = "interrupted"
+		entry.Fault.Status = "interrupted"
 		switch step.Action {
 		case "delay", "missing-response":
 			if !waitFault(ctx, step.DelayMS) {
 				downgrade(recorded, reasonFaultCancelled)
 				if stage == collection.AcceptStage {
-					downgrade(&c.answering().Application, reasonStageNotSent)
+					downgrade(&entry.Application, reasonStageNotSent)
 				}
 				return true
 			}
 			if step.Action == "missing-response" {
 				downgrade(recorded, reasonInjectedMissing)
 				if stage == collection.AcceptStage {
-					downgrade(&c.answering().Application, reasonStageNotSent)
+					downgrade(&entry.Application, reasonStageNotSent)
 				}
-				c.answering().Fault.Status = "completed"
+				entry.Fault.Status = "completed"
 				return true
 			}
 		case "disconnect":
 			downgrade(recorded, reasonInjectedDisconnect)
 			if stage == collection.AcceptStage {
-				downgrade(&c.answering().Application, reasonStageNotSent)
+				downgrade(&entry.Application, reasonStageNotSent)
 			}
-			c.answering().Fault.Status = "completed"
+			entry.Fault.Status = "completed"
 			return true
 		case "malformed-ack":
 			// Fixed, non-PHI, complete MLLP framing around deliberately invalid HL7.
@@ -87,16 +86,16 @@ func (c *Collector) answerStage(ctx context.Context, input *bundle.Input, conn n
 	}
 	var err error
 	if stage == collection.AcceptStage {
-		err = c.sendHere(conn, input, ack)
+		err = c.sendStage(conn, state, entry, collection.AcceptStage, ack)
 		if err != nil {
-			downgrade(recorded, reasonPartialWrite)
+			downgradeSend(recorded, err)
 		}
 	} else {
-		err = c.deliverApplication(ctx, input, conn, result)
+		err = c.deliverApplication(ctx, state, conn, result, entry)
 	}
 	if selected {
 		if err == nil && recorded.Code != collection.NotAcknowledged {
-			c.answering().Fault.Status = "completed"
+			entry.Fault.Status = "completed"
 		}
 		if step.Action == "malformed-ack" && recorded.Code != collection.NotAcknowledged {
 			downgrade(recorded, reasonInjectedMalformed)
@@ -104,7 +103,7 @@ func (c *Collector) answerStage(ctx context.Context, input *bundle.Input, conn n
 	}
 	if err != nil || stop {
 		if stage == collection.AcceptStage {
-			downgrade(&c.answering().Application, reasonStageNotSent)
+			downgrade(&entry.Application, reasonStageNotSent)
 		}
 		return true
 	}

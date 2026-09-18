@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"io"
 	"net"
@@ -13,6 +12,7 @@ import (
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/mllp"
 	"github.com/bharm16/readmit/internal/sendpolicy"
+	"github.com/bharm16/readmit/internal/transportsecurity"
 )
 
 // Execute is the only replay operation that accesses the network. A new run is
@@ -230,10 +230,13 @@ func connect(ctx context.Context, plan *Plan, address string) (net.Conn, *Transp
 	if plan.target.Transport == "plain" {
 		return connection, nil
 	}
-	config := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: VerifiedServerName(plan.target)}
-	if len(plan.ca) > 0 {
-		config.RootCAs = x509.NewCertPool()
-		config.RootCAs.AppendCertsFromPEM(plan.ca)
+	// One package owns the minimum version, the always-on verification and the
+	// explicit authority rule, so a send honours exactly what a diagnosis and a
+	// capture of the same configuration honour.
+	config, err := transportsecurity.ClientConfig(VerifiedServerName(plan.target), plan.ca)
+	if err != nil {
+		_ = connection.Close()
+		return nil, &TransportError{Phase: "tls", Class: "tls_verification"}
 	}
 	secured := tls.Client(connection, config)
 	if err := secured.HandshakeContext(dialCtx); err != nil {

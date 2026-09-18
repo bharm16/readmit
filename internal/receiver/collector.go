@@ -4,17 +4,22 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
 	"os"
+	"slices"
+	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/capturejournal"
 	"github.com/bharm16/readmit/internal/collection"
+	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/mllp"
 )
@@ -39,15 +44,47 @@ const (
 	reasonNotRequested   = "sender declared no acknowledgement of this stage"
 	reasonStageNotSent   = "acknowledgement stage was not reached after the preceding stage failed"
 	reasonUndelivered    = "separate application acknowledgement endpoint did not accept the frame in time"
+	reasonJournalStopped = "acknowledgement was not sent because the capture journal stopped"
 )
+
+// errJournalStopped is what a send reports when the capture journal could not
+// record the intent to make it. Nothing was written to the peer, so the stage
+// records that rather than a partial write, and the capture stops.
+var errJournalStopped = errors.New("capture journal stopped before an acknowledgement was sent")
+
+// downgradeSend records why a stage did not answer. A journal that stopped and
+// a write that did not complete are different facts about the same stage, and
+// the record states the one that happened.
+func downgradeSend(stage *collection.Stage, err error) {
+	if errors.Is(err, errJournalStopped) {
+		downgrade(stage, reasonJournalStopped)
+		return
+	}
+	downgrade(stage, reasonPartialWrite)
+}
 
 type CollectorConfig struct {
 	Policy             collection.Policy
 	OutputPath         string
+	JournalPath        string // empty means this capture cannot be recovered after a kill
 	MaxFrameBytes      int
 	IdleTimeout        time.Duration
 	ApplicationTimeout time.Duration // bounds one separate application-ACK delivery
 	MaxMessages        int           // zero means run until cancellation or a session limit
+	// MaxConnections is how many peers are served at once. Zero means one.
+	MaxConnections int
+	// MaxSessions is how many connections this capture serves in total, and
+	// MaxCaptureBytes how many bytes it retains. Zero declares neither, leaving
+	// only the structural limits of the case contract. Reaching a declared
+	// budget is a controlled stop; reaching a structural limit is an error,
+	// because a session that no longer fits its own contract did not complete.
+	MaxSessions     int
+	MaxCaptureBytes int
+	// TLS and ClientCertificate describe the listener the caller hands to
+	// Serve. They are recorded, never applied here: wrapping the socket is the
+	// caller's, so one TLS rule serves every path.
+	TLS               bool
+	ClientCertificate bool
 }
 
 // Collector is a generic bounded MLLP receiver. It retains every byte it reads
@@ -55,12 +92,18 @@ type CollectorConfig struct {
 // labels each retained source with the declared origin of that evidence. It
 // applies no message: neither a commit acknowledgement nor an application
 // acknowledgement reports that a downstream application processed anything.
-// One connection is served at a time.
+//
+// Up to MaxConnections peers are served at once, each becoming its own case
+// source. Every frame is answered by the connection that carried it, so
+// concurrency changes how many peers are served and nothing about what any one
+// of them is told.
 type Collector struct {
 	recorder
 	config    CollectorConfig
 	startedAt time.Time
 	record    collection.Record
+	journal   *capturejournal.Writer
+	summary   *capturejournal.Summary
 	served    bool
 }
 
@@ -83,6 +126,28 @@ func NewCollector(config CollectorConfig) (*Collector, error) {
 	if err := validBounds(config.MaxFrameBytes, config.IdleTimeout, config.MaxMessages); err != nil {
 		return nil, err
 	}
+	if config.MaxConnections == 0 {
+		config.MaxConnections = 1
+	}
+	if config.MaxConnections < 1 || config.MaxConnections > MaxConnections {
+		return nil, errors.New("concurrent connections must be between 1 and 64")
+	}
+	if config.MaxSessions < 0 || config.MaxSessions > bundle.MaxSources {
+		return nil, errors.New("the declared connection budget must be between 0 and 128")
+	}
+	if config.MaxCaptureBytes < 0 || config.MaxCaptureBytes > bundle.MaxEvidenceBytes {
+		return nil, errors.New("the declared capture quota must be between 0 and 64 MiB")
+	}
+	if config.MaxCaptureBytes > 0 && config.MaxCaptureBytes < config.MaxFrameBytes+frameReserve {
+		return nil, errors.New("the declared capture quota must hold at least one frame of the declared size")
+	}
+	if config.Policy.Faults != nil && config.MaxConnections != 1 {
+		// A fault plan selects by the session-wide ordinal of inbound frames.
+		// Concurrent connections decide that ordinal by arrival, so the plan
+		// would name a different message on every run. Refuse rather than
+		// simulate a fault against whichever frame happened to arrive first.
+		return nil, errors.New("a fault policy selects messages by session ordinal and requires one connection at a time")
+	}
 	if config.ApplicationTimeout <= 0 || config.ApplicationTimeout > 5*time.Minute {
 		return nil, errors.New("application acknowledgement timeout must be positive and at most five minutes")
 	}
@@ -95,6 +160,16 @@ func NewCollector(config CollectorConfig) (*Collector, error) {
 	}
 	if _, err := os.Lstat(output); !os.IsNotExist(err) {
 		return nil, errors.New("case destination must be new")
+	}
+	if config.JournalPath != "" {
+		journal, err := artifactpath.Destination(config.JournalPath)
+		if err != nil {
+			return nil, err
+		}
+		if journal == output {
+			return nil, errors.New("case and capture journal destinations must differ")
+		}
+		config.JournalPath = journal
 	}
 	config.OutputPath = output
 	var entropy [16]byte
@@ -110,12 +185,71 @@ func NewCollector(config CollectorConfig) (*Collector, error) {
 	if config.Policy.Faults != nil {
 		c.record.Schema = collection.FaultSchema
 	}
+	// A connection becomes a case source and a recorded session in the same
+	// step, under the recorder's own lock, so concurrent connections cannot
+	// claim the two in different orders.
+	c.onSource = c.declareSession
+	if config.JournalPath == "" {
+		return c, nil
+	}
+	policy, err := collection.EncodePolicy(config.Policy)
+	if err != nil {
+		return nil, err
+	}
+	journal, err := capturejournal.Create(config.JournalPath, capturejournal.Capture{
+		CreatedAt: c.startedAt, SessionID: c.record.SessionID,
+		PolicyName: config.Policy.Name, PolicySchema: config.Policy.Schema, PolicySHA256: digestOf(policy),
+		Limits: capturejournal.Limits{MaxConnections: config.MaxConnections, MaxSessions: config.MaxSessions,
+			MaxMessages: config.MaxMessages, MaxCaptureBytes: config.MaxCaptureBytes, MaxFrameBytes: config.MaxFrameBytes},
+		Transport: capturejournal.Transport{TLS: config.TLS, ClientCertificate: config.ClientCertificate},
+	})
+	if err != nil {
+		return nil, err
+	}
+	// Case-insensitive filesystems can alias distinct resolved leaf spellings,
+	// so exclusivity is confirmed again now that the journal directory exists.
+	// A case destination that is no longer new would be sealed over the journal
+	// at finalization, losing the whole capture after it had been acknowledged.
+	if outputInfo, err := os.Lstat(output); !os.IsNotExist(err) {
+		if journalInfo, journalErr := os.Lstat(config.JournalPath); err == nil && journalErr == nil && os.SameFile(outputInfo, journalInfo) {
+			if err := journal.Discard(); err != nil {
+				return nil, err
+			}
+		} else {
+			journal.Close()
+		}
+		return nil, errors.New("case destination is no longer new; the capture was not started")
+	}
+	c.journal = journal
 	return c, nil
 }
 
+func digestOf(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+// Journal is the capture journal's own summary once the session finalized, or
+// nil when no journal was configured. It states what was received and which
+// acknowledgements have an unknown effect; it is not a verdict about a test.
+func (c *Collector) Journal() *capturejournal.Summary { return c.summary }
+
+func (c *Collector) bounds() limits {
+	return limits{maxFrameBytes: c.config.MaxFrameBytes, maxMessages: c.config.MaxMessages,
+		maxConnections: c.config.MaxConnections, maxSessions: c.config.MaxSessions, maxCaptureBytes: c.config.MaxCaptureBytes}
+}
+
 // Serve owns and closes listener. Cancellation interrupts a blocked accept,
-// read, or acknowledgement write and then finalizes the retained bytes. An
-// abrupt process termination cannot finalize in-memory wire evidence.
+// read, or acknowledgement write and then finalizes the retained bytes.
+//
+// A declared connection budget, capture quota or message limit stops the
+// capture in a controlled way instead: the listener stops accepting, peers
+// waiting for their next frame are closed, and every connection already
+// answering a frame finishes that answer before the case is sealed.
+//
+// An abrupt process termination cannot finalize in-memory wire evidence. A
+// configured journal is what survives one, and it is retained as the capture
+// runs rather than at the end.
 func (c *Collector) Serve(ctx context.Context, listener net.Listener) (*bundle.Bundle, error) {
 	if c.served {
 		return nil, errors.New("collector session has already been served")
@@ -124,65 +258,105 @@ func (c *Collector) Serve(ctx context.Context, listener net.Listener) (*bundle.B
 	if c.config.Policy.Faults != nil {
 		if err := c.config.Policy.Faults.ApproveEndpoint(listener.Addr().String()); err != nil {
 			listener.Close()
+			c.finalizeJournal(ctx, errors.New("refused"))
 			return nil, err
 		}
 	}
-	err := c.sessions(ctx, listener, c.connection)
-	b, writeErr := bundle.WriteCollected(c.config.OutputPath, c.inputs, c.startedAt, c.record)
+	err := c.sessions(ctx, listener, c.connection, c.bounds())
+	c.orderReceipts()
+	c.finalizeJournal(ctx, err)
+	b, writeErr := bundle.WriteCollected(c.config.OutputPath, c.sources(), c.startedAt, c.record)
 	if writeErr != nil {
 		return nil, errors.Join(err, writeErr)
 	}
 	return b, err
 }
 
-func (c *Collector) connection(ctx context.Context, connection net.Conn) (bool, error) {
-	input := bundle.Input{Options: hl7.Options{Format: hl7.MLLP}, Observations: make(map[int]bundle.Observation)}
-	c.chunks = nil
-	ordinal := len(c.inputs) + 1
-	session := fmt.Sprintf("c%04d", ordinal)
-	reader, _ := mllp.NewReader(deadlineReader{connection, c.config.IdleTimeout}, c.config.MaxFrameBytes)
+// orderReceipts seals the receipts in evidence order. Concurrent connections
+// commit in whatever order they answer, and the record lists complete inbound
+// frames in the order the case itself lists those occurrences: source by
+// source, in sequence. Occurrence identifiers are zero padded, so ordering them
+// as text is ordering them as evidence. A record from a concurrent capture then
+// reads exactly the way a sequential one does.
+func (c *Collector) orderReceipts() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	slices.SortFunc(c.record.Received, func(a, b collection.Received) int {
+		return strings.Compare(a.OccurrenceID, b.OccurrenceID)
+	})
+}
+
+// finalizeJournal records where the capture stopped. Cancellation and an
+// execution error keep #85's own names; a capture that stopped because it
+// reached what the operator declared is finalized, which is not a pass: a
+// capture evaluates no assertion and returns no verdict.
+func (c *Collector) finalizeJournal(ctx context.Context, err error) {
+	if c.journal == nil {
+		return
+	}
+	stop := capturejournal.Finalized
+	switch {
+	case err != nil:
+		stop = durablerun.ExecutionError
+	case errors.Is(ctx.Err(), context.Canceled):
+		stop = durablerun.Cancelled
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		stop = durablerun.TimedOut
+	}
+	summary := c.journal.Finish(stop)
+	c.summary = &summary
+	_ = c.journal.Close()
+}
+
+func (c *Collector) connection(ctx context.Context, connection net.Conn, state *stream) (bool, error) {
+	bounds := c.bounds()
+	reader, _ := mllp.NewReader(deadlineReader{connection, &c.recorder, c.config.IdleTimeout}, c.config.MaxFrameBytes)
 	defer func() {
 		// A coalesced TCP read may include frames beyond --max-messages. They
 		// are retained as received evidence, never claimed as acknowledged.
-		if c.close(&input, reader.Buffered()) {
-			c.declareSession(ordinal, session)
-		}
+		c.close(state, reader.Buffered())
 	}()
 	for {
-		if err := c.withinLimits(&input, c.config.MaxFrameBytes); err != nil {
+		admitted, err := c.admitFrame(state, bounds)
+		if err != nil {
 			return false, err
 		}
+		// A reached quota or a stop another connection decided ends this one
+		// before a frame is read, so a message this capture would not retain
+		// stays in the sender's socket rather than being consumed and dropped.
+		if !admitted {
+			// Either this session has read every frame it was asked for, or
+			// the ones still to come are promised to peers already waiting.
+			// Only the first of those finishes the session.
+			return c.complete(ctx, c.config.MaxMessages), nil
+		}
+		if !c.awaiting(state, connection) {
+			c.releaseFrame()
+			return true, nil
+		}
 		raw, readErr := reader.ReadFrame()
+		c.engaged(state)
 		if readErr != nil {
+			c.releaseFrame()
 			raw = append(raw, reader.Buffered()...)
 			if len(raw) > 0 {
-				c.retain(&input, raw, bundle.Inbound)
+				c.retain(state, raw, bundle.Inbound)
 			}
 			// A malformed, oversized, idle, or disconnected peer leaves its
 			// consumed prefix in the final case without any receipt claim.
 			return false, nil
 		}
-		id := c.retain(&input, raw, bundle.Inbound)
-		c.received++
-		result := c.decide(raw)
-		entry := collection.Received{SessionID: session, OccurrenceID: id, ControlID: result.controlID, Mode: result.mode, Accept: result.accept, Application: result.application}
-		if step := c.config.Policy.Faults.Step(c.received); step != nil {
-			entry.Fault = &collection.FaultEvent{Action: step.Action, Stage: step.Stage, Status: "not-reached"}
-		}
-		if err := c.commit(ordinal, session, entry); err != nil {
+		stop, usable, err := c.frame(ctx, connection, state, raw)
+		if err != nil {
 			return false, err
 		}
-		// The accept stage answers here; only the application stage may travel.
-		for _, stage := range []string{collection.AcceptStage, collection.ApplicationStage} {
-			stop := c.answerStage(ctx, &input, connection, result, stage)
-			if stop {
-				return c.complete(ctx, c.config.MaxMessages), nil
-			}
+		if stop {
+			return c.complete(ctx, c.config.MaxMessages), nil
 		}
 		if c.complete(ctx, c.config.MaxMessages) {
 			return true, nil
 		}
-		if !result.usableHeader {
+		if !usable {
 			// A header this receiver cannot answer safely ends the connection
 			// rather than guessing a correlation for the next frame.
 			return false, nil
@@ -190,21 +364,105 @@ func (c *Collector) connection(ctx context.Context, connection net.Conn) (bool, 
 	}
 }
 
+// frame handles one complete inbound frame on the connection that carried it.
+// The receipt is preflighted and, when a journal is configured, the frame's
+// bytes are synced before any stage is answered, so the evidence of what was
+// received always survives the acknowledgement that claims it.
+func (c *Collector) frame(ctx context.Context, connection net.Conn, state *stream, raw []byte) (stop bool, usableHeader bool, err error) {
+	id := c.retain(state, raw, bundle.Inbound)
+	ordinal := c.nextFrame()
+	session := sessionName(state.ordinal)
+	result := c.decide(raw, ordinal)
+	if c.journal != nil {
+		if err := c.journal.Received(session, id, result.controlID, raw); err != nil {
+			return false, false, err
+		}
+	}
+	entry := collection.Received{SessionID: session, OccurrenceID: id, ControlID: result.controlID, Mode: result.mode, Accept: result.accept, Application: result.application}
+	if step := c.config.Policy.Faults.Step(ordinal); step != nil {
+		entry.Fault = &collection.FaultEvent{Action: step.Action, Stage: step.Stage, Status: "not-reached"}
+	}
+	index, err := c.commit(entry)
+	if err != nil {
+		return false, false, err
+	}
+	// The receipt is updated in one place when the frame is done, so a stage
+	// that downgrades never publishes a half-written entry to a concurrent
+	// connection preflighting its own receipt.
+	defer func() { c.store(index, entry) }()
+	// The accept stage answers here; only the application stage may travel.
+	for _, stage := range []string{collection.AcceptStage, collection.ApplicationStage} {
+		stop := c.answerStage(ctx, state, connection, result, stage, ordinal, &entry)
+		if err := c.journalError(); err != nil {
+			return false, false, err
+		}
+		if stop {
+			return true, result.usableHeader, nil
+		}
+	}
+	return false, result.usableHeader, nil
+}
+
+// sendJournal records one acknowledgement stage around the write that sends it.
+// The intent is synced first, so a process killed during the write leaves an
+// intent with no completion, which recovery reports as uncertain and never
+// resolves by sending again.
+//
+// The error it returns is the send's own. A journal failure is sticky and is
+// read back through journalError, because it stops the whole capture rather
+// than describing what one acknowledgement did.
+func (c *Collector) sendJournal(entry *collection.Received, stage string, send func() (int, error)) (int, error) {
+	if c.journal == nil {
+		return send()
+	}
+	if err := c.journal.Intent(entry.SessionID, entry.OccurrenceID, stage, stageOf(entry, stage).Destination); err != nil {
+		return 0, errJournalStopped
+	}
+	sent, err := send()
+	// A write that did not complete is recorded as what it was. It resolves the
+	// intent, because the outcome is known, and it is never counted as an
+	// acknowledgement: bytes may have reached the peer, and the peer that never
+	// read them was not acknowledged.
+	if err != nil {
+		_ = c.journal.Unsent(entry.SessionID, entry.OccurrenceID, stage, sent)
+		return sent, err
+	}
+	_ = c.journal.Sent(entry.SessionID, entry.OccurrenceID, stage, sent)
+	return sent, nil
+}
+
+// journalError reports a capture that can no longer state what it did. The
+// capture stops there: continuing would answer peers whose frames the recovery
+// record would not name.
+func (c *Collector) journalError() error {
+	if c.journal == nil {
+		return nil
+	}
+	return c.journal.Err()
+}
+
+func stageOf(entry *collection.Received, stage string) *collection.Stage {
+	if stage == collection.AcceptStage {
+		return &entry.Accept
+	}
+	return &entry.Application
+}
+
 // deliverApplication sends the application stage where the policy declares. A
 // separate endpoint is a second transport: a failure or timeout there is an
 // execution error recorded against this frame, never an application result, and
 // it does not end the healthy connection that delivered the message.
-func (c *Collector) deliverApplication(ctx context.Context, input *bundle.Input, connection net.Conn, result outcome) error {
+func (c *Collector) deliverApplication(ctx context.Context, state *stream, connection net.Conn, result outcome, entry *collection.Received) error {
 	if result.application.Destination == collection.SameConnection {
-		if err := c.sendHere(connection, input, result.applicationACK); err != nil {
-			downgrade(&c.answering().Application, reasonPartialWrite)
+		if err := c.sendStage(connection, state, entry, collection.ApplicationStage, result.applicationACK); err != nil {
+			downgradeSend(&entry.Application, err)
 			return err
 		}
 		return nil
 	}
 	if c.config.Policy.Faults != nil {
 		if err := c.config.Policy.Faults.ApproveEndpoint(c.config.Policy.Enhanced.ApplicationEndpoint); err != nil {
-			downgrade(&c.answering().Application, reasonUndelivered)
+			downgrade(&entry.Application, reasonUndelivered)
 			return err
 		}
 	}
@@ -213,7 +471,7 @@ func (c *Collector) deliverApplication(ctx context.Context, input *bundle.Input,
 	if err != nil {
 		// Nothing reached the peer, so nothing is retained and no stage is
 		// claimed. An absent application acknowledgement is not a rejection.
-		downgrade(&c.answering().Application, reasonUndelivered)
+		downgrade(&entry.Application, reasonUndelivered)
 		return nil
 	}
 	defer endpoint.Close()
@@ -222,36 +480,34 @@ func (c *Collector) deliverApplication(ctx context.Context, input *bundle.Input,
 	stop := context.AfterFunc(ctx, func() { _ = endpoint.Close() })
 	defer stop()
 	if err := endpoint.SetWriteDeadline(time.Now().Add(c.config.ApplicationTimeout)); err != nil {
-		downgrade(&c.answering().Application, reasonUndelivered)
+		downgrade(&entry.Application, reasonUndelivered)
 		return nil
 	}
-	sent, writeErr := writeAll(endpoint, result.applicationACK)
+	sent, writeErr := c.sendJournal(entry, collection.ApplicationStage, func() (int, error) {
+		return writeAll(endpoint, result.applicationACK)
+	})
 	if sent > 0 {
-		c.retain(input, result.applicationACK[:sent], bundle.Outbound)
+		c.retain(state, result.applicationACK[:sent], bundle.Outbound)
 	}
 	if writeErr != nil {
 		// Bytes already sent cannot be retracted, and a peer that never read
 		// them was not acknowledged. Retain both facts explicitly.
-		downgrade(&c.answering().Application, reasonPartialWrite)
+		downgradeSend(&entry.Application, writeErr)
 	}
 	return nil
 }
 
-func (c *Collector) sendHere(connection net.Conn, input *bundle.Input, ack []byte) error {
+// sendStage writes one acknowledgement on the connection that delivered the
+// message and retains exactly the bytes the socket took.
+func (c *Collector) sendStage(connection net.Conn, state *stream, entry *collection.Received, stage string, ack []byte) error {
 	if err := connection.SetWriteDeadline(time.Now().Add(c.config.IdleTimeout)); err != nil {
 		return errors.New("cannot set collector write deadline")
 	}
-	sent, err := writeAll(connection, ack)
+	sent, err := c.sendJournal(entry, stage, func() (int, error) { return writeAll(connection, ack) })
 	if sent > 0 {
-		c.retain(input, ack[:sent], bundle.Outbound)
+		c.retain(state, ack[:sent], bundle.Outbound)
 	}
 	return err
-}
-
-// answering is the receipt commit just preflighted: the frame every send in
-// this iteration answers.
-func (c *Collector) answering() *collection.Received {
-	return &c.record.Received[len(c.record.Received)-1]
 }
 
 // downgrade records that a stage this session intended to answer did not reach
@@ -264,30 +520,51 @@ func downgrade(stage *collection.Stage, reason string) {
 	*stage = collection.Stage{Code: collection.NotAcknowledged, Destination: collection.NoDestination, Reason: reason}
 }
 
-func (c *Collector) declareSession(ordinal int, session string) {
+// declareSession runs as the recorder claims this connection's case source,
+// with the recorder's lock already held. Claiming both in one step is what
+// keeps the recorded sessions in the same order as the case sources when
+// several connections are served at once.
+func (c *Collector) declareSession(ordinal int) {
 	if len(c.record.Sessions) >= ordinal {
 		return
 	}
-	c.record.Sessions = append(c.record.Sessions, collection.Session{SessionID: session, SourceID: fmt.Sprintf("s%04d", ordinal), Label: c.config.Policy.SourceLabel})
+	c.record.Sessions = append(c.record.Sessions, collection.Session{
+		SessionID: sessionName(ordinal), SourceID: fmt.Sprintf("s%04d", ordinal), Label: c.config.Policy.SourceLabel})
 }
+
+// sessionName is how a connection's ordinal is written wherever the record
+// names the connection, so the declaration and the frames agree by construction.
+func sessionName(ordinal int) string { return fmt.Sprintf("c%04d", ordinal) }
 
 // commit preflights the record before anything is acknowledged, leaving room
 // for the longest reason each stage can substitute. A finalized session can
-// then always encode testimony for every acknowledgement it actually sent.
-func (c *Collector) commit(ordinal int, session string, entry collection.Received) error {
-	c.declareSession(ordinal, session)
+// then always encode testimony for every acknowledgement it actually sent. It
+// returns the receipt's own position, which is how the frame's own goroutine
+// updates exactly its own entry when the stages are done.
+func (c *Collector) commit(entry collection.Received) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if len(c.record.Received) >= collection.MaxReceived {
-		return errors.New("collector session reached collection record limit")
+		return 0, errors.New("collector session reached collection record limit")
 	}
 	candidate := c.record
 	received := make([]collection.Received, 0, len(c.record.Received)+1)
 	candidate.Received = append(append(received, c.record.Received...), entry)
 	data, err := collection.Encode(candidate)
 	if err != nil || len(data)+2*collection.MaxReasonBytes+16 > collection.MaxBytes {
-		return errors.New("collector session reached collection record size limit")
+		return 0, errors.New("collector session reached collection record size limit")
 	}
 	c.record = candidate
-	return nil
+	return len(candidate.Received) - 1, nil
+}
+
+// store publishes the finished receipt for one frame. Only the frame's own
+// goroutine writes its own position, and it does so under the recorder's lock
+// so a concurrent preflight always encodes a complete record.
+func (c *Collector) store(index int, entry collection.Received) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.record.Received[index] = entry
 }
 
 type outcome struct {
@@ -314,7 +591,7 @@ func declined(reason string) collection.Stage {
 
 // decide applies the declarative policy to one complete frame. It reads only
 // the header values an acknowledgement needs; it never interprets the message.
-func (c *Collector) decide(raw []byte) outcome {
+func (c *Collector) decide(raw []byte, ordinal int) outcome {
 	doc, err := hl7.Parse(raw, hl7.Options{Format: hl7.MLLP})
 	if err != nil {
 		return unreadable("", reasonUnparseable)
@@ -343,9 +620,9 @@ func (c *Collector) decide(raw []byte) outcome {
 	acceptCondition, applicationCondition := condition(doc, header.Field(15)), condition(doc, header.Field(16))
 	composer := acknowledgementComposer{doc: doc, control: control, version: version, trigger: trigger}
 	if acceptCondition == "" && applicationCondition == "" {
-		return c.original(composer, controlID, accepted)
+		return c.original(composer, controlID, accepted, ordinal)
 	}
-	return c.enhanced(composer, controlID, accepted, acceptCondition, applicationCondition)
+	return c.enhanced(composer, controlID, accepted, acceptCondition, applicationCondition, ordinal)
 }
 
 // undeclaredCondition stands in for a populated MSH-15/MSH-16 value this
@@ -369,15 +646,15 @@ func condition(doc *hl7.Document, field hl7.Field) string {
 
 // original answers the single acknowledgement of original mode, whose MSA-1 is
 // an application-stage code. There is no accept stage in original mode.
-func (c *Collector) original(composer acknowledgementComposer, controlID string, accepted bool) outcome {
+func (c *Collector) original(composer acknowledgementComposer, controlID string, accepted bool, ordinal int) outcome {
 	code, reason := c.config.Policy.Acknowledgement.Code, ""
-	if c.rejectStage(collection.ApplicationStage) {
+	if c.rejectStage(collection.ApplicationStage, ordinal) {
 		code, reason = collection.RejectCode, reasonInjectedReject
 	}
 	if !accepted {
 		code, reason = collection.RejectCode, reasonUnacceptedType
 	}
-	return c.singleAnswer(composer, controlID, collection.OriginalMode, code, reason)
+	return c.singleAnswer(composer, controlID, collection.OriginalMode, code, reason, ordinal)
 }
 
 // singleAnswer composes one original-mode acknowledgement on the receiving
@@ -385,8 +662,8 @@ func (c *Collector) original(composer acknowledgementComposer, controlID string,
 // unsupported enhanced request gets, because answering inside a protocol this
 // receiver does not implement would invent an outcome. mode is what the sender
 // asked for, which is what the record must state.
-func (c *Collector) singleAnswer(composer acknowledgementComposer, controlID, mode, code, reason string) outcome {
-	own := fmt.Sprintf("READMITCOLLECT%06d", c.received)
+func (c *Collector) singleAnswer(composer acknowledgementComposer, controlID, mode, code, reason string, ordinal int) outcome {
+	own := fmt.Sprintf("READMITCOLLECT%06d", ordinal)
 	ack, composed := composer.compose(own, code, reason)
 	if !composed {
 		return unreadable(controlID, reasonNotComposable)
@@ -406,7 +683,7 @@ func (c *Collector) singleAnswer(composer acknowledgementComposer, controlID, mo
 // enhanced answers a sender that declared MSH-15 or MSH-16. Each stage carries
 // its own code vocabulary, and the application stage goes where the policy
 // declares, which is not necessarily the connection that delivered the message.
-func (c *Collector) enhanced(composer acknowledgementComposer, controlID string, accepted bool, acceptCondition, applicationCondition string) outcome {
+func (c *Collector) enhanced(composer acknowledgementComposer, controlID string, accepted bool, acceptCondition, applicationCondition string, ordinal int) outcome {
 	result := outcome{controlID: controlID, mode: collection.EnhancedMode, usableHeader: true}
 	// An unsupported mode combination is refused by name. Answering in a
 	// protocol this receiver does not implement would invent an outcome, so
@@ -420,7 +697,7 @@ func (c *Collector) enhanced(composer acknowledgementComposer, controlID string,
 		refusal = reasonUnknownMode
 	}
 	if refusal != "" {
-		return c.singleAnswer(composer, controlID, collection.EnhancedMode, collection.RejectCode, refusal)
+		return c.singleAnswer(composer, controlID, collection.EnhancedMode, collection.RejectCode, refusal, ordinal)
 	}
 	rule := *c.config.Policy.Enhanced
 	acceptCode, applicationCode, reason := rule.AcceptCode, rule.ApplicationCode, ""
@@ -428,16 +705,16 @@ func (c *Collector) enhanced(composer acknowledgementComposer, controlID string,
 		acceptCode, applicationCode, reason = collection.CommitRejectCode, collection.RejectCode, reasonUnacceptedType
 	}
 	acceptReason, applicationReason := reason, reason
-	if c.rejectStage(collection.AcceptStage) {
+	if c.rejectStage(collection.AcceptStage, ordinal) {
 		acceptCode, acceptReason = collection.CommitRejectCode, reasonInjectedReject
 	}
-	if c.rejectStage(collection.ApplicationStage) {
+	if c.rejectStage(collection.ApplicationStage, ordinal) {
 		applicationCode, applicationReason = collection.RejectCode, reasonInjectedReject
 	}
 	result.accept, result.acceptACK = c.composeStage(composer, "READMITACC", acceptCode, acceptReason,
-		collection.Requested(acceptCondition, acceptCode == collection.CommitAcceptCode), collection.SameConnection)
+		collection.Requested(acceptCondition, acceptCode == collection.CommitAcceptCode), collection.SameConnection, ordinal)
 	result.application, result.applicationACK = c.composeStage(composer, "READMITAPP", applicationCode, applicationReason,
-		collection.Requested(applicationCondition, applicationCode == collection.AcceptCode), rule.ApplicationDelivery)
+		collection.Requested(applicationCondition, applicationCode == collection.AcceptCode), rule.ApplicationDelivery, ordinal)
 	if result.acceptACK == nil && result.applicationACK == nil {
 		return result
 	}
@@ -448,7 +725,7 @@ func (c *Collector) enhanced(composer acknowledgementComposer, controlID string,
 }
 
 // composeStage builds one stage's acknowledgement, or records why none was sent.
-func (c *Collector) composeStage(composer acknowledgementComposer, prefix, code, reason string, requested bool, destination string) (collection.Stage, []byte) {
+func (c *Collector) composeStage(composer acknowledgementComposer, prefix, code, reason string, requested bool, destination string, ordinal int) (collection.Stage, []byte) {
 	if !requested {
 		declinedReason := reasonNotRequested
 		if reason != "" {
@@ -456,7 +733,7 @@ func (c *Collector) composeStage(composer acknowledgementComposer, prefix, code,
 		}
 		return declined(declinedReason), nil
 	}
-	own := fmt.Sprintf("%s%06d", prefix, c.received)
+	own := fmt.Sprintf("%s%06d", prefix, ordinal)
 	ack, composed := composer.compose(own, code, reason)
 	if !composed {
 		return declined(reasonNotComposable), nil

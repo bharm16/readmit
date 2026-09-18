@@ -28,6 +28,7 @@ import (
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/secret"
+	"github.com/bharm16/readmit/internal/transportsecurity"
 )
 
 const (
@@ -162,19 +163,18 @@ func clientConfig(ctx context.Context, target replay.Target) (*tls.Config, *offe
 	if target.Transport != "tls" {
 		return nil, &offer{}, nil
 	}
-	config := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: replay.VerifiedServerName(target)}
 	// The contract's owner reads the CA member, so a diagnosis applies the same
 	// bound and the same refusal a replay to this endpoint applies.
 	authorities, err := replay.LoadCA(target)
 	if err != nil {
 		return nil, nil, err
 	}
-	if len(authorities) > 0 {
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(authorities) {
-			return nil, nil, errors.New("the configured CA file contains no certificates")
-		}
-		config.RootCAs = pool
+	// The minimum version, the always-on verification and the explicit
+	// authority rule live in one place, so a diagnosis cannot honour settings
+	// the send path of the same configuration ignores.
+	config, err := transportsecurity.ClientConfig(replay.VerifiedServerName(target), authorities)
+	if err != nil {
+		return nil, nil, err
 	}
 	presented := &offer{}
 	if target.ClientCertificate != "" {

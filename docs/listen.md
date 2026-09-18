@@ -221,3 +221,10 @@ Generic capture of other message types belongs to [`collect`](collect.md), and s
 does the enhanced acknowledgement protocol: this fixture answers original mode
 only and still refuses a populated MSH-15 or MSH-16 with `AR` naming both
 declared values.
+
+Concurrent peers, TLS and mutual TLS, declared capture quotas and
+interrupted-session recovery also belong to [`collect`](collect.md). This fixture
+deliberately keeps none of them: its ledger is one serialized appointment state,
+and answering two peers at once would make the ledger depend on arrival order.
+The two commands still share MLLP framing, the bounded session limits and the
+byte-preserving case writer.

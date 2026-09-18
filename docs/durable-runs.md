@@ -29,7 +29,11 @@ delivery stays uncertain, and executing again remains a deliberate action with a
 new output folder. See [recovering after an interruption](desktop.md).
 
 Both entry points distinguish `passed`, `assertion_failed`, `execution_error`,
-`cancelled`, `timed_out`, `interrupted` and `delivery_uncertain`. The versioned
+`cancelled`, `timed_out`, `interrupted` and `delivery_uncertain`. A
+[capture journal](collect.md) reuses that vocabulary rather than defining a
+second one, and adds `finalized` for a capture that stopped in a controlled way:
+a capture evaluates no assertion, so it never reports `passed` or
+`assertion_failed`. `readmit-job/v1` is unchanged by that reuse. The versioned
 machine summary also carries `stop_reason` and `delivery_uncertain`: cancellation
 or timeout after sending can be a delivery-uncertain result, not a cancellation
 that falsely promises nothing happened. `recorded` counts durable replay events,

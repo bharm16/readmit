@@ -112,8 +112,8 @@ MUTATIONS = (
     Mutation(
         name="original-mode-recorded-as-enhanced",
         path="internal/receiver/collector.go",
-        old="return c.singleAnswer(composer, controlID, collection.OriginalMode, code, reason)",
-        new="return c.singleAnswer(composer, controlID, collection.EnhancedMode, code, reason)",
+        old="return c.singleAnswer(composer, controlID, collection.OriginalMode, code, reason, ordinal)",
+        new="return c.singleAnswer(composer, controlID, collection.EnhancedMode, code, reason, ordinal)",
         check="collector-original",
         rationale="a sender that asked for one acknowledgement would be recorded as asking for two stages",
     ),
@@ -138,7 +138,7 @@ MUTATIONS = (
         path="internal/receiver/collector.go",
         old="\t\t// Nothing reached the peer, so nothing is retained and no stage is\n"
             "\t\t// claimed. An absent application acknowledgement is not a rejection.\n"
-            "\t\tdowngrade(&c.answering().Application, reasonUndelivered)\n"
+            "\t\tdowngrade(&entry.Application, reasonUndelivered)\n"
             "\t\treturn nil\n",
         new="\t\treturn nil\n",
         check="collector-application-timeout",

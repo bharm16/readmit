@@ -375,9 +375,22 @@ collector applies nothing, so no code it returns reports that a downstream
 application processed a message; a commit acceptance is not an application
 acceptance, and a stage that was declined, undeliverable or timed out is
 retained as unanswered rather than as an application failure. A mode
-combination it does not support is refused by name. Fault injection and
-concurrent connections remain explicitly unsupported. See [the generic
-collector](docs/collect.md).
+combination it does not support is refused by name.
+
+`collect` serves up to 64 peers at once (`--max-connections`), each becoming its
+own case source. A peer beyond that limit waits for a slot rather than being
+accepted and dropped, and a declared budget of connections, messages or retained
+bytes stops the capture in a controlled way instead of truncating it; nothing is
+read once a bound could not hold it. The listen socket takes TLS, and declaring
+`--client-ca` requires and verifies a client certificate that authority issued.
+The listener's private key is a [credential reference](docs/secret.md) readmit
+never stores, and one implementation applies the TLS 1.2 floor and always-on
+verification every readmit path uses. `--journal` retains a
+`readmit-capture-journal/v1` record as the capture runs, and `collect status
+JOURNAL` recovers an interrupted one read-only: it separates acknowledgements
+that were sent, that were attempted and did not complete, and whose outcome was
+never recorded, and it never resends, resumes or turns an incomplete capture
+into a finished one. See [the generic collector](docs/collect.md).
 
 `diagnose BUNDLE --output NEW_DIRECTORY` evaluates the narrow `readmit-siu-v1`
 fixture profile and writes matching JSON and Markdown reports. Findings distinguish
