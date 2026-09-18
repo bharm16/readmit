@@ -10,10 +10,13 @@ Three things carry the independence:
 
 - **An independently implemented HL7 endpoint.** `tools/independent.py` is a
   stdlib-only Python implementation of MLLP block framing, HL7 v2 delimiter
-  declaration, field states, and acknowledgement structure, written from the
-  HL7 v2.5.1 encoding rules and the contracts in this directory. It imports no
+  declaration, field states, acknowledgement structure, and the original and
+  enhanced acknowledgement rules — the MSH-15/MSH-16 condition table and the
+  separate commit and application MSA-1 vocabularies — written from the HL7
+  v2.5.1 encoding rules and the contracts in this directory. It imports no
   readmit code and links against no Go package. It acts as the endpoint readmit
-  sends to, and as the sender readmit's fixture receiver answers.
+  sends to, as the sender readmit's receivers answer, and as the separate
+  endpoint an asynchronous application acknowledgement is delivered to.
 - **An externally authored corpus.** Every file under `testdata/verification`
   was written by hand, including the statement of what each file contains. No
   readmit command produced those bytes or those expectations. See
@@ -54,13 +57,24 @@ script, and no external host is contacted. All evidence is synthetic.
 | `endpoint-cancel` | An interrupt during an outstanding send produces a finalized run recording `cancelled` and uncertain delivery, the endpoint still holds the bytes it received, and a later replay to a healthy endpoint succeeds. |
 | `listener-ledger` | An independent sender drives `listen` in both fixture modes and gets AA with the exact control ID echoed and a session-bound receipt; the exported ledger equals the hand-authored expectation for that mode. |
 | `listener-negative` | An unsupported trigger and a populated MSH-15 are refused with AR naming what was refused, an unparsable frame is never acknowledged, and none of them changes the ledger or is counted as processed work. |
+| `collector-original` | An independent sender gets exactly one acknowledgement for an original-mode message, that acknowledgement is an application-stage code, and `collect` records no accept stage for it. |
+| `collector-enhanced` | A message declaring MSH-15 and MSH-16 gets a commit acknowledgement and then an application acknowledgement, each with its own control ID, and a stage whose condition is `NE` is never answered. The sealed record matches the hand-authored stage ledger. |
+| `collector-separate-endpoint` | The application stage arrives at a separately configured independent endpoint and nowhere else, still correlated to the sender's control ID, while the commit stage stays on the receiving connection. |
+| `collector-unsupported-mode` | An enhanced request a policy does not implement, and an MSH-15 value outside the four declared conditions, are each refused with AR naming the refusal. Neither produces a commit acceptance and neither is recorded as an application acceptance. |
+| `collector-application-timeout` | An application stage whose delivery deadline expires reaches no endpoint, is recorded with no code and no destination and an explicit reason, and is never recorded as AE or AR. The commit stage it followed survives. |
 
 ## Invariants these checks defend
 
 - **Unknown is not pass.** A timeout, a disconnect and a broken acknowledgement
   are not application results. `endpoint-negative` requires that none of them is
   recorded as acceptance, error or rejection, and that none claims a correlated
-  acknowledgement.
+  acknowledgement. `collector-unsupported-mode` requires the same of an
+  acknowledgement mode the receiver does not implement, and
+  `collector-application-timeout` requires it of an expired delivery deadline.
+- **Commit-accept is not application-accept.** `collector-enhanced` and
+  `collector-separate-endpoint` classify every frame the collector sends with
+  `tools/independent.py`'s own transcription of the MSA-1 vocabularies, so a
+  commit acknowledgement counted as an application result fails the check.
 - **Cancellation cannot retract bytes already sent.** `endpoint-cancel` compares
   what the run retains with what a party readmit does not control actually
   received.
@@ -69,9 +83,9 @@ script, and no external host is contacted. All evidence is synthetic.
 - **Values are hidden unless explicitly requested.** Every check that runs a
   command without `--show-values` asserts that planted corpus values are absent
   from its output.
-- **A mutation must be visible.** Ten mutations currently cover seven of the
-  eight checks; the uncovered one is recorded in `tools/mutate.py` with the
-  reason.
+- **A mutation must be visible.** Fifteen mutations currently cover twelve of
+  the thirteen checks; the uncovered one is recorded in `tools/mutate.py` with
+  the reason.
 
 ## Bounds and deliberate omissions
 

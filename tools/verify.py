@@ -32,6 +32,9 @@ ROOT = Path(__file__).resolve().parent.parent
 CORPUS_DIRECTORY = ROOT / "testdata" / "verification" / "corpus"
 ENDPOINT_DIRECTORY = ROOT / "testdata" / "verification" / "endpoint"
 CORPUS_SCHEMA = "readmit-corpus-case/v1"
+STAGE_SCHEMA = "readmit-collector-stages/v1"
+COLLECTOR_POLICIES = ("original", "enhanced-same-connection", "enhanced-separate-endpoint")
+ARRIVALS = ("receiving-connection", "application-endpoint")
 CORPUS_ORIGINS = ("hand-authored", "engine-export")
 FIELD_STATES = independent.FIELD_STATES
 CORRELATION_KINDS = ("matched", "ambiguous_ack", "unmatched_ack", "unacknowledged_message")
@@ -246,6 +249,233 @@ def listener(readmit, mode, label, limit, idle="10s"):
         if process.poll() is None:
             process.kill()
             process.communicate(timeout=10)
+
+
+def collector_policy(path, name, endpoint=""):
+    """Write the declared receiver policy this case runs under.
+
+    A policy is configuration, not an expectation: the expectations all come
+    from `collect-stages.json` and from an independent reading of the wire.
+    """
+    declared = {
+        "schema": "readmit-receiver-policy/v1",
+        "name": "verification-sink",
+        "source_label": "independent-verifier",
+        "acknowledgement": {"operator": "original-mode-fixed-code", "code": "AA"},
+        "accepted_message_types": {"operator": "any-message-type", "values": []},
+    }
+    if name != "original":
+        declared["schema"] = "readmit-receiver-policy/v2"
+        declared["enhanced_acknowledgement"] = {
+            "operator": "enhanced-mode-fixed-codes",
+            "accept_code": "CA",
+            "application_code": "AA",
+            "application_delivery": "separate-endpoint" if endpoint else "same-connection",
+            "application_endpoint": endpoint,
+            "approved_transport": False,
+        }
+    path.write_text(json.dumps(declared), encoding="utf-8")
+    return path
+
+
+def load_stage_cases(directory=ENDPOINT_DIRECTORY):
+    """Read the hand-authored statement of what each acknowledgement mode does."""
+    document = json.loads((directory / "collect-stages.json").read_text(encoding="utf-8"))
+    members(document, ("schema", "authored_from", "cases"), (), "collect-stages.json")
+    require(document["schema"] == STAGE_SCHEMA, "collect-stages.json declares an unsupported schema")
+    require(len(document["authored_from"]) > 40, "collect-stages.json makes no authorship statement")
+    require(document["cases"], "collect-stages.json declares no cases")
+    for case in document["cases"]:
+        where = f"collect-stages.json case {case.get('name')!r}"
+        members(case, ("name", "policy", "source", "control_id", "mode", "wire",
+                       "accept", "application", "note"), (), where)
+        require(case["policy"] in COLLECTOR_POLICIES, f"{where} names an unsupported policy")
+        require(case["mode"] in ("original", "enhanced"), f"{where} declares an unsupported mode")
+        require((directory / case["source"]).is_file(), f"{where} names a missing source")
+        for stage in ("accept", "application"):
+            members(case[stage], ("code", "destination"), (), f"{where} {stage} stage")
+        for answer in case["wire"]:
+            members(answer, ("arrives", "stage", "code"), (), f"{where} wire answer")
+            require(answer["arrives"] in ARRIVALS, f"{where} names an unsupported arrival")
+            require(independent.acknowledgement_stage(answer["code"]) == answer["stage"],
+                    f"{where} puts {answer['code']} in the {answer['stage']} stage")
+    return document["cases"]
+
+
+def stage_cases(names):
+    return [case for case in load_stage_cases() if case["policy"] in names]
+
+
+@contextmanager
+def collector(readmit, label, policy, limit, endpoint="", idle="10s", application="5s"):
+    """Start one bounded generic collector on port 0 and always reap it."""
+    case = readmit.work / f"{label}.case"
+    declared = collector_policy(readmit.work / f"{label}-policy.json", policy, endpoint)
+    process = readmit.popen("collect", "--address", "127.0.0.1:0", "--policy", declared,
+                            "--output", case, "--max-messages", str(limit),
+                            "--idle-timeout", idle, "--application-ack-timeout", application)
+    try:
+        ready = queue.Queue()
+        threading.Thread(target=lambda: ready.put(process.stdout.readline(512)), daemon=True).start()
+        first = ready.get(timeout=20)
+        matched = LISTENING_LINE.match(first)
+        require(matched is not None, f"collector readiness line was {first!r}")
+        yield process, int(matched.group(1)), case
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.communicate(timeout=10)
+
+
+def collected_record(readmit, process, case):
+    """Reap the collector and return the record it sealed, refusing leaks."""
+    stdout, stderr = process.communicate(timeout=30)
+    require(process.returncode == 0, f"collector exited {process.returncode}: {stderr[:300]!r}")
+    require(stderr == b"", f"collector wrote diagnostics: {stderr[:200]!r}")
+    require(b"MSH|" not in stdout, "collector printed raw message bytes")
+    require_no_values("the collector", stdout)
+    record = json.loads((case / "collection.json").read_bytes())
+    require(record["schema"] == "readmit-collection/v2",
+            f"collected record is {record['schema']}, expected readmit-collection/v2")
+    require(record["application_processing"] == "none",
+            "a collected record claimed application processing")
+    return record, stdout
+
+
+def run_stage_case(readmit, case, sink=None):
+    """Drive one hand-authored case and read both sides independently."""
+    payload = (ENDPOINT_DIRECTORY / case["source"]).read_bytes()
+    message = independent.Message.parse(payload)
+    mode, accept_condition, application_condition = independent.acknowledgement_mode(message)
+    require(mode == case["mode"], f"{case['name']}: the fixture declares {mode}, not {case['mode']}")
+    require(message.control_id().decode() == case["control_id"],
+            f"{case['name']}: the fixture does not carry the declared control ID")
+    del accept_condition, application_condition
+    label = case["name"].replace(" ", "-")
+    endpoint = sink.address if sink else ""
+    expected_here = [a for a in case["wire"] if a["arrives"] == "receiving-connection"]
+    with collector(readmit, label, case["policy"], 1, endpoint) as (process, port, path):
+        with independent.IndependentClient(port, timeout=15) as client:
+            client.send(payload)
+            observed = []
+            for _ in expected_here:
+                code, acknowledged, _ = independent.read_acknowledgement(client.receive())
+                require(acknowledged == message.control_id(),
+                        f"{case['name']}: a stage answered the wrong control ID")
+                observed.append({"arrives": "receiving-connection",
+                                 "stage": independent.acknowledgement_stage(code), "code": code})
+            require(client.quiet(), f"{case['name']}: a stage that was not requested was answered anyway")
+        if sink:
+            for wire in sink.wait_for_frames(len([a for a in case["wire"] if a["arrives"] == "application-endpoint"])):
+                code, acknowledged, _ = independent.read_acknowledgement(wire)
+                require(acknowledged == message.control_id(),
+                        f"{case['name']}: the separate endpoint got an uncorrelated acknowledgement")
+                observed.append({"arrives": "application-endpoint",
+                                 "stage": independent.acknowledgement_stage(code), "code": code})
+        require(observed == case["wire"],
+                f"{case['name']}: the wire was {observed}, the hand-authored statement is {case['wire']}")
+        record, _ = collected_record(readmit, process, path)
+    entry = record["received"][0]
+    require(entry["mode"] == case["mode"], f"{case['name']}: recorded mode {entry['mode']}")
+    require(entry["control_id"] == case["control_id"], f"{case['name']}: recorded the wrong control ID")
+    for stage in ("accept", "application"):
+        require(entry[stage]["code"] == case[stage]["code"],
+                f"{case['name']}: recorded {stage} code {entry[stage]['code']}, expected {case[stage]['code']}")
+        require(entry[stage]["destination"] == case[stage]["destination"],
+                f"{case['name']}: recorded {stage} destination {entry[stage]['destination']}")
+    require(entry["accept"]["code"] in ("none",) + independent.ACCEPT_CODES,
+            f"{case['name']}: the accept stage borrowed an application code")
+    require(entry["application"]["code"] in ("none",) + independent.APPLICATION_CODES,
+            f"{case['name']}: the application stage borrowed a commit code")
+    return entry
+
+
+def check_collector_original(readmit):
+    """Original mode answers once, and that answer is the application stage."""
+    case = [c for c in stage_cases(("original",)) if c["mode"] == "original"][0]
+    entry = run_stage_case(readmit, case)
+    require(entry["accept"]["code"] == "none" and entry["accept"]["control_id"] == "",
+            "original mode invented a commit acknowledgement")
+    require(entry["application"]["control_id"], "the application stage did not name what it sent")
+    return "original mode answers one application acknowledgement and records no accept stage"
+
+
+def check_collector_enhanced(readmit):
+    """Enhanced mode answers each stage with its own vocabulary and control ID."""
+    details = []
+    for case in stage_cases(("enhanced-same-connection",)):
+        if case["source"] == "collect-unsupported-mode.hl7":
+            continue
+        entry = run_stage_case(readmit, case)
+        identifiers = {entry[stage]["control_id"] for stage in ("accept", "application")} - {""}
+        answered = [stage for stage in ("accept", "application") if entry[stage]["code"] != "none"]
+        require(len(identifiers) == len(answered),
+                f"{case['name']}: the stages shared or omitted their own control IDs")
+        details.append(f"{case['name']}: {'+'.join(answered) or 'nothing'}")
+    return "; ".join(details)
+
+
+def check_collector_separate_endpoint(readmit):
+    """The application stage may arrive on a socket that never carried the message."""
+    case = [c for c in stage_cases(("enhanced-separate-endpoint",))][0]
+    with independent.IndependentApplicationEndpoint() as sink:
+        entry = run_stage_case(readmit, case, sink)
+        delivered = sink.received
+    require(len(delivered) == 1, f"the separate endpoint received {len(delivered)} frames")
+    code, acknowledged, _ = independent.read_acknowledgement(delivered[0])
+    require(independent.acknowledgement_stage(code) == "application",
+            "a commit acknowledgement was delivered to the application endpoint")
+    require(acknowledged.decode() == case["control_id"], "the delivered stage lost its correlation")
+    require(entry["application"]["destination"] == "separate-endpoint",
+            "the record claims the application stage used the receiving connection")
+    return "the application stage reached the separately configured endpoint and nowhere else"
+
+
+def check_collector_application_timeout(readmit):
+    """An application stage that missed its deadline is uncertain, not negative."""
+    payload = (ENDPOINT_DIRECTORY / "collect-enhanced.hl7").read_bytes()
+    control = independent.Message.parse(payload).control_id()
+    with independent.IndependentApplicationEndpoint() as sink:
+        # A deadline no real connect can meet, so the timeout is taken rather
+        # than raced for. The receiving connection is left generously bounded.
+        with collector(readmit, "timeout", "enhanced-separate-endpoint", 1,
+                       sink.address, application="1ns") as (process, port, path):
+            with independent.IndependentClient(port, timeout=15) as client:
+                client.send(payload)
+                code, acknowledged, _ = independent.read_acknowledgement(client.receive())
+                require(independent.acknowledgement_stage(code) == "accept",
+                        f"the receiving connection got {code}, expected a commit acknowledgement")
+                require(acknowledged == control, "the commit acknowledgement lost its correlation")
+                require(client.quiet(), "an undeliverable application stage was answered on the wrong socket")
+            record, _ = collected_record(readmit, process, path)
+        require(sink.received == [], f"the endpoint received {len(sink.received)} frames past its deadline")
+    stage = record["received"][0]["application"]
+    # A timeout is not a negative application result, and it is not a pass.
+    require(stage["code"] == "none", f"a timed-out stage was recorded as {stage['code']}")
+    require(stage["destination"] == "none", "a stage that was never delivered names a destination")
+    require(stage["reason"], "a timed-out stage records no reason")
+    require(record["received"][0]["accept"]["code"] == "CA",
+            "the commit stage was lost with the application stage")
+    return "an application stage that missed its deadline is recorded as unanswered, never as AE or AR"
+
+
+def check_collector_unsupported_mode(readmit):
+    """A mode this receiver does not support is a named refusal, never a pass."""
+    details = []
+    for case in load_stage_cases():
+        if case["application"]["code"] != "AR":
+            continue
+        entry = run_stage_case(readmit, case)
+        # Unknown and unsupported are not pass: nothing may be recorded as a
+        # commit acceptance or an application acceptance.
+        require(entry["accept"]["code"] == "none",
+                f"{case['name']}: an unsupported mode produced a commit acknowledgement")
+        require(entry["application"]["code"] != "AA",
+                f"{case['name']}: an unsupported mode was accepted")
+        require(entry["application"]["reason"], f"{case['name']}: the refusal names no reason")
+        details.append(case["name"])
+    require(len(details) == 2, f"only {len(details)} unsupported-mode cases are declared")
+    return "unsupported acknowledgement modes are refused by name: " + "; ".join(details)
 
 
 # --------------------------------------------------------------------------
@@ -623,6 +853,11 @@ CHECKS = {
     "endpoint-cancel": check_endpoint_cancel,
     "listener-ledger": check_listener_ledger,
     "listener-negative": check_listener_negative,
+    "collector-original": check_collector_original,
+    "collector-enhanced": check_collector_enhanced,
+    "collector-separate-endpoint": check_collector_separate_endpoint,
+    "collector-unsupported-mode": check_collector_unsupported_mode,
+    "collector-application-timeout": check_collector_application_timeout,
 }
 
 

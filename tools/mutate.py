@@ -109,6 +109,49 @@ MUTATIONS = (
         check="listener-negative",
         rationale="a trigger outside the fixture profile would reach the ledger",
     ),
+    Mutation(
+        name="original-mode-recorded-as-enhanced",
+        path="internal/receiver/collector.go",
+        old="return c.singleAnswer(composer, controlID, collection.OriginalMode, code, reason)",
+        new="return c.singleAnswer(composer, controlID, collection.EnhancedMode, code, reason)",
+        check="collector-original",
+        rationale="a sender that asked for one acknowledgement would be recorded as asking for two stages",
+    ),
+    Mutation(
+        name="acknowledgement-stages-share-a-control-id",
+        path="internal/receiver/collector.go",
+        old='"READMITACC"',
+        new='"READMITAPP"',
+        check="collector-enhanced",
+        rationale="the commit and application acknowledgements would be indistinguishable to their receiver",
+    ),
+    Mutation(
+        name="application-stage-answers-on-the-receiving-connection",
+        path="internal/receiver/collector.go",
+        old="if result.application.Destination == collection.SameConnection {",
+        new="if result.application.Destination != collection.NoDestination {",
+        check="collector-separate-endpoint",
+        rationale="a separately configured application endpoint would be ignored and the answer sent back on one socket",
+    ),
+    Mutation(
+        name="undelivered-application-stage-still-claimed",
+        path="internal/receiver/collector.go",
+        old="\t\t// Nothing reached the peer, so nothing is retained and no stage is\n"
+            "\t\t// claimed. An absent application acknowledgement is not a rejection.\n"
+            "\t\tdowngrade(&c.answering().Application, reasonUndelivered)\n"
+            "\t\treturn nil\n",
+        new="\t\treturn nil\n",
+        check="collector-application-timeout",
+        rationale="an application acknowledgement that never left the process would be recorded as delivered",
+    ),
+    Mutation(
+        name="undeclared-acknowledgement-condition-accepted",
+        path="internal/collection/policy.go",
+        old="return value == Always || value == Never || value == OnError || value == OnSuccess",
+        new="return true",
+        check="collector-unsupported-mode",
+        rationale="an acknowledgement mode this receiver does not implement would be treated as declared",
+    ),
 )
 
 # Checks no mutation can exercise, recorded so the gap is a decision rather than

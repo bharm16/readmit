@@ -106,13 +106,20 @@ for invocation, reset procedure, limits, and observation semantics.
 receiver: it accepts HL7 of any message type, retains every byte it reads and
 writes, and answers with the acknowledgement a strict-JSON policy names. The
 policy declares one typed acknowledgement operator, the accepted message types,
-and the explicit label recorded for every source the session retains. The final
-`readmit-case/v4` case seals a collection record of each connection and each
-received frame. The collector applies nothing, so an accept code reports that
-bytes arrived and never that a downstream application processed them; a frame it
-could not answer is retained as unacknowledged rather than as a failure. Enhanced
-acknowledgement workflows, fault injection, and concurrent connections are
-explicitly unsupported. See [the generic collector](docs/collect.md).
+and the explicit label recorded for every source the session retains. It handles
+both **original and enhanced acknowledgement workflows**: a sender that declares
+MSH-15 or MSH-16 gets stage-specific answers, with the commit codes `CA`/`CE`/`CR`
+and the application codes `AA`/`AE`/`AR` kept apart, each stage carrying its own
+control ID, and the application stage delivered to a separately configured
+endpoint when the policy declares one. The final `readmit-case/v4` case seals a
+collection record of each connection, each received frame, and each stage. The
+collector applies nothing, so no code it returns reports that a downstream
+application processed a message; a commit acceptance is not an application
+acceptance, and a stage that was declined, undeliverable or timed out is
+retained as unanswered rather than as an application failure. A mode
+combination it does not support is refused by name. Fault injection and
+concurrent connections remain explicitly unsupported. See [the generic
+collector](docs/collect.md).
 
 `diagnose BUNDLE --output NEW_DIRECTORY` evaluates the narrow `readmit-siu-v1`
 fixture profile and writes matching JSON and Markdown reports. Findings distinguish

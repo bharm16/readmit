@@ -273,9 +273,13 @@ A v4 manifest adds one member:
 {"collection":{"path":"collection.json","size":812,"sha256":"..."}}
 ```
 
-`collection.json` is the integrity-covered `readmit-collection/v1` record of
-what the generic receiver collected and acknowledged; its contract is defined in
-[the collector contract](collect.md). The reader verifies its size and hash,
+`collection.json` is the integrity-covered `readmit-collection` record of what
+the generic receiver collected and acknowledged; its contract and both of its
+supported versions are defined in [the collector contract](collect.md). A v4
+case written before enhanced acknowledgement workflows existed carries a
+`readmit-collection/v1` record and still opens; the reader decodes each version
+against its own strict member set and re-encodes it unchanged, so no record is
+migrated in place. Newly collected sessions seal `readmit-collection/v2`. The reader verifies its size and hash,
 that its session matches the manifest provenance, that every declared session
 names the retained source at its own position, that every received frame
 references an inbound occurrence in its own session's source, and that those

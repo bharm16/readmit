@@ -30,7 +30,9 @@ func collectionRecord(t *testing.T) collection.Record {
 		Policy:                policy,
 		ApplicationProcessing: collection.NoApplicationProcessing,
 		Sessions:              []collection.Session{{SessionID: "c0001", SourceID: "s0001", Label: policy.SourceLabel}},
-		Received:              []collection.Received{{SessionID: "c0001", OccurrenceID: "s0001-e000001", ControlID: "LISTEN-BOOK", Acknowledgement: "AA"}},
+		Received: []collection.Received{{SessionID: "c0001", OccurrenceID: "s0001-e000001", ControlID: "LISTEN-BOOK", Mode: collection.OriginalMode,
+			Accept:      collection.Stage{Code: collection.NotAcknowledged, Destination: collection.NoDestination},
+			Application: collection.Stage{Code: "AA", ControlID: "READMITCOLLECT000001", Destination: collection.SameConnection}}},
 	}
 }
 
@@ -98,7 +100,10 @@ func TestCollectionRecordMustAgreeWithRetainedEvidence(t *testing.T) {
 		"unknown occurrence":  func(r *collection.Record) { r.Received[0].OccurrenceID = "s0001-e000009" },
 		"invented control ID": func(r *collection.Record) { r.Received[0].ControlID = "OTHER-CONTROL" },
 		"unknown source":      func(r *collection.Record) { r.Sessions[0].SourceID = "s0002" },
-		"anonymous message":   func(r *collection.Record) { r.Received[0].ControlID = ""; r.Received[0].Acknowledgement = "none" },
+		"anonymous message": func(r *collection.Record) {
+			r.Received[0].ControlID = ""
+			r.Received[0].Application = collection.Stage{Code: collection.NotAcknowledged, Destination: collection.NoDestination}
+		},
 	} {
 		record := collectionRecord(t)
 		mutate(&record)
@@ -186,5 +191,38 @@ func TestLegacyCaseVersionsRejectCollectionMemberEvenNull(t *testing.T) {
 				t.Fatal("legacy schema silently gained a v4 member")
 			}
 		})
+	}
+}
+
+// A readmit-case/v4 case sealed before enhanced acknowledgement workflows
+// existed carries a readmit-collection/v1 record. The v4 reader must still open
+// it, unchanged, rather than requiring the newer record version.
+func TestCollectedEvidenceKeepsReadingTheEarlierCollectionRecord(t *testing.T) {
+	record := collectionRecord(t)
+	record.Schema = collection.SchemaV1
+	record.Received[0].Application = collection.Stage{Code: "AA", Destination: collection.SameConnection}
+	path, err := collected(t, record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := bundle.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opened.Manifest.Schema != "readmit-case/v4" || opened.Collection.Schema != collection.SchemaV1 {
+		t.Fatalf("an earlier collection record was not read as itself: %s %s", opened.Manifest.Schema, opened.Collection.Schema)
+	}
+	sealed, err := os.ReadFile(filepath.Join(path, "collection.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, added := range []string{`"mode"`, `"accept"`, `"application"`} {
+		if bytes.Contains(sealed, []byte(added)) {
+			t.Errorf("the v1 record acquired the v2 member %s", added)
+		}
+	}
+	entry := opened.Collection.Received[0]
+	if entry.Mode != collection.OriginalMode || entry.Application.Code != "AA" || entry.Accept.Code != collection.NotAcknowledged {
+		t.Fatalf("the v1 record was not read as one original-mode application acknowledgement: %+v", entry)
 	}
 }

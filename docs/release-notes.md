@@ -38,6 +38,14 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   frozen synthetic sample workspace and reopens recent folders. It is a separate
   build and is not included in these archives.
 
+- `collect` handles original and enhanced acknowledgement workflows: stage
+  specific correlation with separate commit and application codes, declared
+  MSH-15/MSH-16 conditions, application acknowledgements delivered to a
+  separately configured endpoint under `--application-ack-timeout`, and named
+  errors for acknowledgement modes it does not support. A commit acceptance is
+  never recorded as an application result, and an undelivered or timed-out
+  stage is retained as unanswered rather than as an application failure.
+
 - `report` runs the named synthetic regression and seals its reproducer,
   verified failure/pass results, diagnosis, diff, profiles, and rerun procedure
   in one packet. Offline verification and separate rerun workspaces are included.

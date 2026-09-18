@@ -46,9 +46,22 @@ that does not echo the filename.
 | `enhanced-ack.hl7` | SIU^S12 with MSH-15 populated, which must be refused with AR naming both acknowledgement-mode values. |
 | `ledger-fixed.json` | The expected ledger after booking then rescheduling in fixed mode: one record at the later time. |
 | `ledger-defective.json` | The same exchange in defective mode: two records with the same filler identifier at different times. |
+| `collect-original.hl7` | ADT^A01 with MSH-15 and MSH-16 both omitted, which is original acknowledgement mode: one acknowledgement, and it is the application stage. |
+| `collect-enhanced.hl7` | The same ADT^A01 declaring MSH-15 `AL` and MSH-16 `AL`, which asks for both acknowledgement stages. |
+| `collect-accept-only.hl7` | The same ADT^A01 declaring MSH-15 `AL` and MSH-16 `NE`, which asks for a commit acknowledgement and explicitly declines an application one. |
+| `collect-unsupported-mode.hl7` | The same ADT^A01 declaring MSH-15 `XQ`, which is not one of the four conditions, and must be refused with AR rather than guessed at. |
+| `collect-stages.json` | The expected mode, wire answers and sealed record for each of the six generic-collector cases, stated as commit stage and application stage separately. |
 
 Both modes answer AA to the supported messages, so only these ledgers
 distinguish them. The receiver never loads these files.
+
+The `collect-*` cases drive [the generic collector](../../docs/collect.md)
+rather than the SIU fixture. `collect-stages.json` states, per case, the
+acknowledgement mode the message declares, every acknowledgement that must
+arrive and on which socket, and the accept and application stages the sealed
+`readmit-collection/v2` record must hold. The receiver policies those cases run
+under are configuration written by `tools/verify.py`, not expectations; every
+expectation is here. The receiver never loads these files either.
 
 ## Extending the corpus
 

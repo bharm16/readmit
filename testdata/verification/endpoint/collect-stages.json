@@ -1,0 +1,86 @@
+{
+  "schema": "readmit-collector-stages/v1",
+  "authored_from": "Written by hand from the HL7 v2.5.1 chapter 2 acknowledgement rules (MSH-15 and MSH-16 conditions AL/NE/ER/SU, MSA-1 commit codes CA/CE/CR and application codes AA/AE/AR) and from the declared receiver contract in docs/collect.md. No readmit command produced any expectation here.",
+  "cases": [
+    {
+      "name": "original mode under a v1 policy",
+      "policy": "original",
+      "source": "collect-original.hl7",
+      "control_id": "CORPUSCOLL01",
+      "mode": "original",
+      "wire": [
+        {"arrives": "receiving-connection", "stage": "application", "code": "AA"}
+      ],
+      "accept": {"code": "none", "destination": "none"},
+      "application": {"code": "AA", "destination": "same-connection"},
+      "note": "Original mode has one acknowledgement and it is the application stage."
+    },
+    {
+      "name": "enhanced mode refused by a v1 policy",
+      "policy": "original",
+      "source": "collect-enhanced.hl7",
+      "control_id": "CORPUSENH01",
+      "mode": "enhanced",
+      "wire": [
+        {"arrives": "receiving-connection", "stage": "application", "code": "AR"}
+      ],
+      "accept": {"code": "none", "destination": "none"},
+      "application": {"code": "AR", "destination": "same-connection"},
+      "note": "A policy version that does not implement enhanced mode refuses the message by name rather than answering in a protocol it does not implement."
+    },
+    {
+      "name": "both stages on the receiving connection",
+      "policy": "enhanced-same-connection",
+      "source": "collect-enhanced.hl7",
+      "control_id": "CORPUSENH01",
+      "mode": "enhanced",
+      "wire": [
+        {"arrives": "receiving-connection", "stage": "accept", "code": "CA"},
+        {"arrives": "receiving-connection", "stage": "application", "code": "AA"}
+      ],
+      "accept": {"code": "CA", "destination": "same-connection"},
+      "application": {"code": "AA", "destination": "same-connection"},
+      "note": "The commit acknowledgement arrives first and reports only that the bytes were committed."
+    },
+    {
+      "name": "accept stage only",
+      "policy": "enhanced-same-connection",
+      "source": "collect-accept-only.hl7",
+      "control_id": "CORPUSACC01",
+      "mode": "enhanced",
+      "wire": [
+        {"arrives": "receiving-connection", "stage": "accept", "code": "CA"}
+      ],
+      "accept": {"code": "CA", "destination": "same-connection"},
+      "application": {"code": "none", "destination": "none"},
+      "note": "MSH-16 declares NE, so no application acknowledgement is sent and none may be recorded."
+    },
+    {
+      "name": "undeclared acknowledgement condition",
+      "policy": "enhanced-same-connection",
+      "source": "collect-unsupported-mode.hl7",
+      "control_id": "CORPUSMODE01",
+      "mode": "enhanced",
+      "wire": [
+        {"arrives": "receiving-connection", "stage": "application", "code": "AR"}
+      ],
+      "accept": {"code": "none", "destination": "none"},
+      "application": {"code": "AR", "destination": "same-connection"},
+      "note": "MSH-15 carries a value that is not one of the four declared conditions. An unsupported mode is a named refusal, never a commit acceptance."
+    },
+    {
+      "name": "application stage through a separate endpoint",
+      "policy": "enhanced-separate-endpoint",
+      "source": "collect-enhanced.hl7",
+      "control_id": "CORPUSENH01",
+      "mode": "enhanced",
+      "wire": [
+        {"arrives": "receiving-connection", "stage": "accept", "code": "CA"},
+        {"arrives": "application-endpoint", "stage": "application", "code": "AA"}
+      ],
+      "accept": {"code": "CA", "destination": "same-connection"},
+      "application": {"code": "AA", "destination": "separate-endpoint"},
+      "note": "Not every enhanced acknowledgement uses one socket. The application stage arrives at the separately configured endpoint and nowhere else."
+    }
+  ]
+}
