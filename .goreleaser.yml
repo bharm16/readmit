@@ -31,6 +31,7 @@ archives:
       - docs/dictionary-provenance.md
       - docs/case-bundle.md
       - docs/synth.md
+      - docs/synth-v1-vector.md
       - testdata/README.md
       - testdata/fixtures/*
       - src: internal/dictionary/fields-v251.json
