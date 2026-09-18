@@ -3,7 +3,6 @@ package observesource
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"io"
 	"net"
@@ -14,6 +13,7 @@ import (
 	"github.com/bharm16/readmit/internal/observewindow"
 	"github.com/bharm16/readmit/internal/secret"
 	"github.com/bharm16/readmit/internal/sendpolicy"
+	"github.com/bharm16/readmit/internal/transportsecurity"
 )
 
 // newReader opens the one reader the declared source kind names. A file export
@@ -114,11 +114,12 @@ func newHTTPReader(ctx context.Context, source Source, retained *snapshot, optio
 		header: header, locator: locator, maxAge: maxAge, timeout: timeout}, nil
 }
 
-// tlsConfig is the client configuration this endpoint is read under. TLS 1.2 is
-// the floor, certificate verification is always on and there is no insecure
-// mode: an observation that skipped verification would report evidence from a
-// source it never established the identity of. An explicitly configured
-// certificate authority replaces the system roots.
+// tlsConfig is the client configuration this endpoint is read under. The rule
+// itself belongs to internal/transportsecurity, which every path readmit
+// negotiates TLS on shares: TLS 1.2 is the floor, certificate verification is
+// always on, there is no insecure mode, and an explicitly configured
+// certificate authority replaces the platform roots. This decides only which
+// name is verified and reads the authority the source declared.
 func (h HTTP) tlsConfig(address string) (*tls.Config, error) {
 	name := h.ServerName
 	if name == "" {
@@ -128,20 +129,15 @@ func (h HTTP) tlsConfig(address string) (*tls.Config, error) {
 		}
 		name = host
 	}
-	config := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: name}
-	if h.CAFile == "" {
-		return config, nil
+	var authorities []byte
+	if h.CAFile != "" {
+		read, err := readBounded(h.CAFile, MaxCABytes)
+		if err != nil {
+			return nil, errors.New("cannot read the configured CA certificates")
+		}
+		authorities = read
 	}
-	authorities, err := readBounded(h.CAFile, MaxCABytes)
-	if err != nil {
-		return nil, errors.New("cannot read the configured CA certificates")
-	}
-	pool := x509.NewCertPool()
-	if !pool.AppendCertsFromPEM(authorities) {
-		return nil, errors.New("the configured CA file contains no certificates")
-	}
-	config.RootCAs = pool
-	return config, nil
+	return transportsecurity.ClientConfig(name, authorities)
 }
 
 // read takes one bounded read of the endpoint, retrying only what is safe to

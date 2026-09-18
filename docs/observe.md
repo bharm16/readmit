@@ -316,9 +316,10 @@ convenient answer rather than observing the source.
 ## Reading an approved HTTP API
 
 `http` names one absolute `https` endpoint. There is no plaintext mode, no
-redirect is followed, and no proxy is taken from the environment. TLS 1.2 is the
-floor, certificate verification is always on, there is no insecure mode, and
-`ca_file` supplies an explicit customer authority in place of the system roots.
+redirect is followed, and no proxy is taken from the environment. The TLS rule
+is the one every path readmit negotiates TLS on shares: TLS 1.2 is the floor,
+certificate verification is always on, there is no insecure mode, and `ca_file`
+supplies an explicit customer authority in place of the platform roots.
 `server_name` names what the certificate is verified against when that is not
 the endpoint's own host.
 
