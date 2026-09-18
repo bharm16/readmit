@@ -37,6 +37,12 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   verifies a case through the same reader the command line uses. It ships the
   frozen synthetic sample workspace and reopens recent folders. It is a separate
   build and is not included in these archives.
+  The window is navigated from the keyboard alone: five regions in a fixed focus
+  order, a command palette, a search over what the open workspace and its project
+  declare, keyboard-resizable evidence and inspector panes, light and dark, and
+  text from 100% to 200%. Every status carries its own word and its own shape, so
+  none is told apart by colour, and the window states that there is no telemetry,
+  crash reporting, update check or analytics and names the one file it keeps.
 
 - `collect` handles original and enhanced acknowledgement workflows: stage
   specific correlation with separate commit and application codes, declared

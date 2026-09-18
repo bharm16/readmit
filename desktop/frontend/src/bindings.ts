@@ -18,6 +18,104 @@ export type State =
 
 export type Kind = "case" | "project" | "revisions" | "unsupported";
 
+/** The status of one registered case, maintained by a person. */
+export type CaseStatus = "open" | "investigating" | "resolved" | "closed";
+
+/** Every status the window can show. Each one has its own word and its own
+ * shape, so none of them is told apart by colour alone. */
+export type StatusValue = State | Kind | CaseStatus;
+
+/** The focusable areas of the window, named by the facade. Focus moves through
+ * them in the order the facade lists them. */
+export type RegionId =
+  | "commands"
+  | "navigation"
+  | "evidence"
+  | "inspector"
+  | "privacy";
+
+/** Everything the window can be asked to do. The palette lists them all. */
+export type CommandId =
+  | "command-palette"
+  | "search-workspace"
+  | "open-workspace"
+  | "create-sample-workspace"
+  | "open-project"
+  | "cancel-operation"
+  | "next-region"
+  | "previous-region"
+  | "go-to-commands"
+  | "go-to-navigation"
+  | "go-to-evidence"
+  | "go-to-inspector"
+  | "go-to-privacy"
+  | "larger-text"
+  | "smaller-text"
+  | "switch-theme";
+
+export type Theme = "system" | "light" | "dark";
+
+export interface Region {
+  id: RegionId;
+  label: string;
+}
+
+export interface Indicator {
+  status: StatusValue;
+  symbol: string;
+  label: string;
+}
+
+export interface Command {
+  id: CommandId;
+  title: string;
+  keys?: string;
+  region?: RegionId;
+}
+
+/** What the window tells a person about their data. `absent` is what this
+ * product does not do at all; `kept` is everything written outside evidence. */
+export interface Privacy {
+  statement: string;
+  absent: string[];
+  kept: string[];
+}
+
+/** The window's description of itself. It is rendered as given: the interface
+ * keeps no second copy of the focus order, the statuses or the commands. */
+export interface Shell {
+  regions: Region[];
+  indicators: Indicator[];
+  commands: Command[];
+  themes: Theme[];
+  text_scales: number[];
+  privacy: Privacy;
+}
+
+export interface ShellResult {
+  state: State;
+  reason?: string;
+  shell?: Shell;
+}
+
+export type MatchKind = "artifact" | "registered_case";
+
+/** One thing found and the region that reveals it. `field` names the declared
+ * field that matched — never the value that matched. */
+export interface Match {
+  kind: MatchKind;
+  name: string;
+  label: string;
+  field: string;
+  region: RegionId;
+}
+
+export interface SearchResult {
+  state: State;
+  reason?: string;
+  matches: Match[];
+}
+
 export interface Artifact {
   name: string;
   kind: Kind;
@@ -76,7 +174,7 @@ export interface ProjectCase {
   provenance: string;
   interface_version: string;
   title: string;
-  status: "open" | "investigating" | "resolved" | "closed";
+  status: CaseStatus;
   owner?: string;
   tags: string[];
   incidents: string[];
@@ -155,7 +253,9 @@ interface Facade {
   OpenWorkspace(path: string): Promise<WorkspaceResult>;
   RecentWorkspaces(): Promise<RecentResult>;
   SaveNote(path: string, note: ProjectNote): Promise<RevisionsResult>;
+  Search(path: string, query: string): Promise<SearchResult>;
   SelectWorkspace(): Promise<WorkspaceResult>;
+  Shell(): Promise<ShellResult>;
 }
 
 declare global {
@@ -232,6 +332,17 @@ export function recentWorkspaces(): Promise<RecentResult> {
   return guard(() => facade().RecentWorkspaces(), { state: "failed", roots: [] });
 }
 
+export function search(path: string, query: string): Promise<SearchResult> {
+  return guard(() => facade().Search(path, query), { state: "failed", matches: [] });
+}
+
 export function selectWorkspace(): Promise<WorkspaceResult> {
   return guard(() => facade().SelectWorkspace(), { state: "failed" });
+}
+
+/** The window's own description. It reads nothing and cannot be cancelled, so
+ * the only way it fails is the binding being unavailable while the application
+ * is still starting; the window says so rather than drawing itself empty. */
+export function shell(): Promise<ShellResult> {
+  return guard(() => facade().Shell(), { state: "failed" });
 }

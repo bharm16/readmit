@@ -47,19 +47,28 @@ artifacts are never reported as completed.
 | `OpenRevisions` | Reads the editable project document: its notes, drafts and recorded revisions. |
 | `SaveNote` | Creates or replaces one editable note of a project. |
 | `RecentWorkspaces` | Lists previously opened folders, most recent first. |
+| `Search` | Finds what one open workspace declares and what its project registers. |
+| `Shell` | Describes the window: regions, statuses, commands, appearance, privacy. |
 | `Cancel` | Stops the operation that is running now, when it can be interrupted. |
 
 Exactly one operation runs at a time. A second request reports `busy` rather
 than racing the first, and a finished operation always releases the slot,
 including after a failure or a cancellation, so the next request proceeds.
-`RecentWorkspaces` is the exception: it reads one small local file and does not
-claim the slot, so the list stays available while an operation runs.
+`RecentWorkspaces` and `Shell` are the exceptions. `RecentWorkspaces` reads one
+small local file and `Shell` reads nothing at all, so neither claims the slot
+and both stay available while an operation runs: the recent list, the command
+palette and the privacy status work whenever the window is open. `Shell` cannot
+fail in the facade; it still carries a state, because the binding itself is
+unavailable while the application is starting, and the window says so rather
+than drawing itself with no commands and no privacy status.
 
 `Cancel` cannot retract bytes an operation has already written. Choosing a
 folder and listing it are interruptible; `OpenCase`, `OpenProject`,
-`OpenRevisions` and `SaveNote` are not, because each runs to completion under
-its own size limits once it starts. The window offers the Cancel control only
-while an interruptible operation runs.
+`OpenRevisions`, `SaveNote` and `Search` are not, because each runs to
+completion under its own size limits once it starts. The window enables the
+Cancel control only while an interruptible operation runs; `Escape` reaches the
+same operation whenever the palette is not open, and cancelling when nothing is
+running does nothing.
 
 ## Workspaces and artifacts
 
@@ -118,6 +127,97 @@ cannot write reports `permission_denied`, and a project that already holds as
 many notes as this release stores reports the refusal rather than dropping one.
 See [interface investigation projects](project.md).
 
+## The window
+
+`Shell` is the window's description of itself, and the interface renders it
+rather than keeping a second copy that can drift from the facade. It carries the
+regions, how every status reads, the commands, the appearance choices and the
+privacy status. The bindings repeat that vocabulary as closed TypeScript types
+and a facade test requires them to, so a region, command, theme, status or match
+kind the facade declares and the bindings do not is a failing test. What the
+frontend type check adds on top of that is narrower than it sounds, and worth
+stating exactly: a region entered as nothing and a command with no action fail
+the build, because the records holding them are keyed by the declared
+identifiers and hold an element and a function. A status the facade declares
+without an indicator is not a type error — indicators are looked up at run time
+and every place that draws one falls back to the plain status word — so that is
+checked in the facade, where every operation state, artifact kind and registered
+case status is required to have one.
+
+### Focus order
+
+The window has five regions and focus moves through them in the order the
+investigation runs:
+
+| Region | What it holds |
+| --- | --- |
+| `commands` | The workspace actions, the appearance choices, and the search field. |
+| `navigation` | The open folder's listing and the recent workspaces. |
+| `evidence` | The project document and the cases it registers. |
+| `inspector` | The one case verification currently being read. |
+| `privacy` | What stays on this machine, and what this product does not do. |
+
+The window renders the regions by walking that declared order and uses no
+positive tab index, so the controls inside them are tabbed through in document
+order, which is the order above. Every region is a labelled landmark that takes
+focus itself without being a tab stop of its own: `F6` and `Shift+F6` move
+between the regions, and the palette lists a "Go to" command for each one. The
+evidence and inspector panes are separated by a separator that *is* a tab stop
+and moves with `ArrowLeft`, `ArrowRight`, `Home` and `End` as well as with a
+pointer, so the panes resize without one.
+
+The region order, the statuses, the commands and their shortcuts are declared
+once in the facade and tested there, including that every shortcut the palette
+shows is a key the interface actually tests for. The frontend type check adds
+one thing those tests cannot see: the record of region content and the record of
+command actions are keyed by the declared identifiers, so a region the window
+forgot to draw and a command with no action behind it are type errors rather
+than controls that quietly do nothing. Neither check inspects a rendered window,
+so what a region draws once it has an element is not among the things proved
+here.
+
+### Status without colour
+
+Every status the window shows — the six operation states, the three artifact
+kinds, and the four registered case statuses — has its own word and its own
+shape, and no two of them share either. Colour is added on top of both and is
+never the difference between two statuses. The word carries the meaning on its
+own, because a shape depends on the platform font having the glyph, so the shape
+is marked decorative and the word is what an assistive technology reads. A
+selected row is marked with a rule and heavier text rather than a tint.
+
+### Commands and search
+
+The command palette lists everything the window can be asked to do, with the
+shortcut for the ones that have one. `Ctrl+K` opens it and `Ctrl+F` moves to the
+search field; the platform command key is accepted wherever `Ctrl` is shown.
+
+`Search` navigates one open workspace. It reads exactly what the listing reads —
+the contract each immediate entry declares — and, when the folder holds a project
+document, the cases that document registers: their name, title, owner, tags,
+linked incidents, status, interface version, contract, provenance and recorded
+identity. It verifies no evidence, opens nothing, records no recent folder and
+builds no index; it lists the folder again each time under the same bound.
+
+A result names the thing it found the way the window already names it — the
+entry name, or for a registered case the title the project recorded — the region
+that reveals it, and the **fixed name of the declared field that matched**
+rather than the text that matched. Nothing read out of a case bundle is in a
+result: no message bytes, no field values, and no original source path. Nothing
+to search for and nothing that matched are both `empty`, with different reasons.
+A project document this release cannot read contributes no registered cases; the
+listing already reports that entry as `unsupported`, and search still finds it by
+its name.
+
+This is navigation over what the facade already exposes. Searching inside
+message content is not this, and is not in this release.
+
+### Appearance
+
+The window offers `system`, `light` and `dark`, and text sizes from 100% to
+200%. Both start from the system every time the window opens and are written
+nowhere: the shell keeps one file of local state and it holds folder paths only.
+
 ## The sample workspace
 
 `CreateSampleWorkspace` writes the frozen `readmit-synth-v1` family into a new
@@ -168,11 +268,18 @@ and opening workspaces still works while it stays unreadable.
 Nothing leaves the machine. There is no telemetry, crash reporting, update
 check, or analytics, and the interface never sends evidence to an external
 rendering service. Everything the window renders is bundled into the executable;
-nothing is fetched at run time. Browser storage holds no evidence. Diagnostics
+nothing is fetched at run time. Browser storage holds nothing at all. Diagnostics
 are fixed sentences that never repeat a path, a file name, an argument, or a
 value. A note is text a person typed on this machine: it is stored in the
 project's own document, is never sent anywhere, and is never kept in browser
 storage.
+
+The window states this rather than leaving it to be assumed. The privacy region
+names what this product does not do and everything the shell writes outside
+evidence, which is the recent folder list and nothing else. That status is part
+of the facade, so it is the same fact the rest of the product is built on rather
+than a sentence the interface maintains separately, and the frontend sources are
+checked to hold no network call and no browser storage at all.
 
 ## Not supported in this release
 
@@ -180,8 +287,11 @@ storage.
   or delete operation. The shell opens folders, reads artifacts and edits notes;
   everything else about a project is `readmit project`.
 - Removing a note, and the previous text of one that was replaced.
-- Importing evidence, editing evidence, message grids, search, and comparison.
-  No edit the shell makes reaches a case, a run, a result, a review or a report.
+- Importing evidence, editing evidence, message grids, and comparison. No edit
+  the shell makes reaches a case, a run, a result, a review or a report. Search
+  here is navigation over what a workspace and its project declare; searching
+  inside message content, and the rebuildable index that needs, is not in this
+  release.
 - Artifacts other than case bundle directories and the two project documents.
   Run bundles, results, reviews, reports, specs and family records are listed as
   unsupported entries.
