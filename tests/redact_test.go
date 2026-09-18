@@ -547,3 +547,96 @@ func TestRedactLiteralMismatchFreeTextRetentionAndUnresolvedScopeCannotBeApprove
 		})
 	}
 }
+
+func TestRedactInventoryRevalidatesTheResolvedAliasParentArtifact(t *testing.T) {
+	request := redactFixture(t)
+	redactOriginalArtifacts(t, request)
+	dir := filepath.Dir(request.CasePath)
+	realParent := filepath.Join(dir, "real")
+	if err := os.MkdirAll(filepath.Join(realParent, "nested"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(realParent, "nested"), filepath.Join(dir, "alias")); err != nil {
+		t.Skip("symlinks unavailable")
+	}
+	realRun := filepath.Join(realParent, "inventoried-run")
+	if err := os.Rename(filepath.Join(dir, "original-run"), realRun); err != nil {
+		t.Fatal(err)
+	}
+	cleanedRun := filepath.Join(dir, "inventoried-run")
+	if err := os.CopyFS(cleanedRun, os.DirFS(realRun)); err != nil {
+		t.Fatal(err)
+	}
+	inventory := redactReadJSON[redact.Inventory](t, request.InventoryPath)
+	// Keep the raw traversal: filepath.Join would lexically erase alias/.. .
+	inventory.Artifacts[0].Path = "alias/../inventoried-run"
+	redactJSON(t, request.InventoryPath, inventory)
+	review, err := redact.Create(context.Background(), request)
+	if err != nil || review.State != "ready-for-approval" {
+		t.Fatalf("alias inventory review: %+v %v", review, err)
+	}
+	file, err := os.OpenFile(filepath.Join(realRun, "payloads", "o000001-source.bin"), os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, writeErr := file.WriteString("PLANTED-POST-REVIEW-MUTATION")
+	closeErr := file.Close()
+	if writeErr != nil || closeErr != nil {
+		t.Fatal("cannot mutate inventoried fixture")
+	}
+	if _, err := replay.Open(realRun); err == nil {
+		t.Fatal("real inventory artifact was not changed")
+	}
+	if _, err := replay.Open(cleanedRun); err != nil {
+		t.Fatal("lexically cleaned copy should remain independently valid")
+	}
+	packet := filepath.Join(dir, "packet")
+	if _, err := redact.Export(context.Background(), redact.ExportRequest{ReviewPath: request.Output, LocalState: request.LocalState, Approval: review.Identity, Output: packet}); err == nil {
+		t.Fatal("export revalidated the lexically cleaned copy instead of the inventoried artifact")
+	}
+	if _, err := os.Stat(packet); !os.IsNotExist(err) {
+		t.Fatal("changed inventoried artifact produced an export")
+	}
+}
+
+func TestRedactInventoryRequiresExplicitArrayMembers(t *testing.T) {
+	for _, member := range []string{"artifacts", "residual_values"} {
+		for _, invalid := range []string{"missing", "null", "object", "string", "number", "boolean"} {
+			t.Run(member+"/"+invalid, func(t *testing.T) {
+				request := redactFixture(t)
+				inventory := map[string]any{"schema": redact.InventorySchema, "complete": true, "artifacts": []any{}, "residual_values": []any{}}
+				switch invalid {
+				case "missing":
+					delete(inventory, member)
+				case "null":
+					inventory[member] = nil
+				case "object":
+					inventory[member] = map[string]any{}
+				case "string":
+					inventory[member] = ""
+				case "number":
+					inventory[member] = 0
+				case "boolean":
+					inventory[member] = false
+				}
+				redactJSON(t, request.InventoryPath, inventory)
+				if _, err := redact.Create(context.Background(), request); err == nil {
+					t.Fatal("inventory accepted an omitted, null, or non-array required member")
+				}
+				for _, path := range []string{request.Output, request.LocalState} {
+					if _, err := os.Stat(path); !os.IsNotExist(err) {
+						t.Fatal("invalid inventory created review or private output")
+					}
+				}
+			})
+		}
+	}
+	t.Run("explicit-empty-arrays", func(t *testing.T) {
+		request := redactFixture(t)
+		redactJSON(t, request.InventoryPath, map[string]any{"schema": redact.InventorySchema, "complete": true, "artifacts": []any{}, "residual_values": []any{}})
+		review, err := redact.Create(context.Background(), request)
+		if err != nil || review.State != "ready-for-approval" {
+			t.Fatalf("explicit empty arrays should be supported: %+v %v", review, err)
+		}
+	})
+}

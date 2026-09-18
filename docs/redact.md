@@ -186,7 +186,10 @@ only the enclosing explicit review/approval and generated export gates apply to
 this packet. Those flags do not independently approve a result for sharing.
 
 `redact.OpenReview` and `redact.OpenExport` are verified offline Go readers.
-`OpenExport` also checks the embedded result contracts and regenerated diagnosis.
+`OpenExport` applies the same review contract to embedded reviews, binds each
+retained run source's bytes and hash to its approved derived occurrence, and
+matches ordered receiver captures to the verified run's sent and ACK bytes.
+It also checks the embedded result contracts and regenerated diagnosis.
 It can verify retained scan claims and hashes; it cannot repeat a private residual
 scan without the local state. Finalization writes the completion marker last.
 Interrupted writes remain incomplete and are refused. Existing destinations and

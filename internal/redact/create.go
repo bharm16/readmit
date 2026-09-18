@@ -285,15 +285,11 @@ func OpenReview(path string) (*Review, error) {
 		}
 	}
 	var review Review
-	if json.Unmarshal(files["review.json"], &review, json.RejectUnknownMembers(true)) != nil || review.Schema != ReviewSchema || review.DataOrigin != "derived-testing-data" || review.State != "blocked" && review.State != "ready-for-approval" {
+	if json.Unmarshal(files["review.json"], &review, json.RejectUnknownMembers(true)) != nil {
 		return nil, errors.New("invalid export review")
 	}
-	coverage, uncovered := exportreview.Checklist(review.Findings)
-	if len(review.Findings) == 0 || len(review.Findings) > maxFindings || review.Scope != exportreview.Scope || !reflect.DeepEqual(coverage, review.Coverage) || !slices.Equal(uncovered, review.Uncovered) {
-		return nil, errors.New("review coverage disagrees with located findings")
-	}
-	if review.State == "ready-for-approval" && (hasUnresolved(review.Findings) || review.DerivedIdentity == "" || review.Residual.Status != "passed" || len(review.RequiredFailures) == 0 || !slices.Equal(review.RequiredFailures, review.OriginalFailedAssertions)) {
-		return nil, errors.New("review readiness is unsupported")
+	if err := validateReview(review); err != nil {
+		return nil, err
 	}
 	review.Identity = identity(ReviewSchema, files)
 	if string(files["identity.sha256"]) != review.Identity+"\n" {
@@ -311,4 +307,20 @@ func OpenReview(path string) (*Review, error) {
 		return nil, errors.New("blocked review has unexpected evidence")
 	}
 	return &review, nil
+}
+
+// Standalone and embedded reviews have the same versioned contract. Byte
+// identities bind their containers; they cannot substitute for these checks.
+func validateReview(review Review) error {
+	if review.Schema != ReviewSchema || review.DataOrigin != "derived-testing-data" || review.State != "blocked" && review.State != "ready-for-approval" {
+		return errors.New("invalid export review")
+	}
+	coverage, uncovered := exportreview.Checklist(review.Findings)
+	if len(review.Findings) == 0 || len(review.Findings) > maxFindings || review.Scope != exportreview.Scope || !reflect.DeepEqual(coverage, review.Coverage) || !slices.Equal(uncovered, review.Uncovered) {
+		return errors.New("review coverage disagrees with located findings")
+	}
+	if review.State == "ready-for-approval" && (hasUnresolved(review.Findings) || review.DerivedIdentity == "" || review.Residual.Status != "passed" || len(review.RequiredFailures) == 0 || !slices.Equal(review.RequiredFailures, review.OriginalFailedAssertions)) {
+		return errors.New("review readiness is unsupported")
+	}
+	return nil
 }

@@ -1,6 +1,7 @@
 package redact
 
 import (
+	"bytes"
 	"encoding/json/v2"
 	"errors"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/observation"
+	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
@@ -23,6 +25,9 @@ func OpenExport(path string) (*ExportManifest, error) {
 	var manifest ExportManifest
 	if json.Unmarshal(files["export-review.json"], &manifest, json.RejectUnknownMembers(true)) != nil || manifest.Schema != ExportSchema || manifest.State != "complete" || manifest.DataOrigin != "derived-testing-data" || manifest.ApprovedReview == "" || manifest.Review.State != "ready-for-approval" || hasUnresolved(manifest.Review.Findings) || manifest.Residual.Status != "passed" || manifest.Review.Residual.Status != "passed" {
 		return nil, errors.New("invalid completed derived export")
+	}
+	if err := validateReview(manifest.Review); err != nil {
+		return nil, err
 	}
 	if string(files["identity.sha256"]) != identity(ExportSchema, files)+"\n" || len(files) != len(manifest.Files)+2 {
 		return nil, errors.New("export identity or file inventory changed")
@@ -74,6 +79,9 @@ func OpenExport(path string) (*ExportManifest, error) {
 		if result.Run == nil || !result.Run.Successful() || result.FinalObservation == nil || result.Result.Target == nil {
 			return nil, errors.New("export fixture proof is incomplete")
 		}
+		if err := verifyProofSources(derived, result.Run); err != nil {
+			return nil, err
+		}
 		expectedMode := observation.Defective
 		if mode == "postfix" {
 			expectedMode = observation.Fixed
@@ -110,6 +118,9 @@ func OpenExport(path string) (*ExportManifest, error) {
 		if err != nil || string(receivedSnapshot) != string(snapshotBytes) {
 			return nil, errors.New("new receiver case and result disagree")
 		}
+		if err := verifyReceiverBytes(received, result.Run); err != nil {
+			return nil, err
+		}
 	}
 	report, err := diagnose.Run(filepath.Join(path, "case"), diagnose.DefaultConfig())
 	if err != nil || len(report.Unsupported) > 0 {
@@ -120,4 +131,39 @@ func OpenExport(path string) (*ExportManifest, error) {
 		return nil, errors.New("export diagnosis was not regenerated from derived case")
 	}
 	return &manifest, nil
+}
+
+func verifyProofSources(derived *bundle.Bundle, run *replay.Run) error {
+	for i, event := range run.Events {
+		mapping := run.Manifest.Mappings[i] // replay.Open verified the ordered mapping.
+		approved, approvedErr := derived.Raw(mapping.SourceOccurrence)
+		retained, retainedErr := run.Raw(event.Source)
+		if approvedErr != nil || retainedErr != nil || digest(approved) != mapping.SourceSHA256 || !bytes.Equal(approved, retained) {
+			return errors.New("proof source bytes disagree with the approved derived occurrence")
+		}
+	}
+	return nil
+}
+
+func verifyReceiverBytes(received *bundle.Bundle, run *replay.Run) error {
+	// This successful fixture exchange sends one message, then receives one
+	// complete ACK, in order. Extra or unmatched captured bytes are unresolved.
+	if len(received.Events) != 2*len(run.Events) {
+		return errors.New("receiver capture has unmatched proof occurrences")
+	}
+	for i, event := range run.Events {
+		for j, payload := range []bundle.Payload{event.Sent, event.Received} {
+			capturedEvent := received.Events[2*i+j]
+			direction := bundle.Inbound
+			if j == 1 {
+				direction = bundle.Outbound
+			}
+			captured, capturedErr := received.Raw(capturedEvent.ID)
+			retained, retainedErr := run.Raw(payload)
+			if capturedErr != nil || retainedErr != nil || capturedEvent.Direction != direction || !bytes.Equal(captured, retained) {
+				return errors.New("receiver payload disagrees with the proof sent or ACK bytes")
+			}
+		}
+	}
+	return nil
 }

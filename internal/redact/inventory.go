@@ -4,7 +4,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/diagnose"
@@ -14,7 +13,11 @@ import (
 
 func decodeInventory(raw []byte) (Inventory, error) {
 	var inventory Inventory
-	if len(raw) > maxConfigBytes || json.Unmarshal(raw, &inventory, json.RejectUnknownMembers(true)) != nil || inventory.Schema != InventorySchema || !inventory.Complete || len(inventory.Artifacts) > 32 || len(inventory.ResidualValues) > 4096 {
+	var required struct {
+		Artifacts      *[]OriginalArtifact `json:"artifacts"`
+		ResidualValues *[]string           `json:"residual_values"`
+	}
+	if len(raw) > maxConfigBytes || json.Unmarshal(raw, &required) != nil || required.Artifacts == nil || required.ResidualValues == nil || json.Unmarshal(raw, &inventory, json.RejectUnknownMembers(true)) != nil || inventory.Schema != InventorySchema || !inventory.Complete || len(inventory.Artifacts) > 32 || len(inventory.ResidualValues) > 4096 {
 		return inventory, errors.New("inventory requires explicit complete scope and supported bounded entries")
 	}
 	for _, value := range inventory.ResidualValues {
@@ -30,19 +33,20 @@ func (t *transformer) reviewInventory(inventory Inventory, base, sourceIdentity 
 		t.addTerm([]byte(value))
 	}
 	for i, artifact := range inventory.Artifacts {
-		path := relative(base, artifact.Path)
 		if artifact.Path == "" {
 			return errors.New("inventory artifact requires a path")
+		}
+		// Resolve filesystem traversal before any lexical path cleaning. Seal
+		// the same location that is validated, reviewed, protected and reopened.
+		path, err := canonical(relative(base, artifact.Path))
+		if err != nil {
+			return err
 		}
 		identity, err := artifactIdentity(artifact.Kind, path, sourceIdentity)
 		if err != nil {
 			return err
 		}
-		resolved, err := filepath.Abs(path)
-		if err != nil {
-			return errors.New("cannot resolve inventory artifact")
-		}
-		t.local.Sources = append(t.local.Sources, sourceReference{Kind: artifact.Kind, Path: resolved, Identity: identity})
+		t.local.Sources = append(t.local.Sources, sourceReference{Kind: artifact.Kind, Path: path, Identity: identity})
 		location := fmt.Sprintf("original-artifacts/a%04d", i+1)
 		if err := t.finding(location+"/filename", "other-unique-identifiers", "source-filename", Filenames, t.has(Filenames)); err != nil {
 			return err
