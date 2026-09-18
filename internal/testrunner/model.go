@@ -3,8 +3,10 @@
 package testrunner
 
 import (
+	"bytes"
 	"os"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/observation"
@@ -155,3 +157,25 @@ func (p *Plan) SourceIdentity() string          { return p.replay.SourceIdentity
 func (p *Plan) Boundary() string                { return p.spec.Observation.Boundary }
 func (p *Plan) Target() replay.TargetRecord     { return p.replay.Target() }
 func (p *Plan) Environment() replay.Environment { return p.replay.Environment() }
+
+// PinnedInputs returns copies of the configuration and intended outbound bytes
+// sealed by Prepare, for durable journals. It cannot authorize or replay them.
+type PinnedInputs struct {
+	Configuration  replay.Target       `json:"configuration"`
+	Spec           []byte              `json:"spec_base64"`
+	Target         replay.TargetRecord `json:"target"`
+	Environment    replay.Environment  `json:"environment"`
+	SourceIdentity string              `json:"source_identity"`
+	Mappings       []replay.Mapping    `json:"mappings"`
+}
+
+func (p *Plan) PinnedInputs() PinnedInputs {
+	return PinnedInputs{Configuration: p.replay.Configuration(), Spec: bytes.Clone(p.raw), Target: p.Target(), Environment: p.Environment(), SourceIdentity: p.SourceIdentity(), Mappings: p.replay.Mappings()}
+}
+func (p *Plan) Outbound(id string) ([]byte, error) { return p.replay.Outbound(id) }
+
+// DurableDestination applies the same evidence-containment rule before a job
+// wrapper reserves its directory around the result.
+func (p *Plan) DurableDestination(output string) (string, error) {
+	return artifactpath.Destination(output, p.sourceInfo)
+}

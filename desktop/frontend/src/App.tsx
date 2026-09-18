@@ -1,3 +1,4 @@
+import { RunPanel } from "./RunPanel";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import {
@@ -496,6 +497,7 @@ export default function App() {
     ),
     evidence: (
       <>
+        <RunPanel />
         <Report
           indicators={indicators}
           progress={running === "project" ? "Reading the project." : null}

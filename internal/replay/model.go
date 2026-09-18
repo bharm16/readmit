@@ -286,3 +286,7 @@ func (r *Run) Successful() bool {
 	}
 	return true
 }
+
+// Configuration returns the actual sealed configuration, including references
+// (never secret values), for versioned durable execution records.
+func (p *Plan) Configuration() Target { return p.target }
