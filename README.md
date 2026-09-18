@@ -1,6 +1,6 @@
 # readmit
 
-Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, and `diagnose` are available; later workflows are tracked in [GitHub issues](https://github.com/bharm16/readmit/issues).
+Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `synth`, and `diagnose` are available; later workflows are tracked in [GitHub issues](https://github.com/bharm16/readmit/issues).
 
 ```sh
 readmit inspect message.hl7
@@ -57,6 +57,20 @@ Unknown profiles/rules and unsupported messages are reported explicitly; a clean
 report is not proof of correctness. Configured assigning authorities keep equal
 identifier strings in different namespaces distinct. See [diagnosis](docs/diagnose.md)
 and the [shared field selector grammar](docs/selectors.md).
+
+`synth` creates a wholly synthetic SIU scheduling family from four explicit inputs:
+
+```sh
+readmit synth --seed 17 --base-time 2026-01-01T12:00:00Z \
+  --generator-version readmit-synth-v1 --profile-version readmit-siu-v1 \
+  --output synthetic-family
+readmit timeline synthetic-family/regression
+```
+
+The family contains separate `regression` (S12/S13), `cancellation` (S12/S13/S15),
+and `invalid` (reschedule with an unbooked filler identifier) case bundles.
+Identical declared inputs produce identical bytes. No current clock or machine
+path enters the generated evidence. See [synthetic generation](docs/synth.md).
 
 | `--format` | Accepted layout |
 | --- | --- |

@@ -10,6 +10,9 @@ Unsigned preview of local HL7 inspection and case evidence capture.
 - Copy-stable content identity and deterministic generated provenance support.
 - `diagnose` produces evidence-linked JSON/Markdown findings for the named SIU
   fixture profile, with explicit unsupported cases and capture-window limits.
+
+- `synth` creates a reproducible synthetic SIU family with separate regression,
+  cancellation, and known-invalid bundles from four explicit generator inputs.
 - Five native-tested targets, SHA-256 checksums, and GitHub binary provenance.
 
 Download the archive for your OS and architecture and compare its SHA-256 with

@@ -33,3 +33,10 @@ Diagnosis fixtures for issue #7 are independently authored raw messages:
 partial window, separate assigning authorities, omit a profile-required patient
 field, and supply ACK/ERR evidence. Expected classifications are written directly
 in the tests, not calculated by the diagnosis rules under test.
+
+Issue #8 freezes the implemented v1 generator with independently constructed
+`synth-v1-regression.mllp`, `synth-v1-cancellation.mllp`, and
+`synth-v1-invalid.mllp`. The declared tuple, independent PCG vector, and reviewed
+case identities are documented in [the reference vector](../docs/synth-v1-vector.md). Tests compare emitted
+payload bytes and bundle identities to these fixed expectations; native archive
+checks also compare all three payload streams to the packaged goldens.
