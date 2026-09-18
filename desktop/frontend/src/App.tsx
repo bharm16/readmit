@@ -9,7 +9,7 @@ import {
   recentWorkspaces,
   search,
   selectWorkspace,
-  shell as describeWindow,
+  shell,
   type CaseResult,
   type CommandId,
   type Indicator,
@@ -23,6 +23,7 @@ import {
   type Theme,
   type WorkspaceResult,
 } from "./bindings";
+import { Badge, Palette, Report, Separator, Status } from "./shell";
 
 /** The panes never collapse to nothing: either one keeps a usable share of the
  * window, whether it is dragged or moved with a keyboard. */
@@ -34,44 +35,10 @@ const SPLIT_STEP = 5;
  * they start, so Cancel is offered only while an interruptible operation runs. */
 type Running = null | "workspace" | "case" | "project" | "search";
 
-/** Every status carries its own word and its own shape. Colour is decoration on
- * top of both, never the difference between two of them. The shape is marked
- * decorative because the word beside it already says the same thing. */
-function Status({
-  indicator,
-  state,
-  reason,
-}: {
-  indicator: Indicator | undefined;
-  state: State;
-  reason?: string | undefined;
-}) {
-  return (
-    <p className={`status status-${state}`} role="status">
-      <span className="symbol" aria-hidden="true">
-        {indicator?.symbol}
-      </span>
-      <span className="state">{indicator?.label ?? state}</span>
-      {reason ? <span className="reason">{reason}</span> : null}
-    </p>
-  );
-}
-
-function Badge({ indicator, fallback }: { indicator: Indicator | undefined; fallback: string }) {
-  return (
-    <span className="badge">
-      <span className="symbol" aria-hidden="true">
-        {indicator?.symbol}
-      </span>
-      {indicator?.label ?? fallback}
-    </span>
-  );
-}
-
 export default function App() {
   const [described, setDescribed] = useState<Shell | null>(null);
-  const [description, setDescription] = useState<State>("busy");
-  const [descriptionReason, setDescriptionReason] = useState<string | undefined>(undefined);
+  const [windowState, setWindowState] = useState<State>("busy");
+  const [windowReason, setWindowReason] = useState<string | undefined>(undefined);
 
   const [running, setRunning] = useState<Running>(null);
   const [workspace, setWorkspace] = useState<WorkspaceResult | null>(null);
@@ -88,11 +55,9 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>("system");
   const [scale, setScale] = useState(0);
   const [split, setSplit] = useState(58);
-  const [dragging, setDragging] = useState(false);
 
   const regionElements = useRef<Partial<Record<RegionId, HTMLElement | null>>>({});
   const searchField = useRef<HTMLInputElement | null>(null);
-  const palette = useRef<HTMLDialogElement | null>(null);
 
   const indicators = useMemo(() => {
     const table = new Map<StatusValue, Indicator>();
@@ -104,10 +69,10 @@ export default function App() {
 
   useEffect(() => {
     void (async () => {
-      const result = await describeWindow();
+      const result = await shell();
       setDescribed(result.shell ?? null);
-      setDescription(result.state);
-      setDescriptionReason(result.reason);
+      setWindowState(result.state);
+      setWindowReason(result.reason);
     })();
   }, []);
 
@@ -134,18 +99,6 @@ export default function App() {
     document.documentElement.style.setProperty("--text-scale", String(percent / 100));
   }, [described, scale]);
 
-  useEffect(() => {
-    const dialog = palette.current;
-    if (!dialog) {
-      return;
-    }
-    if (paletteOpen && !dialog.open) {
-      dialog.showModal();
-    } else if (!paletteOpen && dialog.open) {
-      dialog.close();
-    }
-  }, [paletteOpen]);
-
   const root = workspace?.workspace?.root ?? null;
 
   const focusRegion = useCallback((region: RegionId) => {
@@ -167,61 +120,68 @@ export default function App() {
     [described, focused, focusRegion],
   );
 
-  const run = useCallback(
+  // One operation runs at a time here as well as in the facade, and the slot is
+  // always released, so a failure never leaves the window disabled.
+  const operate = useCallback(async (kind: Exclude<Running, null>, work: () => Promise<void>) => {
+    setRunning(kind);
+    await work();
+    setRunning(null);
+  }, []);
+
+  const openFolder = useCallback(
     async (operation: () => Promise<WorkspaceResult>) => {
-      setRunning("workspace");
-      setEvidence(null);
-      setInvestigation(null);
-      setFound(null);
-      setSelected(null);
-      setWorkspace(null);
-      setWorkspace(await operation());
-      setRunning(null);
+      await operate("workspace", async () => {
+        setEvidence(null);
+        setInvestigation(null);
+        setFound(null);
+        setSelected(null);
+        setWorkspace(null);
+        setWorkspace(await operation());
+      });
       await refreshRecent();
       focusRegion("navigation");
     },
-    [focusRegion, refreshRecent],
+    [focusRegion, operate, refreshRecent],
   );
 
-  const inspect = useCallback(
+  const verifyCase = useCallback(
     async (folder: string, name: string) => {
-      setRunning("case");
-      setEvidence(null);
-      setSelected(name);
-      setEvidence(await openCase(folder, name));
-      setRunning(null);
+      await operate("case", async () => {
+        setEvidence(null);
+        setSelected(name);
+        setEvidence(await openCase(folder, name));
+      });
       focusRegion("inspector");
     },
-    [focusRegion],
+    [focusRegion, operate],
   );
 
-  const read = useCallback(
+  const readProject = useCallback(
     async (folder: string) => {
-      setRunning("project");
-      setInvestigation(null);
-      setInvestigation(await openProject(folder));
-      setRunning(null);
+      await operate("project", async () => {
+        setInvestigation(null);
+        setInvestigation(await openProject(folder));
+      });
       focusRegion("evidence");
     },
-    [focusRegion],
+    [focusRegion, operate],
   );
 
-  const look = useCallback(
+  const searchWorkspace = useCallback(
     async (folder: string, wanted: string) => {
-      setRunning("search");
-      setFound(null);
-      setFound(await search(folder, wanted));
-      setRunning(null);
+      await operate("search", async () => {
+        setFound(null);
+        setFound(await search(folder, wanted));
+      });
     },
-    [],
+    [operate],
   );
-
-  const resize = useCallback((delta: number) => {
-    setSplit((current) => Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, current + delta)));
-  }, []);
 
   const busy = running !== null;
 
+  // Every command the facade declares has an action here. The record is keyed
+  // by the declared identifiers, so a command with nothing behind it does not
+  // compile rather than becoming a palette entry that quietly does nothing.
   const actions: Record<CommandId, () => void> = {
     "command-palette": () => {
       setPaletteQuery("");
@@ -233,17 +193,17 @@ export default function App() {
     },
     "open-workspace": () => {
       if (!busy) {
-        void run(selectWorkspace);
+        void openFolder(selectWorkspace);
       }
     },
     "create-sample-workspace": () => {
       if (!busy) {
-        void run(createSampleWorkspace);
+        void openFolder(createSampleWorkspace);
       }
     },
     "open-project": () => {
       if (!busy && root) {
-        void read(root);
+        void readProject(root);
       }
     },
     "cancel-operation": cancel,
@@ -254,7 +214,8 @@ export default function App() {
     "go-to-evidence": () => focusRegion("evidence"),
     "go-to-inspector": () => focusRegion("inspector"),
     "go-to-privacy": () => focusRegion("privacy"),
-    "larger-text": () => setScale((current) => Math.min((described?.text_scales.length ?? 1) - 1, current + 1)),
+    "larger-text": () =>
+      setScale((current) => Math.min((described?.text_scales.length ?? 1) - 1, current + 1)),
     "smaller-text": () => setScale((current) => Math.max(0, current - 1)),
     "switch-theme": () => {
       const themes = described?.themes ?? ["system"];
@@ -263,8 +224,8 @@ export default function App() {
     },
   };
 
-  // The keyboard listener is registered once and reads the current commands, so
-  // a shortcut never runs a stale action and the window never re-binds keys.
+  // The keyboard listener is registered once and reads the current actions, so
+  // a shortcut never runs a stale one and the window never re-binds its keys.
   const latest = useRef(actions);
   useEffect(() => {
     latest.current = actions;
@@ -272,12 +233,16 @@ export default function App() {
 
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
-      const commanded = event.ctrlKey || event.metaKey;
       const chosen = ((): CommandId | null => {
         if (event.key === "F6") {
           return event.shiftKey ? "previous-region" : "next-region";
         }
-        if (!commanded) {
+        // The palette is a modal dialog and closes itself on Escape, so the
+        // key only cancels an operation while the palette is not open.
+        if (event.key === "Escape") {
+          return paletteOpen ? null : "cancel-operation";
+        }
+        if (!(event.ctrlKey || event.metaKey)) {
           return null;
         }
         switch (event.key.toLowerCase()) {
@@ -303,11 +268,11 @@ export default function App() {
     };
     window.addEventListener("keydown", shortcut);
     return () => window.removeEventListener("keydown", shortcut);
-  }, []);
+  }, [paletteOpen]);
 
   const opened = workspace?.workspace;
   const project = investigation?.project;
-  const visible = (described?.commands ?? []).filter((command) => {
+  const listed = (described?.commands ?? []).filter((command) => {
     const wanted = paletteQuery.trim().toLowerCase();
     return (
       wanted === "" ||
@@ -316,6 +281,8 @@ export default function App() {
     );
   });
 
+  // Every region the facade declares has content here, for the same reason
+  // every command has an action: a region with nothing in it does not compile.
   const content: Record<RegionId, ReactNode> = {
     commands: (
       <>
@@ -335,11 +302,7 @@ export default function App() {
         </div>
         <div className="appearance">
           <label htmlFor="theme">Theme</label>
-          <select
-            id="theme"
-            value={theme}
-            onChange={(event) => setTheme(event.target.value as Theme)}
-          >
+          <select id="theme" value={theme} onChange={(event) => setTheme(event.target.value as Theme)}>
             {(described?.themes ?? []).map((choice) => (
               <option key={choice} value={choice}>
                 {choice}
@@ -367,7 +330,7 @@ export default function App() {
           onSubmit={(event) => {
             event.preventDefault();
             if (root && !busy) {
-              void look(root, query);
+              void searchWorkspace(root, query);
             }
           }}
         >
@@ -385,12 +348,11 @@ export default function App() {
           </button>
         </form>
         {root ? null : <p className="hint">Open a workspace folder to search what it holds.</p>}
-        {running === "search" ? (
-          <Status indicator={indicators.get("busy")} state="busy" reason="Searching this workspace." />
-        ) : null}
-        {found && found.state !== "completed" ? (
-          <Status indicator={indicators.get(found.state)} state={found.state} reason={found.reason} />
-        ) : null}
+        <Report
+          indicators={indicators}
+          progress={running === "search" ? "Searching this workspace." : null}
+          result={found && found.state !== "completed" ? found : null}
+        />
         {found && found.matches.length > 0 ? (
           <ul className="matches" aria-label="Search results">
             {found.matches.map((match) => (
@@ -413,16 +375,11 @@ export default function App() {
     ),
     navigation: (
       <>
-        {running === "workspace" ? (
-          <Status indicator={indicators.get("busy")} state="busy" reason="Opening the folder." />
-        ) : null}
-        {workspace ? (
-          <Status
-            indicator={indicators.get(workspace.state)}
-            state={workspace.state}
-            reason={workspace.reason}
-          />
-        ) : null}
+        <Report
+          indicators={indicators}
+          progress={running === "workspace" ? "Opening the folder." : null}
+          result={workspace}
+        />
         {opened ? <p className="root">{opened.root}</p> : null}
         {opened && opened.artifacts.length > 0 ? (
           <ul className="artifacts">
@@ -437,14 +394,14 @@ export default function App() {
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => void inspect(opened.root, artifact.name)}
+                      onClick={() => void verifyCase(opened.root, artifact.name)}
                     >
                       Verify and open
                     </button>
                   </>
                 ) : null}
                 {artifact.kind === "project" ? (
-                  <button type="button" disabled={busy} onClick={() => void read(opened.root)}>
+                  <button type="button" disabled={busy} onClick={() => void readProject(opened.root)}>
                     Read the project
                   </button>
                 ) : null}
@@ -462,7 +419,11 @@ export default function App() {
         <ul className="recent">
           {(recent?.roots ?? []).map((folder) => (
             <li key={folder}>
-              <button type="button" disabled={busy} onClick={() => void run(() => openWorkspace(folder))}>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void openFolder(() => openWorkspace(folder))}
+              >
                 {folder}
               </button>
             </li>
@@ -472,16 +433,11 @@ export default function App() {
     ),
     evidence: (
       <>
-        {running === "project" ? (
-          <Status indicator={indicators.get("busy")} state="busy" reason="Reading the project." />
-        ) : null}
-        {investigation ? (
-          <Status
-            indicator={indicators.get(investigation.state)}
-            state={investigation.state}
-            reason={investigation.reason}
-          />
-        ) : null}
+        <Report
+          indicators={indicators}
+          progress={running === "project" ? "Reading the project." : null}
+          result={investigation}
+        />
         {project ? (
           <>
             <h3>{project.settings.title}</h3>
@@ -490,17 +446,18 @@ export default function App() {
             </p>
             <ul className="registered">
               {project.cases.map((registered) => (
-                <li
-                  key={registered.name}
-                  aria-current={selected === registered.name ? "true" : undefined}
-                >
+                <li key={registered.name} aria-current={selected === registered.name ? "true" : undefined}>
                   <span className="name">{registered.title}</span>
                   <Badge indicator={indicators.get(registered.status)} fallback={registered.status} />
                   <span className="badge">{registered.interface_version}</span>
                   <button
                     type="button"
-                    disabled={busy}
-                    onClick={() => root && void inspect(root, registered.name)}
+                    disabled={busy || !root}
+                    onClick={() => {
+                      if (root) {
+                        void verifyCase(root, registered.name);
+                      }
+                    }}
                   >
                     Verify and open
                   </button>
@@ -518,16 +475,11 @@ export default function App() {
     ),
     inspector: (
       <>
-        {running === "case" ? (
-          <Status indicator={indicators.get("busy")} state="busy" reason="Verifying the case." />
-        ) : null}
-        {evidence ? (
-          <Status
-            indicator={indicators.get(evidence.state)}
-            state={evidence.state}
-            reason={evidence.reason}
-          />
-        ) : null}
+        <Report
+          indicators={indicators}
+          progress={running === "case" ? "Verifying the case." : null}
+          result={evidence}
+        />
         {evidence?.case ? (
           <dl className="evidence">
             <dt>Name</dt>
@@ -553,34 +505,37 @@ export default function App() {
         {!evidence && !busy ? <p className="hint">Open a case to see what it holds.</p> : null}
       </>
     ),
-    privacy: described ? (
+    privacy: (
       <>
-        <p className="statement">{described.privacy.statement}</p>
+        <p className="statement">{described?.privacy.statement}</p>
         <ul className="absent">
-          {described.privacy.absent.map((claim) => (
+          {(described?.privacy.absent ?? []).map((claim) => (
             <li key={claim}>{claim}</li>
           ))}
         </ul>
         <h3>Kept on this machine</h3>
         <ul className="kept">
-          {described.privacy.kept.map((item) => (
+          {(described?.privacy.kept ?? []).map((item) => (
             <li key={item}>{item}</li>
           ))}
         </ul>
       </>
-    ) : null,
+    ),
   };
 
   if (!described) {
     return (
       <main className="starting">
         <h1>readmit</h1>
-        <Status indicator={indicators.get(description)} state={description} reason={descriptionReason} />
+        <Status indicator={indicators.get(windowState)} state={windowState} reason={windowReason} />
       </main>
     );
   }
 
-  const panes = { "--evidence-fraction": `${split}fr`, "--inspector-fraction": `${100 - split}fr` } as CSSProperties;
+  const panes = {
+    "--evidence-fraction": `${split}fr`,
+    "--inspector-fraction": `${100 - split}fr`,
+  } as CSSProperties;
 
   return (
     <>
@@ -601,47 +556,16 @@ export default function App() {
               {content[region.id]}
             </section>
             {region.id === "evidence" ? (
-              <div
-                className="separator"
-                style={{ gridArea: "separator" }}
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Resize the evidence and inspector panes"
-                aria-valuenow={split}
-                aria-valuemin={MIN_SPLIT}
-                aria-valuemax={MAX_SPLIT}
-                tabIndex={0}
-                onKeyDown={(event) => {
-                  const moved =
-                    event.key === "ArrowLeft"
-                      ? -SPLIT_STEP
-                      : event.key === "ArrowRight"
-                        ? SPLIT_STEP
-                        : 0;
-                  if (moved !== 0) {
-                    event.preventDefault();
-                    resize(moved);
-                  } else if (event.key === "Home" || event.key === "End") {
-                    event.preventDefault();
-                    setSplit(event.key === "Home" ? MIN_SPLIT : MAX_SPLIT);
-                  }
-                }}
-                onPointerDown={(event) => {
-                  event.currentTarget.setPointerCapture(event.pointerId);
-                  setDragging(true);
-                }}
-                onPointerUp={(event) => {
-                  event.currentTarget.releasePointerCapture(event.pointerId);
-                  setDragging(false);
-                }}
-                onPointerMove={(event) => {
+              <Separator
+                split={split}
+                min={MIN_SPLIT}
+                max={MAX_SPLIT}
+                step={SPLIT_STEP}
+                onSplit={setSplit}
+                bounds={() => {
                   const left = regionElements.current.evidence?.getBoundingClientRect().left;
                   const right = regionElements.current.inspector?.getBoundingClientRect().right;
-                  if (!dragging || left === undefined || right === undefined || right <= left) {
-                    return;
-                  }
-                  const fraction = ((event.clientX - left) / (right - left)) * 100;
-                  setSplit(Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, Math.round(fraction))));
+                  return left === undefined || right === undefined ? null : { left, right };
                 }}
               />
             ) : null}
@@ -649,50 +573,14 @@ export default function App() {
         ))}
       </main>
 
-      <dialog
-        className="palette"
-        ref={palette}
-        aria-label="Command palette"
+      <Palette
+        open={paletteOpen}
+        commands={listed}
+        query={paletteQuery}
+        onQuery={setPaletteQuery}
         onClose={() => setPaletteOpen(false)}
-      >
-        <form
-          method="dialog"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const first = visible[0];
-            setPaletteOpen(false);
-            first?.id && latest.current[first.id]();
-          }}
-        >
-          <label htmlFor="palette-query">Type a command</label>
-          <input
-            id="palette-query"
-            type="text"
-            autoFocus
-            value={paletteQuery}
-            onChange={(event) => setPaletteQuery(event.target.value)}
-          />
-        </form>
-        <ul aria-label="Commands">
-          {visible.map((command) => (
-            <li key={command.id}>
-              <button
-                type="button"
-                onClick={() => {
-                  setPaletteOpen(false);
-                  latest.current[command.id]();
-                }}
-              >
-                <span className="name">{command.title}</span>
-                {command.keys ? <kbd>{command.keys}</kbd> : null}
-              </button>
-            </li>
-          ))}
-        </ul>
-        <button type="button" onClick={() => setPaletteOpen(false)}>
-          Close
-        </button>
-      </dialog>
+        onRun={(command) => latest.current[command]()}
+      />
     </>
   );
 }

@@ -148,13 +148,21 @@ investigation runs:
 | `inspector` | The one case verification currently being read. |
 | `privacy` | What stays on this machine, and what this product does not do. |
 
-That order is the tab order. The window renders the regions by walking the
-declared order and uses no positive tab index, so what a person tabs through is
-document order. Every region is a labelled landmark that takes focus itself:
-`F6` and `Shift+F6` move between them, and the command palette lists a "Go to"
-command for each one. The evidence and inspector panes are separated by a
-separator that is in the tab order and moves with `ArrowLeft`, `ArrowRight`,
-`Home` and `End` as well as with a pointer, so the panes resize without one.
+The window renders the regions by walking that declared order and uses no
+positive tab index, so the controls inside them are tabbed through in document
+order, which is the order above. Every region is a labelled landmark that takes
+focus itself without being a tab stop of its own: `F6` and `Shift+F6` move
+between the regions, and the palette lists a "Go to" command for each one. The
+evidence and inspector panes are separated by a separator that *is* a tab stop
+and moves with `ArrowLeft`, `ArrowRight`, `Home` and `End` as well as with a
+pointer, so the panes resize without one.
+
+The region order, the statuses and the commands are declared once in the facade
+and tested there. That each region draws what it was given is proved by the
+frontend type check instead: the record of region content and the record of
+command actions are keyed by the declared identifiers, so a region with nothing
+in it, a command with nothing behind it, and a shortcut bound to nothing all
+fail the build rather than shipping as a control that quietly does nothing.
 
 ### Status without colour
 
@@ -177,12 +185,17 @@ the contract each immediate entry declares — and, when the folder holds a proj
 document, the cases that document registers: their name, title, owner, tags,
 linked incidents, status, interface version, contract, provenance and recorded
 identity. It verifies no evidence, opens nothing, records no recent folder and
-builds no index; it lists the folder again each time under the same bound. Every
-result names the region that reveals it and the **fixed name of the field that
-matched**, never the value that matched. Nothing to search for and nothing that
-matched are both `empty`, with different reasons. A project document this
-release cannot read contributes no registered cases; the listing already reports
-that entry as `unsupported`, and search still finds it by its name.
+builds no index; it lists the folder again each time under the same bound.
+
+A result names the thing it found the way the window already names it — the
+entry name, or for a registered case the title the project recorded — the region
+that reveals it, and the **fixed name of the declared field that matched**
+rather than the text that matched. Nothing read out of a case bundle is in a
+result: no message bytes, no field values, and no original source path. Nothing
+to search for and nothing that matched are both `empty`, with different reasons.
+A project document this release cannot read contributes no registered cases; the
+listing already reports that entry as `unsupported`, and search still finds it by
+its name.
 
 This is navigation over what the facade already exposes. Searching inside
 message content is not this, and is not in this release.

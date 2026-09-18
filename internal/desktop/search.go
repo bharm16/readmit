@@ -17,10 +17,14 @@ const (
 	RegisteredMatch MatchKind = "registered_case"
 )
 
-// Match is one thing found and where to go to see it. Field is the fixed name
-// of the declared field that matched — "name", "title", "owner" and the rest —
-// never the value that matched, so a result says why it is here without
-// repeating anything out of a project or a case.
+// Match is one thing found and where to go to see it.
+//
+// Name and Label are how the window already names that thing: the entry name
+// the listing shows, and for a registered case the title the project recorded.
+// Field is the fixed name of the declared field that matched — "name", "title",
+// "owner" and the rest — so a result says why it is here rather than echoing
+// the text that matched. Nothing read out of a case bundle is here: no message
+// bytes, no field values, and no original source path.
 type Match struct {
 	Kind   MatchKind `json:"kind"`
 	Name   string    `json:"name"`
@@ -39,6 +43,13 @@ type SearchResult struct {
 
 func (r refusal) search() SearchResult {
 	return SearchResult{State: r.state, Reason: r.reason, Matches: []Match{}}
+}
+
+// declaration is one declared field of a searchable thing: the fixed name a
+// match reports, and the value the query is compared against.
+type declaration struct {
+	field string
+	value string
 }
 
 // Search navigates one open workspace. It reads exactly what the listing reads
@@ -62,7 +73,7 @@ func (a *App) Search(path, query string) SearchResult {
 		return SearchResult{State: Empty, Reason: "type something to search for", Matches: []Match{}}
 	}
 	root, declined := resolveFolder(path)
-	if root == "" {
+	if declined.state != "" {
 		return declined.search()
 	}
 	artifacts, declined := listArtifacts(context.Background(), root)
@@ -72,7 +83,7 @@ func (a *App) Search(path, query string) SearchResult {
 
 	matches := make([]Match, 0, len(artifacts))
 	for _, artifact := range artifacts {
-		if field, hit := firstMatch(wanted, [][2]string{
+		if field, hit := firstMatch(wanted, []declaration{
 			{"name", artifact.Name},
 			{"contract", artifact.Schema},
 			{"provenance", artifact.Provenance},
@@ -100,34 +111,34 @@ func (a *App) Search(path, query string) SearchResult {
 // registeredFields are the declared fields of one registered case, in the order
 // a match is attributed to them. Tags and incidents are lists, so each entry is
 // offered under the same fixed field name.
-func registeredFields(registered project.Case) [][2]string {
-	fields := [][2]string{
+func registeredFields(registered project.Case) []declaration {
+	fields := []declaration{
 		{"name", registered.Name},
 		{"title", registered.Title},
 		{"owner", registered.Owner},
 	}
 	for _, tag := range registered.Tags {
-		fields = append(fields, [2]string{"tag", tag})
+		fields = append(fields, declaration{"tag", tag})
 	}
 	for _, incident := range registered.Incidents {
-		fields = append(fields, [2]string{"incident", incident})
+		fields = append(fields, declaration{"incident", incident})
 	}
 	return append(fields,
-		[2]string{"status", string(registered.Status)},
-		[2]string{"interface version", registered.InterfaceVersion},
-		[2]string{"contract", registered.Schema},
-		[2]string{"provenance", registered.Provenance},
-		[2]string{"identity", registered.Identity},
+		declaration{"status", string(registered.Status)},
+		declaration{"interface version", registered.InterfaceVersion},
+		declaration{"contract", registered.Schema},
+		declaration{"provenance", registered.Provenance},
+		declaration{"identity", registered.Identity},
 	)
 }
 
 // firstMatch reports the first declared field holding wanted, which is already
 // lowercased. One thing found is one result, so the search stops at the field
 // that explains it rather than listing the same case once per field.
-func firstMatch(wanted string, fields [][2]string) (string, bool) {
-	for _, field := range fields {
-		if field[1] != "" && strings.Contains(strings.ToLower(field[1]), wanted) {
-			return field[0], true
+func firstMatch(wanted string, fields []declaration) (string, bool) {
+	for _, declared := range fields {
+		if declared.value != "" && strings.Contains(strings.ToLower(declared.value), wanted) {
+			return declared.field, true
 		}
 	}
 	return "", false

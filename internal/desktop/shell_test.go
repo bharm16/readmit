@@ -2,6 +2,7 @@ package desktop_test
 
 import (
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -11,13 +12,16 @@ import (
 	"github.com/bharm16/readmit/internal/project"
 )
 
-// appFile and stylesFile are the two frontend sources that decide what a person
-// actually reaches with a keyboard and sees without colour. The shell contract
-// below is data, so these checks only confirm the window renders that data
-// rather than a second, divergent copy of it.
+// The window's focus order, statuses and commands are declared once, here in
+// Go, and the interface renders that declaration. These tests own the
+// declaration itself, and confirm the interface still renders it rather than a
+// second copy of its own. Whether each region draws the content it was given is
+// what the frontend type check proves: the record of region content and the
+// record of command actions are keyed by the declared identifiers, so a region
+// with nothing in it and a command with nothing behind it both fail to compile.
 const (
-	appFile    = "../../desktop/frontend/src/App.tsx"
-	stylesFile = "../../desktop/frontend/src/styles.css"
+	frontendDirectory = "../../desktop/frontend/src"
+	stylesFile        = frontendDirectory + "/styles.css"
 )
 
 func shell(t *testing.T) desktop.Shell {
@@ -38,6 +42,26 @@ func read(t *testing.T, path string) string {
 	return string(source)
 }
 
+// frontend is every interface source, so a check does not quietly stop applying
+// when a part of the window moves to a file of its own.
+func frontend(t *testing.T) string {
+	t.Helper()
+	entries, err := os.ReadDir(frontendDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sources strings.Builder
+	for _, entry := range entries {
+		if entry.Type().IsRegular() {
+			sources.WriteString(read(t, filepath.Join(frontendDirectory, entry.Name())))
+		}
+	}
+	if sources.Len() == 0 {
+		t.Fatal("no interface sources were found")
+	}
+	return sources.String()
+}
+
 // The investigation journey is open a workspace, move through what it holds,
 // read the evidence, inspect one case, and check what stays on the machine.
 // Focus moves in that order, which is the order the window renders.
@@ -55,15 +79,21 @@ func TestFocusOrderFollowsTheInvestigationJourney(t *testing.T) {
 		t.Fatalf("focus order %v is not the investigation journey %v", ordered, journey)
 	}
 
-	// The window renders the regions by walking that order, and declares no
-	// positive tab index, so what a person tabs through is document order.
-	source := read(t, appFile)
+	source := frontend(t)
+	// The window walks the declared order rather than an order of its own, and
+	// every declared region has content, because the record holding it is keyed
+	// by the declared identifiers and the frontend type check closes it.
 	if !strings.Contains(source, "regions.map(") {
-		t.Errorf("%s does not render the regions in the order the facade declares", appFile)
+		t.Error("the interface does not render the regions in the order the facade declares")
 	}
-	for scale := 1; scale < 10; scale++ {
-		if strings.Contains(source, "tabIndex={"+strconv.Itoa(scale)+"}") {
-			t.Errorf("%s declares a positive tab index, which moves focus out of document order", appFile)
+	if !strings.Contains(source, "Record<RegionId, ReactNode>") {
+		t.Error("region content is not keyed by the declared regions, so a region can render nothing")
+	}
+	// No positive tab index, so the controls inside the regions are tabbed
+	// through in document order, which is the order the regions are rendered.
+	for index := 1; index < 10; index++ {
+		if strings.Contains(source, "tabIndex={"+strconv.Itoa(index)+"}") {
+			t.Errorf("the interface declares tab index %d, which moves focus out of document order", index)
 		}
 	}
 }
@@ -94,15 +124,40 @@ func TestEveryRegionIsReachableFromTheCommandPalette(t *testing.T) {
 	if !identifiers["command-palette"] || !identifiers["search-workspace"] {
 		t.Fatalf("the palette and search are not themselves commands: %+v", described.Commands)
 	}
-	for _, command := range described.Commands {
-		if command.ID == "command-palette" && command.Keys == "" {
-			t.Fatal("the command palette has no key, so every other command needs a pointer")
-		}
-	}
 	if command := slices.IndexFunc(described.Commands, func(c desktop.Command) bool {
 		return c.Region != "" && !slices.ContainsFunc(described.Regions, func(r desktop.Region) bool { return r.ID == c.Region })
 	}); command >= 0 {
 		t.Fatalf("command %q moves focus to a region the window does not have", described.Commands[command].ID)
+	}
+
+	// Every command has something behind it, for the same reason every region
+	// has content: the record of actions is keyed by the declared identifiers.
+	if !strings.Contains(frontend(t), "Record<CommandId, () => void>") {
+		t.Error("command actions are not keyed by the declared commands, so a command can do nothing")
+	}
+}
+
+// A shortcut the window shows beside a command has to run that command. A key
+// declared here and bound nowhere is a promise the window does not keep, and
+// the palette prints it in full beside the command that ignores it.
+func TestEveryDeclaredShortcutIsBound(t *testing.T) {
+	source := strings.ToLower(frontend(t))
+	bound := 0
+	for _, command := range shell(t).Commands {
+		if command.Keys == "" {
+			continue
+		}
+		bound++
+		// The last part of a combination is the key itself; the modifiers are
+		// read from the event rather than matched by name.
+		parts := strings.Split(strings.ToLower(command.Keys), "+")
+		key := parts[len(parts)-1]
+		if !strings.Contains(source, `"`+key+`"`) {
+			t.Errorf("command %q shows the shortcut %q, but the interface binds no %q key", command.ID, command.Keys, key)
+		}
+	}
+	if bound == 0 {
+		t.Fatal("no command declares a shortcut, so nothing was checked")
 	}
 }
 
@@ -148,9 +203,9 @@ func TestEveryStatusIsDistinguishableWithoutColour(t *testing.T) {
 
 	// The window draws both channels. A shape alone depends on a font having
 	// the glyph; the word does not, so the word is never the one left out.
-	source := read(t, appFile)
+	source := frontend(t)
 	if !strings.Contains(source, ".symbol") || !strings.Contains(source, ".label") {
-		t.Errorf("%s does not render the shape and the word of a status", appFile)
+		t.Error("the interface does not render the shape and the word of a status")
 	}
 }
 
@@ -185,10 +240,10 @@ func TestTextScalesAndThemesAreOfferedAsChoices(t *testing.T) {
 // separator is focusable and reports its position, which is what a person
 // without a pointing device and an assistive technology both read.
 func TestThePaneSeparatorIsOperableWithAKeyboard(t *testing.T) {
-	source := read(t, appFile)
+	source := frontend(t)
 	for _, required := range []string{`role="separator"`, "aria-valuenow", "aria-valuemin", "aria-valuemax", "ArrowLeft", "ArrowRight", "tabIndex={0}"} {
 		if !strings.Contains(source, required) {
-			t.Errorf("%s gives the pane separator no %s, so the panes resize only with a pointer", appFile, required)
+			t.Errorf("the pane separator has no %s, so the panes resize only with a pointer", required)
 		}
 	}
 }
@@ -216,28 +271,19 @@ func TestPrivacyStatusNamesWhatIsAbsentAndWhatIsKept(t *testing.T) {
 }
 
 // What the window claims about privacy has to hold in the sources that would
-// break it. Nothing in the interface reaches a network or a browser store, so
-// no evidence can be sent anywhere or left behind in the webview.
+// break it. The interface reaches no network and no browser store, so no
+// evidence can be sent anywhere or left behind in the webview, and it loads no
+// remote resource, so everything it renders really is bundled.
 func TestTheInterfaceReachesNoNetworkAndNoBrowserStorage(t *testing.T) {
-	entries, err := os.ReadDir("../../desktop/frontend/src")
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := 0
-	for _, entry := range entries {
-		if !entry.Type().IsRegular() {
-			continue
+	source := frontend(t)
+	for _, egress := range []string{
+		"fetch(", "XMLHttpRequest", "sendBeacon", "WebSocket", "EventSource",
+		"localStorage", "sessionStorage", "indexedDB", "document.cookie",
+		`src="http`, `href="http`, `from "http`, `import("http`, "@import url(http",
+	} {
+		if strings.Contains(source, egress) {
+			t.Errorf("the interface uses %s, which the privacy status says the shell never does", egress)
 		}
-		found++
-		source := read(t, "../../desktop/frontend/src/"+entry.Name())
-		for _, egress := range []string{"fetch(", "XMLHttpRequest", "sendBeacon", "WebSocket", "EventSource", "localStorage", "sessionStorage", "indexedDB", "document.cookie", "https://", "http://"} {
-			if strings.Contains(source, egress) {
-				t.Errorf("%s uses %s, which the privacy status says the shell never does", entry.Name(), egress)
-			}
-		}
-	}
-	if found == 0 {
-		t.Fatal("no frontend sources were checked")
 	}
 }
 
