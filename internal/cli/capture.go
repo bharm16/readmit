@@ -156,6 +156,16 @@ func renderBundle(out io.Writer, b *bundle.Bundle, timeline, showValues bool) er
 	}
 	fmt.Fprintf(w, "Bundle: %s\nSchema: %s\nProvenance: %s\nSources: %d\nOccurrences: %d\nMessages: %d\nACKs: %d\nUnparsed: %d\n", b.Identity, b.Manifest.Schema, b.Manifest.Provenance.Mode, len(b.Manifest.Sources), len(b.Events), kinds[bundle.Message], kinds[bundle.Acknowledgement], kinds[bundle.Unparsed])
 	fmt.Fprintf(w, "Matched ACKs: %d\nUnmatched ACKs: %d\nAmbiguous ACKs: %d\nUnacknowledged messages: %d\nUnknown observed times: %d\n", links[bundle.Matched], links[bundle.UnmatchedACK], links[bundle.AmbiguousACK], links[bundle.Unacknowledged], unknownTimes)
+	if snapshot := b.Observation; snapshot != nil {
+		fmt.Fprintf(w, "Observation: %s\nObservation profile: %s\nReceiver mode: %s\nProcessed occurrences: %d\nLedger records: %d\nConsistent: %t\n", snapshot.Schema, snapshot.Profile, snapshot.Mode, len(snapshot.Processed), len(snapshot.Records), snapshot.Consistent)
+		if showValues {
+			data, err := json.Marshal(snapshot, json.Deterministic(true))
+			if err != nil {
+				return errors.New("cannot render observation")
+			}
+			fmt.Fprintf(w, "Observation values: %s\n", strconv.QuoteToASCII(string(data)))
+		}
+	}
 	if timeline {
 		fmt.Fprintln(w, "Timeline (source/sequence order; no inferred cross-source chronology):")
 		for _, event := range b.Events {

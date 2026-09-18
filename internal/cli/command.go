@@ -57,6 +57,8 @@ func Execute(version string, args []string, stdout, stderr io.Writer) error {
 	inspect.Flags().StringVar(&roundtrip, "roundtrip", "", "Write byte-identical evidence to a new file (never overwrite)")
 	root.AddCommand(inspect)
 	root.AddCommand(captureCommand(&ran), timelineCommand(&ran))
+	root.AddCommand(listenCommand(&ran))
+
 	root.AddCommand(diagnoseCommand(&ran))
 
 	root.AddCommand(synthCommand(&ran))

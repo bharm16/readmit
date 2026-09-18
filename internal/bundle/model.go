@@ -9,10 +9,12 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/observation"
 )
 
 const (
 	Schema           = "readmit-case/v1"
+	RecordedSchema   = "readmit-case/v2"
 	MaxSources       = 128
 	MaxEvents        = 10000
 	MaxSourceBytes   = hl7.MaxInputBytes
@@ -26,6 +28,7 @@ type Mode string
 const (
 	Imported  Mode = "imported"
 	Generated Mode = "generated"
+	Recorded  Mode = "recorded"
 )
 
 type Direction string
@@ -67,6 +70,8 @@ type Provenance struct {
 	Mode       Mode             `json:"mode"`
 	ImportedAt *time.Time       `json:"imported_at,omitzero"`
 	Generator  *GeneratorInputs `json:"generator,omitzero"`
+	StartedAt  *time.Time       `json:"started_at,omitzero"`
+	SessionID  string           `json:"session_id,omitzero"`
 }
 
 // Observation is explicitly supplied evidence. File metadata and HL7 fields
@@ -94,11 +99,12 @@ type Source struct {
 }
 
 type Manifest struct {
-	Schema     string     `json:"schema"`
-	State      string     `json:"state"`
-	Provenance Provenance `json:"provenance"`
-	Sources    []Source   `json:"sources"`
-	EventCount int        `json:"event_count"`
+	Schema      string     `json:"schema"`
+	State       string     `json:"state"`
+	Provenance  Provenance `json:"provenance"`
+	Sources     []Source   `json:"sources"`
+	EventCount  int        `json:"event_count"`
+	Observation *Payload   `json:"observation,omitzero"`
 }
 
 // Field refers to exact bytes within an occurrence's payload file. Values never
@@ -164,6 +170,7 @@ type Bundle struct {
 	Events       []Event
 	Correlations []Correlation
 	Identity     string
+	Observation  *observation.Snapshot
 	payloads     map[string][]byte
 }
 

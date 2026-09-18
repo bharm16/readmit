@@ -1,0 +1,30 @@
+{
+  "schema": "readmit-receiver-profile/v1",
+  "name": "readmit-siu-v1",
+  "hl7_version": "2.5.1",
+  "message_type": "SIU",
+  "acknowledgement_mode": "original",
+  "field_separator": "|",
+  "encoding_characters": "^~\\&",
+  "triggers": {"S12": "book", "S13": "reschedule"},
+  "required_segments": [
+    {"segment": "SCH", "operator": "exact-count", "count": 1},
+    {"segment": "PID", "operator": "exact-count", "count": 1}
+  ],
+  "patient_identifier": {
+    "value": "PID-3.1", "namespace": "PID-3.4.1",
+    "universal_id": "PID-3.4.2", "universal_id_type": "PID-3.4.3"
+  },
+  "placer_identifier": {
+    "value": "SCH-1.1", "namespace": "SCH-1.2",
+    "universal_id": "SCH-1.3", "universal_id_type": "SCH-1.4"
+  },
+  "filler_identifier": {
+    "value": "SCH-2.1", "namespace": "SCH-2.2",
+    "universal_id": "SCH-2.3", "universal_id_type": "SCH-2.4"
+  },
+  "appointment_start": {
+    "selector": "SCH-11.4", "operator": "hl7-ts-whole-seconds-optional-offset"
+  },
+  "max_text_bytes": 1024
+}

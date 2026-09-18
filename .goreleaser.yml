@@ -30,6 +30,8 @@ archives:
       - licenses/*
       - docs/dictionary-provenance.md
       - docs/case-bundle.md
+      - docs/listen.md
+
       - docs/diagnose.md
       - docs/selectors.md
 

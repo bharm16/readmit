@@ -16,20 +16,23 @@ import (
 var versionToken = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.+-]{0,127}$`)
 
 func build(inputs []Input, provenance Provenance) (*Bundle, error) {
-	if len(inputs) == 0 || len(inputs) > MaxSources {
+	if len(inputs) == 0 && provenance.Mode != Recorded || len(inputs) > MaxSources {
 		return nil, errors.New("bundle requires between 1 and 128 sources")
 	}
 	if err := validateProvenance(provenance); err != nil {
 		return nil, err
 	}
 	b := &Bundle{Manifest: Manifest{Schema: Schema, State: "complete", Provenance: provenance}, payloads: make(map[string][]byte)}
+	if provenance.Mode == Recorded {
+		b.Manifest.Schema = RecordedSchema
+	}
 	total := 0
 	for i, input := range inputs {
 		total += len(input.Data)
 		if len(input.Data) > MaxSourceBytes || total > MaxEvidenceBytes {
 			return nil, errors.New("source exceeds 16 MiB or bundle evidence exceeds 64 MiB")
 		}
-		if provenance.Mode == Generated && input.Path != "" || provenance.Mode == Imported && (input.Path == "" || !utf8.ValidString(input.Path)) {
+		if provenance.Mode != Imported && input.Path != "" || provenance.Mode == Imported && (input.Path == "" || !utf8.ValidString(input.Path)) {
 			return nil, errors.New("source path does not match provenance mode")
 		}
 		format, terminator, err := inputOptions(input)
@@ -80,12 +83,16 @@ func build(inputs []Input, provenance Provenance) (*Bundle, error) {
 func validateProvenance(p Provenance) error {
 	switch p.Mode {
 	case Imported:
-		if p.ImportedAt == nil || !validTime(*p.ImportedAt) || p.Generator != nil {
+		if p.ImportedAt == nil || !validTime(*p.ImportedAt) || p.Generator != nil || p.StartedAt != nil || p.SessionID != "" {
 			return errors.New("imported provenance requires import time and no generator inputs")
 		}
 	case Generated:
-		if p.ImportedAt != nil || p.Generator == nil || !validTime(p.Generator.BaseTime) || !versionToken.MatchString(p.Generator.GeneratorVersion) || !versionToken.MatchString(p.Generator.ProfileVersion) {
+		if p.ImportedAt != nil || p.Generator == nil || !validTime(p.Generator.BaseTime) || !versionToken.MatchString(p.Generator.GeneratorVersion) || !versionToken.MatchString(p.Generator.ProfileVersion) || p.StartedAt != nil || p.SessionID != "" {
 			return errors.New("generated provenance requires only seed, base time, generator version, and profile version")
+		}
+	case Recorded:
+		if p.ImportedAt != nil || p.Generator != nil || p.StartedAt == nil || !validTime(*p.StartedAt) || len(p.SessionID) != 32 {
+			return errors.New("recorded provenance requires startup time and session ID")
 		}
 	default:
 		return errors.New("unsupported provenance mode")

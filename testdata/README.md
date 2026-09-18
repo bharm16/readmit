@@ -26,6 +26,13 @@ every rejected input to yield a bounded diagnostic.
 Additional malformed examples live as explicit literals in tests. Semantic correctness of
 the fixtures is deliberately not an acceptance criterion for syntax inspection.
 
+Receiver scenario fixtures for issue #3 are also independently authored:
+`listen-s12.hl7` books one appointment and `listen-s13.hl7` reschedules it.
+`listen-fixed.json` and `listen-defective.json` give the expected ledger record
+arrays directly, independent of receiver code. Both modes must return AA; only
+the fixed ledger has one record at the new time. These fixtures implement the
+narrow `readmit-siu-v1` test profile, not general HL7 conformance.
+
 Diagnosis fixtures for issue #7 are independently authored raw messages:
 `diagnose-booking.hl7`, `diagnose-reschedule.hl7`,
 `diagnose-cancel-other-authority.hl7`, `diagnose-missing-patient.hl7`, and

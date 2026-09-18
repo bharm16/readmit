@@ -8,6 +8,9 @@ Unsigned preview of local HL7 inspection and case evidence capture.
   bytes, source provenance, distinct times, and explicit ACK correlation gaps.
 - `timeline BUNDLE` verifies and reopens `readmit-case/v1` evidence directories.
 - Copy-stable content identity and deterministic generated provenance support.
+- `listen` demonstrates fixed and defective SIU rescheduling with identical AA
+  ACKs, an atomically exported ledger, and recorded case evidence.
+
 - `diagnose` produces evidence-linked JSON/Markdown findings for the named SIU
   fixture profile, with explicit unsupported cases and capture-window limits.
 
@@ -20,7 +23,8 @@ Download the archive for your OS and architecture and compare its SHA-256 with
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is
 needed. See the bundled README for accepted formats, limits, and platform floors.
 
-This is syntax inspection and file import. It does not validate HL7 semantics, edit data,
-send messages, or access the network. All bundled fixtures are synthetic.
+Inspection and capture remain local and byte-preserving. `listen` is a bounded
+local MLLP test fixture for the documented SIU profile, not a production receiver
+or general HL7 conformance validator. All bundled fixtures are synthetic.
 
 Prerelease binaries have no Apple notarization or Windows code signing.

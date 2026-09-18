@@ -1,6 +1,6 @@
 # readmit
 
-Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `synth`, and `diagnose` are available; later workflows are tracked in [GitHub issues](https://github.com/bharm16/readmit/issues).
+Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `listen`, `synth`, and `diagnose` are available; later workflows are tracked in [GitHub issues](https://github.com/bharm16/readmit/issues).
 
 ```sh
 readmit inspect message.hl7
@@ -49,6 +49,14 @@ deterministic generated provenance for the future `synth` command. See the
 correlation rules, observation metadata, integrity checks, and limits.
 
 ## Supported input
+
+`listen` is a controllable local **test fixture** for one SIU booking/rescheduling
+scenario. Its fixed mode updates an appointment; defective mode appends a
+duplicate record. Both return AA, so only the exported ledger establishes which
+workflow result occurred. It uses bounded original-mode MLLP, atomically exports
+session-bound observations, and records received/sent evidence in a versioned
+case bundle. It is not a production receiver. See [fixture receiver](docs/listen.md)
+for invocation, reset procedure, limits, and observation semantics.
 
 `diagnose BUNDLE --output NEW_DIRECTORY` evaluates the narrow `readmit-siu-v1`
 fixture profile and writes matching JSON and Markdown reports. Findings distinguish

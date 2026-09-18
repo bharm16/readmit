@@ -10,10 +10,13 @@ import json
 import os
 from pathlib import Path
 import platform
+import queue
 import shutil
+import socket
 import subprocess
 import tarfile
 import tempfile
+import threading
 import zipfile
 
 from toolchain import pinned_version
@@ -30,12 +33,23 @@ FIXTURES = (
 )
 REQUIRED_FILES = {
     "README.md", "THIRD_PARTY_NOTICES.md", "docs/dictionary-provenance.md",
-    "dictionary/fields-v251.json", "testdata/README.md", "docs/case-bundle.md", "docs/synth.md",
+    "dictionary/fields-v251.json",
+    "testdata/README.md",
+    "docs/case-bundle.md",
+    "docs/listen.md",
     "testdata/fixtures/case-evidence.mllp",
-    "docs/diagnose.md", "docs/selectors.md", "testdata/fixtures/diagnose-booking.hl7",
-
-    "testdata/fixtures/synth-v1-regression.mllp", "testdata/fixtures/synth-v1-cancellation.mllp",
-    "testdata/fixtures/synth-v1-invalid.mllp", "docs/synth-v1-vector.md",
+    "testdata/fixtures/listen-s12.hl7",
+    "testdata/fixtures/listen-s13.hl7",
+    "testdata/fixtures/listen-fixed.json",
+    "testdata/fixtures/listen-defective.json",
+    "docs/synth.md",
+    "docs/diagnose.md",
+    "docs/selectors.md",
+    "testdata/fixtures/diagnose-booking.hl7",
+    "testdata/fixtures/synth-v1-regression.mllp",
+    "testdata/fixtures/synth-v1-cancellation.mllp",
+    "testdata/fixtures/synth-v1-invalid.mllp",
+    "docs/synth-v1-vector.md",
     "licenses/cobra-LICENSE.txt", "licenses/go-BSD-3-Clause.txt",
     "licenses/mousetrap-LICENSE.txt", "licenses/nhapi-MPL-2.0.txt", "licenses/pflag-LICENSE.txt",
 } | {"testdata/fixtures/" + filename for filename, _, _, _ in FIXTURES}
@@ -174,6 +188,8 @@ def smoke(archive, target_os, release_tag=None):
         (copied / events[0]["payload"]["path"]).write_bytes(b"SECRET-TAMPER")
         corrupt = run("timeline", copied, "--show-values", success=False)
         assert not corrupt.stdout and b"SECRET" not in corrupt.stderr
+        smoke_receiver(archive, binary, environment, work, run)
+
 
         booking_source = work / "diagnose-booking.hl7"
         booking_source.write_bytes(member_bytes(archive, "testdata/fixtures/diagnose-booking.hl7"))
@@ -217,7 +233,75 @@ def smoke(archive, target_os, release_tag=None):
             else:
                 assert interpreted["findings"] == []
         assert not run("synth", *generator_args, "--output", family, success=False).stdout
+        smoke_receiver(archive, binary, environment, work, run, family / "regression")
     print(f"PASS: {archive.name}; checksum, version, inspection, capture, timeline, privacy, and byte preservation")
+
+
+def smoke_receiver(archive, binary, environment, work, run, generated_case=None):
+    """Exercise the archived fixture over a bounded local socket on every OS."""
+    label = "generated" if generated_case is not None else "fixture"
+    if generated_case is None:
+        payloads = [member_bytes(archive, "testdata/fixtures/" + name)
+                    for name in ("listen-s12.hl7", "listen-s13.hl7")]
+    else:
+        events = [json.loads(line) for line in (generated_case / "events.jsonl").read_bytes().splitlines()]
+        payloads = [(generated_case / event["payload"]["path"]).read_bytes()[1:-2] for event in events]
+    for mode, record_count in (("fixed", 1), ("defective", 2)):
+        case = work / f"receiver-{label}-{mode}.case"
+        observation = work / f"receiver-{label}-{mode}.json"
+        process = subprocess.Popen(
+            [str(binary), "listen", "--address", "127.0.0.1:0", "--mode", mode,
+             "--output", str(case), "--observation", str(observation),
+             "--max-messages", "2", "--idle-timeout", "5s"],
+            cwd=work, env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+        try:
+            # Windows cannot select() on a process pipe. A daemon reader plus
+            # a bounded queue wait keeps the same startup check on every OS.
+            ready = queue.Queue()
+            threading.Thread(target=lambda: ready.put(process.stdout.readline(512)), daemon=True).start()
+            first = ready.get(timeout=10)
+            assert first.startswith(b"Listening: 127.0.0.1:")
+            port = int(first.strip().rsplit(b":", 1)[1])
+            initial = json.loads(observation.read_bytes())
+            assert initial["consistent"] and initial["processed"] == [] and initial["records"] == []
+            with socket.create_connection(("127.0.0.1", port), timeout=5) as connection:
+                connection.settimeout(5)
+                for payload in payloads:
+                    control_id = payload.split(b"\r", 1)[0].split(b"|")[9]
+                    frame = b"\x0b" + payload + b"\x1c\r"
+                    connection.sendall(frame[:7])
+                    connection.sendall(frame[7:])
+                    ack = b""
+                    while not ack.endswith(b"\x1c\r"):
+                        part = connection.recv(4096)
+                        assert part and len(ack) + len(part) <= 65536
+                        ack += part
+                    msa = next(segment.split(b"|") for segment in ack.split(b"\r") if segment.startswith(b"MSA|"))
+                    assert msa[1:3] == [b"AA", control_id]
+                    current = json.loads(observation.read_bytes())
+                    assert current["consistent"] and current["session_id"] == initial["session_id"]
+            stdout, stderr = process.communicate(timeout=10)
+            assert process.returncode == 0 and not stderr
+            assert b"PATIENT" not in stdout and b"MSH|" not in stdout
+            final = json.loads(observation.read_bytes())
+            assert len(final["records"]) == record_count
+            if generated_case is None:
+                expected = json.loads(member_bytes(archive, f"testdata/fixtures/listen-{mode}.json"))
+                assert final["records"] == expected
+            else:
+                # Independent fixed vector from synth-v1-vector.md, not values
+                # calculated by the generator or receiver under test.
+                assert final["records"][-1]["appointment_start"] == "20260103120000+0000"
+                assert all(record["filler_id"]["value"] == "FILLER-88EE33C89BA69B57" for record in final["records"])
+            assert len(final["processed"]) == 2 and final["consistent"]
+            timeline = run("timeline", case)
+            assert f"Ledger records: {record_count}\n".encode() in timeline.stdout
+            assert b"Matched ACKs: 2" in timeline.stdout and b"readmit-observation/v1" in timeline.stdout
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate(timeout=5)
 
 
 def main():
