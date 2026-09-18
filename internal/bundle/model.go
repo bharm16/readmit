@@ -8,6 +8,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/bharm16/readmit/internal/collection"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/observation"
 )
@@ -16,6 +17,7 @@ const (
 	Schema           = "readmit-case/v1"
 	RecordedSchema   = "readmit-case/v2"
 	DerivedSchema    = "readmit-case/v3"
+	CollectedSchema  = "readmit-case/v4"
 	MaxSources       = 128
 	MaxEvents        = 10000
 	MaxSourceBytes   = hl7.MaxInputBytes
@@ -31,6 +33,7 @@ const (
 	Generated Mode = "generated"
 	Recorded  Mode = "recorded"
 	Derived   Mode = "derived"
+	Collected Mode = "collected"
 )
 
 type Direction string
@@ -108,6 +111,7 @@ type Manifest struct {
 	Sources     []Source   `json:"sources"`
 	EventCount  int        `json:"event_count"`
 	Observation *Payload   `json:"observation,omitzero"`
+	Collection  *Payload   `json:"collection,omitzero"`
 }
 
 // Field refers to exact bytes within an occurrence's payload file. Values never
@@ -174,6 +178,7 @@ type Bundle struct {
 	Correlations []Correlation
 	Identity     string
 	Observation  *observation.Snapshot
+	Collection   *collection.Record
 	payloads     map[string][]byte
 }
 

@@ -29,6 +29,11 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   fail-closed export review. Approved fixture exports regenerate their results
   and diagnosis, verify failure preservation, and exclude private mappings.
 
+- `collect` receives HL7 of any message type over bounded MLLP under a strict
+  JSON acknowledgement policy, labels every retained source explicitly, and
+  seals a `readmit-case/v4` collection record that never reports application
+  processing from an accept acknowledgement.
+
 - `report` runs the named synthetic regression and seals its reproducer,
   verified failure/pass results, diagnosis, diff, profiles, and rerun procedure
   in one packet. Offline verification and separate rerun workspaces are included.

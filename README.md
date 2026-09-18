@@ -1,6 +1,6 @@
 # readmit
 
-Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `listen`, `replay`, `test`, `diff`, `report`, `redact`, `synth`, and `diagnose` are available. See the workflow guides below.
+Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `listen`, `collect`, `replay`, `test`, `diff`, `report`, `redact`, `synth`, and `diagnose` are available. See the workflow guides below.
 
 ```sh
 readmit inspect message.hl7
@@ -101,6 +101,18 @@ workflow result occurred. It uses bounded original-mode MLLP, atomically exports
 session-bound observations, and records received/sent evidence in a versioned
 case bundle. It is not a production receiver. See [fixture receiver](docs/listen.md)
 for invocation, reset procedure, limits, and observation semantics.
+
+`collect --policy FILE --output NEW_DIRECTORY` is a bounded **generic** MLLP
+receiver: it accepts HL7 of any message type, retains every byte it reads and
+writes, and answers with the acknowledgement a strict-JSON policy names. The
+policy declares one typed acknowledgement operator, the accepted message types,
+and the explicit label recorded for every source the session retains. The final
+`readmit-case/v4` case seals a collection record of each connection and each
+received frame. The collector applies nothing, so an accept code reports that
+bytes arrived and never that a downstream application processed them; a frame it
+could not answer is retained as unacknowledged rather than as a failure. Enhanced
+acknowledgement workflows, fault injection, and concurrent connections are
+explicitly unsupported. See [the generic collector](docs/collect.md).
 
 `diagnose BUNDLE --output NEW_DIRECTORY` evaluates the narrow `readmit-siu-v1`
 fixture profile and writes matching JSON and Markdown reports. Findings distinguish

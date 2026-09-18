@@ -16,7 +16,7 @@ import (
 var versionToken = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.+-]{0,127}$`)
 
 func build(inputs []Input, provenance Provenance) (*Bundle, error) {
-	if len(inputs) == 0 && provenance.Mode != Recorded || len(inputs) > MaxSources {
+	if len(inputs) == 0 && provenance.Mode != Recorded && provenance.Mode != Collected || len(inputs) > MaxSources {
 		return nil, errors.New("bundle requires between 1 and 128 sources")
 	}
 	if err := validateProvenance(provenance); err != nil {
@@ -28,6 +28,9 @@ func build(inputs []Input, provenance Provenance) (*Bundle, error) {
 	}
 	if provenance.Mode == Derived {
 		b.Manifest.Schema = DerivedSchema
+	}
+	if provenance.Mode == Collected {
+		b.Manifest.Schema = CollectedSchema
 	}
 	total := 0
 	for i, input := range inputs {
@@ -96,7 +99,7 @@ func validateProvenance(p Provenance) error {
 		if p.ImportedAt != nil || p.Generator == nil || !validTime(p.Generator.BaseTime) || !versionToken.MatchString(p.Generator.GeneratorVersion) || !versionToken.MatchString(p.Generator.ProfileVersion) || p.StartedAt != nil || p.SessionID != "" {
 			return errors.New("generated provenance requires only seed, base time, generator version, and profile version")
 		}
-	case Recorded:
+	case Recorded, Collected:
 		if p.ImportedAt != nil || p.Generator != nil || p.StartedAt == nil || !validTime(*p.StartedAt) || len(p.SessionID) != 32 {
 			return errors.New("recorded provenance requires startup time and session ID")
 		}

@@ -49,6 +49,12 @@ func (t *transformer) finding(location, class, reason, policy string, resolved b
 func (t *transformer) has(name string) bool { return slices.Contains(t.policy.PacketPolicies, name) }
 
 func (t *transformer) transformCase(source *bundle.Bundle) ([]bundle.Input, error) {
+	// A derived case is readmit-case/v3, which carries no collection record.
+	// Refuse collected receiver evidence rather than drop its retained
+	// receipts, session labels and literal control IDs without a finding.
+	if source.Collection != nil {
+		return nil, errors.New("derived redaction does not support collected receiver evidence")
+	}
 	inputs := make([]bundle.Input, len(source.Manifest.Sources))
 	for i, src := range source.Manifest.Sources {
 		inputs[i] = bundle.Input{Options: hl7.Options{Format: src.Format, Terminator: src.Terminator}, Observations: map[int]bundle.Observation{}}

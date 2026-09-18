@@ -234,3 +234,8 @@ Customer approval is not evidence of legal status. Local execution alone also
 does not determine whether an operator is a business associate: the service and
 access arrangements matter. See the
 [HHS software-vendor FAQ](https://www.hhs.gov/hipaa/for-professionals/faq/is-software-vendor-business-associate/index.html).
+
+Collected receiver evidence (`readmit-case/v4`) is refused. A derived case is
+`readmit-case/v3`, which carries no collection record, so transforming one would
+drop the retained receipts, session labels and literal control IDs described in
+[the collector contract](collect.md) without raising a review finding.

@@ -6,6 +6,12 @@ reschedules it. Fixed mode changes the original record's time. Defective mode
 creates a second record with a different internal record ID and the same filler
 identifier. **Both return AA.** The exported ledger shows the difference.
 
+This command remains the demonstration fixture: its two modes, their
+identifiers, and its ledger contract are unchanged. To collect downstream HL7 of
+any message type under a declared acknowledgement policy, use
+[the generic collector](collect.md) instead; the fixture's SIU semantics and
+appointment ledger are deliberately not generalized there.
+
 ```sh
 readmit listen --address 127.0.0.1:2575 --mode defective \
   --output defective.case --observation defective-observation.json \
@@ -202,3 +208,4 @@ enhanced ACK protocol, delivery retry, database, queue, HTTP control API,
 telemetry, or automatic network access beyond the explicitly configured listen
 address. The default bind is loopback. This fixture is for controlled synthetic
 testing and makes no claim of clinical correctness or production readiness.
+Generic capture of other message types belongs to [`collect`](collect.md).

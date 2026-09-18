@@ -3,12 +3,10 @@
 package receiver
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"os"
@@ -38,22 +36,20 @@ type Config struct {
 }
 
 type Receiver struct {
-	config                       Config
-	profile                      receiverProfile
-	startedAt                    time.Time
-	snapshot                     observation.Snapshot
-	inputs                       []bundle.Input
-	totalBytes, received, events int
-	chunks                       []evidenceChunk
-	served                       bool
+	recorder
+	config    Config
+	profile   receiverProfile
+	startedAt time.Time
+	snapshot  observation.Snapshot
+	served    bool
 }
 
 func New(config Config) (*Receiver, error) {
 	if config.Mode != observation.Fixed && config.Mode != observation.Defective {
 		return nil, errors.New("receiver mode must be fixed or defective")
 	}
-	if config.MaxFrameBytes < 1 || config.MaxFrameBytes > bundle.MaxSourceBytes-frameReserve || config.IdleTimeout <= 0 || config.MaxMessages < 0 || config.MaxMessages > MaxMessages {
-		return nil, errors.New("invalid receiver frame, timeout, or message limit")
+	if err := validBounds(config.MaxFrameBytes, config.IdleTimeout, config.MaxMessages); err != nil {
+		return nil, err
 	}
 	if config.OutputPath == "" || config.ObservationPath == "" {
 		return nil, errors.New("receiver requires new case and observation destinations")
@@ -109,10 +105,7 @@ func (r *Receiver) Serve(ctx context.Context, listener net.Listener) (*bundle.Bu
 		return nil, errors.New("receiver session has already been served")
 	}
 	r.served = true
-	defer listener.Close()
-	stop := context.AfterFunc(ctx, func() { _ = listener.Close() })
-	defer stop()
-	err := r.serve(ctx, listener)
+	err := r.sessions(ctx, listener, r.connection)
 	b, writeErr := bundle.WriteRecorded(r.config.OutputPath, r.inputs, r.startedAt, r.snapshot)
 	if writeErr != nil {
 		return nil, errors.Join(err, writeErr)
@@ -120,60 +113,16 @@ func (r *Receiver) Serve(ctx context.Context, listener net.Listener) (*bundle.Bu
 	return b, err
 }
 
-func (r *Receiver) serve(ctx context.Context, listener net.Listener) error {
-	for {
-		if ctx.Err() != nil {
-			return nil
-		}
-		connection, err := listener.Accept()
-		if err != nil {
-			if ctx.Err() != nil {
-				return nil
-			}
-			return errors.New("receiver cannot accept connection")
-		}
-		if len(r.inputs) >= bundle.MaxSources {
-			connection.Close()
-			return errors.New("receiver session reached source limit")
-		}
-		stop := context.AfterFunc(ctx, func() { _ = connection.Close() })
-		done, err := r.connection(ctx, connection)
-		stop()
-		connection.Close()
-		if err != nil {
-			return err
-		}
-		if done || ctx.Err() != nil {
-			return nil
-		}
-	}
-}
-
 func (r *Receiver) connection(ctx context.Context, connection net.Conn) (bool, error) {
 	input := bundle.Input{Options: hl7.Options{Format: hl7.MLLP}, Observations: make(map[int]bundle.Observation)}
 	r.chunks = nil
 	reader, _ := mllp.NewReader(deadlineReader{connection, r.config.IdleTimeout}, r.config.MaxFrameBytes)
-	defer func() {
-		// A coalesced TCP read may include frames beyond --max-messages. They
-		// are retained as received evidence, but never claimed as processed.
-		r.retainBuffered(&input, reader.Buffered())
-		if len(input.Data) > 0 {
-			r.frameObservations(&input)
-			r.events += len(input.Observations)
-			r.inputs = append(r.inputs, input)
-		}
-	}()
+	// A coalesced TCP read may include frames beyond --max-messages. They are
+	// retained as received evidence, but never claimed as processed.
+	defer func() { r.close(&input, reader.Buffered()) }()
 	for {
-		// bufio reads at most 4096 bytes ahead: fewer than 1400 minimum-size
-		// frames. Reserve those slots even if a peer sends only bad frames.
-		if r.events+len(input.Observations) > bundle.MaxEvents-1400 {
-			return false, errors.New("receiver session reached occurrence limit")
-		}
-		if len(input.Data)+r.config.MaxFrameBytes+frameReserve > bundle.MaxSourceBytes || r.totalBytes+r.config.MaxFrameBytes+frameReserve > bundle.MaxEvidenceBytes {
-			return false, errors.New("receiver session reached evidence byte limit")
-		}
-		if r.received >= MaxMessages {
-			return false, errors.New("receiver session reached message limit")
+		if err := r.withinLimits(&input, r.config.MaxFrameBytes); err != nil {
+			return false, err
 		}
 		raw, readErr := reader.ReadFrame()
 		if readErr != nil {
@@ -231,57 +180,16 @@ func (r *Receiver) connection(ctx context.Context, connection net.Conn) (bool, e
 				r.retain(&input, ack[:sent], bundle.Outbound)
 			}
 			if err != nil {
-				return r.config.MaxMessages > 0 && r.received >= r.config.MaxMessages || ctx.Err() != nil, nil
+				return r.complete(ctx, r.config.MaxMessages), nil
 			}
 		}
-		if r.config.MaxMessages > 0 && r.received >= r.config.MaxMessages {
-			return true, nil
-		}
-		if ctx.Err() != nil {
+		if r.complete(ctx, r.config.MaxMessages) {
 			return true, nil
 		}
 		if request == nil {
 			return false, nil
 		}
 	}
-}
-
-func (r *Receiver) retain(input *bundle.Input, raw []byte, direction bundle.Direction) string {
-	sequence := len(input.Observations) + 1
-	now := time.Now().UTC()
-	input.Data = append(input.Data, raw...)
-	input.Observations[sequence] = bundle.Observation{Direction: direction, ObservedAt: &now}
-	r.chunks = append(r.chunks, evidenceChunk{start: len(input.Data) - len(raw), end: len(input.Data), observation: input.Observations[sequence]})
-	r.totalBytes += len(raw)
-	return fmt.Sprintf("s%04d-e%06d", len(r.inputs)+1, sequence)
-}
-
-func (r *Receiver) retainBuffered(input *bundle.Input, data []byte) {
-	reader, _ := mllp.NewReader(bytes.NewReader(data), len(data)+1)
-	for {
-		raw, err := reader.ReadFrame()
-		if err != nil {
-			raw = append(raw, reader.Buffered()...)
-		}
-		if len(raw) > 0 {
-			r.retain(input, raw, bundle.Inbound)
-		}
-		if err != nil {
-			return
-		}
-	}
-}
-
-type deadlineReader struct {
-	net.Conn
-	idle time.Duration
-}
-
-func (r deadlineReader) Read(data []byte) (int, error) {
-	if err := r.SetReadDeadline(time.Now().Add(r.idle)); err != nil {
-		return 0, err
-	}
-	return r.Conn.Read(data)
 }
 
 func writeAll(writer io.Writer, data []byte) (int, error) {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json/v2"
+	"fmt"
 	"io/fs"
 	"net"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/collection"
 	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/redact"
@@ -252,6 +254,43 @@ func TestRedactExecutableGeneratesOnlyDerivedProofAndNoPlantedValues(t *testing.
 	}
 	if strings.Contains(stdout+stderr+out+diagnostic, "PLANTED-") {
 		t.Fatal("CLI disclosed planted source text")
+	}
+}
+
+// A derived case is readmit-case/v3, which has no collection member. Redaction
+// must refuse collected receiver evidence rather than silently drop its record.
+func TestRedactRefusesCollectedReceiverEvidence(t *testing.T) {
+	request := redactFixture(t)
+	if err := os.RemoveAll(request.CasePath); err != nil {
+		t.Fatal(err)
+	}
+	policy, err := collection.DecodePolicy([]byte(collectAnyPolicy))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var inputs []bundle.Input
+	sessions := []collection.Session{}
+	for i, name := range []string{"booking", "reschedule"} {
+		raw, err := os.ReadFile("../testdata/fixtures/redact-" + name + ".mllp")
+		if err != nil {
+			t.Fatal(err)
+		}
+		inputs = append(inputs, bundle.Input{Data: raw, Options: hl7.Options{Format: hl7.MLLP}, Observations: map[int]bundle.Observation{}})
+		sessions = append(sessions, collection.Session{SessionID: fmt.Sprintf("c%04d", i+1), SourceID: fmt.Sprintf("s%04d", i+1), Label: policy.SourceLabel})
+	}
+	record := collection.Record{
+		Schema: collection.Schema, SessionID: "0123456789abcdef0123456789abcdef", Policy: policy,
+		ApplicationProcessing: collection.NoApplicationProcessing, Sessions: sessions, Received: []collection.Received{},
+	}
+	if _, err := bundle.WriteCollected(request.CasePath, inputs, time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC), record); err != nil {
+		t.Fatal(err)
+	}
+	review, err := redact.Create(context.Background(), request)
+	if err == nil || review != nil {
+		t.Fatal("redaction derived a case from collected receiver evidence")
+	}
+	if strings.Contains(err.Error(), request.CasePath) || len(err.Error()) > 300 {
+		t.Fatalf("unsafe redaction diagnostic: %v", err)
 	}
 }
 
