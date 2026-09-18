@@ -2,9 +2,6 @@ package observesource
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/binary"
-	"encoding/hex"
 	"errors"
 	"slices"
 	"time"
@@ -113,13 +110,13 @@ func Collect(ctx context.Context, source Source, window observewindow.Window, op
 // collector never quietly observes a different source than the one declared.
 func refuse(source Source, window observewindow.Window) (attempt, bool) {
 	now := time.Now()
-	if window.Source != source.Of {
+	if window.Source != source.Observes {
 		return attempt{status: observewindow.SampleUnsupported, at: now,
-			record: Evidence{Kind: source.Of.Kind, Note: "the declared source is not the source this window observes"}}, true
+			record: Evidence{Kind: source.Observes.Kind, Note: "the declared source is not the source this window observes"}}, true
 	}
 	if !source.Enabled {
 		return attempt{status: observewindow.SampleMissing, at: now,
-			record: Evidence{Kind: source.Of.Kind, Note: "this collector is disabled, so no state could be obtained"}}, true
+			record: Evidence{Kind: source.Observes.Kind, Note: "this collector is disabled, so no state could be obtained"}}, true
 	}
 	return attempt{}, false
 }
@@ -161,9 +158,28 @@ func sample(ctx context.Context, window observewindow.Window, retained *snapshot
 	collection.OpenedAt = time.Now().UTC()
 	interval := samplingInterval(window.Completion)
 	limit, _ := time.ParseDuration(window.Completion.Deadline)
+	closes := collection.OpenedAt.Add(limit)
 	var observed []string
 	for {
-		taken := withWatermark(window, collection.OpenedAt, open.read(ctx))
+		// Every read is bounded by what is left of the window as well as by
+		// the source's own timeout, so a bounded retry can never outlast the
+		// deadline it is being retried inside.
+		readCtx, cancel := context.WithDeadline(ctx, closes)
+		taken := withWatermark(window, collection.OpenedAt, open.read(readCtx))
+		expired := readCtx.Err() != nil
+		cancel()
+		// A read the caller stopped never completed, so it is not recorded as
+		// an observation that failed: the window reports the cancellation or
+		// the timeout it was stopped by. A read the window's own deadline cut
+		// short is not recorded either, and the rule it did not satisfy
+		// reports the deadline.
+		if err := ctx.Err(); err != nil {
+			collection.Stop = stopFor(err)
+			break
+		}
+		if expired {
+			break
+		}
 		if taken.status == observewindow.Observed {
 			observed = taken.keys
 		}
@@ -191,7 +207,7 @@ func sample(ctx context.Context, window observewindow.Window, retained *snapshot
 		// Stopping before a sample that would land past the deadline reports
 		// the deadline honestly. Taking one anyway would record an observation
 		// the rule must then discard.
-		if time.Since(collection.OpenedAt)+interval > limit {
+		if time.Now().Add(interval).After(closes) {
 			break
 		}
 		if err := waitFor(ctx, interval); err != nil {
@@ -269,11 +285,7 @@ func retain(retained *snapshot, index int, taken attempt) (observewindow.Sample,
 	if err != nil {
 		return observewindow.Sample{}, err
 	}
-	files := map[string][]byte{"read.json": document}
-	for name, data := range taken.evidence {
-		files[name] = data
-	}
-	identity, err := retained.retain(index, files)
+	identity, err := retained.retain(index, taken.evidence, document)
 	if err != nil {
 		return observewindow.Sample{}, err
 	}
@@ -377,15 +389,11 @@ func correlate(produced, keys []string, observed bool) []observewindow.Correlati
 func stateDigest(keys []string) string {
 	ordered := slices.Clone(keys)
 	slices.Sort(ordered)
-	sum := sha256.New()
-	sum.Write([]byte(EvidenceSchema + "\n"))
-	var size [8]byte
+	parts := make([][]byte, 0, len(ordered))
 	for _, key := range ordered {
-		binary.BigEndian.PutUint64(size[:], uint64(len(key)))
-		sum.Write(size[:])
-		sum.Write([]byte(key))
+		parts = append(parts, []byte(key))
 	}
-	return hex.EncodeToString(sum.Sum(nil))
+	return digestOf(stateDomain, parts)
 }
 
 // recordKeys reads the declared key out of every record of one divided

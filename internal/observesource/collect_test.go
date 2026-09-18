@@ -39,6 +39,13 @@ const declaredFileSource = `{
 
 const exportHeader = "appointment,status\n"
 
+// csvExtraction is the extraction declaration the file-export document above
+// carries, named so a test can replace it with another envelope's.
+const csvExtraction = `"envelope": "csv",
+    "encoding": "utf-8",
+    "csv": {"delimiter": ",", "record_separator": "lf", "header": "present", "fields": 2},
+    "record_key": ["appointment"]`
+
 func write(t *testing.T, directory, name, content string) string {
 	t.Helper()
 	path := filepath.Join(directory, name)
@@ -105,6 +112,81 @@ func TestObservedExportCompletesTheWindowAndNamesWhatItRead(t *testing.T) {
 	}
 	if string(body) != exportHeader+"A1,booked\nA2,booked\n" {
 		t.Fatal("the retained snapshot is not the bytes that were read")
+	}
+}
+
+// Every envelope a mapping recipe reads is an envelope an observation reads,
+// through the same reader and the same declaration.
+func TestEveryDeclaredEnvelopeIsObservedThroughItsPublicInterface(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		extraction string
+		export     string
+	}{
+		{
+			name: "csv",
+			extraction: `"envelope": "csv", "encoding": "utf-8",
+    "csv": {"delimiter": ",", "record_separator": "lf", "header": "present", "fields": 2},
+    "record_key": ["appointment"]`,
+			export: exportHeader + "A1,booked\nA2,booked\n",
+		},
+		{
+			name: "json",
+			extraction: `"envelope": "json", "encoding": "utf-8",
+    "json": {"record_path": ["appointments"]},
+    "record_key": ["id"]`,
+			export: `{"appointments":[{"id":"A1"},{"id":"A2"}]}`,
+		},
+		{
+			name: "xml",
+			extraction: `"envelope": "xml", "encoding": "utf-8",
+    "xml": {"record_path": ["export", "appointment"]},
+    "record_key": ["id"]`,
+			export: `<export><appointment><id>A1</id></appointment><appointment><id>A2</id></appointment></export>`,
+		},
+		{
+			name: "text",
+			extraction: `"envelope": "text", "encoding": "unknown",
+    "text": {"field_separator": "|", "record_separator": "lf", "fields": 2},
+    "record_key": ["2"]`,
+			export: "2026-01-03T11:00:00Z|A1\n2026-01-03T11:05:00Z|A2\n",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			document := strings.Replace(declaredFileSource, csvExtraction, test.extraction, 1)
+			source, _, snapshot := declared(t, document, test.export)
+			completion := collect(t, source, window(t, declaredWindow), snapshot, "A1")
+			if err := completion.Err(); err != nil {
+				t.Fatalf("collection did not complete: %v", err)
+			}
+			if completion.RecordsObserved != 2 {
+				t.Fatalf("records observed = %d, want 2", completion.RecordsObserved)
+			}
+			if err := completion.Correlated("A1"); err != nil {
+				t.Fatalf("A1 was observed exactly once: %v", err)
+			}
+		})
+	}
+}
+
+// An evidence identity names the material a read observed, so two reads of an
+// unchanged source name the same material. Nothing about the run enters it:
+// per ADR-0002 it is a hash over relative names and contents alone.
+func TestTheEvidenceIdentityNamesTheMaterialRatherThanTheRun(t *testing.T) {
+	source, _, snapshot := declared(t, declaredFileSource, exportHeader+"A1,booked\n")
+	completion := collect(t, source, window(t, declaredWindow), snapshot)
+	if err := completion.Err(); err != nil {
+		t.Fatal(err)
+	}
+	first := completion.Samples[0].EvidenceIdentity
+	for _, sample := range completion.Samples {
+		if sample.EvidenceIdentity != first {
+			t.Fatal("two reads of an unchanged export named different material")
+		}
+	}
+	again := collect(t, source, window(t, declaredWindow), filepath.Join(t.TempDir(), "again"))
+	if again.Samples[0].EvidenceIdentity != first {
+		t.Fatal("a second collection of the same export named different material")
 	}
 }
 
@@ -373,6 +455,33 @@ func TestASnapshotDestinationThatAlreadyExistsIsRefused(t *testing.T) {
 	_, err := observesource.Collect(context.Background(), source, window(t, declaredWindow), observesource.Options{Snapshot: snapshot})
 	if err == nil {
 		t.Fatal("an existing snapshot destination was accepted")
+	}
+}
+
+// Original evidence is immutable, so a collection that failed is recovered by
+// collecting again beside it rather than over it. The first snapshot and the
+// first record are exactly as they were.
+func TestCollectingAgainLeavesTheFirstCollectionExactlyAsItWas(t *testing.T) {
+	source, export, snapshot := declared(t, declaredFileSource, exportHeader)
+	if err := os.Remove(export); err != nil {
+		t.Fatal(err)
+	}
+	first := collect(t, source, window(t, declaredWindow), snapshot)
+	if first.Status != observewindow.Missing {
+		t.Fatalf("status = %q, want missing", first.Status)
+	}
+	retained, err := os.ReadFile(filepath.Join(snapshot, "read-0000", "read.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Dir(export), "export.csv", exportHeader+"A1,booked\n")
+	second := collect(t, source, window(t, declaredWindow), filepath.Join(t.TempDir(), "again"))
+	if err := second.Err(); err != nil {
+		t.Fatalf("the second collection did not complete: %v", err)
+	}
+	again, err := os.ReadFile(filepath.Join(snapshot, "read-0000", "read.json"))
+	if err != nil || string(again) != string(retained) {
+		t.Fatalf("the first collection's retained evidence changed: %v", err)
 	}
 }
 

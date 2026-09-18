@@ -8,7 +8,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"path/filepath"
 	"strconv"
 	"time"
 
@@ -25,7 +24,7 @@ func newReader(ctx context.Context, source Source, retained *snapshot, options O
 	if err != nil {
 		return nil, errors.New("a freshness bound is a positive duration of at most one week")
 	}
-	if source.Of.Kind == FileExport {
+	if source.Observes.Kind == FileExport {
 		return &fileReader{extraction: source.Extraction, export: *source.File, maxAge: maxAge}, nil
 	}
 	return newHTTPReader(ctx, source, retained, options, maxAge)
@@ -83,7 +82,7 @@ func newHTTPReader(ctx context.Context, source Source, retained *snapshot, optio
 	// The decision is retained before it is acted on, and a failure to retain
 	// it stops the collection: a destination check nobody can read afterwards
 	// is not evidence that one was made.
-	if err := sendpolicy.WriteDecision(filepath.Join(retained.directory, "decision.json"), decision); err != nil {
+	if err := retained.retainDecision(decision); err != nil {
 		return nil, err
 	}
 	if !decision.Allowed || len(decision.ResolvedAddresses) != 1 {
@@ -213,6 +212,10 @@ func (r *httpReader) once(ctx context.Context, value *secret.Value) (attempt, bo
 		request.Header.Set(r.header, string(value.Expose()))
 	}
 	response, err := r.client.Do(request)
+	// The read is dated when the endpoint answered, not when it was asked, so
+	// an answer generated while the request was in flight is never dated
+	// before the response that carries it.
+	taken.at = time.Now()
 	if err != nil {
 		// Nothing was answered, so nothing was observed. A further attempt can
 		// honestly change that, within the declared bound.
@@ -220,9 +223,9 @@ func (r *httpReader) once(ctx context.Context, value *secret.Value) (attempt, bo
 	}
 	defer response.Body.Close()
 	taken.record.HTTPStatus = response.StatusCode
-	if status, retryable, refused := classify(response.StatusCode); refused {
+	if refusal, note, retryable := classify(response.StatusCode); refusal != "" {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, int64(r.endpoint.MaxBytes)))
-		return failure(taken, status, statusNote(response.StatusCode)), retryable
+		return failure(taken, refusal, note), retryable
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, int64(r.endpoint.MaxBytes)+1))
 	if err != nil {
@@ -251,38 +254,29 @@ func (r *httpReader) once(ctx context.Context, value *secret.Value) (attempt, bo
 	return taken, false
 }
 
-// classify names what a response status means for an observation. Only 200 is
-// an answer this collector reads. A redirection answered about some other
-// resource, so it has no single reading; every other status refused the read,
+// classify reads one response status once: how it refused the read, in fixed
+// wording that repeats no body and no header, and whether a retry could
+// honestly change it. The empty status is the one status this collector reads
+// as an answer, because only 200 is an answer. A redirection answered about
+// some other resource, so it has no single reading; every other status refused,
 // and four of them are the endpoint asking to be asked again.
-func classify(status int) (observewindow.SampleStatus, bool, bool) {
+func classify(status int) (observewindow.SampleStatus, string, bool) {
 	switch {
 	case status == http.StatusOK:
-		return "", false, false
+		return "", "", false
 	case status >= 300 && status < 400:
-		return observewindow.SampleAmbiguous, false, true
+		return observewindow.SampleAmbiguous, "the endpoint redirected the read, so which resource answered has no single reading", false
+	case status == http.StatusUnauthorized, status == http.StatusForbidden:
+		return observewindow.SampleFailed, "the endpoint refused the read as unauthorized, which observed nothing rather than observing that nothing is there", false
+	case status == http.StatusNotFound:
+		return observewindow.SampleFailed, "the endpoint reports that the declared scope is not there to read, which is not a reading of an empty scope", false
 	case status == http.StatusTooManyRequests, status == http.StatusBadGateway,
 		status == http.StatusServiceUnavailable, status == http.StatusGatewayTimeout:
-		return observewindow.SampleFailed, true, true
-	default:
-		return observewindow.SampleFailed, false, true
-	}
-}
-
-// statusNote names the refusal in fixed wording. It repeats no response body
-// and no header: a diagnostic never echoes what the source said.
-func statusNote(status int) string {
-	switch {
-	case status == http.StatusUnauthorized || status == http.StatusForbidden:
-		return "the endpoint refused the read as unauthorized, which observed nothing rather than observing that nothing is there"
-	case status >= 300 && status < 400:
-		return "the endpoint redirected the read, so which resource answered has no single reading"
-	case status == http.StatusNotFound:
-		return "the endpoint reports that the declared scope is not there to read, which is not a reading of an empty scope"
+		return observewindow.SampleFailed, "the endpoint asked to be asked again and was, within the declared bound", true
 	case status >= 500:
-		return "the endpoint failed to answer the read"
+		return observewindow.SampleFailed, "the endpoint failed to answer the read", false
 	default:
-		return "the endpoint refused the read"
+		return observewindow.SampleFailed, "the endpoint refused the read", false
 	}
 }
 

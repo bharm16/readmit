@@ -472,6 +472,58 @@ func TestANonloopbackDestinationNeedsAnExplicitlySelectedPolicy(t *testing.T) {
 	}
 }
 
+// A read the caller cancels never completed, so it is not recorded as an
+// observation that failed. The window reports the cancellation, which is
+// cancellation in the durable run's own vocabulary and never a negative
+// application result.
+func TestCancellingDuringAReadIsCancellationRatherThanAFailedRead(t *testing.T) {
+	ca, address := loopback(t, http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		<-request.Context().Done()
+	}))
+	source, snapshot := declaredHTTP(t, ca, address, declaredHTTPSource)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+	completion, err := observesource.Collect(ctx, source, window(t, declaredHTTPWindow), observesource.Options{Snapshot: snapshot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if completion.Status != observewindow.Cancelled {
+		t.Fatalf("status = %q, want cancelled", completion.Status)
+	}
+	if completion.Status.RunState() != "cancelled" {
+		t.Fatalf("run state = %q, want cancelled", completion.Status.RunState())
+	}
+	if err := completion.AbsenceEvidence(); err == nil {
+		t.Fatal("a cancelled window supported an absence assertion")
+	}
+}
+
+// A retry is bounded by the window it is retried inside, not only by its own
+// count: a source that never answers cannot make a read outlast the deadline.
+func TestARetryNeverOutlastsTheWindowItIsRetriedInside(t *testing.T) {
+	ca, address := loopback(t, http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		<-request.Context().Done()
+	}))
+	document := strings.Replace(declaredHTTPSource, `"attempts": 0`, `"attempts": 4`, 1)
+	document = strings.Replace(document, `"timeout": "3s"`, `"timeout": "5m"`, 1)
+	brief := strings.Replace(declaredHTTPWindow, `"deadline": "5s"`, `"deadline": "300ms"`, 1)
+	source, snapshot := declaredHTTP(t, ca, address, document)
+	started := time.Now()
+	completion := collect(t, source, window(t, brief), snapshot)
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
+		t.Fatalf("the read outlasted its window by %s", elapsed)
+	}
+	if completion.Trustworthy() {
+		t.Fatal("a window whose reads never answered reported itself as trustworthy")
+	}
+	if err := completion.AbsenceEvidence(); err == nil {
+		t.Fatal("a window whose reads never answered supported an absence assertion")
+	}
+}
+
 func TestACredentialIsPresentedFromItsReferenceAndNeverRendered(t *testing.T) {
 	t.Setenv(providerSwitch, "1")
 	const testOnlyValue = "Bearer test-only-not-a-real-credential"

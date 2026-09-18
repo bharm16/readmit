@@ -4,9 +4,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/bharm16/readmit/internal/importer"
 	"github.com/bharm16/readmit/internal/observesource"
 )
 
@@ -15,8 +18,8 @@ func TestADeclaredSourceIsReadExactlyAsWritten(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if source.Of.Kind != observesource.FileExport || source.Of.Scope != "appointments" || !source.Enabled {
-		t.Fatalf("decoded %+v", source.Of)
+	if source.Observes.Kind != observesource.FileExport || source.Observes.Scope != "appointments" || !source.Enabled {
+		t.Fatalf("decoded %+v", source.Observes)
 	}
 	if source.File == nil || source.File.MaxBytes != 65536 || source.HTTP != nil {
 		t.Fatal("a file-export source declares exactly one file export")
@@ -134,5 +137,36 @@ func TestAnObservationSourceIsSelectedExplicitlyAsARegularFile(t *testing.T) {
 	}
 	if _, err := os.Stat(source.File.Path); err == nil {
 		t.Fatal("this test writes no export, so the resolved path should not exist")
+	}
+}
+
+// The extraction declaration reuses the envelope half of a mapping recipe
+// rather than restating it, which is what keeps one reading of what a record
+// is. That reuse has a cost this test pins: a member added to one of those
+// types would silently become a member of readmit-observation-source/v1, which
+// the version rule forbids. When this fails, the answer is a new version string
+// here, never an accepted extra member on this one.
+func TestTheExtractionContractIsPinnedToTheMembersItReuses(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		shape   any
+		members []string
+	}{
+		{"extraction", observesource.Extraction{}, []string{"envelope", "encoding", "csv", "text", "json", "xml", "record_key"}},
+		{"csv dialect", importer.CSVDialect{}, []string{"delimiter", "record_separator", "header", "fields"}},
+		{"text dialect", importer.TextDialect{}, []string{"field_separator", "record_separator", "fields"}},
+		{"document dialect", importer.DocumentDialect{}, []string{"record_path"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			shape := reflect.TypeOf(test.shape)
+			var members []string
+			for index := range shape.NumField() {
+				name, _, _ := strings.Cut(shape.Field(index).Tag.Get("json"), ",")
+				members = append(members, name)
+			}
+			if !slices.Equal(members, test.members) {
+				t.Fatalf("members are %v, want %v; a change here is a new contract version", members, test.members)
+			}
+		})
 	}
 }

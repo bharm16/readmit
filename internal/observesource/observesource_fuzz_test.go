@@ -43,13 +43,13 @@ func FuzzObservationSourceDocument(f *testing.F) {
 			t.Fatalf("accepted a source declaring %d transports", declared)
 		}
 		if source.File != nil {
-			if source.Of.Kind != observesource.FileExport || source.File.MaxBytes < 1 || source.File.MaxBytes > observesource.MaxReadBytes {
+			if source.Observes.Kind != observesource.FileExport || source.File.MaxBytes < 1 || source.File.MaxBytes > observesource.MaxReadBytes {
 				t.Fatalf("accepted an unbounded file export: %+v", source.File)
 			}
 			return
 		}
-		if source.Of.Kind != observesource.HTTPAPI {
-			t.Fatalf("accepted an http transport under the kind %q", source.Of.Kind)
+		if source.Observes.Kind != observesource.HTTPAPI {
+			t.Fatalf("accepted an http transport under the kind %q", source.Observes.Kind)
 		}
 		if source.HTTP.MaxBytes < 1 || source.HTTP.MaxBytes > observesource.MaxReadBytes {
 			t.Fatalf("accepted an unbounded http read: %+v", source.HTTP)

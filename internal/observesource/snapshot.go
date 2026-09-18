@@ -7,10 +7,12 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/sendpolicy"
 )
 
 // EvidenceSchema is the contract the record beside each retained read carries.
@@ -20,6 +22,11 @@ const EvidenceSchema = "readmit-observation-evidence/v1"
 // maxNoteBytes bounds the reason retained beside one read. A note names a
 // condition, never a value, a field, a header or a path.
 const maxNoteBytes = 200
+
+// stateDomain separates a digest of an observed state from an identity of the
+// material that state was read from. The two answer different questions and
+// must never collide.
+const stateDomain = "readmit-observation-state/v1"
 
 // Evidence is what one attempt to read the source recorded about itself, kept
 // beside the original material it read. It names conditions and counts only: no
@@ -96,21 +103,35 @@ func (s *snapshot) close() {
 	}
 }
 
-// retain writes one read's files into their own directory and returns the
-// identity of what was retained: a hash over the relative names and the
-// contents, and nothing else. Following ADR-0002, no timestamp and no absolute
-// path enters it, so the identity names the material rather than the run.
-func (s *snapshot) retain(index int, files map[string][]byte) (string, error) {
+// retain writes one read into its own directory — the original material the
+// source answered with, and beside it the record of the attempt that read it —
+// and returns the identity of the material alone.
+//
+// The record is not part of that identity. It states how old the state was and
+// how many attempts the read took, which are facts about this run rather than
+// about the material, and following ADR-0002 an identity is a hash over
+// relative names and contents with no timestamp in it. Two reads of an
+// unchanged source therefore name the same material.
+func (s *snapshot) retain(index int, material map[string][]byte, record []byte) (string, error) {
 	name := "read-" + zeroPadded(index)
 	if err := s.root.Mkdir(name, 0700); err != nil {
 		return "", errors.New("cannot create the retained read directory")
 	}
-	for _, file := range sortedNames(files) {
-		if err := s.write(name+"/"+file, files[file]); err != nil {
+	if err := s.write(name+"/read.json", record); err != nil {
+		return "", err
+	}
+	for _, file := range sortedNames(material) {
+		if err := s.write(name+"/"+file, material[file]); err != nil {
 			return "", err
 		}
 	}
-	return evidenceIdentity(files), nil
+	return evidenceIdentity(material), nil
+}
+
+// retainDecision keeps the destination decision an HTTP observation was made
+// under beside the material it governed, before that decision is acted on.
+func (s *snapshot) retainDecision(decision sendpolicy.Decision) error {
+	return sendpolicy.WriteDecision(filepath.Join(s.directory, "decision.json"), decision)
 }
 
 func (s *snapshot) write(name string, data []byte) error {
@@ -132,17 +153,30 @@ func (s *snapshot) write(name string, data []byte) error {
 // evidenceIdentity hashes a domain prefix and length-delimited relative names
 // and contents in bytewise name order, exactly as every other readmit artifact
 // identity is taken. It identifies the material an observation read; it does
-// not authenticate it.
-func evidenceIdentity(files map[string][]byte) string {
+// not authenticate it. Material nobody kept has no identity, so a read that
+// answered with nothing names none.
+func evidenceIdentity(material map[string][]byte) string {
+	if len(material) == 0 {
+		return ""
+	}
+	parts := make([][]byte, 0, 2*len(material))
+	for _, name := range sortedNames(material) {
+		parts = append(parts, []byte(name), material[name])
+	}
+	return digestOf(EvidenceSchema, parts)
+}
+
+// digestOf is the one hash this package takes: a domain prefix, then every part
+// length-delimited in the order it was given. A state digest and an evidence
+// identity differ in what they are given, never in how it is hashed.
+func digestOf(domain string, parts [][]byte) string {
 	sum := sha256.New()
-	sum.Write([]byte(EvidenceSchema + "\n"))
+	sum.Write([]byte(domain + "\n"))
 	var size [8]byte
-	for _, name := range sortedNames(files) {
-		for _, part := range [][]byte{[]byte(name), files[name]} {
-			binary.BigEndian.PutUint64(size[:], uint64(len(part)))
-			sum.Write(size[:])
-			sum.Write(part)
-		}
+	for _, part := range parts {
+		binary.BigEndian.PutUint64(size[:], uint64(len(part)))
+		sum.Write(size[:])
+		sum.Write(part)
 	}
 	return hex.EncodeToString(sum.Sum(nil))
 }

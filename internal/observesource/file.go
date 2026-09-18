@@ -47,6 +47,15 @@ func (r *fileReader) read(_ context.Context) attempt {
 		return failure(taken, observewindow.SampleFailed, "the declared export could not be read")
 	}
 	taken.record.Bytes = len(data)
+	// The read is dated when it finished, so an export written while it was
+	// being read is never dated after the read that returned its bytes. An
+	// export that changed underneath the read is state this read cannot place
+	// rather than state it observed.
+	taken.at = time.Now()
+	after, err := os.Stat(r.export.Path)
+	if err != nil || !after.Mode().IsRegular() || !after.ModTime().Equal(info.ModTime()) || after.Size() != info.Size() {
+		return failure(taken, observewindow.SampleAmbiguous, "the export changed while it was being read")
+	}
 	// An export states how old its state is through the time it was last
 	// written. A file readmit cannot date, or one dated after the read, has no
 	// single reading rather than a fresh one.
@@ -83,8 +92,12 @@ func divide(extraction Extraction, data []byte) ([]string, error) {
 }
 
 // failure records one read that was not an observation. It clears every
-// observed value, because collection that failed counted nothing, read no
-// original material and has no state to digest.
+// observed value, because collection that failed counted nothing and has no
+// state to digest. Material the source did answer with is kept: a document that
+// could not be read into the declared schema is exactly what an operator needs
+// to correct the declaration, and it is retained beside that read's own record
+// rather than named by a sample, because the completion contract reserves an
+// evidence identity for an observation.
 func failure(taken attempt, status observewindow.SampleStatus, note string) attempt {
 	taken.status = status
 	taken.record.Note = note

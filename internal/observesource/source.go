@@ -29,6 +29,13 @@
 // recipe is already held to, so an HL7 payload carried in a record keeps its
 // bytes and no second parser can disagree with the first.
 //
+// What it reads is a bounded document rather than a stream, and the bound is
+// the point: a source past the operator's declared bound is refused as
+// truncated, so there is nothing to read incrementally that would not already
+// be an error. importer.Scan divides an HL7 stream under a declared import
+// plan, which is a different reading of different bytes; it reads no envelope
+// and accepts sources this contract deliberately refuses.
+//
 // Following [ADR-0006], an HTTP credential is a *reference*: the declared store
 // kind, the endpoint it is scoped to, and the absolute path of the program that
 // prints the value. readmit never stores, writes or renders a value, and the
@@ -216,8 +223,11 @@ type HTTP struct {
 // It is explicitly selected, never discovered: readmit has no default source,
 // no implicit file and no environment variable that supplies one.
 type Source struct {
-	Schema string               `json:"schema"`
-	Of     observewindow.Source `json:"source"`
+	Schema string `json:"schema"`
+	// Observes is the source this document says how to reach. It must be the
+	// source the window declares, so a collector never quietly observes
+	// something other than the source that was asked about.
+	Observes observewindow.Source `json:"source"`
 	// Enabled is stated rather than assumed. A disabled collector reports that
 	// no state could be obtained, which is an execution error; it never reports
 	// that the source held nothing.
@@ -239,7 +249,7 @@ type Source struct {
 func (s *Source) UnmarshalJSON(data []byte) error {
 	var required struct {
 		Schema     *string               `json:"schema"`
-		Of         *observewindow.Source `json:"source"`
+		Observes   *observewindow.Source `json:"source"`
 		Enabled    *bool                 `json:"enabled"`
 		Freshness  *Freshness            `json:"freshness"`
 		Extraction *Extraction           `json:"extraction"`
@@ -250,7 +260,7 @@ func (s *Source) UnmarshalJSON(data []byte) error {
 	if *required.Schema != Schema {
 		return ErrUnsupportedVersion
 	}
-	if required.Of == nil || required.Enabled == nil || required.Freshness == nil || required.Extraction == nil {
+	if required.Observes == nil || required.Enabled == nil || required.Freshness == nil || required.Extraction == nil {
 		return errors.New("an observation source requires a source, an explicit enablement, a freshness bound, and an extraction declaration")
 	}
 	var members map[string]any
@@ -399,7 +409,7 @@ func (s Source) Validate() error {
 	if s.Schema != Schema {
 		return ErrUnsupportedVersion
 	}
-	if err := s.Of.Validate(); err != nil {
+	if err := s.Observes.Validate(); err != nil {
 		return err
 	}
 	if _, err := boundedDuration(s.Freshness.MaxAge, maxFreshness); err != nil {
@@ -417,7 +427,7 @@ func (s Source) Validate() error {
 	if declared != 1 {
 		return errors.New("an observation source declares exactly one of a file export and an http observation")
 	}
-	switch s.Of.Kind {
+	switch s.Observes.Kind {
 	case FileExport:
 		if s.File == nil {
 			return errors.New("a file-export source declares a file export")

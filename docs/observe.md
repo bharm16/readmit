@@ -271,6 +271,14 @@ source would be read rather than the source — and truncated is never completed
 The window's own `max_records` bounds what one observation may hold, and a
 source past it is truncated too.
 
+An observation therefore reads a bounded document rather than a stream. The
+bound is the point: a source past it is refused as truncated, so there is
+nothing to read incrementally that would not already be an error. The streaming
+scan an [import](import.md) uses divides an HL7 stream under a declared import
+plan, which is a different reading of different bytes; using it here would mean
+teaching it envelopes it does not read and accepting sources this contract
+deliberately refuses.
+
 ### Freshness
 
 Every observation states how old the material it read is, and `max_age` is how
@@ -281,6 +289,13 @@ an error.
 | --- | --- |
 | `file-export` | The export's own modification time. A file readmit cannot date, or one dated after the read, is ambiguous rather than fresh. |
 | `http-api` | The response's `Age` header where it carries one, and otherwise its `Date`. A response stating neither is **ambiguous**: how current it is has no single reading, and unknown is not current. |
+
+The age itself is stated in the retained evidence the observation names, not in
+the completion record: `readmit-observation-completion/v1` carries the window's
+watermark and the sample's status, and adding a member to it would be a new
+contract version rather than an addition to that one. What the record does carry
+is the decision — an observation is evidence that was inside the bound, and a
+read outside it is `stale`, which is an error.
 
 A response carrying an `Age` came from a cache and says so, so it is read as
 state of that age rather than as state of now. The same instant is what the
@@ -370,9 +385,16 @@ record with, so a collector cannot stop at the first convenient answer by
 holding a slightly different rule. It stops early when a read was not an
 observation, when the declared sample limit is reached, and before a read that
 would land past the deadline — which reports **incomplete** honestly rather than
-recording an observation the rule must then discard. Cancelling the command is
-**cancelled** and running out of time is **timed_out**; neither is a negative
-application result.
+recording an observation the rule must then discard.
+
+Every read is bounded by what is left of the window as well as by the source's
+own timeout, so a bounded retry can never outlast the deadline it is being
+retried inside. A read the window's deadline cut short is not recorded as an
+observation that failed, and neither is a read the caller cancelled: neither
+completed. Cancelling the command is **cancelled** and the caller running out of
+time is **timed_out**; a window whose deadline passed reports **incomplete**, or
+**missing** where it passed before any read completed at all. None of them is a
+negative application result.
 
 A window declaring `recorded-baseline` is observed once before it opens. A
 baseline observing a state other than the one `baseline_identity` names is
@@ -390,11 +412,23 @@ as it was read and never rewritten afterwards. Each read gets its own
 a `readmit-observation-evidence/v1` record as `read.json` — the condition the
 read hit, the attempts and retries it took, the response status, the age the
 source stated, and counts. It holds no field value, no response header, no
-credential and no path. An observation's `evidence_identity` is the SHA-256 over
-that directory's relative names and contents, following
-[ADR-0002](adr/0002-case-bundles-are-directories-not-a-database.md): no
-timestamp and no absolute path enters it. Collection that failed names no
-evidence identity, because a read that failed kept no original material.
+credential and no path.
+
+An observation's `evidence_identity` is the SHA-256 over the **material** in
+that directory: the relative names and contents of the bytes the source
+answered with, and nothing else. Following
+[ADR-0002](adr/0002-case-bundles-are-directories-not-a-database.md) no timestamp
+and no absolute path enters it, and `read.json` is deliberately outside it,
+because how old the state was and how many attempts the read took are facts
+about this run rather than about the material. Two reads of an unchanged source
+therefore name the same material.
+
+A read that was not an observation names no evidence identity, because the
+contract reserves one for an observation. Where such a read did receive
+bytes — a document that could not be read into the declared schema is the one
+that does — they are retained beside that read's own `read.json`, because
+what could not be read is exactly what an operator needs to correct the
+declaration.
 
 A second collection writes a second snapshot and a second completion beside the
 first. Neither destination may already exist, and both are reserved through the
