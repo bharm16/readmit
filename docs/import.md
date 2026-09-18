@@ -15,6 +15,12 @@ readmit import --folder exports --archive corpus.zip \
 readmit timeline incident.case
 ```
 
+Evidence that arrives inside a CSV, JSON, XML or text envelope is imported by
+the same command under a [mapping recipe](mapping.md): `--recipe FILE` replaces
+the declarations below with a `readmit-mapping-recipe/v1` document that also
+says where each record's payload, observed time, source, direction and channel
+are. The two forms are exclusive.
+
 Every declaration has a flag, so nothing has to be hand-authored as JSON to run
 an import. `--plan FILE` is the same declarations saved as a reusable document;
 the two forms are exclusive, and the plan an import ran under is recorded
@@ -291,7 +297,9 @@ member is still read, so that the receipt records its real size and digest
 rather than a size the container merely claims. A container past any bound is
 refused, never imported in part. A declared batch boundary produces one source
 per record, so a member of more than 128 records is refused; split the container
-or supply MLLP framing.
+or supply MLLP framing. A [mapping recipe](mapping.md#limits) inherits every one
+of these and adds 64 KiB for one recipe document, 128 envelope records per
+member, and its own locator, field, table and label bounds.
 
 ## Explicitly not supported
 
@@ -308,17 +316,19 @@ or supply MLLP framing.
   folder are ordinary members; they are not expanded. Name them with
   `--archive` in their own import.
 - **No non-ZIP archives.** `tar`, `tar.gz`, and `7z` are not read.
-- **No envelope or log mapping.** CSV, JSON, XML, and timestamped text-log
-  extraction, including explicit source-direction and timestamp mapping, are not
-  part of this command.
+- **No envelope or log mapping under a plan.** CSV, JSON, XML, and timestamped
+  text-log extraction, including explicit source, direction, channel and
+  timestamp mapping, is `--recipe`; see [mapping recipes](mapping.md). A plan
+  divides a member by framing alone and reads no value out of it.
 - **No integration-engine export adapter** and **no file, SFTP, or API
   collection**. An import reads containers that are already on this machine.
 - **No index.** An import writes evidence and a receipt; it builds no catalogue
   and no search index.
-- **No per-source direction or observed times.** One import declares one
-  direction for every occurrence it writes; a mixed-direction corpus needs one
-  import per direction. Observed times stay unknown, and per-occurrence
-  observations are `capture --metadata`.
+- **No per-source direction or observed times under a plan.** One plan-driven
+  import declares one direction for every occurrence it writes; a
+  mixed-direction corpus needs one import per direction. Observed times stay
+  unknown. Reading either out of an envelope is `--recipe`, and supplying them
+  per occurrence directly is `capture --metadata`.
 - **No desktop surface.** The import wizard is a command-line interface in this
   release. The desktop shell lists, verifies and searches a workspace; it does
   not import.

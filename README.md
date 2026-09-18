@@ -76,6 +76,29 @@ guess. Malformed records, including a member the declared boundary finds no
 message in, are kept with all of their bytes and quarantined, never repaired.
 See [importing real-world files](docs/import.md).
 
+`import --recipe RECIPE --folder DIRECTORY --output NEW_DIRECTORY --receipt
+NEW_FILE` maps evidence that arrives inside a CSV, JSON, XML, or timestamped
+text envelope, so an engineer does not write a parser for every incident. A
+`readmit-mapping-recipe/v1` document declares the envelope and its dialect, and
+supplies each of the payload, observed time, source, direction, and channel
+through one typed operator chosen from a closed list: a recipe is data that
+names operators and holds no expression, pattern, or hook. Locators name a
+column, a member path, or an element path; a direction is translated through the
+recipe's own exhaustive value table; and an observed time must carry its own UTC
+offset, because completing one from the machine, a file name, or another message
+would invent provenance. CSV is read byte-exactly rather than through a reader
+that rewrites line endings inside quoted fields, and XML character data is read
+from the member's own bytes because XML normalizes them. `--preview` writes a
+`readmit-mapping-preview/v1` document and creates nothing; the import records
+what it mapped in a `readmit-mapping-receipt/v1` receipt carrying the recipe
+verbatim and the SHA-256 identity of its declarations. A record whose declared
+values do not resolve is retained whole, with a named reason and no provenance
+at all, rather than guessed at or dropped. The receipt is also where mapped and
+unmapped are told apart, and where the mapped source label and channel are kept:
+no case version has a member for any of the three, and this adds no case
+version. See
+[mapping log and tabular exports](docs/mapping.md).
+
 `index build CASE --output NEW_FILE --field PID-3 --retain values --retain-until
 2026-12-31T00:00:00Z` builds a derived, **disposable** index of one case so the
 occurrences carrying a particular identifier can be found without reading every
