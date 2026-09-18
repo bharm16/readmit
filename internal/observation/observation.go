@@ -109,6 +109,15 @@ func textValue(s string) bool {
 	return len(s) <= 1024 && utf8.ValidString(s)
 }
 
+// EmptyInitialState reports the declared starting state a ledger run requires:
+// nothing processed, no appointment records, and a receiver that called its own
+// snapshot consistent. One rule has one implementation, so the runner that
+// refuses to evaluate against a dirty ledger and the reset that confirms a
+// fixture came back up clean are asking the same question of the same bytes.
+func (s Snapshot) EmptyInitialState() bool {
+	return s.Consistent && len(s.Processed) == 0 && len(s.Records) == 0
+}
+
 func Encode(snapshot Snapshot) ([]byte, error) {
 	if err := snapshot.Validate(); err != nil {
 		return nil, err

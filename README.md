@@ -276,7 +276,22 @@ not proof the address is safe to send to. So it can only ever refuse. A class
 recorded as `production` refuses a replay during preparation, before a plan
 exists, which reaches `replay` and `test` alike; `nonproduction` grants nothing
 by itself. `target check --policy FILE` reports the send decision the send path
-would reach for this environment, from the same rule. See
+would reach for this environment, from the same rule.
+`target reset --target FILE --plan FILE --outcome NEW_FILE` returns one named
+environment to the starting state a regression run declares. A
+`readmit-reset-plan/v1` document declares actions from a closed set of typed Go
+operators this release reviewed, each writing down the one authority it requires:
+`operator_confirms` performs nothing and waits for `--confirm ID` from the person
+who did the work, `observation_empty` reads exactly the one receiver observation
+file it names inside the plan's own directory, and `endpoint_quiet` opens one
+connection and sends no HL7 payload. **No reset action is code**: the contract
+carries no command, script, interpreter or argument, a test spec cannot name a
+plan or an action at all, and reset prose is printed for a person and executed by
+nothing. A reset runs only against an environment recorded as `nonproduction`,
+and its one connection is held to the same approved-destination decision a send
+is held to. A reset that failed, or that readmit could not confirm, exits `2` and
+retains a `readmit-reset-outcome/v1` document naming why; it is never an
+assertion failure and never a pass. See
 [named test environments](docs/target.md).
 
 `diff LEFT RIGHT` compares message fields in the terminal, Markdown, or JSON.

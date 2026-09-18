@@ -6,6 +6,14 @@ locally. It opens no connection and produces no verdict or result artifact.
 the spec. There is no implicit target, environment override, shell hook, or reset
 script. Reset instructions are operator-readable prose.
 
+A spec cannot name a reset action, a plan, a command or a hook: `readmit-test/v1`
+rejects unknown members, so a regression packet a customer keeps and reruns in CI
+never acquires general code execution. Reviewed reset actions live in a separate
+`readmit-reset-plan/v1` document an operator selects explicitly and runs with
+[`readmit target reset`](target.md#target-reset), which performs nothing a person
+did not confirm or a reviewer did not read, and reports a reset it could not
+confirm as an execution error.
+
 A spec naming an environment recorded as `production` is refused during
 preparation, before a plan exists, exactly as `readmit replay` is: local
 validation reports the refusal, and `--send` retains a configuration-error
@@ -96,7 +104,7 @@ disconnect, refused connection, protocol error, cancellation, or unattempted
 message is an execution error, even when some earlier assertions could match.
 
 V1 supports the fixture's empty-ledger reset and three typed assertion operators.
-It does not automate reset, mutate expectations, infer production workflow success,
+It does not automate reset from a spec, mutate expectations, infer production workflow success,
 minimize cases, retry uncertain sends, or accept arbitrary external ledgers without
 the receipt contract. See [spec format](test-spec.md), [result format](test-result.md),
 [shared selectors](selectors.md), and [receiver handoff](listen.md).

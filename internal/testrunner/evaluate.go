@@ -24,7 +24,7 @@ func pending(spec Spec) []AssertionResult {
 }
 
 func initialState(snapshot *observation.Snapshot) bool {
-	return snapshot != nil && snapshot.Consistent && len(snapshot.Processed) == 0 && len(snapshot.Records) == 0
+	return snapshot != nil && snapshot.EmptyInitialState()
 }
 
 // evaluate operates only on retained evidence. Every required observation is

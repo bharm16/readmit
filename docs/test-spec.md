@@ -10,7 +10,7 @@ rejected. See the complete independently authored
 | `name` | Nonempty local description, at most 256 bytes. |
 | `input` | `{case, messages}`: explicit case path and 1–4000 unique source message occurrence IDs. Selected messages run in source order. |
 | `target` | Explicit `readmit-target/v1` configuration file path. Its network/CA/approval rules are the replay contract. |
-| `setup` | `{initial_state, reset_instructions}`. Ledger initial state is `empty-ledger`; ACK-only state is `operator-declared`. Reset prose is required and is never executed. |
+| `setup` | `{initial_state, reset_instructions}`. Ledger initial state is `empty-ledger`; ACK-only state is `operator-declared`. Reset prose is required and is never executed. A spec names no reset action, plan, command or hook; reviewed actions live in the separate [`readmit-reset-plan/v1`](target.md#target-reset) document an operator selects. |
 | `observation` | `{boundary, path}` for `appointment-ledger`; `{boundary:"ack-contract"}` without a path for ACK-only tests. |
 | `assertions` | 1–256 typed assertions, each with a unique lowercase `id` (letters/digits/hyphens, beginning with a letter, at most 64 bytes). |
 
