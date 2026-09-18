@@ -211,3 +211,20 @@ func TestInspectorUsesOnlyVersionMatchedBundledFieldLabels(t *testing.T) {
 		}
 	}
 }
+
+func TestInspectorBoundsUnsupportedEncodingMetadata(t *testing.T) {
+	app, root, _ := gridWorkspace(t)
+	header := []string{"MSH", "^~\\&", "A", "B", "C", "D", "20260101", "", "ADT^A01", "id", "P", strings.Repeat("2", 5000), "", "", "", "", "", strings.Repeat("X", 5000)}
+	b := writeCase(t, root, "long-metadata", framed(strings.Join(header, "|")+"\rPID|value\r"))
+	got := app.InspectOccurrence(desktop.InspectRequest{Workspace: root, Case: "long-metadata", Identity: b.Identity, Occurrence: b.Events[0].ID, Path: "PID[1]-1", ByteOffset: -1})
+	if got.Inspection == nil {
+		t.Fatal(got)
+	}
+	view := got.Inspection
+	if len(view.Encoding) > 128 || len(view.Metadata.HL7Version) > 128 || !strings.Contains(view.Encoding, "exceeds") || !strings.Contains(view.Metadata.HL7Version, "exceeds") {
+		t.Fatalf("unbounded or silently shortened metadata: encoding=%d version=%q", len(view.Encoding), view.Metadata.HL7Version)
+	}
+	if view.Raw != "value" || view.DecodeState != "unsupported_encoding" {
+		t.Fatal("lost original selected value")
+	}
+}

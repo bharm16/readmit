@@ -164,7 +164,10 @@ func describeValue(view *Inspection, doc *hl7.Document) {
 	m := doc.Messages[0]
 	charset := m.Segments[0].Field(18)
 	declared := doc.Bytes(charset.Span)
-	view.Encoding = escapeBytes(declared)
+	view.Encoding = "declaration exceeds the 128-byte metadata display limit"
+	if len(declared) <= 128 {
+		view.Encoding = escapeBytes(declared)
+	}
 	if charset.State == hl7.Omitted || charset.State == hl7.Empty {
 		view.Encoding = "ASCII (default)"
 		declared = []byte("ASCII")
@@ -246,7 +249,10 @@ func fieldMetadata(doc *hl7.Document, selected hl7.Node) FieldMetadata {
 	version, _ := doc.Select(0, versionSelector)
 	versionBytes := doc.Bytes(version.Span)
 	// A declaration is shown escaped and bounded even when labels are unsupported.
-	metadata.HL7Version = escapeBytes(versionBytes[:min(len(versionBytes), 128)])
+	metadata.HL7Version = "declaration exceeds the 128-byte metadata display limit"
+	if len(versionBytes) <= 128 {
+		metadata.HL7Version = escapeBytes(versionBytes)
+	}
 	labels, err := dictionary.Load()
 	if err != nil {
 		metadata.Status = "unavailable"
