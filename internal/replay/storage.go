@@ -100,7 +100,13 @@ func begin(plan *Plan, path string) (*Run, *runWriter, error) {
 }
 
 func checkDestination(plan *Plan, path string) (string, error) {
-	resolved, err := artifactpath.Outside(plan.sourceInfo, path)
+	// Equal contents do not establish directory identity: a copied replacement
+	// would invalidate containment checks made against the original directory.
+	sourceInfo, err := os.Stat(plan.sourcePath)
+	if err != nil || !os.SameFile(plan.sourceInfo, sourceInfo) {
+		return "", errors.New("source bundle directory changed after replay preparation")
+	}
+	resolved, err := artifactpath.Outside(sourceInfo, path)
 	if err != nil {
 		return "", err
 	}

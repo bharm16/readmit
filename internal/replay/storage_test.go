@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/mllp"
 	"github.com/bharm16/readmit/internal/replay"
 )
@@ -200,6 +201,40 @@ func TestOutputFailureAndSourceChangesNeverConnect(t *testing.T) {
 	if c, err := l.Accept(); err == nil {
 		_ = c.Close()
 		t.Fatal("preflight failure still connected")
+	}
+}
+
+func TestReplacedSourceDirectoryCannotReceiveNestedRun(t *testing.T) {
+	source := caseAt(t, request("REPLACEMENT"))
+	plan, err := replay.Prepare(source, target("127.0.0.1:2575"), replay.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved := source + "-original"
+	if err := os.Rename(source, moved); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.CopyFS(source, os.DirFS(moved)); err != nil {
+		t.Fatal(err)
+	}
+	replacement, err := bundle.Open(source)
+	if err != nil || replacement.Identity != plan.SourceIdentity() {
+		t.Fatal("replacement must have exactly the prepared source contents")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	output := filepath.Join(source, "nested-run")
+	if _, err := replay.Execute(ctx, plan, output); err == nil {
+		t.Fatal("copied replacement bypassed immutable source containment")
+	}
+	if _, err := os.Lstat(output); !os.IsNotExist(err) {
+		t.Fatal("rejected run created an output inside the replacement source")
+	}
+	for _, path := range []string{source, moved} {
+		after, err := bundle.Open(path)
+		if err != nil || after.Identity != plan.SourceIdentity() {
+			t.Fatal("source bytes or bundle identity changed")
+		}
 	}
 }
 
