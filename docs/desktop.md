@@ -44,12 +44,18 @@ artifacts are never reported as completed.
 | `CreateSampleWorkspace` | Writes the sample workspace into the chosen folder and opens it. |
 | `OpenCase` | Verifies one listed entry as case evidence. |
 | `RecentWorkspaces` | Lists previously opened folders, most recent first. |
-| `Cancel` | Stops the operation that is running now. |
+| `Cancel` | Stops the operation that is running now, when it can be interrupted. |
 
 Exactly one operation runs at a time. A second request reports `busy` rather
 than racing the first, and a finished operation always releases the slot,
 including after a failure or a cancellation, so the next request proceeds.
-`Cancel` cannot retract bytes an operation has already written.
+`RecentWorkspaces` is the exception: it reads one small local file and does not
+claim the slot, so the list stays available while an operation runs.
+
+`Cancel` cannot retract bytes an operation has already written. Choosing a
+folder and listing it are interruptible; `OpenCase` is not, because the shared
+case reader runs to completion under its own size limits once it starts. The
+window offers the Cancel control only while an interruptible operation runs.
 
 ## Workspaces and artifacts
 
@@ -85,9 +91,13 @@ readmit synth --seed 0 --base-time 2026-01-01T12:00:00Z \
 down to every manifest, record, payload and bundle identity. This evidence is
 synthetically generated, not imported: its provenance says so, and the `invalid`
 case is deliberately semantically invalid. It is a fixture family, never
-customer data. The destination must be new; an existing `readmit-sample` folder
-is refused rather than reused or overwritten, and a folder this account cannot
-write reports `permission_denied`.
+customer data.
+
+The destination must be new. A folder that already holds a `readmit-sample`
+folder is refused and left exactly as it is, whether that folder is complete
+evidence or output an interrupted attempt retained; recovery is to choose a
+different folder, or to move the retained output aside outside the application.
+A folder this account cannot write reports `permission_denied`.
 
 ## Recent workspaces
 
@@ -126,6 +136,10 @@ value.
 - Nested folders. Only the immediate entries of the chosen folder are listed,
   and at most 1024 of them; a larger folder is refused rather than listed in
   part.
+- Progress events. Every operation here is bounded and short: listing reads
+  directory entries, and verification is bounded by the case reader's own
+  limits. Long-running work, and the progress reporting it needs, arrives with
+  the operations that have it.
 - Installation, upgrade, signing, and a supported desktop platform matrix.
   Continuous integration builds the shell natively on macOS as a build check,
   which is not a support claim.

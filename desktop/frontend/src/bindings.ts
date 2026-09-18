@@ -78,25 +78,30 @@ declare global {
   }
 }
 
-const unavailable = "the application is still starting";
+const starting = "the application is still starting";
+const unreachable = "the application did not answer";
+
+class NotBound extends Error {}
 
 function facade(): Facade {
   const bound = window.go?.desktop?.App;
   if (!bound) {
-    throw new Error(unavailable);
+    throw new NotBound(starting);
   }
   return bound;
 }
 
-/** A rejected call is a failed operation, never a silent success. */
+/** A rejected call is a failed operation, never a silent success. Host
+ * diagnostics are not shown: the reason is one of these fixed sentences. */
 async function guard<T extends { state: State; reason?: string }>(
   call: () => Promise<T>,
   fallback: T,
 ): Promise<T> {
   try {
     return await call();
-  } catch {
-    return { ...fallback, state: "failed", reason: unavailable };
+  } catch (failure) {
+    const reason = failure instanceof NotBound ? starting : unreachable;
+    return { ...fallback, state: "failed", reason };
   }
 }
 

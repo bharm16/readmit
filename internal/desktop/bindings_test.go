@@ -48,3 +48,32 @@ func TestFrontendBindingsDeclareEveryOperationState(t *testing.T) {
 		}
 	}
 }
+
+// The frontend reads these members by name. A Go member the declarations do not
+// carry is a silently broken interface that still type-checks on both sides, so
+// every member of every bound result type must be declared.
+func TestFrontendBindingsDeclareEveryResultMember(t *testing.T) {
+	declarations, err := os.ReadFile(bindingsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindings := string(declarations)
+	for _, bound := range []reflect.Type{
+		reflect.TypeOf(desktop.WorkspaceResult{}),
+		reflect.TypeOf(desktop.Workspace{}),
+		reflect.TypeOf(desktop.Artifact{}),
+		reflect.TypeOf(desktop.CaseResult{}),
+		reflect.TypeOf(desktop.Case{}),
+		reflect.TypeOf(desktop.RecentResult{}),
+	} {
+		for i := range bound.NumField() {
+			member, _, _ := strings.Cut(bound.Field(i).Tag.Get("json"), ",")
+			if member == "" {
+				t.Fatalf("%s.%s carries no JSON member name", bound.Name(), bound.Field(i).Name)
+			}
+			if !strings.Contains(bindings, member+":") && !strings.Contains(bindings, member+"?:") {
+				t.Errorf("%s member %q has no typed declaration in %s", bound.Name(), member, bindingsFile)
+			}
+		}
+	}
+}

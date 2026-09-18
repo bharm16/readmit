@@ -60,7 +60,7 @@ func main() {
 		log.Fatal("readmit: cannot resolve the user configuration directory")
 	}
 	folders := &dialog{}
-	options := &options.App{
+	application := &options.App{
 		Title:       "readmit",
 		Width:       1100,
 		Height:      760,
@@ -69,13 +69,12 @@ func main() {
 		AssetServer: &assetserver.Options{Assets: assets},
 		OnStartup:   folders.start,
 		Bind:        []any{desktop.New(folders, recent)},
-		// Diagnostics stay bounded and value-free. The shell reports no
-		// telemetry, no crash reports and no update checks, and it never logs
-		// folder names, evidence, or message content.
-		Logger:   logger.NewDefaultLogger(),
+		// The shell adds no logging of its own, reports no telemetry, no crash
+		// reports and no update checks, and sends nothing to a network. The
+		// window host is held to errors so it emits no routine output either.
 		LogLevel: logger.ERROR,
 	}
-	if err := wails.Run(options); err != nil {
+	if err := wails.Run(application); err != nil {
 		log.Fatal("readmit: the desktop window could not be created")
 	}
 }

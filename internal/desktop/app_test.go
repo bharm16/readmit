@@ -397,3 +397,53 @@ func unique(values []string) []string {
 	}
 	return distinct
 }
+
+func TestSampleWorkspaceRefusesRetainedOutputWithoutReusingIt(t *testing.T) {
+	parent := t.TempDir()
+	app := newApp(t, &chooser{folder: parent})
+	// An interrupted attempt retains incomplete output rather than deleting it.
+	// The next attempt must refuse that folder, leave it exactly as it is, and
+	// say how to continue. It is never completed, reused, or overwritten.
+	retained := filepath.Join(parent, desktop.SampleName)
+	if err := os.Mkdir(retained, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(retained, "manifest.json"), []byte(`{"schema":"readmit-case/v1"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	result := app.CreateSampleWorkspace()
+	if result.State != desktop.Failed || result.Workspace != nil {
+		t.Fatalf("retained output was reused as a sample workspace: %+v", result)
+	}
+	if !strings.Contains(result.Reason, "choose a different folder") {
+		t.Fatalf("the refusal does not say how to continue: %q", result.Reason)
+	}
+	entries, err := os.ReadDir(retained)
+	if err != nil || len(entries) != 1 || entries[0].Name() != "manifest.json" {
+		t.Fatalf("the refused attempt changed retained output: %v %v", entries, err)
+	}
+	if recovered := newApp(t, &chooser{folder: t.TempDir()}).CreateSampleWorkspace(); recovered.State != desktop.Completed {
+		t.Fatalf("no recovery was possible after retained output: %+v", recovered)
+	}
+}
+
+func TestOpenCaseHoldsTheSameOperationSlot(t *testing.T) {
+	parent := t.TempDir()
+	preparation := newApp(t, &chooser{folder: parent})
+	root := sample(t, preparation).Workspace.Root
+
+	reentrant := &chooser{folder: root}
+	app := desktop.New(reentrant, filepath.Join(t.TempDir(), "recent.json"))
+	var concurrent desktop.CaseResult
+	reentrant.before = func() { concurrent = app.OpenCase(root, "regression") }
+	if result := app.SelectWorkspace(); result.State != desktop.Completed {
+		t.Fatalf("the first operation did not complete: %+v", result)
+	}
+	if concurrent.State != desktop.Busy || concurrent.Case != nil {
+		t.Fatalf("a case was verified while another operation held the facade: %+v", concurrent)
+	}
+	// Recovery: the slot is released and verification works immediately after.
+	if opened := app.OpenCase(root, "regression"); opened.State != desktop.Completed || opened.Case == nil {
+		t.Fatalf("the facade stayed busy after its operation finished: %+v", opened)
+	}
+}

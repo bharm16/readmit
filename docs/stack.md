@@ -96,10 +96,10 @@ Pin the current patch release and bump through reviewed pull requests, never dur
 | Go toolchain | go1.27.1 (`tools/toolchain.py` resolves the `toolchain` directive for setup-go; `GOTOOLCHAIN=local` in CI) |
 | Cobra | v1.10.2 |
 | Wails | v2.16.0 (desktop module only) |
-| React and React DOM | 19.3.0 |
-| Vite | 8.3.0 |
+| React and React DOM | 19.3.0 (with `@types/react` and `@types/react-dom` 19.3.0) |
+| Vite | 8.3.0 (with `@vitejs/plugin-react` 6.1.1) |
 | TypeScript | 5.9.3 |
-| Node | 24 in CI; exact frontend versions come from `desktop/frontend/package-lock.json` |
+| Node | 24 in CI; every resolved frontend version is locked in `desktop/frontend/package-lock.json` |
 | govulncheck | v1.8.0 |
 | GoReleaser OSS | v2.18.2 |
 | actions/attest | v4, by commit SHA |

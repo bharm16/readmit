@@ -14,7 +14,7 @@ import {
 
 const stateLabels: Record<State, string> = {
   empty: "Nothing here yet",
-  busy: "Another operation is still running",
+  busy: "Busy",
   cancelled: "Cancelled",
   failed: "Failed",
   permission_denied: "Permission denied",
@@ -32,8 +32,12 @@ function Status({ state, reason }: { state: State; reason?: string | undefined }
   );
 }
 
+/** Verifying a case runs to completion once the shared reader starts, so the
+ * Cancel control is offered only while an interruptible operation is running. */
+type Running = null | "workspace" | "case";
+
 export default function App() {
-  const [busy, setBusy] = useState(false);
+  const [running, setRunning] = useState<Running>(null);
   const [workspace, setWorkspace] = useState<WorkspaceResult | null>(null);
   const [evidence, setEvidence] = useState<CaseResult | null>(null);
   const [recent, setRecent] = useState<RecentResult | null>(null);
@@ -48,22 +52,25 @@ export default function App() {
 
   const run = useCallback(
     async (operation: () => Promise<WorkspaceResult>) => {
-      setBusy(true);
+      setRunning("workspace");
       setEvidence(null);
+      setWorkspace(null);
       const result = await operation();
       setWorkspace(result);
-      setBusy(false);
+      setRunning(null);
       await refreshRecent();
     },
     [refreshRecent],
   );
 
   const inspect = useCallback(async (root: string, name: string) => {
-    setBusy(true);
+    setRunning("case");
+    setEvidence(null);
     setEvidence(await openCase(root, name));
-    setBusy(false);
+    setRunning(null);
   }, []);
 
+  const busy = running !== null;
   const opened = workspace?.workspace;
 
   return (
@@ -83,11 +90,11 @@ export default function App() {
           <button type="button" disabled={busy} onClick={() => void run(createSampleWorkspace)}>
             Create the sample workspace…
           </button>
-          <button type="button" disabled={!busy} onClick={cancel}>
+          <button type="button" disabled={running !== "workspace"} onClick={cancel}>
             Cancel
           </button>
         </div>
-        {busy ? <Status state="busy" reason="Working…" /> : null}
+        {running === "workspace" ? <Status state="busy" reason="Opening the folder." /> : null}
         {workspace ? <Status state={workspace.state} reason={workspace.reason} /> : null}
         {opened ? <p className="root">{opened.root}</p> : null}
       </section>
@@ -127,6 +134,7 @@ export default function App() {
       {evidence ? (
         <section aria-label="Case">
           <h2>Case</h2>
+          {running === "case" ? <Status state="busy" reason="Verifying the case." /> : null}
           <Status state={evidence.state} reason={evidence.reason} />
           {evidence.case ? (
             <dl className="evidence">

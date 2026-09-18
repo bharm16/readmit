@@ -114,6 +114,24 @@ type RecentResult struct {
 	Roots  []string `json:"roots"`
 }
 
+// refusal is the state and fixed reason of an operation that did not run. It is
+// shared plumbing: each public result keeps its own flat shape for the shell.
+type refusal struct {
+	state  State
+	reason string
+}
+
+var (
+	busyRefusal      = refusal{Busy, "another operation is already running"}
+	cancelledRefusal = refusal{Cancelled, "the operation was cancelled"}
+)
+
+func (r refusal) workspace() WorkspaceResult {
+	return WorkspaceResult{State: r.state, Reason: r.reason}
+}
+
+func (r refusal) evidence() CaseResult { return CaseResult{State: r.state, Reason: r.reason} }
+
 // FolderChooser presents the host's native folder dialog. An empty path with a
 // nil error means the person dismissed it without choosing.
 type FolderChooser interface {
@@ -127,8 +145,9 @@ type App struct {
 	chooser    FolderChooser
 	recentPath string
 
-	mu     sync.Mutex
-	cancel context.CancelFunc
+	mu      sync.Mutex
+	running bool
+	cancel  context.CancelFunc
 }
 
 // New binds the facade to a host folder dialog and to the file that holds
@@ -137,8 +156,10 @@ func New(chooser FolderChooser, recentPath string) *App {
 	return &App{chooser: chooser, recentPath: recentPath}
 }
 
-// Cancel stops the operation that is running now. It does nothing when none is
-// running, and it cannot retract bytes an operation already wrote.
+// Cancel stops the operation that is running now, when that operation can be
+// interrupted. Verifying a case runs to completion once the shared reader
+// starts. Cancel does nothing when nothing is running, and it never retracts
+// bytes an operation already wrote.
 func (a *App) Cancel() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -147,33 +168,49 @@ func (a *App) Cancel() {
 	}
 }
 
-// begin claims the single operation slot. The returned release always frees it.
-func (a *App) begin() (context.Context, func(), bool) {
+// claim reserves the single operation slot for work that runs to completion
+// once it starts. The returned release always frees the slot.
+func (a *App) claim() (func(), bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.cancel != nil {
+	if a.running {
+		return nil, false
+	}
+	a.running = true
+	return func() {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		if a.cancel != nil {
+			a.cancel()
+			a.cancel = nil
+		}
+		a.running = false
+	}, true
+}
+
+// begin claims the slot for work Cancel can interrupt.
+func (a *App) begin() (context.Context, func(), bool) {
+	release, claimed := a.claim()
+	if !claimed {
 		return nil, nil, false
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	a.mu.Lock()
 	a.cancel = cancel
-	return ctx, func() {
-		a.mu.Lock()
-		defer a.mu.Unlock()
-		cancel()
-		a.cancel = nil
-	}, true
+	a.mu.Unlock()
+	return ctx, release, true
 }
 
 // SelectWorkspace asks the host for a folder and opens it as a workspace.
 func (a *App) SelectWorkspace() WorkspaceResult {
 	ctx, release, claimed := a.begin()
 	if !claimed {
-		return WorkspaceResult{State: Busy, Reason: busyReason}
+		return busyRefusal.workspace()
 	}
 	defer release()
-	folder, refusal := a.chooseFolder(ctx, "Open a readmit workspace folder")
+	folder, declined := a.chooseFolder(ctx, "Open a readmit workspace folder")
 	if folder == "" {
-		return refusal
+		return declined.workspace()
 	}
 	return a.openWorkspace(ctx, folder)
 }
@@ -183,7 +220,7 @@ func (a *App) SelectWorkspace() WorkspaceResult {
 func (a *App) OpenWorkspace(path string) WorkspaceResult {
 	ctx, release, claimed := a.begin()
 	if !claimed {
-		return WorkspaceResult{State: Busy, Reason: busyReason}
+		return busyRefusal.workspace()
 	}
 	defer release()
 	return a.openWorkspace(ctx, path)
@@ -195,73 +232,71 @@ func (a *App) OpenWorkspace(path string) WorkspaceResult {
 func (a *App) CreateSampleWorkspace() WorkspaceResult {
 	ctx, release, claimed := a.begin()
 	if !claimed {
-		return WorkspaceResult{State: Busy, Reason: busyReason}
+		return busyRefusal.workspace()
 	}
 	defer release()
-	parent, refusal := a.chooseFolder(ctx, "Choose a folder for the readmit sample workspace")
+	parent, declined := a.chooseFolder(ctx, "Choose a folder for the readmit sample workspace")
 	if parent == "" {
-		return refusal
+		return declined.workspace()
 	}
 	if ctx.Err() != nil {
-		return WorkspaceResult{State: Cancelled, Reason: cancelledReason}
+		return cancelledRefusal.workspace()
 	}
+	// synth.Write resolves and protects the destination itself. This only
+	// separates the one failure worth an actionable sentence: the chosen folder
+	// already holds a readmit-sample folder, which may be complete evidence or
+	// output an interrupted attempt retained. Neither is reused or overwritten.
 	destination := filepath.Join(parent, SampleName)
 	if _, err := os.Lstat(destination); err == nil {
-		return WorkspaceResult{State: Failed, Reason: "a sample workspace already exists in the chosen folder"}
+		return WorkspaceResult{State: Failed, Reason: "the chosen folder already holds a readmit-sample folder; choose a different folder"}
 	}
 	if _, err := synth.Write(destination, sampleInputs); err != nil {
-		return sampleFailure(parent)
+		return probeWriteFailure(parent).workspace()
 	}
 	return a.openWorkspace(ctx, destination)
 }
 
 // OpenCase verifies one listed entry through the same reader the command line
 // uses. Completion, identity, payload hashes and every record are checked
-// before any count below is reported.
+// before any count below is reported. Verification is bounded by the case
+// reader's own limits and runs to completion once it starts, so it holds the
+// operation slot but is not interruptible.
 func (a *App) OpenCase(workspace, name string) CaseResult {
-	_, release, claimed := a.begin()
+	release, claimed := a.claim()
 	if !claimed {
-		return CaseResult{State: Busy, Reason: busyReason}
+		return busyRefusal.evidence()
 	}
 	defer release()
-	if name == "." || !filepath.IsLocal(name) || filepath.Base(name) != name {
-		return CaseResult{State: Failed, Reason: "a case must be named by one entry of the open workspace"}
-	}
-	root, refusal := resolveFolder(workspace)
+	root, declined := resolveFolder(workspace)
 	if root == "" {
-		return CaseResult{State: refusal.State, Reason: refusal.Reason}
+		return declined.evidence()
 	}
-	path := filepath.Join(root, name)
-	if info, err := os.Lstat(path); err != nil || info.Mode()&fs.ModeSymlink != 0 || !info.IsDir() {
-		return CaseResult{State: Failed, Reason: "that entry is not a case bundle directory in this workspace"}
+	path, err := artifactpath.Child(root, name)
+	if err != nil {
+		return CaseResult{State: Failed, Reason: "a case must be named by one directory entry of the open workspace"}
 	}
 	opened, err := bundle.Open(path)
 	if err != nil {
 		return CaseResult{State: Failed, Reason: "the case could not be verified as complete, unmodified evidence"}
 	}
-	evidence := &Case{
-		Name:        name,
-		Identity:    opened.Identity,
-		Schema:      opened.Manifest.Schema,
-		Provenance:  string(opened.Manifest.Provenance.Mode),
-		Sources:     len(opened.Manifest.Sources),
-		Occurrences: len(opened.Events),
-	}
-	for _, event := range opened.Events {
-		switch event.Kind {
-		case bundle.Message:
-			evidence.Messages++
-		case bundle.Acknowledgement:
-			evidence.Acknowledgements++
-		case bundle.Unparsed:
-			evidence.Unparsed++
-		}
-	}
-	return CaseResult{State: Completed, Case: evidence}
+	counts := opened.Counts()
+	return CaseResult{State: Completed, Case: &Case{
+		Name:             name,
+		Identity:         opened.Identity,
+		Schema:           opened.Manifest.Schema,
+		Provenance:       string(opened.Manifest.Provenance.Mode),
+		Sources:          len(opened.Manifest.Sources),
+		Occurrences:      len(opened.Events),
+		Messages:         counts[bundle.Message],
+		Acknowledgements: counts[bundle.Acknowledgement],
+		Unparsed:         counts[bundle.Unparsed],
+	}}
 }
 
 // RecentWorkspaces lists previously opened workspace folders, most recent
-// first. A list this release cannot read is reported, never replaced.
+// first. It reads one small local file and deliberately does not claim the
+// operation slot, so the shell can still offer the list while an operation
+// runs. A list this release cannot read is reported, never replaced.
 func (a *App) RecentWorkspaces() RecentResult {
 	roots, err := readRecent(a.recentPath)
 	switch {
@@ -275,29 +310,24 @@ func (a *App) RecentWorkspaces() RecentResult {
 	return RecentResult{State: Completed, Roots: roots}
 }
 
-const (
-	busyReason      = "another operation is already running"
-	cancelledReason = "the operation was cancelled"
-)
-
-func (a *App) chooseFolder(ctx context.Context, title string) (string, WorkspaceResult) {
+func (a *App) chooseFolder(ctx context.Context, title string) (string, refusal) {
 	if ctx.Err() != nil {
-		return "", WorkspaceResult{State: Cancelled, Reason: cancelledReason}
+		return "", cancelledRefusal
 	}
 	folder, err := a.chooser.ChooseFolder(title)
 	switch {
 	case err != nil:
-		return "", WorkspaceResult{State: Failed, Reason: "the folder dialog is unavailable"}
+		return "", refusal{Failed, "the folder dialog is unavailable"}
 	case folder == "":
-		return "", WorkspaceResult{State: Cancelled, Reason: "no folder was chosen"}
+		return "", refusal{Cancelled, "no folder was chosen"}
 	}
-	return folder, WorkspaceResult{}
+	return folder, refusal{}
 }
 
 func (a *App) openWorkspace(ctx context.Context, path string) WorkspaceResult {
-	root, refusal := resolveFolder(path)
+	root, declined := resolveFolder(path)
 	if root == "" {
-		return refusal
+		return declined.workspace()
 	}
 	entries, err := os.ReadDir(root)
 	switch {
@@ -311,7 +341,7 @@ func (a *App) openWorkspace(ctx context.Context, path string) WorkspaceResult {
 	artifacts := make([]Artifact, 0, len(entries))
 	for _, entry := range entries {
 		if ctx.Err() != nil {
-			return WorkspaceResult{State: Cancelled, Reason: cancelledReason}
+			return cancelledRefusal.workspace()
 		}
 		artifacts = append(artifacts, describe(root, entry))
 	}
@@ -325,42 +355,47 @@ func (a *App) openWorkspace(ctx context.Context, path string) WorkspaceResult {
 
 // resolveFolder leaves path policy to artifactpath and only separates a folder
 // this account cannot reach from one that is not an openable workspace.
-func resolveFolder(path string) (string, WorkspaceResult) {
+func resolveFolder(path string) (string, refusal) {
 	if _, err := os.Lstat(path); errors.Is(err, fs.ErrPermission) {
-		return "", WorkspaceResult{State: PermissionDenied, Reason: "this account cannot open the chosen folder"}
+		return "", refusal{PermissionDenied, "this account cannot open the chosen folder"}
 	}
 	root, err := artifactpath.Directory(path)
 	if err != nil {
-		return "", WorkspaceResult{State: Failed, Reason: "a workspace must be an existing folder that is not a symbolic link"}
+		return "", refusal{Failed, "a workspace must be an existing folder that is not a symbolic link"}
 	}
-	return root, WorkspaceResult{}
+	return root, refusal{}
 }
 
 // describe reports what one entry declares. It never verifies evidence, so an
 // entry listed as a case is a claim until OpenCase accepts it.
 func describe(root string, entry fs.DirEntry) Artifact {
 	name := entry.Name()
-	switch {
-	case entry.Type()&fs.ModeSymlink != 0:
-		return Artifact{Name: name, Kind: UnsupportedArtifact, Reason: "symbolic links are not opened as evidence"}
-	case !entry.IsDir():
-		return Artifact{Name: name, Kind: UnsupportedArtifact, Reason: "not a case bundle directory"}
+	path, err := artifactpath.Child(root, name)
+	if err != nil {
+		reason := "not a case bundle directory"
+		if entry.Type()&fs.ModeSymlink != 0 {
+			reason = "symbolic links are not opened as evidence"
+		}
+		return Artifact{Name: name, Kind: UnsupportedArtifact, Reason: reason}
 	}
-	manifest, err := bundle.Describe(filepath.Join(root, name))
+	manifest, err := bundle.Describe(path)
 	if err != nil {
 		return Artifact{Name: name, Kind: UnsupportedArtifact, Reason: "not a case bundle this release supports"}
 	}
 	return Artifact{Name: name, Kind: CaseArtifact, Schema: manifest.Schema, Provenance: string(manifest.Provenance.Mode)}
 }
 
-// sampleFailure separates a folder this account cannot write from other write
-// failures, so the shell can say to choose a different folder.
-func sampleFailure(parent string) WorkspaceResult {
+// probeWriteFailure separates a folder this account cannot write from other
+// write failures, so the shell can say to choose a different folder. A folder's
+// mode bits do not answer that portably, so it creates and immediately removes
+// one temporary directory inside the chosen folder. It runs only after a write
+// has already failed, and it never touches the destination.
+func probeWriteFailure(parent string) refusal {
 	probe, err := os.MkdirTemp(parent, ".readmit-access-")
 	if err == nil {
 		os.Remove(probe)
 	} else if errors.Is(err, fs.ErrPermission) {
-		return WorkspaceResult{State: PermissionDenied, Reason: "this account cannot create a folder in the chosen folder"}
+		return refusal{PermissionDenied, "this account cannot create a folder in the chosen folder"}
 	}
-	return WorkspaceResult{State: Failed, Reason: "the sample workspace could not be created in the chosen folder"}
+	return refusal{Failed, "the sample workspace could not be created in the chosen folder"}
 }
