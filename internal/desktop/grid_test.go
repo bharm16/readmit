@@ -83,7 +83,7 @@ func gridWorkspace(t *testing.T) (*desktop.App, string, string) {
 	root := t.TempDir()
 	state := t.TempDir()
 	filters := filepath.Join(state, "filters.json")
-	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filters)
+	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filters, filepath.Join(state, "session.json"))
 
 	incident := writeCase(t, root, "incident",
 		framed(gridBooking)+framed(gridAccepted)+framed(gridRebooked)+framed(gridRejected)+framed(gridGarbage))
@@ -230,7 +230,7 @@ func TestTheSelectedFilterSurvivesNavigatingToAnotherCaseAndReopeningTheShell(t 
 	}
 
 	// A new window over the same viewer state reads the same selection back.
-	reopened := desktop.New(&chooser{}, filepath.Join(t.TempDir(), "recent.json"), filters)
+	reopened := desktop.New(&chooser{}, filepath.Join(t.TempDir(), "recent.json"), filters, filepath.Join(t.TempDir(), "session.json"))
 	listed := reopened.Filters()
 	if listed.State != desktop.Completed || listed.Selected != "acknowledgements" || len(listed.Filters) != 1 {
 		t.Fatalf("reopening the shell lost the saved filters: %+v", listed)
@@ -299,7 +299,7 @@ func TestAnUnreadableSavedFilterDocumentIsReportedAndNeverReplaced(t *testing.T)
 		if err := os.WriteFile(filters, []byte(contents), 0600); err != nil {
 			t.Fatal(err)
 		}
-		app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filters)
+		app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filters, filepath.Join(state, "session.json"))
 		if listed := app.Filters(); listed.State != desktop.Failed || len(listed.Filters) != 0 || listed.Reason == "" {
 			t.Fatalf("%s was read: %+v", name, listed)
 		}
@@ -452,7 +452,7 @@ func TestTheGridHoldsTheSameOperationSlot(t *testing.T) {
 	app, root, filters := gridWorkspace(t)
 
 	reentrant := &chooser{folder: root}
-	second := desktop.New(reentrant, filepath.Join(t.TempDir(), "recent.json"), filters)
+	second := desktop.New(reentrant, filepath.Join(t.TempDir(), "recent.json"), filters, filepath.Join(t.TempDir(), "session.json"))
 	var concurrent desktop.GridResult
 	var saved desktop.FiltersResult
 	reentrant.before = func() {

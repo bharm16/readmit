@@ -1,3 +1,5 @@
+import { NoteDraft } from "./NoteDraft";
+import { Recovery } from "./Recovery";
 import { RunPanel } from "./RunPanel";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
@@ -12,6 +14,9 @@ import {
   openProject,
   openWorkspace,
   recentWorkspaces,
+  recordView,
+  recoverSession,
+  type RecoveryResult,
   saveFilter,
   search,
   selectFilter,
@@ -63,6 +68,9 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
 
+  const [restored, setRestored] = useState<RecoveryResult | null>(null);
+  const [watchedRun, setWatchedRun] = useState("");
+
   const [focused, setFocused] = useState<RegionId>("commands");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
@@ -108,6 +116,50 @@ export default function App() {
   useEffect(() => {
     void refreshFilters();
   }, [refreshFilters]);
+
+  // What the window restores after an interruption. It is read once, here, so
+  // the panels that show it and continue from it share one answer and only one
+  // of them claims the operation slot.
+  const restore = useCallback(async () => {
+    setRestored(await recoverSession());
+  }, []);
+
+  useEffect(() => {
+    void restore();
+  }, [restore]);
+
+  // Where this viewer is, retained by the facade so an interruption does not
+  // also lose it: the open workspace, the entry selected in it, the region
+  // holding focus, and the run being watched. It goes into the facade's own
+  // local document, never into browser storage and never near evidence.
+  // Recording it does not claim the operation slot, so it still happens while a
+  // case is being verified, which is exactly when an interruption would
+  // otherwise lose the most. Nothing is recorded until there is something to
+  // come back to: recording an empty view as the window starts would overwrite
+  // the session this same window is restoring.
+  const workspaceRoot = workspace?.workspace?.root ?? "";
+  const view = useCallback((run: string) => ({
+    workspace: workspaceRoot,
+    region: focused,
+    case: workspaceRoot === "" ? "" : (selected ?? ""),
+    run,
+  }), [workspaceRoot, focused, selected]);
+
+  useEffect(() => {
+    if (workspaceRoot === "" && watchedRun === "") {
+      return;
+    }
+    void recordView(view(watchedRun));
+  }, [view, watchedRun]);
+
+  // Naming the run folder is the one recording that has to have landed before
+  // the action it describes runs, so it is awaited rather than left to the
+  // effect above: a crash during a send must find the session already naming
+  // the folder that holds its evidence.
+  const watch = useCallback(async (folder: string) => {
+    setWatchedRun(folder);
+    await recordView(view(folder));
+  }, [view]);
 
   // The chosen theme and text size are applied to the document and written
   // nowhere: both follow the system again the next time the window opens.
@@ -531,7 +583,9 @@ export default function App() {
     ),
     evidence: (
       <>
-        <RunPanel />
+        <Recovery restored={restored} onChanged={() => void restore()} />
+        <NoteDraft project={workspaceRoot} restored={restored} onChanged={() => void restore()} />
+        <RunPanel onWatch={watch} />
         <Report
           indicators={indicators}
           progress={running === "project" ? "Reading the project." : null}

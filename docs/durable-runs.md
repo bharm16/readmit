@@ -21,6 +21,13 @@ stops future sends; bytes already written can still have affected the receiver.
 trigger a resend. Killing the desktop process stops its local execution; use
 recovery after restarting. The CLI can run separately from the desktop.
 
+The desktop also remembers which output folder a viewer was watching, in its own
+local working session. Reopening the window reads that folder through this same
+read-only recovery and reports what it finds. Restoring a view never starts,
+resumes or resends anything: an interrupted send stays interrupted, an uncertain
+delivery stays uncertain, and executing again remains a deliberate action with a
+new output folder. See [recovering after an interruption](desktop.md).
+
 Both entry points distinguish `passed`, `assertion_failed`, `execution_error`,
 `cancelled`, `timed_out`, `interrupted` and `delivery_uncertain`. The versioned
 machine summary also carries `stop_reason` and `delivery_uncertain`: cancellation

@@ -382,6 +382,10 @@ export interface InspectionResult {
 interface Facade {
   StartDurableRun(spec: string, output: string): Promise<DurableRunResult>;
   OpenDurableRun(path: string): Promise<DurableRunResult>;
+  RecoverSession(): Promise<RecoveryResult>;
+  RecordView(view: View): Promise<SessionResult>;
+  SaveDraft(draft: Draft): Promise<SessionResult>;
+  DiscardDraft(project: string, name: string): Promise<SessionResult>;
   InspectOccurrence(request: InspectRequest): Promise<InspectionResult>;
   Cancel(): Promise<void>;
   CreateSampleWorkspace(): Promise<WorkspaceResult>;
@@ -548,4 +552,71 @@ export function openDurableRun(path: string): Promise<DurableRunResult> {
 /** Deliberately reveals one occurrence, with values escaped by the Go engine. */
 export function inspectOccurrence(request: InspectRequest): Promise<InspectionResult> {
   return guard(() => facade().InspectOccurrence(request), { state: "failed" });
+}
+
+/** Where one viewer was when the window last recorded it. It is restored so a
+ * person comes back to what they were doing; restoring it opens folders and
+ * reads retained evidence, and never resumes or resends anything. */
+export interface View {
+  workspace: string;
+  region: string;
+  case: string;
+  run: string;
+}
+
+/** One note a person is still writing, retained before it is stored. The note
+ * is the same editable text the project document holds; `project` is the folder
+ * it is a draft of. A draft is not in that document and is not evidence. */
+export interface Draft {
+  project: string;
+  note: ProjectNote;
+}
+
+/** The whole retained working state of one viewer, kept on this machine in the
+ * file the privacy region names. It holds a note a person was writing, which is
+ * their own typed text and can hold the same patient data the evidence beside
+ * it does; it is never placed in browser storage and never sent anywhere. */
+export interface Session {
+  schema: string;
+  view: View;
+  drafts: Draft[];
+}
+
+export interface SessionResult {
+  state: State;
+  reason?: string;
+  session?: Session;
+}
+
+/** What the window restores after an interruption. `run` is the run the session
+ * was watching, reopened read-only; `run_reason` is why a remembered run could
+ * not be verified. Neither is ever produced by resuming or resending: an
+ * interrupted send stays interrupted and uncertain. */
+export interface RecoveryResult {
+  state: State;
+  reason?: string;
+  session?: Session;
+  run?: DurableRunSummary;
+  run_reason?: string;
+}
+
+/** Restores the retained session and reports the state of the run it was
+ * watching. Recovery only reads: it never resumes, restarts or resends. */
+export function recoverSession(): Promise<RecoveryResult> {
+  return guard(() => facade().RecoverSession(), { state: "failed" });
+}
+
+/** Retains where this viewer is, so an interruption does not also lose it. */
+export function recordView(view: View): Promise<SessionResult> {
+  return guard(() => facade().RecordView(view), { state: "failed" });
+}
+
+/** Retains one note that has been typed and not stored yet. */
+export function saveDraft(draft: Draft): Promise<SessionResult> {
+  return guard(() => facade().SaveDraft(draft), { state: "failed" });
+}
+
+/** Drops one retained draft, once the note it was an edit of has been stored. */
+export function discardDraft(project: string, name: string): Promise<SessionResult> {
+  return guard(() => facade().DiscardDraft(project, name), { state: "failed" });
 }

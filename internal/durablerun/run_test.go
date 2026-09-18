@@ -249,7 +249,7 @@ func TestCLIAndDesktopExposeTheSameLifecycle(t *testing.T) {
 	if err = json.Unmarshal(stdout.Bytes(), &summary, json.RejectUnknownMembers(true)); err != nil || summary.State != durablerun.Passed {
 		t.Fatalf("%s %v", stdout.String(), err)
 	}
-	app := desktop.New(nil, "", "")
+	app := desktop.New(nil, "", "", "")
 	recovered := app.OpenDurableRun(out)
 	if recovered.State != desktop.Completed || recovered.Run == nil || recovered.Run.State != durablerun.Passed {
 		t.Fatalf("%+v", recovered)

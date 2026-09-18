@@ -42,7 +42,14 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   declare, keyboard-resizable evidence and inspector panes, light and dark, and
   text from 100% to 200%. Every status carries its own word and its own shape, so
   none is told apart by colour, and the window states that there is no telemetry,
-  crash reporting, update check or analytics and names the one file it keeps.
+  crash reporting, update check or analytics and names every file it keeps.
+  It survives an interruption honestly: the workspace, case, region and run a
+  viewer had open and every note they had typed and not stored are retained in a
+  versioned `readmit-desktop-session/v1` document outside evidence and restored
+  when the window opens, while a run that was in flight is reopened read-only
+  and stays interrupted with its delivery uncertain. Recovery never resumes,
+  restarts or resends: executing again needs a deliberate action and a new
+  output folder.
 
 - `collect` handles original and enhanced acknowledgement workflows: stage
   specific correlation with separate commit and application codes, declared

@@ -398,7 +398,11 @@ the rows of one viewport out of that window and leaves the rest as measured
 space, applies
 saved filters for occurrence type, source, observed time, decoded field state,
 ACK outcome and field values, keeps the selected filter when you move to another
-case, and always states how many records the filter excluded. It
+case, and always states how many records the filter excluded. It comes back from
+an interruption honestly: where you were and the notes you had typed and not
+stored are retained in one per-viewer document outside evidence and restored when
+the window opens, while a run that was in flight is reopened read-only and stays
+interrupted with its delivery uncertain — never resumed, restarted or resent. It
 is navigated entirely from the keyboard: five labelled regions in a fixed focus
 order, a command palette, a search over what the open workspace and its project
 declare, resizable evidence and inspector panes, light and dark, and text from
