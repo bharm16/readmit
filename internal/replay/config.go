@@ -37,11 +37,14 @@ func ReadTarget(path string) (Target, error) {
 	if target.CAFile != "" {
 		target.CAFile = artifactpath.JoinReference(filepath.Dir(path), target.CAFile)
 	}
-	if target.Credential.Declared() {
-		target.Credential.SecretsFile = artifactpath.JoinReference(filepath.Dir(path), target.Credential.SecretsFile)
-	}
+	// A declared credential is validated before its secrets document is
+	// anchored. Anchoring an absent one would turn it into the target file's
+	// own directory, and the refusal would then name the wrong member.
 	if err := validateTarget(target); err != nil {
 		return Target{}, err
+	}
+	if target.Credential.Declared() {
+		target.Credential.SecretsFile = artifactpath.JoinReference(filepath.Dir(path), target.Credential.SecretsFile)
 	}
 	if _, err := BindCredential(target); err != nil {
 		return Target{}, err

@@ -89,40 +89,52 @@ func TestTargetV2BindsACredentialReferenceScopedToItsAddress(t *testing.T) {
 // Every way a declared credential can fall outside its contract or its scope is
 // refused, and none of these refusals reads a credential value.
 func TestTargetRefusesACredentialOutsideItsVersionOrScope(t *testing.T) {
-	for name, build := range map[string]func(*testing.T) string{
-		"credential on the previous version": func(t *testing.T) string {
+	for name, build := range map[string]func(*testing.T) (string, string){
+		"credential on the previous version": func(t *testing.T) (string, string) {
 			directory := t.TempDir()
 			credentialStore(t, directory, "127.0.0.1:2575")
 			config := credentialTarget("127.0.0.1:2575")
 			config.Schema = replay.TargetSchema
-			return writeTarget(t, directory, config)
+			return writeTarget(t, directory, config), "a credential reference requires readmit-target/v2"
 		},
-		"reference scoped to another endpoint": func(t *testing.T) string {
+		"reference scoped to another endpoint": func(t *testing.T) (string, string) {
 			directory := t.TempDir()
 			credentialStore(t, directory, "127.0.0.1:9999")
-			return writeTarget(t, directory, credentialTarget("127.0.0.1:2575"))
+			return writeTarget(t, directory, credentialTarget("127.0.0.1:2575")), "scoped to a different endpoint address"
 		},
-		"reference that is not registered": func(t *testing.T) string {
+		"reference that is not registered": func(t *testing.T) (string, string) {
 			directory := t.TempDir()
 			credentialStore(t, directory, "127.0.0.1:2575")
 			config := credentialTarget("127.0.0.1:2575")
 			config.Credential.Reference = "absent"
-			return writeTarget(t, directory, config)
+			return writeTarget(t, directory, config), "no credential reference is registered under that name"
 		},
-		"secrets document that is not there": func(t *testing.T) string {
-			return writeTarget(t, t.TempDir(), credentialTarget("127.0.0.1:2575"))
+		"secrets document that is not there": func(t *testing.T) (string, string) {
+			return writeTarget(t, t.TempDir(), credentialTarget("127.0.0.1:2575")), "cannot resolve the secret reference document"
 		},
-		"credential naming no reference": func(t *testing.T) string {
+		"credential naming no reference": func(t *testing.T) (string, string) {
 			directory := t.TempDir()
 			credentialStore(t, directory, "127.0.0.1:2575")
 			config := credentialTarget("127.0.0.1:2575")
 			config.Credential.Reference = ""
-			return writeTarget(t, directory, config)
+			return writeTarget(t, directory, config), "names both a secrets document and a reference in it"
+		},
+		"credential naming no secrets document": func(t *testing.T) (string, string) {
+			directory := t.TempDir()
+			credentialStore(t, directory, "127.0.0.1:2575")
+			config := credentialTarget("127.0.0.1:2575")
+			config.Credential.SecretsFile = ""
+			return writeTarget(t, directory, config), "names both a secrets document and a reference in it"
 		},
 	} {
-		path := build(t)
-		if _, err := replay.ReadTarget(path); err == nil {
+		path, want := build(t)
+		_, err := replay.ReadTarget(path)
+		if err == nil {
 			t.Errorf("%s was accepted", name)
+			continue
+		}
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("%s was refused as %q, want %q", name, err, want)
 		}
 	}
 }

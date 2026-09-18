@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -304,6 +306,92 @@ func TestWriteStoreRetainsAnInterruptedWriteAndKeepsItOwnerOnly(t *testing.T) {
 	if reopened, err = ReadStore(path); err != nil || len(reopened.References) != 1 {
 		t.Fatalf("the previous store did not survive the refused write: %v", err)
 	}
+}
+
+// Collect reads the regular files of the trees it is pointed at, names each one
+// by the path the caller used, and reports what it did not read.
+func TestCollectReadsRegularFilesAndNamesWhatItDidNotRead(t *testing.T) {
+	root := t.TempDir()
+	for name, body := range map[string]string{
+		filepath.Join("run", "manifest.json"): "{}",
+		filepath.Join("logs", "readmit.log"):  "operation=replay",
+	} {
+		path := filepath.Join(root, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	single := filepath.Join(t.TempDir(), "target.json")
+	if err := os.WriteFile(single, []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	files, skipped, err := Collect([]string{root, single})
+	if err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	if skipped != 0 {
+		t.Fatalf("collect skipped %d entries of regular files", skipped)
+	}
+	for _, want := range []string{root + "/run/manifest.json", root + "/logs/readmit.log", single} {
+		if _, ok := files[want]; !ok {
+			t.Fatalf("collect did not read %q: %v", want, files)
+		}
+	}
+	if len(files) != 3 {
+		t.Fatalf("collect read %d files", len(files))
+	}
+	if _, _, err := Collect([]string{filepath.Join(root, "absent")}); err == nil {
+		t.Fatal("a path that is not there was collected")
+	}
+}
+
+// Every bound is applied to what the tree declares, before anything is read, so
+// a tree past a limit is refused rather than reported as fully checked.
+func TestCollectRefusesTreesPastItsBounds(t *testing.T) {
+	sparse := func(t *testing.T, directory string, count int, size int64) string {
+		t.Helper()
+		for i := range count {
+			file, err := os.Create(filepath.Join(directory, "large-"+strconv.Itoa(i)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := file.Truncate(size); err != nil {
+				t.Fatal(err)
+			}
+			if err := file.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return directory
+	}
+	t.Run("more files than the scan reads", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "manifest.json")
+		if err := os.WriteFile(path, []byte("{}"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		roots := slices.Repeat([]string{path}, MaxScanFiles)
+		if _, _, err := Collect(roots); err != nil {
+			t.Fatalf("a scan at the file count limit was refused: %v", err)
+		}
+		if _, _, err := Collect(append(roots, path)); err == nil {
+			t.Fatal("a scan past the file count limit was collected")
+		}
+	})
+	t.Run("one file larger than the scan reads", func(t *testing.T) {
+		directory := sparse(t, t.TempDir(), 1, MaxScanFileBytes+1)
+		if _, _, err := Collect([]string{directory}); err == nil {
+			t.Fatal("a file past the per-file limit was collected")
+		}
+	})
+	t.Run("more bytes than the scan holds", func(t *testing.T) {
+		directory := sparse(t, t.TempDir(), MaxScanBytes/MaxScanFileBytes+1, MaxScanFileBytes)
+		if _, _, err := Collect([]string{directory}); err == nil {
+			t.Fatal("a tree past the total byte limit was collected")
+		}
+	})
 }
 
 // FuzzSecretStore exercises the reader of the secret reference document. An

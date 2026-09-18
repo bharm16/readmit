@@ -360,7 +360,7 @@ func projectShow(ran *bool) *cobra.Command {
 				writeBody(w, note.Body)
 			}
 			if err := w.Flush(); err != nil {
-				return errors.New("cannot write project output")
+				return errors.New("cannot write command output")
 			}
 			return nil
 		},
@@ -434,12 +434,12 @@ func declaredValues(values []string) ([]string, error) {
 }
 
 // writeLines buffers one command's output and reports a single failure to write
-// it, so every `project` command reports that failure the same way.
+// it, so every command that renders a document reports that failure the same way.
 func writeLines(out io.Writer, render func(io.Writer)) error {
 	w := bufio.NewWriter(out)
 	render(w)
 	if err := w.Flush(); err != nil {
-		return errors.New("cannot write project output")
+		return errors.New("cannot write command output")
 	}
 	return nil
 }

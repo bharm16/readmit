@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"os"
 	"os/exec"
@@ -68,6 +69,15 @@ const (
 	maxRotationAge   = 8760 * time.Hour
 	maxDocumentBytes = 1 << 20
 	maxValueBytes    = 64 << 10
+)
+
+// A scan reads local evidence and configuration in bounded amounts. Paths past
+// a bound are refused so they can be checked in parts; they are never dropped
+// silently, because a scan that skipped a file cannot report on it.
+const (
+	MaxScanFiles     = 8192
+	MaxScanFileBytes = 16 << 20
+	MaxScanBytes     = 256 << 20
 )
 
 // ErrUnsupportedVersion reports a document written under a contract version
@@ -158,8 +168,7 @@ type Document struct {
 // reader can see at the call site.
 type Value struct{ raw []byte }
 
-func (Value) String() string   { return Mask }
-func (Value) GoString() string { return Mask }
+func (Value) String() string { return Mask }
 
 // Format masks the value under every verb, including %x and %#v, so no
 // formatting directive anywhere can print a credential.
@@ -349,14 +358,24 @@ func argumentText(value string) error {
 	return nil
 }
 
+// indexOf is the one lookup every operation on a registered reference uses, so
+// a name means the same thing to all of them.
+func indexOf(document Document, name string) int {
+	return slices.IndexFunc(document.References, func(r Reference) bool { return r.Name == name })
+}
+
 // Find returns one registered reference by name.
 func Find(document Document, name string) (Reference, error) {
-	index := slices.IndexFunc(document.References, func(r Reference) bool { return r.Name == name })
+	index := indexOf(document, name)
 	if index < 0 {
 		return Reference{}, errors.New("no credential reference is registered under that name")
 	}
 	return document.References[index], nil
 }
+
+// stamp is the recorded precision of a rotation time: one second, in UTC, so a
+// document records the same bytes wherever it was written.
+func stamp(at time.Time) time.Time { return at.UTC().Truncate(time.Second) }
 
 // Bind returns the reference a caller may use for exactly one purpose at
 // exactly one address. A reference scoped elsewhere is refused rather than
@@ -381,6 +400,7 @@ func Add(document Document, entry Reference) (Document, Reference, error) {
 	if _, err := Find(document, entry.Name); err == nil {
 		return Document{}, Reference{}, errors.New("that name is already registered in this store")
 	}
+	entry.RotatedAt = stamp(entry.RotatedAt)
 	updated := document
 	updated.References = slices.Clip(slices.Clone(document.References))
 	updated.References = append(updated.References, entry)
@@ -411,7 +431,7 @@ func (c Change) Empty() bool { return c == Change{} }
 // reference at a different stored credential is not a rotation, and readmit
 // does not invent one. The document it is given is not modified.
 func Update(document Document, name string, change Change) (Document, Reference, error) {
-	index := slices.IndexFunc(document.References, func(r Reference) bool { return r.Name == name })
+	index := indexOf(document, name)
 	if index < 0 {
 		return Document{}, Reference{}, errors.New("no credential reference is registered under that name")
 	}
@@ -444,7 +464,7 @@ func Update(document Document, name string, change Change) (Document, Reference,
 // generation and stamps the time; it reads no value and replaces nothing in the
 // store, because readmit holds read access to a credential and nothing more.
 func Rotate(document Document, name string, at time.Time) (Document, Reference, error) {
-	index := slices.IndexFunc(document.References, func(r Reference) bool { return r.Name == name })
+	index := indexOf(document, name)
 	if index < 0 {
 		return Document{}, Reference{}, errors.New("no credential reference is registered under that name")
 	}
@@ -452,7 +472,7 @@ func Rotate(document Document, name string, at time.Time) (Document, Reference, 
 	updated.References = slices.Clip(slices.Clone(document.References))
 	entry := updated.References[index]
 	entry.Generation++
-	entry.RotatedAt = at.UTC()
+	entry.RotatedAt = stamp(at)
 	updated.References[index] = entry
 	if err := Validate(updated); err != nil {
 		return Document{}, Reference{}, err
@@ -517,20 +537,35 @@ func ReadStore(path string) (Document, error) {
 	if err != nil {
 		return Document{}, errors.New("cannot resolve the secret reference document")
 	}
-	info, err := os.Stat(resolved)
-	if err != nil || !info.Mode().IsRegular() {
-		return Document{}, errors.New("the secret reference document must be a regular file")
-	}
-	file, err := os.Open(resolved)
+	data, err := readLocal(resolved, maxDocumentBytes)
 	if err != nil {
-		return Document{}, errors.New("cannot read the secret reference document")
-	}
-	data, readErr := io.ReadAll(io.LimitReader(file, maxDocumentBytes+1))
-	closeErr := file.Close()
-	if readErr != nil || closeErr != nil || len(data) > maxDocumentBytes {
-		return Document{}, errors.New("cannot read the secret reference document")
+		return Document{}, errors.New("the secret reference document must be a readable regular file within its size limit")
 	}
 	return Decode(data)
+}
+
+// readLocal reads one bounded regular file. It re-checks the opened file rather
+// than trusting the earlier stat, so a path that changed underneath is refused.
+func readLocal(path string, limit int) ([]byte, error) {
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, errors.New("input must be a regular file")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, errors.New("cannot open input file")
+	}
+	info, err = file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		file.Close()
+		return nil, errors.New("input must be a regular file")
+	}
+	data, readErr := io.ReadAll(io.LimitReader(file, int64(limit)+1))
+	closeErr := file.Close()
+	if readErr != nil || closeErr != nil || len(data) > limit {
+		return nil, errors.New("input cannot be read within its size limit")
+	}
+	return data, nil
 }
 
 // WriteStore replaces the document atomically: it is written in full to a new
@@ -542,6 +577,13 @@ func WriteStore(path string, document Document) error {
 	data, err := Encode(document)
 	if err != nil {
 		return err
+	}
+	// Both files this writes are reserved by artifactpath, and the file it
+	// renames onto is the destination artifactpath itself returned. Neither
+	// path is derived from the other, so there is one path policy here.
+	destination, err := artifactpath.Destination(path)
+	if err != nil {
+		return errors.New("cannot write the secret reference document here")
 	}
 	incomplete, err := artifactpath.Destination(path + incompleteSuffix)
 	if err != nil {
@@ -560,10 +602,93 @@ func WriteStore(path string, document Document) error {
 		os.Remove(incomplete)
 		return errors.New("cannot write the new secret reference document")
 	}
-	final := strings.TrimSuffix(incomplete, incompleteSuffix)
-	if err := os.Rename(incomplete, final); err != nil {
+	if err := os.Rename(incomplete, destination); err != nil {
 		os.Remove(incomplete)
 		return errors.New("cannot replace the secret reference document")
 	}
 	return nil
+}
+
+// Collect reads the bounded contents of every regular file the named paths
+// hold, keyed by the name the caller used, and reports how many entries it did
+// not read so a scan over them can name its own boundary.
+//
+// Each named path is resolved, following symbolic links, so naming a link
+// checks what it points at: that is the path the person asked about. Entries
+// found *beneath* a named directory are never followed. A symbolic link inside
+// the tree, and anything that is not a regular file, is counted as not read
+// rather than opened, so walking a tree cannot leave it, loop, or block on a
+// device. Every bound is applied to what the tree declares before anything is
+// read, so a refusal costs nothing and reads nothing.
+func Collect(roots []string) (map[string][]byte, int, error) {
+	type candidate struct {
+		name string
+		path string
+	}
+	candidates := make([]candidate, 0, len(roots))
+	skipped, total := 0, int64(0)
+	declare := func(name, path string, info os.FileInfo) error {
+		if info.Size() > MaxScanFileBytes {
+			return errors.New("a file to check exceeds the scan's per-file size limit")
+		}
+		if len(candidates) >= MaxScanFiles || total+info.Size() > MaxScanBytes {
+			return errors.New("the paths to check exceed the scan's limits; check them in parts")
+		}
+		total += info.Size()
+		candidates = append(candidates, candidate{name: strings.TrimPrefix(name, "./"), path: path})
+		return nil
+	}
+	for _, root := range roots {
+		resolved, err := artifactpath.Resolve(root)
+		if err != nil {
+			return nil, 0, errors.New("a path to check could not be resolved")
+		}
+		info, err := os.Stat(resolved)
+		if err != nil {
+			return nil, 0, errors.New("a path to check could not be read")
+		}
+		if !info.IsDir() {
+			if !info.Mode().IsRegular() {
+				skipped++
+				continue
+			}
+			if err := declare(root, resolved, info); err != nil {
+				return nil, 0, err
+			}
+			continue
+		}
+		walkErr := filepath.WalkDir(resolved, func(path string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				return errors.New("a path to check could not be read")
+			}
+			if entry.IsDir() {
+				return nil
+			}
+			if !entry.Type().IsRegular() {
+				skipped++
+				return nil
+			}
+			info, err := entry.Info()
+			if err != nil {
+				return errors.New("a path to check could not be read")
+			}
+			relative, err := filepath.Rel(resolved, path)
+			if err != nil {
+				return errors.New("a path to check could not be read")
+			}
+			return declare(root+"/"+filepath.ToSlash(relative), path, info)
+		})
+		if walkErr != nil {
+			return nil, 0, walkErr
+		}
+	}
+	files := make(map[string][]byte, len(candidates))
+	for _, entry := range candidates {
+		data, err := readLocal(entry.path, MaxScanFileBytes)
+		if err != nil {
+			return nil, 0, errors.New("a file to check could not be read")
+		}
+		files[entry.name] = data
+	}
+	return files, skipped, nil
 }

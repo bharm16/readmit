@@ -162,7 +162,6 @@ func TestSecretAddRefusesValuesAndUndeclaredReferences(t *testing.T) {
 		"a credential passed as a value":  append(append([]string{}, base...), "--name", "other", "--store", "os-keychain", "--address", testOnlyEndpoint, "--value", testOnlyCredential),
 		"a duplicate name":                append(append([]string{}, base...), "--name", credentialReferences, "--store", "os-keychain", "--address", testOnlyEndpoint),
 		"an undeclared store":             append(append([]string{}, base...), "--name", "other", "--store", "somewhere", "--address", testOnlyEndpoint),
-		"an undeclared purpose":           append(append([]string{}, base...), "--name", "other", "--store", "os-keychain", "--address", testOnlyEndpoint, "--purpose", "anything"),
 		"an address without a port":       append(append([]string{}, base...), "--name", "other", "--store", "os-keychain", "--address", "127.0.0.1"),
 		"a command resolved through PATH": {"secret", "add", "--secrets", store, "--name", "other", "--store", "os-keychain", "--address", testOnlyEndpoint, "--command", "security"},
 	} {
@@ -239,6 +238,7 @@ func TestSecretScanFindsAPlantedCredentialAndReportsLocationsOnly(t *testing.T) 
 	}
 	for _, want := range []string{
 		"Credential leakage scan", "References checked: 1", "Status: blocked",
+		"Entries not read: 0",
 		"Locations holding a known credential value: 4",
 		"run/manifest.json", "logs/readmit.log", "report/report.md", "browser/state.json",
 		"This is one check, not proof.",
@@ -291,7 +291,7 @@ func TestSecretScanPassesOverConfigurationAndRunEvidence(t *testing.T) {
 	if err != nil || stderr != "" {
 		t.Fatalf("scan: %v %s\n%s", err, stderr, scanned)
 	}
-	for _, want := range []string{"Status: passed", "Locations holding a known credential value: 0"} {
+	for _, want := range []string{"Status: passed", "Entries not read: 0", "Locations holding a known credential value: 0"} {
 		if !strings.Contains(scanned, want) {
 			t.Fatalf("scan omitted %q:\n%s", want, scanned)
 		}

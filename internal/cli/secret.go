@@ -6,22 +6,11 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
-	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/exportreview"
 	"github.com/bharm16/readmit/internal/secret"
 	"github.com/spf13/cobra"
-)
-
-// The scan reads local evidence and configuration in bounded amounts. A tree
-// larger than this is scanned in parts rather than reported as clean.
-const (
-	maxScanFiles      = 8192
-	maxScanFileBytes  = 16 << 20
-	maxScanTotalBytes = 256 << 20
 )
 
 func secretCommand(ran *bool) *cobra.Command {
@@ -38,7 +27,7 @@ func secretCommand(ran *bool) *cobra.Command {
 }
 
 func secretAdd(ran *bool) *cobra.Command {
-	var file, name, store, purpose, address, program, maxAge string
+	var file, name, store, address, program, maxAge string
 	var arguments []string
 	command := &cobra.Command{
 		Use:   "add --secrets FILE --name NAME --store KIND --address HOST:PORT --command PROGRAM",
@@ -53,7 +42,7 @@ func secretAdd(ran *bool) *cobra.Command {
 			updated, stored, err := secret.Add(document, secret.Reference{
 				Name:       name,
 				Store:      secret.Store(store),
-				Purpose:    secret.Purpose(purpose),
+				Purpose:    secret.MLLPEndpoint,
 				Address:    address,
 				Command:    program,
 				Arguments:  arguments,
@@ -73,7 +62,6 @@ func secretAdd(ran *bool) *cobra.Command {
 	secretsFlag(command, &file)
 	command.Flags().StringVar(&name, "name", "", "Name this reference is used under")
 	command.Flags().StringVar(&store, "store", "", "Declared storage: os-keychain or customer-managed")
-	command.Flags().StringVar(&purpose, "purpose", string(secret.MLLPEndpoint), "The single use this credential may be bound to")
 	command.Flags().StringVar(&address, "address", "", "The one endpoint address this credential may be presented to")
 	command.Flags().StringVar(&program, "command", "", "Absolute path of the program that reads the credential from its store")
 	command.Flags().StringArrayVar(&arguments, "argument", nil, "Locator argument for that program; repeat for more. Never a credential")
@@ -239,14 +227,14 @@ func secretScan(ran *bool) *cobra.Command {
 			// The secret reference document is always checked: a store that
 			// carries the value it references is the leak this command exists
 			// to find, and a shared configuration is the first place to look.
-			files, err := collectScanFiles(append([]string{file}, args...))
+			files, skipped, err := secret.Collect(append([]string{file}, args...))
 			if err != nil {
 				return &ExitError{Code: 2, Err: err}
 			}
 			scan := exportreview.Residual(files, terms)
 			if err := writeLines(cmd.OutOrStdout(), func(w io.Writer) {
-				fmt.Fprintf(w, "Credential leakage scan\nReferences checked: %d\nFiles checked: %d\nStatus: %s\nLocations holding a known credential value: %d\n",
-					scan.KnownValues, scan.Files, scan.Status, len(scan.Locations))
+				fmt.Fprintf(w, "Credential leakage scan\nReferences checked: %d\nFiles checked: %d\nEntries not read: %d\nStatus: %s\nLocations holding a known credential value: %d\n",
+					scan.KnownValues, scan.Files, skipped, scan.Status, len(scan.Locations))
 				for _, location := range scan.Locations {
 					fmt.Fprintf(w, "  %s\n", location)
 				}
@@ -304,68 +292,4 @@ func writeReferenceLines(w io.Writer, entry secret.Reference, now time.Time) {
 	fmt.Fprintf(w, "    value: %s (never read, never stored, never exported)\n", secret.Mask)
 	fmt.Fprintf(w, "    rotated: %s rotation: %s max-age: %s\n", entry.RotatedAt.UTC().Format(time.RFC3339), entry.Rotation(now), absent(entry.MaxAge))
 	fmt.Fprintf(w, "    command: %s (%d locator arguments)\n", entry.Command, len(entry.Arguments))
-}
-
-// collectScanFiles reads the bounded contents of every regular file under the
-// named paths. Symbolic links are skipped rather than followed, so a scan
-// reports on the tree it was pointed at and cannot be redirected out of it.
-func collectScanFiles(roots []string) (map[string][]byte, error) {
-	files := make(map[string][]byte)
-	total := 0
-	for _, root := range roots {
-		resolved, err := artifactpath.Resolve(root)
-		if err != nil {
-			return nil, errors.New("a path to check could not be resolved")
-		}
-		info, err := os.Stat(resolved)
-		if err != nil {
-			return nil, errors.New("a path to check could not be read")
-		}
-		if !info.IsDir() {
-			if err := addScanFile(files, root, resolved, info, &total); err != nil {
-				return nil, err
-			}
-			continue
-		}
-		walkErr := filepath.WalkDir(resolved, func(path string, entry fs.DirEntry, err error) error {
-			if err != nil {
-				return errors.New("a path to check could not be read")
-			}
-			if entry.IsDir() || !entry.Type().IsRegular() {
-				return nil
-			}
-			info, err := entry.Info()
-			if err != nil {
-				return errors.New("a path to check could not be read")
-			}
-			relative, err := filepath.Rel(resolved, path)
-			if err != nil {
-				return errors.New("a path to check could not be read")
-			}
-			return addScanFile(files, root+"/"+filepath.ToSlash(relative), path, info, &total)
-		})
-		if walkErr != nil {
-			return nil, walkErr
-		}
-	}
-	return files, nil
-}
-
-func addScanFile(files map[string][]byte, name, path string, info os.FileInfo, total *int) error {
-	if !info.Mode().IsRegular() {
-		return nil
-	}
-	if info.Size() > maxScanFileBytes {
-		return errors.New("a file to check exceeds the scan's size limit")
-	}
-	if len(files) >= maxScanFiles || *total+int(info.Size()) > maxScanTotalBytes {
-		return errors.New("the paths to check exceed the scan's limits; check them in parts")
-	}
-	data, err := readInputFile(path, maxScanFileBytes)
-	if err != nil {
-		return errors.New("a file to check could not be read")
-	}
-	*total += len(data)
-	files[strings.TrimPrefix(name, "./")] = data
-	return nil
 }

@@ -66,7 +66,10 @@ of where the credential lives, recorded as made. readmit runs the program it was
 given and cannot establish what answered, so the declaration is never proof.
 
 `purpose` is the single use a reference may be bound to. This release knows one,
-`mllp-endpoint`. An unknown purpose is refused rather than treated as any other.
+`mllp-endpoint`, and `secret add` records it; there is no flag to choose another,
+because there is no other. An unknown purpose in a document is refused rather
+than treated as any other one, and binding a reference demands the purpose the
+caller needs, so adding a second purpose cannot silently widen an existing one.
 
 `command` is the **absolute path** of a program that prints the credential on
 standard output, and `arguments` select which credential. The program is never
@@ -139,8 +142,15 @@ leaves the credential **unavailable** — never empty, and never a pass.
 `secret scan` resolves the registered credentials and checks every named file,
 and every regular file under every named directory, for those exact bytes, their
 JSON escapes and their standalone base64 encodings. The secret reference
-document itself is always checked. Symbolic links are skipped rather than
-followed, so a scan reports on the tree it was pointed at.
+document itself is always checked.
+
+Every path you name is resolved, following symbolic links, so naming a link
+checks what it points at: that is the path you asked about. An entry found
+**beneath** a named directory is never followed. A symbolic link inside the
+tree, and anything that is not a regular file, is counted as an entry the scan
+did not read rather than being opened, so walking a tree cannot leave it, loop,
+or block on a device. Every report states how many entries it did not read, so a
+scan never implies it inspected more than it did.
 
 Point it at what you are about to share or keep: a target configuration, a run
 or result directory, a report packet, a log file, a project directory, and the
@@ -174,7 +184,12 @@ implementation. It states its own limits in every report:
   this moment. It is not an assessment that a file is safe to share, and it
   establishes no legal status.
 - Files are read in bounded amounts: at most 8,192 files, 16 MiB per file and
-  256 MiB in total. A larger tree is checked in parts rather than reported clean.
+  256 MiB in total. Every bound is applied to what the tree declares before
+  anything is read, so a larger tree is refused and checked in parts rather than
+  partly read and reported clean.
+- Entries the scan did not read are counted, never inspected. An `Entries not
+  read` count above zero means the tree holds something — a symbolic link, a
+  device, a socket — that this scan says nothing about.
 
 ## What is not here
 
