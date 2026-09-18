@@ -11,11 +11,13 @@ import (
 
 	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/receiver"
+	"github.com/bharm16/readmit/internal/sendpolicy"
 	"github.com/spf13/cobra"
 )
 
 func listenCommand(ran *bool) *cobra.Command {
 	var address, mode string
+	var approvedBind bool
 	var config receiver.Config
 	command := &cobra.Command{
 		Use:   "listen --output NEW_DIRECTORY --observation NEW_FILE",
@@ -24,8 +26,8 @@ func listenCommand(ran *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
 			config.Mode = observation.Mode(mode)
-			if address == "" {
-				return errors.New("listen address cannot be empty")
+			if err := sendpolicy.BindAddress(address, approvedBind); err != nil {
+				return err
 			}
 			listener, err := net.Listen("tcp", address)
 			if err != nil {
@@ -51,6 +53,7 @@ func listenCommand(ran *bool) *cobra.Command {
 		},
 	}
 	command.Flags().StringVar(&address, "address", "127.0.0.1:2575", "TCP listen address; port 0 chooses an available port")
+	command.Flags().BoolVar(&approvedBind, "approved-bind", false, "Explicitly approve binding a nonloopback address, accepting connections from beyond this machine")
 	command.Flags().StringVar(&mode, "mode", "fixed", "Fixture behavior: fixed or defective (both return AA)")
 	command.Flags().StringVar(&config.OutputPath, "output", "", "New final case bundle directory")
 	command.Flags().StringVar(&config.ObservationPath, "observation", "", "New live observation JSON file, atomically replaced during this session")

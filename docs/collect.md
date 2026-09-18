@@ -24,6 +24,14 @@ acknowledgement behaviour, and the application-processing statement. No
 message value appears in default console output. Startup and validation errors
 use bounded diagnostics that never echo the policy file's contents.
 
+A nonloopback bind is opt-in. `--address` accepts a literal loopback IP address
+and a numeric port by default; every other address, including `0.0.0.0`, `[::]`,
+an empty host and a host name, requires `--approved-bind`. A name is never
+resolved to decide this: a name commonly used for loopback is still a name, and
+resolving one would rest the decision on DNS. The refusal happens before
+anything binds, so a refused address never holds a socket. This is the same
+explicit approval a nonloopback target requires in [`replay`](replay.md).
+
 ## The collector acknowledges receipt, never processing
 
 The collector applies nothing. It reads only the header values an
@@ -302,5 +310,6 @@ There is no durability, restart or recovery, concurrent-client service, TLS,
 authentication, message semantics, delivery retry, throttling, queue, database,
 telemetry, or automatic network access beyond the explicitly configured listen
 address and, when a policy declares one, the explicitly configured application
-acknowledgement endpoint. The default bind is loopback. Reopen a collected case with
+acknowledgement endpoint. The default bind is loopback, and a nonloopback one
+requires `--approved-bind`. Reopen a collected case with
 `readmit timeline` and add `--show-values` to print the complete record.

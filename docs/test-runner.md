@@ -6,6 +6,13 @@ locally. It opens no connection and produces no verdict or result artifact.
 the spec. There is no implicit target, environment override, shell hook, or reset
 script. Reset instructions are operator-readable prose.
 
+A spec naming an environment recorded as `production` is refused during
+preparation, before a plan exists, exactly as `readmit replay` is: local
+validation reports the refusal, and `--send` retains a configuration-error
+result without reaching the endpoint. `readmit test` takes no approved-destination
+policy document in this release; the approved-destination rule gates
+[`readmit replay`](replay.md#approved-destinations-and-the-send-decision).
+
 ```sh
 readmit test test-reschedule.json
 readmit test test-reschedule.json --send --output baseline-result

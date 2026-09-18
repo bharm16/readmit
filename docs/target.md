@@ -31,13 +31,16 @@ recorded and identified identically. Carrying any of the three there would be a
 new contract version and is not in this release.
 
 It is a claim, not a finding. readmit did not establish it, cannot establish it,
-and does not treat it as permission. **A person labelling an endpoint
-nonproduction is not proof that the address is safe to send to.** This release
-displays the classification and diagnoses the endpoint; it does not block
-anything on the recorded class. Blocking replay to a production-classified
-endpoint, checking a resolved destination against an approved-endpoint policy,
-and restricting where a receiver may bind are separate and are not in this
-release.
+and never reads it as permission. **A person labelling an endpoint nonproduction
+is not proof that the address is safe to send to.**
+
+So a recorded class can only ever refuse. `production` refuses a replay outright,
+during preparation, before a plan exists — which reaches `readmit replay` and
+`readmit test` alike. `nonproduction` grants nothing: what a send may actually
+reach is decided against the addresses the configuration resolves to at the
+moment of the send, and `unclassified` is denied there rather than read as a
+nonproduction claim nobody made. See
+[approved destinations and the send decision](replay.md#approved-destinations-and-the-send-decision).
 
 The closed set is `nonproduction`, `production` and `unclassified`.
 `readmit-target/v3` requires one of them explicitly; there is no default,
@@ -132,6 +135,24 @@ reported there.
 
 `check` reports the address the established connection actually reached, read
 from the connection itself rather than from a second name lookup.
+
+With `--policy` naming a `readmit-send-policy/v1` document, `check` also reports
+the send decision this environment would get. It is the same rule `readmit
+replay` enforces, with one implementation, so a check cannot report an answer the
+send path would not give. `check` does not request a send and does not retain the
+decision; it reports the first destination rule that refuses, or
+`send_not_explicit` when nothing about the destination does:
+
+```
+Send policy: denied (unapproved_destination)
+Destination: lab.example.invalid:2575 resolved to 203.0.113.9
+Approved destinations: 198.51.100.0/24
+A decision is reached before any byte leaves: it can stop a send, and it cannot retract bytes already sent.
+```
+
+A destination refusal does not stop the diagnosis: `check` sends no payload, and
+diagnosing a certificate on an endpoint no policy approves is exactly what a
+diagnostic is for. The exit status stays the diagnosis's own.
 
 When verification refuses the certificate an endpoint presented, `check` reports
 that certificate — subject, issuer and validity window — so the failure can be

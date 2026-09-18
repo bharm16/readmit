@@ -11,11 +11,13 @@ import (
 
 	"github.com/bharm16/readmit/internal/collection"
 	"github.com/bharm16/readmit/internal/receiver"
+	"github.com/bharm16/readmit/internal/sendpolicy"
 	"github.com/spf13/cobra"
 )
 
 func collectCommand(ran *bool) *cobra.Command {
 	var address, policyPath string
+	var approvedBind bool
 	var config receiver.CollectorConfig
 	command := &cobra.Command{
 		Use:   "collect --policy FILE --output NEW_DIRECTORY",
@@ -23,8 +25,8 @@ func collectCommand(ran *bool) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
-			if address == "" {
-				return errors.New("collect address cannot be empty")
+			if err := sendpolicy.BindAddress(address, approvedBind); err != nil {
+				return err
 			}
 			if policyPath == "" {
 				return errors.New("collect requires --policy with a receiver policy file")
@@ -62,6 +64,7 @@ func collectCommand(ran *bool) *cobra.Command {
 		},
 	}
 	command.Flags().StringVar(&address, "address", "127.0.0.1:2575", "TCP listen address; port 0 chooses an available port")
+	command.Flags().BoolVar(&approvedBind, "approved-bind", false, "Explicitly approve binding a nonloopback address, accepting connections from beyond this machine")
 	command.Flags().StringVar(&policyPath, "policy", "", "Existing readmit-receiver-policy/v1 JSON file")
 	command.Flags().StringVar(&config.OutputPath, "output", "", "New final case bundle directory")
 	command.Flags().IntVar(&config.MaxFrameBytes, "max-frame-bytes", 1<<20, "Maximum MLLP payload bytes, excluding the three framing bytes")

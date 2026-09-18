@@ -14,6 +14,7 @@ import (
 	"github.com/bharm16/readmit/internal/environment"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/secret"
+	"github.com/bharm16/readmit/internal/sendpolicy"
 	"github.com/spf13/cobra"
 )
 
@@ -128,10 +129,10 @@ func targetShow(ran *bool) *cobra.Command {
 }
 
 func targetCheck(ran *bool) *cobra.Command {
-	var file string
+	var file, policyPath string
 	command := &cobra.Command{
-		Use:   "check --target FILE",
-		Short: "Reach one configured environment and report the transport and TLS status, sending no HL7 payload",
+		Use:   "check --target FILE [--policy FILE]",
+		Short: "Reach one configured environment and report the transport, TLS status and send decision, sending no HL7 payload",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			*ran = true
@@ -139,10 +140,21 @@ func targetCheck(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			policy, err := readSendPolicy(policyPath)
+			if err != nil {
+				return err
+			}
 			// Interrupt and termination reach the diagnosis, so a cancelled
 			// check reports cancellation rather than claiming nothing.
 			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer cancel()
+			// The same rule the send path enforces, asked here with the send
+			// not requested, because a check sends nothing. A destination this
+			// reports as refused is one a replay refuses; there is one
+			// implementation of the rule and no second copy to drift from it.
+			decision := sendpolicy.Decide(ctx, policy, sendpolicy.Request{
+				Address: config.Address, Classification: string(config.Environment().Classification),
+			}, sendpolicy.SystemResolver)
 			report, err := environment.Diagnose(ctx, config)
 			if err != nil {
 				return err
@@ -152,6 +164,7 @@ func targetCheck(ran *bool) *cobra.Command {
 				// verdict names is the one the diagnosis was produced against.
 				writeEnvironmentBanner(w, report.Environment)
 				writeConfigurationLines(w, config)
+				writeDecisionLines(w, decision)
 				writeDiagnosisLines(w, report)
 			}); err != nil {
 				return err
@@ -163,6 +176,7 @@ func targetCheck(ran *bool) *cobra.Command {
 		},
 	}
 	command.Flags().StringVar(&file, "target", "", "Target configuration file describing the environment")
+	command.Flags().StringVar(&policyPath, "policy", "", "Existing "+sendpolicy.PolicySchema+" document to report this environment's send decision against")
 	return command
 }
 
@@ -233,10 +247,11 @@ func writeConfigurationLines(w io.Writer, config replay.Target) {
 // writeEnvironmentBanner states what a command is pointed at before it reports
 // anything else. The classification is stated with what it is worth beside it:
 // it is what somebody recorded, and readmit neither established it nor treats
-// it as permission to send anywhere. See docs/target.md.
+// it as permission to send anywhere. It can only refuse, and what a send may
+// reach is decided separately against resolved addresses. See docs/target.md.
 func writeEnvironmentBanner(w io.Writer, named replay.Environment) {
 	fmt.Fprintf(w, "Environment: %s\n", absent(named.Name))
-	fmt.Fprintf(w, "Classification: %s (recorded by a person; readmit did not establish it and does not enforce it)\n", named.Classification)
+	fmt.Fprintf(w, "Classification: %s (recorded by a person; readmit did not establish it and never reads it as permission)\n", named.Classification)
 }
 
 // writeDiagnosisLines renders one diagnosis and states its boundary. An expiry
