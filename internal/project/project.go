@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -47,6 +48,12 @@ const (
 	maxDocumentBytes = 1 << 20
 	identityLength   = 64
 )
+
+// ErrUnsupportedVersion reports a document written under a contract version
+// this release does not read. It is distinct from a folder holding no document
+// at all, so a caller can say which one it found rather than conflating them.
+// A version this release does not read is reported, never migrated in place.
+var ErrUnsupportedVersion = errors.New("unsupported project document version")
 
 // Status is the closed set of case statuses. An unknown status is refused: a
 // status this release cannot interpret is never treated as any other one.
@@ -118,7 +125,7 @@ func Decode(data []byte) (Document, error) {
 		return Document{}, errors.New("invalid project document")
 	}
 	if document.Schema != Schema {
-		return Document{}, errors.New("unsupported project document version")
+		return Document{}, ErrUnsupportedVersion
 	}
 	if err := Validate(document); err != nil {
 		return Document{}, err
@@ -147,7 +154,7 @@ func Encode(document Document) ([]byte, error) {
 // name the member at fault and never repeat the value that failed.
 func Validate(document Document) error {
 	if document.Schema != Schema {
-		return errors.New("unsupported project document version")
+		return ErrUnsupportedVersion
 	}
 	if err := title(document.Settings.Title); err != nil {
 		return errors.New("project title: " + err.Error())
@@ -161,7 +168,7 @@ func Validate(document Document) error {
 		return errors.New("a project declares at least one interface version")
 	}
 	if len(document.InterfaceVersions) > MaxInterfaceVersions {
-		return errors.New("a project declares at most 64 interface versions")
+		return errors.New("a project declares at most " + strconv.Itoa(MaxInterfaceVersions) + " interface versions")
 	}
 	declared := make(map[string]bool, len(document.InterfaceVersions))
 	for _, version := range document.InterfaceVersions {
@@ -177,7 +184,7 @@ func Validate(document Document) error {
 		return errors.New("the default interface version is not declared by this project")
 	}
 	if len(document.Cases) > MaxCases {
-		return errors.New("a project registers at most 256 cases")
+		return errors.New("a project registers at most " + strconv.Itoa(MaxCases) + " cases")
 	}
 	names := make(map[string]bool, len(document.Cases))
 	identities := make(map[string]bool, len(document.Cases))
@@ -258,7 +265,7 @@ func name(value string) error {
 		return errors.New("must not be empty")
 	}
 	if len(value) > maxNameBytes {
-		return errors.New("must be at most 64 characters")
+		return errors.New("must be at most " + strconv.Itoa(maxNameBytes) + " characters")
 	}
 	for _, r := range value {
 		switch {
@@ -277,7 +284,7 @@ func name(value string) error {
 // by the bundle reader, not here.
 func contract(value string) error {
 	if value == "" || len(value) > maxNameBytes {
-		return errors.New("must be between 1 and 64 characters")
+		return errors.New("must be between 1 and " + strconv.Itoa(maxNameBytes) + " characters")
 	}
 	for _, r := range value {
 		switch {
@@ -310,7 +317,7 @@ func title(value string) error {
 		return errors.New("must not be empty")
 	}
 	if len(value) > maxTitleBytes {
-		return errors.New("must be at most 200 bytes")
+		return errors.New("must be at most " + strconv.Itoa(maxTitleBytes) + " bytes")
 	}
 	if !utf8.ValidString(value) {
 		return errors.New("must be valid UTF-8")
@@ -331,7 +338,7 @@ func title(value string) error {
 // A project records it and never derives an identity of its own.
 func identity(value string) error {
 	if len(value) != identityLength {
-		return errors.New("must be a 64 character bundle identity")
+		return errors.New("must be a " + strconv.Itoa(identityLength) + " character bundle identity")
 	}
 	for _, r := range value {
 		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
@@ -376,10 +383,9 @@ type Change struct {
 	Incidents        *[]string
 }
 
-// Empty reports whether an update would change nothing.
-func (c Change) Empty() bool {
-	return c.Title == nil && c.Owner == nil && c.Status == nil && c.InterfaceVersion == nil && c.Tags == nil && c.Incidents == nil
-}
+// Empty reports whether an update would change nothing. Every member is a
+// pointer, so a Change that names nothing is the zero value.
+func (c Change) Empty() bool { return c == Change{} }
 
 // UpdateCase replaces the mutable metadata of one registered case and returns
 // the entry exactly as it was stored. The name, identity, contract version and

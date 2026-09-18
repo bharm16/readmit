@@ -408,6 +408,47 @@ func TestProjectRecordsTheProvenanceTheEvidenceDeclares(t *testing.T) {
 	}
 }
 
+// Customer-derived evidence is the third class the project must tell apart. A
+// derived case carries its own provenance mode, and the project copies that.
+func TestProjectRecordsCustomerDerivedProvenance(t *testing.T) {
+	request := redactFixture(t)
+	if _, stderr, err := run(t, "redact", request.CasePath, "--spec", request.SpecPath, "--policy", request.PolicyPath, "--inventory", request.InventoryPath, "--local-state", request.LocalState, "--output", request.Output); err != nil || stderr != "" {
+		t.Fatalf("redact: %v %s", err, stderr)
+	}
+	root := newProject(t)
+	if err := os.CopyFS(filepath.Join(root, "derived-case"), os.DirFS(filepath.Join(request.Output, "case"))); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, err := run(t, "project", "add", root, "derived-case", "--title", "Derived for review")
+	if err != nil || stderr != "" {
+		t.Fatalf("project add: %v %s", err, stderr)
+	}
+	if !strings.Contains(stdout, "Provenance: derived") || !strings.Contains(stdout, "Schema: readmit-case/v3") {
+		t.Fatalf("derived evidence was not recorded as derived:\n%s", stdout)
+	}
+	if stdout, _, _ = run(t, "project", "show", root); !strings.Contains(stdout, "evidence=verified") || !strings.Contains(stdout, "provenance=derived") {
+		t.Fatalf("show did not report the derived case:\n%s", stdout)
+	}
+}
+
+// An empty value clears a set. Beside a real value it is a typo, and a typo
+// never silently changes what a project records.
+func TestProjectRefusesAnEmptyValueBesideARealOne(t *testing.T) {
+	root := newProject(t)
+	registerFrozenCase(t, root, "regression", "--tag", "scheduling")
+	for _, args := range [][]string{
+		{"project", "update", root, "regression", "--tag", "", "--tag", "duplicate"},
+		{"project", "update", root, "regression", "--incident", "INC-1", "--incident", ""},
+	} {
+		if stdout, stderr, err := run(t, args...); err == nil || stderr == "" {
+			t.Fatalf("an empty value beside a real one was accepted: %v %s", err, stdout)
+		}
+	}
+	if stdout, _, _ := run(t, "project", "show", root); !strings.Contains(stdout, "tags: scheduling") {
+		t.Fatalf("a refused update changed the project:\n%s", stdout)
+	}
+}
+
 // A recorded evidence fact that the evidence does not support is never reported
 // as verified, even when the bundle identity still matches. A hand-edited
 // document cannot make imported evidence look synthetic.
@@ -461,5 +502,17 @@ func TestProjectUpdateClearsTagsAndLinkedIncidents(t *testing.T) {
 	}
 	if stdout, _, _ = run(t, "project", "show", root); !strings.Contains(stdout, "tags: none") || !strings.Contains(stdout, "incidents: none") {
 		t.Fatalf("the cleared metadata came back:\n%s", stdout)
+	}
+	// Registering treats an explicitly empty value the same way, so the two
+	// commands do not disagree about what an empty tag means.
+	if _, stderr, err := run(t, "capture", "../testdata/fixtures/case-evidence.mllp", "--output", filepath.Join(root, "second")); err != nil || stderr != "" {
+		t.Fatalf("capture: %v %s", err, stderr)
+	}
+	stdout, stderr, err = run(t, "project", "add", root, "second", "--title", "Second", "--tag", "")
+	if err != nil || stderr != "" {
+		t.Fatalf("project add with an empty tag: %v %s", err, stderr)
+	}
+	if !strings.Contains(stdout, "Tags: none") {
+		t.Fatalf("registering with an empty tag did not report none:\n%s", stdout)
 	}
 }

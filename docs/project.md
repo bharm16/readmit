@@ -95,8 +95,9 @@ never removed, and the first one declared at `init` becomes the default.
 | `incidents` | The person; a sorted set of linked incident references, at most 32 | Yes |
 
 `project update` replaces only the members it is given: changing a status does
-not restate the tags. Passing `--tag ""` or `--incident ""` alone clears that
-set, and `--owner ""` clears the owner. It can never reach `name`, `identity`,
+not restate the tags. Passing `--tag ""` or `--incident ""` as the only
+value clears that set, and `--owner ""` clears the owner; an empty value beside
+a real one is a typo and is refused rather than dropped. It can never reach `name`, `identity`,
 `schema` or `provenance`, because those are facts about evidence rather than
 metadata.
 
@@ -215,6 +216,7 @@ anywhere, or kept in browser storage.
 - Source systems, profiles, suites, environments, runs, findings and reviews as
   registered project entities. This release registers case bundles.
 - Migrating a document written under a future contract version. A version this
-  release does not read is reported, never migrated in place.
+  release does not read is reported as exactly that, in both the command line
+  and the shell, and is never migrated in place.
 - Nested projects, and cases outside the project directory. A registered case is
   one directory entry of the project.

@@ -135,8 +135,12 @@ func projectAdd(ran *bool) *cobra.Command {
 			entry.InterfaceVersion = version
 			entry.Owner = owner
 			entry.Status = project.Status(status)
-			entry.Tags = tags
-			entry.Incidents = incidents
+			if entry.Tags, err = declaredValues(tags); err != nil {
+				return err
+			}
+			if entry.Incidents, err = declaredValues(incidents); err != nil {
+				return err
+			}
 			document, stored, err := project.AddCase(opened.Document, entry)
 			if err != nil {
 				return err
@@ -180,11 +184,17 @@ func projectUpdate(ran *bool) *cobra.Command {
 				change.InterfaceVersion = &version
 			}
 			if cmd.Flags().Changed("tag") {
-				declared := declaredValues(tags)
+				declared, err := declaredValues(tags)
+				if err != nil {
+					return err
+				}
 				change.Tags = &declared
 			}
 			if cmd.Flags().Changed("incident") {
-				declared := declaredValues(incidents)
+				declared, err := declaredValues(incidents)
+				if err != nil {
+					return err
+				}
 				change.Incidents = &declared
 			}
 			if change.Empty() {
@@ -282,16 +292,17 @@ func evidenceFor(root string, entry project.Case) evidenceState {
 	return evidenceVerified
 }
 
-// declaredValues drops values that carry nothing, so an explicitly empty value
-// clears a set rather than storing an entry with no content.
-func declaredValues(values []string) []string {
-	declared := make([]string, 0, len(values))
-	for _, value := range values {
-		if value != "" {
-			declared = append(declared, value)
-		}
+// declaredValues reads one explicitly empty value as the empty set, which is
+// how a set is cleared. An empty value beside real ones is a typo rather than a
+// request to clear, so it is refused instead of being dropped silently.
+func declaredValues(values []string) ([]string, error) {
+	if len(values) == 1 && values[0] == "" {
+		return nil, nil
 	}
-	return declared
+	if slices.Contains(values, "") {
+		return nil, errors.New(`an empty value clears the set only when it is the only value given`)
+	}
+	return values, nil
 }
 
 func writeProject(out io.Writer, headline string, document project.Document) error {

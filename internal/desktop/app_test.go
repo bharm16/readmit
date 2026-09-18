@@ -495,17 +495,16 @@ func TestOpenProjectSeparatesAnEmptyProjectFromAFailure(t *testing.T) {
 	if empty.State != desktop.Empty || empty.Project == nil {
 		t.Fatalf("a project with no registered case was not reported as empty: %+v", empty)
 	}
+	unsupported := t.TempDir()
+	if err := os.WriteFile(filepath.Join(unsupported, "project.json"), []byte(`{"schema":"readmit-project/v2"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	reasons := make(map[string]string)
 	for name, folder := range map[string]string{
 		"no document":      t.TempDir(),
 		"absent folder":    filepath.Join(t.TempDir(), "absent"),
-		"unknown contract": "",
+		"unknown contract": unsupported,
 	} {
-		if name == "unknown contract" {
-			folder = t.TempDir()
-			if err := os.WriteFile(filepath.Join(folder, "project.json"), []byte(`{"schema":"readmit-project/v2"}`), 0600); err != nil {
-				t.Fatal(err)
-			}
-		}
 		result := newApp(t, &chooser{}).OpenProject(folder)
 		if result.State != desktop.Failed || result.Project != nil {
 			t.Fatalf("%s was not reported as a failure: %+v", name, result)
@@ -513,6 +512,12 @@ func TestOpenProjectSeparatesAnEmptyProjectFromAFailure(t *testing.T) {
 		if result.Reason == "" {
 			t.Fatalf("%s gave the shell nothing to show", name)
 		}
+		reasons[name] = result.Reason
+	}
+	// A document this release cannot read is not the same as no document, and
+	// the shell is told which one it found rather than the two being conflated.
+	if reasons["unknown contract"] == reasons["no document"] {
+		t.Fatalf("an unsupported contract version was reported as a missing project: %q", reasons["unknown contract"])
 	}
 }
 

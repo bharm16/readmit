@@ -52,8 +52,10 @@ const (
 	Completed        State = "completed"
 )
 
-// Kind classifies a workspace entry by the contract it declares, never by its
-// name or extension.
+// Kind classifies a workspace entry by the contract the entry itself declares.
+// A canonical document is located by its fixed name, but nothing is concluded
+// from that name: the contract always comes from inside the entry, and an entry
+// whose declared contract this release does not read is unsupported.
 type Kind string
 
 const (
@@ -325,6 +327,9 @@ func (a *App) OpenProject(path string) ProjectResult {
 		return declined.project()
 	}
 	opened, err := project.Open(root)
+	if errors.Is(err, project.ErrUnsupportedVersion) {
+		return ProjectResult{State: Failed, Reason: "the project document was written by a version this release cannot read"}
+	}
 	if err != nil {
 		return probeReadFailure(root).project()
 	}
@@ -411,8 +416,8 @@ func resolveFolder(path string) (string, refusal) {
 // entry listed as a case is a claim until OpenCase accepts it.
 func describe(root string, entry fs.DirEntry) Artifact {
 	name := entry.Name()
-	// The canonical document is found by its fixed name, exactly as a case
-	// bundle's manifest is. Nothing is concluded from that name: the entry is
+	// A project directory holds its document under one canonical name, so that
+	// is how it is located. Nothing is concluded from the name: the entry is
 	// decoded, and what it reports is the contract the document itself
 	// declares. An entry this release cannot read is unsupported, never a
 	// project inferred from a file name.

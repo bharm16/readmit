@@ -57,9 +57,6 @@ export interface CaseResult {
   case?: CaseEvidence;
 }
 
-/** One declared version of the interface under investigation. */
-export type InterfaceVersion = string;
-
 /** Project-level settings every case inherits when it is registered without an
  * explicit owner or interface version. */
 export interface ProjectSettings {
@@ -88,7 +85,7 @@ export interface ProjectCase {
 export interface ProjectDocument {
   schema: string;
   settings: ProjectSettings;
-  interface_versions: InterfaceVersion[];
+  interface_versions: string[];
   cases: ProjectCase[];
 }
 
