@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"unicode/utf8"
+
+	"github.com/bharm16/readmit/internal/artifactpath"
 )
 
 const (
@@ -170,6 +172,10 @@ func Create(path string, snapshot Snapshot) error { return write(path, snapshot,
 func Write(path string, snapshot Snapshot) error { return write(path, snapshot, false) }
 
 func write(path string, snapshot Snapshot, create bool) error {
+	path, err := artifactpath.Destination(path)
+	if err != nil {
+		return err
+	}
 	data, err := Encode(snapshot)
 	if err != nil {
 		return err

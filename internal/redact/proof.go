@@ -9,6 +9,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/receiver"
@@ -21,14 +22,14 @@ import (
 // Only the fixed built-in fixture is executable here; spec prose is never code.
 func runProof(ctx context.Context, spec testrunner.Spec, casePath, dir string, required []int) (Proof, error) {
 	var err error
-	casePath, err = canonical(casePath)
+	casePath, err = artifactpath.Resolve(casePath)
 	if err != nil {
 		return Proof{}, err
 	}
 	if err := os.Mkdir(dir, 0700); err != nil {
 		return Proof{}, errors.New("cannot reserve private proof directory")
 	}
-	dir, err = canonical(dir)
+	dir, err = artifactpath.Resolve(dir)
 	if err != nil {
 		return Proof{}, err
 	}
@@ -53,7 +54,7 @@ func runProof(ctx context.Context, spec testrunner.Spec, casePath, dir string, r
 		return Proof{}, errors.New("fixture proof did not preserve the exact agreed failures and full fixed pass")
 	}
 	for _, artifact := range []*testrunner.Artifact{baseline, postfix} {
-		if err := verifyFixtureACKs(source, artifact); err != nil {
+		if err := verifyFixtureProof(source, artifact); err != nil {
 			return Proof{}, err
 		}
 	}
@@ -127,4 +128,28 @@ func runFixture(ctx context.Context, spec testrunner.Spec, caseReference, dir st
 		return nil, err
 	}
 	return testrunner.Open(filepath.Join(dir, "result"))
+}
+
+// verifyFixtureProof owns the successful fixture contract used both after fresh
+// execution and when reopening an export. Matching retained copies alone cannot
+// establish that their ledger followed from the approved unchanged requests.
+func verifyFixtureProof(source *bundle.Bundle, artifact *testrunner.Artifact) error {
+	if artifact.Run == nil || !artifact.Run.Successful() || artifact.InitialObservation == nil || artifact.FinalObservation == nil || len(artifact.Run.Manifest.Transformations) != 0 {
+		return errors.New("fixture proof requires unchanged requests and complete observations")
+	}
+	if err := verifyProofSources(source, artifact.Run); err != nil {
+		return err
+	}
+	if err := verifyFixtureACKs(source, artifact); err != nil {
+		return err
+	}
+	requests := make([][]byte, 0, len(artifact.Run.Events))
+	for _, event := range artifact.Run.Events {
+		raw, err := artifact.Run.Raw(event.Sent)
+		if err != nil {
+			return err
+		}
+		requests = append(requests, raw)
+	}
+	return receiver.VerifyLedger(requests, *artifact.InitialObservation, *artifact.FinalObservation)
 }

@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/exportreview"
@@ -21,6 +22,15 @@ import (
 // only a freshly generated allowlisted packet after all gates pass. The private
 // source state, original proofs, and original artifacts never enter that packet.
 func Export(ctx context.Context, request ExportRequest) (*ExportManifest, error) {
+	var err error
+	request.ReviewPath, err = artifactpath.Directory(request.ReviewPath)
+	if err != nil {
+		return nil, err
+	}
+	request.LocalState, err = artifactpath.Resolve(request.LocalState)
+	if err != nil {
+		return nil, err
+	}
 	review, err := OpenReview(request.ReviewPath)
 	if err != nil {
 		return nil, err

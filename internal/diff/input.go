@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/replay"
@@ -51,7 +52,13 @@ func open(input Input, boundary Boundary) (*evidence, error) {
 	if input.Format != "" && input.Format != "auto" || input.Terminator != "" && input.Terminator != "auto" {
 		return nil, errors.New("artifact inputs use their recorded parsing declarations")
 	}
-	if _, err := os.Lstat(filepath.Join(input.Path, "result.json")); err == nil {
+	// Resolve child probes, but let each verified reader enforce its own root
+	// symlink contract against the original path.
+	directory, err := artifactpath.Resolve(input.Path)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Lstat(filepath.Join(directory, "result.json")); err == nil {
 		artifact, err := testrunner.Open(input.Path)
 		if err != nil {
 			return nil, err
@@ -69,7 +76,7 @@ func open(input Input, boundary Boundary) (*evidence, error) {
 		e.summary.TargetIdentity = artifact.Result.TargetIdentity
 		return e, nil
 	}
-	data, err := readFile(filepath.Join(input.Path, "manifest.json"), maxManifestBytes)
+	data, err := readFile(filepath.Join(directory, "manifest.json"), maxManifestBytes)
 	if err != nil {
 		return nil, errors.New("cannot read diff artifact manifest")
 	}

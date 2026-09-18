@@ -6,13 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
 	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/diff"
@@ -26,20 +26,11 @@ import (
 // verifies the index, nested artifact contracts, canonical synthetic evidence,
 // both verdicts, and every derived report and profile snapshot.
 func Open(dir string) (*Packet, error) {
-	// Resolve a raw symlink/../ traversal before joining retained relative
-	// paths. A symlink used as the packet root itself remains unsupported.
-	info, err := os.Lstat(dir)
-	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return nil, errors.New("report packet must be a regular directory")
-	}
-	dir, err = filepath.EvalSymlinks(dir)
+	dir, err := artifactpath.Directory(dir)
 	if err != nil {
-		return nil, errors.New("cannot resolve report packet")
+		return nil, err
 	}
-	dir, err = filepath.Abs(dir)
-	if err != nil {
-		return nil, errors.New("cannot resolve report packet")
-	}
+
 	files, err := readTree(dir)
 	if err != nil {
 		return nil, err

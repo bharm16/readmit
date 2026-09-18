@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 )
 
@@ -25,35 +26,11 @@ func encode(value any) ([]byte, error) {
 	return append(data, '\n'), nil
 }
 
-// Resolve the raw parent before cleaning so symlink/../output follows the OS.
-// Any enclosing completed artifact, even one unrelated to the inputs, is immutable.
 func reserve(output string) (string, error) {
-	parent, leaf := filepath.Split(output)
-	if leaf == "" || leaf == "." || leaf == ".." {
-		return "", errors.New("report output requires a new directory")
-	}
-	if parent == "" {
-		parent = "."
-	}
-	parent, err := filepath.EvalSymlinks(parent)
+	output, err := artifactpath.Destination(output)
 	if err != nil {
-		return "", errors.New("cannot resolve report output parent")
+		return "", err
 	}
-	parent, err = filepath.Abs(parent)
-	if err != nil {
-		return "", errors.New("cannot resolve report output parent")
-	}
-	for current := parent; ; current = filepath.Dir(current) {
-		for _, marker := range []string{"identity.sha256", "family.json"} {
-			if _, err := os.Lstat(filepath.Join(current, marker)); !os.IsNotExist(err) {
-				return "", errors.New("report output must be outside immutable evidence")
-			}
-		}
-		if filepath.Dir(current) == current {
-			break
-		}
-	}
-	output = filepath.Join(parent, leaf)
 	if os.Mkdir(output, 0700) != nil {
 		return "", errors.New("cannot create report output; destination must be new")
 	}

@@ -314,6 +314,37 @@ func TestACKDecoderHasExplicitBoundForRepeatedSegments(t *testing.T) {
 	}
 }
 
+func TestScalarSupportDoesNotDependOnUnrelatedRules(t *testing.T) {
+	for _, tc := range []struct {
+		name, fixture, old, replacement, field, rule string
+	}{
+		{"control", "diagnose-booking.hl7", "|DIAGNOSE-BOOK|", "|DIAGNOSE-BOOK~EXTRA|", "MSH-10", diagnose.RequiredField},
+		{"empty first control", "diagnose-booking.hl7", "|DIAGNOSE-BOOK|", "|~EXTRA|", "MSH-10", diagnose.RequiredField},
+		{"appointment time", "diagnose-booking.hl7", "^^^20260102100000+0000", "^^^20260102100000+0000~^^^20260103100000+0000", "SCH-11", diagnose.RequiredField},
+		{"null first appointment", "diagnose-booking.hl7", "^^^20260102100000+0000", "\"\"~^^^20260103100000+0000", "SCH-11", diagnose.RequiredField},
+		{"ack reference", "diagnose-ack.hl7", "|DIAGNOSE-BOOK|", "|DIAGNOSE-BOOK~EXTRA|", "MSA[1]-2", diagnose.ACKOutcome},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := bytes.Replace(fixture(t, tc.fixture), []byte(tc.old), []byte(tc.replacement), 1)
+			path := writeCase(t, raw)
+			for _, rules := range [][]string{{tc.rule}, diagnose.DefaultConfig().Rules} {
+				config := diagnose.DefaultConfig()
+				config.Rules = rules
+				report := run(t, path, config)
+				found := false
+				for _, unsupported := range report.Unsupported {
+					if unsupported.Code == "unsupported_field_repetition" && unsupported.Field == tc.field {
+						found = true
+					}
+				}
+				if !found || len(findings(report, tc.rule)) != 0 {
+					t.Fatalf("rule selection allowed scalar interpretation: %+v", report)
+				}
+			}
+		})
+	}
+}
+
 func TestImportedWireProfileDeclarationsAreUnsupportedByRepetition(t *testing.T) {
 	declared := fixture(t, "diagnose-unsupported-profile.hl7")
 	for _, tc := range []struct {

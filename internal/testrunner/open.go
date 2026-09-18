@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/replay"
@@ -16,6 +17,10 @@ import (
 // original spec, target, source case, and live observation paths are never used.
 // Verdicts are reevaluated from the retained run and observation evidence.
 func Open(dir string) (*Artifact, error) {
+	dir, err := artifactpath.Directory(dir)
+	if err != nil {
+		return nil, err
+	}
 	invalid := errors.New("invalid or inconsistent test result")
 	files, err := readDirectory(dir)
 	if err != nil {

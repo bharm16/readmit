@@ -44,7 +44,7 @@ func build(inputs []Input, provenance Provenance) (*Bundle, error) {
 		}
 		source := Source{ID: fmt.Sprintf("s%04d", i+1), Path: input.Path, Format: format, Terminator: terminator, Size: len(input.Data), SHA256: digest(input.Data)}
 		for start := 0; start < len(input.Data) || source.Occurrences == 0; {
-			end, framingError := occurrenceEnd(input.Data, start, format)
+			end, framingError := NextOccurrence(input.Data, start, format)
 			source.Occurrences++
 			if len(b.Events) == MaxEvents {
 				return nil, errors.New("bundle exceeds 10000 occurrences")
@@ -133,10 +133,12 @@ func inputOptions(input Input) (hl7.Format, hl7.Terminator, error) {
 	return format, terminator, nil
 }
 
-// Complete MLLP boundaries survive a malformed payload. If framing itself is
-// broken, retain the remaining bytes as one unparsed occurrence; do not guess
-// a resynchronization point or discard intervening garbage.
-func occurrenceEnd(raw []byte, start int, format hl7.Format) (int, string) {
+// NextOccurrence returns the exclusive end and framing diagnostic for the next
+// retained occurrence. Callers supply a validated Raw or MLLP format and a start
+// within raw. Capture and recorded-wire observation indexing share this policy:
+// complete frames survive malformed payloads; broken framing retains the entire
+// remaining suffix without guessing a resynchronization point.
+func NextOccurrence(raw []byte, start int, format hl7.Format) (int, string) {
 	if format == hl7.Raw {
 		return len(raw), ""
 	}

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
 )
@@ -30,6 +31,10 @@ type Case struct {
 // only after every case is complete. A failed write retains incomplete output
 // without that completion record; an existing directory is never overwritten.
 func Write(path string, inputs bundle.GeneratorInputs) (*Manifest, error) {
+	path, err := artifactpath.Destination(path)
+	if err != nil {
+		return nil, err
+	}
 	inputs.BaseTime = inputs.BaseTime.UTC()
 	variants, err := generate(inputs)
 	if err != nil {

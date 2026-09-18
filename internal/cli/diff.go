@@ -1,11 +1,8 @@
 package cli
 
 import (
-	"encoding/json/v2"
 	"errors"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/diff"
@@ -56,7 +53,7 @@ func diffCommand(ran *bool) *cobra.Command {
 				return errors.New("diff output exceeds 32 MiB; select a narrower field scope")
 			}
 			if output != "" {
-				resolved, err := diffOutputOutsideInputs(args, output)
+				resolved, err := artifactpath.Destination(output)
 				if err != nil {
 					return err
 				}
@@ -94,67 +91,4 @@ func writeDiff(path string, data []byte) error {
 		return errors.New("cannot write diff output; incomplete file retained")
 	}
 	return nil
-}
-
-// Protect all enclosing artifacts, including a result containing a run, and a
-// raw payload selected from inside an immutable case. Resolve symlinks before
-// checking ancestors and use artifactpath's resolved destination for the write.
-func diffOutputOutsideInputs(inputs []string, output string) (string, error) {
-	for _, input := range inputs {
-		resolved, err := filepath.EvalSymlinks(input)
-		if err != nil {
-			return "", errors.New("cannot resolve diff input")
-		}
-		resolved, err = filepath.Abs(resolved)
-		if err != nil {
-			return "", errors.New("cannot resolve diff input")
-		}
-		info, err := os.Stat(resolved)
-		if err != nil {
-			return "", errors.New("cannot inspect diff input")
-		}
-		if info.IsDir() {
-			output, err = artifactpath.Outside(info, output)
-			if err != nil {
-				return "", err
-			}
-		} else {
-			resolved = filepath.Dir(resolved)
-		}
-		for current := resolved; ; current = filepath.Dir(current) {
-			if immutableDirectory(current) {
-				info, err := os.Stat(current)
-				if err != nil {
-					return "", errors.New("cannot inspect enclosing artifact")
-				}
-				output, err = artifactpath.Outside(info, output)
-				if err != nil {
-					return "", err
-				}
-			}
-			if filepath.Dir(current) == current {
-				break
-			}
-		}
-	}
-	return output, nil
-}
-
-func immutableDirectory(path string) bool {
-	if _, err := os.Lstat(filepath.Join(path, "identity.sha256")); err == nil {
-		return true
-	}
-	for _, name := range []string{"manifest.json", "result.json"} {
-		data, err := readInputFile(filepath.Join(path, name), 1<<20)
-		if err != nil {
-			continue
-		}
-		var header struct {
-			Schema string `json:"schema"`
-		}
-		if json.Unmarshal(data, &header) == nil && (strings.HasPrefix(header.Schema, "readmit-case/") || strings.HasPrefix(header.Schema, "readmit-run/") || strings.HasPrefix(header.Schema, "readmit-result/")) {
-			return true
-		}
-	}
-	return false
 }

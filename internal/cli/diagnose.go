@@ -93,5 +93,5 @@ func diagnosisOutputOutsideCase(casePath, output string) (string, error) {
 	if err != nil {
 		return "", errors.New("cannot inspect diagnosis case directory")
 	}
-	return artifactpath.Outside(caseInfo, output)
+	return artifactpath.Destination(output, caseInfo)
 }

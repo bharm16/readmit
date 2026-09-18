@@ -160,7 +160,8 @@ Field labels are supplied for MSH, MSA, ERR, PID, PV1, SCH, EVN, NTE, RGS, AIS,
 AIG, AIL, AIP, and OBX when MSH-12 declares version `2.5.1`. Other versions use
 positional labels. See [dictionary provenance](docs/dictionary-provenance.md).
 This is **syntax inspection**, not semantic validation or a claim of HL7
-conformance. No semantic SIU profile ships in this issue.
+conformance. The separate diagnosis and receiver workflows use the narrow,
+documented readmit SIU fixture profile.
 
 Inputs are limited to 16 MiB and 200,000 syntax nodes across all frames to bound
 memory expansion. Oversized or malformed input fails before tree output or

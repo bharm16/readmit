@@ -9,6 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/replay"
@@ -125,8 +126,8 @@ func Prepare(specPath string) (*Plan, error) {
 	if err != nil {
 		return nil, err
 	}
-	source := relative(filepath.Dir(resolved), spec.Input.Case)
-	target, err := replay.ReadTarget(relative(filepath.Dir(resolved), spec.Target))
+	source := artifactpath.JoinReference(filepath.Dir(resolved), spec.Input.Case)
+	target, err := replay.ReadTarget(artifactpath.JoinReference(filepath.Dir(resolved), spec.Target))
 	if err != nil {
 		return nil, err
 	}
@@ -140,15 +141,7 @@ func Prepare(specPath string) (*Plan, error) {
 	}
 	path := ""
 	if spec.Observation.Boundary == LedgerBoundary {
-		path = relative(filepath.Dir(resolved), spec.Observation.Path)
+		path = artifactpath.JoinReference(filepath.Dir(resolved), spec.Observation.Path)
 	}
 	return &Plan{spec: spec, raw: raw, specPath: resolved, sourcePath: source, sourceInfo: sourceInfo, observationPath: path, replay: prepared}, nil
-}
-
-func relative(base, path string) string {
-	if filepath.IsAbs(path) {
-		return path
-	}
-	// Do not clean before the OS resolves symlinks followed by parent traversal.
-	return base + string(os.PathSeparator) + path
 }

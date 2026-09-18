@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"slices"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/exportreview"
 	"github.com/bharm16/readmit/internal/hl7"
@@ -171,7 +172,7 @@ func prepare(request Request) (*transformer, *bundle.Bundle, testrunner.Spec, st
 	values := map[string][]byte{}
 	resolved := map[string]string{}
 	for _, entry := range paths {
-		path, err := canonical(entry.path)
+		path, err := artifactpath.Resolve(entry.path)
 		if err != nil {
 			return fail(err)
 		}
@@ -198,7 +199,7 @@ func prepare(request Request) (*transformer, *bundle.Bundle, testrunner.Spec, st
 	if len(spec.Input.Messages) != 2 {
 		return fail(errors.New("redaction fixture proof v1 requires exactly two selected messages"))
 	}
-	input, err := bundle.Open(relative(filepath.Dir(resolved["spec"]), spec.Input.Case))
+	input, err := bundle.Open(artifactpath.JoinReference(filepath.Dir(resolved["spec"]), spec.Input.Case))
 	if err != nil || input.Identity != source.Identity {
 		return fail(errors.New("spec input must match the reviewed case"))
 	}
@@ -275,6 +276,10 @@ func revalidate(local localState) error {
 }
 
 func OpenReview(path string) (*Review, error) {
+	path, err := artifactpath.Directory(path)
+	if err != nil {
+		return nil, err
+	}
 	files, err := tree(path)
 	if err != nil {
 		return nil, err

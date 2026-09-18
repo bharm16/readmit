@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/observation"
 )
@@ -46,6 +47,10 @@ func WriteRecorded(path string, inputs []Input, startedAt time.Time, snapshot ob
 }
 
 func writeBundle(path string, b *Bundle) (*Bundle, error) {
+	path, err := artifactpath.Destination(path)
+	if err != nil {
+		return nil, err
+	}
 	files, err := encode(b)
 	if err != nil {
 		return nil, err
@@ -199,7 +204,15 @@ func Open(path string) (*Bundle, error) {
 		// Metadata refers to the exact stored JSON bytes, including whitespace.
 		b.Manifest.Observation = &Payload{Path: "observation.json", Size: len(files["observation.json"]), SHA256: digest(files["observation.json"])}
 	}
-	if !sameJSON(manifest, b.Manifest) || !sameJSON(events, b.Events) || !sameJSON(links, b.Correlations) {
+	eventsMatch, err := sameRecords(events, b.Events)
+	if err != nil {
+		return nil, err
+	}
+	linksMatch, err := sameRecords(links, b.Correlations)
+	if err != nil {
+		return nil, err
+	}
+	if !sameJSON(manifest, b.Manifest) || !eventsMatch || !linksMatch {
 		return nil, errors.New("bundle metadata or correlations disagree with evidence")
 	}
 	b.Identity = id
@@ -293,6 +306,21 @@ func encodeLines[T any](values []T) ([]byte, error) {
 		data = append(data, '\n')
 	}
 	return data, nil
+}
+
+// Rebuilding can expand a small input into a large ambiguous-correlation graph.
+// Compare records through the writer's incremental file budget, never by
+// marshaling the complete reconstructed slice before checking its size.
+func sameRecords[T any](stored, rebuilt []T) (bool, error) {
+	expected, err := encodeLines(rebuilt)
+	if err != nil {
+		return false, err
+	}
+	actual, err := encodeLines(stored)
+	if err != nil {
+		return false, err
+	}
+	return bytes.Equal(actual, expected), nil
 }
 
 func decodeLines[T any](data []byte) ([]T, error) {

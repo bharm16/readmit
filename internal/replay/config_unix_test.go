@@ -3,6 +3,9 @@
 package replay_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -53,5 +56,44 @@ func TestConfigurationAndCARejectFIFOWithoutOpening(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("FIFO alias blocked")
+	}
+}
+
+func TestRelativeCAReferencePreservesPhysicalParentTraversal(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "physical", "nested"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "physical", "nested"), filepath.Join(dir, "alias")); err != nil {
+		t.Fatal(err)
+	}
+	_, selectedCA := certificate(t)
+	_, unselectedCA := certificate(t)
+	for name, raw := range map[string][]byte{"physical/ca.pem": selectedCA, "ca.pem": unselectedCA} {
+		if err := os.WriteFile(filepath.Join(dir, name), raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	config := target("127.0.0.1:2575")
+	config.Transport, config.CAFile = "tls", "alias/../ca.pem"
+	raw, err := json.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "target.json")
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := replay.ReadTarget(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := replay.Prepare(caseAt(t, request("CA-REFERENCE")), loaded, replay.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := sha256.Sum256(selectedCA)
+	if plan.Target().CASHA256 != hex.EncodeToString(want[:]) {
+		t.Fatal("replay prepared the lexical sibling instead of the explicitly selected CA")
 	}
 }
