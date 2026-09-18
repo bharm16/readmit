@@ -8,6 +8,9 @@ Unsigned preview of local HL7 inspection and case evidence capture.
   bytes, source provenance, distinct times, and explicit ACK correlation gaps.
 - `timeline BUNDLE` verifies and reopens `readmit-case/v1` evidence directories.
 - Copy-stable content identity and deterministic generated provenance support.
+- `diagnose` produces evidence-linked JSON/Markdown findings for the named SIU
+  fixture profile, with explicit unsupported cases and capture-window limits.
+
 - `synth` creates a reproducible synthetic SIU family with separate regression,
   cancellation, and known-invalid bundles from four explicit generator inputs.
 - Five native-tested targets, SHA-256 checksums, and GitHub binary provenance.
