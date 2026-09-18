@@ -72,6 +72,7 @@ func TestPolicyRejectsUnsupportedAndIncompleteDeclarations(t *testing.T) {
 
 func FuzzPolicy(f *testing.F) {
 	f.Add([]byte(acceptAll))
+	f.Add([]byte(faultPolicy))
 	f.Add([]byte(`{"schema":"readmit-receiver-policy/v1"}`))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		policy, err := collection.DecodePolicy(data)

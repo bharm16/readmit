@@ -14,10 +14,11 @@ import (
 )
 
 const (
-	PolicySchemaV1 = "readmit-receiver-policy/v1"
-	PolicySchema   = "readmit-receiver-policy/v2"
-	MaxPolicyBytes = 64 << 10
-	maxTypeValues  = 64
+	PolicySchemaV1    = "readmit-receiver-policy/v1"
+	PolicySchema      = "readmit-receiver-policy/v2"
+	FaultPolicySchema = "readmit-receiver-policy/v3"
+	MaxPolicyBytes    = 64 << 10
+	maxTypeValues     = 64
 )
 
 // Declared operators. A policy names one of these typed Go operations; it never
@@ -141,9 +142,10 @@ type Policy struct {
 	SourceLabel          string          `json:"source_label"`
 	Acknowledgement      AckRule         `json:"acknowledgement"`
 	AcceptedMessageTypes MessageTypeRule `json:"accepted_message_types"`
-	// Enhanced exists only in readmit-receiver-policy/v2. A v1 policy leaves it
+	// Enhanced exists in readmit-receiver-policy/v2 and v3. A v1 policy leaves it
 	// absent, which keeps v1's member set frozen and its bytes unchanged.
 	Enhanced *EnhancedRule `json:"enhanced_acknowledgement,omitzero"`
+	Faults   *FaultPolicy  `json:"faults,omitzero"`
 }
 
 var (
@@ -152,8 +154,8 @@ var (
 )
 
 // UnmarshalJSON requires every member explicitly, so an omitted acknowledgement
-// rule cannot decode into a silently permissive zero value. The v2-only
-// enhanced rule is required in v2 and refused in v1, including as an explicit
+// rule cannot decode into a silently permissive zero value. The enhanced
+// rule is required in v2/v3 and refused in v1, including as an explicit
 // null, which a typed decode alone would accept as an absent member.
 func (p *Policy) UnmarshalJSON(data []byte) error {
 	var required struct {
@@ -171,8 +173,12 @@ func (p *Policy) UnmarshalJSON(data []byte) error {
 		return errors.New("invalid receiver policy JSON")
 	}
 	_, declared := members["enhanced_acknowledgement"]
-	if declared != (*required.Schema == PolicySchema) {
-		return errors.New("only readmit-receiver-policy/v2 declares an enhanced acknowledgement rule")
+	if declared != (*required.Schema == PolicySchema || *required.Schema == FaultPolicySchema) {
+		return errors.New("only receiver policy v2 and v3 declare an enhanced acknowledgement rule")
+	}
+	_, faultDeclared := members["faults"]
+	if faultDeclared != (*required.Schema == FaultPolicySchema) {
+		return errors.New("only receiver policy v3 declares faults")
 	}
 	type plainPolicy Policy
 	var value plainPolicy
@@ -181,6 +187,9 @@ func (p *Policy) UnmarshalJSON(data []byte) error {
 	}
 	if declared && value.Enhanced == nil {
 		return errors.New("the enhanced acknowledgement rule cannot be null")
+	}
+	if faultDeclared && value.Faults == nil {
+		return errors.New("fault policy cannot be null")
 	}
 	*p = Policy(value)
 	return nil
@@ -234,11 +243,24 @@ func (r *EnhancedRule) UnmarshalJSON(data []byte) error {
 }
 
 func (p Policy) Validate() error {
-	if p.Schema != PolicySchemaV1 && p.Schema != PolicySchema {
+	if p.Schema != PolicySchemaV1 && p.Schema != PolicySchema && p.Schema != FaultPolicySchema {
 		return errors.New("unsupported receiver policy schema version")
 	}
-	if (p.Enhanced != nil) != (p.Schema == PolicySchema) {
-		return errors.New("only readmit-receiver-policy/v2 declares an enhanced acknowledgement rule")
+	if (p.Enhanced != nil) != (p.Schema == PolicySchema || p.Schema == FaultPolicySchema) {
+		return errors.New("only receiver policy v2 and v3 declare an enhanced acknowledgement rule")
+	}
+	if (p.Faults != nil) != (p.Schema == FaultPolicySchema) {
+		return errors.New("only receiver policy v3 declares faults")
+	}
+	if p.Faults != nil {
+		if err := p.Faults.Validate(); err != nil {
+			return err
+		}
+		if p.SupportsEnhanced() && p.Enhanced.ApplicationDelivery == SeparateEndpoint {
+			if err := p.Faults.ApproveEndpoint(p.Enhanced.ApplicationEndpoint); err != nil {
+				return err
+			}
+		}
 	}
 	if !labelPattern.MatchString(p.Name) || !labelPattern.MatchString(p.SourceLabel) {
 		return errors.New("receiver policy name and source label must be short printable identifiers")

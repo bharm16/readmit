@@ -68,6 +68,18 @@ func NewCollector(config CollectorConfig) (*Collector, error) {
 	if err := config.Policy.Validate(); err != nil {
 		return nil, err
 	}
+	// Own a validated snapshot: a caller cannot change approvals or executable
+	// behavior later by mutating slices or pointers supplied at construction.
+	if config.Policy.Faults != nil {
+		encoded, err := collection.EncodePolicy(config.Policy)
+		if err != nil {
+			return nil, err
+		}
+		config.Policy, err = collection.DecodePolicy(encoded)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if err := validBounds(config.MaxFrameBytes, config.IdleTimeout, config.MaxMessages); err != nil {
 		return nil, err
 	}
@@ -95,6 +107,9 @@ func NewCollector(config CollectorConfig) (*Collector, error) {
 		ApplicationProcessing: collection.NoApplicationProcessing,
 		Sessions:              []collection.Session{}, Received: []collection.Received{},
 	}
+	if config.Policy.Faults != nil {
+		c.record.Schema = collection.FaultSchema
+	}
 	return c, nil
 }
 
@@ -106,6 +121,12 @@ func (c *Collector) Serve(ctx context.Context, listener net.Listener) (*bundle.B
 		return nil, errors.New("collector session has already been served")
 	}
 	c.served = true
+	if c.config.Policy.Faults != nil {
+		if err := c.config.Policy.Faults.ApproveEndpoint(listener.Addr().String()); err != nil {
+			listener.Close()
+			return nil, err
+		}
+	}
 	err := c.sessions(ctx, listener, c.connection)
 	b, writeErr := bundle.WriteCollected(c.config.OutputPath, c.inputs, c.startedAt, c.record)
 	if writeErr != nil {
@@ -145,20 +166,16 @@ func (c *Collector) connection(ctx context.Context, connection net.Conn) (bool, 
 		c.received++
 		result := c.decide(raw)
 		entry := collection.Received{SessionID: session, OccurrenceID: id, ControlID: result.controlID, Mode: result.mode, Accept: result.accept, Application: result.application}
+		if step := c.config.Policy.Faults.Step(c.received); step != nil {
+			entry.Fault = &collection.FaultEvent{Action: step.Action, Stage: step.Stage, Status: "not-reached"}
+		}
 		if err := c.commit(ordinal, session, entry); err != nil {
 			return false, err
 		}
-		// The accept stage answers on the connection that delivered the
-		// message; only the application stage may reach a separate endpoint.
-		if result.acceptACK != nil {
-			if err := c.sendHere(connection, &input, result.acceptACK); err != nil {
-				downgrade(&c.answering().Accept, reasonPartialWrite)
-				downgrade(&c.answering().Application, reasonStageNotSent)
-				return c.complete(ctx, c.config.MaxMessages), nil
-			}
-		}
-		if result.applicationACK != nil {
-			if err := c.deliverApplication(ctx, &input, connection, result); err != nil {
+		// The accept stage answers here; only the application stage may travel.
+		for _, stage := range []string{collection.AcceptStage, collection.ApplicationStage} {
+			stop := c.answerStage(ctx, &input, connection, result, stage)
+			if stop {
 				return c.complete(ctx, c.config.MaxMessages), nil
 			}
 		}
@@ -184,6 +201,12 @@ func (c *Collector) deliverApplication(ctx context.Context, input *bundle.Input,
 			return err
 		}
 		return nil
+	}
+	if c.config.Policy.Faults != nil {
+		if err := c.config.Policy.Faults.ApproveEndpoint(c.config.Policy.Enhanced.ApplicationEndpoint); err != nil {
+			downgrade(&c.answering().Application, reasonUndelivered)
+			return err
+		}
 	}
 	dialer := net.Dialer{Timeout: c.config.ApplicationTimeout}
 	endpoint, err := dialer.DialContext(ctx, "tcp", c.config.Policy.Enhanced.ApplicationEndpoint)
@@ -348,6 +371,9 @@ func condition(doc *hl7.Document, field hl7.Field) string {
 // an application-stage code. There is no accept stage in original mode.
 func (c *Collector) original(composer acknowledgementComposer, controlID string, accepted bool) outcome {
 	code, reason := c.config.Policy.Acknowledgement.Code, ""
+	if c.rejectStage(collection.ApplicationStage) {
+		code, reason = collection.RejectCode, reasonInjectedReject
+	}
 	if !accepted {
 		code, reason = collection.RejectCode, reasonUnacceptedType
 	}
@@ -401,9 +427,16 @@ func (c *Collector) enhanced(composer acknowledgementComposer, controlID string,
 	if !accepted {
 		acceptCode, applicationCode, reason = collection.CommitRejectCode, collection.RejectCode, reasonUnacceptedType
 	}
-	result.accept, result.acceptACK = c.composeStage(composer, "READMITACC", acceptCode, reason,
+	acceptReason, applicationReason := reason, reason
+	if c.rejectStage(collection.AcceptStage) {
+		acceptCode, acceptReason = collection.CommitRejectCode, reasonInjectedReject
+	}
+	if c.rejectStage(collection.ApplicationStage) {
+		applicationCode, applicationReason = collection.RejectCode, reasonInjectedReject
+	}
+	result.accept, result.acceptACK = c.composeStage(composer, "READMITACC", acceptCode, acceptReason,
 		collection.Requested(acceptCondition, acceptCode == collection.CommitAcceptCode), collection.SameConnection)
-	result.application, result.applicationACK = c.composeStage(composer, "READMITAPP", applicationCode, reason,
+	result.application, result.applicationACK = c.composeStage(composer, "READMITAPP", applicationCode, applicationReason,
 		collection.Requested(applicationCondition, applicationCode == collection.AcceptCode), rule.ApplicationDelivery)
 	if result.acceptACK == nil && result.applicationACK == nil {
 		return result

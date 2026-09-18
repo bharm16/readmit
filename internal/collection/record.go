@@ -57,12 +57,13 @@ type Stage struct {
 // declared, and what each stage answered. ControlID is the literal MSH-10 bytes
 // of the inbound frame; it is empty only when the header could not supply one.
 type Received struct {
-	SessionID    string `json:"session_id"`
-	OccurrenceID string `json:"occurrence_id"`
-	ControlID    string `json:"control_id"`
-	Mode         string `json:"mode"`
-	Accept       Stage  `json:"accept"`
-	Application  Stage  `json:"application"`
+	SessionID    string      `json:"session_id"`
+	OccurrenceID string      `json:"occurrence_id"`
+	ControlID    string      `json:"control_id"`
+	Mode         string      `json:"mode"`
+	Accept       Stage       `json:"accept"`
+	Application  Stage       `json:"application"`
+	Fault        *FaultEvent `json:"fault,omitzero"`
 }
 
 type Record struct {
@@ -115,6 +116,19 @@ func (r *Record) UnmarshalJSON(data []byte) error {
 	var value plainRecord
 	if err := json.Unmarshal(data, &value, json.RejectUnknownMembers(true)); err != nil {
 		return errors.New("invalid collection record JSON")
+	}
+	if value.Schema != FaultSchema {
+		var members struct {
+			Received []map[string]any `json:"received"`
+		}
+		if err := json.Unmarshal(data, &members); err != nil {
+			return errors.New("invalid collection record")
+		}
+		for _, received := range members.Received {
+			if _, ok := received["fault"]; ok {
+				return errors.New("only collection v3 declares fault events")
+			}
+		}
 	}
 	*r = Record(value)
 	return nil
@@ -253,7 +267,7 @@ func (r Record) Validate() error {
 	switch r.Schema {
 	case SchemaV1:
 		return r.validateV1()
-	case Schema:
+	case Schema, FaultSchema:
 		return r.validateV2()
 	}
 	return errors.New("unsupported collection record schema version")
@@ -262,6 +276,9 @@ func (r Record) Validate() error {
 func (r Record) common() error {
 	if !sessionPattern.MatchString(r.SessionID) || r.ApplicationProcessing != NoApplicationProcessing {
 		return errors.New("invalid collection session or application processing statement")
+	}
+	if (r.Schema == FaultSchema) != (r.Policy.Schema == FaultPolicySchema) {
+		return errors.New("collection v3 requires receiver policy v3; older records cannot declare faults")
 	}
 	if err := r.Policy.Validate(); err != nil {
 		return err
@@ -277,7 +294,21 @@ func (r Record) common() error {
 		labelled[session.SessionID] = session.SourceID
 	}
 	seen := make(map[string]bool, len(r.Received))
-	for _, received := range r.Received {
+	for ordinal, received := range r.Received {
+		step := r.Policy.Faults.Step(ordinal + 1)
+		if (step != nil) != (received.Fault != nil) {
+			return errors.New("each selected fault requires exactly one execution event")
+		}
+		if step != nil {
+			if received.Fault.Action != step.Action || received.Fault.Stage != step.Stage {
+				return errors.New("fault event must match the declared step")
+			}
+			switch received.Fault.Status {
+			case "completed", "interrupted", "not-requested", "not-reached":
+			default:
+				return errors.New("invalid fault execution status")
+			}
+		}
 		source, collected := labelled[received.SessionID]
 		// A frame belongs to the connection that carried it: its occurrence
 		// must live in that session's own source, never in another session's.
@@ -322,7 +353,7 @@ func (r Record) validateV1() error {
 }
 
 func (r Record) validateV2() error {
-	if r.Schema != Schema {
+	if r.Schema != Schema && r.Schema != FaultSchema {
 		return errors.New("unsupported collection record schema version")
 	}
 	if err := r.common(); err != nil {
