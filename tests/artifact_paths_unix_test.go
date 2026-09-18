@@ -120,3 +120,39 @@ func TestCaptureRecordsThePhysicalSourceAfterRawParentTraversal(t *testing.T) {
 		t.Fatal("captured bytes were attributed to a different source location")
 	}
 }
+
+func TestExportResolvesReviewAndPrivateRootsBeforeChildPaths(t *testing.T) {
+	request := redactFixture(t)
+	review, err := redact.Create(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aliasParent := func(child string) string {
+		t.Helper()
+		alias := filepath.Join(t.TempDir(), "alias")
+		if err := os.Symlink(child, alias); err != nil {
+			t.Fatal(err)
+		}
+		return alias + "/.."
+	}
+	reviewAlias := aliasParent(filepath.Join(request.Output, "case"))
+	privateAlias := aliasParent(filepath.Join(request.LocalState, "original-proof"))
+	for _, part := range []string{"review", "private", "both"} {
+		t.Run(part, func(t *testing.T) {
+			export := redact.ExportRequest{ReviewPath: request.Output, LocalState: request.LocalState, Approval: review.Identity, Output: filepath.Join(t.TempDir(), "packet")}
+			if part != "private" {
+				export.ReviewPath = reviewAlias
+			}
+			if part != "review" {
+				export.LocalState = privateAlias
+			}
+			manifest, err := redact.Export(context.Background(), export)
+			if err != nil || manifest.ApprovedReview != review.Identity {
+				t.Fatalf("export did not use the physical approved roots: %v", err)
+			}
+			if _, err := redact.OpenExport(export.Output); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}

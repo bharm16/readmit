@@ -199,7 +199,7 @@ func prepare(request Request) (*transformer, *bundle.Bundle, testrunner.Spec, st
 	if len(spec.Input.Messages) != 2 {
 		return fail(errors.New("redaction fixture proof v1 requires exactly two selected messages"))
 	}
-	input, err := bundle.Open(relative(filepath.Dir(resolved["spec"]), spec.Input.Case))
+	input, err := bundle.Open(artifactpath.JoinReference(filepath.Dir(resolved["spec"]), spec.Input.Case))
 	if err != nil || input.Identity != source.Identity {
 		return fail(errors.New("spec input must match the reviewed case"))
 	}

@@ -24,7 +24,10 @@ expectations, and the single-binary release contract remain the authority.
    refusals and open the physical artifact named by a path containing
    `symlink/..`. A receiver rejects colliding case and observation destinations
    before accepting a session, including aliases on case-insensitive filesystems.
-   Capture provenance identifies the physical source it actually read.
+   Capture provenance identifies the physical source it actually read. Export
+   orchestration retains resolved review/private roots for all subsequent child
+   access. Relative CA references preserve raw traversal, and replay preparation
+   snapshots the explicitly selected physical certificate file.
 3. **Diagnosis interpretation.** Repetition support belongs with field-state
    selection and decoding. Selecting a different set of diagnosis rules cannot
    cause a required scalar's first unexpected repetition to gain meaning.

@@ -46,13 +46,6 @@ func readLocal(path string, limit int) ([]byte, error) {
 	return raw, nil
 }
 
-func relative(base, path string) string {
-	if filepath.IsAbs(path) {
-		return path
-	}
-	return base + string(os.PathSeparator) + path
-}
-
 func destination(path string, protected []string) (string, error) {
 	if len(protected) == 0 {
 		return "", errors.New("artifact destination requires a source boundary")

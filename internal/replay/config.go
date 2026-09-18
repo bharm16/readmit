@@ -13,12 +13,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/bharm16/readmit/internal/artifactpath"
 )
 
 // ReadTarget performs bounded local reads only. Relative CA paths are resolved
 // against the target file, never the caller's working directory.
 func ReadTarget(path string) (Target, error) {
-	resolved, err := filepath.EvalSymlinks(path)
+	resolved, err := artifactpath.Resolve(path)
 	if err != nil {
 		return Target{}, errors.New("cannot resolve target configuration")
 	}
@@ -31,8 +33,8 @@ func ReadTarget(path string) (Target, error) {
 	if err := json.Unmarshal(data, &target, json.RejectUnknownMembers(true)); err != nil {
 		return Target{}, errors.New("invalid target configuration JSON")
 	}
-	if target.CAFile != "" && !filepath.IsAbs(target.CAFile) {
-		target.CAFile = filepath.Join(filepath.Dir(path), target.CAFile)
+	if target.CAFile != "" {
+		target.CAFile = artifactpath.JoinReference(filepath.Dir(path), target.CAFile)
 	}
 	if err := validateTarget(target); err != nil {
 		return Target{}, err
@@ -79,7 +81,11 @@ func loadCA(t Target) ([]byte, error) {
 	if t.CAFile == "" {
 		return nil, nil
 	}
-	data, err := readLocal(t.CAFile, 1<<20)
+	path, err := artifactpath.Resolve(t.CAFile)
+	if err != nil {
+		return nil, errors.New("cannot read configured CA certificates")
+	}
+	data, err := readLocal(path, 1<<20)
 	if err != nil {
 		return nil, errors.New("cannot read configured CA certificates")
 	}

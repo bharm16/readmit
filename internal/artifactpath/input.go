@@ -29,3 +29,12 @@ func Directory(path string) (string, error) {
 	}
 	return Resolve(path)
 }
+
+// JoinReference anchors a declared relative path without cleaning away raw
+// symlink/.. traversal. Resolve or access the result before any lexical joins.
+func JoinReference(directory, reference string) string {
+	if filepath.IsAbs(reference) {
+		return reference
+	}
+	return directory + string(os.PathSeparator) + reference
+}
