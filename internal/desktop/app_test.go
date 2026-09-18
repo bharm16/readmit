@@ -3,6 +3,7 @@ package desktop_test
 import (
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -585,5 +586,235 @@ func TestOpenedProjectCarriesNoMessageContent(t *testing.T) {
 		if strings.Contains(string(encoded), leaked) {
 			t.Fatalf("the typed project result exposed message content %q: %s", leaked, encoded)
 		}
+	}
+}
+
+// sampleProject creates a project directory holding a project document and a
+// copy of the frozen regression case. The sample family itself is retained
+// synthetic evidence, so a project is never created inside it; a bundle
+// identity covers relative paths and contents only, so the copy keeps the
+// identity the project document records.
+func sampleProject(t *testing.T, app *desktop.App) string {
+	t.Helper()
+	family := sample(t, app).Workspace.Root
+	root := writeProject(t, t.TempDir(), registeredRegression)
+	if err := os.CopyFS(filepath.Join(root, "regression"), os.DirFS(filepath.Join(family, "regression"))); err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+// bytesUnder records every byte of an artifact directory, so a later comparison
+// proves that editing a project reached no evidence at all.
+func bytesUnder(t *testing.T, dir string) map[string][]byte {
+	t.Helper()
+	files := map[string][]byte{}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		path := filepath.Join(dir, entry.Name())
+		if entry.IsDir() {
+			for name, data := range bytesUnder(t, path) {
+				files[entry.Name()+"/"+name] = data
+			}
+			continue
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[entry.Name()] = data
+	}
+	return files
+}
+
+func TestOpenRevisionsSeparatesAnEmptyDocumentFromAFailure(t *testing.T) {
+	root := writeProject(t, t.TempDir(), registeredRegression)
+	empty := newApp(t, &chooser{}).OpenRevisions(root)
+	if empty.State != desktop.Empty || empty.Revisions == nil {
+		t.Fatalf("a project that has recorded nothing was not reported as empty: %+v", empty)
+	}
+	if empty.Revisions.Schema != project.RevisionsSchema || len(empty.Revisions.Notes) != 0 || len(empty.Revisions.Revisions) != 0 {
+		t.Fatalf("the empty editable document is not the contract this release reads: %+v", empty.Revisions)
+	}
+	if _, err := os.Lstat(filepath.Join(root, project.RevisionsDocumentName)); err == nil {
+		t.Fatal("reading a project wrote an editable document into it")
+	}
+
+	later := `{"schema":"readmit-revisions/v2","notes":[],"revisions":[],"suites":[]}`
+	unsupported := writeProject(t, t.TempDir(), registeredRegression)
+	if err := os.WriteFile(filepath.Join(unsupported, project.RevisionsDocumentName), []byte(later), 0600); err != nil {
+		t.Fatal(err)
+	}
+	damaged := writeProject(t, t.TempDir(), registeredRegression)
+	if err := os.WriteFile(filepath.Join(damaged, project.RevisionsDocumentName), []byte(`{"schema":`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	reasons := make(map[string]string)
+	for name, folder := range map[string]string{
+		"unknown contract": unsupported,
+		"damaged document": damaged,
+		"no project":       t.TempDir(),
+	} {
+		result := newApp(t, &chooser{}).OpenRevisions(folder)
+		if result.State != desktop.Failed || result.Revisions != nil {
+			t.Fatalf("%s was not reported as a failure: %+v", name, result)
+		}
+		if result.Reason == "" {
+			t.Fatalf("%s gave the shell nothing to show", name)
+		}
+		reasons[name] = result.Reason
+	}
+	if reasons["unknown contract"] == reasons["damaged document"] {
+		t.Fatalf("a version this release cannot read was reported as a damaged one: %q", reasons["unknown contract"])
+	}
+	// A document this release cannot read is left exactly as it was written.
+	kept, err := os.ReadFile(filepath.Join(unsupported, project.RevisionsDocumentName))
+	if err != nil || string(kept) != later {
+		t.Fatalf("an unreadable editable document was rewritten: %v %s", err, kept)
+	}
+}
+
+// The one thing the shell writes into a project is a note. It reaches the
+// project's own editable document and no byte of any retained artifact.
+func TestSaveNoteEditsWorkingTextAndNeverTouchesEvidence(t *testing.T) {
+	parent := t.TempDir()
+	app := newApp(t, &chooser{folder: parent})
+	root := sampleProject(t, app)
+	evidence := bytesUnder(t, filepath.Join(root, "regression"))
+	document, err := os.ReadFile(filepath.Join(root, project.DocumentName))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	saved := app.SaveNote(root, project.Note{Name: "triage", Subject: "regression", Title: "Working theory", Body: "The second S13 keeps the original filler identifier."})
+	if saved.State != desktop.Completed || saved.Revisions == nil || len(saved.Revisions.Notes) != 1 {
+		t.Fatalf("a note was not stored: %+v", saved)
+	}
+	if note := saved.Revisions.Notes[0]; note.Name != "triage" || note.Subject != "regression" || note.Title != "Working theory" {
+		t.Fatalf("the stored note is not the one that was written: %+v", note)
+	}
+	replaced := app.SaveNote(root, project.Note{Name: "triage", Subject: "regression", Title: "Confirmed", Body: "Reproduced against the fixed receiver."})
+	if replaced.State != desktop.Completed || len(replaced.Revisions.Notes) != 1 || replaced.Revisions.Notes[0].Title != "Confirmed" {
+		t.Fatalf("replacing a note did not replace exactly that note: %+v", replaced)
+	}
+	if reopened := app.OpenRevisions(root); reopened.State != desktop.Completed || len(reopened.Revisions.Notes) != 1 {
+		t.Fatalf("the stored note did not read back: %+v", reopened)
+	}
+
+	for name, note := range map[string]project.Note{
+		"a subject the project does not register": {Name: "stray", Subject: "not-registered", Title: "Stray"},
+		"a subject outside the project":           {Name: "stray", Subject: "../elsewhere", Title: "Stray"},
+		"no title":                                {Name: "untitled", Body: "text"},
+		"a name that is not an identifier":        {Name: "../escape", Title: "Escape"},
+		"a body carrying a control character":     {Name: "escaped", Title: "Escaped", Body: "one\ttwo"},
+	} {
+		result := app.SaveNote(root, note)
+		if result.State != desktop.Failed || result.Revisions != nil {
+			t.Fatalf("%s was stored: %+v", name, result)
+		}
+		if result.Reason == "" {
+			t.Fatalf("%s gave the shell nothing to show", name)
+		}
+	}
+
+	// No edit above reached the evidence the project organizes, and none of
+	// them rewrote what the project itself recorded.
+	if !reflect.DeepEqual(bytesUnder(t, filepath.Join(root, "regression")), evidence) {
+		t.Fatal("editing a note rewrote retained case evidence")
+	}
+	after, err := os.ReadFile(filepath.Join(root, project.DocumentName))
+	if err != nil || !reflect.DeepEqual(after, document) {
+		t.Fatal("editing a note rewrote the project document")
+	}
+	stored := app.OpenRevisions(root)
+	if len(stored.Revisions.Notes) != 1 || stored.Revisions.Notes[0].Title != "Confirmed" {
+		t.Fatalf("a refused edit changed the stored document: %+v", stored.Revisions)
+	}
+}
+
+// An editable project document is listed as what it declares, exactly as the
+// project document beside it is.
+func TestWorkspaceListsTheEditableProjectDocumentByItsDeclaredContract(t *testing.T) {
+	root := writeProject(t, t.TempDir(), registeredRegression)
+	if newApp(t, &chooser{}).SaveNote(root, project.Note{Name: "triage", Title: "Working theory"}).State != desktop.Completed {
+		t.Fatal("a draft was not stored")
+	}
+	listed := newApp(t, &chooser{}).OpenWorkspace(root)
+	if listed.State != desktop.Completed || listed.Workspace == nil || len(listed.Workspace.Artifacts) != 2 {
+		t.Fatalf("the project folder was not listed: %+v", listed)
+	}
+	kinds := make(map[string]desktop.Artifact)
+	for _, artifact := range listed.Workspace.Artifacts {
+		kinds[artifact.Name] = artifact
+	}
+	editable := kinds[project.RevisionsDocumentName]
+	if editable.Kind != desktop.RevisionsArtifact || editable.Schema != project.RevisionsSchema || editable.Reason != "" {
+		t.Fatalf("the editable document was not listed by its declared contract: %+v", editable)
+	}
+
+	later := `{"schema":"readmit-revisions/v2","notes":[],"revisions":[],"suites":[]}`
+	if err := os.WriteFile(filepath.Join(root, project.RevisionsDocumentName), []byte(later), 0600); err != nil {
+		t.Fatal(err)
+	}
+	unsupported := newApp(t, &chooser{}).OpenWorkspace(root)
+	for _, artifact := range unsupported.Workspace.Artifacts {
+		if artifact.Name != project.RevisionsDocumentName {
+			continue
+		}
+		if artifact.Kind != desktop.UnsupportedArtifact || artifact.Reason == "" || artifact.Schema != "" {
+			t.Fatalf("an unreadable editable document was not reported as unsupported: %+v", artifact)
+		}
+	}
+}
+
+// A project holds a bounded number of notes. One past the bound is refused
+// rather than stored, and the document already there is left as it was.
+func TestSaveNoteRefusesMoreNotesThanThisReleaseStores(t *testing.T) {
+	root := writeProject(t, t.TempDir(), registeredRegression)
+	full := project.Revisions{Schema: project.RevisionsSchema}
+	for i := range project.MaxNotes {
+		full.Notes = append(full.Notes, project.Note{Name: fmt.Sprintf("note-%03d", i), Title: "Draft"})
+	}
+	if err := project.WriteRevisions(root, full); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := os.ReadFile(filepath.Join(root, project.RevisionsDocumentName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := newApp(t, &chooser{})
+	if result := app.SaveNote(root, project.Note{Name: "one-too-many", Title: "Draft"}); result.State != desktop.Failed || result.Reason == "" {
+		t.Fatalf("a note past the bound was stored: %+v", result)
+	}
+	after, err := os.ReadFile(filepath.Join(root, project.RevisionsDocumentName))
+	if err != nil || !reflect.DeepEqual(after, stored) {
+		t.Fatal("a refused note rewrote the document that was already there")
+	}
+	// Replacing a note that is already held stays within the bound.
+	if result := app.SaveNote(root, project.Note{Name: "note-000", Title: "Confirmed"}); result.State != desktop.Completed {
+		t.Fatalf("replacing a note was refused at the bound: %+v", result)
+	}
+}
+
+func TestSaveNoteHoldsTheSameOperationSlot(t *testing.T) {
+	root := writeProject(t, t.TempDir(), registeredRegression)
+	reentrant := &chooser{folder: root}
+	app := desktop.New(reentrant, filepath.Join(t.TempDir(), "recent.json"))
+	var concurrent desktop.RevisionsResult
+	reentrant.before = func() { concurrent = app.SaveNote(root, project.Note{Name: "triage", Title: "Working theory"}) }
+	if result := app.SelectWorkspace(); result.State != desktop.Completed {
+		t.Fatalf("the first operation did not complete: %+v", result)
+	}
+	if concurrent.State != desktop.Busy || concurrent.Revisions != nil {
+		t.Fatalf("a note was written while another operation held the facade: %+v", concurrent)
+	}
+	if _, err := os.Lstat(filepath.Join(root, project.RevisionsDocumentName)); err == nil {
+		t.Fatal("a refused operation wrote an editable document anyway")
+	}
+	if saved := app.SaveNote(root, project.Note{Name: "triage", Title: "Working theory"}); saved.State != desktop.Completed {
+		t.Fatalf("the facade stayed busy after its operation finished: %+v", saved)
 	}
 }

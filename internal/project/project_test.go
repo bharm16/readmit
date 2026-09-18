@@ -277,7 +277,7 @@ func TestAddCaseAppliesTheProjectDefaultsAndRefusesDuplicates(t *testing.T) {
 		Title:      "Cancellation is not propagated",
 		Status:     project.StatusOpen,
 	}
-	added, stored, err := project.AddCase(base, entry)
+	added, stored, err := project.AddCase(base, project.Revisions{}, entry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,12 +294,12 @@ func TestAddCaseAppliesTheProjectDefaultsAndRefusesDuplicates(t *testing.T) {
 	if len(base.Cases) != 1 {
 		t.Fatal("adding a case changed the document it was given")
 	}
-	if _, _, err := project.AddCase(added, entry); err == nil {
+	if _, _, err := project.AddCase(added, project.Revisions{}, entry); err == nil {
 		t.Fatal("the same case was registered twice")
 	}
 	renamed := entry
 	renamed.Name = "copy"
-	if _, _, err := project.AddCase(added, renamed); err == nil {
+	if _, _, err := project.AddCase(added, project.Revisions{}, renamed); err == nil {
 		t.Fatal("the same evidence was registered under a second name")
 	}
 }

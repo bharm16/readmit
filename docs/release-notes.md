@@ -54,6 +54,18 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   records is the same value the command line, the desktop shell and an exported
   packet name.
 
+- `project` separates immutable evidence from editable working copies: a
+  versioned `readmit-revisions/v1` document beside the evidence holds the notes
+  and drafts a person maintains and the lineage of every revision. `project
+  revise` registers derived evidence with the verified identity of its parent
+  and the operation manifest the derived bundle declares; `project note` creates
+  or replaces one note. `readmit-project/v1` is unchanged. A transformation is
+  registered with its lineage or not at all: evidence that is not one is refused
+  as a revision, `project add` refuses evidence that is, and one name and one
+  piece of evidence are held by exactly one of the two documents. The desktop
+  shell can edit a note without any edit reaching an import, a finalized run or
+  any other retained artifact.
+
 - `report` runs the named synthetic regression and seals its reproducer,
   verified failure/pass results, diagnosis, diff, profiles, and rerun procedure
   in one packet. Offline verification and separate rerun workspaces are included.

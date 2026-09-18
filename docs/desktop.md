@@ -44,6 +44,8 @@ artifacts are never reported as completed.
 | `CreateSampleWorkspace` | Writes the sample workspace into the chosen folder and opens it. |
 | `OpenCase` | Verifies one listed entry as case evidence. |
 | `OpenProject` | Reads the project document of a folder. |
+| `OpenRevisions` | Reads the editable project document: its notes, drafts and recorded revisions. |
+| `SaveNote` | Creates or replaces one editable note of a project. |
 | `RecentWorkspaces` | Lists previously opened folders, most recent first. |
 | `Cancel` | Stops the operation that is running now, when it can be interrupted. |
 
@@ -54,9 +56,10 @@ including after a failure or a cancellation, so the next request proceeds.
 claim the slot, so the list stays available while an operation runs.
 
 `Cancel` cannot retract bytes an operation has already written. Choosing a
-folder and listing it are interruptible; `OpenCase` and `OpenProject` are not,
-because each runs to completion under its own size limits once it starts. The
-window offers the Cancel control only while an interruptible operation runs.
+folder and listing it are interruptible; `OpenCase`, `OpenProject`,
+`OpenRevisions` and `SaveNote` are not, because each runs to completion under
+its own size limits once it starts. The window offers the Cancel control only
+while an interruptible operation runs.
 
 ## Workspaces and artifacts
 
@@ -89,10 +92,31 @@ records the bundle identity rather than deriving one of its own.
 Reading a project verifies no evidence and rewrites nothing, so a recorded
 identity reaches the window exactly as it was written. Whether a registered case
 is still the evidence the project recorded is what `readmit project show`
-reports. Creating a project, registering a case, and changing a title, tag,
-owner, status or linked incident are command-line operations in this release;
-the shell reads projects and does not write them. See
-[interface investigation projects](project.md).
+reports. Creating a project, registering a case or a revision, and changing a
+title, tag, owner, status or linked incident are command-line operations in this
+release.
+
+## Notes and the editable project document
+
+A folder holding a `revisions.json` lists that entry as a `revisions` artifact
+carrying the contract it declares, located and decoded the same way. It is the
+editable side of a project: the notes and drafts a person maintains, and the
+recorded lineage of every revision derived from registered evidence.
+`OpenRevisions` returns it exactly as written, and a project that has recorded
+neither reports `empty` rather than a failure.
+
+`SaveNote` is the only thing the shell writes into a project, and a note is
+working text. It is stored in that editable document, beside the evidence and
+never inside it, so a UI edit cannot overwrite an import, a finalized run, a
+result, a review or a report: the same output policy that refuses every other
+write into retained evidence refuses this one. Writing a note under a name that
+already exists replaces exactly that note; a note that names a subject must name
+a case or revision the project registers, and one that does not is a draft.
+Registering a revision is a command-line operation, because it is a statement
+about verified evidence rather than an edit. A project folder this account
+cannot write reports `permission_denied`, and a project that already holds as
+many notes as this release stores reports the refusal rather than dropping one.
+See [interface investigation projects](project.md).
 
 ## The sample workspace
 
@@ -146,16 +170,20 @@ check, or analytics, and the interface never sends evidence to an external
 rendering service. Everything the window renders is bundled into the executable;
 nothing is fetched at run time. Browser storage holds no evidence. Diagnostics
 are fixed sentences that never repeat a path, a file name, an argument, or a
-value.
+value. A note is text a person typed on this machine: it is stored in the
+project's own document, is never sent anywhere, and is never kept in browser
+storage.
 
 ## Not supported in this release
 
-- Creating or changing a project from the shell, and any rename, archive or
-  delete operation. The shell opens folders and reads artifacts; projects are
-  created and managed with `readmit project`.
-- Importing evidence, editing, message grids, search, and comparison.
-- Artifacts other than case bundle directories and project documents. Run
-  bundles, results, reviews, reports, specs and family records are listed as
+- Creating a project, registering a case or a revision, and any rename, archive
+  or delete operation. The shell opens folders, reads artifacts and edits notes;
+  everything else about a project is `readmit project`.
+- Removing a note, and the previous text of one that was replaced.
+- Importing evidence, editing evidence, message grids, search, and comparison.
+  No edit the shell makes reaches a case, a run, a result, a review or a report.
+- Artifacts other than case bundle directories and the two project documents.
+  Run bundles, results, reviews, reports, specs and family records are listed as
   unsupported entries.
 - Nested folders. Only the immediate entries of the chosen folder are listed,
   and at most 1024 of them; a larger folder is refused rather than listed in

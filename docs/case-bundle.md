@@ -48,7 +48,8 @@ The writer exclusively creates a new directory, writes and syncs the evidence,
 then writes `identity.sha256` last. A partial directory without a complete,
 matching identity file is incomplete and the reader refuses it. An I/O failure
 can leave an incomplete directory; use a new destination on retry. Finalized
-bundles are immutable to readmit; future derivation commands create new bundles.
+bundles are immutable to readmit; derivation commands create new bundles, and a
+[project](project.md) records the lineage of each one beside the evidence.
 Unix directory/file permissions are `0700`/`0600`; Windows inherits the parent
 directory's access controls.
 
@@ -254,7 +255,10 @@ carry a recorded observation. Legacy-only members are rejected even when null.
 
 This format describes transformed testing data. It does not claim synthetic
 origin or any legal status. Original linkage, mappings and shift offsets stay in
-the private redaction state. A derived case alone has no export approval; see
+the private redaction state. A derived case registered in a project keeps the
+identity of the evidence it came from, and the operation that produced it, in
+that project's own editable document rather than in the artifact. A derived case
+alone has no export approval; see
 [redact.md](redact.md) for review, exact approval and newly generated proof gates.
 
 `bundle.Write` accepts `Provenance{Mode: Derived, Derivation: "readmit-redact/v1"}`

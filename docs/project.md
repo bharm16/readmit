@@ -1,15 +1,17 @@
 # Interface investigation projects
 
 A project is the durable organization around evidence: which versions of an
-interface are under investigation, which cases belong to the work, and what a
+interface are under investigation, which cases belong to the work, what a
 person recorded about each one — a title, tags, an owner, a status and the
-incidents it is linked to.
+incidents it is linked to — what was derived from what, and the notes and
+drafts written along the way.
 
-A project keeps that metadata **beside** evidence, never inside it. Original
+A project keeps all of that **beside** evidence, never inside it. Original
 evidence stays immutable: registering a case, renaming it in the project,
-reassigning it or closing it never touches a byte of the case bundle. The
-project records only what the shared case reader already verified about that
-bundle, so a project can never restate what a case contains.
+reassigning it, closing it, writing a note about it or recording that something
+was derived from it never touches a byte of the case bundle. The project records
+only what the shared case reader already verified about that bundle, so a
+project can never restate what a case contains.
 
 ```sh
 readmit project init --output scheduling-investigation \
@@ -50,9 +52,11 @@ is not a command this release has.
 | --- | --- |
 | `project init --output NEW_DIRECTORY` | Creates a new project directory and its first document |
 | `project settings PROJECT` | Changes project-level settings and declares further interface versions |
-| `project add PROJECT CASE` | Verifies one case bundle of the project directory and registers it |
+| `project add PROJECT CASE` | Verifies one case bundle of the project directory and registers it; derived evidence is registered with `revise` instead |
 | `project update PROJECT CASE` | Changes the title, tags, ownership, status or linked incidents of a registered case |
-| `project show PROJECT` | Shows the settings and every registered case, re-verifying its evidence |
+| `project revise PROJECT REVISION --parent NAME` | Registers derived evidence as a revision of a registered case or revision |
+| `project note PROJECT NAME --title TITLE` | Creates or replaces one editable note or draft |
+| `project show PROJECT` | Shows the settings, every registered case and revision, re-verifying its evidence, and every note |
 
 `init` writes a new directory and never overwrites one. A case is named by **one
 directory entry of the project**: a path, a parent reference, an absolute path
@@ -111,10 +115,105 @@ bundle through the shared reader and copies that mode into the document. There
 is no flag that sets it, and it is never inferred from a directory name. A
 project that says `provenance=generated` says so because the evidence does.
 
+## Immutable evidence and editable working copies
+
+A project directory holds two kinds of thing, and they never mix.
+
+| | Immutable | Editable |
+| --- | --- | --- |
+| What it is | Imported, collected and generated cases, finalized runs, results, reviews and reports | Notes, drafts, and the recorded lineage of every revision |
+| Where it lives | Its own artifact directory, sealed by a bundle identity | `revisions.json`, beside the evidence |
+| What changes it | Nothing. A transformation writes a new artifact | `project revise`, `project note`, and the desktop shell |
+
+No command on this page writes inside a case bundle, a run, a result, a review
+or a report. Every document a project writes is reserved through the same
+output policy the rest of readmit uses: a destination inside retained evidence
+is refused, a destination that already exists is refused, and one reached
+through a symbolic link is refused. See [audit hardening](audit-hardening.md).
+That is why registering a case, renaming it, writing a note about it, or
+recording that something was derived from it cannot change a byte of that
+evidence — and it is why the desktop shell can offer note editing at all.
+
+### Revisions and the operation manifest
+
+A transformation of evidence never edits the evidence. It produces new evidence,
+and the project records where that came from. `project revise PROJECT REVISION
+--parent NAME` registers one derived case bundle as a revision of a case or
+revision the project already holds:
+
+```sh
+readmit redact scheduling-investigation/incident-4821 --spec spec.json \
+  --policy policy.json --inventory inventory.json \
+  --local-state private --output review
+cp -R review/case scheduling-investigation/incident-4821-redacted
+readmit project revise scheduling-investigation incident-4821-redacted \
+  --parent incident-4821
+```
+
+Both directories are re-verified through the same reader `readmit timeline` uses
+before anything is written, and every member recorded is read from what that
+reader accepted:
+
+| Recorded | Read from |
+| --- | --- |
+| `name` | The directory entry of the project that holds the revision |
+| `identity` | The verified bundle identity of the revision |
+| `schema` | The contract version its manifest declares |
+| `provenance` | The provenance mode its manifest declares, always `derived` |
+| `operation.name` | The derivation its manifest declares, such as `readmit-redact/v1` |
+| `operation.parent` | The registered case or revision named by `--parent` |
+| `operation.parent_identity` | The verified bundle identity of that parent |
+
+Nothing there is typed by hand. The operation is the derivation the evidence
+itself carries, so a transformation cannot be relabelled as a different one, and
+evidence whose provenance is not `derived` is registered as a case rather than
+as a revision of something else. A parent must already be registered here, and
+the identity the reader just verified must be the identity this project recorded
+for it: a parent whose evidence has since been replaced is refused rather than
+silently re-identified under a new revision.
+
+A transformation is registered with its lineage or not at all: `project add`
+refuses evidence whose provenance is `derived`, because registering it as a case
+would lose the parent identity and the operation that produced it. The two sides
+of a project stay disjoint as well — one name and one piece of evidence are held
+by exactly one of the two documents, so the same bundle can never be both a case
+and a revision. A project written before this release that already holds a
+derived case still reads exactly as written; the rule applies when something is
+registered, not when a document is read.
+
+A revision is itself a registered artifact with an identity, so a revision of a
+revision records that chain one link at a time. The lineage lives beside the
+evidence rather than inside it: a derived case carries its own derivation, and
+[ADR-0004](adr/0004-derived-evidence-and-generated-export.md) deliberately keeps
+parent identities out of the derived artifact, so nothing about the original
+travels with a copy that leaves this machine.
+
+### Notes and drafts
+
+`project note PROJECT NAME --title TITLE` creates or replaces one note. A note
+is working text: an observation, a question for the vendor, a conclusion someone
+is still writing.
+
+```sh
+readmit project note scheduling-investigation triage \
+  --subject incident-4821 --title "Working theory" \
+  --body "The second S13 keeps the original filler identifier."
+readmit project note scheduling-investigation vendor-call --title "Ask about MSH-15"
+```
+
+A note that names `--subject` is about the registered case or revision of that
+name, and a subject this project does not register is refused. A note without a
+subject is a draft of the project itself, and a note may be a title alone while
+it is still one. Writing a note under a name that already exists replaces
+exactly that note: every other note, the project document, and all evidence stay
+exactly as they were. A note is not evidence, so it carries no identity and is
+never sealed.
+
 ## The document: readmit-project/v1
 
-A project directory holds one canonical file, `project.json`, a strict-JSON
-document under the versioned contract `readmit-project/v1`. Unknown members and
+The project document is one canonical file of the project directory,
+`project.json`, a strict-JSON document under the versioned contract
+`readmit-project/v1`. Unknown members and
 unknown versions are errors: there is no migration and no repair, and a document
 this release cannot read is reported and left exactly as written. A new or
 changed member means a new version string and a reader that supports both, never
@@ -154,6 +253,52 @@ with no control characters, and every identifier — owner, tag, incident
 reference, interface version — uses letters, digits, `.`, `_` and `-` only, so
 none of them can carry a separator or a line break into a rendered report.
 
+## The editable document: readmit-revisions/v1
+
+The editable side of a project is one further canonical file, `revisions.json`,
+under the versioned contract `readmit-revisions/v1`. It is a separate document
+from `project.json` deliberately: `readmit-project/v1` stays frozen, so a
+project written by the previous release gains notes and revisions without being
+migrated, repaired or rewritten, and a project that has recorded neither holds
+no such file at all and reads as the empty document. Unknown members and unknown
+versions are errors here too, and a version this release cannot read is reported
+and left exactly as written. See
+[ADR-0003](adr/0003-specs-are-strict-json-with-typed-operators.md).
+
+```json
+{
+  "schema": "readmit-revisions/v1",
+  "notes": [
+    {
+      "name": "triage",
+      "subject": "incident-4821",
+      "title": "Working theory",
+      "body": "The second S13 keeps the original filler identifier."
+    }
+  ],
+  "revisions": [
+    {
+      "name": "incident-4821-redacted",
+      "identity": "3f0f2c2f7e0e5a7c1d9b8a6f4e2d0c8b6a4f2e0d8c6b4a2f0e8d6c4b2a0f8e6d",
+      "schema": "readmit-case/v3",
+      "provenance": "derived",
+      "operation": {
+        "name": "readmit-redact/v1",
+        "parent": "incident-4821",
+        "parent_identity": "7d266d0a09e92d3322d6346cf16c9dd37c768c02a11f8ea6c41870adc44915df"
+      }
+    }
+  ]
+}
+```
+
+Notes are held sorted by name, revisions in the order they were registered, and
+the document is encoded deterministically, so the same project produces the same
+bytes on every machine. It is bounded at 1 MiB, 128 notes and 256 revisions. A
+note body is at most 4096 bytes of valid UTF-8 whose only control character is a
+line feed, so a note cannot carry a terminal escape or a stray carriage return
+into a rendered report.
+
 ## What `show` reports
 
 `project show` re-verifies every registered case through the same reader
@@ -166,6 +311,10 @@ none of them can carry a separator or a line break into a rendered report.
 | `unreadable` | The reader would not accept the directory as complete, unmodified evidence |
 | `missing` | The project holds no such directory entry |
 
+Registered revisions are re-verified the same way and reported the same way,
+with the operation manifest beneath each one, and every note is reported after
+them. `show` reads both documents and writes neither.
+
 `verified` requires **every** recorded evidence fact to still hold: the
 identity, the contract version and the provenance mode are each compared with
 what the reader reported, so a document edited by hand to claim that imported
@@ -177,41 +326,58 @@ unreadable are never shown as verified.
 
 ## Interrupted writes and recovery
 
-The document is replaced atomically: a new one is written in full to
-`project.json.incomplete` and renamed over the previous one, so a reader never
-observes a partial document and a failed write leaves the previous document
-exactly as it was.
+Each document is replaced atomically: a new one is written in full to
+`project.json.incomplete` or `revisions.json.incomplete` and renamed over the
+previous one, so a reader never observes a partial document and a failed write
+leaves the previous document exactly as it was.
 
-If a write is interrupted, `project.json.incomplete` is **retained**. The next
-write reports that and refuses rather than overwriting whatever the interrupted
-one left behind, and reading the project keeps working from the document that is
-still intact. Recovery is to move the retained file aside outside readmit, which
-is an explicit decision rather than something a command makes silently.
+If a write is interrupted, that `.incomplete` file is **retained**. The next
+write to the same document reports that and refuses rather than overwriting
+whatever the interrupted one left behind, and reading the project keeps working
+from the document that is still intact. Recovery is to move the retained file
+aside outside readmit, which is an explicit decision rather than something a
+command makes silently.
 
 ## In the desktop shell
 
-The shell reads a project through the same document. Opening a workspace folder
-lists a `project.json` entry as a `project` artifact with the contract it
-declares, and `OpenProject` returns the recorded document: the same settings,
-the same interface versions, and the same case identities the command line
-wrote. The shell verifies no evidence and rewrites nothing. See
-[the desktop shell](desktop.md).
+The shell reads a project through the same documents. Opening a workspace folder
+lists a `project.json` entry as a `project` artifact and a `revisions.json`
+entry as a `revisions` artifact, each with the contract it declares.
+`OpenProject` returns the recorded project document and `OpenRevisions` the
+editable one: the same settings, the same interface versions, the same case and
+revision identities, and the same notes the command line wrote.
+
+`SaveNote` is the only thing the shell writes into a project. It replaces one
+note in the editable document, so a UI edit reaches working text and nothing
+else: it cannot register a case or a revision, and it cannot overwrite an
+import, a finalized run, or any other retained artifact. Everything else the
+shell does with a project is a read. See [the desktop shell](desktop.md).
 
 ## Privacy
 
-A project document is local metadata that a person typed. It holds no message
-content, no field values and no original source paths — only the case identities
-and contract versions the reader already reported. Diagnostics from every
-`project` command are fixed sentences that never echo a path, a title, a tag, an
-incident reference or an argument. Nothing about a project is logged, sent
+A project document and the editable document beside it are local metadata that a
+person typed. They hold no message content, no field values and no original
+source paths — only the identities and contract versions the reader already
+reported, and the text a person wrote. Diagnostics from every `project` command
+are fixed sentences that never echo a path, a title, a tag, an incident
+reference, a note, or an argument. Nothing about a project is logged, sent
 anywhere, or kept in browser storage.
 
 ## Not supported in this release
 
-- Removing a registered case, archiving or deleting a project, and quotas.
+- Removing a registered case, a registered revision or a note; archiving or
+  deleting a project; and quotas.
 - Removing a declared interface version. Cases still name it.
 - Backup, restore, and rebuilding a project from its cases.
-- Revisions of a project document, and editable working copies of evidence.
+- History of the documents themselves. Replacing a note replaces its text, and
+  the previous text is not retained; evidence is what is retained here.
+- Registering a revision of evidence that is not derived. A transformation
+  declares the `derived` provenance mode; an import, a recorded or collected
+  session and a generated family are registered as cases.
+- Recording an operation this release cannot read from the evidence itself.
+  There is no flag that names a transformation, and none is inferred.
+- Editing a case bundle, a run, a result, a review or a report. A transformation
+  writes a new artifact, which is then registered as a revision.
 - A searchable index over projects. A project is read by reading its document.
 - Source systems, profiles, suites, environments, runs, findings and reviews as
   registered project entities. This release registers case bundles.
