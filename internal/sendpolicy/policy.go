@@ -58,23 +58,30 @@ func DecodePolicy(data []byte) (Policy, error) {
 	if err := json.Unmarshal(data, &policy, json.RejectUnknownMembers(true)); err != nil {
 		return Policy{}, errors.New("invalid approved-destination policy JSON")
 	}
+	if err := validatePolicy(policy); err != nil {
+		return Policy{}, err
+	}
+	return policy, nil
+}
+
+func validatePolicy(policy Policy) error {
 	if policy.Schema != PolicySchema {
-		return Policy{}, errors.New("an approved-destination policy must declare " + PolicySchema)
+		return errors.New("an approved-destination policy must declare " + PolicySchema)
 	}
 	if len(policy.ApprovedDestinations) == 0 || len(policy.ApprovedDestinations) > maxDestinations {
-		return Policy{}, errors.New("an approved-destination policy declares between 1 and 64 approved destinations")
+		return errors.New("an approved-destination policy declares between 1 and 64 approved destinations")
 	}
 	declared := make(map[string]bool, len(policy.ApprovedDestinations))
 	for _, destination := range policy.ApprovedDestinations {
 		if _, err := parsePrefix(destination); err != nil {
-			return Policy{}, err
+			return err
 		}
 		if declared[destination] {
-			return Policy{}, errors.New("an approved destination is declared twice")
+			return errors.New("an approved destination is declared twice")
 		}
 		declared[destination] = true
 	}
-	return policy, nil
+	return nil
 }
 
 // parsePrefix holds the one spelling an approved destination may take, so the
@@ -88,8 +95,7 @@ func parsePrefix(destination string) (netip.Prefix, error) {
 }
 
 // approves reports whether any declared destination contains this address. A
-// policy whose prefixes were never validated approves nothing, so a value
-// assembled outside DecodePolicy cannot widen the approved set by accident.
+// caller validates the complete policy before comparing any destination.
 func (p Policy) approves(address netip.Addr) bool {
 	for _, destination := range p.ApprovedDestinations {
 		prefix, err := parsePrefix(destination)

@@ -25,19 +25,6 @@ func readSendPolicy(path string) (*sendpolicy.Policy, error) {
 	return &policy, nil
 }
 
-// writeSendDecision retains one decision at a reserved new destination. A
-// denial is retained exactly as an approval is: what was refused and why is the
-// evidence an operator needs most.
-func writeSendDecision(path string, decision sendpolicy.Decision) error {
-	data, err := sendpolicy.EncodeDecision(decision)
-	if err != nil {
-		return err
-	}
-	return writeNewFile(path, data,
-		"cannot create the policy decision file",
-		"cannot write the policy decision")
-}
-
 // writeDecisionLines renders one decision and states its boundary. A decision
 // is reached before any byte leaves and that is the whole of what it can
 // promise: nothing readmit does afterwards can retract bytes already sent.

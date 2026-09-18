@@ -7,8 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/sendpolicy"
+	"github.com/bharm16/readmit/internal/testrunner"
 )
 
 // namedTarget writes one readmit-target/v3 configuration describing a named
@@ -178,7 +180,7 @@ func TestReplayRefusesDestinationsNoPolicyApproved(t *testing.T) {
 	})
 	t.Run("a class nobody recorded is not a nonproduction one", func(t *testing.T) {
 		directory := t.TempDir()
-		target := namedTarget(t, directory, "lab-unlabelled", "unclassified", "127.0.0.1:2575")
+		target := namedTarget(t, directory, "lab-unlabelled", "unclassified", "198.51.100.7:2575")
 		policy := approvedDestinations(t, directory, "127.0.0.0/8")
 		path := filepath.Join(directory, "decision.json")
 		stdout, _, err := send(t, target, policy, path)
@@ -194,24 +196,42 @@ func TestReplayRefusesDestinationsNoPolicyApproved(t *testing.T) {
 	})
 }
 
-// Selecting a policy and retaining the decision it reached are one act. Neither
-// flag stands alone, because a decision nobody kept is not evidence.
-func TestReplayPolicyAndDecisionAreUsedTogether(t *testing.T) {
+// Previews can retain denials even when no policy document was selected.
+func TestReplayCanRecordTheDefaultPolicy(t *testing.T) {
 	directory := t.TempDir()
 	source := replayCase(t)
-	target := namedTarget(t, directory, "lab-local", "nonproduction", "127.0.0.1:2575")
-	policy := approvedDestinations(t, directory, "127.0.0.0/8")
-	for _, arguments := range [][]string{
-		{"replay", source, "--target", target, "--policy", policy},
-		{"replay", source, "--target", target, "--decision", filepath.Join(directory, "alone.json")},
-	} {
-		stdout, stderr, err := run(t, arguments...)
-		if err == nil || !strings.Contains(stderr, "are used together") {
-			t.Fatalf("%v: %v %s %s", arguments, err, stdout, stderr)
-		}
+	target := namedTarget(t, directory, "lab-remote", "nonproduction", "203.0.113.9:2575")
+	path := filepath.Join(directory, "decision.json")
+	if stdout, stderr, err := run(t, "replay", source, "--target", target, "--decision", path); err != nil {
+		t.Fatalf("preview: %v %s %s", err, stdout, stderr)
 	}
-	if _, err := os.Lstat(filepath.Join(directory, "alone.json")); !os.IsNotExist(err) {
-		t.Fatal("a refused invocation retained a decision")
+	if decision := readDecision(t, path); decision.Reason != sendpolicy.PolicyRequired || decision.Allowed {
+		t.Fatalf("decision: %+v", decision)
+	}
+	policy := approvedDestinations(t, directory, "127.0.0.0/8")
+	if _, stderr, err := run(t, "replay", source, "--target", target, "--policy", policy); err == nil || !strings.Contains(stderr, "requires --decision") {
+		t.Fatalf("policy preview missing destination: %v %s", err, stderr)
+	}
+}
+
+func TestReplayAutomaticallyRecordsDeniedSend(t *testing.T) {
+	for _, class := range []string{"production", "nonproduction"} {
+		t.Run(class, func(t *testing.T) {
+			directory := t.TempDir()
+			target := namedTarget(t, directory, "remote", class, "203.0.113.9:2575")
+			output := filepath.Join(directory, "run")
+			if _, _, err := run(t, "replay", replayCase(t), "--target", target, "--send", "--output", output); err == nil {
+				t.Fatal("send allowed")
+			}
+			decision := readDecision(t, output+".decision.json")
+			want := sendpolicy.PolicyRequired
+			if class == "production" {
+				want = sendpolicy.ProductionClassification
+			}
+			if decision.Allowed || decision.Reason != want {
+				t.Fatalf("wrong denial: %+v", decision)
+			}
+		})
 	}
 }
 
@@ -312,5 +332,35 @@ func TestListeningCommandsRestrictNonloopbackBinds(t *testing.T) {
 		if _, stderr, err := run(t, arguments...); err == nil || strings.Contains(stderr, "--approved-bind") {
 			t.Fatalf("%v was refused as a nonloopback bind rather than as an address: %s", arguments, stderr)
 		}
+	}
+}
+
+func TestTestRunnerRetainsDestinationDenial(t *testing.T) {
+	directory, spec := testSpecFixture(t)
+	document, err := testrunner.ReadSpec(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document.Input.Messages = []string{"s0001-e000001"}
+	document.Observation = testrunner.Observation{Boundary: testrunner.ACKBoundary}
+	document.Setup.InitialState = "operator-declared"
+	want := "AA"
+	document.Assertions = []testrunner.Assertion{{ID: "accepted", Operator: "ack_field_equals", Message: "s0001-e000001", Selector: "MSA-1", Expected: testrunner.Value{Field: &testrunner.FieldValue{State: hl7.Present, Text: &want}}}}
+	data, err := json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(spec, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	namedTarget(t, directory, "test-target", "nonproduction", "203.0.113.9:2575")
+	output := filepath.Join(t.TempDir(), "result")
+	_, stderr, err := run(t, "test", spec, "--send", "--output", output)
+	if err == nil || !strings.Contains(stderr, "policy_required") {
+		t.Fatalf("missing denial: %v %s", err, stderr)
+	}
+	decision := readDecision(t, output+".decision.json")
+	if decision.Allowed || decision.Reason != sendpolicy.PolicyRequired {
+		t.Fatalf("retained %+v", decision)
 	}
 }

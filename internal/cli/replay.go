@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -35,11 +36,13 @@ func replayCommand(ran *bool) *cobra.Command {
 			if send && output == "" {
 				return errors.New("replay --send requires --output with a new run directory")
 			}
-			// A decision a policy reached is retained evidence of what was
-			// allowed or denied and why, so selecting a policy and retaining
-			// its decision are one act rather than two.
-			if (policyPath == "") != (decisionPath == "") {
-				return errors.New("replay --policy and --decision are used together: a selected policy records the decision it reached in a new file")
+			// Actual sends always retain their decision, including denials when
+			// no policy was selected. Previews need an explicit destination.
+			if send && decisionPath == "" {
+				decisionPath = output + ".decision.json"
+			}
+			if policyPath != "" && decisionPath == "" {
+				return errors.New("a policy preview requires --decision with a new file")
 			}
 			policy, err := readSendPolicy(policyPath)
 			if err != nil {
@@ -62,25 +65,32 @@ func replayCommand(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+			defer cancel()
+			var decision sendpolicy.Decision
+			record := func(value sendpolicy.Decision) error {
+				decision = value
+				if decisionPath != "" {
+					return sendpolicy.WriteDecision(decisionPath, value)
+				}
+				return nil
+			}
+			// Prepare also rejects production for every caller. Record that
+			// refusal before preparation so it survives as inspectable evidence.
+			if !send || sendpolicy.RefusesEverySend(string(target.Environment().Classification)) {
+				duration, _ := time.ParseDuration(target.ConnectTimeout)
+				decisionCtx, stop := context.WithTimeout(ctx, duration)
+				value := sendpolicy.Decide(decisionCtx, policy, sendpolicy.Request{
+					Address: target.Address, Classification: string(target.Environment().Classification), Explicit: send,
+				}, sendpolicy.SystemResolver)
+				stop()
+				if err := record(value); err != nil {
+					return err
+				}
+			}
 			plan, err := replay.Prepare(args[0], target, options)
 			if err != nil {
 				return err
-			}
-			// Interrupt and termination reach the decision as well as the send,
-			// so a name lookup is cancellable rather than a wait nothing stops.
-			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer cancel()
-			// One rule, asked here exactly as the send below asks it. A preview
-			// does not request a send, so the reason it reports is the first
-			// destination rule that refuses, or send_not_explicit when nothing
-			// about the destination does.
-			decision := sendpolicy.Decide(ctx, policy, sendpolicy.Request{
-				Address: target.Address, Classification: string(target.Environment().Classification), Explicit: send,
-			}, sendpolicy.SystemResolver)
-			if decisionPath != "" {
-				if err := writeSendDecision(decisionPath, decision); err != nil {
-					return err
-				}
 			}
 			writer := bufio.NewWriter(cmd.OutOrStdout())
 			if !send {
@@ -107,18 +117,12 @@ func replayCommand(ran *bool) *cobra.Command {
 				}
 				return nil
 			}
-			// The decision is reached and retained before anything is opened.
-			// It can stop a send; it cannot retract bytes already sent, and the
-			// refusal below is stated before the first of them leaves.
-			if !decision.Allowed {
-				writeDecisionLines(writer, decision)
-				if err := writer.Flush(); err != nil {
-					return errors.New("cannot write the policy decision")
-				}
-				return errors.New("the send was refused by policy before anything was sent; the reported decision names why")
-			}
-			result, err := replay.Execute(ctx, plan, output)
+			result, err := replay.ExecuteWithPolicy(ctx, plan, output, policy, record)
 			if err != nil {
+				if decision.Schema != "" && !decision.Allowed {
+					writeDecisionLines(writer, decision)
+					_ = writer.Flush()
+				}
 				return err
 			}
 			fmt.Fprintf(writer, "Run: %s\nSchema: %s\n", result.Identity, result.Manifest.Schema)
@@ -148,6 +152,6 @@ func replayCommand(ran *bool) *cobra.Command {
 	command.Flags().StringArrayVar(&transforms, "transform", nil, "Named transformation: rebase-control-ids or shift-timestamps (repeatable)")
 	command.Flags().StringVar(&shift, "shift", "", "Explicit whole-second duration for shift-timestamps, e.g. 24h or -2h")
 	command.Flags().StringVar(&policyPath, "policy", "", "Existing "+sendpolicy.PolicySchema+" document naming the destinations approved for sending")
-	command.Flags().StringVar(&decisionPath, "decision", "", "New file retaining the "+sendpolicy.DecisionSchema+" decision the selected policy reached")
+	command.Flags().StringVar(&decisionPath, "decision", "", "New file retaining the "+sendpolicy.DecisionSchema+" decision (send default: OUTPUT.decision.json)")
 	return command
 }

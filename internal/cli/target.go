@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -129,7 +130,7 @@ func targetShow(ran *bool) *cobra.Command {
 }
 
 func targetCheck(ran *bool) *cobra.Command {
-	var file, policyPath string
+	var file, policyPath, decisionPath string
 	command := &cobra.Command{
 		Use:   "check --target FILE [--policy FILE]",
 		Short: "Reach one configured environment and report the transport, TLS status and send decision, sending no HL7 payload",
@@ -152,9 +153,17 @@ func targetCheck(ran *bool) *cobra.Command {
 			// not requested, because a check sends nothing. A destination this
 			// reports as refused is one a replay refuses; there is one
 			// implementation of the rule and no second copy to drift from it.
-			decision := sendpolicy.Decide(ctx, policy, sendpolicy.Request{
+			duration, _ := time.ParseDuration(config.ConnectTimeout)
+			decisionCtx, stop := context.WithTimeout(ctx, duration)
+			decision := sendpolicy.Decide(decisionCtx, policy, sendpolicy.Request{
 				Address: config.Address, Classification: string(config.Environment().Classification),
 			}, sendpolicy.SystemResolver)
+			stop()
+			if decisionPath != "" {
+				if err := sendpolicy.WriteDecision(decisionPath, decision); err != nil {
+					return err
+				}
+			}
 			report, err := environment.Diagnose(ctx, config)
 			if err != nil {
 				return err
@@ -176,6 +185,7 @@ func targetCheck(ran *bool) *cobra.Command {
 		},
 	}
 	command.Flags().StringVar(&file, "target", "", "Target configuration file describing the environment")
+	command.Flags().StringVar(&decisionPath, "decision", "", "New file retaining the send policy decision")
 	command.Flags().StringVar(&policyPath, "policy", "", "Existing "+sendpolicy.PolicySchema+" document to report this environment's send decision against")
 	return command
 }

@@ -68,7 +68,7 @@ func TestDecodePolicyBoundsTheApprovedSet(t *testing.T) {
 func TestPolicyApprovesNothingWhenNothingWasValidated(t *testing.T) {
 	assembled := Policy{Schema: PolicySchema, ApprovedDestinations: []string{"198.51.100.7/24", "not-a-prefix"}}
 	decision := Decide(t.Context(), &assembled, Request{Address: "198.51.100.7:2575", Classification: "nonproduction", Explicit: true}, nil)
-	if decision.Allowed || decision.Reason != UnapprovedDestination {
+	if decision.Allowed || decision.Reason != InvalidPolicy {
 		t.Fatalf("allowed=%t reason=%q", decision.Allowed, decision.Reason)
 	}
 }

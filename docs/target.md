@@ -139,7 +139,7 @@ from the connection itself rather than from a second name lookup.
 With `--policy` naming a `readmit-send-policy/v1` document, `check` also reports
 the send decision this environment would get. It is the same rule `readmit
 replay` enforces, with one implementation, so a check cannot report an answer the
-send path would not give. `check` does not request a send and does not retain the
+send path would not give. `check` does not request a send. Add `--decision NEW_FILE` to retain the
 decision; it reports the first destination rule that refuses, or
 `send_not_explicit` when nothing about the destination does:
 

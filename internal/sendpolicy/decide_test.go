@@ -69,13 +69,13 @@ func TestDecideRefusesWhatItCannotName(t *testing.T) {
 		{
 			name:    "a class nobody recorded is not a nonproduction one",
 			policy:  loopbackOnly(t),
-			request: Request{Address: "127.0.0.1:2575", Classification: "unclassified", Explicit: true},
+			request: Request{Address: "198.51.100.7:2575", Classification: "unclassified", Explicit: true},
 			want:    UnrecordedClassification,
 		},
 		{
 			name:    "an absent class reads as unclassified rather than as approval",
 			policy:  loopbackOnly(t),
-			request: Request{Address: "127.0.0.1:2575", Explicit: true},
+			request: Request{Address: "198.51.100.7:2575", Explicit: true},
 			want:    UnrecordedClassification,
 		},
 		{
@@ -237,5 +237,18 @@ func TestDecisionIsRetainableEvidence(t *testing.T) {
 	}
 	if reread.DecidedAt.IsZero() || reread.Address != "lab.example.invalid:2575" {
 		t.Fatalf("a decision does not name when and what it decided: %+v", reread)
+	}
+}
+
+func TestDecideRejectsInvalidConstructedPolicies(t *testing.T) {
+	for _, policy := range []Policy{
+		{Schema: "readmit-send-policy/v2", ApprovedDestinations: []string{"127.0.0.0/8"}},
+		{Schema: PolicySchema, ApprovedDestinations: []string{"127.0.0.0/8", "invalid"}},
+		{Schema: PolicySchema, ApprovedDestinations: []string{"127.0.0.0/8", "127.0.0.0/8"}},
+	} {
+		decision := Decide(t.Context(), &policy, Request{Address: "127.0.0.1:2575", Explicit: true}, nil)
+		if decision.Allowed {
+			t.Fatalf("invalid policy approved: %+v", policy)
+		}
 	}
 }

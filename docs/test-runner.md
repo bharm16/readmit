@@ -10,8 +10,13 @@ A spec naming an environment recorded as `production` is refused during
 preparation, before a plan exists, exactly as `readmit replay` is: local
 validation reports the refusal, and `--send` retains a configuration-error
 result without reaching the endpoint. `readmit test` takes no approved-destination
-policy document in this release; the approved-destination rule gates
-[`readmit replay`](replay.md#approved-destinations-and-the-send-decision).
+policy document in this release, so the shared replay engine limits its sends
+to literal loopback addresses. Hostnames and remote addresses are refused; use
+[`readmit replay`](replay.md#approved-destinations-and-the-send-decision) with
+an explicit policy for approved remote replay. Each execution decision is retained
+in `NEW_RESULT.decision.json`, beside the result so the existing result contract
+is unchanged. A decision recording failure prevents a send. A destination denial
+retains its reason and leaves the attempted result incomplete.
 
 ```sh
 readmit test test-reschedule.json

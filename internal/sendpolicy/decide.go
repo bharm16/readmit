@@ -45,6 +45,9 @@ const (
 	// this machine and therefore needs no approved-destination document.
 	LoopbackDestination Reason = "loopback_destination"
 
+	// InvalidPolicy refuses unsupported or malformed policy values from any caller.
+	InvalidPolicy Reason = "invalid_policy"
+
 	// ProductionClassification is the class an operator recorded as
 	// production. readmit refuses it wherever it appears.
 	ProductionClassification Reason = "production_classification"
@@ -127,29 +130,42 @@ func Decide(ctx context.Context, policy *Policy, request Request, resolve Resolv
 	if policy != nil {
 		decision.ApprovedDestinations = slices.Clone(policy.ApprovedDestinations)
 	}
-	host, _, err := net.SplitHostPort(request.Address)
-	if err != nil || host == "" {
-		return decision
-	}
+	// The class is read before the address, so a production environment is
+	// refused as the production environment it is rather than as whatever else
+	// happens to be wrong with the configuration beside it.
 	if RefusesEverySend(decision.Classification) {
 		decision.Reason = ProductionClassification
 		return decision
 	}
+	if policy != nil && validatePolicy(*policy) != nil {
+		decision.Reason = InvalidPolicy
+		return decision
+	}
+	host, _, err := net.SplitHostPort(request.Address)
+	if err != nil || host == "" {
+		return decision
+	}
 	literal, literalErr := netip.ParseAddr(host)
 	literal = literal.Unmap()
-	if policy == nil {
-		if literalErr != nil || !literal.IsLoopback() {
+	// A literal loopback address cannot leave this machine, so readmit asks
+	// nothing more of it: no recorded class, and no approved destination when
+	// the operator selected no policy. Everything else must be named, and the
+	// two questions are asked of the destination rather than of whether a
+	// policy happens to be selected, so selecting one never relaxes a rule.
+	loopback := literalErr == nil && literal.IsLoopback()
+	if !loopback {
+		if policy == nil {
 			decision.Reason = PolicyRequired
 			return decision
 		}
+		if decision.Classification != nonproduction {
+			decision.Reason = UnrecordedClassification
+			return decision
+		}
+	}
+	if policy == nil {
 		decision.ResolvedAddresses = []string{literal.String()}
 		return explicit(decision, LoopbackDestination, request.Explicit)
-	}
-	// Selecting a policy asks the whole question, so a class nobody recorded is
-	// refused here even for an address that cannot leave this machine.
-	if decision.Classification != nonproduction {
-		decision.Reason = UnrecordedClassification
-		return decision
 	}
 	addresses := []netip.Addr{literal}
 	if literalErr != nil {

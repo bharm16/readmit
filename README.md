@@ -277,13 +277,15 @@ scenario, reset procedure, spec format, and result contract.
 `replay CASE --target CONFIG` previews a replay without opening a connection.
 Sending requires `--send --output NEW_RUN` and an explicit configuration marked
 as a test endpoint. A destination that is not a literal loopback address also
-requires `--policy FILE --decision NEW_FILE`: a `readmit-send-policy/v1` document
+requires `--policy FILE`: a `readmit-send-policy/v1` document
 names the approved destinations, readmit resolves the configured address at the
 point of sending and denies what it cannot name — a class nobody recorded, a name
 resolving to several addresses, a name that does not resolve, an address no
 approved destination contains — and retains the `readmit-send-decision/v1`
 document that says what was allowed or denied and why, before anything is
-opened. A decision can stop a send; it cannot retract bytes already sent. Source
+opened. `--decision NEW_FILE` selects its destination; sends otherwise use
+`OUTPUT.decision.json`. Connections use the checked IP without a second DNS
+lookup, while TLS verifies the configured server name. A decision can stop a send; it cannot retract bytes already sent. Source
 values stay unchanged unless a named transformation is selected. Each run records intended, sent, and received bytes, source mappings,
 ACK outcomes, and uncertain delivery; ambiguous timeouts are never retried
 automatically. Run manifests contain source values and remain customer-local

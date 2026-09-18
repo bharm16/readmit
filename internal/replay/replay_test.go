@@ -405,9 +405,8 @@ func TestExplicitTLSVerifiesCAAndHostname(t *testing.T) {
 			config := target(l.Addr().String())
 			config.Transport = "tls"
 			if tc.hostname != "" {
-				_, port, _ := net.SplitHostPort(config.Address)
-				config.Address = net.JoinHostPort(tc.hostname, port)
-				config.ApprovedTransport = true
+				config.Schema, config.Name, config.Classification = replay.TargetSchemaV3, "tls-test", replay.Nonproduction
+				config.ServerName = tc.hostname
 			}
 			if tc.trusted {
 				path := filepath.Join(t.TempDir(), "ca.pem")

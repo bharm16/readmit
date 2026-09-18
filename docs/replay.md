@@ -107,7 +107,8 @@ Classification: nonproduction (recorded by a person; readmit did not establish i
 ```
 
 A recorded class can only ever refuse. `production` refuses the replay outright,
-during preparation, before a plan exists and with nothing opened or created:
+during preparation, before a plan or connection exists. A requested decision
+file still records the denial:
 
 ```
 readmit: this configuration records the production classification; readmit does not replay to a production-classified environment
@@ -137,11 +138,13 @@ destinations are declared, each one CIDR prefix in canonical masked form:
 `10.1.0.0/16` is a prefix, `10.1.2.3/16` and `10.1.0.0` are refused rather than
 masked or widened on the operator's behalf.
 
-`--policy` and `--decision` are used together. A decision is retained evidence of
-what was allowed or denied and why, so selecting a policy and recording the
-decision it reached are one act. `--decision` names a **new** file; a destination
-is decided once, and a second decision is refused rather than written over the
-first.
+Every `replay --send` retains a decision before opening a connection, including
+an allowed loopback send and a denial without a selected policy. `--decision`
+names a new file; when omitted during a send it defaults to
+`OUTPUT.decision.json`, beside the requested run. Existing decision files are
+never replaced. A preview can use `--decision` alone, and a preview selecting
+`--policy` requires it. `target check --decision` also retains its reported
+send decision without requesting a send.
 
 The rule is applied in this order, and the first rule that refuses is the
 reported reason:
@@ -149,8 +152,9 @@ reported reason:
 | Reason | Meaning |
 | --- | --- |
 | `production_classification` | The recorded class is `production`. Refused everywhere. |
+| `invalid_policy` | The selected policy has an unsupported version or invalid destination set. |
 | `policy_required` | No policy was selected and the address is not a literal loopback address. |
-| `unrecorded_classification` | A policy was selected and the class is not `nonproduction`. `unclassified` is not `nonproduction`. |
+| `unrecorded_classification` | The destination is not a literal loopback address and the class is not `nonproduction`. `unclassified` is not `nonproduction`. |
 | `unresolvable_destination` | The address is not a host and port, or the name did not resolve. |
 | `ambiguous_destination` | The name resolves to more than one address, so which one a send would reach is not established. |
 | `unapproved_destination` | A resolved address is inside no approved destination. |
@@ -176,10 +180,10 @@ A decision is reached before any byte leaves: it can stop a send, and it cannot 
 
 That last line is the whole of what a policy promises. A decision can refuse a
 send before the first byte leaves; it is not a kill switch, and nothing readmit
-does afterwards can retract bytes already sent. Between the moment a name is
-resolved and the moment the connection is dialled, a name can be made to resolve
-to something else — no local check can prevent that, and a configuration naming
-a literal address has no such window at all.
+does afterwards can retract bytes already sent. The connector uses the exact IP address checked by the policy, without resolving
+the hostname again. TLS still verifies the configured server name. DNS policy
+resolution and connection establishment share the configured connection timeout.
+
 
 A preview and `readmit target check --policy` ask this one rule the same
 question the send path asks, so a check cannot report an answer the send path
@@ -193,10 +197,12 @@ explicitly requested, whether a policy was selected, the approved destinations i
 was decided against, the addresses that were actually checked, and when. It names
 a configured address, never message content.
 
-The policy gates `readmit replay`. `readmit test` executes a spec's own
-configured target and takes no policy document in this release; the production
-refusal above still reaches it, because that refusal is applied during
-preparation.
+The shared replay engine enforces the destination rule for every send. `readmit
+test` takes no policy document in this release, so its sends are limited to
+literal loopback addresses; remote and hostname destinations are refused. The
+production-classification refusal also applies during preparation. The test
+runner's existing error handling reports refused execution without sending.
+
 
 `readmit-run/v1` is unchanged, and so is what it records. A run's `target`
 records the address, the transport, `test_endpoint`, `approved_transport`, the
