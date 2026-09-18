@@ -116,6 +116,15 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   entries are refused by name; malformed records are retained whole and
   quarantined with their reason.
 
+- `index` builds a derived, disposable `readmit-index/v1` file over one case so
+  declared fields can be searched without reading every message again. What is
+  retained, in what form and until when are three declarations with no defaults;
+  `states` retains nothing read out of a message and `digests` retains no value
+  bytes, which is not de-identification. A damaged, truncated, expired or stale
+  index is refused and rebuilt from the canonical case directory, never repaired
+  and never served; an index cannot be written inside evidence, and the case
+  stays readable and unchanged throughout.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is

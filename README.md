@@ -1,6 +1,6 @@
 # readmit
 
-Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `project`, `secret`, `listen`, `collect`, `replay`, `test`, `diff`, `report`, `redact`, `synth`, and `diagnose` are available. See the workflow guides below.
+Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `index`, `project`, `secret`, `listen`, `collect`, `replay`, `test`, `diff`, `report`, `redact`, `synth`, and `diagnose` are available. See the workflow guides below.
 
 ```sh
 readmit inspect message.hl7
@@ -75,6 +75,21 @@ refused by name so the operator declares it, rather than split on a likely
 guess. Malformed records, including a member the declared boundary finds no
 message in, are kept with all of their bytes and quarantined, never repaired.
 See [importing real-world files](docs/import.md).
+
+`index build CASE --output NEW_FILE --field PID-3 --retain values --retain-until
+2026-12-31T00:00:00Z` builds a derived, **disposable** index of one case so the
+occurrences carrying a particular identifier can be found without reading every
+message again. The index is never evidence: it is a pure function of the
+canonical case directory, `index search CASE INDEX` opens that case through the
+same reader `timeline` uses and refuses the moment the two disagree, and a
+damaged, truncated, expired or deleted index is a rebuild rather than a loss —
+the case stays readable throughout, and an index can never be written inside it.
+A retained decoded field is patient data, so nothing is retained implicitly:
+which fields, in what form (`values`, `digests`, or only decoded `states`), and
+until when are three declarations with no defaults. A value past the retained
+byte bound keeps its prefix and says so, and a query it cannot settle is
+reported as undecided rather than as a miss. Values stay hidden unless
+`--show-values`. See [searching a case](docs/index.md).
 
 `redact CASE` applies explicit named policies, writes a separate derived case
 and export review, and keeps identifier mappings and date offsets in separate
