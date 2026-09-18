@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json/v2"
 	"errors"
 	"io"
 	"io/fs"
@@ -286,10 +285,7 @@ func declaredIndex(source *os.Root, name string) (candidate, bool) {
 		// with one diagnostic rather than two.
 		return candidate{}, false
 	}
-	var declared struct {
-		Schema string `json:"schema"`
-	}
-	if json.Unmarshal(data, &declared) != nil || !strings.HasPrefix(declared.Schema, "readmit-index/") {
+	if !index.DeclaresSchema(data) {
 		return candidate{}, false
 	}
 	document, err := index.Decode(data)

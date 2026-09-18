@@ -10,7 +10,11 @@ an unknown schema and no in-place canonical-evidence migration. Preview checks
 schema readability, not evidence identity or index freshness. Schema recognition
 uses the 64 MiB archive file bound, independently of the 16 MiB index decoding
 bound: an oversized declared index is refused, never treated as ordinary data.
-Files beyond the archive bound are refused. Archive verifies
+Files beyond the archive bound are refused. A readable top-level index schema
+classifies the file immediately: truncated or corrupt content after that schema
+is refused and cannot cause retained index values to be copied as ordinary
+files. Corruption before any readable schema declaration cannot establish a
+file's type; filenames are not proof. Archive verifies
 those separately. Older releases refuse the new quota document only if they
 read it; they do not enforce quotas. Use this release for controlled writes.
 

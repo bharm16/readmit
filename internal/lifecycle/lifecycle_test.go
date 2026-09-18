@@ -155,3 +155,42 @@ func TestOversizedFutureIndexCannotAuthorizeDeletion(t *testing.T) {
 		t.Fatal("source project removed")
 	}
 }
+
+func TestMalformedDeclaredIndexNeverBecomesRetainedEvidence(t *testing.T) {
+	for _, schema := range []string{"readmit-index/v1", "readmit-index/v99"} {
+		for _, suffix := range []string{`,"patient_value":"private`, `,"patient_value":"private",!}`} {
+			t.Run(schema+suffix, func(t *testing.T) {
+				root := workspace(t)
+				const name = "derived-without-json-extension"
+				data := []byte(`{"schema":"` + schema + `"` + suffix)
+				if err := os.WriteFile(filepath.Join(root, name), data, 0600); err != nil {
+					t.Fatal(err)
+				}
+				plan, err := lifecycle.Preview(context.Background(), root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if plan.Compatible {
+					t.Fatal("malformed declared index previewed compatible")
+				}
+				dest := filepath.Join(t.TempDir(), "backup")
+				report, err := backup.Create(context.Background(), root, dest)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if report.Complete() || len(report.Indexes) != 1 || report.Indexes[0].State != backup.IndexUndeclared {
+					t.Fatalf("malformed index was not refused: %+v", report)
+				}
+				if _, err := os.Stat(filepath.Join(dest, backup.FilesDirectory, name)); !os.IsNotExist(err) {
+					t.Fatal("derived patient values copied as ordinary evidence")
+				}
+				if _, err := lifecycle.Archive(context.Background(), root, filepath.Join(t.TempDir(), "retirement"), true); err == nil {
+					t.Fatal("malformed index allowed retirement")
+				}
+				if _, err := project.Open(root); err != nil {
+					t.Fatal("refused retirement removed project")
+				}
+			})
+		}
+	}
+}

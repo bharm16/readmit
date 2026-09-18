@@ -6,14 +6,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json/v2"
 	"errors"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/backup"
@@ -87,10 +85,7 @@ func Preview(ctx context.Context, path string) (Plan, error) {
 		if err != nil || closeErr != nil || int64(len(data)) > backup.MaxFileBytes {
 			return p, errors.New("cannot read project entry within archive bound")
 		}
-		var header struct {
-			Schema string `json:"schema"`
-		}
-		if json.Unmarshal(data, &header) != nil || !strings.HasPrefix(header.Schema, "readmit-index/") {
+		if !index.DeclaresSchema(data) {
 			continue
 		}
 		_, err = index.Decode(data)
