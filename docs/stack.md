@@ -6,6 +6,7 @@ The choices below were agreed on 2026-09-17 from a stack review. The hard-to-rev
 - [ADR-0002](adr/0002-case-bundles-are-directories-not-a-database.md): evidence bundles are versioned directories with raw payload files; no database.
 - [ADR-0003](adr/0003-specs-are-strict-json-with-typed-operators.md): specs, profiles, observations, and results are strict JSON evaluated by typed Go operators.
 - [ADR-0005](adr/0005-desktop-shell-is-a-separate-module-over-a-typed-go-facade.md): the desktop application is a separate Wails module over a typed Go facade, never a wrapper around the executable.
+- [ADR-0006](adr/0006-credentials-are-referenced-never-stored.md): credentials stay in an OS or customer-managed store; readmit registers references to them and never stores, writes or renders a value.
 - [ADR-0007](adr/0007-offline-entitlements-are-signed-documents-verified-locally.md): organization entitlements are signed, versioned documents verified locally against an explicitly selected trust store.
 
 Everything else on this page is an ordinary choice. Change it when there is a reason. No ADR is needed unless the change is hard to reverse.
@@ -16,9 +17,10 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
 
 ## CLI
 
-- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `project`, `listen`, `replay`, `test`, `diff`, `diagnose`, `synth`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
+- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `project`, `license`, `secret`, `listen`, `replay`, `test`, `diff`, `diagnose`, `synth`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
 - Command data goes to stdout, diagnostics to stderr. Machine-readable modes never interleave progress output with JSON.
 - Target configuration is read from explicitly selected files, not hidden global config or environment-variable precedence.
+- Credentials are referenced, never held. A `readmit-secrets/v1` document registers the store kind an operator declared, the single purpose and endpoint address a credential may be bound to, the absolute path of the program that reads it back, and the recorded rotation. No command accepts a credential value, and a resolved value masks itself under every formatting verb and refuses to be serialized. See [credential references](secret.md).
 - Terminal and Markdown rendering use `fmt`, `text/tabwriter`, and `text/template`.
 
 ## Desktop application
@@ -136,4 +138,4 @@ pin by itself. Native smoke tests run without Go or other tools on PATH.
 
 ## Deliberately absent
 
-No database, ORM, web application server, container runtime, hosted backend, external rules engine, message broker, Redis, LLM API, payment integration, licence or activation server, or application authentication system. Entitlement verification is a local check of a signed file and introduces none of them. Access control is the operating-system account, filesystem permissions, and explicitly configured network credentials. The desktop application is a local webview over the same engine, not a hosted web application: it serves nothing over a network and has no accounts.
+No database, ORM, web application server, container runtime, hosted backend, external rules engine, message broker, Redis, LLM API, payment integration, licence or activation server, or application authentication system. Entitlement verification is a local check of a signed file and introduces none of them. Access control is the operating-system account and filesystem permissions. readmit has no credential store of its own: it registers references to credentials kept in an operating system credential store or a customer-managed secret provider, reads one by running the program the operator declared, and never writes to a store, so its own privilege is read access to the credentials a person registered. The desktop application is a local webview over the same engine, not a hosted web application: it serves nothing over a network and has no accounts.

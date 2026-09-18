@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/secret"
 )
 
 // ReadTarget performs bounded local reads only. Relative CA paths are resolved
@@ -36,15 +37,50 @@ func ReadTarget(path string) (Target, error) {
 	if target.CAFile != "" {
 		target.CAFile = artifactpath.JoinReference(filepath.Dir(path), target.CAFile)
 	}
+	// A declared credential is validated before its secrets document is
+	// anchored. Anchoring an absent one would turn it into the target file's
+	// own directory, and the refusal would then name the wrong member.
 	if err := validateTarget(target); err != nil {
+		return Target{}, err
+	}
+	if target.Credential.Declared() {
+		target.Credential.SecretsFile = artifactpath.JoinReference(filepath.Dir(path), target.Credential.SecretsFile)
+	}
+	if _, err := BindCredential(target); err != nil {
 		return Target{}, err
 	}
 	return target, nil
 }
 
+// BindCredential returns the secret reference a target declares, bound to this
+// target's own purpose and address. A reference scoped to another endpoint is
+// refused rather than presented here, and no value is read: binding settles
+// what a credential may be used for, never what it is.
+func BindCredential(t Target) (secret.Reference, error) {
+	if !t.Credential.Declared() {
+		return secret.Reference{}, nil
+	}
+	document, err := secret.ReadStore(t.Credential.SecretsFile)
+	if err != nil {
+		return secret.Reference{}, err
+	}
+	return secret.Bind(document, t.Credential.Reference, secret.MLLPEndpoint, t.Address)
+}
+
 func validateTarget(t Target) error {
-	if t.Schema != TargetSchema || !t.TestEndpoint {
-		return errors.New("target must use readmit-target/v1 and explicitly mark test_endpoint true")
+	if t.Schema != TargetSchema && t.Schema != TargetSchemaV2 || !t.TestEndpoint {
+		return errors.New("target must use readmit-target/v1 or readmit-target/v2 and explicitly mark test_endpoint true")
+	}
+	// A member is never added to a version already released. A credential
+	// reference belongs to readmit-target/v2 alone, so a v1 target that carries
+	// one is refused rather than read as though v1 had always allowed it.
+	if t.Credential.Declared() {
+		if t.Schema != TargetSchemaV2 {
+			return errors.New("a credential reference requires readmit-target/v2")
+		}
+		if t.Credential.SecretsFile == "" || t.Credential.Reference == "" {
+			return errors.New("a credential reference names both a secrets document and a reference in it")
+		}
 	}
 	host, port, err := net.SplitHostPort(t.Address)
 	p, portErr := strconv.Atoi(port)

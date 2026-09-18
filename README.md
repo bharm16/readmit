@@ -1,6 +1,6 @@
 # readmit
 
-Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `project`, `listen`, `collect`, `replay`, `test`, `diff`, `report`, `redact`, `synth`, and `diagnose` are available. See the workflow guides below.
+Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `project`, `secret`, `listen`, `collect`, `replay`, `test`, `diff`, `report`, `redact`, `synth`, and `diagnose` are available. See the workflow guides below.
 
 ```sh
 readmit inspect message.hl7
@@ -111,6 +111,23 @@ because no read path consults an entitlement at all — and an offline verifier
 cannot learn of a revocation issued after signing, which the documentation
 states rather than implies. See
 [offline organization entitlements](docs/license.md).
+`secret add --secrets FILE --name NAME --store KIND --address HOST:PORT --command
+PROGRAM` registers a reference to a credential that stays in an operating system
+credential store or a customer-managed secret provider. readmit holds no
+credentials: a `readmit-secrets/v1` document records what a credential is for,
+the single endpoint address it may be presented to, the absolute path of the
+program that reads it back from its store, and the recorded rotation, so a
+configuration exports references rather than values. No command accepts a
+credential as a flag or an argument, `secret show` masks it, and a resolved value
+masks itself under every formatting verb and refuses to be serialized at all.
+`secret rotate` records a replacement only when the declared store answers, and
+reports an overdue credential explicitly rather than as current. `secret scan
+--secrets FILE PATH...` resolves the registered credentials and checks a target
+configuration, run manifests, reports, logs, project documents and local browser
+state for those exact bytes, their JSON escapes and their base64 encodings,
+reporting the locations and never the value. A clean scan is one check on known
+values, not an assessment that a file is safe to share. See
+[credential references](docs/secret.md).
 
 `diff LEFT RIGHT` compares message fields in the terminal, Markdown, or JSON.
 Run-to-source comparisons use recorded occurrence mappings; unrelated collections
@@ -288,6 +305,9 @@ configures; these commands have no endpoint configuration.
 No customer-derived data belongs in source control or CI fixtures. Logs and
 reports do not print raw values without an explicit request. Round-trip copies
 still contain the original evidence and inherit its handling requirements.
+Credentials stay in the store that holds them: readmit registers references, has
+no way to be given a credential value, and never writes one into configuration,
+a manifest, a report, a log or local browser state.
 
 Build with the pinned Go 1.27.1 toolchain:
 

@@ -16,6 +16,12 @@ import (
 var binary string
 
 func TestMain(m *testing.M) {
+	// Re-executed as the stand-in secret store of the credential tests. It must
+	// answer before any test binary work happens, so no readmit build is run
+	// for it. See tests/secret_test.go for what it emits and why.
+	if mode, ok := os.LookupEnv(providerSwitch); ok {
+		os.Exit(testOnlyProvider(mode, os.Args[1:]))
+	}
 	dir, err := os.MkdirTemp("", "readmit-cli-test-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

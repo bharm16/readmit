@@ -72,6 +72,20 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   shell can edit a note without any edit reaching an import, a finalized run or
   any other retained artifact.
 
+- `secret` references credentials without holding them: a versioned
+  `readmit-secrets/v1` document registers the store an operator declared, the
+  one purpose and endpoint address a credential may be bound to, the absolute
+  path of the program that reads it back from that store, and the recorded
+  rotation. No command accepts a credential value, nothing renders one, and a
+  resolved value refuses to be serialized, so a target configuration, a project,
+  a manifest, a report and local browser state carry a reference or nothing.
+  `readmit-target/v2` adds that reference; `readmit-target/v1` and
+  `readmit-run/v1` are unchanged. `secret scan` resolves the registered
+  credentials and checks named files and directories, including the reference
+  document itself, for those exact bytes, their JSON escapes and their base64
+  encodings, reporting locations and never a value. It is one check on known
+  values, not an assessment that a file is safe to share.
+
 - `report` runs the named synthetic regression and seals its reproducer,
   verified failure/pass results, diagnosis, diff, profiles, and rerun procedure
   in one packet. Offline verification and separate rerun workspaces are included.
