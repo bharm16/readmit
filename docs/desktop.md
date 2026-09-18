@@ -366,7 +366,9 @@ retention of.
 
 The window offers `system`, `light` and `dark`, and text sizes from 100% to
 200%. Both start from the system every time the window opens and are written
-nowhere: the shell keeps one file of local state and it holds folder paths only.
+nowhere. The shell stores recent folder paths and saved filters in separate
+owner-only local documents. Saved filter terms may contain patient data entered
+by the operator; no values read from case evidence are persisted by the shell.
 
 ## The sample workspace
 

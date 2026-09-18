@@ -1,6 +1,7 @@
 ---
 status: accepted
 date: 2026-09-18
+amended: 2026-09-18
 ---
 
 # The desktop application is a separate module over a typed Go facade
@@ -55,11 +56,14 @@ static build stand unchanged. Nothing here is added to the release archives.
 - Every new desktop capability is a facade method backed by an internal package.
   A capability the frontend cannot express as a typed call does not belong in the
   frontend.
-- The shell keeps one file of local state: a bounded, versioned list of recently
-  opened folders, `readmit-desktop-recent/v1`. It holds folder paths only, never
-  evidence, is owner-readable, is replaced atomically, and a list this release
-  cannot read is reported rather than migrated or overwritten. There is no
-  telemetry, crash reporting, or update check, and no data reaches a network.
+- The shell keeps two bounded, versioned local documents: recent folder paths
+  (`readmit-desktop-recent/v1`) and saved filters with the active selection
+  (`readmit-filters/v1`). Saved field terms can contain patient data typed by
+  the operator. Both files are owner-readable, replaced atomically, and kept
+  outside evidence; unreadable documents are reported rather than overwritten.
+  No evidence read from a case is persisted in shell state. Neither document is
+  stored in browser storage. There is no telemetry, crash reporting, or update
+  check. This amendment authorizes the saved-filter persistence required by #37.
 - `docs/stack.md` no longer lists a frontend as deliberately absent. A database,
   ORM, container runtime, hosted backend, message broker and application
   authentication system remain absent.

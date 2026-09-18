@@ -68,7 +68,7 @@ func (a *App) Filters() FiltersResult {
 func (a *App) SaveFilter(filter grid.Filter) FiltersResult {
 	release, claimed := a.claim()
 	if !claimed {
-		return busyRefusal.filters()
+		return a.filtersFailure(busyRefusal)
 	}
 	defer release()
 	document, declined := a.savedFilters()
@@ -101,7 +101,7 @@ func (a *App) SaveFilter(filter grid.Filter) FiltersResult {
 func (a *App) SelectFilter(name string) FiltersResult {
 	release, claimed := a.claim()
 	if !claimed {
-		return busyRefusal.filters()
+		return a.filtersFailure(busyRefusal)
 	}
 	defer release()
 	document, declined := a.savedFilters()
@@ -137,15 +137,13 @@ func (a *App) savedFilters() (grid.Document, refusal) {
 func (a *App) storeFilters(document grid.Document) FiltersResult {
 	data, err := grid.Encode(document)
 	if err != nil {
-		return FiltersResult{State: Failed,
-			Reason:  "these filters no longer fit the bounded document this release writes; save a shorter one, or save over an existing one",
-			Filters: document.Filters, Selected: document.Selected}
+		return a.filtersFailure(refusal{Failed, "these filters no longer fit the bounded document this release writes; save a shorter one, or save over an existing one"})
 	}
 	if err := writeFilters(a.filtersPath, data); err != nil {
 		if errors.Is(err, fs.ErrPermission) {
-			return refusal{PermissionDenied, "this account cannot write the saved filters"}.filters()
+			return a.filtersFailure(refusal{PermissionDenied, "this account cannot write the saved filters"})
 		}
-		return refusal{Failed, "the filter could not be stored; an interrupted write may be retained beside the saved filters"}.filters()
+		return a.filtersFailure(refusal{Failed, "the filter could not be stored; an interrupted write may be retained beside the saved filters"})
 	}
 	if len(document.Filters) == 0 {
 		return FiltersResult{State: Empty, Reason: "no filter has been saved yet", Filters: []grid.Filter{}}
@@ -209,4 +207,11 @@ func writeFilters(path string, data []byte) error {
 		return errors.New("cannot replace saved filters")
 	}
 	return nil
+}
+
+// filtersFailure reports the retained selection, never an unsaved candidate.
+func (a *App) filtersFailure(failure refusal) FiltersResult {
+	result := a.Filters()
+	result.State, result.Reason = failure.state, failure.reason
+	return result
 }

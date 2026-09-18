@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json/v2"
+	"fmt"
 	"io/fs"
 	"maps"
 	"os"
@@ -499,4 +500,64 @@ func TestCancelNeverInterruptsAGridAndTheFacadeStaysUsable(t *testing.T) {
 	if saved := app.SaveFilter(acknowledgements()); saved.State != desktop.Completed {
 		t.Fatalf("a filter could not be saved after being cancelled: %+v", saved)
 	}
+}
+
+func TestFailedFilterWriteKeepsTheAppliedSelection(t *testing.T) {
+	for _, action := range []string{"select", "save", "replace"} {
+		t.Run(action, func(t *testing.T) {
+			app, root, filters := gridWorkspace(t)
+			saveFilter(t, app, acknowledgements())
+			before := app.Filters()
+			if err := os.WriteFile(filters+".incomplete", []byte("interrupted"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			var result desktop.FiltersResult
+			switch action {
+			case "select":
+				result = app.SelectFilter("")
+			case "save":
+				result = app.SaveFilter(grid.Filter{Name: "messages", Kinds: []bundle.EventKind{bundle.Message}})
+			case "replace":
+				result = app.SaveFilter(grid.Filter{Name: "acknowledgements", Kinds: []bundle.EventKind{bundle.Message}})
+			}
+			if result.State != desktop.Failed {
+				t.Fatalf("write unexpectedly succeeded: %+v", result)
+			}
+			want, _ := json.Marshal(before.Filters)
+			got, _ := json.Marshal(result.Filters)
+			if result.Selected != before.Selected || string(got) != string(want) {
+				t.Fatalf("failed write changed displayed state: %+v", result)
+			}
+			window := openGrid(t, app, root, "incident", 0, grid.MaxRows)
+			if window.Grid == nil || window.Grid.Filter != result.Selected || window.Grid.Matched != 2 {
+				t.Fatalf("display and applied filter disagree: %+v", window)
+			}
+		})
+	}
+}
+
+func TestOversizedFiltersKeepThePersistedSelection(t *testing.T) {
+	app, _, _ := gridWorkspace(t)
+	saveFilter(t, app, acknowledgements())
+	// Each filter is valid alone; together they exceed the document bound.
+	for n := 0; n < grid.MaxFilters; n++ {
+		before := app.Filters()
+		filter := grid.Filter{Name: fmt.Sprintf("large-%d", n)}
+		for source := 0; source < grid.MaxSources; source++ {
+			filter.Sources = append(filter.Sources, fmt.Sprintf("%03d", source)+strings.Repeat("x", grid.MaxNameBytes-3))
+		}
+		result := app.SaveFilter(filter)
+		if result.State == desktop.Failed {
+			if !strings.Contains(result.Reason, "bounded document") {
+				t.Fatalf("wrong refusal: %+v", result)
+			}
+			want, _ := json.Marshal(before.Filters)
+			got, _ := json.Marshal(result.Filters)
+			if result.Selected != before.Selected || string(want) != string(got) {
+				t.Fatalf("encoding failure replaced persisted state: %+v", result)
+			}
+			return
+		}
+	}
+	t.Fatal("fixture did not exceed the document bound")
 }
