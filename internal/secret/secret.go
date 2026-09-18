@@ -267,16 +267,10 @@ func validateReference(entry Reference) error {
 	if err := endpoint(entry.Address); err != nil {
 		return errors.New("reference address: " + err.Error())
 	}
-	if err := command(entry.Command); err != nil {
-		return errors.New("reference command: " + err.Error())
-	}
-	if len(entry.Arguments) > maxArguments {
-		return errors.New("reference arguments: more than this release passes")
-	}
-	for _, argument := range entry.Arguments {
-		if err := argumentText(argument); err != nil {
-			return errors.New("reference argument: " + err.Error())
-		}
+	// The locator rule has one owner. The messages are unchanged: Validate
+	// names the member, and the caller names what it is validating.
+	if err := entry.Locator().Validate(); err != nil {
+		return errors.New("reference " + err.Error())
 	}
 	if entry.Generation < 1 || entry.Generation > maxGeneration {
 		return errors.New("reference generation: must be between 1 and " + strconv.Itoa(maxGeneration))
@@ -491,7 +485,50 @@ func Resolve(ctx context.Context, reference Reference) (Value, error) {
 	if err := validateReference(reference); err != nil {
 		return Value{}, err
 	}
-	path, err := artifactpath.Resolve(reference.Command)
+	return reference.Locator().Read(ctx)
+}
+
+// Locator is how a value is read back from a store readmit does not own: the
+// absolute path of a program that prints it, and the arguments that select
+// which one. It is the whole of what readmit knows about obtaining a value, and
+// it is deliberately one type rather than two loose parameters that travel
+// together, because a caller holding a key reference needs exactly the rule a
+// caller holding a credential reference needs.
+type Locator struct {
+	Command   string
+	Arguments []string
+}
+
+// Locator is the reference's own locator.
+func (r Reference) Locator() Locator { return Locator{Command: r.Command, Arguments: r.Arguments} }
+
+// Validate reports the first reason a locator cannot be used. The caller names
+// what it is validating; this names the member at fault and never repeats the
+// argument that failed.
+func (l Locator) Validate() error {
+	if err := command(l.Command); err != nil {
+		return errors.New("command: " + err.Error())
+	}
+	if len(l.Arguments) > maxArguments {
+		return errors.New("arguments: more than this release passes")
+	}
+	for _, argument := range l.Arguments {
+		if err := argumentText(argument); err != nil {
+			return errors.New("argument: " + err.Error())
+		}
+	}
+	return nil
+}
+
+// Read is that same bounded read of one operator-declared program, for a caller
+// holding a locator rather than a credential reference. It exists so readmit
+// has exactly one way to obtain a value from a store it does not own, whatever
+// kind of value it is; a second mechanism is a second place to get this wrong.
+func (l Locator) Read(ctx context.Context) (Value, error) {
+	if err := l.Validate(); err != nil {
+		return Value{}, errors.New("resolution " + err.Error())
+	}
+	path, err := artifactpath.Resolve(l.Command)
 	if err != nil {
 		return Value{}, errors.New("the declared resolution program cannot be resolved")
 	}
@@ -502,10 +539,10 @@ func Resolve(ctx context.Context, reference Reference) (Value, error) {
 	ctx, cancel := context.WithTimeout(ctx, ResolveTimeout)
 	defer cancel()
 	var out bytes.Buffer
-	program := exec.CommandContext(ctx, path, reference.Arguments...)
-	program.Stdout = &bounded{to: &out, remaining: maxValueBytes}
-	program.Stderr = io.Discard
-	if err := program.Run(); err != nil {
+	declared := exec.CommandContext(ctx, path, l.Arguments...)
+	declared.Stdout = &bounded{to: &out, remaining: maxValueBytes}
+	declared.Stderr = io.Discard
+	if err := declared.Run(); err != nil {
 		return Value{}, errors.New("the credential could not be read from its declared store")
 	}
 	raw := bytes.TrimSuffix(out.Bytes(), []byte("\n"))

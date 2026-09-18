@@ -25,6 +25,7 @@ DISTRIBUTION_FILES = (
     "docs/project.md",
     "docs/license.md",
     "docs/secret.md",
+    "docs/protect.md",
     "docs/listen.md",
     "docs/collect.md",
     "docs/replay.md",

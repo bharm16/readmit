@@ -1,6 +1,7 @@
 ---
 status: accepted
 date: 2026-09-18
+amended: 2026-09-18
 ---
 
 # Credentials are referenced, never stored, written or rendered by readmit
@@ -19,6 +20,58 @@ verb and refuses to be serialized at all.
 That is what makes configuration shareable. A target configuration, a project
 document, a run manifest, a report and local browser state carry a reference or
 carry nothing, because a value was never available to be written into them.
+
+## Amendment: the same rule covers key material
+
+Storage protection needs a key, and a key is the same kind of thing as a
+credential: a value readmit must know *about* and must not hold. The rule
+therefore extends unchanged. A `readmit-protection/v1` control registers a
+**reference** to a key — the absolute path of the program that prints it, the
+locator arguments that select it, the operator's record of rotation, the
+retention period packages written under it declare, and the at-rest storage
+control the operator declares for the volume. The key is read through the very
+same bounded mechanism (`secret.Read`, extracted from `secret.Resolve` so there
+is one), lives inside a single command as a `secret.Value` that masks itself and
+refuses to be serialized, and is never written to any artifact, document or log.
+readmit does not become the thing that stores key material it just refused to
+store for credentials, and it still has no store of its own to write to.
+
+The encryption itself is AES-256-GCM with HKDF-SHA-256, both from the standard
+library, for the reason [ADR-0001](0001-go-single-binary-release-matrix.md)
+gives: five `CGO_ENABLED=0` targets and a smoke test that runs the exact
+archives with an empty PATH, so any crypto need "must have a pure-Go path or be
+dropped". `crypto/ed25519` set this precedent for entitlements in
+[ADR-0007](0007-offline-entitlements-are-signed-documents-verified-locally.md).
+Cobra remains the only direct third-party dependency of the released executable.
+
+Three limits follow from holding no key, and the documentation states all three
+rather than implying a control readmit cannot deliver:
+
+- **Rotation is a record.** readmit never reads a previous key, so it cannot
+  verify one was replaced. A package records the generation current when it was
+  written, and a failed key check plus a differing generation is the only way
+  readmit can name a rotated-away key.
+- **Retirement is not revocation**, exactly as it is not for a signing key in
+  ADR-0007. A retired control still opens every package it wrote, for anyone
+  holding the key, and readmit cannot destroy a key it never held or reach a
+  copy someone already has.
+- **Deletion is not erasure.** Unlinking a package does not overwrite it on a
+  solid-state device, a copy-on-write filesystem, a snapshot, a backup, a
+  replica or a recipient's machine. readmit offers no overwrite, because on the
+  storage people actually use an overwrite would be a claim it cannot keep.
+  Encryption with a key the operator controls is the control that outlives
+  deletion's limits, and it too has an end: a recipient who has already opened a
+  package holds the plaintext.
+
+The declared storage control is recorded as made and never verified, for the
+same reason `store` is: readmit runs on five static targets and cannot
+interrogate FileVault, BitLocker, LUKS, a hypervisor or a backup system, and a
+declaration readmit cannot check is a declaration, not a property.
+
+`readmit-secrets/v1` gains no member and changes no byte. A protection control
+is a separate contract, because a key is bound to evidence at rest rather than
+to one endpoint address, and widening `purpose` would have changed the meaning
+of an existing version rather than adding a new one.
 
 ## Why a resolution program rather than a keyring binding
 

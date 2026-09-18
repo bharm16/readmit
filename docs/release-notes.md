@@ -124,6 +124,23 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   index is refused and rebuilt from the canonical case directory, never repaired
   and never served; an index cannot be written inside evidence, and the case
   stays readable and unchanged throughout.
+- `protect` encrypts evidence with a key readmit never holds: a versioned
+  `readmit-protection/v1` control registers the program that reads the key back
+  from an OS or customer-managed store, the declared at-rest control on the
+  volume, the recorded rotation, the lifecycle state and the retention period.
+  `protect pack` writes a versioned `readmit-transfer/v1` package with
+  AES-256-GCM content and an encrypted `readmit-transfer-index/v1` index, so the
+  packed names and sizes are protected with the content and the plaintext
+  descriptor names only the control that opens it. The evidence `protect pack`
+  reads is unchanged and it writes no plaintext temporary copy of its own, which
+  is a statement about that command and about no other; a wrong key, a
+  rotated-away key, a truncated package, an altered one and a destination inside
+  retained evidence are each refused by name. A declared storage control is
+  recorded as declared and never verified, nothing is encrypted implicitly,
+  retirement is not revocation, and `protect discard` refuses a package inside
+  its declared retention period before stating that unlinking is not erasure on
+  a solid-state device, a copy-on-write filesystem, a snapshot, a backup, a
+  replica or a recipient's machine.
 
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
