@@ -75,12 +75,17 @@ func Preview(ctx context.Context, path string) (Plan, error) {
 		if !info.Mode().IsRegular() {
 			return p, errors.New("project preview refuses nonregular entries")
 		}
-		if info.Size() > index.MaxIndexBytes {
-			continue
+		if info.Size() > backup.MaxFileBytes {
+			return p, errors.New("project preview refuses files beyond the archive file bound")
 		}
-		data, err := os.ReadFile(filepath.Join(root, entry.Name()))
+		opened, err := os.Open(filepath.Join(root, entry.Name()))
 		if err != nil {
-			return p, errors.New("cannot read project entry")
+			return p, errors.New("cannot open project entry")
+		}
+		data, err := io.ReadAll(io.LimitReader(opened, backup.MaxFileBytes+1))
+		closeErr := opened.Close()
+		if err != nil || closeErr != nil || int64(len(data)) > backup.MaxFileBytes {
+			return p, errors.New("cannot read project entry within archive bound")
 		}
 		var header struct {
 			Schema string `json:"schema"`

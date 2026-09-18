@@ -1,6 +1,7 @@
 package lifecycle_test
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -123,5 +124,34 @@ func TestBackupDoesNotCopyFutureIndexValues(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dest, backup.FilesDirectory, "future.json")); !os.IsNotExist(err) {
 		t.Fatal("future index values were copied")
+	}
+}
+
+func TestOversizedFutureIndexCannotAuthorizeDeletion(t *testing.T) {
+	root := workspace(t)
+	data := append([]byte(`{"schema":"readmit-index/v99","padding":"`), bytes.Repeat([]byte("x"), 17<<20)...)
+	data = append(data, []byte(`"}`)...)
+	if err := os.WriteFile(filepath.Join(root, "future.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	p, err := lifecycle.Preview(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Compatible {
+		t.Fatal("oversized future index previewed compatible")
+	}
+	r, err := backup.Create(context.Background(), root, filepath.Join(t.TempDir(), "backup"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Complete() || len(r.Indexes) != 1 || r.Indexes[0].State != backup.IndexUndeclared {
+		t.Fatal("oversized future index treated as ordinary file")
+	}
+	if _, err := lifecycle.Archive(context.Background(), root, filepath.Join(t.TempDir(), "archive"), true); err == nil {
+		t.Fatal("oversized future index allowed deletion")
+	}
+	if _, err := project.Open(root); err != nil {
+		t.Fatal("source project removed")
 	}
 }

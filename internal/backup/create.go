@@ -243,8 +243,10 @@ func scan(source *os.Root) ([]string, []candidate, error) {
 			return errors.New("the project holds more files than one backup stores")
 		}
 		// An index sits beside the project, never inside a case bundle, so
-		// only a top-level file is ever considered one.
-		if !strings.Contains(name, "/") && info.Size() <= index.MaxIndexBytes {
+		// only a top-level file is ever considered one. Probe up to the
+		// backup file bound, not the smaller readable-index bound: an
+		// oversized index is still derived data, never an ordinary file.
+		if !strings.Contains(name, "/") && info.Size() <= MaxFileBytes {
 			if found, ok := declaredIndex(source, name); ok {
 				if len(candidates) >= MaxIndexes {
 					return errors.New("the project holds more indexes than one backup records")
@@ -273,8 +275,13 @@ func scan(source *os.Root) ([]string, []candidate, error) {
 // file would copy a damaged derived document into the backup and restore it as
 // though it were evidence.
 func declaredIndex(source *os.Root, name string) (candidate, bool) {
-	data, err := source.ReadFile(name)
+	opened, err := source.Open(name)
 	if err != nil {
+		return candidate{}, false
+	}
+	defer opened.Close()
+	data, err := io.ReadAll(io.LimitReader(opened, MaxFileBytes+1))
+	if err != nil || int64(len(data)) > MaxFileBytes {
 		// The copy step opens the same file and reports the failure by itself,
 		// with one diagnostic rather than two.
 		return candidate{}, false

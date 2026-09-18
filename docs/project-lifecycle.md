@@ -7,7 +7,10 @@ Supported project documents stay unchanged; supported `readmit-index/v1` files
 are rebuilt by restore. A damaged or unsupported document is `refused`, the plan
 has `compatible: false`, and the command exits nonzero. There is no converter for
 an unknown schema and no in-place canonical-evidence migration. Preview checks
-schema readability, not evidence identity or index freshness; archive verifies
+schema readability, not evidence identity or index freshness. Schema recognition
+uses the 64 MiB archive file bound, independently of the 16 MiB index decoding
+bound: an oversized declared index is refused, never treated as ordinary data.
+Files beyond the archive bound are refused. Archive verifies
 those separately. Older releases refuse the new quota document only if they
 read it; they do not enforce quotas. Use this release for controlled writes.
 
