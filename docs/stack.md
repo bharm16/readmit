@@ -18,7 +18,7 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
 
 ## CLI
 
-- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `project`, `backup`, `license`, `secret`, `protect`, `target`, `listen`, `replay`, `test`, `diff`, `diagnose`, `synth`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
+- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `project`, `backup`, `license`, `secret`, `protect`, `target`, `listen`, `replay`, `test`, `observe`, `diff`, `diagnose`, `synth`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
 - Command data goes to stdout, diagnostics to stderr. Machine-readable modes never interleave progress output with JSON.
 - Target configuration is read from explicitly selected files, not hidden global config or environment-variable precedence.
 - Credentials are referenced, never held. A `readmit-secrets/v1` document registers the store kind an operator declared, the single purpose and endpoint address a credential may be bound to, the absolute path of the program that reads it back, and the recorded rotation. No command accepts a credential value, and a resolved value masks itself under every formatting verb and refuses to be serialized. See [credential references](secret.md).
@@ -46,6 +46,31 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
 - A named environment is one `readmit-target/v3` configuration an operator records, validates and diagnoses with `readmit target`. A connectivity diagnostic proves reachability and TLS and never sends an HL7 payload. The classification it records is displayed everywhere the target is shown and is never treated as permission. See [named test environments](target.md).
 - A send is decided against a `readmit-send-policy/v1` document the operator selects explicitly, and the decision is retained as a `readmit-send-decision/v1` document. `internal/sendpolicy` owns the one rule: a production class refuses every replay, a name is resolved at the point of the send rather than when a configuration is recorded, and an unrecorded class, an unresolvable name, a name resolving to several addresses and an address outside every approved destination are each denied. A preview and a connectivity diagnosis report that same decision without requesting a send, so a check cannot predict an answer the send path would not give. The same package refuses a nonloopback bind for `listen` and `collect` unless the operator passes `--approved-bind`. See [safe replay](replay.md).
 - Foreground execution with contexts for cancellation. No queue, no distributed jobs, and no HTTP API for local commands to read the receiver's ledger. The receiver exports observation files.
+
+## External observations
+
+- What makes an observation trustworthy is source-neutral and lives in
+  `internal/observewindow`, not in any collector. A
+  `readmit-observation-window/v1` document declares the source identity and
+  scope in view, the watermark the window opens at, how pre-existing state is
+  handled and the completion rule; a `readmit-observation-completion/v1` record
+  retains what a collector reported and the verdict that follows from it. One
+  rule has one implementation, so a collector cannot widen it by construction.
+  See [trustworthy observation windows](observe.md).
+- A window over an eventually consistent source completes when the observed
+  state has held still across a declared number of samples spanning a declared
+  quiet period, inside a declared deadline. Polling never stops at the first
+  convenient answer, and reaching the deadline without that having happened is
+  an error rather than a verdict.
+- Failed collection never becomes a passing absence assertion. An observed empty
+  state is evidence; a collector that never ran, stale data, a truncated
+  capture, a lost connection, an ambiguous source status and an unsupported
+  source kind are each execution errors that observed nothing. State that
+  existed before the window opened is never evidence that the run produced it,
+  and a window declared over an unknown prior state can never attribute one.
+- `readmit-observation/v1` is unchanged. It remains the fixture receiver's
+  ledger snapshot for one source; the window contracts are separate documents
+  beside it, not a revision of it.
 
 ## JSON
 

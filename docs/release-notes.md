@@ -219,6 +219,24 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   `readmit-index/v1` and every case, project, run, result and report contract are
   unchanged.
 
+- `observe` owns the source-neutral contracts a regression assertion about an
+  external system rests on. A `readmit-observation-window/v1` document declares
+  the source identity and scope in view, the watermark the window opens at, how
+  state that existed before it opened is handled, and the completion rule:
+  the observed state must hold still across a declared number of samples
+  spanning a declared quiet period, inside a declared deadline, so polling never
+  stops at the first convenient answer. A
+  `readmit-observation-completion/v1` record retains what a collector reported
+  and the verdict that follows, names the boundary, window and samples it
+  evaluated, and is re-decided against its declared window rather than trusted.
+  An observed empty state is evidence; a collector that never ran, stale data, a
+  truncated capture, a lost connection, an ambiguous source status and an
+  unsupported source kind are each execution errors, and none of them may be
+  read as proof that something is absent. State already present when the window
+  opened is never evidence that the run produced it. No collector is included:
+  these commands observe nothing. `readmit-observation/v1`, `readmit-result/v1`,
+  `readmit-test/v1`-`v2` and `readmit-job/v1` are unchanged.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is
