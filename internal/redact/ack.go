@@ -29,8 +29,13 @@ func verifyFixtureACKs(source *bundle.Bundle, artifact *testrunner.Artifact) err
 		if err != nil || len(request.Messages) != 1 {
 			return invalid
 		}
+		family, familyOK := selectedText(request, "MSH-9.1")
+		version, versionOK := selectedText(request, "MSH-12.1")
+		if !familyOK || family != "SIU" || !versionOK || version != "2.5.1" {
+			return invalid
+		}
 		trigger, ok := selectedText(request, "MSH-9.2")
-		if !ok || !slices.Contains([]string{"S12", "S13", "S15"}, trigger) {
+		if !ok || !slices.Contains([]string{"S12", "S13"}, trigger) {
 			return invalid
 		}
 		control := request.Messages[0].Segments[0].Field(10)
