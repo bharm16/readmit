@@ -67,9 +67,14 @@ func TestFrontendBindingsDeclareEveryResultMember(t *testing.T) {
 		reflect.TypeOf(desktop.Case{}),
 		reflect.TypeOf(desktop.RecentResult{}),
 		reflect.TypeOf(desktop.ProjectResult{}),
+		reflect.TypeOf(desktop.RevisionsResult{}),
 		reflect.TypeOf(project.Document{}),
 		reflect.TypeOf(project.Settings{}),
 		reflect.TypeOf(project.Case{}),
+		reflect.TypeOf(project.Revisions{}),
+		reflect.TypeOf(project.Revision{}),
+		reflect.TypeOf(project.Operation{}),
+		reflect.TypeOf(project.Note{}),
 	} {
 		for i := range bound.NumField() {
 			member, _, _ := strings.Cut(bound.Field(i).Tag.Get("json"), ",")

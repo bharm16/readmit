@@ -61,6 +61,7 @@ type Kind string
 const (
 	CaseArtifact        Kind = "case"
 	ProjectArtifact     Kind = "project"
+	RevisionsArtifact   Kind = "revisions"
 	UnsupportedArtifact Kind = "unsupported"
 )
 
@@ -122,6 +123,17 @@ type ProjectResult struct {
 	Project *project.Document `json:"project,omitzero"`
 }
 
+// RevisionsResult carries one state. Revisions is the editable document of a
+// project exactly as it was written: the notes and drafts a person maintains,
+// and the lineage of every revision derived from registered evidence. It holds
+// no evidence, and nothing the shell writes through this result can reach any.
+type RevisionsResult struct {
+	State     State              `json:"state"`
+	Reason    string             `json:"reason,omitzero"`
+	Root      string             `json:"root,omitzero"`
+	Revisions *project.Revisions `json:"revisions,omitzero"`
+}
+
 // RecentResult lists workspace folders in most-recently-opened order.
 type RecentResult struct {
 	State  State    `json:"state"`
@@ -148,6 +160,10 @@ func (r refusal) workspace() WorkspaceResult {
 func (r refusal) evidence() CaseResult { return CaseResult{State: r.state, Reason: r.reason} }
 
 func (r refusal) project() ProjectResult { return ProjectResult{State: r.state, Reason: r.reason} }
+
+func (r refusal) revisions() RevisionsResult {
+	return RevisionsResult{State: r.state, Reason: r.reason}
+}
 
 // FolderChooser presents the host's native folder dialog. An empty path with a
 // nil error means the person dismissed it without choosing.
@@ -268,7 +284,9 @@ func (a *App) CreateSampleWorkspace() WorkspaceResult {
 		return WorkspaceResult{State: Failed, Reason: "the chosen folder already holds a readmit-sample folder; choose a different folder"}
 	}
 	if _, err := synth.Write(destination, sampleInputs); err != nil {
-		return probeWriteFailure(parent).workspace()
+		return probeWriteFailure(parent,
+			"this account cannot create a folder in the chosen folder",
+			"the sample workspace could not be created in the chosen folder").workspace()
 	}
 	return a.openWorkspace(ctx, destination)
 }
@@ -322,21 +340,104 @@ func (a *App) OpenProject(path string) ProjectResult {
 		return busyRefusal.project()
 	}
 	defer release()
-	root, declined := resolveFolder(path)
-	if root == "" {
+	opened, declined := openProjectFolder(path)
+	if opened == nil {
 		return declined.project()
-	}
-	opened, err := project.Open(root)
-	if errors.Is(err, project.ErrUnsupportedVersion) {
-		return ProjectResult{State: Failed, Reason: "the project document was written by a version this release cannot read"}
-	}
-	if err != nil {
-		return probeReadFailure(root).project()
 	}
 	if len(opened.Document.Cases) == 0 {
 		return ProjectResult{State: Empty, Root: opened.Root, Project: &opened.Document}
 	}
 	return ProjectResult{State: Completed, Root: opened.Root, Project: &opened.Document}
+}
+
+// OpenRevisions reads the editable document of a project folder: the notes and
+// drafts beside the evidence, and the recorded lineage of every revision. It
+// verifies no evidence and rewrites nothing. A project that has recorded
+// nothing yet is Empty rather than missing. It runs to completion once it
+// starts, so it holds the operation slot but is not interruptible.
+func (a *App) OpenRevisions(path string) RevisionsResult {
+	release, claimed := a.claim()
+	if !claimed {
+		return busyRefusal.revisions()
+	}
+	defer release()
+	opened, declined := openProjectFolder(path)
+	if opened == nil {
+		return declined.revisions()
+	}
+	revisions, declined := readRevisions(opened.Root)
+	if revisions == nil {
+		return declined.revisions()
+	}
+	if len(revisions.Notes) == 0 && len(revisions.Revisions) == 0 {
+		return RevisionsResult{State: Empty, Root: opened.Root, Revisions: revisions}
+	}
+	return RevisionsResult{State: Completed, Root: opened.Root, Revisions: revisions}
+}
+
+// SaveNote creates or replaces one editable note of a project and returns the
+// document it stored. This is the only thing the shell writes into a project,
+// and a note is working text: it is held in the project's own editable
+// document, beside evidence, so no edit made here reaches an import, a
+// finalized run, or any other retained artifact. It takes the same typed note
+// the command line stores, so the shell states what it is writing rather than
+// passing interchangeable strings. It runs to completion once it starts, so it
+// holds the operation slot but is not interruptible.
+func (a *App) SaveNote(path string, note project.Note) RevisionsResult {
+	release, claimed := a.claim()
+	if !claimed {
+		return busyRefusal.revisions()
+	}
+	defer release()
+	opened, declined := openProjectFolder(path)
+	if opened == nil {
+		return declined.revisions()
+	}
+	revisions, declined := readRevisions(opened.Root)
+	if revisions == nil {
+		return declined.revisions()
+	}
+	updated, _, err := project.SetNote(opened.Document, *revisions, note)
+	if err != nil {
+		return RevisionsResult{State: Failed, Root: opened.Root, Reason: "the note was not stored: it needs a name and a title, its text must be bounded and printable, any subject it names must be a case or revision this project registers, and a project holds a bounded number of notes"}
+	}
+	if err := project.WriteRevisions(opened.Root, updated); err != nil {
+		return probeWriteFailure(opened.Root,
+			"this account cannot write to the project folder",
+			"the note could not be stored; an interrupted write may be retained beside the project document").revisions()
+	}
+	return RevisionsResult{State: Completed, Root: opened.Root, Revisions: &updated}
+}
+
+// openProjectFolder resolves a folder and reads the project document every
+// editable document belongs to. A nil project carries the refusal to report.
+func openProjectFolder(path string) (*project.Project, refusal) {
+	root, declined := resolveFolder(path)
+	if root == "" {
+		return nil, declined
+	}
+	opened, err := project.Open(root)
+	if errors.Is(err, project.ErrUnsupportedVersion) {
+		return nil, refusal{Failed, "the project document was written by a version this release cannot read"}
+	}
+	if err != nil {
+		return nil, probeReadFailure(root)
+	}
+	return opened, refusal{}
+}
+
+// readRevisions reads the editable document of an already opened project. A
+// nil document carries the refusal to report; a document this release cannot
+// read is reported and left exactly as written, never migrated or replaced.
+func readRevisions(root string) (*project.Revisions, refusal) {
+	revisions, err := project.ReadRevisions(root)
+	if errors.Is(err, project.ErrUnsupportedVersion) {
+		return nil, refusal{Failed, "the editable project document was written by a version this release cannot read"}
+	}
+	if err != nil {
+		return nil, refusal{Failed, "the editable project document cannot be read"}
+	}
+	return &revisions, refusal{}
 }
 
 // RecentWorkspaces lists previously opened workspace folders, most recent
@@ -431,6 +532,19 @@ func describe(root string, entry fs.DirEntry) Artifact {
 		}
 		return Artifact{Name: name, Kind: ProjectArtifact, Schema: opened.Document.Schema}
 	}
+	// The editable document beside it is located the same way and reports the
+	// contract it declares, so a folder never lists a canonical readmit
+	// document as something this release does not recognize.
+	if name == project.RevisionsDocumentName && entry.Type().IsRegular() {
+		revisions, err := project.ReadRevisions(root)
+		if errors.Is(err, project.ErrUnsupportedVersion) {
+			return Artifact{Name: name, Kind: UnsupportedArtifact, Reason: "an editable project document written by a version this release cannot read"}
+		}
+		if err != nil {
+			return Artifact{Name: name, Kind: UnsupportedArtifact, Reason: "not an editable project document this release supports"}
+		}
+		return Artifact{Name: name, Kind: RevisionsArtifact, Schema: revisions.Schema}
+	}
 	path, err := artifactpath.Child(root, name)
 	if err != nil {
 		reason := "not a case bundle directory"
@@ -464,16 +578,17 @@ func probeReadFailure(root string) refusal {
 }
 
 // probeWriteFailure separates a folder this account cannot write from other
-// write failures, so the shell can say to choose a different folder. A folder's
-// mode bits do not answer that portably, so it creates and immediately removes
-// one temporary directory inside the chosen folder. It runs only after a write
-// has already failed, and it never touches the destination.
-func probeWriteFailure(parent string) refusal {
+// write failures, so the shell can say what to do about it. A folder's mode
+// bits do not answer that portably, so it creates and immediately removes one
+// temporary directory inside the folder. It runs only after a write has already
+// failed, and it never touches the destination. denied and failed are the fixed
+// sentences to report; neither discloses a path or a host diagnostic.
+func probeWriteFailure(parent, denied, failed string) refusal {
 	probe, err := os.MkdirTemp(parent, ".readmit-access-")
 	if err == nil {
 		os.Remove(probe)
 	} else if errors.Is(err, fs.ErrPermission) {
-		return refusal{PermissionDenied, "this account cannot create a folder in the chosen folder"}
+		return refusal{PermissionDenied, denied}
 	}
-	return refusal{Failed, "the sample workspace could not be created in the chosen folder"}
+	return refusal{Failed, failed}
 }

@@ -16,7 +16,7 @@ export type State =
   | "permission_denied"
   | "completed";
 
-export type Kind = "case" | "project" | "unsupported";
+export type Kind = "case" | "project" | "revisions" | "unsupported";
 
 export interface Artifact {
   name: string;
@@ -96,6 +96,50 @@ export interface ProjectResult {
   project?: ProjectDocument;
 }
 
+/** The manifest of the transformation that produced one revision. `name` is the
+ * derivation the derived evidence declares in its own manifest, so the shell
+ * shows the operation the artifact carries rather than anything typed. */
+export interface ProjectOperation {
+  name: string;
+  parent: string;
+  parent_identity: string;
+}
+
+/** One derived case bundle registered with its lineage. Its provenance is
+ * always `derived`: evidence that is not the output of a transformation is
+ * registered as a case, never as a revision of one. */
+export interface ProjectRevision {
+  name: string;
+  identity: string;
+  schema: string;
+  provenance: string;
+  operation: ProjectOperation;
+}
+
+/** Editable working text. A note with no subject is a project draft; one with a
+ * subject is about the registered case or revision of that name. A note is not
+ * evidence and is never written inside any. */
+export interface ProjectNote {
+  name: string;
+  subject?: string;
+  title: string;
+  body: string;
+}
+
+/** The editable document of a project, held beside the evidence it organizes. */
+export interface RevisionsDocument {
+  schema: string;
+  notes: ProjectNote[];
+  revisions: ProjectRevision[];
+}
+
+export interface RevisionsResult {
+  state: State;
+  reason?: string;
+  root?: string;
+  revisions?: RevisionsDocument;
+}
+
 export interface RecentResult {
   state: State;
   reason?: string;
@@ -107,8 +151,10 @@ interface Facade {
   CreateSampleWorkspace(): Promise<WorkspaceResult>;
   OpenCase(workspace: string, name: string): Promise<CaseResult>;
   OpenProject(path: string): Promise<ProjectResult>;
+  OpenRevisions(path: string): Promise<RevisionsResult>;
   OpenWorkspace(path: string): Promise<WorkspaceResult>;
   RecentWorkspaces(): Promise<RecentResult>;
+  SaveNote(path: string, note: ProjectNote): Promise<RevisionsResult>;
   SelectWorkspace(): Promise<WorkspaceResult>;
 }
 
@@ -163,6 +209,19 @@ export function openCase(workspace: string, name: string): Promise<CaseResult> {
 
 export function openProject(path: string): Promise<ProjectResult> {
   return guard(() => facade().OpenProject(path), { state: "failed" });
+}
+
+export function openRevisions(path: string): Promise<RevisionsResult> {
+  return guard(() => facade().OpenRevisions(path), { state: "failed" });
+}
+
+/** The only write the shell makes into a project. It replaces one editable
+ * note; it never writes inside a case, a run, or any other retained artifact. */
+export function saveNote(
+  path: string,
+  note: ProjectNote,
+): Promise<RevisionsResult> {
+  return guard(() => facade().SaveNote(path, note), { state: "failed" });
 }
 
 export function openWorkspace(path: string): Promise<WorkspaceResult> {

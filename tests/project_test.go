@@ -408,26 +408,32 @@ func TestProjectRecordsTheProvenanceTheEvidenceDeclares(t *testing.T) {
 	}
 }
 
-// Customer-derived evidence is the third class the project must tell apart. A
-// derived case carries its own provenance mode, and the project copies that.
+// Customer-derived evidence is the third class the project must tell apart. It
+// carries its own provenance mode, and the project copies that — but it is the
+// output of a transformation, so it is registered as a revision of the evidence
+// it came from rather than as a case standing on its own.
 func TestProjectRecordsCustomerDerivedProvenance(t *testing.T) {
-	request := redactFixture(t)
-	if _, stderr, err := run(t, "redact", request.CasePath, "--spec", request.SpecPath, "--policy", request.PolicyPath, "--inventory", request.InventoryPath, "--local-state", request.LocalState, "--output", request.Output); err != nil || stderr != "" {
-		t.Fatalf("redact: %v %s", err, stderr)
-	}
+	original, derived := redactedRevision(t)
 	root := newProject(t)
-	if err := os.CopyFS(filepath.Join(root, "derived-case"), os.DirFS(filepath.Join(request.Output, "case"))); err != nil {
-		t.Fatal(err)
-	}
-	stdout, stderr, err := run(t, "project", "add", root, "derived-case", "--title", "Derived for review")
-	if err != nil || stderr != "" {
+	copyInto(t, root, "original-case", original)
+	copyInto(t, root, "derived-case", derived)
+	if _, stderr, err := run(t, "project", "add", root, "original-case", "--title", "Original"); err != nil || stderr != "" {
 		t.Fatalf("project add: %v %s", err, stderr)
+	}
+	// A transformation is recorded with the identity of what it came from and
+	// the operation that produced it, never as a case standing on its own.
+	if stdout, _, err := run(t, "project", "add", root, "derived-case", "--title", "Derived for review"); err == nil {
+		t.Fatalf("a transformation was registered with no lineage:\n%s", stdout)
+	}
+	stdout, stderr, err := run(t, "project", "revise", root, "derived-case", "--parent", "original-case")
+	if err != nil || stderr != "" {
+		t.Fatalf("project revise: %v %s", err, stderr)
 	}
 	if !strings.Contains(stdout, "Provenance: derived") || !strings.Contains(stdout, "Schema: readmit-case/v3") {
 		t.Fatalf("derived evidence was not recorded as derived:\n%s", stdout)
 	}
 	if stdout, _, _ = run(t, "project", "show", root); !strings.Contains(stdout, "evidence=verified") || !strings.Contains(stdout, "provenance=derived") {
-		t.Fatalf("show did not report the derived case:\n%s", stdout)
+		t.Fatalf("show did not report the derived revision:\n%s", stdout)
 	}
 }
 
@@ -525,4 +531,315 @@ func TestProjectUpdateClearsTagsAndLinkedIncidents(t *testing.T) {
 	if !strings.Contains(stdout, "Tags: none") {
 		t.Fatalf("registering with an empty tag did not report none:\n%s", stdout)
 	}
+}
+
+// copyInto places an existing artifact directory inside the project under one
+// name. A bundle identity covers relative paths and contents only, so a copied
+// artifact keeps the identity it was written with.
+func copyInto(t *testing.T, root, name, source string) string {
+	t.Helper()
+	destination := filepath.Join(root, name)
+	if err := os.CopyFS(destination, os.DirFS(source)); err != nil {
+		t.Fatal(err)
+	}
+	return destination
+}
+
+// sealed records every byte of the named project entries, so a later comparison
+// proves that editing project metadata reached no evidence at all.
+func sealed(t *testing.T, root string, names ...string) map[string]map[string][]byte {
+	t.Helper()
+	files := map[string]map[string][]byte{}
+	for _, name := range names {
+		files[name] = redactTree(t, filepath.Join(root, name))
+	}
+	return files
+}
+
+func assertSealed(t *testing.T, root string, before map[string]map[string][]byte) {
+	t.Helper()
+	for name, want := range before {
+		got := redactTree(t, filepath.Join(root, name))
+		if len(got) != len(want) {
+			t.Fatalf("%s gained or lost files: %d then %d", name, len(want), len(got))
+		}
+		for file, data := range want {
+			if !bytes.Equal(got[file], data) {
+				t.Fatalf("%s/%s was rewritten by an edit", name, file)
+			}
+		}
+	}
+}
+
+// `redact` is the one transformation this release has, so it is what a
+// reproducer revision is made with. This returns the original imported case and
+// the derived case the review produced.
+func redactedRevision(t *testing.T) (string, string) {
+	t.Helper()
+	request := redactFixture(t)
+	stdout, stderr, err := run(t, "redact", request.CasePath, "--spec", request.SpecPath, "--policy", request.PolicyPath, "--inventory", request.InventoryPath, "--local-state", request.LocalState, "--output", request.Output)
+	if err != nil {
+		t.Fatalf("redact: %v %s %s", err, stdout, stderr)
+	}
+	return request.CasePath, filepath.Join(request.Output, "case")
+}
+
+// A revision records the identity of the evidence it was derived from and the
+// operation that produced it, and registering it leaves both bundles untouched.
+func TestProjectRevisionRecordsParentIdentityAndOperationManifest(t *testing.T) {
+	original, derived := redactedRevision(t)
+	root := newProject(t)
+	copyInto(t, root, "booking", original)
+	copyInto(t, root, "booking-redacted", derived)
+	copyInto(t, root, "booking-redacted-again", derived)
+	copyInto(t, root, "booking-copy", original)
+
+	added, stderr, err := run(t, "project", "add", root, "booking", "--title", "Duplicate appointment after reschedule")
+	if err != nil || stderr != "" {
+		t.Fatalf("project add: %v %s", err, stderr)
+	}
+	parentIdentity := field(t, added, "Identity: ")
+	before := sealed(t, root, "booking", "booking-redacted")
+
+	stdout, stderr, err := run(t, "project", "revise", root, "booking-redacted", "--parent", "booking")
+	if err != nil || stderr != "" {
+		t.Fatalf("project revise: %v %s", err, stderr)
+	}
+	for _, want := range []string{
+		"Revision registered: booking-redacted",
+		"Schema: readmit-case/v3",
+		"Provenance: derived",
+		"Operation: readmit-redact/v1",
+		"Parent: booking",
+		"Parent identity: " + parentIdentity,
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("project revise omitted %q:\n%s", want, stdout)
+		}
+	}
+	if identity := field(t, stdout, "Identity: "); identity == parentIdentity {
+		t.Fatal("the revision was recorded with the identity of its parent")
+	}
+
+	// The editable document is the canonical record of lineage, beside the
+	// evidence and never inside it.
+	var document project.Revisions
+	data, err := os.ReadFile(filepath.Join(root, project.RevisionsDocumentName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, &document, json.RejectUnknownMembers(true)); err != nil {
+		t.Fatal(err)
+	}
+	if document.Schema != project.RevisionsSchema || len(document.Revisions) != 1 {
+		t.Fatalf("the stored document is not one revision of readmit-revisions/v1: %+v", document)
+	}
+	entry := document.Revisions[0]
+	if entry.Operation.Name != "readmit-redact/v1" || entry.Operation.Parent != "booking" || entry.Operation.ParentIdentity != parentIdentity {
+		t.Fatalf("the operation manifest is not what produced the revision: %+v", entry.Operation)
+	}
+
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"evidence that is not a transformation", []string{"booking-copy", "--parent", "booking"}},
+		{"a parent this project does not register", []string{"booking-redacted", "--parent", "booking-copy"}},
+		{"a parent outside the project", []string{"booking-redacted", "--parent", "../elsewhere"}},
+		{"evidence already registered", []string{"booking-redacted", "--parent", "booking"}},
+		{"no parent at all", []string{"booking-redacted"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stdout, stderr, err := run(t, append([]string{"project", "revise", root}, tc.args...)...)
+			if err == nil {
+				t.Fatalf("%s was registered as a revision:\n%s", tc.name, stdout)
+			}
+			for _, secret := range []string{"booking-copy", "elsewhere", root} {
+				if strings.Contains(stderr, secret) {
+					t.Errorf("a diagnostic echoed %q: %s", secret, stderr)
+				}
+			}
+		})
+	}
+
+	// A transformation is registered with its lineage or not at all, and the
+	// immutable and editable sides of a project stay disjoint: the same name
+	// and the same evidence can never be held by both documents.
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"derived evidence as a plain case", []string{"booking-redacted-again", "--title", "Also a case"}},
+		{"a name already registered as a revision", []string{"booking-redacted", "--title", "Also a case"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stdout, _, err := run(t, append([]string{"project", "add", root}, tc.args...)...)
+			if err == nil {
+				t.Fatalf("%s was registered as a case:\n%s", tc.name, stdout)
+			}
+		})
+	}
+
+	assertSealed(t, root, before)
+	stdout, stderr, err = run(t, "project", "show", root)
+	if err != nil || stderr != "" {
+		t.Fatalf("project show: %v %s", err, stderr)
+	}
+	for _, want := range []string{
+		"Cases: 1",
+		"Revisions: 1",
+		"booking-redacted evidence=verified",
+		"schema=readmit-case/v3 provenance=derived",
+		"operation=readmit-redact/v1 parent=booking parent_identity=" + parentIdentity,
+		"booking evidence=verified",
+		"Notes: 0",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("project show omitted %q:\n%s", want, stdout)
+		}
+	}
+}
+
+// Notes and drafts are the editable side of a project. Writing one replaces
+// only that note, and no note can reach a byte of retained evidence.
+func TestProjectNotesAreEditableAndNeverReachEvidence(t *testing.T) {
+	root := newProject(t)
+	registerFrozenCase(t, root, "regression")
+	before := sealed(t, root, "regression")
+	document, err := os.ReadFile(filepath.Join(root, project.DocumentName))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr, err := run(t, "project", "note", root, "triage", "--subject", "regression", "--title", "Working theory", "--body", "The second S13 keeps the original filler identifier.")
+	if err != nil || stderr != "" {
+		t.Fatalf("project note: %v %s", err, stderr)
+	}
+	for _, want := range []string{"Note saved: triage", "Subject: regression", "Title: Working theory", "      The second S13 keeps the original filler identifier."} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("project note omitted %q:\n%s", want, stdout)
+		}
+	}
+	if _, stderr, err = run(t, "project", "note", root, "backlog", "--title", "Ask the vendor"); err != nil || stderr != "" {
+		t.Fatalf("a draft without a subject was refused: %v %s", err, stderr)
+	}
+	stdout, stderr, err = run(t, "project", "note", root, "triage", "--subject", "regression", "--title", "Confirmed", "--body", "Reproduced against the fixed receiver.")
+	if err != nil || stderr != "" {
+		t.Fatalf("replacing a note: %v %s", err, stderr)
+	}
+	if !strings.Contains(stdout, "Title: Confirmed") {
+		t.Fatalf("replacing a note did not store the new title:\n%s", stdout)
+	}
+
+	stdout, stderr, err = run(t, "project", "show", root)
+	if err != nil || stderr != "" {
+		t.Fatalf("project show: %v %s", err, stderr)
+	}
+	for _, want := range []string{
+		"Notes: 2",
+		"backlog subject=none",
+		"    title: Ask the vendor",
+		"    body: none",
+		"triage subject=regression",
+		"    title: Confirmed",
+		"      Reproduced against the fixed receiver.",
+		"regression evidence=verified",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("project show omitted %q:\n%s", want, stdout)
+		}
+	}
+	if strings.Contains(stdout, "Working theory") {
+		t.Fatalf("replacing a note kept the text it replaced:\n%s", stdout)
+	}
+
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"a note about evidence the project does not register", []string{"stray", "--subject", "not-registered", "--title", "Stray"}},
+		{"a note about a path outside the project", []string{"stray", "--subject", "../elsewhere", "--title", "Stray"}},
+		{"a note with no title", []string{"untitled", "--body", "text"}},
+		{"a note body with a control character", []string{"escaped", "--title", "Escaped", "--body", "one\ttwo"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stdout, stderr, err := run(t, append([]string{"project", "note", root}, tc.args...)...)
+			if err == nil {
+				t.Fatalf("%s was stored:\n%s", tc.name, stdout)
+			}
+			for _, secret := range []string{"not-registered", "elsewhere", "Stray", root} {
+				if strings.Contains(stderr, secret) {
+					t.Errorf("a diagnostic echoed %q: %s", secret, stderr)
+				}
+			}
+		})
+	}
+
+	// Editing working text is not an edit of evidence, and it is not an edit of
+	// the project document either.
+	assertSealed(t, root, before)
+	after, err := os.ReadFile(filepath.Join(root, project.DocumentName))
+	if err != nil || !bytes.Equal(after, document) {
+		t.Fatal("writing a note rewrote the project document")
+	}
+}
+
+// An interrupted write is retained rather than overwritten, and a document
+// written by a later release is reported rather than migrated in place.
+func TestProjectRevisionsRecoveryAndUnsupportedVersion(t *testing.T) {
+	root := newProject(t)
+	registerFrozenCase(t, root, "regression")
+	if _, stderr, err := run(t, "project", "note", root, "triage", "--title", "Working theory"); err != nil || stderr != "" {
+		t.Fatalf("project note: %v %s", err, stderr)
+	}
+	stored, err := os.ReadFile(filepath.Join(root, project.RevisionsDocumentName))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	retained := filepath.Join(root, project.RevisionsIncompleteDocumentName)
+	if err := os.WriteFile(retained, []byte("partial"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := run(t, "project", "note", root, "triage", "--title", "Replaced"); err == nil {
+		t.Fatal("a retained interrupted write was overwritten")
+	}
+	if kept, err := os.ReadFile(retained); err != nil || string(kept) != "partial" {
+		t.Fatalf("the interrupted write was not retained: %v %s", err, kept)
+	}
+	if stdout, _, err := run(t, "project", "show", root); err != nil || !strings.Contains(stdout, "title: Working theory") {
+		t.Fatalf("reading did not keep working from the intact document: %v\n%s", err, stdout)
+	}
+	if err := os.Remove(retained); err != nil {
+		t.Fatal(err)
+	}
+
+	future := bytes.Replace(stored, []byte("readmit-revisions/v1"), []byte("readmit-revisions/v2"), 1)
+	if err := os.WriteFile(filepath.Join(root, project.RevisionsDocumentName), future, 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"project", "show", root},
+		{"project", "note", root, "triage", "--title", "Replaced"},
+	} {
+		stdout, _, err := run(t, args...)
+		if err == nil {
+			t.Fatalf("%v accepted a document this release does not read:\n%s", args, stdout)
+		}
+	}
+	unchanged, err := os.ReadFile(filepath.Join(root, project.RevisionsDocumentName))
+	if err != nil || !bytes.Equal(unchanged, future) {
+		t.Fatal("a document this release does not read was rewritten")
+	}
+}
+
+// field reads one reported value out of command output.
+func field(t *testing.T, out, label string) string {
+	t.Helper()
+	_, rest, found := strings.Cut(out, label)
+	if !found {
+		t.Fatalf("output has no %q:\n%s", label, out)
+	}
+	value, _, _ := strings.Cut(rest, "\n")
+	return value
 }

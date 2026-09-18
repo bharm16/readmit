@@ -32,10 +32,10 @@ func projectCommand(ran *bool) *cobra.Command {
 		Short: "Create and manage an interface investigation project",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return errors.New("project requires a subcommand: init, settings, add, update, or show")
+			return errors.New("project requires a subcommand: init, settings, add, update, revise, note, or show")
 		},
 	}
-	command.AddCommand(projectInit(ran), projectSettings(ran), projectAdd(ran), projectUpdate(ran), projectShow(ran))
+	command.AddCommand(projectInit(ran), projectSettings(ran), projectAdd(ran), projectUpdate(ran), projectRevise(ran), projectNote(ran), projectShow(ran))
 	return command
 }
 
@@ -127,10 +127,15 @@ func projectAdd(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			entry, err := verifiedCase(opened.Root, args[1])
+			revisions, err := project.ReadRevisions(opened.Root)
 			if err != nil {
 				return err
 			}
+			facts, _, err := verifiedEvidence(opened.Root, args[1])
+			if err != nil {
+				return err
+			}
+			entry := project.Case{Name: facts.name, Identity: facts.identity, Schema: facts.schema, Provenance: facts.provenance}
 			entry.Title = title
 			entry.InterfaceVersion = version
 			entry.Owner = owner
@@ -141,7 +146,7 @@ func projectAdd(ran *bool) *cobra.Command {
 			if entry.Incidents, err = declaredValues(incidents); err != nil {
 				return err
 			}
-			document, stored, err := project.AddCase(opened.Document, entry)
+			document, stored, err := project.AddCase(opened.Document, revisions, entry)
 			if err != nil {
 				return err
 			}
@@ -223,6 +228,99 @@ func projectUpdate(ran *bool) *cobra.Command {
 	return command
 }
 
+func projectRevise(ran *bool) *cobra.Command {
+	var parent string
+	command := &cobra.Command{
+		Use:   "revise PROJECT REVISION --parent NAME",
+		Short: "Register derived evidence as a revision of a registered case or revision",
+		Args:  projectTwoArguments,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			*ran = true
+			if parent == "" {
+				return errors.New("project revise requires --parent naming the case or revision it was derived from")
+			}
+			opened, err := project.Open(args[0])
+			if err != nil {
+				return err
+			}
+			revisions, err := project.ReadRevisions(opened.Root)
+			if err != nil {
+				return err
+			}
+			// Both the revision and its parent are re-verified through the
+			// shared reader before any lineage is recorded, so a parent whose
+			// evidence no longer matches what the project recorded is reported
+			// rather than quietly re-identified under a new revision.
+			facts, derivation, err := verifiedEvidence(opened.Root, args[1])
+			if err != nil {
+				return err
+			}
+			ancestor, _, err := verifiedEvidence(opened.Root, parent)
+			if err != nil {
+				return err
+			}
+			entry := project.Revision{
+				Name:       facts.name,
+				Identity:   facts.identity,
+				Schema:     facts.schema,
+				Provenance: facts.provenance,
+				Operation: project.Operation{
+					Name:           derivation,
+					Parent:         ancestor.name,
+					ParentIdentity: ancestor.identity,
+				},
+			}
+			updated, stored, err := project.AddRevision(opened.Document, revisions, entry)
+			if err != nil {
+				return err
+			}
+			if err := project.WriteRevisions(opened.Root, updated); err != nil {
+				return err
+			}
+			return writeRevision(cmd.OutOrStdout(), "Revision registered: "+stored.Name, stored)
+		},
+	}
+	command.Flags().StringVar(&parent, "parent", "", "Registered case or revision this evidence was derived from")
+	return command
+}
+
+func projectNote(ran *bool) *cobra.Command {
+	var title, body, subject string
+	command := &cobra.Command{
+		Use:   "note PROJECT NAME --title TITLE",
+		Short: "Create or replace an editable note or draft beside the evidence",
+		Args:  projectTwoArguments,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			*ran = true
+			opened, err := project.Open(args[0])
+			if err != nil {
+				return err
+			}
+			revisions, err := project.ReadRevisions(opened.Root)
+			if err != nil {
+				return err
+			}
+			updated, stored, err := project.SetNote(opened.Document, revisions, project.Note{
+				Name:    args[1],
+				Subject: subject,
+				Title:   title,
+				Body:    body,
+			})
+			if err != nil {
+				return err
+			}
+			if err := project.WriteRevisions(opened.Root, updated); err != nil {
+				return err
+			}
+			return writeNote(cmd.OutOrStdout(), "Note saved: "+stored.Name, stored)
+		},
+	}
+	command.Flags().StringVar(&title, "title", "", "Note title")
+	command.Flags().StringVar(&body, "body", "", "Note body; a note may be a title alone while it is still a draft")
+	command.Flags().StringVar(&subject, "subject", "", "Registered case or revision this note is about; absent makes it a project draft")
+	return command
+}
+
 func projectShow(ran *bool) *cobra.Command {
 	return &cobra.Command{
 		Use:   "show PROJECT",
@@ -234,12 +332,32 @@ func projectShow(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			revisions, err := project.ReadRevisions(opened.Root)
+			if err != nil {
+				return err
+			}
 			w := bufio.NewWriter(cmd.OutOrStdout())
 			writeSettings(w, "Project: "+opened.Document.Settings.Title, opened.Document)
 			for _, entry := range opened.Document.Cases {
 				fmt.Fprintf(w, "  %s evidence=%s identity=%s schema=%s provenance=%s interface=%s status=%s owner=%s\n",
-					entry.Name, evidenceFor(opened.Root, entry), entry.Identity, entry.Schema, entry.Provenance, entry.InterfaceVersion, entry.Status, absent(entry.Owner))
+					entry.Name, evidenceFor(opened.Root, evidence{name: entry.Name, identity: entry.Identity, schema: entry.Schema, provenance: entry.Provenance}),
+					entry.Identity, entry.Schema, entry.Provenance, entry.InterfaceVersion, entry.Status, absent(entry.Owner))
 				fmt.Fprintf(w, "    title: %s\n    tags: %s\n    incidents: %s\n", entry.Title, list(entry.Tags), list(entry.Incidents))
+			}
+			// The editable document is reported separately: a revision carries
+			// lineage rather than case metadata, and a note is working text
+			// that is not evidence at all.
+			fmt.Fprintf(w, "Revisions: %d\n", len(revisions.Revisions))
+			for _, entry := range revisions.Revisions {
+				fmt.Fprintf(w, "  %s evidence=%s identity=%s schema=%s provenance=%s\n",
+					entry.Name, evidenceFor(opened.Root, evidence{name: entry.Name, identity: entry.Identity, schema: entry.Schema, provenance: entry.Provenance}),
+					entry.Identity, entry.Schema, entry.Provenance)
+				fmt.Fprintf(w, "    operation=%s parent=%s parent_identity=%s\n", entry.Operation.Name, entry.Operation.Parent, entry.Operation.ParentIdentity)
+			}
+			fmt.Fprintf(w, "Notes: %d\n", len(revisions.Notes))
+			for _, note := range revisions.Notes {
+				fmt.Fprintf(w, "  %s subject=%s\n    title: %s\n", note.Name, absent(note.Subject), note.Title)
+				writeBody(w, note.Body)
 			}
 			if err := w.Flush(); err != nil {
 				return errors.New("cannot write project output")
@@ -249,35 +367,45 @@ func projectShow(ran *bool) *cobra.Command {
 	}
 }
 
-// verifiedCase reads the evidence facts a project records from the bundle
-// itself. The provenance mode is the one the verified manifest declares, so it
-// is never inferred from the directory name or supplied on the command line.
-func verifiedCase(root, name string) (project.Case, error) {
+// evidence is what a project records about one artifact: the four facts a
+// registered case and a registered revision both keep exactly as the shared
+// reader reported them. They travel as one value so that four same-typed
+// strings cannot be silently transposed at a call site.
+type evidence struct {
+	name, identity, schema, provenance string
+}
+
+// verifiedEvidence reads those facts from the bundle itself, and the derivation
+// its manifest declares when the evidence is the output of a transformation.
+// The provenance mode and the derivation are the ones the verified manifest
+// carries, so neither is ever inferred from the directory name or supplied on
+// the command line.
+func verifiedEvidence(root, name string) (evidence, string, error) {
 	path, err := artifactpath.Child(root, name)
 	if err != nil {
-		return project.Case{}, errors.New("a case must be named by one directory entry of the project")
+		return evidence{}, "", errors.New("a case must be named by one directory entry of the project")
 	}
 	opened, err := bundle.Open(path)
 	if err != nil {
-		return project.Case{}, errors.New("the case could not be verified as complete, unmodified evidence")
+		return evidence{}, "", errors.New("the case could not be verified as complete, unmodified evidence")
 	}
-	return project.Case{
-		Name:       name,
-		Identity:   opened.Identity,
-		Schema:     opened.Manifest.Schema,
-		Provenance: string(opened.Manifest.Provenance.Mode),
-	}, nil
+	return evidence{
+		name:       name,
+		identity:   opened.Identity,
+		schema:     opened.Manifest.Schema,
+		provenance: string(opened.Manifest.Provenance.Mode),
+	}, opened.Manifest.Provenance.Derivation, nil
 }
 
-// evidenceFor re-verifies one registered case through the same reader that
-// accepted it, and compares every evidence fact the project recorded with what
-// the reader reported. A document that claims a provenance mode or a contract
-// version the evidence does not carry is never reported as verified, so an
-// edited document cannot make imported evidence look synthetic. What the
+// evidenceFor re-verifies one registered case or revision through the same
+// reader that accepted it, and compares every evidence fact the project
+// recorded with what the reader reported. A document that claims a provenance
+// mode or a contract version the evidence does not carry is never reported as
+// verified, so an edited document cannot make imported evidence look synthetic. What the
 // project recorded is reported exactly as recorded whatever this finds: `show`
 // reports, and never rewrites what a project recorded.
-func evidenceFor(root string, entry project.Case) evidenceState {
-	path, err := artifactpath.Child(root, entry.Name)
+func evidenceFor(root string, recorded evidence) evidenceState {
+	path, err := artifactpath.Child(root, recorded.name)
 	if err != nil {
 		return evidenceMissing
 	}
@@ -285,8 +413,8 @@ func evidenceFor(root string, entry project.Case) evidenceState {
 	if err != nil {
 		return evidenceUnreadable
 	}
-	if opened.Identity != entry.Identity || opened.Manifest.Schema != entry.Schema ||
-		string(opened.Manifest.Provenance.Mode) != entry.Provenance {
+	if opened.Identity != recorded.identity || opened.Manifest.Schema != recorded.schema ||
+		string(opened.Manifest.Provenance.Mode) != recorded.provenance {
 		return evidenceChanged
 	}
 	return evidenceVerified
@@ -305,13 +433,19 @@ func declaredValues(values []string) ([]string, error) {
 	return values, nil
 }
 
-func writeProject(out io.Writer, headline string, document project.Document) error {
+// writeLines buffers one command's output and reports a single failure to write
+// it, so every `project` command reports that failure the same way.
+func writeLines(out io.Writer, render func(io.Writer)) error {
 	w := bufio.NewWriter(out)
-	writeSettings(w, headline, document)
+	render(w)
 	if err := w.Flush(); err != nil {
 		return errors.New("cannot write project output")
 	}
 	return nil
+}
+
+func writeProject(out io.Writer, headline string, document project.Document) error {
+	return writeLines(out, func(w io.Writer) { writeSettings(w, headline, document) })
 }
 
 func writeSettings(w io.Writer, headline string, document project.Document) {
@@ -320,13 +454,37 @@ func writeSettings(w io.Writer, headline string, document project.Document) {
 }
 
 func writeCase(out io.Writer, headline string, entry project.Case) error {
-	w := bufio.NewWriter(out)
-	fmt.Fprintf(w, "%s\nIdentity: %s\nSchema: %s\nProvenance: %s\nInterface version: %s\nTitle: %s\nStatus: %s\nOwner: %s\nTags: %s\nIncidents: %s\n",
-		headline, entry.Identity, entry.Schema, entry.Provenance, entry.InterfaceVersion, entry.Title, entry.Status, absent(entry.Owner), list(entry.Tags), list(entry.Incidents))
-	if err := w.Flush(); err != nil {
-		return errors.New("cannot write project output")
+	return writeLines(out, func(w io.Writer) {
+		fmt.Fprintf(w, "%s\nIdentity: %s\nSchema: %s\nProvenance: %s\nInterface version: %s\nTitle: %s\nStatus: %s\nOwner: %s\nTags: %s\nIncidents: %s\n",
+			headline, entry.Identity, entry.Schema, entry.Provenance, entry.InterfaceVersion, entry.Title, entry.Status, absent(entry.Owner), list(entry.Tags), list(entry.Incidents))
+	})
+}
+
+func writeRevision(out io.Writer, headline string, entry project.Revision) error {
+	return writeLines(out, func(w io.Writer) {
+		fmt.Fprintf(w, "%s\nIdentity: %s\nSchema: %s\nProvenance: %s\nOperation: %s\nParent: %s\nParent identity: %s\n",
+			headline, entry.Identity, entry.Schema, entry.Provenance, entry.Operation.Name, entry.Operation.Parent, entry.Operation.ParentIdentity)
+	})
+}
+
+func writeNote(out io.Writer, headline string, note project.Note) error {
+	return writeLines(out, func(w io.Writer) {
+		fmt.Fprintf(w, "%s\nSubject: %s\nTitle: %s\n", headline, absent(note.Subject), note.Title)
+		writeBody(w, note.Body)
+	})
+}
+
+// writeBody prints working text one indented line at a time, so a note that
+// runs to several lines stays under the note it belongs to.
+func writeBody(w io.Writer, value string) {
+	if value == "" {
+		fmt.Fprint(w, "    body: none\n")
+		return
 	}
-	return nil
+	fmt.Fprint(w, "    body:\n")
+	for line := range strings.SplitSeq(value, "\n") {
+		fmt.Fprintf(w, "      %s\n", line)
+	}
 }
 
 // absent and list keep an unset value visibly unset, so a reader never mistakes
@@ -354,7 +512,7 @@ func projectOneArgument(_ *cobra.Command, args []string) error {
 
 func projectTwoArguments(_ *cobra.Command, args []string) error {
 	if len(args) != 2 {
-		return errors.New("project subcommand requires a project directory and one case name")
+		return errors.New("project subcommand requires a project directory and one name")
 	}
 	return nil
 }

@@ -12,6 +12,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -34,7 +35,11 @@ const (
 	// IncompleteDocumentName is the file a replacement is written to first. One
 	// left behind means a previous write was interrupted; it is retained, never
 	// reused, so recovery is an explicit decision outside this package.
-	IncompleteDocumentName = "project.json.incomplete"
+	IncompleteDocumentName = DocumentName + incompleteSuffix
+
+	// incompleteSuffix marks the partial file every canonical document of a
+	// project directory is written to before it is renamed into place.
+	incompleteSuffix = ".incomplete"
 
 	// MaxInterfaceVersions, MaxCases, MaxTags and MaxIncidents bound one
 	// document. A project past a bound is refused rather than truncated.
@@ -359,9 +364,26 @@ func identity(value string) error {
 }
 
 // AddCase registers a verified case bundle, supplying the project defaults the
-// caller left unset, and returns the entry exactly as it was stored. The
-// document it is given is not modified.
-func AddCase(document Document, entry Case) (Document, Case, error) {
+// caller left unset, and returns the entry exactly as it was stored.
+//
+// Derived evidence is refused: it is the output of a transformation, and a
+// transformation is registered with AddRevision so that its parent identity and
+// operation manifest are recorded rather than lost. The editable document is
+// consulted as well, so the two sides of a project stay disjoint: one name and
+// one piece of evidence are held by exactly one of them. Neither document it is
+// given is modified.
+func AddCase(document Document, revisions Revisions, entry Case) (Document, Case, error) {
+	if entry.Provenance == DerivedProvenance {
+		return Document{}, Case{}, errors.New("derived evidence is a transformation; register it as a revision so its parent identity and operation are recorded")
+	}
+	if _, taken := registered(document, revisions, entry.Name); taken {
+		return Document{}, Case{}, errors.New("that name is already registered in this project")
+	}
+	for _, held := range revisions.Revisions {
+		if held.Identity == entry.Identity {
+			return Document{}, Case{}, errors.New("that evidence is already registered as a revision of this project")
+		}
+	}
 	if entry.InterfaceVersion == "" {
 		entry.InterfaceVersion = document.Settings.DefaultInterfaceVersion
 	}
@@ -458,7 +480,7 @@ func Create(destination string, document Document) (*Project, error) {
 	if err := os.Mkdir(root, 0700); err != nil {
 		return nil, errors.New("cannot create project; destination must be new and parent writable")
 	}
-	if err := install(root, data); err != nil {
+	if err := install(root, DocumentName, data); err != nil {
 		os.Remove(root)
 		return nil, err
 	}
@@ -471,30 +493,48 @@ func Open(path string) (*Project, error) {
 	if err != nil {
 		return nil, errors.New("a project must be an existing directory that is not a symbolic link")
 	}
-	opened, err := os.OpenRoot(root)
+	data, missing, err := readDocument(root, DocumentName)
 	if err != nil {
-		return nil, errors.New("cannot open project directory")
+		return nil, err
 	}
-	defer opened.Close()
-	file, err := opened.Open(DocumentName)
-	if err != nil {
+	if missing {
 		return nil, errors.New("directory holds no readable project document")
-	}
-	info, statErr := file.Stat()
-	if statErr != nil || !info.Mode().IsRegular() {
-		file.Close()
-		return nil, errors.New("project document must be a regular file")
-	}
-	data, readErr := io.ReadAll(io.LimitReader(file, maxDocumentBytes+1))
-	closeErr := file.Close()
-	if readErr != nil || closeErr != nil {
-		return nil, errors.New("cannot read project document")
 	}
 	document, err := Decode(data)
 	if err != nil {
 		return nil, err
 	}
 	return &Project{Root: root, Document: document}, nil
+}
+
+// readDocument reads one bounded, regular canonical document of a project
+// directory. A directory that holds no such file is reported as missing rather
+// than as an error, which is how a project that has recorded nothing in a
+// document reads as the empty one instead of being repaired.
+func readDocument(root, name string) ([]byte, bool, error) {
+	opened, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, false, errors.New("cannot open project directory")
+	}
+	defer opened.Close()
+	file, err := opened.Open(name)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, true, nil
+	}
+	if err != nil {
+		return nil, false, errors.New("directory holds no readable project document")
+	}
+	info, statErr := file.Stat()
+	if statErr != nil || !info.Mode().IsRegular() {
+		file.Close()
+		return nil, false, errors.New("project document must be a regular file")
+	}
+	data, readErr := io.ReadAll(io.LimitReader(file, maxDocumentBytes+1))
+	closeErr := file.Close()
+	if readErr != nil || closeErr != nil {
+		return nil, false, errors.New("cannot read project document")
+	}
+	return data, false, nil
 }
 
 // Save replaces the document atomically: it is written in full to a new file
@@ -505,20 +545,20 @@ func (p *Project) Save(document Document) error {
 	if err != nil {
 		return err
 	}
-	if err := install(p.Root, data); err != nil {
+	if err := install(p.Root, DocumentName, data); err != nil {
 		return err
 	}
 	p.Document = document
 	return nil
 }
 
-// install writes the document beside the one already there and renames it into
-// place. The incomplete file is the writer's own path policy check: it must not
-// exist, so an interrupted write is reported rather than overwritten, and
-// artifactpath refuses the whole location if the project has since been moved
-// inside retained evidence.
-func install(root string, data []byte) error {
-	incomplete, err := artifactpath.Destination(filepath.Join(root, IncompleteDocumentName))
+// install writes one canonical document beside the one already there and
+// renames it into place. The incomplete file is the writer's own path policy
+// check: it must not exist, so an interrupted write is reported rather than
+// overwritten, and artifactpath refuses the whole location if the project has
+// since been moved inside retained evidence.
+func install(root, name string, data []byte) error {
+	incomplete, err := artifactpath.Destination(filepath.Join(root, name+incompleteSuffix))
 	if err != nil {
 		return errors.New("cannot write the project document here; an interrupted write may be retained beside it")
 	}
@@ -535,7 +575,7 @@ func install(root string, data []byte) error {
 		os.Remove(incomplete)
 		return errors.New("cannot write the new project document")
 	}
-	if err := os.Rename(incomplete, filepath.Join(filepath.Dir(incomplete), DocumentName)); err != nil {
+	if err := os.Rename(incomplete, filepath.Join(filepath.Dir(incomplete), name)); err != nil {
 		os.Remove(incomplete)
 		return errors.New("cannot replace the project document")
 	}

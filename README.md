@@ -81,7 +81,19 @@ apart by the bundle itself, never by a name or a flag. `project update` changes
 only the mutable metadata; `project show` re-verifies every registered case and
 reports evidence that no longer matches its recorded identity as `changed`
 rather than re-identifying it. One case has one identity: the command line, the
-desktop shell and an exported packet all name the same value. See
+desktop shell and an exported packet all name the same value.
+
+Immutable evidence and editable working copies stay apart. `project revise
+PROJECT REVISION --parent NAME` registers derived evidence as a revision of a
+registered case or revision, recording the identity of the parent the reader
+just verified and the operation manifest the derived bundle itself declares;
+evidence that is not the output of a transformation is refused, and `project
+add` refuses evidence that is one, so a transformation is registered with its
+lineage or not at all. `project note
+PROJECT NAME --title TITLE` creates or replaces one editable note or draft.
+Both live in a separate `readmit-revisions/v1` document beside the evidence, so
+no note, no metadata change and no recorded lineage can alter a byte of an
+import or a finalized run. See
 [interface investigation projects](docs/project.md).
 
 `diff LEFT RIGHT` compares message fields in the terminal, Markdown, or JSON.
@@ -161,7 +173,8 @@ path enters the generated evidence. See [synthetic generation](docs/synth.md).
 The desktop shell opens a workspace folder without a terminal: it lists what the
 folder declares it holds, verifies one case at a time through the same reader
 `timeline` uses, reads a project document with the case identities the command
-line recorded, writes the frozen synthetic sample workspace, and reopens recent
+line recorded, reads and edits the notes beside that evidence without touching
+any of it, writes the frozen synthetic sample workspace, and reopens recent
 folders. It is a separate build with a webview requirement and is not included in
 the release archives. See [the desktop shell](docs/desktop.md).
 
