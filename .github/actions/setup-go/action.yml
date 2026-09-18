@@ -1,0 +1,37 @@
+name: Pinned Go with a job-specific cache
+description: Check the exact compiler and restore an updating build and fuzz cache for this job.
+inputs:
+  cache-scope:
+    description: Distinct owner for this job or matrix shard.
+    required: true
+  cache-dependency-path:
+    description: Glob of module checksums; use '**/go.sum' for the desktop module.
+    default: go.sum
+runs:
+  using: composite
+  steps:
+    - name: Resolve the exact Go compiler pin
+      id: toolchain
+      shell: bash
+      run: echo "version=$(python3 tools/toolchain.py)" >> "$GITHUB_OUTPUT"
+    - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+      with:
+        go-version: ${{ steps.toolchain.outputs.version }}
+        cache: false
+    - name: Locate Go caches
+      id: paths
+      shell: bash
+      run: |
+        echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+        echo "modules=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+    - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      with:
+        path: |
+          ${{ steps.paths.outputs.build }}
+          ${{ steps.paths.outputs.modules }}
+        key: go-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cache-scope }}-${{ steps.toolchain.outputs.version }}-${{ hashFiles(inputs.cache-dependency-path) }}-${{ github.sha }}
+        restore-keys: |
+          go-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cache-scope }}-${{ steps.toolchain.outputs.version }}-${{ hashFiles(inputs.cache-dependency-path) }}-
+    - name: Verify the active Go compiler
+      shell: bash
+      run: python3 tools/toolchain.py --check

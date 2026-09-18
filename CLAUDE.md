@@ -17,3 +17,8 @@ Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/do
 ## Implementation stack
 
 Recorded decisions live in `docs/adr/`. Ordinary stack choices and version pins live in `docs/stack.md`. Read both before implementing anything.
+
+## Validation and parallel worktrees
+
+Before implementing, validating review fixes, rebasing, or merging, read
+`docs/agents/testing.md` for test scope, CI gates, and integration order.

@@ -259,13 +259,18 @@ Build with the pinned Go 1.27.1 toolchain:
 
 ```sh
 go build -trimpath -o bin/readmit ./cmd/readmit
-go vet ./...
-CGO_ENABLED=1 go test -race ./...
-go test ./internal/hl7 -run '^$' -fuzz=FuzzParse -fuzztime=20s
-go test ./internal/bundle -run '^$' -fuzz=FuzzOpen -fuzztime=20s
-go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
-govulncheck ./...
+make check
+make test-focused PKGS='./internal/hl7' ARGS='-run Test'
+# Once the final changes are ready:
+make test
 ```
+
+Use affected packages and their callers while iterating. `make test` runs the
+complete Go suite with race instrumentation on small fixtures and the actual
+production-size observation boundary separately. Timed fuzz discovery, mutation
+checks, vulnerability scans, and all five packaged-platform checks remain CI
+gates. See [the validation workflow](docs/agents/testing.md) for review fixes,
+rebases, and parallel worktrees.
 
 Released behavior is additionally checked against an independently implemented
 HL7 endpoint and a hand-authored corpus that no readmit command produced, and

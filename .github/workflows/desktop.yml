@@ -14,6 +14,12 @@ on:
 permissions:
   contents: read
 
+# Only newer commits on the same PR cancel a run. Main and tag runs keep
+# independent groups, and the desktop workflow cannot cancel this workflow.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   GOTOOLCHAIN: local
   GOTELEMETRY: 'off'
@@ -29,16 +35,10 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
-      - name: Resolve the exact Go compiler pin
-        id: toolchain
-        run: |
-          pinned_go=$(python3 tools/toolchain.py)
-          echo "version=$pinned_go" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+      - uses: ./.github/actions/setup-go
         with:
-          go-version: ${{ steps.toolchain.outputs.version }}
-      - name: Verify the active Go compiler
-        run: python3 tools/toolchain.py --check
+          cache-scope: desktop
+          cache-dependency-path: '**/go.sum'
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24'

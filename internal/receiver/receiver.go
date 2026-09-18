@@ -37,11 +37,12 @@ type Config struct {
 
 type Receiver struct {
 	recorder
-	config    Config
-	profile   receiverProfile
-	startedAt time.Time
-	snapshot  observation.Snapshot
-	served    bool
+	config           Config
+	profile          receiverProfile
+	startedAt        time.Time
+	snapshot         observation.Snapshot
+	served           bool
+	observationLimit int
 }
 
 func New(config Config) (*Receiver, error) {
@@ -77,7 +78,7 @@ func New(config Config) (*Receiver, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := &Receiver{config: config, profile: profile, startedAt: time.Now().UTC()}
+	r := &Receiver{config: config, profile: profile, startedAt: time.Now().UTC(), observationLimit: observation.MaxBytes}
 	r.snapshot = observation.Snapshot{Schema: observation.Schema, Profile: profile.Name, SessionID: hex.EncodeToString(entropy[:]), Mode: config.Mode, Consistent: true, Processed: []observation.Occurrence{}, Records: []observation.Record{}}
 	if err := observation.Create(config.ObservationPath, r.snapshot); err != nil {
 		return nil, err
@@ -153,11 +154,12 @@ func (r *Receiver) connection(ctx context.Context, connection net.Conn) (bool, e
 		// Preflight the candidate while consistent is false, whose JSON is one
 		// byte larger than true. The last committed snapshot must remain valid
 		// both while busy and at finalization, even on a resource-limit exit.
-		if _, err := observation.Encode(candidate); err != nil {
+		encoded, encodeErr := observation.Encode(candidate)
+		if encodeErr != nil || len(encoded) > r.observationLimit {
 			r.snapshot.Consistent = true
 			if restoreErr := observation.Write(r.config.ObservationPath, r.snapshot); restoreErr != nil {
 				r.snapshot.Consistent = false
-				return false, errors.Join(err, restoreErr)
+				return false, errors.Join(encodeErr, restoreErr)
 			}
 			return false, errors.New("receiver session reached observation limit; prior ledger retained")
 		}

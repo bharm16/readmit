@@ -90,11 +90,14 @@ class ArchiveTests(unittest.TestCase):
         name = "readmit.exe" if target_os == "windows" else "readmit"
         suffix = "zip" if target_os == "windows" else "tar.gz"
         archive = directory / f"readmit_0.1.0-test_{target_os}_amd64.{suffix}"
-        members = {name: self.binaries[target_os]}
+        # Missing-member checks run before build-info inspection. Tiny contents
+        # preserve every omission case without recompressing a real binary and
+        # the complete distribution for each one. Compiler tests use real bytes.
+        members = {name: b"fixture" if omitted else self.binaries[target_os]}
         for member in DISTRIBUTION_FILES:
             if member != omitted:
                 source = "internal/" + member if member.startswith("dictionary/") else member
-                members[member] = (ROOT / source).read_bytes()
+                members[member] = b"fixture" if omitted else (ROOT / source).read_bytes()
         if suffix == "zip":
             with zipfile.ZipFile(archive, "w") as output:
                 for member, payload in members.items():

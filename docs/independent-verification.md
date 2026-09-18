@@ -36,7 +36,8 @@ python3 tools/mutate.py
 
 `python3 tools/verify.py --list` prints the check names; `--only NAME` runs one,
 repeatably. `python3 tools/mutate.py --list` prints the mutations and the check
-each one must break; `--only NAME` runs one. Both run in CI's `quality` job.
+each one must break; `--only NAME` runs one. Both run in CI's `tooling` job;
+their success is required by the aggregate `quality` check.
 
 The suite runs on Linux and macOS. `endpoint-cancel` delivers a real interrupt
 to a running `replay`, so it needs POSIX signal delivery; where that is
