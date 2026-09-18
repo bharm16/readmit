@@ -32,6 +32,7 @@ archives:
       - docs/case-bundle.md
       - docs/listen.md
       - docs/replay.md
+      - docs/run-bundle.md
 
       - docs/diagnose.md
       - docs/selectors.md

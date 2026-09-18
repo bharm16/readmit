@@ -47,3 +47,9 @@ Issue #8 freezes the implemented v1 generator with independently constructed
 case identities are documented in [the reference vector](../docs/synth-v1-vector.md). Tests compare emitted
 payload bytes and bundle identities to these fixed expectations; native archive
 checks also compare all three payload streams to the packaged goldens.
+
+Replay fixtures for issue #4 include `replay-duplicates.mllp` and the independently
+specified `replay-transformed.mllp`, exercising preserved duplicate control IDs
+and explicit timestamp changes. `replay-target.json` documents the strict target
+shape; tests replace its endpoint with an isolated local peer. Transport failure
+and TLS cases use controlled synthetic peers, never customer endpoints.
