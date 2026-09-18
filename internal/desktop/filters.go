@@ -4,18 +4,15 @@ import (
 	"errors"
 	"io/fs"
 	"os"
-	"path/filepath"
 
-	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/grid"
 )
 
 // filtersName is the fixed name of the saved-filter document, beside the recent
-// workspace list in the user configuration directory. Both are local shell
-// state: nothing derives from either, and neither is evidence.
+// workspace list and the working session in the user configuration directory.
+// All three are local shell state: nothing derives from another, and none is
+// evidence.
 const filtersName = "filters.json"
-
-const incompleteSuffix = ".incomplete"
 
 // maxFiltersBytes bounds the file this release reads. A larger one is refused
 // before it is decoded rather than read into memory first.
@@ -139,7 +136,7 @@ func (a *App) storeFilters(document grid.Document) FiltersResult {
 	if err != nil {
 		return a.filtersFailure(refusal{Failed, "these filters no longer fit the bounded document this release writes; save a shorter one, or save over an existing one"})
 	}
-	if err := writeFilters(a.filtersPath, data); err != nil {
+	if err := writeShellDocument(a.filtersPath, data); err != nil {
 		if errors.Is(err, fs.ErrPermission) {
 			return a.filtersFailure(refusal{PermissionDenied, "this account cannot write the saved filters"})
 		}
@@ -169,44 +166,6 @@ func readFilters(path string) (grid.Document, error) {
 		return grid.Document{}, err
 	}
 	return grid.Decode(data)
-}
-
-// writeFilters installs a complete document or leaves the previous one in
-// place, so a reader never observes a partial list. Both files it writes are
-// reserved by artifactpath, and the file it renames onto is the destination
-// artifactpath itself returned. Neither path is derived from the other, so
-// there is one path policy here. The incomplete file must not exist, so an
-// interrupted write is reported rather than overwritten.
-func writeFilters(path string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return err
-	}
-	destination, err := artifactpath.Destination(path)
-	if err != nil {
-		return errors.New("cannot write saved filters here")
-	}
-	incomplete, err := artifactpath.Destination(path + incompleteSuffix)
-	if err != nil {
-		return errors.New("cannot write saved filters here; an interrupted write may be retained beside them")
-	}
-	file, err := os.OpenFile(incomplete, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return err
-	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		os.Remove(incomplete)
-		return errors.New("cannot write saved filters")
-	}
-	if err := os.Rename(incomplete, destination); err != nil {
-		os.Remove(incomplete)
-		return errors.New("cannot replace saved filters")
-	}
-	return nil
 }
 
 // filtersFailure reports the retained selection, never an unsaved candidate.

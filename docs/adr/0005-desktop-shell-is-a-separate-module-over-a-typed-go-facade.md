@@ -56,14 +56,19 @@ static build stand unchanged. Nothing here is added to the release archives.
 - Every new desktop capability is a facade method backed by an internal package.
   A capability the frontend cannot express as a typed call does not belong in the
   frontend.
-- The shell keeps two bounded, versioned local documents: recent folder paths
-  (`readmit-desktop-recent/v1`) and saved filters with the active selection
-  (`readmit-filters/v1`). Saved field terms can contain patient data typed by
-  the operator. Both files are owner-readable, replaced atomically, and kept
+- The shell keeps three bounded, versioned local documents: recent folder paths
+  (`readmit-desktop-recent/v1`), saved filters with the active selection
+  (`readmit-filters/v1`), and the working session a viewer has not stored
+  (`readmit-desktop-session/v1`) — the workspace, case, region and run they had
+  open, and the notes they had typed and not stored. Saved field terms and a
+  retained draft can contain patient data typed by the operator. All three files
+  are owner-readable, replaced atomically, and kept
   outside evidence; unreadable documents are reported rather than overwritten.
-  No evidence read from a case is persisted in shell state. Neither document is
+  No evidence read from a case is persisted in shell state. No document is
   stored in browser storage. There is no telemetry, crash reporting, or update
-  check. This amendment authorizes the saved-filter persistence required by #37.
+  check. This amendment authorizes the saved-filter persistence required by #37
+  and the working-session persistence required by #27; restoring a session is a
+  read, and never resumes or resends uncertain network work.
 - `docs/stack.md` no longer lists a frontend as deliberately absent. A database,
   ORM, container runtime, hosted backend, message broker and application
   authentication system remain absent.

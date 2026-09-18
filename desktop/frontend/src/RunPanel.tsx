@@ -1,14 +1,25 @@
 import { useState } from "react";
 import { cancel, openDurableRun, startDurableRun, type DurableRunResult } from "./bindings";
 
-/** A durable run always names a fresh output. Recovery only reads that output. */
-export function RunPanel() {
+/** A durable run always names a fresh output. Recovery only reads that output.
+ *
+ * onWatch names the folder this viewer is watching, before anything is sent to
+ * it. The window retains that with the rest of its view, so an interruption is
+ * recovered against the right folder — read-only, and never as a resend. Both
+ * actions watch that folder, and a folder a failed action never created stays
+ * named rather than being cleared: recovery reports it as unverifiable, which
+ * is the honest answer, where forgetting it would silently drop the one path
+ * that leads to whatever was retained. */
+export function RunPanel({ onWatch }: { onWatch: (folder: string) => Promise<void> }) {
   const [spec, setSpec] = useState("");
   const [output, setOutput] = useState("");
   const [operation, setOperation] = useState<"executing" | "recovering" | null>(null);
   const busy = operation !== null;
   const [result, setResult] = useState<DurableRunResult | null>(null);
   async function execute(send: boolean) {
+    // Awaited before either action, so a crash during a send finds the session
+    // already naming the folder that holds the evidence.
+    await onWatch(output);
     setOperation(send ? "executing" : "recovering");
     setResult(null);
     try { setResult(await (send ? startDurableRun(spec, output) : openDurableRun(output))); }

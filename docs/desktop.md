@@ -55,24 +55,33 @@ artifacts are never reported as completed.
 | `SaveFilter` | Stores one named filter and selects it. |
 | `SelectFilter` | Records which saved filter the grid applies. |
 | `Shell` | Describes the window: regions, statuses, commands, appearance, privacy. |
+| `RecoverSession` | Restores the retained working session and reopens the run it was watching, read-only. |
+| `RecordView` | Retains the workspace, case, region and run this viewer has open. |
+| `SaveDraft` | Retains one note that has been typed and not stored yet. |
+| `DiscardDraft` | Drops one retained draft, once the note it was an edit of has been stored. |
 | `Cancel` | Stops the operation that is running now, when it can be interrupted. |
 
 Exactly one operation runs at a time. A second request reports `busy` rather
 than racing the first, and a finished operation always releases the slot,
 including after a failure or a cancellation, so the next request proceeds.
-`RecentWorkspaces`, `Filters` and `Shell` are the exceptions. The first two read
-one small local file each and `Shell` reads nothing at all, so none of them
-claims the slot and all stay available while an operation runs: the recent list,
-the selected filter, the command palette and the privacy status work whenever
-the window is open. `Shell` cannot
+`RecentWorkspaces`, `Filters`, `Shell`, `RecordView`, `SaveDraft` and
+`DiscardDraft` are the exceptions. The first two read one small local file each
+and `Shell` reads nothing at all, so none of them claims the slot and all stay
+available while an operation runs: the recent list, the selected filter, the
+command palette and the privacy status work whenever the window is open. The
+last three write one small local file each and do not claim it either, for a
+different reason: a crash while a case is being verified is exactly when
+unstored work has to survive, so refusing to retain it because an operation is
+running would lose the state recovery needs most. They are serialized among
+themselves, so a reader never observes a partial document. `Shell` cannot
 fail in the facade; it still carries a state, because the binding itself is
 unavailable while the application is starting, and the window says so rather
 than drawing itself with no commands and no privacy status.
 
 `Cancel` cannot retract bytes an operation has already written. Choosing a
 folder and listing it are interruptible; `OpenCase`, `OpenProject`,
-`OpenRevisions`, `SaveNote`, `Search`, `OpenGrid`, `SaveFilter` and
-`SelectFilter` and `InspectOccurrence` are not, because each runs to completion under its own size
+`OpenRevisions`, `SaveNote`, `Search`, `OpenGrid`, `SaveFilter`,
+`SelectFilter`, `InspectOccurrence` and `RecoverSession` are not, because each runs to completion under its own size
 limits once it starts. The window enables the
 Cancel control only while an interruptible operation runs; `Escape` reaches the
 same operation whenever the palette is not open, and cancelling when nothing is
@@ -330,6 +339,91 @@ or a report, and the privacy region names it. This is the one thing the grid
 keeps that came from a person reading evidence; nothing read out of a case is
 kept anywhere.
 
+## Recovering after an interruption
+
+A window can be closed, lost with its process, or killed in the middle of a
+send. What a person had typed and not stored is theirs, and losing it because a
+process stopped is a defect; what a send did to a receiver is unknown, and
+deciding it because a window reopened would be a lie. The shell keeps those two
+apart.
+
+Where this viewer is, and every note they have typed and not stored, live in one
+bounded, versioned `readmit-desktop-session/v1` document
+([ADR-0003](adr/0003-specs-are-strict-json-with-typed-operators.md)) in
+`session.json`, beside the recent workspace list and the saved filters in the
+user configuration directory:
+
+```json
+{"schema":"readmit-desktop-session/v1","view":{"workspace":"/absolute/folder","region":"evidence","case":"regression","run":"/absolute/folder/job-001"},"drafts":[{"project":"/absolute/folder","note":{"name":"triage","subject":"regression","title":"First pass","body":"still writing this"}}]}
+```
+
+It is separate from finalized evidence in every sense. It is written outside any
+case, run, result, review or report — the same output policy that refuses every
+other write into retained evidence refuses this one — and it is a per-viewer
+file on this machine, never part of a bundle, never in browser storage, and
+never sent anywhere. A draft is the editable note type the project document
+already holds, so working text retained here is working text
+[`project note`](project.md) and `SaveNote` can store; retaining one writes
+nothing into the project, and storing it stays a separate deliberate step.
+
+`RecordView` retains the open workspace, the entry selected in it, the region
+holding focus, and the durable run being watched. `SaveDraft` retains one note
+under the name it will be stored as, replacing exactly that draft; `DiscardDraft`
+drops one, which is what the window does once the note has actually been stored,
+so recovery offers back only work that is still unstored. A viewer retains at
+most 16 drafts, and past that bound the new edit is refused rather than an
+existing one being dropped.
+
+`RecoverSession` is what the window calls when it opens. It returns the retained
+view and every retained draft, and when the session names a durable run it
+reopens that run through the same read-only recovery `OpenDurableRun` uses. The
+window reads it once and hands the answer to the panels that show it, so only
+one of them claims the operation slot.
+
+In the window this is two panels. **Restored after an interruption** states what
+came back — where you were, the state of the run you were watching, and every
+unstored note, each of which can be discarded. **Write a note** is the editor:
+every keystroke is retained through `SaveDraft` — one retention at a time, always
+of the newest text, so a slow earlier write cannot land after a later one —
+**Store this note in the project** writes it into `revisions.json` through
+`SaveNote` and then discards the draft, and a store the project refuses leaves
+the draft retained, because text the project did not take is still unstored work.
+A draft may name the case or revision it is about; whether that subject is one
+the project registers is checked when the note is stored, not while it is being
+typed, because a draft is written before the project is opened. Starting either action in
+**Durable test runs** records that folder as the run being watched and waits for
+that record before the action runs, so a crash during a send finds the session
+already naming the folder that holds its evidence. Renaming a note while it is
+being written moves the retained draft rather than leaving one behind under the
+previous name.
+
+**Recovery reads. It never resumes, restarts or resends.** A run whose
+completion was never recorded stays `interrupted`, a delivery whose effect
+nobody knows stays `delivery_uncertain`, and neither becomes a pass because the
+window was opened again — see [durable local runs](durable-runs.md) for what
+those states mean and what to check before running anything again. Bytes already
+written to a receiver stay retained and stay sent: a crash cannot retract them
+any more than a cancellation can. Executing again is `StartDurableRun`, which is
+a deliberate action and requires a new output folder, so no recovery path can
+become a resend. A run the session names but cannot verify is reported as
+unverifiable, with its retained evidence untouched; the rest of the session is
+restored regardless.
+
+| What is retained | What is not |
+| --- | --- |
+| The workspace, case, region and run that were open | Anything read out of a case: message bytes, field values, decoded text |
+| Notes typed and not stored yet | Notes already stored, which are in the project's own document |
+| Nothing else | A verdict, a resumed run, or a second send |
+
+Unknown members, unknown versions, a relative folder path, a case naming
+anything but one entry of the open workspace, a region the window does not
+declare, and drafts that are unsorted, duplicated or past the note rule are all
+errors. There is no migration and no repair. A document this release cannot read
+is reported and left exactly as written: retaining into it is refused rather
+than replacing it, and the rest of the window keeps working. It is replaced
+atomically, so a reader never observes a partial session, and an interrupted
+write retained beside it is reported rather than reused.
+
 ## The window
 
 `Shell` is the window's description of itself, and the interface renders it
@@ -422,9 +516,10 @@ retention of.
 
 The window offers `system`, `light` and `dark`, and text sizes from 100% to
 200%. Both start from the system every time the window opens and are written
-nowhere. The shell stores recent folder paths and saved filters in separate
-owner-only local documents. Saved filter terms may contain patient data entered
-by the operator; no values read from case evidence are persisted by the shell.
+nowhere. The shell stores recent folder paths, saved filters and the working
+session in three separate owner-only local documents. Saved filter terms and a
+retained draft may contain patient data entered by the operator; no values read
+from case evidence are persisted by the shell.
 
 ## The sample workspace
 
@@ -479,14 +574,16 @@ rendering service. Everything the window renders is bundled into the executable;
 nothing is fetched at run time. Browser storage holds nothing at all. Diagnostics
 are fixed sentences that never repeat a path, a file name, an argument, or a
 value. A note is text a person typed on this machine: it is stored in the
-project's own document, is never sent anywhere, and is never kept in browser
-storage.
+project's own document, retained in the working session while it is unstored, is
+never sent anywhere, and is never kept in browser storage.
 
 The window states this rather than leaving it to be assumed. The privacy region
 names what this product does not do and everything the shell writes outside
-evidence, which is the recent folder list and the filters a person saved. A
-saved filter is named there rather than left to be discovered, because it holds
-whatever was typed to filter by. That status is part
+evidence, which is the recent folder list, the filters a person saved and the
+working session they have not stored. A saved filter and a retained draft are
+named there rather than left to be discovered, because one holds whatever was
+typed to filter by and the other a note whose subject is the evidence beside it.
+That status is part
 of the facade, so it is the same fact the rest of the product is built on rather
 than a sentence the interface maintains separately, and the frontend sources are
 checked to hold no network call and no browser storage at all.
@@ -497,6 +594,19 @@ checked to hold no network call and no browser storage at all.
   or delete operation. The shell opens folders, reads artifacts and edits notes;
   everything else about a project is `readmit project`.
 - Removing a note, and the previous text of one that was replaced.
+- Writing more than one note at a time in the window. The facade retains up to
+  16 drafts, recovery returns every one of them, and the command line reaches
+  the same notes; the window's editor writes the one draft of the open
+  workspace, whichever case or revision that draft says it is about.
+- Resuming, restarting or resending an interrupted run, from recovery or from
+  anywhere else. There is no resume, the retained output is always refused for a
+  new execution, and an uncertain delivery is never resolved by reading.
+- Storing a note on a person's behalf. A retained draft stays a draft until it
+  is stored deliberately, and a refused store leaves it retained as unstored
+  work rather than discarding it.
+- Sharing a working session between viewers or machines, retaining more than one
+  session per viewer, and any history of what a draft said before it was
+  replaced.
 - Importing evidence, editing evidence, and comparison. No edit the shell makes
   reaches a case, a run, a result, a review or a report.
 - Building an index. The grid reads one that `readmit index build` wrote, so

@@ -209,6 +209,13 @@ exactly that note: every other note, the project document, and all evidence stay
 exactly as they were. A note is not evidence, so it carries no identity and is
 never sealed.
 
+A note that has been typed and not stored yet is not in this document at all.
+The desktop shell retains such a draft in its own per-viewer working session,
+outside the project and outside evidence, so an interruption returns the text
+instead of losing it; storing it is still `project note` or `SaveNote`, which is
+where the subject is checked against what this project registers. See
+[recovering after an interruption](desktop.md).
+
 ## The document: readmit-project/v1
 
 The project document is one canonical file of the project directory,
@@ -369,7 +376,9 @@ revision identities, and the same notes the command line wrote.
 note in the editable document, so a UI edit reaches working text and nothing
 else: it cannot register a case or a revision, and it cannot overwrite an
 import, a finalized run, or any other retained artifact. Everything else the
-shell does with a project is a read. See [the desktop shell](desktop.md).
+shell does with a project is a read. A draft the shell retains before that write
+goes into its own local working session, never here. See
+[the desktop shell](desktop.md).
 
 ## Privacy
 

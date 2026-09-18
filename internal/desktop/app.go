@@ -178,18 +178,25 @@ type App struct {
 	chooser     FolderChooser
 	recentPath  string
 	filtersPath string
+	sessionPath string
 
 	mu      sync.Mutex
 	running bool
 	cancel  context.CancelFunc
+
+	// sessionMu serializes the working session alone. Retaining an unstored
+	// note edit and the place it was typed in must not wait for the operation
+	// slot, because a crash during a long operation is exactly when that work
+	// has to survive; it still must not race another write of the same file.
+	sessionMu sync.Mutex
 }
 
-// New binds the facade to a host folder dialog and to the two files that hold
-// this viewer's local shell state: the workspaces they opened recently, and the
-// filters they saved. Both are named explicitly rather than derived from each
-// other, and neither holds evidence.
-func New(chooser FolderChooser, recentPath, filtersPath string) *App {
-	return &App{chooser: chooser, recentPath: recentPath, filtersPath: filtersPath}
+// New binds the facade to a host folder dialog and to the three files that hold
+// this viewer's local shell state: the workspaces they opened recently, the
+// filters they saved, and the working session they have not stored. Each is
+// named explicitly rather than derived from another, and none holds evidence.
+func New(chooser FolderChooser, recentPath, filtersPath, sessionPath string) *App {
+	return &App{chooser: chooser, recentPath: recentPath, filtersPath: filtersPath, sessionPath: sessionPath}
 }
 
 // Cancel stops the operation that is running now, when that operation can be

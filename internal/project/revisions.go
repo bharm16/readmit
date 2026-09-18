@@ -160,7 +160,7 @@ func ValidateRevisions(revisions Revisions) error {
 		return errors.New("a project holds at most " + strconv.Itoa(MaxNotes) + " notes")
 	}
 	for i, note := range revisions.Notes {
-		if err := validateNote(note); err != nil {
+		if err := ValidateNote(note); err != nil {
 			return err
 		}
 		if i > 0 && revisions.Notes[i-1].Name >= note.Name {
@@ -188,7 +188,17 @@ func ValidateRevisions(revisions Revisions) error {
 	return nil
 }
 
-func validateNote(note Note) error {
+// ValidateNote reports the first reason one note cannot be stored, checking the
+// note by itself: whether a subject names evidence a project registers is
+// settled by SetNote, which is given the project document as well.
+//
+// It is exported for an edit that is not stored yet. The desktop shell retains
+// an unfinished note so an interruption does not lose it, and holds that draft
+// to exactly this rule, so working text it keeps is working text this project
+// can accept. A draft is still not a note: it names no subject this project has
+// been checked against, and it is not in the project document until SetNote
+// puts it there.
+func ValidateNote(note Note) error {
 	if err := name(note.Name); err != nil {
 		return errors.New("note name: " + err.Error())
 	}
@@ -259,7 +269,7 @@ func body(value string) error {
 // with no subject is a draft of the project itself. Neither document it is
 // given is modified, and nothing it stores can reach evidence.
 func SetNote(document Document, revisions Revisions, note Note) (Revisions, Note, error) {
-	if err := validateNote(note); err != nil {
+	if err := ValidateNote(note); err != nil {
 		return Revisions{}, Note{}, err
 	}
 	if note.Subject != "" {

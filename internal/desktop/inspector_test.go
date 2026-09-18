@@ -176,7 +176,7 @@ func TestInspectorSharesOperationSlotAndRecoversAfterCancellation(t *testing.T) 
 	grid := openGrid(t, app, root, "incident", 0, 50).Grid
 	request := desktop.InspectRequest{Workspace: root, Case: "incident", Identity: grid.Identity, Occurrence: grid.Rows[0].ID, ByteOffset: -1}
 	chooser := &chooser{folder: root}
-	second := desktop.New(chooser, filepath.Join(t.TempDir(), "recent.json"), filters)
+	second := desktop.New(chooser, filepath.Join(t.TempDir(), "recent.json"), filters, filepath.Join(t.TempDir(), "session.json"))
 	var concurrent desktop.InspectionResult
 	chooser.before = func() { concurrent = second.InspectOccurrence(request); second.Cancel() }
 	second.SelectWorkspace()
