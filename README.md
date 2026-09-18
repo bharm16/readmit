@@ -168,6 +168,24 @@ reporting the locations and never the value. A clean scan is one check on known
 values, not an assessment that a file is safe to share. See
 [credential references](docs/secret.md).
 
+`protect register --protection FILE --name NAME --storage KIND --command PROGRAM`
+registers a storage-protection control whose encryption key stays in an operating
+system credential store or a customer-managed key provider; readmit holds no key
+material, exactly as it holds no credential. `protect pack --name NAME --output
+NEW_DIRECTORY PATH...` writes an encrypted transfer package — AES-256-GCM under a
+key derived with HKDF-SHA-256, covering the packed content **and** the package
+index, because names and sizes are sensitive data rather than harmless metadata —
+leaving the evidence it read byte for byte unchanged. `protect open` decrypts into
+a new directory, `protect inspect` reports what a package declares without a key,
+and `protect rotate`, `protect retire` and a declared retention period carry the
+key lifecycle. A wrong key, a rotated-away key, a truncated package and an altered
+one are each refused with their own named error. The declared at-rest control on a
+volume is recorded as declared and never verified, nothing is encrypted implicitly,
+and `protect discard` refuses a package still inside its declared retention period
+and then says exactly what unlinking does not establish: it is not erasure on a
+solid-state device, a copy-on-write filesystem, a snapshot, a backup, a replica or
+a recipient's machine. See [evidence protection](docs/protect.md).
+
 `diff LEFT RIGHT` compares message fields in the terminal, Markdown, or JSON.
 Run-to-source comparisons use recorded occurrence mappings; unrelated collections
 require explicit alignment keys. Ambiguities and inserted/missing occurrences stay

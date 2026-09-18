@@ -6,7 +6,7 @@ The choices below were agreed on 2026-09-17 from a stack review. The hard-to-rev
 - [ADR-0002](adr/0002-case-bundles-are-directories-not-a-database.md): evidence bundles are versioned directories with raw payload files; no database.
 - [ADR-0003](adr/0003-specs-are-strict-json-with-typed-operators.md): specs, profiles, observations, and results are strict JSON evaluated by typed Go operators.
 - [ADR-0005](adr/0005-desktop-shell-is-a-separate-module-over-a-typed-go-facade.md): the desktop application is a separate Wails module over a typed Go facade, never a wrapper around the executable.
-- [ADR-0006](adr/0006-credentials-are-referenced-never-stored.md): credentials stay in an OS or customer-managed store; readmit registers references to them and never stores, writes or renders a value.
+- [ADR-0006](adr/0006-credentials-are-referenced-never-stored.md): credentials stay in an OS or customer-managed store; readmit registers references to them and never stores, writes or renders a value. Amended 2026-09-18: the same rule covers the key material behind storage protection.
 - [ADR-0007](adr/0007-offline-entitlements-are-signed-documents-verified-locally.md): organization entitlements are signed, versioned documents verified locally against an explicitly selected trust store.
 - [ADR-0008](adr/0008-the-case-index-is-a-derived-disposable-readmit-owned-file.md): the case index is a derived, disposable readmit-owned file rebuilt from canonical evidence, not a database.
 
@@ -18,10 +18,11 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
 
 ## CLI
 
-- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `project`, `license`, `secret`, `listen`, `replay`, `test`, `diff`, `diagnose`, `synth`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
+- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `project`, `license`, `secret`, `protect`, `listen`, `replay`, `test`, `diff`, `diagnose`, `synth`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
 - Command data goes to stdout, diagnostics to stderr. Machine-readable modes never interleave progress output with JSON.
 - Target configuration is read from explicitly selected files, not hidden global config or environment-variable precedence.
 - Credentials are referenced, never held. A `readmit-secrets/v1` document registers the store kind an operator declared, the single purpose and endpoint address a credential may be bound to, the absolute path of the program that reads it back, and the recorded rotation. No command accepts a credential value, and a resolved value masks itself under every formatting verb and refuses to be serialized. See [credential references](secret.md).
+- Encryption keys are referenced the same way. A `readmit-protection/v1` control registers the declared at-rest storage control, the program that reads the key back, the recorded rotation, the lifecycle state and the retention period. See [evidence protection](protect.md).
 - Terminal and Markdown rendering use `fmt`, `text/tabwriter`, and `text/template`.
 
 ## Desktop application
@@ -90,6 +91,30 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
 - Bounded at 16 declared fields, 128 retained bytes per value and 16 MiB per
   document. Past a bound the build is refused, never truncated.
 
+## Evidence protection
+
+- `crypto/aes` with `crypto/cipher`'s GCM, `crypto/hkdf` and `crypto/rand` from
+  the standard library encrypt transfer packages. No dependency and no parameter
+  negotiation, so the released executable keeps building for its five
+  `CGO_ENABLED=0` targets. An unread cipher or derivation is refused; there is
+  no algorithm agility to talk down.
+- `readmit-protection/v1`, `readmit-transfer/v1` and
+  `readmit-transfer-index/v1` are ordinary strict-JSON contracts read the way
+  every other artifact is read.
+- The key is read by running the operator's declared program through the one
+  mechanism `secret` already owns, and exists only inside the command that read
+  it. readmit stores no key, writes to no store, and has no escrow, recovery key
+  or password-derived key.
+- The at-rest control on a volume is a declaration recorded as made. readmit
+  does not interrogate FileVault, BitLocker, LUKS or a backup system, and never
+  reports a declaration as a verified property.
+- A package's index is encrypted with its content: names and sizes are sensitive
+  data, not harmless metadata. The plaintext descriptor names the control and
+  nothing about the evidence.
+- Original evidence is immutable, so a package is a new artifact beside it and
+  never an in-place rewrite. Removing a package unlinks it and is documented as
+  unlinking, never as erasure. See [evidence protection](protect.md).
+
 ## Logging
 
 - `log/slog` with an allowlist of fields: run ID, operation, duration, counts, error class, completion state.
@@ -156,4 +181,4 @@ pin by itself. Native smoke tests run without Go or other tools on PATH.
 
 ## Deliberately absent
 
-No database, ORM, web application server, container runtime, hosted backend, external rules engine, message broker, Redis, search server, LLM API, payment integration, licence or activation server, or application authentication system. The case index of [ADR-0008](adr/0008-the-case-index-is-a-derived-disposable-readmit-owned-file.md) is not one of them: it is a derived, disposable file the engine writes and reads the way it writes and reads every other artifact, rebuilt from the canonical case directory and never the only home of anything. Entitlement verification is a local check of a signed file and introduces none of them. Access control is the operating-system account and filesystem permissions. readmit has no credential store of its own: it registers references to credentials kept in an operating system credential store or a customer-managed secret provider, reads one by running the program the operator declared, and never writes to a store, so its own privilege is read access to the credentials a person registered. The desktop application is a local webview over the same engine, not a hosted web application: it serves nothing over a network and has no accounts.
+No database, ORM, web application server, container runtime, hosted backend, external rules engine, message broker, Redis, search server, LLM API, payment integration, licence or activation server, or application authentication system. The case index of [ADR-0008](adr/0008-the-case-index-is-a-derived-disposable-readmit-owned-file.md) is not one of them: it is a derived, disposable file the engine writes and reads the way it writes and reads every other artifact, rebuilt from the canonical case directory and never the only home of anything. Entitlement verification is a local check of a signed file and introduces none of them. Access control is the operating-system account and filesystem permissions, plus the encrypted transfer packages an operator asks for. readmit has no credential or key store of its own: it registers references to credentials and encryption keys kept in an operating system credential store or a customer-managed secret provider, reads one by running the program the operator declared, and never writes to a store, so its own privilege is read access to the values a person registered. Nothing is encrypted implicitly, no key is escrowed or recoverable, and no deletion readmit performs is presented as erasure. The desktop application is a local webview over the same engine, not a hosted web application: it serves nothing over a network and has no accounts.
