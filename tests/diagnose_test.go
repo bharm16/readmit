@@ -152,3 +152,55 @@ func TestDiagnoseOutputCannotMutateInputBundle(t *testing.T) {
 		t.Fatalf("refused output changed input: %v %s", err, stderr)
 	}
 }
+
+func TestDiagnoseImportedWireProfilesArePrivateAndVisibleInBothReports(t *testing.T) {
+	for _, repeated := range []bool{false, true} {
+		raw, err := os.ReadFile("../testdata/fixtures/diagnose-unsupported-profile.hl7")
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantFields := []string{"MSH-21[1]"}
+		if repeated {
+			raw = []byte(strings.Replace(string(raw), "SECRET-PROFILE^SECRET-VENDOR", "SECRET-FIRST^SECRET-A~SECRET-SECOND^SECRET-B", 1))
+			wantFields = append(wantFields, "MSH-21[2]")
+		}
+		dir := t.TempDir()
+		source := filepath.Join(dir, "input.hl7")
+		casePath := filepath.Join(dir, "case")
+		output := filepath.Join(dir, "report")
+		if err := os.WriteFile(source, raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, stderr, err := run(t, "capture", source, "--output", casePath); err != nil {
+			t.Fatalf("capture: %v %s", err, stderr)
+		}
+		stdout, stderr, err := run(t, "diagnose", casePath, "--output", output)
+		if err != nil || stderr != "" {
+			t.Fatalf("diagnose: %v %s", err, stderr)
+		}
+		data, err := os.ReadFile(filepath.Join(output, "report.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		markdown, err := os.ReadFile(filepath.Join(output, "report.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var report diagnose.Report
+		if err := json.Unmarshal(data, &report); err != nil {
+			t.Fatal(err)
+		}
+		if len(report.Unsupported) != len(wantFields) || len(report.Findings) != 0 {
+			t.Fatalf("unsupported wire profiles missing: %+v", report)
+		}
+		for i, field := range wantFields {
+			item := report.Unsupported[i]
+			if item.Code != "unsupported_message_profile" || item.Field != field || item.Occurrence != "s0001-e000001" || !strings.Contains(string(markdown), field) || !strings.Contains(string(markdown), item.Code) {
+				t.Fatal("JSON/Markdown wire profile references disagree")
+			}
+		}
+		if strings.Contains(stdout+stderr+string(data)+string(markdown), "SECRET") {
+			t.Fatal("wire profile declaration leaked into report or console")
+		}
+	}
+}

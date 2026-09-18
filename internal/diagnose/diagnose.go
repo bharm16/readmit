@@ -103,6 +103,7 @@ func Run(path string, config Config) (Report, error) {
 			return Report{}, errors.New("verified occurrence could not be parsed")
 		}
 		m := message{event: event, doc: doc}
+		wireProfileSupported := e.wireProfiles(m)
 		charset := m.value("MSH-18")
 		switch string(m.doc.Bytes(charset.Span)) {
 		case "", "ASCII":
@@ -140,7 +141,7 @@ func Run(path string, config Config) (Report, error) {
 			continue
 		}
 		m.trigger = trigger
-		if !profileSupported {
+		if !profileSupported || !wireProfileSupported {
 			continue
 		}
 		if m.segmentCount("SCH") > 1 || m.segmentCount("PID") > 1 {
@@ -352,4 +353,20 @@ func (e *evaluator) singleRepetition(m message, path string) bool {
 	}
 	e.unsupportedItem("unsupported_field_repetition", m.event.ID, path, "The fixture profile interprets this field only when it has a single repetition.")
 	return false
+}
+
+// The local fixture profile has no registered on-wire MSH-21 EI mapping. Do not
+// equate an EI value or authority to our local configuration profile name. Inspect
+// every repetition structurally so unsupported encodings cannot hide declarations.
+func (e *evaluator) wireProfiles(m message) bool {
+	supported := true
+	field := m.doc.Messages[0].Segments[0].Field(21)
+	for i, declaration := range field.Repetitions {
+		if declaration.State == hl7.Empty {
+			continue
+		}
+		supported = false
+		e.unsupportedItem("unsupported_message_profile", m.event.ID, fmt.Sprintf("MSH-21[%d]", i+1), "The occurrence declares an unrecognized wire message profile. The local fixture profile defines no MSH-21 identifier mapping; SIU profile rules were not evaluated for this occurrence.")
+	}
+	return supported
 }

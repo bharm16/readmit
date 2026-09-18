@@ -313,3 +313,48 @@ func TestACKDecoderHasExplicitBoundForRepeatedSegments(t *testing.T) {
 		t.Fatalf("ACK resource bound silent: %+v", r)
 	}
 }
+
+func TestImportedWireProfileDeclarationsAreUnsupportedByRepetition(t *testing.T) {
+	declared := fixture(t, "diagnose-unsupported-profile.hl7")
+	for _, tc := range []struct {
+		name, decl string
+		fields     []string
+	}{
+		{"single", "SECRET-PROFILE^SECRET-VENDOR", []string{"MSH-21[1]"}},
+		{"repeated", "SECRET-FIRST^VENDOR~SECRET-SECOND^OTHER", []string{"MSH-21[1]", "MSH-21[2]"}},
+		{"empty then declared", "~SECRET-SECOND^OTHER", []string{"MSH-21[2]"}},
+		{"explicit null", `""`, []string{"MSH-21[1]"}},
+		{"local spelling is not a wire mapping", "readmit-siu-v1^READMIT", []string{"MSH-21[1]"}},
+		{"empty", "", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := bytes.Replace(declared, []byte("SECRET-PROFILE^SECRET-VENDOR"), []byte(tc.decl), 1)
+			r := run(t, writeCase(t, raw), diagnose.DefaultConfig())
+			if len(r.Findings) != 0 || len(r.Unsupported) != len(tc.fields) {
+				t.Fatalf("wire declaration evaluated or missed: %+v", r)
+			}
+			for i, field := range tc.fields {
+				if r.Unsupported[i].Code != "unsupported_message_profile" || r.Unsupported[i].Occurrence != "s0001-e000001" || r.Unsupported[i].Field != field {
+					t.Fatalf("wire declaration evidence missing: %+v", r.Unsupported)
+				}
+			}
+			data, _ := diagnose.JSON(r)
+			markdown := diagnose.Markdown(r)
+			if bytes.Contains(data, []byte("SECRET")) || bytes.Contains(markdown, []byte("SECRET")) {
+				t.Fatal("wire profile values disclosed")
+			}
+		})
+	}
+	// Unsupported declarations are listed even when another metadata check also
+	// makes the occurrence uninterpretable, and cannot generate SIU hypotheses.
+	reschedule := bytes.Replace(declared, []byte("SIU^S12"), []byte("SIU^S13"), 1)
+	r := run(t, writeCase(t, reschedule), diagnose.DefaultConfig())
+	if len(findings(r, diagnose.BookingNotObserved)) != 0 || len(r.Unsupported) != 1 {
+		t.Fatalf("unsupported wire profile entered SIU rules: %+v", r)
+	}
+	otherVersion := bytes.Replace(declared, []byte("2.5.1"), []byte("2.4"), 1)
+	r = run(t, writeCase(t, otherVersion), diagnose.DefaultConfig())
+	if len(r.Unsupported) != 2 || r.Unsupported[0].Code != "unsupported_message_profile" {
+		t.Fatal("wire declaration hidden by other unsupported metadata")
+	}
+}

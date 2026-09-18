@@ -32,6 +32,16 @@ rescheduling, S15 cancellation, and ACK outcomes. It interprets one SCH and one 
 and the first patient identifier repetition. Multiple SCH/PID segments are listed
 as unsupported. Missing required fields still produce profile violations.
 
+The local fixture profile defines **no recognized wire MSH-21 Message Profile
+Identifier mapping**. Every nonempty or explicit-null MSH-21 repetition is listed
+as `unsupported_message_profile`, with its occurrence and exact repetition selector
+(for example `MSH-21[2]`). This includes an EI spelled `readmit-siu-v1^READMIT`:
+matching the local profile name or an assigning authority does not establish wire
+profile support. Values are not copied into reports. An occurrence with such a
+declaration is excluded from SIU profile rules; duplicate controls and ACK outcomes
+can still be reported as observed facts. Absent or explicitly empty MSH-21 retains
+the normal local fixture-profile behavior.
+
 For each supported SIU trigger it requires MSH-10, placer SCH-1.1, filler SCH-2.1,
 and patient PID-3.1. S12 and S13 also require the appointment start at SCH-11.4;
 S15 does not require an appointment start. These rules check required presence,
