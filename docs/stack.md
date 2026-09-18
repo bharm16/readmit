@@ -6,6 +6,7 @@ The choices below were agreed on 2026-09-17 from a stack review. The hard-to-rev
 - [ADR-0002](adr/0002-case-bundles-are-directories-not-a-database.md): evidence bundles are versioned directories with raw payload files; no database.
 - [ADR-0003](adr/0003-specs-are-strict-json-with-typed-operators.md): specs, profiles, observations, and results are strict JSON evaluated by typed Go operators.
 - [ADR-0005](adr/0005-desktop-shell-is-a-separate-module-over-a-typed-go-facade.md): the desktop application is a separate Wails module over a typed Go facade, never a wrapper around the executable.
+- [ADR-0007](adr/0007-offline-entitlements-are-signed-documents-verified-locally.md): organization entitlements are signed, versioned documents verified locally against an explicitly selected trust store.
 
 Everything else on this page is an ordinary choice. Change it when there is a reason. No ADR is needed unless the change is hard to reverse.
 
@@ -48,6 +49,26 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
 ## Randomness
 
 - Synthetic generation uses the PCG generator from `math/rand/v2` with an explicit seed, base time, generator version, and profile version. It is kept separate from any security-sensitive randomness.
+
+## Entitlements
+
+- `crypto/ed25519` from the standard library signs and verifies entitlement
+  documents. It needs no dependency and no parameter choice, so the released
+  executable keeps building for its five `CGO_ENABLED=0` targets. It is kept
+  separate from synthetic generation's randomness, which is not security
+  sensitive.
+- `readmit-entitlement/v1`, `readmit-entitlement-trust/v1` and
+  `readmit-entitlement-store/v1` are ordinary strict-JSON contracts read the way
+  every other artifact is read.
+- Verification is a pure function of the document bytes and a trust store the
+  operator selected with `--trust`. No network call, no activation service, no
+  phone-home and no update check. No trust store is embedded: the vendor's
+  signing identity is decided outside the engine, and no command signs an
+  entitlement.
+- Prices, plan names, trial length, grace duration, seat and runner counts and
+  capability names are members of the document, never constants in engine code.
+- No read, verification or export path consults an entitlement. See
+  [offline organization entitlements](license.md).
 
 ## Logging
 
@@ -115,4 +136,4 @@ pin by itself. Native smoke tests run without Go or other tools on PATH.
 
 ## Deliberately absent
 
-No database, ORM, web application server, container runtime, hosted backend, external rules engine, message broker, Redis, LLM API, payment integration, or application authentication system. Access control is the operating-system account, filesystem permissions, and explicitly configured network credentials. The desktop application is a local webview over the same engine, not a hosted web application: it serves nothing over a network and has no accounts.
+No database, ORM, web application server, container runtime, hosted backend, external rules engine, message broker, Redis, LLM API, payment integration, licence or activation server, or application authentication system. Entitlement verification is a local check of a signed file and introduces none of them. Access control is the operating-system account, filesystem permissions, and explicitly configured network credentials. The desktop application is a local webview over the same engine, not a hosted web application: it serves nothing over a network and has no accounts.

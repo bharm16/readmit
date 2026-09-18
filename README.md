@@ -96,6 +96,22 @@ no note, no metadata change and no recorded lineage can alter a byte of an
 import or a finalized run. See
 [interface investigation projects](docs/project.md).
 
+`license verify ENTITLEMENT --trust TRUST_STORE` verifies a signed organization
+entitlement on the machine that holds it: an Ed25519 signature over a versioned
+`readmit-entitlement/v1` document, checked against vendor signing keys the
+operator selects explicitly. There is no activation call, no phone-home and no
+update check. `license import ENTITLEMENT --device ID --output NEW_DIRECTORY`
+installs it for one named device, `license renew` installs a later issue for
+that device, `license export` writes the received file back out byte for byte,
+and `license release` hands the activation back so the vendor can reissue the
+seat elsewhere. Rotation retires a signing key without invalidating the licences
+it already signed; revocation withdraws them. Expiry withdraws granted
+capabilities and nothing else — existing evidence stays readable and exportable,
+because no read path consults an entitlement at all — and an offline verifier
+cannot learn of a revocation issued after signing, which the documentation
+states rather than implies. See
+[offline organization entitlements](docs/license.md).
+
 `diff LEFT RIGHT` compares message fields in the terminal, Markdown, or JSON.
 Run-to-source comparisons use recorded occurrence mappings; unrelated collections
 require explicit alignment keys. Ambiguities and inserted/missing occurrences stay
