@@ -17,7 +17,8 @@ ROOT = SMOKE.parent.parent
 # Independently specified distribution contract, not imported from the verifier.
 DISTRIBUTION_FILES = (
     "README.md", "THIRD_PARTY_NOTICES.md", "docs/dictionary-provenance.md",
-    "dictionary/fields-v251.json", "testdata/README.md",
+    "dictionary/fields-v251.json", "testdata/README.md", "docs/case-bundle.md",
+    "testdata/fixtures/case-evidence.mllp",
     "licenses/cobra-LICENSE.txt", "licenses/go-BSD-3-Clause.txt",
     "licenses/mousetrap-LICENSE.txt", "licenses/nhapi-MPL-2.0.txt", "licenses/pflag-LICENSE.txt",
     "testdata/fixtures/adt-cr.hl7", "testdata/fixtures/siu-lf.hl7",

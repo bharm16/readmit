@@ -1,11 +1,13 @@
 # readmit
 
-Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect` is available; later workflows are tracked in [GitHub issues](https://github.com/bharm16/readmit/issues).
+Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, and `timeline` are available; later workflows are tracked in [GitHub issues](https://github.com/bharm16/readmit/issues).
 
 ```sh
 readmit inspect message.hl7
 readmit inspect captured.mllp --format mllp --roundtrip preserved.mllp
 readmit inspect message.hl7 --show-values
+readmit capture session.mllp --output incident.case
+readmit timeline incident.case
 ```
 
 `inspect` shows message counts, detected or declared formats, segment/field names,
@@ -24,6 +26,27 @@ Future edits must create separate derived artifacts, never rewrite the source.
 Command data goes to stdout; bounded diagnostics go to stderr with exit status 1.
 Success uses exit status 0. Diagnostics do not echo filenames, values, or supplied
 arguments. There is no stdin/pipe input in this release; inputs are regular files.
+
+## Capture and reopen case evidence
+
+`capture FILE... --output NEW_DIRECTORY` imports every occurrence into a
+versioned directory with raw payload files, JSON events, correlation links, and
+a SHA-256 identity. Each file is a separate source. Duplicate control IDs keep
+distinct internal IDs. Same-source ACKs are matched only when exactly one message
+matches; unmatched and ambiguous ACKs and unacknowledged messages stay explicit.
+Malformed input is retained as unparsed evidence, including its original bytes.
+
+`timeline BUNDLE` verifies and reopens the directory, displaying source/sequence
+order and distinct observed, message-declared, and import times. Unknown observed
+times remain unknown. `--metadata observations.json` on capture can supply
+explicit observed times and directions; file timestamps are never substituted.
+Both commands hide raw content unless `--show-values` is requested.
+
+Copying a bundle preserves its identity; modifying evidence fails verification.
+Existing destinations are never overwritten. The bundle API also supports
+deterministic generated provenance for the future `synth` command. See the
+[complete case bundle contract](docs/case-bundle.md) for layout, field definitions,
+correlation rules, observation metadata, integrity checks, and limits.
 
 ## Supported input
 
@@ -107,8 +130,9 @@ verify an extracted executable using
 ## Privacy and development
 
 No telemetry, crash reporting, update checks, automatic uploads, or network
-access exists in `inspect`. Product-wide, network access is limited to endpoints
-the user explicitly configures; this command has no endpoint configuration.
+access exists in `inspect`, `capture`, or `timeline`. Product-wide, network access
+is limited to endpoints the user explicitly configures; these commands have no
+endpoint configuration.
 No customer-derived data belongs in source control or CI fixtures. Logs and
 reports do not print raw values without an explicit request. Round-trip copies
 still contain the original evidence and inherit its handling requirements.
@@ -120,6 +144,7 @@ go build -trimpath -o bin/readmit ./cmd/readmit
 go vet ./...
 CGO_ENABLED=1 go test -race ./...
 go test ./internal/hl7 -run '^$' -fuzz=FuzzParse -fuzztime=20s
+go test ./internal/bundle -run '^$' -fuzz=FuzzOpen -fuzztime=20s
 go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
 govulncheck ./...
 ```
@@ -136,7 +161,7 @@ empty PATH. The runtime is never rebuilt between testing and publishing.
 Before uploading the archives, `python3 tools/smoke.py --artifacts dist
 --check-build-info` reads each packaged executable's build metadata with Go and
 requires its compiler version to match the pin. Archive acceptance also requires
-the executable, all seven fixtures, documentation, notices, licenses, and
+the executable, inspection and capture fixtures, documentation, notices, licenses, and
 dictionary source to be present and nonempty. Native smoke tests still run the
 executable with an empty PATH. The release-tool regressions run with
 `python3 -m unittest discover -s tools -p 'test_*.py' -v`.

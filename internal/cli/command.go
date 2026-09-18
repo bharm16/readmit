@@ -16,7 +16,7 @@ import (
 // not depend on Cobra, and Cobra's errors never echo arbitrary arguments.
 func Execute(version string, args []string, stdout, stderr io.Writer) error {
 	root := &cobra.Command{
-		Use: "readmit", Short: "Local HL7 v2 syntax inspection", Version: version,
+		Use: "readmit", Short: "Local HL7 v2 inspection and case evidence", Version: version,
 		SilenceUsage: true, SilenceErrors: true,
 	}
 	root.SetOut(stdout)
@@ -56,6 +56,7 @@ func Execute(version string, args []string, stdout, stderr io.Writer) error {
 	inspect.Flags().BoolVar(&showValues, "show-values", false, "Explicitly display message values as escaped byte strings")
 	inspect.Flags().StringVar(&roundtrip, "roundtrip", "", "Write byte-identical evidence to a new file (never overwrite)")
 	root.AddCommand(inspect)
+	root.AddCommand(captureCommand(&ran), timelineCommand(&ran))
 	root.SetArgs(args)
 	err := root.Execute()
 	if err != nil {
@@ -68,25 +69,9 @@ func Execute(version string, args []string, stdout, stderr io.Writer) error {
 }
 
 func inspectFile(out io.Writer, path string, options hl7.Options, showValues bool, roundtrip string) error {
-	info, err := os.Stat(path)
+	data, err := readInputFile(path, hl7.MaxInputBytes)
 	if err != nil {
-		return errors.New("cannot open input file")
-	}
-	if !info.Mode().IsRegular() {
-		return errors.New("input must be a regular file")
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return errors.New("cannot open input file")
-	}
-	defer file.Close()
-	info, err = file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return errors.New("input must be a regular file")
-	}
-	data, err := io.ReadAll(io.LimitReader(file, hl7.MaxInputBytes+1))
-	if err != nil {
-		return errors.New("cannot read input file")
+		return err
 	}
 	doc, err := hl7.Parse(data, options)
 	if err != nil {
