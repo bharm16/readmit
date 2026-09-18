@@ -85,7 +85,10 @@ var (
 )
 
 // Record is one extracted unit of evidence: the byte range of a member that
-// became a single case bundle source, and the occurrences that source holds.
+// produced a single case bundle source, and the occurrences that source holds.
+// Under an import plan the range is the stored source itself; under a mapping
+// recipe it is the envelope record the payload was read out of, and the stored
+// payload's own length is in the mapping beside it.
 type Record struct {
 	SourceID    string `json:"source_id"`
 	Offset      int    `json:"offset"`
@@ -128,22 +131,91 @@ type Totals struct {
 // would be written, and the inputs that would write it. Nothing is created,
 // modified, or removed while producing one.
 type Extraction struct {
-	Containers  []Container
-	Inputs      []bundle.Input
-	Totals      Totals
-	recordBytes int
+	Containers []Container
+	Inputs     []bundle.Input
+	Totals     Totals
+	// Mappings holds one entry per extracted source when a mapping recipe
+	// divided the members, and is empty when an import plan did.
+	// UnmappedRecords counts the entries whose operators did not all resolve.
+	Mappings        []Mapping
+	UnmappedRecords int
+	recordBytes     int
 }
 
 // Extract reads every declared container under one plan and returns the case
-// bundle sources it would produce. Files are read in the order they were
-// declared, then folders, then archives, so the source order of an import is a
-// property of the command that ran it rather than of a directory listing.
-// Nothing is written: the same result answers a preview and drives an import.
-// A cancelled context stops before the next member and writes nothing.
+// bundle sources it would produce, dividing each member by its declared
+// framing. Nothing is written: the same result answers a preview and drives an
+// import. ExtractMapped is the same walk under a mapping recipe.
 func Extract(ctx context.Context, plan Plan, files, folders, archives []string) (*Extraction, error) {
 	if err := plan.Validate(); err != nil {
 		return nil, err
 	}
+	return extract(ctx, planDivider{plan: plan}, files, folders, archives)
+}
+
+// divider turns one container member's bytes into the sources an import writes.
+// An import plan divides a member by its declared framing; a mapping recipe
+// divides an envelope into records and maps each record's declared fields.
+// Everything else about an import — which locations are containers, which
+// entries are members, every bound and every path refusal — is the same for
+// both, so both run through the one walk below.
+type divider interface {
+	suffixes() []string
+	encoding() Encoding
+	divide(data []byte) ([]extractedSource, error)
+}
+
+// extractedSource is one source an import will write: the byte range of the
+// member that produced it, the bytes stored for it, how they are framed, and
+// the observation declared for every occurrence they hold. Under an import plan
+// the range is the stored bytes themselves; under a mapping recipe it is the
+// envelope record the payload was read out of.
+type extractedSource struct {
+	offset      int
+	size        int
+	data        []byte
+	format      hl7.Format
+	terminator  hl7.Terminator
+	observation bundle.Observation
+	mapping     *Mapping
+}
+
+// planDivider divides a member by the framing an import plan declares.
+type planDivider struct{ plan Plan }
+
+func (d planDivider) suffixes() []string { return d.plan.Members }
+func (d planDivider) encoding() Encoding { return d.plan.Encoding }
+
+func (d planDivider) divide(data []byte) ([]extractedSource, error) {
+	starts, err := recordStarts(d.plan.Framing, d.plan.BatchBoundary, d.plan.Terminator, data)
+	if err != nil {
+		return nil, err
+	}
+	format := d.plan.Framing.storedFormat()
+	sources := make([]extractedSource, 0, len(starts))
+	for i, start := range starts {
+		end := len(data)
+		if i+1 < len(starts) {
+			end = starts[i+1]
+		}
+		record := bytes.Clone(data[start:end])
+		sources = append(sources, extractedSource{
+			offset:      start,
+			size:        len(record),
+			data:        record,
+			format:      format,
+			terminator:  d.plan.Terminator,
+			observation: bundle.Observation{Direction: d.plan.Direction},
+		})
+	}
+	return sources, nil
+}
+
+// extract is the one container walk. Files are read in the order they were
+// declared, then folders, then archives, so the source order of an import is a
+// property of the command that ran it rather than of a directory listing.
+// A cancelled context stops before the next member and writes nothing.
+func extract(ctx context.Context, d divider, files, folders, archives []string) (*Extraction, error) {
 	declared := len(files) + len(folders) + len(archives)
 	if declared == 0 {
 		return nil, errors.New("an import declares at least one file, folder, or archive")
@@ -155,17 +227,17 @@ func Extract(ctx context.Context, plan Plan, files, folders, archives []string) 
 	}
 	e := &Extraction{}
 	for _, location := range files {
-		if err := e.add(ctx, plan, FileContainer, location); err != nil {
+		if err := e.add(ctx, d, FileContainer, location); err != nil {
 			return nil, err
 		}
 	}
 	for _, location := range folders {
-		if err := e.add(ctx, plan, FolderContainer, location); err != nil {
+		if err := e.add(ctx, d, FolderContainer, location); err != nil {
 			return nil, err
 		}
 	}
 	for _, location := range archives {
-		if err := e.add(ctx, plan, ArchiveContainer, location); err != nil {
+		if err := e.add(ctx, d, ArchiveContainer, location); err != nil {
 			return nil, err
 		}
 	}
@@ -183,7 +255,7 @@ type entry struct {
 	directory bool
 }
 
-func (e *Extraction) add(ctx context.Context, plan Plan, kind Kind, declared string) error {
+func (e *Extraction) add(ctx context.Context, d divider, kind Kind, declared string) error {
 	if err := ctx.Err(); err != nil {
 		return errors.New("import cancelled before reading a declared container")
 	}
@@ -222,12 +294,12 @@ func (e *Extraction) add(ctx context.Context, plan Plan, kind Kind, declared str
 		switch {
 		case member.directory:
 			recorded.State, recorded.Reason = Excluded, ReasonDirectory
-		case kind != FileContainer && !selected(plan, member.name):
+		case kind != FileContainer && !selected(d.suffixes(), member.name):
 			recorded.State, recorded.Reason = Excluded, ReasonSuffix
 		}
 		if recorded.State == Excluded {
 			e.Totals.Excluded++
-		} else if recorded.Records, err = e.importMember(plan, member); err != nil {
+		} else if recorded.Records, err = e.importMember(d, member); err != nil {
 			return fmt.Errorf("container %d member %d: %w", index, position+1, err)
 		}
 		container.Members = append(container.Members, recorded)
@@ -237,42 +309,37 @@ func (e *Extraction) add(ctx context.Context, plan Plan, kind Kind, declared str
 	return nil
 }
 
-// importMember divides one member by its declared framing and appends each
-// record as its own case bundle source, in order. Concatenating a member's
-// records reproduces the member byte for byte, so the split retains everything
-// the member held, including bytes no message boundary claimed.
-func (e *Extraction) importMember(plan Plan, member entry) ([]Record, error) {
-	if err := declaredEncoding(plan, member.data); err != nil {
+// importMember divides one member through the declaration that governs it and
+// appends each piece as its own case bundle source, in order, holding every
+// piece to the same evidence bounds. A plan-divided member's records
+// concatenate back into the member byte for byte, so that split retains
+// everything the member held, including bytes no message boundary claimed.
+func (e *Extraction) importMember(d divider, member entry) ([]Record, error) {
+	if err := declaredEncoding(d.encoding(), member.data); err != nil {
 		return nil, err
 	}
-	starts, err := recordStarts(plan, member.data)
+	sources, err := d.divide(member.data)
 	if err != nil {
 		return nil, err
 	}
-	format := plan.Framing.storedFormat()
-	records := make([]Record, 0, len(starts))
-	for i, start := range starts {
-		end := len(member.data)
-		if i+1 < len(starts) {
-			end = starts[i+1]
-		}
-		data := bytes.Clone(member.data[start:end])
-		if len(data) > bundle.MaxSourceBytes {
+	records := make([]Record, 0, len(sources))
+	for _, extracted := range sources {
+		if len(extracted.data) > bundle.MaxSourceBytes {
 			return nil, errors.New("a record exceeds the 16 MiB source limit")
 		}
-		e.recordBytes += len(data)
+		e.recordBytes += len(extracted.data)
 		if e.recordBytes > bundle.MaxEvidenceBytes {
 			return nil, errors.New("an import exceeds the 64 MiB evidence limit")
 		}
-		count := occurrences(data, format)
+		count := occurrences(extracted.data, extracted.format)
 		if count > bundle.MaxEvents {
 			return nil, errors.New("a record holds more occurrences than one import writes")
 		}
 		observations := make(map[int]bundle.Observation, count)
 		for sequence := 1; sequence <= count; sequence++ {
-			observations[sequence] = bundle.Observation{Direction: plan.Direction}
+			observations[sequence] = extracted.observation
 		}
-		e.Inputs = append(e.Inputs, bundle.Input{Path: member.path, Data: data, Options: hl7.Options{Format: format, Terminator: plan.Terminator}, Observations: observations})
+		e.Inputs = append(e.Inputs, bundle.Input{Path: member.path, Data: extracted.data, Options: hl7.Options{Format: extracted.format, Terminator: extracted.terminator}, Observations: observations})
 		if len(e.Inputs) > bundle.MaxSources {
 			return nil, errors.New("an import writes at most 128 case bundle sources")
 		}
@@ -281,7 +348,16 @@ func (e *Extraction) importMember(plan Plan, member entry) ([]Record, error) {
 		if e.Totals.Occurrences > bundle.MaxEvents {
 			return nil, errors.New("an import writes at most 10000 occurrences")
 		}
-		records = append(records, Record{SourceID: fmt.Sprintf("s%04d", len(e.Inputs)), Offset: start, Size: len(data), Occurrences: count})
+		id := fmt.Sprintf("s%04d", len(e.Inputs))
+		if extracted.mapping != nil {
+			mapping := *extracted.mapping
+			mapping.SourceID = id
+			e.Mappings = append(e.Mappings, mapping)
+			if mapping.State == Unmapped {
+				e.UnmappedRecords++
+			}
+		}
+		records = append(records, Record{SourceID: id, Offset: extracted.offset, Size: extracted.size, Occurrences: count})
 	}
 	return records, nil
 }
@@ -303,14 +379,14 @@ func occurrences(data []byte, format hl7.Format) int {
 	return count
 }
 
-// selected reports whether a folder or archive entry matches the plan's
-// declared member suffixes. An empty list makes every entry a member.
-func selected(plan Plan, name string) bool {
-	if len(plan.Members) == 0 {
+// selected reports whether a folder or archive entry matches the declared
+// member suffixes. An empty list makes every entry a member.
+func selected(suffixes []string, name string) bool {
+	if len(suffixes) == 0 {
 		return true
 	}
 	lowered := strings.ToLower(name)
-	for _, suffix := range plan.Members {
+	for _, suffix := range suffixes {
 		if strings.HasSuffix(lowered, suffix) {
 			return true
 		}
@@ -318,11 +394,11 @@ func selected(plan Plan, name string) bool {
 	return false
 }
 
-// declaredEncoding refuses a member whose bytes cannot be what the plan states.
+// declaredEncoding refuses a member whose bytes cannot be what was declared.
 // ISO-8859-1 admits every byte sequence and an unknown encoding makes no claim,
 // so neither is checkable; both are recorded exactly as declared.
-func declaredEncoding(plan Plan, data []byte) error {
-	switch plan.Encoding {
+func declaredEncoding(declared Encoding, data []byte) error {
+	switch declared {
 	case UTF8:
 		if !utf8.Valid(data) {
 			return ErrDeclaredEncoding
@@ -338,10 +414,12 @@ func declaredEncoding(plan Plan, data []byte) error {
 }
 
 // recordStarts returns the offset of every record the declared framing divides
-// a member into. It never chooses a boundary the plan did not declare.
-func recordStarts(plan Plan, data []byte) ([]int, error) {
+// a member into. It never chooses a boundary that was not declared. A mapping
+// recipe reads its payload through it too, so one reading of what a message is
+// governs both a plan-divided member and a mapped payload.
+func recordStarts(framing Framing, boundary Boundary, declared hl7.Terminator, data []byte) ([]int, error) {
 	framed := len(data) > 0 && data[0] == 0x0b
-	if plan.Framing == MLLPFraming {
+	if framing == MLLPFraming {
 		if !framed {
 			return nil, ErrDeclaredFraming
 		}
@@ -351,20 +429,20 @@ func recordStarts(plan Plan, data []byte) ([]int, error) {
 		return nil, ErrDeclaredFraming
 	}
 	headers := headerStarts(data, bundle.MaxSources+1)
-	if plan.Framing == RawFraming {
+	if framing == RawFraming {
 		// A raw member is one message. More than one header would have to be
-		// split at a boundary this plan never declared.
+		// split at a boundary that was never declared.
 		if len(headers) > 1 {
 			return nil, ErrAmbiguousBatch
 		}
 		return []int{0}, nil
 	}
-	if plan.BatchBoundary == HL7Batch && !segmentAt(data, 0, []string{"FHS", "BHS"}) {
+	if boundary == HL7Batch && !segmentAt(data, 0, []string{"FHS", "BHS"}) {
 		return nil, ErrDeclaredFraming
 	}
-	separator := terminator(plan.Terminator)
+	separator := terminator(declared)
 	boundaries := []string{"MSH"}
-	if plan.BatchBoundary == HL7Batch {
+	if boundary == HL7Batch {
 		boundaries = append(boundaries, batchEnvelope...)
 	}
 	starts := segmentStarts(data, separator, boundaries, bundle.MaxSources+1)

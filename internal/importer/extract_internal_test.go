@@ -40,7 +40,7 @@ func FuzzRecordStarts(f *testing.F) {
 	f.Fuzz(func(t *testing.T, member string) {
 		data := []byte(member)
 		for _, declared := range framings {
-			starts, err := recordStarts(declared, data)
+			starts, err := recordStarts(declared.Framing, declared.BatchBoundary, declared.Terminator, data)
 			if err != nil {
 				if len(err.Error()) > 256 {
 					t.Fatal("unbounded diagnostic")

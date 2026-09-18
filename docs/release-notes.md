@@ -142,6 +142,18 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   a solid-state device, a copy-on-write filesystem, a snapshot, a backup, a
   replica or a recipient's machine.
 
+- `import --recipe` maps CSV, JSON, XML and timestamped text envelopes through a
+  reusable `readmit-mapping-recipe/v1` document that supplies the payload,
+  observed time, source, direction and channel through typed operators alone.
+  Previews and receipts record the recipe verbatim with the SHA-256 identity of
+  its declarations. Observed times must carry their own UTC offset and
+  directions are translated through the recipe's declared table, so nothing is
+  inferred from a name, a timestamp or a message. CSV and XML are read from the
+  member's own bytes rather than through readers that normalize line endings. A
+  record whose declared values do not resolve is retained whole with a named
+  reason and no provenance; a member whose structure contradicts the recipe is
+  refused.
+
 - `target` records, validates and diagnoses one named nonproduction
   environment. `readmit-target/v3` adds the environment name, its recorded
   classification, an explicit TLS server name and a client certificate whose

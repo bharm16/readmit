@@ -6,6 +6,16 @@
 // read from it. Nothing here transcodes, repairs, reorders or drops a byte: a
 // member whose bytes contradict its declaration is refused by name, and a
 // record this release cannot parse is retained as quarantined evidence.
+//
+// A member that carries its evidence inside an envelope — a CSV export, a JSON
+// or XML document, a timestamped text log — is divided by a versioned mapping
+// recipe instead, which also says where each record's payload, observed time,
+// source, direction and channel are. A recipe supplies each of those through
+// one typed operator chosen from a closed list; it holds no expression, no
+// pattern and no hook, and an envelope this release cannot map is met by adding
+// an operator here rather than by making a recipe executable. A record whose
+// declared operators do not all resolve is retained with all of its own bytes
+// and none of its provenance, so nothing is ever half read.
 package importer
 
 import (
@@ -190,17 +200,24 @@ func (p Plan) Validate() error {
 	if p.Direction != bundle.Unknown && p.Direction != bundle.Inbound && p.Direction != bundle.Outbound {
 		return errors.New("direction must be declared as unknown, inbound, or outbound")
 	}
-	if p.Members == nil {
-		return errors.New("an import plan declares an explicit member list")
+	return validateMembers(p.Members, "an import plan")
+}
+
+// validateMembers is one member-suffix rule, so a folder or archive is
+// filtered the same way whichever declaration an import ran under. The caller
+// names itself, because a plan and a recipe say so in their own diagnostics.
+func validateMembers(members []string, declaration string) error {
+	if members == nil {
+		return errors.New(declaration + " declares an explicit member list")
 	}
-	if len(p.Members) > MaxMemberSuffixes {
-		return errors.New("an import plan declares at most " + strconv.Itoa(MaxMemberSuffixes) + " member suffixes")
+	if len(members) > MaxMemberSuffixes {
+		return errors.New(declaration + " declares at most " + strconv.Itoa(MaxMemberSuffixes) + " member suffixes")
 	}
-	for i, suffix := range p.Members {
+	for i, suffix := range members {
 		if err := memberSuffix(suffix); err != nil {
 			return errors.New("member suffix: " + err.Error())
 		}
-		if slices.Contains(p.Members[:i], suffix) {
+		if slices.Contains(members[:i], suffix) {
 			return errors.New("a member suffix is declared twice")
 		}
 	}

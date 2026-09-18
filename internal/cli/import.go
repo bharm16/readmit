@@ -29,15 +29,26 @@ type declaration struct {
 	members    []string
 }
 
+// declarationFlags name every flag that states part of an import plan. One
+// list, because two copies of it would drift the first time a declaration is
+// added and quietly stop excluding what it excludes today.
+var declarationFlags = []string{"framing", "batch-boundary", "terminator", "encoding", "direction", "member"}
+
+func declarationStated(cmd *cobra.Command) bool {
+	for _, name := range declarationFlags {
+		if cmd.Flags().Changed(name) {
+			return true
+		}
+	}
+	return false
+}
+
 // plan builds the declared plan, either by reading a saved one or from the
 // declaration flags. The two are exclusive: a saved plan is the reusable form
 // of the same declarations, so combining them would leave it unclear which
 // declaration an import actually ran under.
 func (d declaration) plan(cmd *cobra.Command, saved string) (importer.Plan, error) {
-	stated := false
-	for _, name := range []string{"framing", "batch-boundary", "terminator", "encoding", "direction", "member"} {
-		stated = stated || cmd.Flags().Changed(name)
-	}
+	stated := declarationStated(cmd)
 	switch {
 	case saved != "" && stated:
 		return importer.Plan{}, errors.New("import reads a saved plan or the declaration flags, never both")
@@ -66,8 +77,24 @@ func (d declaration) plan(cmd *cobra.Command, saved string) (importer.Plan, erro
 	return declared, declared.Validate()
 }
 
+// readRecipe reads the saved mapping recipe, which is exclusive with every plan
+// declaration: a recipe states how an envelope divides into records and where
+// each record's payload, observed time, source, direction and channel are, so
+// combining it with a framing declaration would leave it unclear which one an
+// import actually ran under.
+func readRecipe(cmd *cobra.Command, path, saved string) (importer.Recipe, error) {
+	if saved != "" || declarationStated(cmd) {
+		return importer.Recipe{}, errors.New("import reads a mapping recipe or an import plan, never both")
+	}
+	data, err := readInputFile(path, importer.MaxRecipeBytes)
+	if err != nil {
+		return importer.Recipe{}, err
+	}
+	return importer.DecodeRecipe(data)
+}
+
 func importCommand(ran *bool) *cobra.Command {
-	var saved, output, receipt string
+	var saved, mapping, output, receipt string
 	var files, folders, archives []string
 	var preview bool
 	var declared declaration
@@ -83,7 +110,14 @@ func importCommand(ran *bool) *cobra.Command {
 			if !preview && (output == "" || receipt == "") {
 				return errors.New("import requires --preview, or --output with a new directory and --receipt with a new file")
 			}
-			plan, err := declared.plan(cmd, saved)
+			var plan importer.Plan
+			var recipe importer.Recipe
+			var err error
+			if mapping != "" {
+				recipe, err = readRecipe(cmd, mapping, saved)
+			} else {
+				plan, err = declared.plan(cmd, saved)
+			}
 			if err != nil {
 				return err
 			}
@@ -103,12 +137,17 @@ func importCommand(ran *bool) *cobra.Command {
 			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer cancel()
 			importedAt := time.Now().UTC()
-			extraction, err := importer.Extract(ctx, plan, files, folders, archives)
+			var extraction *importer.Extraction
+			if mapping != "" {
+				extraction, err = importer.ExtractMapped(ctx, recipe, files, folders, archives)
+			} else {
+				extraction, err = importer.Extract(ctx, plan, files, folders, archives)
+			}
 			if err != nil {
 				return err
 			}
 			if preview {
-				encoded, err := importer.EncodePreview(importer.NewPreview(plan, extraction))
+				encoded, err := previewDocument(plan, recipe, mapping != "", extraction)
 				if err != nil {
 					return err
 				}
@@ -124,6 +163,20 @@ func importCommand(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if mapping != "" {
+				document, err := importer.NewMappingReceipt(recipe, extraction, importedAt, b)
+				if err != nil {
+					return err
+				}
+				encoded, err := importer.EncodeMappingReceipt(document)
+				if err != nil {
+					return err
+				}
+				if err := writeImportReceipt(receipt, encoded); err != nil {
+					return err
+				}
+				return renderMapping(cmd.OutOrStdout(), document, b)
+			}
 			document, err := importer.NewReceipt(plan, extraction, importedAt, b)
 			if err != nil {
 				return err
@@ -132,14 +185,13 @@ func importCommand(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := writeNewFile(receipt, encoded,
-				"the case was written but its receipt was not; the receipt destination must be new and writable",
-				"the case was written but its receipt was not; retry the import with new destinations"); err != nil {
+			if err := writeImportReceipt(receipt, encoded); err != nil {
 				return err
 			}
 			return renderImport(cmd.OutOrStdout(), document, b)
 		},
 	}
+	cmd.Flags().StringVar(&mapping, "recipe", "", "Existing readmit-mapping-recipe/v1 JSON file mapping a CSV, JSON, XML, or text envelope")
 	cmd.Flags().StringVar(&saved, "plan", "", "Existing readmit-import-plan/v1 JSON file holding the declarations below")
 	cmd.Flags().StringVar(&declared.framing, "framing", "", "Declared message framing: raw, mllp, or batch")
 	cmd.Flags().StringVar(&declared.boundary, "batch-boundary", "", "Declared batch boundary, with --framing batch: segment-start or hl7-batch")
@@ -150,10 +202,30 @@ func importCommand(ran *bool) *cobra.Command {
 	cmd.Flags().StringArrayVar(&files, "file", nil, "One declared message file; repeatable")
 	cmd.Flags().StringArrayVar(&folders, "folder", nil, "One declared folder whose regular files are members; repeatable")
 	cmd.Flags().StringArrayVar(&archives, "archive", nil, "One declared ZIP archive whose entries are members; repeatable")
-	cmd.Flags().BoolVar(&preview, "preview", false, "Write the readmit-import-preview/v1 document to stdout and create nothing")
+	cmd.Flags().BoolVar(&preview, "preview", false, "Write the preview document for the declaration in use to stdout and create nothing")
 	cmd.Flags().StringVar(&output, "output", "", "New case bundle directory (never overwrite)")
-	cmd.Flags().StringVar(&receipt, "receipt", "", "New readmit-import-receipt/v1 JSON file (never overwrite)")
+	cmd.Flags().StringVar(&receipt, "receipt", "", "New receipt JSON file for the declaration in use (never overwrite)")
 	return cmd
+}
+
+// previewDocument encodes whichever preview the declarations produced.
+func previewDocument(plan importer.Plan, recipe importer.Recipe, mapped bool, e *importer.Extraction) ([]byte, error) {
+	if !mapped {
+		return importer.EncodePreview(importer.NewPreview(plan, e))
+	}
+	document, err := importer.NewMappingPreview(recipe, e)
+	if err != nil {
+		return nil, err
+	}
+	return importer.EncodeMappingPreview(document)
+}
+
+// writeImportReceipt writes the receipt beside the case that was just written.
+// Both diagnostics say the case exists, because by this point it does.
+func writeImportReceipt(path string, encoded []byte) error {
+	return writeNewFile(path, encoded,
+		"the case was written but its receipt was not; the receipt destination must be new and writable",
+		"the case was written but its receipt was not; retry the import with new destinations")
 }
 
 // renderImport reports the declarations the import ran under and what it
@@ -171,6 +243,28 @@ func renderImport(out io.Writer, receipt importer.Receipt, b *bundle.Bundle) err
 		receipt.Plan.Schema, receipt.Plan.Framing, boundary, receipt.Plan.Terminator, receipt.Plan.Encoding, receipt.Plan.Direction)
 	fmt.Fprintf(w, "Receipt: %s\nContainers: %d\nMembers: %d\nExcluded members: %d\nExtracted sources: %d\nQuarantined occurrences: %d\n",
 		receipt.Schema, receipt.Totals.Containers, receipt.Totals.Members, receipt.Totals.Excluded, receipt.Totals.Sources, len(receipt.Quarantined))
+	if err := w.Flush(); err != nil {
+		return errors.New("cannot write import output")
+	}
+	return renderBundle(out, b, false, false)
+}
+
+// renderMapping reports the recipe a mapped import ran under and what it
+// reconciled. Like renderImport it names no container path, no member name and
+// no located value: those are in the receipt, which is a file the person
+// already chose to keep. It reports how many records the recipe could not map,
+// because that count is the one a person has to act on.
+func renderMapping(out io.Writer, receipt importer.MappingReceipt, b *bundle.Bundle) error {
+	w := bufio.NewWriter(out)
+	recipe := receipt.Recipe
+	fmt.Fprintf(w, "Mapping recipe: %s\nName: %s\nRevision: %d\nRecipe identity: %s\nEnvelope: %s\nEncoding: %s\n",
+		recipe.Schema, recipe.Name, recipe.Revision, receipt.Identity, recipe.Envelope, recipe.Encoding)
+	fmt.Fprintf(w, "Payload: %s\nObserved time: %s\nSource: %s\nDirection: %s\nChannel: %s\n",
+		recipe.Payload.Operator, recipe.ObservedAt.Operator, recipe.Source.Operator,
+		recipe.Direction.Operator, recipe.Channel.Operator)
+	fmt.Fprintf(w, "Receipt: %s\nContainers: %d\nMembers: %d\nExcluded members: %d\nExtracted sources: %d\nUnmapped records: %d\nQuarantined occurrences: %d\n",
+		receipt.Schema, receipt.Totals.Containers, receipt.Totals.Members, receipt.Totals.Excluded,
+		receipt.Totals.Sources, receipt.UnmappedRecords, len(receipt.Quarantined))
 	if err := w.Flush(); err != nil {
 		return errors.New("cannot write import output")
 	}

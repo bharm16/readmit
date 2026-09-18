@@ -63,14 +63,38 @@ func NewPreview(plan Plan, e *Extraction) Preview {
 // hold exactly the sources the extraction produced, each with the same bytes,
 // so a receipt can never describe evidence other than the evidence beside it.
 func NewReceipt(plan Plan, e *Extraction, importedAt time.Time, b *bundle.Bundle) (Receipt, error) {
+	if err := e.verifyWritten(b); err != nil {
+		return Receipt{}, err
+	}
+	return Receipt{
+		Schema:      ReceiptSchema,
+		Plan:        plan,
+		ImportedAt:  importedAt,
+		Case:        CaseRef{Identity: b.Identity, Schema: b.Manifest.Schema, Provenance: string(b.Manifest.Provenance.Mode)},
+		Containers:  e.Containers,
+		Quarantined: quarantinedOccurrences(b),
+		Totals:      e.Totals,
+	}, nil
+}
+
+// verifyWritten checks a written case against the extraction it came from: the
+// same number of sources, each with the same bytes. A receipt that did not pass
+// it could describe evidence other than the evidence beside it.
+func (e *Extraction) verifyWritten(b *bundle.Bundle) error {
 	if len(b.Manifest.Sources) != len(e.Inputs) {
-		return Receipt{}, errors.New("the written case does not hold the extracted sources")
+		return errors.New("the written case does not hold the extracted sources")
 	}
 	for i, source := range b.Manifest.Sources {
 		if source.Size != len(e.Inputs[i].Data) || source.SHA256 != digest(e.Inputs[i].Data) {
-			return Receipt{}, errors.New("the written case does not hold the extracted bytes")
+			return errors.New("the written case does not hold the extracted bytes")
 		}
 	}
+	return nil
+}
+
+// quarantinedOccurrences lists every occurrence the case retained rather than
+// parsed, with the parser's own bounded diagnostic as the reason.
+func quarantinedOccurrences(b *bundle.Bundle) []Quarantined {
 	quarantined := []Quarantined{}
 	for _, event := range b.Events {
 		if event.Kind != bundle.Unparsed {
@@ -82,15 +106,7 @@ func NewReceipt(plan Plan, e *Extraction, importedAt time.Time, b *bundle.Bundle
 		}
 		quarantined = append(quarantined, Quarantined{SourceID: event.SourceID, EventID: event.ID, Reason: reason})
 	}
-	return Receipt{
-		Schema:      ReceiptSchema,
-		Plan:        plan,
-		ImportedAt:  importedAt,
-		Case:        CaseRef{Identity: b.Identity, Schema: b.Manifest.Schema, Provenance: string(b.Manifest.Provenance.Mode)},
-		Containers:  e.Containers,
-		Quarantined: quarantined,
-		Totals:      e.Totals,
-	}, nil
+	return quarantined
 }
 
 // EncodePreview and EncodeReceipt write one document deterministically, so the
