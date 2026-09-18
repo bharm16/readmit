@@ -35,6 +35,10 @@ python3 tools/mutate.py
 repeatably. `python3 tools/mutate.py --list` prints the mutations and the check
 each one must break; `--only NAME` runs one. Both run in CI's `quality` job.
 
+The suite runs on Linux and macOS. `endpoint-cancel` delivers a real interrupt
+to a running `replay`, so it needs POSIX signal delivery; where that is
+unavailable the check fails rather than disappearing from a green run.
+
 Everything binds loopback, every listener is opened on port 0 and reaped by the
 script, and no external host is contacted. All evidence is synthetic.
 
@@ -70,6 +74,15 @@ script, and no external host is contacted. All evidence is synthetic.
   reason.
 
 ## Bounds and deliberate omissions
+
+**Authorship is attested, not proved.** Nothing in a byte stream shows who wrote
+it, so every corpus case carries an `authored_from` statement naming the
+specification it was written from, and reviewers are responsible for it. The
+checks confirm that each case makes such a statement and that its declared
+contents match an independent reading of the bytes; they cannot detect a golden
+someone generated and then mislabelled. What they do detect is a golden that
+agrees with readmit for the wrong reason, because the mutation suite requires
+each check to fail when the behavior it describes changes.
 
 The independent implementation describes bytes; it does not decide what readmit
 must accept. Where the two differ it is the more permissive one — an

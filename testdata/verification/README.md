@@ -8,6 +8,12 @@ would only prove readmit agrees with itself, which is exactly what
 rule out. Everything is invented: no person, identifier, appointment, facility
 or assigning authority here refers to anything real.
 
+Authorship is attested, not proved: each case states the specification it was
+written from, and review is what keeps that statement true. What the checks can
+prove is that a case's declared contents match an independent reading of the
+same bytes, and that the behavior it describes cannot change without the check
+going red.
+
 The corpus is repository and CI material. It is not shipped in the release
 archives, which carry the customer-facing fixtures under `testdata/fixtures`.
 

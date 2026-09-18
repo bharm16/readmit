@@ -11,6 +11,7 @@ opened on port 0 and reaped by this script.
 """
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -23,7 +24,6 @@ import sys
 import tempfile
 import threading
 import time
-from contextlib import contextmanager
 
 import independent
 
@@ -51,6 +51,10 @@ LISTENING_LINE = re.compile(rb"^Listening: 127\.0\.0\.1:(\d+)\n$")
 
 class VerificationError(AssertionError):
     """readmit disagreed with an independent statement about the same bytes."""
+
+
+class RecordedGap(Exception):
+    """A declared boundary this suite does not cover, reported instead of skipped."""
 
 
 def require(condition, message):
@@ -123,11 +127,19 @@ def corpus_occurrences(case):
     return parsed
 
 
+def corpus_cases():
+    """Yield each case with its independent reading, refusing any disagreement."""
+    for case in load_corpus():
+        parsed = corpus_occurrences(case)
+        check_corpus_agrees_with_itself(case, parsed)
+        yield case, parsed
+
+
 def check_corpus_agrees_with_itself(case, parsed):
     """The hand-authored statement must match an independent reading of the bytes."""
     where = case["path"].name
     require(len(parsed) == len(case["occurrences"]), f"{where} declares the wrong occurrence count")
-    for index, (expected, (raw, message)) in enumerate(zip(case["occurrences"], parsed), start=1):
+    for index, (expected, (_, message)) in enumerate(zip(case["occurrences"], parsed), start=1):
         place = f"{where} occurrence {index}"
         if expected["kind"] == "unparsed":
             require(message is None, f"{place} is declared unparsed but reads as a message")
@@ -152,7 +164,6 @@ def check_corpus_agrees_with_itself(case, parsed):
             if "repetitions" in field:
                 require(message.repetitions(field["selector"]) == field["repetitions"],
                         f"{place} {field['selector']} repetition count disagrees")
-        del raw
 
 
 # --------------------------------------------------------------------------
@@ -170,10 +181,9 @@ class Readmit:
             [self.binary, *[str(argument) for argument in arguments]],
             cwd=self.work, env=self.environment, capture_output=True, timeout=timeout, check=False,
         )
-        if expect is not None:
-            require(completed.returncode == expect,
-                    f"readmit {arguments[0]} exited {completed.returncode}, expected {expect}: "
-                    f"{completed.stderr[:400]!r}")
+        require(completed.returncode == expect,
+                f"readmit {arguments[0]} exited {completed.returncode}, expected {expect}: "
+                f"{completed.stderr[:400]!r}")
         return completed
 
     def popen(self, *arguments):
@@ -204,12 +214,8 @@ def bundle_snapshot(directory):
     }
 
 
-def read_events(directory):
-    return [json.loads(line) for line in (directory / "events.jsonl").read_bytes().splitlines()]
-
-
-def read_links(directory):
-    return [json.loads(line) for line in (directory / "correlations.jsonl").read_bytes().splitlines()]
+def read_records(directory, name):
+    return [json.loads(line) for line in (directory / name).read_bytes().splitlines()]
 
 
 def field_bytes(payload, field):
@@ -275,9 +281,7 @@ def parse_inspection(stdout):
 
 def check_corpus_inspect(readmit):
     """readmit's syntax view must match the hand-authored corpus and an independent parse."""
-    for case in load_corpus():
-        parsed = corpus_occurrences(case)
-        check_corpus_agrees_with_itself(case, parsed)
+    for case, parsed in corpus_cases():
         source = case["path"].parent / case["source"]
         where = case["source"]
         if any(message is None for _, message in parsed):
@@ -323,9 +327,7 @@ def check_corpus_inspect(readmit):
 
 def check_corpus_capture(readmit):
     """Retained case evidence must match the hand-authored corpus, byte for byte."""
-    for number, case in enumerate(load_corpus(), start=1):
-        parsed = corpus_occurrences(case)
-        check_corpus_agrees_with_itself(case, parsed)
+    for number, (case, parsed) in enumerate(corpus_cases(), start=1):
         source = case["path"].parent / case["source"]
         where = case["source"]
         output = readmit.work / f"corpus-{number}.case"
@@ -337,7 +339,7 @@ def check_corpus_capture(readmit):
         require(manifest["sources"][0]["sha256"] == digest(case["bytes"]), f"{where} source hash disagrees")
         require(manifest["sources"][0]["occurrences"] == len(parsed), f"{where} occurrence count disagrees")
         require((output / "identity.sha256").read_text().strip(), f"{where} has no identity marker")
-        events = read_events(output)
+        events = read_records(output, "events.jsonl")
         require(len(events) == len(parsed), f"{where} retained the wrong number of occurrences")
         identifiers = []
         for index, (event, (raw, message)) in enumerate(zip(events, parsed), start=1):
@@ -375,7 +377,7 @@ def check_corpus_capture(readmit):
              "message_ids": [identifiers[number - 1] for number in link["messages"]]}
             for link in case["correlations"]
         ]
-        require(read_links(output) == expected_links, f"{where} correlations disagree with the corpus")
+        require(read_records(output, "correlations.jsonl") == expected_links, f"{where} correlations disagree with the corpus")
         for value in corpus_secret_values(case):
             require(value not in completed.stdout, f"{where} printed message values without an explicit request")
     return "every corpus case agrees with readmit's retained case evidence"
@@ -389,6 +391,21 @@ def corpus_secret_values(case):
             if field["state"] == "present" and "value" in field:
                 values.append(field["value"].encode())
     return values
+
+
+def endpoint_secret_values():
+    """Values planted in the endpoint evidence, read back out of those files."""
+    values = []
+    for name in ("book.hl7", "reschedule.hl7"):
+        message = independent.Message.parse((ENDPOINT_DIRECTORY / name).read_bytes())
+        values += [message.field(selector)[1] for selector in ("PID-5.1", "SCH-1.1", "SCH-11.4")]
+    require(all(values), "the endpoint evidence no longer plants the values these checks look for")
+    return values
+
+
+def require_no_values(where, output):
+    for value in endpoint_secret_values():
+        require(value not in output, f"{where} printed message values without an explicit request")
 
 
 def check_engine_export_corpus(readmit):
@@ -423,7 +440,7 @@ def check_endpoint_accept(readmit):
             "the run was not finalized as readmit-run/v1")
     require(manifest["changes"] == [] and manifest["transformations"] == [],
             "an untransformed replay recorded changes")
-    events = read_events(output)
+    events = read_records(output, "events.jsonl")
     require(len(events) == 2, "the run did not record both messages")
     for event, payload in zip(events, payloads):
         require(event["outcome"] == "application_accepted", f"outcome was {event['outcome']}")
@@ -432,8 +449,8 @@ def check_endpoint_accept(readmit):
                 "the acknowledgement was not correlated to the sent control ID")
         require((output / event["sent"]["path"]).read_bytes() == independent.frame(payload),
                 "the recorded sent bytes differ from the source evidence")
-    require(b"MSH|" not in completed.stdout and b"VANTERPOOL" not in completed.stdout,
-            "the replay summary printed message values")
+    require(b"MSH|" not in completed.stdout, "the replay summary printed raw message bytes")
+    require_no_values("the replay summary", completed.stdout)
     require(bundle_snapshot(case) == before, "replay altered the original case evidence")
     return "the independent endpoint received and acknowledged the exact source bytes"
 
@@ -459,14 +476,14 @@ def check_endpoint_negative(readmit):
             target = target_file(readmit.work / f"{behavior}-target.json", endpoint.port, message_timeout="1s")
             output = readmit.work / f"{behavior}.run"
             completed = readmit.run("replay", case, "--target", target, "--send", "--output", output, expect=1)
-        events = read_events(output)
+        events = read_records(output, "events.jsonl")
         require(events[0]["outcome"] == outcome,
                 f"{behavior} produced outcome {events[0]['outcome']}, expected {outcome}")
         require(events[0]["delivery"] == delivery,
                 f"{behavior} produced delivery {events[0]['delivery']}, expected {delivery}")
         require(events[1]["outcome"] == second,
                 f"{behavior} left the second message at {events[1]['outcome']}, expected {second}")
-        require(b"VANTERPOOL" not in completed.stdout, f"{behavior} printed message values")
+        require_no_values(behavior, completed.stdout)
         if outcome in ("timeout", "protocol_error", "disconnect"):
             # A timeout, a broken acknowledgement and a disconnect are all
             # unknown application results. None of them is an answer, so none
@@ -482,8 +499,6 @@ def check_endpoint_negative(readmit):
 
 def check_endpoint_cancel(readmit):
     """Cancellation must not retract bytes already sent, and must not block recovery."""
-    if not hasattr(signal, "SIGINT") or sys.platform == "win32":
-        raise RecordedGap("interactive cancellation is not exercised on this platform")
     case = endpoint_case(readmit, "cancel")
     before = bundle_snapshot(case)
     output = readmit.work / "cancel.run"
@@ -493,7 +508,7 @@ def check_endpoint_cancel(readmit):
         try:
             endpoint.wait_for_frames(1, timeout=20)
             process.send_signal(signal.SIGINT)
-            process.communicate(timeout=30)
+            stdout, _ = process.communicate(timeout=30)
         finally:
             if process.poll() is None:
                 process.kill()
@@ -501,10 +516,11 @@ def check_endpoint_cancel(readmit):
     # An interrupt must be handled, not fatal: a killed process leaves no run.
     require(process.returncode > 0, f"the replay did not exit on its own after cancellation "
                                     f"(status {process.returncode})")
+    require_no_values("the cancelled replay", stdout)
     payload = (ENDPOINT_DIRECTORY / "book.hl7").read_bytes()
     require(endpoint.received == [independent.frame(payload)],
             "the endpoint did not retain the bytes that were already delivered")
-    events = read_events(output)
+    events = read_records(output, "events.jsonl")
     require(events, "a cancelled replay retained no run evidence")
     require(events[0]["outcome"] == "cancelled", f"first outcome was {events[0]['outcome']}")
     require(events[0]["delivery"] == "uncertain", "cancellation claimed a known delivery result")
@@ -523,8 +539,9 @@ def check_endpoint_cancel(readmit):
 def endpoint_case(readmit, label):
     output = readmit.work / f"{label}.case"
     if not output.exists():
-        readmit.run("capture", ENDPOINT_DIRECTORY / "book.hl7", ENDPOINT_DIRECTORY / "reschedule.hl7",
-                    "--output", output)
+        completed = readmit.run("capture", ENDPOINT_DIRECTORY / "book.hl7",
+                                ENDPOINT_DIRECTORY / "reschedule.hl7", "--output", output)
+        require_no_values("the capture summary", completed.stdout)
     return output
 
 
@@ -546,7 +563,8 @@ def check_listener_ledger(readmit):
             stdout, stderr = process.communicate(timeout=30)
         require(process.returncode == 0, f"{mode} listener exited {process.returncode}")
         require(stderr == b"", f"{mode} listener wrote diagnostics: {stderr[:200]!r}")
-        require(b"VANTERPOOL" not in stdout and b"MSH|" not in stdout, f"{mode} listener printed message values")
+        require(b"MSH|" not in stdout, f"{mode} listener printed raw message bytes")
+        require_no_values(f"the {mode} listener", stdout)
         final = json.loads(observation.read_bytes())
         require(final["consistent"] and final["session_id"] == session, f"{mode} observation is not the session's")
         require([entry["control_id"].encode() for entry in final["processed"]] == controls,
@@ -583,21 +601,17 @@ def check_listener_negative(readmit):
         stdout, stderr = process.communicate(timeout=30)
     require(process.returncode == 0, f"the listener exited {process.returncode} after refusals")
     require(stderr == b"", f"refusals reached terminal diagnostics: {stderr[:200]!r}")
-    require(b"VANTERPOOL" not in stdout, "the listener printed message values")
+    require_no_values("the listener", stdout)
     final = json.loads(observation.read_bytes())
     require(final["consistent"] and final["session_id"] == session, "the observation is not the session's")
     require(final["records"] == expected, "a refused request changed the ledger")
     require(len(final["processed"]) == 3, "the unparsable frame was counted as processed work")
-    events = read_events(case)
+    events = read_records(case, "events.jsonl")
     require(sum(1 for event in events if event["kind"] == "unparsed") == 1,
             "the unparsable frame was not retained as unparsed evidence")
     require(any(event["payload"]["sha256"] == digest(independent.frame(b"NOT-AN-HL7-MESSAGE\r"))
                 for event in events), "the unparsable bytes were not retained verbatim")
     return "refused and unparsable requests leave the ledger and the evidence intact"
-
-
-class RecordedGap(Exception):
-    """A declared boundary this suite does not cover, reported instead of skipped."""
 
 
 CHECKS = {
@@ -624,7 +638,7 @@ def main():
     if not arguments.binary:
         parser.error("--binary is required unless --list is given")
     selected = arguments.only or sorted(CHECKS)
-    failures = 0
+    failures, gaps = 0, 0
     with tempfile.TemporaryDirectory(prefix="readmit-verify-") as directory:
         work = Path(directory)
         for name in selected:
@@ -636,10 +650,13 @@ def main():
                 status = "PASS"
             except RecordedGap as gap:
                 detail, status = str(gap), "GAP "
+                gaps += 1
             except Exception as failure:  # a check that cannot complete has not passed
                 detail, status = f"{type(failure).__name__}: {failure}", "FAIL"
                 failures += 1
             print(f"{status} {name} ({time.monotonic() - started:.1f}s): {detail}", flush=True)
+    print(f"SUMMARY {len(selected) - failures - gaps} passed, {failures} failed, "
+          f"{gaps} recorded as uncovered", flush=True)
     return 1 if failures else 0
 
 

@@ -47,9 +47,9 @@ class Framing(unittest.TestCase):
     def test_raw_input_is_exactly_one_occurrence(self):
         self.assertEqual(independent.split_occurrences(BOOKING, "raw"), [BOOKING])
 
-    def test_automatic_selection_uses_the_leading_block_byte(self):
-        self.assertEqual(independent.detect_format(BOOKING), "raw")
-        self.assertEqual(independent.detect_format(independent.frame(BOOKING)), "mllp")
+    def test_an_unsupported_layout_is_refused(self):
+        with self.assertRaises(ValueError):
+            independent.split_occurrences(BOOKING, "batch")
 
 
 class Parsing(unittest.TestCase):

@@ -158,7 +158,9 @@ def detected(mutation, binary):
         [sys.executable, str(VERIFY), "--binary", str(binary), "--only", mutation.check],
         cwd=ROOT, capture_output=True, check=False, timeout=900,
     )
-    return completed.returncode != 0, completed.stdout.decode().strip()
+    report = completed.stdout.decode().strip()
+    # A nonzero status alone would let an unrelated flake pose as detection.
+    return completed.returncode != 0 and f"FAIL {mutation.check}" in report, report
 
 
 def main():

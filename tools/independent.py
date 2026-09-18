@@ -45,22 +45,16 @@ def unframe(wire):
     return payload
 
 
-def detect_format(data):
-    return "mllp" if data.startswith(START_BLOCK) else "raw"
-
-
 def split_occurrences(data, layout):
     """Return complete occurrences, framing included, exactly as readmit retains them.
 
     Broken framing is never resynchronized: the entire remaining suffix becomes
     one occurrence, so no byte is silently dropped from the evidence.
     """
-    if layout == "auto":
-        layout = detect_format(data)
     if layout == "raw":
         return [data]
     if layout != "mllp":
-        raise ValueError("layout must be auto, raw, or mllp")
+        raise ValueError("layout must be raw or mllp")
     occurrences = []
     start = 0
     while start < len(data):
@@ -196,7 +190,8 @@ class Message:
     def segment_ids(self):
         return [identifier for identifier, _ in self.segments]
 
-    def _fields(self, identifier):
+    def segment(self, identifier):
+        """Return the first segment's fields, or None when the segment is absent."""
         for name, fields in self.segments:
             if name == identifier:
                 return fields
@@ -204,7 +199,7 @@ class Message:
 
     def field(self, selector):
         identifier, positions = _selector(selector)
-        fields = self._fields(identifier)
+        fields = self.segment(identifier)
         if fields is None:
             return ("omitted", b"")
         value = b""
@@ -290,7 +285,7 @@ def quote_ascii(value):
     return "".join(rendered)
 
 
-def build_acknowledgement(request, code, receipt=None):
+def build_acknowledgement(request, code):
     """Construct an ACK from the request, independently of any readmit code."""
     control = request.control_id()
     kind = _split(request.field("MSH-9")[1], request.delimiters.component, None)
@@ -301,8 +296,6 @@ def build_acknowledgement(request, code, receipt=None):
         + b"|INDEPENDENTACK|P|2.5.1\r"
         + b"MSA|" + code + b"|" + control + b"\r"
     )
-    if receipt is not None:
-        payload += b"ZRT|" + receipt + b"\r"
     return frame(payload)
 
 
@@ -315,7 +308,7 @@ def read_acknowledgement(wire):
     acknowledged = message.field("MSA-2")
     if code[0] != "present" or acknowledged[0] != "present":
         raise ParseError("acknowledgement must carry MSA-1 and MSA-2")
-    receipt = message._fields("ZRT")
+    receipt = message.segment("ZRT")
     return (code[1].decode("ascii"), acknowledged[1], tuple(receipt) if receipt else None)
 
 
