@@ -1,6 +1,7 @@
 ---
 status: accepted
 date: 2026-09-17
+amended: 2026-09-17
 ---
 
 # Go single binary with a declared five-target release matrix
@@ -19,3 +20,10 @@ readmit must ship as one self-contained executable that an interop engineer can 
 - Windows arm64 and 32-bit targets are deliberately not built. Add a target only when a customer needs it, and add it to the CI smoke test at the same time.
 - Every later ticket inherits the release pipeline from issue #1. Adding a dependency means checking that it is pure Go and cross-compiles for all five targets.
 - Reopening this decision means a rewrite. The triggers that would justify it are a required native dependency with no pure-Go equivalent, or a GUI or web front end that must share code with the CLI.
+
+## Toolchain and platform policy (amended 2026-09-17)
+
+- The Go toolchain is pinned to the current patch release with the `toolchain` directive in go.mod, initially go1.27.1. CI sets `GOTOOLCHAIN=local` and reads the version from go.mod, so a build fails rather than silently downloading a newer toolchain. Bumps arrive through reviewed pull requests, never during a build.
+- Release builds use `CGO_ENABLED=0`. Race-detector jobs need cgo on, so the setting is per job, never global.
+- Platform floor: macOS 13 or later, which Go 1.27 requires. Windows and Linux floors follow the pinned toolchain's supported versions. The README states all three.
+- Go 1.27 is the floor rather than 1.26 because `encoding/json/v2` became generally available in 1.27 and ADR-0003 depends on it.
