@@ -34,8 +34,8 @@ func TestTargetV3RecordsANamedEnvironmentAndItsClassification(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read target: %v", err)
 	}
-	if loaded.Name != "lab-siu" || loaded.Environment() != replay.Nonproduction {
-		t.Fatalf("named environment %q classified %q", loaded.Name, loaded.Environment())
+	if loaded.Environment() != (replay.Environment{Name: "lab-siu", Classification: replay.Nonproduction}) {
+		t.Fatalf("named environment %+v", loaded.Environment())
 	}
 	if loaded.ServerName != "lab.example.invalid" {
 		t.Fatalf("server name %q", loaded.ServerName)
@@ -50,8 +50,8 @@ func TestTargetV3RecordsANamedEnvironmentAndItsClassification(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a production-classified environment must be configurable and visible: %v", err)
 	}
-	if classified.Environment() != replay.Production {
-		t.Fatalf("classification %q", classified.Environment())
+	if classified.Environment().Classification != replay.Production {
+		t.Fatalf("classification %q", classified.Environment().Classification)
 	}
 }
 
@@ -63,8 +63,8 @@ func TestTargetWithoutAClassificationReadsAsUnclassified(t *testing.T) {
 	if err != nil {
 		t.Fatalf("readmit-target/v1: %v", err)
 	}
-	if previous.Environment() != replay.Unclassified || previous.Name != "" {
-		t.Fatalf("readmit-target/v1 classified %q", previous.Environment())
+	if previous.Environment() != (replay.Environment{Classification: replay.Unclassified}) {
+		t.Fatalf("readmit-target/v1 reported the environment %+v", previous.Environment())
 	}
 	second := t.TempDir()
 	credentialStore(t, second, "127.0.0.1:2575")
@@ -72,8 +72,8 @@ func TestTargetWithoutAClassificationReadsAsUnclassified(t *testing.T) {
 	if err != nil {
 		t.Fatalf("readmit-target/v2: %v", err)
 	}
-	if carried.Environment() != replay.Unclassified {
-		t.Fatalf("readmit-target/v2 classified %q", carried.Environment())
+	if carried.Environment() != (replay.Environment{Classification: replay.Unclassified}) {
+		t.Fatalf("readmit-target/v2 reported the environment %+v", carried.Environment())
 	}
 }
 
@@ -169,7 +169,7 @@ func TestWriteTargetRecordsOnlyAConfigurationItReadsBack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read back: %v", err)
 	}
-	if loaded.Name != config.Name || loaded.Environment() != config.Classification || loaded.ServerName != config.ServerName {
+	if loaded.Environment() != (replay.Environment{Name: config.Name, Classification: config.Classification}) || loaded.ServerName != config.ServerName {
 		t.Fatalf("recorded %+v, read back %+v", config, loaded)
 	}
 	edited := config
@@ -177,23 +177,72 @@ func TestWriteTargetRecordsOnlyAConfigurationItReadsBack(t *testing.T) {
 	if err := replay.WriteTarget(path, edited); err != nil {
 		t.Fatalf("replace: %v", err)
 	}
-	if replaced, err := replay.ReadTarget(path); err != nil || replaced.Environment() != replay.Production {
+	if replaced, err := replay.ReadTarget(path); err != nil || replaced.Environment().Classification != replay.Production {
 		t.Fatalf("the replaced configuration read back as %+v: %v", replaced, err)
 	}
-	refused := config
-	refused.Classification = replay.Classification("staging")
-	fresh := filepath.Join(directory, "refused.json")
-	if err := replay.WriteTarget(fresh, refused); err == nil {
-		t.Fatal("a configuration outside the classification set was written")
-	}
-	if _, err := os.Lstat(fresh); err == nil {
-		t.Fatal("a refused configuration left a file behind")
+	for name, refused := range map[string]replay.Target{
+		"a classification outside the set": func() replay.Target {
+			outside := config
+			outside.Classification = replay.Classification("staging")
+			return outside
+		}(),
+		// Binding runs before anything is written, so an editor never records
+		// a configuration that reading it back would refuse.
+		"a credential reference that is not registered": func() replay.Target {
+			unbound := config
+			unbound.Credential.Reference = "absent"
+			return unbound
+		}(),
+		"a credential reference scoped to another endpoint": func() replay.Target {
+			elsewhere := config
+			elsewhere.Address = "127.0.0.1:9999"
+			return elsewhere
+		}(),
+	} {
+		fresh := filepath.Join(directory, "refused.json")
+		if err := replay.WriteTarget(fresh, refused); err == nil {
+			t.Errorf("%s was written", name)
+		}
+		if _, err := os.Lstat(fresh); err == nil {
+			t.Errorf("%s left a file behind", name)
+		}
 	}
 	if err := os.WriteFile(path+".incomplete", []byte("{}"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := replay.WriteTarget(path, config); err == nil || !strings.Contains(err.Error(), "interrupted write is retained") {
 		t.Fatalf("a retained interrupted write was overwritten: %v", err)
+	}
+}
+
+// A certificate is verified against the name the configuration declares, and
+// against the address host only when it declares none. One rule serves the
+// diagnostic and the send path, so the two cannot verify different names.
+func TestVerifiedServerNameIsDeclaredOrTheAddressHost(t *testing.T) {
+	declared := environmentTarget("127.0.0.1:2575")
+	if name := replay.VerifiedServerName(declared); name != "lab.example.invalid" {
+		t.Fatalf("verified server name %q, want the declared one", name)
+	}
+	declared.ServerName = ""
+	if name := replay.VerifiedServerName(declared); name != "127.0.0.1" {
+		t.Fatalf("verified server name %q, want the address host", name)
+	}
+	if name := replay.VerifiedServerName(target("[::1]:2575")); name != "::1" {
+		t.Fatalf("verified server name %q, want the address host", name)
+	}
+}
+
+// This release's replay transport presents no client certificate, so a
+// configuration declaring one is refused rather than sent without it.
+func TestPrepareRefusesAConfigurationWhoseClientCertificateItCannotPresent(t *testing.T) {
+	directory := freshStore(t, "127.0.0.1:2575")
+	config, err := replay.ReadTarget(writeTarget(t, directory, environmentTarget("127.0.0.1:2575")))
+	if err != nil {
+		t.Fatalf("read target: %v", err)
+	}
+	_, err = replay.Prepare(caseAt(t, request("PRIVATE-SYNTHETIC-1")), config, replay.Options{})
+	if err == nil || !strings.Contains(err.Error(), "presents no client certificate") {
+		t.Fatalf("a client certificate configuration was accepted for replay: %v", err)
 	}
 }
 

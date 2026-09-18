@@ -201,7 +201,11 @@ that an application accepted, processed or stored anything, and an expiry is
 reported rather than acted on. Expired certificates, untrusted authorities,
 hostname mismatches, refused connections, timeouts and rejected client
 certificates each have their own named outcome, and an outcome readmit cannot
-name is never reported as reachable. The recorded classification is shown by
+name is never reported as reachable; when verification refuses a certificate,
+that certificate is reported so the failure can be diagnosed. `replay` and
+`test` verify against the same declared server name, and this release's MLLP
+transport presents no client certificate, so a configuration declaring one is
+refused for replay rather than sent without it. The recorded classification is shown by
 every one of those commands and by every `replay` preview and summary, and it is
 a claim rather than a finding: a person labelling an endpoint nonproduction is
 not proof the address is safe to send to, and this release displays the class

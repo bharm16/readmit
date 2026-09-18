@@ -68,14 +68,24 @@ type Target struct {
 	ClientCertificate string         `json:"client_certificate,omitzero"`
 }
 
-// Environment reports the classification recorded for this target. A version
-// that carries no classification member reads as Unclassified, so an absent
-// claim is never reported as a nonproduction one.
-func (t Target) Environment() Classification {
-	if t.Classification == "" {
-		return Unclassified
+// Environment is the named environment a configuration describes: the name a
+// person gave it and the class they recorded for it. The two travel together
+// because a class means nothing without the environment it is a class of, and
+// a verdict produced against an environment is never separated from it.
+type Environment struct {
+	Name           string
+	Classification Classification
+}
+
+// Environment reports what a target records about the environment itself. A
+// version that carries no classification member reads as Unclassified, so an
+// absent claim is never reported as a nonproduction one.
+func (t Target) Environment() Environment {
+	recorded := t.Classification
+	if recorded == "" {
+		recorded = Unclassified
 	}
-	return t.Classification
+	return Environment{Name: t.Name, Classification: recorded}
 }
 
 // Credential names the secret reference this endpoint presents. It carries the
@@ -163,6 +173,13 @@ type plannedMessage struct {
 func (p *Plan) Count() int             { return len(p.messages) }
 func (p *Plan) SourceIdentity() string { return p.sourceIdentity }
 func (p *Plan) Target() TargetRecord   { return targetRecord(p.target, p.ca) }
+
+// Environment is the named environment this plan is pointed at. A run's own
+// evidence records the transport it used under the frozen readmit-run/v1
+// contract and carries no environment name or classification, so a console
+// reads this to state what a send is aimed at.
+func (p *Plan) Environment() Environment { return p.target.Environment() }
+
 func (p *Plan) Mappings() []Mapping {
 	result := make([]Mapping, len(p.messages))
 	for i, message := range p.messages {

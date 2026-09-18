@@ -125,8 +125,13 @@ type Result struct {
 // Artifact contains independently verified material for diff, report, and local
 // export-review consumers. Original results are never share-approved artifacts.
 type Artifact struct {
-	Result             Result
-	Identity           string
+	Result   Result
+	Identity string
+	// Environment is the named environment this execution was pointed at. It
+	// is empty when no configuration validated, and a reopened result carries
+	// none: readmit-result/v1 is frozen and records the transport, not the
+	// environment, so readmit does not invent one to print.
+	Environment        replay.Environment
 	Spec               *Spec
 	Run                *replay.Run
 	InitialObservation *observation.Snapshot
@@ -144,8 +149,9 @@ type Plan struct {
 	replay          *replay.Plan
 }
 
-func (p *Plan) Count() int                  { return p.replay.Count() }
-func (p *Plan) SpecIdentity() string        { return digest(p.raw) }
-func (p *Plan) SourceIdentity() string      { return p.replay.SourceIdentity() }
-func (p *Plan) Boundary() string            { return p.spec.Observation.Boundary }
-func (p *Plan) Target() replay.TargetRecord { return p.replay.Target() }
+func (p *Plan) Count() int                      { return p.replay.Count() }
+func (p *Plan) SpecIdentity() string            { return digest(p.raw) }
+func (p *Plan) SourceIdentity() string          { return p.replay.SourceIdentity() }
+func (p *Plan) Boundary() string                { return p.spec.Observation.Boundary }
+func (p *Plan) Target() replay.TargetRecord     { return p.replay.Target() }
+func (p *Plan) Environment() replay.Environment { return p.replay.Environment() }

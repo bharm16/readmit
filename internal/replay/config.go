@@ -28,7 +28,11 @@ import (
 // turn it into the target file's own directory, and a refusal would then name
 // the wrong member.
 func ReadDeclaredTarget(path string) (Target, error) {
-	data, err := readLocal(path, 64<<10)
+	resolved, err := artifactpath.Resolve(path)
+	if err != nil {
+		return Target{}, errors.New("cannot resolve target configuration")
+	}
+	data, err := readLocal(resolved, 64<<10)
 	if err != nil {
 		return Target{}, errors.New("cannot read target configuration")
 	}
@@ -55,20 +59,39 @@ func ReadTarget(path string) (Target, error) {
 	if err != nil {
 		return Target{}, err
 	}
-	directory := filepath.Dir(resolved)
-	if target.CAFile != "" {
-		target.CAFile = artifactpath.JoinReference(directory, target.CAFile)
-	}
-	if target.ClientCertificate != "" {
-		target.ClientCertificate = artifactpath.JoinReference(directory, target.ClientCertificate)
-	}
-	if target.Credential.Declared() {
-		target.Credential.SecretsFile = artifactpath.JoinReference(directory, target.Credential.SecretsFile)
-	}
+	target = anchor(target, filepath.Dir(resolved))
 	if _, err := BindCredential(target); err != nil {
 		return Target{}, err
 	}
 	return target, nil
+}
+
+// anchor resolves the paths a configuration declares against the directory the
+// configuration itself lives in, never the caller's working directory. The
+// declared form is what the file holds; this is what reading it means.
+func anchor(t Target, directory string) Target {
+	if t.CAFile != "" {
+		t.CAFile = artifactpath.JoinReference(directory, t.CAFile)
+	}
+	if t.ClientCertificate != "" {
+		t.ClientCertificate = artifactpath.JoinReference(directory, t.ClientCertificate)
+	}
+	if t.Credential.Declared() {
+		t.Credential.SecretsFile = artifactpath.JoinReference(directory, t.Credential.SecretsFile)
+	}
+	return t
+}
+
+// VerifiedServerName is the name a target's certificate is verified against:
+// the server name it declares, or the host of its address when it declares
+// none. One function owns the rule, so a diagnosis and a replay reading the
+// same configuration verify the same name rather than two different ones.
+func VerifiedServerName(t Target) string {
+	if t.ServerName != "" {
+		return t.ServerName
+	}
+	host, _, _ := net.SplitHostPort(t.Address)
+	return host
 }
 
 // BindCredential returns the secret reference a target declares, bound to this
@@ -108,6 +131,13 @@ func WriteTarget(path string, t Target) error {
 	destination, err := artifactpath.Destination(path)
 	if err != nil {
 		return errors.New("cannot write a target configuration here")
+	}
+	// A declared credential is bound against the directory this configuration
+	// will be read from, before anything is written, so an editor never records
+	// a configuration that reading it back would refuse. No value is read to do
+	// it: binding settles what a credential may be used for, never what it is.
+	if _, err := BindCredential(anchor(t, filepath.Dir(destination))); err != nil {
+		return err
 	}
 	incomplete, err := artifactpath.Destination(path + ".incomplete")
 	if err != nil {
@@ -237,7 +267,11 @@ func environmentName(name string) error {
 	return nil
 }
 
-func loadCA(t Target) ([]byte, error) {
+// LoadCA returns the bytes of the explicitly configured CA file a target
+// declares, or nothing when it declares none and the system roots apply. The
+// contract's owner reads the member so every caller applies one bound and one
+// refusal to it.
+func LoadCA(t Target) ([]byte, error) {
 	if t.CAFile == "" {
 		return nil, nil
 	}

@@ -29,11 +29,12 @@ func FuzzTargetDocument(f *testing.F) {
 		if err := validateTarget(config); err != nil {
 			return
 		}
-		if !slices.Contains(classifications, config.Environment()) {
-			t.Fatalf("an accepted target reports classification %q, which is outside the closed set", config.Environment())
+		named := config.Environment()
+		if !slices.Contains(classifications, named.Classification) {
+			t.Fatalf("an accepted target reports classification %q, which is outside the closed set", named.Classification)
 		}
-		if config.Schema != TargetSchemaV3 && config.Environment() != Unclassified {
-			t.Fatalf("%s reported classification %q", config.Schema, config.Environment())
+		if config.Schema != TargetSchemaV3 && (named.Classification != Unclassified || named.Name != "") {
+			t.Fatalf("%s reported the environment %+v", config.Schema, named)
 		}
 	})
 }

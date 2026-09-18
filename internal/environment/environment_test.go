@@ -233,8 +233,8 @@ func TestDiagnoseReachesAPlainEndpointWithoutSendingAnything(t *testing.T) {
 	if report.Peer != address {
 		t.Fatalf("the diagnosis reported peer %q, want the address it actually reached %q", report.Peer, address)
 	}
-	if report.Name != "lab-siu" || report.Classification != replay.Nonproduction {
-		t.Fatalf("the named environment and its classification were not reported: %+v", report)
+	if report.Environment != (replay.Environment{Name: "lab-siu", Classification: replay.Nonproduction}) {
+		t.Fatalf("the named environment and its classification were not reported: %+v", report.Environment)
 	}
 	if report.TLS != nil {
 		t.Fatalf("a plain endpoint reported TLS status: %+v", report.TLS)
@@ -350,6 +350,27 @@ func TestDiagnoseNamesEveryTransportAndCertificateFailure(t *testing.T) {
 	}
 }
 
+// A certificate failure is diagnosable: the certificate the endpoint presented
+// is reported with its validity window, kept apart from a verified session.
+func TestDiagnoseReportsTheCertificateItCouldNotVerify(t *testing.T) {
+	directory := t.TempDir()
+	ca := newAuthority(t)
+	expiry := time.Now().Add(-time.Hour).UTC().Truncate(time.Second)
+	server := ca.issue(t, testOnlyName, time.Now().Add(-2*time.Hour), expiry, x509.ExtKeyUsageServerAuth)
+	address := endpoint(t, secured(&tls.Config{Certificates: []tls.Certificate{server.pair(t)}}, &atomic.Int64{}))
+	report := diagnose(t, tlsTarget(address, write(t, directory, "ca.pem", ca.pem)))
+	if report.Outcome != environment.CertificateExpired || report.TLS != nil {
+		t.Fatalf("outcome %q with TLS status %+v", report.Outcome, report.TLS)
+	}
+	if len(report.Unverified) == 0 {
+		t.Fatal("a certificate failure reported no certificate to diagnose")
+	}
+	presented := report.Unverified[0]
+	if !presented.NotAfter.Equal(expiry) || presented.Subject == "" || presented.Issuer == "" {
+		t.Fatalf("the refused certificate was reported as %+v, want the expiry %s", presented, expiry)
+	}
+}
+
 // A cancelled diagnosis reports cancellation, never reachability.
 func TestDiagnoseReportsCancellationRatherThanReachability(t *testing.T) {
 	address := endpoint(t, drain(&atomic.Int64{}))
@@ -386,8 +407,8 @@ func TestDiagnoseReportsAnAbsentClassificationAsUnclassified(t *testing.T) {
 		ConnectTimeout: "2s", MessageTimeout: "200ms", MaxACKBytes: 4096,
 	}
 	report := diagnose(t, config)
-	if report.Classification != replay.Unclassified || report.Name != "" {
-		t.Fatalf("classification %q for the environment named %q", report.Classification, report.Name)
+	if report.Environment != (replay.Environment{Classification: replay.Unclassified}) {
+		t.Fatalf("a configuration with no recorded classification reported %+v", report.Environment)
 	}
 }
 

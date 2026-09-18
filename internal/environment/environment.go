@@ -62,26 +62,25 @@ const (
 	HandshakeFailed           Outcome = "tls_handshake_failed"
 )
 
-// Report is what one diagnosis found. It names the environment it described and
-// the classification recorded for it, so neither is separated from the result.
+// Report is what one diagnosis found. It names the environment it described, so
+// a verdict is never separated from the environment it was produced against.
 type Report struct {
-	Name           string
-	Classification replay.Classification
-	Address        string
+	Environment replay.Environment
 	// Peer is the address the connection actually reached. It is read from the
 	// established connection rather than from a separate name lookup, so it is
 	// the destination that was used and not one that might be resolved again.
-	Peer           string
-	Transport      string
-	ConnectTimeout string
-	MessageTimeout string
-	Outcome        Outcome
+	Peer    string
+	Outcome Outcome
 	// Phase is where the outcome was established: dial, tls or confirm.
 	Phase string
-	// TLS is present only when a handshake completed. A failed handshake
-	// reports its named outcome and no status: readmit does not describe a
-	// session it did not establish.
+	// TLS is present only when a handshake completed. readmit does not describe
+	// a session it did not establish.
 	TLS *TLSStatus
+	// Unverified holds the certificates the endpoint presented when
+	// verification failed. They are reported so a certificate failure can be
+	// diagnosed, and they are kept apart from TLS because nothing established
+	// that they identify the endpoint.
+	Unverified []Certificate
 	// Unsolicited counts the bytes the endpoint sent without being asked.
 	Unsolicited int
 }
@@ -116,10 +115,7 @@ type Certificate struct {
 // reference names, timeouts that are not durations. Failing to reach the
 // endpoint is not an error; it is the named Outcome of a Report.
 func Diagnose(ctx context.Context, target replay.Target) (Report, error) {
-	report := Report{
-		Name: target.Name, Classification: target.Environment(), Address: target.Address,
-		Transport: target.Transport, ConnectTimeout: target.ConnectTimeout, MessageTimeout: target.MessageTimeout,
-	}
+	report := Report{Environment: target.Environment()}
 	connect, connectErr := time.ParseDuration(target.ConnectTimeout)
 	window, windowErr := time.ParseDuration(target.MessageTimeout)
 	if connectErr != nil || windowErr != nil || connect <= 0 || window <= 0 {
@@ -148,6 +144,7 @@ func Diagnose(ctx context.Context, target replay.Target) (Report, error) {
 		secured := tls.Client(connection, config)
 		if err := secured.HandshakeContext(dialCtx); err != nil {
 			report.Outcome, report.Phase = classify(err, dialCtx, offered.requested), "tls"
+			report.Unverified = unverified(err)
 			return report, nil
 		}
 		report.TLS = status(secured.ConnectionState(), offered)
@@ -165,22 +162,16 @@ func clientConfig(ctx context.Context, target replay.Target) (*tls.Config, *offe
 	if target.Transport != "tls" {
 		return nil, &offer{}, nil
 	}
-	host, _, err := net.SplitHostPort(target.Address)
+	config := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: replay.VerifiedServerName(target)}
+	// The contract's owner reads the CA member, so a diagnosis applies the same
+	// bound and the same refusal a replay to this endpoint applies.
+	authorities, err := replay.LoadCA(target)
 	if err != nil {
-		return nil, nil, errors.New("the configured address does not name a host and a port")
+		return nil, nil, err
 	}
-	name := target.ServerName
-	if name == "" {
-		name = host
-	}
-	config := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: name}
-	if target.CAFile != "" {
-		data, err := readBounded(target.CAFile, maxPEMBytes)
-		if err != nil {
-			return nil, nil, errors.New("cannot read the configured CA certificates")
-		}
+	if len(authorities) > 0 {
 		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(data) {
+		if !pool.AppendCertsFromPEM(authorities) {
 			return nil, nil, errors.New("the configured CA file contains no certificates")
 		}
 		config.RootCAs = pool
@@ -328,6 +319,30 @@ func peerAlert(err error) bool {
 	return errors.As(err, &operation) && operation.Op == "remote error"
 }
 
+// unverified reports the certificates an endpoint presented when verification
+// refused them. crypto/tls carries them on the verification error, so a
+// certificate failure can be diagnosed from the same connection that failed.
+func unverified(err error) []Certificate {
+	var verification *tls.CertificateVerificationError
+	if !errors.As(err, &verification) {
+		return nil
+	}
+	return describe(verification.UnverifiedCertificates)
+}
+
+func describe(certificates []*x509.Certificate) []Certificate {
+	var described []Certificate
+	for _, certificate := range certificates {
+		described = append(described, Certificate{
+			Subject:   certificate.Subject.String(),
+			Issuer:    certificate.Issuer.String(),
+			NotBefore: certificate.NotBefore.UTC(),
+			NotAfter:  certificate.NotAfter.UTC(),
+		})
+	}
+	return described
+}
+
 func status(state tls.ConnectionState, presented *offer) *TLSStatus {
 	reported := &TLSStatus{
 		Version:                    tls.VersionName(state.Version),
@@ -335,14 +350,7 @@ func status(state tls.ConnectionState, presented *offer) *TLSStatus {
 		ServerName:                 state.ServerName,
 		ClientCertificateRequested: presented.requested,
 		ClientCertificatePresented: presented.requested && presented.certificate != nil,
-	}
-	for _, certificate := range state.PeerCertificates {
-		reported.Chain = append(reported.Chain, Certificate{
-			Subject:   certificate.Subject.String(),
-			Issuer:    certificate.Issuer.String(),
-			NotBefore: certificate.NotBefore.UTC(),
-			NotAfter:  certificate.NotAfter.UTC(),
-		})
+		Chain:                      describe(state.PeerCertificates),
 	}
 	return reported
 }

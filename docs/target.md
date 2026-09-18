@@ -17,8 +17,15 @@ readmit target check --target lab.json
 
 `classification` is the class of environment somebody recorded for this
 endpoint. It is displayed wherever the configuration is shown — by `target set`,
-`target show`, `target check` and by every `readmit replay` preview and summary
-— so nobody has to open a file to see what they are pointed at.
+`target show` and `target check`, and by `readmit replay` and `readmit test`
+before they report anything else — so nobody has to open a file to see what they
+are pointed at.
+
+It is not in run evidence. `readmit-run/v1` and `readmit-result/v1` are frozen
+and record the transport a run used, not the environment it was recorded
+against, so a shared run or result directory does not state the class of the
+endpoint it came from. Carrying one there would be a new contract version and is
+not in this release.
 
 It is a claim, not a finding. readmit did not establish it, cannot establish it,
 and does not treat it as permission. **A person labelling an endpoint
@@ -79,6 +86,16 @@ named environment in a new file instead.
 configuration is the acknowledgement; readmit never infers one from reachability
 or from a successful TLS handshake.
 
+`--ca` and `--client-certificate` are recorded exactly as they are given, and a
+relative path is resolved against the **target file's** directory when the
+configuration is read, not against the working directory `set` ran in. Give an
+absolute path, or a path relative to the file being written. Neither file is
+opened by `set` or by `show`; `check` is what reads them.
+
+A declared credential reference is bound before anything is written: a reference
+that is not registered, or one scoped to a different endpoint address, is
+refused and no file is produced. No credential value is read to establish that.
+
 ## `target show`
 
 `show` validates one configuration completely and opens nothing. It performs no
@@ -113,6 +130,11 @@ reported there.
 `check` reports the address the established connection actually reached, read
 from the connection itself rather than from a second name lookup.
 
+When verification refuses the certificate an endpoint presented, `check` reports
+that certificate — subject, issuer and validity window — so the failure can be
+diagnosed. It is reported apart from a negotiated session, because nothing
+established that it identifies the endpoint.
+
 | Outcome | Meaning |
 | --- | --- |
 | `reachable` | The connection was established, TLS completed if configured, and nothing arrived unprompted. |
@@ -139,7 +161,9 @@ name verification always run and there is no insecure mode: a diagnosis that
 skipped verification would report a trust it never established. An explicit
 `ca_file` replaces the system roots. `server_name` is the name the certificate
 is verified against when the address reaches the endpoint by IP or through a
-tunnel; with no `server_name` the address host is used.
+tunnel; with no `server_name` the address host is used. `readmit replay` reads
+the same member through the same rule, so a check and a send to one
+configuration verify the same name.
 
 `check` reports the negotiated version and cipher suite, the verified server
 name, whether a client certificate was requested and whether one was presented,
@@ -158,6 +182,13 @@ exactly as `ca_file` is. The private key is a credential, so it is named through
 the same `credential` reference every other credential uses, resolved from the
 store the operator declared for the duration of one connection, and written
 nowhere. A configuration that names a certificate and no reference is refused.
+
+**`readmit replay` and `readmit test` present no client certificate.** This
+release's MLLP transport does not, so a configuration declaring one is refused
+for replay rather than sent without it: an unsupported member is not a passing
+one, and a `check` that completes must not predict a handshake the send path
+cannot complete. Configure and diagnose the certificate here; sending under one
+is not in this release.
 See [ADR-0006](adr/0006-credentials-are-referenced-never-stored.md) and
 [credential references](secret.md).
 

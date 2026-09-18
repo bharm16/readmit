@@ -206,8 +206,7 @@ func openOrNewTarget(path string) (replay.Target, error) {
 // file paths are not echoed; the transport material is reported as configured
 // or absent, exactly as run evidence reports a CA without naming its path.
 func writeEnvironmentLines(w io.Writer, config replay.Target) {
-	fmt.Fprintf(w, "Environment: %s\n", absent(config.Name))
-	fmt.Fprintf(w, "Classification: %s (recorded by a person; readmit did not establish it and does not enforce it)\n", config.Environment())
+	writeEnvironmentBanner(w, config.Environment())
 	fmt.Fprintf(w, "Contract: %s\n", config.Schema)
 	fmt.Fprintf(w, "Endpoint: %s (%s)\n", config.Address, config.Transport)
 	fmt.Fprintf(w, "Acknowledged as a test endpoint: %t  Transport explicitly approved: %t\n", config.TestEndpoint, config.ApprovedTransport)
@@ -228,13 +227,24 @@ func writeEnvironmentLines(w io.Writer, config replay.Target) {
 	fmt.Fprintf(w, "Client certificate: configured; its private key is %s, read through the reference %q\n", secret.Mask, config.Credential.Reference)
 }
 
+// writeEnvironmentBanner states what a command is pointed at before it reports
+// anything else. The classification is stated with what it is worth beside it:
+// it is what somebody recorded, and readmit neither established it nor treats
+// it as permission to send anywhere. See docs/target.md.
+func writeEnvironmentBanner(w io.Writer, named replay.Environment) {
+	fmt.Fprintf(w, "Environment: %s\n", absent(named.Name))
+	fmt.Fprintf(w, "Classification: %s (recorded by a person; readmit did not establish it and does not enforce it)\n", named.Classification)
+}
+
 // writeDiagnosisLines renders one diagnosis and states its boundary. An expiry
 // is reported as the certificate states it and nothing acts on it.
 func writeDiagnosisLines(w io.Writer, report environment.Report) {
 	fmt.Fprintf(w, "Diagnosis: %s (phase=%s)\n", report.Outcome, report.Phase)
+	fmt.Fprintf(w, "Evaluated: %s, classified %s", absent(report.Environment.Name), report.Environment.Classification)
 	if report.Peer != "" {
-		fmt.Fprintf(w, "Reached: %s\n", report.Peer)
+		fmt.Fprintf(w, "; reached %s", report.Peer)
 	}
+	fmt.Fprintln(w)
 	if report.Unsolicited > 0 {
 		fmt.Fprintf(w, "Received without being asked: %d bytes, retained nowhere and interpreted as nothing\n", report.Unsolicited)
 	}
@@ -249,6 +259,14 @@ func writeDiagnosisLines(w io.Writer, report environment.Report) {
 				certificate.NotBefore.Format(time.RFC3339), certificate.NotAfter.Format(time.RFC3339),
 				certificate.NotAfter.Sub(now).Truncate(time.Second))
 		}
+	}
+	for i, certificate := range report.Unverified {
+		fmt.Fprintf(w, "  unverified certificate %d: subject=%s issuer=%s not_before=%s not_after=%s\n",
+			i+1, certificate.Subject, certificate.Issuer,
+			certificate.NotBefore.Format(time.RFC3339), certificate.NotAfter.Format(time.RFC3339))
+	}
+	if len(report.Unverified) > 0 {
+		fmt.Fprintln(w, "  the endpoint presented these and verification refused them, so they identify nothing here.")
 	}
 	fmt.Fprintln(w, "No HL7 payload was sent. Reaching an endpoint and verifying its certificate are evidence about the transport only:")
 	fmt.Fprintln(w, "they are not evidence that an application accepted, processed or stored anything, and an expiry above is reported, not acted on.")

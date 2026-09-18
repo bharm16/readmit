@@ -134,8 +134,7 @@ func connect(ctx context.Context, plan *Plan) (net.Conn, *TransportError) {
 	if plan.target.Transport == "plain" {
 		return connection, nil
 	}
-	host, _, _ := net.SplitHostPort(plan.target.Address)
-	config := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: host}
+	config := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: VerifiedServerName(plan.target)}
 	if len(plan.ca) > 0 {
 		config.RootCAs = x509.NewCertPool()
 		config.RootCAs.AppendCertsFromPEM(plan.ca)

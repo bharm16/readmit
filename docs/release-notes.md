@@ -151,7 +151,11 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   server name and the subject, issuer and expiry of every presented
   certificate, with expired certificates, untrusted authorities, hostname
   mismatches, refused connections, timeouts and rejected client certificates
-  each named separately. It never sends an HL7 payload, and it says so: reaching
+  each named separately, and a certificate verification refused is reported so
+  the failure can be diagnosed. `replay` and `test` verify against the same
+  declared server name; this release's transport presents no client
+  certificate, so a configuration declaring one is refused for replay rather
+  than sent without it. A check never sends an HL7 payload, and it says so: reaching
   an endpoint is transport evidence, not evidence of application processing, and
   a certificate expiry is reported rather than acted on. The recorded
   classification is displayed by every command that shows a target, including

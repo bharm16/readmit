@@ -159,7 +159,7 @@ func TestTargetRecordsValidatesAndReachesANamedEnvironment(t *testing.T) {
 	if err != nil || stderr != "" {
 		t.Fatalf("target check: %v %s", err, stderr)
 	}
-	for _, want := range []string{"Diagnosis: reachable", "Reached: " + address, "No HL7 payload was sent"} {
+	for _, want := range []string{"Diagnosis: reachable", "Evaluated: lab-siu, classified nonproduction; reached " + address, "No HL7 payload was sent"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("target check output is missing %q:\n%s", want, stdout)
 		}
@@ -218,6 +218,42 @@ func TestTargetCheckReportsTLSStatusAndNamesACertificateFailure(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "Diagnosis: tls_hostname_mismatch") || !strings.Contains(stderr, "was not reached") {
 		t.Fatalf("a hostname mismatch was not named:\n%s\n%s", stdout, stderr)
+	}
+}
+
+// A client certificate is configured and diagnosed here, and a replay of the
+// same configuration is refused rather than sent without one.
+func TestTargetDiagnosesAClientCertificateThatReplayRefusesToPresent(t *testing.T) {
+	directory := t.TempDir()
+	authority, server := testOnlyTLS(t)
+	caFile := filepath.Join(directory, "ca.pem")
+	if err := os.WriteFile(caFile, authority, 0600); err != nil {
+		t.Fatal(err)
+	}
+	address, _ := quietEndpoint(t, server)
+	store, _ := registerReference(t, directory, address)
+	certificate := filepath.Join(directory, "client.pem")
+	if err := os.WriteFile(certificate, authority, 0600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(directory, "mtls.json")
+	if _, stderr, err := run(t, "target", "set", "--target", path,
+		"--name", "lab-mtls", "--classification", "nonproduction", "--address", address,
+		"--transport", "tls", "--ca", caFile, "--server-name", testOnlyServerName,
+		"--client-certificate", certificate, "--secrets", store, "--credential", credentialReferences,
+		"--connect-timeout", "2s", "--message-timeout", "200ms"); err != nil || stderr != "" {
+		t.Fatalf("target set: %v %s", err, stderr)
+	}
+	stdout, stderr, err := run(t, "target", "show", "--target", path)
+	if err != nil || stderr != "" || !strings.Contains(stdout, "Client certificate: configured") {
+		t.Fatalf("target show: %v %s %s", err, stdout, stderr)
+	}
+	if strings.Contains(stdout, testOnlyCredential) {
+		t.Fatal("target show rendered a credential value")
+	}
+	_, stderr, err = run(t, "replay", replayCase(t), "--target", path)
+	if err == nil || !strings.Contains(stderr, "presents no client certificate") {
+		t.Fatalf("a replay of a client-certificate configuration was accepted: %v %s", err, stderr)
 	}
 }
 
