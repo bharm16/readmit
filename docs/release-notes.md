@@ -237,6 +237,23 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   these commands observe nothing. `readmit-observation/v1`, `readmit-result/v1`,
   `readmit-test/v1`-`v2` and `readmit-job/v1` are unchanged.
 
+- `corpus generate` writes a reproducible performance corpus from four declared
+  inputs and records them, with the corpus length and digest, in a
+  `readmit-corpus/v1` manifest written after it. `corpus scan` reads one back
+  under the same `readmit-import-plan/v1` an import declares, through a 64 KiB
+  window in bounded parsing batches, holding one record and one batch whatever
+  the stream's length; it reports the peak it actually held beside the bound it
+  is held to, renders one bounded window of records, acknowledges an interrupt
+  within one record without leaving an artifact behind, and names the case
+  bundle bounds a stream is already past instead of widening them. A
+  `readmit-benchmark/v1` report publishes the declared corpus, the declared
+  bounds, what the run measured and the machine it measured on, with the
+  performance envelope proposed for the product recorded explicitly as
+  engineering targets rather than as measurements. The desktop message grid now
+  virtualizes its rows, so what it draws is decided by the viewport rather than
+  by the size of the window or the case. Every existing case, index, project,
+  run, result and report contract is unchanged.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is

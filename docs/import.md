@@ -301,6 +301,15 @@ or supply MLLP framing. A [mapping recipe](mapping.md#limits) inherits every one
 of these and adds 64 KiB for one recipe document, 128 envelope records per
 member, and its own locator, field, table and label bounds.
 
+None of those bounds moves for a larger file. An import holds every source it is
+about to write, so it is bounded by the evidence a case may hold, and raising
+one of them by reading a larger file into memory is not what a larger corpus
+needs. Reading a file past these bounds — to see what it holds, how it divides,
+and what reading it costs — is [`readmit corpus scan`](corpus.md), which streams
+one file through a 64 KiB window in bounded parsing batches, holds at most one
+16 MiB record at a time, and **names** the case bundle bounds a stream is
+already past rather than widening them. It writes no evidence.
+
 ## Explicitly not supported
 
 - **No detection.** There is no automatic framing, terminator, or encoding.
@@ -322,6 +331,11 @@ member, and its own locator, field, table and label bounds.
   divides a member by framing alone and reads no value out of it.
 - **No integration-engine export adapter** and **no file, SFTP, or API
   collection**. An import reads containers that are already on this machine.
+- **No streaming import.** A container is read whole, because an import holds
+  every source it writes. Streaming a file larger than a case bundle may hold,
+  with progress and cancellation, is [`readmit corpus scan`](corpus.md); it
+  reports what an import would find under the same declarations and writes no
+  case.
 - **No index.** An import writes evidence and a receipt; it builds no catalogue
   and no search index.
 - **No per-source direction or observed times under a plan.** One plan-driven

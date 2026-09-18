@@ -51,9 +51,9 @@ func (d declaration) plan(cmd *cobra.Command, saved string) (importer.Plan, erro
 	stated := declarationStated(cmd)
 	switch {
 	case saved != "" && stated:
-		return importer.Plan{}, errors.New("import reads a saved plan or the declaration flags, never both")
+		return importer.Plan{}, errors.New(cmd.Name() + " reads a saved plan or the declaration flags, never both")
 	case saved == "" && !stated:
-		return importer.Plan{}, errors.New("import requires --plan, or --framing, --terminator, --encoding and --direction declared on the command line")
+		return importer.Plan{}, errors.New(cmd.Name() + " requires --plan, or --framing, --terminator, --encoding and --direction declared on the command line")
 	case saved != "":
 		data, err := readInputFile(saved, importer.MaxPlanBytes)
 		if err != nil {
@@ -193,12 +193,7 @@ func importCommand(ran *bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&mapping, "recipe", "", "Existing readmit-mapping-recipe/v1 JSON file mapping a CSV, JSON, XML, or text envelope")
 	cmd.Flags().StringVar(&saved, "plan", "", "Existing readmit-import-plan/v1 JSON file holding the declarations below")
-	cmd.Flags().StringVar(&declared.framing, "framing", "", "Declared message framing: raw, mllp, or batch")
-	cmd.Flags().StringVar(&declared.boundary, "batch-boundary", "", "Declared batch boundary, with --framing batch: segment-start or hl7-batch")
-	cmd.Flags().StringVar(&declared.terminator, "terminator", "", "Declared segment terminator: cr, lf, or crlf")
-	cmd.Flags().StringVar(&declared.encoding, "encoding", "", "Declared source encoding: utf-8, us-ascii, iso-8859-1, or unknown")
-	cmd.Flags().StringVar(&declared.direction, "direction", "", "Declared direction of every imported occurrence: unknown, inbound, or outbound")
-	cmd.Flags().StringArrayVar(&declared.members, "member", nil, "One declared lowercase file-name suffix a folder or archive entry must end with; repeatable")
+	addDeclarationFlags(cmd, &declared, true)
 	cmd.Flags().StringArrayVar(&files, "file", nil, "One declared message file; repeatable")
 	cmd.Flags().StringArrayVar(&folders, "folder", nil, "One declared folder whose regular files are members; repeatable")
 	cmd.Flags().StringArrayVar(&archives, "archive", nil, "One declared ZIP archive whose entries are members; repeatable")
