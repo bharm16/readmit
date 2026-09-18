@@ -32,3 +32,18 @@ Receiver scenario fixtures for issue #3 are also independently authored:
 arrays directly, independent of receiver code. Both modes must return AA; only
 the fixed ledger has one record at the new time. These fixtures implement the
 narrow `readmit-siu-v1` test profile, not general HL7 conformance.
+
+Diagnosis fixtures for issue #7 are independently authored raw messages:
+`diagnose-booking.hl7`, `diagnose-reschedule.hl7`,
+`diagnose-cancel-other-authority.hl7`, `diagnose-missing-patient.hl7`, and
+`diagnose-ack.hl7`. They distinguish a booking within the observed window from a
+partial window, separate assigning authorities, omit a profile-required patient
+field, and supply ACK/ERR evidence. Expected classifications are written directly
+in the tests, not calculated by the diagnosis rules under test.
+
+Issue #8 freezes the implemented v1 generator with independently constructed
+`synth-v1-regression.mllp`, `synth-v1-cancellation.mllp`, and
+`synth-v1-invalid.mllp`. The declared tuple, independent PCG vector, and reviewed
+case identities are documented in [the reference vector](../docs/synth-v1-vector.md). Tests compare emitted
+payload bytes and bundle identities to these fixed expectations; native archive
+checks also compare all three payload streams to the packaged goldens.

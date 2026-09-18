@@ -33,10 +33,23 @@ FIXTURES = (
 )
 REQUIRED_FILES = {
     "README.md", "THIRD_PARTY_NOTICES.md", "docs/dictionary-provenance.md",
-    "dictionary/fields-v251.json", "testdata/README.md", "docs/case-bundle.md", "docs/listen.md",
+    "dictionary/fields-v251.json",
+    "testdata/README.md",
+    "docs/case-bundle.md",
+    "docs/listen.md",
     "testdata/fixtures/case-evidence.mllp",
-    "testdata/fixtures/listen-s12.hl7", "testdata/fixtures/listen-s13.hl7",
-    "testdata/fixtures/listen-fixed.json", "testdata/fixtures/listen-defective.json",
+    "testdata/fixtures/listen-s12.hl7",
+    "testdata/fixtures/listen-s13.hl7",
+    "testdata/fixtures/listen-fixed.json",
+    "testdata/fixtures/listen-defective.json",
+    "docs/synth.md",
+    "docs/diagnose.md",
+    "docs/selectors.md",
+    "testdata/fixtures/diagnose-booking.hl7",
+    "testdata/fixtures/synth-v1-regression.mllp",
+    "testdata/fixtures/synth-v1-cancellation.mllp",
+    "testdata/fixtures/synth-v1-invalid.mllp",
+    "docs/synth-v1-vector.md",
     "licenses/cobra-LICENSE.txt", "licenses/go-BSD-3-Clause.txt",
     "licenses/mousetrap-LICENSE.txt", "licenses/nhapi-MPL-2.0.txt", "licenses/pflag-LICENSE.txt",
 } | {"testdata/fixtures/" + filename for filename, _, _, _ in FIXTURES}
@@ -176,14 +189,66 @@ def smoke(archive, target_os, release_tag=None):
         corrupt = run("timeline", copied, "--show-values", success=False)
         assert not corrupt.stdout and b"SECRET" not in corrupt.stderr
         smoke_receiver(archive, binary, environment, work, run)
+
+
+        booking_source = work / "diagnose-booking.hl7"
+        booking_source.write_bytes(member_bytes(archive, "testdata/fixtures/diagnose-booking.hl7"))
+        booking_case, report = work / "booking.case", work / "diagnosis"
+        run("capture", booking_source, "--output", booking_case)
+        diagnosed = run("diagnose", booking_case, "--output", report)
+        assert not diagnosed.stderr and b"SYNTH" not in diagnosed.stdout
+        document = json.loads((report / "report.json").read_bytes())
+        markdown = (report / "report.md").read_text()
+        assert document["schema"] == "readmit-diagnosis/v1" and document["findings"] == []
+        assert document["unsupported"] == [] and "not proof" in document["no_findings"].lower()
+        assert "not proof" in markdown.lower() and document["ruleset"] in markdown
+        assert not run("diagnose", booking_case, "--output", report, success=False).stdout
+
+        generator_args = ("--seed", "0", "--base-time", "2026-01-01T12:00:00Z",
+                          "--generator-version", "readmit-synth-v1", "--profile-version", "readmit-siu-v1")
+        family, repeated = work / "synthetic-family", work / "repeated-family"
+        run("synth", *generator_args, "--output", family)
+        run("synth", *generator_args, "--output", repeated)
+        assert (family / "family.json").is_file()
+        family_files = {p.relative_to(family).as_posix(): p.read_bytes() for p in family.rglob("*") if p.is_file()}
+        repeated_files = {p.relative_to(repeated).as_posix(): p.read_bytes() for p in repeated.rglob("*") if p.is_file()}
+        assert family_files == repeated_files
+        assert all(str(work).encode() not in data for data in family_files.values())
+        for variant, count in (("regression", 2), ("cancellation", 3), ("invalid", 2)):
+            generated = run("timeline", family / variant)
+            assert not generated.stderr and b"Provenance: generated" in generated.stdout
+            assert f"Messages: {count}\n".encode() in generated.stdout
+            assert b"imported=unknown" in generated.stdout and b"observed=unknown" in generated.stdout
+            generated_events = [json.loads(line) for line in (family / variant / "events.jsonl").read_bytes().splitlines()]
+            generated_bytes = b"".join((family / variant / event["payload"]["path"]).read_bytes() for event in generated_events)
+            assert generated_bytes == member_bytes(archive, f"testdata/fixtures/synth-v1-{variant}.mllp")
+            generated_report = work / ("generated-diagnosis-" + variant)
+            run("diagnose", family / variant, "--output", generated_report)
+            interpreted = json.loads((generated_report / "report.json").read_bytes())
+            assert interpreted["unsupported"] == []
+            if variant == "invalid":
+                assert len(interpreted["findings"]) == 1
+                assert interpreted["findings"][0]["rule_id"] == "siu.booking-not-observed"
+                assert interpreted["findings"][0]["classification"] == "hypothesis"
+            else:
+                assert interpreted["findings"] == []
+        assert not run("synth", *generator_args, "--output", family, success=False).stdout
+        smoke_receiver(archive, binary, environment, work, run, family / "regression")
     print(f"PASS: {archive.name}; checksum, version, inspection, capture, timeline, privacy, and byte preservation")
 
 
-def smoke_receiver(archive, binary, environment, work, run):
+def smoke_receiver(archive, binary, environment, work, run, generated_case=None):
     """Exercise the archived fixture over a bounded local socket on every OS."""
+    label = "generated" if generated_case is not None else "fixture"
+    if generated_case is None:
+        payloads = [member_bytes(archive, "testdata/fixtures/" + name)
+                    for name in ("listen-s12.hl7", "listen-s13.hl7")]
+    else:
+        events = [json.loads(line) for line in (generated_case / "events.jsonl").read_bytes().splitlines()]
+        payloads = [(generated_case / event["payload"]["path"]).read_bytes()[1:-2] for event in events]
     for mode, record_count in (("fixed", 1), ("defective", 2)):
-        case = work / f"receiver-{mode}.case"
-        observation = work / f"receiver-{mode}.json"
+        case = work / f"receiver-{label}-{mode}.case"
+        observation = work / f"receiver-{label}-{mode}.json"
         process = subprocess.Popen(
             [str(binary), "listen", "--address", "127.0.0.1:0", "--mode", mode,
              "--output", str(case), "--observation", str(observation),
@@ -202,8 +267,7 @@ def smoke_receiver(archive, binary, environment, work, run):
             assert initial["consistent"] and initial["processed"] == [] and initial["records"] == []
             with socket.create_connection(("127.0.0.1", port), timeout=5) as connection:
                 connection.settimeout(5)
-                for filename in ("listen-s12.hl7", "listen-s13.hl7"):
-                    payload = member_bytes(archive, "testdata/fixtures/" + filename)
+                for payload in payloads:
                     control_id = payload.split(b"\r", 1)[0].split(b"|")[9]
                     frame = b"\x0b" + payload + b"\x1c\r"
                     connection.sendall(frame[:7])
@@ -221,8 +285,15 @@ def smoke_receiver(archive, binary, environment, work, run):
             assert process.returncode == 0 and not stderr
             assert b"PATIENT" not in stdout and b"MSH|" not in stdout
             final = json.loads(observation.read_bytes())
-            expected = json.loads(member_bytes(archive, f"testdata/fixtures/listen-{mode}.json"))
-            assert final["records"] == expected and len(final["records"]) == record_count
+            assert len(final["records"]) == record_count
+            if generated_case is None:
+                expected = json.loads(member_bytes(archive, f"testdata/fixtures/listen-{mode}.json"))
+                assert final["records"] == expected
+            else:
+                # Independent fixed vector from synth-v1-vector.md, not values
+                # calculated by the generator or receiver under test.
+                assert final["records"][-1]["appointment_start"] == "20260103120000+0000"
+                assert all(record["filler_id"]["value"] == "FILLER-88EE33C89BA69B57" for record in final["records"])
             assert len(final["processed"]) == 2 and final["consistent"]
             timeline = run("timeline", case)
             assert f"Ledger records: {record_count}\n".encode() in timeline.stdout

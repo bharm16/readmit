@@ -58,6 +58,10 @@ func Execute(version string, args []string, stdout, stderr io.Writer) error {
 	root.AddCommand(inspect)
 	root.AddCommand(captureCommand(&ran), timelineCommand(&ran))
 	root.AddCommand(listenCommand(&ran))
+
+	root.AddCommand(diagnoseCommand(&ran))
+
+	root.AddCommand(synthCommand(&ran))
 	root.SetArgs(args)
 	err := root.Execute()
 	if err != nil {
