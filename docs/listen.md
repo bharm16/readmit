@@ -30,6 +30,14 @@ writable parent directories. The first stdout line is `Listening: HOST:PORT`;
 after the initial observation has been installed. No message values appear in
 default console output. Startup/validation errors use bounded diagnostics.
 
+A nonloopback bind is opt-in. `--address` accepts a literal loopback IP address
+and a numeric port by default; every other address, including `0.0.0.0`, `[::]`,
+an empty host and a host name, requires `--approved-bind`. A name is never
+resolved to decide this: a name commonly used for loopback is still a name, and
+resolving one would rest the decision on DNS. The refusal happens before
+anything binds, so a refused address never holds a socket. This is the same
+explicit approval a nonloopback target requires in [`replay`](replay.md).
+
 `--max-messages N` counts complete inbound frames, including rejected complete
 messages, and finalizes after N. Zero, the default, runs until Ctrl-C/SIGTERM or
 a session limit. Cancellation interrupts a blocked accept, receive, or ACK write
@@ -206,7 +214,8 @@ There is no production durability, restart/recovery, concurrent-client service,
 TLS, authentication, general SIU or patient reconciliation, cancellation support,
 delivery retry, database, queue, HTTP control API,
 telemetry, or automatic network access beyond the explicitly configured listen
-address. The default bind is loopback. This fixture is for controlled synthetic
+address. The default bind is loopback, and a nonloopback one requires
+`--approved-bind`. This fixture is for controlled synthetic
 testing and makes no claim of clinical correctness or production readiness.
 Generic capture of other message types belongs to [`collect`](collect.md), and so
 does the enhanced acknowledgement protocol: this fixture answers original mode

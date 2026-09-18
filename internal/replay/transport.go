@@ -12,6 +12,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/mllp"
+	"github.com/bharm16/readmit/internal/sendpolicy"
 )
 
 // Execute is the only replay operation that accesses the network. A new run is
@@ -19,7 +20,54 @@ import (
 // not returned errors. Errors indicate invalid input or failure to store evidence.
 // There is one dial operation, one outstanding message, and no reconnect/retry.
 func Execute(ctx context.Context, plan *Plan, output string) (*Run, error) {
-	return execute(ctx, plan, output, connect)
+	return ExecuteWithPolicy(ctx, plan, output, nil, nil)
+}
+
+// ExecuteWithPolicy checks the actual destination and records its decision before
+// opening a connection. A selected policy requires a recorder; a failed record
+// prevents sending. Execute uses the same boundary with loopback-only defaults.
+func ExecuteWithPolicy(ctx context.Context, plan *Plan, output string, policy *sendpolicy.Policy, record func(sendpolicy.Decision) error) (*Run, error) {
+	return executeWithPolicy(ctx, plan, output, policy, record, sendpolicy.SystemResolver)
+}
+
+func executeWithPolicy(ctx context.Context, plan *Plan, output string, policy *sendpolicy.Policy, record func(sendpolicy.Decision) error, resolve sendpolicy.Resolver) (*Run, error) {
+	if plan == nil || len(plan.messages) == 0 {
+		return nil, errors.New("replay requires a prepared plan")
+	}
+	if policy != nil && record == nil {
+		return nil, errors.New("a selected send policy requires a decision recorder")
+	}
+	duration, _ := time.ParseDuration(plan.target.ConnectTimeout)
+	deadline := time.Now().Add(duration)
+	decisionCtx, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
+	decision := sendpolicy.Decide(decisionCtx, policy, sendpolicy.Request{
+		Address: plan.target.Address, Classification: string(plan.target.Environment().Classification), Explicit: true,
+	}, resolve)
+	remaining := max(time.Duration(0), time.Until(deadline))
+	cancel()
+	// Retain before using the decision, and do not expose a mutable slice shared
+	// with the recorder as the authorization used by the connector.
+	address := ""
+	if decision.Allowed && len(decision.ResolvedAddresses) == 1 {
+		_, port, _ := net.SplitHostPort(plan.target.Address)
+		address = net.JoinHostPort(decision.ResolvedAddresses[0], port)
+	}
+	if record != nil {
+		if err := record(decision); err != nil {
+			return nil, err
+		}
+	}
+	if !decision.Allowed || address == "" {
+		return nil, errors.New("the send was refused by policy before anything was sent: " + string(decision.Reason))
+	}
+	return execute(ctx, plan, output, func(ctx context.Context, p *Plan) (net.Conn, *TransportError) {
+		// File persistence is not network connection time. DNS consumes the
+		// connection budget; recording and reserving evidence do not.
+		dialCtx, stop := context.WithTimeout(ctx, remaining)
+		defer stop()
+		return connect(dialCtx, p, address)
+	})
 }
 
 func execute(ctx context.Context, plan *Plan, output string, dial func(context.Context, *Plan) (net.Conn, *TransportError)) (*Run, error) {
@@ -123,11 +171,11 @@ func execute(ctx context.Context, plan *Plan, output string, dial func(context.C
 	return run, nil
 }
 
-func connect(ctx context.Context, plan *Plan) (net.Conn, *TransportError) {
+func connect(ctx context.Context, plan *Plan, address string) (net.Conn, *TransportError) {
 	duration, _ := time.ParseDuration(plan.target.ConnectTimeout)
 	dialCtx, cancel := context.WithTimeout(ctx, duration)
 	defer cancel()
-	connection, err := (&net.Dialer{}).DialContext(dialCtx, "tcp", plan.target.Address)
+	connection, err := (&net.Dialer{}).DialContext(dialCtx, "tcp", address)
 	if err != nil {
 		return nil, &TransportError{Phase: "dial", Class: errorClass(err, dialCtx)}
 	}

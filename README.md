@@ -250,8 +250,12 @@ transport presents no client certificate, so a configuration declaring one is
 refused for replay rather than sent without it. The recorded classification is shown by
 every one of those commands and by every `replay` preview and summary, and it is
 a claim rather than a finding: a person labelling an endpoint nonproduction is
-not proof the address is safe to send to, and this release displays the class
-rather than blocking on it. See [named test environments](docs/target.md).
+not proof the address is safe to send to. So it can only ever refuse. A class
+recorded as `production` refuses a replay during preparation, before a plan
+exists, which reaches `replay` and `test` alike; `nonproduction` grants nothing
+by itself. `target check --policy FILE` reports the send decision the send path
+would reach for this environment, from the same rule. See
+[named test environments](docs/target.md).
 
 `diff LEFT RIGHT` compares message fields in the terminal, Markdown, or JSON.
 Run-to-source comparisons use recorded occurrence mappings; unrelated collections
@@ -272,11 +276,23 @@ scenario, reset procedure, spec format, and result contract.
 
 `replay CASE --target CONFIG` previews a replay without opening a connection.
 Sending requires `--send --output NEW_RUN` and an explicit configuration marked
-as a test endpoint. Source values stay unchanged unless a named transformation
-is selected. Each run records intended, sent, and received bytes, source mappings,
+as a test endpoint. A destination that is not a literal loopback address also
+requires `--policy FILE`: a `readmit-send-policy/v1` document
+names the approved destinations, readmit resolves the configured address at the
+point of sending and denies what it cannot name — a class nobody recorded, a name
+resolving to several addresses, a name that does not resolve, an address no
+approved destination contains — and retains the `readmit-send-decision/v1`
+document that says what was allowed or denied and why, before anything is
+opened. `--decision NEW_FILE` selects its destination; sends otherwise use
+`OUTPUT.decision.json`. Connections use the checked IP without a second DNS
+lookup, while TLS verifies the configured server name. A decision can stop a send; it cannot retract bytes already sent. Source
+values stay unchanged unless a named transformation is selected. Each run records intended, sent, and received bytes, source mappings,
 ACK outcomes, and uncertain delivery; ambiguous timeouts are never retried
 automatically. Run manifests contain source values and remain customer-local
 review artifacts. See [safe replay](docs/replay.md).
+
+Both `listen` and `collect` bind loopback by default; a nonloopback bind is
+refused unless `--approved-bind` is passed.
 
 `listen` is a controllable local **test fixture** for one SIU booking/rescheduling
 scenario. Its fixed mode updates an appointment; defective mode appends a

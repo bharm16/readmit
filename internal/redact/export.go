@@ -84,6 +84,16 @@ func Export(ctx context.Context, request ExportRequest) (*ExportManifest, error)
 	if err != nil {
 		return nil, blockedAttempt(stage, review, proofFindings(filepath.Join(stage, "proof"), review.OriginalFailedAssertions), exportreview.Scan{Status: "not-run", Locations: []string{}, Limitations: "Proof failed before final residual review."})
 	}
+	// Send decisions are local execution records, not part of the approved
+	// export contract. Keep them beside the private staging directory before
+	// enumerating packet contents; do not weaken the packet allowlist.
+	for _, session := range []string{"baseline", "postfix"} {
+		from := filepath.Join(stage, "proof", session, "result.decision.json")
+		to := stage + "." + session + ".decision.json"
+		if err := os.Rename(from, to); err != nil {
+			return nil, errors.New("cannot retain private proof send decision")
+		}
+	}
 	report, err := diagnose.Run(casePath, diagnose.DefaultConfig())
 	if err != nil {
 		return nil, err

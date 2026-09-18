@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -10,15 +11,16 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/replay"
+	"github.com/bharm16/readmit/internal/sendpolicy"
 	"github.com/spf13/cobra"
 )
 
 func replayCommand(ran *bool) *cobra.Command {
-	var targetPath, output, shift string
+	var targetPath, output, shift, policyPath, decisionPath string
 	var messages, transforms []string
 	var send bool
 	command := &cobra.Command{
-		Use:   "replay CASE --target CONFIG [--send --output NEW_RUN]",
+		Use:   "replay CASE --target CONFIG [--policy FILE --decision NEW_FILE] [--send --output NEW_RUN]",
 		Short: "Preview or explicitly send selected case messages and retain local run evidence",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
@@ -33,6 +35,18 @@ func replayCommand(ran *bool) *cobra.Command {
 			}
 			if send && output == "" {
 				return errors.New("replay --send requires --output with a new run directory")
+			}
+			// Actual sends always retain their decision, including denials when
+			// no policy was selected. Previews need an explicit destination.
+			if send && decisionPath == "" {
+				decisionPath = output + ".decision.json"
+			}
+			if policyPath != "" && decisionPath == "" {
+				return errors.New("a policy preview requires --decision with a new file")
+			}
+			policy, err := readSendPolicy(policyPath)
+			if err != nil {
+				return err
 			}
 			options := replay.Options{Occurrences: messages}
 			hasShift := false
@@ -51,6 +65,29 @@ func replayCommand(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+			defer cancel()
+			var decision sendpolicy.Decision
+			record := func(value sendpolicy.Decision) error {
+				decision = value
+				if decisionPath != "" {
+					return sendpolicy.WriteDecision(decisionPath, value)
+				}
+				return nil
+			}
+			// Prepare also rejects production for every caller. Record that
+			// refusal before preparation so it survives as inspectable evidence.
+			if !send || sendpolicy.RefusesEverySend(string(target.Environment().Classification)) {
+				duration, _ := time.ParseDuration(target.ConnectTimeout)
+				decisionCtx, stop := context.WithTimeout(ctx, duration)
+				value := sendpolicy.Decide(decisionCtx, policy, sendpolicy.Request{
+					Address: target.Address, Classification: string(target.Environment().Classification), Explicit: send,
+				}, sendpolicy.SystemResolver)
+				stop()
+				if err := record(value); err != nil {
+					return err
+				}
+			}
 			plan, err := replay.Prepare(args[0], target, options)
 			if err != nil {
 				return err
@@ -59,6 +96,7 @@ func replayCommand(ran *bool) *cobra.Command {
 			if !send {
 				fmt.Fprintf(writer, "Dry run: no connection opened\nTarget: %q (%s)\n", target.Address, target.Transport)
 				writeEnvironmentBanner(writer, target.Environment())
+				writeDecisionLines(writer, decision)
 				fmt.Fprintf(writer, "Messages: %d\n", plan.Count())
 				if len(transforms) == 0 {
 					fmt.Fprintln(writer, "Transformations: none; message payload bytes unchanged")
@@ -79,14 +117,17 @@ func replayCommand(ran *bool) *cobra.Command {
 				}
 				return nil
 			}
-			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer cancel()
-			result, err := replay.Execute(ctx, plan, output)
+			result, err := replay.ExecuteWithPolicy(ctx, plan, output, policy, record)
 			if err != nil {
+				if decision.Schema != "" && !decision.Allowed {
+					writeDecisionLines(writer, decision)
+					_ = writer.Flush()
+				}
 				return err
 			}
 			fmt.Fprintf(writer, "Run: %s\nSchema: %s\n", result.Identity, result.Manifest.Schema)
 			writeEnvironmentBanner(writer, target.Environment())
+			writeDecisionLines(writer, decision)
 			fmt.Fprintf(writer, "Messages: %d\nContains source values: true (customer-local-only)\n", len(result.Events))
 			for _, event := range result.Events {
 				fmt.Fprintf(writer, "  %s outcome=%s delivery=%s sent_bytes=%d received_bytes=%d ack=%s correlation=%s elapsed=%s", event.OutboundOccurrence, event.Outcome, event.Delivery, event.Sent.Size, event.Received.Size, event.ACK.Code, event.ACK.Correlation, time.Duration(event.ElapsedNS))
@@ -110,5 +151,7 @@ func replayCommand(ran *bool) *cobra.Command {
 	command.Flags().StringArrayVar(&messages, "message", nil, "Source message occurrence to include (repeatable; source order is preserved)")
 	command.Flags().StringArrayVar(&transforms, "transform", nil, "Named transformation: rebase-control-ids or shift-timestamps (repeatable)")
 	command.Flags().StringVar(&shift, "shift", "", "Explicit whole-second duration for shift-timestamps, e.g. 24h or -2h")
+	command.Flags().StringVar(&policyPath, "policy", "", "Existing "+sendpolicy.PolicySchema+" document naming the destinations approved for sending")
+	command.Flags().StringVar(&decisionPath, "decision", "", "New file retaining the "+sendpolicy.DecisionSchema+" decision (send default: OUTPUT.decision.json)")
 	return command
 }

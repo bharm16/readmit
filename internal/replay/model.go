@@ -30,8 +30,12 @@ const (
 // endpoint. It is a claim written down, never a property readmit established:
 // labelling an endpoint nonproduction is not proof that the address is safe to
 // send to. readmit displays it wherever a target is shown and never reads it as
-// permission. Enforcement of a production-classified endpoint is separate from
-// recording one and is not part of this release.
+// permission to send anywhere.
+//
+// It can only ever refuse. Production refuses every replay, in Prepare, before
+// a plan exists. Nonproduction grants nothing on its own: what a send may
+// actually reach is decided against the addresses the configuration resolves to
+// at the moment of the send, in internal/sendpolicy.
 type Classification string
 
 const (

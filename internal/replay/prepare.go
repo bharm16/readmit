@@ -13,6 +13,7 @@ import (
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/mllp"
+	"github.com/bharm16/readmit/internal/sendpolicy"
 )
 
 // Prepare validates all selected messages and named transformations without DNS,
@@ -37,6 +38,16 @@ func Prepare(sourcePath string, target Target, options Options) (*Plan, error) {
 	}
 	if err := validateTarget(target); err != nil {
 		return nil, err
+	}
+	// The one refusal nothing can grant, applied before a plan exists so that
+	// no path holding a plan can send to a production-classified environment
+	// and no command has to remember to ask. A class is a claim and not proof
+	// that an address is safe, so it can only ever refuse: a nonproduction
+	// label authorizes nothing by itself, and what a send may actually reach is
+	// decided against the addresses a configuration resolves to, in
+	// internal/sendpolicy, which owns this comparison too.
+	if sendpolicy.RefusesEverySend(string(target.Environment().Classification)) {
+		return nil, errors.New("this configuration records the production classification; readmit does not replay to a production-classified environment")
 	}
 	if err := validateTransforms(options.Transformations); err != nil {
 		return nil, err

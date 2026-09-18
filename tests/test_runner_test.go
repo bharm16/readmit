@@ -291,4 +291,8 @@ func TestTestExecutableACKOnlySuccessNamesTheACKBoundary(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
+	decision := readDecision(t, filepath.Join(dir, "result.decision.json"))
+	if !decision.Allowed || !decision.ExplicitSend || decision.PolicySelected {
+		t.Fatalf("missing allowed loopback decision: %+v", decision)
+	}
 }

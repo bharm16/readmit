@@ -185,8 +185,21 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   a certificate expiry is reported rather than acted on. The recorded
   classification is displayed by every command that shows a target, including
   every replay, and is never treated as permission: a person labelling an
-  endpoint nonproduction is not proof the address is safe to send to, and
-  blocking on a recorded class is not in this release.
+  endpoint nonproduction is not proof the address is safe to send to.
+
+- A recorded classification can only refuse. `production` refuses a replay
+  during preparation, before a plan exists, so `replay` and `test` are both held
+  to it. What a send may reach is decided separately, against the addresses the
+  configuration resolves to at the point of sending: `replay --policy FILE
+  --decision NEW_FILE` reads a `readmit-send-policy/v1` document of approved
+  destinations and denies a class nobody recorded, a name resolving to several
+  addresses, a name that does not resolve and an address no approved destination
+  contains. Without a policy, a literal loopback address is the only destination
+  that remains. The `readmit-send-decision/v1` document recording what was
+  allowed or denied and why is retained before anything is opened; a decision
+  can stop a send and cannot retract bytes already sent. `target check --policy`
+  reports the same decision from the same rule and sends nothing. `listen` and
+  `collect` refuse a nonloopback bind unless `--approved-bind` is passed.
 
 - The desktop shell finds evidence through a filterable message grid over the
   rebuildable case index. It renders one bounded window of occurrences at a time

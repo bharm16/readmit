@@ -358,7 +358,9 @@ func TestTargetSetRefusesWhatTheContractRefuses(t *testing.T) {
 }
 
 // A replay states the environment it is pointed at before it reports anything
-// else, so nobody has to open the configuration to see what it is.
+// else, so nobody has to open the configuration to see what it is. A class
+// recorded as production is refused instead of previewed, and the environment
+// stays visible where it is shown rather than replayed.
 func TestReplayShowsTheRecordedClassification(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "lab.json")
@@ -369,11 +371,15 @@ func TestReplayShowsTheRecordedClassification(t *testing.T) {
 		t.Fatalf("target set: %v %s", err, stderr)
 	}
 	stdout, stderr, err := run(t, "replay", replayCase(t), "--target", path)
+	if err == nil || !strings.Contains(stderr, "production-classified environment") {
+		t.Fatalf("a production-classified environment was previewed: %v %s %s", err, stdout, stderr)
+	}
+	stdout, stderr, err = run(t, "target", "show", "--target", path)
 	if err != nil || stderr != "" {
-		t.Fatalf("replay preview: %v %s", err, stderr)
+		t.Fatalf("target show: %v %s", err, stderr)
 	}
 	if !strings.Contains(stdout, "Environment: lab-siu") || !strings.Contains(stdout, "Classification: production") {
-		t.Fatalf("a replay preview did not state the environment it is pointed at:\n%s", stdout)
+		t.Fatalf("a configuration did not state the environment it describes:\n%s", stdout)
 	}
 	previous, _, err := run(t, "replay", replayCase(t), "--target", replayTarget(t, address))
 	if err != nil {
