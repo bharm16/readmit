@@ -76,7 +76,7 @@ GitHub Actions, with the declared release matrix mapped to native runners:
 | windows/amd64 | `windows-2025` |
 
 - Third-party actions are pinned by commit SHA.
-- PR checks: tests, vet, govulncheck, independent endpoint/corpus and mutation checks, and native executable smoke tests.
+- PR checks: tests, vet, govulncheck, independent endpoint/corpus and mutation checks, and native executable smoke tests. The desktop shell is built and checked in a separate workflow, because it needs cgo and a platform webview that the release jobs deliberately do not.
 - Release jobs test the exact artifacts being published, not rebuilt equivalents.
 - Release credentials and signing never run in untrusted pull-request workflows.
 

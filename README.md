@@ -225,9 +225,9 @@ verify an extracted executable using
 ## Privacy and development
 
 No telemetry, crash reporting, update checks, automatic uploads, or network
-access exists in `inspect`, `capture`, `timeline`, or the desktop shell. Product-wide, network access
-is limited to endpoints the user explicitly configures; these commands have no
-endpoint configuration.
+access exists in `inspect`, `capture`, `timeline`, or the desktop shell.
+Product-wide, network access is limited to endpoints the user explicitly
+configures; these commands have no endpoint configuration.
 No customer-derived data belongs in source control or CI fixtures. Logs and
 reports do not print raw values without an explicit request. Round-trip copies
 still contain the original evidence and inherit its handling requirements.

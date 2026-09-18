@@ -131,12 +131,12 @@ export default function App() {
         </section>
       ) : null}
 
-      {evidence ? (
+      {evidence || running === "case" ? (
         <section aria-label="Case">
           <h2>Case</h2>
           {running === "case" ? <Status state="busy" reason="Verifying the case." /> : null}
-          <Status state={evidence.state} reason={evidence.reason} />
-          {evidence.case ? (
+          {evidence ? <Status state={evidence.state} reason={evidence.reason} /> : null}
+          {evidence?.case ? (
             <dl className="evidence">
               <dt>Name</dt>
               <dd>{evidence.case.name}</dd>
