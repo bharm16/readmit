@@ -48,8 +48,8 @@ func collectCommand(ran *bool) *cobra.Command {
 			}
 			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer cancel()
-			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Listening: %s\nPolicy: %s\nSource label: %s\nAcknowledgement: %s %s\nApplication processing: %s\n",
-				listener.Addr(), config.Policy.Name, config.Policy.SourceLabel, config.Policy.Acknowledgement.Operator, config.Policy.Acknowledgement.Code, collection.NoApplicationProcessing); err != nil {
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Listening: %s\nPolicy: %s\nSource label: %s\nAcknowledgement: %s %s\nEnhanced acknowledgement: %s\nApplication processing: %s\n",
+				listener.Addr(), config.Policy.Name, config.Policy.SourceLabel, config.Policy.Acknowledgement.Operator, config.Policy.Acknowledgement.Code, enhancedSummary(config.Policy), collection.NoApplicationProcessing); err != nil {
 				return errors.New("cannot write collector startup output")
 			}
 			b, err := c.Serve(ctx, listener)
@@ -66,6 +66,7 @@ func collectCommand(ran *bool) *cobra.Command {
 	command.Flags().StringVar(&config.OutputPath, "output", "", "New final case bundle directory")
 	command.Flags().IntVar(&config.MaxFrameBytes, "max-frame-bytes", 1<<20, "Maximum MLLP payload bytes, excluding the three framing bytes")
 	command.Flags().DurationVar(&config.IdleTimeout, "idle-timeout", 30*time.Second, "Maximum interval without receiving bytes, and acknowledgement write timeout")
+	command.Flags().DurationVar(&config.ApplicationTimeout, "application-ack-timeout", 10*time.Second, "Connect and write timeout for one acknowledgement sent to a separate application endpoint")
 	command.Flags().IntVar(&config.MaxMessages, "max-messages", 0, "Finalize after this many complete inbound frames; 0 waits for cancellation")
 	return command
 }

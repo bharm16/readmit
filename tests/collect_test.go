@@ -106,8 +106,9 @@ func TestCollectExecutableRetainsLabelledDownstreamEvidence(t *testing.T) {
 		"Policy: downstream-sink", "Source label: downstream-test-endpoint",
 		"Acknowledgement: original-mode-fixed-code AA", "Application processing: none",
 		"Schema: readmit-case/v4", "Provenance: collected", "Messages: 2", "ACKs: 2",
-		"Collection: readmit-collection/v1", "Collected sessions: 1", "Received frames: 2",
-		"Acknowledged frames: 2", "c0001 source=s0001 label=downstream-test-endpoint",
+		"Collection: readmit-collection/v2", "Collected sessions: 1", "Received frames: 2",
+		"Enhanced acknowledgement: unsupported", "Accept acknowledgements: 0",
+		"Application acknowledgements: 2", "c0001 source=s0001 label=downstream-test-endpoint",
 	} {
 		if !strings.Contains(output, want) {
 			t.Errorf("missing summary %q in %s", want, output)
@@ -145,6 +146,7 @@ func TestCollectInvalidArgumentsArePrivate(t *testing.T) {
 		{"--policy", valid, "--output", filepath.Join(dir, "case"), "--max-messages", "4001"},
 		{"--policy", valid, "--output", filepath.Join(dir, "case"), "--max-frame-bytes", "0"},
 		{"--policy", valid, "--output", filepath.Join(dir, "case"), "--idle-timeout", "0s"},
+		{"--policy", valid, "--output", filepath.Join(dir, "case"), "--application-ack-timeout", "0s"},
 	} {
 		args := append([]string{"collect", "--address", "127.0.0.1:0"}, tail...)
 		stdout, stderr, err := run(t, args...)
@@ -201,7 +203,7 @@ func TestCollectExecutableIsTheDownstreamSinkOfARealReplayRun(t *testing.T) {
 		t.Fatalf("collector did not retain the replayed messages: %+v", record)
 	}
 	for _, received := range record.Received {
-		if received.Acknowledgement != "AA" {
+		if received.Mode != collection.OriginalMode || received.Application.Code != "AA" {
 			t.Fatalf("replayed message was not acknowledged: %+v", received)
 		}
 	}
@@ -292,5 +294,134 @@ func TestCollectExecutableBoundsFrameSizeWithoutDiscardingEvidence(t *testing.T)
 	prefix, err := collected.Raw("s0001-e000001")
 	if err != nil || !bytes.HasPrefix(mllp.Frame([]byte(collectADT)), prefix) || len(prefix) == 0 {
 		t.Fatal("the oversized frame's consumed prefix was discarded")
+	}
+}
+
+const collectEnhancedPolicy = `{"schema":"readmit-receiver-policy/v2","name":"enhanced-sink","source_label":"downstream-test-endpoint",` +
+	`"acknowledgement":{"operator":"original-mode-fixed-code","code":"AA"},` +
+	`"accepted_message_types":{"operator":"any-message-type","values":[]},` +
+	`"enhanced_acknowledgement":{"operator":"enhanced-mode-fixed-codes","accept_code":"CA","application_code":"AA",` +
+	`"application_delivery":"separate-endpoint","application_endpoint":"ENDPOINT","approved_transport":false}}`
+
+const collectEnhancedADT = "MSH|^~\\&|SENDER|FACILITY|READMIT|COLLECT|20260101120000||ADT^A01|ENHANCED-001|P|2.5.1|||AL|AL\rPID|1||SYNTH-002\r"
+
+func stageCode(t *testing.T, raw []byte) (code, acknowledged string) {
+	t.Helper()
+	doc, err := hl7.Parse(raw, hl7.Options{Format: hl7.MLLP})
+	if err != nil {
+		t.Fatalf("acknowledgement is not readable HL7: %v", err)
+	}
+	segment := doc.Messages[0].Segments[1]
+	return string(doc.Bytes(segment.Field(1).Span)), string(doc.Bytes(segment.Field(2).Span))
+}
+
+// The commit acknowledgement comes back on the connection that delivered the
+// message; the application acknowledgement arrives at a separately configured
+// endpoint. Neither is evidence that an application processed anything.
+func TestCollectExecutableSplitsAcknowledgementStagesAcrossEndpoints(t *testing.T) {
+	dir := t.TempDir()
+	casePath := filepath.Join(dir, "collected")
+	sink, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sink.Close()
+	delivered := make(chan []byte, 1)
+	go func() {
+		conn, err := sink.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_ = conn.SetDeadline(time.Now().Add(8 * time.Second))
+		frames, _ := mllp.NewReader(conn, 1<<20)
+		if raw, err := frames.ReadFrame(); err == nil {
+			delivered <- raw
+		}
+	}()
+	declared := strings.Replace(collectEnhancedPolicy, "ENDPOINT", sink.Addr().String(), 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, binary, "collect", "--address", "127.0.0.1:0", "--policy", policyFile(t, dir, declared),
+		"--output", casePath, "--max-messages", "1", "--idle-timeout", "2s", "--application-ack-timeout", "3s")
+	var diagnostic bytes.Buffer
+	command.Stderr = &diagnostic
+	stdout, err := command.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { cancel(); _ = command.Wait() })
+	reader := bufio.NewReader(stdout)
+	ready, err := reader.ReadString('\n')
+	if err != nil || !strings.HasPrefix(ready, "Listening: ") {
+		t.Fatalf("collector not ready: %q %v", ready, err)
+	}
+	conn, err := net.DialTimeout("tcp", strings.TrimSpace(strings.TrimPrefix(ready, "Listening: ")), 2*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(8 * time.Second))
+	if _, err := conn.Write(mllp.Frame([]byte(collectEnhancedADT))); err != nil {
+		t.Fatal(err)
+	}
+	frames, _ := mllp.NewReader(conn, 1<<20)
+	accept, err := frames.ReadFrame()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code, acknowledged := stageCode(t, accept); code != "CA" || acknowledged != "ENHANCED-001" {
+		t.Fatalf("the receiving connection did not get a correlated commit acknowledgement: %s %s", code, acknowledged)
+	}
+	var application []byte
+	select {
+	case application = <-delivered:
+	case <-time.After(8 * time.Second):
+		t.Fatal("the separate application endpoint received nothing")
+	}
+	if code, acknowledged := stageCode(t, application); code != "AA" || acknowledged != "ENHANCED-001" {
+		t.Fatalf("the separate endpoint did not get a correlated application acknowledgement: %s %s", code, acknowledged)
+	}
+	remaining, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := command.Wait(); err != nil {
+		t.Fatalf("collect: %v %s", err, diagnostic.String())
+	}
+	if diagnostic.Len() != 0 {
+		t.Fatalf("unexpected diagnostic: %s", diagnostic.String())
+	}
+	output := ready + string(remaining)
+	for _, want := range []string{
+		"Enhanced acknowledgement: enhanced-mode-fixed-codes CA AA separate-endpoint",
+		"Application processing: none", "Collection: readmit-collection/v2",
+		"Accept acknowledgements: 1", "Application acknowledgements: 1",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("missing summary %q in %s", want, output)
+		}
+	}
+	for _, private := range []string{"ENHANCED-001", "SYNTH-002", dir} {
+		if strings.Contains(output, private) {
+			t.Errorf("default output disclosed %q", private)
+		}
+	}
+	collected, err := bundle.Open(casePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := collected.Collection.Received[0]
+	if entry.Mode != collection.EnhancedMode || entry.Accept.Code != collection.CommitAcceptCode || entry.Accept.Destination != collection.SameConnection {
+		t.Fatalf("the commit stage was not recorded as itself: %+v", entry)
+	}
+	if entry.Application.Code != collection.AcceptCode || entry.Application.Destination != collection.SeparateEndpoint {
+		t.Fatalf("the separate application delivery was not recorded: %+v", entry.Application)
+	}
+	if collected.Collection.ApplicationProcessing != collection.NoApplicationProcessing {
+		t.Fatal("an enhanced exchange claimed application processing")
 	}
 }

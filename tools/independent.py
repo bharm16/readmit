@@ -23,6 +23,17 @@ MAX_FRAME_BYTES = 1 << 20
 FIELD_STATES = ("present", "empty", "null", "omitted")
 NULL = b'""'
 
+# MSA-1 vocabularies, transcribed from the HL7 v2.5.1 acknowledgement rules.
+# CA/CE/CR answer MSH-15 and report only that the receiver committed the bytes
+# it read. AA/AE/AR answer MSH-16 and report an application outcome. The two
+# sets never merge here, so a commit acceptance cannot be read as an
+# application acceptance by this implementation either.
+ACCEPT_CODES = ("CA", "CE", "CR")
+APPLICATION_CODES = ("AA", "AE", "AR")
+# The four conditions MSH-15 and MSH-16 may declare: always, never, on error
+# only, on success only. Any other populated value is not one of them.
+ACK_CONDITIONS = ("AL", "NE", "ER", "SU")
+
 
 class FramingError(Exception):
     """The bytes on the wire are not one complete MLLP block."""
@@ -299,6 +310,45 @@ def build_acknowledgement(request, code):
     return frame(payload)
 
 
+def acknowledgement_stage(code):
+    """Name the stage an MSA-1 code belongs to, independently of readmit."""
+    if code in ACCEPT_CODES:
+        return "accept"
+    if code in APPLICATION_CODES:
+        return "application"
+    raise ParseError(f"not an acknowledgement code in either stage: {code!r}")
+
+
+def acknowledgement_mode(message):
+    """Return the mode and conditions the header declares in MSH-15/MSH-16.
+
+    A field that is present carries a condition; empty and omitted ask for
+    nothing. Original mode is the absence of both, exactly as v2.5.1 defines it.
+    """
+    conditions = []
+    for selector in ("MSH-15", "MSH-16"):
+        state, value = message.field(selector)
+        conditions.append(value.decode("ascii", "replace") if state not in ("empty", "omitted") else "")
+    mode = "enhanced" if any(conditions) else "original"
+    return (mode, conditions[0], conditions[1])
+
+
+def requested(condition, success):
+    """Whether a declared condition asks for its stage, given a success outcome.
+
+    Transcribed from the condition table: AL always, NE never, ER on error only,
+    SU on success only. Anything else, including an empty field, asks for
+    nothing, so an unrecognized condition is never read as a request.
+    """
+    if condition == "AL":
+        return True
+    if condition == "ER":
+        return not success
+    if condition == "SU":
+        return success
+    return False
+
+
 def read_acknowledgement(wire):
     """Return (code, acknowledged control ID, receipt fields) from an ACK frame."""
     message = Message.parse(wire)
@@ -430,6 +480,90 @@ class IndependentEndpoint:
         return True
 
 
+class IndependentApplicationEndpoint:
+    """A loopback endpoint that only receives asynchronous application ACKs.
+
+    An enhanced acknowledgement workflow may deliver the application stage over
+    a separately configured socket, so a verifier needs a second listener that
+    never answers anything. It records complete frames verbatim.
+    """
+
+    def __init__(self):
+        self.received = []
+        self._lock = threading.Lock()
+        self._arrival = threading.Condition(self._lock)
+        self._stopping = threading.Event()
+        self._server = socket.socket()
+        self._server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._server.bind(("127.0.0.1", 0))
+        self._server.listen(4)
+        self.port = self._server.getsockname()[1]
+        self.address = f"127.0.0.1:{self.port}"
+        self._thread = threading.Thread(target=self._serve, daemon=True)
+
+    def __enter__(self):
+        self._thread.start()
+        return self
+
+    def __exit__(self, *_):
+        self.stop()
+        return False
+
+    def stop(self):
+        self._stopping.set()
+        try:
+            self._server.close()
+        except OSError:
+            pass
+        if self._thread.is_alive():
+            self._thread.join(timeout=5)
+
+    def wait_for_frames(self, count, timeout=10):
+        deadline = time.monotonic() + timeout
+        with self._arrival:
+            while len(self.received) < count:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError(
+                        f"application endpoint received {len(self.received)} of {count} frames"
+                    )
+                self._arrival.wait(remaining)
+            return list(self.received[:count])
+
+    def _serve(self):
+        self._server.settimeout(0.2)
+        while not self._stopping.is_set():
+            try:
+                connection, _ = self._server.accept()
+            except (OSError, TimeoutError):
+                continue
+            with connection:
+                try:
+                    self._drain(connection)
+                except OSError:
+                    pass
+
+    def _drain(self, connection):
+        connection.settimeout(0.2)
+        buffered = b""
+        while not self._stopping.is_set():
+            try:
+                chunk = connection.recv(4096)
+            except (TimeoutError, OSError):
+                continue
+            if not chunk:
+                return
+            buffered += chunk
+            while buffered:
+                end = _frame_end(buffered, 0)
+                if end == len(buffered) and not buffered.endswith(END_BLOCK):
+                    break
+                wire, buffered = buffered[:end], buffered[end:]
+                with self._arrival:
+                    self.received.append(wire)
+                    self._arrival.notify_all()
+
+
 class IndependentClient:
     """A loopback MLLP sender that keeps one connection and verifies its own ACKs."""
 
@@ -453,11 +587,33 @@ class IndependentClient:
             pass
 
     def exchange(self, payload, chunks=2):
+        self.send(payload, chunks)
+        return self.receive()
+
+    def send(self, payload, chunks=2):
+        """Deliver one framed message, split across several TCP writes."""
         wire = frame(payload)
         size = max(1, -(-len(wire) // max(1, chunks)))
         for offset in range(0, len(wire), size):
             self._connection.sendall(wire[offset : offset + size])
+
+    def receive(self):
+        """Read the next complete acknowledgement frame. An enhanced exchange
+        answers more than once, so reading is separate from sending."""
         return self._read_frame()
+
+    def quiet(self, timeout=0.5):
+        """Report whether nothing more arrives, so an unrequested stage that was
+        answered anyway is a failure rather than an unread byte."""
+        previous = self._connection.gettimeout()
+        self._connection.settimeout(timeout)
+        try:
+            self._read_frame()
+        except (TimeoutError, OSError, FramingError):
+            return True
+        finally:
+            self._connection.settimeout(previous)
+        return False
 
     def _read_frame(self):
         while True:

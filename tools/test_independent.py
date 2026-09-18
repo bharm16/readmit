@@ -52,6 +52,52 @@ class Framing(unittest.TestCase):
             independent.split_occurrences(BOOKING, "batch")
 
 
+class AcknowledgementModes(unittest.TestCase):
+    ENHANCED = (
+        b"MSH|^~\\&|CORPUSAPP|CORPUSFAC|VERIFIER|VERFAC|20260211084500||ADT^A01|UNIT-0002|P|2.5.1|||AL|NE\r"
+    )
+
+    def test_original_mode_is_the_absence_of_both_conditions(self):
+        self.assertEqual(independent.acknowledgement_mode(independent.Message.parse(BOOKING)),
+                         ("original", "", ""))
+
+    def test_a_declared_condition_names_enhanced_mode(self):
+        self.assertEqual(independent.acknowledgement_mode(independent.Message.parse(self.ENHANCED)),
+                         ("enhanced", "AL", "NE"))
+
+    def test_commit_and_application_codes_stay_in_their_own_stages(self):
+        for code in independent.ACCEPT_CODES:
+            self.assertEqual(independent.acknowledgement_stage(code), "accept")
+        for code in independent.APPLICATION_CODES:
+            self.assertEqual(independent.acknowledgement_stage(code), "application")
+        for unsupported in ("", "AL", "ca", "OK"):
+            with self.assertRaises(independent.ParseError):
+                independent.acknowledgement_stage(unsupported)
+
+    def test_the_condition_table_matches_the_specification(self):
+        expected = {
+            ("AL", True): True, ("AL", False): True,
+            ("NE", True): False, ("NE", False): False,
+            ("ER", True): False, ("ER", False): True,
+            ("SU", True): True, ("SU", False): False,
+            ("", True): False, ("XX", False): False,
+        }
+        for (condition, success), wanted in expected.items():
+            self.assertEqual(independent.requested(condition, success), wanted, condition)
+
+    def test_the_application_endpoint_records_frames_and_never_answers(self):
+        with independent.IndependentApplicationEndpoint() as endpoint:
+            with socket.create_connection(("127.0.0.1", endpoint.port), timeout=5) as client:
+                client.sendall(independent.frame(b"MSH|^~\\&|X\rMSA|AA|UNIT-0001\r"))
+                received = endpoint.wait_for_frames(1)
+                client.settimeout(0.5)
+                with self.assertRaises((TimeoutError, OSError)):
+                    self.assertEqual(client.recv(1), b"")
+        self.assertEqual(len(received), 1)
+        code, acknowledged, _ = independent.read_acknowledgement(received[0])
+        self.assertEqual((code, acknowledged), ("AA", b"UNIT-0001"))
+
+
 class Parsing(unittest.TestCase):
     def test_field_states_distinguish_present_empty_null_and_omitted(self):
         message = independent.Message.parse(BOOKING)

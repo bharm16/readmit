@@ -137,6 +137,16 @@ func applyMetadata(inputs []bundle.Input, path string) error {
 	return nil
 }
 
+// enhancedSummary names the declared enhanced acknowledgement behaviour. A
+// policy version without one, and an explicit refusal, both read as unsupported.
+func enhancedSummary(p collection.Policy) string {
+	if !p.SupportsEnhanced() {
+		return collection.EnhancedUnsupported
+	}
+	rule := *p.Enhanced
+	return fmt.Sprintf("%s %s %s %s", rule.Operator, rule.AcceptCode, rule.ApplicationCode, rule.ApplicationDelivery)
+}
+
 // Only timestamp-shaped MSH-7 bytes may appear in the default timeline. A
 // malformed MSH-7 can contain arbitrary values, so its bytes require opt-in.
 var declaredTimePattern = regexp.MustCompile(`^[0-9]{4}([0-9]{2}){0,5}(\.[0-9]{1,4})?([+-][0-9]{4})?(\^[YLDHMS])?$`)
@@ -167,14 +177,19 @@ func renderBundle(out io.Writer, b *bundle.Bundle, timeline, showValues bool) er
 		}
 	}
 	if record := b.Collection; record != nil {
-		acknowledged := 0
+		// The two acknowledgement stages are counted apart, so a commit
+		// acceptance can never be read as an application result.
+		accept, application := 0, 0
 		for _, received := range record.Received {
-			if received.Acknowledgement != collection.NotAcknowledged {
-				acknowledged++
+			if received.Accept.Code != collection.NotAcknowledged {
+				accept++
+			}
+			if received.Application.Code != collection.NotAcknowledged {
+				application++
 			}
 		}
-		fmt.Fprintf(w, "Collection: %s\nCollection policy: %s\nAcknowledgement: %s %s\nApplication processing: %s\nCollected sessions: %d\nReceived frames: %d\nAcknowledged frames: %d\n",
-			record.Schema, record.Policy.Name, record.Policy.Acknowledgement.Operator, record.Policy.Acknowledgement.Code, record.ApplicationProcessing, len(record.Sessions), len(record.Received), acknowledged)
+		fmt.Fprintf(w, "Collection: %s\nCollection policy: %s\nAcknowledgement: %s %s\nEnhanced acknowledgement: %s\nApplication processing: %s\nCollected sessions: %d\nReceived frames: %d\nAccept acknowledgements: %d\nApplication acknowledgements: %d\n",
+			record.Schema, record.Policy.Name, record.Policy.Acknowledgement.Operator, record.Policy.Acknowledgement.Code, enhancedSummary(record.Policy), record.ApplicationProcessing, len(record.Sessions), len(record.Received), accept, application)
 		// Source labels are declared configuration, never message values.
 		for _, session := range record.Sessions {
 			fmt.Fprintf(w, "  %s source=%s label=%s\n", session.SessionID, session.SourceID, session.Label)

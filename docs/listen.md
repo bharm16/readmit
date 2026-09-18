@@ -204,8 +204,11 @@ processed work.
 
 There is no production durability, restart/recovery, concurrent-client service,
 TLS, authentication, general SIU or patient reconciliation, cancellation support,
-enhanced ACK protocol, delivery retry, database, queue, HTTP control API,
+delivery retry, database, queue, HTTP control API,
 telemetry, or automatic network access beyond the explicitly configured listen
 address. The default bind is loopback. This fixture is for controlled synthetic
 testing and makes no claim of clinical correctness or production readiness.
-Generic capture of other message types belongs to [`collect`](collect.md).
+Generic capture of other message types belongs to [`collect`](collect.md), and so
+does the enhanced acknowledgement protocol: this fixture answers original mode
+only and still refuses a populated MSH-15 or MSH-16 with `AR` naming both
+declared values.

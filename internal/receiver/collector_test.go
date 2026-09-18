@@ -40,7 +40,12 @@ type collecting struct {
 
 func collect(t *testing.T, declared string, count int) *collecting {
 	t.Helper()
-	config := receiver.CollectorConfig{Policy: policy(t, declared), OutputPath: filepath.Join(t.TempDir(), "collected"), MaxMessages: count, MaxFrameBytes: 1 << 20, IdleTimeout: 2 * time.Second}
+	return collectTimed(t, declared, count, 2*time.Second)
+}
+
+func collectTimed(t *testing.T, declared string, count int, application time.Duration) *collecting {
+	t.Helper()
+	config := receiver.CollectorConfig{Policy: policy(t, declared), OutputPath: filepath.Join(t.TempDir(), "collected"), MaxMessages: count, MaxFrameBytes: 1 << 20, IdleTimeout: 2 * time.Second, ApplicationTimeout: application}
 	c, err := receiver.NewCollector(config)
 	if err != nil {
 		t.Fatal(err)
@@ -118,7 +123,7 @@ func TestCollectorAcceptsNonFixtureTrafficAndLabelsItsSource(t *testing.T) {
 		t.Fatalf("collected receipts do not name each message: %+v", record.Received)
 	}
 	for _, received := range record.Received {
-		if received.Acknowledgement != "AA" || received.Reason != "" {
+		if received.Mode != collection.OriginalMode || received.Application.Code != "AA" || received.Application.Reason != "" {
 			t.Fatalf("unexpected receipt: %+v", received)
 		}
 	}
@@ -140,7 +145,7 @@ func TestCollectorRejectsMessageTypesOutsideTheDeclaredPolicy(t *testing.T) {
 	send(t, conn, mllp.Frame(fixture(t, "listen-s12.hl7")))
 	ack(t, reader, "AR", "LISTEN-BOOK")
 	record := h.finished(t).Collection
-	if len(record.Received) != 2 || record.Received[1].Acknowledgement != "AR" || record.Received[1].Reason == "" {
+	if len(record.Received) != 2 || record.Received[1].Application.Code != "AR" || record.Received[1].Application.Reason == "" {
 		t.Fatalf("policy rejection is not explicit: %+v", record.Received)
 	}
 }
@@ -155,7 +160,7 @@ func TestCollectorReturnsTheDeclaredAcknowledgementCode(t *testing.T) {
 			send(t, conn, mllp.Frame([]byte(plainADT)))
 			ack(t, reader, code, "COLLECT-001")
 			record := h.finished(t).Collection
-			if len(record.Received) != 1 || record.Received[0].Acknowledgement != code || record.Received[0].Reason != "" {
+			if len(record.Received) != 1 || record.Received[0].Application.Code != code || record.Received[0].Application.Reason != "" {
 				t.Fatalf("declared code %s did not reach the receipt: %+v", code, record.Received)
 			}
 			if record.Policy.Acknowledgement.Code != code {
@@ -172,7 +177,7 @@ func TestCollectorRefusesEnhancedAcknowledgementModeExplicitly(t *testing.T) {
 	send(t, conn, mllp.Frame(fixture(t, "adt-cr.hl7")))
 	ack(t, reader, "AR", "CASE-001")
 	record := h.finished(t).Collection
-	if len(record.Received) != 1 || !strings.Contains(record.Received[0].Reason, "enhanced") {
+	if len(record.Received) != 1 || !strings.Contains(record.Received[0].Application.Reason, "enhanced") {
 		t.Fatalf("enhanced acknowledgement mode was not refused explicitly: %+v", record.Received)
 	}
 }
@@ -221,7 +226,7 @@ func TestCollectorRetainsFramesItCannotAcknowledgeWithoutInventingAnOutcome(t *t
 			h.cancel()
 			collected := h.finished(t)
 			record := collected.Collection
-			if len(record.Received) != 1 || record.Received[0].Acknowledgement != collection.NotAcknowledged || record.Received[0].Reason == "" {
+			if len(record.Received) != 1 || record.Received[0].Mode != collection.UnknownMode || record.Received[0].Application.Code != collection.NotAcknowledged || record.Received[0].Application.Reason == "" {
 				t.Fatalf("unacknowledged frame is not explicit: %+v", record.Received)
 			}
 			raw, err := collected.Raw("s0001-e000001")
@@ -255,12 +260,14 @@ func TestCollectorRefusesUnusableConfiguration(t *testing.T) {
 	valid := policy(t, anyTypePolicy)
 	existing := t.TempDir()
 	for name, config := range map[string]receiver.CollectorConfig{
-		"invalid policy":       {Policy: collection.Policy{}, OutputPath: filepath.Join(t.TempDir(), "case"), MaxFrameBytes: 1 << 20, IdleTimeout: time.Second},
-		"no destination":       {Policy: valid, MaxFrameBytes: 1 << 20, IdleTimeout: time.Second},
-		"existing destination": {Policy: valid, OutputPath: existing, MaxFrameBytes: 1 << 20, IdleTimeout: time.Second},
-		"unbounded frames":     {Policy: valid, OutputPath: filepath.Join(t.TempDir(), "case"), MaxFrameBytes: 0, IdleTimeout: time.Second},
-		"unbounded idle":       {Policy: valid, OutputPath: filepath.Join(t.TempDir(), "case"), MaxFrameBytes: 1 << 20},
-		"too many messages":    {Policy: valid, OutputPath: filepath.Join(t.TempDir(), "case"), MaxFrameBytes: 1 << 20, IdleTimeout: time.Second, MaxMessages: receiver.MaxMessages + 1},
+		"invalid policy":                {Policy: collection.Policy{}, OutputPath: filepath.Join(t.TempDir(), "case"), MaxFrameBytes: 1 << 20, IdleTimeout: time.Second, ApplicationTimeout: time.Second},
+		"no destination":                {Policy: valid, MaxFrameBytes: 1 << 20, IdleTimeout: time.Second, ApplicationTimeout: time.Second},
+		"existing destination":          {Policy: valid, OutputPath: existing, MaxFrameBytes: 1 << 20, IdleTimeout: time.Second, ApplicationTimeout: time.Second},
+		"unbounded frames":              {Policy: valid, OutputPath: filepath.Join(t.TempDir(), "case"), MaxFrameBytes: 0, IdleTimeout: time.Second, ApplicationTimeout: time.Second},
+		"unbounded idle":                {Policy: valid, OutputPath: filepath.Join(t.TempDir(), "case"), MaxFrameBytes: 1 << 20, ApplicationTimeout: time.Second},
+		"unbounded application":         {Policy: valid, OutputPath: filepath.Join(t.TempDir(), "case"), MaxFrameBytes: 1 << 20, IdleTimeout: time.Second},
+		"unbounded application ceiling": {Policy: valid, OutputPath: filepath.Join(t.TempDir(), "case"), MaxFrameBytes: 1 << 20, IdleTimeout: time.Second, ApplicationTimeout: 6 * time.Minute},
+		"too many messages":             {Policy: valid, OutputPath: filepath.Join(t.TempDir(), "case"), MaxFrameBytes: 1 << 20, IdleTimeout: time.Second, ApplicationTimeout: time.Second, MaxMessages: receiver.MaxMessages + 1},
 	} {
 		if _, err := receiver.NewCollector(config); err == nil {
 			t.Errorf("collector accepted %s", name)
@@ -269,7 +276,7 @@ func TestCollectorRefusesUnusableConfiguration(t *testing.T) {
 }
 
 func TestCollectorServesOneSessionOnce(t *testing.T) {
-	config := receiver.CollectorConfig{Policy: policy(t, anyTypePolicy), OutputPath: filepath.Join(t.TempDir(), "collected"), MaxFrameBytes: 1 << 20, IdleTimeout: time.Second}
+	config := receiver.CollectorConfig{Policy: policy(t, anyTypePolicy), OutputPath: filepath.Join(t.TempDir(), "collected"), MaxFrameBytes: 1 << 20, IdleTimeout: time.Second, ApplicationTimeout: time.Second}
 	c, err := receiver.NewCollector(config)
 	if err != nil {
 		t.Fatal(err)

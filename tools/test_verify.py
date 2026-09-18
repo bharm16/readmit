@@ -105,6 +105,35 @@ class EndpointEvidence(unittest.TestCase):
             self.assertEqual(record["patient_id"]["value"], booking.field("PID-3.1")[1].decode())
             self.assertEqual(record["filler_id"]["value"], booking.field("SCH-2.1")[1].decode())
 
+    def test_the_stage_ledger_describes_the_committed_collector_fixtures(self):
+        cases = verify.load_stage_cases()
+        self.assertGreaterEqual(len(cases), 6)
+        for case in cases:
+            message = independent.Message.parse((ENDPOINTS / case["source"]).read_bytes())
+            mode, accept, application = independent.acknowledgement_mode(message)
+            self.assertEqual(mode, case["mode"], case["name"])
+            self.assertEqual(message.control_id().decode(), case["control_id"], case["name"])
+            # Every answer the ledger declares belongs to the stage it names.
+            for answer in case["wire"]:
+                self.assertEqual(independent.acknowledgement_stage(answer["code"]), answer["stage"])
+            # In enhanced mode a stage the ledger says was answered must have
+            # been requested by its own condition. Original mode has no
+            # conditions: its single acknowledgement is the application stage.
+            if mode == "original":
+                self.assertEqual(case["accept"]["code"], "none", case["name"])
+                self.assertEqual((accept, application), ("", ""), case["name"])
+                continue
+            if case["accept"]["code"] != "none":
+                self.assertTrue(independent.requested(accept, case["accept"]["code"] == "CA"), case["name"])
+            if case["application"]["code"] == "AA":
+                self.assertTrue(independent.requested(application, True), case["name"])
+
+    def test_a_stage_ledger_that_mixes_the_two_vocabularies_is_refused(self):
+        with self.assertRaises(independent.ParseError):
+            independent.acknowledgement_stage("XX")
+        for code, stage in (("CA", "application"), ("AA", "accept")):
+            self.assertNotEqual(independent.acknowledgement_stage(code), stage)
+
     def test_the_refusal_messages_differ_from_the_supported_ones(self):
         supported = independent.Message.parse((ENDPOINTS / "book.hl7").read_bytes())
         cancel = independent.Message.parse((ENDPOINTS / "cancel.hl7").read_bytes())
