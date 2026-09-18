@@ -52,6 +52,30 @@ correlation rules, observation metadata, integrity checks, and limits.
 
 ## Available workflows
 
+`import --folder DIRECTORY --framing mllp --terminator cr --encoding utf-8
+--direction inbound --output NEW_DIRECTORY --receipt NEW_FILE` is the guided
+form of `capture` for evidence an engineer already holds. Each declaration — the
+message framing, the batch boundary, the segment terminator, the source
+encoding, the traffic direction, and which folder or archive entries are members
+— has its own flag with no default, so a missing one is an error rather than a
+likely value and nothing has to be hand-authored as JSON. `--plan FILE` is the
+same declarations saved as a reusable `readmit-import-plan/v1` document, and the
+plan an import ran under is recorded verbatim in what it writes. Files, folders,
+and ZIP archives are declared by the flag that says what they are, and an
+archive entry that is absolute, traversing, linked, or repeated is refused
+before it is read. `--preview` writes a `readmit-import-preview/v1` document
+describing every member and every record it **would** extract and creates
+nothing; the import itself writes the case and a `readmit-import-receipt/v1`
+receipt beside it naming the case identity, where every source came from, every
+excluded member with its reason, and every occurrence retained as quarantined
+evidence. Originals are never modified. A member that could be read more than
+one way — more than one message with no declared boundary, framing bytes that
+contradict the declaration, bytes that contradict the declared encoding — is
+refused by name so the operator declares it, rather than split on a likely
+guess. Malformed records, including a member the declared boundary finds no
+message in, are kept with all of their bytes and quarantined, never repaired.
+See [importing real-world files](docs/import.md).
+
 `redact CASE` applies explicit named policies, writes a separate derived case
 and export review, and keeps identifier mappings and date offsets in separate
 private storage. Unhandled content blocks export. `redact export REVIEW`

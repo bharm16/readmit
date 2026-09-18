@@ -38,6 +38,7 @@ REQUIRED_FILES = {
     "dictionary/fields-v251.json",
     "testdata/README.md",
     "docs/case-bundle.md",
+    "docs/import.md",
     "docs/project.md",
     "docs/license.md",
     "docs/secret.md",
