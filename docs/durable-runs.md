@@ -2,8 +2,10 @@
 
 `readmit run start SPEC --send --output NEW_JOB` executes a saved test spec once
 and retains its configuration, intended bytes and progress in a new private
-folder. It uses the existing test runner and its approved-target boundary:
-production, unclassified and nonapproved destinations still refuse the send.
+folder. It uses the existing test runner and its approved-target boundary. This path
+currently accepts only literal loopback destinations and has no remote-policy
+selection flag. Production classification refuses every send; a missing class
+never authorizes a remote destination.
 This first lifecycle supports the existing ACK and fixture ledger paths. It does
 not add a collector, scheduler, background service, retry or automatic resume.
 
