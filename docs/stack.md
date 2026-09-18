@@ -18,10 +18,10 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
 
 ## CLI
 
-- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `corpus`, `project`, `backup`, `license`, `secret`, `protect`, `target`, `listen`, `replay`, `test`, `observe`, `diff`, `diagnose`, `synth`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
+- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `corpus`, `project`, `backup`, `license`, `secret`, `protect`, `target`, `source`, `listen`, `replay`, `test`, `observe`, `diff`, `diagnose`, `synth`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
 - Command data goes to stdout, diagnostics to stderr. Machine-readable modes never interleave progress output with JSON.
 - Target configuration is read from explicitly selected files, not hidden global config or environment-variable precedence.
-- Credentials are referenced, never held. A `readmit-secrets/v1` document registers the store kind an operator declared, the single purpose and endpoint address a credential may be bound to, the absolute path of the program that reads it back, and the recorded rotation. No command accepts a credential value, and a resolved value masks itself under every formatting verb and refuses to be serialized. See [credential references](secret.md).
+- Credentials are referenced, never held. A `readmit-secrets/v1` document registers the store kind an operator declared, the single purpose and endpoint address a credential may be bound to, the absolute path of the program that reads it back, and the recorded rotation. The purposes are `mllp-endpoint` and `source-endpoint`; a reference registered for one is refused wherever the other is needed. No command accepts a credential value, and a resolved value masks itself under every formatting verb and refuses to be serialized. See [credential references](secret.md).
 - Encryption keys are referenced the same way. A `readmit-protection/v1` control registers the declared at-rest storage control, the program that reads the key back, the recorded rotation, the lifecycle state and the retention period. See [evidence protection](protect.md).
 - Terminal and Markdown rendering use `fmt`, `text/tabwriter`, and `text/template`.
 
@@ -169,6 +169,38 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
   performance envelope proposed in #25 recorded explicitly as engineering
   targets rather than measurements. Nothing compares the two or reports a
   verdict. See [the performance corpus](corpus.md).
+
+## Evidence source collection
+
+- A `readmit-source/v1` document declares one approved customer-controlled
+  source: a `directory` this machine can already open, a `transfer` reached by
+  running the operator's own read-only transfer program, or an `api`, which is
+  declarable and not collected. Every kind declares a scope, a quota with no
+  defaults and a retry declaration; the members of the other kinds are refused
+  rather than ignored. See [collecting from an approved source](source.md).
+- `internal/evidencesource` writes no second ingestion path. Each entry is
+  streamed through `importer.Scan` under the same `readmit-import-plan/v1` an
+  import declares, so a collection holds one record and one parsing batch
+  whatever the entry's length, refuses what an import of the same bytes refuses,
+  and stages original bytes that `import` then reads as an ordinary folder.
+- A collection that could not run never becomes evidence that nothing was there.
+  Statuses are `internal/observewindow`'s source-neutral vocabulary rather than a
+  second one: a source that could not be listed, an entry no attempt read whole,
+  a quota refusal, a cancellation and an unsupported kind are each execution
+  errors. Only `complete` describes the source.
+- Retries are bounded, recorded and safe for reads. Every attempt starts an entry
+  again from nothing, only a transport failure is retried, and a refusal the
+  bytes themselves caused is never retried. Duplicate detection is the ADR-0002
+  identity over names and contents only: no timestamp and no absolute path.
+- A `transfer` or `api` source is a destination, decided by `internal/sendpolicy`
+  before it is reached, and its credential is a `source-endpoint` reference
+  presented to the transfer program on standard input and nowhere else.
+- **readmit implements no SSH or SFTP client.** Pure-Go SSH and SFTP libraries
+  exist and cross-compile for the five release targets, but adding them changes
+  the release story of [ADR-0001](adr/0001-go-single-binary-release-matrix.md) —
+  Cobra is the only direct third-party dependency of the released executable — so
+  a remote export is collected by running the customer's own approved client.
+  readmit runs the program it was given and cannot establish what answered.
 
 ## Project backup and restore
 

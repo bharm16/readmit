@@ -27,7 +27,7 @@ func secretCommand(ran *bool) *cobra.Command {
 }
 
 func secretAdd(ran *bool) *cobra.Command {
-	var file, name, store, address, program, maxAge string
+	var file, name, store, purpose, address, program, maxAge string
 	var arguments []string
 	command := &cobra.Command{
 		Use:   "add --secrets FILE --name NAME --store KIND --address HOST:PORT --command PROGRAM",
@@ -42,7 +42,7 @@ func secretAdd(ran *bool) *cobra.Command {
 			updated, stored, err := secret.Add(document, secret.Reference{
 				Name:       name,
 				Store:      secret.Store(store),
-				Purpose:    secret.MLLPEndpoint,
+				Purpose:    secret.Purpose(purpose),
 				Address:    address,
 				Command:    program,
 				Arguments:  arguments,
@@ -62,6 +62,7 @@ func secretAdd(ran *bool) *cobra.Command {
 	secretsFlag(command, &file)
 	command.Flags().StringVar(&name, "name", "", "Name this reference is used under")
 	command.Flags().StringVar(&store, "store", "", "Declared storage: os-keychain or customer-managed")
+	command.Flags().StringVar(&purpose, "purpose", string(secret.MLLPEndpoint), "The one use this credential may be bound to: mllp-endpoint or source-endpoint")
 	command.Flags().StringVar(&address, "address", "", "The one endpoint address this credential may be presented to")
 	command.Flags().StringVar(&program, "command", "", "Absolute path of the program that reads the credential from its store")
 	command.Flags().StringArrayVar(&arguments, "argument", nil, "Locator argument for that program; repeat for more. Never a credential")

@@ -203,6 +203,13 @@ func (p Plan) Validate() error {
 	return validateMembers(p.Members, "an import plan")
 }
 
+// Selects reports whether this plan's declared members select an entry of this
+// name. It is the same rule an import applies to a folder or archive entry,
+// exported so a collection from an approved source selects the entries of a
+// listing the way an import selects the entries of a container. A second copy
+// of the rule would drift the first time either one changed.
+func (p Plan) Selects(name string) bool { return selected(p.Members, name) }
+
 // validateMembers is one member-suffix rule, so a folder or archive is
 // filtered the same way whichever declaration an import ran under. The caller
 // names itself, because a plan and a recipe say so in their own diagnostics.
