@@ -1,0 +1,53 @@
+{
+  "schema": "readmit-test/v1",
+  "name": "Rescheduling updates the original appointment",
+  "input": {
+    "case": "test-case",
+    "messages": ["s0001-e000001", "s0002-e000001"]
+  },
+  "target": "test-target.json",
+  "setup": {
+    "initial_state": "empty-ledger",
+    "reset_instructions": "Stop the prior listener. Start readmit listen in the chosen fixed or defective mode with a new case output and a new test-observation.json path, and wait for Listening. The startup ledger must contain no records and no processed occurrences. Reuse this spec unchanged, and choose a new result directory for each run."
+  },
+  "observation": {
+    "boundary": "appointment-ledger",
+    "path": "test-observation.json"
+  },
+  "assertions": [
+    {
+      "id": "one-appointment",
+      "operator": "ledger_count",
+      "expected": {"count": 1}
+    },
+    {
+      "id": "original-record-moved",
+      "operator": "ledger_equals",
+      "expected": {
+        "records": [
+          {
+            "record_id": "r000001",
+            "patient_id": {"value": "SYNTH-001", "namespace": "READMIT", "universal_id": "", "universal_id_type": ""},
+            "placer_id": {"value": "APPT-001", "namespace": "READMIT", "universal_id": "", "universal_id_type": ""},
+            "filler_id": {"value": "FILL-001", "namespace": "READMIT", "universal_id": "", "universal_id_type": ""},
+            "appointment_start": "20260103110000+0000"
+          }
+        ]
+      }
+    },
+    {
+      "id": "booking-ack",
+      "operator": "ack_field_equals",
+      "message": "s0001-e000001",
+      "selector": "MSA-1",
+      "expected": {"field": {"state": "present", "text": "AA"}}
+    },
+    {
+      "id": "rescheduling-ack",
+      "operator": "ack_field_equals",
+      "message": "s0002-e000001",
+      "selector": "MSA-1",
+      "expected": {"field": {"state": "present", "text": "AA"}}
+    }
+  ]
+}

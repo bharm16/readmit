@@ -53,3 +53,10 @@ specified `replay-transformed.mllp`, exercising preserved duplicate control IDs
 and explicit timestamp changes. `replay-target.json` documents the strict target
 shape; tests replace its endpoint with an isolated local peer. Transport failure
 and TLS cases use controlled synthetic peers, never customer endpoints.
+
+`test-reschedule.json` is the unchanged regression spec for issue #5. It uses
+the two separately captured listener fixture messages and independently stated
+expected ledger/ACK values. `test-target.json` is its explicit local target
+template. Tests reset the receiver and update only the target endpoint while
+the spec produces failure, pass, reintroduced failure, and repeatable pass.
+Session/occurrence receipts bind the captured ledger to the actual replay.

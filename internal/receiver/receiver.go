@@ -214,7 +214,7 @@ func (r *Receiver) connection(ctx context.Context, connection net.Conn) (bool, e
 			if processErr != nil {
 				code, reason = "AR", processErr.Error()
 			}
-			ack := acknowledgement(request, code, reason, r.received)
+			ack := acknowledgement(request, code, reason, r.received, r.snapshot.SessionID, id)
 			if err := connection.SetWriteDeadline(time.Now().Add(r.config.IdleTimeout)); err != nil {
 				return false, errors.New("cannot set receiver write deadline")
 			}

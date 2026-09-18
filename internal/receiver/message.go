@@ -177,7 +177,7 @@ func (r *Receiver) apply(snapshot *observation.Snapshot, request *request) error
 	return nil
 }
 
-func acknowledgement(request *request, code, reason string, sequence int) []byte {
+func acknowledgement(request *request, code, reason string, sequence int, sessionID, occurrenceID string) []byte {
 	trigger := request.trigger
 	if request.action == "" {
 		trigger = ""
@@ -190,5 +190,7 @@ func acknowledgement(request *request, code, reason string, sequence int) []byte
 		replacer := strings.NewReplacer("\\", `\E\`, "|", `\F\`, "^", `\S\`, "~", `\R\`, "&", `\T\`)
 		text += "|" + replacer.Replace(reason)
 	}
-	return mllp.Frame([]byte(text + "\r"))
+	// The fixture receipt binds a ledger handoff to this connection's ACKs.
+	// Generic replay retains this segment without assigning workflow meaning.
+	return mllp.Frame([]byte(text + "\rZRT|readmit-receipt/v1|" + sessionID + "|" + occurrenceID + "\r"))
 }
