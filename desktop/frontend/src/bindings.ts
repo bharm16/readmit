@@ -244,16 +244,115 @@ export interface RecentResult {
   roots: string[];
 }
 
+/** The occurrence types a case records, named by the Go reader. */
+export type OccurrenceKind = "message" | "ack" | "unparsed";
+
+/** Which way an occurrence travelled, where the case recorded it. */
+export type Flow = "unknown" | "inbound" | "outbound";
+
+/** How one saved predicate compares against what an index retained. `state`
+ * compares the decoded state, which every retention form keeps; the other two
+ * compare the value, which only a values or digests index holds. */
+export type FieldMatch = "equals" | "contains" | "state";
+
+/** The four decoded states a field can be in, and the empty string a value
+ * predicate carries because it asks about a value rather than a state. */
+export type FieldState = "" | "present" | "empty" | "null" | "omitted";
+
+/** One question about one indexed field. An index that does not retain the
+ * field, or retains it in a form that cannot answer the match, refuses the
+ * whole filter by name rather than answering it from something narrower. */
+export interface FieldPredicate {
+  selector: string;
+  match: FieldMatch;
+  term: string;
+  state: FieldState;
+}
+
+/** One saved filter. Every axis is a list or a bound and an empty one narrows
+ * nothing; within an axis the values are alternatives, and across axes an
+ * occurrence has to satisfy all of them. A filter holds what a person typed to
+ * filter by, which for a field value is the same patient data that field holds:
+ * it stays on this machine, in the file the privacy region names. */
+export interface Filter {
+  name: string;
+  kinds: OccurrenceKind[];
+  sources: string[];
+  observed_from: string | null;
+  observed_until: string | null;
+  ack_codes: string[];
+  fields: FieldPredicate[];
+}
+
+/** The saved filters of this viewer and the one selected now. The selection is
+ * stored by the facade, not held here, so it survives navigating to another
+ * case and reopening the window. */
+export interface FiltersResult {
+  state: State;
+  reason?: string;
+  filters: Filter[];
+  selected: string;
+}
+
+/** One occurrence in the grid. It carries where the occurrence is and what it
+ * is — never a field value, a message byte or an original source path. */
+export interface GridRow {
+  id: string;
+  source_id: string;
+  offset: number;
+  size: number;
+  kind: OccurrenceKind;
+  direction: Flow;
+  observed_at: string | null;
+  decoded: boolean;
+}
+
+/** One window over one filtered case. `excluded` is how many occurrences the
+ * selected filter removed from this view and is always shown, so a filtered
+ * grid never looks like the whole case. `undecided` says where an exclusion is
+ * not a "no"; `undecodable` is a fact about the case — occurrences nothing
+ * decoded, which carry no indexed field for a filter to reach. */
+export interface Grid {
+  case: string;
+  index: string;
+  identity: string;
+  filter: string;
+  offset: number;
+  limit: number;
+  total: number;
+  matched: number;
+  excluded: number;
+  undecided: number;
+  undecodable: number;
+  rows: GridRow[];
+}
+
+export interface GridResult {
+  state: State;
+  reason?: string;
+  grid?: Grid;
+}
+
 interface Facade {
   Cancel(): Promise<void>;
   CreateSampleWorkspace(): Promise<WorkspaceResult>;
+  Filters(): Promise<FiltersResult>;
   OpenCase(workspace: string, name: string): Promise<CaseResult>;
+  OpenGrid(
+    workspace: string,
+    name: string,
+    indexName: string,
+    offset: number,
+    limit: number,
+  ): Promise<GridResult>;
   OpenProject(path: string): Promise<ProjectResult>;
   OpenRevisions(path: string): Promise<RevisionsResult>;
   OpenWorkspace(path: string): Promise<WorkspaceResult>;
   RecentWorkspaces(): Promise<RecentResult>;
+  SaveFilter(filter: Filter): Promise<FiltersResult>;
   SaveNote(path: string, note: ProjectNote): Promise<RevisionsResult>;
   Search(path: string, query: string): Promise<SearchResult>;
+  SelectFilter(name: string): Promise<FiltersResult>;
   SelectWorkspace(): Promise<WorkspaceResult>;
   Shell(): Promise<ShellResult>;
 }
@@ -322,6 +421,33 @@ export function saveNote(
   note: ProjectNote,
 ): Promise<RevisionsResult> {
   return guard(() => facade().SaveNote(path, note), { state: "failed" });
+}
+
+/** The saved filters of this viewer and the one selected now. */
+export function filters(): Promise<FiltersResult> {
+  return guard(() => facade().Filters(), { state: "failed", filters: [], selected: "" });
+}
+
+/** One bounded window of one case, read through one index of it. The window is
+ * asked for again for the next page: the whole case is never rendered at once. */
+export function openGrid(
+  workspace: string,
+  name: string,
+  indexName: string,
+  offset: number,
+  limit: number,
+): Promise<GridResult> {
+  return guard(() => facade().OpenGrid(workspace, name, indexName, offset, limit), { state: "failed" });
+}
+
+/** Stores one named filter and selects it. */
+export function saveFilter(filter: Filter): Promise<FiltersResult> {
+  return guard(() => facade().SaveFilter(filter), { state: "failed", filters: [], selected: "" });
+}
+
+/** Records which saved filter the grid applies. An empty name selects none. */
+export function selectFilter(name: string): Promise<FiltersResult> {
+  return guard(() => facade().SelectFilter(name), { state: "failed", filters: [], selected: "" });
 }
 
 export function openWorkspace(path: string): Promise<WorkspaceResult> {

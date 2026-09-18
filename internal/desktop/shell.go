@@ -141,8 +141,11 @@ var (
 
 // privacyStatus is the truth about this build, stated in the window. There is
 // no telemetry, crash reporting, update check or analytics anywhere in the
-// product, the interface fetches nothing at run time, and the only thing the
-// shell writes outside evidence is the recent folder list.
+// product, the interface fetches nothing at run time, and the only things the
+// shell writes outside evidence are the recent folder list and the filters a
+// person saved. A saved filter holds what they typed to filter by, and a value
+// typed to match an HL7 field is the same patient data that field holds, so the
+// window names it here rather than leaving it to be discovered.
 var privacyStatus = Privacy{
 	Statement: "Everything here is read on this machine. No evidence, folder name or result is sent anywhere.",
 	Absent: []string{
@@ -154,6 +157,7 @@ var privacyStatus = Privacy{
 	},
 	Kept: []string{
 		"the folders you have opened, as paths only, in readmit-desktop-recent/v1",
+		"the filters you have saved, including any value you typed to filter by, in readmit-filters/v1",
 	},
 }
 

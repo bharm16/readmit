@@ -299,3 +299,93 @@ dd {
   text-align: start;
   width: 100%;
 }
+
+/* The message grid. It renders one window of a case, so the table is as wide as
+   the occurrences it draws and scrolls sideways inside a narrow pane rather than
+   pushing the rest of the window out of view. */
+.grid {
+  border-top: 1px solid var(--line);
+  margin-top: 1rem;
+  min-width: 0;
+}
+
+.grid-open,
+.grid-filter,
+.grid-window,
+.kinds {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.35rem 0;
+}
+
+.grid select,
+.grid input[type="text"],
+.grid input[type="datetime-local"] {
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* How many records the filter removed is part of the answer, so it reads as
+   text beside the counts rather than as an icon a person has to interpret. */
+.counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0.5rem 0 0.25rem;
+}
+
+.counts .excluded {
+  font-weight: 600;
+}
+
+.rows {
+  border-collapse: collapse;
+  display: block;
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.rows caption {
+  color: var(--muted);
+  text-align: start;
+}
+
+.rows th,
+.rows td {
+  border-bottom: 1px solid var(--line);
+  padding: 0.2rem 0.6rem 0.2rem 0;
+  text-align: start;
+}
+
+.rows thead th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.rows .kind {
+  text-transform: uppercase;
+}
+
+.grid-save {
+  display: grid;
+  gap: 0.35rem 0.75rem;
+  grid-template-columns: max-content minmax(0, 1fr);
+  margin-top: 1rem;
+}
+
+.grid-save h4,
+.grid-save button,
+.grid-save .hint,
+.grid-save .unsupported {
+  grid-column: 1 / -1;
+  margin: 0.35rem 0 0;
+}
+
+.grid-save h4 {
+  font-size: 0.95rem;
+}

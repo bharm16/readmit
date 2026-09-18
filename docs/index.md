@@ -202,7 +202,9 @@ supports is the failure this whole design exists to prevent.
 What the index buys is that **many** questions cost one verification instead of
 one each: a caller that opens a case once and holds the index answers every
 subsequent query without re-parsing a message or re-selecting a field. That is
-how the desktop shell will use it.
+how the desktop shell's message grid uses it — one verification answers every
+predicate of one filtered window, and the next window verifies again rather than
+trusting a case nobody looked at since.
 
 ## Not supported in this release
 
@@ -220,5 +222,8 @@ how the desktop shell will use it.
 - Encryption of the index at rest. It is an ordinary file under the operating
   system account and filesystem permissions that protect the case, and it holds
   what its retention form says it holds.
-- A saved query, a stored filter, and search results as a retained artifact.
+- A saved query held by an index, and search results as a retained artifact.
+  The desktop shell saves filters, but they are that viewer's own local state
+  in `readmit-filters/v1`, never a member of an index or of any evidence. See
+  [the desktop shell](desktop.md).
 - Backing an index up, or restoring one. Rebuild it from the case.

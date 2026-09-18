@@ -27,7 +27,7 @@ func unreadable(t *testing.T, path string) {
 func TestOpenWorkspaceSeparatesPermissionFromFailure(t *testing.T) {
 	root := t.TempDir()
 	unreadable(t, root)
-	result := desktop.New(&chooser{}, filepath.Join(t.TempDir(), "recent.json")).OpenWorkspace(root)
+	result := desktop.New(&chooser{}, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json")).OpenWorkspace(root)
 	if result.State != desktop.PermissionDenied || result.Workspace != nil {
 		t.Fatalf("an unreadable folder was not reported as permission denied: %+v", result)
 	}
@@ -38,7 +38,7 @@ func TestOpenWorkspaceSeparatesPermissionFromFailure(t *testing.T) {
 
 func TestSampleWorkspaceSeparatesPermissionFromFailure(t *testing.T) {
 	parent := t.TempDir()
-	app := desktop.New(&chooser{folder: parent}, filepath.Join(t.TempDir(), "recent.json"))
+	app := desktop.New(&chooser{folder: parent}, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"))
 	if os.Geteuid() == 0 {
 		t.Skip("a privileged account bypasses directory permissions")
 	}
@@ -62,7 +62,7 @@ func TestRecentWorkspacesSeparatesPermissionFromFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	unreadable(t, store)
-	result := desktop.New(&chooser{}, store).RecentWorkspaces()
+	result := desktop.New(&chooser{}, store, filepath.Join(filepath.Dir(store), "filters.json")).RecentWorkspaces()
 	if result.State != desktop.PermissionDenied || len(result.Roots) != 0 {
 		t.Fatalf("an unreadable recent list was not reported as permission denied: %+v", result)
 	}
@@ -70,7 +70,7 @@ func TestRecentWorkspacesSeparatesPermissionFromFailure(t *testing.T) {
 
 func TestWorkspaceListingRefusesToFollowSymbolicLinks(t *testing.T) {
 	parent := t.TempDir()
-	app := desktop.New(&chooser{folder: parent}, filepath.Join(t.TempDir(), "recent.json"))
+	app := desktop.New(&chooser{folder: parent}, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"))
 	root := sample(t, app).Workspace.Root
 	alias := filepath.Join(root, "alias")
 	if err := os.Symlink(filepath.Join(root, "regression"), alias); err != nil {
@@ -112,7 +112,7 @@ func TestOpenProjectSeparatesPermissionFromFailure(t *testing.T) {
 		root := t.TempDir()
 		writeProject(t, root, "")
 		deny(t, root)
-		result := desktop.New(&chooser{}, filepath.Join(t.TempDir(), "recent.json")).OpenProject(root)
+		result := desktop.New(&chooser{}, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json")).OpenProject(root)
 		if result.State != desktop.PermissionDenied || result.Project != nil {
 			t.Fatalf("an unreadable %s was not reported as permission denied: %+v", name, result)
 		}
@@ -125,11 +125,33 @@ func TestOpenProjectSeparatesPermissionFromFailure(t *testing.T) {
 func TestSearchSeparatesPermissionFromFailure(t *testing.T) {
 	root := t.TempDir()
 	unreadable(t, root)
-	result := desktop.New(&chooser{}, filepath.Join(t.TempDir(), "recent.json")).Search(root, "regression")
+	result := desktop.New(&chooser{}, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json")).Search(root, "regression")
 	if result.State != desktop.PermissionDenied || len(result.Matches) != 0 {
 		t.Fatalf("an unreadable folder was not reported as permission denied: %+v", result)
 	}
 	if result.Reason == "" {
 		t.Fatal("permission denial gave the shell nothing to show")
+	}
+}
+
+// A saved-filter document this account cannot read is permission, not a
+// document this release cannot read: the two have different remedies, and the
+// window says which one it is.
+func TestSavedFiltersSeparatePermissionFromAnUnreadableDocument(t *testing.T) {
+	state := t.TempDir()
+	store := filepath.Join(state, "filters.json")
+	if err := os.WriteFile(store, []byte(`{"schema":"readmit-filters/v1","filters":[],"selected":""}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	unreadable(t, store)
+	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), store)
+	if result := app.Filters(); result.State != desktop.PermissionDenied || len(result.Filters) != 0 {
+		t.Fatalf("an unreadable saved-filter document was not reported as permission denied: %+v", result)
+	}
+	// A grid never quietly shows an unfiltered view when the selection cannot
+	// be read: it reports the same refusal.
+	root := t.TempDir()
+	if result := app.OpenGrid(root, "case", "case.index.json", 0, 10); result.State == desktop.Completed {
+		t.Fatalf("a grid was rendered while the selection could not be read: %+v", result)
 	}
 }
