@@ -120,12 +120,22 @@ func Decode(data []byte) (Document, error) {
 	if len(data) > maxDocumentBytes {
 		return Document{}, errors.New("project document exceeds its size limit")
 	}
+	// The declared contract version is read before the strict decode. A later
+	// release bumps the version precisely because it adds members, so deciding
+	// strictness first would report every such document as invalid rather than
+	// as the version it plainly declares.
+	var declared struct {
+		Schema string `json:"schema"`
+	}
+	if err := json.Unmarshal(data, &declared); err != nil {
+		return Document{}, errors.New("invalid project document")
+	}
+	if declared.Schema != Schema {
+		return Document{}, ErrUnsupportedVersion
+	}
 	var document Document
 	if err := json.Unmarshal(data, &document, json.RejectUnknownMembers(true)); err != nil {
 		return Document{}, errors.New("invalid project document")
-	}
-	if document.Schema != Schema {
-		return Document{}, ErrUnsupportedVersion
 	}
 	if err := Validate(document); err != nil {
 		return Document{}, err

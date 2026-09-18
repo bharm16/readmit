@@ -423,6 +423,9 @@ func describe(root string, entry fs.DirEntry) Artifact {
 	// project inferred from a file name.
 	if name == project.DocumentName && entry.Type().IsRegular() {
 		opened, err := project.Open(root)
+		if errors.Is(err, project.ErrUnsupportedVersion) {
+			return Artifact{Name: name, Kind: UnsupportedArtifact, Reason: "a project document written by a version this release cannot read"}
+		}
 		if err != nil {
 			return Artifact{Name: name, Kind: UnsupportedArtifact, Reason: "not a project document this release supports"}
 		}

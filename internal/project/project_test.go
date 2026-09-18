@@ -1,6 +1,7 @@
 package project_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -65,13 +66,14 @@ func TestEncodeProducesTheIndependentlyAuthoredBytes(t *testing.T) {
 
 func TestDecodeRejectsUnknownMembersAndUnsupportedVersions(t *testing.T) {
 	for name, data := range map[string]string{
-		"unknown document member": `{"schema":"readmit-project/v1","settings":{"title":"t"},"interface_versions":[],"cases":[],"notes":"x"}`,
-		"unknown case member":     `{"schema":"readmit-project/v1","settings":{"title":"t"},"interface_versions":[],"cases":[{"name":"c","priority":1}]}`,
-		"unknown settings member": `{"schema":"readmit-project/v1","settings":{"title":"t","quota":2},"interface_versions":[],"cases":[]}`,
-		"unsupported version":     `{"schema":"readmit-project/v2","settings":{"title":"t"},"interface_versions":[],"cases":[]}`,
-		"absent version":          `{"settings":{"title":"t"},"interface_versions":[],"cases":[]}`,
-		"not an object":           `[]`,
-		"empty":                   ``,
+		"unknown document member":         `{"schema":"readmit-project/v1","settings":{"title":"t"},"interface_versions":[],"cases":[],"notes":"x"}`,
+		"unknown case member":             `{"schema":"readmit-project/v1","settings":{"title":"t"},"interface_versions":[],"cases":[{"name":"c","priority":1}]}`,
+		"unknown settings member":         `{"schema":"readmit-project/v1","settings":{"title":"t","quota":2},"interface_versions":[],"cases":[]}`,
+		"unsupported version":             `{"schema":"readmit-project/v2","settings":{"title":"t"},"interface_versions":[],"cases":[]}`,
+		"later version with a new member": `{"schema":"readmit-project/v2","settings":{"title":"t"},"interface_versions":["a"],"cases":[],"suites":[]}`,
+		"absent version":                  `{"settings":{"title":"t"},"interface_versions":[],"cases":[]}`,
+		"not an object":                   `[]`,
+		"empty":                           ``,
 	} {
 		if _, err := project.Decode([]byte(data)); err == nil {
 			t.Errorf("%s was accepted", name)
@@ -120,6 +122,25 @@ func TestValidateRefusesUnusableDocuments(t *testing.T) {
 		if _, err := project.Encode(d); err == nil {
 			t.Errorf("%s was encoded", name)
 		}
+	}
+}
+
+// A document written by a later release is reported as the version it declares,
+// not as an invalid document, even though it carries members this release has
+// never seen. That distinction is what a caller separates recovery advice on.
+func TestALaterVersionIsReportedAsAVersionRatherThanAsInvalid(t *testing.T) {
+	later := []byte(`{"schema":"readmit-project/v2","settings":{"title":"t"},"interface_versions":["a"],"cases":[],"suites":[]}`)
+	if _, err := project.Decode(later); !errors.Is(err, project.ErrUnsupportedVersion) {
+		t.Fatalf("a later version was reported as %v", err)
+	}
+	// A document of this version carrying an unknown member is still invalid:
+	// strictness is decided after the version, never instead of it.
+	current := []byte(`{"schema":"readmit-project/v1","settings":{"title":"t"},"interface_versions":["a"],"cases":[],"suites":[]}`)
+	if _, err := project.Decode(current); err == nil || errors.Is(err, project.ErrUnsupportedVersion) {
+		t.Fatalf("an unknown member of the current version was reported as %v", err)
+	}
+	if _, err := project.Decode([]byte(`{"schema":`)); err == nil || errors.Is(err, project.ErrUnsupportedVersion) {
+		t.Fatalf("a damaged document was reported as a version: %v", err)
 	}
 }
 

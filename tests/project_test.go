@@ -436,16 +436,26 @@ func TestProjectRecordsCustomerDerivedProvenance(t *testing.T) {
 func TestProjectRefusesAnEmptyValueBesideARealOne(t *testing.T) {
 	root := newProject(t)
 	registerFrozenCase(t, root, "regression", "--tag", "scheduling")
+	if _, stderr, err := run(t, "capture", "../testdata/fixtures/case-evidence.mllp", "--output", filepath.Join(root, "second")); err != nil || stderr != "" {
+		t.Fatalf("capture: %v %s", err, stderr)
+	}
+	// Registering and updating read an empty value the same way.
 	for _, args := range [][]string{
 		{"project", "update", root, "regression", "--tag", "", "--tag", "duplicate"},
 		{"project", "update", root, "regression", "--incident", "INC-1", "--incident", ""},
+		{"project", "add", root, "second", "--title", "Second", "--tag", "", "--tag", "duplicate"},
+		{"project", "add", root, "second", "--title", "Second", "--incident", "INC-1", "--incident", ""},
 	} {
 		if stdout, stderr, err := run(t, args...); err == nil || stderr == "" {
 			t.Fatalf("an empty value beside a real one was accepted: %v %s", err, stdout)
 		}
 	}
-	if stdout, _, _ := run(t, "project", "show", root); !strings.Contains(stdout, "tags: scheduling") {
+	stdout, _, _ := run(t, "project", "show", root)
+	if !strings.Contains(stdout, "tags: scheduling") {
 		t.Fatalf("a refused update changed the project:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "second") {
+		t.Fatalf("a refused registration still registered the case:\n%s", stdout)
 	}
 }
 

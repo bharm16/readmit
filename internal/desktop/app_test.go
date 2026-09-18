@@ -495,8 +495,12 @@ func TestOpenProjectSeparatesAnEmptyProjectFromAFailure(t *testing.T) {
 	if empty.State != desktop.Empty || empty.Project == nil {
 		t.Fatalf("a project with no registered case was not reported as empty: %+v", empty)
 	}
+	// A later version bumps the contract because it carries members this
+	// release has never seen. That is the shape the reader must still report as
+	// a version it cannot read, rather than as an invalid document.
 	unsupported := t.TempDir()
-	if err := os.WriteFile(filepath.Join(unsupported, "project.json"), []byte(`{"schema":"readmit-project/v2"}`), 0600); err != nil {
+	later := `{"schema":"readmit-project/v2","settings":{"title":"t"},"interface_versions":["a"],"cases":[],"suites":[]}`
+	if err := os.WriteFile(filepath.Join(unsupported, "project.json"), []byte(later), 0600); err != nil {
 		t.Fatal(err)
 	}
 	reasons := make(map[string]string)
@@ -535,12 +539,21 @@ func TestWorkspaceListsAProjectDocumentByItsDeclaredContract(t *testing.T) {
 		t.Fatalf("the project document was not listed by its declared contract: %+v", artifact)
 	}
 
-	if err := os.WriteFile(filepath.Join(root, "project.json"), []byte(`{"schema":"readmit-project/v2"}`), 0600); err != nil {
+	later := `{"schema":"readmit-project/v2","settings":{"title":"t"},"interface_versions":["a"],"cases":[],"suites":[]}`
+	if err := os.WriteFile(filepath.Join(root, "project.json"), []byte(later), 0600); err != nil {
 		t.Fatal(err)
 	}
 	unsupported := newApp(t, &chooser{}).OpenWorkspace(root).Workspace.Artifacts[0]
 	if unsupported.Kind != desktop.UnsupportedArtifact || unsupported.Reason == "" || unsupported.Schema != "" {
 		t.Fatalf("an unreadable project document was not reported as unsupported: %+v", unsupported)
+	}
+	// The listing says which kind of unreadable it found, as opening does.
+	if err := os.WriteFile(filepath.Join(root, "project.json"), []byte(`{"schema":`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	damaged := newApp(t, &chooser{}).OpenWorkspace(root).Workspace.Artifacts[0]
+	if damaged.Reason == unsupported.Reason {
+		t.Fatalf("a damaged document and a later version were reported the same way: %q", damaged.Reason)
 	}
 }
 
