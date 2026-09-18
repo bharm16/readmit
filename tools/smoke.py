@@ -50,6 +50,7 @@ REQUIRED_FILES = {
     "docs/project-lifecycle.md",
     "docs/backup.md",
     "docs/license.md",
+    "docs/license-v2.md",
     "docs/secret.md",
     "docs/protect.md",
     "docs/target.md",

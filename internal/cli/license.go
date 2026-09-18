@@ -19,15 +19,15 @@ func licenseCommand(ran *bool) *cobra.Command {
 		Short: "Verify and manage an offline organization entitlement",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return errors.New("license requires a subcommand: verify, import, show, renew, export, or release")
+			return errors.New("license requires a subcommand: verify, import, show, renew, export, release, or runner")
 		},
 	}
-	command.AddCommand(licenseVerify(ran), licenseImport(ran), licenseShow(ran), licenseRenew(ran), licenseExport(ran), licenseRelease(ran))
+	command.AddCommand(licenseVerify(ran), licenseImport(ran), licenseShow(ran), licenseRenew(ran), licenseExport(ran), licenseRelease(ran), licenseRunner(ran))
 	return command
 }
 
 func licenseVerify(ran *bool) *cobra.Command {
-	var trustPath, device, require string
+	var trustPath, author, device, require string
 	command := &cobra.Command{
 		Use:   "verify ENTITLEMENT --trust TRUST_STORE",
 		Short: "Verify a received entitlement locally against trusted signing keys",
@@ -42,6 +42,20 @@ func licenseVerify(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			version, err := entitlement.DeclaredVersion(data)
+			if err != nil {
+				return err
+			}
+			if version == entitlement.SchemaV2 {
+				grant, err := entitlement.VerifyV2(data, trust)
+				if err != nil {
+					return err
+				}
+				return writeGrantV2(cmd.OutOrStdout(), "Entitlement verified: "+grant.Claims.ID, grant, author, device, require, "")
+			}
+			if author != "" {
+				return errors.New("a v1 entitlement binds devices, not named authors; --author applies to a v2 entitlement")
+			}
 			grant, err := entitlement.Verify(data, trust)
 			if err != nil {
 				return err
@@ -50,13 +64,14 @@ func licenseVerify(ran *bool) *cobra.Command {
 		},
 	}
 	command.Flags().StringVar(&trustPath, "trust", "", "Trust store of vendor signing keys to verify against")
-	command.Flags().StringVar(&device, "device", "", "Report the activation this entitlement binds to a device identifier")
+	command.Flags().StringVar(&author, "author", "", "Report the assignment a v2 entitlement makes to a named author")
+	command.Flags().StringVar(&device, "device", "", "Report the activation this entitlement binds to a device identifier (with --author under v2)")
 	command.Flags().StringVar(&require, "require", "", "Refuse unless the entitlement grants this capability now")
 	return command
 }
 
 func licenseImport(ran *bool) *cobra.Command {
-	var trustPath, device, output string
+	var trustPath, author, device, output string
 	command := &cobra.Command{
 		Use:   "import ENTITLEMENT --trust TRUST_STORE --device ID --output NEW_DIRECTORY",
 		Short: "Verify a received entitlement and install it for one device",
@@ -77,18 +92,32 @@ func licenseImport(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			version, err := entitlement.DeclaredVersion(data)
+			if err != nil {
+				return err
+			}
+			if version == entitlement.SchemaV2 {
+				if author == "" {
+					return errors.New("license import of a v2 entitlement requires --author with the named author this device is assigned to")
+				}
+				store, err := entitlement.ImportV2(output, data, trust, author, device, licenseNow())
+				if err != nil {
+					return err
+				}
+				return storeV2{store}.report(cmd.OutOrStdout(), "Entitlement installed: "+store.Claims.ID, trust, "")
+			}
+			if author != "" {
+				return errors.New("a v1 entitlement binds devices, not named authors; --author applies to a v2 entitlement")
+			}
 			store, err := entitlement.Import(output, data, trust, device, licenseNow())
 			if err != nil {
 				return err
 			}
-			grant, err := store.Grant(trust)
-			if err != nil {
-				return err
-			}
-			return writeGrant(cmd.OutOrStdout(), "Entitlement installed: "+grant.Claims.ID, grant, device, "", activation(store))
+			return storeV1{store}.report(cmd.OutOrStdout(), "Entitlement installed: "+store.Claims.ID, trust, "")
 		},
 	}
 	command.Flags().StringVar(&trustPath, "trust", "", "Trust store of vendor signing keys to verify against")
+	command.Flags().StringVar(&author, "author", "", "Named author to activate for, which a v2 entitlement must assign this device to")
 	command.Flags().StringVar(&device, "device", "", "Device identifier to activate, which the entitlement must name")
 	command.Flags().StringVar(&output, "output", "", "New entitlement store directory (never overwrite)")
 	return command
@@ -106,15 +135,11 @@ func licenseShow(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			store, err := entitlement.Open(args[0])
+			store, err := openStore(args[0])
 			if err != nil {
 				return err
 			}
-			grant, err := store.Grant(trust)
-			if err != nil {
-				return err
-			}
-			return writeGrant(cmd.OutOrStdout(), "Entitlement installed: "+grant.Claims.ID, grant, store.Activation.Device, require, activation(store))
+			return store.report(cmd.OutOrStdout(), "Entitlement installed: "+store.id(), trust, require)
 		},
 	}
 	command.Flags().StringVar(&trustPath, "trust", "", "Trust store of vendor signing keys to verify against")
@@ -138,18 +163,14 @@ func licenseRenew(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			store, err := entitlement.Open(args[0])
+			store, err := openStore(args[0])
 			if err != nil {
 				return err
 			}
-			if err := store.Renew(data, trust); err != nil {
+			if err := store.renew(data, trust); err != nil {
 				return err
 			}
-			grant, err := store.Grant(trust)
-			if err != nil {
-				return err
-			}
-			return writeGrant(cmd.OutOrStdout(), "Entitlement renewed: "+grant.Claims.ID, grant, store.Activation.Device, "", activation(store))
+			return store.report(cmd.OutOrStdout(), "Entitlement renewed: "+store.id(), trust, "")
 		},
 	}
 	command.Flags().StringVar(&trustPath, "trust", "", "Trust store of vendor signing keys to verify against")
@@ -167,16 +188,16 @@ func licenseExport(ran *bool) *cobra.Command {
 			if output == "" {
 				return errors.New("license export requires --output with a new file")
 			}
-			store, err := entitlement.Open(args[0])
+			store, err := openStore(args[0])
 			if err != nil {
 				return err
 			}
-			if _, err := store.Export(output); err != nil {
+			if err := store.export(output); err != nil {
 				return err
 			}
 			return writeLicense(cmd.OutOrStdout(), func(w io.Writer) {
 				fmt.Fprintf(w, "Entitlement exported: %s\nDocument: %s\nBytes: exactly as received; the exported file verifies because it is the same file\n",
-					store.Claims.ID, entitlement.Schema)
+					store.id(), store.schema())
 			})
 		},
 	}
@@ -191,16 +212,16 @@ func licenseRelease(ran *bool) *cobra.Command {
 		Args:  licenseOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
-			store, err := entitlement.Open(args[0])
+			store, err := openStore(args[0])
 			if err != nil {
 				return err
 			}
-			if err := store.Release(licenseNow()); err != nil {
+			if err := store.release(licenseNow()); err != nil {
 				return err
 			}
 			return writeLicense(cmd.OutOrStdout(), func(w io.Writer) {
 				fmt.Fprintf(w, "Activation released: %s\nEntitlement: %s\nReleased: %s\nTransfer: ask the vendor to reissue this entitlement for the new device, then import it there\nLocal record: releasing is recorded here, not proven to the vendor; seat accounting is settled when the vendor reissues\n",
-					store.Activation.Device, store.Claims.ID, licenseTimestamp(store.Activation.Released))
+					store.activated(), store.id(), licenseTimestamp(store.released()))
 			})
 		},
 	}
@@ -258,10 +279,6 @@ func writeGrant(out io.Writer, headline string, grant entitlement.Grant, device,
 		}
 		binding = bound.ID + " (" + string(bound.Kind) + ")"
 	}
-	grace := "none; the term ends at expiry"
-	if claims.GraceDays > 0 {
-		grace = strconv.Itoa(claims.GraceDays) + " days, through " + licenseTimestamp(claims.GraceEnds())
-	}
 	if require != "" {
 		if err := grant.Allows(require, at); err != nil {
 			return err
@@ -271,18 +288,34 @@ func writeGrant(out io.Writer, headline string, grant entitlement.Grant, device,
 		fmt.Fprintf(w, "%s\nDocument: %s\nOrganization: %s\nPlan: %s\nIssue sequence: %d\nSigned by: %s (%s, %s)\n",
 			headline, entitlement.Schema, claims.Organization, claims.Plan, claims.Sequence, grant.KeyID, entitlement.Algorithm, grant.KeyStatus)
 		fmt.Fprintf(w, "Term: %s to %s\nGrace: %s\nState: %s\n",
-			licenseTimestamp(claims.NotBefore), licenseTimestamp(claims.Expires), grace, grant.StateAt(at))
+			licenseTimestamp(claims.NotBefore), licenseTimestamp(claims.Expires), grace(claims.GraceDays, claims.GraceEnds()), grant.StateAt(at))
 		fmt.Fprintf(w, "Scope: %d seats, %d runners\nBound devices: %s\nCapabilities: %s\nDevice: %s\n",
 			claims.Scope.Seats, claims.Scope.Runners, devices(claims.Scope.Devices), list(claims.Capabilities), binding)
-		if installed != "" {
-			fmt.Fprintf(w, "Activation: %s\n", installed)
-		}
-		if require != "" {
-			fmt.Fprintf(w, "Required capability: %s (granted)\n", require)
-		}
-		fmt.Fprint(w, "Evidence: read, verification and export never consult an entitlement; expiry withdraws capabilities only\n")
-		fmt.Fprint(w, "Offline limit: a revocation issued after this document was signed cannot be observed locally\n")
+		writeGrantTrailer(w, installed, require)
 	})
+}
+
+// grace renders the issuer's configured window, which both contract versions
+// carry the same way.
+func grace(days int, ends time.Time) string {
+	if days > 0 {
+		return strconv.Itoa(days) + " days, through " + licenseTimestamp(ends)
+	}
+	return "none; the term ends at expiry"
+}
+
+// writeGrantTrailer closes every grant report the same way, whichever version
+// it reports: the local activation, the required capability, and the two
+// limits every entitlement shares.
+func writeGrantTrailer(w io.Writer, installed, require string) {
+	if installed != "" {
+		fmt.Fprintf(w, "Activation: %s\n", installed)
+	}
+	if require != "" {
+		fmt.Fprintf(w, "Required capability: %s (granted)\n", require)
+	}
+	fmt.Fprint(w, "Evidence: read, verification and export never consult an entitlement; expiry withdraws capabilities only\n")
+	fmt.Fprint(w, "Offline limit: a revocation issued after this document was signed cannot be observed locally\n")
 }
 
 func devices(bound []entitlement.Device) string {

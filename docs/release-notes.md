@@ -373,6 +373,23 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   an unrecorded completion; `run clean` removes only a stale lease and never
   evidence. `readmit-job/v1` is unchanged, the desktop facade is unchanged, and
   no scheduler, admission or automatic resend is added.
+- `license` reads a second entitlement contract, `readmit-entitlement/v2`,
+  beside v1: named authors each assigned at most two devices, and runner
+  capacity counted in execution instances active at once and divided among
+  customer-controlled authorities the document names. `license import --author
+  --device` activates one assigned device under a `readmit-entitlement-store/v2`
+  record, transfer is a reissue at the next sequence plus `license release`,
+  and `license runner init|admit|renew|release|reconcile|show` keep an
+  authority's local `readmit-runner-admission/v1` record under one exclusive
+  update: an instance that stops without releasing holds its capacity until an
+  operator reconciles it or it renews, admission and renewal are refused after
+  expiry while started work keeps its bounded lease and still settles, and a
+  copy of the record elsewhere is documented
+  as a second authority the engine cannot detect. Independent issuer vectors
+  are committed for both versions under a test-only seed. `readmit-entitlement/v1`,
+  `readmit-entitlement-trust/v1` and `readmit-entitlement-store/v1` gain no
+  member and change no byte; the D6 clock guard is not delivered here and stays
+  #116's separate versioned state.
 
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
