@@ -1,6 +1,6 @@
 # readmit
 
-Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `listen`, `replay`, `test`, `synth`, and `diagnose` are available; later workflows are tracked in [GitHub issues](https://github.com/bharm16/readmit/issues).
+Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `listen`, `replay`, `test`, `redact`, `synth`, and `diagnose` are available; later workflows are tracked in [GitHub issues](https://github.com/bharm16/readmit/issues).
 
 ```sh
 readmit inspect message.hl7
@@ -44,11 +44,20 @@ Both commands hide raw content unless `--show-values` is requested.
 
 Copying a bundle preserves its identity; modifying evidence fails verification.
 Existing destinations are never overwritten. The bundle API also supports
-deterministic generated provenance for the future `synth` command. See the
+deterministic generated provenance for `synth`. See the
 [complete case bundle contract](docs/case-bundle.md) for layout, field definitions,
 correlation rules, observation metadata, integrity checks, and limits.
 
 ## Available workflows
+
+`redact CASE` applies explicit named policies, writes a separate derived case
+and export review, and keeps identifier mappings and date offsets in separate
+private storage. Unhandled content blocks export. `redact export REVIEW`
+requires approval of the exact review, reruns the transformed assertions against
+both fixture modes, and generates fresh results and diagnosis. Coverage and
+residual scans state their limits; this workflow makes no legal certification.
+See [transformation and export review](docs/redact.md) for the policy format,
+whole-packet review, and synthetic acceptance scenario.
 
 `test SPEC --send --output NEW_RESULT_DIRECTORY` evaluates saved assertions over
 actual ACKs or the fixture's appointment ledger. Exit codes distinguish pass

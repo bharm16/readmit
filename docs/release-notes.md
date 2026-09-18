@@ -23,6 +23,9 @@ Unsigned preview of local HL7 inspection and case evidence capture.
 - `replay` previews by default, sends only to explicitly configured test targets,
   preserves selected source values unless a named transformation is requested,
   and records exact transport evidence and uncertain outcomes in a new run.
+- `redact` creates separate derived evidence with explicit policies and a
+  fail-closed export review. Approved fixture exports regenerate their results
+  and diagnosis, verify failure preservation, and exclude private mappings.
 
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`

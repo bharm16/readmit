@@ -44,6 +44,13 @@ REQUIRED_FILES = {
     "docs/test-runner.md",
     "docs/test-spec.md",
     "docs/test-result.md",
+    "docs/redact.md",
+    "testdata/fixtures/redact-booking.mllp",
+    "testdata/fixtures/redact-reschedule.mllp",
+    "testdata/fixtures/redact-spec.json",
+    "testdata/fixtures/redact-policy.json",
+    "testdata/fixtures/redact-policy-blocked.json",
+    "testdata/fixtures/redact-inventory.json",
     "testdata/fixtures/test-reschedule.json",
     "testdata/fixtures/test-target.json",
     "testdata/fixtures/case-evidence.mllp",
@@ -245,6 +252,7 @@ def smoke(archive, target_os, release_tag=None):
         smoke_receiver(archive, binary, environment, work, run, family / "regression")
         smoke_replay(binary, environment, work, run, family / "regression")
         smoke_test_runner(archive, binary, environment, work, run)
+        smoke_redact(archive, binary, environment, work, run)
     print(f"PASS: {archive.name}; checksum, version, inspection, capture, timeline, privacy, and byte preservation")
 
 
@@ -433,6 +441,84 @@ def smoke_test_runner(archive, binary, environment, work, run):
     assert missing.returncode == 2 and missing.stdout.rstrip().splitlines()[-1].startswith(b"Rerun:")
     assert json.loads((failed_output / "result.json").read_bytes())["status"] == "execution_error"
     assert (source / "identity.sha256").read_text().strip() == case_identity
+
+
+def smoke_redact(archive, binary, environment, work, run):
+    """Exercise blocked review and generated proof from planted synthetic data."""
+    local = work / "export review with spaces"
+    local.mkdir()
+    for source, destination in (("redact-spec.json", "spec.json"), ("redact-policy.json", "policy.json"),
+                                ("redact-policy-blocked.json", "blocked-policy.json")):
+        (local / destination).write_bytes(member_bytes(archive, "testdata/fixtures/" + source))
+    inputs = []
+    for name in ("redact-booking.mllp", "redact-reschedule.mllp"):
+        path = local / ("PLANTED-FILENAME-CEDAR-" + name)
+        path.write_bytes(member_bytes(archive, "testdata/fixtures/" + name))
+        inputs.append(path)
+    source = local / "original.case"
+    run("capture", *inputs, "--output", source)
+    original = {p.relative_to(source).as_posix(): p.read_bytes() for p in source.rglob("*") if p.is_file()}
+    diagnosis = local / "original-diagnosis"
+    run("diagnose", source, "--output", diagnosis)
+    diagnosis_json = diagnosis / "report.json"
+    report = json.loads(diagnosis_json.read_bytes())
+    report["scope"] += " PLANTED-DIAG-MAPLE"
+    diagnosis_json.write_text(json.dumps(report))
+    inventory = json.loads(member_bytes(archive, "testdata/fixtures/redact-inventory.json"))
+    inventory["artifacts"] = [{"kind": "diagnosis-json", "path": "original-diagnosis/report.json"}]
+    # This creates values present only in the original replay history/evidence.
+    with fixture_receiver(binary, environment, work, "redaction", "fixed") as (process, port, case, observation, initial):
+        target = json.loads(member_bytes(archive, "testdata/fixtures/test-target.json"))
+        target["address"] = f"127.0.0.1:{port}"
+        target_path = local / "original-target.json"
+        target_path.write_text(json.dumps(target))
+        original_run = local / "original-run"
+        run("replay", source, "--target", target_path, "--transform", "rebase-control-ids", "--send", "--output", original_run)
+        _, stderr = process.communicate(timeout=10)
+        assert process.returncode == 0 and not stderr
+        inventory["artifacts"].append({"kind": "run", "path": "original-run"})
+        run_manifest = json.loads((original_run / "manifest.json").read_bytes())
+        replay_values = [base64.b64decode(change["new_base64"]) for change in run_manifest["changes"]]
+        assert replay_values
+    inventory_path = local / "inventory.json"
+    inventory_path.write_text(json.dumps(inventory))
+    blocked_review, blocked_private = local / "blocked-review", local / "blocked-private"
+    blocked = run("redact", source, "--spec", local / "spec.json", "--policy", local / "blocked-policy.json",
+                  "--inventory", inventory_path, "--local-state", blocked_private, "--output", blocked_review, success=False)
+    assert blocked.returncode == 2 and b"PLANTED" not in blocked.stdout + blocked.stderr
+    blocked_manifest = json.loads((blocked_review / "review.json").read_bytes())
+    assert blocked_manifest["state"] == "blocked" and any(not finding["resolved"] for finding in blocked_manifest["findings"])
+    assert all(finding["location"] for finding in blocked_manifest["findings"])
+    blocked_packet = local / "blocked-packet"
+    run("redact", "export", blocked_review, "--local-state", blocked_private,
+        "--approve", (blocked_review / "identity.sha256").read_text().strip(), "--output", blocked_packet, success=False)
+    assert not blocked_packet.exists()
+    review, private, packet = local / "review", local / "private", local / "packet"
+    prepared = run("redact", source, "--spec", local / "spec.json", "--policy", local / "policy.json",
+                   "--inventory", inventory_path, "--local-state", private, "--output", review)
+    assert b"PLANTED" not in prepared.stdout + prepared.stderr
+    approved = (review / "identity.sha256").read_text().strip()
+    exported = run("redact", "export", review, "--local-state", private, "--approve", approved, "--output", packet)
+    assert b"PLANTED" not in exported.stdout + exported.stderr
+    manifest = json.loads((packet / "export-review.json").read_bytes())
+    assert manifest["schema"] == "readmit-derived-export/v1" and manifest["state"] == "complete"
+    assert manifest["approved_review_identity"] == approved and manifest["residual_scan"]["status"] == "passed"
+    assert len(manifest["review"]["coverage"]) == 18 and manifest["review"]["uncovered_classes"]
+    assert manifest["proof"]["failed_assertions"] == [1, 2]
+    for mode, status in (("baseline", "assertion_failure"), ("postfix", "pass")):
+        result = json.loads((packet / "proof" / mode / "result" / "result.json").read_bytes())
+        assert result["status"] == status
+        assert result["input_bundle_identity"] == (packet / "case" / "identity.sha256").read_text().strip()
+    for item in manifest["files"]:
+        content = (packet / item["path"]).read_bytes()
+        assert len(content) == item["size"] and hashlib.sha256(content).hexdigest() == item["sha256"]
+    forbidden = [b"PLANTED", b"PRIVATE-APP", b"PRIVATE-FACILITY", str(local).encode(), *replay_values]
+    for path in packet.rglob("*"):
+        if path.is_file():
+            material = path.relative_to(packet).as_posix().encode() + path.read_bytes()
+            assert not any(value in material for value in forbidden)
+    assert (private / "state.json").is_file() and not (packet / "state.json").exists()
+    assert original == {p.relative_to(source).as_posix(): p.read_bytes() for p in source.rglob("*") if p.is_file()}
 
 
 def main():

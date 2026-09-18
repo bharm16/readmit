@@ -15,6 +15,7 @@ import (
 const (
 	Schema           = "readmit-case/v1"
 	RecordedSchema   = "readmit-case/v2"
+	DerivedSchema    = "readmit-case/v3"
 	MaxSources       = 128
 	MaxEvents        = 10000
 	MaxSourceBytes   = hl7.MaxInputBytes
@@ -29,6 +30,7 @@ const (
 	Imported  Mode = "imported"
 	Generated Mode = "generated"
 	Recorded  Mode = "recorded"
+	Derived   Mode = "derived"
 )
 
 type Direction string
@@ -72,6 +74,7 @@ type Provenance struct {
 	Generator  *GeneratorInputs `json:"generator,omitzero"`
 	StartedAt  *time.Time       `json:"started_at,omitzero"`
 	SessionID  string           `json:"session_id,omitzero"`
+	Derivation string           `json:"derivation,omitzero"`
 }
 
 // Observation is explicitly supplied evidence. File metadata and HL7 fields

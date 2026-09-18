@@ -101,8 +101,46 @@ func Open(path string) (*Bundle, error) {
 	if err := json.Unmarshal(files["manifest.json"], &manifest, json.RejectUnknownMembers(true)); err != nil {
 		return nil, errors.New("invalid bundle manifest")
 	}
-	if manifest.Schema != Schema && manifest.Schema != RecordedSchema {
+	if manifest.Schema != Schema && manifest.Schema != RecordedSchema && manifest.Schema != DerivedSchema {
 		return nil, errors.New("unsupported case bundle schema version")
+	}
+	if manifest.Schema == RecordedSchema {
+		// Do not relax v2 when adding the v3-only provenance member, even null.
+		var fields struct {
+			Provenance map[string]any `json:"provenance"`
+		}
+		if json.Unmarshal(files["manifest.json"], &fields) != nil {
+			return nil, errors.New("invalid v2 bundle manifest")
+		}
+		if _, exists := fields.Provenance["derivation"]; exists {
+			return nil, errors.New("invalid v2 bundle provenance")
+		}
+	}
+	if manifest.Schema == DerivedSchema {
+		var derived struct {
+			Schema     string `json:"schema"`
+			State      string `json:"state"`
+			Provenance struct {
+				Mode       Mode   `json:"mode"`
+				Derivation string `json:"derivation"`
+			} `json:"provenance"`
+			Sources    []Source `json:"sources"`
+			EventCount int      `json:"event_count"`
+		}
+		if json.Unmarshal(files["manifest.json"], &derived, json.RejectUnknownMembers(true)) != nil {
+			return nil, errors.New("invalid v3 bundle manifest")
+		}
+		var paths struct {
+			Sources []map[string]any `json:"sources"`
+		}
+		if json.Unmarshal(files["manifest.json"], &paths) != nil {
+			return nil, errors.New("invalid v3 sources")
+		}
+		for _, source := range paths.Sources {
+			if _, exists := source["path"]; exists {
+				return nil, errors.New("derived evidence cannot carry original source paths")
+			}
+		}
 	}
 	if manifest.Schema == Schema {
 		// v1 remains strict against fields first introduced in v2, including
@@ -122,7 +160,7 @@ func Open(path string) (*Bundle, error) {
 			return nil, errors.New("invalid v1 bundle manifest")
 		}
 	}
-	if manifest.Schema == Schema && (manifest.Provenance.Mode == Recorded || manifest.Observation != nil) || manifest.Schema == RecordedSchema && (manifest.Provenance.Mode != Recorded || manifest.Observation == nil) {
+	if manifest.Schema == Schema && (manifest.Provenance.Mode != Imported && manifest.Provenance.Mode != Generated || manifest.Observation != nil) || manifest.Schema == RecordedSchema && (manifest.Provenance.Mode != Recorded || manifest.Observation == nil) || manifest.Schema == DerivedSchema && (manifest.Provenance.Mode != Derived || manifest.Observation != nil) {
 		return nil, errors.New("case bundle schema does not match provenance and observation")
 	}
 	if manifest.State != "complete" {

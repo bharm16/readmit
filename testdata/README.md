@@ -60,3 +60,11 @@ expected ledger/ACK values. `test-target.json` is its explicit local target
 template. Tests reset the receiver and update only the target endpoint while
 the spec produces failure, pass, reintroduced failure, and repeatable pass.
 Session/occurrence receipts bind the captured ledger to the actual replay.
+
+The issue #9 `redact-*` fixtures are invented data with conspicuous planted
+identifiers in messages, ACK/ERR text, free text, embedded data, and spec
+literals. The complete and blocked policies exercise located review findings,
+consistent surrogates, private date shifts, and newly generated defective/fixed
+proof. Native archive checks additionally plant source filenames, diagnosis
+text, and values present only in original replay transformations. They require
+unchanged source evidence and an export containing none of those values.
