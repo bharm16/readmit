@@ -330,7 +330,25 @@ ran, one that returned stale data, one whose capture was truncated, one whose
 connection was lost and one whose source answered ambiguously all observed zero
 records and none of them may be read as proof that there are none. State that
 was already there when the window opened is never evidence that the run produced
-it. See [trustworthy observation windows](docs/observe.md).
+it.
+
+`observe collect SOURCE --window WINDOW --out NEW_RECORD --snapshot NEW_DIRECTORY`
+is the first source-specific collector. A `readmit-observation-source/v1`
+document declares a bounded JSON, CSV, XML or text export on disk, or a bounded
+read of an approved HTTPS API, together with the envelope the output is carried
+in and the locator of the key that identifies one record. The export readers are
+the ones a [mapping recipe](docs/mapping.md) already uses, so an export readmit
+can import is an export readmit can observe. Every observation states how old
+the material it read is: a cached response carrying an age, and an export older
+than the declared bound, are stale evidence rather than current evidence.
+Destinations go through the same send policy a replay is held to, TLS 1.2 is the
+floor with verification always on, a credential is a reference readmit never
+stores or renders, and retries are bounded, recorded and never applied to an
+answer that was already given. A disabled collector, a stale read, a truncated
+export, a lost connection, an unauthorized read and an ambiguous response each
+produce a named execution error, never a passing absence assertion. The original
+material each read observed is retained unchanged beside the record.
+See [trustworthy observation windows](docs/observe.md).
 
 `replay CASE --target CONFIG` previews a replay without opening a connection.
 Sending requires `--send --output NEW_RUN` and an explicit configuration marked

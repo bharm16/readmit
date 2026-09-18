@@ -323,6 +323,13 @@ flat record, 8 elements per locator or record path, 16 direction table entries,
 128 bytes per mapped label, and 64 elements of XML nesting. A member past any
 bound is refused, never mapped in part.
 
+The envelope half of a recipe — the declared envelope, its one dialect, the
+encoding and the locators — is also what an
+[external observation](observe.md#extraction) declares about a file export or an
+API response. Both read through these same readers under these same bounds and
+refusals, so an export readmit can import is an export readmit can observe, and
+there is one reading of what a record is rather than two.
+
 ## Explicitly not supported
 
 - **No detection.** The envelope, the dialect, the payload encoding, the framing

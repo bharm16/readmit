@@ -199,3 +199,12 @@ transport opens a connection and sends the bytes of a case, and
 [`readmit-run/v1`](run-bundle.md) records the transport it used, naming no
 credential reference. Recording a reference in run evidence is a future contract
 change, not an addition to a released version.
+
+A credential bound to something other than an MLLP endpoint is a separate
+contract rather than a second `purpose` here, because widening `purpose` would
+change the meaning of `readmit-secrets/v1` rather than adding a new version.
+[Evidence protection](protect.md) registers a key that way, and an
+[external observation](observe.md#authentication-references) registers the
+credential its HTTPS endpoint is read with the same way. All of them read a
+value back through the one bounded mechanism this page describes; there is no
+second way to obtain one.
