@@ -33,6 +33,11 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   verified failure/pass results, diagnosis, diff, profiles, and rerun procedure
   in one packet. Offline verification and separate rerun workspaces are included.
 
+- Released behavior is now also checked against an independently implemented HL7
+  endpoint, a hand-authored corpus that no readmit command produced, and
+  mutation tests that require those checks to fail when behavior changes. No
+  supported integration-engine export corpus is covered yet.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is

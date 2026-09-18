@@ -1,0 +1,16 @@
+[
+  {
+    "record_id": "r000001",
+    "patient_id": {"value": "8812", "namespace": "CORPUSAUTH", "universal_id": "2.16.840.1.113883.19.3.71", "universal_id_type": "ISO"},
+    "placer_id": {"value": "PLACER-4471", "namespace": "CORPUSAUTH", "universal_id": "2.16.840.1.113883.19.3.71", "universal_id_type": "ISO"},
+    "filler_id": {"value": "FILLER-9903", "namespace": "SCHEDAUTH", "universal_id": "2.16.840.1.113883.19.3.72", "universal_id_type": "ISO"},
+    "appointment_start": "20260220143000"
+  },
+  {
+    "record_id": "r000002",
+    "patient_id": {"value": "8812", "namespace": "CORPUSAUTH", "universal_id": "2.16.840.1.113883.19.3.71", "universal_id_type": "ISO"},
+    "placer_id": {"value": "PLACER-4471", "namespace": "CORPUSAUTH", "universal_id": "2.16.840.1.113883.19.3.71", "universal_id_type": "ISO"},
+    "filler_id": {"value": "FILLER-9903", "namespace": "SCHEDAUTH", "universal_id": "2.16.840.1.113883.19.3.72", "universal_id_type": "ISO"},
+    "appointment_start": "20260221101500"
+  }
+]

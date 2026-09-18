@@ -51,6 +51,7 @@ One Go module, `github.com/bharm16/readmit`, producing one `readmit` executable.
 
 - `testing`, native fuzzing (framing, parsing, selectors, bundle readers), the race detector, and `os/exec` tests against the built binary.
 - Independently authored golden fixtures for parsing and for expected workflow results.
+- A separate verification layer that does not share the Go packages' assumptions: a stdlib-only Python HL7 endpoint (`tools/independent.py`), a hand-authored corpus under `testdata/verification`, and mutation tests (`tools/mutate.py`) that require those checks to fail when behavior changes. See [independent verification](independent-verification.md).
 - `gofmt`, `go vet`, and `govulncheck`. No large lint configuration to start. No Ginkgo or Gomega.
 - Race-detector jobs run with cgo enabled; release builds use `CGO_ENABLED=0`. The setting is per job, never global.
 
@@ -67,7 +68,7 @@ GitHub Actions, with the declared release matrix mapped to native runners:
 | windows/amd64 | `windows-2025` |
 
 - Third-party actions are pinned by commit SHA.
-- PR checks: tests, vet, govulncheck, and native executable smoke tests.
+- PR checks: tests, vet, govulncheck, independent endpoint/corpus and mutation checks, and native executable smoke tests.
 - Release jobs test the exact artifacts being published, not rebuilt equivalents.
 - Release credentials and signing never run in untrusted pull-request workflows.
 

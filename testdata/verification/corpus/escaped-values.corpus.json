@@ -1,0 +1,28 @@
+{
+  "schema": "readmit-corpus-case/v1",
+  "origin": "hand-authored",
+  "source": "escaped-values.hl7",
+  "authored_from": "HL7 v2.5.1 chapter 2 escape sequences and CRLF segment terminators; no readmit command produced these bytes or these expectations",
+  "format": "raw",
+  "terminator": "crlf",
+  "occurrences": [
+    {
+      "kind": "message",
+      "terminator": "crlf",
+      "segments": ["MSH", "SCH", "PID", "NTE"],
+      "control_id": "CORPUS0002",
+      "declared_time": {"state": "present", "value": "20260212101500"},
+      "acknowledged_control_ids": [],
+      "fields": [
+        {"selector": "SCH-8", "state": "present", "value": "Follow\\T\\up"},
+        {"selector": "SCH-9", "state": "empty"},
+        {"selector": "SCH-11", "state": "present", "value": "^^^20260220143000"},
+        {"selector": "PID-3", "state": "present", "value": "4410^^^CORPUSAUTH&2.16.840.1.113883.19.3.71&ISO^MR"},
+        {"selector": "NTE-3", "state": "present", "value": "Line one\\.br\\Line two\\X0D\\end"}
+      ]
+    }
+  ],
+  "correlations": [
+    {"kind": "unacknowledged_message", "ack": null, "messages": [1]}
+  ]
+}
