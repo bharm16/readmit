@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"bytes"
 	"encoding/json/v2"
 	"os"
 	"path/filepath"
@@ -329,10 +330,22 @@ func TestSameCaseIdentityAcrossDesktopCommandLineAndExportedArtifacts(t *testing
 	}
 
 	// An exported artifact carries the same identity for the same evidence. The
-	// packet runs the frozen scenario over its own copy of this case.
+	// sealed packet retains its input case, so this is the same evidence rather
+	// than two values that happen to agree: the retained case is compared byte
+	// for byte with the case this project registered before its identity is.
 	packet := filepath.Join(t.TempDir(), "packet")
 	if _, stderr, err := run(t, "report", "--scenario", "siu-reschedule-v1", "--output", packet); err != nil || stderr != "" {
 		t.Fatalf("report: %v %s", err, stderr)
+	}
+	registered := synthTree(t, filepath.Join(root, "regression"))
+	retained := synthTree(t, filepath.Join(packet, "reproducer"))
+	if len(registered) != len(retained) {
+		t.Fatalf("the packet retained %d files for a registered case of %d", len(retained), len(registered))
+	}
+	for name, want := range registered {
+		if got, present := retained[name]; !present || !bytes.Equal(got, want) {
+			t.Fatalf("the exported packet does not retain the registered case: %s", name)
+		}
 	}
 	manifest, err := os.ReadFile(filepath.Join(packet, "manifest.json"))
 	if err != nil {
@@ -346,6 +359,15 @@ func TestSameCaseIdentityAcrossDesktopCommandLineAndExportedArtifacts(t *testing
 	}
 	if exported.InputIdentity != identity {
 		t.Fatalf("the exported packet named %s for the case the project records as %s", exported.InputIdentity, identity)
+	}
+	// The retained case's own completion marker names it too, so the packet's
+	// manifest is not the only place the exported identity appears.
+	marker, err := os.ReadFile(filepath.Join(packet, "reproducer", "identity.sha256"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(marker) != identity+"\n" {
+		t.Fatalf("the retained case names %q for the case the project records as %s", marker, identity)
 	}
 	if identity != frozenRegressionIdentity {
 		t.Fatalf("every surface agreed on %s, which is not the independently authored identity", identity)
