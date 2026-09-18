@@ -30,6 +30,7 @@ archives:
       - licenses/*
       - docs/dictionary-provenance.md
       - docs/case-bundle.md
+      - docs/synth.md
       - testdata/README.md
       - testdata/fixtures/*
       - src: internal/dictionary/fields-v251.json

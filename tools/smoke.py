@@ -30,7 +30,7 @@ FIXTURES = (
 )
 REQUIRED_FILES = {
     "README.md", "THIRD_PARTY_NOTICES.md", "docs/dictionary-provenance.md",
-    "dictionary/fields-v251.json", "testdata/README.md", "docs/case-bundle.md",
+    "dictionary/fields-v251.json", "testdata/README.md", "docs/case-bundle.md", "docs/synth.md",
     "testdata/fixtures/case-evidence.mllp",
     "licenses/cobra-LICENSE.txt", "licenses/go-BSD-3-Clause.txt",
     "licenses/mousetrap-LICENSE.txt", "licenses/nhapi-MPL-2.0.txt", "licenses/pflag-LICENSE.txt",
@@ -170,6 +170,23 @@ def smoke(archive, target_os, release_tag=None):
         (copied / events[0]["payload"]["path"]).write_bytes(b"SECRET-TAMPER")
         corrupt = run("timeline", copied, "--show-values", success=False)
         assert not corrupt.stdout and b"SECRET" not in corrupt.stderr
+
+        generator_args = ("--seed", "17", "--base-time", "2026-01-01T12:00:00Z",
+                          "--generator-version", "readmit-synth-v1", "--profile-version", "readmit-siu-v1")
+        family, repeated = work / "synthetic-family", work / "repeated-family"
+        run("synth", *generator_args, "--output", family)
+        run("synth", *generator_args, "--output", repeated)
+        assert (family / "family.json").is_file()
+        family_files = {p.relative_to(family).as_posix(): p.read_bytes() for p in family.rglob("*") if p.is_file()}
+        repeated_files = {p.relative_to(repeated).as_posix(): p.read_bytes() for p in repeated.rglob("*") if p.is_file()}
+        assert family_files == repeated_files
+        assert all(str(work).encode() not in data for data in family_files.values())
+        for variant, count in (("regression", 2), ("cancellation", 3), ("invalid", 2)):
+            generated = run("timeline", family / variant)
+            assert not generated.stderr and b"Provenance: generated" in generated.stdout
+            assert f"Messages: {count}\n".encode() in generated.stdout
+            assert b"imported=unknown" in generated.stdout and b"observed=unknown" in generated.stdout
+        assert not run("synth", *generator_args, "--output", family, success=False).stdout
     print(f"PASS: {archive.name}; checksum, version, inspection, capture, timeline, privacy, and byte preservation")
 
 
