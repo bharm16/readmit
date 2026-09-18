@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -80,7 +81,8 @@ func targetSet(ran *bool) *cobra.Command {
 			}
 			return writeLines(cmd.OutOrStdout(), func(w io.Writer) {
 				fmt.Fprintf(w, "Environment recorded: %s\n", stored.Name)
-				writeEnvironmentLines(w, stored)
+				writeEnvironmentBanner(w, stored.Environment())
+				writeConfigurationLines(w, stored)
 			})
 		},
 	}
@@ -116,7 +118,8 @@ func targetShow(ran *bool) *cobra.Command {
 			}
 			return writeLines(cmd.OutOrStdout(), func(w io.Writer) {
 				fmt.Fprintln(w, "Configuration: valid; no connection was opened")
-				writeEnvironmentLines(w, config)
+				writeEnvironmentBanner(w, config.Environment())
+				writeConfigurationLines(w, config)
 			})
 		},
 	}
@@ -145,7 +148,10 @@ func targetCheck(ran *bool) *cobra.Command {
 				return err
 			}
 			if err := writeLines(cmd.OutOrStdout(), func(w io.Writer) {
-				writeEnvironmentLines(w, config)
+				// The banner comes from the report, so the environment a
+				// verdict names is the one the diagnosis was produced against.
+				writeEnvironmentBanner(w, report.Environment)
+				writeConfigurationLines(w, config)
 				writeDiagnosisLines(w, report)
 			}); err != nil {
 				return err
@@ -200,13 +206,10 @@ func openOrNewTarget(path string) (replay.Target, error) {
 	return config, nil
 }
 
-// writeEnvironmentLines renders one configuration. The classification is stated
-// with what it is worth beside it: it is what somebody recorded, and readmit
-// neither established it nor treats it as permission to send anywhere. Declared
+// writeConfigurationLines renders one configuration below its banner. Declared
 // file paths are not echoed; the transport material is reported as configured
 // or absent, exactly as run evidence reports a CA without naming its path.
-func writeEnvironmentLines(w io.Writer, config replay.Target) {
-	writeEnvironmentBanner(w, config.Environment())
+func writeConfigurationLines(w io.Writer, config replay.Target) {
 	fmt.Fprintf(w, "Contract: %s\n", config.Schema)
 	fmt.Fprintf(w, "Endpoint: %s (%s)\n", config.Address, config.Transport)
 	fmt.Fprintf(w, "Acknowledged as a test endpoint: %t  Transport explicitly approved: %t\n", config.TestEndpoint, config.ApprovedTransport)
@@ -240,11 +243,9 @@ func writeEnvironmentBanner(w io.Writer, named replay.Environment) {
 // is reported as the certificate states it and nothing acts on it.
 func writeDiagnosisLines(w io.Writer, report environment.Report) {
 	fmt.Fprintf(w, "Diagnosis: %s (phase=%s)\n", report.Outcome, report.Phase)
-	fmt.Fprintf(w, "Evaluated: %s, classified %s", absent(report.Environment.Name), report.Environment.Classification)
 	if report.Peer != "" {
-		fmt.Fprintf(w, "; reached %s", report.Peer)
+		fmt.Fprintf(w, "Reached: %s\n", report.Peer)
 	}
-	fmt.Fprintln(w)
 	if report.Unsolicited > 0 {
 		fmt.Fprintf(w, "Received without being asked: %d bytes, retained nowhere and interpreted as nothing\n", report.Unsolicited)
 	}
@@ -255,14 +256,14 @@ func writeDiagnosisLines(w io.Writer, report environment.Report) {
 		now := time.Now()
 		for i, certificate := range report.TLS.Chain {
 			fmt.Fprintf(w, "  certificate %d: subject=%s issuer=%s not_before=%s not_after=%s expires_in=%s\n",
-				i+1, certificate.Subject, certificate.Issuer,
+				i+1, quoted(certificate.Subject), quoted(certificate.Issuer),
 				certificate.NotBefore.Format(time.RFC3339), certificate.NotAfter.Format(time.RFC3339),
 				certificate.NotAfter.Sub(now).Truncate(time.Second))
 		}
 	}
 	for i, certificate := range report.Unverified {
 		fmt.Fprintf(w, "  unverified certificate %d: subject=%s issuer=%s not_before=%s not_after=%s\n",
-			i+1, certificate.Subject, certificate.Issuer,
+			i+1, quoted(certificate.Subject), quoted(certificate.Issuer),
 			certificate.NotBefore.Format(time.RFC3339), certificate.NotAfter.Format(time.RFC3339))
 	}
 	if len(report.Unverified) > 0 {
@@ -271,3 +272,8 @@ func writeDiagnosisLines(w io.Writer, report environment.Report) {
 	fmt.Fprintln(w, "No HL7 payload was sent. Reaching an endpoint and verifying its certificate are evidence about the transport only:")
 	fmt.Fprintln(w, "they are not evidence that an application accepted, processed or stored anything, and an expiry above is reported, not acted on.")
 }
+
+// quoted renders a name an endpoint chose. A certificate readmit is describing
+// may be one verification refused, so its subject is bytes from the network
+// like any other: it is escaped to printable ASCII rather than written through.
+func quoted(name string) string { return strconv.QuoteToASCII(name) }

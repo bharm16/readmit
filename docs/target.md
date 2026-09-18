@@ -22,10 +22,13 @@ before they report anything else — so nobody has to open a file to see what th
 are pointed at.
 
 It is not in run evidence. `readmit-run/v1` and `readmit-result/v1` are frozen
-and record the transport a run used, not the environment it was recorded
-against, so a shared run or result directory does not state the class of the
-endpoint it came from. Carrying one there would be a new contract version and is
-not in this release.
+and record the transport a run used — address, transport, acknowledgements,
+approval, CA digest and timeouts — not the environment it was recorded against.
+A shared run or result directory states neither the environment name, nor the
+class of the endpoint it came from, nor the server name that was verified, so
+two runs that verified different server names against the same address are
+recorded and identified identically. Carrying any of the three there would be a
+new contract version and is not in this release.
 
 It is a claim, not a finding. readmit did not establish it, cannot establish it,
 and does not treat it as permission. **A person labelling an endpoint

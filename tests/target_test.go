@@ -159,7 +159,7 @@ func TestTargetRecordsValidatesAndReachesANamedEnvironment(t *testing.T) {
 	if err != nil || stderr != "" {
 		t.Fatalf("target check: %v %s", err, stderr)
 	}
-	for _, want := range []string{"Diagnosis: reachable", "Evaluated: lab-siu, classified nonproduction; reached " + address, "No HL7 payload was sent"} {
+	for _, want := range []string{"Environment: lab-siu", "Diagnosis: reachable", "Reached: " + address, "No HL7 payload was sent"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("target check output is missing %q:\n%s", want, stdout)
 		}
@@ -200,7 +200,7 @@ func TestTargetCheckReportsTLSStatusAndNamesACertificateFailure(t *testing.T) {
 	if err != nil || stderr != "" {
 		t.Fatalf("target check: %v %s", err, stderr)
 	}
-	for _, want := range []string{"Diagnosis: reachable", "Certificate authority: explicitly configured", "TLS: TLS 1.", "server_name=" + testOnlyServerName, "certificate 1: subject=CN=" + testOnlyServerName, "not_after="} {
+	for _, want := range []string{"Diagnosis: reachable", "Certificate authority: explicitly configured", "TLS: TLS 1.", "server_name=" + testOnlyServerName, `certificate 1: subject="CN=` + testOnlyServerName, "not_after="} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("target check output is missing %q:\n%s", want, stdout)
 		}
@@ -254,6 +254,49 @@ func TestTargetDiagnosesAClientCertificateThatReplayRefusesToPresent(t *testing.
 	_, stderr, err = run(t, "replay", replayCase(t), "--target", path)
 	if err == nil || !strings.Contains(stderr, "presents no client certificate") {
 		t.Fatalf("a replay of a client-certificate configuration was accepted: %v %s", err, stderr)
+	}
+}
+
+// A replay verifies the certificate against the server name the configuration
+// declares, not against the address host. The endpoint below is reached at
+// 127.0.0.1 and presents a certificate issued to another name entirely, so a
+// replay that verified the address host could only fail as a TLS error.
+func TestReplayVerifiesTheDeclaredServerNameRatherThanTheAddressHost(t *testing.T) {
+	directory := t.TempDir()
+	authority, server := testOnlyTLS(t)
+	caFile := filepath.Join(directory, "ca.pem")
+	if err := os.WriteFile(caFile, authority, 0600); err != nil {
+		t.Fatal(err)
+	}
+	address, _ := quietEndpoint(t, server)
+	path := filepath.Join(directory, "tls.json")
+	source := replayCase(t)
+	set := func(t *testing.T, name string) {
+		t.Helper()
+		if _, stderr, err := run(t, "target", "set", "--target", path,
+			"--name", "lab-tls", "--classification", "nonproduction", "--address", address,
+			"--transport", "tls", "--ca", caFile, "--server-name", name,
+			"--connect-timeout", "2s", "--message-timeout", "200ms"); err != nil || stderr != "" {
+			t.Fatalf("target set: %v %s", err, stderr)
+		}
+	}
+
+	set(t, testOnlyServerName)
+	stdout, _, err := run(t, "replay", source, "--target", path, "--send", "--output", filepath.Join(directory, "declared.run"))
+	if err == nil {
+		t.Fatal("an endpoint that never acknowledges reported a successful replay")
+	}
+	if strings.Contains(stdout, "tls_error") {
+		t.Fatalf("the replay verified the address host rather than the declared server name:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "outcome=timeout") {
+		t.Fatalf("the handshake did not complete against the declared server name:\n%s", stdout)
+	}
+
+	set(t, "other.example.invalid")
+	stdout, _, err = run(t, "replay", source, "--target", path, "--send", "--output", filepath.Join(directory, "other.run"))
+	if err == nil || !strings.Contains(stdout, "outcome=tls_error") {
+		t.Fatalf("a certificate issued to another name was accepted by the replay: %v\n%s", err, stdout)
 	}
 }
 

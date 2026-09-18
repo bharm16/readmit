@@ -28,22 +28,29 @@ import (
 // turn it into the target file's own directory, and a refusal would then name
 // the wrong member.
 func ReadDeclaredTarget(path string) (Target, error) {
+	target, _, err := readDeclared(path)
+	return target, err
+}
+
+// readDeclared also hands back the physical path it read, so a caller that has
+// to anchor the configuration's declared references resolves the file once.
+func readDeclared(path string) (Target, string, error) {
 	resolved, err := artifactpath.Resolve(path)
 	if err != nil {
-		return Target{}, errors.New("cannot resolve target configuration")
+		return Target{}, "", errors.New("cannot resolve target configuration")
 	}
 	data, err := readLocal(resolved, 64<<10)
 	if err != nil {
-		return Target{}, errors.New("cannot read target configuration")
+		return Target{}, "", errors.New("cannot read target configuration")
 	}
 	var target Target
 	if err := json.Unmarshal(data, &target, json.RejectUnknownMembers(true)); err != nil {
-		return Target{}, errors.New("invalid target configuration JSON")
+		return Target{}, "", errors.New("invalid target configuration JSON")
 	}
 	if err := validateTarget(target); err != nil {
-		return Target{}, err
+		return Target{}, "", err
 	}
-	return target, nil
+	return target, resolved, nil
 }
 
 // ReadTarget performs bounded local reads only. Relative CA, client certificate
@@ -51,11 +58,7 @@ func ReadDeclaredTarget(path string) (Target, error) {
 // working directory, and the credential reference is bound to this target's own
 // purpose and address before the configuration is handed back.
 func ReadTarget(path string) (Target, error) {
-	resolved, err := artifactpath.Resolve(path)
-	if err != nil {
-		return Target{}, errors.New("cannot resolve target configuration")
-	}
-	target, err := ReadDeclaredTarget(resolved)
+	target, resolved, err := readDeclared(path)
 	if err != nil {
 		return Target{}, err
 	}
@@ -172,7 +175,7 @@ func validateTarget(t Target) error {
 	// one is refused rather than read as though v1 had always allowed it.
 	if t.Credential.Declared() {
 		if t.Schema == TargetSchema {
-			return errors.New("a credential reference requires readmit-target/v2")
+			return errors.New("a credential reference requires readmit-target/v2 or readmit-target/v3")
 		}
 		if t.Credential.SecretsFile == "" || t.Credential.Reference == "" {
 			return errors.New("a credential reference names both a secrets document and a reference in it")

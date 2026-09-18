@@ -102,10 +102,17 @@ Classification: nonproduction (recorded by a person; readmit did not establish i
 ```
 
 The classification is displayed, not enforced. This release does not block a
-replay on the class recorded for an endpoint. `readmit-run/v1` is unchanged, so
-a run records the transport it used and carries no environment name and no
-classification: a shared run directory does not state the class of the endpoint
-it was produced against, and the configuration is where that is read.
+replay on the class recorded for an endpoint.
+
+`readmit-run/v1` is unchanged, and so is what it records. A run's `target`
+records the address, the transport, `test_endpoint`, `approved_transport`, the
+SHA-256 of the CA bytes that were used, both timeouts and `max_ack_bytes`. It
+records **no** environment name, **no** classification and **no** verified
+server name, so a shared run directory does not state the class of the endpoint
+it was produced against, and two runs that verified different server names
+against the same address are recorded — and identified — identically. The
+configuration is where all three are read. Recording them would be a new run
+contract version and is not in this release.
 
 This release's MLLP transport presents no credential. A run records the
 transport it used and names no credential reference; `readmit-run/v1` is
