@@ -1,6 +1,6 @@
 # readmit
 
-Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `index`, `project`, `backup`, `secret`, `listen`, `collect`, `replay`, `test`, `diff`, `report`, `redact`, `synth`, and `diagnose` are available. See the workflow guides below.
+Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `index`, `project`, `backup`, `secret`, `listen`, `collect`, `replay`, `test`, `diff`, `report`, `redact`, `synth`, `observe`, and `diagnose` are available. See the workflow guides below.
 
 ```sh
 readmit inspect message.hl7
@@ -277,6 +277,23 @@ scenario, reset procedure, spec format, and result contract.
 Durable execution: `readmit run start SPEC --send --output NEW_JOB` retains a
 synced plan and send journal; `readmit run status JOB --json` recovers evidence
 without resending. See [durable local runs](docs/durable-runs.md).
+
+`observe validate WINDOW` reads a declared `readmit-observation-window/v1`
+document — the source identity and scope in view, the watermark the window opens
+at, how state that existed before it opened is handled, and the completion rule
+that says when observation may stop. `observe explain COMPLETION --window
+WINDOW` reads the `readmit-observation-completion/v1` record a collector
+retained and re-applies that rule to the samples it kept. Neither command
+observes anything: this release defines the source-neutral contracts, and the
+collectors that fill one in are separate work. A window completes only when
+every sample was an observation and the observed state held still for the
+declared quiet period inside the deadline, so polling never stops at the first
+convenient answer. An observed empty state is evidence; a collector that never
+ran, one that returned stale data, one whose capture was truncated, one whose
+connection was lost and one whose source answered ambiguously all observed zero
+records and none of them may be read as proof that there are none. State that
+was already there when the window opened is never evidence that the run produced
+it. See [trustworthy observation windows](docs/observe.md).
 
 `replay CASE --target CONFIG` previews a replay without opening a connection.
 Sending requires `--send --output NEW_RUN` and an explicit configuration marked

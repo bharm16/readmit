@@ -100,3 +100,16 @@ It does not automate reset, mutate expectations, infer production workflow succe
 minimize cases, retry uncertain sends, or accept arbitrary external ledgers without
 the receipt contract. See [spec format](test-spec.md), [result format](test-result.md),
 [shared selectors](selectors.md), and [receiver handoff](listen.md).
+
+Both boundaries above observe the bundled fixture receiver. What makes an
+observation of some *other* system trustworthy — its identity and scope, the
+watermark a window opens at, the completion rule that decides when observation
+may stop, the statuses that name missing and ambiguous evidence, and how state
+that existed before the window opened is handled — is declared separately and
+source-neutrally in [trustworthy observation windows](observe.md). Those are new
+documents beside the existing contracts: `readmit-test/v1`-`v2`,
+`readmit-result/v1` and `readmit-observation/v1` are unchanged, no spec member
+is added, and no collector is shipped in this release. The rule the two share is
+the same one: a fully observed missing expected value is an assertion failure,
+while failed collection is an execution error and never proof that something is
+absent.
