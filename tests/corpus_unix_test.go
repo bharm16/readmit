@@ -55,6 +55,12 @@ func TestCorpusScanAcknowledgesAnInterruptWithoutWritingABenchmark(t *testing.T)
 	if records == "0" || records == "150000" {
 		t.Errorf("a cancelled scan reported %s of 150000 records", records)
 	}
+	// It counted part of a stream, so it knows nothing about the rest of it.
+	// Reporting those counts as within the case bundle bounds would report the
+	// unread remainder as a pass.
+	if bounds := summaryField(t, stdout.String(), "Case bounds"); !strings.Contains(bounds, "not evaluated") {
+		t.Errorf("case bounds %q, want a cancelled scan to evaluate none", bounds)
+	}
 	// Nothing half written is left behind: a partial scan measured part of a
 	// stream, and a benchmark of part of a stream is a number nothing stands
 	// behind.

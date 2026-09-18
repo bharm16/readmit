@@ -387,12 +387,12 @@ export function MessageGrid({
             style={{ maxHeight: `${GRID_ROW_HEIGHT * GRID_VIEWPORT_ROWS}px` }}
             onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
           >
-            <table className="rows" aria-rowcount={grid.matched}>
+            <table className="rows" aria-rowcount={rows.length + 1}>
               <caption>
                 {grid.case} · {grid.index} · verified {grid.identity}
               </caption>
               <thead>
-                <tr>
+                <tr aria-rowindex={1}>
                   <th scope="col">Occurrence</th>
                   <th scope="col">Source</th>
                   <th scope="col">Type</th>
@@ -410,7 +410,7 @@ export function MessageGrid({
                 {rows.slice(first, last).map((row, index) => (
                   <tr
                     key={row.id}
-                    aria-rowindex={grid.offset + first + index + 1}
+                    aria-rowindex={first + index + 2}
                     aria-selected={selectedOccurrence === row.id}
                   >
                     <th scope="row">

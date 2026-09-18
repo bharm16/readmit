@@ -102,7 +102,9 @@ An interrupt is acknowledged **within one record**, not at the end of the
 stream: the scan stops, parses the batch it had already read so that the records
 it read are reported rather than lost, prints `State: cancelled` with the counts
 it reached, and exits non-zero. No benchmark is written, because a benchmark of
-part of a stream is a number nothing stands behind.
+part of a stream is a number nothing stands behind, and no case-bounds verdict
+is reported either — a cancelled scan knows nothing about the remainder, and
+reporting an unread remainder as `within` would report unknown as a pass.
 
 A cancelled `generate` removes the partial corpus it created and writes no
 manifest. That is not a claim that cancellation can retract bytes — it cannot,
