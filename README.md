@@ -1,6 +1,6 @@
 # readmit
 
-Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `listen`, `replay`, `synth`, and `diagnose` are available; later workflows are tracked in [GitHub issues](https://github.com/bharm16/readmit/issues).
+Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `listen`, `replay`, `test`, `synth`, and `diagnose` are available; later workflows are tracked in [GitHub issues](https://github.com/bharm16/readmit/issues).
 
 ```sh
 readmit inspect message.hl7
@@ -49,6 +49,16 @@ deterministic generated provenance for the future `synth` command. See the
 correlation rules, observation metadata, integrity checks, and limits.
 
 ## Available workflows
+
+`test SPEC --send --output NEW_RESULT_DIRECTORY` evaluates saved assertions over
+actual ACKs or the fixture's appointment ledger. Exit codes distinguish pass
+(`0`), assertion failure (`1`), and execution/configuration error (`2`). Missing,
+stale, partial, or mismatched observations are execution errors. Results retain
+the captured spec, run evidence, and receipt-bound observations for offline
+verification. ACK-only success is labelled "ACK contract passed". Without
+`--send`, the command performs a local preview and produces no verdict.
+See [regression testing](docs/test-runner.md) for the unchanged fail/pass/fail
+scenario, reset procedure, spec format, and result contract.
 
 `replay CASE --target CONFIG` previews a replay without opening a connection.
 Sending requires `--send --output NEW_RUN` and an explicit configuration marked

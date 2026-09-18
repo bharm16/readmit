@@ -17,6 +17,9 @@ Unsigned preview of local HL7 inspection and case evidence capture.
 - `synth` creates a reproducible synthetic SIU family with separate regression,
   cancellation, and known-invalid bundles from four explicit generator inputs.
 - Five native-tested targets, SHA-256 checksums, and GitHub binary provenance.
+- `test` evaluates unchanged declarative assertions against wire ACKs and
+  session-bound ledger observations, with distinct pass/failure/error codes
+  and a verifiable result directory.
 - `replay` previews by default, sends only to explicitly configured test targets,
   preserves selected source values unless a named transformation is requested,
   and records exact transport evidence and uncertain outcomes in a new run.

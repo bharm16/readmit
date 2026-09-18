@@ -122,6 +122,24 @@ record count, the file's timestamp, or the consistent flag is insufficient.
 An old completed snapshot remains a complete file; its session and occurrence
 list identify it as stale. There is no HTTP API or hidden control channel.
 
+Each fixture ACK now ends with a versioned receipt segment:
+
+```text
+ZRT|readmit-receipt/v1|<session_id>|<received_occurrence_id>
+```
+
+The receipt identifies the session and the exact inbound case occurrence whose
+ledger commit preceded this ACK. Both AA and AR carry it; it does not assert that
+the request succeeded. The runner reconstructs the expected processed list from
+these retained receipts and literal sent MSH-10 values, then compares it exactly
+with the final snapshot. Source occurrence IDs and outbound replay IDs cannot
+substitute for received IDs: ACKs interleave in the receiver's recorded case.
+Missing, duplicate, reused, or foreign-session receipts fail ledger execution.
+Generic replay preserves this opaque segment without interpreting it.
+
+The receipt binds the observation to the selected endpoint's ACK channel. It is
+fixture testimony, not a cryptographic signature or proof of clinical correctness.
+
 ## Recorded cases: readmit-case/v2
 
 Final cases add an integrity-covered `observation.json` and use

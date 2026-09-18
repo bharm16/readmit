@@ -33,6 +33,9 @@ archives:
       - docs/listen.md
       - docs/replay.md
       - docs/run-bundle.md
+      - docs/test-runner.md
+      - docs/test-spec.md
+      - docs/test-result.md
 
       - docs/diagnose.md
       - docs/selectors.md

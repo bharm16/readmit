@@ -41,6 +41,11 @@ REQUIRED_FILES = {
     "docs/listen.md",
     "docs/replay.md",
     "docs/run-bundle.md",
+    "docs/test-runner.md",
+    "docs/test-spec.md",
+    "docs/test-result.md",
+    "testdata/fixtures/test-reschedule.json",
+    "testdata/fixtures/test-target.json",
     "testdata/fixtures/case-evidence.mllp",
     "testdata/fixtures/listen-s12.hl7",
     "testdata/fixtures/listen-s13.hl7",
@@ -239,14 +244,15 @@ def smoke(archive, target_os, release_tag=None):
         assert not run("synth", *generator_args, "--output", family, success=False).stdout
         smoke_receiver(archive, binary, environment, work, run, family / "regression")
         smoke_replay(binary, environment, work, run, family / "regression")
+        smoke_test_runner(archive, binary, environment, work, run)
     print(f"PASS: {archive.name}; checksum, version, inspection, capture, timeline, privacy, and byte preservation")
 
 
 @contextmanager
-def fixture_receiver(binary, environment, work, label, mode):
+def fixture_receiver(binary, environment, work, label, mode, observation_path=None):
     """Start one bounded archived fixture and always reap its process."""
     case = work / f"receiver-{label}-{mode}.case"
-    observation = work / f"receiver-{label}-{mode}.json"
+    observation = observation_path or work / f"receiver-{label}-{mode}.json"
     process = subprocess.Popen(
         [str(binary), "listen", "--address", "127.0.0.1:0", "--mode", mode,
          "--output", str(case), "--observation", str(observation),
@@ -376,6 +382,57 @@ def smoke_replay(binary, environment, work, run, source):
                 assert final["records"][-1]["appointment_start"] == "20260104120000+0000"
                 assert all(base64.b64decode(change["old_base64"]) != base64.b64decode(change["new_base64"]) for change in manifest["changes"])
     assert original == {p.relative_to(source).as_posix(): p.read_bytes() for p in source.rglob("*") if p.is_file()}
+
+
+def smoke_test_runner(archive, binary, environment, work, run):
+    spec_path = work / "test-reschedule.json"
+    spec_bytes = member_bytes(archive, "testdata/fixtures/test-reschedule.json")
+    spec_path.write_bytes(spec_bytes)
+    target_path = work / "test-target.json"
+    target = json.loads(member_bytes(archive, "testdata/fixtures/test-target.json"))
+    inputs = []
+    for name in ("listen-s12.hl7", "listen-s13.hl7"):
+        path = work / name
+        path.write_bytes(member_bytes(archive, "testdata/fixtures/" + name))
+        inputs.append(path)
+    source = work / "test-case"
+    run("capture", *inputs, "--output", source)
+    case_identity = (source / "identity.sha256").read_text().strip()
+    observation_path = work / "test-observation.json"
+    sessions = set()
+    # The spec bytes stay identical across failure, repair, reintroduction, and
+    # a second clean fixed run. Only the explicit target configuration changes.
+    for index, (mode, code, status) in enumerate((
+        ("defective", 1, "assertion_failure"), ("fixed", 0, "pass"),
+        ("defective", 1, "assertion_failure"), ("fixed", 0, "pass"),
+    )):
+        observation_path.unlink(missing_ok=True)
+        with fixture_receiver(binary, environment, work, f"runner-{index}", mode, observation_path) as (process, port, case, observed, initial):
+            target["address"] = f"127.0.0.1:{port}"
+            target_path.write_text(json.dumps(target))
+            output = work / f"test-result-{index}"
+            completed = run("test", spec_path, "--send", "--output", output, success=(code == 0))
+            assert completed.returncode == code and not completed.stderr
+            assert completed.stdout.rstrip().splitlines()[-1].startswith(b"Rerun:")
+            assert b"SYNTH-001" not in completed.stdout and b"APPT-001" not in completed.stdout
+            stdout, stderr = process.communicate(timeout=10)
+            assert process.returncode == 0 and not stderr
+            result = json.loads((output / "result.json").read_bytes())
+            assert result["schema"] == "readmit-result/v1" and result["status"] == status
+            assert result["spec_identity"] == hashlib.sha256(spec_bytes).hexdigest()
+            assert result["input_bundle_identity"] == case_identity
+            assert result["receiver_session_id"] == initial["session_id"]
+            assert result["receiver_mode"] == mode and result["observation_boundary"] == "appointment-ledger"
+            assert result["receiver_session_id"] not in sessions
+            sessions.add(result["receiver_session_id"])
+            assert (output / "identity.sha256").is_file()
+            assert spec_path.read_bytes() == spec_bytes
+    observation_path.unlink()
+    failed_output = work / "test-result-missing-observation"
+    missing = run("test", spec_path, "--send", "--output", failed_output, success=False)
+    assert missing.returncode == 2 and missing.stdout.rstrip().splitlines()[-1].startswith(b"Rerun:")
+    assert json.loads((failed_output / "result.json").read_bytes())["status"] == "execution_error"
+    assert (source / "identity.sha256").read_text().strip() == case_identity
 
 
 def main():

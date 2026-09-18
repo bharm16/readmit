@@ -63,13 +63,23 @@ func Execute(version string, args []string, stdout, stderr io.Writer) error {
 
 	root.AddCommand(synthCommand(&ran))
 	root.AddCommand(replayCommand(&ran))
+	root.AddCommand(testCommand(&ran))
 	root.SetArgs(args)
-	err := root.Execute()
+	selected, err := root.ExecuteC()
 	if err != nil {
 		if !ran {
 			err = errors.New("invalid command or arguments; use readmit --help")
+			if selected != nil && selected.Name() == "test" {
+				err = &ExitError{Code: 2, Err: err}
+			}
 		}
-		fmt.Fprintln(stderr, "readmit:", err)
+		var status *ExitError
+		if !errors.As(err, &status) || !status.Reported {
+			fmt.Fprintln(stderr, "readmit:", err)
+			if selected != nil && selected.Name() == "test" {
+				fmt.Fprintln(stdout, testRerun)
+			}
+		}
 	}
 	return err
 }
