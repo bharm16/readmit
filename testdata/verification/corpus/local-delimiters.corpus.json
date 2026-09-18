@@ -1,0 +1,29 @@
+{
+  "schema": "readmit-corpus-case/v1",
+  "origin": "hand-authored",
+  "source": "local-delimiters.hl7",
+  "authored_from": "HL7 v2.5.1 chapter 2 rule that MSH-1 and MSH-2 declare the delimiters for the message that carries them; no readmit command produced these bytes or these expectations",
+  "format": "raw",
+  "terminator": "cr",
+  "occurrences": [
+    {
+      "kind": "message",
+      "terminator": "cr",
+      "segments": ["MSH", "PID", "OBX"],
+      "control_id": "CORPUS0004",
+      "declared_time": {"state": "present", "value": "20260213121500"},
+      "acknowledged_control_ids": [],
+      "fields": [
+        {"selector": "MSH-2", "state": "present", "value": "@%\\&"},
+        {"selector": "PID-3", "state": "present", "repetitions": 2, "value": "5521@@@CORPUSAUTH@MR%6632@@@OTHERAUTH@PI"},
+        {"selector": "PID-5", "state": "present", "value": "DELACROIX@MARIN"},
+        {"selector": "OBX-3", "state": "present", "value": "GLU@Glucose"},
+        {"selector": "OBX-4", "state": "empty"},
+        {"selector": "OBX-7", "state": "omitted"}
+      ]
+    }
+  ],
+  "correlations": [
+    {"kind": "unacknowledged_message", "ack": null, "messages": [1]}
+  ]
+}

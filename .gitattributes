@@ -2,3 +2,6 @@
 *.md text eol=lf
 *.yml text eol=lf
 testdata/fixtures/* binary
+testdata/verification/corpus/*.hl7 binary
+testdata/verification/corpus/*.mllp binary
+testdata/verification/endpoint/*.hl7 binary

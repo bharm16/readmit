@@ -23,6 +23,11 @@ checksum and exercises the packaged executable and fixtures with no tools on
 PATH. Native fuzzing requires every accepted input to round-trip unchanged and
 every rejected input to yield a bounded diagnostic.
 
+The repository also carries an externally authored verification corpus under
+`testdata/verification`, used by `tools/verify.py` against an independently
+implemented HL7 endpoint. It is repository and CI material and is not shipped in
+the release archives; see its own README in the repository.
+
 Additional malformed examples live as explicit literals in tests. Semantic correctness of
 the fixtures is deliberately not an acceptance criterion for syntax inspection.
 

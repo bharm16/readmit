@@ -226,6 +226,20 @@ go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
 govulncheck ./...
 ```
 
+Released behavior is additionally checked against an independently implemented
+HL7 endpoint and a hand-authored corpus that no readmit command produced, and
+mutation tests require those checks to fail when behavior changes:
+
+```sh
+go build -trimpath -o bin/readmit ./cmd/readmit
+python3 tools/verify.py --binary bin/readmit
+python3 tools/mutate.py
+```
+
+Both bind loopback only, open every listener on port 0, and contact no external
+host. See [independent verification](docs/independent-verification.md) for the
+checks, the invariants they defend, and the coverage this layer does not claim.
+
 CI resolves the exact `toolchain` version from `go.mod` with
 `python3 tools/toolchain.py`, passes it explicitly to setup-go, and verifies the
 active compiler with `python3 tools/toolchain.py --check`. `GOTOOLCHAIN=local`
@@ -246,6 +260,7 @@ executable with an empty PATH. The release-tool regressions run with
 Fixtures and their independently authored intent are described in
 [testdata/README.md](testdata/README.md). Review standards and design sources:
 
+- Independent verification: [docs/independent-verification.md](docs/independent-verification.md)
 - Stack and version pins: [docs/stack.md](docs/stack.md)
 - Decisions: [docs/adr/](docs/adr/)
 - Agent conventions: [docs/agents/](docs/agents/)

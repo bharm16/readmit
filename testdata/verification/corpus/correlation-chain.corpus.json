@@ -1,0 +1,72 @@
+{
+  "schema": "readmit-corpus-case/v1",
+  "origin": "hand-authored",
+  "source": "correlation-chain.mllp",
+  "authored_from": "HL7 v2.5.1 MSA acknowledgement structure, the MLLP block framing bytes, and the same-source literal control-ID correlation rules in docs/case-bundle.md; no readmit command produced these bytes or these expectations",
+  "format": "mllp",
+  "terminator": "auto",
+  "occurrences": [
+    {
+      "kind": "message",
+      "terminator": "lf",
+      "segments": ["MSH", "PID"],
+      "control_id": "CHAIN-A",
+      "declared_time": {"state": "present", "value": "20260213070000"},
+      "acknowledged_control_ids": [],
+      "fields": []
+    },
+    {
+      "kind": "ack",
+      "terminator": "lf",
+      "segments": ["MSH", "MSA"],
+      "control_id": "CHAIN-A-ACK",
+      "declared_time": {"state": "present", "value": "20260213070001"},
+      "acknowledged_control_ids": ["CHAIN-A"],
+      "fields": [{"selector": "MSA-1", "state": "present", "value": "AA"}]
+    },
+    {
+      "kind": "message",
+      "terminator": "lf",
+      "segments": ["MSH", "SCH"],
+      "control_id": "CHAIN-B",
+      "declared_time": {"state": "present", "value": "20260213070002"},
+      "acknowledged_control_ids": [],
+      "fields": []
+    },
+    {
+      "kind": "message",
+      "terminator": "lf",
+      "segments": ["MSH", "SCH"],
+      "control_id": "CHAIN-B",
+      "declared_time": {"state": "present", "value": "20260213070003"},
+      "acknowledged_control_ids": [],
+      "fields": []
+    },
+    {
+      "kind": "ack",
+      "terminator": "lf",
+      "segments": ["MSH", "MSA"],
+      "control_id": "CHAIN-B-ACK",
+      "declared_time": {"state": "present", "value": "20260213070004"},
+      "acknowledged_control_ids": ["CHAIN-B"],
+      "fields": []
+    },
+    {
+      "kind": "ack",
+      "terminator": "lf",
+      "segments": ["MSH", "MSA"],
+      "control_id": "CHAIN-Z-ACK",
+      "declared_time": {"state": "present", "value": "20260213070005"},
+      "acknowledged_control_ids": ["CHAIN-Z"],
+      "fields": [{"selector": "MSA-3", "state": "present", "value": "Unknown control identifier"}]
+    },
+    {"kind": "unparsed"}
+  ],
+  "correlations": [
+    {"kind": "matched", "ack": 2, "messages": [1]},
+    {"kind": "ambiguous_ack", "ack": 5, "messages": [3, 4]},
+    {"kind": "unmatched_ack", "ack": 6, "messages": []},
+    {"kind": "unacknowledged_message", "ack": null, "messages": [3]},
+    {"kind": "unacknowledged_message", "ack": null, "messages": [4]}
+  ]
+}

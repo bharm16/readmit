@@ -1,0 +1,35 @@
+{
+  "schema": "readmit-corpus-case/v1",
+  "origin": "hand-authored",
+  "source": "field-states.hl7",
+  "authored_from": "HL7 v2.5.1 chapter 2 encoding rules and the field-state trichotomy stated in README.md; no readmit command produced these bytes or these expectations",
+  "format": "raw",
+  "terminator": "cr",
+  "occurrences": [
+    {
+      "kind": "message",
+      "terminator": "cr",
+      "segments": ["MSH", "EVN", "PID", "ZCV"],
+      "control_id": "CORPUS0001",
+      "declared_time": {"state": "present", "value": "20260211084500"},
+      "acknowledged_control_ids": [],
+      "fields": [
+        {"selector": "MSH-8", "state": "empty"},
+        {"selector": "MSH-13", "state": "omitted"},
+        {"selector": "EVN-3", "state": "omitted"},
+        {"selector": "PID-2", "state": "empty"},
+        {"selector": "PID-3", "state": "present", "repetitions": 2, "value": "9911^^^CORPUSAUTH^MR~7742^^^OTHERAUTH^PI"},
+        {"selector": "PID-5", "state": "present", "value": "QUINCE^ROWAN^T"},
+        {"selector": "PID-6", "state": "null", "value": "\"\""},
+        {"selector": "PID-7", "state": "empty"},
+        {"selector": "PID-8", "state": "omitted"},
+        {"selector": "ZCV-1", "state": "present", "value": "first^second&third"},
+        {"selector": "ZCV-2", "state": "present", "value": "\\F\\literal"},
+        {"selector": "ZCV-3", "state": "empty"}
+      ]
+    }
+  ],
+  "correlations": [
+    {"kind": "unacknowledged_message", "ack": null, "messages": [1]}
+  ]
+}
