@@ -338,8 +338,12 @@ See [regression testing](docs/test-runner.md) for the unchanged fail/pass/fail
 scenario, reset procedure, spec format, and result contract.
 
 Durable execution: `readmit run start SPEC --send --output NEW_JOB` retains a
-synced plan and send journal; `readmit run status JOB --json` recovers evidence
-without resending. See [durable local runs](docs/durable-runs.md).
+synced plan and send journal, and `--deadline` bounds the run; `readmit run
+status JOB --json` recovers evidence without resending, and `--recovery` reports
+every occurrence as not attempted, acknowledged or uncertain. `readmit run
+resume JOB SPEC --send --output NEW_JOB` repeats only never-attempted work and
+refuses after any send; `readmit run clean JOB` removes a stale lease and never
+evidence. See [durable local runs](docs/durable-runs.md).
 
 `observe validate WINDOW` reads a declared `readmit-observation-window/v1`
 document — the source identity and scope in view, the watermark the window opens

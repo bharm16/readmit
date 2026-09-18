@@ -224,6 +224,22 @@ func TestKilledRunnerRecoversWithoutResending(t *testing.T) {
 			t.Fatalf("%+v %v", got, e)
 		}
 	}
+	// A killed writer never released its lease, and recovery cannot say it is
+	// gone: the lease is held, the send is uncertain, and neither a resume nor
+	// a cleanup touches the job.
+	recovery, err := durablerun.Recover(out)
+	if err != nil || recovery.Terminal || recovery.Lease != durablerun.LeaseHeld || recovery.Uncertain != 1 || recovery.SafeToRepeat {
+		t.Fatalf("%+v %v", recovery, err)
+	}
+	if _, err = durablerun.Resume(context.Background(), out, spec, filepath.Join(filepath.Dir(out), "resumed")); err == nil {
+		t.Fatal("resumed an interrupted run")
+	}
+	if _, err = durablerun.Clean(out); err == nil {
+		t.Fatal("cleaned an interrupted run")
+	}
+	if _, err = os.Lstat(filepath.Join(out, "lease.json")); err != nil {
+		t.Fatal("a refused cleanup removed the held lease")
+	}
 	after, _ := os.ReadFile(filepath.Join(out, "journal.jsonl"))
 	if !bytes.Equal(before, after) {
 		t.Fatal("recovery changed evidence")

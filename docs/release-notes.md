@@ -359,6 +359,21 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   unchanged, and correlation, the profile and reproducer editors, typed
   assertions and the seven-version library remain separate deliveries.
 
+- `run` cancels, recovers and cleans up without a duplicate effect: `run start
+  --deadline` bounds a run and records `timed_out` with any in-flight delivery
+  uncertain; a cancellation after a synced intent stops the send and stays
+  uncertain; a failed or short sent-prefix or journal write is sticky, halts
+  further sends, retains the readable prefix and is reported beside the
+  summary; and the journal limit refuses a record before any byte of it. `run
+  status --recovery` reports a `readmit-run-recovery/v1` classification of
+  every occurrence as `not_attempted`, `acknowledged` or `uncertain`, whether
+  completion was recorded, the state of the run's `readmit-run-lease/v1` lease,
+  and whether a resume would repeat only never-attempted work. `run resume` is
+  the one deliberate re-execution, into a new output, refusing after any send or
+  an unrecorded completion; `run clean` removes only a stale lease and never
+  evidence. `readmit-job/v1` is unchanged, the desktop facade is unchanged, and
+  no scheduler, admission or automatic resend is added.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is
