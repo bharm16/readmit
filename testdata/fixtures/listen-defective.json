@@ -1,0 +1,16 @@
+[
+  {
+    "record_id": "r000001",
+    "patient_id": {"value": "SYNTH-001", "namespace": "READMIT", "universal_id": "", "universal_id_type": ""},
+    "placer_id": {"value": "APPT-001", "namespace": "READMIT", "universal_id": "", "universal_id_type": ""},
+    "filler_id": {"value": "FILL-001", "namespace": "READMIT", "universal_id": "", "universal_id_type": ""},
+    "appointment_start": "20260102100000+0000"
+  },
+  {
+    "record_id": "r000002",
+    "patient_id": {"value": "SYNTH-001", "namespace": "READMIT", "universal_id": "", "universal_id_type": ""},
+    "placer_id": {"value": "APPT-001", "namespace": "READMIT", "universal_id": "", "universal_id_type": ""},
+    "filler_id": {"value": "FILL-001", "namespace": "READMIT", "universal_id": "", "universal_id_type": ""},
+    "appointment_start": "20260103110000+0000"
+  }
+]

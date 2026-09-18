@@ -13,22 +13,44 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/observation"
 )
 
 // Write creates a new bundle exclusively. The identity file is written last:
 // interrupted writes lack a valid completion marker and cannot be opened.
 func Write(path string, inputs []Input, provenance Provenance) (*Bundle, error) {
+	if provenance.Mode == Recorded {
+		return nil, errors.New("recorded sessions require WriteRecorded and an observation")
+	}
 	b, err := build(inputs, provenance)
 	if err != nil {
 		return nil, err
 	}
+	return writeBundle(path, b)
+}
+
+// WriteRecorded preserves a receiver session and its final observation in v2.
+// Default Write remains a v1 writer for imported and generated evidence.
+func WriteRecorded(path string, inputs []Input, startedAt time.Time, snapshot observation.Snapshot) (*Bundle, error) {
+	b, err := build(inputs, Provenance{Mode: Recorded, StartedAt: &startedAt, SessionID: snapshot.SessionID})
+	if err != nil {
+		return nil, err
+	}
+	if err := attachObservation(b, snapshot); err != nil {
+		return nil, err
+	}
+	return writeBundle(path, b)
+}
+
+func writeBundle(path string, b *Bundle) (*Bundle, error) {
 	files, err := encode(b)
 	if err != nil {
 		return nil, err
 	}
-	b.Identity = identity(files)
+	b.Identity = identityFor(b.Manifest.Schema, files)
 	if err := os.Mkdir(path, 0700); err != nil {
 		return nil, errors.New("cannot create bundle; destination must be new and parent writable")
 	}
@@ -79,15 +101,36 @@ func Open(path string) (*Bundle, error) {
 	if err := json.Unmarshal(files["manifest.json"], &manifest, json.RejectUnknownMembers(true)); err != nil {
 		return nil, errors.New("invalid bundle manifest")
 	}
-	if manifest.Schema != Schema {
+	if manifest.Schema != Schema && manifest.Schema != RecordedSchema {
 		return nil, errors.New("unsupported case bundle schema version")
+	}
+	if manifest.Schema == Schema {
+		// v1 remains strict against fields first introduced in v2, including
+		// explicit nulls that would otherwise decode to an omitted zero value.
+		var legacy struct {
+			Schema     string `json:"schema"`
+			State      string `json:"state"`
+			Provenance struct {
+				Mode       Mode             `json:"mode"`
+				ImportedAt *time.Time       `json:"imported_at,omitzero"`
+				Generator  *GeneratorInputs `json:"generator,omitzero"`
+			} `json:"provenance"`
+			Sources    []Source `json:"sources"`
+			EventCount int      `json:"event_count"`
+		}
+		if err := json.Unmarshal(files["manifest.json"], &legacy, json.RejectUnknownMembers(true)); err != nil {
+			return nil, errors.New("invalid v1 bundle manifest")
+		}
+	}
+	if manifest.Schema == Schema && (manifest.Provenance.Mode == Recorded || manifest.Observation != nil) || manifest.Schema == RecordedSchema && (manifest.Provenance.Mode != Recorded || manifest.Observation == nil) {
+		return nil, errors.New("case bundle schema does not match provenance and observation")
 	}
 	if manifest.State != "complete" {
 		return nil, errors.New("bundle is incomplete")
 	}
 	marker := files["identity.sha256"]
 	delete(files, "identity.sha256")
-	id := identity(files)
+	id := identityFor(manifest.Schema, files)
 	if string(marker) != id+"\n" {
 		return nil, errors.New("bundle is incomplete or its identity does not match contents")
 	}
@@ -107,6 +150,17 @@ func Open(path string) (*Bundle, error) {
 	if err != nil {
 		return nil, err
 	}
+	if manifest.Schema == RecordedSchema {
+		snapshot, err := observation.Decode(files["observation.json"])
+		if err != nil {
+			return nil, err
+		}
+		if err := attachObservation(b, snapshot); err != nil {
+			return nil, err
+		}
+		// Metadata refers to the exact stored JSON bytes, including whitespace.
+		b.Manifest.Observation = &Payload{Path: "observation.json", Size: len(files["observation.json"]), SHA256: digest(files["observation.json"])}
+	}
 	if !sameJSON(manifest, b.Manifest) || !sameJSON(events, b.Events) || !sameJSON(links, b.Correlations) {
 		return nil, errors.New("bundle metadata or correlations disagree with evidence")
 	}
@@ -116,7 +170,11 @@ func Open(path string) (*Bundle, error) {
 
 func restoreInputs(manifest Manifest, events []Event, files map[string][]byte) ([]Input, error) {
 	invalid := errors.New("invalid bundle source or occurrence layout")
-	if len(manifest.Sources) == 0 || len(manifest.Sources) > MaxSources || len(events) == 0 || len(events) > MaxEvents || manifest.EventCount != len(events) || len(files) != len(events)+3 {
+	extraFiles := 3
+	if manifest.Schema == RecordedSchema {
+		extraFiles++
+	}
+	if len(manifest.Sources) == 0 && manifest.Schema != RecordedSchema || len(manifest.Sources) > MaxSources || len(events) == 0 && len(manifest.Sources) != 0 || len(events) > MaxEvents || manifest.EventCount != len(events) || len(files) != len(events)+extraFiles {
 		return nil, invalid
 	}
 	var inputs []Input
@@ -156,6 +214,12 @@ func encode(b *Bundle) (map[string][]byte, error) {
 		return nil, errors.New("cannot encode bundle manifest")
 	}
 	files := map[string][]byte{"manifest.json": append(manifest, '\n')}
+	if b.Observation != nil {
+		files["observation.json"], err = observation.Encode(*b.Observation)
+		if err != nil {
+			return nil, err
+		}
+	}
 	files["events.jsonl"], err = encodeLines(b.Events)
 	if err != nil {
 		return nil, err
@@ -246,10 +310,10 @@ func readFiles(path string) (map[string][]byte, error) {
 		if entry.Type() != 0 {
 			return errors.New("bundle files must be regular files, never symlinks")
 		}
-		if name != "manifest.json" && name != "events.jsonl" && name != "correlations.jsonl" && name != "identity.sha256" && !strings.HasPrefix(name, "payloads/") {
+		if name != "manifest.json" && name != "events.jsonl" && name != "correlations.jsonl" && name != "identity.sha256" && name != "observation.json" && !strings.HasPrefix(name, "payloads/") {
 			return errors.New("unexpected bundle file")
 		}
-		if len(files) >= MaxEvents+4 {
+		if len(files) >= MaxEvents+5 {
 			return errors.New("bundle file limit exceeded")
 		}
 		f, err := root.Open(name)
@@ -286,9 +350,9 @@ func readFiles(path string) (map[string][]byte, error) {
 
 // Identity hashes a domain prefix and length-delimited relative paths/contents
 // in bytewise path order. The identity file itself is the only excluded file.
-func identity(files map[string][]byte) string {
+func identityFor(schema string, files map[string][]byte) string {
 	h := sha256.New()
-	h.Write([]byte(Schema + "\n"))
+	h.Write([]byte(schema + "\n"))
 	var size [8]byte
 	for _, name := range sortedNames(files) {
 		binary.BigEndian.PutUint64(size[:], uint64(len(name)))

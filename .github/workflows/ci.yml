@@ -41,6 +41,7 @@ jobs:
           go test -race ./...
           go test ./internal/hl7 -run '^$' -fuzz=FuzzParse -fuzztime=15s -parallel=2
           go test ./internal/bundle -run '^$' -fuzz=FuzzOpen -fuzztime=15s -parallel=2
+          go test ./internal/mllp -run '^$' -fuzz=FuzzFraming -fuzztime=15s -parallel=2
       - name: Vulnerability check
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
