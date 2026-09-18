@@ -24,6 +24,7 @@ DISTRIBUTION_FILES = (
     "docs/index.md",
     "docs/mapping.md",
     "docs/project.md",
+    "docs/project-lifecycle.md",
     "docs/backup.md",
     "docs/license.md",
     "docs/secret.md",

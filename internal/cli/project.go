@@ -32,10 +32,10 @@ func projectCommand(ran *bool) *cobra.Command {
 		Short: "Create and manage an interface investigation project",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return errors.New("project requires a subcommand: init, settings, add, update, revise, note, or show")
+			return errors.New("project requires a subcommand: init, settings, add, update, revise, note, show, migration-preview, quota, recover, archive, or delete")
 		},
 	}
-	command.AddCommand(projectInit(ran), projectSettings(ran), projectAdd(ran), projectUpdate(ran), projectRevise(ran), projectNote(ran), projectShow(ran))
+	command.AddCommand(projectInit(ran), projectSettings(ran), projectAdd(ran), projectUpdate(ran), projectRevise(ran), projectNote(ran), projectShow(ran), projectMigrationPreview(ran), projectQuota(ran), projectRecover(ran), projectArchive(ran, false), projectArchive(ran, true))
 	return command
 }
 

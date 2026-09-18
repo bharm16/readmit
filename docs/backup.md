@@ -301,3 +301,12 @@ the part that did not fit.
 - Backing up a run bundle, a result, a review or a report that is not inside the
   project directory.
 - Restoring a `readmit-backup` version this release does not read.
+
+## Lifecycle retention
+
+Project document recovery copies and `quota.json` are ordinary project files and
+are retained by backup and restore. Earlier note values therefore remain in
+recovery copies and older backups until separately removed. Unknown index schema
+versions are recorded as undeclared recipes, never copied as ordinary evidence.
+See [project lifecycle](project-lifecycle.md) for verified archive/delete and
+explicit quota enforcement limits during restore and external writes.

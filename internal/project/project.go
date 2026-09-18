@@ -531,7 +531,7 @@ func readDocument(root, name string) ([]byte, bool, error) {
 	}
 	data, readErr := io.ReadAll(io.LimitReader(file, maxDocumentBytes+1))
 	closeErr := file.Close()
-	if readErr != nil || closeErr != nil {
+	if readErr != nil || closeErr != nil || len(data) > maxDocumentBytes {
 		return nil, false, errors.New("cannot read project document")
 	}
 	return data, false, nil
@@ -558,6 +558,23 @@ func (p *Project) Save(document Document) error {
 // overwritten, and artifactpath refuses the whole location if the project has
 // since been moved inside retained evidence.
 func install(root, name string, data []byte) error {
+	return installWithQuota(root, name, data, true)
+}
+
+func installWithQuota(root, name string, data []byte, check bool) error {
+	physical, err := artifactpath.Directory(root)
+	if err != nil {
+		return err
+	}
+	root = physical
+	if check {
+		if err := enforceQuota(root, name, data); err != nil {
+			return err
+		}
+	}
+	if err := retainPrevious(root, name, data); err != nil {
+		return err
+	}
 	incomplete, err := artifactpath.Destination(filepath.Join(root, name+incompleteSuffix))
 	if err != nil {
 		return errors.New("cannot write the project document here; an interrupted write may be retained beside it")
