@@ -18,7 +18,7 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
 
 ## CLI
 
-- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `project`, `backup`, `license`, `secret`, `protect`, `target`, `listen`, `replay`, `test`, `observe`, `diff`, `diagnose`, `synth`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
+- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `corpus`, `project`, `backup`, `license`, `secret`, `protect`, `target`, `listen`, `replay`, `test`, `observe`, `diff`, `diagnose`, `synth`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
 - Command data goes to stdout, diagnostics to stderr. Machine-readable modes never interleave progress output with JSON.
 - Target configuration is read from explicitly selected files, not hidden global config or environment-variable precedence.
 - Credentials are referenced, never held. A `readmit-secrets/v1` document registers the store kind an operator declared, the single purpose and endpoint address a credential may be bound to, the absolute path of the program that reads it back, and the recorded rotation. No command accepts a credential value, and a resolved value masks itself under every formatting verb and refuses to be serialized. See [credential references](secret.md).
@@ -121,6 +121,29 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
   is not a second search path: every question it asks about a value or a decoded
   state goes through `index.Document.Search`, and every window re-verifies the
   case and re-checks the index against it. See [the desktop shell](desktop.md).
+
+## Performance corpus and streaming scans
+
+- A declared performance corpus is generated, never committed. `internal/corpus`
+  writes one from the same four inputs `synth` declares — a seed, a base time, a
+  generator version and a profile version — and records them in a versioned
+  strict-JSON `readmit-corpus/v1` manifest beside it with the length and digest
+  of what it wrote. The same declarations reproduce the same bytes.
+- Reading one back is `importer.Scan`: one 64 KiB read window, at most one
+  16 MiB record, and one parsing batch of at most 256 records or 8 MiB, decoded
+  and released before the next batch. What a scan holds is a property of those
+  bounds, not of the stream, and it is reported as a measured peak beside the
+  bound it is held to. A stream past 8 GiB, and a record that reaches no
+  declared boundary within 16 MiB, are refused rather than buffered.
+- A scan runs under the same `readmit-import-plan/v1` an import runs under and
+  makes the same four refusals, so it reports what an import of the same bytes
+  would find. It writes no evidence, so it never widens a case bundle bound; it
+  names the ones a stream is already past.
+- A run publishes a `readmit-benchmark/v1` document: the declared corpus, the
+  declared bounds, what it measured, the machine it measured on, and the
+  performance envelope proposed in #25 recorded explicitly as engineering
+  targets rather than measurements. Nothing compares the two or reports a
+  verdict. See [the performance corpus](corpus.md).
 
 ## Project backup and restore
 

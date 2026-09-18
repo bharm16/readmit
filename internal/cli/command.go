@@ -58,6 +58,7 @@ func Execute(version string, args []string, stdout, stderr io.Writer) error {
 	root.AddCommand(captureCommand(&ran), timelineCommand(&ran))
 	root.AddCommand(importCommand(&ran))
 	root.AddCommand(indexCommand(&ran))
+	root.AddCommand(corpusCommand(&ran))
 	root.AddCommand(listenCommand(&ran))
 	root.AddCommand(collectCommand(&ran))
 	root.AddCommand(projectCommand(&ran))

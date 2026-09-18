@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := check
-.PHONY: check test test-focused test-boundary test-tools verify mutate fuzz
+.PHONY: check test test-focused test-boundary test-corpus test-tools verify mutate fuzz
 
 PKGS ?=
 ARGS ?=
@@ -13,14 +13,19 @@ test-focused:
 	@test -n "$(PKGS)" || { echo 'Set PKGS to the affected Go packages.' >&2; exit 2; }
 	CGO_ENABLED=1 go test -race -short $(PKGS) $(ARGS)
 
-# The small resource boundary keeps race coverage; its production-sized variant
-# runs once without instrumentation. No behavior is omitted from the full gate.
+# The small resource boundary and the small stream keep race coverage; their
+# production-sized variants run once without instrumentation. No behavior is
+# omitted from the full gate, and each variant asserts the same contract.
 test:
 	CGO_ENABLED=1 go test -race -short ./...
 	$(MAKE) test-boundary
+	$(MAKE) test-corpus
 
 test-boundary:
 	go test ./internal/receiver -run '^TestObservationByteLimitPreservesPriorLedgerAndFinalCase$$/production-limit$$'
+
+test-corpus:
+	go test ./internal/importer -run '^TestScanHoldsOneParsingBatchWhateverTheStreamLength$$/production-stream$$'
 
 test-tools:
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools -p 'test_*.py' -v

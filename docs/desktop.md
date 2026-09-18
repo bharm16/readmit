@@ -181,6 +181,16 @@ kept, in the order the case records them, with where each one is and what it is.
 Asking for the next window is another call, so a large case is never drawn at
 once and never held in the interface.
 
+The interface draws less than that again. The rows of a window are
+**virtualized**: the table holds the rows of one viewport plus an overscan on
+either side, and the rows before and after them are measured space rather than
+elements. Scrolling replaces which rows are drawn, so the number of rows in the
+document is decided by the viewport and never by the size of the window or of
+the case. A window no larger than the viewport and its overscan is drawn whole,
+so a small case behaves exactly as it did. The table states the real count with
+`aria-rowcount` and each row its real position with `aria-rowindex`, because a
+row that is not in the document is still a row of the grid.
+
 It names two entries of the open workspace: the case, and one `readmit-index/v1`
 file built from that case by `readmit index build` — see [searching a
 case](index.md). The index is the one search path over a case. The grid reads no

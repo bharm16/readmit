@@ -340,14 +340,35 @@ dd {
   font-weight: 600;
 }
 
-.rows {
-  border-collapse: collapse;
-  display: block;
-  font-size: 0.9rem;
+/* The grid draws one viewport of rows and leaves the rest of the window as
+   measured space, so a large window costs what the viewport costs. The row
+   height is the number GRID_ROW_HEIGHT in shell.tsx divides a scroll position
+   by; the two must stay equal. */
+.grid-scroll {
   margin-top: 0.5rem;
   max-width: 100%;
-  overflow-x: auto;
+  overflow: auto;
+}
+
+.rows {
+  --grid-row-height: 32px;
+  border-collapse: collapse;
+  font-size: 0.9rem;
   white-space: nowrap;
+  width: 100%;
+}
+
+.rows tbody tr {
+  height: var(--grid-row-height);
+}
+
+.rows tbody tr.spacer {
+  height: auto;
+}
+
+.rows tbody tr.spacer td {
+  border: none;
+  padding: 0;
 }
 
 .rows caption {

@@ -218,10 +218,37 @@ export function Palette({
   );
 }
 
-/** How many occurrences one window of the grid renders. The grid asks for the
- * next window rather than drawing a large case at once. The facade's own bound
- * is larger; this is what this window draws. */
-export const GRID_WINDOW = 50;
+/** How many occurrences one window of the grid asks the facade for. The grid
+ * asks for the next window rather than drawing a large case at once, and it is
+ * the facade's own bound, because what this window costs to draw is decided by
+ * the viewport below rather than by how many rows the window holds. */
+export const GRID_WINDOW = 200;
+
+/** The virtualized row geometry. GRID_ROW_HEIGHT is the height one row is
+ * given, and it must stay equal to --grid-row-height in styles.css: the scroll
+ * position is turned into a row number by dividing by it, so a row that is
+ * drawn taller than this would drift away from the scrollbar.
+ *
+ * GRID_VIEWPORT_ROWS is how many rows the viewport shows, and GRID_OVERSCAN is
+ * how many are drawn on either side of it so that scrolling does not reach the
+ * edge of what has been drawn. Together they bound the rows in the document: a
+ * window of any size draws at most GRID_VIEWPORT_ROWS + 2 * GRID_OVERSCAN of
+ * them, and a window no larger than that is drawn whole. */
+export const GRID_ROW_HEIGHT = 32;
+export const GRID_VIEWPORT_ROWS = 12;
+export const GRID_OVERSCAN = 8;
+
+/** The rows of one window that a scroll position puts on screen, with the rows
+ * before and after them left as measured space rather than as elements. */
+export function visibleRows(total: number, scrollTop: number) {
+  const drawn = GRID_VIEWPORT_ROWS + 2 * GRID_OVERSCAN;
+  if (total <= drawn) {
+    return { first: 0, last: total };
+  }
+  const centre = Math.floor(Math.max(0, scrollTop) / GRID_ROW_HEIGHT);
+  const first = Math.min(Math.max(0, centre - GRID_OVERSCAN), total - drawn);
+  return { first, last: first + drawn };
+}
 
 /** The message grid: one window over one filtered case.
  *
@@ -262,7 +289,20 @@ export function MessageGrid({
   const [indexName, setIndexName] = useState("");
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [invalid, setInvalid] = useState<string | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const viewport = useRef<HTMLDivElement | null>(null);
   const grid = result?.grid ?? null;
+
+  // A new window is a new list, so it starts at its own first row rather than
+  // wherever the previous one had been scrolled to.
+  useEffect(() => {
+    setScrollTop(0);
+    if (viewport.current) {
+      viewport.current.scrollTop = 0;
+    }
+  }, [grid?.index, grid?.offset, grid?.filter]);
+  const rows = grid?.rows ?? [];
+  const { first, last } = visibleRows(rows.length, scrollTop);
 
   return (
     <section className="grid" aria-label="Message grid">
@@ -341,47 +381,68 @@ export function MessageGrid({
               Next {grid.limit}
             </button>
           </div>
-          <table className="rows">
-            <caption>
-              {grid.case} · {grid.index} · verified {grid.identity}
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col">Occurrence</th>
-                <th scope="col">Source</th>
-                <th scope="col">Type</th>
-                <th scope="col">Direction</th>
-                <th scope="col">Observed</th>
-                <th scope="col">Bytes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {grid.rows.map((row) => (
-                <tr key={row.id} aria-selected={selectedOccurrence === row.id}>
-                  <th scope="row">
-                    <button
-                      type="button"
-                      disabled={busy}
-                      aria-pressed={selectedOccurrence === row.id}
-                      onClick={() => onInspect(row.id)}
-                    >
-                      Inspect {row.id}
-                    </button>
-                  </th>
-                  <td>{row.source_id}</td>
-                  <td>
-                    <span className="kind">{row.kind}</span>
-                    {row.decoded ? null : <span className="unsupported">not decoded</span>}
-                  </td>
-                  <td>{row.direction}</td>
-                  <td>{row.observed_at ?? "not recorded"}</td>
-                  <td>
-                    {row.offset}+{row.size}
-                  </td>
+          <div
+            className="grid-scroll"
+            ref={viewport}
+            style={{ maxHeight: `${GRID_ROW_HEIGHT * GRID_VIEWPORT_ROWS}px` }}
+            onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+          >
+            <table className="rows" aria-rowcount={grid.matched}>
+              <caption>
+                {grid.case} · {grid.index} · verified {grid.identity}
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Occurrence</th>
+                  <th scope="col">Source</th>
+                  <th scope="col">Type</th>
+                  <th scope="col">Direction</th>
+                  <th scope="col">Observed</th>
+                  <th scope="col">Bytes</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {first > 0 ? (
+                  <tr className="spacer" aria-hidden="true">
+                    <td colSpan={6} style={{ height: `${first * GRID_ROW_HEIGHT}px` }} />
+                  </tr>
+                ) : null}
+                {rows.slice(first, last).map((row, index) => (
+                  <tr
+                    key={row.id}
+                    aria-rowindex={grid.offset + first + index + 1}
+                    aria-selected={selectedOccurrence === row.id}
+                  >
+                    <th scope="row">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        aria-pressed={selectedOccurrence === row.id}
+                        onClick={() => onInspect(row.id)}
+                      >
+                        Inspect {row.id}
+                      </button>
+                    </th>
+                    <td>{row.source_id}</td>
+                    <td>
+                      <span className="kind">{row.kind}</span>
+                      {row.decoded ? null : <span className="unsupported">not decoded</span>}
+                    </td>
+                    <td>{row.direction}</td>
+                    <td>{row.observed_at ?? "not recorded"}</td>
+                    <td>
+                      {row.offset}+{row.size}
+                    </td>
+                  </tr>
+                ))}
+                {last < rows.length ? (
+                  <tr className="spacer" aria-hidden="true">
+                    <td colSpan={6} style={{ height: `${(rows.length - last) * GRID_ROW_HEIGHT}px` }} />
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
         </>
       ) : null}
 

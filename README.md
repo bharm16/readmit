@@ -114,6 +114,28 @@ byte bound keeps its prefix and says so, and a query it cannot settle is
 reported as undecided rather than as a miss. Values stay hidden unless
 `--show-values`. See [searching a case](docs/index.md).
 
+`corpus generate --output NEW_FILE --manifest NEW_FILE --seed N --base-time
+INSTANT --generator-version readmit-corpus-v1 --profile-version readmit-siu-v1
+--messages N` writes a reproducible performance corpus from those four declared
+inputs and records them, with what it wrote, in a `readmit-corpus/v1` manifest
+written after the corpus. `corpus scan FILE` reads one back under the same
+declarations an import runs under — so it reports what an import of the same
+bytes would find, and makes the same refusals — through a 64 KiB window in
+bounded parsing batches, holding one record and one batch **whatever the
+stream's length**: the peak it actually held is reported beside the bound it is
+held to, and it does not move when the file gets longer. A larger file is never
+fixed by reading a larger file into memory, so a declaration that makes
+streaming impossible is refused rather than buffered. `--progress` reports
+bounded counts and nothing else, an interrupt is acknowledged within one record
+and leaves no half-written artifact, and `--window-offset`/`--window-limit`
+render one bounded window of records out of however many there are. A scan
+writes no evidence: it **names** the case bundle bounds a stream is already past
+rather than widening them, and `--report NEW_FILE` publishes a
+`readmit-benchmark/v1` naming the declared corpus, the declared bounds, what the
+run measured and the machine, with the proposed performance envelope recorded
+explicitly as engineering targets rather than measurements. See
+[the performance corpus](docs/corpus.md).
+
 `redact CASE` applies explicit named policies, writes a separate derived case
 and export review, and keeps identifier mappings and date offsets in separate
 private storage. Unhandled content blocks export. `redact export REVIEW`
@@ -371,7 +393,9 @@ line recorded, reads and edits the notes beside that evidence without touching
 any of it, writes the frozen synthetic sample workspace, and reopens recent
 folders. A message grid finds the occurrences that matter inside one verified
 case: it renders one bounded window at a time over an index `readmit index build`
-wrote and asks for the next rather than drawing a large case at once, applies
+wrote and asks for the next rather than drawing a large case at once, draws only
+the rows of one viewport out of that window and leaves the rest as measured
+space, applies
 saved filters for occurrence type, source, observed time, decoded field state,
 ACK outcome and field values, keeps the selected filter when you move to another
 case, and always states how many records the filter excluded. It
