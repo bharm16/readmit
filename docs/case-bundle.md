@@ -4,6 +4,7 @@ This document defines imported and generated v1 bundles. The reader also support
 `readmit-case/v2` recorded receiver bundles, whose integrity-covered observation
 and recorded provenance are defined in [the receiver contract](listen.md).
 The default capture and generated writers retain the v1 format.
+The reader also supports `readmit-case/v3` derived testing evidence, defined below.
 
 A case bundle is a finalized directory of evidence. `capture` imports files;
 `timeline` verifies and opens the resulting bundle. Neither command modifies a
@@ -234,3 +235,22 @@ internal occurrence IDs, offsets, directions, and the three distinct time
 fields. It hides source paths and raw identifiers. `--show-values` explicitly
 prints complete occurrence bytes as escaped strings, including non-UTF-8 bytes
 and controls. Nothing is uploaded, and neither command accesses the network.
+
+## Derived testing evidence: readmit-case/v3
+
+The v3 layout, byte-preserving occurrence model, hashes and correlation rules are
+unchanged. Its identity domain is `readmit-case/v3`. Provenance is exactly
+`{"mode":"derived","derivation":"readmit-redact/v1"}`. Sources have no `path`
+member; provenance has no original import/start time, receiver session, generator,
+or parent identity. Observed/imported event times are null. A v3 manifest cannot
+carry a recorded observation. Legacy-only members are rejected even when null.
+
+This format describes transformed testing data. It does not claim synthetic
+origin or any legal status. Original linkage, mappings and shift offsets stay in
+the private redaction state. A derived case alone has no export approval; see
+[redact.md](redact.md) for review, exact approval and newly generated proof gates.
+
+`bundle.Write` accepts `Provenance{Mode: Derived, Derivation: "readmit-redact/v1"}`
+and returns the same `Bundle` type. `bundle.Open`, `Raw`, `Value`, and event/source
+IDs are stable across supported versions. Existing imported/generated v1 and
+recorded v2 artifacts retain their strict versioned contracts.

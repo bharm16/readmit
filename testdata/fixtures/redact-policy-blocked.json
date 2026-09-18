@@ -1,0 +1,19 @@
+{
+  "schema": "readmit-redact-policy/v1",
+  "patient": {
+    "selector": "PID-3.1",
+    "authority": [
+      "PID-3.4.1",
+      "PID-3.4.2",
+      "PID-3.4.3"
+    ]
+  },
+  "fields": [],
+  "remove_segments": [],
+  "packet_policies": [],
+  "spec_bindings": [],
+  "required_failures": [
+    1,
+    2
+  ]
+}

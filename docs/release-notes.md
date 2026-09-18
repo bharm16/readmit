@@ -25,6 +25,10 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
 - `replay` previews by default, sends only to explicitly configured test targets,
   preserves selected source values unless a named transformation is requested,
   and records exact transport evidence and uncertain outcomes in a new run.
+- `redact` creates separate derived evidence with explicit policies and a
+  fail-closed export review. Approved fixture exports regenerate their results
+  and diagnosis, verify failure preservation, and exclude private mappings.
+
 - `report` runs the named synthetic regression and seals its reproducer,
   verified failure/pass results, diagnosis, diff, profiles, and rerun procedure
   in one packet. Offline verification and separate rerun workspaces are included.

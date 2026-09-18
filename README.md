@@ -1,6 +1,6 @@
 # readmit
 
-Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `listen`, `replay`, `test`, `diff`, `report`, `synth`, and `diagnose` are available; later workflows are tracked in [GitHub issues](https://github.com/bharm16/readmit/issues).
+Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `listen`, `replay`, `test`, `diff`, `report`, `redact`, `synth`, and `diagnose` are available. See the workflow guides below.
 
 ```sh
 readmit inspect message.hl7
@@ -14,18 +14,20 @@ readmit timeline incident.case
 byte offsets, and field states. Values are hidden by default. `--show-values` is
 an explicit request to print message content, using quoted, escaped byte strings
 so terminal controls and non-UTF-8 bytes are never interpreted as terminal text.
-Repetitions are shown separately. Escape sequences and component separators are
-preserved literally; this release does not decode HL7 values or character sets.
+Repetitions are shown separately. `inspect` displays escape sequences and
+component separators literally. Other workflows decode supported escapes through
+shared field selectors while preserving the original evidence bytes.
 
 `--roundtrip NEW_FILE` reserializes the parsed evidence, including its framing,
 byte for byte. The destination must not exist; existing files, source aliases,
 and symlinks are refused. On Unix it is created with mode `0600`; Windows uses
-the destination directory's inherited access controls. There is no editing API.
-Future edits must create separate derived artifacts, never rewrite the source.
+the destination directory's inherited access controls. Round-trip copying does
+not edit content; transformations create separate derived artifacts.
 
-Command data goes to stdout; bounded diagnostics go to stderr with exit status 1.
-Success uses exit status 0. Diagnostics do not echo filenames, values, or supplied
-arguments. There is no stdin/pipe input in this release; inputs are regular files.
+Command data goes to stdout; bounded diagnostics go to stderr. Success uses exit
+status 0; failures use the workflow-specific nonzero codes documented below.
+Diagnostics do not echo filenames, values, or supplied arguments. There is no
+stdin/pipe input in this release; inputs are regular files.
 
 ## Capture and reopen case evidence
 
@@ -44,11 +46,20 @@ Both commands hide raw content unless `--show-values` is requested.
 
 Copying a bundle preserves its identity; modifying evidence fails verification.
 Existing destinations are never overwritten. The bundle API also supports
-deterministic generated provenance for the future `synth` command. See the
+deterministic generated provenance for `synth`. See the
 [complete case bundle contract](docs/case-bundle.md) for layout, field definitions,
 correlation rules, observation metadata, integrity checks, and limits.
 
 ## Available workflows
+
+`redact CASE` applies explicit named policies, writes a separate derived case
+and export review, and keeps identifier mappings and date offsets in separate
+private storage. Unhandled content blocks export. `redact export REVIEW`
+requires approval of the exact review, reruns the transformed assertions against
+both fixture modes, and generates fresh results and diagnosis. Coverage and
+residual scans state their limits; this workflow makes no legal certification.
+See [transformation and export review](docs/redact.md) for the policy format,
+whole-packet review, and synthetic acceptance scenario.
 
 `report --scenario siu-reschedule-v1 --output NEW_PACKET` runs the committed
 synthetic scenario against fresh defective and fixed fixtures, then packages

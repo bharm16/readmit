@@ -1,0 +1,18 @@
+{
+  "schema": "readmit-redact-inventory/v1",
+  "complete": true,
+  "artifacts": [],
+  "residual_values": [
+    "PLANTED-PATIENT-7391",
+    "PLANTED-NAME-ORCHID",
+    "PLANTED-NTE-ALDER",
+    "PLANTED-ERR-BIRCH",
+    "PLANTED-ACK-WILLOW",
+    "PLANTED-EMBEDDED-ELM",
+    "PLANTED-UNKNOWN-ASH",
+    "PLANTED-FILENAME-CEDAR",
+    "PLANTED-SPEC-JUNIPER",
+    "PLANTED-RESET-SPRUCE",
+    "PLANTED-DIAG-MAPLE"
+  ]
+}

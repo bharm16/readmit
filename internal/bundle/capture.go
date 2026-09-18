@@ -26,6 +26,9 @@ func build(inputs []Input, provenance Provenance) (*Bundle, error) {
 	if provenance.Mode == Recorded {
 		b.Manifest.Schema = RecordedSchema
 	}
+	if provenance.Mode == Derived {
+		b.Manifest.Schema = DerivedSchema
+	}
 	total := 0
 	for i, input := range inputs {
 		total += len(input.Data)
@@ -53,7 +56,7 @@ func build(inputs []Input, provenance Provenance) (*Bundle, error) {
 			if observation.Direction != Unknown && observation.Direction != Inbound && observation.Direction != Outbound {
 				return nil, errors.New("direction must be unknown, inbound, or outbound")
 			}
-			if observation.ObservedAt != nil && (provenance.Mode == Generated || !validTime(*observation.ObservedAt)) {
+			if observation.ObservedAt != nil && (provenance.Mode == Generated || provenance.Mode == Derived || !validTime(*observation.ObservedAt)) {
 				return nil, errors.New("observed time must be a valid imported observation")
 			}
 			raw := bytes.Clone(input.Data[start:end])
@@ -81,6 +84,9 @@ func build(inputs []Input, provenance Provenance) (*Bundle, error) {
 }
 
 func validateProvenance(p Provenance) error {
+	if p.Mode != Derived && p.Derivation != "" {
+		return errors.New("derivation is only valid for derived evidence")
+	}
 	switch p.Mode {
 	case Imported:
 		if p.ImportedAt == nil || !validTime(*p.ImportedAt) || p.Generator != nil || p.StartedAt != nil || p.SessionID != "" {
@@ -93,6 +99,10 @@ func validateProvenance(p Provenance) error {
 	case Recorded:
 		if p.ImportedAt != nil || p.Generator != nil || p.StartedAt == nil || !validTime(*p.StartedAt) || len(p.SessionID) != 32 {
 			return errors.New("recorded provenance requires startup time and session ID")
+		}
+	case Derived:
+		if p.ImportedAt != nil || p.Generator != nil || p.StartedAt != nil || p.SessionID != "" || p.Derivation != "readmit-redact/v1" {
+			return errors.New("derived provenance requires only the named testing derivation")
 		}
 	default:
 		return errors.New("unsupported provenance mode")
