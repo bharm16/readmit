@@ -27,10 +27,28 @@ func Execute(ctx context.Context, plan *Plan, output string) (*Run, error) {
 // opening a connection. A selected policy requires a recorder; a failed record
 // prevents sending. Execute uses the same boundary with loopback-only defaults.
 func ExecuteWithPolicy(ctx context.Context, plan *Plan, output string, policy *sendpolicy.Policy, record func(sendpolicy.Decision) error) (*Run, error) {
-	return executeWithPolicy(ctx, plan, output, policy, record, sendpolicy.SystemResolver)
+	return ExecuteObserved(ctx, plan, output, policy, record, nil)
+}
+
+// Observer is a synchronous durability boundary. Errors halt execution, retaining
+// incomplete evidence. BeforeSend runs before any payload write; Sent runs after
+// Write and before waiting for an ACK; Recorded runs after the event is synced.
+// Implementations must not call back into execution or mutate supplied values.
+type Observer interface {
+	BeforeSend(occurrence string) error
+	Sent(occurrence string, raw []byte) error
+	Recorded(event Event) error
+}
+
+func ExecuteObserved(ctx context.Context, plan *Plan, output string, policy *sendpolicy.Policy, record func(sendpolicy.Decision) error, observer Observer) (*Run, error) {
+	return executeObservedPolicy(ctx, plan, output, policy, record, sendpolicy.SystemResolver, observer)
 }
 
 func executeWithPolicy(ctx context.Context, plan *Plan, output string, policy *sendpolicy.Policy, record func(sendpolicy.Decision) error, resolve sendpolicy.Resolver) (*Run, error) {
+	return executeObservedPolicy(ctx, plan, output, policy, record, resolve, nil)
+}
+
+func executeObservedPolicy(ctx context.Context, plan *Plan, output string, policy *sendpolicy.Policy, record func(sendpolicy.Decision) error, resolve sendpolicy.Resolver, observer Observer) (*Run, error) {
 	if plan == nil || len(plan.messages) == 0 {
 		return nil, errors.New("replay requires a prepared plan")
 	}
@@ -61,7 +79,7 @@ func executeWithPolicy(ctx context.Context, plan *Plan, output string, policy *s
 	if !decision.Allowed || address == "" {
 		return nil, errors.New("the send was refused by policy before anything was sent: " + string(decision.Reason))
 	}
-	return execute(ctx, plan, output, func(ctx context.Context, p *Plan) (net.Conn, *TransportError) {
+	return executeObserved(ctx, plan, output, observer, func(ctx context.Context, p *Plan) (net.Conn, *TransportError) {
 		// File persistence is not network connection time. DNS consumes the
 		// connection budget; recording and reserving evidence do not.
 		dialCtx, stop := context.WithTimeout(ctx, remaining)
@@ -71,6 +89,10 @@ func executeWithPolicy(ctx context.Context, plan *Plan, output string, policy *s
 }
 
 func execute(ctx context.Context, plan *Plan, output string, dial func(context.Context, *Plan) (net.Conn, *TransportError)) (*Run, error) {
+	return executeObserved(ctx, plan, output, nil, dial)
+}
+
+func executeObserved(ctx context.Context, plan *Plan, output string, observer Observer, dial func(context.Context, *Plan) (net.Conn, *TransportError)) (*Run, error) {
 	if plan == nil || len(plan.messages) == 0 {
 		return nil, errors.New("replay requires a prepared plan")
 	}
@@ -113,6 +135,15 @@ func execute(ctx context.Context, plan *Plan, output string, dial func(context.C
 					}
 				}
 				if event.TransportError == nil {
+					if observer != nil {
+						if err := observer.BeforeSend(event.OutboundOccurrence); err != nil {
+							return nil, err
+						}
+						// A cancellation during persistence stops the pending send.
+						if ctx.Err() != nil {
+							return nil, ctx.Err()
+						}
+					}
 					duration, _ := time.ParseDuration(plan.target.MessageTimeout)
 					deadline := time.Now().Add(duration)
 					if limit, ok := ctx.Deadline(); ok && limit.Before(deadline) {
@@ -123,6 +154,11 @@ func execute(ctx context.Context, plan *Plan, output string, dial func(context.C
 					} else {
 						n, writeErr := writeAll(connection, message.wire)
 						sent = bytes.Clone(message.wire[:n])
+						if observer != nil {
+							if err := observer.Sent(event.OutboundOccurrence, bytes.Clone(sent)); err != nil {
+								return nil, err
+							}
+						}
 						if n > 0 {
 							event.Delivery = "uncertain"
 						}
@@ -157,6 +193,18 @@ func execute(ctx context.Context, plan *Plan, output string, dial func(context.C
 		}
 		if err := writer.record(run, i, sent, received); err != nil {
 			return nil, err
+		}
+		if observer != nil {
+			copyEvent := *event
+			copyEvent.ControlID = bytes.Clone(event.ControlID)
+			copyEvent.ACK.ControlID = bytes.Clone(event.ACK.ControlID)
+			if event.TransportError != nil {
+				copied := *event.TransportError
+				copyEvent.TransportError = &copied
+			}
+			if err := observer.Recorded(copyEvent); err != nil {
+				return nil, err
+			}
 		}
 	}
 	if connection != nil {

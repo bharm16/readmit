@@ -334,6 +334,8 @@ export interface GridResult {
 }
 
 interface Facade {
+  StartDurableRun(spec: string, output: string): Promise<DurableRunResult>;
+  OpenDurableRun(path: string): Promise<DurableRunResult>;
   Cancel(): Promise<void>;
   CreateSampleWorkspace(): Promise<WorkspaceResult>;
   Filters(): Promise<FiltersResult>;
@@ -471,4 +473,28 @@ export function selectWorkspace(): Promise<WorkspaceResult> {
  * is still starting; the window says so rather than drawing itself empty. */
 export function shell(): Promise<ShellResult> {
   return guard(() => facade().Shell(), { state: "failed" });
+}
+
+export type RunState = "ready" | "running" | "passed" | "assertion_failed" | "execution_error" | "cancelled" | "timed_out" | "interrupted" | "delivery_uncertain";
+export interface DurableRunSummary {
+ schema: string;
+ state: RunState;
+ stop_reason: RunState;
+ delivery_uncertain: boolean;
+ planned: number;
+ recorded: number;
+ result_identity?: string;
+ recovered: boolean;
+ journal_incomplete: boolean;
+}
+export interface DurableRunResult {
+ state: State;
+ reason?: string;
+ run?: DurableRunSummary;
+}
+export function startDurableRun(spec: string, output: string): Promise<DurableRunResult> {
+ return guard(() => facade().StartDurableRun(spec, output), { state: "failed", reason: "The desktop connection was interrupted. Recover the output directory to inspect evidence; do not resend automatically." });
+}
+export function openDurableRun(path: string): Promise<DurableRunResult> {
+ return guard(() => facade().OpenDurableRun(path), { state: "failed" });
 }

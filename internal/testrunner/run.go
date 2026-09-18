@@ -44,6 +44,12 @@ func Run(ctx context.Context, specPath, output string) (*Artifact, error) {
 // Execute opens a network connection only after reserving new local evidence
 // storage and verifying the declared initial ledger state. No retry is hidden.
 func Execute(ctx context.Context, plan *Plan, output string) (*Artifact, error) {
+	return ExecuteObserved(ctx, plan, output, nil)
+}
+
+// ExecuteObserved adds synchronous durability notifications without changing the
+// frozen result/run contracts or the checked destination policy boundary.
+func ExecuteObserved(ctx context.Context, plan *Plan, output string, observer replay.Observer) (*Artifact, error) {
 	if plan == nil || plan.replay == nil {
 		return nil, errors.New("test requires a prepared plan")
 	}
@@ -79,9 +85,9 @@ func Execute(ctx context.Context, plan *Plan, output string) (*Artifact, error) 
 			return plan.named(finish(dir, result))
 		}
 	}
-	run, err := replay.ExecuteWithPolicy(ctx, plan.replay, filepath.Join(dir, "run"), nil, func(decision sendpolicy.Decision) error {
+	run, err := replay.ExecuteObserved(ctx, plan.replay, filepath.Join(dir, "run"), nil, func(decision sendpolicy.Decision) error {
 		return sendpolicy.WriteDecision(dir+".decision.json", decision)
-	})
+	}, observer)
 	if err != nil {
 		// A storage failure may leave an incomplete run. Do not certify that
 		// directory with a completed result identity or fabricate observations.

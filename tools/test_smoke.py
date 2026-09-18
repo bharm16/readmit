@@ -34,6 +34,7 @@ DISTRIBUTION_FILES = (
     "docs/replay.md",
     "docs/run-bundle.md",
     "docs/test-runner.md",
+    "docs/durable-runs.md",
     "docs/test-spec.md",
     "docs/test-result.md",
     "docs/redact.md",

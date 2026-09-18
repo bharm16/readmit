@@ -274,6 +274,10 @@ verification. ACK-only success is labelled "ACK contract passed". Without
 See [regression testing](docs/test-runner.md) for the unchanged fail/pass/fail
 scenario, reset procedure, spec format, and result contract.
 
+Durable execution: `readmit run start SPEC --send --output NEW_JOB` retains a
+synced plan and send journal; `readmit run status JOB --json` recovers evidence
+without resending. See [durable local runs](docs/durable-runs.md).
+
 `replay CASE --target CONFIG` previews a replay without opening a connection.
 Sending requires `--send --output NEW_RUN` and an explicit configuration marked
 as a test endpoint. A destination that is not a literal loopback address also
