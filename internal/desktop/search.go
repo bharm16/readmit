@@ -73,7 +73,7 @@ func (a *App) Search(path, query string) SearchResult {
 		return SearchResult{State: Empty, Reason: "type something to search for", Matches: []Match{}}
 	}
 	root, declined := resolveFolder(path)
-	if declined.state != "" {
+	if root == "" {
 		return declined.search()
 	}
 	artifacts, declined := listArtifacts(context.Background(), root)

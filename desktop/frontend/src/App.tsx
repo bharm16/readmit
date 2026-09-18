@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, ReactElement } from "react";
 import {
   cancel,
   createSampleWorkspace,
@@ -120,12 +120,16 @@ export default function App() {
     [described, focused, focusRegion],
   );
 
-  // One operation runs at a time here as well as in the facade, and the slot is
-  // always released, so a failure never leaves the window disabled.
+  // One operation runs at a time here as well as in the facade. The slot is
+  // released whatever happens, including a rejection the boundary did not turn
+  // into a failed result, so nothing can leave the window permanently disabled.
   const operate = useCallback(async (kind: Exclude<Running, null>, work: () => Promise<void>) => {
     setRunning(kind);
-    await work();
-    setRunning(null);
+    try {
+      await work();
+    } finally {
+      setRunning(null);
+    }
   }, []);
 
   const openFolder = useCallback(
@@ -179,9 +183,10 @@ export default function App() {
 
   const busy = running !== null;
 
-  // Every command the facade declares has an action here. The record is keyed
-  // by the declared identifiers, so a command with nothing behind it does not
-  // compile rather than becoming a palette entry that quietly does nothing.
+  // Every command the facade declares has an action here. The record is keyed by
+  // the declared identifiers, so a command the window forgot is a type error
+  // rather than a palette entry that quietly does nothing. Which key reaches
+  // which command is not typed, and is what the facade's own tests check.
   const actions: Record<CommandId, () => void> = {
     "command-palette": () => {
       setPaletteQuery("");
@@ -281,9 +286,11 @@ export default function App() {
     );
   });
 
-  // Every region the facade declares has content here, for the same reason
-  // every command has an action: a region with nothing in it does not compile.
-  const content: Record<RegionId, ReactNode> = {
+  // Every region the facade declares has an element here, for the same reason
+  // every command has an action: a region the window forgot is a type error.
+  // ReactElement rather than ReactNode, because ReactNode admits null and would
+  // accept a region entered as nothing. What a region then draws is beyond it.
+  const content: Record<RegionId, ReactElement> = {
     commands: (
       <>
         <div className="actions">

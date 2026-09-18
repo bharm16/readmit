@@ -12,13 +12,14 @@ import (
 	"github.com/bharm16/readmit/internal/project"
 )
 
-// The window's focus order, statuses and commands are declared once, here in
-// Go, and the interface renders that declaration. These tests own the
-// declaration itself, and confirm the interface still renders it rather than a
-// second copy of its own. Whether each region draws the content it was given is
-// what the frontend type check proves: the record of region content and the
-// record of command actions are keyed by the declared identifiers, so a region
-// with nothing in it and a command with nothing behind it both fail to compile.
+// The window's focus order, statuses, commands and shortcuts are declared once,
+// here in Go, and the interface renders that declaration. These tests own the
+// declaration itself and confirm the interface still reads it rather than a
+// second copy of its own. They read the interface sources; they do not render a
+// window, so what they establish is that the declaration is coherent and that
+// the interface is still wired to it. That every declared region and command
+// has something on the other side is left to the frontend type check, where the
+// two records are keyed by the declared identifiers.
 const (
 	frontendDirectory = "../../desktop/frontend/src"
 	stylesFile        = frontendDirectory + "/styles.css"
@@ -80,14 +81,14 @@ func TestFocusOrderFollowsTheInvestigationJourney(t *testing.T) {
 	}
 
 	source := frontend(t)
-	// The window walks the declared order rather than an order of its own, and
-	// every declared region has content, because the record holding it is keyed
-	// by the declared identifiers and the frontend type check closes it.
+	// The window walks the declared order rather than one of its own, and every
+	// declared region has an element, because the record holding them is keyed
+	// by the declared identifiers and ReactElement does not admit nothing.
 	if !strings.Contains(source, "regions.map(") {
 		t.Error("the interface does not render the regions in the order the facade declares")
 	}
-	if !strings.Contains(source, "Record<RegionId, ReactNode>") {
-		t.Error("region content is not keyed by the declared regions, so a region can render nothing")
+	if !strings.Contains(source, "Record<RegionId, ReactElement>") {
+		t.Error("region content is not keyed by the declared regions, so a region can be left out")
 	}
 	// No positive tab index, so the controls inside the regions are tabbed
 	// through in document order, which is the order the regions are rendered.
@@ -130,10 +131,10 @@ func TestEveryRegionIsReachableFromTheCommandPalette(t *testing.T) {
 		t.Fatalf("command %q moves focus to a region the window does not have", described.Commands[command].ID)
 	}
 
-	// Every command has something behind it, for the same reason every region
-	// has content: the record of actions is keyed by the declared identifiers.
+	// Every command has an action behind it, for the same reason every region
+	// has an element: the record is keyed by the declared identifiers.
 	if !strings.Contains(frontend(t), "Record<CommandId, () => void>") {
-		t.Error("command actions are not keyed by the declared commands, so a command can do nothing")
+		t.Error("command actions are not keyed by the declared commands, so a command can be left out")
 	}
 }
 
@@ -152,8 +153,10 @@ func TestEveryDeclaredShortcutIsBound(t *testing.T) {
 		// read from the event rather than matched by name.
 		parts := strings.Split(strings.ToLower(command.Keys), "+")
 		key := parts[len(parts)-1]
-		if !strings.Contains(source, `"`+key+`"`) {
-			t.Errorf("command %q shows the shortcut %q, but the interface binds no %q key", command.ID, command.Keys, key)
+		// A key is bound where it is compared against, so a string literal that
+		// merely shares its spelling does not satisfy this.
+		if !strings.Contains(source, `case "`+key+`"`) && !strings.Contains(source, `=== "`+key+`"`) {
+			t.Errorf("command %q shows the shortcut %q, but the interface tests no %q key", command.ID, command.Keys, key)
 		}
 	}
 	if bound == 0 {

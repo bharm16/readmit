@@ -65,8 +65,10 @@ than drawing itself with no commands and no privacy status.
 `Cancel` cannot retract bytes an operation has already written. Choosing a
 folder and listing it are interruptible; `OpenCase`, `OpenProject`,
 `OpenRevisions`, `SaveNote` and `Search` are not, because each runs to
-completion under its own size limits once it starts. The window offers the
-Cancel control only while an interruptible operation runs.
+completion under its own size limits once it starts. The window enables the
+Cancel control only while an interruptible operation runs; `Escape` reaches the
+same operation whenever the palette is not open, and cancelling when nothing is
+running does nothing.
 
 ## Workspaces and artifacts
 
@@ -157,12 +159,15 @@ evidence and inspector panes are separated by a separator that *is* a tab stop
 and moves with `ArrowLeft`, `ArrowRight`, `Home` and `End` as well as with a
 pointer, so the panes resize without one.
 
-The region order, the statuses and the commands are declared once in the facade
-and tested there. That each region draws what it was given is proved by the
-frontend type check instead: the record of region content and the record of
-command actions are keyed by the declared identifiers, so a region with nothing
-in it, a command with nothing behind it, and a shortcut bound to nothing all
-fail the build rather than shipping as a control that quietly does nothing.
+The region order, the statuses, the commands and their shortcuts are declared
+once in the facade and tested there, including that every shortcut the palette
+shows is a key the interface actually tests for. The frontend type check adds
+one thing those tests cannot see: the record of region content and the record of
+command actions are keyed by the declared identifiers, so a region the window
+forgot to draw and a command with no action behind it are type errors rather
+than controls that quietly do nothing. Neither check inspects a rendered window,
+so what a region draws once it has an element is not among the things proved
+here.
 
 ### Status without colour
 
