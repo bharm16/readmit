@@ -37,7 +37,7 @@ def member_bytes(archive, name):
         return contents.extractfile(name).read()
 
 
-def smoke(archive, target_os):
+def smoke(archive, target_os, release_tag=None):
     with tempfile.TemporaryDirectory(prefix="readmit-smoke-") as directory:
         work = Path(directory)
         name = "readmit.exe" if target_os == "windows" else "readmit"
@@ -57,6 +57,10 @@ def smoke(archive, target_os):
 
         version = run("--version")
         assert b"dev" not in version.stdout and b"readmit version" in version.stdout
+        if release_tag:
+            expected = f"readmit version {release_tag.removeprefix('v')}\n".encode()
+            if version.stdout != expected:
+                raise RuntimeError("Executable version does not match the release tag")
         cases = [
             ("adt-cr.hl7", "raw", "cr", 1),
             ("siu-lf.hl7", "raw", "lf", 1),
@@ -98,8 +102,13 @@ def main():
     parser.add_argument("--os", choices=["linux", "darwin", "windows"])
     parser.add_argument("--arch", choices=["amd64", "arm64"])
     parser.add_argument("--extract-binaries", type=Path)
+    parser.add_argument("--release-tag", default=os.environ.get("READMIT_RELEASE_TAG"))
     args = parser.parse_args()
     archives = verified_archives(args.artifacts)
+    if args.release_tag:
+        prefix = f"readmit_{args.release_tag.removeprefix('v')}_"
+        if any(not archive.name.startswith(prefix) for archive in archives):
+            raise RuntimeError("Archive version does not match the release tag")
     if args.extract_binaries:
         if len(archives) != 5:
             raise RuntimeError("Expected exactly five release archives")
@@ -117,7 +126,7 @@ def main():
     matches = [archive for archive in archives if archive.name.endswith(suffix)]
     if len(matches) != 1:
         raise RuntimeError("Expected exactly one archive for this target")
-    smoke(matches[0], args.os)
+    smoke(matches[0], args.os, args.release_tag)
 
 
 if __name__ == "__main__":

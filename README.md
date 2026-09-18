@@ -89,12 +89,12 @@ For example, after downloading a macOS archive:
 ```sh
 shasum -a 256 readmit_*_darwin_arm64.tar.gz
 # Compare with the matching entry in checksums.txt, then:
-tar -xzf readmit_0.1.0-alpha.1_darwin_arm64.tar.gz
+tar -xzf readmit_0.1.0-alpha.2_darwin_arm64.tar.gz
 ./readmit inspect testdata/fixtures/adt-cr.hl7
 ```
 
 On Linux use `sha256sum`. On Windows use
-`Get-FileHash .\readmit_0.1.0-alpha.1_windows_amd64.zip -Algorithm SHA256`,
+`Get-FileHash .\readmit_0.1.0-alpha.2_windows_amd64.zip -Algorithm SHA256`,
 compare its hash with `checksums.txt`, extract with `Expand-Archive`, and run
 `.\readmit.exe inspect .\testdata\fixtures\adt-cr.hl7`.
 
@@ -127,7 +127,8 @@ govulncheck ./...
 CI installs the exact `toolchain` version from `go.mod` and uses
 `GOTOOLCHAIN=local`. Release builds use `CGO_ENABLED=0`; race tests use cgo.
 GoReleaser v2.18.2 creates the five archives and SHA-256 checksums. On a `v*` tag,
-publication waits for quality checks and native tests of those same archives;
+publication waits for quality checks and native tests of those same archives,
+including exact archive and executable version matches against the tag;
 the release is then downloaded and exercised on a fresh Linux runner with an
 empty PATH. The runtime is never rebuilt between testing and publishing.
 
