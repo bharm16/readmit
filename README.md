@@ -1,6 +1,6 @@
 # readmit
 
-Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `index`, `project`, `secret`, `listen`, `collect`, `replay`, `test`, `diff`, `report`, `redact`, `synth`, and `diagnose` are available. See the workflow guides below.
+Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `index`, `project`, `backup`, `secret`, `listen`, `collect`, `replay`, `test`, `diff`, `report`, `redact`, `synth`, and `diagnose` are available. See the workflow guides below.
 
 ```sh
 readmit inspect message.hl7
@@ -157,6 +157,25 @@ Both live in a separate `readmit-revisions/v1` document beside the evidence, so
 no note, no metadata change and no recorded lineage can alter a byte of an
 import or a finalized run. See
 [interface investigation projects](docs/project.md).
+
+`backup create PROJECT --output NEW_DIRECTORY` copies a whole project — both
+documents, every registered bundle, and every other file it holds — into a
+verified backup directory, `backup verify BACKUP` reads one back whole, and
+`backup restore BACKUP --output NEW_DIRECTORY` writes the project somewhere
+else. A bundle identity covers relative paths and contents only, so a project
+restored under a different root registers the identities it always did, and the
+restore verifies that rather than assuming it. **Incomplete evidence is
+displayed, never replaced**: a registered case that is missing, unreadable or no
+longer the evidence the project recorded is recorded that way, restored that
+way, and never reconstructed, and both commands exit non-zero so nobody reads "a
+backup was taken" as "the project is whole". The completion marker is written
+last, so a backup interrupted at any point is refused rather than restored, and
+a backup whose bytes no longer match its manifest is refused before the
+destination is created. A derived index is not copied: the backup records the
+declarations it was built under and the restore builds it again from the
+restored canonical case, so a damaged index is a rebuild and the values it
+retained are never held in a second place. See
+[backing up a workspace](docs/backup.md).
 
 `license verify ENTITLEMENT --trust TRUST_STORE` verifies a signed organization
 entitlement on the machine that holds it: an Ed25519 signature over a versioned

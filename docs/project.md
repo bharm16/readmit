@@ -338,6 +338,24 @@ from the document that is still intact. Recovery is to move the retained file
 aside outside readmit, which is an explicit decision rather than something a
 command makes silently.
 
+## Backup, restore, and rebuilding
+
+`readmit backup create PROJECT --output NEW_DIRECTORY` copies the whole project
+directory — both documents, every registered bundle, and every other file it
+holds — into a verified backup, and `readmit backup restore` writes it into a
+new directory somewhere else. A case bundle identity covers relative paths and
+contents only, so a project restored under a different root registers exactly
+the identities it always did, and the restore verifies that rather than assuming
+it.
+
+A backup records what verifying each registered case and revision found, using
+the same four states `show` reports. Evidence that is `missing`, `unreadable` or
+`changed` is recorded that way, restored that way, and never reconstructed; the
+command exits non-zero so nobody reads "a backup was taken" as "the project is
+whole". A derived index is not copied at all: the backup records the
+declarations it was built under and the restore builds it again from the
+restored canonical case. See [backing up a workspace](backup.md).
+
 ## In the desktop shell
 
 The shell reads a project through the same documents. Opening a workspace folder
