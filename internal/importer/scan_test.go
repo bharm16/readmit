@@ -319,6 +319,31 @@ func TestScanRefusesAStreamThatNeverReachesItsDeclaredBoundary(t *testing.T) {
 	}
 }
 
+func TestScanRefusesAnOversizedRecordDeliveredWithTheEndOfTheStream(t *testing.T) {
+	// A reader is allowed to return its last bytes together with io.EOF. The
+	// record bound has to hold for that last record too: how a reader chooses
+	// to end a stream cannot decide how large a record may be.
+	plan := declaredPlan(t, importer.RawFraming, "")
+	filler := bytes.Repeat([]byte("A"), 4096)
+	source := &finalRead{inner: &repeated{record: filler, left: importer.MaxRecordBytes/len(filler) + 1}}
+	_, err := importer.Scan(context.Background(), io.MultiReader(strings.NewReader("MSH|^~\\&|"), source), importer.ScanOptions{Plan: plan})
+	if !errors.Is(err, importer.ErrRecordBound) {
+		t.Fatalf("scan error %v, want %v", err, importer.ErrRecordBound)
+	}
+}
+
+// finalRead hands its last bytes back together with the end of the stream,
+// which io.Reader permits and many readers do.
+type finalRead struct{ inner io.Reader }
+
+func (r *finalRead) Read(p []byte) (int, error) {
+	n, err := r.inner.Read(p)
+	if errors.Is(err, io.EOF) && n > 0 {
+		return n, io.EOF
+	}
+	return n, err
+}
+
 func TestScanRefusesUndeclaredWindowsBatchesAndMembers(t *testing.T) {
 	valid := mllpPlan(t)
 	withMembers := valid

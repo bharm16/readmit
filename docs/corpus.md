@@ -98,8 +98,9 @@ start block and no batch envelope to be found in nothing.
 
 ## Progress, and cancelling
 
-`--progress` writes bounded counts to standard error while the command runs, at
-most one line a second plus the last:
+`--progress` writes bounded counts to standard error while the command runs:
+one line for the first completed batch, and after that at most one a second,
+however long the stream is.
 
 ```
 scanning: bytes=25604483 records=84992 occurrences=84992 batches=332
@@ -108,6 +109,8 @@ scanning: bytes=25604483 records=84992 occurrences=84992 batches=332
 Counts only. A progress line names no file, repeats no declaration and carries
 no byte of the stream, so there is nothing in it for `--show-values` to hide —
 and the command has no `--show-values`, because it displays no evidence at all.
+The final counts are the summary on standard output, not a progress line:
+progress is a diagnostic, and the answer is data.
 
 An interrupt is acknowledged **within one record**, not at the end of the
 stream: the scan stops, parses the batch it had already read so that the records

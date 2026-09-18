@@ -415,6 +415,13 @@ func (r *recordReader) next() ([]byte, int64, error) {
 			if len(pending) == 0 {
 				return nil, 0, io.EOF
 			}
+			// A reader may hand back its last bytes together with the end of
+			// the stream, so the end of one is reached without passing the
+			// check below. The bound holds for the last record too: what a
+			// reader calls one read never decides how large a record may be.
+			if len(pending) > MaxRecordBytes {
+				return nil, 0, ErrRecordBound
+			}
 			r.pos = len(r.buf)
 			return pending, r.consumed - int64(len(pending)), nil
 		}
