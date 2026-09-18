@@ -19,3 +19,13 @@ Every readmit artifact that holds evidence (a case bundle, a run bundle, a deriv
 - Bundle identity is a hash over relative paths and file contents only, never filesystem timestamps or absolute paths. Provenance carries a mode, `imported` (source paths, import time) or `generated` (declared generator inputs, no wall clock), so synthetic bundles are byte-reproducible.
 - Internal occurrence identifiers are sequence-based within their source, never random.
 - Schema versions belong to the artifacts; there is no migration framework. A reader either supports a version or says so.
+
+## 2026-09-18 clarification: project lifecycle
+
+Mutable project documents retain digest-addressed copies of their previous
+bytes before replacement. These are project metadata recovery artifacts, not
+rewrites of canonical evidence. A schema preview reports unsupported documents
+and refuses conversion; this release introduces no canonical migration framework.
+Whole-project retirement requires a complete verified recovery backup, preserves
+identities in that archive, and unlinks rather than claims secure erasure.
+See [project lifecycle](../project-lifecycle.md).

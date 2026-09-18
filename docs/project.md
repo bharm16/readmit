@@ -404,3 +404,10 @@ anywhere, or kept in browser storage.
   and the shell, and is never migrated in place.
 - Nested projects, and cases outside the project directory. A registered case is
   one directory entry of the project.
+
+## Lifecycle
+
+[Project lifecycle](project-lifecycle.md) documents schema migration preview,
+retained document recovery copies, declared quotas, whole-project archive/delete,
+and the retention effects on references and backups. Project and revision writes
+now retain the exact previous document bytes before replacement.

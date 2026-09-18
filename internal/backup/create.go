@@ -282,7 +282,7 @@ func declaredIndex(source *os.Root, name string) (candidate, bool) {
 	var declared struct {
 		Schema string `json:"schema"`
 	}
-	if json.Unmarshal(data, &declared) != nil || declared.Schema != index.Schema {
+	if json.Unmarshal(data, &declared) != nil || !strings.HasPrefix(declared.Schema, "readmit-index/") {
 		return candidate{}, false
 	}
 	document, err := index.Decode(data)
