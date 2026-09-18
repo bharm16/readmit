@@ -57,7 +57,8 @@ artifact, err := testrunner.Open(resultDirectory)
 
 `Open` verifies bounded regular files, rejects symlinks/unexpected files, checks
 directory and referenced file identities, opens the run through `replay.Open`,
-checks source selection/target mappings, validates same-session receipts and the
+checks source selection/target mappings, rejects replay transformations and intended
+payload changes forbidden by v1 specs, validates same-session receipts and the
 exact ordered observation list, and reevaluates all assertion results. It never
 opens the original case, target, or live observation path, and never sends bytes.
 Copying the complete result directory preserves its readability without the

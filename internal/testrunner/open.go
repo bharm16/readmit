@@ -94,6 +94,9 @@ func Open(dir string) (*Artifact, error) {
 		if artifact.Run.Identity != result.Run.Identity || result.Target == nil || !sameJSON(artifact.Run.Manifest.Target, *result.Target) || artifact.Run.Manifest.SourceBundleIdentity != result.InputBundleIdentity {
 			return nil, invalid
 		}
+		if len(artifact.Run.Manifest.Transformations) != 0 || len(artifact.Run.Manifest.Changes) != 0 {
+			return nil, errors.New("v1 test result cannot reference transformed replay")
+		}
 	} else if _, err := os.Lstat(filepath.Join(dir, "run")); !os.IsNotExist(err) {
 		return nil, invalid
 	}

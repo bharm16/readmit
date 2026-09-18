@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/mllp"
 	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/replay"
 )
@@ -36,6 +37,9 @@ func evaluate(spec Spec, run *replay.Run, initial, final *observation.Snapshot) 
 	}
 	if run == nil {
 		return fail("replay_execution")
+	}
+	if !unchangedInput(run) {
+		return fail("run_contract")
 	}
 	if len(run.Events) != len(spec.Input.Messages) {
 		return fail("run_selection")
@@ -144,6 +148,32 @@ func evaluate(spec Spec, run *replay.Run, initial, final *observation.Snapshot) 
 		}
 	}
 	return status, "", assertions
+}
+
+// V1 specs authorize the selected source payloads unchanged. A replay can be
+// internally valid yet violate that test contract by declaring transformations.
+func unchangedInput(run *replay.Run) bool {
+	if len(run.Manifest.Transformations) != 0 || len(run.Manifest.Changes) != 0 {
+		return false
+	}
+	for _, event := range run.Events {
+		source, err := run.Raw(event.Source)
+		if err != nil || len(source) == 0 {
+			return false
+		}
+		intended, err := run.Raw(event.Intended)
+		if err != nil {
+			return false
+		}
+		// Replay's verified source is either raw HL7 or an existing MLLP frame.
+		if source[0] != 0x0b {
+			source = mllp.Frame(source)
+		}
+		if !bytes.Equal(source, intended) {
+			return false
+		}
+	}
+	return true
 }
 
 func receipt(doc *hl7.Document) (string, string, error) {
