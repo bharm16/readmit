@@ -5,13 +5,14 @@ import { cancel, openDurableRun, startDurableRun, type DurableRunResult } from "
 export function RunPanel() {
   const [spec, setSpec] = useState("");
   const [output, setOutput] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [operation, setOperation] = useState<"executing" | "recovering" | null>(null);
+  const busy = operation !== null;
   const [result, setResult] = useState<DurableRunResult | null>(null);
   async function execute(send: boolean) {
-    setBusy(true);
+    setOperation(send ? "executing" : "recovering");
     setResult(null);
     try { setResult(await (send ? startDurableRun(spec, output) : openDurableRun(output))); }
-    finally { setBusy(false); }
+    finally { setOperation(null); }
   }
   return <section aria-labelledby="durable-runs-title">
     <h3 id="durable-runs-title">Durable test runs</h3>
@@ -23,10 +24,11 @@ export function RunPanel() {
     <div className="actions">
       <button disabled={busy || !spec || !output} onClick={() => void execute(true)}>Send and execute once</button>
       <button disabled={busy || !output} onClick={() => void execute(false)}>Recover evidence</button>
-      <button disabled={!busy} onClick={() => void cancel()}>Cancel run</button>
+      <button disabled={operation !== "executing"} onClick={() => void cancel()}>Cancel run</button>
     </div>
     <div role="status" aria-live="polite">
-      {busy ? <p>Running. Cancellation stops future sends; a delivery already in flight may remain uncertain.</p> : null}
+      {operation === "executing" ? <p>Running. Cancellation stops future sends; a delivery already in flight may remain uncertain.</p> : null}
+      {operation === "recovering" ? <p>Verifying retained evidence. Recovery reads to completion and never sends.</p> : null}
       {result?.reason ? <p>{result.reason}</p> : null}
       {result && !result.run ? <p>Operation: {result.state}</p> : null}
       {result?.run ? <>
