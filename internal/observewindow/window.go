@@ -265,7 +265,7 @@ func (w Window) Validate() error {
 	if w.Schema != WindowSchema {
 		return errors.New("an observation window must declare " + WindowSchema)
 	}
-	if err := w.Source.validate(); err != nil {
+	if err := w.Source.Validate(); err != nil {
 		return err
 	}
 	if err := w.Watermark.validate(); err != nil {
@@ -277,9 +277,10 @@ func (w Window) Validate() error {
 	return w.Completion.validate()
 }
 
-// validate is shared by the declared window and the retained completion, so
-// the source a window may declare is the source a record may name.
-func (s Source) validate() error {
+// Validate is shared by the declared window, the retained completion and the
+// source-specific collectors, so the source a window may declare, the source a
+// record may name and the source a collector says it reaches are one rule.
+func (s Source) Validate() error {
 	if !labelPattern.MatchString(s.Kind) || !labelPattern.MatchString(s.Identity) || !labelPattern.MatchString(s.Scope) {
 		return errors.New("an observation source kind, identity, and scope are short printable labels")
 	}

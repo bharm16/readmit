@@ -603,7 +603,7 @@ func (c Completion) Validate() error {
 	if !digestPattern.MatchString(c.WindowIdentity) {
 		return errors.New("an observation completion names its window's lowercase hexadecimal identity")
 	}
-	if err := c.Source.validate(); err != nil {
+	if err := c.Source.Validate(); err != nil {
 		return err
 	}
 	if err := c.Watermark.validate(); err != nil {

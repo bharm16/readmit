@@ -240,9 +240,28 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   truncated capture, a lost connection, an ambiguous source status and an
   unsupported source kind are each execution errors, and none of them may be
   read as proof that something is absent. State already present when the window
-  opened is never evidence that the run produced it. No collector is included:
-  these commands observe nothing. `readmit-observation/v1`, `readmit-result/v1`,
-  `readmit-test/v1`-`v2` and `readmit-job/v1` are unchanged.
+  opened is never evidence that the run produced it. `readmit-observation/v1`,
+  `readmit-result/v1`, `readmit-test/v1`-`v2` and `readmit-job/v1` are unchanged.
+
+- `observe collect` is the first source-specific collector, filling in the slots
+  those contracts already declare rather than adding a second set. A
+  `readmit-observation-source/v1` document declares a bounded JSON, CSV, XML or
+  text export on disk, or a bounded read of an approved HTTPS API, with the
+  envelope its output is carried in and the locator of the record key. Exports
+  are divided by the readers a mapping recipe already uses, so nothing is
+  normalized and an HL7 payload inside a record keeps its bytes. Every
+  observation states how old the material it read is, and a cached or aged
+  answer is stale evidence rather than current evidence. Destinations go through
+  the same send policy a replay is held to and the connection uses the address
+  that policy checked; TLS 1.2 is the floor with verification always on and an
+  explicit customer authority supported. A credential is a reference readmit
+  never stores, writes or renders, read through the one mechanism it has for
+  reading a value out of a store it does not own. Retries are bounded, recorded
+  and applied only to a read that produced no answer at all. The original
+  material each read observed is retained unchanged beside the record, and a
+  disabled collector, a stale read, a truncated export, a lost connection, an
+  unauthorized read and an ambiguous response each produce a named execution
+  error rather than a passing absence assertion.
 
 - `corpus generate` writes a reproducible performance corpus from four declared
   inputs and records them, with the corpus length and digest, in a

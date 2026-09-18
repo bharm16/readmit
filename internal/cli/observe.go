@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/bharm16/readmit/internal/observesource"
 	"github.com/bharm16/readmit/internal/observewindow"
+	"github.com/bharm16/readmit/internal/sendpolicy"
 	"github.com/spf13/cobra"
 )
 
@@ -82,7 +84,79 @@ func observeCommand(ran *bool) *cobra.Command {
 	}}
 	explain.Flags().BoolVar(&completionJSON, "json", false, "Write the canonical readmit-observation-completion/v1 record")
 	explain.Flags().StringVar(&declared, "window", "", "Re-decide the record against the observation window that was declared")
-	command.AddCommand(validate, explain)
+	command.AddCommand(validate, explain, observeCollectCommand(ran))
+	return command
+}
+
+// observeCollectCommand observes one declared source against one declared window. It
+// is the first source-specific collector: it fills in the slots
+// internal/observewindow already defines rather than adding a second set, so a
+// file export and an approved HTTP API produce the same record a downstream
+// capture or a read-only query will.
+func observeCollectCommand(ran *bool) *cobra.Command {
+	var window, output, snapshot, policyPath string
+	var produced []string
+	var completionJSON bool
+	command := &cobra.Command{
+		Use:   "collect SOURCE",
+		Short: "Observe a declared file export or HTTP API for one observation window",
+		Args: func(_ *cobra.Command, args []string) error {
+			if len(args) != 1 {
+				return errors.New("observe collect requires one observation source document")
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			*ran = true
+			if window == "" || output == "" || snapshot == "" {
+				return errors.New("observe collect requires --window, --out, and --snapshot")
+			}
+			declared, err := observewindow.ReadWindow(window)
+			if err != nil {
+				return err
+			}
+			source, err := observesource.ReadSource(args[0])
+			if err != nil {
+				return err
+			}
+			policy, err := readSendPolicy(policyPath)
+			if err != nil {
+				return err
+			}
+			completion, err := observesource.Collect(cmd.Context(), source, declared, observesource.Options{
+				Snapshot: snapshot, Policy: policy, Resolve: sendpolicy.SystemResolver, Produced: produced,
+			})
+			if err != nil {
+				return err
+			}
+			// The record is retained before anything is reported, so a verdict
+			// a reader saw is a verdict that exists on disk.
+			if err := observewindow.WriteCompletion(output, completion); err != nil {
+				return err
+			}
+			rendered := completionLines(completion)
+			if completionJSON {
+				data, err := observewindow.EncodeCompletion(completion)
+				if err != nil {
+					return err
+				}
+				rendered = string(data)
+			}
+			if err := writeObservation(cmd.OutOrStdout(), rendered); err != nil {
+				return err
+			}
+			if err := completion.Err(); err != nil {
+				return &ExitError{Code: 2, Err: err, Reported: !completionJSON}
+			}
+			return nil
+		},
+	}
+	command.Flags().StringVar(&window, "window", "", "Existing "+observewindow.WindowSchema+" document declaring the window to observe")
+	command.Flags().StringVar(&output, "out", "", "New file retaining the "+observewindow.CompletionSchema+" record")
+	command.Flags().StringVar(&snapshot, "snapshot", "", "New directory retaining the original material each read observed")
+	command.Flags().StringVar(&policyPath, "policy", "", "Existing "+sendpolicy.PolicySchema+" document naming the destinations approved for reading")
+	command.Flags().StringArrayVar(&produced, "produced", nil, "Key of one occurrence this run produced, to correlate against what the window observed (repeatable)")
+	command.Flags().BoolVar(&completionJSON, "json", false, "Write the canonical "+observewindow.CompletionSchema+" record")
 	return command
 }
 

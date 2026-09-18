@@ -46,6 +46,7 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
 - A named environment is one `readmit-target/v3` configuration an operator records, validates and diagnoses with `readmit target`. A connectivity diagnostic proves reachability and TLS and never sends an HL7 payload. The classification it records is displayed everywhere the target is shown and is never treated as permission. See [named test environments](target.md).
 - A send is decided against a `readmit-send-policy/v1` document the operator selects explicitly, and the decision is retained as a `readmit-send-decision/v1` document. `internal/sendpolicy` owns the one rule: a production class refuses every replay, a name is resolved at the point of the send rather than when a configuration is recorded, and an unrecorded class, an unresolvable name, a name resolving to several addresses and an address outside every approved destination are each denied. A preview and a connectivity diagnosis report that same decision without requesting a send, so a check cannot predict an answer the send path would not give. The same package refuses a nonloopback bind for `listen` and `collect` unless the operator passes `--approved-bind`. See [safe replay](replay.md).
 - A fixture reset is `readmit target reset` over a `readmit-reset-plan/v1` document the operator selects explicitly. `internal/fixturereset` owns a closed, reviewed set of typed Go reset operators, each declaring the one authority it requires; the contract carries no command, script, interpreter or argument, and a test spec names no reset action. A reset runs only against a recorded nonproduction environment, asks the same send decision for the one connection it may open, and retains a `readmit-reset-outcome/v1` document whose states are the execution vocabulary `internal/durablerun` owns. See [named test environments](target.md).
+- `net/http` from the standard library is the client an external observation reads an approved API with. It is a client only: readmit serves nothing over HTTP. TLS 1.2 minimum with verification always on and an explicit customer CA, `GET` only, no redirect followed, no proxy taken from the environment, and the connection uses the exact address the send policy checked.
 - Foreground execution with contexts for cancellation. No queue, no distributed jobs, and no HTTP API for local commands to read the receiver's ledger. The receiver exports observation files.
 - `collect` serves a bounded number of connections at once, each its own case source; `listen` stays one connection at a time because its ledger is one serialized appointment state. A peer beyond the declared limit is not accepted until a slot frees, and nothing is read once a declared bound could not retain it: backpressure is applied by not consuming a message, never by dropping one. A frame counts against a declared message limit when a connection is admitted to read it, so peers reading at once cannot together overshoot it. A declared connection, message or byte budget is a controlled stop; a structural limit of the case contract is an error.
 - A capture may retain a `readmit-capture-journal/v1` journal beside the case it is collecting: inbound frame bytes synced before the frame is answered, each acknowledgement's intent synced before it is written, and a terminal record last. It is the same durability shape [durable runs](durable-runs.md) use and it shares their state vocabulary. Recovery is a read: it reports uncertain deliveries and never resends, resumes or converts an incomplete capture into a finished one.
@@ -71,6 +72,27 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
   source kind are each execution errors that observed nothing. State that
   existed before the window opened is never evidence that the run produced it,
   and a window declared over an unknown prior state can never attribute one.
+- A `readmit-observation-source/v1` document says how one source is reached and
+  how its output is read. `internal/observesource` is the first source-specific
+  collector: a bounded JSON, CSV, XML or text export on disk, and a bounded read
+  of an approved HTTPS API. It fills in the slots the window contracts already
+  declare — sample status, evidence identity, correlation — rather than adding a
+  parallel set, so the collectors still to come report the same way.
+- An export is divided by `internal/importer`'s own envelope readers under the
+  bounds a [mapping recipe](mapping.md) is already held to. There is no second
+  parser: the CSV and XML traps that would rewrite an HL7 payload's bytes are
+  avoided once, in one place.
+- Every observation states how old the material it read is, from an export's
+  modification time or a response's `Age` and `Date`. A cached or aged answer is
+  stale evidence, and a response stating neither is ambiguous rather than
+  current. Retries are bounded, recorded, and applied only to a read that
+  produced no answer at all, so a retry can never turn an uncertain read into a
+  confident one.
+- An observation credential is a reference, never a value, read through the one
+  mechanism `secret` already owns. `readmit-secrets/v1` gains no member and
+  changes no byte: a credential bound to an observation endpoint is a separate
+  contract, exactly as a storage-protection key is, rather than a widened
+  `purpose` on an existing version. See [ADR-0006](adr/0006-credentials-are-referenced-never-stored.md).
 - `readmit-observation/v1` is unchanged. It remains the fixture receiver's
   ledger snapshot for one source; the window contracts are separate documents
   beside it, not a revision of it.
