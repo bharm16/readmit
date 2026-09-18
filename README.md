@@ -136,6 +136,12 @@ and `invalid` (reschedule with an unbooked filler identifier) case bundles.
 Identical declared inputs produce identical bytes. No current clock or machine
 path enters the generated evidence. See [synthetic generation](docs/synth.md).
 
+The desktop shell opens a workspace folder without a terminal: it lists what the
+folder declares it holds, verifies one case at a time through the same reader
+`timeline` uses, writes the frozen synthetic sample workspace, and reopens recent
+folders. It is a separate build with a webview requirement and is not included in
+the release archives. See [the desktop shell](docs/desktop.md).
+
 ## Supported input
 
 | `--format` | Accepted layout |
@@ -219,7 +225,7 @@ verify an extracted executable using
 ## Privacy and development
 
 No telemetry, crash reporting, update checks, automatic uploads, or network
-access exists in `inspect`, `capture`, or `timeline`. Product-wide, network access
+access exists in `inspect`, `capture`, `timeline`, or the desktop shell. Product-wide, network access
 is limited to endpoints the user explicitly configures; these commands have no
 endpoint configuration.
 No customer-derived data belongs in source control or CI fixtures. Logs and
@@ -251,6 +257,14 @@ python3 tools/mutate.py
 Both bind loopback only, open every listener on port 0, and contact no external
 host. See [independent verification](docs/independent-verification.md) for the
 checks, the invariants they defend, and the coverage this layer does not claim.
+
+The desktop shell is a separate module with a webview and cgo requirement, built
+and checked on its own:
+
+```sh
+cd desktop/frontend && npm ci && npm run build
+cd .. && go vet ./... && go build -o build/readmit-desktop .
+```
 
 CI resolves the exact `toolchain` version from `go.mod` with
 `python3 tools/toolchain.py`, passes it explicitly to setup-go, and verifies the

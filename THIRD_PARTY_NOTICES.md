@@ -10,6 +10,14 @@ preferred source form is supplied as `dictionary/fields-v251.json` in release
 archives, with attribution and the original source revision in
 `docs/dictionary-provenance.md`. No nHapi runtime code is included.
 
+The desktop shell is a separate module and is not part of the release archives.
+Its executable contains Wails 2 (MIT) and its dependencies, recorded in
+`desktop/go.mod` and `desktop/go.sum`, and the bundled interface contains React
+and React DOM (MIT), recorded with their exact versions in
+`desktop/frontend/package-lock.json`. Those two license texts are included in
+`licenses/`. Vite, TypeScript and the Vite React plugin build the interface and
+are not shipped inside it.
+
 GoReleaser and govulncheck are build/development tools, not application runtime
 dependencies. GitHub Actions attests only executable build outputs, never
 customer evidence.

@@ -1,0 +1,81 @@
+// Command readmit-desktop is the native shell around the typed Go application
+// facade in internal/desktop. It owns window, asset and dialog wiring only:
+// every evidence decision belongs to the facade and the internal packages it
+// calls, which are the same packages the readmit command line calls. Nothing
+// here parses HL7, reads a bundle, or reimplements a command.
+//
+// This module is deliberately separate from the readmit module. Wails needs cgo
+// and a platform webview, so the desktop dependency graph never reaches the
+// static CGO_ENABLED=0 command-line release, which this build does not change.
+package main
+
+import (
+	"context"
+	"embed"
+	"errors"
+	"log"
+	"sync"
+
+	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/logger"
+	"github.com/wailsapp/wails/v2/pkg/options"
+	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
+)
+
+// The window renders only these bundled files. The shell fetches nothing at
+// run time and contacts no network service.
+//
+//go:embed all:frontend/dist
+var assets embed.FS
+
+// dialog presents the host's native folder picker. Wails supplies the
+// application context after startup, so it is installed then and read under a
+// mutex rather than assumed to be ready.
+type dialog struct {
+	mu  sync.Mutex
+	ctx context.Context
+}
+
+func (d *dialog) start(ctx context.Context) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.ctx = ctx
+}
+
+func (d *dialog) ChooseFolder(title string) (string, error) {
+	d.mu.Lock()
+	ctx := d.ctx
+	d.mu.Unlock()
+	if ctx == nil {
+		return "", errors.New("the application window is not ready")
+	}
+	return runtime.OpenDirectoryDialog(ctx, runtime.OpenDialogOptions{Title: title})
+}
+
+func main() {
+	recent, err := desktop.DefaultRecentPath()
+	if err != nil {
+		log.Fatal("readmit: cannot resolve the user configuration directory")
+	}
+	folders := &dialog{}
+	options := &options.App{
+		Title:       "readmit",
+		Width:       1100,
+		Height:      760,
+		MinWidth:    640,
+		MinHeight:   480,
+		AssetServer: &assetserver.Options{Assets: assets},
+		OnStartup:   folders.start,
+		Bind:        []any{desktop.New(folders, recent)},
+		// Diagnostics stay bounded and value-free. The shell reports no
+		// telemetry, no crash reports and no update checks, and it never logs
+		// folder names, evidence, or message content.
+		Logger:   logger.NewDefaultLogger(),
+		LogLevel: logger.ERROR,
+	}
+	if err := wails.Run(options); err != nil {
+		log.Fatal("readmit: the desktop window could not be created")
+	}
+}

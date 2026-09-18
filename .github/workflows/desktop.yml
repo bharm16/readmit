@@ -1,0 +1,61 @@
+name: Desktop shell
+
+# The desktop shell is a separate Go module with cgo and a platform webview.
+# It is built here so the static command-line release in ci.yml keeps its own
+# build, its own dependency graph, and CGO_ENABLED=0. This workflow never
+# packages or publishes anything: the supported desktop platform matrix,
+# installation and signing are not decided by it.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  GOTOOLCHAIN: local
+  GOTELEMETRY: 'off'
+
+jobs:
+  desktop:
+    # macOS supplies a webview without extra system packages, so this job
+    # exercises the real native build rather than a stub.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Resolve the exact Go compiler pin
+        id: toolchain
+        run: |
+          pinned_go=$(python3 tools/toolchain.py)
+          echo "version=$pinned_go" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: ${{ steps.toolchain.outputs.version }}
+      - name: Verify the active Go compiler
+        run: python3 tools/toolchain.py --check
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+      - name: Type-check and build the embedded frontend from its lock file
+        working-directory: desktop/frontend
+        run: |
+          npm ci
+          npm run build
+      - name: Build the desktop shell against the platform webview
+        working-directory: desktop
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          go vet ./...
+          go build -o build/readmit-desktop .
+      - name: Vulnerability check for the desktop dependency graph
+        working-directory: desktop
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+          govulncheck ./...
