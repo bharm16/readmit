@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/project"
 )
 
 // bindingsFile is the frontend's only view of the Go facade. Wails publishes
@@ -65,6 +66,10 @@ func TestFrontendBindingsDeclareEveryResultMember(t *testing.T) {
 		reflect.TypeOf(desktop.CaseResult{}),
 		reflect.TypeOf(desktop.Case{}),
 		reflect.TypeOf(desktop.RecentResult{}),
+		reflect.TypeOf(desktop.ProjectResult{}),
+		reflect.TypeOf(project.Document{}),
+		reflect.TypeOf(project.Settings{}),
+		reflect.TypeOf(project.Case{}),
 	} {
 		for i := range bound.NumField() {
 			member, _, _ := strings.Cut(bound.Field(i).Tag.Get("json"), ",")

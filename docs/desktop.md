@@ -43,6 +43,7 @@ artifacts are never reported as completed.
 | `OpenWorkspace` | Opens a folder already known, such as a recent one. |
 | `CreateSampleWorkspace` | Writes the sample workspace into the chosen folder and opens it. |
 | `OpenCase` | Verifies one listed entry as case evidence. |
+| `OpenProject` | Reads the project document of a folder. |
 | `RecentWorkspaces` | Lists previously opened folders, most recent first. |
 | `Cancel` | Stops the operation that is running now, when it can be interrupted. |
 
@@ -53,17 +54,17 @@ including after a failure or a cancellation, so the next request proceeds.
 claim the slot, so the list stays available while an operation runs.
 
 `Cancel` cannot retract bytes an operation has already written. Choosing a
-folder and listing it are interruptible; `OpenCase` is not, because the shared
-case reader runs to completion under its own size limits once it starts. The
+folder and listing it are interruptible; `OpenCase` and `OpenProject` are not,
+because each runs to completion under its own size limits once it starts. The
 window offers the Cancel control only while an interruptible operation runs.
 
 ## Workspaces and artifacts
 
 A workspace is a folder. Opening it lists each immediate entry with the contract
-that entry **declares**: listing never verifies evidence. An entry that is not a
-case bundle directory this release supports — a file, a symbolic link, a folder
-with no readable manifest — is listed as `unsupported` with the reason, never
-hidden and never counted as evidence.
+that entry **declares**: listing never verifies evidence. An entry that is neither a
+case bundle directory nor a project document this release supports — a file, a
+symbolic link, a folder with no readable manifest — is listed as `unsupported`
+with the reason, never hidden and never counted as evidence.
 
 `OpenCase` is the verification step. It runs the same reader `readmit timeline`
 runs, which checks completion, identity, payload hashes and every record before
@@ -71,6 +72,27 @@ any count is reported, and it refuses a workspace entry named by anything other
 than one entry of the open folder. Verified evidence is reported as counts and
 the bundle identity: no message bytes, field values, or original source paths
 cross the boundary into the interface.
+
+## Projects
+
+A folder holding a `project.json` lists that entry as a `project` artifact
+carrying the contract the document itself declares. The canonical document is
+found by its fixed name, exactly as a case bundle's manifest is, but nothing is
+concluded from that name: the entry is decoded, and an entry this release cannot
+read is listed as `unsupported` with the reason. `OpenProject` then returns the recorded document: the
+project settings, the declared interface versions, and every registered case
+with its title, tags, owner, status, linked incidents and **the case identity
+the command line recorded**. That is the same value `OpenCase` reports for the
+same evidence and the same value an exported packet names, because a project
+records the bundle identity rather than deriving one of its own.
+
+Reading a project verifies no evidence and rewrites nothing, so a recorded
+identity reaches the window exactly as it was written. Whether a registered case
+is still the evidence the project recorded is what `readmit project show`
+reports. Creating a project, registering a case, and changing a title, tag,
+owner, status or linked incident are command-line operations in this release;
+the shell reads projects and does not write them. See
+[interface investigation projects](project.md).
 
 ## The sample workspace
 
@@ -128,11 +150,13 @@ value.
 
 ## Not supported in this release
 
-- Projects, cases as a managed lifecycle, and any create, rename, archive or
-  delete operation. The shell opens folders and reads artifacts.
+- Creating or changing a project from the shell, and any rename, archive or
+  delete operation. The shell opens folders and reads artifacts; projects are
+  created and managed with `readmit project`.
 - Importing evidence, editing, message grids, search, and comparison.
-- Artifacts other than case bundle directories. Run bundles, results, reviews,
-  reports, specs and family records are listed as unsupported entries.
+- Artifacts other than case bundle directories and project documents. Run
+  bundles, results, reviews, reports, specs and family records are listed as
+  unsupported entries.
 - Nested folders. Only the immediate entries of the chosen folder are listed,
   and at most 1024 of them; a larger folder is refused rather than listed in
   part.

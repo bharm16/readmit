@@ -16,6 +16,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/synth"
 )
 
@@ -51,12 +52,15 @@ const (
 	Completed        State = "completed"
 )
 
-// Kind classifies a workspace entry by the contract it declares, never by its
-// name or extension.
+// Kind classifies a workspace entry by the contract the entry itself declares.
+// A canonical document is located by its fixed name, but nothing is concluded
+// from that name: the contract always comes from inside the entry, and an entry
+// whose declared contract this release does not read is unsupported.
 type Kind string
 
 const (
 	CaseArtifact        Kind = "case"
+	ProjectArtifact     Kind = "project"
 	UnsupportedArtifact Kind = "unsupported"
 )
 
@@ -107,6 +111,17 @@ type CaseResult struct {
 	Case   *Case  `json:"case,omitzero"`
 }
 
+// ProjectResult carries one state. Project is the document exactly as it was
+// written: the facade never rewrites a recorded case identity, and it verifies
+// no evidence here. Whether a registered case is still the evidence the project
+// recorded is what `readmit project show` reports.
+type ProjectResult struct {
+	State   State             `json:"state"`
+	Reason  string            `json:"reason,omitzero"`
+	Root    string            `json:"root,omitzero"`
+	Project *project.Document `json:"project,omitzero"`
+}
+
 // RecentResult lists workspace folders in most-recently-opened order.
 type RecentResult struct {
 	State  State    `json:"state"`
@@ -131,6 +146,8 @@ func (r refusal) workspace() WorkspaceResult {
 }
 
 func (r refusal) evidence() CaseResult { return CaseResult{State: r.state, Reason: r.reason} }
+
+func (r refusal) project() ProjectResult { return ProjectResult{State: r.state, Reason: r.reason} }
 
 // FolderChooser presents the host's native folder dialog. An empty path with a
 // nil error means the person dismissed it without choosing.
@@ -293,6 +310,35 @@ func (a *App) OpenCase(workspace, name string) CaseResult {
 	}}
 }
 
+// OpenProject reads the project document of a folder. The document is the
+// canonical record the command line writes, so the shell shows the same case
+// identities the command line and exported artifacts name. Reading it verifies
+// no evidence and rewrites nothing: a project this release cannot read is
+// reported and left exactly as written. It runs to completion once it starts,
+// so it holds the operation slot but is not interruptible.
+func (a *App) OpenProject(path string) ProjectResult {
+	release, claimed := a.claim()
+	if !claimed {
+		return busyRefusal.project()
+	}
+	defer release()
+	root, declined := resolveFolder(path)
+	if root == "" {
+		return declined.project()
+	}
+	opened, err := project.Open(root)
+	if errors.Is(err, project.ErrUnsupportedVersion) {
+		return ProjectResult{State: Failed, Reason: "the project document was written by a version this release cannot read"}
+	}
+	if err != nil {
+		return probeReadFailure(root).project()
+	}
+	if len(opened.Document.Cases) == 0 {
+		return ProjectResult{State: Empty, Root: opened.Root, Project: &opened.Document}
+	}
+	return ProjectResult{State: Completed, Root: opened.Root, Project: &opened.Document}
+}
+
 // RecentWorkspaces lists previously opened workspace folders, most recent
 // first. It reads one small local file and deliberately does not claim the
 // operation slot, so the shell can still offer the list while an operation
@@ -370,6 +416,21 @@ func resolveFolder(path string) (string, refusal) {
 // entry listed as a case is a claim until OpenCase accepts it.
 func describe(root string, entry fs.DirEntry) Artifact {
 	name := entry.Name()
+	// A project directory holds its document under one canonical name, so that
+	// is how it is located. Nothing is concluded from the name: the entry is
+	// decoded, and what it reports is the contract the document itself
+	// declares. An entry this release cannot read is unsupported, never a
+	// project inferred from a file name.
+	if name == project.DocumentName && entry.Type().IsRegular() {
+		opened, err := project.Open(root)
+		if errors.Is(err, project.ErrUnsupportedVersion) {
+			return Artifact{Name: name, Kind: UnsupportedArtifact, Reason: "a project document written by a version this release cannot read"}
+		}
+		if err != nil {
+			return Artifact{Name: name, Kind: UnsupportedArtifact, Reason: "not a project document this release supports"}
+		}
+		return Artifact{Name: name, Kind: ProjectArtifact, Schema: opened.Document.Schema}
+	}
 	path, err := artifactpath.Child(root, name)
 	if err != nil {
 		reason := "not a case bundle directory"
@@ -383,6 +444,23 @@ func describe(root string, entry fs.DirEntry) Artifact {
 		return Artifact{Name: name, Kind: UnsupportedArtifact, Reason: "not a case bundle this release supports"}
 	}
 	return Artifact{Name: name, Kind: CaseArtifact, Schema: manifest.Schema, Provenance: string(manifest.Provenance.Mode)}
+}
+
+// probeReadFailure separates a folder or document this account cannot read from
+// one that holds no project document this release reads. The project reader
+// returns fixed sentences that disclose no path and no host diagnostic, so the
+// distinction is made here, on the already-resolved root, and only after a read
+// has already failed. It inspects the error class and reads no content.
+func probeReadFailure(root string) refusal {
+	for _, path := range []string{root, filepath.Join(root, project.DocumentName)} {
+		opened, err := os.Open(path)
+		if err == nil {
+			opened.Close()
+		} else if errors.Is(err, fs.ErrPermission) {
+			return refusal{PermissionDenied, "this account cannot open the chosen folder"}
+		}
+	}
+	return refusal{Failed, "the folder holds no project document this release reads"}
 }
 
 // probeWriteFailure separates a folder this account cannot write from other
