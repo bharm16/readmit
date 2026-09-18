@@ -1,6 +1,7 @@
 package diagnose
 
 import (
+	"bytes"
 	_ "embed"
 	"encoding/json/v2"
 	"errors"
@@ -8,6 +9,10 @@ import (
 
 //go:embed profile.json
 var profileJSON []byte
+
+// ProfileSnapshot returns the actual embedded profile and ruleset definition
+// for retained evidence, without exposing mutable package storage.
+func ProfileSnapshot() []byte { return bytes.Clone(profileJSON) }
 
 type profileDefinition struct {
 	Profile         string              `json:"profile"`

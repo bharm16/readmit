@@ -1,4 +1,4 @@
-Unsigned preview of local HL7 inspection and case evidence capture.
+Unsigned preview of local HL7 incident reproduction and regression workflows.
 
 - Byte-preserving raw and MLLP syntax inspection with explicit format reporting.
 - v2.5.1 field labels, positional fallback, distinct empty/null/omitted states.
@@ -28,6 +28,10 @@ Unsigned preview of local HL7 inspection and case evidence capture.
 - `redact` creates separate derived evidence with explicit policies and a
   fail-closed export review. Approved fixture exports regenerate their results
   and diagnosis, verify failure preservation, and exclude private mappings.
+
+- `report` runs the named synthetic regression and seals its reproducer,
+  verified failure/pass results, diagnosis, diff, profiles, and rerun procedure
+  in one packet. Offline verification and separate rerun workspaces are included.
 
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
