@@ -45,6 +45,7 @@ REQUIRED_FILES = {
     "docs/test-spec.md",
     "docs/test-result.md",
     "docs/diff.md",
+    "docs/report.md",
     "testdata/fixtures/diff-before.mllp",
     "testdata/fixtures/diff-after.mllp",
     "testdata/fixtures/diff-expected.json",
@@ -250,16 +251,17 @@ def smoke(archive, target_os, release_tag=None):
         smoke_replay(binary, environment, work, run, family / "regression")
         smoke_test_runner(archive, binary, environment, work, run)
         smoke_diff(archive, work, run)
+        smoke_report(binary, environment, work, run)
     print(f"PASS: {archive.name}; checksum, version, inspection, capture, timeline, privacy, and byte preservation")
 
 
 @contextmanager
-def fixture_receiver(binary, environment, work, label, mode, observation_path=None):
+def fixture_receiver(binary, environment, work, label, mode, observation_path=None, case_path=None, address="127.0.0.1:0"):
     """Start one bounded archived fixture and always reap its process."""
-    case = work / f"receiver-{label}-{mode}.case"
+    case = case_path or work / f"receiver-{label}-{mode}.case"
     observation = observation_path or work / f"receiver-{label}-{mode}.json"
     process = subprocess.Popen(
-        [str(binary), "listen", "--address", "127.0.0.1:0", "--mode", mode,
+        [str(binary), "listen", "--address", address, "--mode", mode,
          "--output", str(case), "--observation", str(observation),
          "--max-messages", "2", "--idle-timeout", "5s"],
         cwd=work, env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -481,6 +483,69 @@ def smoke_diff(archive, work, run):
     assert results["left"]["result_status"] == "assertion_failure" and results["right"]["result_status"] == "pass"
     assert results["summary"]["unchanged"] == 2 and results["summary"]["field_changes"] == 0
     assert results["boundary"] == "messages"  # Identical input does not imply identical receiver behavior.
+
+
+def smoke_report(binary, environment, work, run):
+    """Relocate only the archived binary and packet, then follow its handoff."""
+    original = work / "generated-engagement-packet"
+    created = run("report", "--scenario", "siu-reschedule-v1", "--output", original)
+    assert not created.stderr and b"PATIENT-" not in created.stdout
+    isolated = work / "independent consumer with spaces"
+    isolated.mkdir()
+    copied_binary = isolated / binary.name
+    shutil.copy2(binary, copied_binary)
+    packet = isolated / "packet"
+    shutil.copytree(original, packet)
+    shutil.rmtree(original)  # No historical absolute path can satisfy reopening.
+    retained = {p.relative_to(packet).as_posix(): p.read_bytes() for p in packet.rglob("*") if p.is_file()}
+
+    def relocated_run(*arguments, expected=0):
+        completed = subprocess.run([str(copied_binary), *map(str, arguments)], cwd=isolated,
+                                   env=environment, capture_output=True, timeout=20)
+        if completed.returncode != expected:
+            raise RuntimeError(f"Packet handoff exit {completed.returncode}, expected {expected}: {completed.stderr!r}")
+        return completed
+
+    relocated_run("report", "verify", "packet")
+    assert "RERUN.md" in retained and "SUMMARY.md" in retained
+    for name in ("diagnosis.json", "diagnosis.md", "diff.json", "diff.md", "history.json",
+                 "spec.json", "profiles/receiver.json", "profiles/diagnosis.json", "profiles/diagnose-config.json"):
+        assert name in retained
+    baseline = json.loads(retained["baseline/result.json"])
+    postfix = json.loads(retained["post-fix/result.json"])
+    assert baseline["status"] == "assertion_failure" and postfix["status"] == "pass"
+    assert baseline["input_bundle_identity"] == postfix["input_bundle_identity"]
+    assert baseline["spec_identity"] == postfix["spec_identity"]
+    assert baseline["receiver_mode"] == "defective" and postfix["receiver_mode"] == "fixed"
+    comparison = json.loads(retained["diff.json"])
+    assert comparison["summary"]["unchanged"] == 2 and comparison["summary"]["field_changes"] == 0
+    # Reserve the port while preparing; release it immediately before listener startup.
+    with socket.socket() as reservation:
+        reservation.bind(("127.0.0.1", 0))
+        address = f"127.0.0.1:{reservation.getsockname()[1]}"
+        relocated_run("report", "prepare", "packet", "--output", "workspace", "--address", address)
+    workspace = isolated / "workspace"
+    for trial, mode, code, status in (("baseline", "defective", 1, "assertion_failure"),
+                                      ("post-fix", "fixed", 0, "pass"),
+                                      ("reintroduced", "defective", 1, "assertion_failure")):
+        trial_path = workspace / trial
+        with fixture_receiver(copied_binary, environment, isolated, "packet-" + trial, mode,
+                              observation_path=trial_path / "observation.json",
+                              case_path=trial_path / "receiver", address=address) as (process, port, case, observation, initial):
+            tested = relocated_run("test", f"workspace/{trial}/spec.json", "--send",
+                                   "--output", f"workspace/{trial}/result", expected=code)
+            assert not tested.stderr and b"PATIENT-" not in tested.stdout
+            _, stderr = process.communicate(timeout=10)
+            assert process.returncode == 0 and not stderr
+            result = json.loads((trial_path / "result" / "result.json").read_bytes())
+            assert result["status"] == status and result["receiver_session_id"] == initial["session_id"]
+            assert result["input_bundle_identity"] == baseline["input_bundle_identity"]
+    relocated_run("report", "verify", "packet")
+    assert retained == {p.relative_to(packet).as_posix(): p.read_bytes() for p in packet.rglob("*") if p.is_file()}
+    tampered = isolated / "tampered"
+    shutil.copytree(packet, tampered)
+    (tampered / "unexpected.txt").write_text("unexpected content")
+    relocated_run("report", "verify", "tampered", expected=1)
 
 
 def main():

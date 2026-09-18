@@ -67,3 +67,10 @@ field that becomes omitted. `diff-expected.json` independently states the
 changed selectors, occurrence alignment, and counts when only MSH-7 is ignored.
 Native archive checks exercise both the declared-key comparison and real
 source/run mappings, including replay with regenerated control IDs.
+
+The issue #10 packet uses the frozen seed-0 generator vector and the committed
+canonical spec embedded from `internal/report/scenario.json`. Its assertions
+state the expected single-record ledger independently of receiver execution.
+Native archive checks copy only the binary and packet to a separate directory,
+verify and prepare it there, reproduce failure/pass/reintroduced failure, and
+require the retained packet to remain byte-identical.

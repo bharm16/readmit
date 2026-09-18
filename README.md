@@ -1,6 +1,6 @@
 # readmit
 
-Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `listen`, `replay`, `test`, `diff`, `synth`, and `diagnose` are available; later workflows are tracked in [GitHub issues](https://github.com/bharm16/readmit/issues).
+Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `listen`, `replay`, `test`, `diff`, `report`, `synth`, and `diagnose` are available; later workflows are tracked in [GitHub issues](https://github.com/bharm16/readmit/issues).
 
 ```sh
 readmit inspect message.hl7
@@ -49,6 +49,14 @@ deterministic generated provenance for the future `synth` command. See the
 correlation rules, observation metadata, integrity checks, and limits.
 
 ## Available workflows
+
+`report --scenario siu-reschedule-v1 --output NEW_PACKET` runs the committed
+synthetic scenario against fresh defective and fixed fixtures, then packages
+the reproducer, verified results, diagnosis, field-aware diff, versioned
+profiles, transformation history, and rerun instructions with file hashes.
+`report verify PACKET` verifies the retained evidence offline; `report prepare`
+creates a separate runnable workspace so the packet stays unchanged. This mode
+accepts only its built-in synthetic scenario. See [engagement packets](docs/report.md).
 
 `diff LEFT RIGHT` compares message fields in the terminal, Markdown, or JSON.
 Run-to-source comparisons use recorded occurrence mappings; unrelated collections
