@@ -173,6 +173,9 @@ func Create(ctx context.Context, projectPath, destination string) (Report, error
 		return Report{}, err
 	}
 	document := Document{Schema: Schema, Files: files, Evidence: evidence, Indexes: recipesFor(candidates, registered)}
+	if ctx.Err() != nil {
+		return Report{}, errors.New("backup cancelled; an incomplete backup is retained")
+	}
 	if err := seal(held, document); err != nil {
 		return Report{}, err
 	}
@@ -236,10 +239,6 @@ func scan(source *os.Root) ([]string, []candidate, error) {
 		if err != nil || !info.Mode().IsRegular() {
 			return errors.New("cannot inspect a file of the project")
 		}
-		if info.Size() > MaxFileBytes || total > MaxBytes-info.Size() {
-			return errors.New("the project holds more evidence than one backup stores")
-		}
-		total += info.Size()
 		if len(names)+len(candidates) >= MaxFiles {
 			return errors.New("the project holds more files than one backup stores")
 		}
@@ -254,6 +253,10 @@ func scan(source *os.Root) ([]string, []candidate, error) {
 				return nil
 			}
 		}
+		if info.Size() > MaxFileBytes || total > MaxBytes-info.Size() {
+			return errors.New("the project holds more evidence than one backup stores")
+		}
+		total += info.Size()
 		names = append(names, name)
 		return nil
 	})
@@ -396,7 +399,7 @@ func copyAll(ctx context.Context, source, target *os.Root, names []string) ([]Fi
 		if ctx.Err() != nil {
 			return nil, 0, errors.New("backup cancelled at file " + position(i) + "; an incomplete backup is retained and carries no completion marker")
 		}
-		copied, err := copyInto(source, target, name)
+		copied, err := copyInto(ctx, source, target, name)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -445,8 +448,8 @@ func seal(target *os.Root, document Document) error {
 }
 
 // copyInto stores one file of the project and records what was written.
-func copyInto(source, target *os.Root, name string) (File, error) {
-	size, digest, err := copyFile(source, target, name, FilesDirectory+"/"+name)
+func copyInto(ctx context.Context, source, target *os.Root, name string) (File, error) {
+	size, digest, err := copyFile(ctx, source, target, name, FilesDirectory+"/"+name)
 	if err != nil {
 		return File{}, errors.New(err.Error() + "; an incomplete backup is retained")
 	}
@@ -459,7 +462,7 @@ func copyInto(source, target *os.Root, name string) (File, error) {
 // copy in opposite directions, so they share it: the caller decides whether the
 // answer is a record to keep or a claim to check, and adds which of the two
 // incomplete artifacts its failure leaves behind.
-func copyFile(source, target *os.Root, from, to string) (int64, string, error) {
+func copyFile(ctx context.Context, source, target *os.Root, from, to string) (int64, string, error) {
 	if parent := path.Dir(to); parent != "." {
 		if err := target.MkdirAll(parent, 0700); err != nil {
 			return 0, "", errors.New("cannot create a directory of the destination")
@@ -479,7 +482,10 @@ func copyFile(source, target *os.Root, from, to string) (int64, string, error) {
 		return 0, "", errors.New("cannot create a file of the destination")
 	}
 	sum := sha256.New()
-	written, copyErr := io.Copy(io.MultiWriter(out, sum), io.LimitReader(in, MaxFileBytes+1))
+	written, copyErr := io.Copy(io.MultiWriter(out, sum), io.LimitReader(contextReader{ctx, in}, MaxFileBytes+1))
+	if copyErr == nil {
+		copyErr = ctx.Err()
+	}
 	if copyErr == nil {
 		copyErr = out.Sync()
 	}
@@ -491,4 +497,17 @@ func copyFile(source, target *os.Root, from, to string) (int64, string, error) {
 		return 0, "", errors.New("a file exceeds the size one backup stores")
 	}
 	return written, hex.EncodeToString(sum.Sum(nil)), nil
+}
+
+// contextReader checks between bounded copy chunks, including the final read.
+type contextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r contextReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(p)
 }

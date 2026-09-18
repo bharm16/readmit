@@ -175,7 +175,7 @@ func Restore(ctx context.Context, backupPath, destination string, at time.Time) 
 		if ctx.Err() != nil {
 			return Report{}, errors.New("restore cancelled at file " + position(i) + "; an incomplete restore is retained")
 		}
-		if err := restore(source, written, file); err != nil {
+		if err := restore(ctx, source, written, file); err != nil {
 			return Report{}, errors.New(err.Error() + " at entry " + position(i))
 		}
 		total += file.Size
@@ -201,14 +201,17 @@ func Restore(ctx context.Context, backupPath, destination string, at time.Time) 
 	for _, entry := range document.Indexes {
 		report.Indexes = append(report.Indexes, rebuild(ctx, target, entry, found, at))
 	}
+	if ctx.Err() != nil {
+		return Report{}, errors.New("restore cancelled; an incomplete restore is retained")
+	}
 	return report, nil
 }
 
 // restore writes one stored file at the relative path the backup recorded and
 // checks what landed against what the manifest records for it, so the bytes in
 // the restored project are the bytes the manifest stands behind.
-func restore(source, target *os.Root, file File) error {
-	size, digest, err := copyFile(source, target, FilesDirectory+"/"+file.Path, file.Path)
+func restore(ctx context.Context, source, target *os.Root, file File) error {
+	size, digest, err := copyFile(ctx, source, target, FilesDirectory+"/"+file.Path, file.Path)
 	if err != nil {
 		return errors.New(err.Error() + "; an incomplete restore is retained")
 	}

@@ -975,3 +975,69 @@ func FuzzBackupDocument(f *testing.F) {
 		}
 	})
 }
+
+// Cancellation is triggered by observing bytes in the final destination file,
+// so this exercises cancellation after copying starts without timing a goroutine.
+type cancelAfterWrite struct {
+	context.Context
+	path string
+}
+
+func (c cancelAfterWrite) Err() error {
+	if info, err := os.Stat(c.path); err == nil && info.Size() > 0 {
+		return context.Canceled
+	}
+	return nil
+}
+
+func TestCancellationDuringFinalCopyDoesNotComplete(t *testing.T) {
+	opened := newProject(t)
+	if err := os.WriteFile(filepath.Join(opened.Root, "z-last"), make([]byte, 1<<20), 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, stored := create(t, opened.Root)
+	t.Run("backup", func(t *testing.T) {
+		destination := filepath.Join(t.TempDir(), "backup")
+		ctx := cancelAfterWrite{context.Background(), filepath.Join(destination, backup.FilesDirectory, "z-last")}
+		if _, err := backup.Create(ctx, opened.Root, destination); err == nil {
+			t.Fatal("cancelled final copy completed")
+		}
+		if _, err := os.Stat(filepath.Join(destination, backup.MarkerName)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("cancelled backup left a marker: %v", err)
+		}
+	})
+	t.Run("restore", func(t *testing.T) {
+		destination := filepath.Join(t.TempDir(), "restored")
+		ctx := cancelAfterWrite{context.Background(), filepath.Join(destination, "z-last")}
+		if _, err := backup.Restore(ctx, stored, destination, builtAt()); err == nil {
+			t.Fatal("cancelled final restore copy completed")
+		}
+	})
+}
+
+func TestExcludedIndexDoesNotConsumeStoredByteLimit(t *testing.T) {
+	opened := newProject(t)
+	// Sparse files put the scan near its real bound without allocating or
+	// copying a GiB. Cancellation stops the first copy after a successful scan.
+	for n := range 16 {
+		f, err := os.Create(filepath.Join(opened.Root, fmt.Sprintf("data-%02d", n)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = f.Truncate(backup.MaxFileBytes - 1024)
+		f.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	data := []byte(`{"schema":"readmit-index/v1"}` + strings.Repeat(" ", 1<<20))
+	if err := os.WriteFile(filepath.Join(opened.Root, "derived.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := backup.Create(ctx, opened.Root, filepath.Join(t.TempDir(), "backup"))
+	if err == nil || !strings.Contains(err.Error(), "cancelled") {
+		t.Fatalf("excluded index prevented the scan reaching copying: %v", err)
+	}
+}
