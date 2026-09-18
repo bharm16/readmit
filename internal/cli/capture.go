@@ -143,11 +143,10 @@ var declaredTimePattern = regexp.MustCompile(`^[0-9]{4}([0-9]{2}){0,5}(\.[0-9]{1
 
 func renderBundle(out io.Writer, b *bundle.Bundle, timeline, showValues bool) error {
 	w := bufio.NewWriter(out)
-	kinds := make(map[bundle.EventKind]int)
+	kinds := b.Counts()
 	links := make(map[bundle.LinkKind]int)
 	unknownTimes := 0
 	for _, event := range b.Events {
-		kinds[event.Kind]++
 		if event.ObservedAt == nil {
 			unknownTimes++
 		}

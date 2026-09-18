@@ -30,6 +30,23 @@ func Directory(path string) (string, error) {
 	return Resolve(path)
 }
 
+// Child resolves one named entry of an already-resolved artifact directory.
+// The name must be a single local element: never empty, ".", "..", a path with
+// a separator, an absolute path, or a reserved device name. The entry itself
+// must be a real directory, never a symbolic link, so a listing cannot be used
+// to reach evidence outside the directory the person opened.
+func Child(directory, name string) (string, error) {
+	if name == "." || !filepath.IsLocal(name) || filepath.Base(name) != name {
+		return "", errors.New("artifact entry must be one name inside the directory")
+	}
+	path := JoinReference(directory, name)
+	info, err := os.Lstat(path)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return "", errors.New("artifact entry must be a regular directory")
+	}
+	return path, nil
+}
+
 // JoinReference anchors a declared relative path without cleaning away raw
 // symlink/.. traversal. Resolve or access the result before any lexical joins.
 func JoinReference(directory, reference string) string {

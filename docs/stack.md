@@ -5,19 +5,27 @@ The choices below were agreed on 2026-09-17 from a stack review. The hard-to-rev
 - [ADR-0001](adr/0001-go-single-binary-release-matrix.md): Go, single static binary, the five release targets, toolchain and platform policy.
 - [ADR-0002](adr/0002-case-bundles-are-directories-not-a-database.md): evidence bundles are versioned directories with raw payload files; no database.
 - [ADR-0003](adr/0003-specs-are-strict-json-with-typed-operators.md): specs, profiles, observations, and results are strict JSON evaluated by typed Go operators.
+- [ADR-0005](adr/0005-desktop-shell-is-a-separate-module-over-a-typed-go-facade.md): the desktop application is a separate Wails module over a typed Go facade, never a wrapper around the executable.
 
 Everything else on this page is an ordinary choice. Change it when there is a reason. No ADR is needed unless the change is hard to reverse.
 
 ## Module and layout
 
-One Go module, `github.com/bharm16/readmit`, producing one `readmit` executable. Ordinary internal packages with explicit constructor parameters. No dependency-injection container, plugin loader, or service boundary: commands call the same small domain packages directly.
+Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the released `readmit` executable. `github.com/bharm16/readmit/desktop` holds the desktop shell and requires the first through a `replace` directive, so the webview dependency graph never enters the released module. Ordinary internal packages with explicit constructor parameters. No dependency-injection container, plugin loader, or service boundary: commands and the desktop facade call the same small domain packages directly.
 
 ## CLI
 
-- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `listen`, `replay`, `test`, `diff`, `diagnose`, `synth`, `redact`, `report`. It is the only direct third-party application dependency. No Viper, no interactive TUI.
+- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `listen`, `replay`, `test`, `diff`, `diagnose`, `synth`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
 - Command data goes to stdout, diagnostics to stderr. Machine-readable modes never interleave progress output with JSON.
 - Target configuration is read from explicitly selected files, not hidden global config or environment-variable precedence.
 - Terminal and Markdown rendering use `fmt`, `text/tabwriter`, and `text/template`.
+
+## Desktop application
+
+- [Wails 2](https://wails.io) renders a React and TypeScript interface in the platform webview. It is the only direct third-party dependency of the `desktop` module. Vite builds the interface, which is embedded in the executable; nothing is fetched at run time.
+- `internal/desktop` is the typed Go facade. Desktop operations return typed results with one explicit state each. The interface never parses command output and never reimplements HL7 or case bundle semantics. See [the desktop contract](desktop.md).
+- The desktop build needs cgo and a platform webview and has its own workflow. It never applies `CGO_ENABLED=0`, never changes the command-line build, and is not in the release archives.
+- Local shell state is one bounded, versioned list of recently opened folders. No telemetry, crash reporting, update checks, or evidence in browser storage.
 
 ## HL7 core
 
@@ -68,7 +76,7 @@ GitHub Actions, with the declared release matrix mapped to native runners:
 | windows/amd64 | `windows-2025` |
 
 - Third-party actions are pinned by commit SHA.
-- PR checks: tests, vet, govulncheck, independent endpoint/corpus and mutation checks, and native executable smoke tests.
+- PR checks: tests, vet, govulncheck, independent endpoint/corpus and mutation checks, and native executable smoke tests. The desktop shell is built and checked in a separate workflow, because it needs cgo and a platform webview that the release jobs deliberately do not.
 - Release jobs test the exact artifacts being published, not rebuilt equivalents.
 - Release credentials and signing never run in untrusted pull-request workflows.
 
@@ -87,6 +95,11 @@ Pin the current patch release and bump through reviewed pull requests, never dur
 | --- | --- |
 | Go toolchain | go1.27.1 (`tools/toolchain.py` resolves the `toolchain` directive for setup-go; `GOTOOLCHAIN=local` in CI) |
 | Cobra | v1.10.2 |
+| Wails | v2.16.0 (desktop module only) |
+| React and React DOM | 19.3.0 (with `@types/react` and `@types/react-dom` 19.3.0) |
+| Vite | 8.3.0 (with `@vitejs/plugin-react` 6.1.1) |
+| TypeScript | 5.9.3 |
+| Node | 24 in CI; every resolved frontend version is locked in `desktop/frontend/package-lock.json` |
 | govulncheck | v1.8.0 |
 | GoReleaser OSS | v2.18.2 |
 | actions/attest | v4, by commit SHA |
@@ -99,4 +112,4 @@ pin by itself. Native smoke tests run without Go or other tools on PATH.
 
 ## Deliberately absent
 
-No database, ORM, web framework, frontend, container runtime, hosted backend, external rules engine, message broker, Redis, LLM API, payment integration, or application authentication system. Access control is the operating-system account, filesystem permissions, and explicitly configured network credentials.
+No database, ORM, web application server, container runtime, hosted backend, external rules engine, message broker, Redis, LLM API, payment integration, or application authentication system. Access control is the operating-system account, filesystem permissions, and explicitly configured network credentials. The desktop application is a local webview over the same engine, not a hosted web application: it serves nothing over a network and has no accounts.

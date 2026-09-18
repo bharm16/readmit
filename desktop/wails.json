@@ -1,0 +1,11 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "readmit",
+  "outputfilename": "readmit-desktop",
+  "frontend:install": "npm ci",
+  "frontend:build": "npm run build",
+  "info": {
+    "productName": "readmit",
+    "comments": "Local HL7 v2 inspection and case evidence"
+  }
+}

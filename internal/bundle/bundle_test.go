@@ -518,6 +518,13 @@ func FuzzOpen(f *testing.F) {
 			}
 		}
 		reseal(t, dir)
+		if declared, describeErr := bundle.Describe(dir); describeErr != nil {
+			if len(describeErr.Error()) > 256 {
+				t.Fatal("unbounded describe diagnostic")
+			}
+		} else if declared.Schema == "" {
+			t.Fatal("describe accepted a manifest without a contract version")
+		}
 		b, err := bundle.Open(dir)
 		if err != nil {
 			if len(err.Error()) > 256 {
@@ -537,4 +544,80 @@ func FuzzOpen(f *testing.F) {
 			t.Fatal("invalid accepted manifest")
 		}
 	})
+}
+
+func TestDescribeReportsDeclaredContractWithoutVerifyingEvidence(t *testing.T) {
+	path, original := write(t, []bundle.Input{{Path: "/evidence/synthetic.mllp", Data: fixture(t, "case-evidence.mllp")}}, imported())
+	manifest, err := bundle.Describe(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Schema != "readmit-case/v1" || manifest.Provenance.Mode != bundle.Imported || manifest.EventCount != len(original.Events) {
+		t.Fatalf("unexpected declared manifest: %+v", manifest)
+	}
+	// Describe is a declaration, not a verification: a directory whose payloads
+	// no longer match its identity must still be listable, and Open must still
+	// refuse it. Listing a folder never promotes unverified bytes to evidence.
+	if err := os.WriteFile(filepath.Join(path, "payloads", "s0001-e000001.bin"), []byte("MSH|^~\\&|TAMPERED\r"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bundle.Describe(path); err != nil {
+		t.Fatalf("describe refused a readable manifest: %v", err)
+	}
+	if _, err := bundle.Open(path); err == nil {
+		t.Fatal("Open accepted evidence that no longer matches its identity")
+	}
+}
+
+func TestDescribeRefusesUnknownVersionsMembersAndIrregularManifests(t *testing.T) {
+	path, _ := write(t, []bundle.Input{{Path: "/evidence/synthetic.mllp", Data: fixture(t, "case-evidence.mllp")}}, imported())
+	manifest := filepath.Join(path, "manifest.json")
+	for name, contents := range map[string]string{
+		"unknown version": `{"schema":"readmit-case/v999","state":"complete","provenance":{"mode":"imported","imported_at":"2030-03-04T05:06:07Z"},"sources":[],"event_count":0}`,
+		"unknown member":  `{"schema":"readmit-case/v1","state":"complete","provenance":{"mode":"imported","imported_at":"2030-03-04T05:06:07Z"},"sources":[],"event_count":0,"extra":1}`,
+		"not JSON":        "{",
+	} {
+		if err := os.WriteFile(manifest, []byte(contents), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := bundle.Describe(path); err == nil {
+			t.Fatalf("describe accepted a manifest with an %s", name)
+		}
+	}
+	if err := os.Remove(manifest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bundle.Describe(path); err == nil {
+		t.Fatal("describe accepted a directory without a manifest")
+	}
+	if _, err := bundle.Describe(filepath.Join(path, "missing")); err == nil {
+		t.Fatal("describe accepted a directory that does not exist")
+	}
+}
+
+// Listing a folder and opening one of its entries must agree about which
+// contract versions exist, so a version either reader gains reaches both.
+func TestDescribeAcceptsEveryContractVersionTheReaderSupports(t *testing.T) {
+	path, _ := write(t, []bundle.Input{{Path: "/evidence/synthetic.mllp", Data: fixture(t, "case-evidence.mllp")}}, imported())
+	manifest := filepath.Join(path, "manifest.json")
+	declared, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, version := range []string{"readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4"} {
+		retagged := bytes.Replace(declared, []byte(`"schema":"readmit-case/v1"`), []byte(`"schema":"`+version+`"`), 1)
+		if bytes.Equal(retagged, declared) && version != "readmit-case/v1" {
+			t.Fatalf("could not retag the manifest as %s", version)
+		}
+		if err := os.WriteFile(manifest, retagged, 0600); err != nil {
+			t.Fatal(err)
+		}
+		described, err := bundle.Describe(path)
+		if err != nil {
+			t.Fatalf("describe refused the supported contract %s: %v", version, err)
+		}
+		if described.Schema != version {
+			t.Fatalf("describe reported %q for a manifest declaring %q", described.Schema, version)
+		}
+	}
 }

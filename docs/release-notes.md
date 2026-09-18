@@ -33,6 +33,10 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   JSON acknowledgement policy, labels every retained source explicitly, and
   seals a `readmit-case/v4` collection record that never reports application
   processing from an accept acknowledgement.
+- A native desktop shell opens a workspace folder, lists what it declares, and
+  verifies a case through the same reader the command line uses. It ships the
+  frozen synthetic sample workspace and reopens recent folders. It is a separate
+  build and is not included in these archives.
 
 - `report` runs the named synthetic regression and seals its reproducer,
   verified failure/pass results, diagnosis, diff, profiles, and rerun procedure

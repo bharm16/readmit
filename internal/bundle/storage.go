@@ -111,6 +111,48 @@ func writeFile(root *os.Root, name string, data []byte) error {
 	return nil
 }
 
+// supported reports whether a manifest declares a case bundle contract this
+// release reads. Describe and Open must accept exactly the same set, so a new
+// contract version reaches both readers at once and a listing never disagrees
+// with what opening the same directory would accept.
+func supported(schema string) bool {
+	return schema == Schema || schema == RecordedSchema || schema == DerivedSchema || schema == CollectedSchema
+}
+
+// Describe reads only the manifest of a case bundle directory so a caller can
+// list a folder without loading its evidence. It reports what the directory
+// declares: it verifies neither completion, identity, payload hashes, nor any
+// record. A described directory is not evidence until Open accepts it.
+func Describe(path string) (Manifest, error) {
+	root, err := os.OpenRoot(path)
+	if err != nil {
+		return Manifest{}, errors.New("cannot open bundle directory")
+	}
+	defer root.Close()
+	file, err := root.Open("manifest.json")
+	if err != nil {
+		return Manifest{}, errors.New("cannot read bundle manifest")
+	}
+	info, statErr := file.Stat()
+	if statErr != nil || !info.Mode().IsRegular() {
+		file.Close()
+		return Manifest{}, errors.New("bundle manifest must be a regular file")
+	}
+	data, readErr := io.ReadAll(io.LimitReader(file, maxFileBytes+1))
+	closeErr := file.Close()
+	if readErr != nil || closeErr != nil || len(data) > maxFileBytes {
+		return Manifest{}, errors.New("cannot read bundle manifest")
+	}
+	var manifest Manifest
+	if err := json.Unmarshal(data, &manifest, json.RejectUnknownMembers(true)); err != nil {
+		return Manifest{}, errors.New("invalid bundle manifest")
+	}
+	if !supported(manifest.Schema) {
+		return Manifest{}, errors.New("unsupported case bundle schema version")
+	}
+	return manifest, nil
+}
+
 // Open verifies completion, identity, payload hashes, source coverage, and the
 // metadata/correlations derived from the bytes before returning any evidence.
 // Unknown schema versions and JSON members are errors; no migrations occur.
@@ -123,7 +165,7 @@ func Open(path string) (*Bundle, error) {
 	if err := json.Unmarshal(files["manifest.json"], &manifest, json.RejectUnknownMembers(true)); err != nil {
 		return nil, errors.New("invalid bundle manifest")
 	}
-	if manifest.Schema != Schema && manifest.Schema != RecordedSchema && manifest.Schema != DerivedSchema && manifest.Schema != CollectedSchema {
+	if !supported(manifest.Schema) {
 		return nil, errors.New("unsupported case bundle schema version")
 	}
 	if manifest.Schema == RecordedSchema {

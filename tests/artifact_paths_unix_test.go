@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/diff"
 	"github.com/bharm16/readmit/internal/observation"
@@ -154,5 +155,21 @@ func TestExportResolvesReviewAndPrivateRootsBeforeChildPaths(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestArtifactChildRefusesAliasedEntries(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "case"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for name, target := range map[string]string{"inside": filepath.Join(root, "case"), "outside": outside} {
+		if err := os.Symlink(target, filepath.Join(root, name)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := artifactpath.Child(root, name); err == nil {
+			t.Errorf("artifact entry %q followed a symbolic link", name)
+		}
 	}
 }

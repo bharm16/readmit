@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/receiver"
 	"github.com/bharm16/readmit/internal/replay"
@@ -95,5 +96,24 @@ func TestReceiverRefusesCaseInsensitiveDestinationCollision(t *testing.T) {
 	}
 	if _, err := os.Lstat(filepath.Join(dir, "case")); !os.IsNotExist(err) {
 		t.Fatal("failed startup left its observation occupying the case destination")
+	}
+}
+
+func TestArtifactChildResolvesOneNamedEntryAndRefusesEverythingElse(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "case"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "notes.txt"), []byte("MSH|^~\\&|APP\r"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	path, err := artifactpath.Child(root, "case")
+	if err != nil || path != filepath.Join(root, "case") {
+		t.Fatalf("named entry: %q %v", path, err)
+	}
+	for _, name := range []string{"", ".", "..", "case/payloads", "../" + filepath.Base(root), filepath.Join(root, "case"), "notes.txt", "absent"} {
+		if _, err := artifactpath.Child(root, name); err == nil {
+			t.Errorf("artifact entry %q was accepted", name)
+		}
 	}
 }

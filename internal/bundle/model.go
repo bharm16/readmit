@@ -182,6 +182,16 @@ type Bundle struct {
 	payloads     map[string][]byte
 }
 
+// Counts totals occurrences by kind. Callers reporting a case summary share
+// this tally instead of each deriving one from Events.
+func (b *Bundle) Counts() map[EventKind]int {
+	counts := make(map[EventKind]int, 3)
+	for _, event := range b.Events {
+		counts[event.Kind]++
+	}
+	return counts
+}
+
 // Raw returns a private copy of the complete occurrence, including framing.
 func (b *Bundle) Raw(eventID string) ([]byte, error) {
 	raw, ok := b.payloads[eventID]

@@ -1,0 +1,129 @@
+/* Bundled with the executable. No web fonts, no remote stylesheets, no
+   analytics: the shell renders entirely offline. */
+:root {
+  color-scheme: light dark;
+  --surface: Canvas;
+  --ink: CanvasText;
+  --muted: color-mix(in srgb, CanvasText 60%, Canvas);
+  --line: color-mix(in srgb, CanvasText 20%, Canvas);
+  font-family: system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+main {
+  margin: 0 auto;
+  max-width: 60rem;
+  padding: 1.5rem;
+}
+
+h1 {
+  font-size: 1.4rem;
+  margin: 0;
+}
+
+h2 {
+  font-size: 1rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.offline {
+  color: var(--muted);
+  margin: 0.25rem 0 1rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+button {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0.4rem 0.8rem;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0;
+}
+
+.state {
+  font-weight: 600;
+}
+
+.status-failed .state,
+.status-permission_denied .state {
+  color: color-mix(in srgb, CanvasText 40%, red);
+}
+
+.reason,
+.unsupported,
+.root {
+  color: var(--muted);
+}
+
+.root,
+.identity {
+  font-family: ui-monospace, monospace;
+  overflow-wrap: anywhere;
+}
+
+ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.artifacts li,
+.recent li {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+}
+
+.name {
+  font-weight: 600;
+  min-width: 10rem;
+}
+
+.badge {
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  font-size: 0.8rem;
+  padding: 0.1rem 0.6rem;
+}
+
+.evidence {
+  display: grid;
+  gap: 0.25rem 1rem;
+  grid-template-columns: max-content 1fr;
+  margin: 0.5rem 0 0;
+}
+
+dt {
+  color: var(--muted);
+}
+
+dd {
+  margin: 0;
+}
