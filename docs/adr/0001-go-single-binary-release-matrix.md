@@ -23,7 +23,7 @@ readmit must ship as one self-contained executable that an interop engineer can 
 
 ## Toolchain and platform policy (amended 2026-09-17)
 
-- The Go toolchain is pinned to the current patch release with the `toolchain` directive in go.mod, initially go1.27.1. CI sets `GOTOOLCHAIN=local` and reads the version from go.mod, so a build fails rather than silently downloading a newer toolchain. Bumps arrive through reviewed pull requests, never during a build.
+- The Go toolchain is pinned to the current patch release with the `toolchain` directive in go.mod, initially go1.27.1. CI passes that exact pin to setup-go and verifies both the active compiler and each archived executable's compiler version. `GOTOOLCHAIN=local` prevents automatic switching; it does not enforce the pin by itself. A mismatch fails the build. Bumps arrive through reviewed pull requests, never during a build.
 - Release builds use `CGO_ENABLED=0`. Race-detector jobs need cgo on, so the setting is per job, never global.
 - Platform floor: macOS 13 or later, which Go 1.27 requires. Windows and Linux floors follow the pinned toolchain's supported versions. The README states all three.
 - Go 1.27 is the floor rather than 1.26 because `encoding/json/v2` became generally available in 1.27 and ADR-0003 depends on it.

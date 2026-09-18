@@ -6,6 +6,7 @@ tool can satisfy a runtime dependency. All evidence here is synthetic.
 
 import argparse
 import hashlib
+import json
 import os
 from pathlib import Path
 import platform
@@ -13,6 +14,39 @@ import subprocess
 import tarfile
 import tempfile
 import zipfile
+
+from toolchain import pinned_version
+
+
+FIXTURES = (
+    ("adt-cr.hl7", "raw", "cr", 1),
+    ("siu-lf.hl7", "raw", "lf", 1),
+    ("ack-crlf.hl7", "raw", "crlf", 1),
+    ("custom-delimiters.hl7", "raw", "cr", 1),
+    ("two-messages.mllp", "mllp", "cr", 2),
+    ("non-utf8.hl7", "raw", "cr", 1),
+    ("reduced-delimiters.hl7", "raw", "cr", 1),
+)
+REQUIRED_FILES = {
+    "README.md", "THIRD_PARTY_NOTICES.md", "docs/dictionary-provenance.md",
+    "dictionary/fields-v251.json", "testdata/README.md",
+    "licenses/cobra-LICENSE.txt", "licenses/go-BSD-3-Clause.txt",
+    "licenses/mousetrap-LICENSE.txt", "licenses/nhapi-MPL-2.0.txt", "licenses/pflag-LICENSE.txt",
+} | {"testdata/fixtures/" + filename for filename, _, _, _ in FIXTURES}
+
+
+def verify_distribution(archive):
+    if archive.suffix == ".zip":
+        binary = "readmit.exe"
+        with zipfile.ZipFile(archive) as contents:
+            available = {member.filename for member in contents.infolist() if not member.is_dir() and member.file_size > 0}
+    else:
+        binary = "readmit"
+        with tarfile.open(archive) as contents:
+            available = {member.name for member in contents.getmembers() if member.isfile() and member.size > 0}
+    missing = (REQUIRED_FILES | {binary}) - available
+    if missing:
+        raise RuntimeError(f"Missing distribution members in {archive.name}: {', '.join(sorted(missing))}")
 
 
 def verified_archives(directory):
@@ -26,6 +60,7 @@ def verified_archives(directory):
     for archive in archives:
         if hashlib.sha256(archive.read_bytes()).hexdigest() != checksums.get(archive.name):
             raise RuntimeError(f"Checksum mismatch: {archive.name}")
+        verify_distribution(archive)
     return archives
 
 
@@ -35,6 +70,25 @@ def member_bytes(archive, name):
             return contents.read(name)
     with tarfile.open(archive) as contents:
         return contents.extractfile(name).read()
+
+
+def check_build_info(archives):
+    """Read the packaged bytes with Go on the build runner; never execute them."""
+    expected = pinned_version()
+    with tempfile.TemporaryDirectory(prefix="readmit-build-info-") as directory:
+        for archive in archives:
+            name = "readmit.exe" if archive.suffix == ".zip" else "readmit"
+            binary = Path(directory) / name
+            binary.write_bytes(member_bytes(archive, name))
+            info = json.loads(subprocess.check_output(
+                ["go", "version", "-m", "-json", str(binary)], text=True, timeout=15,
+                env=dict(os.environ, GOTOOLCHAIN="local"),
+            ))
+            if info["GoVersion"] != expected:
+                raise RuntimeError(
+                    f"{archive.name}: compiler {info['GoVersion']} does not match the toolchain pin {expected}"
+                )
+    print(f"PASS: {len(archives)} archived compiler versions match {expected}")
 
 
 def smoke(archive, target_os, release_tag=None):
@@ -61,16 +115,7 @@ def smoke(archive, target_os, release_tag=None):
             expected = f"readmit version {release_tag.removeprefix('v')}\n".encode()
             if version.stdout != expected:
                 raise RuntimeError("Executable version does not match the release tag")
-        cases = [
-            ("adt-cr.hl7", "raw", "cr", 1),
-            ("siu-lf.hl7", "raw", "lf", 1),
-            ("ack-crlf.hl7", "raw", "crlf", 1),
-            ("custom-delimiters.hl7", "raw", "cr", 1),
-            ("two-messages.mllp", "mllp", "cr", 2),
-            ("non-utf8.hl7", "raw", "cr", 1),
-            ("reduced-delimiters.hl7", "raw", "cr", 1),
-        ]
-        for filename, framing, terminator, count in cases:
+        for filename, framing, terminator, count in FIXTURES:
             original = member_bytes(archive, "testdata/fixtures/" + filename)
             source, destination = work / filename, work / (filename + ".copy")
             source.write_bytes(original)
@@ -101,7 +146,9 @@ def main():
     parser.add_argument("--artifacts", type=Path, required=True)
     parser.add_argument("--os", choices=["linux", "darwin", "windows"])
     parser.add_argument("--arch", choices=["amd64", "arm64"])
-    parser.add_argument("--extract-binaries", type=Path)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--extract-binaries", type=Path)
+    mode.add_argument("--check-build-info", action="store_true", help="Verify archived compiler identity on the build runner (requires Go)")
     parser.add_argument("--release-tag", default=os.environ.get("READMIT_RELEASE_TAG"))
     args = parser.parse_args()
     archives = verified_archives(args.artifacts)
@@ -109,6 +156,9 @@ def main():
         prefix = f"readmit_{args.release_tag.removeprefix('v')}_"
         if any(not archive.name.startswith(prefix) for archive in archives):
             raise RuntimeError("Archive version does not match the release tag")
+    if args.check_build_info:
+        check_build_info(archives)
+        return
     if args.extract_binaries:
         if len(archives) != 5:
             raise RuntimeError("Expected exactly five release archives")
