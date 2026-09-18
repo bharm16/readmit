@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -52,7 +51,7 @@ func captureCommand(ran *bool) *cobra.Command {
 			inputs := make([]bundle.Input, len(args))
 			total := 0
 			for i, path := range args {
-				data, err := readCaptureFile(path, bundle.MaxSourceBytes)
+				data, err := readInputFile(path, bundle.MaxSourceBytes)
 				if err != nil {
 					return err
 				}
@@ -109,32 +108,8 @@ func timelineCommand(ran *bool) *cobra.Command {
 	return cmd
 }
 
-func readCaptureFile(path string, limit int) ([]byte, error) {
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("capture input must be a readable regular file")
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, errors.New("cannot open capture input")
-	}
-	defer f.Close()
-	info, err = f.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("capture input must be a regular file")
-	}
-	data, err := io.ReadAll(io.LimitReader(f, int64(limit)+1))
-	if err != nil {
-		return nil, errors.New("cannot read capture input")
-	}
-	if len(data) > limit {
-		return nil, errors.New("capture input exceeds size limit")
-	}
-	return data, nil
-}
-
 func applyMetadata(inputs []bundle.Input, path string) error {
-	data, err := readCaptureFile(path, 1<<20)
+	data, err := readInputFile(path, 1<<20)
 	if err != nil {
 		return err
 	}

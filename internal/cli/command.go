@@ -69,25 +69,9 @@ func Execute(version string, args []string, stdout, stderr io.Writer) error {
 }
 
 func inspectFile(out io.Writer, path string, options hl7.Options, showValues bool, roundtrip string) error {
-	info, err := os.Stat(path)
+	data, err := readInputFile(path, hl7.MaxInputBytes)
 	if err != nil {
-		return errors.New("cannot open input file")
-	}
-	if !info.Mode().IsRegular() {
-		return errors.New("input must be a regular file")
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return errors.New("cannot open input file")
-	}
-	defer file.Close()
-	info, err = file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return errors.New("input must be a regular file")
-	}
-	data, err := io.ReadAll(io.LimitReader(file, hl7.MaxInputBytes+1))
-	if err != nil {
-		return errors.New("cannot read input file")
+		return err
 	}
 	doc, err := hl7.Parse(data, options)
 	if err != nil {
