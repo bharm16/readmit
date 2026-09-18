@@ -476,21 +476,9 @@ func (a *App) openWorkspace(ctx context.Context, path string) WorkspaceResult {
 	if root == "" {
 		return declined.workspace()
 	}
-	entries, err := os.ReadDir(root)
-	switch {
-	case errors.Is(err, fs.ErrPermission):
-		return WorkspaceResult{State: PermissionDenied, Reason: "this account cannot read the chosen folder"}
-	case err != nil:
-		return WorkspaceResult{State: Failed, Reason: "the workspace folder cannot be read"}
-	case len(entries) > MaxWorkspaceEntries:
-		return WorkspaceResult{State: Failed, Reason: "the folder holds more entries than this release lists"}
-	}
-	artifacts := make([]Artifact, 0, len(entries))
-	for _, entry := range entries {
-		if ctx.Err() != nil {
-			return cancelledRefusal.workspace()
-		}
-		artifacts = append(artifacts, describe(root, entry))
+	artifacts, declined := listArtifacts(ctx, root)
+	if declined.state != "" {
+		return declined.workspace()
 	}
 	a.recordRecent(root)
 	workspace := &Workspace{Root: root, Artifacts: artifacts}
@@ -498,6 +486,30 @@ func (a *App) openWorkspace(ctx context.Context, path string) WorkspaceResult {
 		return WorkspaceResult{State: Empty, Workspace: workspace}
 	}
 	return WorkspaceResult{State: Completed, Workspace: workspace}
+}
+
+// listArtifacts reports what each immediate entry of an already-resolved folder
+// declares. It is the one listing in this package: opening a workspace and
+// searching one both read exactly this and never a second, wider view of the
+// folder. A folder past the entry bound is refused rather than listed in part.
+func listArtifacts(ctx context.Context, root string) ([]Artifact, refusal) {
+	entries, err := os.ReadDir(root)
+	switch {
+	case errors.Is(err, fs.ErrPermission):
+		return nil, refusal{PermissionDenied, "this account cannot read the chosen folder"}
+	case err != nil:
+		return nil, refusal{Failed, "the workspace folder cannot be read"}
+	case len(entries) > MaxWorkspaceEntries:
+		return nil, refusal{Failed, "the folder holds more entries than this release lists"}
+	}
+	artifacts := make([]Artifact, 0, len(entries))
+	for _, entry := range entries {
+		if ctx.Err() != nil {
+			return nil, cancelledRefusal
+		}
+		artifacts = append(artifacts, describe(root, entry))
+	}
+	return artifacts, refusal{}
 }
 
 // resolveFolder leaves path policy to artifactpath and only separates a folder

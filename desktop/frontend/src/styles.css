@@ -1,12 +1,45 @@
 /* Bundled with the executable. No web fonts, no remote stylesheets, no
-   analytics: the shell renders entirely offline. */
+   analytics: the shell renders entirely offline.
+
+   Light and dark are the platform's own colours, so the window follows the
+   system by default and an explicit choice switches the used colour scheme
+   rather than repainting every value. Nothing here distinguishes one status
+   from another by colour: every status is drawn with its word and its shape,
+   and colour is added on top of both. */
 :root {
   color-scheme: light dark;
   --surface: Canvas;
   --ink: CanvasText;
   --muted: color-mix(in srgb, CanvasText 60%, Canvas);
   --line: color-mix(in srgb, CanvasText 20%, Canvas);
+  --text-scale: 1;
   font-family: system-ui, sans-serif;
+}
+
+/* A dark surface makes a faint hairline disappear, so the border and the muted
+   text hold more contrast there, whether dark came from the system or a
+   choice. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --muted: color-mix(in srgb, CanvasText 72%, Canvas);
+    --line: color-mix(in srgb, CanvasText 34%, Canvas);
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --muted: color-mix(in srgb, CanvasText 72%, Canvas);
+  --line: color-mix(in srgb, CanvasText 34%, Canvas);
+}
+
+/* Text scales from the root, so every length expressed in rem scales with it
+   and the layout keeps its proportions at twice the size. */
+html {
+  font-size: calc(100% * var(--text-scale, 1));
 }
 
 body {
@@ -15,10 +48,67 @@ body {
   color: var(--ink);
 }
 
-main {
-  margin: 0 auto;
-  max-width: 60rem;
+/* Focus is always visible. A person moving through the window with a keyboard
+   can see where they are without needing to guess from colour alone. */
+:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.shell {
+  box-sizing: border-box;
+  display: grid;
+  gap: 0 0.75rem;
+  grid-template-areas:
+    "commands commands commands commands"
+    "navigation evidence separator inspector"
+    "privacy privacy privacy privacy";
+  grid-template-columns:
+    minmax(12rem, 20rem)
+    minmax(0, var(--evidence-fraction, 58fr))
+    0.75rem
+    minmax(0, var(--inspector-fraction, 42fr));
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 100vh;
+  padding: 1rem 1.25rem;
+}
+
+/* Below this width the panes stop being side by side, so the separator has
+   nothing to move and is removed from the window and from the focus order. */
+@media (max-width: 60rem) {
+  .shell {
+    grid-template-areas:
+      "commands"
+      "navigation"
+      "evidence"
+      "inspector"
+      "privacy";
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+  }
+
+  .separator {
+    display: none;
+  }
+}
+
+.region {
+  border-top: 1px solid var(--line);
+  min-width: 0;
+  overflow: auto;
+  padding: 0.5rem 0 1rem;
+}
+
+.starting {
   padding: 1.5rem;
+}
+
+.separator {
+  align-self: stretch;
+  background: var(--line);
+  border-radius: 0.2rem;
+  cursor: col-resize;
+  touch-action: none;
 }
 
 h1 {
@@ -27,55 +117,90 @@ h1 {
 }
 
 h2 {
-  font-size: 1rem;
-  margin: 1.5rem 0 0.5rem;
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
 }
 
-.offline {
-  color: var(--muted);
-  margin: 0.25rem 0 1rem;
+h3 {
+  font-size: 0.95rem;
+  margin: 1rem 0 0.35rem;
 }
 
-.actions {
+.actions,
+.appearance,
+.search,
+.text-size {
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
 }
 
-button {
+.appearance,
+.search {
+  margin-top: 0.5rem;
+}
+
+button,
+select,
+input {
   background: transparent;
   border: 1px solid var(--line);
   border-radius: 0.4rem;
   color: inherit;
-  cursor: pointer;
   font: inherit;
-  padding: 0.4rem 0.8rem;
+  padding: 0.35rem 0.7rem;
 }
 
-button:disabled {
+button {
+  cursor: pointer;
+}
+
+button:disabled,
+input:disabled {
   cursor: default;
   opacity: 0.5;
 }
 
+kbd {
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8em;
+  margin-left: 0.5rem;
+  padding: 0 0.3rem;
+}
+
 .status {
+  align-items: baseline;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin: 0.75rem 0 0;
+  margin: 0.6rem 0 0;
+}
+
+.symbol {
+  font-size: 1.05em;
 }
 
 .state {
   font-weight: 600;
 }
 
+/* Colour beside the word and the shape, never instead of them. */
 .status-failed .state,
 .status-permission_denied .state {
   color: color-mix(in srgb, CanvasText 40%, red);
 }
 
+.hint,
 .reason,
+.scale,
 .unsupported,
-.root {
+.root,
+.statement {
   color: var(--muted);
 }
 
@@ -92,24 +217,40 @@ ul {
 }
 
 .artifacts li,
-.recent li {
+.recent li,
+.registered li,
+.matches li,
+.absent li,
+.kept li {
   align-items: center;
   border-top: 1px solid var(--line);
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  padding: 0.5rem 0;
+  padding: 0.45rem 0;
+}
+
+/* What search or the palette selected is marked by a rule and heavier text, so
+   it is still obvious with no colour perception at all. */
+.artifacts li[aria-current="true"],
+.registered li[aria-current="true"] {
+  border-inline-start: 4px solid var(--ink);
+  font-weight: 600;
+  padding-inline-start: 0.5rem;
 }
 
 .name {
   font-weight: 600;
-  min-width: 10rem;
+  min-width: 8rem;
 }
 
 .badge {
+  align-items: baseline;
   border: 1px solid var(--line);
   border-radius: 1rem;
+  display: inline-flex;
   font-size: 0.8rem;
+  gap: 0.3rem;
   padding: 0.1rem 0.6rem;
 }
 
@@ -126,4 +267,35 @@ dt {
 
 dd {
   margin: 0;
+}
+
+.palette {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  color: var(--ink);
+  max-height: 70vh;
+  max-width: 34rem;
+  padding: 1rem;
+  width: 90%;
+}
+
+.palette::backdrop {
+  background: color-mix(in srgb, CanvasText 45%, transparent);
+}
+
+.palette label {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.palette input {
+  width: 100%;
+}
+
+.palette li button {
+  border: 0;
+  display: flex;
+  text-align: start;
+  width: 100%;
 }

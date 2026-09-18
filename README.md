@@ -175,7 +175,12 @@ folder declares it holds, verifies one case at a time through the same reader
 `timeline` uses, reads a project document with the case identities the command
 line recorded, reads and edits the notes beside that evidence without touching
 any of it, writes the frozen synthetic sample workspace, and reopens recent
-folders. It is a separate build with a webview requirement and is not included in
+folders. It is navigated entirely from the keyboard: five labelled regions in a
+fixed focus order, a command palette, a search over what the open workspace and
+its project declare, resizable evidence and inspector panes, light and dark, and
+text from 100% to 200%. Every status carries its own word and its own shape, so
+none of them is told apart by colour, and the window states what stays on this
+machine. It is a separate build with a webview requirement and is not included in
 the release archives. See [the desktop shell](docs/desktop.md).
 
 ## Supported input

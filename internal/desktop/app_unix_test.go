@@ -121,3 +121,15 @@ func TestOpenProjectSeparatesPermissionFromFailure(t *testing.T) {
 		}
 	}
 }
+
+func TestSearchSeparatesPermissionFromFailure(t *testing.T) {
+	root := t.TempDir()
+	unreadable(t, root)
+	result := desktop.New(&chooser{}, filepath.Join(t.TempDir(), "recent.json")).Search(root, "regression")
+	if result.State != desktop.PermissionDenied || len(result.Matches) != 0 {
+		t.Fatalf("an unreadable folder was not reported as permission denied: %+v", result)
+	}
+	if result.Reason == "" {
+		t.Fatal("permission denial gave the shell nothing to show")
+	}
+}
