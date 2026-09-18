@@ -190,8 +190,11 @@ func TestTargetResetRequiresItsDocumentsAndANewOutcomeFile(t *testing.T) {
 	// A refused rerun leaves the attempt that stopped exactly as it was, so it
 	// is still there to read.
 	again, err := os.ReadFile(outcome)
-	if err != nil || !bytes.Equal(first, again) {
-		t.Errorf("a second reset replaced the first one's retained outcome: %v", err)
+	if err != nil {
+		t.Fatalf("the first reset's retained outcome is gone: %v", err)
+	}
+	if !bytes.Equal(first, again) {
+		t.Errorf("a second reset replaced the first one's retained outcome:\n%s", again)
 	}
 }
 

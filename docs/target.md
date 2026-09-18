@@ -232,8 +232,10 @@ of the two. Nothing is implicit and nothing is ambient.
 `endpoint_quiet` reports what it established and no more. A refused connection
 (`endpoint_refused_connection`) and bytes arriving unprompted
 (`endpoint_not_quiet`) are two separate findings about the fixture, and each
-`fail`s the step. Every other outcome that is not `reachable` leaves the step
-`unconfirmed` (`endpoint_not_confirmed`):
+`fail`s the step. An interrupted diagnosis `cancel`s the reset, and a
+configuration the diagnosis cannot use `refuse`s the step. Every remaining
+outcome that is not `reachable` leaves the step `unconfirmed`
+(`endpoint_not_confirmed`):
 a timeout is not a negative result about the fixture, it is readmit not having
 established anything, and a certificate that would not verify says nothing about
 a ledger either way. The transport outcome is recorded beside the verdict, in

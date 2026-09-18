@@ -275,7 +275,7 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   decision a send is held to, and retains a `readmit-reset-outcome/v1` document.
   A reset that failed, or that could not be confirmed, exits 2 as an execution
   error rather than an assertion failure or a pass. `readmit-target/v1`-`/v3`,
-  `readmit-test/v1`-`v2`, `readmit-observation/v1`, `readmit-send-policy/v1` and
+  `readmit-test/v1`, `readmit-observation/v1`, `readmit-send-policy/v1` and
   `readmit-send-decision/v1` are unchanged.
 
 Download the archive for your OS and architecture and compare its SHA-256 with
