@@ -166,6 +166,43 @@ func TestDiffUnrelatedCollectionsRequireKeysAndNeverGuessCollisions(t *testing.T
 	}
 }
 
+func TestDiffOneSidedDuplicateKeysAreAllInsertedOrMissing(t *testing.T) {
+	message := func(id string) []byte {
+		return []byte("\x0bMSH|^~\\&|SYNTHETIC|LAB|READMIT|FIXTURE|20260101120000||SIU^S12|" + id + "|P|2.5.1\r\x1c\r")
+	}
+	left, right := diffFiles(t, message("A"), bytes.Join([][]byte{message("A"), message("B"), message("B")}, nil))
+	for _, reverse := range []bool{false, true} {
+		first, second := left, right
+		if reverse {
+			first, second = right, left
+		}
+		report, _ := diffJSON(t, first, second, "--key", "MSH-10")
+		if report.Summary.Paired != 1 || report.Summary.Unchanged != 1 || report.Summary.Ambiguous != 0 || report.Summary.Unaligned != 0 {
+			t.Fatal("one-sided duplicates became ambiguous pairing candidates")
+		}
+		refs := report.Inserted
+		if reverse {
+			if report.Summary.Missing != 2 || report.Summary.Inserted != 0 {
+				t.Fatal("both absent right-side occurrences must be reported as missing")
+			}
+			refs = report.Missing
+		} else if report.Summary.Inserted != 2 || report.Summary.Missing != 0 {
+			t.Fatal("both new right-side occurrences must be reported as inserted")
+		}
+		if refs[0].Occurrence != "m000002" || refs[1].Occurrence != "m000003" {
+			t.Fatal("duplicate-key occurrence order was not retained")
+		}
+	}
+	left, right = diffFiles(t, message("A"), bytes.Join([][]byte{message("A"), message("B"), message("C"), message("B")}, nil))
+	for _, inputs := range [][2]string{{left, right}, {right, left}} {
+		report, _ := diffJSON(t, inputs[0], inputs[1], "--key", "MSH-10")
+		refs := append(report.Inserted, report.Missing...)
+		if len(refs) != 3 || report.Summary.Ambiguous != 0 || refs[0].Occurrence != "m000002" || refs[1].Occurrence != "m000003" || refs[2].Occurrence != "m000004" {
+			t.Fatal("one-sided duplicate keys regrouped interleaved occurrences")
+		}
+	}
+}
+
 func diffFiles(t *testing.T, left, right []byte) (string, string) {
 	t.Helper()
 	dir := t.TempDir()

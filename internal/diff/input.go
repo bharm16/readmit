@@ -18,6 +18,10 @@ import (
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
+// Both verified case and run readers accept files up to 16 MiB. Schema
+// dispatch must not impose a smaller configuration-file limit on manifests.
+const maxManifestBytes = 16 << 20
+
 type occurrence struct {
 	ref   Reference
 	doc   *hl7.Document
@@ -65,7 +69,7 @@ func open(input Input, boundary Boundary) (*evidence, error) {
 		e.summary.TargetIdentity = artifact.Result.TargetIdentity
 		return e, nil
 	}
-	data, err := readFile(filepath.Join(input.Path, "manifest.json"), 1<<20)
+	data, err := readFile(filepath.Join(input.Path, "manifest.json"), maxManifestBytes)
 	if err != nil {
 		return nil, errors.New("cannot read diff artifact manifest")
 	}
@@ -199,12 +203,16 @@ func kind(item *occurrence) string {
 }
 
 func readFile(path string, limit int) ([]byte, error) {
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Size() > int64(limit) {
+		return nil, errors.New("diff input must be a bounded regular file")
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, errors.New("cannot open diff input file")
 	}
 	defer f.Close()
-	info, err := f.Stat()
+	info, err = f.Stat()
 	if err != nil || !info.Mode().IsRegular() || info.Size() > int64(limit) {
 		return nil, errors.New("diff input must be a bounded regular file")
 	}

@@ -153,9 +153,18 @@ func alignKeys(left, right *evidence, selectors []hl7.Selector, report *Report) 
 		}
 	}
 	var pairs []alignedPair
+	missing, inserted := map[*occurrence]bool{}, map[*occurrence]bool{}
 	for _, key := range order {
 		g := groups[key]
 		switch {
+		case len(g.left) == 0:
+			for _, item := range g.right {
+				inserted[item] = true
+			}
+		case len(g.right) == 0:
+			for _, item := range g.left {
+				missing[item] = true
+			}
 		case len(g.left) > 1 || len(g.right) > 1:
 			ambiguity := Ambiguity{Reason: "duplicate_key"}
 			for _, item := range g.left {
@@ -165,12 +174,20 @@ func alignKeys(left, right *evidence, selectors []hl7.Selector, report *Report) 
 				ambiguity.Right = append(ambiguity.Right, item.ref)
 			}
 			report.Ambiguous = append(report.Ambiguous, ambiguity)
-		case len(g.left) == 1 && len(g.right) == 1:
+		default:
 			pairs = append(pairs, alignedPair{g.left[0], g.right[0]})
-		case len(g.left) == 1:
-			report.Missing = append(report.Missing, g.left[0].ref)
-		case len(g.right) == 1:
-			report.Inserted = append(report.Inserted, g.right[0].ref)
+		}
+	}
+	// Duplicate keys can be interleaved with other one-sided keys. Preserve the
+	// original occurrence order rather than regrouping definite insertions/gaps.
+	for _, item := range left.items {
+		if missing[item] {
+			report.Missing = append(report.Missing, item.ref)
+		}
+	}
+	for _, item := range right.items {
+		if inserted[item] {
+			report.Inserted = append(report.Inserted, item.ref)
 		}
 	}
 	return pairs

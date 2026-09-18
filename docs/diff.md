@@ -117,10 +117,11 @@ mapping claims fail rather than silently falling back to a key.
 
 Otherwise declare one or more `--key` selectors. Together they form an ordered
 composite key of present, supported decoded values and the message/ACK kind.
-No key is inferred from MSH-10. Duplicate keys on either side form an ambiguous
-group listing every candidate; no candidate is selected. Empty, null, omitted,
-or undecodable keys leave the occurrence unaligned. Unique keys present on one
-side only are listed as missing from the right or inserted in the right. The
+No key is inferred from MSH-10. When a key has candidates on both sides and is
+duplicated on either side, all candidates form an ambiguous group; no candidate
+is selected. Empty, null, omitted, or undecodable keys leave the occurrence
+unaligned. Keys present on one side only are listed as missing from the right
+or inserted in the right, including every occurrence of a duplicated key. The
 report's order follows the left collection, then remaining right occurrences.
 Source order is not evidence of chronology.
 

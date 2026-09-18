@@ -316,3 +316,57 @@ func TestResultDirectoryUsesVerifiedOfflineRunAndKeepsBoundary(t *testing.T) {
 		t.Fatal("corrupt result bypassed verified result reader")
 	}
 }
+
+func TestDiffAcceptsVerifiedManifestsLargerThanConfigurationFiles(t *testing.T) {
+	header := "MSH|^~\\&|SYNTHETIC|LAB|READMIT|FIXTURE|20260101120000||SIU^S12|CONTROL|P|2.5.1\r"
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	t.Run("case", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "case")
+		_, err := bundle.Write(path, []bundle.Input{{Path: strings.Repeat("PRIVATE-SOURCE", 90000), Data: []byte(header)}}, bundle.Provenance{Mode: bundle.Imported, ImportedAt: &now})
+		if err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Stat(filepath.Join(path, "manifest.json"))
+		if err != nil || info.Size() <= 1<<20 || info.Size() > 16<<20 {
+			t.Fatal("fixture must exercise the supported manifest range above 1 MiB")
+		}
+		if _, err := bundle.Open(path); err != nil {
+			t.Fatalf("large case is not independently readable: %v", err)
+		}
+		report := compare(t, path, path, diff.Options{})
+		if report.Alignment != "source-occurrence" || report.Summary.Paired != 1 || report.Summary.Unchanged != 1 {
+			t.Fatal("verified large-manifest case was not compared")
+		}
+	})
+	t.Run("run", func(t *testing.T) {
+		source := filepath.Join(t.TempDir(), "case")
+		data := []byte(header + strings.Repeat("SCH|APPT^LAB|FILL^LAB|||||||||^^^20260102120000^20260102123000\r", 2400))
+		if _, err := bundle.Write(source, []bundle.Input{{Path: "synthetic.hl7", Data: data}}, bundle.Provenance{Mode: bundle.Imported, ImportedAt: &now}); err != nil {
+			t.Fatal(err)
+		}
+		plan, err := replay.Prepare(source, replay.Target{Schema: replay.TargetSchema, TestEndpoint: true, Address: "127.0.0.1:2575", Transport: "plain", ConnectTimeout: "1s", MessageTimeout: "1s", MaxACKBytes: 4096}, replay.Options{Transformations: []replay.Transformation{{Name: "shift-timestamps", Shift: "1h"}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Cancellation produces complete retained transformation evidence without
+		// dialing an endpoint. The 4801 change records make a >1 MiB manifest.
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		path := filepath.Join(t.TempDir(), "run")
+		if _, err := replay.Execute(ctx, plan, path); err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Stat(filepath.Join(path, "manifest.json"))
+		if err != nil || info.Size() <= 1<<20 || info.Size() > 16<<20 {
+			t.Fatal("fixture must exercise the supported manifest range above 1 MiB")
+		}
+		verified, err := replay.Open(path)
+		if err != nil || len(verified.Manifest.Changes) != 4801 {
+			t.Fatalf("large run is not independently readable: %v", err)
+		}
+		report := compare(t, source, path, diff.Options{})
+		if report.Alignment != "source-occurrence" || report.Summary.Paired != 1 || report.Summary.Uncompared != 1 || report.Pairs[0].Right.PayloadState != "no_payload" {
+			t.Fatal("valid large-manifest run lost retained canceled evidence")
+		}
+	})
+}
