@@ -1,0 +1,68 @@
+{
+  "schema": "readmit-profile-pack/v1",
+  "pack": {
+    "id": "fixture-siu",
+    "version": "1"
+  },
+  "provenance": {
+    "source": {
+      "name": "readmit fixture authors",
+      "location": "testdata/fixtures/profile-pack.json",
+      "revision": "1"
+    },
+    "extraction": {
+      "method": "Hand-authored field names for the fixture SIU segments; nothing was extracted from an upstream library.",
+      "content_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "license": {
+      "spdx": "LicenseRef-readmit-fixture",
+      "notice": "testdata/README.md"
+    },
+    "rights_review": {
+      "status": "approved",
+      "reference": "testdata/README.md"
+    }
+  },
+  "coverage": [
+    {
+      "hl7_version": "2.5.1",
+      "family": "SIU",
+      "parse": "supported",
+      "labels": "supported",
+      "structural": "unsupported",
+      "workflow": "unsupported"
+    },
+    {
+      "hl7_version": "2.5.1",
+      "family": "ADT",
+      "parse": "supported",
+      "labels": "untested",
+      "structural": "unsupported",
+      "workflow": "unsupported"
+    },
+    {
+      "hl7_version": "2.4",
+      "family": "SIU",
+      "parse": "untested",
+      "labels": "unsupported",
+      "structural": "unsupported",
+      "workflow": "unsupported"
+    }
+  ],
+  "labels": [
+    {
+      "hl7_version": "2.5.1",
+      "segments": {
+        "MSH": {
+          "9": "Message Type",
+          "10": "Message Control ID",
+          "12": "Version ID"
+        },
+        "SCH": {
+          "1": "Placer Appointment ID",
+          "2": "Filler Appointment ID"
+        }
+      }
+    }
+  ]
+}

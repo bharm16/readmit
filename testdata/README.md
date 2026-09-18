@@ -74,6 +74,15 @@ proof. Native archive checks additionally plant source filenames, diagnosis
 text, and values present only in original replay transformations. They require
 unchanged source evidence and an export containing none of those values.
 
+`profile-pack.json` is a minimal, hand-authored `readmit-profile-pack/v1`
+fixture for issue #150: a fixture-sourced pack whose 2.5.1 labels are a few
+written-out SIU field names, with SIU labels supported, ADT labels untested
+and 2.4 parsing untested. Nothing in it was extracted from nHapi or HL7apy, its
+digest is a placeholder, and it is not a pack of anything real.
+`profile-pack-refused.json` is its negative counterpart: it claims workflow
+support the contract carries no content for, so the reader refuses it. Every
+other refusal is a single edit of the positive fixture, made in the tests.
+
 The issue #6 pair `diff-before.mllp` and `diff-after.mllp` includes an inserted
 message, repeated segments and identifiers, a changed timestamp, and a null
 field that becomes omitted. `diff-expected.json` independently states the

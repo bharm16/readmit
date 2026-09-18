@@ -1,0 +1,36 @@
+{
+  "schema": "readmit-profile-pack/v1",
+  "pack": {
+    "id": "fixture-siu-workflow-claim",
+    "version": "1"
+  },
+  "provenance": {
+    "source": {
+      "name": "readmit fixture authors",
+      "location": "testdata/fixtures/profile-pack-refused.json",
+      "revision": "1"
+    },
+    "extraction": {
+      "method": "Hand-authored. This pack claims workflow support it carries no content for, so the reader refuses it.",
+      "content_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "license": {
+      "spdx": "LicenseRef-readmit-fixture",
+      "notice": "testdata/README.md"
+    },
+    "rights_review": {
+      "status": "pending",
+      "reference": ""
+    }
+  },
+  "coverage": [
+    {
+      "hl7_version": "2.5.1",
+      "family": "SIU",
+      "parse": "supported",
+      "labels": "unsupported",
+      "structural": "unsupported",
+      "workflow": "supported"
+    }
+  ]
+}

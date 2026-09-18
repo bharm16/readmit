@@ -18,6 +18,9 @@ ROOT = SMOKE.parent.parent
 DISTRIBUTION_FILES = (
     "README.md", "THIRD_PARTY_NOTICES.md", "docs/dictionary-provenance.md",
     "dictionary/fields-v251.json",
+    "docs/profile-packs.md",
+    "testdata/fixtures/profile-pack.json",
+    "testdata/fixtures/profile-pack-refused.json",
     "testdata/README.md",
     "docs/case-bundle.md",
     "docs/import.md",

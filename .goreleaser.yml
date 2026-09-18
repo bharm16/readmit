@@ -29,6 +29,7 @@ archives:
       - THIRD_PARTY_NOTICES.md
       - licenses/*
       - docs/dictionary-provenance.md
+      - docs/profile-packs.md
       - docs/case-bundle.md
       - docs/import.md
       - docs/source.md

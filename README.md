@@ -518,6 +518,9 @@ positional names such as `ZPD-3`; omitted unknown positions cannot be enumerated
 Field labels are supplied for MSH, MSA, ERR, PID, PV1, SCH, EVN, NTE, RGS, AIS,
 AIG, AIL, AIP, and OBX when MSH-12 declares version `2.5.1`. Other versions use
 positional labels. See [dictionary provenance](docs/dictionary-provenance.md).
+The shared `readmit-profile-pack/v1` contract describes such metadata per HL7
+version and message family with separate parse, labels, structural and workflow
+support, and no pack is bundled yet. See [profile packs](docs/profile-packs.md).
 This is **syntax inspection**, not semantic validation or a claim of HL7
 conformance. The separate diagnosis and receiver workflows use the narrow,
 documented readmit SIU fixture profile.
