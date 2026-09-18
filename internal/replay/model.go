@@ -14,15 +14,36 @@ import (
 
 const (
 	Schema = "readmit-run/v1"
-	// TargetSchema is the contract every target readmit itself generates
-	// declares. TargetSchemaV2 adds the credential reference below and is read
-	// unchanged alongside it; neither version is migrated into the other.
+	// TargetSchema is the contract a run manifest's recorded transport is read
+	// back under. TargetSchemaV2 adds the credential reference below and
+	// TargetSchemaV3 adds the named environment; every version is read
+	// unchanged and none is migrated into another.
 	TargetSchema   = "readmit-target/v1"
 	TargetSchemaV2 = "readmit-target/v2"
+	TargetSchemaV3 = "readmit-target/v3"
 	MaxMessages    = 4000
 	maxRunBytes    = 96 << 20
 	maxFileBytes   = 16 << 20
 )
+
+// Classification is the class of environment an operator recorded for a named
+// endpoint. It is a claim written down, never a property readmit established:
+// labelling an endpoint nonproduction is not proof that the address is safe to
+// send to. readmit displays it wherever a target is shown and never reads it as
+// permission. Enforcement of a production-classified endpoint is separate from
+// recording one and is not part of this release.
+type Classification string
+
+const (
+	Nonproduction Classification = "nonproduction"
+	Production    Classification = "production"
+	// Unclassified is an environment whose class nobody recorded. It is
+	// reported as its own answer rather than assumed to be nonproduction: an
+	// absent claim is not a passing one.
+	Unclassified Classification = "unclassified"
+)
+
+var classifications = []Classification{Nonproduction, Production, Unclassified}
 
 // Target is explicitly selected configuration, never a discovered endpoint.
 // Timeouts are positive Go duration strings, bounded to at most five minutes.
@@ -37,6 +58,24 @@ type Target struct {
 	MessageTimeout    string     `json:"message_timeout"`
 	MaxACKBytes       int        `json:"max_ack_bytes"`
 	Credential        Credential `json:"credential,omitzero"`
+	// The four members below belong to readmit-target/v3 alone. Name and
+	// Classification make the environment a configuration describes visible;
+	// ServerName and ClientCertificate complete its TLS setup. A version that
+	// never declared them refuses them rather than reading them as its own.
+	Name              string         `json:"name,omitzero"`
+	Classification    Classification `json:"classification,omitzero"`
+	ServerName        string         `json:"server_name,omitzero"`
+	ClientCertificate string         `json:"client_certificate,omitzero"`
+}
+
+// Environment reports the classification recorded for this target. A version
+// that carries no classification member reads as Unclassified, so an absent
+// claim is never reported as a nonproduction one.
+func (t Target) Environment() Classification {
+	if t.Classification == "" {
+		return Unclassified
+	}
+	return t.Classification
 }
 
 // Credential names the secret reference this endpoint presents. It carries the

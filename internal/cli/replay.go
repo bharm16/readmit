@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"syscall"
@@ -57,7 +58,9 @@ func replayCommand(ran *bool) *cobra.Command {
 			}
 			writer := bufio.NewWriter(cmd.OutOrStdout())
 			if !send {
-				fmt.Fprintf(writer, "Dry run: no connection opened\nTarget: %q (%s)\nMessages: %d\n", target.Address, target.Transport, plan.Count())
+				fmt.Fprintf(writer, "Dry run: no connection opened\nTarget: %q (%s)\n", target.Address, target.Transport)
+				writeClassificationLine(writer, target)
+				fmt.Fprintf(writer, "Messages: %d\n", plan.Count())
 				if len(transforms) == 0 {
 					fmt.Fprintln(writer, "Transformations: none; message payload bytes unchanged")
 				}
@@ -83,7 +86,9 @@ func replayCommand(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(writer, "Run: %s\nSchema: %s\nMessages: %d\nContains source values: true (customer-local-only)\n", result.Identity, result.Manifest.Schema, len(result.Events))
+			fmt.Fprintf(writer, "Run: %s\nSchema: %s\n", result.Identity, result.Manifest.Schema)
+			writeClassificationLine(writer, target)
+			fmt.Fprintf(writer, "Messages: %d\nContains source values: true (customer-local-only)\n", len(result.Events))
 			for _, event := range result.Events {
 				fmt.Fprintf(writer, "  %s outcome=%s delivery=%s sent_bytes=%d received_bytes=%d ack=%s correlation=%s elapsed=%s", event.OutboundOccurrence, event.Outcome, event.Delivery, event.Sent.Size, event.Received.Size, event.ACK.Code, event.ACK.Correlation, time.Duration(event.ElapsedNS))
 				if event.TransportError != nil {
@@ -100,11 +105,22 @@ func replayCommand(ran *bool) *cobra.Command {
 			return nil
 		},
 	}
-	command.Flags().StringVar(&targetPath, "target", "", "Explicit readmit-target/v1 test endpoint configuration")
+	command.Flags().StringVar(&targetPath, "target", "", "Explicit readmit-target/v1, /v2 or /v3 test endpoint configuration")
 	command.Flags().StringVar(&output, "output", "", "New customer-local run directory; only created with --send")
 	command.Flags().BoolVar(&send, "send", false, "Explicitly connect and send; default is a local-only dry run")
 	command.Flags().StringArrayVar(&messages, "message", nil, "Source message occurrence to include (repeatable; source order is preserved)")
 	command.Flags().StringArrayVar(&transforms, "transform", nil, "Named transformation: rebase-control-ids or shift-timestamps (repeatable)")
 	command.Flags().StringVar(&shift, "shift", "", "Explicit whole-second duration for shift-timestamps, e.g. 24h or -2h")
 	return command
+}
+
+// writeClassificationLine states the environment a replay is pointed at before
+// its result. The classification is what somebody recorded: it is displayed so
+// nobody has to open the configuration to see it, and it is not a permission.
+// See docs/target.md for what a classification is and is not.
+func writeClassificationLine(w io.Writer, target replay.Target) {
+	if target.Name != "" {
+		fmt.Fprintf(w, "Environment: %s\n", target.Name)
+	}
+	fmt.Fprintf(w, "Classification: %s (recorded by a person; readmit did not establish it)\n", target.Environment())
 }

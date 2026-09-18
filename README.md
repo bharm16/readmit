@@ -186,6 +186,27 @@ and then says exactly what unlinking does not establish: it is not erasure on a
 solid-state device, a copy-on-write filesystem, a snapshot, a backup, a replica or
 a recipient's machine. See [evidence protection](docs/protect.md).
 
+`target set --target FILE --name NAME --classification CLASS --address HOST:PORT`
+records one named nonproduction environment: the endpoint, the transport, the
+timeouts, an explicit CA, a TLS server name, and a client certificate whose
+private key stays a credential reference rather than a file readmit keeps.
+`target show` validates the whole configuration, including that the credential
+reference is registered and scoped to this address, and opens nothing.
+`target check` opens one connection, completes TLS, and reports the negotiated
+version and cipher suite, the verified server name, whether a client certificate
+was requested and presented, and the subject, issuer and expiry of every
+certificate the endpoint presented. **It never sends an HL7 payload**: reaching
+an endpoint and verifying its certificate are transport evidence, not evidence
+that an application accepted, processed or stored anything, and an expiry is
+reported rather than acted on. Expired certificates, untrusted authorities,
+hostname mismatches, refused connections, timeouts and rejected client
+certificates each have their own named outcome, and an outcome readmit cannot
+name is never reported as reachable. The recorded classification is shown by
+every one of those commands and by every `replay` preview and summary, and it is
+a claim rather than a finding: a person labelling an endpoint nonproduction is
+not proof the address is safe to send to, and this release displays the class
+rather than blocking on it. See [named test environments](docs/target.md).
+
 `diff LEFT RIGHT` compares message fields in the terminal, Markdown, or JSON.
 Run-to-source comparisons use recorded occurrence mappings; unrelated collections
 require explicit alignment keys. Ambiguities and inserted/missing occurrences stay

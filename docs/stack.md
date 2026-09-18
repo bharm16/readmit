@@ -18,7 +18,7 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
 
 ## CLI
 
-- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `project`, `license`, `secret`, `protect`, `listen`, `replay`, `test`, `diff`, `diagnose`, `synth`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
+- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `project`, `license`, `secret`, `protect`, `target`, `listen`, `replay`, `test`, `diff`, `diagnose`, `synth`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
 - Command data goes to stdout, diagnostics to stderr. Machine-readable modes never interleave progress output with JSON.
 - Target configuration is read from explicitly selected files, not hidden global config or environment-variable precedence.
 - Credentials are referenced, never held. A `readmit-secrets/v1` document registers the store kind an operator declared, the single purpose and endpoint address a credential may be bound to, the absolute path of the program that reads it back, and the recorded rotation. No command accepts a credential value, and a resolved value masks itself under every formatting verb and refuses to be serialized. See [credential references](secret.md).
@@ -42,7 +42,8 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
 ## Networking
 
 - Standard library `net`, `bufio`, `io`, `context`, and `crypto/tls`, with a readmit-owned MLLP framing implementation.
-- TLS 1.2 minimum, TLS 1.3 permitted, certificate verification always on, explicit customer CA configuration supported.
+- TLS 1.2 minimum, TLS 1.3 permitted, certificate verification always on, explicit customer CA configuration supported, and an explicit TLS server name and client certificate where an environment needs them. A client certificate's private key is a credential reference, never a file readmit keeps.
+- A named environment is one `readmit-target/v3` configuration an operator records, validates and diagnoses with `readmit target`. A connectivity diagnostic proves reachability and TLS and never sends an HL7 payload. The classification it records is displayed everywhere the target is shown and is never treated as permission. See [named test environments](target.md).
 - Foreground execution with contexts for cancellation. No queue, no distributed jobs, and no HTTP API for local commands to read the receiver's ledger. The receiver exports observation files.
 
 ## JSON

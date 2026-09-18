@@ -44,6 +44,7 @@ REQUIRED_FILES = {
     "docs/license.md",
     "docs/secret.md",
     "docs/protect.md",
+    "docs/target.md",
     "docs/listen.md",
     "docs/collect.md",
     "docs/replay.md",

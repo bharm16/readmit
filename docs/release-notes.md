@@ -142,6 +142,23 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   a solid-state device, a copy-on-write filesystem, a snapshot, a backup, a
   replica or a recipient's machine.
 
+- `target` records, validates and diagnoses one named nonproduction
+  environment. `readmit-target/v3` adds the environment name, its recorded
+  classification, an explicit TLS server name and a client certificate whose
+  private key stays a credential reference; `readmit-target/v1` and `/v2` are
+  read exactly as before and neither is migrated. `target check` opens one
+  connection, completes TLS and reports the negotiated session, the verified
+  server name and the subject, issuer and expiry of every presented
+  certificate, with expired certificates, untrusted authorities, hostname
+  mismatches, refused connections, timeouts and rejected client certificates
+  each named separately. It never sends an HL7 payload, and it says so: reaching
+  an endpoint is transport evidence, not evidence of application processing, and
+  a certificate expiry is reported rather than acted on. The recorded
+  classification is displayed by every command that shows a target, including
+  every replay, and is never treated as permission: a person labelling an
+  endpoint nonproduction is not proof the address is safe to send to, and
+  blocking on a recorded class is not in this release.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is
