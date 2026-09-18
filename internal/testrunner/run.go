@@ -65,7 +65,7 @@ func Execute(ctx context.Context, plan *Plan, output string) (*Artifact, error) 
 	currentSpec, err := readLocal(plan.specPath, MaxSpecBytes)
 	if err != nil || !bytes.Equal(currentSpec, plan.raw) {
 		result.ErrorClass = "configuration_changed"
-		return finish(dir, result)
+		return plan.named(finish(dir, result))
 	}
 	var initial, final *observation.Snapshot
 	if plan.Boundary() == LedgerBoundary {
@@ -75,7 +75,7 @@ func Execute(ctx context.Context, plan *Plan, output string) (*Artifact, error) 
 		}
 		if !initialState(initial) {
 			result.ErrorClass = "initial_observation"
-			return finish(dir, result)
+			return plan.named(finish(dir, result))
 		}
 	}
 	run, err := replay.Execute(ctx, plan.replay, filepath.Join(dir, "run"))
@@ -95,7 +95,19 @@ func Execute(ctx context.Context, plan *Plan, output string) (*Artifact, error) 
 	if result.Status != ExecutionError && final != nil {
 		result.ReceiverSessionID, result.ReceiverMode = final.SessionID, final.Mode
 	}
-	return finish(dir, result)
+	return plan.named(finish(dir, result))
+}
+
+// named records the environment an execution was pointed at on the artifact it
+// produced, so a console states what a send was aimed at. A reopened result
+// carries none: readmit-result/v1 is frozen and records the transport rather
+// than the environment, and a spec whose configuration never validated names no
+// environment at all.
+func (p *Plan) named(artifact *Artifact, err error) (*Artifact, error) {
+	if artifact != nil {
+		artifact.Environment = p.Environment()
+	}
+	return artifact, err
 }
 
 func emptyResult() Result {

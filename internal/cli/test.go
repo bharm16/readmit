@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"syscall"
@@ -36,8 +37,11 @@ func testCommand(ran *bool) *cobra.Command {
 				if err != nil {
 					return &ExitError{Code: 2, Err: err}
 				}
-				_, err = fmt.Fprintf(cmd.OutOrStdout(), "Local validation: no connection opened, no verdict or result artifact produced\nObservation boundary: %s\nMessages: %d\n%s\n", plan.Boundary(), plan.Count(), testRerun)
-				if err != nil {
+				if err := writeLines(cmd.OutOrStdout(), func(w io.Writer) {
+					fmt.Fprintln(w, "Local validation: no connection opened, no verdict or result artifact produced")
+					writeEnvironmentBanner(w, plan.Environment())
+					fmt.Fprintf(w, "Observation boundary: %s\nMessages: %d\n%s\n", plan.Boundary(), plan.Count(), testRerun)
+				}); err != nil {
 					return &ExitError{Code: 2, Err: errors.New("cannot write test preview")}
 				}
 				return nil
@@ -59,7 +63,15 @@ func testCommand(ran *bool) *cobra.Command {
 					label = "ACK contract passed"
 				}
 			}
-			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s\nResult: %s\nOutcome: %s\nObservation boundary: %s\nAssertions: %d\nContains source values: true (customer-local-only)\n%s\n", label, artifact.Identity, result.Status, result.ObservationBoundary, len(result.Assertions), testRerun); err != nil {
+			if err := writeLines(cmd.OutOrStdout(), func(w io.Writer) {
+				fmt.Fprintln(w, label)
+				// A spec whose configuration never validated names no
+				// environment, and readmit does not invent one to print.
+				if artifact.Environment.Classification != "" {
+					writeEnvironmentBanner(w, artifact.Environment)
+				}
+				fmt.Fprintf(w, "Result: %s\nOutcome: %s\nObservation boundary: %s\nAssertions: %d\nContains source values: true (customer-local-only)\n%s\n", artifact.Identity, result.Status, result.ObservationBoundary, len(result.Assertions), testRerun)
+			}); err != nil {
 				return &ExitError{Code: 2, Err: errors.New("cannot write test summary")}
 			}
 			if result.Status != testrunner.Pass {

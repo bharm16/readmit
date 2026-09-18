@@ -41,7 +41,15 @@ func Prepare(sourcePath string, target Target, options Options) (*Plan, error) {
 	if err := validateTransforms(options.Transformations); err != nil {
 		return nil, err
 	}
-	ca, err := loadCA(target)
+	// readmit-target/v3 can declare a client certificate. This release's MLLP
+	// transport presents none, so a configuration that declares one is refused
+	// here rather than sent without it: an unsupported member is not a passing
+	// one, and silently ignoring it would make a successful diagnosis predict
+	// a handshake this transport cannot complete.
+	if target.ClientCertificate != "" {
+		return nil, errors.New("this release's replay transport presents no client certificate, so a configuration declaring one cannot be replayed; readmit target check diagnoses it against the same endpoint")
+	}
+	ca, err := LoadCA(target)
 	if err != nil {
 		return nil, err
 	}

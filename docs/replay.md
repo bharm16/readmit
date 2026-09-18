@@ -51,11 +51,11 @@ processed receipts. Sender/source occurrence IDs are not receiver occurrence IDs
 ## Target and transport contract
 
 The target JSON rejects unknown and duplicate members. `schema` is
-`readmit-target/v1` or `readmit-target/v2`; both are read unchanged and neither
-is migrated into the other. `test_endpoint` must be `true`. Address includes an
-explicit host and numeric port from 1 through 65535. Both timeout strings must be
-positive Go durations at most five minutes; `max_ack_bytes` is required and
-ranges from 1 to 1048576.
+`readmit-target/v1`, `readmit-target/v2` or `readmit-target/v3`; each is read
+unchanged and none is migrated into another. `test_endpoint` must be `true`.
+Address includes an explicit host and numeric port from 1 through 65535. Both
+timeout strings must be positive Go durations at most five minutes;
+`max_ack_bytes` is required and ranges from 1 to 1048576.
 
 `readmit-target/v2` adds one optional member, `credential`, naming a reference to
 a credential that stays in its store:
@@ -73,8 +73,46 @@ that is not registered, and a missing secrets document are all refused before
 any connection is opened, and no credential value is read to do it.
 
 A `readmit-target/v1` configuration that declares a `credential` is refused. A
-member is never added to a released version, and every target readmit itself
-generates still declares `readmit-target/v1`.
+member is never added to a released version.
+
+`readmit-target/v3` adds the named environment: `name`, `classification`,
+`server_name` and `client_certificate`, alongside everything `/v2` carries. It
+is what `readmit target set` writes; see [named test environments](target.md)
+for the endpoint editor, the connectivity diagnostic and what a classification
+is and is not. A `/v1` or `/v2` configuration that declares one of those members
+is refused rather than read as though that version had always allowed it, and a
+configuration with no classification member is reported as `unclassified`, never
+as `nonproduction`.
+
+`server_name` is honoured here exactly as it is by `readmit target check`: the
+certificate is verified against the declared server name, or against the address
+host when none is declared. `client_certificate` is not. This release's MLLP
+transport presents no client certificate, so a configuration declaring one is
+**refused** for replay rather than sent without it — an unsupported member is
+not a passing one, and a configuration that a connectivity check completes must
+not predict a handshake this transport cannot complete. `readmit target check`
+diagnoses that certificate against the same endpoint.
+
+Every replay states the environment it is pointed at before it reports anything
+else:
+
+```
+Environment: lab-siu
+Classification: nonproduction (recorded by a person; readmit did not establish it and does not enforce it)
+```
+
+The classification is displayed, not enforced. This release does not block a
+replay on the class recorded for an endpoint.
+
+`readmit-run/v1` is unchanged, and so is what it records. A run's `target`
+records the address, the transport, `test_endpoint`, `approved_transport`, the
+SHA-256 of the CA bytes that were used, both timeouts and `max_ack_bytes`. It
+records **no** environment name, **no** classification and **no** verified
+server name, so a shared run directory does not state the class of the endpoint
+it was produced against, and two runs that verified different server names
+against the same address are recorded — and identified — identically. The
+configuration is where all three are read. Recording them would be a new run
+contract version and is not in this release.
 
 This release's MLLP transport presents no credential. A run records the
 transport it used and names no credential reference; `readmit-run/v1` is
@@ -88,7 +126,8 @@ of this configured test transport; it is not inferred from reachability or TLS.
 Customer network use therefore needs an explicitly approved configuration.
 
 For TLS set `"transport": "tls"`. TLS 1.2 is the minimum, TLS 1.3 is permitted,
-certificate chain and address-host verification always run, and there is no
+certificate chain and server-name verification always run — against the declared
+`server_name`, or the address host when none is declared — and there is no
 insecure mode. Omit `ca_file` to use system roots, or set it to an explicit PEM CA
 file. A relative CA path is resolved against the actual target file's directory,
 after resolving target-file symlinks. Explicit CA files replace system roots.

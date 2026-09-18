@@ -14,15 +14,36 @@ import (
 
 const (
 	Schema = "readmit-run/v1"
-	// TargetSchema is the contract every target readmit itself generates
-	// declares. TargetSchemaV2 adds the credential reference below and is read
-	// unchanged alongside it; neither version is migrated into the other.
+	// TargetSchema is the contract a run manifest's recorded transport is read
+	// back under. TargetSchemaV2 adds the credential reference below and
+	// TargetSchemaV3 adds the named environment; every version is read
+	// unchanged and none is migrated into another.
 	TargetSchema   = "readmit-target/v1"
 	TargetSchemaV2 = "readmit-target/v2"
+	TargetSchemaV3 = "readmit-target/v3"
 	MaxMessages    = 4000
 	maxRunBytes    = 96 << 20
 	maxFileBytes   = 16 << 20
 )
+
+// Classification is the class of environment an operator recorded for a named
+// endpoint. It is a claim written down, never a property readmit established:
+// labelling an endpoint nonproduction is not proof that the address is safe to
+// send to. readmit displays it wherever a target is shown and never reads it as
+// permission. Enforcement of a production-classified endpoint is separate from
+// recording one and is not part of this release.
+type Classification string
+
+const (
+	Nonproduction Classification = "nonproduction"
+	Production    Classification = "production"
+	// Unclassified is an environment whose class nobody recorded. It is
+	// reported as its own answer rather than assumed to be nonproduction: an
+	// absent claim is not a passing one.
+	Unclassified Classification = "unclassified"
+)
+
+var classifications = []Classification{Nonproduction, Production, Unclassified}
 
 // Target is explicitly selected configuration, never a discovered endpoint.
 // Timeouts are positive Go duration strings, bounded to at most five minutes.
@@ -37,6 +58,34 @@ type Target struct {
 	MessageTimeout    string     `json:"message_timeout"`
 	MaxACKBytes       int        `json:"max_ack_bytes"`
 	Credential        Credential `json:"credential,omitzero"`
+	// The four members below belong to readmit-target/v3 alone. Name and
+	// Classification make the environment a configuration describes visible;
+	// ServerName and ClientCertificate complete its TLS setup. A version that
+	// never declared them refuses them rather than reading them as its own.
+	Name              string         `json:"name,omitzero"`
+	Classification    Classification `json:"classification,omitzero"`
+	ServerName        string         `json:"server_name,omitzero"`
+	ClientCertificate string         `json:"client_certificate,omitzero"`
+}
+
+// Environment is the named environment a configuration describes: the name a
+// person gave it and the class they recorded for it. The two travel together
+// because a class means nothing without the environment it is a class of, and
+// a verdict produced against an environment is never separated from it.
+type Environment struct {
+	Name           string
+	Classification Classification
+}
+
+// Environment reports what a target records about the environment itself. A
+// version that carries no classification member reads as Unclassified, so an
+// absent claim is never reported as a nonproduction one.
+func (t Target) Environment() Environment {
+	recorded := t.Classification
+	if recorded == "" {
+		recorded = Unclassified
+	}
+	return Environment{Name: t.Name, Classification: recorded}
 }
 
 // Credential names the secret reference this endpoint presents. It carries the
@@ -124,6 +173,13 @@ type plannedMessage struct {
 func (p *Plan) Count() int             { return len(p.messages) }
 func (p *Plan) SourceIdentity() string { return p.sourceIdentity }
 func (p *Plan) Target() TargetRecord   { return targetRecord(p.target, p.ca) }
+
+// Environment is the named environment this plan is pointed at. A run's own
+// evidence records the transport it used under the frozen readmit-run/v1
+// contract and carries no environment name or classification, so a console
+// reads this to state what a send is aimed at.
+func (p *Plan) Environment() Environment { return p.target.Environment() }
+
 func (p *Plan) Mappings() []Mapping {
 	result := make([]Mapping, len(p.messages))
 	for i, message := range p.messages {
