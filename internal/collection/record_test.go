@@ -223,6 +223,16 @@ func FuzzCollection(f *testing.F) {
 		f.Fatal(err)
 	}
 	f.Add(valid)
+	faultDeclared, err := collection.DecodePolicy([]byte(faultPolicy))
+	if err != nil {
+		f.Fatal(err)
+	}
+	base.Schema, base.Policy = collection.FaultSchema, faultDeclared
+	faultRecord, err := collection.Encode(base)
+	if err != nil {
+		f.Fatal(err)
+	}
+	f.Add(faultRecord)
 	f.Add([]byte(recordV1))
 	f.Add([]byte(`{"schema":"readmit-collection/v2","received":[]}`))
 	f.Fuzz(func(t *testing.T, data []byte) {

@@ -39,6 +39,11 @@ func collectCommand(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if config.Policy.Faults != nil {
+				if err := config.Policy.Faults.ApproveEndpoint(address); err != nil {
+					return err
+				}
+			}
 			listener, err := net.Listen("tcp", address)
 			if err != nil {
 				return errors.New("cannot bind collector address")
@@ -65,7 +70,7 @@ func collectCommand(ran *bool) *cobra.Command {
 	}
 	command.Flags().StringVar(&address, "address", "127.0.0.1:2575", "TCP listen address; port 0 chooses an available port")
 	command.Flags().BoolVar(&approvedBind, "approved-bind", false, "Explicitly approve binding a nonloopback address, accepting connections from beyond this machine")
-	command.Flags().StringVar(&policyPath, "policy", "", "Existing readmit-receiver-policy/v1 JSON file")
+	command.Flags().StringVar(&policyPath, "policy", "", "Existing readmit-receiver-policy/v1, /v2, or /v3 JSON file")
 	command.Flags().StringVar(&config.OutputPath, "output", "", "New final case bundle directory")
 	command.Flags().IntVar(&config.MaxFrameBytes, "max-frame-bytes", 1<<20, "Maximum MLLP payload bytes, excluding the three framing bytes")
 	command.Flags().DurationVar(&config.IdleTimeout, "idle-timeout", 30*time.Second, "Maximum interval without receiving bytes, and acknowledgement write timeout")

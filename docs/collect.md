@@ -54,17 +54,19 @@ A source label is configuration the operator declared. It records where evidence
 is claimed to come from; it is not a verified property of the peer and does not
 establish that an endpoint is a test endpoint.
 
-## Acknowledgement policy: readmit-receiver-policy/v1 and /v2
+## Acknowledgement policy: readmit-receiver-policy/v1, /v2 and /v3
 
 `--policy` names an existing strict-JSON file. Unknown members, absent members,
 and unsupported operators are startup errors, so a typo cannot silently relax
 the receiver. A policy is data naming a typed Go operation; it never contains an
 expression, a script, or a code reference.
 
-Two versions are supported. `readmit-receiver-policy/v1` is frozen and keeps its
+Three versions are supported. `readmit-receiver-policy/v1` is frozen and keeps its
 exact member set and meaning; `readmit-receiver-policy/v2` adds exactly one
 member, `enhanced_acknowledgement`, which v1 must not carry and v2 must. A v1
 file behaves as it always did and declines enhanced mode by name.
+`readmit-receiver-policy/v3` adds the required `faults` member described below.
+A v1 or v2 policy cannot declare faults, including as `null`.
 
 ```json
 {
@@ -86,12 +88,13 @@ file behaves as it always did and declines enhanced mode by name.
 
 | Member | Meaning |
 | --- | --- |
-| `schema` | `readmit-receiver-policy/v1` or `readmit-receiver-policy/v2` |
+| `schema` | `readmit-receiver-policy/v1`, `/v2`, or `/v3` |
 | `name` | Policy identifier, 1–64 ASCII letters, digits, `.`, `_`, or `-` |
 | `source_label` | Explicit label recorded for every source this session retains, same character set |
 | `acknowledgement` | The original-mode acknowledgement operator and the literal MSA-1 code it returns |
 | `accepted_message_types` | The message types this receiver will acknowledge |
-| `enhanced_acknowledgement` | v2 only: how a sender that declared MSH-15 or MSH-16 is answered |
+| `enhanced_acknowledgement` | v2 and v3: how a sender that declared MSH-15 or MSH-16 is answered |
+| `faults` | v3 only: approved nonproduction endpoints and a bounded ordinal fault plan |
 
 `acknowledgement.operator` supports one value, `original-mode-fixed-code`: an
 accepted message in original mode receives one acknowledgement carrying `code`,
@@ -161,8 +164,8 @@ sent nothing and whose application stage is that `AR`:
 A policy that declares an unusable application endpoint, or an
 `enhanced_acknowledgement` member in a v1 file, is a startup error instead.
 
-Deliberately unsupported here: injected delays, disconnects, malformed responses
-and absent responses, and concurrent connections. There is no application-ACK
+Concurrent connections remain unsupported. Controlled failure scenarios use
+the v3 policy described below. There is no application-ACK
 retry: one delivery attempt is made, bounded by `--application-ack-timeout`.
 
 `collect` only ever **sends** an application acknowledgement to that endpoint.
@@ -170,6 +173,85 @@ Listening for an asynchronous application acknowledgement that answers a message
 readmit itself sent is the sender's side of the same protocol; it belongs to
 [`replay`](replay.md) and its run evidence, not to this receiver, and it is not
 implemented here.
+
+## Controlled receiver failures
+
+Use a `readmit-receiver-policy/v3` policy to simulate failures through `collect`.
+Keep the v2 members and add:
+
+```json
+"faults": {
+  "environment_class": "nonproduction",
+  "approved_test_endpoints": ["127.0.0.1:2575"],
+  "steps": [
+    {"message": 1, "stage": "application", "action": "delay", "delay_ms": 500},
+    {"message": 2, "stage": "application", "action": "reject", "delay_ms": 0},
+    {"message": 3, "stage": "accept", "action": "disconnect", "delay_ms": 0},
+    {"message": 4, "stage": "application", "action": "malformed-ack", "delay_ms": 0},
+    {"message": 5, "stage": "application", "action": "missing-response", "delay_ms": 1000}
+  ]
+}
+```
+
+Start with the exact approved address:
+
+```sh
+readmit collect --address 127.0.0.1:2575 --policy faults.json \
+  --output fault-run.case --max-messages 5
+```
+
+`environment_class` must be `nonproduction`; `production`, `unclassified`, and
+an absent declaration are refused. Classification is an operator declaration,
+not an independent verification. Approval is separate: list 1–16 exact literal
+IP addresses with nonzero ports in `approved_test_endpoints`. Names, wildcard
+addresses, multicast addresses, scoped IPv6 addresses, and ephemeral port zero
+are refused. A nonloopback bind still requires `--approved-bind`; that flag
+cannot override fault endpoint approval. The command checks approval before
+binding and the receiver checks its actual listener before accepting traffic.
+A separate application ACK endpoint must also appear in this list, and is
+checked again before dialing. Its existing transport approval still applies.
+
+There are 1–64 steps. `message` is the global, one-based ordinal of complete
+inbound frames across this receiver session, including unusable headers and
+reconnecting clients. Ordinals must be distinct, ascending, and at most 4000:
+one action per message, with `stage` equal to `accept` or `application`. A step
+never selects a message by patient value or evaluates code. Messages without a
+step use the ordinary policy. Repeating a session starts the ordinal plan again.
+
+| Action | Behavior |
+| --- | --- |
+| `delay` | Wait `delay_ms`, then send the ordinary selected stage. |
+| `reject` | Select `CR` for an accept stage or `AR` for an application stage; evaluate the sender's ACK condition against that rejection. |
+| `disconnect` | Close the receiving connection before the selected stage, sending no response for it. |
+| `malformed-ack` | Send the fixed MLLP-framed payload `READMIT MALFORMED ACK` followed by CR, deliberately invalid HL7, at the selected stage's destination; then close the receiving connection. |
+| `missing-response` | Hold the receiving connection open for `delay_ms` without sending the selected stage, then close it. |
+
+`delay` and `missing-response` require 1–30,000 milliseconds; other actions
+require zero. Waits are cancellable. Choose a missing-response interval longer
+than the test sender's response timeout when testing that timeout. Disconnect,
+missing response, and malformed ACK at the accept stage prevent the subsequent
+application stage from being sent. A selected rejection changes that stage only;
+the other stage follows its own policy. No action invents an ACK stage the
+sender did not request: for example, an application fault with MSH-16 `NE`, or
+an accept fault in original mode, is recorded as `not-requested` and skipped.
+Malformed or unsupported headers retain the ordinary explicit refusal reasons.
+
+The v3 collection record retains the exact v3 policy. Each selected received
+frame adds a `fault` object with `action`, `stage`, and execution `status`:
+`completed`, `interrupted`, `not-requested`, or `not-reached` (an earlier stage
+failed). The record reader requires it to match that message's declared step.
+Unselected frames omit it. Configured future steps remain in the policy even if
+the session ends before those ordinals. Inbound and transmitted bytes retain the
+normal evidence timestamps. A malformed response is retained byte for byte,
+while its ACK stage records `code: "none"`; it cannot become application success.
+Interrupted or absent ACKs likewise retain `none` and an explicit reason. A
+completed fault is a statement about the simulation, never a passing test or
+proof of application processing. `timeline --show-values` shows the full record.
+
+Only these typed actions are supported. There are no scripts, expressions,
+custom response bytes, per-patient selectors, multiple faults per message,
+throttling, or indefinite waits. The SIU defect fixture in `listen` remains its
+own ordinary fixture policy and does not accept these fault policies.
 
 ## Acknowledgements on the wire
 
@@ -197,7 +279,7 @@ MSH-9, or a header whose acknowledgement does not read back — closes that
 connection rather than guessing a correlation for the next frame. The consumed
 bytes remain evidence.
 
-## Collected record: readmit-collection/v2
+## Collected record: readmit-collection/v2 and /v3
 
 The final case is a `readmit-case/v4` directory whose integrity-covered
 `collection.json` holds the record below. There is no live handoff file, no
@@ -207,8 +289,9 @@ session finalizes.
 `readmit-collection/v1` is frozen and still readable. It could express exactly
 one original-mode application acknowledgement per frame, on the connection that
 delivered it. A v1 record decodes as that and re-encodes byte for byte; no v2
-member is ever added to it and nothing is migrated in place. New sessions seal
-`readmit-collection/v2`.
+member is ever added to it and nothing is migrated in place. Ordinary sessions
+seal `readmit-collection/v2`. Fault sessions seal `readmit-collection/v3`; v2
+keeps its exact member set and cannot carry v3 fault events.
 
 | Member | Meaning |
 | --- | --- |
