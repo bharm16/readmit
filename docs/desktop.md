@@ -132,10 +132,17 @@ See [interface investigation projects](project.md).
 `Shell` is the window's description of itself, and the interface renders it
 rather than keeping a second copy that can drift from the facade. It carries the
 regions, how every status reads, the commands, the appearance choices and the
-privacy status. The bindings repeat each of those as a closed TypeScript type,
-so a region with no content, a command with no action or a status with no
-indicator fails the frontend type check instead of becoming a control that
-quietly does nothing.
+privacy status. The bindings repeat that vocabulary as closed TypeScript types
+and a facade test requires them to, so a region, command, theme, status or match
+kind the facade declares and the bindings do not is a failing test. What the
+frontend type check adds on top of that is narrower than it sounds, and worth
+stating exactly: a region entered as nothing and a command with no action fail
+the build, because the records holding them are keyed by the declared
+identifiers and hold an element and a function. A status the facade declares
+without an indicator is not a type error — indicators are looked up at run time
+and every place that draws one falls back to the plain status word — so that is
+checked in the facade, where every operation state, artifact kind and registered
+case status is required to have one.
 
 ### Focus order
 

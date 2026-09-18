@@ -290,11 +290,14 @@ func TestTheInterfaceReachesNoNetworkAndNoBrowserStorage(t *testing.T) {
 	}
 }
 
-// The window's vocabulary is declared once, in Go. The bindings repeat every
-// region, command and theme as a closed type, which is what makes the interface
-// fail to compile when it stops handling one of them: a region with no content,
-// a command with no action, or a theme it cannot apply is a type error rather
-// than a control that quietly does nothing.
+// The window's vocabulary is declared once, in Go, and the bindings repeat it as
+// closed types so the interface can be held to it. This test is what requires
+// them to: a region, command, theme, status or match kind the facade declares
+// and the bindings do not is caught here, not by the frontend build. The build
+// adds only what the two records prove — an element for every region and an
+// action for every command. A status declared without an indicator compiles
+// either way, because the interface falls back to the plain status word, so it
+// is TestEveryStatusIsDistinguishableWithoutColour that requires one.
 func TestFrontendBindingsDeclareTheWindowsVocabulary(t *testing.T) {
 	described := shell(t)
 	bindings := read(t, bindingsFile)
