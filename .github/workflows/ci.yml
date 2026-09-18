@@ -21,14 +21,22 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
+      - name: Resolve the exact Go compiler pin
+        id: toolchain
+        run: |
+          pinned_go=$(python3 tools/toolchain.py)
+          echo "version=$pinned_go" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version-file: go.mod
+          go-version: ${{ steps.toolchain.outputs.version }}
+      - name: Verify the active Go compiler
+        run: python3 tools/toolchain.py --check
       - name: Formatting, vet, and tests
         env:
           CGO_ENABLED: '1'
         run: |
           test -z "$(gofmt -l cmd internal tests)"
+          python3 -m unittest discover -s tools -p 'test_*.py' -v
           go vet ./...
           go test -race ./...
           go test ./internal/hl7 -run '^$' -fuzz=FuzzParse -fuzztime=15s -parallel=2
@@ -44,14 +52,23 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Resolve the exact Go compiler pin
+        id: toolchain
+        run: |
+          pinned_go=$(python3 tools/toolchain.py)
+          echo "version=$pinned_go" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version-file: go.mod
+          go-version: ${{ steps.toolchain.outputs.version }}
+      - name: Verify the active Go compiler
+        run: python3 tools/toolchain.py --check
       - uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
         with:
           distribution: goreleaser
           version: v2.18.2
           args: ${{ startsWith(github.ref, 'refs/tags/v') && 'release --clean --skip=publish' || 'release --clean --skip=publish --snapshot' }}
+      - name: Verify compiler identity in the exact release archives
+        run: python3 tools/smoke.py --artifacts dist --check-build-info
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-candidate

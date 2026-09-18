@@ -124,13 +124,20 @@ go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
 govulncheck ./...
 ```
 
-CI installs the exact `toolchain` version from `go.mod` and uses
-`GOTOOLCHAIN=local`. Release builds use `CGO_ENABLED=0`; race tests use cgo.
+CI resolves the exact `toolchain` version from `go.mod` with
+`python3 tools/toolchain.py`, passes it explicitly to setup-go, and verifies the
+active compiler with `python3 tools/toolchain.py --check`. `GOTOOLCHAIN=local`
+prevents automatic compiler switching. Release builds use `CGO_ENABLED=0`; race tests use cgo.
 GoReleaser v2.18.2 creates the five archives and SHA-256 checksums. On a `v*` tag,
 publication waits for quality checks and native tests of those same archives,
 including exact archive and executable version matches against the tag;
 the release is then downloaded and exercised on a fresh Linux runner with an
 empty PATH. The runtime is never rebuilt between testing and publishing.
+Before uploading the archives, `python3 tools/smoke.py --artifacts dist
+--check-build-info` reads each packaged executable's build metadata with Go and
+requires its compiler version to match the pin. Native smoke tests still run the
+executable with an empty PATH. The release-tool regressions run with
+`python3 -m unittest discover -s tools -p 'test_*.py' -v`.
 
 Fixtures and their independently authored intent are described in
 [testdata/README.md](testdata/README.md). Review standards and design sources:

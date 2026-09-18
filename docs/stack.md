@@ -84,13 +84,17 @@ Pin the current patch release and bump through reviewed pull requests, never dur
 
 | Component | Pinned at 2026-09-17 |
 | --- | --- |
-| Go toolchain | go1.27.1 (`toolchain` directive in go.mod, `GOTOOLCHAIN=local` in CI, setup-go reads go.mod) |
+| Go toolchain | go1.27.1 (`tools/toolchain.py` resolves the `toolchain` directive for setup-go; `GOTOOLCHAIN=local` in CI) |
 | Cobra | v1.10.2 |
 | govulncheck | v1.8.0 |
 | GoReleaser OSS | v2.18.2 |
 | actions/attest | v4, by commit SHA |
 
-Commit `go.mod` and `go.sum`. The `go` directive is not an exact compiler lock on its own; the `toolchain` directive together with `GOTOOLCHAIN=local` is.
+Commit `go.mod` and `go.sum`. Neither directive alone locks the compiler.
+CI passes the resolved `toolchain` pin explicitly to setup-go, checks the active
+compiler, and reads the compiler version from every packaged executable before
+upload. `GOTOOLCHAIN=local` prevents automatic switching; it does not enforce the
+pin by itself. Native smoke tests run without Go or other tools on PATH.
 
 ## Deliberately absent
 
