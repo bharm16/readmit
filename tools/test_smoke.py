@@ -27,6 +27,7 @@ DISTRIBUTION_FILES = (
     "docs/test-spec.md",
     "docs/test-result.md",
     "docs/diff.md",
+    "docs/report.md",
     "testdata/fixtures/diff-before.mllp",
     "testdata/fixtures/diff-after.mllp",
     "testdata/fixtures/diff-expected.json",

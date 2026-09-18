@@ -1,6 +1,7 @@
 package receiver
 
 import (
+	"bytes"
 	_ "embed"
 	"encoding/json/v2"
 	"errors"
@@ -12,6 +13,10 @@ import (
 
 //go:embed profiles/readmit-siu-v1.json
 var fixtureProfileJSON []byte
+
+// ProfileSnapshot returns the actual embedded fixture definition for retained
+// evidence. Callers cannot mutate the receiver's profile bytes.
+func ProfileSnapshot() []byte { return bytes.Clone(fixtureProfileJSON) }
 
 type action string
 
