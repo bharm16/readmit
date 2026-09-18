@@ -19,6 +19,10 @@ import (
 // not returned errors. Errors indicate invalid input or failure to store evidence.
 // There is one dial operation, one outstanding message, and no reconnect/retry.
 func Execute(ctx context.Context, plan *Plan, output string) (*Run, error) {
+	return execute(ctx, plan, output, connect)
+}
+
+func execute(ctx context.Context, plan *Plan, output string, dial func(context.Context, *Plan) (net.Conn, *TransportError)) (*Run, error) {
 	if plan == nil || len(plan.messages) == 0 {
 		return nil, errors.New("replay requires a prepared plan")
 	}
@@ -52,7 +56,7 @@ func Execute(ctx context.Context, plan *Plan, output string) (*Run, error) {
 				setFailure(event, phase, context.Canceled, ctx)
 			} else {
 				if connection == nil {
-					connection, event.TransportError = connect(ctx, plan)
+					connection, event.TransportError = dial(ctx, plan)
 					if event.TransportError != nil {
 						event.Outcome = outcomeFor(event.TransportError.Class)
 					} else {

@@ -7,6 +7,7 @@ with the code under test by accident proves nothing.
 
 import random
 import socket
+import time
 import unittest
 
 import independent
@@ -202,6 +203,16 @@ class DisplayEncoding(unittest.TestCase):
 
 
 class Endpoints(unittest.TestCase):
+    def test_stopping_interrupts_a_delayed_response(self):
+        with independent.IndependentEndpoint(behavior="delay", delay=2.0) as endpoint:
+            with socket.create_connection(("127.0.0.1", endpoint.port), timeout=3) as client:
+                client.sendall(independent.frame(BOOKING))
+                endpoint.wait_for_frames(1)
+                started = time.monotonic()
+                endpoint.stop()
+                self.assertLess(time.monotonic() - started, 1.0)
+                self.assertEqual(client.recv(1), b"")
+
     def test_an_accepting_endpoint_acknowledges_the_exact_control_identifier(self):
         with independent.IndependentEndpoint() as endpoint:
             with independent.IndependentClient(endpoint.port) as client:

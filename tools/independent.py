@@ -466,8 +466,8 @@ class IndependentEndpoint:
             return False
         if self.behavior == "silent":
             return True
-        if self.delay:
-            time.sleep(self.delay)
+        if self.delay and self._stopping.wait(self.delay):
+            return False
         request = Message.parse(wire)
         if self.behavior == "invalid-framing":
             connection.sendall(START_BLOCK + b"MSH|^~\\&|X\rMSA|AA|X\r" + b"\x1c\n")

@@ -21,7 +21,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
-	"strings"
 	"testing"
 	"time"
 
@@ -251,24 +250,52 @@ func TestConnectionRefusedIsNotSentAndRunStillFinalizes(t *testing.T) {
 	}
 }
 
+// net.Pipe makes the accepted prefix independent of kernel send-buffer sizes.
+// Map its closed-pipe error to the closed-connection error returned by net.Conn.
+type disconnectedPipe struct{ net.Conn }
+
+func (c disconnectedPipe) Write(data []byte) (int, error) {
+	n, err := c.Conn.Write(data)
+	if err != nil {
+		return n, net.ErrClosed
+	}
+	return n, nil
+}
+
 func TestMidMessageDisconnectRetainsOnlySyscallAcceptedPrefix(t *testing.T) {
-	message := append(request("LARGE"), []byte("NTE|1||"+strings.Repeat("X", 8<<20)+"\r")...)
-	address := peer(t, func(c net.Conn) {
-		var first [32]byte
-		if _, err := io.ReadFull(c, first[:]); err != nil {
+	message := request("PARTIAL")
+	plan, err := replay.Prepare(caseAt(t, message, request("NEXT")), target("127.0.0.1:2575"), replay.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, server := net.Pipe()
+	t.Cleanup(func() { client.Close(); server.Close() })
+	var received [32]byte
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer server.Close()
+		if _, err := io.ReadFull(server, received[:]); err != nil {
 			t.Error(err)
 		}
-		if tcp, ok := c.(*net.TCPConn); ok {
-			_ = tcp.SetLinger(0)
-		}
-		_ = c.Close()
-	})
-	config := target(address)
-	config.MessageTimeout = "2s"
-	r, _ := execute(t, caseAt(t, message), config, replay.Options{})
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	path := filepath.Join(t.TempDir(), "run")
+	if _, err := replay.ExecuteWithConnectionForTest(ctx, plan, path, disconnectedPipe{client}); err != nil {
+		t.Fatal(err)
+	}
+	<-done
+	r, err := replay.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 	e := r.Events[0]
-	if e.Outcome != replay.Disconnect || e.Delivery != "uncertain" || e.Sent.Size <= 0 || e.Sent.Size >= e.Intended.Size || !bytes.HasPrefix(raw(t, r, e.Intended), raw(t, r, e.Sent)) {
+	if e.Outcome != replay.Disconnect || e.Delivery != "uncertain" || e.Sent.Size != 32 || !bytes.Equal(raw(t, r, e.Sent), received[:]) || !bytes.Equal(raw(t, r, e.Intended), mllp.Frame(message)) {
 		t.Fatalf("missing partial sent evidence: %+v", e)
+	}
+	if r.Events[1].Outcome != replay.NotAttempted || r.Events[1].Sent.Size != 0 {
+		t.Fatal("replay continued after uncertain delivery")
 	}
 }
 

@@ -76,6 +76,9 @@ GitHub Actions, with the declared release matrix mapped to native runners:
 | windows/amd64 | `windows-2025` |
 
 - Third-party actions are pinned by commit SHA.
+- Go tests, tooling/independent verification, vulnerability scanning, and three fuzz shards run concurrently. Fuzz targets are discovered from Go's test inventory, including targets added by other worktrees. The stable `quality` check requires every lane to pass.
+- Each Go job owns a compiler/platform/dependency-scoped cache that advances with the commit. Desktop cache identity includes both module checksum files. Superseded PR runs are cancelled; main and release-tag runs are independent.
+- `make test` keeps the small observation boundary under race detection and runs the exact production-size boundary separately without instrumentation. See [validation](agents/testing.md) for the local loop.
 - PR checks: tests, vet, govulncheck, independent endpoint/corpus and mutation checks, and native executable smoke tests. The desktop shell is built and checked in a separate workflow, because it needs cgo and a platform webview that the release jobs deliberately do not.
 - Release jobs test the exact artifacts being published, not rebuilt equivalents.
 - Release credentials and signing never run in untrusted pull-request workflows.

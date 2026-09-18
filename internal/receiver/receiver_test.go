@@ -32,9 +32,14 @@ type running struct {
 
 func start(t *testing.T, mode observation.Mode, count, maxFrame int, idle time.Duration) *running {
 	t.Helper()
+	return startReceiver(t, mode, count, maxFrame, idle, receiver.New)
+}
+
+func startReceiver(t *testing.T, mode observation.Mode, count, maxFrame int, idle time.Duration, newReceiver func(receiver.Config) (*receiver.Receiver, error)) *running {
+	t.Helper()
 	dir := t.TempDir()
 	config := receiver.Config{Mode: mode, OutputPath: filepath.Join(dir, "case"), ObservationPath: filepath.Join(dir, "observation.json"), MaxMessages: count, MaxFrameBytes: maxFrame, IdleTimeout: idle}
-	r, err := receiver.New(config)
+	r, err := newReceiver(config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -390,13 +395,28 @@ func TestPartialACKAndUnprocessedReadAheadRemainHonestEvidence(t *testing.T) {
 }
 
 func TestObservationByteLimitPreservesPriorLedgerAndFinalCase(t *testing.T) {
-	h := start(t, observation.Fixed, 0, 1<<20, time.Second)
+	t.Run("small-limit", func(t *testing.T) {
+		observationByteBoundary(t, 32, func(config receiver.Config) (*receiver.Receiver, error) {
+			return receiver.NewWithObservationLimitForTest(config, 8<<10)
+		})
+	})
+	t.Run("production-limit", func(t *testing.T) {
+		if testing.Short() {
+			t.Skip("the production-size boundary runs separately without race instrumentation")
+		}
+		observationByteBoundary(t, 1024, receiver.New)
+	})
+}
+
+func observationByteBoundary(t *testing.T, componentBytes int, newReceiver func(receiver.Config) (*receiver.Receiver, error)) {
+	t.Helper()
+	h := startReceiver(t, observation.Fixed, 0, 1<<20, time.Second, newReceiver)
 	conn := h.connect(t)
 	reader, _ := mllp.NewReader(conn, 1<<20)
-	// These accepted 1024-byte identifier components expand in JSON. The
-	// independently authored wire fixture reaches the observation limit well
-	// before any message-count, frame, source, or total-evidence limit.
-	component := `\X` + strings.Repeat("00", 1024) + `\`
+	// The wire identifiers expand in JSON and reach the observation boundary
+	// before the message-count, frame, source, or total-evidence limits. Both
+	// budgets exercise the same committed-prefix and refused-ACK assertions.
+	component := `\X` + strings.Repeat("00", componentBytes) + `\`
 	ei := strings.Join([]string{component, component, component, component}, "^")
 	cx := component + "^^^" + strings.Join([]string{component, component, component}, "&")
 	accepted := 0
