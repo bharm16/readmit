@@ -231,10 +231,9 @@ export const GRID_WINDOW = 200;
  *
  * GRID_VIEWPORT_ROWS is how tall the scrolling viewport is, counted in rows and
  * including the caption and the column headers above them, so it shows fewer
- * than that many occurrences at once. GRID_OVERSCAN is how many rows are drawn
- * on either side of what is visible, so that scrolling does not reach the edge
- * of what has been drawn — and it is comfortably larger than the couple of rows
- * the caption and headers take, so what is visible stays drawn either way.
+ * than that many occurrences at once. GRID_OVERSCAN is how many rows are drawn on
+ * either side of what is visible, so that a scroll does not reach the edge of
+ * what has been drawn before the next render replaces it.
  *
  * Together they bound the rows in the document: a window of any size draws at
  * most GRID_VIEWPORT_ROWS + 2 * GRID_OVERSCAN of them, and a window no larger
