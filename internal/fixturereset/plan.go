@@ -30,6 +30,8 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"path/filepath"
+	"slices"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -195,7 +197,7 @@ func validateAction(action Action) error {
 	}
 	required, ok := reviewed[action.Operator]
 	if !ok {
-		return errors.New("a reset action names an operator this release did not review; the reviewed operators are operator_confirms, observation_empty and endpoint_quiet")
+		return errors.New("a reset action names an operator this release did not review; the reviewed operators are " + strings.Join(reviewedOperators(), ", "))
 	}
 	if action.Authority != required {
 		return errors.New("a reset action must declare the one authority its reviewed operator requires: " + string(required))
@@ -264,6 +266,31 @@ func environmentName(name string) error {
 		}
 	}
 	return nil
+}
+
+// reviewedOperators names what a document may ask for, read from the review
+// itself rather than restated beside it, so the refusal a reader gives can
+// never list a different set from the one the reader applies.
+func reviewedOperators() []string {
+	named := make([]string, 0, len(reviewed))
+	for operator := range reviewed {
+		named = append(named, string(operator))
+	}
+	slices.Sort(named)
+	return named
+}
+
+// Instructions is the prose one action carries for the person who performs it,
+// or nothing when this plan declares no such action. The pairing lives with the
+// plan because the plan is what holds the prose; a caller showing a person what
+// is still theirs to do reads it here rather than walking the actions itself.
+func (p Plan) Instructions(id string) string {
+	for _, action := range p.Actions {
+		if action.ID == id {
+			return action.Instructions
+		}
+	}
+	return ""
 }
 
 // RequiresConnection reports whether this plan holds an action that would open

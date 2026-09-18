@@ -229,6 +229,14 @@ of the two. Nothing is implicit and nothing is ambient.
 | `observation_empty` | `read_declared_file` | Reads exactly the one receiver observation file the action declares, inside the plan's own directory, and confirms an empty ledger with nothing processed. Writes nothing. |
 | `endpoint_quiet` | `connect_approved_target` | Opens one connection to the selected target and confirms it is reachable and sends nothing unprompted. **It sends no HL7 payload.** |
 
+`endpoint_quiet` reports what it established and no more. A refused connection
+and bytes arriving unprompted are findings about the fixture, so they `fail` the
+step. Every other outcome that is not `reachable` leaves the step `unconfirmed`:
+a timeout is not a negative result about the fixture, it is readmit not having
+established anything, and a certificate that would not verify says nothing about
+a ledger either way. The transport outcome is recorded beside the verdict, in
+the same vocabulary `check` reports.
+
 `--confirm` is repeatable and names only an `operator_confirms` action.
 Confirming a machine action, or an id no plan declares, is refused: a person
 approving a step they performed is the operator-assisted half of a reset, and it
@@ -260,17 +268,21 @@ in the outcome. Select the policy with `--policy FILE`, exactly as `check` does.
 
 ### A failed reset is an execution error
 
-`reset` exits `0` only when every action is `confirmed`. Every other outcome
-exits `2`. **There is no exit `1`:** a fixture that did not reset is an
-execution error, never an assertion failure, because nothing about it is
-evidence that an expectation was wrong. The states are the ones
-[durable local runs](durable-runs.md) already use.
+`reset` exits `0` only when every action is `confirmed`. Every other outcome, and
+every refusal the command reaches — an unreadable plan or policy, a destination
+it may not write the outcome to, a failed write — exits `2`. **No reset outcome
+exits `1`:** a fixture that did not reset is an execution error, never an
+assertion failure, because nothing about it is evidence that an expectation was
+wrong. An invalid command line, such as an unknown flag or a stray argument,
+exits `1` before the command runs, as it does for every command other than
+`test`. The states are the ones [durable local runs](durable-runs.md) already
+use.
 
 | Outcome | Execution state | Meaning |
 | --- | --- | --- |
 | `confirmed` | `passed` | Every action established its step. |
 | `unconfirmed` | `execution_error` | An action ran and could not confirm its step. **Not knowing is not a pass.** |
-| `failed` | `execution_error` | An action established that its step did not happen. |
+| `failed` | `execution_error` | An action established that its step did not happen: a ledger that still holds records, an endpoint that refused the connection or spoke unprompted. |
 | `refused` | `execution_error` | readmit would not run the action: the environment, the plan or the destination refused it. |
 | `cancelled` | `cancelled` | The command was interrupted. |
 | `not_attempted` | — | An action an earlier one stopped. Recorded as what it is, never read as a pass. |
@@ -280,7 +292,7 @@ A reset stops at the first action it could not confirm and records the rest as
 nothing else: it is not evidence that an application processed, stored or forgot
 anything.
 
-### Contracts
+### Reset contracts
 
 `readmit-reset-plan/v1` is the document the operator selects, at most 64 KiB,
 with 1 to 32 actions. Unknown and duplicate members are rejected.
@@ -389,7 +401,7 @@ is not in this release.
 See [ADR-0006](adr/0006-credentials-are-referenced-never-stored.md) and
 [credential references](secret.md).
 
-## Target contract
+## Contract
 
 `readmit-target/v3` is the configuration `target set` writes. It carries
 everything `readmit-target/v2` carries and adds `name`, `classification`,

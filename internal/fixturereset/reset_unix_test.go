@@ -25,7 +25,7 @@ func TestAReadAuthorityActionCannotFollowALinkOutOfThePlanDirectory(t *testing.T
 		t.Skipf("this filesystem does not support symbolic links: %v", err)
 	}
 	document := planWith(`{"id":"empty-ledger","operator":"observation_empty","authority":"read_declared_file","instructions":"x","observation":"observation.json"}`)
-	result := Run(t.Context(), Request{
+	result, _ := Run(t.Context(), Request{
 		Target: target(closedEndpoint(t)), PlanBytes: []byte(document), PlanDirectory: directory,
 	}, noResolution)
 	if result.State != durablerun.ExecutionError || result.Outcome != Unconfirmed || result.Reason != ObservationUnreadable {

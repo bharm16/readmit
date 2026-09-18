@@ -24,9 +24,16 @@ const dirtySnapshot = `{"schema":"readmit-observation/v1","profile":"readmit-siu
 
 // quiet accepts a connection and holds it without sending anything, which is
 // what a receiver waiting to be sent to does. Nothing here leaves loopback.
-func quiet(connection net.Conn) { io := make([]byte, 1); connection.Read(io) }
+func quiet(connection net.Conn) { connection.Read(make([]byte, 1)) }
 
-func endpoint(t *testing.T) string {
+// talkative sends a byte nobody asked for, so the fixture is up but not quiet.
+func talkative(connection net.Conn) { connection.Write([]byte{'\n'}) }
+
+// abrupt closes the connection the instant it is accepted, so nothing about the
+// fixture is established either way.
+func abrupt(net.Conn) {}
+
+func endpoint(t *testing.T, serve func(net.Conn)) string {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -42,7 +49,7 @@ func endpoint(t *testing.T) string {
 			}
 			go func() {
 				defer connection.Close()
-				quiet(connection)
+				serve(connection)
 			}()
 		}
 	}()
@@ -92,12 +99,12 @@ func noResolution(context.Context, string) ([]netip.Addr, error) {
 }
 
 func TestRunConfirmsAReviewedResetAgainstANonproductionEnvironment(t *testing.T) {
-	address := endpoint(t)
+	address := endpoint(t, quiet)
 	document := planWith(confirmAction,
 		`{"id":"empty-ledger","operator":"observation_empty","authority":"read_declared_file","instructions":"The fresh listener exports an empty ledger.","observation":"observation.json"}`,
 		`{"id":"endpoint-quiet","operator":"endpoint_quiet","authority":"connect_approved_target","instructions":"The fixture accepts connections again."}`)
 	directory := planDirectory(t, map[string]string{"observation.json": emptySnapshot})
-	result := Run(t.Context(), Request{
+	result, _ := Run(t.Context(), Request{
 		Target: target(address), PlanBytes: []byte(document), PlanDirectory: directory,
 		Confirmed: []string{"stop-listener"},
 	}, noResolution)
@@ -143,7 +150,7 @@ func TestRunRefusesEveryEnvironmentNobodyRecordedAsNonproduction(t *testing.T) {
 		configuration := target(closedEndpoint(t))
 		configuration.Classification = environment.classification
 		directory := planDirectory(t, map[string]string{"observation.json": emptySnapshot})
-		result := Run(t.Context(), Request{
+		result, _ := Run(t.Context(), Request{
 			Target: configuration, PlanBytes: []byte(planWith(confirmAction)), PlanDirectory: directory,
 			Confirmed: []string{"stop-listener"},
 		}, noResolution)
@@ -162,7 +169,7 @@ func TestRunRefusesEveryEnvironmentNobodyRecordedAsNonproduction(t *testing.T) {
 func TestRunRefusesAPlanItCannotRunAsReviewed(t *testing.T) {
 	unreviewed := planWith(`{"id":"wipe","operator":"run_shell","authority":"none","instructions":"rm -rf /var/lib/fixture"}`)
 	directory := planDirectory(t, nil)
-	result := Run(t.Context(), Request{
+	result, _ := Run(t.Context(), Request{
 		Target: target(closedEndpoint(t)), PlanBytes: []byte(unreviewed), PlanDirectory: directory,
 	}, noResolution)
 	if result.State != durablerun.ExecutionError || result.Outcome != Refused || result.Reason != PlanRefused {
@@ -175,7 +182,7 @@ func TestRunRefusesAPlanItCannotRunAsReviewed(t *testing.T) {
 
 func TestRunRefusesAPlanWrittenForAnotherEnvironment(t *testing.T) {
 	other := `{"schema":"readmit-reset-plan/v1","environment":"stage-siu","actions":[` + confirmAction + `]}`
-	result := Run(t.Context(), Request{
+	result, _ := Run(t.Context(), Request{
 		Target: target(closedEndpoint(t)), PlanBytes: []byte(other), PlanDirectory: planDirectory(t, nil),
 		Confirmed: []string{"stop-listener"},
 	}, noResolution)
@@ -195,7 +202,7 @@ func TestRunRefusesAnApprovalThatWouldAssertAMachineResult(t *testing.T) {
 		"a machine action": {"stop-listener", "empty-ledger"},
 		"an unknown id":    {"stop-listener", "restart-database"},
 	} {
-		result := Run(t.Context(), Request{
+		result, _ := Run(t.Context(), Request{
 			Target: target(closedEndpoint(t)), PlanBytes: []byte(document), PlanDirectory: directory,
 			Confirmed: confirmed,
 		}, noResolution)
@@ -226,7 +233,7 @@ func TestRunRefusesADestinationTheSendDecisionDenies(t *testing.T) {
 		}, sendpolicy.AmbiguousDestination},
 	} {
 		configuration := target(selected.address)
-		result := Run(t.Context(), Request{
+		result, _ := Run(t.Context(), Request{
 			Target: configuration, PlanBytes: []byte(planWith(quietAction)), PlanDirectory: planDirectory(t, nil),
 			Policy: selected.policy,
 		}, selected.resolve)
@@ -265,7 +272,7 @@ func TestRunReportsAFixtureThatDidNotReset(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		result := Run(t.Context(), Request{
+		result, _ := Run(t.Context(), Request{
 			Target: target(closedEndpoint(t)), PlanBytes: []byte(planWith(ledger)), PlanDirectory: directory,
 		}, noResolution)
 		if result.State != durablerun.ExecutionError || result.Outcome != expected.outcome || result.Reason != expected.reason {
@@ -274,16 +281,36 @@ func TestRunReportsAFixtureThatDidNotReset(t *testing.T) {
 	}
 }
 
-func TestRunReportsAnEndpointItCouldNotConfirmIsQuiet(t *testing.T) {
+// TestRunSeparatesAnEndpointThatFailedFromOneItLearnedNothingAbout keeps the
+// retained outcome honest about what readmit established. A refused connection
+// and bytes arriving unprompted are findings; an endpoint that hung up before
+// anything was established is not. Both are execution errors, and neither is a
+// pass, but only one of them says the fixture is wrong.
+func TestRunSeparatesAnEndpointThatFailedFromOneItLearnedNothingAbout(t *testing.T) {
 	quietAction := `{"id":"endpoint-quiet","operator":"endpoint_quiet","authority":"connect_approved_target","instructions":"x"}`
-	result := Run(t.Context(), Request{
-		Target: target(closedEndpoint(t)), PlanBytes: []byte(planWith(quietAction)), PlanDirectory: planDirectory(t, nil),
-	}, noResolution)
-	if result.State != durablerun.ExecutionError || result.Outcome != Unconfirmed || result.Reason != EndpointNotQuiet {
-		t.Fatalf("an endpoint that was not reached leaves the reset unconfirmed: %+v", result)
-	}
-	if result.Actions[0].Diagnosis != environment.ConnectionRefused {
-		t.Fatalf("the outcome must name the transport evidence behind it, got %q", result.Actions[0].Diagnosis)
+	for name, expected := range map[string]struct {
+		address   func(*testing.T) string
+		outcome   Outcome
+		reason    Reason
+		diagnosis environment.Outcome
+	}{
+		"an endpoint that refused the connection": {closedEndpoint, Failed, EndpointNotQuiet, environment.ConnectionRefused},
+		"an endpoint that spoke unprompted": {func(t *testing.T) string {
+			return endpoint(t, talkative)
+		}, Failed, EndpointNotQuiet, environment.UnsolicitedBytes},
+		"an endpoint that hung up": {func(t *testing.T) string {
+			return endpoint(t, abrupt)
+		}, Unconfirmed, EndpointUnconfirmed, environment.Disconnected},
+	} {
+		result, _ := Run(t.Context(), Request{
+			Target: target(expected.address(t)), PlanBytes: []byte(planWith(quietAction)), PlanDirectory: planDirectory(t, nil),
+		}, noResolution)
+		if result.State != durablerun.ExecutionError || result.Outcome != expected.outcome || result.Reason != expected.reason {
+			t.Errorf("%s: expected %s (%s) as an execution error, got %+v", name, expected.outcome, expected.reason, result)
+		}
+		if result.Actions[0].Diagnosis != expected.diagnosis {
+			t.Errorf("%s: expected the transport evidence %q, got %q", name, expected.diagnosis, result.Actions[0].Diagnosis)
+		}
 	}
 }
 
@@ -291,7 +318,7 @@ func TestRunRefusesAnEndpointConfigurationItCannotUse(t *testing.T) {
 	quietAction := `{"id":"endpoint-quiet","operator":"endpoint_quiet","authority":"connect_approved_target","instructions":"x"}`
 	configuration := target("127.0.0.1:2575")
 	configuration.MessageTimeout = "not-a-duration"
-	result := Run(t.Context(), Request{
+	result, _ := Run(t.Context(), Request{
 		Target: configuration, PlanBytes: []byte(planWith(quietAction)), PlanDirectory: planDirectory(t, nil),
 	}, noResolution)
 	if result.State != durablerun.ExecutionError || result.Outcome != Refused || result.Reason != EndpointUnusable {
@@ -305,7 +332,7 @@ func TestRunStopsAtTheFirstStepItCouldNotConfirm(t *testing.T) {
 	document := planWith(confirmAction,
 		`{"id":"empty-ledger","operator":"observation_empty","authority":"read_declared_file","instructions":"x","observation":"observation.json"}`)
 	directory := planDirectory(t, map[string]string{"observation.json": emptySnapshot})
-	result := Run(t.Context(), Request{
+	result, _ := Run(t.Context(), Request{
 		Target: target(closedEndpoint(t)), PlanBytes: []byte(document), PlanDirectory: directory,
 	}, noResolution)
 	if result.Outcome != Unconfirmed || result.Reason != AwaitingOperator || result.State != durablerun.ExecutionError {
@@ -320,7 +347,7 @@ func TestRunRecordsCancellationAsCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	directory := planDirectory(t, map[string]string{"observation.json": emptySnapshot})
-	result := Run(ctx, Request{
+	result, _ := Run(ctx, Request{
 		Target: target(closedEndpoint(t)), PlanBytes: []byte(planWith(confirmAction)), PlanDirectory: directory,
 		Confirmed: []string{"stop-listener"},
 	}, noResolution)
@@ -351,11 +378,11 @@ func TestNoResetOutcomeIsEverAnAssertionFailure(t *testing.T) {
 // document readable and shareable: closed vocabulary only, and no path, value
 // or address from the environment it was produced against.
 func TestEncodedOutcomeCarriesItsVersionAndNothingPrivate(t *testing.T) {
-	address := endpoint(t)
+	address := endpoint(t, quiet)
 	document := planWith(confirmAction,
 		`{"id":"empty-ledger","operator":"observation_empty","authority":"read_declared_file","instructions":"Look in /srv/fixture/observation.json.","observation":"observation.json"}`)
 	directory := planDirectory(t, map[string]string{"observation.json": emptySnapshot})
-	result := Run(t.Context(), Request{
+	result, _ := Run(t.Context(), Request{
 		Target: target(address), PlanBytes: []byte(document), PlanDirectory: directory,
 		Confirmed: []string{"stop-listener"},
 	}, noResolution)

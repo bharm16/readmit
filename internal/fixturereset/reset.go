@@ -60,6 +60,7 @@ const (
 	ObservationUnreadable Reason = "observation_unreadable"
 	LedgerNotEmpty        Reason = "ledger_not_empty"
 	EndpointNotQuiet      Reason = "endpoint_not_quiet"
+	EndpointUnconfirmed   Reason = "endpoint_not_confirmed"
 	EndpointUnusable      Reason = "endpoint_configuration_unusable"
 
 	PlanRefused                Reason = "plan_refused"
@@ -130,14 +131,17 @@ func (r Result) ExitCode() int {
 
 // Run performs one reset and names what it established. It returns no error:
 // every way a reset can end, including every way it can be refused, is a named
-// Result, so no caller has to decide what an unnamed failure meant.
+// Result, so no caller has to decide what an unnamed failure meant. It also
+// returns the plan it read, so a caller that must show a person what is still
+// theirs to do does not decode the same bytes a second time; that plan is the
+// zero value when the reset was refused before one was read.
 //
 // The recorded class is read before anything else, exactly as the send decision
 // reads it, so a production environment is refused as the production
 // environment it is rather than as whatever else is wrong beside it. An
 // environment nobody recorded as nonproduction is refused too: an absent claim
 // is not a nonproduction one.
-func Run(ctx context.Context, request Request, resolve sendpolicy.Resolver) Result {
+func Run(ctx context.Context, request Request, resolve sendpolicy.Resolver) (Result, Plan) {
 	named := request.Target.Environment()
 	result := Result{
 		Schema: OutcomeSchema, Environment: named.Name, Classification: named.Classification,
@@ -145,33 +149,44 @@ func Run(ctx context.Context, request Request, resolve sendpolicy.Resolver) Resu
 		AttemptedAt: time.Now().UTC(),
 	}
 	if sendpolicy.RefusesEverySend(string(named.Classification)) {
-		return refuse(result, ProductionEnvironment)
+		return refuse(result, ProductionEnvironment), Plan{}
 	}
 	if named.Classification != replay.Nonproduction {
-		return refuse(result, UnrecordedEnvironment)
+		return refuse(result, UnrecordedEnvironment), Plan{}
 	}
 	plan, err := DecodePlan(request.PlanBytes)
 	if err != nil {
-		return refuse(result, PlanRefused)
+		return refuse(result, PlanRefused), Plan{}
 	}
 	if plan.Environment != named.Name {
-		return refuse(result, PlanEnvironmentMismatch)
+		return refuse(result, PlanEnvironmentMismatch), plan
 	}
 	if !approvalsNameOperatorActions(plan, request.Confirmed) {
-		return refuse(result, ApprovalNamesMachineAction)
+		return refuse(result, ApprovalNamesMachineAction), plan
 	}
+	// A name is resolved and a socket opened only when the plan says an action
+	// needs one. A plan that touches no endpoint therefore has no destination
+	// to decide about, and readmit asks nothing of the network for it.
 	if plan.RequiresConnection() {
+		connect, err := time.ParseDuration(request.Target.ConnectTimeout)
+		if err != nil || connect <= 0 {
+			return refuse(result, EndpointUnusable), plan
+		}
 		// The same rule a send is held to, asked here with no send requested,
 		// because a reset sends no HL7 payload. Nothing about the destination
 		// refusing is the only decision that lets a connection be opened; a
 		// reset never reaches the explicit-send rule, so it can never be
 		// allowed by one implementation while a send is denied by another.
-		decision := sendpolicy.Decide(ctx, request.Policy, sendpolicy.Request{
+		// The lookup is bounded by the configuration's own connect timeout,
+		// exactly as the same decision is bounded for a connectivity check.
+		decide, stop := context.WithTimeout(ctx, connect)
+		decision := sendpolicy.Decide(decide, request.Policy, sendpolicy.Request{
 			Address: request.Target.Address, Classification: string(named.Classification),
 		}, resolve)
+		stop()
 		result.Decision = decision.Reason
 		if decision.Reason != sendpolicy.SendNotExplicit {
-			return refuse(result, DestinationRefused)
+			return refuse(result, DestinationRefused), plan
 		}
 	}
 	stopped := false
@@ -193,7 +208,7 @@ func Run(ctx context.Context, request Request, resolve sendpolicy.Resolver) Resu
 	if !stopped {
 		result.Outcome, result.Reason = Confirmed, EveryActionConfirmed
 	}
-	return settle(result)
+	return settle(result), plan
 }
 
 // perform runs one reviewed action under the one authority it requires. The
@@ -260,9 +275,11 @@ func emptyLedger(directory, name string) (Outcome, Reason) {
 // never evidence that an application accepted, processed or stored anything,
 // and a reset claims only the former.
 //
-// An outcome other than reachable leaves the reset unconfirmed. A timeout in
-// particular is not a finding about the fixture's application state; it is
-// readmit not having established anything.
+// A refused connection and bytes arriving unprompted are both things readmit
+// established, so they are failures. Everything else that is not reachable
+// leaves the reset merely unconfirmed: a timeout in particular is not a finding
+// about the fixture at all, it is readmit not having established anything, and
+// a certificate that would not verify says nothing about a ledger either way.
 func quietEndpoint(ctx context.Context, target replay.Target) (Outcome, Reason, environment.Outcome) {
 	report, err := environment.Diagnose(ctx, target)
 	if err != nil {
@@ -273,8 +290,10 @@ func quietEndpoint(ctx context.Context, target replay.Target) (Outcome, Reason, 
 		return Confirmed, EndpointReachable, report.Outcome
 	case environment.Cancelled:
 		return Cancelled, Interrupted, report.Outcome
+	case environment.ConnectionRefused, environment.UnsolicitedBytes:
+		return Failed, EndpointNotQuiet, report.Outcome
 	}
-	return Unconfirmed, EndpointNotQuiet, report.Outcome
+	return Unconfirmed, EndpointUnconfirmed, report.Outcome
 }
 
 // approvalsNameOperatorActions reports whether every id a person confirmed

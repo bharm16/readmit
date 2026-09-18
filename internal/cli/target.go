@@ -204,17 +204,17 @@ func targetReset(ran *bool) *cobra.Command {
 			*ran = true
 			config, err := readTargetFile(file)
 			if err != nil {
-				return resetArgument(err)
+				return resetError(err)
 			}
 			if planPath == "" {
-				return resetArgument(errors.New("target reset requires --plan naming a " + fixturereset.PlanSchema + " document"))
+				return resetError(errors.New("target reset requires --plan naming a " + fixturereset.PlanSchema + " document"))
 			}
 			if outcomePath == "" {
-				return resetArgument(errors.New("target reset requires --outcome naming a new file to retain the reset outcome in"))
+				return resetError(errors.New("target reset requires --outcome naming a new file to retain the reset outcome in"))
 			}
 			planBytes, err := readInputFile(planPath, fixturereset.MaxPlanBytes)
 			if err != nil {
-				return resetArgument(err)
+				return resetError(err)
 			}
 			// A read-authority action names its file inside the plan's own
 			// directory, resolved after the plan's own symlink exactly as a
@@ -223,37 +223,45 @@ func targetReset(ran *bool) *cobra.Command {
 			// directory readmit happened to be started in.
 			resolved, err := artifactpath.Resolve(planPath)
 			if err != nil {
-				return resetArgument(errors.New("cannot resolve the reset plan"))
+				return resetError(errors.New("cannot resolve the reset plan"))
 			}
 			policy, err := readSendPolicy(policyPath)
 			if err != nil {
-				return resetArgument(err)
+				return resetError(err)
 			}
 			// The outcome destination is checked before anything runs. A reset
 			// can open a connection, and a destination readmit was never going
-			// to be able to write should not cost the environment one.
-			if err := fixturereset.ReserveOutcome(outcomePath); err != nil {
-				return resetArgument(err)
+			// to be able to write should not cost the environment one. Checking
+			// the name here never authorizes overwriting it: the write below is
+			// still exclusive, at the exact path the path owner returned.
+			if _, err := artifactpath.Destination(outcomePath); err != nil {
+				return resetError(err)
 			}
 			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer cancel()
-			result := fixturereset.Run(ctx, fixturereset.Request{
+			result, plan := fixturereset.Run(ctx, fixturereset.Request{
 				Target: config, PlanBytes: planBytes, PlanDirectory: filepath.Dir(resolved),
 				Policy: policy, Confirmed: confirmed,
 			}, sendpolicy.SystemResolver)
-			plan, planErr := fixturereset.DecodePlan(planBytes)
-			if err := fixturereset.WriteOutcome(outcomePath, result); err != nil {
-				return resetArgument(err)
+			outcome, err := fixturereset.EncodeOutcome(result)
+			if err != nil {
+				return resetError(err)
+			}
+			// One reset attempt retains one document. The destination must be
+			// new, so rerunning after performing a manual step needs a new file
+			// and the attempt that stopped is still there to read.
+			if err := writeNewFile(outcomePath, outcome,
+				"cannot create the reset outcome file; the destination must be new and writable",
+				"cannot write the reset outcome"); err != nil {
+				return resetError(err)
 			}
 			if err := writeLines(cmd.OutOrStdout(), func(w io.Writer) {
 				writeEnvironmentBanner(w, config.Environment())
 				writeConfigurationLines(w, config)
 				writeResetLines(w, result)
-				if planErr == nil {
-					writeResetInstructionLines(w, plan, result)
-				}
+				writeResetInstructionLines(w, plan, result)
 			}); err != nil {
-				return err
+				return resetError(err)
 			}
 			if result.ExitCode() != 0 {
 				return &ExitError{Code: result.ExitCode(), Err: errors.New("the fixture reset was not confirmed; the retained outcome names why")}
@@ -269,10 +277,10 @@ func targetReset(ran *bool) *cobra.Command {
 	return command
 }
 
-// resetArgument gives a reset's own refusals the execution-error status every
-// other reset outcome uses, so a caller never has to read 1 as an assertion
-// failure that a reset cannot produce.
-func resetArgument(err error) error { return &ExitError{Code: 2, Err: err} }
+// resetError gives every refusal reached inside this command the same
+// execution-error status a reset outcome carries, so nothing a reset does exits
+// 1 and no caller has to read 1 as an assertion failure a reset cannot produce.
+func resetError(err error) error { return &ExitError{Code: 2, Err: err} }
 
 // writeResetLines renders one reset outcome and states its boundary. Every
 // action is named with the operator it ran and the authority it ran under, so
@@ -305,16 +313,12 @@ func writeResetLines(w io.Writer, result fixturereset.Result) {
 // instructions somebody wrote for themselves are of any use.
 func writeResetInstructionLines(w io.Writer, plan fixturereset.Plan, result fixturereset.Result) {
 	for _, action := range result.Actions {
-		if action.Reason != fixturereset.AwaitingOperator {
+		prose := plan.Instructions(action.ID)
+		if action.Reason != fixturereset.AwaitingOperator || prose == "" {
 			continue
 		}
-		for _, declared := range plan.Actions {
-			if declared.ID != action.ID {
-				continue
-			}
-			fmt.Fprintf(w, "Awaiting %s. Perform it, then run target reset again with --confirm %s and a new --outcome file:\n", action.ID, action.ID)
-			fmt.Fprintln(w, declared.Instructions)
-		}
+		fmt.Fprintf(w, "Awaiting %s. Perform it, then run target reset again with --confirm %s and a new --outcome file:\n", action.ID, action.ID)
+		fmt.Fprintln(w, prose)
 	}
 }
 

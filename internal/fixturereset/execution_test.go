@@ -97,7 +97,7 @@ func TestResetProseIsNeverAnAction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prose is prose, whatever it says: %v", err)
 	}
-	result := Run(t.Context(), Request{
+	result, _ := Run(t.Context(), Request{
 		Target: target(closedEndpoint(t)), PlanBytes: []byte(document), PlanDirectory: planDirectory(t, nil),
 	}, noResolution)
 	if result.Outcome != Unconfirmed || result.Reason != AwaitingOperator {
@@ -106,7 +106,7 @@ func TestResetProseIsNeverAnAction(t *testing.T) {
 	if plan.Actions[0].Operator != OperatorConfirms || reviewed[plan.Actions[0].Operator] != NoAuthority {
 		t.Fatalf("an action holding shell prose still runs under no authority at all: %+v", plan.Actions[0])
 	}
-	confirmed := Run(t.Context(), Request{
+	confirmed, _ := Run(t.Context(), Request{
 		Target: target(closedEndpoint(t)), PlanBytes: []byte(document), PlanDirectory: planDirectory(t, nil),
 		Confirmed: []string{"stop-listener"},
 	}, noResolution)

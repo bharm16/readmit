@@ -200,3 +200,85 @@ func TestAnImportedSpecCannotDirectAResetThroughTheCommandLine(t *testing.T) {
 		}
 	}
 }
+
+// TestTargetResetHoldsItsOneConnectionToTheSelectedPolicy exercises --policy
+// through the built executable. The same approved-destination rule a send is
+// held to decides whether a reset may open its one connection, so a policy that
+// does not name this endpoint refuses the reset and one that names it does not.
+// Everything here stays on loopback.
+func TestTargetResetHoldsItsOneConnectionToTheSelectedPolicy(t *testing.T) {
+	for name, selected := range map[string]struct {
+		policy   string
+		decision string
+	}{
+		"a policy that does not name this endpoint": {`{"schema":"readmit-send-policy/v1","approved_destinations":["198.51.100.0/24"]}`, `"decision":"unapproved_destination"`},
+		"a policy that names it":                    {`{"schema":"readmit-send-policy/v1","approved_destinations":["127.0.0.0/8"]}`, `"decision":"send_not_explicit"`},
+	} {
+		directory, targetFile, planFile := resetWorkspace(t, reviewedPlan)
+		policyFile := filepath.Join(directory, "policy.json")
+		if err := os.WriteFile(policyFile, []byte(selected.policy), 0600); err != nil {
+			t.Fatal(err)
+		}
+		outcome := filepath.Join(directory, "reset-outcome.json")
+		stdout, stderr, err := run(t, "target", "reset", "--target", targetFile, "--plan", planFile,
+			"--outcome", outcome, "--policy", policyFile, "--confirm", "stop-listener")
+		if exitCode(t, err) != 0 && exitCode(t, err) != 2 {
+			t.Fatalf("%s: unexpected status %d; stdout=%s stderr=%s", name, exitCode(t, err), stdout, stderr)
+		}
+		retained, readErr := os.ReadFile(outcome)
+		if readErr != nil {
+			t.Fatalf("%s: %v", name, readErr)
+		}
+		if !strings.Contains(string(retained), selected.decision) {
+			t.Errorf("%s: expected %s in the retained outcome:\n%s", name, selected.decision, retained)
+		}
+		if selected.decision == `"decision":"unapproved_destination"` {
+			if exitCode(t, err) != 2 || !strings.Contains(string(retained), `"reason":"destination_refused"`) {
+				t.Errorf("%s: a denied destination must refuse the reset; status=%d outcome=%s", name, exitCode(t, err), retained)
+			}
+			if strings.Contains(stdout, "endpoint-quiet:") {
+				t.Errorf("%s: a denied destination is refused before any connection:\n%s", name, stdout)
+			}
+			continue
+		}
+		if exitCode(t, err) != 0 {
+			t.Errorf("%s: an approved destination must let the reset run; status=%d stdout=%s", name, exitCode(t, err), stdout)
+		}
+	}
+	// A policy document readmit cannot read refuses before anything is opened.
+	directory, targetFile, planFile := resetWorkspace(t, reviewedPlan)
+	unreadable := filepath.Join(directory, "not-a-policy.json")
+	if err := os.WriteFile(unreadable, []byte(`{"schema":"readmit-send-policy/v2","approved_destinations":["127.0.0.0/8"]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := run(t, "target", "reset", "--target", targetFile, "--plan", planFile,
+		"--outcome", filepath.Join(directory, "e.json"), "--policy", unreadable); exitCode(t, err) != 2 {
+		t.Errorf("an unreadable policy must exit 2, got %d", exitCode(t, err))
+	}
+}
+
+// TestTargetResetRefusesAnOutcomeInsideRetainedEvidence routes the one document
+// this command writes through the single path policy: a reset outcome never
+// lands inside a retained case, run or result directory.
+func TestTargetResetRefusesAnOutcomeInsideRetainedEvidence(t *testing.T) {
+	directory, targetFile, planFile := resetWorkspace(t, reviewedPlan)
+	evidence := filepath.Join(directory, "retained")
+	if err := os.Mkdir(evidence, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(evidence, "identity.sha256"), []byte("0\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	outcome := filepath.Join(evidence, "reset-outcome.json")
+	stdout, stderr, err := run(t, "target", "reset", "--target", targetFile, "--plan", planFile,
+		"--outcome", outcome, "--confirm", "stop-listener")
+	if exitCode(t, err) != 2 {
+		t.Fatalf("expected exit 2, got %d; stdout=%s stderr=%s", exitCode(t, err), stdout, stderr)
+	}
+	if _, err := os.Stat(outcome); !os.IsNotExist(err) {
+		t.Error("a reset wrote its outcome inside retained evidence")
+	}
+	if strings.Contains(stdout, "Reset:") {
+		t.Errorf("a reset ran before its outcome destination was refused:\n%s", stdout)
+	}
+}
