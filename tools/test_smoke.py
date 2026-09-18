@@ -20,6 +20,7 @@ DISTRIBUTION_FILES = (
     "dictionary/fields-v251.json",
     "testdata/README.md",
     "docs/case-bundle.md",
+    "docs/project.md",
     "docs/listen.md",
     "docs/collect.md",
     "docs/replay.md",

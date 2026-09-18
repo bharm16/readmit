@@ -101,3 +101,16 @@ func TestWorkspaceListingRefusesToFollowSymbolicLinks(t *testing.T) {
 		t.Fatalf("a symbolic link was opened as a workspace: %+v", result)
 	}
 }
+
+func TestOpenProjectSeparatesPermissionFromFailure(t *testing.T) {
+	root := t.TempDir()
+	writeProject(t, root, "")
+	unreadable(t, root)
+	result := desktop.New(&chooser{}, filepath.Join(t.TempDir(), "recent.json")).OpenProject(root)
+	if result.State != desktop.PermissionDenied || result.Project != nil {
+		t.Fatalf("an unreadable project folder was not reported as permission denied: %+v", result)
+	}
+	if result.Reason == "" {
+		t.Fatal("permission denial gave the shell nothing to show")
+	}
+}

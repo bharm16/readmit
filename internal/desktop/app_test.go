@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/project"
 )
 
 // Independently authored identities for the frozen readmit-synth-v1 reference
@@ -445,5 +446,126 @@ func TestOpenCaseHoldsTheSameOperationSlot(t *testing.T) {
 	// Recovery: the slot is released and verification works immediately after.
 	if opened := app.OpenCase(root, "regression"); opened.State != desktop.Completed || opened.Case == nil {
 		t.Fatalf("the facade stayed busy after its operation finished: %+v", opened)
+	}
+}
+
+// writeProject puts a project document into folder and returns the folder. The
+// document is authored here, not produced by the facade, so these tests fail if
+// the facade ever rewrites what a project recorded.
+func writeProject(t *testing.T, folder string, cases string) string {
+	t.Helper()
+	document := `{"schema":"readmit-project/v1","settings":{"title":"Epic scheduling interface",` +
+		`"default_owner":"integration-team","default_interface_version":"siu-2.5.1-v1"},` +
+		`"interface_versions":["siu-2.5.1-v1"],"cases":[` + cases + "]}\n"
+	if err := os.WriteFile(filepath.Join(folder, "project.json"), []byte(document), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return folder
+}
+
+// registeredRegression is one case entry naming the frozen reference identity.
+const registeredRegression = `{"name":"regression","identity":"7d266d0a09e92d3322d6346cf16c9dd37c768c02a11f8ea6c41870adc44915df",` +
+	`"schema":"readmit-case/v1","provenance":"generated","interface_version":"siu-2.5.1-v1",` +
+	`"title":"Duplicate appointment after reschedule","status":"investigating","owner":"scheduling-team",` +
+	`"tags":["duplicate","scheduling"],"incidents":["INC-4821"]}`
+
+func TestOpenProjectReportsTheRecordedDocument(t *testing.T) {
+	root := writeProject(t, t.TempDir(), registeredRegression)
+	result := newApp(t, &chooser{}).OpenProject(root)
+	if result.State != desktop.Completed || result.Project == nil {
+		t.Fatalf("a project document was not opened: %+v", result)
+	}
+	if result.Project.Settings.Title != "Epic scheduling interface" || len(result.Project.InterfaceVersions) != 1 {
+		t.Fatalf("the project settings did not reach the shell: %+v", result.Project)
+	}
+	entry := result.Project.Cases[0]
+	if entry.Identity != sampleIdentities["regression"] {
+		t.Fatalf("the shell reports identity %s for a case the project recorded as %s", entry.Identity, sampleIdentities["regression"])
+	}
+	if entry.Status != project.StatusInvestigating || entry.Owner != "scheduling-team" || entry.Title == "" {
+		t.Fatalf("the managed metadata did not reach the shell: %+v", entry)
+	}
+	if !reflect.DeepEqual(entry.Tags, []string{"duplicate", "scheduling"}) || !reflect.DeepEqual(entry.Incidents, []string{"INC-4821"}) {
+		t.Fatalf("tags or linked incidents did not reach the shell: %+v", entry)
+	}
+}
+
+func TestOpenProjectSeparatesAnEmptyProjectFromAFailure(t *testing.T) {
+	empty := newApp(t, &chooser{}).OpenProject(writeProject(t, t.TempDir(), ""))
+	if empty.State != desktop.Empty || empty.Project == nil {
+		t.Fatalf("a project with no registered case was not reported as empty: %+v", empty)
+	}
+	for name, folder := range map[string]string{
+		"no document":      t.TempDir(),
+		"absent folder":    filepath.Join(t.TempDir(), "absent"),
+		"unknown contract": "",
+	} {
+		if name == "unknown contract" {
+			folder = t.TempDir()
+			if err := os.WriteFile(filepath.Join(folder, "project.json"), []byte(`{"schema":"readmit-project/v2"}`), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		result := newApp(t, &chooser{}).OpenProject(folder)
+		if result.State != desktop.Failed || result.Project != nil {
+			t.Fatalf("%s was not reported as a failure: %+v", name, result)
+		}
+		if result.Reason == "" {
+			t.Fatalf("%s gave the shell nothing to show", name)
+		}
+	}
+}
+
+// A project document is listed as what it declares, exactly as a case bundle
+// directory is. It is never presented as evidence, and a document this release
+// cannot read is reported rather than hidden.
+func TestWorkspaceListsAProjectDocumentByItsDeclaredContract(t *testing.T) {
+	root := writeProject(t, t.TempDir(), registeredRegression)
+	listed := newApp(t, &chooser{}).OpenWorkspace(root)
+	if listed.State != desktop.Completed || listed.Workspace == nil || len(listed.Workspace.Artifacts) != 1 {
+		t.Fatalf("the project folder was not listed: %+v", listed)
+	}
+	artifact := listed.Workspace.Artifacts[0]
+	if artifact.Kind != desktop.ProjectArtifact || artifact.Schema != project.Schema || artifact.Reason != "" {
+		t.Fatalf("the project document was not listed by its declared contract: %+v", artifact)
+	}
+
+	if err := os.WriteFile(filepath.Join(root, "project.json"), []byte(`{"schema":"readmit-project/v2"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	unsupported := newApp(t, &chooser{}).OpenWorkspace(root).Workspace.Artifacts[0]
+	if unsupported.Kind != desktop.UnsupportedArtifact || unsupported.Reason == "" || unsupported.Schema != "" {
+		t.Fatalf("an unreadable project document was not reported as unsupported: %+v", unsupported)
+	}
+}
+
+func TestOpenProjectHoldsTheSameOperationSlot(t *testing.T) {
+	root := writeProject(t, t.TempDir(), registeredRegression)
+	reentrant := &chooser{folder: root}
+	app := desktop.New(reentrant, filepath.Join(t.TempDir(), "recent.json"))
+	var concurrent desktop.ProjectResult
+	reentrant.before = func() { concurrent = app.OpenProject(root) }
+	if result := app.SelectWorkspace(); result.State != desktop.Completed {
+		t.Fatalf("the first operation did not complete: %+v", result)
+	}
+	if concurrent.State != desktop.Busy || concurrent.Project != nil {
+		t.Fatalf("a project was opened while another operation held the facade: %+v", concurrent)
+	}
+	if opened := app.OpenProject(root); opened.State != desktop.Completed || opened.Project == nil {
+		t.Fatalf("the facade stayed busy after its operation finished: %+v", opened)
+	}
+}
+
+// The shell shows a project's own metadata. No message content reaches it.
+func TestOpenedProjectCarriesNoMessageContent(t *testing.T) {
+	root := writeProject(t, t.TempDir(), registeredRegression)
+	encoded, err := json.Marshal(newApp(t, &chooser{}).OpenProject(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, leaked := range []string{"MSH", "SCH", "PID", "SYNTH-", "READMIT"} {
+		if strings.Contains(string(encoded), leaked) {
+			t.Fatalf("the typed project result exposed message content %q: %s", leaked, encoded)
+		}
 	}
 }

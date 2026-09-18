@@ -218,6 +218,12 @@ copying a bundle leaves that content unchanged. Re-importing a source creates a
 new import time and therefore a different identity. JSON whitespace and record
 order are content, so changing them changes identity even if meaning is equal.
 
+This identity is the only identity a case has. `readmit timeline`, the desktop
+facade, an [interface investigation project](project.md) and a sealed
+[engagement packet](report.md) all name this value for the same evidence; none
+of them derives one of its own. Because it covers relative paths and contents
+only, copying or moving a bundle preserves it.
+
 The reader requires the documented layout, rejects symlinks and unexpected
 files/directories, verifies the identity, strictly decodes the versioned records,
 and reconstructs parsed metadata and correlations from the payloads. Inconsistent

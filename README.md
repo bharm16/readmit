@@ -1,6 +1,6 @@
 # readmit
 
-Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `listen`, `collect`, `replay`, `test`, `diff`, `report`, `redact`, `synth`, and `diagnose` are available. See the workflow guides below.
+Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `project`, `listen`, `collect`, `replay`, `test`, `diff`, `report`, `redact`, `synth`, and `diagnose` are available. See the workflow guides below.
 
 ```sh
 readmit inspect message.hl7
@@ -68,6 +68,21 @@ profiles, transformation history, and rerun instructions with file hashes.
 `report verify PACKET` verifies the retained evidence offline; `report prepare`
 creates a separate runnable workspace so the packet stays unchanged. This mode
 accepts only its built-in synthetic scenario. See [engagement packets](docs/report.md).
+
+`project init --output NEW_DIRECTORY --title TITLE --interface-version ID`
+creates an interface investigation project: a versioned `readmit-project/v1`
+document that keeps the declared interface versions, the registered cases, and
+the title, tags, ownership, status and linked incidents of each one **beside**
+evidence rather than inside it. `project add PROJECT CASE` verifies a case
+bundle of the project directory through the same reader `timeline` uses and
+records what it declared — its identity, contract version and provenance mode —
+so synthetically generated, imported and customer-derived evidence are told
+apart by the bundle itself, never by a name or a flag. `project update` changes
+only the mutable metadata; `project show` re-verifies every registered case and
+reports evidence that no longer matches its recorded identity as `changed`
+rather than re-identifying it. One case has one identity: the command line, the
+desktop shell and an exported packet all name the same value. See
+[interface investigation projects](docs/project.md).
 
 `diff LEFT RIGHT` compares message fields in the terminal, Markdown, or JSON.
 Run-to-source comparisons use recorded occurrence mappings; unrelated collections
@@ -145,7 +160,8 @@ path enters the generated evidence. See [synthetic generation](docs/synth.md).
 
 The desktop shell opens a workspace folder without a terminal: it lists what the
 folder declares it holds, verifies one case at a time through the same reader
-`timeline` uses, writes the frozen synthetic sample workspace, and reopens recent
+`timeline` uses, reads a project document with the case identities the command
+line recorded, writes the frozen synthetic sample workspace, and reopens recent
 folders. It is a separate build with a webview requirement and is not included in
 the release archives. See [the desktop shell](docs/desktop.md).
 

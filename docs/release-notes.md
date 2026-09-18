@@ -46,6 +46,14 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   never recorded as an application result, and an undelivered or timed-out
   stage is retained as unanswered rather than as an application failure.
 
+- `project` creates and manages an interface investigation: a versioned
+  `readmit-project/v1` document holding declared interface versions, registered
+  cases, and the title, tags, ownership, status and linked incidents of each
+  one, kept beside evidence and never inside it. Provenance is read from the
+  verified bundle rather than declared, and the case identity the project
+  records is the same value the command line, the desktop shell and an exported
+  packet name.
+
 - `report` runs the named synthetic regression and seals its reproducer,
   verified failure/pass results, diagnosis, diff, profiles, and rerun procedure
   in one packet. Offline verification and separate rerun workspaces are included.

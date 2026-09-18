@@ -46,6 +46,7 @@ jobs:
           go test ./internal/collection -run '^$' -fuzz=FuzzPolicy -fuzztime=15s -parallel=2
           go test ./internal/collection -run '^$' -fuzz=FuzzCollection -fuzztime=15s -parallel=2
           go test ./internal/desktop -run '^$' -fuzz=FuzzRecent -fuzztime=15s -parallel=2
+          go test ./internal/project -run '^$' -fuzz=FuzzProject -fuzztime=15s -parallel=2
       - name: Independent endpoints, externally authored corpus, and mutation checks
         env:
           CGO_ENABLED: '0'
