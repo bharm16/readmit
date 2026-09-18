@@ -1,6 +1,6 @@
 # readmit
 
-Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `listen`, `replay`, `test`, `synth`, and `diagnose` are available; later workflows are tracked in [GitHub issues](https://github.com/bharm16/readmit/issues).
+Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `listen`, `replay`, `test`, `diff`, `synth`, and `diagnose` are available; later workflows are tracked in [GitHub issues](https://github.com/bharm16/readmit/issues).
 
 ```sh
 readmit inspect message.hl7
@@ -49,6 +49,13 @@ deterministic generated provenance for the future `synth` command. See the
 correlation rules, observation metadata, integrity checks, and limits.
 
 ## Available workflows
+
+`diff LEFT RIGHT` compares message fields in the terminal, Markdown, or JSON.
+Run-to-source comparisons use recorded occurrence mappings; unrelated collections
+require explicit alignment keys. Ambiguities and inserted/missing occurrences stay
+visible. Ignore selectors are scoped and listed in every report. Values are
+hidden unless `--show-values` is requested. See [field-aware comparison](docs/diff.md)
+for boundaries, selectors, alignment, and output options.
 
 `test SPEC --send --output NEW_RESULT_DIRECTORY` evaluates saved assertions over
 actual ACKs or the fixture's appointment ledger. Exit codes distinguish pass

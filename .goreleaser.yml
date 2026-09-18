@@ -36,6 +36,7 @@ archives:
       - docs/test-runner.md
       - docs/test-spec.md
       - docs/test-result.md
+      - docs/diff.md
 
       - docs/diagnose.md
       - docs/selectors.md
