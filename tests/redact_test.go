@@ -188,6 +188,16 @@ func TestRedactExecutableGeneratesOnlyDerivedProofAndNoPlantedValues(t *testing.
 		t.Fatal("packet did not preserve the agreed defect")
 	}
 	for _, mode := range []string{"baseline", "postfix"} {
+		decisions, err := filepath.Glob(filepath.Join(request.LocalState, "derived-proof-*."+mode+".decision.json"))
+		if err != nil || len(decisions) != 1 {
+			t.Fatalf("private decision for %s: %v %v", mode, decisions, err)
+		}
+		if decision := readDecision(t, decisions[0]); !decision.Allowed || !decision.ExplicitSend {
+			t.Fatalf("private proof decision: %+v", decision)
+		}
+		if _, err := os.Stat(filepath.Join(packet, "proof", mode, "result.decision.json")); !os.IsNotExist(err) {
+			t.Fatal("local policy decision entered exported evidence")
+		}
 		artifact, err := testrunner.Open(filepath.Join(packet, "proof", mode, "result"))
 		if err != nil {
 			t.Fatal(err)
