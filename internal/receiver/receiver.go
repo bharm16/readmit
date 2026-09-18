@@ -15,7 +15,6 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
-	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/mllp"
 	"github.com/bharm16/readmit/internal/observation"
 )
@@ -25,6 +24,11 @@ import (
 // case bundle's independent source, byte, and occurrence limits.
 const MaxMessages = 4000
 const frameReserve = 16 << 10
+
+// MaxConnections bounds how many peers one capture serves at once. Each one
+// becomes its own case source, so the ceiling is well inside the case
+// contract's own source limit and every accepted connection can be retained.
+const MaxConnections = 64
 
 type Config struct {
 	Mode            observation.Mode
@@ -106,37 +110,51 @@ func (r *Receiver) Serve(ctx context.Context, listener net.Listener) (*bundle.Bu
 		return nil, errors.New("receiver session has already been served")
 	}
 	r.served = true
-	err := r.sessions(ctx, listener, r.connection)
-	b, writeErr := bundle.WriteRecorded(r.config.OutputPath, r.inputs, r.startedAt, r.snapshot)
+	// The fixture is deliberately one connection at a time. Concurrent capture
+	// is the generic collector's contract, not this bounded SIU fixture's.
+	err := r.sessions(ctx, listener, r.connection, limits{maxFrameBytes: r.config.MaxFrameBytes, maxMessages: r.config.MaxMessages, maxConnections: 1})
+	b, writeErr := bundle.WriteRecorded(r.config.OutputPath, r.sources(), r.startedAt, r.snapshot)
 	if writeErr != nil {
 		return nil, errors.Join(err, writeErr)
 	}
 	return b, err
 }
 
-func (r *Receiver) connection(ctx context.Context, connection net.Conn) (bool, error) {
-	input := bundle.Input{Options: hl7.Options{Format: hl7.MLLP}, Observations: make(map[int]bundle.Observation)}
-	r.chunks = nil
-	reader, _ := mllp.NewReader(deadlineReader{connection, r.config.IdleTimeout}, r.config.MaxFrameBytes)
+func (r *Receiver) connection(ctx context.Context, connection net.Conn, state *stream) (bool, error) {
+	bounds := limits{maxFrameBytes: r.config.MaxFrameBytes, maxMessages: r.config.MaxMessages, maxConnections: 1}
+	reader, _ := mllp.NewReader(deadlineReader{connection, &r.recorder, r.config.IdleTimeout}, r.config.MaxFrameBytes)
 	// A coalesced TCP read may include frames beyond --max-messages. They are
 	// retained as received evidence, but never claimed as processed.
-	defer func() { r.close(&input, reader.Buffered()) }()
+	defer func() { r.close(state, reader.Buffered()) }()
 	for {
-		if err := r.withinLimits(&input, r.config.MaxFrameBytes); err != nil {
+		admitted, err := r.admitFrame(state, bounds)
+		if err != nil {
 			return false, err
 		}
+		if !admitted {
+			// Either this session has read every frame it was asked for, or
+			// the ones still to come are promised to peers already waiting.
+			// Only the first of those finishes the session.
+			return r.complete(ctx, r.config.MaxMessages), nil
+		}
+		if !r.awaiting(state, connection) {
+			r.releaseFrame()
+			return true, nil
+		}
 		raw, readErr := reader.ReadFrame()
+		r.engaged(state)
 		if readErr != nil {
+			r.releaseFrame()
 			raw = append(raw, reader.Buffered()...)
 			if len(raw) > 0 {
-				r.retain(&input, raw, bundle.Inbound)
+				r.retain(state, raw, bundle.Inbound)
 			}
 			// A malformed, oversized, idle, or disconnected peer cannot mutate
 			// the ledger. Its consumed prefix survives in the final bundle.
 			return false, nil
 		}
-		id := r.retain(&input, raw, bundle.Inbound)
-		r.received++
+		id := r.retain(state, raw, bundle.Inbound)
+		ordinal := r.nextFrame()
 		r.snapshot.Consistent = false
 		if err := observation.Write(r.config.ObservationPath, r.snapshot); err != nil {
 			return false, err
@@ -173,13 +191,13 @@ func (r *Receiver) connection(ctx context.Context, connection net.Conn) (bool, e
 			if processErr != nil {
 				code, reason = "AR", processErr.Error()
 			}
-			ack := acknowledgement(request, code, reason, r.received, r.snapshot.SessionID, id)
+			ack := acknowledgement(request, code, reason, ordinal, r.snapshot.SessionID, id)
 			if err := connection.SetWriteDeadline(time.Now().Add(r.config.IdleTimeout)); err != nil {
 				return false, errors.New("cannot set receiver write deadline")
 			}
 			sent, err := writeAll(connection, ack)
 			if sent > 0 {
-				r.retain(&input, ack[:sent], bundle.Outbound)
+				r.retain(state, ack[:sent], bundle.Outbound)
 			}
 			if err != nil {
 				return r.complete(ctx, r.config.MaxMessages), nil

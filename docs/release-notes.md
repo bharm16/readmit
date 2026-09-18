@@ -278,6 +278,31 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   `readmit-test/v1`, `readmit-observation/v1`, `readmit-send-policy/v1` and
   `readmit-send-decision/v1` are unchanged.
 
+- `collect` serves several peers at once (`--max-connections`, up to 64), each
+  becoming its own case source and its own recorded session, with receipts
+  sealed in evidence order. A peer beyond the limit waits for a free slot rather
+  than being accepted and dropped. `--max-sessions` and `--max-capture-bytes`
+  declare a connection budget and a capture quota; reaching either, or
+  `--max-messages`, stops the capture in a controlled way, and nothing is read
+  once the quota cannot hold it. The listen socket accepts TLS and mutual TLS
+  (`--tls-certificate`, `--tls-key-reference`, `--secrets`, `--client-ca`);
+  declaring a client authority requires and verifies a client certificate it
+  issued, the private key stays a credential reference readmit never stores, and
+  one implementation now applies the TLS 1.2 floor, the always-on verification
+  and the explicit-authority rule for every path that negotiates TLS.
+  `--journal` retains the new `readmit-capture-journal/v1` record — every
+  inbound frame's bytes synced before it is answered, and each acknowledgement's
+  intent synced before it is written — and `collect status JOURNAL` recovers an
+  interrupted capture read-only. Recovery separates acknowledgements that were
+  sent, that were attempted and did not complete, and whose outcome was never
+  recorded at all; it never resends, never resumes, and never reports an
+  incomplete capture as a finished one. The capture's own exit status is
+  unchanged by the journal. A
+  `readmit-receiver-policy/v3` fault plan still requires one connection at a
+  time, and the separate application acknowledgement endpoint remains plain
+  transport. `readmit-collection/v1`-`/v3`, `readmit-receiver-policy/v1`-`/v3`,
+  `readmit-case/v4` and `readmit-job/v1` are unchanged.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is

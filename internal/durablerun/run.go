@@ -157,17 +157,17 @@ func Start(ctx context.Context, specPath, output string) (summary Summary, err e
 		return w.summary, err
 	}
 	// Directory entries must reach stable storage too, before any network effect.
-	if err = syncDirectory(root, "intended"); err != nil {
+	if err = SyncDirectory(root, "intended"); err != nil {
 		return w.summary, err
 	}
-	if err = syncDirectory(root, "."); err != nil {
+	if err = SyncDirectory(root, "."); err != nil {
 		return w.summary, err
 	}
 	parent, err := os.OpenRoot(filepath.Dir(output))
 	if err != nil {
 		return w.summary, errors.New("cannot sync durable run parent")
 	}
-	err = syncDirectory(parent, ".")
+	err = SyncDirectory(parent, ".")
 	parent.Close()
 	if err != nil {
 		return w.summary, err
@@ -191,7 +191,7 @@ func Start(ctx context.Context, specPath, output string) (summary Summary, err e
 			if name == "result/run" && artifact.Run == nil {
 				continue
 			}
-			if err := syncDirectory(root, name); err != nil {
+			if err := SyncDirectory(root, name); err != nil {
 				return w.summary, err
 			}
 		}
@@ -228,7 +228,7 @@ func (w *writer) BeforeSend(id string) error {
 	// Persist replay directory entries (and the decision) before a durable intent
 	// can attest that the frozen source/intended files exist.
 	for _, name := range []string{"result/run/payloads", "result/run", "result", "."} {
-		if err := syncDirectory(w.root, name); err != nil {
+		if err := SyncDirectory(w.root, name); err != nil {
 			return err
 		}
 	}
@@ -241,14 +241,14 @@ func (w *writer) Sent(id string, raw []byte) error {
 	if err := write(w.root, name, raw); err != nil {
 		return err
 	}
-	if err := syncDirectory(w.root, "sent"); err != nil {
+	if err := SyncDirectory(w.root, "sent"); err != nil {
 		return err
 	}
 	return w.append(entry{Kind: "sent", Occurrence: id, Sent: &payload{name, len(raw), digest(raw)}})
 }
 func (w *writer) Recorded(event replay.Event) error {
 	for _, name := range []string{"result/run/payloads", "result/run", "result"} {
-		if err := syncDirectory(w.root, name); err != nil {
+		if err := SyncDirectory(w.root, name); err != nil {
 			return err
 		}
 	}

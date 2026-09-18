@@ -7,7 +7,9 @@ import (
 	"os"
 )
 
-func syncDirectory(root *os.Root, name string) error {
+// SyncDirectory flushes one directory's own entries. Every durable artifact
+// this release writes uses it, so the platform rule below is stated once.
+func SyncDirectory(root *os.Root, name string) error {
 	f, err := root.Open(name)
 	if err != nil {
 		return errors.New("cannot open durable evidence directory for sync")

@@ -32,6 +32,193 @@ resolving one would rest the decision on DNS. The refusal happens before
 anything binds, so a refused address never holds a socket. This is the same
 explicit approval a nonloopback target requires in [`replay`](replay.md).
 
+## Serving several peers at once
+
+`--max-connections N` is how many peers the collector serves at the same time,
+between 1 and 64. It defaults to 1, which is what earlier releases did. Each
+connection becomes its own case source and its own recorded session, and every
+frame is answered on the connection that carried it, so serving more peers
+changes how many are served and nothing about what any one of them is told.
+
+A peer beyond the limit is **not accepted** until a slot frees. It waits in the
+operating system's accept queue, which is backpressure the sender can see: its
+bytes stay in its own socket. Nothing is accepted and then dropped, because a
+dropped message is exactly the silent loss this receiver exists to avoid.
+
+Receipts are sealed in evidence order — source by source, in sequence — so a
+record from a concurrent capture reads the way a sequential one does, whatever
+order the peers happened to be answered in.
+
+A `readmit-receiver-policy/v3` fault plan selects messages by their session-wide
+ordinal. Concurrent connections settle that ordinal by arrival, so the plan would
+name a different message on every run. A fault policy with `--max-connections`
+above 1 is therefore a startup error, not a simulation aimed at whichever frame
+arrived first.
+
+## Declared capacity and controlled stops
+
+Three flags declare what one capture will do. Reaching one of them is a
+**controlled stop**: the listener stops accepting, the reads of peers waiting for
+their next frame expire, every connection already answering a frame finishes
+that answer, and the case is sealed.
+
+| Flag | Bound | Zero means |
+| --- | --- | --- |
+| `--max-messages N` | complete inbound frames, across every connection | wait for cancellation |
+| `--max-sessions N` | connections served in total | declare no budget |
+| `--max-capture-bytes N` | bytes retained | declare no quota |
+
+Zero declares nothing, which leaves only the structural limits of the case
+contract: 128 sources, 64 MiB of evidence, 10,000 occurrences, 4000 frames.
+Those are a different thing. A **declared** budget being spent is a capture that
+did what it was asked. A **structural** limit being reached is a session that no
+longer fits its own contract; it seals what it had and exits non-zero with an
+explicit error.
+
+`--max-capture-bytes` must hold at least one `--max-frame-bytes` frame plus the
+16 KiB reserved for an acknowledgement and buffered evidence, or startup is
+refused rather than quietly adjusted.
+
+**Nothing is read once a bound cannot hold it.** A frame counts against
+`--max-messages` when a connection is admitted to read it, not when it lands, so
+several peers reading at once cannot together overshoot the number asked for.
+The frame that is not read stays in the sender's socket instead of being
+consumed by a receiver that would not keep it, and it is never listed as
+received.
+
+Two consequences worth stating. When more peers are connected than the remaining
+message budget allows, the peers without room are closed rather than served,
+while the peers holding that room keep waiting: a message this capture has no
+room for is refused at the socket, never accepted and then dropped. And a
+controlled stop expires a read that was already admitted, so a peer that was
+part way through sending a frame when the capture stopped keeps its consumed
+prefix in the case as ordinary evidence, with no receipt claimed for it.
+
+Cancellation is a different thing and is unchanged: Ctrl-C or SIGTERM interrupts
+a blocked accept, receive or acknowledgement write at once and finalizes the
+bytes read so far. Bytes already sent cannot be retracted, so a write that was
+interrupted part way retains what reached the peer and downgrades that stage.
+`collect` exits on its own terms — zero for a sealed case, non-zero for an
+error — whatever the journal below went on to record.
+
+## TLS and mutual TLS
+
+The listen socket is plain TCP unless a certificate is declared. Four flags
+configure it, and they are checked before anything binds:
+
+```sh
+readmit collect --address 127.0.0.1:2575 --policy downstream.json \
+  --output downstream.case \
+  --tls-certificate collector.pem --tls-key-reference lab-mllp --secrets secrets.json \
+  --client-ca clients.pem
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--tls-certificate` | Existing PEM certificate chain this listener presents |
+| `--tls-key-reference` | Registered credential reference naming that certificate's private key |
+| `--secrets` | Existing `readmit-secrets/v1` store holding the reference |
+| `--client-ca` | Existing PEM authority whose client certificates this listener requires and verifies |
+
+The first three are declared together or not at all.
+**readmit never holds the private key.** It is a
+[credential reference](secret.md) exactly as a client certificate's key is for an
+outbound [target](target.md): the reference is bound to this listener's own
+endpoint address before it is read, so a credential registered for another
+address is refused rather than presented, the declared program is run once, and
+the value exists only inside the running command. No key is written, logged or
+printed, and a diagnostic about one never repeats what the parser said about it.
+
+The rule the handshake applies is the one every readmit path applies, in one
+implementation: **TLS 1.2 is the floor, TLS 1.3 is permitted, verification is
+always on, and an explicitly configured authority replaces the platform roots
+rather than joining them.** There is no insecure mode and no version or cipher
+switch. `--client-ca` turns on mutual TLS and has no weaker meaning: a client
+certificate that authority issued is **required and verified**. Verifying
+against the platform's public roots would accept any certificate a public
+authority ever issued, and verifying only when a client happens to offer one
+would let "no certificate" read as "verified" — neither is a check. A peer whose
+certificate that authority did not issue, and a peer that presents none, are
+both refused at the handshake: they retain no evidence, are never a session, and
+are never acknowledged.
+
+**The separate application acknowledgement endpoint is plain transport.** When a
+policy routes the application stage to another address, that one outbound
+connection does not negotiate TLS, and no policy member declares that it should.
+Recording an unsupported behaviour explicitly is the point: do not read a TLS
+listener as securing the outbound leg as well.
+
+## Interrupted-session recovery
+
+Without `--journal`, an abrupt kill or power loss ends the capture with nothing
+sealed: the case is written when the session finalizes, and in-memory wire
+evidence cannot survive a process that is gone. The startup output says which
+case it is — `Capture journal: unavailable` or `Capture journal: enabled`.
+
+`--journal NEW_DIRECTORY` retains a `readmit-capture-journal/v1` record as the
+capture runs:
+
+```sh
+readmit collect --address 127.0.0.1:0 --policy downstream.json \
+  --output downstream.case --journal downstream.journal --max-connections 4
+readmit collect status downstream.journal --json
+```
+
+- `capture.json`: the declared policy's name, version and digest, the declared
+  limits, and whether the listener required TLS and a client certificate. It
+  holds no path, no endpoint and no policy document.
+- `received/`: the exact bytes of every complete inbound frame, synced **before**
+  that frame is answered, so a message can never be acknowledged by a process
+  that would lose it.
+- `journal.jsonl`: strict JSON records chained to the plan's digest and to the
+  previous record, sequenced and timestamped, appended under one lock so several
+  connections produce one verifiable order. `intent` is synced before an
+  acknowledgement is written and `sent` records the bytes the socket took;
+  `finished` records the terminal summary.
+
+`readmit collect status JOURNAL` reads that directory and nothing else. It opens
+no connection, changes no file, and **never sends, resends or resumes**. It
+reports four counts, and they do not collapse into one another:
+
+| Count | What it means |
+| --- | --- |
+| received | complete inbound frames whose bytes are retained here |
+| acknowledgements sent | stages whose write completed |
+| acknowledgements unsent | stages whose write was attempted and did not complete |
+| acknowledgements uncertain | stages whose intent was synced and whose outcome was never recorded |
+
+An unsent stage is a recorded failure, and some of its bytes may still have
+reached the peer; it is never counted as an acknowledgement. An uncertain stage
+is one whose effect is unknown: bytes already sent cannot be retracted, and
+repeating the send would invent a second acknowledgement of one message. A
+journal with no terminal record means finalization was not recorded; it does not
+establish that the writing process is gone, and it never becomes a finished
+capture. `--json` writes the same summary as one versioned document.
+
+The journal is a separate artifact from the case, and the two destinations must
+differ. A destination naming both is refused at startup, because the case would
+otherwise be sealed over the journal at finalization — after peers had already
+been acknowledged — and take the whole capture with it.
+
+States are [durable runs](durable-runs.md)' own vocabulary — `cancelled`,
+`timed_out`, `execution_error`, `interrupted`, `delivery_uncertain` — plus
+`finalized`, which is a capture that stopped in a controlled way. A capture
+evaluates no assertion, so it never reports `passed` or `assertion_failed`:
+those are verdicts about a test, and a capture makes none. `readmit collect
+status` exits 0 only for `finalized` and 2 for everything else; there is no
+assertion-failure exit code here. The capture command itself does not take its
+status from the journal: a cancelled capture that sealed its case still exits
+zero, and whether the journal finalized is what `status` answers. Changed or
+forged evidence, a broken chain and a torn trailing record are each refused or
+reported as incomplete, never repaired in place.
+
+A capture journal says what was captured and how the capture stopped. It never
+says that what was not captured did not happen. A capture that was cancelled,
+that reached a declared bound, or that was interrupted has observed less than a
+complete one, and deciding whether an observation supports a claim that
+something is absent belongs to [observation windows](observe.md) against a
+declared window — not to this record, and not to whoever reads it.
+
 ## The collector acknowledges receipt, never processing
 
 The collector applies nothing. It reads only the header values an
@@ -164,9 +351,9 @@ sent nothing and whose application stage is that `AR`:
 A policy that declares an unusable application endpoint, or an
 `enhanced_acknowledgement` member in a v1 file, is a startup error instead.
 
-Concurrent connections remain unsupported. Controlled failure scenarios use
-the v3 policy described below. There is no application-ACK
-retry: one delivery attempt is made, bounded by `--application-ack-timeout`.
+Controlled failure scenarios use the v3 policy described below, which requires
+one connection at a time. There is no application-ACK retry: one delivery
+attempt is made, bounded by `--application-ack-timeout`.
 
 `collect` only ever **sends** an application acknowledgement to that endpoint.
 Listening for an asynchronous application acknowledgement that answers a message
@@ -350,9 +537,8 @@ this session read and wrote for that connection's traffic, in the order it
 happened. When a policy routes the application stage elsewhere, that stream is
 therefore not a byte-exact transcript of the receiving socket, and the record's
 per-stage `destination` is the authority on where each acknowledgement actually
-went. Giving an outbound delivery its own case source would change how
-connections map to sources, which is [#72](https://github.com/bharm16/readmit/issues/72)'s
-multi-connection capture work rather than this one's.
+went. Multi-connection capture kept that mapping: a case source is one accepted
+connection, and an outbound delivery is not given a source of its own.
 
 The case's own `correlations.jsonl` is structural and carries no outcome: it
 reports which acknowledgements name which message, so an enhanced exchange
@@ -381,18 +567,29 @@ cancelled session produces a v4 case with zero sources and an empty record
 rather than inventing a message. An abrupt kill or power loss cannot finalize
 the in-memory wire evidence.
 
-One connection is processed at a time. A session supports at most 4000 complete
-inbound frames, 128 nonempty connections, 5000 recorded receipts, and the
-existing case limits (16 MiB per source, 64 MiB evidence, 10,000 occurrences).
+Up to 64 connections are served at once. A session supports at most 4000
+complete inbound frames, 128 nonempty connections, 5000 recorded receipts, and
+the existing case limits (16 MiB per source, 64 MiB evidence, 10,000
+occurrences).
 The collection record has an independent 8 MiB limit, preflighted before
 anything is acknowledged so a finalized session can always encode testimony for
 every acknowledgement it sent. A frame that would exceed it is retained and left
 unacknowledged, and the session stops with an explicit error.
 
-There is no durability, restart or recovery, concurrent-client service, TLS,
-authentication, message semantics, delivery retry, throttling, queue, database,
-telemetry, or automatic network access beyond the explicitly configured listen
-address and, when a policy declares one, the explicitly configured application
-acknowledgement endpoint. The default bind is loopback, and a nonloopback one
+`collect` writes human output only; there is no machine-readable mode for a
+running capture, and `collect status --json` is the versioned document to read.
+
+A capture journal is bounded at 4 MiB for its plan, 32 MiB for its records and
+64 MiB of retained frames. Reaching a bound stops the capture rather than
+producing an oversized journal, and a journal that can no longer state what
+happened stops it too.
+
+There is no restart or resume, no application authentication, no message
+semantics, no delivery retry, no queue, no database, no telemetry, and no
+automatic network access beyond the explicitly configured listen address and,
+when a policy declares one, the explicitly configured application
+acknowledgement endpoint. Recovery reads a journal; it never continues a capture
+and never sends. Client certificates authenticate a transport peer against a
+declared authority; they are not an application identity and grant nothing. The default bind is loopback, and a nonloopback one
 requires `--approved-bind`. Reopen a collected case with
 `readmit timeline` and add `--show-values` to print the complete record.
