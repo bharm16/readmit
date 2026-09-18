@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/collection"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/observation"
 )
@@ -25,6 +26,9 @@ import (
 func Write(path string, inputs []Input, provenance Provenance) (*Bundle, error) {
 	if provenance.Mode == Recorded {
 		return nil, errors.New("recorded sessions require WriteRecorded and an observation")
+	}
+	if provenance.Mode == Collected {
+		return nil, errors.New("collected sessions require WriteCollected and a collection record")
 	}
 	b, err := build(inputs, provenance)
 	if err != nil {
@@ -41,6 +45,19 @@ func WriteRecorded(path string, inputs []Input, startedAt time.Time, snapshot ob
 		return nil, err
 	}
 	if err := attachObservation(b, snapshot); err != nil {
+		return nil, err
+	}
+	return writeBundle(path, b)
+}
+
+// WriteCollected preserves a generic receiver session and the record of what it
+// collected in v4. Recorded fixture sessions keep their own v2 writer.
+func WriteCollected(path string, inputs []Input, startedAt time.Time, record collection.Record) (*Bundle, error) {
+	b, err := build(inputs, Provenance{Mode: Collected, StartedAt: &startedAt, SessionID: record.SessionID})
+	if err != nil {
+		return nil, err
+	}
+	if err := attachCollection(b, record); err != nil {
 		return nil, err
 	}
 	return writeBundle(path, b)
@@ -106,19 +123,51 @@ func Open(path string) (*Bundle, error) {
 	if err := json.Unmarshal(files["manifest.json"], &manifest, json.RejectUnknownMembers(true)); err != nil {
 		return nil, errors.New("invalid bundle manifest")
 	}
-	if manifest.Schema != Schema && manifest.Schema != RecordedSchema && manifest.Schema != DerivedSchema {
+	if manifest.Schema != Schema && manifest.Schema != RecordedSchema && manifest.Schema != DerivedSchema && manifest.Schema != CollectedSchema {
 		return nil, errors.New("unsupported case bundle schema version")
 	}
 	if manifest.Schema == RecordedSchema {
-		// Do not relax v2 when adding the v3-only provenance member, even null.
-		var fields struct {
-			Provenance map[string]any `json:"provenance"`
-		}
-		if json.Unmarshal(files["manifest.json"], &fields) != nil {
+		// Do not relax v2 when adding the v3-only provenance member or the
+		// v4-only collection member, even when they are explicitly null: a
+		// typed decode would accept an explicit null as an omitted field.
+		var members map[string]any
+		if json.Unmarshal(files["manifest.json"], &members) != nil {
 			return nil, errors.New("invalid v2 bundle manifest")
 		}
-		if _, exists := fields.Provenance["derivation"]; exists {
+		provenance, _ := members["provenance"].(map[string]any)
+		if _, exists := provenance["derivation"]; exists {
 			return nil, errors.New("invalid v2 bundle provenance")
+		}
+		if _, exists := members["collection"]; exists {
+			return nil, errors.New("v2 manifest cannot carry a collection record")
+		}
+	}
+	if manifest.Schema == CollectedSchema {
+		var collected struct {
+			Schema     string `json:"schema"`
+			State      string `json:"state"`
+			Provenance struct {
+				Mode      Mode       `json:"mode"`
+				StartedAt *time.Time `json:"started_at,omitzero"`
+				SessionID string     `json:"session_id,omitzero"`
+			} `json:"provenance"`
+			Sources    []Source `json:"sources"`
+			EventCount int      `json:"event_count"`
+			Collection *Payload `json:"collection"`
+		}
+		if json.Unmarshal(files["manifest.json"], &collected, json.RejectUnknownMembers(true)) != nil {
+			return nil, errors.New("invalid v4 bundle manifest")
+		}
+		var paths struct {
+			Sources []map[string]any `json:"sources"`
+		}
+		if json.Unmarshal(files["manifest.json"], &paths) != nil {
+			return nil, errors.New("invalid v4 sources")
+		}
+		for _, source := range paths.Sources {
+			if _, exists := source["path"]; exists {
+				return nil, errors.New("collected evidence cannot carry original source paths")
+			}
 		}
 	}
 	if manifest.Schema == DerivedSchema {
@@ -165,8 +214,8 @@ func Open(path string) (*Bundle, error) {
 			return nil, errors.New("invalid v1 bundle manifest")
 		}
 	}
-	if manifest.Schema == Schema && (manifest.Provenance.Mode != Imported && manifest.Provenance.Mode != Generated || manifest.Observation != nil) || manifest.Schema == RecordedSchema && (manifest.Provenance.Mode != Recorded || manifest.Observation == nil) || manifest.Schema == DerivedSchema && (manifest.Provenance.Mode != Derived || manifest.Observation != nil) {
-		return nil, errors.New("case bundle schema does not match provenance and observation")
+	if manifest.Schema == Schema && (manifest.Provenance.Mode != Imported && manifest.Provenance.Mode != Generated || manifest.Observation != nil) || manifest.Schema == RecordedSchema && (manifest.Provenance.Mode != Recorded || manifest.Observation == nil) || manifest.Schema == DerivedSchema && (manifest.Provenance.Mode != Derived || manifest.Observation != nil) || manifest.Schema == CollectedSchema && (manifest.Provenance.Mode != Collected || manifest.Collection == nil || manifest.Observation != nil) {
+		return nil, errors.New("case bundle schema does not match provenance, observation, and collection")
 	}
 	if manifest.State != "complete" {
 		return nil, errors.New("bundle is incomplete")
@@ -204,6 +253,16 @@ func Open(path string) (*Bundle, error) {
 		// Metadata refers to the exact stored JSON bytes, including whitespace.
 		b.Manifest.Observation = &Payload{Path: "observation.json", Size: len(files["observation.json"]), SHA256: digest(files["observation.json"])}
 	}
+	if manifest.Schema == CollectedSchema {
+		record, err := collection.Decode(files["collection.json"])
+		if err != nil {
+			return nil, err
+		}
+		if err := attachCollection(b, record); err != nil {
+			return nil, err
+		}
+		b.Manifest.Collection = &Payload{Path: "collection.json", Size: len(files["collection.json"]), SHA256: digest(files["collection.json"])}
+	}
 	eventsMatch, err := sameRecords(events, b.Events)
 	if err != nil {
 		return nil, err
@@ -222,10 +281,10 @@ func Open(path string) (*Bundle, error) {
 func restoreInputs(manifest Manifest, events []Event, files map[string][]byte) ([]Input, error) {
 	invalid := errors.New("invalid bundle source or occurrence layout")
 	extraFiles := 3
-	if manifest.Schema == RecordedSchema {
+	if manifest.Schema == RecordedSchema || manifest.Schema == CollectedSchema {
 		extraFiles++
 	}
-	if len(manifest.Sources) == 0 && manifest.Schema != RecordedSchema || len(manifest.Sources) > MaxSources || len(events) == 0 && len(manifest.Sources) != 0 || len(events) > MaxEvents || manifest.EventCount != len(events) || len(files) != len(events)+extraFiles {
+	if len(manifest.Sources) == 0 && manifest.Schema != RecordedSchema && manifest.Schema != CollectedSchema || len(manifest.Sources) > MaxSources || len(events) == 0 && len(manifest.Sources) != 0 || len(events) > MaxEvents || manifest.EventCount != len(events) || len(files) != len(events)+extraFiles {
 		return nil, invalid
 	}
 	var inputs []Input
@@ -267,6 +326,12 @@ func encode(b *Bundle) (map[string][]byte, error) {
 	files := map[string][]byte{"manifest.json": append(manifest, '\n')}
 	if b.Observation != nil {
 		files["observation.json"], err = observation.Encode(*b.Observation)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if b.Collection != nil {
+		files["collection.json"], err = collection.Encode(*b.Collection)
 		if err != nil {
 			return nil, err
 		}
@@ -376,7 +441,7 @@ func readFiles(path string) (map[string][]byte, error) {
 		if entry.Type() != 0 {
 			return errors.New("bundle files must be regular files, never symlinks")
 		}
-		if name != "manifest.json" && name != "events.jsonl" && name != "correlations.jsonl" && name != "identity.sha256" && name != "observation.json" && !strings.HasPrefix(name, "payloads/") {
+		if name != "manifest.json" && name != "events.jsonl" && name != "correlations.jsonl" && name != "identity.sha256" && name != "observation.json" && name != "collection.json" && !strings.HasPrefix(name, "payloads/") {
 			return errors.New("unexpected bundle file")
 		}
 		if len(files) >= MaxEvents+5 {

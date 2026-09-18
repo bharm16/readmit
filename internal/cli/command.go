@@ -59,6 +59,7 @@ func Execute(version string, args []string, stdout, stderr io.Writer) error {
 	root.AddCommand(inspect)
 	root.AddCommand(captureCommand(&ran), timelineCommand(&ran))
 	root.AddCommand(listenCommand(&ran))
+	root.AddCommand(collectCommand(&ran))
 
 	root.AddCommand(diagnoseCommand(&ran))
 

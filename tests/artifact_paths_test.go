@@ -29,7 +29,8 @@ func TestArtifactCommandsRefuseOutputsInsideSealedPackets(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "target.json")
 	redactJSON(t, target, replay.Target{Schema: replay.TargetSchema, TestEndpoint: true, Address: listener.Addr().String(), Transport: "plain", ConnectTimeout: "100ms", MessageTimeout: "100ms", MaxACKBytes: 4096})
 	fixture := "../testdata/fixtures/listen-s12.hl7"
-	for _, command := range []string{"capture", "inspect", "diagnose", "replay", "diff", "synth"} {
+	declared := policyFile(t, t.TempDir(), collectPolicy)
+	for _, command := range []string{"capture", "inspect", "diagnose", "replay", "diff", "synth", "collect"} {
 		t.Run(command, func(t *testing.T) {
 			output := filepath.Join(packet, "new-"+command)
 			var args []string
@@ -46,6 +47,8 @@ func TestArtifactCommandsRefuseOutputsInsideSealedPackets(t *testing.T) {
 				args = []string{command, fixture, fixture, "--output", output}
 			case "synth":
 				args = []string{command, "--seed", "0", "--base-time", "2026-01-01T12:00:00Z", "--generator-version", "readmit-synth-v1", "--profile-version", "readmit-siu-v1", "--output", output}
+			case "collect":
+				args = []string{command, "--address", "127.0.0.1:0", "--policy", declared, "--output", output}
 			}
 			if _, _, err := run(t, args...); err == nil {
 				t.Error("command accepted an output inside finalized evidence")

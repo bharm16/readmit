@@ -4,7 +4,8 @@ This document defines imported and generated v1 bundles. The reader also support
 `readmit-case/v2` recorded receiver bundles, whose integrity-covered observation
 and recorded provenance are defined in [the receiver contract](listen.md).
 The default capture and generated writers retain the v1 format.
-The reader also supports `readmit-case/v3` derived testing evidence, defined below.
+The reader also supports `readmit-case/v3` derived testing evidence and
+`readmit-case/v4` collected receiver bundles, both defined below.
 
 A case bundle is a finalized directory of evidence. `capture` imports files;
 `timeline` verifies and opens the resulting bundle. Neither command modifies a
@@ -254,3 +255,36 @@ the private redaction state. A derived case alone has no export approval; see
 and returns the same `Bundle` type. `bundle.Open`, `Raw`, `Value`, and event/source
 IDs are stable across supported versions. Existing imported/generated v1 and
 recorded v2 artifacts retain their strict versioned contracts.
+
+## Collected receiver evidence: readmit-case/v4
+
+The v4 layout, byte-preserving occurrence model, hashes and correlation rules
+are unchanged. Its identity domain is `readmit-case/v4`. Provenance is
+`{"mode":"collected","started_at":...,"session_id":...}`, the same startup time
+and 128-bit session identifier a recorded session uses. Collected sources have
+no `path` member, and a v4 manifest cannot carry a recorded observation,
+a derivation, generator inputs, or an import time; those members are rejected
+even when null. A v1, v2, or v3 manifest is likewise rejected when it carries
+the v4-only `collection` member, even when null. No artifact is migrated.
+
+A v4 manifest adds one member:
+
+```json
+{"collection":{"path":"collection.json","size":812,"sha256":"..."}}
+```
+
+`collection.json` is the integrity-covered `readmit-collection/v1` record of
+what the generic receiver collected and acknowledged; its contract is defined in
+[the collector contract](collect.md). The reader verifies its size and hash,
+that its session matches the manifest provenance, that every declared session
+names the retained source at its own position, that every received frame
+references an inbound occurrence in its own session's source, and that those
+occurrences appear in evidence order with a literal MSH-10 matching the recorded
+control ID. A named control ID on an occurrence that has none, or
+a missing control ID on a readable one, is rejected. The record is receiver
+testimony about receipt; reopening does not recompute or certify what any
+downstream application did with a message.
+
+`bundle.WriteCollected` writes this format. `bundle.Open`, `Raw`, `Value`, and
+event/source IDs are stable across supported versions; imported/generated v1,
+recorded v2, and derived v3 artifacts keep their existing strict contracts.

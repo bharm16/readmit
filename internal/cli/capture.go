@@ -12,6 +12,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/collection"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/spf13/cobra"
 )
@@ -164,6 +165,27 @@ func renderBundle(out io.Writer, b *bundle.Bundle, timeline, showValues bool) er
 				return errors.New("cannot render observation")
 			}
 			fmt.Fprintf(w, "Observation values: %s\n", strconv.QuoteToASCII(string(data)))
+		}
+	}
+	if record := b.Collection; record != nil {
+		acknowledged := 0
+		for _, received := range record.Received {
+			if received.Acknowledgement != collection.NotAcknowledged {
+				acknowledged++
+			}
+		}
+		fmt.Fprintf(w, "Collection: %s\nCollection policy: %s\nAcknowledgement: %s %s\nApplication processing: %s\nCollected sessions: %d\nReceived frames: %d\nAcknowledged frames: %d\n",
+			record.Schema, record.Policy.Name, record.Policy.Acknowledgement.Operator, record.Policy.Acknowledgement.Code, record.ApplicationProcessing, len(record.Sessions), len(record.Received), acknowledged)
+		// Source labels are declared configuration, never message values.
+		for _, session := range record.Sessions {
+			fmt.Fprintf(w, "  %s source=%s label=%s\n", session.SessionID, session.SourceID, session.Label)
+		}
+		if showValues {
+			data, err := json.Marshal(record, json.Deterministic(true))
+			if err != nil {
+				return errors.New("cannot render collection record")
+			}
+			fmt.Fprintf(w, "Collection values: %s\n", strconv.QuoteToASCII(string(data)))
 		}
 	}
 	if timeline {
