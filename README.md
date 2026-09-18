@@ -1,6 +1,6 @@
 # readmit
 
-Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, and `timeline` are available; later workflows are tracked in [GitHub issues](https://github.com/bharm16/readmit/issues).
+Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, and `diagnose` are available; later workflows are tracked in [GitHub issues](https://github.com/bharm16/readmit/issues).
 
 ```sh
 readmit inspect message.hl7
@@ -49,6 +49,14 @@ deterministic generated provenance for the future `synth` command. See the
 correlation rules, observation metadata, integrity checks, and limits.
 
 ## Supported input
+
+`diagnose BUNDLE --output NEW_DIRECTORY` evaluates the narrow `readmit-siu-v1`
+fixture profile and writes matching JSON and Markdown reports. Findings distinguish
+observed facts, profile violations, and hypotheses about the observed window.
+Unknown profiles/rules and unsupported messages are reported explicitly; a clean
+report is not proof of correctness. Configured assigning authorities keep equal
+identifier strings in different namespaces distinct. See [diagnosis](docs/diagnose.md)
+and the [shared field selector grammar](docs/selectors.md).
 
 | `--format` | Accepted layout |
 | --- | --- |

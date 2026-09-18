@@ -25,3 +25,11 @@ every rejected input to yield a bounded diagnostic.
 
 Additional malformed examples live as explicit literals in tests. Semantic correctness of
 the fixtures is deliberately not an acceptance criterion for syntax inspection.
+
+Diagnosis fixtures for issue #7 are independently authored raw messages:
+`diagnose-booking.hl7`, `diagnose-reschedule.hl7`,
+`diagnose-cancel-other-authority.hl7`, `diagnose-missing-patient.hl7`, and
+`diagnose-ack.hl7`. They distinguish a booking within the observed window from a
+partial window, separate assigning authorities, omit a profile-required patient
+field, and supply ACK/ERR evidence. Expected classifications are written directly
+in the tests, not calculated by the diagnosis rules under test.

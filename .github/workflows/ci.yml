@@ -40,6 +40,7 @@ jobs:
           go vet ./...
           go test -race ./...
           go test ./internal/hl7 -run '^$' -fuzz=FuzzParse -fuzztime=15s -parallel=2
+          go test ./internal/hl7 -run '^$' -fuzz=FuzzSelector -fuzztime=15s -parallel=2
           go test ./internal/bundle -run '^$' -fuzz=FuzzOpen -fuzztime=15s -parallel=2
       - name: Vulnerability check
         run: |

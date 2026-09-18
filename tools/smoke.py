@@ -32,6 +32,7 @@ REQUIRED_FILES = {
     "README.md", "THIRD_PARTY_NOTICES.md", "docs/dictionary-provenance.md",
     "dictionary/fields-v251.json", "testdata/README.md", "docs/case-bundle.md",
     "testdata/fixtures/case-evidence.mllp",
+    "docs/diagnose.md", "docs/selectors.md", "testdata/fixtures/diagnose-booking.hl7",
     "licenses/cobra-LICENSE.txt", "licenses/go-BSD-3-Clause.txt",
     "licenses/mousetrap-LICENSE.txt", "licenses/nhapi-MPL-2.0.txt", "licenses/pflag-LICENSE.txt",
 } | {"testdata/fixtures/" + filename for filename, _, _, _ in FIXTURES}
@@ -170,6 +171,19 @@ def smoke(archive, target_os, release_tag=None):
         (copied / events[0]["payload"]["path"]).write_bytes(b"SECRET-TAMPER")
         corrupt = run("timeline", copied, "--show-values", success=False)
         assert not corrupt.stdout and b"SECRET" not in corrupt.stderr
+
+        booking_source = work / "diagnose-booking.hl7"
+        booking_source.write_bytes(member_bytes(archive, "testdata/fixtures/diagnose-booking.hl7"))
+        booking_case, report = work / "booking.case", work / "diagnosis"
+        run("capture", booking_source, "--output", booking_case)
+        diagnosed = run("diagnose", booking_case, "--output", report)
+        assert not diagnosed.stderr and b"SYNTH" not in diagnosed.stdout
+        document = json.loads((report / "report.json").read_bytes())
+        markdown = (report / "report.md").read_text()
+        assert document["schema"] == "readmit-diagnosis/v1" and document["findings"] == []
+        assert document["unsupported"] == [] and "not proof" in document["no_findings"].lower()
+        assert "not proof" in markdown.lower() and document["ruleset"] in markdown
+        assert not run("diagnose", booking_case, "--output", report, success=False).stdout
     print(f"PASS: {archive.name}; checksum, version, inspection, capture, timeline, privacy, and byte preservation")
 
 
