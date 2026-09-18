@@ -12,6 +12,12 @@ A case bundle is a finalized directory of evidence. `capture` imports files;
 source or an existing bundle. No wire capture, replay, semantic validation, or
 acknowledgement-mode enforcement is performed here.
 
+`import` writes this same v1 imported format from declared files, folders and
+ZIP archives under one reusable plan, previews what it would extract before
+writing anything, and records what it did write in a receipt beside the bundle.
+It adds no member and no version to this contract. See
+[the import contract](import.md).
+
 ```sh
 readmit capture session.mllp another.hl7 --output incident.case
 readmit timeline incident.case
@@ -145,7 +151,9 @@ means the business workflow succeeded.
 `inspect`. Its handling of malformed evidence is deliberately different:
 
 - A raw file is one occurrence. Concatenated raw messages remain one unparsed
-  occurrence, because no supported boundary was declared.
+  occurrence, because no supported boundary was declared. `import` refuses that
+  member instead, so the operator declares the boundary rather than receiving an
+  unparsable blob; see [the import contract](import.md).
 - Each complete MLLP frame is an occurrence. A malformed payload inside a
   complete frame is unparsed; subsequent frames are still imported separately.
 - When framing is broken (garbage between frames, missing end block, missing

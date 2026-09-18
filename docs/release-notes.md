@@ -106,6 +106,16 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   readable and exportable, and a revocation issued after signing is documented
   as something local verification cannot observe.
 
+- `import` brings multi-file, folder and ZIP evidence into a `readmit-case/v1`
+  case under an explicit declaration of framing, batch boundary, terminator,
+  encoding, direction and members, stated as flags with no defaults or saved as
+  a reusable `readmit-import-plan/v1` document. `--preview` reports every member
+  and record it would extract without writing anything, and an import records
+  what it did write in a `readmit-import-receipt/v1` receipt beside the case.
+  Ambiguous splitting, contradicted framing or encoding, and unsafe archive
+  entries are refused by name; malformed records are retained whole and
+  quarantined with their reason.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is

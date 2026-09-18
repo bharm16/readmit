@@ -4,6 +4,8 @@ import (
 	"errors"
 	"io"
 	"os"
+
+	"github.com/bharm16/readmit/internal/artifactpath"
 )
 
 // readInputFile keeps input limits and private diagnostics shared by commands.
@@ -29,4 +31,29 @@ func readInputFile(path string, limit int) ([]byte, error) {
 		return nil, errors.New("input exceeds size limit")
 	}
 	return data, nil
+}
+
+// writeNewFile creates one new file exclusively at a reserved destination and
+// removes a partial one rather than leaving it behind. The caller supplies the
+// two diagnostics because what a failed creation means differs by command:
+// artifactpath owns where the file may go, and this owns how it is written.
+func writeNewFile(path string, data []byte, cannotCreate, cannotWrite string) error {
+	path, err := artifactpath.Destination(path)
+	if err != nil {
+		return err
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return errors.New(cannotCreate)
+	}
+	_, writeErr := file.Write(data)
+	if writeErr == nil {
+		writeErr = file.Sync()
+	}
+	closeErr := file.Close()
+	if writeErr != nil || closeErr != nil {
+		os.Remove(path)
+		return errors.New(cannotWrite)
+	}
+	return nil
 }

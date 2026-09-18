@@ -30,6 +30,7 @@ archives:
       - licenses/*
       - docs/dictionary-provenance.md
       - docs/case-bundle.md
+      - docs/import.md
       - docs/project.md
       - docs/license.md
       - docs/secret.md

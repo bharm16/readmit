@@ -4,10 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
-	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/dictionary"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/spf13/cobra"
@@ -58,6 +56,7 @@ func Execute(version string, args []string, stdout, stderr io.Writer) error {
 	inspect.Flags().StringVar(&roundtrip, "roundtrip", "", "Write byte-identical evidence to a new file (never overwrite)")
 	root.AddCommand(inspect)
 	root.AddCommand(captureCommand(&ran), timelineCommand(&ran))
+	root.AddCommand(importCommand(&ran))
 	root.AddCommand(listenCommand(&ran))
 	root.AddCommand(collectCommand(&ran))
 	root.AddCommand(projectCommand(&ran))
@@ -106,33 +105,14 @@ func inspectFile(out io.Writer, path string, options hl7.Options, showValues boo
 		return err
 	}
 	if roundtrip != "" {
-		if err := writeEvidence(roundtrip, doc.Serialize()); err != nil {
+		if err := writeNewFile(roundtrip, doc.Serialize(),
+			"cannot create round-trip file; destination must be new and writable",
+			"cannot write round-trip file"); err != nil {
 			return err
 		}
 	}
 	if err := render(out, doc, labels, options, showValues); err != nil {
 		return errors.New("cannot write inspection output")
-	}
-	return nil
-}
-
-func writeEvidence(path string, data []byte) error {
-	path, err := artifactpath.Destination(path)
-	if err != nil {
-		return err
-	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return errors.New("cannot create round-trip file; destination must be new and writable")
-	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		os.Remove(path)
-		return errors.New("cannot write round-trip file")
 	}
 	return nil
 }
