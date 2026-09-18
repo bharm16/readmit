@@ -1,0 +1,38 @@
+.message-inspector {
+  border-top: 1px solid currentColor;
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+.message-inspector nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+.message-inspector ul {
+  max-height: 20rem;
+  overflow: auto;
+  padding-left: 1.2rem;
+}
+.message-inspector dd {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.inspector-bytes {
+  display: block;
+  max-height: 24rem;
+  overflow: auto;
+}
+.inspector-bytes th,
+.inspector-bytes td {
+  padding: 0.2rem 0.7rem;
+}
+.selected-byte {
+  font-weight: bold;
+  border-inline-start: 0.25rem solid currentColor;
+}
+.rows tr[aria-selected="true"] {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+}
