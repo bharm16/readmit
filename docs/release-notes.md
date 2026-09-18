@@ -81,6 +81,17 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   mutation tests that require those checks to fail when behavior changes. No
   supported integration-engine export corpus is covered yet.
 
+- `license` verifies a signed organization entitlement offline: a versioned
+  `readmit-entitlement/v1` document, an Ed25519 signature checked against an
+  explicitly selected trust store, seat and runner scope with signed device
+  bindings, import and byte-identical export, renewal by issue sequence, signing
+  key rotation and revocation, device transfer by release and reissue, and a
+  configurable grace window. No network request, activation service or update
+  check is involved, no price, plan or grace duration is chosen by the engine,
+  and expiry withdraws granted capabilities only: existing evidence stays
+  readable and exportable, and a revocation issued after signing is documented
+  as something local verification cannot observe.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is

@@ -21,6 +21,7 @@ DISTRIBUTION_FILES = (
     "testdata/README.md",
     "docs/case-bundle.md",
     "docs/project.md",
+    "docs/license.md",
     "docs/listen.md",
     "docs/collect.md",
     "docs/replay.md",
