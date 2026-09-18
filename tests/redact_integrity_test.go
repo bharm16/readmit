@@ -98,6 +98,12 @@ func redactForgeRetainedSource(t *testing.T, resultPath string) {
 		payload.Size, payload.SHA256 = len(raw), redactDigest(raw)
 	}
 	run.Manifest.Mappings[0].SourceSHA256 = event.Source.SHA256
+	redactResealResultRun(t, resultPath, artifact)
+}
+
+func redactResealResultRun(t *testing.T, resultPath string, artifact *testrunner.Artifact) {
+	t.Helper()
+	run := artifact.Run
 	redactJSON(t, filepath.Join(resultPath, "run", "manifest.json"), run.Manifest)
 	var lines []byte
 	for _, event := range run.Events {
@@ -120,6 +126,11 @@ func redactForgeRetainedSource(t *testing.T, resultPath string) {
 
 func redactForgeReceiver(t *testing.T, path string, direction bundle.Direction) {
 	t.Helper()
+	redactRewriteReceiver(t, path, direction, func(raw []byte) []byte { return redactAddPlantedNote(t, raw) })
+}
+
+func redactRewriteReceiver(t *testing.T, path string, direction bundle.Direction, rewrite func([]byte) []byte) {
+	t.Helper()
 	received, err := bundle.Open(path)
 	if err != nil {
 		t.Fatal(err)
@@ -137,7 +148,7 @@ func redactForgeReceiver(t *testing.T, path string, direction bundle.Direction) 
 				t.Fatal(err)
 			}
 			if !changed && event.Direction == direction {
-				raw = redactAddPlantedNote(t, raw)
+				raw = rewrite(raw)
 				changed = true
 			}
 			input.Data = append(input.Data, raw...)
@@ -156,6 +167,62 @@ func redactForgeReceiver(t *testing.T, path string, direction bundle.Direction) 
 	}
 	if _, err := bundle.Open(path); err != nil {
 		t.Fatalf("forged receiver case must preserve its valid unchanged observation: %v", err)
+	}
+}
+
+func TestRedactOpenExportRejectsPairedUnreviewedACKBytes(t *testing.T) {
+	original := redactPacketFixture(t)
+	for _, change := range []string{"note-segment", "error-segment", "msa-free-text", "header-metadata", "timestamp-text"} {
+		t.Run(change, func(t *testing.T) {
+			packet := filepath.Join(t.TempDir(), "packet")
+			if err := os.CopyFS(packet, os.DirFS(original)); err != nil {
+				t.Fatal(err)
+			}
+			manifest := redactReadJSON[redact.ExportManifest](t, filepath.Join(packet, "export-review.json"))
+			rewrite := func(raw []byte) []byte {
+				switch change {
+				case "note-segment":
+					return redactAddPlantedNote(t, raw)
+				case "error-segment":
+					return bytes.Replace(raw, []byte{0x1c, '\r'}, []byte("ERR|PLANTED-NTE-ALDER\r\x1c\r"), 1)
+				case "msa-free-text":
+					return bytes.Replace(raw, []byte("\rZRT|"), []byte("|PLANTED-NTE-ALDER\rZRT|"), 1)
+				case "timestamp-text":
+					doc, err := hl7.Parse(raw, hl7.Options{Format: hl7.MLLP})
+					if err != nil {
+						t.Fatal(err)
+					}
+					span := doc.Messages[0].Segments[0].Field(7).Span
+					return append(append(bytes.Clone(raw[:span.Start]), []byte("PLANTED-NTE-ALDER")...), raw[span.End:]...)
+				default:
+					return bytes.Replace(raw, []byte("|READMIT|FIXTURE|"), []byte("|READMIT|PLANTED-NTE-ALDER|"), 1)
+				}
+			}
+			resultPath := filepath.Join(packet, "proof", "baseline", "result")
+			artifact, err := testrunner.Open(resultPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			payload := &artifact.Run.Events[0].Received
+			raw, err := artifact.Run.Raw(*payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			changed := rewrite(raw)
+			if bytes.Equal(changed, raw) {
+				t.Fatal("ACK fixture was not changed")
+			}
+			if err := os.WriteFile(filepath.Join(resultPath, "run", payload.Path), changed, 0600); err != nil {
+				t.Fatal(err)
+			}
+			payload.Size, payload.SHA256 = len(changed), redactDigest(changed)
+			redactResealResultRun(t, resultPath, artifact)
+			redactRewriteReceiver(t, filepath.Join(packet, "proof", "baseline", "receiver.case"), bundle.Outbound, rewrite)
+			redactResealPacket(t, packet, manifest)
+			if _, err := redact.OpenExport(packet); err == nil {
+				t.Fatal("matching resealed ACK copies concealed unreviewed content")
+			}
+		})
 	}
 }
 

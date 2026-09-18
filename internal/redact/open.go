@@ -82,6 +82,9 @@ func OpenExport(path string) (*ExportManifest, error) {
 		if err := verifyProofSources(derived, result.Run); err != nil {
 			return nil, err
 		}
+		if err := verifyFixtureACKs(derived, result); err != nil {
+			return nil, err
+		}
 		expectedMode := observation.Defective
 		if mode == "postfix" {
 			expectedMode = observation.Fixed

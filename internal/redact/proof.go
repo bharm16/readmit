@@ -52,6 +52,11 @@ func runProof(ctx context.Context, spec testrunner.Spec, casePath, dir string, r
 	if baseline.Result.Status != testrunner.AssertionFailure || postfix.Result.Status != testrunner.Pass || !slices.Equal(failedAssertions(baseline), required) || baseline.Result.InputBundleIdentity != source.Identity || postfix.Result.InputBundleIdentity != source.Identity || !sameAssertionContract(baseline.Spec, postfix.Spec) {
 		return Proof{}, errors.New("fixture proof did not preserve the exact agreed failures and full fixed pass")
 	}
+	for _, artifact := range []*testrunner.Artifact{baseline, postfix} {
+		if err := verifyFixtureACKs(source, artifact); err != nil {
+			return Proof{}, err
+		}
+	}
 	return Proof{Profile: observation.Profile, Boundary: testrunner.LedgerBoundary, BaselineIdentity: baseline.Identity, PostfixIdentity: postfix.Identity, BaselineStatus: baseline.Result.Status, PostfixStatus: postfix.Result.Status, FailedAssertions: failedAssertions(baseline)}, nil
 }
 

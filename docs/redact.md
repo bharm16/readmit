@@ -189,6 +189,8 @@ this packet. Those flags do not independently approve a result for sharing.
 `OpenExport` applies the same review contract to embedded reviews, binds each
 retained run source's bytes and hash to its approved derived occurrence, and
 matches ordered receiver captures to the verified run's sent and ACK bytes.
+ACKs must also match the closed built-in AA response for the approved request
+and receipt; matching copies cannot approve extra segments, free text or metadata.
 It also checks the embedded result contracts and regenerated diagnosis.
 It can verify retained scan claims and hashes; it cannot repeat a private residual
 scan without the local state. Finalization writes the completion marker last.
