@@ -60,6 +60,9 @@ cannot relabel the current template. Changing a seed or base-time instant
 changes both messages and bundle identities. A future implemented generator or
 profile version must preserve the existing v1 behavior when v1 is selected,
 and its own provenance will distinguish its bundle identity.
+The [frozen v1 reference vector](synth-v1-vector.md)
+documents independently authored payload goldens and fixed case identities that
+make accidental template, PCG stream, or draw-order changes fail regression tests.
 
 ## Fixture profile
 

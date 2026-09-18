@@ -3,6 +3,7 @@ package tests
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json/v2"
 	"fmt"
 	"io/fs"
@@ -52,6 +53,38 @@ func createSynth(t *testing.T, args []string) {
 	}
 	if !strings.Contains(stdout, "Synthetic SIU family: complete") || !strings.Contains(stdout, "invalid (S12, S13 with an unbooked filler identifier)") {
 		t.Fatalf("output hid family completion or known defect: %s", stdout)
+	}
+}
+
+func TestSynthMatchesFrozenV1PayloadsAndIdentities(t *testing.T) {
+	destination := filepath.Join(t.TempDir(), "family")
+	createSynth(t, synthArgs(destination))
+	// These literals and the raw fixtures were authored independently of synth.
+	// The PCG reference vector and bundle-identity derivation are recorded in
+	// docs/synth-v1-vector.md. Never refresh them from synth output.
+	for _, tc := range []struct{ variant, identity string }{
+		{"regression", "7d266d0a09e92d3322d6346cf16c9dd37c768c02a11f8ea6c41870adc44915df"},
+		{"cancellation", "96077b34226faa19325f01f3fbb0d728de88644c22ba8428659c883703d3f438"},
+		{"invalid", "ab6d014aa0fc9e2ed9cba7160e73bba17b8753f6a7ca5c3a8618f3ec8ba095a9"},
+	} {
+		b := openSynthCase(t, destination, tc.variant)
+		want, err := os.ReadFile("../testdata/fixtures/synth-v1-" + tc.variant + ".mllp")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := bytes.Join(synthPayloads(t, b), nil); !bytes.Equal(got, want) {
+			t.Errorf("%s changed the frozen v1 payload bytes", tc.variant)
+		}
+		if b.Identity != tc.identity {
+			t.Errorf("%s changed the frozen v1 case identity: %s", tc.variant, b.Identity)
+		}
+	}
+	family, err := os.ReadFile(filepath.Join(destination, "family.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fmt.Sprintf("%x", sha256.Sum256(family)); got != "33b99fe63076f1ee3b9921e1753b6be66edc25cc044c339b356a816838608eda" {
+		t.Errorf("changed the frozen v1 family record: %s", got)
 	}
 }
 
