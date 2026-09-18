@@ -13,3 +13,7 @@ The five canonical triage labels, used as-is. See `docs/agents/triage-labels.md`
 ### Domain docs
 
 Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+## Implementation stack
+
+Recorded decisions live in `docs/adr/`. Ordinary stack choices and version pins live in `docs/stack.md`. Read both before implementing anything.
