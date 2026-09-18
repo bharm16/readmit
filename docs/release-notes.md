@@ -346,6 +346,19 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   case, index, project, run, result, report and observation contract is
   unchanged.
 
+- The shared profile-pack contract, `readmit-profile-pack/v1`, is defined and
+  read by `internal/profilepack` with independently authored positive and
+  negative fixtures. A pack declares its identity and version, its source,
+  extraction, license and rights-review provenance, and its coverage per HL7
+  version (2.3.1 through 2.8.2) and message family (ADT, SIU, ORM, ORU) with
+  separate parse, labels, structural and workflow support. A combination the
+  pack does not declare is unknown, untested and unsupported do not pass, a
+  field name is answered only under a combination whose labels are supported,
+  and no v1 pack may claim structural or workflow support. No pack is bundled,
+  no command reads one, the bundled `readmit-field-labels/v1` dictionary is
+  unchanged, and correlation, the profile and reproducer editors, typed
+  assertions and the seven-version library remain separate deliveries.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is

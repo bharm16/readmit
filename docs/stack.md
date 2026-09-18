@@ -50,6 +50,14 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
   runtime. Exact versions, source commits and separate support levels are in
   [D1](product-decisions.md#d1--profile-metadata-and-supported-meaning); #45 owns
   library delivery after the separate shared pack contract.
+- That contract is `readmit-profile-pack/v1`, read by `internal/profilepack`: pack
+  identity and version, source/extraction/license/rights-review provenance,
+  coverage per HL7 version and ADT/SIU/ORM/ORU family with distinct parse,
+  labels, structural and workflow levels, and an outcome API in which an
+  undeclared combination is unknown and only a declared `supported` passes. No
+  v1 pack may claim structural or workflow support, because the contract carries
+  no such content. No pack is bundled; the bundled v2.5.1 dictionary is
+  unchanged. See [profile packs](profile-packs.md).
 
 ## Networking
 

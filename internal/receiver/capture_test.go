@@ -2,7 +2,9 @@ package receiver_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -324,7 +326,10 @@ func TestCollectorCaptureQuotaRefusesToReadWhatItCannotRetain(t *testing.T) {
 	if !strings.Contains(answer, "QUOTA-001") {
 		t.Fatalf("the first frame was not acknowledged: %q", answer)
 	}
-	if err := client.SetWriteDeadline(time.Now().Add(time.Second)); err != nil {
+	// net.Pipe reports a peer that has already closed from SetWriteDeadline as
+	// well as from Write. The collector closing after its quota stop is the
+	// outcome this test asserts next, so that report is not a failure here.
+	if err := client.SetWriteDeadline(time.Now().Add(time.Second)); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 		t.Fatal(err)
 	}
 	sent, err := client.Write(message("QUOTA-002"))
