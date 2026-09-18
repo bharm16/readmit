@@ -1,5 +1,10 @@
 # Case bundle format: readmit-case/v1
 
+This document defines imported and generated v1 bundles. The reader also supports
+`readmit-case/v2` recorded receiver bundles, whose integrity-covered observation
+and recorded provenance are defined in [the receiver contract](listen.md).
+The default capture and generated writers retain the v1 format.
+
 A case bundle is a finalized directory of evidence. `capture` imports files;
 `timeline` verifies and opens the resulting bundle. Neither command modifies a
 source or an existing bundle. No wire capture, replay, semantic validation, or
