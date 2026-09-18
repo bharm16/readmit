@@ -13,26 +13,43 @@ import (
 )
 
 const (
-	Schema       = "readmit-run/v1"
-	TargetSchema = "readmit-target/v1"
-	MaxMessages  = 4000
-	maxRunBytes  = 96 << 20
-	maxFileBytes = 16 << 20
+	Schema = "readmit-run/v1"
+	// TargetSchema is the contract every target readmit itself generates
+	// declares. TargetSchemaV2 adds the credential reference below and is read
+	// unchanged alongside it; neither version is migrated into the other.
+	TargetSchema   = "readmit-target/v1"
+	TargetSchemaV2 = "readmit-target/v2"
+	MaxMessages    = 4000
+	maxRunBytes    = 96 << 20
+	maxFileBytes   = 16 << 20
 )
 
 // Target is explicitly selected configuration, never a discovered endpoint.
 // Timeouts are positive Go duration strings, bounded to at most five minutes.
 type Target struct {
-	Schema            string `json:"schema"`
-	TestEndpoint      bool   `json:"test_endpoint"`
-	Address           string `json:"address"`
-	Transport         string `json:"transport"`
-	ApprovedTransport bool   `json:"approved_transport"`
-	CAFile            string `json:"ca_file,omitzero"`
-	ConnectTimeout    string `json:"connect_timeout"`
-	MessageTimeout    string `json:"message_timeout"`
-	MaxACKBytes       int    `json:"max_ack_bytes"`
+	Schema            string     `json:"schema"`
+	TestEndpoint      bool       `json:"test_endpoint"`
+	Address           string     `json:"address"`
+	Transport         string     `json:"transport"`
+	ApprovedTransport bool       `json:"approved_transport"`
+	CAFile            string     `json:"ca_file,omitzero"`
+	ConnectTimeout    string     `json:"connect_timeout"`
+	MessageTimeout    string     `json:"message_timeout"`
+	MaxACKBytes       int        `json:"max_ack_bytes"`
+	Credential        Credential `json:"credential,omitzero"`
 }
+
+// Credential names the secret reference this endpoint presents. It carries the
+// document that holds the reference and the name of the reference in it, never
+// a credential: a target configuration is shared as written, so a value in one
+// would be a value in every copy of it. Only readmit-target/v2 may declare one.
+type Credential struct {
+	SecretsFile string `json:"secrets_file"`
+	Reference   string `json:"reference"`
+}
+
+// Declared reports whether this target names a credential at all.
+func (c Credential) Declared() bool { return c != Credential{} }
 
 // TargetRecord describes the transport used without retaining a CA source path.
 type TargetRecord struct {

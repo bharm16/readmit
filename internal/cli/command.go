@@ -62,6 +62,7 @@ func Execute(version string, args []string, stdout, stderr io.Writer) error {
 	root.AddCommand(collectCommand(&ran))
 	root.AddCommand(projectCommand(&ran))
 	root.AddCommand(licenseCommand(&ran))
+	root.AddCommand(secretCommand(&ran))
 
 	root.AddCommand(diagnoseCommand(&ran))
 

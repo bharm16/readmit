@@ -50,10 +50,36 @@ processed receipts. Sender/source occurrence IDs are not receiver occurrence IDs
 
 ## Target and transport contract
 
-The target JSON rejects unknown and duplicate members. `test_endpoint` must be
-`true`. Address includes an explicit host and numeric port from 1 through 65535.
-Both timeout strings must be positive Go durations at most five minutes;
-`max_ack_bytes` is required and ranges from 1 to 1048576.
+The target JSON rejects unknown and duplicate members. `schema` is
+`readmit-target/v1` or `readmit-target/v2`; both are read unchanged and neither
+is migrated into the other. `test_endpoint` must be `true`. Address includes an
+explicit host and numeric port from 1 through 65535. Both timeout strings must be
+positive Go durations at most five minutes; `max_ack_bytes` is required and
+ranges from 1 to 1048576.
+
+`readmit-target/v2` adds one optional member, `credential`, naming a reference to
+a credential that stays in its store:
+
+```json
+  "credential": {"secrets_file": "secrets.json", "reference": "lab-mllp"}
+```
+
+It carries a reference, never a value, so a target configuration is shared as
+written. `secrets_file` is a [secret reference document](secret.md); a relative
+path is resolved against the actual target file's directory, exactly as
+`ca_file` is. Reading the target binds the reference to this target's own
+purpose and address: a reference scoped to a different endpoint, a reference
+that is not registered, and a missing secrets document are all refused before
+any connection is opened, and no credential value is read to do it.
+
+A `readmit-target/v1` configuration that declares a `credential` is refused. A
+member is never added to a released version, and every target readmit itself
+generates still declares `readmit-target/v1`.
+
+This release's MLLP transport presents no credential. A run records the
+transport it used and names no credential reference; `readmit-run/v1` is
+unchanged. Use `readmit secret scan` to check a shared configuration and the
+evidence beside it for a known credential value.
 
 Only literal loopback IP addresses are exempt from transport approval. Every
 hostname, including `localhost`, and every nonloopback IP requires

@@ -40,6 +40,7 @@ REQUIRED_FILES = {
     "docs/case-bundle.md",
     "docs/project.md",
     "docs/license.md",
+    "docs/secret.md",
     "docs/listen.md",
     "docs/collect.md",
     "docs/replay.md",
