@@ -261,6 +261,23 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   by the size of the window or the case. Every existing case, index, project,
   run, result and report contract is unchanged.
 
+- `target reset` returns one named nonproduction environment to its declared
+  starting state through reviewed reset actions, and never through code a
+  document supplied. A `readmit-reset-plan/v1` document an operator selects
+  explicitly declares actions from a closed set of typed Go operators, each
+  carrying the one authority it requires: a step a person performs and confirms
+  by name, a read of exactly the one receiver observation file named inside the
+  plan's own directory, and one connection that sends no HL7 payload. The
+  contract holds no command, script, interpreter or argument; a test spec cannot
+  name a plan or an action; and reset prose stays operator-readable text that
+  nothing executes. A reset refuses every environment nobody recorded as
+  nonproduction, holds its one connection to the same approved-destination
+  decision a send is held to, and retains a `readmit-reset-outcome/v1` document.
+  A reset that failed, or that could not be confirmed, exits 2 as an execution
+  error rather than an assertion failure or a pass. `readmit-target/v1`-`/v3`,
+  `readmit-test/v1`-`v2`, `readmit-observation/v1`, `readmit-send-policy/v1` and
+  `readmit-send-decision/v1` are unchanged.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is

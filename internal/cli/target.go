@@ -8,11 +8,14 @@ import (
 	"io/fs"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/environment"
+	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/secret"
 	"github.com/bharm16/readmit/internal/sendpolicy"
@@ -25,10 +28,10 @@ func targetCommand(ran *bool) *cobra.Command {
 		Short: "Configure, validate and diagnose one named test environment",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return errors.New("target requires a subcommand: set, show, or check")
+			return errors.New("target requires a subcommand: set, show, check, or reset")
 		},
 	}
-	command.AddCommand(targetSet(ran), targetShow(ran), targetCheck(ran))
+	command.AddCommand(targetSet(ran), targetShow(ran), targetCheck(ran), targetReset(ran))
 	return command
 }
 
@@ -188,6 +191,131 @@ func targetCheck(ran *bool) *cobra.Command {
 	command.Flags().StringVar(&decisionPath, "decision", "", "New file retaining the send policy decision")
 	command.Flags().StringVar(&policyPath, "policy", "", "Existing "+sendpolicy.PolicySchema+" document to report this environment's send decision against")
 	return command
+}
+
+func targetReset(ran *bool) *cobra.Command {
+	var file, planPath, outcomePath, policyPath string
+	var confirmed []string
+	command := &cobra.Command{
+		Use:   "reset --target FILE --plan FILE --outcome NEW_FILE [--policy FILE] [--confirm ID]",
+		Short: "Return one named nonproduction environment to its declared starting state through reviewed reset actions",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			*ran = true
+			config, err := readTargetFile(file)
+			if err != nil {
+				return resetArgument(err)
+			}
+			if planPath == "" {
+				return resetArgument(errors.New("target reset requires --plan naming a " + fixturereset.PlanSchema + " document"))
+			}
+			if outcomePath == "" {
+				return resetArgument(errors.New("target reset requires --outcome naming a new file to retain the reset outcome in"))
+			}
+			planBytes, err := readInputFile(planPath, fixturereset.MaxPlanBytes)
+			if err != nil {
+				return resetArgument(err)
+			}
+			// A read-authority action names its file inside the plan's own
+			// directory, resolved after the plan's own symlink exactly as a
+			// spec's relative paths are, so what a plan may read is fixed by
+			// where the operator put the plan rather than by a working
+			// directory readmit happened to be started in.
+			resolved, err := artifactpath.Resolve(planPath)
+			if err != nil {
+				return resetArgument(errors.New("cannot resolve the reset plan"))
+			}
+			policy, err := readSendPolicy(policyPath)
+			if err != nil {
+				return resetArgument(err)
+			}
+			// The outcome destination is checked before anything runs. A reset
+			// can open a connection, and a destination readmit was never going
+			// to be able to write should not cost the environment one.
+			if err := fixturereset.ReserveOutcome(outcomePath); err != nil {
+				return resetArgument(err)
+			}
+			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+			defer cancel()
+			result := fixturereset.Run(ctx, fixturereset.Request{
+				Target: config, PlanBytes: planBytes, PlanDirectory: filepath.Dir(resolved),
+				Policy: policy, Confirmed: confirmed,
+			}, sendpolicy.SystemResolver)
+			plan, planErr := fixturereset.DecodePlan(planBytes)
+			if err := fixturereset.WriteOutcome(outcomePath, result); err != nil {
+				return resetArgument(err)
+			}
+			if err := writeLines(cmd.OutOrStdout(), func(w io.Writer) {
+				writeEnvironmentBanner(w, config.Environment())
+				writeConfigurationLines(w, config)
+				writeResetLines(w, result)
+				if planErr == nil {
+					writeResetInstructionLines(w, plan, result)
+				}
+			}); err != nil {
+				return err
+			}
+			if result.ExitCode() != 0 {
+				return &ExitError{Code: result.ExitCode(), Err: errors.New("the fixture reset was not confirmed; the retained outcome names why")}
+			}
+			return nil
+		},
+	}
+	command.Flags().StringVar(&file, "target", "", "Target configuration file describing the environment to reset")
+	command.Flags().StringVar(&planPath, "plan", "", "Existing "+fixturereset.PlanSchema+" document declaring the reviewed reset actions")
+	command.Flags().StringVar(&outcomePath, "outcome", "", "New file retaining the "+fixturereset.OutcomeSchema+" outcome")
+	command.Flags().StringVar(&policyPath, "policy", "", "Existing "+sendpolicy.PolicySchema+" document the reset's one connection is held to")
+	command.Flags().StringArrayVar(&confirmed, "confirm", nil, "Action id the operator performed and explicitly confirms; repeatable")
+	return command
+}
+
+// resetArgument gives a reset's own refusals the execution-error status every
+// other reset outcome uses, so a caller never has to read 1 as an assertion
+// failure that a reset cannot produce.
+func resetArgument(err error) error { return &ExitError{Code: 2, Err: err} }
+
+// writeResetLines renders one reset outcome and states its boundary. Every
+// action is named with the operator it ran and the authority it ran under, so
+// what the reset was permitted to do is read from the same place as what it
+// established.
+func writeResetLines(w io.Writer, result fixturereset.Result) {
+	fmt.Fprintf(w, "Reset plan: %s (%s)\n", result.PlanSHA256, fixturereset.PlanSchema)
+	if result.Decision != "" {
+		fmt.Fprintf(w, "Reset connection: held to the send decision for this environment (%s); no HL7 payload is sent\n", result.Decision)
+	}
+	for _, action := range result.Actions {
+		fmt.Fprintf(w, "  %s: %s authority=%s %s (%s)", action.ID, action.Operator, action.Authority, action.Outcome, action.Reason)
+		if action.Diagnosis != "" {
+			fmt.Fprintf(w, " diagnosis=%s", action.Diagnosis)
+		}
+		fmt.Fprintln(w)
+	}
+	fmt.Fprintf(w, "Reset: %s (%s), execution state %s\n", result.Outcome, result.Reason, result.State)
+	fmt.Fprintln(w, "Every action is a typed operator this release reviewed: a plan is data naming one and carries no command, script, interpreter or argument, and its instructions are executed by nothing.")
+	if result.Outcome == fixturereset.Confirmed {
+		fmt.Fprintln(w, "A confirmed reset establishes the declared starting state and nothing else: it is not evidence that an application processed, stored or forgot anything.")
+		return
+	}
+	fmt.Fprintln(w, "A reset that failed, or that readmit could not confirm, is an execution error. It is never an assertion failure and never a pass.")
+}
+
+// writeResetInstructionLines prints what the person still has to do. Only an
+// action awaiting their confirmation is printed, and only its own prose: this
+// is the operator-assisted half of a reset, and it is the one place the
+// instructions somebody wrote for themselves are of any use.
+func writeResetInstructionLines(w io.Writer, plan fixturereset.Plan, result fixturereset.Result) {
+	for _, action := range result.Actions {
+		if action.Reason != fixturereset.AwaitingOperator {
+			continue
+		}
+		for _, declared := range plan.Actions {
+			if declared.ID != action.ID {
+				continue
+			}
+			fmt.Fprintf(w, "Awaiting %s. Perform it, then run target reset again with --confirm %s and a new --outcome file:\n", action.ID, action.ID)
+			fmt.Fprintln(w, declared.Instructions)
+		}
+	}
 }
 
 // newEnvironment is what target set starts from when the file does not exist

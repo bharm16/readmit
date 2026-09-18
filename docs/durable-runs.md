@@ -40,7 +40,10 @@ are 0 only for passed, 1 for assertion failure and 2 for other states/errors.
 does not determine whether another process is still running. A crash after a
 synced send intent is conservatively uncertain even if no sent bytes were
 retained. A missing ACK is not evidence that the receiver did nothing. Verify the
-receiver's state and reset the fixture deliberately before starting any new run.
+receiver's state and reset the fixture deliberately before starting any new run;
+[`readmit target reset`](target.md#target-reset) records that reset against the
+named environment and reports one it could not confirm as an execution error,
+using the same states this page lists.
 There is no resume command and an existing output is always refused.
 
 ## Retained contract

@@ -1,7 +1,8 @@
 # Named test environments
 
-`readmit target` records one named nonproduction environment, validates it, and
-diagnoses reaching it. The configuration it writes is the same explicitly
+`readmit target` records one named nonproduction environment, validates it,
+diagnoses reaching it, and returns it to its declared starting state through
+reviewed reset actions. The configuration it writes is the same explicitly
 selected target file `readmit replay` and `readmit test` read: there is no
 hidden global configuration, no environment-variable override and no discovered
 endpoint.
@@ -11,6 +12,8 @@ readmit target set --target lab.json --name lab-siu \
   --classification nonproduction --address 127.0.0.1:2575
 readmit target show --target lab.json
 readmit target check --target lab.json
+readmit target reset --target lab.json --plan reset.json --outcome reset-1.json \
+  --confirm stop-listener
 ```
 
 ## What a classification is, and what it is not
@@ -178,6 +181,176 @@ established that it identifies the endpoint.
 own report. An outcome readmit cannot name is reported as `network_error`, never
 as a reachable endpoint.
 
+## `target reset`
+
+`reset` returns one named environment to the starting state a regression run
+declares, and says plainly when it could not. It reads the reviewed actions from
+a `readmit-reset-plan/v1` document the operator selected with `--plan`, runs
+them in order, and retains what it established as a `readmit-reset-outcome/v1`
+document at `--outcome`.
+
+```sh
+readmit target reset --target lab.json --plan reset.json --outcome reset-1.json
+readmit target reset --target lab.json --plan reset.json --outcome reset-2.json \
+  --confirm stop-listener
+```
+
+`--outcome` must name a new file. Rerunning a reset after performing a manual
+step therefore needs a new outcome file, and the attempt that stopped is still
+there to read.
+
+### A plan is data that names a reviewed operator
+
+**No reset action is code, and no imported document can introduce one.** A plan
+declares actions from a closed set of typed Go operators this release reviewed.
+There is no member anywhere in the contract that carries a command, a script, an
+interpreter, an argument vector, a path to a program or an expression, and
+unknown members are rejected, so a document cannot smuggle one in. A test spec
+cannot name a plan or an action at all: `readmit-test/v1` is frozen, its
+`setup.reset_instructions` stay operator-readable prose, and readmit executes
+none of it. A regression packet a customer keeps and reruns in CI never acquires
+general code execution. See
+[ADR-0003](adr/0003-specs-are-strict-json-with-typed-operators.md).
+
+Instructions are prose for the person who performs a step. They are printed for
+that person, executed by nothing, and bounded to readable text: no control
+character beyond tab and newline, so a document somebody imported cannot drive
+the terminal it is displayed on.
+
+### Reviewed actions and the authority each one requires
+
+An action writes down the authority its operator requires, and a plan declaring
+any other authority for that operator is refused rather than run under the wider
+of the two. Nothing is implicit and nothing is ambient.
+
+| Operator | Authority | What it does |
+| --- | --- | --- |
+| `operator_confirms` | `none` | Nothing. A person performs the step and confirms it with `--confirm ID`. Without that confirmation the step is `unconfirmed`, never assumed. |
+| `observation_empty` | `read_declared_file` | Reads exactly the one receiver observation file the action declares, inside the plan's own directory, and confirms an empty ledger with nothing processed. Writes nothing. |
+| `endpoint_quiet` | `connect_approved_target` | Opens one connection to the selected target and confirms it is reachable and sends nothing unprompted. **It sends no HL7 payload.** |
+
+`--confirm` is repeatable and names only an `operator_confirms` action.
+Confirming a machine action, or an id no plan declares, is refused: a person
+approving a step they performed is the operator-assisted half of a reset, and it
+is not a way to hand readmit a result it is supposed to establish itself.
+
+`observation_empty` names its file as a path inside the plan's own directory,
+resolved after the plan's own symlink, and readmit opens it within that
+directory. An absolute path, a path with `..` and a link out of the directory
+are each refused, so what one action may read is fixed by where the operator put
+the plan.
+
+### Where a reset may point
+
+A reset runs against a named environment somebody recorded as `nonproduction`.
+`production` is refused, and so is `unclassified`: an absent claim is not a
+nonproduction one. Both refusals are recorded before any file is read, any name
+is resolved and any connection is opened.
+
+When — and only when — the plan declares an action that would open a connection,
+the reset asks the same approved-destination rule a send is held to, from the
+one implementation in
+[`readmit-send-policy/v1`](replay.md#approved-destinations-and-the-send-decision).
+A reset never requests a send, so the only decision that lets it open a
+connection is `send_not_explicit`: nothing about the destination refuses. Every
+other reason — an unrecorded class, a name that does not resolve, a name
+resolving to several addresses, an address no approved destination contains, a
+destination no policy authorized — refuses the reset, and the reason is retained
+in the outcome. Select the policy with `--policy FILE`, exactly as `check` does.
+
+### A failed reset is an execution error
+
+`reset` exits `0` only when every action is `confirmed`. Every other outcome
+exits `2`. **There is no exit `1`:** a fixture that did not reset is an
+execution error, never an assertion failure, because nothing about it is
+evidence that an expectation was wrong. The states are the ones
+[durable local runs](durable-runs.md) already use.
+
+| Outcome | Execution state | Meaning |
+| --- | --- | --- |
+| `confirmed` | `passed` | Every action established its step. |
+| `unconfirmed` | `execution_error` | An action ran and could not confirm its step. **Not knowing is not a pass.** |
+| `failed` | `execution_error` | An action established that its step did not happen. |
+| `refused` | `execution_error` | readmit would not run the action: the environment, the plan or the destination refused it. |
+| `cancelled` | `cancelled` | The command was interrupted. |
+| `not_attempted` | — | An action an earlier one stopped. Recorded as what it is, never read as a pass. |
+
+A reset stops at the first action it could not confirm and records the rest as
+`not_attempted`. A confirmed reset establishes the declared starting state and
+nothing else: it is not evidence that an application processed, stored or forgot
+anything.
+
+### Contracts
+
+`readmit-reset-plan/v1` is the document the operator selects, at most 64 KiB,
+with 1 to 32 actions. Unknown and duplicate members are rejected.
+
+```json
+{
+  "schema": "readmit-reset-plan/v1",
+  "environment": "lab-siu",
+  "actions": [
+    {
+      "id": "stop-listener",
+      "operator": "operator_confirms",
+      "authority": "none",
+      "instructions": "Stop the prior readmit listen session and wait for it to exit."
+    },
+    {
+      "id": "empty-ledger",
+      "operator": "observation_empty",
+      "authority": "read_declared_file",
+      "instructions": "The fresh listener must export an empty ledger.",
+      "observation": "observation.json"
+    },
+    {
+      "id": "endpoint-quiet",
+      "operator": "endpoint_quiet",
+      "authority": "connect_approved_target",
+      "instructions": "The fresh listener must be accepting connections."
+    }
+  ]
+}
+```
+
+`environment` must equal the `name` the selected configuration records, so a
+plan written for one environment cannot be pointed at another by changing one
+flag. `observation` is required for `observation_empty` and refused for every
+other operator, so no action carries a file it has no authority to read.
+
+`readmit-reset-outcome/v1` is what `reset` retains. It holds readmit's own
+closed vocabulary and the SHA-256 of the plan bytes it ran: no path, no value
+and no address from the environment, so an outcome can be read and shared as it
+is.
+
+```json
+{
+  "schema": "readmit-reset-outcome/v1",
+  "state": "execution_error",
+  "outcome": "unconfirmed",
+  "reason": "awaiting_operator_confirmation",
+  "environment": "lab-siu",
+  "classification": "nonproduction",
+  "plan_sha256": "5b70682dd1504fa71cf5046d124b9eaf03cc721a4b330595219166d2dd91c4a1",
+  "decision": "send_not_explicit",
+  "actions": [
+    {"id": "stop-listener", "operator": "operator_confirms", "authority": "none",
+     "outcome": "unconfirmed", "reason": "awaiting_operator_confirmation"}
+  ],
+  "attempted_at": "2026-09-18T20:23:33.905873Z"
+}
+```
+
+`decision` is present only when the plan declared an action that would open a
+connection and readmit therefore asked. `diagnosis` appears on a connect
+-authority action and carries the same transport outcome `check` reports, so a
+verdict names the evidence behind it. No member was added to
+`readmit-target/v1`, `/v2` or `/v3`, to `readmit-test/v1`, to
+`readmit-observation/v1`, to `readmit-send-policy/v1` or to
+`readmit-send-decision/v1`; both contracts above are new files beside them. See
+[ADR-0002](adr/0002-case-bundles-are-directories-not-a-database.md) and
+[ADR-0003](adr/0003-specs-are-strict-json-with-typed-operators.md).
+
 ## TLS
 
 TLS 1.2 is the minimum and TLS 1.3 is permitted. Certificate chain and server
@@ -216,7 +389,7 @@ is not in this release.
 See [ADR-0006](adr/0006-credentials-are-referenced-never-stored.md) and
 [credential references](secret.md).
 
-## Contract
+## Target contract
 
 `readmit-target/v3` is the configuration `target set` writes. It carries
 everything `readmit-target/v2` carries and adds `name`, `classification`,
