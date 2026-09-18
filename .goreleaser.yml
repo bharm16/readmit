@@ -1,0 +1,47 @@
+version: 2
+project_name: readmit
+
+builds:
+  - id: readmit
+    main: ./cmd/readmit
+    binary: readmit
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - id: readmit
+    ids: [readmit]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - THIRD_PARTY_NOTICES.md
+      - licenses/*
+      - docs/dictionary-provenance.md
+      - testdata/README.md
+      - testdata/fixtures/*
+      - src: internal/dictionary/fields-v251.json
+        dst: dictionary
+        strip_parent: true
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  disable: true
+
+release:
+  # Publication is a separate job after native tests of these exact archives.
+  disable: true
