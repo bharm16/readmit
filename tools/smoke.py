@@ -5,6 +5,8 @@ tool can satisfy a runtime dependency. All evidence here is synthetic.
 """
 
 import argparse
+import base64
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -37,6 +39,7 @@ REQUIRED_FILES = {
     "testdata/README.md",
     "docs/case-bundle.md",
     "docs/listen.md",
+    "docs/replay.md",
     "testdata/fixtures/case-evidence.mllp",
     "testdata/fixtures/listen-s12.hl7",
     "testdata/fixtures/listen-s13.hl7",
@@ -234,7 +237,35 @@ def smoke(archive, target_os, release_tag=None):
                 assert interpreted["findings"] == []
         assert not run("synth", *generator_args, "--output", family, success=False).stdout
         smoke_receiver(archive, binary, environment, work, run, family / "regression")
+        smoke_replay(binary, environment, work, run, family / "regression")
     print(f"PASS: {archive.name}; checksum, version, inspection, capture, timeline, privacy, and byte preservation")
+
+
+@contextmanager
+def fixture_receiver(binary, environment, work, label, mode):
+    """Start one bounded archived fixture and always reap its process."""
+    case = work / f"receiver-{label}-{mode}.case"
+    observation = work / f"receiver-{label}-{mode}.json"
+    process = subprocess.Popen(
+        [str(binary), "listen", "--address", "127.0.0.1:0", "--mode", mode,
+         "--output", str(case), "--observation", str(observation),
+         "--max-messages", "2", "--idle-timeout", "5s"],
+        cwd=work, env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    try:
+        # Windows cannot select() on a process pipe.
+        ready = queue.Queue()
+        threading.Thread(target=lambda: ready.put(process.stdout.readline(512)), daemon=True).start()
+        first = ready.get(timeout=10)
+        assert first.startswith(b"Listening: 127.0.0.1:")
+        port = int(first.strip().rsplit(b":", 1)[1])
+        initial = json.loads(observation.read_bytes())
+        assert initial["consistent"] and initial["processed"] == [] and initial["records"] == []
+        yield process, port, case, observation, initial
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.communicate(timeout=5)
 
 
 def smoke_receiver(archive, binary, environment, work, run, generated_case=None):
@@ -247,24 +278,7 @@ def smoke_receiver(archive, binary, environment, work, run, generated_case=None)
         events = [json.loads(line) for line in (generated_case / "events.jsonl").read_bytes().splitlines()]
         payloads = [(generated_case / event["payload"]["path"]).read_bytes()[1:-2] for event in events]
     for mode, record_count in (("fixed", 1), ("defective", 2)):
-        case = work / f"receiver-{label}-{mode}.case"
-        observation = work / f"receiver-{label}-{mode}.json"
-        process = subprocess.Popen(
-            [str(binary), "listen", "--address", "127.0.0.1:0", "--mode", mode,
-             "--output", str(case), "--observation", str(observation),
-             "--max-messages", "2", "--idle-timeout", "5s"],
-            cwd=work, env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        )
-        try:
-            # Windows cannot select() on a process pipe. A daemon reader plus
-            # a bounded queue wait keeps the same startup check on every OS.
-            ready = queue.Queue()
-            threading.Thread(target=lambda: ready.put(process.stdout.readline(512)), daemon=True).start()
-            first = ready.get(timeout=10)
-            assert first.startswith(b"Listening: 127.0.0.1:")
-            port = int(first.strip().rsplit(b":", 1)[1])
-            initial = json.loads(observation.read_bytes())
-            assert initial["consistent"] and initial["processed"] == [] and initial["records"] == []
+        with fixture_receiver(binary, environment, work, label, mode) as (process, port, case, observation, initial):
             with socket.create_connection(("127.0.0.1", port), timeout=5) as connection:
                 connection.settimeout(5)
                 for payload in payloads:
@@ -290,18 +304,77 @@ def smoke_receiver(archive, binary, environment, work, run, generated_case=None)
                 expected = json.loads(member_bytes(archive, f"testdata/fixtures/listen-{mode}.json"))
                 assert final["records"] == expected
             else:
-                # Independent fixed vector from synth-v1-vector.md, not values
-                # calculated by the generator or receiver under test.
+                # Independent fixed vector, not calculated by the code under test.
                 assert final["records"][-1]["appointment_start"] == "20260103120000+0000"
                 assert all(record["filler_id"]["value"] == "FILLER-88EE33C89BA69B57" for record in final["records"])
             assert len(final["processed"]) == 2 and final["consistent"]
             timeline = run("timeline", case)
             assert f"Ledger records: {record_count}\n".encode() in timeline.stdout
             assert b"Matched ACKs: 2" in timeline.stdout and b"readmit-observation/v1" in timeline.stdout
-        finally:
-            if process.poll() is None:
-                process.kill()
-                process.communicate(timeout=5)
+
+
+def smoke_replay(binary, environment, work, run, source):
+    def target_config(port, label):
+        path = work / (label + "-target.json")
+        path.write_text(json.dumps({
+            "schema": "readmit-target/v1", "test_endpoint": True,
+            "address": f"127.0.0.1:{port}", "transport": "plain", "approved_transport": False,
+            "connect_timeout": "2s", "message_timeout": "2s", "max_ack_bytes": 65536,
+        }))
+        return path
+
+    original = {p.relative_to(source).as_posix(): p.read_bytes() for p in source.rglob("*") if p.is_file()}
+    with socket.socket() as server:
+        server.bind(("127.0.0.1", 0))
+        server.listen()
+        server.settimeout(0.2)
+        target = target_config(server.getsockname()[1], "dry-run")
+        preview = run("replay", source, "--target", target)
+        assert b"Dry run: no connection opened" in preview.stdout and not preview.stderr
+        try:
+            unexpected, _ = server.accept()
+        except socket.timeout:
+            pass
+        else:
+            unexpected.close()
+            raise RuntimeError("Dry-run opened a connection")
+    for mode, count in (("fixed", 1), ("defective", 2)):
+        with fixture_receiver(binary, environment, work, "replay", mode) as (process, port, case, observation, initial):
+            target = target_config(port, "replay-" + mode)
+            output = work / ("replay-" + mode + ".run")
+            arguments = ["replay", source, "--target", target, "--send", "--output", output]
+            if mode == "defective":
+                arguments += ["--transform", "rebase-control-ids", "--transform", "shift-timestamps", "--shift", "24h"]
+            replayed = run(*arguments)
+            assert not replayed.stderr and b"application_accepted" in replayed.stdout
+            assert b"MSH|" not in replayed.stdout and b"SYNTH-" not in replayed.stdout
+            stdout, stderr = process.communicate(timeout=10)
+            assert process.returncode == 0 and not stderr
+            manifest = json.loads((output / "manifest.json").read_bytes())
+            events = [json.loads(line) for line in (output / "events.jsonl").read_bytes().splitlines()]
+            assert manifest["schema"] == "readmit-run/v1" and manifest["state"] == "complete"
+            assert manifest["contains_source_values"] and manifest["export_policy"] == "customer-local-only"
+            assert manifest["source_bundle_identity"] == (source / "identity.sha256").read_text().strip()
+            assert len(events) == 2 and all(e["outcome"] == "application_accepted" for e in events)
+            for event in events:
+                assert event["ack"]["correlation"] == "matched" and event["ack"]["code"] == "AA"
+                for key in ("source", "intended", "sent", "received"):
+                    payload = event[key]
+                    data = (output / payload["path"]).read_bytes()
+                    assert len(data) == payload["size"] and hashlib.sha256(data).hexdigest() == payload["sha256"]
+                if mode == "fixed":
+                    assert (output / event["source"]["path"]).read_bytes() == (output / event["sent"]["path"]).read_bytes()
+            final = json.loads(observation.read_bytes())
+            assert final["session_id"] == initial["session_id"] and final["consistent"]
+            assert len(final["processed"]) == 2 and len(final["records"]) == count
+            if mode == "fixed":
+                assert manifest["changes"] == [] and manifest["transformations"] == []
+                assert final["records"][0]["appointment_start"] == "20260103120000+0000"
+            else:
+                assert len(manifest["changes"]) == 8
+                assert final["records"][-1]["appointment_start"] == "20260104120000+0000"
+                assert all(base64.b64decode(change["old_base64"]) != base64.b64decode(change["new_base64"]) for change in manifest["changes"])
+    assert original == {p.relative_to(source).as_posix(): p.read_bytes() for p in source.rglob("*") if p.is_file()}
 
 
 def main():

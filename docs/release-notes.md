@@ -17,6 +17,9 @@ Unsigned preview of local HL7 inspection and case evidence capture.
 - `synth` creates a reproducible synthetic SIU family with separate regression,
   cancellation, and known-invalid bundles from four explicit generator inputs.
 - Five native-tested targets, SHA-256 checksums, and GitHub binary provenance.
+- `replay` previews by default, sends only to explicitly configured test targets,
+  preserves selected source values unless a named transformation is requested,
+  and records exact transport evidence and uncertain outcomes in a new run.
 
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
