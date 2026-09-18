@@ -24,3 +24,8 @@ Syntax references: [HL7's MLLP block format](https://hl7.eu/refactored/transport
 and [v2.5.1 delimiter rules, including optional omissions](https://hl7.eu/HL7v2x/v251/std251/ch02.html). These pages are
 references, not bundled content. Future externally sourced definitions require
 their own provenance and redistribution review.
+
+[D1](product-decisions.md#d1--profile-metadata-and-supported-meaning) selects the
+sources for the future multi-version library. That decision does not expand
+the contents, rights assessment or supported meaning of this existing label
+set; #45 must record and review each new extraction separately.

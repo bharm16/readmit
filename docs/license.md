@@ -6,6 +6,12 @@ device. Verification is local and total: `readmit license` opens no connection,
 contacts no activation service, and performs no update check, so a workstation
 on an isolated clinical network reaches the same verdict a connected one does.
 
+This page describes the implemented v1 contract. The adopted
+[trial and commercial policies](product-decisions.md#d6--evaluation-and-clock-policy)
+are follow-up work in #116/#118/#119: the clock guard and two-devices-per-author
+policy are not enforced by v1. New author/device claims require a new contract
+version; the existing format and its device-count semantics remain compatible.
+
 ```sh
 readmit license verify entitlement.json --trust vendor-keys.json --device ws-0413
 readmit license import entitlement.json --trust vendor-keys.json \
