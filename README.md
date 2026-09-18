@@ -135,7 +135,9 @@ the release is then downloaded and exercised on a fresh Linux runner with an
 empty PATH. The runtime is never rebuilt between testing and publishing.
 Before uploading the archives, `python3 tools/smoke.py --artifacts dist
 --check-build-info` reads each packaged executable's build metadata with Go and
-requires its compiler version to match the pin. Native smoke tests still run the
+requires its compiler version to match the pin. Archive acceptance also requires
+the executable, all seven fixtures, documentation, notices, licenses, and
+dictionary source to be present and nonempty. Native smoke tests still run the
 executable with an empty PATH. The release-tool regressions run with
 `python3 -m unittest discover -s tools -p 'test_*.py' -v`.
 

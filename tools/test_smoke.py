@@ -13,6 +13,18 @@ import zipfile
 
 
 SMOKE = Path(__file__).with_name("smoke.py")
+ROOT = SMOKE.parent.parent
+# Independently specified distribution contract, not imported from the verifier.
+DISTRIBUTION_FILES = (
+    "README.md", "THIRD_PARTY_NOTICES.md", "docs/dictionary-provenance.md",
+    "dictionary/fields-v251.json", "testdata/README.md",
+    "licenses/cobra-LICENSE.txt", "licenses/go-BSD-3-Clause.txt",
+    "licenses/mousetrap-LICENSE.txt", "licenses/nhapi-MPL-2.0.txt", "licenses/pflag-LICENSE.txt",
+    "testdata/fixtures/adt-cr.hl7", "testdata/fixtures/siu-lf.hl7",
+    "testdata/fixtures/ack-crlf.hl7", "testdata/fixtures/custom-delimiters.hl7",
+    "testdata/fixtures/two-messages.mllp", "testdata/fixtures/non-utf8.hl7",
+    "testdata/fixtures/reduced-delimiters.hl7",
+)
 
 
 class ArchiveTests(unittest.TestCase):
@@ -37,19 +49,25 @@ class ArchiveTests(unittest.TestCase):
             )
             cls.binaries[target_os] = binary.read_bytes()
 
-    def archive(self, directory, target_os):
+    def archive(self, directory, target_os, omitted=None):
         name = "readmit.exe" if target_os == "windows" else "readmit"
         suffix = "zip" if target_os == "windows" else "tar.gz"
         archive = directory / f"readmit_0.1.0-test_{target_os}_amd64.{suffix}"
-        payload = self.binaries[target_os]
+        members = {name: self.binaries[target_os]}
+        for member in DISTRIBUTION_FILES:
+            if member != omitted:
+                source = "internal/" + member if member.startswith("dictionary/") else member
+                members[member] = (ROOT / source).read_bytes()
         if suffix == "zip":
             with zipfile.ZipFile(archive, "w") as output:
-                output.writestr(name, payload)
+                for member, payload in members.items():
+                    output.writestr(member, payload)
         else:
             with tarfile.open(archive, "w:gz") as output:
-                info = tarfile.TarInfo(name)
-                info.size = len(payload)
-                output.addfile(info, io.BytesIO(payload))
+                for member, payload in members.items():
+                    info = tarfile.TarInfo(member)
+                    info.size = len(payload)
+                    output.addfile(info, io.BytesIO(payload))
         digest = hashlib.sha256(archive.read_bytes()).hexdigest()
         (directory / "checksums.txt").write_text(f"{digest}  {archive.name}\n")
 
@@ -74,6 +92,17 @@ class ArchiveTests(unittest.TestCase):
                 self.assertIn("does not match the toolchain pin", rejected.stderr)
                 accepted = self.verify(directory, self.compiler)
                 self.assertEqual(accepted.returncode, 0, accepted.stderr)
+
+    def test_missing_distribution_files_fail_even_with_a_matching_checksum(self):
+        for target_os in ("linux", "windows"):
+            for missing in DISTRIBUTION_FILES:
+                with self.subTest(target_os=target_os, missing=missing), tempfile.TemporaryDirectory() as name:
+                    directory = Path(name)
+                    self.archive(directory, target_os, omitted=missing)
+                    rejected = self.verify(directory, self.compiler)
+                    self.assertNotEqual(rejected.returncode, 0)
+                    self.assertIn("Missing distribution members", rejected.stderr)
+                    self.assertIn(missing, rejected.stderr)
 
 
 if __name__ == "__main__":

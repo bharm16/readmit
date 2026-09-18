@@ -18,6 +18,37 @@ import zipfile
 from toolchain import pinned_version
 
 
+FIXTURES = (
+    ("adt-cr.hl7", "raw", "cr", 1),
+    ("siu-lf.hl7", "raw", "lf", 1),
+    ("ack-crlf.hl7", "raw", "crlf", 1),
+    ("custom-delimiters.hl7", "raw", "cr", 1),
+    ("two-messages.mllp", "mllp", "cr", 2),
+    ("non-utf8.hl7", "raw", "cr", 1),
+    ("reduced-delimiters.hl7", "raw", "cr", 1),
+)
+REQUIRED_FILES = {
+    "README.md", "THIRD_PARTY_NOTICES.md", "docs/dictionary-provenance.md",
+    "dictionary/fields-v251.json", "testdata/README.md",
+    "licenses/cobra-LICENSE.txt", "licenses/go-BSD-3-Clause.txt",
+    "licenses/mousetrap-LICENSE.txt", "licenses/nhapi-MPL-2.0.txt", "licenses/pflag-LICENSE.txt",
+} | {"testdata/fixtures/" + filename for filename, _, _, _ in FIXTURES}
+
+
+def verify_distribution(archive):
+    if archive.suffix == ".zip":
+        binary = "readmit.exe"
+        with zipfile.ZipFile(archive) as contents:
+            available = {member.filename for member in contents.infolist() if not member.is_dir() and member.file_size > 0}
+    else:
+        binary = "readmit"
+        with tarfile.open(archive) as contents:
+            available = {member.name for member in contents.getmembers() if member.isfile() and member.size > 0}
+    missing = (REQUIRED_FILES | {binary}) - available
+    if missing:
+        raise RuntimeError(f"Missing distribution members in {archive.name}: {', '.join(sorted(missing))}")
+
+
 def verified_archives(directory):
     checksums = {}
     for line in (directory / "checksums.txt").read_text().splitlines():
@@ -29,6 +60,7 @@ def verified_archives(directory):
     for archive in archives:
         if hashlib.sha256(archive.read_bytes()).hexdigest() != checksums.get(archive.name):
             raise RuntimeError(f"Checksum mismatch: {archive.name}")
+        verify_distribution(archive)
     return archives
 
 
@@ -83,16 +115,7 @@ def smoke(archive, target_os, release_tag=None):
             expected = f"readmit version {release_tag.removeprefix('v')}\n".encode()
             if version.stdout != expected:
                 raise RuntimeError("Executable version does not match the release tag")
-        cases = [
-            ("adt-cr.hl7", "raw", "cr", 1),
-            ("siu-lf.hl7", "raw", "lf", 1),
-            ("ack-crlf.hl7", "raw", "crlf", 1),
-            ("custom-delimiters.hl7", "raw", "cr", 1),
-            ("two-messages.mllp", "mllp", "cr", 2),
-            ("non-utf8.hl7", "raw", "cr", 1),
-            ("reduced-delimiters.hl7", "raw", "cr", 1),
-        ]
-        for filename, framing, terminator, count in cases:
+        for filename, framing, terminator, count in FIXTURES:
             original = member_bytes(archive, "testdata/fixtures/" + filename)
             source, destination = work / filename, work / (filename + ".copy")
             source.write_bytes(original)

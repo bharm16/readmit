@@ -39,6 +39,20 @@ class ToolchainTests(unittest.TestCase):
         self.assertIn("does not match the toolchain pin", result.stderr)
         self.assertEqual(result.stdout, "")
 
+    def test_missing_or_inexact_pin_never_falls_back_to_the_go_directive(self):
+        for declaration in ("", "toolchain default\n", "toolchain go1.27\n"):
+            with self.subTest(declaration=declaration), tempfile.TemporaryDirectory() as directory:
+                Path(directory, "go.mod").write_text(
+                    "module example.com/fixture\n\ngo 1.27.0\n" + declaration
+                )
+                result = subprocess.run(
+                    [sys.executable, str(TOOLCHAIN)], cwd=directory,
+                    capture_output=True, text=True, timeout=10,
+                )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("one exact toolchain patch version", result.stderr)
+            self.assertEqual(result.stdout, "")
+
 
 if __name__ == "__main__":
     unittest.main()
