@@ -348,6 +348,9 @@ dd {
   margin-top: 0.5rem;
   max-width: 100%;
   overflow: auto;
+  /* The rows measure where they begin against this box, so the scroll position
+     can be read as a row number rather than guessed at. */
+  position: relative;
 }
 
 .rows {

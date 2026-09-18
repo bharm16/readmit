@@ -181,15 +181,22 @@ kept, in the order the case records them, with where each one is and what it is.
 Asking for the next window is another call, so a large case is never drawn at
 once and never held in the interface.
 
-The interface draws less than that again. The rows of a window are
-**virtualized**: the table holds the rows of one viewport plus an overscan on
+The interface draws less than that again: the rows of a window are
+**virtualized**. The table holds the rows of one viewport plus an overscan on
 either side, and the rows before and after them are measured space rather than
 elements. Scrolling replaces which rows are drawn, so the number of rows in the
 document is decided by the viewport and never by the size of the window or of
 the case. A window no larger than the viewport and its overscan is drawn whole,
-so a small case behaves exactly as it did. The table states the real count with
-`aria-rowcount` and each row its real position with `aria-rowindex`, because a
-row that is not in the document is still a row of the grid.
+so a small case behaves exactly as it did. The table states how many rows the
+window holds with `aria-rowcount` and each row its position within it with
+`aria-rowindex`, because a row that is not in the document is still a row of the
+window.
+
+That is why the interface asks for the facade's own window bound rather than a
+smaller one. What a window costs to draw no longer follows how many rows it
+holds, so one call now covers four times as much of a large case as it did, and
+paging to the next window stays what it was: another call that verifies the case
+and re-checks the index against it.
 
 It names two entries of the open workspace: the case, and one `readmit-index/v1`
 file built from that case by `readmit index build` — see [searching a

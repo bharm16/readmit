@@ -344,7 +344,8 @@ func TestDocumentsRejectUnknownMembersAndUnknownVersions(t *testing.T) {
 			}
 		})
 	}
-	benchmark := corpus.NewBenchmark(manifest.Inputs.Plan, importer.ScanResult{Bytes: 1, Records: 1, PeakResidentBytes: 1}, corpus.Bounds{ResidentBound: importer.ResidentBound}, time.Second)
+	measured := importer.ScanResult{Bytes: 1, Records: 1, PeakResidentBytes: 1, SHA256: manifest.SHA256}
+	benchmark := corpus.NewBenchmark(manifest.Inputs.Plan, measured, corpus.Bounds{ResidentBound: importer.ResidentBound}, time.Second)
 	body, err := corpus.EncodeBenchmark(benchmark)
 	if err != nil {
 		t.Fatalf("encode benchmark: %v", err)
@@ -378,7 +379,10 @@ func TestDocumentsRejectUnknownMembersAndUnknownVersions(t *testing.T) {
 
 func TestABenchmarkKeepsProposedTargetsApartFromWhatItMeasured(t *testing.T) {
 	plan := declared(t, 4).Plan
-	measured := importer.ScanResult{Bytes: 4096, Records: 32, Occurrences: 32, Decoded: 32, PeakResidentBytes: 1024}
+	measured := importer.ScanResult{
+		Bytes: 4096, Records: 32, Occurrences: 32, Decoded: 32, PeakResidentBytes: 1024,
+		SHA256: strings.Repeat("a", 64),
+	}
 	bounds := corpus.Bounds{BatchRecords: importer.MaxBatchRecords, BatchBytes: importer.MaxBatchBytes, RecordBytes: importer.MaxRecordBytes, ResidentBound: importer.ResidentBound}
 	benchmark := corpus.NewBenchmark(plan, measured, bounds, 250*time.Millisecond)
 	if benchmark.Targets.Note != corpus.TargetNote {
@@ -400,6 +404,13 @@ func TestABenchmarkKeepsProposedTargetsApartFromWhatItMeasured(t *testing.T) {
 	impossible.Measured.PeakResidentBytes = bounds.ResidentBound + 1
 	if _, err := corpus.EncodeBenchmark(impossible); err == nil {
 		t.Error("a benchmark recorded a peak past its own resident bound")
+	}
+	// A number that does not name the bytes it came from cannot be repeated, so
+	// it is not a benchmark this release will write or read.
+	anonymous := benchmark
+	anonymous.Corpus.SHA256 = ""
+	if _, err := corpus.EncodeBenchmark(anonymous); err == nil {
+		t.Error("a benchmark named no corpus at all")
 	}
 }
 

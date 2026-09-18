@@ -86,12 +86,15 @@ func (i Inputs) Validate() error {
 	if i.Generator.ProfileVersion != ProfileVersion {
 		return errors.New("unsupported corpus profile version; supported: " + ProfileVersion)
 	}
+	// The message count is bounded before the base time, because the base-time
+	// check spans the corpus and an unbounded count would overflow that span
+	// and be reported as a fault in the time instead of in the count.
+	if i.Messages < 1 || i.Messages > MaxMessages {
+		return errors.New("a corpus holds between 1 and " + strconv.Itoa(MaxMessages) + " messages")
+	}
 	base := i.Generator.BaseTime.UTC()
 	if base.IsZero() || base.Year() < 1 || base.Nanosecond() != 0 || base.Add(time.Duration(i.Messages)*time.Minute+24*time.Hour+30*time.Minute).Year() > 9999 {
 		return errors.New("base time must be a nonzero whole second with the complete corpus within years 0001 through 9999")
-	}
-	if i.Messages < 1 || i.Messages > MaxMessages {
-		return errors.New("a corpus holds between 1 and " + strconv.Itoa(MaxMessages) + " messages")
 	}
 	if err := i.Plan.Validate(); err != nil {
 		return err

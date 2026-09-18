@@ -114,7 +114,10 @@ type ScanOptions struct {
 	Report       func(Progress)
 }
 
-// ScanResult is everything one scan learned. Rows holds only the requested
+// ScanResult is everything one scan learned. A stream with no bytes has no
+// records, so every count is zero: an import of an empty member writes one
+// empty quarantined source, because a case names what it was given, and a scan
+// names what it read. Rows holds only the requested
 // window; every other member is a count over the whole stream. Bytes is what
 // was read from the stream, which on a cancelled scan is a little ahead of what
 // was divided into records: a cancellation stops the reading, it does not
@@ -139,11 +142,11 @@ type ScanResult struct {
 // and reporting the second because the first succeeded would be a claim about
 // evidence that nothing checked.
 func (r ScanResult) ExceedsCase(plan Plan) []string {
-	// An MLLP member is stored as one source the case bundle divides into
+	// An MLLP member is stored whole as one source the case bundle divides into
 	// frames; every other framing stores one source per record.
-	sources := r.Records
-	if plan.Framing == MLLPFraming && sources > 1 {
-		sources = 1
+	sources, largest := r.Records, int64(0)
+	if plan.Framing == MLLPFraming {
+		sources, largest = min(r.Records, 1), r.Bytes
 	}
 	var past []string
 	if sources > int64(bundle.MaxSources) {
@@ -151,6 +154,12 @@ func (r ScanResult) ExceedsCase(plan Plan) []string {
 	}
 	if r.Occurrences > int64(bundle.MaxEvents) {
 		past = append(past, "occurrences ("+strconv.Itoa(bundle.MaxEvents)+")")
+	}
+	// A scanned record is already held to the same bound a case bundle source
+	// is, so a record can never be past it; an MLLP member can, because the
+	// case stores the whole member as the one source.
+	if largest > int64(bundle.MaxSourceBytes) {
+		past = append(past, "source bytes ("+strconv.Itoa(bundle.MaxSourceBytes)+")")
 	}
 	if r.Bytes > int64(bundle.MaxEvidenceBytes) {
 		past = append(past, "evidence bytes ("+strconv.Itoa(bundle.MaxEvidenceBytes)+")")
@@ -199,14 +208,14 @@ func Scan(ctx context.Context, source io.Reader, options ScanOptions) (ScanResul
 		return ScanResult{}, err
 	}
 	s := &scanner{
-		reader:  &recordReader{source: source, split: split, buf: make([]byte, 0, readChunkBytes)},
-		plan:    options.Plan,
-		records: records,
-		bytes:   size,
-		report:  options.Report,
-		digest:  sha256.New(),
-		result:  ScanResult{Window: options.Window, Rows: []Row{}},
-		options: hl7.Options{Format: options.Plan.Framing.storedFormat(), Terminator: options.Plan.Terminator},
+		reader:       &recordReader{source: source, split: split, buf: make([]byte, 0, readChunkBytes)},
+		plan:         options.Plan,
+		batchRecords: records,
+		batchBytes:   size,
+		report:       options.Report,
+		digest:       sha256.New(),
+		result:       ScanResult{Window: options.Window, Rows: []Row{}},
+		options:      hl7.Options{Format: options.Plan.Framing.storedFormat(), Terminator: options.Plan.Terminator},
 	}
 	return s.run(ctx)
 }
@@ -266,16 +275,16 @@ type batched struct {
 // counts. The batch arena is reused between batches, so the copy a batch needs
 // is made once rather than once per batch.
 type scanner struct {
-	reader  *recordReader
-	plan    Plan
-	records int
-	bytes   int
-	report  func(Progress)
-	digest  hash.Hash
-	result  ScanResult
-	options hl7.Options
-	arena   []byte
-	batch   []batched
+	reader       *recordReader
+	plan         Plan
+	batchRecords int
+	batchBytes   int
+	report       func(Progress)
+	digest       hash.Hash
+	result       ScanResult
+	options      hl7.Options
+	arena        []byte
+	batch        []batched
 }
 
 func (s *scanner) run(ctx context.Context) (ScanResult, error) {
@@ -306,7 +315,7 @@ func (s *scanner) run(ctx context.Context) (ScanResult, error) {
 		if err := s.declaredDivision(record); err != nil {
 			return ScanResult{}, err
 		}
-		if len(s.batch) > 0 && (len(s.batch) >= s.records || len(s.arena)+len(record) > s.bytes) {
+		if len(s.batch) > 0 && (len(s.batch) >= s.batchRecords || len(s.arena)+len(record) > s.batchBytes) {
 			s.parse()
 		}
 		s.batch = append(s.batch, batched{offset: offset, from: len(s.arena), to: len(s.arena) + len(record)})

@@ -57,10 +57,14 @@ Case bounds: exceeded sources (128), occurrences (10000)
 ```
 
 An MLLP member is one case bundle source that the case divides into frames, so
-a framed corpus is one source however many frames it holds; a batch member is
-one source per record, so 300 batch records are already past the source bound.
-Either way the scan reports what an import would run into. Importing a corpus
-that large is not supported and is not made supported here.
+a framed corpus is one source however many frames it holds — and the whole
+member is that one source, so a framed stream past 16 MiB is past the
+per-source byte bound whatever it holds. A batch member is one source per
+record, so 300 batch records are already past the source bound, and no single
+record can be past the per-source byte bound because a scanned record is held to
+exactly that bound already. Either way the scan reports what an import would run
+into. Importing a corpus that large is not supported and is not made supported
+here.
 
 ## Declaring how a stream divides
 
@@ -84,6 +88,13 @@ A scan divides an MLLP stream at each frame, where an import stores the member
 as one source and the case bundle divides it into the same frames as
 occurrences. The **occurrence** count is the same either way, and the scan's
 own tests check it against `import` over the same bytes.
+
+One reading does differ, deliberately. Under `raw` or `segment-start` framing a
+stream with no bytes has no records, so a scan of an empty file reports zero of
+everything, where an import of an empty member writes one empty quarantined
+source: a case names the member it was given, and a scan names what it read.
+`mllp` and `hl7-batch` refuse an empty stream either way, because there is no
+start block and no batch envelope to be found in nothing.
 
 ## Progress, and cancelling
 
@@ -193,6 +204,15 @@ digests are what says the two documents describe the same corpus. `bounds` is
 what the run was declared to hold, because two numbers are only comparable when
 the bounds match. `hardware` is the machine at the resolution a published number
 needs and no finer — it names no host, no user and no path.
+
+`hardware` records only what the running process observes about itself: which
+operating system, which instruction set, how many processors and which compiler.
+readmit does not interrogate the machine's installed memory or the class of its
+storage, so the "16 GiB RAM SSD workstation" the proposed envelope names is not
+a property this document reports. It is a declaration somebody makes about the
+machine, and a declaration is recorded as made rather than reported as a
+verified property — the same rule `protect` applies to a declared at-rest
+control.
 
 ### The targets are targets
 

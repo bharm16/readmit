@@ -83,14 +83,18 @@ func TestScanDividesAStreamTheWayAnImportOfTheSameBytesWould(t *testing.T) {
 	}{
 		{"mllp frames", mllpPlan(t), stream(37, framedRecord), 37},
 		{"batch records", batchPlan(t), stream(37, batchRecord), 37},
+		// A batch envelope segment carries no message, so it is a record in its
+		// own right at both ends: three messages between them are five records.
+		{"hl7 batch envelope", declaredPlan(t, importer.BatchFraming, importer.HL7Batch),
+			"BHS|^~\\&|READMIT\r" + stream(3, batchRecord) + "BTS|3\r", 5},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			result := scan(t, strings.NewReader(c.corpus), importer.ScanOptions{Plan: c.plan})
 			if result.Records != int64(c.records) || result.Occurrences != int64(c.records) {
 				t.Errorf("records %d occurrences %d, want %d of each", result.Records, result.Occurrences, c.records)
 			}
-			if result.Decoded != int64(c.records) || result.Undecodable != 0 {
-				t.Errorf("decoded %d undecodable %d, want %d and 0", result.Decoded, result.Undecodable, c.records)
+			if result.Decoded+result.Undecodable != int64(c.records) {
+				t.Errorf("decoded %d undecodable %d, want %d between them", result.Decoded, result.Undecodable, c.records)
 			}
 			if result.Bytes != int64(len(c.corpus)) {
 				t.Errorf("read %d bytes of a %d byte stream", result.Bytes, len(c.corpus))
@@ -109,6 +113,30 @@ func TestScanDividesAStreamTheWayAnImportOfTheSameBytesWould(t *testing.T) {
 				t.Errorf("extract counted %d occurrences, scan counted %d", extraction.Totals.Occurrences, result.Occurrences)
 			}
 		})
+	}
+}
+
+func TestScanOfAStreamWithNoBytesReportsNoRecords(t *testing.T) {
+	// A scan names what it read, and there was nothing to read. An import of
+	// the same member writes one empty quarantined source instead, because a
+	// case names the member it was given; the two statements are different and
+	// only one of them is about a stream.
+	for _, plan := range []importer.Plan{batchPlan(t), declaredPlan(t, importer.RawFraming, "")} {
+		result := scan(t, strings.NewReader(""), importer.ScanOptions{Plan: plan, Window: importer.Window{Limit: 1}})
+		if result.Records != 0 || result.Occurrences != 0 || result.Bytes != 0 || len(result.Rows) != 0 {
+			t.Fatalf("%s framing over no bytes: %+v", plan.Framing, result)
+		}
+		if past := result.ExceedsCase(plan); len(past) != 0 {
+			t.Errorf("%s framing over no bytes exceeded %v", plan.Framing, past)
+		}
+	}
+	// The framings whose first bytes are part of the declaration refuse an
+	// empty stream, exactly as an import of an empty member does: there is no
+	// start block and no batch envelope to be found in nothing.
+	for _, plan := range []importer.Plan{mllpPlan(t), declaredPlan(t, importer.BatchFraming, importer.HL7Batch)} {
+		if _, err := importer.Scan(context.Background(), strings.NewReader(""), importer.ScanOptions{Plan: plan}); !errors.Is(err, importer.ErrDeclaredFraming) {
+			t.Errorf("%s framing over no bytes: %v, want %v", plan.Framing, err, importer.ErrDeclaredFraming)
+		}
 	}
 }
 
@@ -337,6 +365,30 @@ func TestScanCancellationIsAcknowledgedWithTheCountsItReached(t *testing.T) {
 	}
 	if result.Bytes >= int64(100_000*len(record)) {
 		t.Errorf("a cancelled scan read %d of %d bytes", result.Bytes, 100_000*len(record))
+	}
+}
+
+func TestScanNamesTheSourceByteBoundAFramedStreamIsPast(t *testing.T) {
+	// An MLLP member is stored whole as one source, so a framed stream past the
+	// 16 MiB source bound is past it however few frames it holds. A scanned
+	// record is already held to that same bound, so no other framing can reach
+	// it — which is why this is the one framing the check is about.
+	plan := mllpPlan(t)
+	filler := strings.Repeat("A", 1<<20)
+	frame := []byte("\x0b" + fmt.Sprintf(scanMessage, 1, 1) + "ZFI|1|" + filler + "\r\x1c\r")
+	frames := (importer.MaxRecordBytes / len(frame)) + 4
+	result := scan(t, &repeated{record: frame, left: frames}, importer.ScanOptions{Plan: plan})
+	if result.Bytes <= int64(importer.MaxRecordBytes) {
+		t.Fatalf("the stream is %d bytes, which is not past the %d byte source bound", result.Bytes, importer.MaxRecordBytes)
+	}
+	past := result.ExceedsCase(plan)
+	if len(past) != 1 || !strings.Contains(past[0], "source bytes") {
+		t.Fatalf("exceeded %v, want the source byte bound alone", past)
+	}
+	// Every individual frame is well inside it, so the bound being named is a
+	// fact about the member the case would store, not about any one record.
+	if int64(len(frame))*int64(frames) != result.Bytes || len(frame) > importer.MaxRecordBytes {
+		t.Fatalf("%d frames of %d bytes is not the %d byte stream that was read", frames, len(frame), result.Bytes)
 	}
 }
 

@@ -225,27 +225,34 @@ export function Palette({
 export const GRID_WINDOW = 200;
 
 /** The virtualized row geometry. GRID_ROW_HEIGHT is the height one row is
- * given, and it must stay equal to --grid-row-height in styles.css: the scroll
- * position is turned into a row number by dividing by it, so a row that is
- * drawn taller than this would drift away from the scrollbar.
+ * given, and it must stay equal to --grid-row-height in styles.css: how far the
+ * rows have been scrolled is turned into a row number by dividing by it, so a
+ * row drawn taller than this would drift away from the scrollbar.
  *
- * GRID_VIEWPORT_ROWS is how many rows the viewport shows, and GRID_OVERSCAN is
- * how many are drawn on either side of it so that scrolling does not reach the
- * edge of what has been drawn. Together they bound the rows in the document: a
- * window of any size draws at most GRID_VIEWPORT_ROWS + 2 * GRID_OVERSCAN of
- * them, and a window no larger than that is drawn whole. */
+ * GRID_VIEWPORT_ROWS is how tall the scrolling viewport is, counted in rows and
+ * including the caption and the column headers above them, so it shows fewer
+ * than that many occurrences at once. GRID_OVERSCAN is how many rows are drawn
+ * on either side of what is visible, so that scrolling does not reach the edge
+ * of what has been drawn — and it is comfortably larger than the couple of rows
+ * the caption and headers take, so what is visible stays drawn either way.
+ *
+ * Together they bound the rows in the document: a window of any size draws at
+ * most GRID_VIEWPORT_ROWS + 2 * GRID_OVERSCAN of them, and a window no larger
+ * than that is drawn whole. */
 export const GRID_ROW_HEIGHT = 32;
-export const GRID_VIEWPORT_ROWS = 12;
+export const GRID_VIEWPORT_ROWS = 16;
 export const GRID_OVERSCAN = 8;
 
 /** The rows of one window that a scroll position puts on screen, with the rows
- * before and after them left as measured space rather than as elements. */
-export function visibleRows(total: number, scrollTop: number) {
+ * before and after them left as measured space rather than as elements.
+ * scrolled is how far the rows themselves have moved, which is the viewport's
+ * own scroll position less the caption and headers above them. */
+export function visibleRows(total: number, scrolled: number) {
   const drawn = GRID_VIEWPORT_ROWS + 2 * GRID_OVERSCAN;
   if (total <= drawn) {
     return { first: 0, last: total };
   }
-  const centre = Math.floor(Math.max(0, scrollTop) / GRID_ROW_HEIGHT);
+  const centre = Math.floor(Math.max(0, scrolled) / GRID_ROW_HEIGHT);
   const first = Math.min(Math.max(0, centre - GRID_OVERSCAN), total - drawn);
   return { first, last: first + drawn };
 }
@@ -289,20 +296,21 @@ export function MessageGrid({
   const [indexName, setIndexName] = useState("");
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [invalid, setInvalid] = useState<string | null>(null);
-  const [scrollTop, setScrollTop] = useState(0);
+  const [scrolled, setScrolled] = useState(0);
   const viewport = useRef<HTMLDivElement | null>(null);
+  const body = useRef<HTMLTableSectionElement | null>(null);
   const grid = result?.grid ?? null;
 
   // A new window is a new list, so it starts at its own first row rather than
   // wherever the previous one had been scrolled to.
   useEffect(() => {
-    setScrollTop(0);
+    setScrolled(0);
     if (viewport.current) {
       viewport.current.scrollTop = 0;
     }
   }, [grid?.index, grid?.offset, grid?.filter]);
   const rows = grid?.rows ?? [];
-  const { first, last } = visibleRows(rows.length, scrollTop);
+  const { first, last } = visibleRows(rows.length, scrolled);
 
   return (
     <section className="grid" aria-label="Message grid">
@@ -385,7 +393,14 @@ export function MessageGrid({
             className="grid-scroll"
             ref={viewport}
             style={{ maxHeight: `${GRID_ROW_HEIGHT * GRID_VIEWPORT_ROWS}px` }}
-            onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+            onScroll={(event) =>
+              // The caption and the column headers scroll with the rows, so how
+              // far the rows have moved is the viewport's scroll position less
+              // where the rows begin inside it. Measuring that rather than
+              // assuming it keeps the drawn window on the row the scrollbar is
+              // actually pointing at.
+              setScrolled(event.currentTarget.scrollTop - (body.current?.offsetTop ?? 0))
+            }
           >
             <table className="rows" aria-rowcount={rows.length + 1}>
               <caption>
@@ -401,7 +416,7 @@ export function MessageGrid({
                   <th scope="col">Bytes</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody ref={body}>
                 {first > 0 ? (
                   <tr className="spacer" aria-hidden="true">
                     <td colSpan={6} style={{ height: `${first * GRID_ROW_HEIGHT}px` }} />

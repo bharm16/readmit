@@ -34,9 +34,10 @@ type Manifest struct {
 // decode, so an absent count is told apart from a declared zero.
 func (m *Manifest) UnmarshalJSON(data []byte) error {
 	var required struct {
-		Schema *string `json:"schema"`
-		Bytes  *int64  `json:"bytes"`
-		SHA256 *string `json:"sha256"`
+		Schema *string         `json:"schema"`
+		Inputs *jsontext.Value `json:"inputs"`
+		Bytes  *int64          `json:"bytes"`
+		SHA256 *string         `json:"sha256"`
 	}
 	if err := json.Unmarshal(data, &required); err != nil || required.Schema == nil {
 		return errors.New("a corpus manifest declares its contract version")
@@ -44,8 +45,8 @@ func (m *Manifest) UnmarshalJSON(data []byte) error {
 	if *required.Schema != ManifestSchema {
 		return ErrUnsupportedVersion
 	}
-	if required.Bytes == nil || required.SHA256 == nil {
-		return errors.New("a corpus manifest declares its length and its digest")
+	if required.Inputs == nil || required.Bytes == nil || required.SHA256 == nil {
+		return errors.New("a corpus manifest declares its inputs, its length and its digest")
 	}
 	type plainManifest Manifest
 	var value plainManifest
@@ -185,13 +186,21 @@ func NewBenchmark(plan importer.Plan, result importer.ScanResult, bounds Bounds,
 // later version is reported as unsupported rather than as invalid.
 func (b *Benchmark) UnmarshalJSON(data []byte) error {
 	var required struct {
-		Schema *string `json:"schema"`
+		Schema   *string         `json:"schema"`
+		Corpus   *jsontext.Value `json:"corpus"`
+		Bounds   *jsontext.Value `json:"bounds"`
+		Measured *jsontext.Value `json:"measured"`
+		Hardware *jsontext.Value `json:"hardware"`
+		Targets  *jsontext.Value `json:"targets"`
 	}
 	if err := json.Unmarshal(data, &required); err != nil || required.Schema == nil {
 		return errors.New("a benchmark declares its contract version")
 	}
 	if *required.Schema != BenchmarkSchema {
 		return ErrUnsupportedVersion
+	}
+	if required.Corpus == nil || required.Bounds == nil || required.Measured == nil || required.Hardware == nil || required.Targets == nil {
+		return errors.New("a benchmark declares the corpus it read, the bounds it ran under, what it measured, the machine and the proposed targets")
 	}
 	type plainBenchmark Benchmark
 	var value plainBenchmark
@@ -209,6 +218,9 @@ func (b Benchmark) Validate() error {
 	}
 	if err := b.Corpus.Plan.Validate(); err != nil {
 		return err
+	}
+	if len(b.Corpus.SHA256) != 64 {
+		return errors.New("a benchmark names the bytes it read by their SHA-256 digest")
 	}
 	if b.Targets.Note != TargetNote {
 		return errors.New("a benchmark records the proposed targets as targets, never as measurements")

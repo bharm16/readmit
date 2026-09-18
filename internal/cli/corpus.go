@@ -221,15 +221,20 @@ func batchOrDefault(declared, fallback int) int {
 
 // addDeclarationFlags registers the import plan declarations on a command that
 // runs under one, so the flags cannot drift between two commands reading the
-// same plan. containers registers the member suffix list as well: it selects
-// the entries of a folder or archive, and a command that reads one stream has
-// no entries to select, so it does not offer the flag at all.
+// same plan. containers is what tells the two apart: a command that reads
+// containers imports the occurrences it divides them into and selects which
+// entries of a folder or archive are members, and a command that reads one
+// stream does neither, so it says so and does not offer the member flag.
 func addDeclarationFlags(cmd *cobra.Command, declared *declaration, containers bool) {
 	cmd.Flags().StringVar(&declared.framing, "framing", "", "Declared message framing: raw, mllp, or batch")
 	cmd.Flags().StringVar(&declared.boundary, "batch-boundary", "", "Declared batch boundary, with --framing batch: segment-start or hl7-batch")
 	cmd.Flags().StringVar(&declared.terminator, "terminator", "", "Declared segment terminator: cr, lf, or crlf")
 	cmd.Flags().StringVar(&declared.encoding, "encoding", "", "Declared source encoding: utf-8, us-ascii, iso-8859-1, or unknown")
-	cmd.Flags().StringVar(&declared.direction, "direction", "", "Declared direction of every occurrence: unknown, inbound, or outbound")
+	occurrences := "every occurrence"
+	if containers {
+		occurrences = "every imported occurrence"
+	}
+	cmd.Flags().StringVar(&declared.direction, "direction", "", "Declared direction of "+occurrences+": unknown, inbound, or outbound")
 	if containers {
 		cmd.Flags().StringArrayVar(&declared.members, "member", nil, "One declared lowercase file-name suffix a folder or archive entry must end with; repeatable")
 	}
