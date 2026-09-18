@@ -65,11 +65,14 @@ write is retained beside it and reported, never reused.
 of where the credential lives, recorded as made. readmit runs the program it was
 given and cannot establish what answered, so the declaration is never proof.
 
-`purpose` is the single use a reference may be bound to. This release knows one,
-`mllp-endpoint`, and `secret add` records it; there is no flag to choose another,
-because there is no other. An unknown purpose in a document is refused rather
-than treated as any other one, and binding a reference demands the purpose the
-caller needs, so adding a second purpose cannot silently widen an existing one.
+`purpose` is the single use a reference may be bound to. This release knows two,
+`mllp-endpoint` for a credential presented to an MLLP endpoint and
+`source-endpoint` for one a read-only transfer program is given to reach an
+approved [evidence source](source.md), and `secret add --purpose` records which.
+An unknown purpose in a document is refused rather than treated as any other one,
+and binding a reference demands the purpose the caller needs, so a reference
+registered for one is refused wherever the other is needed and neither is ever
+silently widened into the other.
 
 `command` is the **absolute path** of a program that prints the credential on
 standard output, and `arguments` select which credential. The program is never

@@ -21,6 +21,7 @@ DISTRIBUTION_FILES = (
     "testdata/README.md",
     "docs/case-bundle.md",
     "docs/import.md",
+    "docs/source.md",
     "docs/index.md",
     "docs/corpus.md",
     "docs/mapping.md",

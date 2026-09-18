@@ -329,8 +329,16 @@ already past rather than widening them. It writes no evidence.
   text-log extraction, including explicit source, direction, channel and
   timestamp mapping, is `--recipe`; see [mapping recipes](mapping.md). A plan
   divides a member by framing alone and reads no value out of it.
-- **No integration-engine export adapter** and **no file, SFTP, or API
-  collection**. An import reads containers that are already on this machine.
+- **No integration-engine export adapter.** A supported engine export format is
+  separate work that is not in this release.
+- **No collection from a remote source.** An import reads containers that are
+  already on this machine. Bringing evidence here from an approved
+  customer-controlled source — an export directory, or a remote export reached
+  through the operator's own read-only transfer program — is
+  [`readmit source collect`](source.md), which stages the original bytes in a
+  directory this command then reads as an ordinary folder container. Collecting
+  from an application interface is not supported; `source` documents the
+  read-only contract one would have to satisfy.
 - **No streaming import.** A container is read whole, because an import holds
   every source it writes. Streaming a file larger than a case bundle may hold,
   with progress and cancellation, is [`readmit corpus scan`](corpus.md); it

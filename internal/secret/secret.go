@@ -97,15 +97,25 @@ const (
 
 var stores = []Store{OSKeychain, CustomerManaged}
 
-// Purpose is the single use a reference may be bound to. The set is closed;
-// this release knows one purpose, and an unknown purpose is refused rather than
-// treated as any other one. A credential for a different purpose is a different
-// reference, so one stored credential is never widened by editing.
+// Purpose is the single use a reference may be bound to. The set is closed, and
+// an unknown purpose is refused rather than treated as any other one. A
+// credential for a different purpose is a different reference, so one stored
+// credential is never widened by editing, and binding demands the purpose the
+// caller needs, so adding a purpose cannot widen a reference registered under
+// another one.
 type Purpose string
 
-const MLLPEndpoint Purpose = "mllp-endpoint"
+const (
+	// MLLPEndpoint is a credential presented to an MLLP endpoint.
+	MLLPEndpoint Purpose = "mllp-endpoint"
+	// SourceEndpoint is a credential a read-only transfer program is given to
+	// reach one approved customer-controlled evidence source. It is read access
+	// to evidence and nothing else; a credential registered for an MLLP
+	// endpoint is refused here rather than presented to a transfer program.
+	SourceEndpoint Purpose = "source-endpoint"
+)
 
-var purposes = []Purpose{MLLPEndpoint}
+var purposes = []Purpose{MLLPEndpoint, SourceEndpoint}
 
 // RotationState is what a recorded rotation says about a reference now.
 type RotationState string

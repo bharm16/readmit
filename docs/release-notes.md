@@ -322,6 +322,30 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   transport. `readmit-collection/v1`-`/v3`, `readmit-receiver-policy/v1`-`/v3`,
   `readmit-case/v4` and `readmit-job/v1` are unchanged.
 
+- `source collect` brings evidence in from an approved customer-controlled
+  source: a `readmit-source/v1` document declares an export directory this
+  machine can open, or a remote export reached by running the customer's own
+  read-only transfer program, and each entry is streamed under the same
+  `readmit-import-plan/v1` an import declares, so a collection holds one record
+  at a time and stages original bytes that `import` then reads. The declared
+  quota is applied to the source's own listing before anything is read and
+  refuses rather than truncates; identical bytes under a second name are
+  recorded as a duplicate of the first, by an identity over names and contents
+  only; every attempt starts an entry again from nothing and only a transport
+  failure is retried, so a retry never turns an uncertain read into a confident
+  one. `source diagnose` reports what access was actually available by
+  attempting it and collects nothing. A source that could not be listed, an
+  entry no attempt read whole, a quota refusal, a cancellation, a destination no
+  explicitly selected policy approved, and an application interface — which this
+  release declares and does not collect from, with the read-only contract one
+  would have to satisfy documented instead — are each execution errors rather
+  than evidence that nothing was there. A remote source's credential is a
+  `source-endpoint` reference registered in `readmit-secrets/v1`, presented to
+  the transfer program on standard input and never as an argument; readmit
+  implements no SSH client and cannot establish what answered. Every existing
+  case, index, project, run, result, report and observation contract is
+  unchanged.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is

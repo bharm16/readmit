@@ -376,3 +376,33 @@ func startFixtureReceiver(t *testing.T, directory string) (string, func()) {
 		}
 	}
 }
+
+// A reference is registered for exactly one purpose. The two this release knows
+// are separate uses of separate credentials, so a reference registered for one
+// is refused wherever the other is needed, and a purpose nobody declared is
+// refused rather than treated as either.
+func TestSecretAddRecordsTheOnePurposeAReferenceMayBeBoundTo(t *testing.T) {
+	t.Setenv(providerSwitch, "emit")
+	directory := t.TempDir()
+	store := filepath.Join(directory, "secrets.json")
+	base := []string{"secret", "add", "--secrets", store, "--store", "customer-managed",
+		"--address", testOnlyEndpoint, "--command", providerCommand(t), "--argument", testOnlyMaterial(t)}
+	if _, stderr, err := run(t, append(base, "--name", "lab-source", "--purpose", "source-endpoint")...); err != nil || stderr != "" {
+		t.Fatalf("secret add --purpose source-endpoint: %v %s", err, stderr)
+	}
+	stdout, _, err := run(t, "secret", "show", "--secrets", store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout, "purpose=source-endpoint") {
+		t.Fatalf("the registered purpose was not reported:\n%s", stdout)
+	}
+	requireMasked(t, "secret show", stdout)
+	if _, _, err := run(t, append(base, "--name", "other", "--purpose", "database-endpoint")...); err == nil {
+		t.Fatal("a purpose this release does not know was registered")
+	}
+	// The purpose is what a reference is for, so an edit cannot change it.
+	if _, _, err := run(t, "secret", "update", "--secrets", store, "--name", "lab-source", "--purpose", "mllp-endpoint"); err == nil {
+		t.Fatal("secret update accepted a purpose change")
+	}
+}

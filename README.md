@@ -76,6 +76,32 @@ guess. Malformed records, including a member the declared boundary finds no
 message in, are kept with all of their bytes and quarantined, never repaired.
 See [importing real-world files](docs/import.md).
 
+`source collect SOURCE --output NEW_DIRECTORY --receipt NEW_FILE` brings
+evidence into readmit from a place the customer controls and an operator
+explicitly approved: an export directory this machine can already open, or a
+remote export reached by running the customer's **own** read-only transfer
+program, which is how an SFTP export is collected — readmit implements no SSH
+client and cannot establish what answered. A `readmit-source/v1` document
+declares the kind, the scope, a quota with no defaults, and a retry declaration;
+a remote source also declares its address and recorded class, and the
+[credential reference](docs/secret.md) the transfer program is given, which is
+presented on standard input and never as an argument. Each entry is streamed
+under the same import plan an import declares, so a collection refuses what an
+import of the same bytes refuses and holds one record at a time however long the
+entry is. A quota is applied to the source's own listing before anything is read
+and refuses rather than truncates; identical bytes under a second name are
+recorded as a duplicate of the first; every attempt starts an entry again from
+nothing, and only a transport failure is retried, so a retry never turns an
+uncertain read into a confident one. `source diagnose SOURCE` reports what access
+was **actually** available — it opens each entry rather than reading its mode
+bits — and collects nothing. A source that could not be listed, an entry no
+attempt read whole, a quota refusal, a cancellation, a destination no policy
+approved and an application interface, which this release does not collect from,
+are each execution errors: a collection that could not run never becomes evidence
+that nothing was there. What it stages is an ordinary folder that `import` then
+reads, so there is one ingestion path into a case rather than two. See
+[collecting from an approved source](docs/source.md).
+
 `import --recipe RECIPE --folder DIRECTORY --output NEW_DIRECTORY --receipt
 NEW_FILE` maps evidence that arrives inside a CSV, JSON, XML, or timestamped
 text envelope, so an engineer does not write a parser for every incident. A
