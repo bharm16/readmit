@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/bharm16/readmit/internal/bundle"
@@ -38,6 +39,7 @@ type Config struct {
 
 type Receiver struct {
 	config                       Config
+	profile                      receiverProfile
 	startedAt                    time.Time
 	snapshot                     observation.Snapshot
 	inputs                       []bundle.Input
@@ -78,8 +80,12 @@ func New(config Config) (*Receiver, error) {
 	if _, err := rand.Read(entropy[:]); err != nil {
 		return nil, errors.New("cannot initialize receiver session")
 	}
-	r := &Receiver{config: config, startedAt: time.Now().UTC()}
-	r.snapshot = observation.Snapshot{Schema: observation.Schema, Profile: observation.Profile, SessionID: hex.EncodeToString(entropy[:]), Mode: config.Mode, Consistent: true, Processed: []observation.Occurrence{}, Records: []observation.Record{}}
+	profile, err := decodeProfile(fixtureProfileJSON)
+	if err != nil {
+		return nil, err
+	}
+	r := &Receiver{config: config, profile: profile, startedAt: time.Now().UTC()}
+	r.snapshot = observation.Snapshot{Schema: observation.Schema, Profile: profile.Name, SessionID: hex.EncodeToString(entropy[:]), Mode: config.Mode, Consistent: true, Processed: []observation.Occurrence{}, Records: []observation.Record{}}
 	if err := observation.Create(config.ObservationPath, r.snapshot); err != nil {
 		return nil, err
 	}
@@ -177,18 +183,32 @@ func (r *Receiver) connection(ctx context.Context, connection net.Conn) (bool, e
 		if err := observation.Write(r.config.ObservationPath, r.snapshot); err != nil {
 			return false, err
 		}
-		request, processErr := parseRequest(raw)
+		request, processErr := r.parseRequest(raw)
+		candidate := r.snapshot
+		candidate.Records = slices.Clone(r.snapshot.Records)
+		candidate.Processed = slices.Clone(r.snapshot.Processed)
 		if request != nil {
 			if processErr == nil {
-				processErr = r.apply(request)
+				processErr = r.apply(&candidate, request)
 			}
-			r.snapshot.Processed = append(r.snapshot.Processed, observation.Occurrence{OccurrenceID: id, ControlID: request.controlID})
+			candidate.Processed = append(candidate.Processed, observation.Occurrence{OccurrenceID: id, ControlID: request.controlID})
 		}
-		r.snapshot.Consistent = true
-		if err := observation.Write(r.config.ObservationPath, r.snapshot); err != nil {
-			r.snapshot.Consistent = false
+		// Preflight the candidate while consistent is false, whose JSON is one
+		// byte larger than true. The last committed snapshot must remain valid
+		// both while busy and at finalization, even on a resource-limit exit.
+		if _, err := observation.Encode(candidate); err != nil {
+			r.snapshot.Consistent = true
+			if restoreErr := observation.Write(r.config.ObservationPath, r.snapshot); restoreErr != nil {
+				r.snapshot.Consistent = false
+				return false, errors.Join(err, restoreErr)
+			}
+			return false, errors.New("receiver session reached observation limit; prior ledger retained")
+		}
+		candidate.Consistent = true
+		if err := observation.Write(r.config.ObservationPath, candidate); err != nil {
 			return false, err
 		}
+		r.snapshot = candidate
 		if request != nil {
 			code, reason := "AA", ""
 			if processErr != nil {

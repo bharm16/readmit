@@ -138,12 +138,18 @@ func Decode(data []byte) (Snapshot, error) {
 }
 
 func Read(path string) (Snapshot, error) {
+	// Check before opening: opening a FIFO can block before file.Stat is
+	// reachable. Retain the descriptor check because the path can change.
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return Snapshot{}, errors.New("observation must be a regular file")
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return Snapshot{}, errors.New("cannot open observation file")
 	}
 	defer file.Close()
-	info, err := file.Stat()
+	info, err = file.Stat()
 	if err != nil || !info.Mode().IsRegular() {
 		return Snapshot{}, errors.New("observation must be a regular file")
 	}

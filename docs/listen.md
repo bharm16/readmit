@@ -53,6 +53,16 @@ numeric offset such as `+0000`; the observation retains the literal time and
 does not invent a timezone for offset-free values. MSH-7 remains the separate
 event-declared time in case evidence.
 
+The receiver definition is embedded from
+`internal/receiver/profiles/readmit-siu-v1.json` and decoded as strict
+`readmit-receiver-profile/v1` JSON. It declares the S12/S13 capability subset,
+required segment counts, identifier selectors, timestamp operator, delimiter
+constraints, and text bounds; unknown members and unsupported operators fail
+startup. Go implements the fixed booking/rescheduling, exact-count, identifier,
+and whole-second-time operations. The shared base profile name does not imply
+that the receiver implements every capability of another command, such as
+diagnosing an S15 cancellation.
+
 Identifiers are compared with the full assigning-authority tuple. A filler
 identifier is a **non-unique lookup key**: separate records may share it.
 Record IDs (`r000001`, `r000002`, ...) remain unique and are never reused.
@@ -160,8 +170,13 @@ One active connection is processed at a time. A session supports at most 4000
 complete inbound frames, 128 nonempty connections, and the existing case limits
 (16 MiB/source, 64 MiB evidence, 10,000 occurrences). It stops before exhausting
 reserved storage capacity and finalizes the recorded prefix with an explicit
-error. Buffered frames beyond `--max-messages` are preserved but are not in the
-processed list, so they cannot masquerade as processed work.
+error. The observation has an independent 8 MiB limit. Before committing a
+candidate ledger, the receiver checks its encoded size, including room for the
+larger busy (`consistent:false`) representation. An oversized candidate is not
+committed or ACKed; the prior consistent ledger and the new unacknowledged wire
+frame are retained in the final case. Buffered frames beyond `--max-messages`
+are preserved but are not in the processed list, so they cannot masquerade as
+processed work.
 
 There is no production durability, restart/recovery, concurrent-client service,
 TLS, authentication, general SIU or patient reconciliation, cancellation support,

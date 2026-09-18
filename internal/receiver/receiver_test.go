@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/v2"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -124,8 +125,13 @@ func TestBothModesMatchIndependentLedgerAndRecordExactWireEvidence(t *testing.T)
 			}
 			firstACK := ack(t, reader, "AA", "LISTEN-BOOK")
 			observed, err := observation.Read(h.config.ObservationPath)
-			if err != nil || !observed.Consistent || len(observed.Processed) < 1 || observed.SessionID != initial.SessionID {
+			if err != nil || len(observed.Processed) < 1 || observed.SessionID != initial.SessionID {
 				t.Fatalf("ACK preceded committed observation: %+v %v", observed, err)
+			}
+			// With coalesced frames, the second transaction can already be busy
+			// when the client reads the snapshot after receiving the first ACK.
+			if observed.Processed[0] != (observation.Occurrence{OccurrenceID: "s0001-e000001", ControlID: "LISTEN-BOOK"}) {
+				t.Fatal("first ACK has no corresponding processed occurrence")
 			}
 			if mode == observation.Fixed {
 				send(t, conn, move)
@@ -136,8 +142,8 @@ func TestBothModesMatchIndependentLedgerAndRecordExactWireEvidence(t *testing.T)
 				t.Fatal(h.err)
 			}
 			observed, err = observation.Read(h.config.ObservationPath)
-			if err != nil {
-				t.Fatal(err)
+			if err != nil || !observed.Consistent {
+				t.Fatalf("final ACK did not commit a consistent observation: %v", err)
 			}
 			var want []observation.Record
 			if err := json.Unmarshal(fixture(t, "listen-"+string(mode)+".json"), &want, json.RejectUnknownMembers(true)); err != nil {
@@ -381,4 +387,74 @@ func TestPartialACKAndUnprocessedReadAheadRemainHonestEvidence(t *testing.T) {
 	if len(b.Observation.Processed) != 1 || len(b.Observation.Records) != 1 || b.Observation.Records[0].AppointmentStart != "20260102100000+0000" {
 		t.Fatal("read-ahead reschedule was falsely claimed as processed")
 	}
+}
+
+func TestObservationByteLimitPreservesPriorLedgerAndFinalCase(t *testing.T) {
+	h := start(t, observation.Fixed, 0, 1<<20, time.Second)
+	conn := h.connect(t)
+	reader, _ := mllp.NewReader(conn, 1<<20)
+	// These accepted 1024-byte identifier components expand in JSON. The
+	// independently authored wire fixture reaches the observation limit well
+	// before any message-count, frame, source, or total-evidence limit.
+	component := `\X` + strings.Repeat("00", 1024) + `\`
+	ei := strings.Join([]string{component, component, component, component}, "^")
+	cx := component + "^^^" + strings.Join([]string{component, component, component}, "&")
+	accepted := 0
+	var finalFrame []byte
+	for i := 1; i <= 150; i++ {
+		control := fmt.Sprintf("LIMIT%04d", i)
+		message := fmt.Sprintf("MSH|^~\\&|READMIT|SYNTHETIC|FIXTURE|LAB|20260101120000+0000||SIU^S12|%s|P|2.5.1\rSCH|%s|%s||||CHECKUP|ROUTINE|NORMAL|30|min|^^^20260102100000+0000\rPID|1||%s\r", control, ei, ei, cx)
+		finalFrame = mllp.Frame([]byte(message))
+		if err := conn.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		send(t, conn, finalFrame)
+		response, err := reader.ReadFrame()
+		if err != nil {
+			if timeout, ok := err.(net.Error); ok && timeout.Timeout() {
+				t.Fatal("receiver stalled at observation limit")
+			}
+			break
+		}
+		doc, err := hl7.Parse(response, hl7.Options{Format: hl7.MLLP})
+		if err != nil {
+			t.Fatal(err)
+		}
+		msa := doc.Messages[0].Segments[1]
+		if string(doc.Bytes(msa.Field(1).Span)) != "AA" || string(doc.Bytes(msa.Field(2).Span)) != control {
+			t.Fatalf("size fixture rejected before byte boundary: %q", response)
+		}
+		accepted++
+	}
+	h.await(t)
+	if h.err == nil || !strings.Contains(h.err.Error(), "observation limit") {
+		t.Fatalf("wanted explicit observation limit, got %v", h.err)
+	}
+	if accepted == 0 || accepted >= 150 {
+		t.Fatalf("did not reach an independently bounded observation boundary: %d", accepted)
+	}
+	snapshot, err := observation.Read(h.config.ObservationPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !snapshot.Consistent || len(snapshot.Records) != accepted || len(snapshot.Processed) != accepted {
+		t.Fatal("unacknowledged candidate changed the committed observation")
+	}
+	b, err := bundle.Open(h.config.OutputPath)
+	if err != nil {
+		t.Fatalf("resource exit lost final evidence: %v", err)
+	}
+	if len(b.Events) != 2*accepted+1 || !reflect.DeepEqual(*b.Observation, snapshot) {
+		t.Fatal("final case did not preserve committed prefix and rejected frame")
+	}
+	last := b.Events[len(b.Events)-1]
+	raw, err := b.Raw(last.ID)
+	if err != nil || !bytes.Equal(raw, finalFrame) || last.Direction != bundle.Inbound || last.Kind != bundle.Message {
+		t.Fatal("unacknowledged over-limit frame missing from evidence")
+	}
+	lastLink := b.Correlations[len(b.Correlations)-1]
+	if lastLink.Kind != bundle.Unacknowledged || len(lastLink.MessageIDs) != 1 || lastLink.MessageIDs[0] != last.ID {
+		t.Fatal("over-limit frame received a fabricated ACK")
+	}
+	t.Logf("retained %d committed appointments and the next unacknowledged frame", accepted)
 }
