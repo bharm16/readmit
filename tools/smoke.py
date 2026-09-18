@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -29,7 +30,8 @@ FIXTURES = (
 )
 REQUIRED_FILES = {
     "README.md", "THIRD_PARTY_NOTICES.md", "docs/dictionary-provenance.md",
-    "dictionary/fields-v251.json", "testdata/README.md",
+    "dictionary/fields-v251.json", "testdata/README.md", "docs/case-bundle.md",
+    "testdata/fixtures/case-evidence.mllp",
     "licenses/cobra-LICENSE.txt", "licenses/go-BSD-3-Clause.txt",
     "licenses/mousetrap-LICENSE.txt", "licenses/nhapi-MPL-2.0.txt", "licenses/pflag-LICENSE.txt",
 } | {"testdata/fixtures/" + filename for filename, _, _, _ in FIXTURES}
@@ -138,7 +140,37 @@ def smoke(archive, target_os, release_tag=None):
         rejected = run("inspect", bad, success=False)
         assert not rejected.stdout and 0 < len(rejected.stderr) < 300
         assert b"SECRET" not in rejected.stderr
-    print(f"PASS: {archive.name}; checksum, version, seven fixtures, privacy, and exact round-trip")
+
+        evidence = member_bytes(archive, "testdata/fixtures/case-evidence.mllp")
+        source, case = work / "case-evidence.mllp", work / "incident.case"
+        source.write_bytes(evidence)
+        captured = run("capture", source, "--output", case)
+        assert not captured.stderr
+        for expected in (b"Occurrences: 8", b"Messages: 4", b"ACKs: 3", b"Unparsed: 1",
+                         b"Ambiguous ACKs: 1", b"Unmatched ACKs: 1", b"Unacknowledged messages: 3"):
+            assert expected in captured.stdout
+        assert b"SYNTH" not in captured.stdout and b"case-evidence.mllp" not in captured.stdout
+        events = [json.loads(line) for line in (case / "events.jsonl").read_bytes().splitlines()]
+        assert b"".join((case / event["payload"]["path"]).read_bytes() for event in events) == evidence
+        assert all(event["observed_at"] is None for event in events)
+        source.unlink()  # Reopening must not depend on original evidence paths.
+        timeline = run("timeline", case)
+        assert not timeline.stderr and b"observed=unknown" in timeline.stdout
+        assert b'declared="20260102120200"' in timeline.stdout and b"imported=" in timeline.stdout
+        assert b"SYNTH" not in timeline.stdout and b"raw=" not in timeline.stdout
+        assert b"SYNTH-CASE" in run("timeline", case, "--show-values").stdout
+        copied = work / "copied.case"
+        shutil.copytree(case, copied)
+        for copied_file in copied.rglob("*"):
+            if copied_file.is_file():
+                os.utime(copied_file, (1000000000, 1000000000))
+        assert run("timeline", copied).stdout == timeline.stdout
+        refused = run("capture", raw, "--output", case, success=False)
+        assert not refused.stdout
+        (copied / events[0]["payload"]["path"]).write_bytes(b"SECRET-TAMPER")
+        corrupt = run("timeline", copied, "--show-values", success=False)
+        assert not corrupt.stdout and b"SECRET" not in corrupt.stderr
+    print(f"PASS: {archive.name}; checksum, version, inspection, capture, timeline, privacy, and byte preservation")
 
 
 def main():

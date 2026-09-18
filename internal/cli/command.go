@@ -16,7 +16,7 @@ import (
 // not depend on Cobra, and Cobra's errors never echo arbitrary arguments.
 func Execute(version string, args []string, stdout, stderr io.Writer) error {
 	root := &cobra.Command{
-		Use: "readmit", Short: "Local HL7 v2 syntax inspection", Version: version,
+		Use: "readmit", Short: "Local HL7 v2 inspection and case evidence", Version: version,
 		SilenceUsage: true, SilenceErrors: true,
 	}
 	root.SetOut(stdout)
@@ -56,6 +56,7 @@ func Execute(version string, args []string, stdout, stderr io.Writer) error {
 	inspect.Flags().BoolVar(&showValues, "show-values", false, "Explicitly display message values as escaped byte strings")
 	inspect.Flags().StringVar(&roundtrip, "roundtrip", "", "Write byte-identical evidence to a new file (never overwrite)")
 	root.AddCommand(inspect)
+	root.AddCommand(captureCommand(&ran), timelineCommand(&ran))
 	root.SetArgs(args)
 	err := root.Execute()
 	if err != nil {
