@@ -291,12 +291,13 @@ func contract(value string) error {
 }
 
 // entryName is one directory entry of the project, so a recorded case can never
-// name a path, a parent, or an absolute location.
+// name a path, a parent, or an absolute location. The structural rule belongs
+// to artifactpath, which enforces the same one when the entry is opened.
 func entryName(value string) error {
 	if err := name(value); err != nil {
 		return err
 	}
-	if value == "." || !filepath.IsLocal(value) || filepath.Base(value) != value {
+	if err := artifactpath.EntryName(value); err != nil {
 		return errors.New("must be one directory entry of the project")
 	}
 	return nil
@@ -341,8 +342,9 @@ func identity(value string) error {
 }
 
 // AddCase registers a verified case bundle, supplying the project defaults the
-// caller left unset. The document it is given is not modified.
-func AddCase(document Document, entry Case) (Document, error) {
+// caller left unset, and returns the entry exactly as it was stored. The
+// document it is given is not modified.
+func AddCase(document Document, entry Case) (Document, Case, error) {
 	if entry.InterfaceVersion == "" {
 		entry.InterfaceVersion = document.Settings.DefaultInterfaceVersion
 	}
@@ -354,15 +356,12 @@ func AddCase(document Document, entry Case) (Document, error) {
 	}
 	entry.Tags = sorted(entry.Tags)
 	entry.Incidents = sorted(entry.Incidents)
-	if len(document.Cases) >= MaxCases {
-		return Document{}, errors.New("a project registers at most 256 cases")
-	}
 	updated := document
 	updated.Cases = append(slices.Clip(slices.Clone(document.Cases)), entry)
 	if err := Validate(updated); err != nil {
-		return Document{}, err
+		return Document{}, Case{}, err
 	}
-	return updated, nil
+	return updated, entry, nil
 }
 
 // Change is the mutable metadata one update may replace. An absent member is
@@ -382,13 +381,14 @@ func (c Change) Empty() bool {
 	return c.Title == nil && c.Owner == nil && c.Status == nil && c.InterfaceVersion == nil && c.Tags == nil && c.Incidents == nil
 }
 
-// UpdateCase replaces the mutable metadata of one registered case. The name,
-// identity, contract version and provenance of the evidence stay as recorded.
-// The document it is given is not modified.
-func UpdateCase(document Document, entry string, change Change) (Document, error) {
+// UpdateCase replaces the mutable metadata of one registered case and returns
+// the entry exactly as it was stored. The name, identity, contract version and
+// provenance of the evidence stay as recorded. The document it is given is not
+// modified.
+func UpdateCase(document Document, entry string, change Change) (Document, Case, error) {
 	index := slices.IndexFunc(document.Cases, func(c Case) bool { return c.Name == entry })
 	if index < 0 {
-		return Document{}, errors.New("no case is registered under that name")
+		return Document{}, Case{}, errors.New("no case is registered under that name")
 	}
 	updated := document
 	updated.Cases = slices.Clip(slices.Clone(document.Cases))
@@ -413,9 +413,9 @@ func UpdateCase(document Document, entry string, change Change) (Document, error
 	}
 	updated.Cases[index] = target
 	if err := Validate(updated); err != nil {
-		return Document{}, err
+		return Document{}, Case{}, err
 	}
-	return updated, nil
+	return updated, target, nil
 }
 
 // sorted stores a set in one canonical order. Duplicates are left in place so

@@ -30,14 +30,24 @@ func Directory(path string) (string, error) {
 	return Resolve(path)
 }
 
-// Child resolves one named entry of an already-resolved artifact directory.
-// The name must be a single local element: never empty, ".", "..", a path with
-// a separator, an absolute path, or a reserved device name. The entry itself
-// must be a real directory, never a symbolic link, so a listing cannot be used
-// to reach evidence outside the directory the person opened.
-func Child(directory, name string) (string, error) {
+// EntryName reports whether name is a single local element: never empty, ".",
+// "..", a path with a separator, an absolute path, or a reserved device name.
+// Child enforces it against the filesystem; a caller holding only a recorded
+// name checks it here, so the rule has one owner rather than two.
+func EntryName(name string) error {
 	if name == "." || !filepath.IsLocal(name) || filepath.Base(name) != name {
-		return "", errors.New("artifact entry must be one name inside the directory")
+		return errors.New("artifact entry must be one name inside the directory")
+	}
+	return nil
+}
+
+// Child resolves one named entry of an already-resolved artifact directory.
+// The name must satisfy EntryName, and the entry itself must be a real
+// directory, never a symbolic link, so a listing cannot be used to reach
+// evidence outside the directory the person opened.
+func Child(directory, name string) (string, error) {
+	if err := EntryName(name); err != nil {
+		return "", err
 	}
 	path := JoinReference(directory, name)
 	info, err := os.Lstat(path)

@@ -3,6 +3,7 @@ package project_test
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -255,9 +256,12 @@ func TestAddCaseAppliesTheProjectDefaultsAndRefusesDuplicates(t *testing.T) {
 		Title:      "Cancellation is not propagated",
 		Status:     project.StatusOpen,
 	}
-	added, err := project.AddCase(base, entry)
+	added, stored, err := project.AddCase(base, entry)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if stored.Name != entry.Name || stored.Identity != entry.Identity {
+		t.Fatalf("the stored entry was not returned: %+v", stored)
 	}
 	if len(added.Cases) != 2 {
 		t.Fatalf("the case was not registered: %+v", added.Cases)
@@ -269,12 +273,12 @@ func TestAddCaseAppliesTheProjectDefaultsAndRefusesDuplicates(t *testing.T) {
 	if len(base.Cases) != 1 {
 		t.Fatal("adding a case changed the document it was given")
 	}
-	if _, err := project.AddCase(added, entry); err == nil {
+	if _, _, err := project.AddCase(added, entry); err == nil {
 		t.Fatal("the same case was registered twice")
 	}
 	renamed := entry
 	renamed.Name = "copy"
-	if _, err := project.AddCase(added, renamed); err == nil {
+	if _, _, err := project.AddCase(added, renamed); err == nil {
 		t.Fatal("the same evidence was registered under a second name")
 	}
 }
@@ -284,11 +288,14 @@ func TestUpdateCaseChangesOnlyTheMutableMetadata(t *testing.T) {
 	title := "Reschedule duplicates the appointment"
 	status := project.StatusResolved
 	tags := []string{"reschedule"}
-	updated, err := project.UpdateCase(base, "regression", project.Change{Title: &title, Status: &status, Tags: &tags})
+	updated, stored, err := project.UpdateCase(base, "regression", project.Change{Title: &title, Status: &status, Tags: &tags})
 	if err != nil {
 		t.Fatal(err)
 	}
 	changed := updated.Cases[0]
+	if !reflect.DeepEqual(stored, changed) {
+		t.Fatalf("the stored entry was not returned: %+v", stored)
+	}
 	if changed.Title != title || changed.Status != status || !slices.Equal(changed.Tags, tags) {
 		t.Fatalf("the mutable metadata did not change: %+v", changed)
 	}
@@ -302,11 +309,11 @@ func TestUpdateCaseChangesOnlyTheMutableMetadata(t *testing.T) {
 	if base.Cases[0].Title != original.Title {
 		t.Fatal("updating changed the document it was given")
 	}
-	if _, err := project.UpdateCase(base, "absent", project.Change{Title: &title}); err == nil {
+	if _, _, err := project.UpdateCase(base, "absent", project.Change{Title: &title}); err == nil {
 		t.Fatal("an unregistered case was updated")
 	}
 	invalid := project.Status("wontfix")
-	if _, err := project.UpdateCase(base, "regression", project.Change{Status: &invalid}); err == nil {
+	if _, _, err := project.UpdateCase(base, "regression", project.Change{Status: &invalid}); err == nil {
 		t.Fatal("an unknown status was stored")
 	}
 }

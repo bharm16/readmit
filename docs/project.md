@@ -40,8 +40,9 @@ That is why the same value appears wherever the same evidence does:
 | Exported artifacts | `input_identity` in a sealed [engagement packet](report.md) manifest |
 
 Because a bundle identity covers relative paths and contents only, copying or
-moving a case does not change it. Restoring a project onto another machine
-recovers the same identities it was written with.
+moving a case does not change it: a project copied to another machine still
+names the identities it was written with. Backing a project up and restoring it
+is not a command this release has.
 
 ## Commands
 
@@ -94,8 +95,10 @@ never removed, and the first one declared at `init` becomes the default.
 | `incidents` | The person; a sorted set of linked incident references, at most 32 | Yes |
 
 `project update` replaces only the members it is given: changing a status does
-not restate the tags. It can never reach `name`, `identity`, `schema` or
-`provenance`, because those are facts about evidence rather than metadata.
+not restate the tags. Passing `--tag ""` or `--incident ""` alone clears that
+set, and `--owner ""` clears the owner. It can never reach `name`, `identity`,
+`schema` or `provenance`, because those are facts about evidence rather than
+metadata.
 
 ### Provenance is read, never declared
 
@@ -158,12 +161,16 @@ none of them can carry a separator or a line break into a rendered report.
 | `evidence=` | Meaning |
 | --- | --- |
 | `verified` | The reader accepted the bundle and its identity is the recorded one |
-| `changed` | The reader accepted a bundle whose identity is not the recorded one |
+| `changed` | The reader accepted a bundle, but its identity, contract version or provenance is not what the project recorded |
 | `unreadable` | The reader would not accept the directory as complete, unmodified evidence |
 | `missing` | The project holds no such directory entry |
 
-A recorded identity is reported exactly as recorded whatever `show` finds.
-`show` reports; it never rewrites what a project recorded, so evidence that was
+`verified` requires **every** recorded evidence fact to still hold: the
+identity, the contract version and the provenance mode are each compared with
+what the reader reported, so a document edited by hand to claim that imported
+evidence is synthetic is reported as `changed` rather than verified. What the
+project recorded is reported exactly as recorded whatever `show` finds. `show`
+reports; it never rewrites what a project recorded, so evidence that was
 replaced is visible as `changed` rather than silently re-identified. Unknown and
 unreadable are never shown as verified.
 
@@ -201,6 +208,7 @@ anywhere, or kept in browser storage.
 ## Not supported in this release
 
 - Removing a registered case, archiving or deleting a project, and quotas.
+- Removing a declared interface version. Cases still name it.
 - Backup, restore, and rebuilding a project from its cases.
 - Revisions of a project document, and editable working copies of evidence.
 - A searchable index over projects. A project is read by reading its document.

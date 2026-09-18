@@ -351,3 +351,93 @@ func TestSameCaseIdentityAcrossDesktopCommandLineAndExportedArtifacts(t *testing
 		t.Fatalf("every surface agreed on %s, which is not the independently authored identity", identity)
 	}
 }
+
+// Synthetically generated, imported and customer-derived evidence are told
+// apart by the provenance the bundle itself carries. The project copies that
+// mode from the verified manifest; no flag sets it and no name implies it.
+func TestProjectRecordsTheProvenanceTheEvidenceDeclares(t *testing.T) {
+	root := newProject(t)
+	registerFrozenCase(t, root, "generated-case")
+
+	imported := filepath.Join(root, "imported-case")
+	if _, stderr, err := run(t, "capture", "../testdata/fixtures/case-evidence.mllp", "--output", imported); err != nil || stderr != "" {
+		t.Fatalf("capture: %v %s", err, stderr)
+	}
+	stdout, stderr, err := run(t, "project", "add", root, "imported-case", "--title", "Imported from a customer export")
+	if err != nil || stderr != "" {
+		t.Fatalf("project add: %v %s", err, stderr)
+	}
+	if !strings.Contains(stdout, "Provenance: imported") {
+		t.Fatalf("imported evidence was not recorded as imported:\n%s", stdout)
+	}
+	// There is no flag that sets provenance.
+	if _, stderr, err := run(t, "project", "update", root, "imported-case", "--provenance", "generated"); err == nil || stderr == "" {
+		t.Fatal("provenance could be declared on the command line")
+	}
+	stdout, stderr, err = run(t, "project", "show", root)
+	if err != nil || stderr != "" {
+		t.Fatalf("project show: %v %s", err, stderr)
+	}
+	if !strings.Contains(stdout, "imported-case evidence=verified") || !strings.Contains(stdout, "provenance=imported") {
+		t.Fatalf("show did not separate the two provenance modes:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "generated-case evidence=verified") || !strings.Contains(stdout, "provenance=generated") {
+		t.Fatalf("show did not keep the generated case distinct:\n%s", stdout)
+	}
+}
+
+// A recorded evidence fact that the evidence does not support is never reported
+// as verified, even when the bundle identity still matches. A hand-edited
+// document cannot make imported evidence look synthetic.
+func TestProjectShowRefusesRecordedFactsTheEvidenceDoesNotSupport(t *testing.T) {
+	for _, tc := range []struct{ name, from, to string }{
+		{"provenance", `"provenance":"generated"`, `"provenance":"imported"`},
+		{"contract version", `"schema":"readmit-case/v1"`, `"schema":"readmit-case/v4"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := newProject(t)
+			registerFrozenCase(t, root, "regression")
+			document := filepath.Join(root, "project.json")
+			data, err := os.ReadFile(document)
+			if err != nil {
+				t.Fatal(err)
+			}
+			edited := strings.Replace(string(data), tc.from, tc.to, 1)
+			if edited == string(data) {
+				t.Fatalf("the document does not record %s as %s", tc.name, tc.from)
+			}
+			if err := os.WriteFile(document, []byte(edited), 0600); err != nil {
+				t.Fatal(err)
+			}
+			stdout, stderr, err := run(t, "project", "show", root)
+			if err != nil || stderr != "" {
+				t.Fatalf("project show: %v %s", err, stderr)
+			}
+			if strings.Contains(stdout, "evidence=verified") {
+				t.Fatalf("an edited %s was reported as verified evidence:\n%s", tc.name, stdout)
+			}
+			if !strings.Contains(stdout, "evidence=changed") {
+				t.Fatalf("an edited %s was not reported as changed:\n%s", tc.name, stdout)
+			}
+		})
+	}
+}
+
+// Tags and linked incidents are managed metadata, so a case that was tagged by
+// mistake can be cleared again.
+func TestProjectUpdateClearsTagsAndLinkedIncidents(t *testing.T) {
+	root := newProject(t, "--owner", "integration-team")
+	registerFrozenCase(t, root, "regression", "--tag", "scheduling", "--incident", "INC-4821")
+	stdout, stderr, err := run(t, "project", "update", root, "regression", "--tag", "", "--incident", "", "--owner", "")
+	if err != nil || stderr != "" {
+		t.Fatalf("project update: %v %s", err, stderr)
+	}
+	for _, want := range []string{"Tags: none", "Incidents: none", "Owner: none"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("clearing did not report %q:\n%s", want, stdout)
+		}
+	}
+	if stdout, _, _ = run(t, "project", "show", root); !strings.Contains(stdout, "tags: none") || !strings.Contains(stdout, "incidents: none") {
+		t.Fatalf("the cleared metadata came back:\n%s", stdout)
+	}
+}

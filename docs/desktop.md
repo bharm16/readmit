@@ -76,9 +76,10 @@ cross the boundary into the interface.
 ## Projects
 
 A folder holding a `project.json` lists that entry as a `project` artifact
-carrying the contract the document itself declares, read the same way a case
-bundle directory reports the contract its manifest declares — never inferred
-from the file name. `OpenProject` then returns the recorded document: the
+carrying the contract the document itself declares. The canonical document is
+found by its fixed name, exactly as a case bundle's manifest is, but nothing is
+concluded from that name: the entry is decoded, and an entry this release cannot
+read is listed as `unsupported` with the reason. `OpenProject` then returns the recorded document: the
 project settings, the declared interface versions, and every registered case
 with its title, tags, owner, status, linked incidents and **the case identity
 the command line recorded**. That is the same value `OpenCase` reports for the

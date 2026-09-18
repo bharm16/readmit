@@ -137,14 +137,14 @@ func projectAdd(ran *bool) *cobra.Command {
 			entry.Status = project.Status(status)
 			entry.Tags = tags
 			entry.Incidents = incidents
-			document, err := project.AddCase(opened.Document, entry)
+			document, stored, err := project.AddCase(opened.Document, entry)
 			if err != nil {
 				return err
 			}
 			if err := opened.Save(document); err != nil {
 				return err
 			}
-			return writeCase(cmd.OutOrStdout(), "Case registered: "+entry.Name, registered(document, entry.Name))
+			return writeCase(cmd.OutOrStdout(), "Case registered: "+stored.Name, stored)
 		},
 	}
 	command.Flags().StringVar(&title, "title", "", "Case title")
@@ -180,10 +180,12 @@ func projectUpdate(ran *bool) *cobra.Command {
 				change.InterfaceVersion = &version
 			}
 			if cmd.Flags().Changed("tag") {
-				change.Tags = &tags
+				declared := declaredValues(tags)
+				change.Tags = &declared
 			}
 			if cmd.Flags().Changed("incident") {
-				change.Incidents = &incidents
+				declared := declaredValues(incidents)
+				change.Incidents = &declared
 			}
 			if change.Empty() {
 				return errors.New("project update requires at least one change")
@@ -192,22 +194,22 @@ func projectUpdate(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			document, err := project.UpdateCase(opened.Document, args[1], change)
+			document, stored, err := project.UpdateCase(opened.Document, args[1], change)
 			if err != nil {
 				return err
 			}
 			if err := opened.Save(document); err != nil {
 				return err
 			}
-			return writeCase(cmd.OutOrStdout(), "Case updated: "+args[1], registered(document, args[1]))
+			return writeCase(cmd.OutOrStdout(), "Case updated: "+stored.Name, stored)
 		},
 	}
 	command.Flags().StringVar(&title, "title", "", "Case title")
 	command.Flags().StringVar(&version, "interface-version", "", "Declared interface version")
 	command.Flags().StringVar(&owner, "owner", "", "Case owner")
 	command.Flags().StringVar(&status, "status", "", "Case status: open, investigating, resolved, or closed")
-	command.Flags().StringArrayVar(&tags, "tag", nil, "Replace the tags with these; repeat for more")
-	command.Flags().StringArrayVar(&incidents, "incident", nil, "Replace the linked incidents with these; repeat for more")
+	command.Flags().StringArrayVar(&tags, "tag", nil, `Replace the tags with these; repeat for more, or pass "" alone to clear them`)
+	command.Flags().StringArrayVar(&incidents, "incident", nil, `Replace the linked incidents with these; repeat for more, or pass "" alone to clear them`)
 	return command
 }
 
@@ -258,8 +260,12 @@ func verifiedCase(root, name string) (project.Case, error) {
 }
 
 // evidenceFor re-verifies one registered case through the same reader that
-// accepted it. A recorded identity is reported exactly as recorded whatever
-// this finds: `show` reports, and never rewrites what a project recorded.
+// accepted it, and compares every evidence fact the project recorded with what
+// the reader reported. A document that claims a provenance mode or a contract
+// version the evidence does not carry is never reported as verified, so an
+// edited document cannot make imported evidence look synthetic. What the
+// project recorded is reported exactly as recorded whatever this finds: `show`
+// reports, and never rewrites what a project recorded.
 func evidenceFor(root string, entry project.Case) evidenceState {
 	path, err := artifactpath.Child(root, entry.Name)
 	if err != nil {
@@ -269,15 +275,23 @@ func evidenceFor(root string, entry project.Case) evidenceState {
 	if err != nil {
 		return evidenceUnreadable
 	}
-	if opened.Identity != entry.Identity {
+	if opened.Identity != entry.Identity || opened.Manifest.Schema != entry.Schema ||
+		string(opened.Manifest.Provenance.Mode) != entry.Provenance {
 		return evidenceChanged
 	}
 	return evidenceVerified
 }
 
-func registered(document project.Document, name string) project.Case {
-	index := slices.IndexFunc(document.Cases, func(c project.Case) bool { return c.Name == name })
-	return document.Cases[index]
+// declaredValues drops values that carry nothing, so an explicitly empty value
+// clears a set rather than storing an entry with no content.
+func declaredValues(values []string) []string {
+	declared := make([]string, 0, len(values))
+	for _, value := range values {
+		if value != "" {
+			declared = append(declared, value)
+		}
+	}
+	return declared
 }
 
 func writeProject(out io.Writer, headline string, document project.Document) error {

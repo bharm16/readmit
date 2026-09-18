@@ -320,9 +320,13 @@ func (a *App) OpenProject(path string) ProjectResult {
 		return busyRefusal.project()
 	}
 	defer release()
-	opened, err := project.Open(path)
+	root, declined := resolveFolder(path)
+	if root == "" {
+		return declined.project()
+	}
+	opened, err := project.Open(root)
 	if err != nil {
-		return probeReadFailure(path).project()
+		return probeReadFailure(root).project()
 	}
 	if len(opened.Document.Cases) == 0 {
 		return ProjectResult{State: Empty, Root: opened.Root, Project: &opened.Document}
@@ -407,9 +411,11 @@ func resolveFolder(path string) (string, refusal) {
 // entry listed as a case is a claim until OpenCase accepts it.
 func describe(root string, entry fs.DirEntry) Artifact {
 	name := entry.Name()
-	// A project document is read, never recognised by its name: the entry is
-	// decoded and reports the contract it declares, exactly as a case bundle
-	// directory reports the contract its manifest declares.
+	// The canonical document is found by its fixed name, exactly as a case
+	// bundle's manifest is. Nothing is concluded from that name: the entry is
+	// decoded, and what it reports is the contract the document itself
+	// declares. An entry this release cannot read is unsupported, never a
+	// project inferred from a file name.
 	if name == project.DocumentName && entry.Type().IsRegular() {
 		opened, err := project.Open(root)
 		if err != nil {
@@ -432,16 +438,19 @@ func describe(root string, entry fs.DirEntry) Artifact {
 	return Artifact{Name: name, Kind: CaseArtifact, Schema: manifest.Schema, Provenance: string(manifest.Provenance.Mode)}
 }
 
-// probeReadFailure separates a folder this account cannot read from one that
-// holds no project document this release reads. The project reader returns
-// fixed sentences that disclose no path and no host diagnostic, so the
-// distinction is made here, and only after a read has already failed.
-func probeReadFailure(path string) refusal {
-	directory, err := os.Open(path)
-	if err == nil {
-		directory.Close()
-	} else if errors.Is(err, fs.ErrPermission) {
-		return refusal{PermissionDenied, "this account cannot open the chosen folder"}
+// probeReadFailure separates a folder or document this account cannot read from
+// one that holds no project document this release reads. The project reader
+// returns fixed sentences that disclose no path and no host diagnostic, so the
+// distinction is made here, on the already-resolved root, and only after a read
+// has already failed. It inspects the error class and reads no content.
+func probeReadFailure(root string) refusal {
+	for _, path := range []string{root, filepath.Join(root, project.DocumentName)} {
+		opened, err := os.Open(path)
+		if err == nil {
+			opened.Close()
+		} else if errors.Is(err, fs.ErrPermission) {
+			return refusal{PermissionDenied, "this account cannot open the chosen folder"}
+		}
 	}
 	return refusal{Failed, "the folder holds no project document this release reads"}
 }
