@@ -333,6 +333,8 @@ func TestDocumentsRejectUnknownMembersAndUnknownVersions(t *testing.T) {
 		{"a later version", strings.Replace(string(encoded), corpus.ManifestSchema, "readmit-corpus/v2", 1), corpus.ErrUnsupportedVersion},
 		{"no version at all", strings.Replace(string(encoded), `"schema"`, `"version"`, 1), nil},
 		{"an absent length", strings.Replace(string(encoded), `"bytes"`, `"unknown"`, 1), nil},
+		{"absent inputs", strings.Replace(string(encoded), `"inputs"`, `"unknown"`, 1), nil},
+		{"inputs declared as null", strings.Replace(string(encoded), `"inputs": {`, `"inputs": null, "unknown": {`, 1), nil},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, err := corpus.DecodeManifest([]byte(c.body))
@@ -364,6 +366,9 @@ func TestDocumentsRejectUnknownMembersAndUnknownVersions(t *testing.T) {
 	}{
 		{"an unknown member", strings.Replace(string(body), `"bounds"`, `"extra": 1, "bounds"`, 1), nil},
 		{"a later version", strings.Replace(string(body), corpus.BenchmarkSchema, "readmit-benchmark/v2", 1), corpus.ErrUnsupportedVersion},
+		{"an absent corpus", strings.Replace(string(body), `"corpus"`, `"unknown"`, 1), nil},
+		{"absent targets", strings.Replace(string(body), `"targets"`, `"unknown"`, 1), nil},
+		{"a machine declared as null", strings.Replace(string(body), `"hardware": {`, `"hardware": null, "unknown": {`, 1), nil},
 	} {
 		t.Run("benchmark with "+c.name, func(t *testing.T) {
 			_, err := corpus.DecodeBenchmark([]byte(c.body))

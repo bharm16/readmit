@@ -143,10 +143,12 @@ type ScanResult struct {
 // evidence that nothing checked.
 func (r ScanResult) ExceedsCase(plan Plan) []string {
 	// An MLLP member is stored whole as one source the case bundle divides into
-	// frames; every other framing stores one source per record.
-	sources, largest := r.Records, int64(0)
+	// frames; every other framing stores one source per record, and a scanned
+	// record is already held to the bound one source is, so the largest source
+	// those would write cannot be past it.
+	sources, sourceBytes := r.Records, int64(0)
 	if plan.Framing == MLLPFraming {
-		sources, largest = min(r.Records, 1), r.Bytes
+		sources, sourceBytes = min(r.Records, 1), r.Bytes
 	}
 	var past []string
 	if sources > int64(bundle.MaxSources) {
@@ -155,10 +157,7 @@ func (r ScanResult) ExceedsCase(plan Plan) []string {
 	if r.Occurrences > int64(bundle.MaxEvents) {
 		past = append(past, "occurrences ("+strconv.Itoa(bundle.MaxEvents)+")")
 	}
-	// A scanned record is already held to the same bound a case bundle source
-	// is, so a record can never be past it; an MLLP member can, because the
-	// case stores the whole member as the one source.
-	if largest > int64(bundle.MaxSourceBytes) {
+	if sourceBytes > int64(bundle.MaxSourceBytes) {
 		past = append(past, "source bytes ("+strconv.Itoa(bundle.MaxSourceBytes)+")")
 	}
 	if r.Bytes > int64(bundle.MaxEvidenceBytes) {

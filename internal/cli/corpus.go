@@ -275,15 +275,15 @@ func renderScan(out io.Writer, plan importer.Plan, result importer.ScanResult, b
 		state, result.Bytes, result.SHA256, result.Records, result.Occurrences, result.Decoded, result.Undecodable)
 	fmt.Fprintf(w, "Parsing batches: %d\nBatch bounds: %d records, %d bytes\nPeak resident bytes: %d\nResident bound: %d\n",
 		result.Batches, bounds.BatchRecords, bounds.BatchBytes, result.PeakResidentBytes, bounds.ResidentBound)
-	switch past := result.ExceedsCase(plan); {
-	case cancelled:
-		// A cancelled scan counted part of a stream, so it knows nothing about
-		// the rest of it. Reporting those counts as within the case bundle
-		// bounds would report an unread remainder as a pass.
+	// A cancelled scan counted part of a stream, so it knows nothing about the
+	// rest of it. The bounds are not asked about those counts at all: reporting
+	// them as within the case bundle bounds would report an unread remainder as
+	// a pass.
+	if cancelled {
 		fmt.Fprintln(w, "Case bounds: not evaluated; the scan was cancelled")
-	case len(past) == 0:
+	} else if past := result.ExceedsCase(plan); len(past) == 0 {
 		fmt.Fprintln(w, "Case bounds: within")
-	default:
+	} else {
 		fmt.Fprintf(w, "Case bounds: exceeded %s\n", strings.Join(past, ", "))
 	}
 	if result.Window.Limit == 0 {
