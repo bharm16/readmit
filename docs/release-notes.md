@@ -141,6 +141,19 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   its declared retention period before stating that unlinking is not erasure on
   a solid-state device, a copy-on-write filesystem, a snapshot, a backup, a
   replica or a recipient's machine.
+- `backup` copies a whole project directory into a verified `readmit-backup/v1`
+  directory, reads one back whole, and restores it somewhere else with every
+  registered identity intact, because a bundle identity covers relative paths
+  and contents only. Incomplete evidence is displayed rather than replaced: a
+  registered case that is missing, unreadable or no longer the evidence the
+  project recorded is recorded and restored exactly that way, and both commands
+  exit non-zero. The completion marker is written last, so an interrupted backup
+  is refused rather than restored; an altered manifest, an altered or missing
+  stored file, an unrecorded one, an absolute or traversing recorded path, and a
+  destination inside the project or the backup are each refused by name. A
+  derived index is never copied: the backup records the declarations it was
+  built under and the restore builds it again from the restored canonical case,
+  so a damaged index is a rebuild and no retained value is held twice.
 
 - `import --recipe` maps CSV, JSON, XML and timestamped text envelopes through a
   reusable `readmit-mapping-recipe/v1` document that supplies the payload,

@@ -226,4 +226,7 @@ trusting a case nobody looked at since.
   The desktop shell saves filters, but they are that viewer's own local state
   in `readmit-filters/v1`, never a member of an index or of any evidence. See
   [the desktop shell](desktop.md).
-- Backing an index up, or restoring one. Rebuild it from the case.
+- Backing an index up, or restoring one. It is derived and disposable, so it
+  is rebuilt from the case. [`readmit backup`](backup.md) does exactly that:
+  it records the declarations an index was built under, never a copy of it,
+  and a restore builds it again from the restored canonical evidence.

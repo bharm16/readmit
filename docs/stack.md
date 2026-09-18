@@ -18,7 +18,7 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
 
 ## CLI
 
-- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `project`, `license`, `secret`, `protect`, `target`, `listen`, `replay`, `test`, `diff`, `diagnose`, `synth`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
+- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `project`, `backup`, `license`, `secret`, `protect`, `target`, `listen`, `replay`, `test`, `diff`, `diagnose`, `synth`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
 - Command data goes to stdout, diagnostics to stderr. Machine-readable modes never interleave progress output with JSON.
 - Target configuration is read from explicitly selected files, not hidden global config or environment-variable precedence.
 - Credentials are referenced, never held. A `readmit-secrets/v1` document registers the store kind an operator declared, the single purpose and endpoint address a credential may be bound to, the absolute path of the program that reads it back, and the recorded rotation. No command accepts a credential value, and a resolved value masks itself under every formatting verb and refuses to be serialized. See [credential references](secret.md).
@@ -95,6 +95,23 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
   is not a second search path: every question it asks about a value or a decoded
   state goes through `index.Document.Search`, and every window re-verifies the
   case and re-checks the index against it. See [the desktop shell](desktop.md).
+
+## Project backup and restore
+
+- A backup of a project directory is a plain directory holding the project's
+  files under one subdirectory, a versioned strict-JSON `readmit-backup/v1`
+  manifest naming each of them with its length and digest, and a completion
+  marker written last, so a backup interrupted at any point is refused rather
+  than restored. See [backing up a workspace](backup.md).
+- What a backup records about registered evidence is what the shared bundle
+  reader reported: `verified`, `changed`, `unreadable` or `missing`. Evidence is
+  never reconstructed, substituted or silently omitted, and a backup or restore
+  that is not whole exits non-zero.
+- A derived index is recorded as the declarations it was built under and never
+  copied, so a restore rebuilds it from the restored canonical case and the
+  values one retained are never held in a second place.
+- Bounded at 65,536 files, 64 MiB for one file, 1 GiB for one backup and 512
+  recorded indexes. Past a bound the backup is refused, never truncated.
 
 ## Evidence protection
 
