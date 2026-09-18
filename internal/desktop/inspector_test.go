@@ -228,3 +228,31 @@ func TestInspectorBoundsUnsupportedEncodingMetadata(t *testing.T) {
 		t.Fatal("lost original selected value")
 	}
 }
+
+func TestInspectorParentNavigationPreservesOmittedSegments(t *testing.T) {
+	app, root, _ := gridWorkspace(t)
+	grid := openGrid(t, app, root, "incident", 0, 50).Grid
+	for _, path := range []string{"ZZZ[1]-1", "PID[2]-1"} {
+		t.Run(path, func(t *testing.T) {
+			request := desktop.InspectRequest{Workspace: root, Case: "incident", Identity: grid.Identity, Occurrence: grid.Rows[0].ID, Path: path, ByteOffset: -1}
+			field := app.InspectOccurrence(request)
+			if field.State != desktop.Completed || field.Inspection.Selected.State != "omitted" {
+				t.Fatalf("missing field: %+v", field)
+			}
+			request.Path = field.Inspection.Selected.Parent
+			parent := app.InspectOccurrence(request)
+			if parent.State != desktop.Completed || parent.Inspection == nil {
+				t.Fatalf("parent navigation failed: %+v", parent)
+			}
+			segment := parent.Inspection.Selected
+			if segment.Kind != "segment" || segment.State != "omitted" || segment.Start != 0 || segment.End != 0 || len(parent.Inspection.Children) != 0 {
+				t.Fatalf("missing segment fabricated bytes or children: %+v", parent.Inspection)
+			}
+			request.Path = segment.Parent
+			message := app.InspectOccurrence(request)
+			if message.State != desktop.Completed || message.Inspection.Selected.Kind != "message" || message.Inspection.ChildCount != 2 {
+				t.Fatalf("could not navigate back to message: %+v", message)
+			}
+		})
+	}
+}

@@ -68,6 +68,20 @@ func (d *Document) Navigate(messageIndex int, path string) (Node, []Node, error)
 		}
 		return node(prefix, "segment", Value{Span: segment.Span, State: Present}), children, nil
 	}
+	// A field selector can name a segment occurrence absent from the source.
+	// Its parent remains an inspectable omitted position, so navigating upward
+	// never turns a valid selection into a syntax error or fabricates a span.
+	if !strings.Contains(path, "-") {
+		selector, err := ParseSelector(path + "-1")
+		if err != nil {
+			return Node{}, nil, err
+		}
+		canonical := fmt.Sprintf("%s[%d]", selector.segment, selector.occurrence)
+		if path != canonical {
+			return Node{}, nil, errors.New("segment paths require an explicit occurrence")
+		}
+		return node(canonical, "segment", Value{State: Omitted}), children, nil
+	}
 	selector, err := ParseSelector(path)
 	if err != nil {
 		return Node{}, nil, err
