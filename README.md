@@ -653,6 +653,9 @@ Fixtures and their independently authored intent are described in
 [testdata/README.md](testdata/README.md). Review standards and design sources:
 
 - Independent verification: [docs/independent-verification.md](docs/independent-verification.md)
+- What is implemented, what is not, and the evidence for each: [docs/support-matrix.md](docs/support-matrix.md)
+- Scripted synthetic evaluation: [samples/synthetic-walkthrough](samples/synthetic-walkthrough/README.md)
+- Preview site source, plain HTML with its claims traced in [site/CLAIMS.md](site/CLAIMS.md): [site/](site/)
 - Stack and version pins: [docs/stack.md](docs/stack.md)
 - Decisions: [docs/adr/](docs/adr/)
 - Agent conventions: [docs/agents/](docs/agents/)

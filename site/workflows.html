@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>readmit workflows</title>
+<meta name="description" content="The named workflows readmit implements today, each with the command, its boundary, and where it is documented.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">readmit <span>· unsigned development preview</span></div>
+  <nav aria-label="Site">
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="download.html">Download</a></li>
+      <li><a href="workflows.html" aria-current="page">Workflows</a></li>
+      <li><a href="connectors.html">Sources and connectors</a></li>
+      <li><a href="limitations.html">Limitations</a></li>
+      <li><a href="samples.html">Sample projects</a></li>
+    </ul>
+  </nav>
+</header>
+<main>
+  <h1>Supported workflows</h1>
+  <p>Each workflow below is implemented on <code>main</code>, documented on the linked page, and exercised by a test named in <a href="https://github.com/bharm16/readmit/blob/main/site/CLAIMS.md">CLAIMS.md</a>. The boundary column says what a result does and does not establish; those sentences come from the documentation, not from this page. Commands read from explicitly named files and write only to a new destination they were given.</p>
+
+  <h2>Bring evidence in</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Workflow</th><th>Command</th><th>Boundary</th><th>Documentation</th></tr></thead>
+    <tbody>
+      <tr><td>Inspect syntax</td><td><code>inspect FILE</code></td><td>Byte-preserving syntax view with values hidden unless <code>--show-values</code>; field labels for fourteen v2.5.1 segments, positional labels otherwise. Syntax inspection, not semantic validation.</td><td><a href="https://github.com/bharm16/readmit/blob/main/README.md">README</a></td></tr>
+      <tr><td>Capture files into a case</td><td><code>capture FILE... --output NEW_DIRECTORY</code>, <code>timeline CASE</code></td><td>A versioned directory with raw payloads, JSON events, ACK correlation and a SHA-256 identity. Observed, declared and import times stay distinct; unknown stays unknown. Malformed input is retained, never repaired.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/case-bundle.md">case bundle</a></td></tr>
+      <tr><td>Guided import of files, folders and ZIP archives</td><td><code>import --folder DIR --framing ... --output NEW_DIRECTORY --receipt NEW_FILE</code></td><td>Every declaration is a flag with no default. A member that could be read more than one way is refused by name. <code>--preview</code> writes nothing.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/import.md">import</a></td></tr>
+      <tr><td>Map an envelope</td><td><code>import --recipe RECIPE ...</code></td><td>CSV, JSON, XML or timestamped text carrying HL7, mapped by a recipe that names typed operators and holds no expression or hook.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/mapping.md">mapping</a></td></tr>
+      <tr><td>Collect from an approved source</td><td><code>source diagnose SOURCE</code>, <code>source collect SOURCE --output NEW_DIRECTORY --receipt NEW_FILE</code></td><td>A directory this machine can open, or your own read-only transfer program. A collection that could not run is never evidence that nothing was there.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/source.md">source</a></td></tr>
+      <tr><td>Generate synthetic cases</td><td><code>synth --seed N --base-time T --generator-version readmit-synth-v1 --profile-version readmit-siu-v1 --output NEW_DIRECTORY</code></td><td>Three SIU case bundles, byte-identical for identical inputs; the <code>invalid</code> case is deliberately defective and says so.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/synth.md">synth</a></td></tr>
+      <tr><td>Performance corpus and streaming scan</td><td><code>corpus generate</code>, <code>corpus scan</code></td><td>A scan holds one record and one batch whatever the stream's length and reports what an import of the same bytes would refuse. Measurements, not verdicts.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/corpus.md">corpus</a></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>Understand it</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Workflow</th><th>Command</th><th>Boundary</th><th>Documentation</th></tr></thead>
+    <tbody>
+      <tr><td>Search a case</td><td><code>index build CASE --output NEW_FILE --field SEL --retain values|digests|states --retain-until T</code>, <code>index search</code></td><td>A derived, disposable index; a retained decoded field is patient data, so which fields, in what form and until when are three declarations with no defaults.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/index.md">index</a></td></tr>
+      <tr><td>Diagnose</td><td><code>diagnose CASE --output NEW_DIRECTORY</code></td><td>Findings for the <code>readmit-siu-v1</code> fixture profile only, separated into observed facts, profile violations and hypotheses. A clean report is not proof of correctness.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/diagnose.md">diagnose</a></td></tr>
+      <tr><td>Compare fields</td><td><code>diff LEFT RIGHT [--key SEL] [--format terminal|markdown|json]</code></td><td>Files, cases, runs and results. Ambiguities and inserted or missing occurrences stay visible; equal wire fields do not prove delivery.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/diff.md">diff</a></td></tr>
+      <tr><td>Keep an investigation beside evidence</td><td><code>project init/add/update/show</code>, <code>project revise</code>, <code>project note</code></td><td>Metadata, notes and revision lineage live in documents beside the evidence and can never change a byte of it.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/project.md">project</a>, <a href="https://github.com/bharm16/readmit/blob/main/docs/project-lifecycle.md">lifecycle</a></td></tr>
+      <tr><td>Back up and restore</td><td><code>backup create/verify/restore</code></td><td>Incomplete evidence is displayed, never replaced; an interrupted backup is refused, not restored.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/backup.md">backup</a></td></tr>
+      <tr><td>Desktop shell</td><td>separate build</td><td>Opens a workspace folder, verifies a case through the same reader as <code>timeline</code>, edits notes, shows a bounded message grid over an index, recovers an interrupted session read-only. Keyboard-navigable; no telemetry.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/desktop.md">desktop</a></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>Reproduce and test</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Workflow</th><th>Command</th><th>Boundary</th><th>Documentation</th></tr></thead>
+    <tbody>
+      <tr><td>Name a test environment</td><td><code>target set/show/check</code></td><td><code>check</code> opens one connection, completes TLS and reports it; it never sends an HL7 payload. A recorded classification is a claim, not a finding, and can only ever refuse.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/target.md">target</a></td></tr>
+      <tr><td>Reset a fixture</td><td><code>target reset --target FILE --plan FILE --outcome NEW_FILE</code></td><td>Actions come from a closed set of reviewed typed operators; the plan carries no command, script or interpreter. A reset readmit could not confirm is an execution error.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/target.md">target</a></td></tr>
+      <tr><td>Replay</td><td><code>replay CASE --target CONFIG [--send --output NEW_RUN --policy FILE]</code></td><td>Previews without a connection. A send needs an explicit test target; a non-loopback destination needs a policy naming it; a production class refuses. Sent, received and uncertain outcomes are all recorded.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/replay.md">replay</a></td></tr>
+      <tr><td>Regression test</td><td><code>test SPEC [--send --output NEW_RESULT]</code></td><td>Exit 0 pass, 1 assertion failure, 2 execution error. Missing, stale, partial or mismatched observations are execution errors. Without <code>--send</code> there is no verdict.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/test-runner.md">test runner</a></td></tr>
+      <tr><td>Durable run</td><td><code>run start SPEC --send --output NEW_JOB [--deadline]</code>, <code>run status JOB [--recovery]</code>, <code>run resume</code>, <code>run clean</code></td><td>A synced plan and send journal; recovery reads evidence and never resends, resume repeats only never-attempted work into a new output, and clean removes only a stale lease.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/durable-runs.md">durable runs</a></td></tr>
+      <tr><td>Fixture receiver</td><td><code>listen</code></td><td>One SIU booking and rescheduling scenario with fixed and defective modes that both return AA; only the exported ledger tells them apart. Not a production receiver.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/listen.md">listen</a></td></tr>
+      <tr><td>Generic collector</td><td><code>collect --policy FILE --output NEW_DIRECTORY</code>, <code>collect status JOURNAL</code></td><td>Any message type over bounded MLLP, original and enhanced acknowledgement modes, TLS and mutual TLS, up to 64 peers. A commit acceptance is never an application acceptance.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/collect.md">collect</a></td></tr>
+      <tr><td>Observation windows</td><td><code>observe validate</code>, <code>observe explain</code>, <code>observe collect SOURCE --window WINDOW --out NEW_RECORD --snapshot NEW_DIRECTORY</code></td><td>A window completes only when every sample observed and the state held still for the declared quiet period; a failed collection is never a passing absence assertion.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/observe.md">observe</a></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>Hand it to someone else</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Workflow</th><th>Command</th><th>Boundary</th><th>Documentation</th></tr></thead>
+    <tbody>
+      <tr><td>Redact for export</td><td><code>redact CASE</code>, <code>redact export REVIEW</code></td><td>Named policies, a separate derived case, and an export review that blocks on anything unhandled. Coverage scans state their limits; no legal certification is made.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/redact.md">redact</a></td></tr>
+      <tr><td>Engagement packet</td><td><code>report --scenario siu-reschedule-v1 --output NEW_PACKET</code>, <code>report verify</code>, <code>report prepare</code></td><td>The built-in synthetic scenario only: fresh loopback fixtures, a sealed fail-then-pass result, diff, diagnosis and rerun instructions with hashes. Customer-derived packets are unsupported.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/report.md">report</a></td></tr>
+      <tr><td>Encrypt a transfer package</td><td><code>protect register/pack/open/inspect/rotate/retire/discard</code></td><td>AES-256-GCM under an HKDF-derived key read from a store readmit never writes to; the index is encrypted with the content. Discarding is unlinking and says what that does not establish.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/protect.md">protect</a></td></tr>
+      <tr><td>Reference credentials</td><td><code>secret add/show/rotate/scan</code></td><td>No command accepts a credential value. <code>scan</code> finds registered values in artifacts and reports locations, never the value.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/secret.md">secret</a></td></tr>
+      <tr><td>Offline entitlement</td><td><code>license verify/import/show/renew/export/release</code>, <code>license runner ...</code></td><td>A signed v1 or v2 file checked against a trust store you select; no activation service, no phone-home. No read, verify or export path consults it.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/license.md">license</a></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>The <a href="https://github.com/bharm16/readmit/blob/main/docs/support-matrix.md">support matrix</a> holds the same rows with the test that exercises each one.</p>
+</main>
+<footer>
+  <p>Every claim on this page traces to <a href="https://github.com/bharm16/readmit/blob/main/site/CLAIMS.md">CLAIMS.md</a>.</p>
+</footer>
+</body>
+</html>

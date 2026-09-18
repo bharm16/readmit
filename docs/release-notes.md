@@ -390,6 +390,16 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   `readmit-entitlement-trust/v1` and `readmit-entitlement-store/v1` gain no
   member and change no byte; the D6 clock guard is not delivered here and stays
   #116's separate versioned state.
+- A support matrix, `docs/support-matrix.md`, states per workflow, source and
+  platform exactly what is implemented and what is not available, with the
+  documentation page and the test behind each row; it ships in every archive.
+  `samples/synthetic-walkthrough` is a scripted, synthetic-only evaluation
+  (inspect, synth, timeline, capture, index, diagnose, diff, a local test
+  preview, a sealed loopback report and its verification) that a test runs
+  against the built executable. `site/` holds a static, dependency-free preview
+  site whose every claim is traced to a page and a test in `site/CLAIMS.md`. It
+  contains no screenshots: none has been captured from a built release yet, and
+  none will be mocked. No contract changes.
 
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`

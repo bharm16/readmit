@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>readmit preview</title>
+<meta name="description" content="Local-first HL7 v2 incident reproduction and regression testing. An honest preview of what is implemented today.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">readmit <span>· unsigned development preview</span></div>
+  <nav aria-label="Site">
+    <ul>
+      <li><a href="index.html" aria-current="page">Overview</a></li>
+      <li><a href="download.html">Download</a></li>
+      <li><a href="workflows.html">Workflows</a></li>
+      <li><a href="connectors.html">Sources and connectors</a></li>
+      <li><a href="limitations.html">Limitations</a></li>
+      <li><a href="samples.html">Sample projects</a></li>
+    </ul>
+  </nav>
+</header>
+<main>
+  <h1>Reproduce an HL7 v2 incident locally, then prove the fix held.</h1>
+  <p>readmit is a command-line tool, with a separate desktop shell, for healthcare integration engineers. It captures HL7 v2 evidence into verifiable case bundles, diagnoses a narrow scheduling profile, compares fields, replays selected messages to an explicitly approved test endpoint, evaluates declarative regression tests, and seals the evidence into a packet another person can verify offline. It runs on one machine, keeps evidence in plain directories, and opens no connection nobody configured.</p>
+
+  <div class="notice">
+    <strong>Read this before anything else on this site.</strong>
+    Every capability described here is implemented on the <code>main</code> branch and exercised by its test suite; nothing planned is presented as available. The one published archive, <code>v0.1.0-alpha.2</code>, predates almost all of it and contains <code>readmit inspect</code> only. To evaluate the rest today, build from source; see <a href="download.html">Download</a>. There are no screenshots on this site because no built desktop release has been captured yet; none will be mocked. The <a href="https://github.com/bharm16/readmit/blob/main/docs/support-matrix.md">support matrix</a> is the authoritative list, and <a href="https://github.com/bharm16/readmit/blob/main/site/CLAIMS.md">CLAIMS.md</a> traces every statement on these pages to a documentation page and a test.
+  </div>
+
+  <h2>What you can do with it today</h2>
+  <div class="grid">
+    <div class="card">
+      <h3>Capture and verify evidence</h3>
+      <p>Import HL7 files, folders, ZIP archives and CSV, JSON, XML or text envelopes into a versioned case bundle with a SHA-256 identity. Modifying a byte fails verification; nothing is ever overwritten.</p>
+    </div>
+    <div class="card">
+      <h3>Diagnose and compare</h3>
+      <p>Evidence-bound findings for the <code>readmit-siu-v1</code> scheduling fixture profile, separated into observed facts, profile violations and hypotheses. Field-aware diffs between files, cases, runs and results.</p>
+    </div>
+    <div class="card">
+      <h3>Replay and test safely</h3>
+      <p>Previews by default. A send needs an explicit test target, and any non-loopback destination needs a policy naming it. Regression specs are strict JSON with no hooks; results retain the evidence they were judged on.</p>
+    </div>
+    <div class="card">
+      <h3>Receive, observe, collect</h3>
+      <p>A bounded generic MLLP collector with original and enhanced acknowledgement modes and mutual TLS; observation windows over file exports and approved HTTPS APIs; collection from a directory or the customer's own transfer program.</p>
+    </div>
+    <div class="card">
+      <h3>Package for another person</h3>
+      <p>Policy-driven redaction with a fail-closed export review, encrypted transfer packages under a key readmit never holds, and a sealed synthetic engagement packet with rerun instructions.</p>
+    </div>
+    <div class="card">
+      <h3>Keep credentials out of it</h3>
+      <p>readmit registers references to credentials and keys held in an operating-system or customer-managed store. No command accepts a secret value, and a resolved value cannot be printed or serialized.</p>
+    </div>
+  </div>
+
+  <h2>What it will not do</h2>
+  <ul>
+    <li>Read a database. PostgreSQL, SQL Server and Oracle observation is selected and <strong>not implemented</strong>.</li>
+    <li>Read a Mirth Connect or Open Integration Engine export format. <strong>Not implemented.</strong></li>
+    <li>Speak SSH or SFTP itself. A remote export is collected by running your own read-only client.</li>
+    <li>Validate HL7 conformance, run an ADT or MPI state machine, or certify a redaction as de-identification.</li>
+    <li>Send telemetry, check for updates, or phone home. None of that exists in the engine.</li>
+  </ul>
+  <p>The complete list is on the <a href="limitations.html">limitations page</a>.</p>
+
+  <h2>Release status</h2>
+  <dl>
+    <dt>Published archive</dt>
+    <dd><code>v0.1.0-alpha.2</code>, GitHub prerelease, 2026-09-18, unsigned. Contains <code>inspect</code> only.</dd>
+    <dt>Branch <code>main</code></dt>
+    <dd>Every workflow on this site. CI packages and natively smoke-tests the five archives on each push; publication waits for the next tag, which is the owner's action.</dd>
+    <dt>Signing</dt>
+    <dd>No Apple notarization, no Windows code signing. GitHub build provenance is attested on published executables.</dd>
+    <dt>License terms</dt>
+    <dd>Not yet published. Third-party notices ship with every archive. No open-source license is implied.</dd>
+  </dl>
+
+  <h2>Where to look</h2>
+  <ul>
+    <li><a href="https://github.com/bharm16/readmit">Source repository</a> and its <a href="https://github.com/bharm16/readmit/blob/main/README.md">README</a>, which is the bundled user guide.</li>
+    <li><a href="https://github.com/bharm16/readmit/tree/main/docs">Documentation</a>, one page per workflow, shipped inside each archive.</li>
+    <li><a href="https://github.com/bharm16/readmit/blob/main/docs/product-decisions.md">Adopted product decisions</a>: what is selected for later, kept apart from what is implemented.</li>
+    <li><a href="https://github.com/bharm16/readmit/blob/main/docs/release-acceptance.md">Release acceptance</a>: the open checklist a finished product would have to pass.</li>
+  </ul>
+</main>
+<footer>
+  <p>These pages are plain HTML from the repository, with no analytics, scripts or external resources. Every claim traces to <a href="https://github.com/bharm16/readmit/blob/main/site/CLAIMS.md">CLAIMS.md</a>.</p>
+</footer>
+</body>
+</html>

@@ -72,6 +72,7 @@ REQUIRED_FILES = {
     "testdata/fixtures/redact-inventory.json",
     "docs/diff.md",
     "docs/report.md",
+    "docs/support-matrix.md",
     "testdata/fixtures/diff-before.mllp",
     "testdata/fixtures/diff-after.mllp",
     "testdata/fixtures/diff-expected.json",

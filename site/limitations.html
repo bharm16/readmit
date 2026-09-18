@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>readmit limitations</title>
+<meta name="description" content="What the readmit preview does not do, what it does not prove, and what remains an owner gate before any finished-product claim.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">readmit <span>· unsigned development preview</span></div>
+  <nav aria-label="Site">
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="download.html">Download</a></li>
+      <li><a href="workflows.html">Workflows</a></li>
+      <li><a href="connectors.html">Sources and connectors</a></li>
+      <li><a href="limitations.html" aria-current="page">Limitations</a></li>
+      <li><a href="samples.html">Sample projects</a></li>
+    </ul>
+  </nav>
+</header>
+<main>
+  <h1>Limitations and release status</h1>
+  <p>This page is deliberately long. A preview that lists what it cannot do is more useful than one that lets you find out.</p>
+
+  <h2>Release status</h2>
+  <dl>
+    <dt>Development preview, unsigned</dt>
+    <dd>The published <code>v0.1.0-alpha.2</code> archives are a GitHub prerelease with no Apple notarization and no Windows code signing. Build provenance is attested; that is not code signing. Signed installers are selected for later and not delivered.</dd>
+    <dt>The published archive is far behind <code>main</code></dt>
+    <dd>It contains <code>inspect</code> only. Every other workflow on this site exists on <code>main</code>, passes CI there, and is not in any published archive until the owner tags the next prerelease.</dd>
+    <dt>No finished-product claim</dt>
+    <dd>The <a href="https://github.com/bharm16/readmit/blob/main/docs/release-acceptance.md">release acceptance checklist</a> is open. Its system-acceptance gate (#109) has not been met, and nothing here should be read as a claim that it has.</dd>
+    <dt>No license terms, no trial, no support offering</dt>
+    <dd>Readmit's own license terms are not published; the repository ships third-party notices only. The adopted evaluation, billing and support policies in the <a href="https://github.com/bharm16/readmit/blob/main/docs/product-decisions.md">product decisions</a> are directions, not implemented or offered services. Every workflow on this site runs without an entitlement.</dd>
+    <dt>No screenshots</dt>
+    <dd>The desktop shell exists and is tested, but no built release has been captured yet. Screenshots will be added from a built release; none will be mocked.</dd>
+  </dl>
+
+  <h2>Not implemented</h2>
+  <ul>
+    <li>Database observations of any kind: PostgreSQL, SQL Server, Oracle, ODBC. Selected, not built.</li>
+    <li>Mirth Connect or Open Integration Engine export adapters. Selected, not built.</li>
+    <li>An SSH or SFTP client. A remote export is collected through your own read-only program.</li>
+    <li>Collecting from an application interface declared as an evidence source; it is declarable and refused.</li>
+    <li>A downstream HL7 capture collector for observation windows.</li>
+    <li>Desktop installers, signed builds, Windows or Linux desktop builds in CI, automatic updates.</li>
+    <li>nHapi and HL7apy profile metadata packs for versions other than the fourteen v2.5.1 segments that carry labels today.</li>
+    <li>Scheduling, daemons, watching a source, incremental or background work of any kind.</li>
+    <li>Full-text search, regular expressions, numeric or date ranges, cross-case search, and more than one question per index query.</li>
+    <li>Standard input or pipes: inputs are regular files.</li>
+    <li>Customer-derived engagement packets. <code>report</code> accepts its built-in synthetic scenario only.</li>
+    <li>Interactive terminal interfaces, configuration discovery, environment-variable precedence, hidden global config.</li>
+  </ul>
+
+  <h2>What a result does not prove</h2>
+  <ul>
+    <li><strong>Inspection is syntax.</strong> Field labels and states are not semantic validation or HL7 conformance.</li>
+    <li><strong>The profile is narrow.</strong> <code>readmit-siu-v1</code> covers SIU S12, S13, S15 and ACK for one SCH and one PID. It is a readmit fixture profile, not a vendor profile and not v2.5.1 conformance. No ADT or MPI state machine runs.</li>
+    <li><strong>A clean diagnosis is not correctness.</strong> Only the listed rules were examined over the observed window, which may omit earlier or later events.</li>
+    <li><strong>Equal wire fields are not delivery.</strong> A diff compares bytes; it does not establish that a receiver processed, stored or acted on anything.</li>
+    <li><strong>An accept acknowledgement is not application processing.</strong> The collector applies nothing; a commit acceptance is not an application acceptance.</li>
+    <li><strong>Reaching an endpoint is transport evidence.</strong> <code>target check</code> proves TLS and reachability, never that an application accepted a message.</li>
+    <li><strong>A recorded classification is a claim.</strong> Labelling an endpoint nonproduction is not proof it is safe to send to; the label can only refuse.</li>
+    <li><strong>A failed observation is not an empty one.</strong> A collector that never ran, stale data, a truncated capture, a lost connection or an ambiguous response observed nothing.</li>
+    <li><strong>Redaction is not de-identification.</strong> Coverage and residual scans state their limits; no legal certification is made, and a digest of a short identifier is recoverable.</li>
+    <li><strong>An offline entitlement cannot see a later revocation.</strong> The documentation states it rather than implies otherwise.</li>
+    <li><strong>The synthetic packet says nothing about production.</strong> Its boundary is the built-in fixture's appointment ledger.</li>
+    <li><strong>Discarding a package is unlinking.</strong> It is not erasure on a solid-state device, a copy-on-write filesystem, a snapshot, a backup, a replica or a recipient's machine.</li>
+  </ul>
+
+  <h2>Bounds you will meet</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Where</th><th>Bound</th><th>On reaching it</th></tr></thead>
+    <tbody>
+      <tr><td><code>inspect</code> input</td><td>16 MiB and 200,000 syntax nodes across all frames</td><td>Fails before any output</td></tr>
+      <tr><td>Index</td><td>16 declared fields, 128 retained bytes per value, 16 MiB document</td><td>Refused, or the prefix kept and marked <code>truncated</code></td></tr>
+      <tr><td>Backup</td><td>65,536 files, 64 MiB per file, 1 GiB per backup, 512 recorded indexes</td><td>Refused, never truncated</td></tr>
+      <tr><td>Corpus scan</td><td>64 KiB window, 16 MiB record, 256 records or 8 MiB per batch, 8 GiB stream</td><td>Refused rather than buffered</td></tr>
+      <tr><td>Source collection</td><td>4,096 entries, 16 MiB per entry, 128 MiB total, all declared by you</td><td>Refused before anything is read</td></tr>
+      <tr><td><code>collect</code></td><td>64 concurrent peers; declared connection, message and byte budgets</td><td>Peers wait; budgets stop the capture in a controlled way</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>Privacy posture, stated plainly</h2>
+  <ul>
+    <li>No telemetry, crash reporting, update checks, analytics or automatic uploads exist anywhere in the engine, the desktop shell, or this site.</li>
+    <li>Network access is limited to endpoints you explicitly configure. Inspection, capture, timeline and the desktop shell have no endpoint configuration at all.</li>
+    <li>Values are hidden unless <code>--show-values</code> is requested. Diagnostics name the declaration at fault and never repeat a value, a filename or a supplied argument.</li>
+    <li>Credentials and encryption keys are references readmit resolves by running your program; no command accepts a secret value and no value is ever written into a configuration, manifest, report, log or local browser state.</li>
+    <li>Run manifests, replays, indexes that retain values, and desktop saved filters can contain patient data. They are customer-local artifacts and are treated as such by the documentation.</li>
+    <li>Access control is the operating-system account and filesystem permissions. readmit has no accounts, no server and no store of its own.</li>
+  </ul>
+
+  <h2>Owner gates before any of this changes</h2>
+  <ul>
+    <li>Tag and publish a prerelease from current <code>main</code> so the archives match this site.</li>
+    <li>Capture desktop screenshots from a built release and add them here.</li>
+    <li>Publish license terms, support terms and the evaluation policy once counsel has reviewed them.</li>
+    <li>Signing credentials, installers and native installation tests for the desktop shell.</li>
+    <li>System, performance, security, privacy and accessibility acceptance (#109 and its siblings) before any finished-product claim.</li>
+  </ul>
+</main>
+<footer>
+  <p>Every claim on this page traces to <a href="https://github.com/bharm16/readmit/blob/main/site/CLAIMS.md">CLAIMS.md</a>. Full status: <a href="https://github.com/bharm16/readmit/blob/main/docs/support-matrix.md">support matrix</a>.</p>
+</footer>
+</body>
+</html>
