@@ -599,8 +599,11 @@ checked to hold no network call and no browser storage at all.
   the same notes; the window's editor writes the one draft of the open
   workspace, whichever case or revision that draft says it is about.
 - Resuming, restarting or resending an interrupted run, from recovery or from
-  anywhere else. There is no resume, the retained output is always refused for a
-  new execution, and an uncertain delivery is never resolved by reading.
+  anywhere else in the window. The window has no resume, the retained output is
+  always refused for a new execution, and an uncertain delivery is never
+  resolved by reading. The command line's `run resume` is a separate deliberate
+  action into a new output that repeats only never-attempted work and refuses
+  after any send; see [durable local runs](durable-runs.md).
 - Storing a note on a person's behalf. A retained draft stays a draft until it
   is stored deliberately, and a refused store leaves it retained as unstored
   work rather than discarding it.

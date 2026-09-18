@@ -3,6 +3,7 @@
 package durablerun
 
 import (
+	"bytes"
 	"context"
 	"encoding/json/v2"
 	"errors"
@@ -54,6 +55,88 @@ func (s Summary) ExitCode() int {
 	return 2
 }
 
+// RecoverySchema is the read-side classification of one job. It is a separate
+// document beside readmit-job/v1, which gains no member.
+const RecoverySchema = "readmit-run-recovery/v1"
+
+// What recovery established about one planned occurrence. NotAttempted means no
+// intent was ever synced for it, so a new run repeating it repeats work that
+// never touched the receiver. Acknowledged means a matched ACK was recorded.
+// Uncertain means an intent was synced and no acknowledged outcome followed:
+// bytes may have reached the receiver, and the send is never repeated.
+const (
+	NotAttempted = "not_attempted"
+	Acknowledged = "acknowledged"
+	Uncertain    = "uncertain"
+)
+
+// Occurrence names one planned outbound occurrence and what is known about it.
+type Occurrence struct {
+	ID       string `json:"occurrence"`
+	Delivery string `json:"delivery"`
+}
+
+// Lease states. Held: the lease document is present and the journal records no
+// completion, so the writer may still hold the run's resources. Released: no
+// lease document is present. Stale: the document is present but the journal
+// recorded a terminal state, so nothing holds it and cleanup may remove it.
+const (
+	LeaseHeld     = "held"
+	LeaseReleased = "released"
+	LeaseStale    = "stale"
+)
+
+// Recovery is what one read of a job establishes. Terminal is true only when a
+// complete terminal record was read and nothing follows it. SafeToRepeat is
+// true only when the run recorded its completion and no intent was ever
+// synced; ResumeRefusal states why otherwise.
+type Recovery struct {
+	Schema        string       `json:"schema"`
+	Run           Summary      `json:"run"`
+	Terminal      bool         `json:"terminal"`
+	Occurrences   []Occurrence `json:"occurrences"`
+	NotAttempted  int          `json:"not_attempted"`
+	Acknowledged  int          `json:"acknowledged"`
+	Uncertain     int          `json:"uncertain"`
+	Lease         string       `json:"lease"`
+	SafeToRepeat  bool         `json:"safe_to_repeat"`
+	ResumeRefusal string       `json:"resume_refusal,omitzero"`
+}
+
+// LeaseSchema is the document a run holds beside its journal while it may be
+// using its declared resources. It is the seam a scheduler admits against: a
+// lease is held while it is present and the journal records no completion.
+// Nothing in this release reads leases across jobs or refuses admission.
+const LeaseSchema = "readmit-run-lease/v1"
+
+// Resource kinds a run declares. An environment is the named nonproduction
+// environment whose fixture state the run changes; an endpoint is the address
+// the run connects to. A run without a named environment declares only the
+// endpoint.
+const (
+	EnvironmentResource = "environment"
+	EndpointResource    = "endpoint"
+)
+
+type Resource struct {
+	Kind string `json:"kind"`
+	Name string `json:"name"`
+}
+
+// Holder identifies the process that wrote the lease. It is not proof that the
+// process is alive: recovery never decides that.
+type Holder struct {
+	PID       int       `json:"pid"`
+	StartedAt time.Time `json:"started_at"`
+}
+
+type Lease struct {
+	Schema     string     `json:"schema"`
+	Holder     Holder     `json:"holder"`
+	DeadlineAt time.Time  `json:"deadline_at,omitzero"`
+	Resources  []Resource `json:"resources"`
+}
+
 type planDocument struct {
 	Schema    string                  `json:"schema"`
 	CreatedAt time.Time               `json:"created_at"`
@@ -76,11 +159,17 @@ type entry struct {
 	Final      *Summary      `json:"final,omitzero"`
 }
 
+// writer's two sticky failures are distinct. failed means the journal can take
+// no further record, so nothing after it is recorded. halted means an evidence
+// write failed, so no further intent is accepted, while the journal may still
+// record how the run stopped.
 type writer struct {
 	journalBytes int
 	failed       error
+	halted       error
+	finished     bool
 	root         *os.Root
-	journal      *os.File
+	journal      evidenceFile
 	sequence     int
 	previous     string
 	summary      Summary
@@ -88,10 +177,21 @@ type writer struct {
 
 // Start is one foreground execution. It requires a fresh destination and never
 // resumes an existing job. Each selected payload and effective configuration is
-// synced before execution; an intent is synced before each network write.
-func Start(ctx context.Context, specPath, output string) (summary Summary, err error) {
+// synced before execution; an intent is synced before each network write. A
+// deadline on ctx is the run's deadline: reaching it stops new sends and is
+// recorded as timed_out, with any in-flight delivery left uncertain.
+func Start(ctx context.Context, specPath, output string) (Summary, error) {
+	plan, err := testrunner.Prepare(specPath)
+	if err != nil {
+		return Summary{}, err
+	}
+	return start(ctx, plan, output)
+}
+
+func start(ctx context.Context, plan *testrunner.Plan, output string) (summary Summary, err error) {
+	var w *writer
 	defer func() {
-		if err != nil && summary.Schema != "" {
+		if err != nil && summary.Schema != "" && (w == nil || !w.finished) {
 			summary.StopReason = ExecutionError
 			if errors.Is(ctx.Err(), context.Canceled) {
 				summary.StopReason = Cancelled
@@ -106,10 +206,6 @@ func Start(ctx context.Context, specPath, output string) (summary Summary, err e
 			summary.JournalIncomplete = true
 		}
 	}()
-	plan, err := testrunner.Prepare(specPath)
-	if err != nil {
-		return Summary{}, err
-	}
 	output, err = plan.DurableDestination(output)
 	if err != nil {
 		return Summary{}, err
@@ -147,12 +243,19 @@ func Start(ctx context.Context, specPath, output string) (summary Summary, err e
 	if err = write(root, "plan.json", raw); err != nil {
 		return Summary{}, err
 	}
-	f, err := root.OpenFile("journal.jsonl", os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err = writeLease(ctx, root, plan); err != nil {
+		return Summary{}, err
+	}
+	// The lease is released when this process stops, however it stops. A
+	// crash leaves it, and recovery reports it held until the journal says
+	// otherwise.
+	defer root.Remove("lease.json")
+	f, err := openEvidence(root, "journal.jsonl")
 	if err != nil {
 		return Summary{}, errors.New("cannot create durable journal")
 	}
 	defer f.Close()
-	w := &writer{root: root, journal: f, previous: digest(raw), summary: Summary{Schema: Schema, State: Ready, StopReason: Ready, Planned: plan.Count()}}
+	w = &writer{root: root, journal: f, previous: digest(raw), summary: Summary{Schema: Schema, State: Ready, StopReason: Ready, Planned: plan.Count()}}
 	if err = w.append(entry{Kind: "ready"}); err != nil {
 		return w.summary, err
 	}
@@ -221,10 +324,53 @@ func Start(ctx context.Context, specPath, output string) (summary Summary, err e
 	if err = w.append(entry{Kind: "finished", Final: &w.summary}); err != nil {
 		return w.summary, err
 	}
-	// A retained execution error is a result, not an unstructured loss of status.
-	return w.summary, nil
+	w.finished = true
+	// A retained execution error is a result, not an unstructured loss of
+	// status. A failed evidence write is both: the journal says how the run
+	// stopped, and the caller is told why.
+	return w.summary, w.halted
 }
+
+func writeLease(ctx context.Context, root *os.Root, plan *testrunner.Plan) error {
+	lease := Lease{Schema: LeaseSchema, Holder: Holder{PID: os.Getpid(), StartedAt: time.Now().UTC()}, Resources: []Resource{}}
+	if deadline, ok := ctx.Deadline(); ok {
+		lease.DeadlineAt = deadline.UTC()
+	}
+	if name := plan.Environment().Name; name != "" {
+		lease.Resources = append(lease.Resources, Resource{Kind: EnvironmentResource, Name: name})
+	}
+	lease.Resources = append(lease.Resources, Resource{Kind: EndpointResource, Name: plan.Target().Address})
+	raw, err := json.Marshal(lease, json.Deterministic(true))
+	if err != nil || len(raw) > maxLease {
+		return errors.New("cannot encode durable lease")
+	}
+	return write(root, "lease.json", raw)
+}
+
+// leaseState reads the lease beside a journal, if one is present. A lease that
+// is present but unreadable is refused like any other changed evidence.
+func leaseState(root *os.Root, terminal bool) (string, error) {
+	if _, err := root.Lstat("lease.json"); err != nil {
+		return LeaseReleased, nil
+	}
+	raw, err := read(root, "lease.json", maxLease)
+	if err != nil {
+		return "", err
+	}
+	var lease Lease
+	if json.Unmarshal(raw, &lease, json.RejectUnknownMembers(true)) != nil || lease.Schema != LeaseSchema || lease.Holder.StartedAt.IsZero() || len(lease.Resources) == 0 {
+		return "", errors.New("durable lease is invalid")
+	}
+	if terminal {
+		return LeaseStale, nil
+	}
+	return LeaseHeld, nil
+}
+
 func (w *writer) BeforeSend(id string) error {
+	if w.halted != nil {
+		return w.halted
+	}
 	// Persist replay directory entries (and the decision) before a durable intent
 	// can attest that the frozen source/intended files exist.
 	for _, name := range []string{"result/run/payloads", "result/run", "result", "."} {
@@ -234,14 +380,22 @@ func (w *writer) BeforeSend(id string) error {
 	}
 	// Set before attempting persistence: failure may leave only partial intent.
 	w.summary.DeliveryUncertain = true
-	return w.append(entry{Kind: "intent", Occurrence: id})
+	err := w.append(entry{Kind: "intent", Occurrence: id})
+	if errors.Is(err, errJournalLimit) {
+		// The limit is checked before any byte is written, so no intent exists
+		// and the send it would have preceded was never attempted.
+		w.summary.DeliveryUncertain = false
+	}
+	return err
 }
 func (w *writer) Sent(id string, raw []byte) error {
 	name := "sent/" + id + ".bin"
 	if err := write(w.root, name, raw); err != nil {
+		w.halted = err
 		return err
 	}
 	if err := SyncDirectory(w.root, "sent"); err != nil {
+		w.halted = err
 		return err
 	}
 	return w.append(entry{Kind: "sent", Occurrence: id, Sent: &payload{name, len(raw), digest(raw)}})
@@ -261,4 +415,42 @@ func (w *writer) Recorded(event replay.Event) error {
 		w.summary.DeliveryUncertain = false
 	}
 	return nil
+}
+
+// ResumeSchema is the output of a resume: which job it repeated, how many
+// never-attempted occurrences that was, and the new job's own summary.
+const ResumeSchema = "readmit-run-resume/v1"
+
+type Resumption struct {
+	Schema      string  `json:"schema"`
+	ResumedFrom State   `json:"resumed_from"`
+	Repeated    int     `json:"repeated"`
+	Run         Summary `json:"run"`
+}
+
+// Resume executes the retained plan of a job again, into a new output. It is a
+// deliberate action that repeats only never-attempted work: it refuses when
+// the job recorded no completion, when any intent was synced without an
+// acknowledged outcome, when any delivery was acknowledged, and when the spec
+// at specPath no longer prepares the exact plan the job retained. An uncertain
+// send is never replayed by this or any other path.
+func Resume(ctx context.Context, job, specPath, output string) (Resumption, error) {
+	recovery, doc, err := readJob(job)
+	if err != nil {
+		return Resumption{}, err
+	}
+	if !recovery.SafeToRepeat {
+		return Resumption{}, errors.New("resume refused: " + recovery.ResumeRefusal)
+	}
+	plan, err := testrunner.Prepare(specPath)
+	if err != nil {
+		return Resumption{}, err
+	}
+	current, err := json.Marshal(plan.PinnedInputs(), json.Deterministic(true))
+	retained, retainedErr := json.Marshal(doc.Inputs, json.Deterministic(true))
+	if err != nil || retainedErr != nil || !bytes.Equal(current, retained) {
+		return Resumption{}, errors.New("resume refused: the spec, source or configuration differs from the retained plan; resume repeats only the same work")
+	}
+	summary, err := start(ctx, plan, output)
+	return Resumption{Schema: ResumeSchema, ResumedFrom: recovery.Run.StopReason, Repeated: recovery.NotAttempted, Run: summary}, err
 }
