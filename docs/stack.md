@@ -142,6 +142,18 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
 
 - `encoding/json/v2` and `encoding/json/jsontext`, generally available since Go 1.27. `RejectUnknownMembers(true)` for typed configuration; `Deterministic(true)` where reproducible output is required.
 - Embedded profiles via `go:embed`.
+- Expectations are `readmit-assertion-set/v1`, read by `internal/assertion`:
+  sixteen typed field, temporal, collection and relationship operators over the
+  shared `internal/hl7` selector, with a finite equality condition and three
+  per-record quantifiers instead of an expression language. One table binds an
+  operator to the subject it reads and the expectation it takes, so an
+  incompatible pairing is refused when the document is read. Regular
+  expressions are bounded and compiled by the reader; decimals are compared as
+  exact rationals through `math/big` rather than as floats; a timestamp with no
+  offset names no instant. Undecided is a third outcome, and a collection
+  question asked of an observation that did not complete is an execution error.
+  `readmit-test/v1` is unchanged and no command reads a set. See
+  [typed assertions](assertions.md).
 
 ## Randomness
 

@@ -419,6 +419,32 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   reads one and no window edits one yet; `readmit-profile-pack/v1` and every
   other existing contract gain no member and change no byte.
 
+- `readmit-assertion-set/v1` is the shared contract for expressing what an
+  interface should have produced, read by the new `internal/assertion`. Sixteen
+  typed operators in four families — field equality, inequality and the four
+  shapes, bounded text patterns, numeric ranges and tolerances; a temporal
+  window; record counts, uniqueness, membership, order, multiplicity and
+  bounded absence; and the two relationships that relate two values or two
+  observations — address values through the one shared field selector. A finite
+  equality condition and three per-record quantifiers replace an expression
+  language, and one table binds each operator to the subject it reads and the
+  expectation it takes, so an incompatible pairing is refused when the document
+  is read. Present, empty, explicit null and omitted stay four separate
+  answers; a value an operator's type cannot read, a timestamp carrying no
+  offset, text past the match bound and a quantifier over no record are
+  undecided rather than passed or failed; an unmet condition is skipped and
+  asserts nothing; and a collection question asked of an observation that did
+  not complete is an execution error, never a count of zero. Regular
+  expressions are bounded and compiled by the reader, decimals are compared as
+  exact rationals rather than as floats, and evaluation opens nothing, sends
+  nothing and retains nothing, so a cancelled evaluation produces no verdict
+  and recovers by running again. No command reads a set; `readmit-test/v1`,
+  `readmit-result/v1`, `readmit-observation/v1`,
+  `readmit-observation-window/v1` and `readmit-observation-completion/v1` gain
+  no member and change no byte. Visual authoring, suggestion and review, and
+  round-trip execution of these operators remain separate deliveries, and no
+  profile-specific rule is validated against a profile pack here.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is

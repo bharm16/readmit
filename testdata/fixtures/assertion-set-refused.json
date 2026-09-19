@@ -1,0 +1,13 @@
+{
+  "schema": "readmit-assertion-set/v1",
+  "name": "Refused: an operator paired with a subject it does not read",
+  "assertions": [
+    {
+      "id": "counting-a-field",
+      "operator": "record_count",
+      "subject": {"field": {"scope": "observed", "message": "s0001-e000001", "selector": "MSA-1"}},
+      "when": null,
+      "expected": {"count": 2}
+    }
+  ]
+}
