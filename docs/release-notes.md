@@ -1,5 +1,9 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Managed/offline installation runbook documents native silent deployment, staged
+  webview dependencies, offline activation, direct runner TLS, least privilege
+  and explicit signed-candidate/enterprise-policy acceptance gates.
+
 - Controlled-stop tests now synchronize actual receiver consumption and verify
   exact retained prefixes, including reads returning after shutdown. Unread
   socket data remains outside captured evidence; runtime behavior is unchanged.
