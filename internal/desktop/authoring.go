@@ -16,13 +16,22 @@ import (
 // shell holds no session, so every call carries the draft and gets the next one
 // back. Answer is the stage being answered and is read by AuthorTest alone;
 // Output is the new entry a save writes into and is read by SaveTest alone.
+//
+// Suggest names the reviewed run expectations are proposed from and is read by
+// SuggestExpectations and ApproveExpectations; Review is what a person decided
+// about those proposals and is read by ApproveExpectations alone. No suggested
+// value is ever carried back across this boundary: approving derives the
+// proposals from the run again and applies the decisions to them, so what an
+// approval records is what that run produced plus the edits the review made.
 type TestRequest struct {
-	Workspace string            `json:"workspace"`
-	Case      string            `json:"case"`
-	Identity  string            `json:"identity"`
-	Draft     testauthor.Draft  `json:"draft"`
-	Answer    testauthor.Answer `json:"answer,omitzero"`
-	Output    string            `json:"output,omitzero"`
+	Workspace string                        `json:"workspace"`
+	Case      string                        `json:"case"`
+	Identity  string                        `json:"identity"`
+	Draft     testauthor.Draft              `json:"draft"`
+	Answer    testauthor.Answer             `json:"answer,omitzero"`
+	Output    string                        `json:"output,omitzero"`
+	Suggest   *testauthor.SuggestionRequest `json:"suggest,omitzero"`
+	Review    *testauthor.Review            `json:"review,omitzero"`
 }
 
 // TestDraft is the draft and what it means over the evidence and the open
@@ -36,6 +45,11 @@ type TestDraft struct {
 	Resolution testauthor.Resolution `json:"resolution"`
 	Output     string                `json:"output,omitzero"`
 	Identity   string                `json:"identity,omitzero"`
+	// Suggestions is present after expectations were proposed from a reviewed
+	// run, and Approval after a person decided about them. Neither is stored
+	// anywhere: both are what the call that produced them answered.
+	Suggestions *testauthor.Suggestions `json:"suggestions,omitzero"`
+	Approval    *testauthor.Approval    `json:"approval,omitzero"`
 }
 
 // TestResult carries one state. Test is present whenever the draft resolved,
@@ -114,6 +128,76 @@ func (a *App) SaveTest(request TestRequest) TestResult {
 		return TestResult{State: Failed, Reason: err.Error()}
 	}
 	return authored(root, source, draft, TestDraft{Output: saved.Output, Identity: saved.Identity})
+}
+
+// SuggestExpectations proposes expectations from one run somebody has already
+// reviewed, and records nothing.
+//
+// It is the reading half of this flow: the run is opened through the reader
+// `readmit test` verifies a result with, every value is read exactly as the
+// evaluator reads it, and the draft comes back unchanged. A proposal the run
+// does not justify is reported as unsupported with the reason rather than
+// dropped from the set. Nothing here approves anything, and no proposal reaches
+// the draft until ApproveExpectations is given a decision naming it.
+func (a *App) SuggestExpectations(request TestRequest) TestResult {
+	release, claimed := a.claim()
+	if !claimed {
+		return busyRefusal.test()
+	}
+	defer release()
+	root, source, draft, suggestions, declined := a.proposing(request)
+	if source == nil {
+		return declined.test()
+	}
+	return authored(root, source, draft, TestDraft{Suggestions: &suggestions})
+}
+
+// ApproveExpectations records what a person decided about proposed expectations
+// and reports the draft their approvals produced.
+//
+// The proposals are derived from the reviewed run again here rather than read
+// back from the window, so a suggested value never crosses this boundary in the
+// direction of the draft: what an approval records is what that run produced,
+// with the edits the review named. A run that changed since it was read is
+// refused by identity, an unsupported proposal cannot be approved at all, and a
+// proposal no decision names is reported as not reviewed and recorded nowhere.
+func (a *App) ApproveExpectations(request TestRequest) TestResult {
+	release, claimed := a.claim()
+	if !claimed {
+		return busyRefusal.test()
+	}
+	defer release()
+	if request.Review == nil {
+		return TestResult{State: Failed, Reason: "an approval states what was decided about the proposals it applies to"}
+	}
+	root, source, draft, suggestions, declined := a.proposing(request)
+	if source == nil {
+		return declined.test()
+	}
+	approved, approval, err := testauthor.Approve(draft, suggestions, *request.Review)
+	if err != nil {
+		return TestResult{State: Failed, Reason: err.Error()}
+	}
+	return authored(root, source, approved, TestDraft{Suggestions: &suggestions, Approval: &approval})
+}
+
+// proposing verifies the case and derives the proposals the request asks for.
+// Both calls read the run the same way, because approving is proposing and then
+// applying the decisions: the set a review is applied to is read out of the run
+// rather than carried back from the window.
+func (a *App) proposing(request TestRequest) (string, *bundle.Bundle, testauthor.Draft, testauthor.Suggestions, refusal) {
+	root, source, draft, declined := a.authoring(request)
+	if source == nil {
+		return "", nil, draft, testauthor.Suggestions{}, declined
+	}
+	if request.Suggest == nil {
+		return "", nil, draft, testauthor.Suggestions{}, refusal{Failed, "a suggestion names the reviewed run to propose expectations from"}
+	}
+	suggestions, err := testauthor.Suggest(root, draft, *request.Suggest)
+	if err != nil {
+		return "", nil, draft, testauthor.Suggestions{}, refusal{Failed, err.Error()}
+	}
+	return root, source, draft, suggestions, refusal{}
 }
 
 // authoring verifies the case a request names and returns the draft to work

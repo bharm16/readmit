@@ -156,6 +156,136 @@ hand rather than saying what a run should have produced. Expectations derived
 from a reviewed known-good run, and the approval that is separate from
 generating them, are a separate delivery.
 
+## Suggesting expectations from a reviewed run
+
+Typing an expected value means reading it out of the evidence and typing it back
+in. A run that already happened knows what it produced, so the flow can propose
+the expectations that run would support — and then not record any of them until
+somebody says to.
+
+A **suggestion** is a claim about what should be true, derived from what was true
+once. It is proposed, reviewed and approved in three separate steps, and only
+the third touches the draft.
+
+```text
+workspace/
+  regression/                the case, unchanged
+  practice-target.json       the target configuration
+  reschedule-test.json       a test that was saved and run
+  baseline-result/           readmit-result/v1, the reviewed run
+```
+
+The run is one entry of the open workspace holding a
+[`readmit-result/v1` directory](test-result.md), which is what
+`readmit test SPEC --send --output NEW_DIRECTORY` writes. It is opened through
+the reader that verifies a result, not by reading its JSON: the run bundle, the
+observation and the assertions are all re-derived before a single value is read
+out of them.
+
+### What is proposed
+
+| Asked for | What is proposed | Read from |
+| --- | --- | --- |
+| The observed ledger | `ledger_count` holding the number of records that run settled on | the final observation the run retained |
+| One MSA or ERR position | `ack_field_equals` holding the value that position held, for each message the test sends | the acknowledgement payload the run bundle retained |
+
+Every position asked for is proposed for every message the draft sends, in the
+order the case records them. A value is read exactly as
+[`readmit test`](test-runner.md) reads it — the same payload, the same decoding,
+the same four states — so a proposal approved unedited is one that same run
+would decide again.
+
+### What the run is held to
+
+A run that answers a different question answers nothing here, and each refusal
+says which question.
+
+| Refused | Why |
+| --- | --- |
+| An entry that is not a verified result directory | A suggestion is derived from evidence a reader stands behind |
+| A run whose own expectations did not hold | A run under investigation is not a reviewed known-good one; deriving from it would carry the defect it recorded into the test |
+| A run that replayed different evidence | The draft is bound to one case, and the run must have sent that one |
+| A run observed at a different boundary | A boundary decides what a run decided |
+| A record count at the `ack-contract` boundary | That boundary makes no ledger claim at all |
+| A position outside MSA and ERR | `readmit-test/v1` addresses acknowledgements there |
+| More than 16 positions, or more than 256 proposals | The set is held to the expectations a test can hold |
+
+### What cannot be justified says so
+
+A proposal the run does not support is a **named outcome of its own**. It is
+never dropped from the set and never carried as though the run supported it.
+
+| Outcome | What it means |
+| --- | --- |
+| `supported` | That run produced this value. It is not an approval |
+| `unsupported` | The reason it could not be justified. It carries no expected value and cannot be approved |
+
+An occurrence the run did not send is unsupported with that reason. A delivery
+with no matched acknowledgement, a payload the run retained nothing for and an
+acknowledgement that did not decode as one message are held to as well, though a
+run whose own expectations held has none of them: its verdict was re-decided
+over exactly those payloads before this read them. A position an acknowledgement
+does not carry is **not** unsupported at all: `omitted` is one of the four states
+an expectation states, and the three absences stay separate.
+
+### Approval is a separate act
+
+Generating proposes and nothing else. Nothing that proposes a suggestion returns
+a draft, so there is no path from generating one to recording it, and a draft
+that has been suggested into is a draft nobody has approved anything for.
+
+Recording them is a second call carrying a **decision for each suggestion a
+person decided about**. Every proposal in the set is then reported as exactly one
+of three outcomes, so what was refused and what was never looked at are as
+visible as what was approved.
+
+| Outcome | What it means |
+| --- | --- |
+| `approved` | A person approved it, and the draft holds the expectation it named |
+| `rejected` | A person refused it |
+| `not_reviewed` | The review said nothing about it, and the draft holds nothing for it |
+
+**A review that decides nothing approves nothing.** There is no accept-all, no
+default approval and no partial acceptance that fills in the rest: a person who
+read the proposals and closed the panel has recorded no expectation.
+
+While approving, a reviewer may edit the identifier a result will name the
+expectation by, the record count, and the expected value including which of the
+four states it is. Each edit is a member the suggestion's own operator declares;
+an edit of another operator's member is refused rather than turning one
+expectation into another. An approved expectation is recorded through the same
+answer a person typing one gives, so every refusal above is made again — an
+identifier the draft already holds, a message the test no longer sends, a
+boundary that cannot make the expectation.
+
+The proposals are derived from the run **again** when a review is applied, rather
+than read back from whoever is reviewing them. A suggested value therefore never
+travels back towards the draft: what an approval records is what that run
+produced, with the edits the review named, and a run that changed since it was
+read is refused by identity.
+
+### Where a suggestion came from
+
+Every set names the run it was derived from — the entry, the result identity,
+the verdict that run recorded, the boundary it decided, and the identities of
+the spec it executed, the case it replayed, the replay evidence it produced and
+the configuration it ran against. Every individual proposal names where its own
+value was read: the retained artifact, the payload file inside it, and the
+occurrence and position for an acknowledgement, or the observation document and
+its digest for a ledger count. A reviewer can open any of them; none of them is
+a value.
+
+### Previewing what is and is not covered
+
+A draft reports, alongside everything else it means, what its expectations
+decide and what they leave undecided: whether anything decides the observed
+ledger, and for each message the test sends, the acknowledgement positions its
+expectations address. A message the test sends and decides nothing about is
+named. The preview is **positions, never values** — what a test inspects is a
+place in an acknowledgement and a count of records. At the `ack-contract`
+boundary the ledger does not apply at all, so a ledger nothing decides there is
+not a gap.
+
 ## Saving it
 
 A save writes one new entry of the open workspace:
@@ -202,11 +332,18 @@ See [the receiver handoff](listen.md) and
   [the inspector](desktop.md#inspecting-original-values), deliberately, and a
   position is chosen by clicking through its field tree rather than typed from
   memory.
-- **An expected value is a literal a person typed**, which is the same
-  customer-local data the field it describes holds. It is in the draft while the
-  window is open and in the saved spec, because that is what it was typed for.
-  The saved file is owner-readable, and the draft is never placed in browser
+- **An expected value is a literal a person typed or approved**, which is the
+  same customer-local data the field it describes holds. It is in the draft while
+  the window is open and in the saved spec, because that is what it was typed
+  for. The saved file is owner-readable, and the draft is never placed in browser
   storage or in any shell document.
+- **A suggestion carries exactly what the expectation it proposes would carry**,
+  and nothing else. A suggestion derived from real evidence is where values leak
+  into a document somebody commits, so what crosses is decided rather than
+  inherited: one acknowledgement value at a position that was asked for, or a
+  count of records. The ledger's own records — the identifiers and appointment
+  times it holds — never cross, and no message the run sent is read at all. An
+  unsupported proposal carries no value whatsoever.
 - Reading the targets a workspace offers reads target configurations, never a
   credential and never a secret value: what a configuration declares is a
   [reference](secret.md), and this flow resolves none of them.
@@ -229,6 +366,8 @@ to, so a draft cannot be answered into a spec its own reader would refuse.
 | An expectation identifier | 64 bytes, lowercase letters, digits and `-` | Refused |
 | An expected record count | 0–5000 | Refused |
 | An expected present value | 65536 bytes | Refused |
+| Acknowledgement positions proposed at once | 16 | Refused |
+| Proposals, with the expectations the draft holds | 256 | Refused before the run is opened |
 | Entries scanned for targets | 1024 | Refused |
 | Everything else | The case reader's own source, occurrence and byte bounds | Refused by the case reader |
 
@@ -242,12 +381,22 @@ to, so a draft cannot be answered into a spec its own reader would refuse.
   from a retained artifact even if a command read them. A test is authored as
   the document that executes today, and widening it is the work of the delivery
   that makes an assertion set executable.
-- **No suggestion of expectations from a run**, and no automatic approval of
-  one. Nothing here reads a result, proposes a value or converts an observation
-  into an expectation; suggestion, review and approval are a separate delivery,
-  and an approval is a person's action in all three.
+- **No explanation and no tolerance on an expectation.** `readmit-test/v1`
+  declares neither member, it gains none here, and a draft never invents one. Its
+  two operators are exact: a record count is a number and an acknowledgement
+  value is one of four states. What a reviewer edits is the identifier the result
+  will name the expectation by — which is the sentence a failing run prints —
+  and the value itself, including changing a proposed `present` value into
+  `empty`, `null` or `omitted`.
 - **No preview of what an expectation will inspect** beyond the position it
-  names. The flow states the boundary and the send order; it opens no message.
+  names and whether something addresses it. The flow states the boundary, the
+  send order and what is covered; it opens no message.
+- **No suggestion that does not name a run.** Nothing proposes an expectation
+  from the case alone, from a scenario template, or from a profile; a proposal is
+  read out of one reviewed `readmit-result/v1` directory or it is not made.
+- **No approving a run that did not pass.** Updating a baseline whose
+  expectations no longer hold is not this delivery: such a run is refused, and
+  what it recorded is investigated rather than approved.
 - No `ledger_equals`, no scenario template and no blank workflow. A draft is
   authored against one case this shell verified.
 - No editing or importing of a spec that already exists. A save writes a new

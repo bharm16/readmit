@@ -414,6 +414,8 @@ interface Facade {
   CompareReproducers(request: ReproducerComparisonRequest): Promise<ReproducerComparisonResult>;
   AuthorTest(request: TestRequest): Promise<TestResult>;
   SaveTest(request: TestRequest): Promise<TestResult>;
+  SuggestExpectations(request: TestRequest): Promise<TestResult>;
+  ApproveExpectations(request: TestRequest): Promise<TestResult>;
   Compare(request: CompareRequest): Promise<CompareResult>;
   Guide(workspace: string): Promise<GuideResult>;
   RunPractice(request: PracticeRequest): Promise<PracticeResult>;
@@ -996,6 +998,136 @@ export interface TestResolution {
   setup?: string;
   messages: string[];
   targets: TestTarget[];
+  coverage: TestCoverage;
+}
+
+/** Whether anything in this draft decides the observed ledger. `applies` is
+ * false at the ack-contract boundary, which makes no ledger claim at all, so an
+ * uncovered ledger there is not a gap. */
+export interface TestLedgerCoverage {
+  applies: boolean;
+  covered: boolean;
+  expectation?: string;
+}
+
+/** The acknowledgement positions this draft's expectations address for one
+ * message it sends, as those expectations spell them. */
+export interface TestMessageCoverage {
+  message: string;
+  positions: string[];
+}
+
+/** What a draft's expectations decide and what they leave undecided. Positions,
+ * never values: what a test inspects is a place in an acknowledgement and a
+ * count of records. */
+export interface TestCoverage {
+  ledger: TestLedgerCoverage;
+  messages: TestMessageCoverage[];
+  uncovered: string[];
+}
+
+/** What proposing one expectation from a reviewed run came to. A proposal
+ * nobody could justify says so; it is never dropped from the set and never
+ * carried as though the run supported it. */
+export type TestSuggestionOutcome = "supported" | "unsupported";
+
+/** What one reviewer's act on one proposal came to. A proposal nobody decided
+ * is neither an approval nor a refusal. */
+export type TestReviewOutcome = "approved" | "rejected" | "not_reviewed";
+
+/** The run one suggestion set was derived from, and the evidence it decided
+ * over. Every member is a retained artifact or the identity of one. */
+export interface TestSuggestionOrigin {
+  result: string;
+  identity: string;
+  status: string;
+  boundary: TestBoundary | "";
+  spec_identity: string;
+  input_identity: string;
+  run_identity: string;
+  target_identity: string;
+}
+
+/** Where one suggested value was read, as a position in retained evidence
+ * rather than as a value. */
+export interface TestEvidenceLink {
+  artifact: string;
+  payload?: string;
+  message?: string;
+  selector?: string;
+  digest?: string;
+}
+
+/** One proposed expectation: a claim about what should be true, derived from
+ * what was true once. A supported proposal carries exactly what the expectation
+ * it proposes would carry; an unsupported one carries no value and says why. */
+export interface TestSuggestion {
+  id: string;
+  operator: TestExpectationOperator;
+  outcome: TestSuggestionOutcome;
+  reason?: string;
+  message?: string;
+  selector?: string;
+  count?: number;
+  field?: ExpectedFieldValue;
+  evidence: TestEvidenceLink;
+}
+
+/** One set of proposals and the run they came from. The two counts say how the
+ * set divides, so a short list of usable proposals reads as a refusal rather
+ * than as a question nobody asked. */
+export interface TestSuggestions {
+  origin: TestSuggestionOrigin;
+  suggestions: TestSuggestion[];
+  supported: number;
+  unsupported: number;
+}
+
+/** What a person asked to have proposed: the reviewed run, whether the ledger
+ * it settled on should be proposed as a record count, and the acknowledgement
+ * positions to propose a value for. */
+export interface TestSuggestionRequest {
+  result: string;
+  ledger: boolean;
+  positions?: string[];
+}
+
+/** One reviewer's act on one proposal. Approving is the only thing that puts an
+ * expectation in a draft, and it is never the default. `id`, `count` and
+ * `field` are the edits a reviewer may make while approving. */
+export interface TestDecision {
+  suggestion: string;
+  approved: boolean;
+  id?: string;
+  count?: number;
+  field?: ExpectedFieldValue;
+}
+
+/** What a person decided about one suggestion set, naming the set it was made
+ * against. */
+export interface TestReview {
+  result: string;
+  identity: string;
+  decisions: TestDecision[];
+}
+
+/** What became of one proposal under review, and the identifier the draft
+ * records an approved one under. */
+export interface TestReviewed {
+  suggestion: string;
+  outcome: TestReviewOutcome;
+  expectation?: string;
+}
+
+/** The record of one person's act, separate from the generating that proposed
+ * the suggestions. Every proposal appears in it exactly once. */
+export interface TestApproval {
+  result: string;
+  identity: string;
+  reviewed: TestReviewed[];
+  approved: number;
+  rejected: number;
+  not_reviewed: number;
 }
 
 /** The draft and what it resolves to. `output` and `identity` are present only
@@ -1006,6 +1138,8 @@ export interface TestDraft {
   resolution: TestResolution;
   output?: string;
   identity?: string;
+  suggestions?: TestSuggestions;
+  approval?: TestApproval;
 }
 
 export interface TestRequest {
@@ -1015,6 +1149,8 @@ export interface TestRequest {
   draft: TestDraftDocument;
   answer?: TestAnswer;
   output?: string;
+  suggest?: TestSuggestionRequest;
+  review?: TestReview;
 }
 
 export interface TestResult {
@@ -1034,6 +1170,20 @@ export function authorTest(request: TestRequest): Promise<TestResult> {
  * writes a document, never evidence: the case it names is not touched. */
 export function saveTest(request: TestRequest): Promise<TestResult> {
   return guard(() => facade().SaveTest(request), { state: "failed" });
+}
+
+/** Proposes expectations from one run somebody has already reviewed, and
+ * records nothing. The draft comes back unchanged: a proposal becomes an
+ * expectation only when a person approves it. */
+export function suggestExpectations(request: TestRequest): Promise<TestResult> {
+  return guard(() => facade().SuggestExpectations(request), { state: "failed" });
+}
+
+/** Records what a person decided about proposed expectations. The engine
+ * derives the proposals from the run again rather than reading them back from
+ * here, so no suggested value crosses this boundary towards the draft. */
+export function approveExpectations(request: TestRequest): Promise<TestResult> {
+  return guard(() => facade().ApproveExpectations(request), { state: "failed" });
 }
 
 /** Which collection one side of a comparison read, and how much of it was in
