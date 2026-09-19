@@ -282,6 +282,22 @@ func Explain(ctx context.Context, input Input) (Explanation, error) {
 	return explanation, nil
 }
 
+// DescribeRun describes a verified replay and the readable response boundary.
+// Consumers share the explainer's payload rules instead of parsing evidence again.
+func DescribeRun(run *replay.Run) (RunContext, error) {
+	description := runContext("", run)
+	_, messages, err := runEvidence(run)
+	if err != nil {
+		return RunContext{}, err
+	}
+	for i := range description.Messages {
+		readable := messages[description.Messages[i].Source]
+		description.Messages[i].SentReadable = readable.input
+		description.Messages[i].ReceivedReadable = readable.observed
+	}
+	return description, nil
+}
+
 // readable records which of one message's two payloads parsed. It exists so
 // the explanation can say that a payload was retained and could not be read,
 // which is a different fact from a value the message does not carry.

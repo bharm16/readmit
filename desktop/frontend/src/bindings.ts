@@ -380,6 +380,7 @@ export interface InspectionResult {
 }
 
 interface Facade {
+  CompareRuns(request: RunComparisonRequest): Promise<RunComparisonResult>;
   StartDurableRun(spec: string, output: string): Promise<DurableRunResult>;
   OpenDurableRun(path: string): Promise<DurableRunResult>;
   RecoverSession(): Promise<RecoveryResult>;
@@ -1964,4 +1965,35 @@ export function exportTest(
   request: CanonicalTestRequest,
 ): Promise<CanonicalTestResult> {
   return guard(() => facade().ExportTest(request), { state: "failed" });
+}
+
+export interface RunComparisonRequest {
+ workspace: string; baseline: string; current: string; approval: string; repeats: string[];
+}
+export interface ExecutionAssertion { id: string; operator: string; status: string; message: string; selector: string; evidence: string; }
+export interface ExecutionView {
+ identity: string; status: string; run_state: string; error_class: string; boundary: string;
+ planned: number; observed: number; unobserved: number; unevaluated: number;
+ excluded: string; gaps: string[]; assertions: ExecutionAssertion[];
+}
+export interface DriftSide {
+ kind: string; identity: string;
+ input: { state: string; identity?: string; transformations: string[]; recorded_changes: number };
+ target: { state: string; fingerprint?: string; revision: string };
+ environment: { state: string; fingerprint?: string; engine?: string; spec?: string };
+ rule: { state: string; fingerprint?: string; profile?: string; resolution?: string };
+}
+export interface ExecutionComparison {
+ baseline: ExecutionView; current: ExecutionView; repeats: ExecutionView[];
+ drift: { schema: string; scope: string; left: DriftSide; right: DriftSide;
+ drift: { cause: string; outcome: string; comparison: string; parts: string[]; reason?: string }[];
+ attribution: { outcome: string; changed: string[]; unresolved: string[] } };
+ assertions: { id: string; baseline: string; current: string; definition: string; behavior: string }[];
+ specification: string; approval: string; approval_revision: number;
+ stability: { state: string; runs: number; failures: number; passes: number; errors: number; incomplete: number; flaky_assertions: string[]; reason: string };
+ scope: string;
+}
+export interface RunComparisonResult { state: State; reason?: string; comparison?: ExecutionComparison; }
+export function compareRuns(request: RunComparisonRequest): Promise<RunComparisonResult> {
+ return guard(() => facade().CompareRuns(request), { state: "failed" });
 }

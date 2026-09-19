@@ -1265,8 +1265,8 @@ checked to hold no network call and no browser storage at all.
   case, a run, a result, a review or a report: a reproducer is new evidence
   written beside the original, never a rewrite of it, and a comparison writes
   nothing at all.
-- Comparing anything but two case bundles of the open workspace, and comparing
-  stored acknowledgements rather than stored messages. A run, a result, a
+- In the field-comparison panel, comparing anything but two case bundles of the
+  open workspace, and comparing stored acknowledgements rather than stored messages. A run, a result, a
   report and a standalone message file are listed as unsupported entries here;
   [`readmit diff`](diff.md) compares all of them and both boundaries.
 - Reading a value in a comparison. A row names the positions that differ and the
@@ -1293,9 +1293,9 @@ checked to hold no network call and no browser storage at all.
   bounded versioned document and it gains no member here, so which rules were
   applied is lost with the window; laying the case out again reads and verifies
   it from disk.
-- Ignore rules, normalization policies, a reviewed baseline, and telling input
-  drift apart from target, environment and rule drift. Every difference this
-  panel found is shown as it was found; those are separate deliveries.
+- The field-comparison panel applies no normalization or ignore policy and
+  shows every difference it found. Baseline approval and execution drift are
+  shown in the separate panels described below.
 - Retaining a comparison across an interruption. The working session is one
   bounded versioned document and it gains no member here, so which two
   collections were being compared is lost with the window; comparing them again
@@ -1374,3 +1374,73 @@ edits only in memory, validates with the CLI's strict test reader, and exports
 exact reviewed bytes to a new file in the same workspace. No reference is
 rewritten and no send is initiated. See [canonical round trips](test-authoring.md#round-tripping-canonical-specs)
 for supported operators, refusal and recovery behavior, and execution parity.
+
+
+## Comparing retained executions
+
+The inspector's **Compare retained executions** panel reads a baseline result
+and a current result, with up to fourteen additional retained executions. Enter
+immediate directory names in the open workspace. Each must be a verified
+`readmit-result/v1` directory or a durable run containing one; cancelled and
+interrupted durable runs can instead report the missing result explicitly.
+A guided practice folder wraps its result in `result/`: copy that complete
+result directory into its own workspace entry before comparing it. Copies retain
+the same identity and cannot count as independent repeated runs.
+
+Select **Compare executions**. The behavior table aligns assertions by ID,
+compares the entire definition before comparing verdicts and observed values,
+and reports added/removed assertions as excluded on the opposite side.
+An unavailable specification leaves that side's inventory unknown instead of
+labelling its assertions excluded. Unevaluated assertions and changed definitions
+are `not_compared`, never equal
+or passing by omission. Expected and observed patient values remain hidden;
+the table reports the change and retained evidence position. No normalization
+or ignore policy suppresses differences.
+
+Input, target configuration, evaluator environment and profile/rule drift are
+shown separately through the existing [drift](drift.md) engine. Specification
+changes are a separate statement, including changed expectations and setup.
+Neither a behavior change nor a single changed configuration proves causality.
+The actual target software revision remains **unknown**. A regular result has
+no engine/profile pin, so those causes are undeclared; durable runs retain pins.
+
+Optionally select a [baseline approval](baseline.md) file. Matching means its
+complete canonical specification equals the baseline execution's retained spec,
+including paths and configuration declarations. Different or unavailable specs
+are visibly different or unknown, never inferred approvals. It is not a target
+snapshot, organizational authentication, permission to send, or proof the test
+is correct. No environment difference is implicitly approved here.
+
+Every execution retains its status, error class, assertion inventory, selected
+message count, readable responses, unobserved responses and unevaluated count.
+ACK-only tests explicitly leave downstream state unobserved. Missing ledger
+observations are visible. Source occurrences excluded by the original selection
+remain **unknown**: the original case is not reopened, since today's copy cannot
+establish what was excluded then. A torn journal remains interrupted or delivery
+uncertain even beside a finalized result; the panel shows both records.
+
+Flakiness is assessed only across distinct retained result identities. A single
+identity is insufficient history. Differing or undeclared configuration, changed
+specifications, different recorded fixture modes, execution errors or unfinished
+journals leave stability unresolved. With unchanged input, target, engine,
+resolved rule and complete specification, an unchanged assertion switching between pass and failure is
+`possible_flakiness`, even if another persistent failure keeps every overall run
+failing; no such switch is `no_observed_flakiness`, not proof of future
+stability. Target revision and external state remain unknown in either case.
+Every selected repeated result and its failures remain visible, including when
+the latest run passed. This reads history already on disk and stores no new one.
+
+The panel uses `App.CompareRuns`, backed by `internal/runcompare`, the existing
+verified result/job readers and `runexplain.DescribeRun`'s payload readability
+rules. It never parses command output or sends messages. Cancellation drops the
+view between bounded artifact reads; it cannot interrupt an individual verified
+reader. **Compare executions** again recovers by re-reading evidence. Inputs are
+disabled while the operation runs, editing a selection clears stale results,
+and nothing is persisted in browser storage or a restored desktop session.
+Invalid evidence, workspace escapes, duplicate repeats and histories over the
+sixteen-execution bound fail without exposing paths or values in diagnostics.
+
+Raw replay bundles without test results, assertion-set re-evaluation, suite
+aggregation, export renderings and automatic baseline selection are unsupported
+by this panel. `readmit explain` continues to handle the separate assertion-set
+contract. This adds no member to any retained evidence or approval contract.

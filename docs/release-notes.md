@@ -9,6 +9,12 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   four fixture lifecycle templates. A separate generation record retains every
   input and intended arrival; raw streams carry no fabricated target verdicts.
 
+- Desktop execution comparison separates behavior from input/target/environment/
+  rule drift, binds optional baseline approvals to retained specifications, keeps
+  repeated failures visible and states unknown revisions and observation gaps.
+  Flakiness signals require distinct comparable retained executions; cancelled
+  or incomplete journals never become stable passes.
+
 - Byte-preserving raw and MLLP syntax inspection with explicit format reporting.
 - v2.5.1 field labels, positional fallback, distinct empty/null/omitted states.
 - Values hidden by default; `--show-values` explicitly displays escaped bytes.
