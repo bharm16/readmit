@@ -21,6 +21,7 @@ import platform
 import plistlib
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 
@@ -394,24 +395,57 @@ def verify_deb(declaration, version, target, path):
         raise Refused(f"{path.name} installs no application entry")
 
 
+def run_tool(command, refusal):
+    """Run a packaging tool and, when it fails, refuse with what it actually said.
+
+    `check=True` captures the tool's own words into a CalledProcessError that
+    nothing reads, so a failed `hdiutil attach` reached a log as an exit status
+    and a command line and never as a reason. The text is the whole diagnosis:
+    `image not recognized` is a package that is not the one this tool wrote, and
+    `Resource temporarily unavailable` is a machine that is busy attaching
+    something else. An exit status of 1 does not tell those two apart.
+    """
+    result = subprocess.run(command, capture_output=True, text=True, timeout=600)
+    if result.returncode != 0:
+        raise Refused(
+            f"{refusal}: {Path(command[0]).name} exited {result.returncode}, "
+            f"stderr {result.stderr.strip()!r}, stdout {result.stdout.strip()!r}"
+        )
+    return result
+
+
 @contextmanager
 def mounted(image):
     """Attach a disk image read-only, off the desktop, and always detach it."""
-    with tempfile.TemporaryDirectory(prefix="readmit-desktop-verify-") as directory:
+    directory = tempfile.mkdtemp(prefix="readmit-desktop-verify-")
+    try:
         volume = Path(directory) / "volume"
         volume.mkdir()
-        subprocess.run([
-            "hdiutil", "attach", "-nobrowse", "-readonly", "-mountpoint", str(volume), str(image),
-        ], check=True, capture_output=True, timeout=600)
+        run_tool(
+            ["hdiutil", "attach", "-nobrowse", "-readonly", "-mountpoint", str(volume), str(image)],
+            f"{image.name} did not attach",
+        )
+        detach, refusal = ["hdiutil", "detach", "-force", str(volume)], f"{image.name} did not detach"
         try:
             yield volume
-        finally:
-            # Detaching is cleanup, not a verification result: a refusal raised
-            # while the image was open must reach the caller as itself, and the
-            # image must not stay attached for the next run either way.
-            subprocess.run(
-                ["hdiutil", "detach", "-force", str(volume)], capture_output=True, timeout=600,
-            )
+        except BaseException:
+            # A refusal raised while the image was open must reach the caller as
+            # itself, so a detach that fails on the way out is reported here
+            # rather than raised over the refusal that is already travelling.
+            try:
+                run_tool(detach, refusal)
+            except Refused as leaked:
+                print(leaked, file=sys.stderr)
+            raise
+        # Nothing else refused, so a failed detach is the result: the image
+        # stays attached after this process ends, and a verification tool that
+        # leaves the machine holding the artifact says so rather than passing.
+        run_tool(detach, refusal)
+    finally:
+        # A volume that did not detach is still mounted under this directory, and
+        # removing a mounted read-only volume fails with an error about the file
+        # system that would replace every refusal above with one naming no tool.
+        shutil.rmtree(directory, ignore_errors=True)
 
 
 def verify_disk_image(declaration, version, path):
@@ -429,9 +463,9 @@ def verify_installer_package(declaration, version, path):
     require_macos(path.name)
     with tempfile.TemporaryDirectory(prefix="readmit-desktop-verify-") as directory:
         expanded = Path(directory) / "expanded"
-        subprocess.run(
+        run_tool(
             ["pkgutil", "--expand-full", str(path), str(expanded)],
-            check=True, capture_output=True, timeout=600,
+            f"{path.name} did not expand",
         )
         information = (expanded / "PackageInfo").read_text()
         for expected in (f'identifier="{declaration["bundle_identifier"]}"',

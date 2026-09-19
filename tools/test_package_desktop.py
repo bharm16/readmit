@@ -1,5 +1,7 @@
 """Exercise desktop packaging through the tool that builds and verifies it."""
 
+from contextlib import redirect_stderr
+import io
 import json
 import os
 from pathlib import Path
@@ -8,6 +10,7 @@ import plistlib
 import stat
 import sys
 import tempfile
+import time
 import unittest
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -228,6 +231,85 @@ class PackagingTests(unittest.TestCase):
         with self.assertRaises(packaging.Refused) as refused:
             packaging.verify_disk_image(self.declaration, "1.2.3", image)
         self.assertIn("on macOS", str(refused.exception))
+
+    def test_a_packaging_tool_that_fails_is_refused_in_its_own_words(self):
+        """What the tool wrote is the diagnosis; an exit status on its own is not.
+
+        `check=True` put that text in an exception nobody read, so four failures
+        of the disk-image step reported a command line and a status and no reason.
+        """
+        with self.assertRaises(packaging.Refused) as refused:
+            packaging.run_tool([
+                sys.executable, "-c",
+                "import sys; sys.stderr.write('why it refused\\n');"
+                " sys.stdout.write('what it had done\\n'); sys.exit(3)",
+            ], "the stand-in tool did not run")
+        message = str(refused.exception)
+        for expected in ("the stand-in tool did not run", "exited 3",
+                         "why it refused", "what it had done"):
+            self.assertIn(expected, message)
+
+    @unittest.skipIf(platform.system() != "Darwin", "hdiutil is a macOS tool")
+    def test_an_image_that_does_not_attach_is_refused_in_hdiutil_s_own_words(self):
+        image = self.work / "readmit-desktop_1.2.3_arm64.dmg"
+        image.write_bytes(b"a file with a disk image's name and none of its bytes")
+        with self.assertRaises(packaging.Refused) as refused:
+            with packaging.mounted(image):
+                self.fail("nothing is read out of an image that never attached")
+        message = str(refused.exception)
+        for expected in (image.name, "did not attach", "hdiutil exited 1", "attach failed"):
+            self.assertIn(expected, message)
+
+    def detach_before_mounted_does(self, volume):
+        """Detach the volume the way no caller does, so the detach `mounted()`
+        runs next has nothing left to detach and has to say so.
+
+        `hdiutil detach` can return before the unmount has landed, so waiting
+        for the system to agree is what makes the next detach fail every time
+        rather than most times."""
+        packaging.run_tool(["hdiutil", "detach", "-force", str(volume)], "the test detached it")
+        for _ in range(600):
+            if not volume.is_mount():
+                return
+            time.sleep(0.1)
+        self.fail("the volume this test detached is still mounted a minute later")
+
+    @unittest.skipIf(platform.system() != "Darwin", "pkgutil is a macOS tool")
+    def test_an_installer_package_that_does_not_expand_is_refused_in_pkgutil_s_own_words(self):
+        package = self.work / "readmit-desktop_1.2.3_arm64.pkg"
+        package.write_bytes(b"a file with an installer package's name and none of its bytes")
+        with self.assertRaises(packaging.Refused) as refused:
+            packaging.verify_installer_package(self.declaration, "1.2.3", package)
+        message = str(refused.exception)
+        for expected in (package.name, "did not expand", "Could not open product archive"):
+            self.assertIn(expected, message)
+
+    @unittest.skipIf(platform.system() != "Darwin", "hdiutil is a macOS tool")
+    def test_an_image_this_tool_cannot_detach_is_refused_and_not_leaked_in_silence(self):
+        """A detach that fails leaves the image attached after this process ends.
+        Ignoring its result left two such attachments on a machine (#104), and
+        the tool that put them there could not say that it had."""
+        output = self.build(selected=MACOS, name="detach-packages")
+        image = next(output.glob("*.dmg"))
+        with self.assertRaises(packaging.Refused) as refused:
+            with packaging.mounted(image) as volume:
+                self.detach_before_mounted_does(volume)
+        message = str(refused.exception)
+        for expected in (image.name, "did not detach", "detach failed"):
+            self.assertIn(expected, message)
+
+    @unittest.skipIf(platform.system() != "Darwin", "hdiutil is a macOS tool")
+    def test_a_refusal_about_the_image_survives_a_detach_that_also_fails(self):
+        """The refusal a caller gets is about the package, never about cleanup."""
+        output = self.build(selected=MACOS, name="masked-packages")
+        image = next(output.glob("*.dmg"))
+        reported = io.StringIO()
+        with self.assertRaises(packaging.Refused) as refused, redirect_stderr(reported):
+            with packaging.mounted(image) as volume:
+                self.detach_before_mounted_does(volume)
+                raise packaging.Refused("what the image holds is not what it claims")
+        self.assertEqual(str(refused.exception), "what the image holds is not what it claims")
+        self.assertIn("did not detach", reported.getvalue())
 
     @unittest.skipIf(platform.system() != "Darwin", "codesign is a macOS tool")
     def test_an_ad_hoc_signature_is_not_a_distribution_signature(self):
