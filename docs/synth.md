@@ -84,3 +84,11 @@ Timestamps include an explicit UTC `+0000` offset. Patient, placer, and filler
 relationships remain identical across the sequence except for the documented
 filler defect in `invalid`. No broader ADT lifecycle or per-vendor options are
 generated.
+
+## Parameterized workflow generation
+
+`scenario generate` is a separate generator for the four lifecycle templates,
+with parameter rows, boundary mutations and a complete retained input plan.
+It writes raw streams and a companion generation record, not the fixed
+`readmit-synth/v1` case family above. See
+[workflow generation](scenario-design.md#parameterized-generation).

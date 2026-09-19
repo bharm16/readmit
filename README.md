@@ -735,8 +735,12 @@ workflow — cancelling before a booking, cancelling a cancellation, reschedulin
 after one, merging a patient identity into itself or into one already merged
 away, and any event on a visit whose identity was merged away. The preview
 names scenario-local subjects and never the identifiers the document declares,
-and it is a pure function of that document. Nothing here generates HL7 bytes or
-reads evidence. See
+and it is a pure function of that document. Preview reads no evidence.
+`scenario generate PLAN --output NEW_DIRECTORY` separately materializes all four
+fixture families from an explicit seed, embedded template, data rows and typed
+mutations. It retains every input, raw streams and intended arrival offsets;
+missing/null values, retransmission, reordering, Latin-1 and UTC-offset boundaries
+are explicit variants. It creates no test verdict or transport observation. See
 [designing a workflow as a sequence](docs/scenario-design.md).
 
 The desktop shell opens a workspace folder without a terminal: it lists what the

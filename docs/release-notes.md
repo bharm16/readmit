@@ -4,6 +4,10 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   all supported v1 clauses and exact reviewed bytes. The shared CLI reader
   rejects unsupported schemas/operators; desktop and CLI verdict parity is
   tested for passing and failing exported expectations.
+- `scenario generate` adds deterministic data rows and typed missing/null,
+  retransmission, delayed/out-of-order, encoding and timezone variants over the
+  four fixture lifecycle templates. A separate generation record retains every
+  input and intended arrival; raw streams carry no fabricated target verdicts.
 
 - Byte-preserving raw and MLLP syntax inspection with explicit format reporting.
 - v2.5.1 field labels, positional fallback, distinct empty/null/omitted states.
