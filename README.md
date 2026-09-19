@@ -1,6 +1,6 @@
 # readmit
 
-Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `index`, `project`, `backup`, `secret`, `listen`, `collect`, `replay`, `test`, `diff`, `drift`, `report`, `redact`, `synth`, `observe`, and `diagnose` are available. See the workflow guides below.
+Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `index`, `project`, `backup`, `secret`, `listen`, `collect`, `replay`, `test`, `diff`, `drift`, `report`, `redact`, `share`, `synth`, `observe`, and `diagnose` are available. See the workflow guides below.
 
 ```sh
 readmit inspect message.hl7
@@ -174,6 +174,11 @@ whole-packet review, and synthetic acceptance scenario.
 phase against the target configuration from an actual retained original packet.
 It preserves selected criteria, records a durable customer-local job, and
 explicitly declines external equivalence and approval of newly collected output.
+
+`share SOURCE --kind KIND --policy POLICY` previews value-free support diagnostics
+from verified reports or derived reviews, then requires exact local approval to
+publish a new support bundle. Source values remain local, and external equivalence
+is declined. See [reviewed support](docs/redact.md#reviewed-support-diagnostics-and-sharing-policy).
 
 `report --scenario siu-reschedule-v1 --output NEW_PACKET` runs the committed
 synthetic scenario against fresh defective and fixed fixtures, then packages

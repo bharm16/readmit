@@ -13,6 +13,12 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   persist project user removals, export authenticated audit history, and record
   retention/retirement without erasure claims. Backup v4 and verification preserve
   recovery bytes, review links and removal decisions.
+- Explicit sharing policies generate reviewed value-free support summaries from
+  actual reports and derived reviews; original evidence remains local. Exact
+  approvals bind source, policy, specification and output bytes, with no external
+  equivalence or source-authentication claim. Team reviews bind current policy
+  versions and authenticated reviewers; history v2 and backup v5 preserve the
+  old contract boundaries.
 
 - Saved-suite CI execution adds fixed-label JSON/JUnit gates while retaining raw
   evidence privately, with tested customer-hosted pipeline examples and explicit

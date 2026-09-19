@@ -164,9 +164,10 @@ sudo systemctl start readmit-hub
 The destination must be a new directory outside artifact storage. Backup copies
 and verifies exactly the catalogue's objects, preserving their bytes, addresses,
 sizes and timestamps. `manifest.json` is written last and synchronized: without
-it the backup is incomplete. Its strict `readmit-hub-backup/v4` contract declares
-metadata version 5, the ordered object list, project-to-object links, authenticated
+it the backup is incomplete. Its strict `readmit-hub-backup/v5` contract declares
+metadata version 6, the ordered object list, project-to-object links, authenticated
 review/lifecycle events and sticky team-mode state, bounded to a 128 MiB manifest.
+Existing v4 documents retain metadata version 5, v1 review events and the 128 MiB bound.
 Existing v3 documents retain metadata version 4 and their 64 MiB bound.
 Existing v2 documents retain metadata version 3 and their 32 MiB bound. Existing `readmit-hub-backup/v1` documents retain their
 exact three-member contract, 16 MiB bound and metadata version 2; restoration still accepts
@@ -318,11 +319,10 @@ role headers. Failures return generic 403 without identity/evidence details.
 exact bytes. PUT must supply and verify the entire payload even if its digest
 exists elsewhere. GET requires a stored link to that project: knowing another
 project's digest returns 404. `GET /v1/projects/P/exports/DIGEST` additionally
-requires export and returns the same bytes as an attachment; this is an authorized
-raw artifact download, **not a reviewed/de-identified disclosure packet**. As
-with any evidence viewer, read permission exposes bytes a client can save;
-export permission cannot prevent copying previously read data. #95 owns reviewed
-packet export. Unscoped `/v1/artifacts/` is absent in team mode.
+requires export permission but refuses the former raw download; use the reviewed
+support workflow below at `/v2/projects/P/exports/DIGEST`. As with any evidence
+viewer, artifact read permission exposes bytes a client can save; export policy
+cannot prevent copying previously read data. Unscoped `/v1/artifacts/` is absent in team mode.
 
 `POST /v1/projects/P/execution` and `/approvals` check the relevant permission
 then return 501: these legacy operation placeholders remain unavailable.
@@ -517,7 +517,7 @@ At most 1,024 lifecycle events across the hub, 8 KiB per command and 2,048 UTF-8
 bytes per reason are accepted; exhausting capacity refuses rather than pruning
 history. GET history exposes all events only to currently authorized project readers.
 
-Migration 5 adds a separate append-only lifecycle table. New backups use
+Migration 5 added a separate append-only lifecycle table and introduced
 `readmit-hub-backup/v4` (metadata 5, 128 MiB manifest bound), adding required
 `lifecycle` to v3. Existing v1/v2/v3 readers retain their exact versions, member
 sets and limits; no new authority is inferred from an older backup. Restore
@@ -542,3 +542,74 @@ customer deployment drill. Use a separately provisioned empty database for the
 existing restore procedure and test project reads and removal denials before
 switching clients. Customer IdP, real retention policies and retained-data
 recovery drills remain owner acceptance work.
+
+## Reviewed support downloads
+
+Support disclosure is a distinct workflow from customer-local evidence reads.
+`GET /v1/projects/P/artifacts/DIGEST` remains an authorized sensitive evidence
+read; a reader can save those bytes and Readmit cannot revoke a downloaded copy.
+The old raw `/v1/projects/P/exports/DIGEST` route now refuses: use the reviewed
+support workflow at `/v2/projects/P/exports/DIGEST`. It accepts only a closed
+`readmit-support-summary/v1`, never a case, report, arbitrary blob or archive.
+There is no outbound upload, email, webhook, URL callback or vendor connection.
+
+Generate and inspect a [local support summary](../docs/redact.md#reviewed-support-diagnostics-and-sharing-policy).
+Upload the exact `support.json` bytes and sharing-policy bytes through the existing
+project artifact PUT route. Uploading proves only byte integrity and project
+custody, not source authentication or permission to disclose. The local summary
+approval marker and local approver labels convey no team authority.
+
+Use `/v2/projects/P/reviews` with `readmit-hub-review-command/v2`. It has the same
+required members as v1, but only these new kinds and the fixed text `support`:
+
+| Kind | Permission | Evidence | Release | Parent | Recipient |
+| --- | --- | --- | --- | --- | --- |
+| `support-policy` | `admin` | Exact policy SHA-256 | Empty | Empty | Empty |
+| `support-request` | `evidence.write` | Exact summary SHA-256 | Exact current policy SHA-256 | Current policy event ID | Current reviewer/owner subject other than author |
+| `support-approval` | `approval` | Same summary SHA-256 | Same policy SHA-256 | Request event ID | Empty |
+
+All writes require current human OIDC identity and mTLS. A requested reviewer
+must be the authenticated actor from the same issuer; owner privileges cannot
+impersonate that person. API/runner tokens cannot approve. Client-supplied actor
+or issuer members are refused. Existing project-wide `expected`/idempotency rules
+apply. Revocation and durable user removals are rechecked under the storage lock,
+including retries. A policy event is a new version even if its document bytes
+repeat an older version: all earlier support approvals become unusable until a
+new request and named review. `support:false`, missing download permission,
+changed summary bytes, a different policy, missing/retired artifacts or unavailable
+metadata refuse disclosure. Local CLI policy is explicitly selected by the operator;
+team policy is selected by an authenticated administrator on the server.
+
+The new authenticated events are `readmit-hub-review-event/v2`. `/v2` history and
+notifications return `readmit-hub-review-history/v2`, retaining both prior v1 and
+new v2 events with one complete sequence. `/v2/reviews` also accepts unchanged
+v1 commands for existing test-release collaboration. V1 routes reject v2 commands
+and refuse with 409 once a project's history needs v2, rather than silently hiding
+new events or widening the frozen v1 response. An audit snapshot containing v2
+review events uses `readmit-hub-audit/v2`; v1-only snapshots retain v1.
+
+A successful GET to `/v2/projects/P/exports/DIGEST` requires current `export`
+permission, the current administrator-selected policy with
+`customer-hub-download`, an exact summary/policy binding and the completed named
+review against the current policy event. The response is canonical JSON as a
+fixed-name attachment with `nosniff`, without active rendering. It contains no
+source-controlled strings except validated byte commitments and closed outcomes.
+No test pass, fixture proof, review or byte hash is external equivalence or source
+authentication. Content approved for one policy/version/project cannot be reused
+as approval of another.
+
+Support review decisions persist in the customer's review history. Security log
+lines use only fixed action/outcome vocabulary: no evidence bytes, paths, tokens,
+patient values or untrusted error text. Protect the authenticated review metadata
+and server logs under customer controls. A failed download records refusal; it
+never retries, forwards or partially substitutes another artifact.
+
+Metadata version 6 makes older binaries refuse the new event meanings. New
+backups use `readmit-hub-backup/v5`, retaining the lifecycle and review records
+with compatible readers for v1–v4. Frozen older backup versions reject v2 review
+events. Restore validates complete event ordering, exact policy generations,
+reviewer/request bindings and artifact bytes before committing metadata. Backup
+custody is an operator responsibility; no backup hash authenticates an IdP.
+Live IdP registration, certificate/key rotation, lawful support agreements and
+recipient authorization remain owner acceptance gates. These tests use synthetic
+identities and isolated PostgreSQL, not customer PHI or live provider accounts.
