@@ -19,9 +19,20 @@ const (
 	ReceiptSchema  = "readmit-receipt/v1"
 	MaxSpecBytes   = 1 << 20
 	maxResultBytes = 8 << 20
-	maxAssertions  = 256
 	LedgerBoundary = "appointment-ledger"
 	ACKBoundary    = "ack-contract"
+
+	// The initial states a spec declares. Which one a test starts from follows
+	// from its observation boundary: a ledger is observed from a known empty
+	// state, and an ACK-only test checks no ledger and says so explicitly.
+	EmptyLedger      = "empty-ledger"
+	OperatorDeclared = "operator-declared"
+
+	// MaxAssertions and MaxExpectedTextBytes are the two bounds a caller
+	// authoring a spec has to hold its own input to. They are exported so that
+	// a caller holds it to this contract's bound rather than to a copy of it.
+	MaxAssertions        = 256
+	MaxExpectedTextBytes = 65536
 )
 
 type Spec struct {

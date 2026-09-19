@@ -37,7 +37,7 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
 - [Wails 2](https://wails.io) renders a React and TypeScript interface in the platform webview. It is the only direct third-party dependency of the `desktop` module. Vite builds the interface, which is embedded in the executable; nothing is fetched at run time.
 - `internal/desktop` is the typed Go facade. Desktop operations return typed results with one explicit state each. The interface never parses command output and never reimplements HL7 or case bundle semantics. See [the desktop contract](desktop.md).
 - The desktop build needs cgo and a platform webview and has its own workflow. It never applies `CGO_ENABLED=0`, never changes the command-line build, and is not in the release archives.
-- The window's one write into a workspace is a reproducer: the occurrences a
+- The window's one write of evidence into a workspace is a reproducer: the occurrences a
   person selected, the setup dependencies their declared relations retain, and
   the field edits applied to them, written as a new derived `readmit-case/v3`
   bundle under the `readmit-reproducer/v1` derivation with a
@@ -46,6 +46,16 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
   interprets; it is held in the window while it is edited and stored nowhere
   else. Original evidence is immutable, so this is a new artifact beside it and
   never an in-place rewrite. See [reproducers](reproducer.md).
+- The window's one write of a document into a workspace is a regression test.
+  `internal/testauthor` answers a `readmit-test-draft/v1` draft one typed stage
+  at a time over a verified case and generates the `readmit-test/v1` spec the
+  command line runs, handing the bytes back only after `internal/testrunner`'s
+  own reader has accepted them. The boundary fixes the initial state and the
+  evidence fixes the send order, targets are read through the same
+  `internal/replay` reader a spec resolves one with, and a production
+  classification is refused where it is chosen. The draft is held in the window
+  while it is answered and stored nowhere else. `readmit-test/v1` gains no
+  member. See [authoring a regression test](test-authoring.md).
 - Local shell state is three bounded, versioned documents: the list of recently opened folders, the filters a viewer saved with the one selected now (`readmit-filters/v1`), and the working session that viewer has not stored (`readmit-desktop-session/v1`) — where they were, and the notes they had typed and not stored. A saved filter holds what a person typed to filter by and a retained draft holds a note they were writing, which is the same patient data the evidence beside it holds, so all three are owner-readable, named in the window's privacy status, and never written into evidence. Restoring a session reads; it never resumes or resends network work. No telemetry, crash reporting, update checks, or evidence in browser storage.
 
 ## HL7 core

@@ -4,11 +4,16 @@ import { RunPanel } from "./RunPanel";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import {
+  authorTest,
   buildReproducer,
   cancel,
   createSampleWorkspace,
   editReproducer,
+  saveTest,
   undoReproducer,
+  type TestAnswer,
+  type TestDraftDocument,
+  type TestResult,
   type ReproducerPlan,
   type ReproducerResult,
   type ReproducerStep,
@@ -45,6 +50,7 @@ import {
 } from "./bindings";
 import { Inspector } from "./Inspector";
 import { Reproducer } from "./Reproducer";
+import { TestAuthoring } from "./TestAuthoring";
 import { Badge, GRID_WINDOW, MessageGrid, Palette, Report, Separator, Status } from "./shell";
 
 /** The panes never collapse to nothing: either one keeps a usable share of the
@@ -64,7 +70,8 @@ type Running =
   | "grid"
   | "filters"
   | "inspect"
-  | "reproducer";
+  | "reproducer"
+  | "authoring";
 
 export default function App() {
   const [described, setDescribed] = useState<Shell | null>(null);
@@ -82,6 +89,7 @@ export default function App() {
   const [selectedOccurrence, setSelectedOccurrence] = useState<string | null>(null);
   const [gridResult, setGridResult] = useState<GridResult | null>(null);
   const [reproducerResult, setReproducerResult] = useState<ReproducerResult | null>(null);
+  const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -235,6 +243,7 @@ export default function App() {
         setGridResult(null);
         setInspectionResult(null);
         setReproducerResult(null);
+        setTestResult(null);
         setSelectedOccurrence(null);
         setSelected(null);
         setWorkspace(null);
@@ -253,6 +262,7 @@ export default function App() {
         setGridResult(null);
         setInspectionResult(null);
         setReproducerResult(null);
+        setTestResult(null);
         setSelectedOccurrence(null);
         setSelected(name);
         setEvidence(await openCase(folder, name));
@@ -340,6 +350,38 @@ export default function App() {
       });
     },
     [gridResult, operate, reproducerResult, root],
+  );
+
+  // A test draft is bound to the case the grid verified, so every answer
+  // carries the draft back to the engine, which decides what it now means. The
+  // window keeps no second copy of the answers and holds the draft nowhere
+  // else: it is unstored work, and it is never placed in browser storage.
+  const author = useCallback(
+    async (work: (draft: TestDraftDocument, open: { case: string; identity: string }) => Promise<TestResult>) => {
+      const open = gridResult?.grid;
+      if (!root || !open) return;
+      const draft =
+        testResult?.test?.draft ??
+        ({
+          schema: "",
+          case: { entry: "", identity: "" },
+          name: "",
+          messages: [],
+          target: "",
+          boundary: "",
+          observation: "",
+          reset: "",
+          expectations: [],
+        } as TestDraftDocument);
+      await operate("authoring", async () => {
+        const result = await work(draft, open);
+        // A refused answer leaves the draft exactly as it was, so the refusal
+        // is shown without replacing the test a person is working on.
+        const kept = testResult?.test;
+        setTestResult(result.test || !kept ? result : { ...result, test: kept });
+      });
+    },
+    [gridResult, operate, root, testResult],
   );
 
   // Changing the filter changes what the open grid is showing, so the window is
@@ -773,6 +815,45 @@ export default function App() {
                   case: open.case,
                   identity: open.identity,
                   plan,
+                  output,
+                }),
+              )
+            }
+          />
+        ) : null}
+        {gridResult?.grid ? (
+          <TestAuthoring
+            rows={gridResult.grid.rows}
+            result={testResult}
+            inspected={
+              selectedOccurrence && inspectionResult?.inspection
+                ? {
+                    occurrence: selectedOccurrence,
+                    path: inspectionResult.inspection.selected.path,
+                  }
+                : null
+            }
+            busy={busy}
+            progress={running === "authoring" ? "Resolving this test against the case." : null}
+            indicators={indicators}
+            onAnswer={(answer: TestAnswer) =>
+              void author((draft, open) =>
+                authorTest({
+                  workspace: root ?? "",
+                  case: open.case,
+                  identity: open.identity,
+                  draft,
+                  answer,
+                }),
+              )
+            }
+            onSave={(output: string) =>
+              void author((draft, open) =>
+                saveTest({
+                  workspace: root ?? "",
+                  case: open.case,
+                  identity: open.identity,
+                  draft,
                   output,
                 }),
               )

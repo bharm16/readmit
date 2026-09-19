@@ -531,6 +531,40 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   everything at once. Nothing here opens a file, no command reads either
   document and no window edits one yet.
 
+- The desktop shell authors a regression test from selected evidence, so a
+  `readmit-test/v1` spec is no longer written by hand. `internal/testauthor`
+  holds a `readmit-test-draft/v1` draft bound to the case a person verified and
+  answers it one typed stage at a time — the test name, the occurrences it
+  sends, the target configuration, the outcome boundary, the observation source,
+  the reset instructions an operator reads and readmit never executes, and the
+  expectations. Each answer carries only the member its own stage declares and
+  replaces that stage rather than adding to it, and the whole draft is checked
+  afterwards, so withdrawing a message an expectation reads, or changing the
+  boundary under an expectation it cannot make, is refused and leaves the draft
+  exactly as it was. Withdrawing an answer is answering the stage with nothing,
+  and choosing the ACK boundary withdraws an observation source the ledger
+  boundary had asked for and reports that stage as unanswered again rather than
+  generating a spec carrying both. Choosing the boundary fixes the initial state
+  and the evidence fixes the send order, so neither is answered twice. An
+  acknowledgement or an occurrence nothing decoded as a sent message, a target
+  the shared reader refuses, a production-classified environment, an observation
+  source at the ACK boundary, a record count at that boundary, an
+  acknowledgement expectation naming a message the test does not send and a
+  position outside MSA and ERR are each refused where the answer is given rather
+  than when the spec is run. A save writes one new entry of the workspace
+  exclusively and reads it back, so the identity reported is the identity of the
+  bytes on disk; a failed write leaves no partial file, and an unsaved draft is
+  unstored work the window loses. `readmit-test/v1` gains no member and changes
+  no byte, `readmit-desktop-session/v1` gains no member, no command reads a
+  draft, and no evidence is changed. `internal/testrunner` exports the two
+  initial states, its assertion and expected-text bounds and one expected-value
+  check it already performed, so the authoring flow holds an answer to this
+  contract's own rule rather than to a copy of it; the contract's bytes,
+  members and behaviour are unchanged. `readmit-assertion-set/v1` is not authored
+  here because no command in this release executes one; suggesting expectations
+  from a run, approving them, previewing what one inspects, and importing or
+  editing an existing spec remain separate deliveries.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is
