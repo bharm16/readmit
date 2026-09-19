@@ -11,7 +11,8 @@ archives, with attribution and the original source revision in
 `docs/dictionary-provenance.md`. No nHapi runtime code is included.
 
 The desktop shell is a separate module and is not part of the release archives.
-Its native packages carry this file beside the application.
+Its native packages carry this file, the existing `licenses/` texts, and the
+preferred dictionary source and provenance beside the application.
 Its executable contains Wails 2 (MIT) and its dependencies, recorded in
 `desktop/go.mod` and `desktop/go.sum`, and the bundled interface contains React
 and React DOM (MIT), recorded with their exact versions in

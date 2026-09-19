@@ -77,6 +77,38 @@ class PackagingTests(unittest.TestCase):
         self.assertEqual(data["usr/bin/readmit-desktop"][1], self.binary.read_bytes())
         self.assertIn("usr/share/applications/readmit-desktop.desktop", data)
 
+    def test_installed_legal_material_is_present_in_the_linux_payload(self):
+        output = self.build()
+        package = next(output.glob("*.deb"))
+        data = packaging.read_tar_gz(packaging.read_ar(package)["data.tar.gz"])
+        for name in ("licenses/react-MIT.txt", "licenses/wails-MIT.txt",
+                     "dictionary/fields-v251.json", "docs/dictionary-provenance.md"):
+            self.assertEqual(data["usr/share/doc/readmit-desktop/" + name][1],
+                             (packaging.ROOT / ("internal/" + name if name.startswith("dictionary/") else name)).read_bytes())
+
+    def test_missing_or_altered_legal_material_is_refused_even_with_a_new_checksum(self):
+        for index, name in enumerate(("licenses/react-MIT.txt", "dictionary/fields-v251.json")):
+            with self.subTest(name=name):
+                output = self.build(name=f"legal-{index}")
+                package = next(output.glob("*.deb"))
+                members = packaging.read_ar(package)
+                data = packaging.read_tar_gz(members["data.tar.gz"])
+                data["usr/share/doc/readmit-desktop/" + name] = (0o644, b"altered")
+                packaging.write_ar(package, [
+                    ("debian-binary", members["debian-binary"]),
+                    ("control.tar.gz", members["control.tar.gz"]),
+                    ("data.tar.gz", packaging.tar_gz([(key, mode, value) for key, (mode, value) in data.items()])),
+                ])
+                self.rewrite(output, package.name, package.read_bytes())
+                with self.assertRaisesRegex(packaging.Refused, "legal material"):
+                    packaging.verify(self.declaration, output)
+
+    def test_bundle_without_license_text_is_refused(self):
+        bundle = packaging.application_bundle(self.declaration, self.binary, "1.2.3", self.work)
+        (bundle / "Contents/Resources/licenses/wails-MIT.txt").unlink()
+        with self.assertRaisesRegex(packaging.Refused, "legal material"):
+            packaging.verify_bundle(self.declaration, "1.2.3", bundle)
+
     def test_the_same_inputs_build_the_same_package_bytes(self):
         first, second = self.build(name="first"), self.build(name="second")
         name = json.loads((first / packaging.MANIFEST_NAME).read_bytes())["packages"][0]["name"]
@@ -207,7 +239,7 @@ class PackagingTests(unittest.TestCase):
     def test_the_macos_bundle_carries_the_full_release_identity(self):
         output = self.work / "bundle"
         output.mkdir()
-        bundle = packaging.application_bundle(self.declaration, self.binary, b"notices", "0.1.0-alpha.2", output)
+        bundle = packaging.application_bundle(self.declaration, self.binary, "0.1.0-alpha.2", output)
         packaging.verify_bundle(self.declaration, "0.1.0-alpha.2", bundle)
         with (bundle / "Contents" / "Info.plist").open("rb") as plist:
             information = plistlib.load(plist)
@@ -318,7 +350,7 @@ class PackagingTests(unittest.TestCase):
         distribution. Only a named signing authority is."""
         output = self.work / "bundle"
         output.mkdir()
-        bundle = packaging.application_bundle(self.declaration, self.binary, b"notices", "1.2.3", output)
+        bundle = packaging.application_bundle(self.declaration, self.binary, "1.2.3", output)
         self.assertIsNone(packaging.distribution_authority(bundle))
         # A genuinely signed application names its authority, so "no authority"
         # is a reading of the package and not a constant this always returns.
@@ -368,6 +400,36 @@ class IdentityTests(unittest.TestCase):
         shell = self.executable("readmit-desktop", "readmit-desktop version 0.1.0-alpha.2")
         released = self.executable("readmit", "readmit version 0.1.0-alpha.2")
         self.assertEqual(packaging.identity(shell, released), "0.1.0-alpha.2")
+
+    def check_installed(self, shell, released, version="1.2.3"):
+        import subprocess
+        resources = self.work / "resources"
+        if not resources.exists():
+            packaging.stage_legal_material(resources)
+        return subprocess.run([
+            sys.executable, str(packaging.ROOT / "tools/package_desktop.py"), "installed",
+            "--desktop", str(shell), "--command-line", str(released),
+            "--resources", str(resources), "--version", version,
+        ], capture_output=True, text=True)
+
+    def test_public_installed_check_requires_expected_identity_and_complete_notices(self):
+        shell = self.executable("readmit-desktop", "readmit-desktop version 1.2.3")
+        released = self.executable("readmit", "readmit version 1.2.3")
+        self.assertEqual(self.check_installed(shell, released).returncode, 0)
+        # Agreement alone is insufficient: both executables could be stale.
+        self.assertNotEqual(self.check_installed(shell, released, "1.2.4").returncode, 0)
+        (self.work / "resources/licenses/react-MIT.txt").unlink()
+        result = self.check_installed(shell, released)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("legal material", result.stderr)
+
+    def test_installed_check_does_not_find_hidden_runtime_on_path(self):
+        shell = self.executable("readmit-desktop", "readmit-desktop version 1.2.3")
+        released = self.executable("readmit", "readmit version 1.2.3")
+        shell.write_text("#!/bin/sh\nif command -v python3 >/dev/null 2>&1; then printf 'readmit-desktop version 1.2.3\\n'; else exit 7; fi\n")
+        result = self.check_installed(shell, released)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("did not report a version", result.stderr)
 
     def test_two_builds_reporting_different_engines_are_refused(self):
         shell = self.executable("readmit-desktop", "readmit-desktop version 0.1.0-alpha.2")

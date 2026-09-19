@@ -32,14 +32,12 @@
 
     <Feature Id="Main" Title="$(var.DisplayName)" Level="1">
       <ComponentGroupRef Id="ProductComponents" />
+      <ComponentGroupRef Id="LegalComponents" />
     </Feature>
 
     <ComponentGroup Id="ProductComponents">
       <Component Directory="INSTALLFOLDER" Bitness="always64">
         <File Id="ReadmitDesktopExecutable" Source="$(var.BuildDir)\readmit-desktop.exe" KeyPath="yes" />
-      </Component>
-      <Component Directory="INSTALLFOLDER" Bitness="always64">
-        <File Id="ReadmitThirdPartyNotices" Source="$(var.BuildDir)\THIRD_PARTY_NOTICES.md" KeyPath="yes" />
       </Component>
       <Component Directory="ProgramMenuFolder" Bitness="always64"
                  Guid="7C4A1E52-2D93-4B8F-A6C1-5F0E8D7B3A44">

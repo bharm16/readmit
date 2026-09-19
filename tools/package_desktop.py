@@ -16,6 +16,7 @@ import gzip
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import platform
 import plistlib
@@ -24,6 +25,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import xml.etree.ElementTree as ET
 
 
 DECLARATION_SCHEMA = "readmit-desktop-packaging/v1"
@@ -190,6 +192,49 @@ def read_tar_gz(payload):
         }
 
 
+def legal_material():
+    """Retain the existing notices, license texts and preferred dictionary source."""
+    names = [NOTICES, "dictionary/fields-v251.json", "docs/dictionary-provenance.md"]
+    names += [path.relative_to(ROOT).as_posix() for path in sorted((ROOT / "licenses").glob("*.txt"))]
+    return {name: (ROOT / ("internal/" + name if name.startswith("dictionary/") else name)).read_bytes()
+            for name in names}
+
+
+def stage_legal_material(directory):
+    for name, content in legal_material().items():
+        path = directory / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+
+
+def verify_legal_material(directory):
+    for name, content in legal_material().items():
+        path = directory / name
+        if path.is_symlink() or not path.is_file() or path.read_bytes() != content:
+            raise Refused(f"installed legal material differs or is absent: {name}")
+
+
+def wix_legal_material(staged):
+    """Generate WiX components from the same shipped files as the other formats."""
+    root = ET.Element("Wix", xmlns="http://wixtoolset.org/schemas/v4/wxs")
+    fragment = ET.SubElement(root, "Fragment")
+    group = ET.SubElement(fragment, "ComponentGroup", Id="LegalComponents")
+    directories = {".": "INSTALLFOLDER"}
+    for index, name in enumerate(legal_material()):
+        parent = Path(name).parent.as_posix()
+        if parent not in directories:
+            identifier = f"LegalDirectory{len(directories)}"
+            directories[parent] = identifier
+            reference = ET.SubElement(fragment, "DirectoryRef", Id="INSTALLFOLDER")
+            ET.SubElement(reference, "Directory", Id=identifier, Name=parent)
+        component = ET.SubElement(group, "Component", Directory=directories[parent], Bitness="always64")
+        ET.SubElement(component, "File", Id=f"LegalFile{index}",
+                      Source=str(staged / name), KeyPath="yes")
+    path = staged / "legal.wxs"
+    ET.ElementTree(root).write(path, encoding="utf-8", xml_declaration=True)
+    return path
+
+
 def desktop_entry(declaration):
     return (
         "[Desktop Entry]\n"
@@ -219,12 +264,13 @@ def control_file(declaration, version, target, installed_size):
     )
 
 
-def build_deb(declaration, binary, notices, version, target, output):
+def build_deb(declaration, binary, version, target, output):
     payload = [
         ("./usr/bin/readmit-desktop", 0o755, binary.read_bytes()),
         ("./usr/share/applications/readmit-desktop.desktop", 0o644, desktop_entry(declaration).encode()),
-        (f"./usr/share/doc/{declaration['product']}/{NOTICES}", 0o644, notices),
     ]
+    payload += [(f"./usr/share/doc/{declaration['product']}/{name}", 0o644, content)
+                for name, content in legal_material().items()]
     installed_size = max(1, sum(len(content) for _, _, content in payload) // 1024)
     sums = "".join(
         f"{hashlib.md5(content).hexdigest()}  {name.removeprefix('./')}\n" for name, _, content in payload
@@ -242,7 +288,7 @@ def build_deb(declaration, binary, notices, version, target, output):
     return [(name, "deb")]
 
 
-def application_bundle(declaration, binary, notices, version, output):
+def application_bundle(declaration, binary, version, output):
     """Stage the .app both macOS packages carry. It is the payload, not a package."""
     bundle = output / BUNDLE_NAME
     (bundle / "Contents" / "MacOS").mkdir(parents=True)
@@ -250,7 +296,7 @@ def application_bundle(declaration, binary, notices, version, output):
     executable = bundle / "Contents" / "MacOS" / "readmit-desktop"
     executable.write_bytes(binary.read_bytes())
     executable.chmod(0o755)
-    (bundle / "Contents" / "Resources" / NOTICES).write_bytes(notices)
+    stage_legal_material(bundle / "Contents" / "Resources")
     with (bundle / "Contents" / "Info.plist").open("wb") as plist:
         plistlib.dump({
             "CFBundleName": declaration["display_name"],
@@ -270,7 +316,7 @@ def application_bundle(declaration, binary, notices, version, output):
     return bundle
 
 
-def build_macos(declaration, binary, notices, version, target, output):
+def build_macos(declaration, binary, version, target, output):
     built, numeric = [], numeric_version(version)
     with tempfile.TemporaryDirectory(prefix="readmit-desktop-package-") as directory:
         # The bundle is staged where it is packaged from and nowhere else: the
@@ -278,7 +324,7 @@ def build_macos(declaration, binary, notices, version, target, output):
         # verified and uploaded is what an operator is handed.
         staged = Path(directory) / "payload"
         staged.mkdir()
-        application_bundle(declaration, binary, notices, version, staged)
+        application_bundle(declaration, binary, version, staged)
         if "dmg" in target["formats"]:
             name = package_name(declaration, version, target, "dmg")
             subprocess.run([
@@ -296,14 +342,15 @@ def build_macos(declaration, binary, notices, version, target, output):
     return built
 
 
-def build_msi(declaration, binary, notices, version, target, output):
+def build_msi(declaration, binary, version, target, output):
     if shutil.which("wix") is None:
         raise Refused("the WiX command-line tool is not installed; no MSI was built")
     name = package_name(declaration, version, target, "msi")
     with tempfile.TemporaryDirectory(prefix="readmit-desktop-package-") as directory:
         staged = Path(directory)
         (staged / "readmit-desktop.exe").write_bytes(binary.read_bytes())
-        (staged / NOTICES).write_bytes(notices)
+        stage_legal_material(staged)
+        legal_source = wix_legal_material(staged)
         subprocess.run([
             "wix", "build", "-nologo", "-arch", target["package_architecture"],
             "-d", f"Version={numeric_version(version)}",
@@ -315,7 +362,7 @@ def build_msi(declaration, binary, notices, version, target, output):
             "-d", f"WebView2Value={declaration['webview2']['registry_value']}",
             "-d", f"WebView2Message={declaration['webview2']['message']}",
             "-d", f"BuildDir={staged}",
-            "-o", str(output / name), str(WIX_SOURCE),
+            "-o", str(output / name), str(WIX_SOURCE), str(legal_source),
         ], check=True, capture_output=True, timeout=900)
     return [(name, "msi")]
 
@@ -325,14 +372,13 @@ def build(declaration, binary, version, target, output):
     if not binary.is_file():
         raise Refused(f"{binary} is not a built desktop executable")
     output.mkdir(parents=True, exist_ok=False)
-    notices = (ROOT / NOTICES).read_bytes()
     built = []
     if "deb" in target["formats"]:
-        built += build_deb(declaration, binary, notices, version, target, output)
+        built += build_deb(declaration, binary, version, target, output)
     if {"dmg", "pkg"} & set(target["formats"]):
-        built += build_macos(declaration, binary, notices, version, target, output)
+        built += build_macos(declaration, binary, version, target, output)
     if "msi" in target["formats"]:
-        built += build_msi(declaration, binary, notices, version, target, output)
+        built += build_msi(declaration, binary, version, target, output)
     manifest = {
         "schema": MANIFEST_SCHEMA,
         "version": version,
@@ -391,6 +437,10 @@ def verify_deb(declaration, version, target, path):
     executable = data.get("usr/bin/readmit-desktop")
     if executable is None or not executable[0] & 0o111:
         raise Refused(f"{path.name} does not install an executable at /usr/bin/readmit-desktop")
+    for name, content in legal_material().items():
+        shipped = data.get(f"usr/share/doc/{declaration['product']}/{name}")
+        if shipped is None or shipped[1] != content:
+            raise Refused(f"{path.name} omits or alters legal material: {name}")
     if "usr/share/applications/readmit-desktop.desktop" not in data:
         raise Refused(f"{path.name} installs no application entry")
 
@@ -523,6 +573,7 @@ def verify_bundle(declaration, version, bundle):
     executable = bundle / "Contents" / "MacOS" / "readmit-desktop"
     if not executable.is_file() or not executable.stat().st_mode & 0o111:
         raise Refused(f"{BUNDLE_NAME} holds no executable")
+    verify_legal_material(bundle / "Contents" / "Resources")
     # Every manifest this tool verifies records the package as not signed for
     # distribution, so a signing authority here contradicts what it claims.
     authority = distribution_authority(bundle)
@@ -566,11 +617,18 @@ def verify(declaration, directory):
     return document
 
 
-def reported_version(executable):
+def reported_version(executable, *, isolated=False):
     """Read the build identity an executable reports, without opening a window."""
-    result = subprocess.run(
-        [str(executable), "--version"], capture_output=True, text=True, timeout=60,
-    )
+    environment = os.environ.copy()
+    if isolated:
+        environment["PATH"] = ""
+    # Windows also searches the working directory; use an empty directory and
+    # absolute executable paths rather than the build checkout.
+    with tempfile.TemporaryDirectory(prefix="readmit-installed-identity-") as directory:
+        result = subprocess.run(
+            [str(Path(executable).resolve()), "--version"], capture_output=True,
+            text=True, timeout=60, env=environment, cwd=directory,
+        )
     if result.returncode != 0:
         raise Refused(f"{Path(executable).name} did not report a version: {result.stderr.strip()!r}")
     reported = result.stdout.split()
@@ -588,6 +646,18 @@ def identity(desktop, command_line):
         )
     print(f"PASS: the packaged shell and the command line both report engine {shell}")
     return shell
+
+
+def installed(desktop, command_line, resources, expected_version):
+    """Check installed payloads against this checkout and the selected build identity.
+
+    This is headless installation evidence only: no signature or UI claim.
+    """
+    verify_legal_material(resources)
+    for executable in (desktop, command_line):
+        if reported_version(executable, isolated=True) != expected_version:
+            raise Refused("installed executable does not report the expected candidate version")
+    print(f"PASS: installed legal material and engine {expected_version}; empty-PATH headless check only")
 
 
 def main():
@@ -609,6 +679,12 @@ def main():
     parity.add_argument("--desktop", type=Path, required=True)
     parity.add_argument("--command-line", type=Path, required=True)
 
+    installation = commands.add_parser("installed", help="check installed legal files and expected identity without PATH tools")
+    installation.add_argument("--desktop", type=Path, required=True)
+    installation.add_argument("--command-line", type=Path, required=True)
+    installation.add_argument("--resources", type=Path, required=True)
+    installation.add_argument("--version", required=True)
+
     args = parser.parse_args()
     declaration = read_declaration(args.declaration)
     if args.command == "build":
@@ -618,6 +694,8 @@ def main():
         build(declaration, args.binary, args.version, select_target(declaration, args.os, args.arch), args.output)
     elif args.command == "verify":
         verify(declaration, args.packages)
+    elif args.command == "installed":
+        installed(args.desktop, args.command_line, args.resources, args.version)
     else:
         identity(args.desktop, args.command_line)
 
