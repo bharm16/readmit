@@ -252,3 +252,5 @@ use the local vendor [commercial administration](commercial-administration.md) A
 [Commercial terms](commercial-terms.md) remain an owner/counsel review draft.
 
 [Support operations](support.md): reviewed local diagnostics, synthetic reproductions, customer approval and incident escalation.
+
+[Local adversarial acceptance](adversarial-acceptance.md): synthetic security, privacy and browser evidence with explicit native acceptance gaps.

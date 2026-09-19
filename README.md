@@ -1071,3 +1071,5 @@ use the local vendor [commercial administration](docs/commercial-administration.
 [Commercial terms](docs/commercial-terms.md) remain an owner/counsel review draft.
 
 [Support operations](docs/support.md): reviewed local diagnostics, synthetic reproductions, customer approval and incident escalation.
+
+[Local adversarial acceptance](docs/adversarial-acceptance.md): synthetic security, privacy and browser evidence with explicit native acceptance gaps.

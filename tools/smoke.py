@@ -56,6 +56,7 @@ REQUIRED_FILES = {
     "docs/source.md",
     "docs/index.md",
     "docs/corpus.md",
+    "docs/adversarial-acceptance.md",
     "docs/mapping.md",
     "docs/project.md",
     "docs/project-lifecycle.md",
