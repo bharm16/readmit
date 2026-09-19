@@ -135,9 +135,11 @@ func TestSuiteCancellationPreservesUncertainDeliveryAndRefusesResume(t *testing.
 	write(t, filepath.Join(dir, "suite.json"), doc)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
+	acknowledged := make(chan time.Time, 1)
 	go func() {
 		select {
 		case <-received:
+			acknowledged <- time.Now()
 			cancel()
 		case <-ctx.Done():
 		}
@@ -147,6 +149,7 @@ func TestSuiteCancellationPreservesUncertainDeliveryAndRefusesResume(t *testing.
 	if err != nil || report.Skipped != 1 || report.Jobs[0].Run == nil || report.Jobs[0].Run.State != durablerun.DeliveryUncertain || report.Jobs[0].Run.StopReason != durablerun.Cancelled {
 		t.Fatalf("%+v %v", report, err)
 	}
+	t.Logf("cancel request to durable suite return: %.3f ms", float64(time.Since(<-acknowledged).Nanoseconds())/1e6)
 	recovered, err := durablerun.Recover(filepath.Join(out, "runs", "setup-one"))
 	if err != nil || recovered.Uncertain != 1 || recovered.SafeToRepeat {
 		t.Fatalf("%+v %v", recovered, err)
@@ -170,7 +173,7 @@ func TestSuiteUsesActualQueueStateIsolation(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			var mu sync.Mutex
 			active, peak, arrivals := 0, 0, 0
-			both := make(chan struct{})
+			allArrived := make(chan struct{})
 			address := peer(t, func(conn net.Conn) {
 				reader, _ := mllp.NewReader(conn, 1<<20)
 				if _, err := reader.ReadFrame(); err != nil {
@@ -182,13 +185,13 @@ func TestSuiteUsesActualQueueStateIsolation(t *testing.T) {
 				if active > peak {
 					peak = active
 				}
-				if arrivals == 2 {
-					close(both)
+				if arrivals == 8 {
+					close(allArrived)
 				}
 				mu.Unlock()
 				if isolated {
 					select {
-					case <-both:
+					case <-allArrived:
 					case <-time.After(5 * time.Second):
 					}
 				} else {
@@ -200,7 +203,10 @@ func TestSuiteUsesActualQueueStateIsolation(t *testing.T) {
 				_, _ = fmt.Fprint(conn, "\x0bMSH|^~\\&|FIXTURE|LAB|READMIT|TEST|20260101120000||ACK|ACK-1|P|2.5.1\rMSA|AA|LISTEN-BOOK\r\x1c\r")
 			})
 			dir, doc := fixture(t, address)
-			doc.Tables[0].Rows = append(doc.Tables[0].Rows, suite.Row{ID: "two", Case: "case-one"})
+			doc.Parallelism = 8
+			for i := 2; i <= 8; i++ {
+				doc.Tables[0].Rows = append(doc.Tables[0].Rows, suite.Row{ID: fmt.Sprintf("row%d", i), Case: "case-one"})
+			}
 			if isolated {
 				doc.Tests[0].Isolation = runqueue.IsolatedState
 			}
@@ -214,7 +220,7 @@ func TestSuiteUsesActualQueueStateIsolation(t *testing.T) {
 			mu.Unlock()
 			want := 1
 			if isolated {
-				want = 2
+				want = 8
 			}
 			if observed != want {
 				t.Fatalf("target observed concurrency %d, wanted %d", observed, want)
@@ -325,4 +331,42 @@ func TestSuiteProcessCrashRetainsUncertainJobWithoutStartingDependent(t *testing
 	if _, err = suite.Run(t.Context(), filepath.Join(dir, "suite.json"), "east", out); err == nil {
 		t.Fatal("crashed output restarted")
 	}
+}
+
+// A blackholed ACK after an observed send models loss of the return path. The
+// receiver may have committed; expiry must not turn that uncertainty into pass
+// or permission to resend. This does not claim a physical firewall lab.
+func TestSuiteNetworkBlackholeRetainsUncertaintyAndRecovers(t *testing.T) {
+	received := make(chan struct{})
+	dir, _ := fixture(t, peer(t, func(conn net.Conn) {
+		reader, _ := mllp.NewReader(conn, 1<<20)
+		if _, err := reader.ReadFrame(); err == nil {
+			close(received)
+			_, _ = io.Copy(io.Discard, conn)
+		}
+	}))
+	out := filepath.Join(dir, "blackhole")
+	started := time.Now()
+	report, err := suite.Run(t.Context(), filepath.Join(dir, "suite.json"), "east", out)
+	select {
+	case <-received:
+	default:
+		t.Fatal("blackhole never received the send")
+	}
+	if err != nil || report.ExitCode() == 0 || len(report.Jobs) != 1 || report.Jobs[0].Run == nil || report.Jobs[0].Run.State != durablerun.DeliveryUncertain || report.Jobs[0].Run.StopReason != durablerun.TimedOut {
+		t.Fatalf("%+v %v", report, err)
+	}
+	recovered, err := durablerun.Recover(filepath.Join(out, "runs", "booking-one"))
+	if err != nil || recovered.Uncertain != 1 || recovered.SafeToRepeat {
+		t.Fatalf("%+v %v", recovered, err)
+	}
+	var stdout, stderr bytes.Buffer
+	err = cli.Execute("test", []string{"run", "resume", filepath.Join(out, "runs", "booking-one"), filepath.Join(out, "booking-one.json"), "--send", "--output", filepath.Join(dir, "again")}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("blackholed send was repeated")
+	}
+	if _, err = os.Stat(filepath.Join(dir, "again")); !os.IsNotExist(err) {
+		t.Fatal("resume refusal wrote evidence")
+	}
+	t.Logf("return-path blackhole to retained uncertainty and recovery: %.3f ms", float64(time.Since(started).Nanoseconds())/1e6)
 }
