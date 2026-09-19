@@ -78,6 +78,20 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
   constraint resolves local and the resolution says so. No message is evaluated
   against a profile and no profile is bundled. See
   [local profiles](local-profiles.md).
+- Changing a local profile is versioned by `internal/profileversion`.
+  `readmit-profile-version/v1` seals one profile at one version over the length
+  and SHA-256 of its canonical document, so reformatting changes nothing and a
+  changed rule changes the version; one version standing for two documents is
+  refused rather than compared. A comparison names every part that differs —
+  base, segment, field, terminology, authority, date — as added, removed or
+  changed. `readmit-profile-references/v1` is the separate index of what saved
+  tests pin, because `readmit-test/v1` gains no member; a pin is an exact id and
+  version together with the checksum of the document that version stood for. An
+  assessment lists the saved tests and cases written against the version that
+  changed, states no verdict, and moves no pin. An upgrade names one test, the
+  version it is on and the version it moves to, and refuses a profile rewritten
+  under a version a saved test already pins. See
+  [profile versions](profile-versions.md).
 
 ## Networking
 

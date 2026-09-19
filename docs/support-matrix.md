@@ -108,6 +108,7 @@ runner for each target rather than on every older release in the range.
 | Semantic profile | `readmit-siu-v1` fixture profile only: SIU S12, S13, S15 and ACK; **not HL7 conformance** | [diagnose](diagnose.md#named-support-boundary) |
 | nHapi 2.3.1 to 2.7.1 and HL7apy 2.8.2 metadata packs | Not available; selected in [D1](product-decisions.md#d1--profile-metadata-and-supported-meaning) | [ADR-0009](adr/0009-profile-packs-are-offline-metadata-with-explicit-support.md) |
 | Local interface contracts: Z-segments, cardinality, conditional requirements, types, local code tables, authorities and date handling | Implemented as a modelled and validated `readmit-local-profile/v1` document with per-rule profile/overridden/local origin; **no message is evaluated against one** | [local profiles](local-profiles.md) |
+| Local profile versioning, version comparison and impacted-test reporting | Implemented as `readmit-profile-version/v1` seals, a typed comparison and a `readmit-profile-references/v1` index; an impact report **states no verdict** and no pin moves without an explicit upgrade | [profile versions](profile-versions.md) |
 
 ## Not available in this preview
 

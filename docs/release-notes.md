@@ -484,6 +484,30 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   observation contracts and the command-line tree are unchanged; no command
   reads a plan.
 
+- Changing a local profile is versioned, compared and reported against the
+  saved tests that pin it, by the new `internal/profileversion`.
+  `readmit-profile-version/v1` seals one profile at one version over the length
+  and SHA-256 of its canonical document, so writing the same rules two ways
+  seals identically and changing one rule does not; a profile that changed
+  under the version it still claims is refused by name rather than compared.
+  A comparison names every part that differs — the pinned base, a segment, a
+  constrained position, a local code table, an assigning authority, a date rule
+  — as added, removed or changed, with the members that differ stated.
+  `readmit-profile-references/v1` records which saved tests and cases pin which
+  version, as the consumer's own document: `readmit-test/v1` and every other
+  existing contract gain no member and change no byte. A pin is an exact id and
+  version together with the checksum of the document that version stood for, so
+  an index says which rules each saved test was written against without holding
+  the profile. An assessment lists the saved tests written against the version
+  that changed, tells them apart from the ones already on the new version, the
+  ones a version bump left untouched and the ones on another version, and
+  states no verdict — no message is evaluated against a profile in this
+  release. No pin moves on its own: an upgrade names one saved test, the
+  version it is on and the version it moves to, refuses a profile rewritten
+  under a version a saved test already pins, and there is no call that upgrades
+  everything at once. Nothing here opens a file, no command reads either
+  document and no window edits one yet.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is

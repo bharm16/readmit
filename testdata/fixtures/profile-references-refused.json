@@ -1,0 +1,25 @@
+{
+  "schema": "readmit-profile-references/v1",
+  "tests": [
+    {
+      "test": "test-reschedule.json",
+      "case": "test-case",
+      "sha256": "040860d85eeb4697e6b393214134d1460fa587bdf14af0fb3414ba592b75e78d",
+      "pinned": {
+        "id": "fixture-local-siu",
+        "version": "1",
+        "sha256": "e96a3350b728a78d063cf99afddeec3854d393682039ed4348fbc89057c55054"
+      }
+    },
+    {
+      "test": "test-reschedule.json",
+      "case": "test-case",
+      "sha256": "040860d85eeb4697e6b393214134d1460fa587bdf14af0fb3414ba592b75e78d",
+      "pinned": {
+        "id": "fixture-local-siu",
+        "version": "2",
+        "sha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      }
+    }
+  ]
+}

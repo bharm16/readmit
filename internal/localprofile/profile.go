@@ -568,6 +568,16 @@ func Decode(data []byte) (Profile, error) {
 // was read from a file is held to.
 func (p Profile) Validate() error { return p.check(true) }
 
+// ValidateIdentity holds an id and a version to the rules every identity in
+// this product follows. The what argument names whose identity it is, so the
+// refusal says which of the two a document carries wrongly. A document that pins a local
+// profile by identity rather than carrying one — a sealed version, or the
+// references a saved test makes — reads the rule here instead of restating it,
+// so a pin and the profile it names cannot differ in what they allow.
+func ValidateIdentity(what string, identity Identity) error {
+	return validateIdentity(what, identity)
+}
+
 // check holds a profile to the contract. complete additionally requires what
 // a finished document must have and a profile under construction need not:
 // an editor may hold a profile before its first segment exists, and Encode
