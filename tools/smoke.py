@@ -92,6 +92,8 @@ REQUIRED_FILES = {
     "testdata/fixtures/listen-defective.json",
     "docs/synth.md",
     "docs/diagnose.md",
+    "docs/correlate.md",
+    "testdata/fixtures/correlate-rules.json",
     "docs/selectors.md",
     "testdata/fixtures/diagnose-booking.hl7",
     "testdata/fixtures/synth-v1-regression.mllp",

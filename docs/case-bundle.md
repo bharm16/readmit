@@ -187,6 +187,12 @@ bundle**, not proof that no ACK was sent on the wire. More than one ACK can
 uniquely reference the same message. AA/AE/AR/CA/CE/CR and MSH-15/16 do not alter
 storage or matching; acknowledgement-mode policy belongs to later commands.
 
+This is the only correlation evidence carries, because it is the only one that
+needs no configuration. Linking across sources, across a recorded session, or by
+a clinical identifier and its assigning authority is
+[`readmit correlate`](correlate.md), which declares its rules explicitly and
+writes a separate derived report rather than any member of a case.
+
 ## Optional observation metadata
 
 Plain message files contain no observed time or direction. If external evidence

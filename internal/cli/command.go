@@ -70,6 +70,7 @@ func Execute(version string, args []string, stdout, stderr io.Writer) error {
 	root.AddCommand(targetCommand(&ran))
 
 	root.AddCommand(diagnoseCommand(&ran))
+	root.AddCommand(correlateCommand(&ran))
 
 	root.AddCommand(synthCommand(&ran))
 	root.AddCommand(replayCommand(&ran))

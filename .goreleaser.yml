@@ -62,6 +62,7 @@ archives:
       - docs/support-matrix.md
 
       - docs/diagnose.md
+      - docs/correlate.md
       - docs/selectors.md
 
       - docs/synth.md
