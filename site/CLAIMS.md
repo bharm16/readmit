@@ -75,6 +75,7 @@ process, and its evidence is the file that establishes it.
 | Replay | [docs/replay.md](../docs/replay.md) | `TestReplayExecutableAgainstListenPreservesCaseAndMapsOccurrences`, `TestReplayRefusesAProductionClassifiedEnvironment` |
 | Test runner exit codes and preview | [docs/test-runner.md](../docs/test-runner.md) | `TestTestExecutableMissingObservationAndInvalidConfigHaveExitTwo`, `TestTestExecutablePreviewDoesNotConnectOrClaimVerdict` |
 | Durable runs | [docs/durable-runs.md](../docs/durable-runs.md) | `TestKilledRunnerRecoversWithoutResending`, `TestCLIAndDesktopExposeTheSameLifecycle` |
+| Scheduled run queues | [docs/durable-runs.md](../docs/durable-runs.md) | `TestRunExecutableQueueSerializesJobsSharingTargetState`, `TestRunExecutableQueueRefusesAdmissionAgainstAHeldLease` |
 | Listen | [docs/listen.md](../docs/listen.md) | `TestListenExecutableExportsBothLedgersAndReopensRecordedCase` |
 | Collect | [docs/collect.md](../docs/collect.md) | `TestCollectServesConcurrentPeersAndFinalizesItsJournal`, `TestCollectStatusRecoversAnInterruptedCaptureWithoutResending` |
 | Observe | [docs/observe.md](../docs/observe.md) | `TestObserveValidateRefusesAWindowThatCannotComplete`, `TestObserveExplainNeverReadsFailedCollectionAsAbsence` |

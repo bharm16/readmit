@@ -696,6 +696,27 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   appears. Removing the application never removes
   evidence, a project, or the local shell-state documents.
 
+- `run queue PLAN --send --runs DIR` executes several durable runs in one
+  foreground command against a `readmit-run-queue/v1` document. A job declares
+  `shared` or `isolated` state, and only an explicit isolated declaration lets
+  two jobs reach one environment at the same time: a shared job holds the named
+  environment and the endpoint its target records for the whole run, and the
+  bounded parallelism the queue declares never overrides that. `after` names the
+  jobs that must have passed first, so a setup that did not pass takes the tests
+  that needed its state with it instead of letting them run against state nobody
+  established. Admission reads the `lease.json` beside the other runs in the
+  same directory and refuses to join a holder, including a lease a stopped
+  writer could not release, which `run clean` removes; it is a read and not a
+  filesystem lock, so one runs directory is one queue's and that limit is
+  stated rather than assumed away. Every spec is read before the first run
+  starts, a cycle or an existing run directory refuses the queue whole, and
+  cancelling it starts nothing further while the runs in flight record their
+  own stop and their own uncertainty. The queue reports
+  `readmit-run-queue-report/v1`, a separate document naming each job's
+  admission — executed, never created, refused or skipped — the resources it
+  declared, what it waited for and its own unchanged `readmit-job/v1` summary.
+  `readmit-job/v1` and `readmit-run-lease/v1` gain no member and change no byte.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is

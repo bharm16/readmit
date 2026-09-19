@@ -402,7 +402,13 @@ evaluated it, the spec contract and the profile, which `readmit run status JOB
 --engine` reports: the desktop and the command line are two ways into one
 evaluator and an enrolled runner will be the third, a build this release does
 not recognize is recorded rather than refused, and a spec or profile version it
-does not evaluate is refused by name. See
+does not evaluate is refused by name. `readmit run queue PLAN --send --runs DIR`
+schedules several of those runs in one foreground command: a job declares
+`shared` or `isolated` state and only an explicit isolated declaration lets two
+jobs reach one environment at once, `after` makes a setup a dependency of the
+tests that need the state it leaves behind, admission reads the leases beside
+the other runs rather than joining a holder, and the queue reports each job's
+admission, what it waited for and its own unchanged summary. See
 [durable local runs](docs/durable-runs.md).
 
 `observe validate WINDOW` reads a declared `readmit-observation-window/v1`

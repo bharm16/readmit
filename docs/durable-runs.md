@@ -6,8 +6,10 @@ folder. It uses the existing test runner and its approved-target boundary. This 
 currently accepts only literal loopback destinations and has no remote-policy
 selection flag. Production classification refuses every send; a missing class
 never authorizes a remote destination.
-This first lifecycle supports the existing ACK and fixture ledger paths. It does
-not add a collector, scheduler, background service, retry or automatic resume.
+This lifecycle supports the existing ACK and fixture ledger paths. It adds no
+collector, background service, retry or automatic resume. `readmit run queue`
+below schedules several of these runs in one foreground command; it is not a
+daemon and it holds nothing open after it stops.
 
 ```sh
 readmit run start test.json --send --output job-001 --deadline 5m --json
@@ -15,6 +17,7 @@ readmit run status job-001 --json
 readmit run status job-001 --recovery --json
 readmit run resume job-001 test.json --send --output job-002 --json
 readmit run clean job-001 --json
+readmit run queue nightly.queue.json --send --runs runs --json
 ```
 
 The desktop's **Durable test runs** panel calls the same Go engine. Select the
@@ -144,9 +147,12 @@ writing process's `pid` and start time, and the run's `deadline_at` when one
 was given. A lease is `held` while it is present and the journal records no
 completion; `released` when it is absent; and `stale` when it is present but the
 journal recorded a terminal state, which is a writer that stopped between its
-last record and its release. This is the seam a scheduler admits against, and
-nothing in this release reads leases across jobs, serializes runs or refuses
-admission: that is the scheduler's, and a held lease is a statement, not a lock.
+last record and its release. This is the seam
+[`run queue`](#scheduled-queues) admits against: it reads the leases beside the
+other runs and refuses to start work that would join a holder. A lease outside
+a queue readmit is running is still a statement rather than a lock, so two
+schedulers pointed at one environment through two different runs directories
+can each admit; one runs directory is one queue's.
 
 `run clean JOB` removes what a terminal run no longer needs, which is only a
 stale lease. It verifies the job first, refuses when the run recorded no
@@ -156,6 +162,117 @@ removed**: `plan.json`, `engine.json`, `intended/`, `journal.jsonl`, `sent/`,
 `result/` and `result.decision.json` are what was meant, what evaluated it,
 what happened and what was decided, and cleanup reports them as retained.
 Removing a whole job directory is a person's decision outside readmit.
+
+## Scheduled queues
+
+`readmit run queue PLAN --send --runs DIR` executes several durable runs in one
+foreground command. `PLAN` is a `readmit-run-queue/v1` document, `DIR` is an
+existing directory the runs are written beside, and each job writes a new run at
+`DIR/ID` through exactly the `run start` path above. There is no discovered
+queue and no default one; a queue is data somebody selected, exactly as a test
+spec is, and it carries no command, script or expression of any kind
+([ADR-0003](adr/0003-specs-are-strict-json-with-typed-operators.md)).
+
+```json
+{
+  "schema": "readmit-run-queue/v1",
+  "parallelism": 2,
+  "jobs": [
+    {"id": "reset-check", "spec": "reset-check.json", "isolation": "shared"},
+    {"id": "booking", "spec": "specs/booking.json", "isolation": "shared",
+     "after": ["reset-check"]},
+    {"id": "read-only", "spec": "specs/read-only.json", "isolation": "isolated"}
+  ]
+}
+```
+
+| Member | Meaning |
+| --- | --- |
+| `parallelism` | how many runs this queue may have in flight, 1 to 16 |
+| `jobs[].id` | the job's name and its run directory under `DIR`; lowercase letters, digits and `-` |
+| `jobs[].spec` | one test spec inside the queue document's own directory |
+| `jobs[].isolation` | `shared` or `isolated`, below |
+| `jobs[].after` | the jobs that must have **passed** before this one starts |
+
+**Isolation is declared, never assumed.** A `shared` job holds every resource
+its target records — the named `environment` and the `endpoint` — for the whole
+run, and no other `shared` job on those resources starts meanwhile. An
+`isolated` job holds nothing: the operator is declaring that this run's effects
+are invisible to the other jobs on that environment, so it may run beside them
+within `parallelism`. readmit cannot verify that declaration, exactly as it
+cannot verify that an endpoint recorded as nonproduction is safe to send to;
+what it can do is serialize everything that did not claim isolation, and a job
+that omits the member is refused rather than read as either one.
+
+**`after` is how a setup becomes a dependency.** A job starts only once every
+job it comes after has recorded `passed`. A setup that failed, errored, was
+cancelled, timed out or ended delivery-uncertain takes the jobs that depended on
+it with it, down the whole chain: they are reported `skipped` and nothing is
+sent for them, because the state they were to run against was never established.
+A queue whose order has no beginning — a cycle, or a dependency on a job it does
+not declare — is refused whole before anything executes.
+
+**Admission reads the other leases.** Before a `shared` job starts, the queue
+reads the `lease.json` of every other run under `DIR` and refuses the job when
+one of them still names a resource it declares. That includes a run somebody
+started by hand into the same directory and a lease a stopped writer could not
+release; `run clean JOB` removes the second kind, and until it does, the
+resource stays claimed. The queue never opens the journal beside a foreign
+lease: a run being written at this moment is not a run whose evidence can be
+verified, so presence is read as the statement it is and refusing is the
+conservative reading. A lease naming a resource kind this release does not
+write refuses admission rather than reading as claiming nothing; `run status`
+and `run clean` read that same lease exactly as they always did.
+
+**Admission is a read, not a filesystem lock, and that limit is the queue's.**
+A run writes its own lease inside `run start`, after the queue decided to admit
+it, so two `run queue` processes started against one runs directory at the same
+instant can each read the leases before either has written one and each admit
+the same environment. readmit takes no lock across processes and records none:
+one runs directory is one queue's, a queue is a foreground command a person
+started, and a lease outside the queue stays what durable runs have always
+called it — a statement, not a lock. Serializing the jobs **within** one queue
+is not subject to that window: those resources are decided in one place, on one
+goroutine, before any run is started.
+
+Every spec the queue names is read before the first run starts, so a queue
+holding one unreadable spec sends nothing at all, and a job whose run directory
+already exists refuses the queue rather than part of it. Cancelling the queue —
+an interrupt, a termination signal or `--deadline` — starts nothing further; the
+runs already in flight record their own `cancelled` or `timed_out` and their own
+uncertainty exactly as a single run does, and the jobs that never started are
+reported `skipped`.
+
+`readmit-run-queue-report/v1` is what one queue established. It carries no
+message values and no source paths:
+
+| Member | Meaning |
+| --- | --- |
+| `parallelism` | the bound the queue was given |
+| `jobs[].admission` | `executed`, `start_failed`, `refused` or `skipped` |
+| `jobs[].isolation` | what the job declared |
+| `jobs[].resources` | the same resources the run names in its lease |
+| `jobs[].waited_for` | a resource this job was held back by at least once |
+| `jobs[].reason` | why it was refused or skipped, or why a run could not start |
+| `jobs[].run` | the job's own unchanged `readmit-job/v1` summary |
+| `executed`, `start_failed`, `refused`, `skipped` | counts of the four decisions |
+
+`executed` means the run was created and its own summary says what happened,
+whatever that was. `start_failed` is the queue admitting a job whose run could
+not be created at all, so nothing was established about a target: it is never
+counted as a run that executed. `waited_for` is how a queue shows that it
+serialized rather than that it happened to. The exit code is 0 only when every
+job executed and passed; a refused, skipped or never-created job is never a
+passing queue. `readmit-job/v1`,
+`readmit-run-lease/v1` and every other retained document gain no member and
+change no byte: the report is a separate document beside the summaries it
+carries, and each run's own evidence is exactly what `run start` retains.
+
+Queue state while a queue is running is read where it already lives. Each job's
+directory, its `lease.json` and `run status JOB --recovery` report that job as
+they do for any other durable run, and the queue's own report is what it
+establishes when it stops. Nothing is written to a shared registry and no
+state is kept between queues.
 
 ## Engine and contract versions
 

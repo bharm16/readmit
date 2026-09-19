@@ -176,17 +176,43 @@ type writer struct {
 	summary      Summary
 }
 
+// Prepared is one durable run whose spec has already been read. It exists so
+// that the resources a run will declare in its lease are known before anything
+// executes and the same prepared plan is then started: a scheduler that admits
+// against one read of a spec and executes another read of it would admit work
+// it did not go on to do.
+type Prepared struct{ plan *testrunner.Plan }
+
+// Prepare reads a spec and its pinned inputs without executing anything and
+// without opening a network connection.
+func Prepare(specPath string) (*Prepared, error) {
+	plan, err := testrunner.Prepare(specPath)
+	if err != nil {
+		return nil, err
+	}
+	return &Prepared{plan: plan}, nil
+}
+
+// Resources reports exactly what this run will name in its lease.
+func (p *Prepared) Resources() []Resource { return resources(p.plan) }
+
+// Start is one foreground execution of the prepared plan. It requires a fresh
+// destination and never resumes an existing job.
+func (p *Prepared) Start(ctx context.Context, output string) (Summary, error) {
+	return start(ctx, p.plan, output)
+}
+
 // Start is one foreground execution. It requires a fresh destination and never
 // resumes an existing job. Each selected payload and effective configuration is
 // synced before execution; an intent is synced before each network write. A
 // deadline on ctx is the run's deadline: reaching it stops new sends and is
 // recorded as timed_out, with any in-flight delivery left uncertain.
 func Start(ctx context.Context, specPath, output string) (Summary, error) {
-	plan, err := testrunner.Prepare(specPath)
+	prepared, err := Prepare(specPath)
 	if err != nil {
 		return Summary{}, err
 	}
-	return start(ctx, plan, output)
+	return prepared.Start(ctx, output)
 }
 
 func start(ctx context.Context, plan *testrunner.Plan, output string) (summary Summary, err error) {
@@ -343,15 +369,21 @@ func start(ctx context.Context, plan *testrunner.Plan, output string) (summary S
 	return w.summary, w.halted
 }
 
+// resources is the one definition of what a run declares. A run without a
+// named environment declares only the endpoint it connects to.
+func resources(plan *testrunner.Plan) []Resource {
+	declared := []Resource{}
+	if name := plan.Environment().Name; name != "" {
+		declared = append(declared, Resource{Kind: EnvironmentResource, Name: name})
+	}
+	return append(declared, Resource{Kind: EndpointResource, Name: plan.Target().Address})
+}
+
 func writeLease(ctx context.Context, root *os.Root, plan *testrunner.Plan) error {
-	lease := Lease{Schema: LeaseSchema, Holder: Holder{PID: os.Getpid(), StartedAt: time.Now().UTC()}, Resources: []Resource{}}
+	lease := Lease{Schema: LeaseSchema, Holder: Holder{PID: os.Getpid(), StartedAt: time.Now().UTC()}, Resources: resources(plan)}
 	if deadline, ok := ctx.Deadline(); ok {
 		lease.DeadlineAt = deadline.UTC()
 	}
-	if name := plan.Environment().Name; name != "" {
-		lease.Resources = append(lease.Resources, Resource{Kind: EnvironmentResource, Name: name})
-	}
-	lease.Resources = append(lease.Resources, Resource{Kind: EndpointResource, Name: plan.Target().Address})
 	raw, err := json.Marshal(lease, json.Deterministic(true))
 	if err != nil || len(raw) > maxLease {
 		return errors.New("cannot encode durable lease")
@@ -359,24 +391,92 @@ func writeLease(ctx context.Context, root *os.Root, plan *testrunner.Plan) error
 	return write(root, "lease.json", raw)
 }
 
-// leaseState reads the lease beside a journal, if one is present. A lease that
-// is present but unreadable is refused like any other changed evidence.
-func leaseState(root *os.Root, terminal bool) (string, error) {
+// readLease reads the lease beside a journal, if one is present. A lease that
+// is present but unreadable is refused like any other changed evidence. What
+// it accepts is exactly what it accepted before a scheduler read it, so the
+// runs run status and run clean already read are unaffected.
+func readLease(root *os.Root) (Lease, bool, error) {
 	if _, err := root.Lstat("lease.json"); err != nil {
-		return LeaseReleased, nil
+		return Lease{}, false, nil
 	}
 	raw, err := read(root, "lease.json", maxLease)
 	if err != nil {
-		return "", err
+		return Lease{}, false, err
 	}
 	var lease Lease
 	if json.Unmarshal(raw, &lease, json.RejectUnknownMembers(true)) != nil || lease.Schema != LeaseSchema || lease.Holder.StartedAt.IsZero() || len(lease.Resources) == 0 {
-		return "", errors.New("durable lease is invalid")
+		return Lease{}, false, errors.New("durable lease is invalid")
+	}
+	return lease, true, nil
+}
+
+func leaseState(root *os.Root, terminal bool) (string, error) {
+	_, present, err := readLease(root)
+	if err != nil {
+		return "", err
+	}
+	if !present {
+		return LeaseReleased, nil
 	}
 	if terminal {
 		return LeaseStale, nil
 	}
 	return LeaseHeld, nil
+}
+
+// Claim is one job directory whose lease document is still present, and the
+// resources that lease names.
+type Claim struct {
+	Job       string     `json:"job"`
+	Resources []Resource `json:"resources"`
+}
+
+// Claims reports what every job directly under root may still be using, read
+// from the leases beside their journals. It deliberately does not open the
+// journal beside a lease: a run being written at this moment is not a run
+// whose evidence can be verified, so presence is read as the statement it is.
+// A lease a writer could not release therefore keeps claiming its resources
+// until run clean removes it, because refusing work is the conservative
+// reading and joining a holder is not.
+//
+// A job whose directory name is in exclude is not opened at all. A scheduler
+// that already decided a run's admission has no reason to read a lease that
+// run may be writing at this moment, and reading one half-written would be
+// refused as changed evidence.
+func Claims(root string, exclude map[string]bool) ([]Claim, error) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, errors.New("cannot list the durable runs directory")
+	}
+	claims := []Claim{}
+	for _, entry := range entries {
+		if !entry.IsDir() || exclude[entry.Name()] {
+			continue
+		}
+		job, err := os.OpenRoot(filepath.Join(root, entry.Name()))
+		if err != nil {
+			return nil, errors.New("cannot open a durable run beside this one")
+		}
+		lease, present, err := readLease(job)
+		job.Close()
+		if err != nil {
+			return nil, err
+		}
+		if !present {
+			continue
+		}
+		// A resource this release never writes is not a statement a scheduler
+		// can act on: reading it as claiming nothing would admit work beside a
+		// holder nobody understood. Only admission is this strict; the lease
+		// state run status reports is unchanged.
+		for _, declared := range lease.Resources {
+			if declared.Kind != EnvironmentResource && declared.Kind != EndpointResource || declared.Name == "" || len(declared.Name) > maxResourceName {
+				return nil, errors.New("a durable lease names a resource this release does not read")
+			}
+		}
+		claims = append(claims, Claim{Job: entry.Name(), Resources: lease.Resources})
+	}
+	return claims, nil
 }
 
 func (w *writer) BeforeSend(id string) error {
