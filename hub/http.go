@@ -76,22 +76,33 @@ func (s *Store) ServeTeam(ctx context.Context, access *Access) error {
 
 // ServeRunners enables explicit runner admission alongside team access.
 func (s *Store) ServeRunners(ctx context.Context, access *Access, runnerPolicy string) error {
-	if access == nil {
-		return errAccess
-	}
-	if err := s.Ready(ctx); err != nil {
+	handler, _, err := s.runnerService(ctx, access, runnerPolicy)
+	if err != nil {
 		return err
 	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE readmit_hub_schema SET team_enabled=true WHERE singleton"); err != nil {
-		return errAccess
+	return s.serve(ctx, handler)
+}
+
+// runnerService returns the same instant enforced by the handler, so the
+// scheduler cannot consume an occurrence during predecessor-lease recovery.
+func (s *Store) runnerService(ctx context.Context, access *Access, runnerPolicy string) (http.Handler, time.Time, error) {
+	if access == nil {
+		return nil, time.Time{}, errAccess
 	}
+	if err := s.Ready(ctx); err != nil {
+		return nil, time.Time{}, err
+	}
+	if _, err := s.db.ExecContext(ctx, "UPDATE readmit_hub_schema SET team_enabled=true WHERE singleton"); err != nil {
+		return nil, time.Time{}, errAccess
+	}
+	ready := time.Now().Add(10 * time.Second)
 	if runnerPolicy != "" {
 		if _, err := readRunnerPolicy(runnerPolicy); err != nil {
-			return err
+			return nil, time.Time{}, err
 		}
-		return s.serve(ctx, s.RunnerHandler(access, runnerPolicy))
+		return s.runnerHandler(access, runnerPolicy, ready), ready, nil
 	}
-	return s.serve(ctx, s.TeamHandler(access))
+	return s.TeamHandler(access), time.Now(), nil
 }
 
 func (s *Store) serve(ctx context.Context, handler http.Handler) error {

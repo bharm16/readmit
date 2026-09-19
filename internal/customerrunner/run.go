@@ -110,6 +110,18 @@ func storeLease(active string, lease runnerprotocol.Lease) error {
 // Run acquires one exclusive environment lease within this configured root. A
 // crash leaves the claim intact. Neither restart nor lease expiry replays work.
 func Run(ctx context.Context, c Config, job Job) (durablerun.Summary, error) {
+	return run(ctx, c, job, "")
+}
+
+// RunPinned refuses changed prepared inputs before any execution. The same
+// prepared plan whose identity was checked performs the run.
+func RunPinned(ctx context.Context, c Config, job Job, inputIdentity string) (durablerun.Summary, error) {
+	if len(inputIdentity) != 64 {
+		return durablerun.Summary{}, ErrRefused
+	}
+	return run(ctx, c, job, inputIdentity)
+}
+func run(ctx context.Context, c Config, job Job, inputIdentity string) (durablerun.Summary, error) {
 	var zero durablerun.Summary
 	if c.validate() != nil {
 		return zero, ErrRefused
@@ -143,6 +155,12 @@ func Run(ctx context.Context, c Config, job Job) (durablerun.Summary, error) {
 	plan, err := durablerun.Prepare(job.Spec)
 	if err != nil {
 		return zero, ErrRefused
+	}
+	if inputIdentity != "" {
+		identity, e := plan.InputIdentity()
+		if e != nil || identity != inputIdentity {
+			return zero, ErrRefused
+		}
 	}
 	bound := false
 	for _, r := range plan.Resources() {

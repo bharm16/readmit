@@ -16,6 +16,9 @@ import (
 // RunnerHandler adds short-lived admission for customer-local execution. Each
 // renewal reloads both policies; loss of either authority fails closed.
 func (s *Store) RunnerHandler(access *Access, policyPath string) http.Handler {
+	return s.runnerHandler(access, policyPath, time.Now().Add(10*time.Second))
+}
+func (s *Store) runnerHandler(access *Access, policyPath string, readyAt time.Time) http.Handler {
 	team := s.TeamHandler(access)
 	slots := make(chan struct{}, 4)
 	var mu sync.Mutex
@@ -27,7 +30,7 @@ func (s *Store) RunnerHandler(access *Access, policyPath string) http.Handler {
 	}
 	leases := map[string]held{}
 	// A fresh handler waits out grants a stopped predecessor may have issued.
-	readyAt := time.Now().Add(10 * time.Second)
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/"), "/")
 		if len(parts) != 4 || parts[0] != "v1" || parts[1] != "projects" || parts[3] != "runner" {

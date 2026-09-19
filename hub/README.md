@@ -613,3 +613,108 @@ custody is an operator responsibility; no backup hash authenticates an IdP.
 Live IdP registration, certificate/key rotation, lawful support agreements and
 recipient authorization remain owner acceptance gates. These tests use synthetic
 identities and isolated PostgreSQL, not customer PHI or live provider accounts.
+
+## Recurring regression and approved summaries
+
+The opt-in hub scheduler executes saved, pinned single-test regressions through
+`customerrunner.RunPinned`, using the existing runner's actual mTLS admission,
+renewal, permissions, durable evidence and quota. The initial deployment runs
+on the **same customer-controlled host and service identity as the hub**. Remote
+job distribution, suites and arbitrary cron expressions are unsupported.
+
+Install private runner configuration and customer credential references, a
+nonproduction target and saved spec on this host. Use a dedicated runner root;
+do not concurrently run its inbox service. The runner reaches the actual hub TLS
+listener; being in the same process does not bypass authentication or lifecycle
+revocations. The ten-second hub restart cooldown still applies, so use a window
+of at least a minute to accommodate startup.
+
+The operator-owned mode-0600 policy is strict `readmit-hub-schedules/v1`; all
+members shown are required, including empty route and false approval:
+
+```json
+{"schema":"readmit-hub-schedules/v1","concurrency":"serial-skip-missed","schedules":[{"id":"daily-regression","zone":"America/Chicago","at":"09:00","window_seconds":300,"runner_config":"/etc/readmit-hub/local-runner.json","spec":"/private/tests/regression.json","input_sha256":"EXACT_PREPARED_INPUT_IDENTITY","route":"","approved":false}]}
+```
+
+With the hub stopped, obtain the pin without execution or credential resolution:
+`readmit-hub -config CONFIG -directory /private/tests/regression.json schedule-pin`.
+It commits prepared inputs and engine identity; changed inputs fail before any
+test-message send, and the same prepared plan whose identity was checked executes. Approve
+that pin in the policy, initialize once, then start:
+
+```sh
+readmit-hub -config CONFIG -schedule-policy /private/schedules.json schedule-init
+readmit-hub -config CONFIG -access-policy ACCESS -runner-policy RUNNERS \
+  -schedule-policy /private/schedules.json serve
+```
+
+Initialization starts at that instant without backfilling prior occurrences.
+Startup never initializes missing state. The policy digest is bound to the
+journal; changed/missing policy refuses startup or stops subsequent admission.
+Policy updates require a reviewed deployment preserving old claims, never a
+journal reset to retry work. Stop the hub service to cancel active execution;
+retained runner evidence still determines possible delivery. Revocation through
+ordinary token/grant/lifecycle controls cancels at the existing renewal bound.
+
+`serial-skip-missed` runs one scheduled job at a time in policy order. A waiting
+occurrence past its declared window is recorded `missed`, never silently dropped
+or executed in a catch-up burst. Each local day has at most one occurrence;
+IANA rules choose the first instant of an autumn fold. Go uses the host
+zoneinfo (including configured ZONEINFO), falling back to embedded tzdata.
+Operators must pin this deployment input and not change it while serving. A nonexistent
+spring minute is `dst-gap`, recorded at the first actual instant of the next
+local date; a skipped civil day is reported the same way. Clock rollback before the previous in-process tick or last durable checkpoint,
+and gaps over 366 days, fail closed for operator review. Idle polling does not
+rewrite history; restart safely scans from the last persisted checkpoint. Timezone rule changes
+require deployment review; changed retained occurrence instants refuse restart,
+and duplicate daily IDs are always refused. Passing one test does not establish suite coverage.
+
+The private `ARTIFACT_ROOT/scheduler/history.json` is the separate strict
+`readmit-hub-schedule-history/v1`: policy digest, processed-through instant and
+occurrence records (deterministic job ID, schedule ID, local day, due instant,
+execution and notification states). Inspect it locally while stopped. Claims
+are synchronized before dispatch. On restart an interrupted `claimed` record
+becomes `uncertain` and never automatically reruns, even when no send may have
+occurred. Check retained runner recovery before any explicitly new execution.
+Never remove runner claims or rewind the journal. A leftover `history-next`
+after interruption refuses startup; preserve both files for recovery review
+before removing only that temporary file with the service confirmed stopped.
+
+Limits: 64 schedules, 1 MiB policy, 1–3,600 seconds per window, 10,000 retained
+occurrences, 8 MiB journal. Capacity stops scheduling without pruning history;
+runner time/job/admission and customer disk quotas still apply. Protect all
+state and evidence with customer filesystem permissions and encryption.
+
+For approved notifications, set `route` to an approved HTTPS origin ending in
+`/` and `approved` to true. URL user info, secret paths, query, fragment, HTTP,
+redirects and environment proxies are refused. Use a customer relay with an
+appropriate unauthenticated root endpoint inside customer network controls;
+provider-specific authenticated webhooks, email and chat are unsupported.
+TLS 1.3 and normal certificate verification apply; requests are bounded to ten
+seconds and response bodies discarded. No real destination is contacted by tests.
+
+The entire fixed `readmit-hub-alert/v1` summary is:
+
+```json
+{"schema":"readmit-hub-alert/v1","state":"failed","coverage":"not-assessed"}
+```
+
+The finite states are `passed`, `failed`, `error`, `cancelled`, `uncertain`,
+`missed`, and `dst-gap`. No project/test/schedule label, value, path, evidence
+identity, endpoint, credential, arbitrary error or configurable template enters
+it. `passed` describes only this test; coverage, exclusions and flaky history
+remain unassessed. Every terminal state uses its schedule's approved route.
+The notification claim is durable before transport: failure, lost response or
+process death leaves `uncertain`, never automatic retry. A 2xx response records
+`sent`, not a read receipt. Restart can send a previously unattempted summary
+once; it cannot retry an already attempted one.
+
+**Backup boundary:** once initialized, the artifact-only `backup` command refuses
+instead of silently omitting scheduler claims. Use a stopped-service deployment
+snapshot covering PostgreSQL, the entire artifact root including the journal,
+runner roots, policies/spec inputs and separate credential/configuration backups.
+Test restoration on an isolated host with egress disabled and reconcile current
+revocations. Never run old and restored authorities simultaneously. An older
+artifact-only restore lacks a journal and cannot start scheduling. There is no
+new backup version or automated scheduler restore. Real PKI, destination/egress
+approval, retention and stopped-snapshot recovery drills remain owner gates.
