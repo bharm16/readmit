@@ -13,10 +13,14 @@ import {
   createSampleWorkspace,
   editReproducer,
   saveTest,
+  suggestExpectations,
+  approveExpectations,
   undoReproducer,
   type TestAnswer,
   type TestDraftDocument,
   type TestResult,
+  type TestReview,
+  type TestSuggestionRequest,
   type ReproducerPlan,
   type ReproducerComparisonResult,
   type ReproducerResult,
@@ -1073,6 +1077,29 @@ export default function App() {
                   identity: open.identity,
                   draft,
                   output,
+                }),
+              )
+            }
+            onSuggest={(suggest: TestSuggestionRequest) =>
+              void author((draft, open) =>
+                suggestExpectations({
+                  workspace: root ?? "",
+                  case: open.case,
+                  identity: open.identity,
+                  draft,
+                  suggest,
+                }),
+              )
+            }
+            onApprove={(suggest: TestSuggestionRequest, review: TestReview) =>
+              void author((draft, open) =>
+                approveExpectations({
+                  workspace: root ?? "",
+                  case: open.case,
+                  identity: open.identity,
+                  draft,
+                  suggest,
+                  review,
                 }),
               )
             }

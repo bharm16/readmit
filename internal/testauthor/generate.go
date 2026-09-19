@@ -44,13 +44,15 @@ type Target struct {
 // Resolution is what a draft means over the evidence and the workspace: the
 // stage to answer next, everything still unanswered, the initial state the
 // chosen boundary fixes, the selected occurrences in the order the case records
-// them, and the targets this workspace offers.
+// them, the targets this workspace offers, and what the expectations answered
+// so far decide and leave undecided.
 type Resolution struct {
 	Stage    string   `json:"stage"`
 	Missing  []string `json:"missing"`
 	Setup    string   `json:"setup,omitzero"`
 	Messages []string `json:"messages"`
 	Targets  []Target `json:"targets"`
+	Coverage Coverage `json:"coverage"`
 }
 
 // Saved is the spec that was written: the entry of the workspace holding it and
@@ -142,7 +144,7 @@ func Resolve(root string, source *bundle.Bundle, draft Draft) (Resolution, error
 	if len(missing) > 0 {
 		stage = missing[0]
 	}
-	return Resolution{Stage: stage, Missing: missing, Setup: Setup(draft.Boundary), Messages: ordered, Targets: targets}, nil
+	return Resolution{Stage: stage, Missing: missing, Setup: Setup(draft.Boundary), Messages: ordered, Targets: targets, Coverage: Cover(draft)}, nil
 }
 
 // chosen holds an answered target to what this product will actually replay to.

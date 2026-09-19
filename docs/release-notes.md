@@ -986,6 +986,28 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   a finding is a location, and reading a transformed value is the inspector over
   the derived case the review names.
 
+- The window proposes regression-test expectations from a run somebody has
+  already reviewed, and records none of them without a person's act. A reviewed
+  `readmit-result/v1` directory is opened through the reader `readmit test`
+  verifies one with; the record count it settled on and the value each
+  acknowledgement held at a named MSA or ERR position are proposed, read exactly
+  as the evaluator reads them. A run whose own expectations did not hold, one
+  that replayed different evidence, and one observed at another boundary are each
+  refused by name. A proposal the run cannot justify is its own named outcome
+  carrying the reason and no value, never a silent omission and never an
+  inclusion. Approving is a separate call: every proposal is reported as
+  approved, rejected or not reviewed, a review that decides nothing approves
+  nothing, and the proposals are derived from the run again when the decisions
+  are applied, so no suggested value crosses back towards the draft. A reviewer
+  edits the identifier and the value while approving; `readmit-test/v1` declares
+  no explanation and no tolerance member and gains none. The draft also reports
+  what its expectations decide and leave undecided, as positions rather than
+  values, and a suggestion carries only what the expectation it proposes would
+  carry — no ledger record and no message the run sent.
+  `readmit-test/v1` and `readmit-test-draft/v1` gain no member and change no
+  byte, and nothing is stored: a suggestion set and an approval are typed values
+  the window renders.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is

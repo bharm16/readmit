@@ -4,9 +4,13 @@ import type {
   GridRow,
   TestAnswer,
   TestBoundary,
+  TestDecision,
   TestExpectation,
   TestResult,
+  TestReview,
   TestStage,
+  TestSuggestion,
+  TestSuggestionRequest,
 } from "./bindings";
 import { Report, type Indicators } from "./shell";
 import "./authoring.css";
@@ -35,6 +39,17 @@ const STAGES: TestStage[] = [
 
 const STATES: FieldState[] = ["present", "empty", "null", "omitted"];
 
+/** What a reviewer has said about one proposal so far. `approved` is undefined
+ * until they say something: the default is not acceptance, and a proposal
+ * nobody decided is recorded nowhere. */
+type Edit = {
+  approved?: boolean;
+  id?: string;
+  count?: string;
+  state?: FieldState;
+  text?: string;
+};
+
 /** The guided test authoring panel. It answers one stage at a time over the
  * case the grid verified, and writes the result as a readmit-test/v1 spec.
  *
@@ -52,6 +67,8 @@ export function TestAuthoring({
   indicators,
   onAnswer,
   onSave,
+  onSuggest,
+  onApprove,
 }: {
   rows: GridRow[];
   result: TestResult | null;
@@ -61,6 +78,8 @@ export function TestAuthoring({
   indicators: Indicators;
   onAnswer: (answer: TestAnswer) => void;
   onSave: (output: string) => void;
+  onSuggest: (request: TestSuggestionRequest) => void;
+  onApprove: (request: TestSuggestionRequest, review: TestReview) => void;
 }) {
   const [name, setName] = useState("");
   const [observation, setObservation] = useState("test-observation.json");
@@ -72,6 +91,11 @@ export function TestAuthoring({
   const [state, setState] = useState<FieldState>("present");
   const [text, setText] = useState("AA");
   const [output, setOutput] = useState("");
+  const [runEntry, setRunEntry] = useState("");
+  const [ledger, setLedger] = useState(true);
+  const [position, setPosition] = useState("MSA-1");
+  const [positions, setPositions] = useState<string[]>(["MSA-1"]);
+  const [edits, setEdits] = useState<Record<string, Edit>>({});
 
   const view = result?.test;
   const draft = view?.draft;
@@ -83,6 +107,32 @@ export function TestAuthoring({
 
   const replaceExpectations = (next: TestExpectation[]) =>
     onAnswer({ stage: "expectations", expectations: next });
+
+  const coverage = resolution?.coverage;
+  const suggestions = view?.suggestions;
+  const approval = view?.approval;
+  const request: TestSuggestionRequest = { result: runEntry, ledger, positions };
+  const edit = (id: string, change: Edit) =>
+    setEdits((current) => ({ ...current, [id]: { ...current[id], ...change } }));
+
+  /** One decision per proposal a person actually decided about. A proposal they
+   * said nothing about is not in this list, so approving records nothing for
+   * it. */
+  const decisions = (proposed: TestSuggestion[]): TestDecision[] =>
+    proposed.flatMap((suggestion) => {
+      const made = edits[suggestion.id];
+      if (!made || made.approved === undefined) return [];
+      const decision: TestDecision = { suggestion: suggestion.id, approved: made.approved };
+      if (!made.approved) return [decision];
+      if (made.id) decision.id = made.id;
+      if (suggestion.operator === "ledger_count" && made.count !== undefined && made.count !== "") {
+        decision.count = Number(made.count);
+      }
+      if (suggestion.operator === "ack_field_equals" && made.state) {
+        decision.field = made.state === "present" ? { state: made.state, text: made.text ?? "" } : { state: made.state };
+      }
+      return [decision];
+    });
 
   return (
     <section className="authoring" aria-label="Test authoring">
@@ -342,6 +392,238 @@ export function TestAuthoring({
           Expect this acknowledgement value
         </button>
       </form>
+
+      <h4>What this test decides so far</h4>
+      {/* The preview is positions, never values: what a test inspects is a
+          place in an acknowledgement and a count of records. */}
+      <ul className="selection">
+        {coverage?.ledger.applies ? (
+          <li>
+            <span className="occurrence">The observed ledger</span>
+            <span className="reason">
+              {coverage.ledger.covered
+                ? `Decided by ${coverage.ledger.expectation}`
+                : "Nothing decides how many records it should hold"}
+            </span>
+          </li>
+        ) : null}
+        {(coverage?.messages ?? []).map((message) => (
+          <li key={message.message}>
+            <span className="occurrence">{message.message}</span>
+            <span className="reason">
+              {message.positions.length
+                ? `Decided at ${message.positions.join(", ")}`
+                : "Sent, and nothing is decided about its acknowledgement"}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      <h4>Suggest expectations from a reviewed run</h4>
+      <p className="hint">
+        A suggestion is a claim about what should be true, derived from what was true once. It is
+        read from a run whose own expectations held, and nothing here approves anything: a proposal
+        becomes an expectation only where you say so below.
+      </p>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          setEdits({});
+          onSuggest(request);
+        }}
+      >
+        <label htmlFor="authoring-reviewed">Entry holding the reviewed run result</label>
+        <input
+          id="authoring-reviewed"
+          placeholder="baseline-result"
+          value={runEntry}
+          onChange={(event) => setRunEntry(event.target.value)}
+        />
+        <label htmlFor="authoring-ledger">
+          <input
+            id="authoring-ledger"
+            type="checkbox"
+            checked={ledger}
+            onChange={(event) => setLedger(event.target.checked)}
+          />
+          Propose the record count that run settled on
+        </label>
+        <label htmlFor="authoring-position">Acknowledgement position to propose a value for</label>
+        <input
+          id="authoring-position"
+          value={position}
+          onChange={(event) => setPosition(event.target.value)}
+        />
+        <button
+          type="button"
+          disabled={busy || !position || positions.includes(position)}
+          onClick={() => setPositions([...positions, position])}
+        >
+          Also propose {position || "a position"}
+        </button>
+        <button
+          type="button"
+          disabled={busy || !inspected}
+          onClick={() => {
+            if (!inspected) return;
+            setPosition(inspected.path);
+          }}
+        >
+          {inspected?.path
+            ? `Use the inspected position ${inspected.path}`
+            : "Use the position open in the inspector"}
+        </button>
+        <ul className="selection">
+          {positions.map((addressed) => (
+            <li key={addressed}>
+              <span className="occurrence">{addressed}</span>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setPositions(positions.filter((other) => other !== addressed))}
+              >
+                Do not propose {addressed}
+              </button>
+            </li>
+          ))}
+        </ul>
+        <button type="submit" disabled={busy || !runEntry}>
+          Suggest expectations from this run
+        </button>
+      </form>
+
+      {suggestions ? (
+        <>
+          <p className="hint">
+            From {suggestions.origin.result} · the run reports {suggestions.origin.status} at{" "}
+            {suggestions.origin.boundary} · result identity{" "}
+            <span className="identity">{suggestions.origin.identity}</span> · spec{" "}
+            <span className="identity">{suggestions.origin.spec_identity}</span> · evidence{" "}
+            <span className="identity">{suggestions.origin.input_identity}</span>.{" "}
+            {suggestions.supported} of {suggestions.suggestions.length} proposals are supported.
+          </p>
+          <ul className="selection">
+            {suggestions.suggestions.map((suggestion) => {
+              const made = edits[suggestion.id] ?? {};
+              const decided =
+                made.approved === undefined ? "Not reviewed" : made.approved ? "Approved" : "Rejected";
+              return (
+                <li key={suggestion.id}>
+                  <span className="occurrence">{suggestion.id}</span>
+                  <span className="reason">
+                    {suggestion.operator}
+                    {suggestion.message ? ` · ${suggestion.message} · ${suggestion.selector}` : ""}
+                    {suggestion.operator === "ledger_count" && suggestion.count !== undefined
+                      ? ` · ${suggestion.count} records`
+                      : ""}
+                    {suggestion.field ? ` · ${suggestion.field.state}` : ""}
+                    {suggestion.field?.text !== undefined ? ` · ${suggestion.field.text}` : ""}
+                    {" · "}
+                    {suggestion.outcome === "supported" ? decided : `Unsupported: ${suggestion.reason}`}
+                    {" · read from "}
+                    {suggestion.evidence.artifact}
+                    {suggestion.evidence.payload ? `/${suggestion.evidence.payload}` : ""}
+                  </span>
+                  {suggestion.outcome === "supported" ? (
+                    <>
+                      <label htmlFor={`authoring-record-${suggestion.id}`}>Record it as</label>
+                      <input
+                        id={`authoring-record-${suggestion.id}`}
+                        placeholder={suggestion.id}
+                        value={made.id ?? ""}
+                        onChange={(event) => edit(suggestion.id, { id: event.target.value })}
+                      />
+                      {suggestion.operator === "ledger_count" ? (
+                        <>
+                          <label htmlFor={`authoring-records-${suggestion.id}`}>
+                            Records the ledger should hold
+                          </label>
+                          <input
+                            id={`authoring-records-${suggestion.id}`}
+                            inputMode="numeric"
+                            placeholder={String(suggestion.count ?? "")}
+                            value={made.count ?? ""}
+                            onChange={(event) => edit(suggestion.id, { count: event.target.value })}
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <label htmlFor={`authoring-state-${suggestion.id}`}>The value should be</label>
+                          <select
+                            id={`authoring-state-${suggestion.id}`}
+                            value={made.state ?? suggestion.field?.state ?? "present"}
+                            onChange={(event) =>
+                              edit(suggestion.id, { state: event.target.value as FieldState })
+                            }
+                          >
+                            {STATES.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                          {(made.state ?? suggestion.field?.state) === "present" ? (
+                            <>
+                              <label htmlFor={`authoring-value-${suggestion.id}`}>Expected value</label>
+                              <input
+                                id={`authoring-value-${suggestion.id}`}
+                                value={made.text ?? suggestion.field?.text ?? ""}
+                                onChange={(event) => edit(suggestion.id, { text: event.target.value })}
+                              />
+                            </>
+                          ) : null}
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => edit(suggestion.id, { approved: true })}
+                      >
+                        Approve {suggestion.id}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => edit(suggestion.id, { approved: false })}
+                      >
+                        Reject {suggestion.id}
+                      </button>
+                    </>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+          {/* Nothing is recorded until this is pressed, and only what has been
+              decided above is recorded by it. */}
+          <button
+            type="button"
+            disabled={busy || decisions(suggestions.suggestions).length === 0}
+            onClick={() => {
+              const decided = decisions(suggestions.suggestions);
+              // What was decided has been recorded, so the panel stops
+              // offering to record it again; re-approving one proposal is a
+              // second expectation of the same name, which the engine refuses.
+              setEdits({});
+              onApprove(request, {
+                result: request.result,
+                identity: suggestions.origin.identity,
+                decisions: decided,
+              });
+            }}
+          >
+            Record these decisions
+          </button>
+        </>
+      ) : null}
+
+      {approval ? (
+        <p className="written">
+          Approved {approval.approved}, rejected {approval.rejected}, not reviewed{" "}
+          {approval.not_reviewed} of the proposals from {approval.result}. Only what was approved is
+          in this test.
+        </p>
+      ) : null}
 
       <h4>Save this test</h4>
       <form

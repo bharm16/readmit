@@ -206,6 +206,8 @@ artifacts are never reported as completed.
 | `OpenReview` | Reads one export review of the open workspace and reports its inventory, its coverage and the reviewer's decision. |
 | `AuthorTest` | Answers one stage of a test draft and reports what it now means over the case. |
 | `SaveTest` | Writes the generated test spec into a new entry of the open workspace. |
+| `SuggestExpectations` | Proposes the expectations one reviewed run would support, and records none of them. |
+| `ApproveExpectations` | Records what a person decided about those proposals and reports the draft their approvals produced. |
 | `Cancel` | Stops the operation that is running now, when it can be interrupted. |
 
 Exactly one operation runs at a time. A second request reports `busy` rather
@@ -230,11 +232,12 @@ folder and listing it are interruptible; `OpenCase`, `OpenProject`,
 `OpenRevisions`, `SaveNote`, `Search`, `OpenGrid`, `SaveFilter`,
 `SelectFilter`, `InspectOccurrence`, `Compare`, `EditReproducer`, `UndoReproducer`,
 `BuildReproducer`, `CompareReproducers`, `AuthorTest`, `SaveTest`,
-`PreviewTransformation`, `OpenReview` and `RecoverSession` are not, because each runs to completion under its own size
-limits once it starts. The window enables the
-Cancel control only while an interruptible operation runs; `Escape` reaches the
-same operation whenever the palette is not open, and cancelling when nothing is
-running does nothing.
+`SuggestExpectations`, `ApproveExpectations`, `PreviewTransformation`,
+`OpenReview` and `RecoverSession` are not, because each runs to completion under
+its own size limits once it starts. The window enables the Cancel control only
+while an interruptible operation runs; `Escape` reaches the same operation
+whenever the palette is not open, and cancelling when nothing is running does
+nothing.
 
 ## Workspaces and artifacts
 
@@ -583,10 +586,30 @@ typed**, which is the same customer-local literal the field it describes holds:
 it lives in the window while the draft is open, is never placed in browser
 storage, and reaches disk only in the spec that was saved.
 
+The panel also proposes expectations from a run somebody has already reviewed.
+It names one entry of the workspace holding a [run result](test-result.md) and
+the acknowledgement positions to propose a value for, and the engine reads that
+result through the reader `readmit test` verifies one with. **Asking records
+nothing**: the draft comes back unchanged, every proposal says which run and
+which payload its value was read out of, and a proposal that run cannot justify
+is reported as unsupported with the reason rather than dropped or included.
+Recording them is a second, separate call carrying a decision for each proposal a
+person decided about — approved, rejected, or, for one they said nothing about,
+neither. A review that decides nothing approves nothing, and only what was
+approved is in the test. The proposals are derived from the run again when the
+decisions are applied, so a suggested value never travels back across this
+boundary towards the draft.
+
+Alongside the draft, the panel shows what the expectations so far decide and what
+they leave undecided: whether anything decides the observed ledger, and, for each
+message the test sends, the acknowledgement positions its expectations address.
+That preview is positions, never values.
+
 A saved test is a document beside the evidence, never inside it, and the case it
 names is not changed. See
 [authoring a regression test](test-authoring.md) for the draft contract, every
-stage, every refusal, the bounds, and what this release does not author.
+stage, every refusal, the bounds, how a suggestion is reviewed and approved, and
+what this release does not author.
 ## Comparing two collections
 
 **Compare** is the panel that answers what changed between two collections of
