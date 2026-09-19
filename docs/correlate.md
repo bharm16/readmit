@@ -300,3 +300,7 @@ collision; and the occurrence that is not HL7 takes part in nothing.
   is not an ordering.
 - Storing a correlation inside evidence. A case gains no member from this
   command; the report is a separate derived file.
+- Renaming what a rule related. This command reports relations and changes
+  nothing. Previewing a transformation that keeps them true — one surrogate per
+  relation, and the acknowledgement of a renamed message rewritten onto it — is
+  [`readmit transform`](transform.md), which writes nothing either.

@@ -777,6 +777,38 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   preview names scenario-local subjects and never the identifiers a document
   declares, it is a pure function of that document, and it generates no message
   bytes and reads no evidence.
+- `transform CASE --rules FILE --plan FILE` previews relationship-preserving
+  replay transformations of a case and writes nothing at all. A
+  `readmit-transform-plan/v1` document is an ordered list of typed operators
+  `internal/transform` interprets — rename the values one declared correlation
+  rule relates, shift every supported timestamp by one explicit duration, and
+  reorder, duplicate or drop an entry of the sequence a replay would send —
+  bound to the verified case identity and to the SHA-256 of the exact
+  `readmit-correlation-rules/v1` declarations whose relations it preserves.
+  Which occurrences belong together stays `readmit correlate`'s answer: one
+  surrogate is assigned per relation, so occurrences a rule related stay
+  related, occurrences it related to nothing stay apart, a control ID
+  duplicated inside one source stays a duplicate, a copy receives its
+  original's value, and the acknowledgement of a renamed message has its MSA-2
+  rewritten onto it. An acknowledgement this case tied to several candidates,
+  two changes over the same or overlapping bytes, a timestamp that is not whole
+  seconds, a nonstandard delimiter declaration and a plan that drops every
+  occurrence are each refused; equal identifier bytes under no configured
+  assigning authority, an acknowledgement naming no message here and an
+  occurrence nothing decoded are reported and left exactly as they are. The
+  `readmit-transform-preview/v1` preview records positions, states, relation
+  numbers and the pinned profile pack's declared support at all four levels —
+  never a value byte, before or after — and only a supported outcome passes: a
+  combination the pack does not declare supported at the parse level, and the
+  date fields a shift does not move, are each recorded explicitly rather than
+  left to a doc page.
+  Every entry names the case occurrence and case source it came from across
+  reorders and duplications. `readmit-reproducer-plan/v1`,
+  `readmit-reproducer/v1`, `readmit-correlation-rules/v1` and
+  `readmit-correlation/v1` gain no member and change no byte, and no derived
+  evidence and no new derivation name is produced. Reduction, applying these
+  operators inside the reproducer editor, and any de-identification, minimality
+  or sharing claim remain separate deliveries.
 
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`

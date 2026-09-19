@@ -282,6 +282,13 @@ Shifts must be nonzero whole seconds within ten 365-day years, with resulting
 years in 1–9999. Unsupported timestamps fail before connection. Duplicate or
 unknown transformation names fail locally; there is no expression engine.
 
+These two are what a send applies. Previewing a wider transformation of a case —
+renaming the values a declared correlation rule relates, so the relation and its
+acknowledgements survive the rename, and reordering, duplicating or dropping
+entries of the sequence — is [`readmit transform`](transform.md), which writes
+nothing and sends nothing. It produces no run and no derived evidence, and
+`readmit-run/v1` gains no member from it.
+
 An intentional duplicate control ID remains a duplicate after rebasing. Every
 changed occurrence/selector records its exact old and new bytes as base64 and its
 old/new field state in `manifest.json`. Unchanged fields generate no change record.

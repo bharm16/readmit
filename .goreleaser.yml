@@ -69,6 +69,7 @@ archives:
 
       - docs/diagnose.md
       - docs/correlate.md
+      - docs/transform.md
       - docs/selectors.md
 
       - docs/synth.md
