@@ -1,0 +1,40 @@
+{
+  "schema": "readmit-normalization-policy/v1",
+  "rules": [
+    {
+      "id": "volatile-message-time",
+      "selector": "MSH-7",
+      "operator": "timestamp",
+      "precision": "hour"
+    },
+    {
+      "id": "wbc-analyser-tolerance",
+      "selector": "OBX[1]-5",
+      "operator": "numeric",
+      "tolerance": "0.05"
+    },
+    {
+      "id": "hgb-analyser-tolerance",
+      "selector": "OBX[2]-5",
+      "operator": "numeric",
+      "tolerance": "0.05"
+    },
+    {
+      "id": "note-declared-numeric",
+      "selector": "OBX[3]-5",
+      "operator": "numeric",
+      "tolerance": "1.0"
+    },
+    {
+      "id": "volatile-run-identifier",
+      "selector": "OBX[4]-5",
+      "operator": "ignore"
+    },
+    {
+      "id": "unapplied-birth-date",
+      "selector": "PID-7",
+      "operator": "timestamp",
+      "precision": "day"
+    }
+  ]
+}

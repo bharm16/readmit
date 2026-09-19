@@ -1,0 +1,11 @@
+{
+  "schema": "readmit-normalization-policy/v1",
+  "rules": [
+    {
+      "id": "signed-tolerance",
+      "selector": "OBX[1]-5",
+      "operator": "numeric",
+      "tolerance": "-0.05"
+    }
+  ]
+}

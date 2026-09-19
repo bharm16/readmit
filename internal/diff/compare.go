@@ -18,6 +18,14 @@ const maxComparisons = 200000
 // diagnostics without source paths or values. Malformed payloads and unsupported
 // decoded values are reportable evidence gaps, not silent omissions.
 func Compare(left, right Input, options Options) (Report, error) {
+	return compare(left, right, options, nil)
+}
+
+// compare is the one comparison both reports are read from. A policy, when one
+// is supplied, is told what the comparison found; it never changes what the
+// readmit-diff/v1 report says, so the raw comparison stays exactly what it was
+// before any rule was authored.
+func compare(left, right Input, options Options, applied *appliedPolicy) (Report, error) {
 	if options.Boundary == "" {
 		options.Boundary = Messages
 	}
@@ -82,7 +90,7 @@ func Compare(left, right Input, options Options) (Report, error) {
 	}
 	comparisons := 0
 	for _, pair := range pairs {
-		result, err := comparePair(pair, fields, labels, &report, &comparisons)
+		result, err := comparePair(pair, fields, labels, &report, &comparisons, applied)
 		if err != nil {
 			return Report{}, err
 		}
@@ -130,7 +138,7 @@ func canonical(selectors []hl7.Selector) []string {
 	return paths
 }
 
-func comparePair(pair alignedPair, fields []hl7.Selector, labels *dictionary.Dictionary, report *Report, comparisons *int) (Pair, error) {
+func comparePair(pair alignedPair, fields []hl7.Selector, labels *dictionary.Dictionary, report *Report, comparisons *int, applied *appliedPolicy) (Pair, error) {
 	result := Pair{Left: pair.left.ref, Right: pair.right.ref, Status: "unchanged"}
 	if pair.left.doc == nil || pair.right.doc == nil {
 		result.Status = "uncompared"
@@ -173,6 +181,9 @@ func comparePair(pair alignedPair, fields []hl7.Selector, labels *dictionary.Dic
 				}
 			}
 		}
+		if applied != nil {
+			applied.compared(selector.String())
+		}
 		// An ignore does not make an undecodable field look comparable.
 		if unsupported || !equal && !ignored {
 			change := FieldChange{Selector: selector.String(), Left: left, Right: right, Status: "changed"}
@@ -189,6 +200,9 @@ func comparePair(pair alignedPair, fields []hl7.Selector, labels *dictionary.Dic
 				report.Summary.FieldChanges++
 			}
 			result.Fields = append(result.Fields, change)
+			if applied != nil {
+				applied.record(pair.left, pair.right, change, leftBytes, rightBytes)
+			}
 		}
 	}
 	return result, nil

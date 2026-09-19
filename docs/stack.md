@@ -25,7 +25,7 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
 
 ## CLI
 
-- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `corpus`, `project`, `backup`, `upgrade`, `license`, `secret`, `protect`, `target`, `source`, `listen`, `replay`, `test`, `observe`, `explain`, `diff`, `drift`, `diagnose`, `correlate`, `transform`, `synth`, `scenario`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
+- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `corpus`, `project`, `backup`, `upgrade`, `license`, `secret`, `protect`, `target`, `source`, `listen`, `replay`, `test`, `observe`, `explain`, `diff`, `drift`, `normalize`, `diagnose`, `correlate`, `transform`, `synth`, `scenario`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
 - Command data goes to stdout, diagnostics to stderr. Machine-readable modes never interleave progress output with JSON.
 - Target configuration is read from explicitly selected files, not hidden global config or environment-variable precedence.
 - Credentials are referenced, never held. A `readmit-secrets/v1` document registers the store kind an operator declared, the single purpose and endpoint address a credential may be bound to, the absolute path of the program that reads it back, and the recorded rotation. The purposes are `mllp-endpoint` and `source-endpoint`; a reference registered for one is refused wherever the other is needed. No command accepts a credential value, and a resolved value masks itself under every formatting verb and refuses to be serialized. See [credential references](secret.md).
@@ -228,6 +228,18 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
   it against a run bundle through `internal/runexplain`, which writes no
   artifact and defines no result document. See
   [typed assertions](assertions.md) and [explaining a run](explain.md).
+- Normalization and ignore policies are `readmit-normalization-policy/v1`, read
+  by `internal/diff`: three typed operators — an unconditional `ignore`, a
+  `timestamp` compared to a declared precision, and a `numeric` value compared
+  within a declared unsigned tolerance — each scoped to exactly one canonical
+  `internal/hl7` selector, with no wildcard, category, pattern or expression
+  language. Tolerances are compared as exact rationals through `math/big`, the
+  same way an assertion compares decimals. A rule that cannot read the values it
+  was scoped to is `undecided` with a named reason rather than agreement, and
+  `readmit-normalization/v1` reports every rule and every difference the
+  comparison found, each suppressed one naming the rule that suppressed it.
+  `readmit-diff/v1` is unchanged. See
+  [normalization policies](normalize.md).
 
 ## Randomness
 

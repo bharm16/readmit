@@ -1,0 +1,34 @@
+{
+  "summary": {
+    "paired": 1,
+    "differences": 6,
+    "uncompared": 0,
+    "suppressed": 3,
+    "retained": 1,
+    "undecided": 1,
+    "unaddressed": 1,
+    "inserted": 0,
+    "missing": 0,
+    "ambiguous": 0,
+    "unaligned": 0
+  },
+  "suppressed": [
+    {
+      "selector": "MSH[1]-7[1]",
+      "rule": "volatile-message-time"
+    },
+    {
+      "selector": "OBX[1]-5[1]",
+      "rule": "wbc-analyser-tolerance"
+    },
+    {
+      "selector": "OBX[4]-5[1]",
+      "rule": "volatile-run-identifier"
+    }
+  ],
+  "retained_selector": "OBX[2]-5[1]",
+  "undecided_selector": "OBX[3]-5[1]",
+  "undecided_reason": "value_not_numeric",
+  "unaddressed_selector": "OBX[5]-5[1]",
+  "unapplied_rule": "unapplied-birth-date"
+}

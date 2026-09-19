@@ -92,7 +92,11 @@ other timestamps, other repetitions, or separately selected components. There
 are no wildcard/category ignores. Every configured rule appears in every
 rendering with the number of compared selections and suppressed differences,
 including zero when the rule did not apply. An ignore neither removes a key
-from alignment nor conceals malformed or undecodable evidence.
+from alignment nor conceals malformed or undecodable evidence. A **saved**
+policy — one that also normalizes typed timestamps and numeric tolerances, names
+every rule, and lists each suppressed difference individually rather than only
+counting it — is [`readmit normalize`](normalize.md), a separate report that
+adds no member to this one and never edits the comparison it reads.
 
 Values and alignment keys are private by default. `--show-values` explicitly
 includes compared field values as quoted ASCII-escaped displays. Unsupported
