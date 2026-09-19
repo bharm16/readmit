@@ -237,8 +237,8 @@ correct against a scenario that never asked the question.
 
 - Generating messages directly from a preview. Generation requires the separate
   explicit input plan below.
-- A scenario library, coverage reporting, and expected outcomes versioned apart
-  from the template.
+- A clinical conformance library or automatic external-target acceptance.
+  The bounded fixture library is described below.
 - Expectations, assertions and any binding to a test spec. A scenario is not a
   `readmit-test/v1` spec, does not become one, and names none.
 - Validating a real message, a case or a run against a designed workflow.
@@ -419,5 +419,84 @@ is synthetic. Treat the plan, record and streams together as sensitive data.
 
 The public native smoke runs exercise the shipped plan and literal boundary
 bytes on all five release platforms. External-target behavior and independently
-reviewed expectations remain the owning team's acceptance work. The scenario
-library and separate expected-outcome versioning belong to #64.
+reviewed expectations remain the owning team's acceptance work. The separate fixture library below pins reusable plans and independent expectations.
+
+
+## Reusable library and independent expectations
+
+```sh
+readmit scenario check-library testdata/fixtures/scenario-library.json \
+  testdata/fixtures/scenario-expectations.json
+```
+
+The library is `readmit-scenario-library/v1`: `schema` and `templates` (1–16).
+Each template requires `id`, `version`, `profile`, `coverage` (1–32 unique tags)
+and `plan`, a complete unchanged `readmit-scenario-generator/v1`. Ids, versions
+and tags are 1–64 ASCII letters, digits, dot, hyphen or underscore, starting
+with a letter or digit. An id/version pair appears once. The profile must match
+the plan's actual lifecycle profile; an unknown profile never borrows support.
+Templates are reusable authored files. Changing a plan calls for a new template
+version; retain historical entries when retaining their old expectations.
+
+Expected results are a **different document with their own version**:
+`readmit-scenario-expectations/v1`. Its required members are `schema`, `id`,
+`version`, `template`, `template_version`, `plan_sha256`, `provenance`, `lifecycle`
+and `streams`. The template and version select exactly one library entry.
+`plan_sha256` is the lowercase SHA-256 of the validated Plan serialized with
+Go json/v2 deterministic encoding (no trailing newline), available through
+`scenariolibrary.PlanDigest`. Every generator input is pinned, including seed,
+parameters and variants. Changing the plan without revising its oracle pin is
+refused. The hash binds content, not author authenticity or independent review.
+An oracle version can advance without changing the template version.
+
+`provenance` is an explicit nonempty author/source explanation, at most 1024
+bytes. Readmit retains that declaration; it cannot prove a user authored it
+independently. Do not export generator output as its own expected result.
+
+`lifecycle` lists every original template step in order, with `step`, `outcome`
+(`accepted` or `refused`), `from` and `to`. The checker compares these separately
+authored facts to the original lifecycle preview. They are **not** inferred
+expectations for mutated streams or a prediction of an external system.
+
+`streams` covers every row/variant in generator order; each requires `row`,
+`variant` and `messages`. Each occurrence requires `step`, `after`, `duplicate`
+and `fields`. Arrival offsets use the generator's Go duration spelling, for
+example `1m0s`. Duplicate and order claims are checked against the generated
+manifest; the exact message count is checked against the MLLP bytes. Each field
+requires `selector`, `state` (`present`, `empty`, `null`, `omitted`) and `hex`,
+which names literal raw bytes, including non-UTF-8 values. Selectors use the
+[shared field grammar](selectors.md). A present field needs bytes, empty/omitted
+need an empty hex string, and explicit null needs `2222`. Duplicate selectors
+are refused after canonicalization. Only listed fields are checked: passing
+is not equality of whole messages, semantic conformance, or a target verdict.
+
+Documents are bounded to 4 MiB, 64 lifecycle steps, 128 streams, 128 occurrences
+per stream, 64 field checks per occurrence and 1024 bytes per field. Unknown,
+missing and null members are refused at every nested boundary, including omitted
+`duplicate: false`. Missing streams and occurrences cannot silently pass.
+The checker regenerates in an owner-only temporary directory, compares against
+literal expectations and removes the temporary output on success, failure or
+cancellation. A retry starts fresh; no evidence, input, case, test, profile pack
+or generation contract is rewritten. Command output reports counts only, never
+values or provenance. Treat authored inputs and hex bytes as sensitive.
+
+### Shipped coverage and limits
+
+The hand-authored `siu-cancel-book` version 1 library entry supports only
+`readmit-siu-lifecycle-v1`: cancellation before booking preserves `none`, then
+booking reaches `booked`. Independent wire literals check event identifiers,
+patient identity, a booking timestamp and present versus absent patient name
+in baseline/missing-name streams. The expected facts are written directly from
+those finite rules, not obtained from the generator or preview. Tests deliberately
+change the expected event, lifecycle state, field state and arrival to prove
+mismatches fail. Both the positive fixture and an incorrect oracle run through
+the archived CLI on all five native platforms.
+
+The reader accepts all four generator fixture profiles, but this shipped oracle
+claims no ADT, ORM or ORU coverage, no complete SIU coverage, and no independent
+oracle for retransmission, encoding or timezone variants. Those require separate
+reviewed expectations; generator support alone is not oracle coverage. Coverage
+tags are author declarations, not automatically inferred certificates.
+External target outcomes are always **unverified** here. Running independently
+authored assertions against a retained external target remains the owning team's
+acceptance obligation; a successful local check does not complete that journey.

@@ -1,0 +1,87 @@
+{
+  "schema": "readmit-scenario-library/v1",
+  "templates": [
+    {
+      "id": "siu-cancel-book",
+      "version": "1",
+      "profile": "readmit-siu-lifecycle-v1",
+      "coverage": [
+        "cancel-before-book",
+        "booking",
+        "absent-patient-name"
+      ],
+      "plan": {
+        "schema": "readmit-scenario-generator/v1",
+        "generator_version": "readmit-scenario-generator-v1",
+        "seed": 0,
+        "template": {
+          "schema": "readmit-scenario/v1",
+          "scenario": {
+            "id": "siu-appointment-lifecycle",
+            "version": "1"
+          },
+          "profile": "readmit-siu-lifecycle-v1",
+          "base_time": "2026-01-01T12:00:00Z",
+          "subjects": [
+            {
+              "id": "patient-a",
+              "kind": "patient",
+              "namespace": "READMIT",
+              "identifier": "SYNTH-PATIENT-A",
+              "initial_state": "active"
+            },
+            {
+              "id": "appointment-a",
+              "kind": "appointment",
+              "namespace": "READMIT",
+              "identifier": "SYNTH-APPOINTMENT-A",
+              "patient": "patient-a",
+              "initial_state": "none"
+            }
+          ],
+          "steps": [
+            {
+              "id": "cancel-before-anything-was-booked",
+              "event": "S15",
+              "subject": "appointment-a",
+              "after": "0s",
+              "expect": "refused"
+            },
+            {
+              "id": "book",
+              "event": "S12",
+              "subject": "appointment-a",
+              "after": "1m",
+              "expect": "accepted"
+            }
+          ]
+        },
+        "rows": [
+          {
+            "id": "synthetic",
+            "patient_name": "SYNTHETIC",
+            "notes": [],
+            "encoding": "utf-8"
+          }
+        ],
+        "variants": [
+          {
+            "id": "baseline",
+            "mutations": []
+          },
+          {
+            "id": "missing",
+            "mutations": [
+              {
+                "op": "field",
+                "step": "book",
+                "field": "PID-5",
+                "state": "absent"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

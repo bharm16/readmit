@@ -750,6 +750,8 @@ mutations. It retains every input, raw streams and intended arrival offsets;
 missing/null values, retransmission, reordering, Latin-1 and UTC-offset boundaries
 are explicit variants. It creates no test verdict or transport observation. See
 [designing a workflow as a sequence](docs/scenario-design.md).
+`scenario check-library LIBRARY EXPECTATIONS` checks separately versioned,
+plan-pinned fixture oracles; external target outcomes remain unverified.
 
 The desktop shell opens a workspace folder without a terminal: it lists what the
 folder declares it holds, verifies one case at a time through the same reader

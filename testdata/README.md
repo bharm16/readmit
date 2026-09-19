@@ -175,3 +175,9 @@ state the expected single-record ledger independently of receiver execution.
 Native archive checks copy only the binary and packet to a separate directory,
 verify and prepare it there, reproduce failure/pass/reintroduced failure, and
 require the retained packet to remain byte-identical.
+
+`scenario-library.json` and `scenario-expectations.json` are separately versioned
+Readmit-authored SIU cancellation/booking fixture inputs and literal expectations.
+Expected lifecycle states and field bytes were authored directly from the finite
+fixture contract, never recorded from generator output. Coverage and unsupported
+profiles are documented in [scenario design](../docs/scenario-design.md#shipped-coverage-and-limits).

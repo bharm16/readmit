@@ -134,6 +134,8 @@ REQUIRED_FILES = {
     "testdata/fixtures/scenario-orm.json",
     "testdata/fixtures/scenario-oru.json",
     "testdata/fixtures/scenario-generator.json",
+    "testdata/fixtures/scenario-library.json",
+    "testdata/fixtures/scenario-expectations.json",
     "licenses/cobra-LICENSE.txt", "licenses/go-BSD-3-Clause.txt",
     "licenses/mousetrap-LICENSE.txt", "licenses/nhapi-MPL-2.0.txt", "licenses/pflag-LICENSE.txt",
 } | {"testdata/fixtures/" + filename for filename, _, _, _ in FIXTURES}
@@ -329,6 +331,16 @@ def smoke(archive, target_os, release_tag=None):
 
 
 def smoke_scenario_generation(archive, work, run):
+    library, oracle = work / "library.json", work / "oracle.json"
+    library.write_bytes(member_bytes(archive, "testdata/fixtures/scenario-library.json"))
+    oracle.write_bytes(member_bytes(archive, "testdata/fixtures/scenario-expectations.json"))
+    checked = run("scenario", "check-library", library, oracle)
+    assert b"2 streams, 11 fields" in checked.stdout
+    assert b"External target outcomes: unverified" in checked.stdout
+    assert not checked.stderr and b"SYNTH" not in checked.stdout
+    oracle.write_bytes(oracle.read_bytes().replace(b"5349555e533132", b"5349555e533133", 1))
+    assert not run("scenario", "check-library", library, oracle, success=False).stdout
+
     plan = work / "scenario-generator.json"
     plan.write_bytes(member_bytes(archive, "testdata/fixtures/scenario-generator.json"))
     first, second = work / "workflow-family", work / "workflow-repeat"
