@@ -6,6 +6,9 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   The published local navigation result exceeds the proposed target; native
   webview and complete project-scale acceptance remain unproven.
 
+- `share verify` checks reviewed support bundles offline; the support runbook
+  covers synthetic reproduction, customer consent, custody and incident escalation.
+
 - Vendor administration records business contacts and invoice references, reissues
   named-author/device and active-runner assignments without sequence collisions,
   and reports annual paid support scope. Commercial terms remain review drafts.

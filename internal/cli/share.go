@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -59,5 +60,33 @@ func shareCommand(ran *bool) *cobra.Command {
 	cmd.Flags().StringVar(&r.Policy, "policy", "", "Explicit readmit-sharing-policy/v1")
 	cmd.Flags().StringVar(&approve, "approve", "", "Exact preview identity; local approval is not authenticated team approval")
 	cmd.Flags().StringVar(&output, "output", "", "New private support directory; omit to preview")
+	cmd.AddCommand(&cobra.Command{
+		Use: "verify SUPPORT", Short: "Verify a local reviewed support bundle without opening its source",
+		Args: func(_ *cobra.Command, args []string) error {
+			if len(args) != 1 {
+				return errors.New("share verify requires one bundle")
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			*ran = true
+			if cmd.Context().Err() != nil {
+				return sharing.ErrRefused
+			}
+			summary, err := sharing.Open(args[0])
+			if err != nil {
+				return sharing.ErrRefused
+			}
+			raw, err := json.Marshal(summary, json.Deterministic(true))
+			if err != nil {
+				return sharing.ErrRefused
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "%s\nVerified support identity: %s\nIntegrity only; confirm customer authorization and approved recipient separately.\n", raw, sharing.Digest(raw))
+			if err != nil {
+				return errors.New("cannot write support verification")
+			}
+			return nil
+		},
+	})
 	return cmd
 }

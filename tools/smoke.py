@@ -91,6 +91,7 @@ REQUIRED_FILES = {
     "docs/suites.md",
     "docs/guided-sample.md",
     "docs/redact.md",
+    "docs/support.md",
     "docs/reproducer.md",
     "testdata/fixtures/redact-booking.mllp",
     "testdata/fixtures/redact-reschedule.mllp",
