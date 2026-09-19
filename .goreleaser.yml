@@ -55,6 +55,9 @@ archives:
       - docs/run-bundle.md
       - docs/test-runner.md
       - docs/durable-runs.md
+      - docs/customer-runner.md
+      - runner/readmit-runner.service
+      - runner/Dockerfile
       - docs/observe.md
       - docs/test-spec.md
       - docs/test-result.md

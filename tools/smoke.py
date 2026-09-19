@@ -73,6 +73,9 @@ REQUIRED_FILES = {
     "docs/run-bundle.md",
     "docs/test-runner.md",
     "docs/durable-runs.md",
+    "docs/customer-runner.md",
+    "runner/readmit-runner.service",
+    "runner/Dockerfile",
     "docs/observe.md",
     "docs/test-spec.md",
     "docs/test-result.md",
@@ -216,6 +219,23 @@ def smoke(archive, target_os, release_tag=None):
             return result
 
         version = run("--version")
+        # Runner status must read native private configuration without contacting
+        # a hub or resolving either credential; Windows mode bits are not ACLs.
+        runner_root = work / "customer-runner"
+        runner_root.mkdir(mode=0o700)
+        runner_config = work / "runner.json"
+        runner_config.write_text(json.dumps({
+            "schema": "readmit-runner/v1", "hub": "https://127.0.0.1:1",
+            "project": "synthetic", "environment": "lab", "root": str(runner_root),
+            "ca": str(work / "absent-ca.pem"), "certificate": str(work / "absent-client.pem"),
+            "key": {"command": str(binary), "arguments": []},
+            "token": {"command": str(binary), "arguments": []},
+            "update_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", "update_engine": "next",
+        }))
+        runner_config.chmod(0o600)
+        status = json.loads(run("runner", "status", "--config", runner_config).stdout)
+        assert status == {"schema": "readmit-runner-status/v1", "state": "idle", "jobs": 0}
+
         assert b"dev" not in version.stdout and b"readmit version" in version.stdout
         if release_tag:
             expected = f"readmit version {release_tag.removeprefix('v')}\n".encode()

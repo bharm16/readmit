@@ -1037,3 +1037,5 @@ Fixtures and their independently authored intent are described in
 - Agent conventions: [docs/agents/](docs/agents/)
 
 Customer-hosted deployment: [artifact hub installation and recovery](hub/README.md).
+
+Customer-controlled execution: [runner enrollment and operation](docs/customer-runner.md).

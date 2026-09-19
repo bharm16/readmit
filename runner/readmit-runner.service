@@ -1,0 +1,23 @@
+[Unit]
+Description=Customer-controlled Readmit runner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=readmit-runner
+Group=readmit-runner
+ExecStart=/usr/local/bin/readmit runner serve /var/lib/readmit-runner/inbox --config /etc/readmit-runner/config.json --send
+Restart=no
+TimeoutStopSec=45
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/readmit-runner
+MemoryMax=1G
+CPUQuota=100%
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target
