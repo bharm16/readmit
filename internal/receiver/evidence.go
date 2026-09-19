@@ -350,19 +350,23 @@ func (r *recorder) complete(ctx context.Context, maxMessages int) bool {
 	return reached || stopped || ctx.Err() != nil
 }
 
-// admitFrame reserves room for one more frame of at most maxFrameBytes. It
-// reports whether this connection may read one, and an error for a structural
-// limit of the case contract that this session no longer fits.
+// admitFrame reports whether this session still has room for one more frame of
+// at most maxFrameBytes, and an error for a structural limit of the case
+// contract that this session no longer fits.
 //
-// Nothing is read before it admits, so a frame is never consumed that the
-// finalized evidence could not hold, and a declared message limit counts the
-// frames already admitted as well as those already read. That is the whole of
-// the backpressure a bound applies: an unread frame stays in the sender's
-// socket, where the sender still sees it, rather than being dropped inside a
-// receiver that promised to keep it.
+// It answers before a connection waits for its peer's next frame, so a quota
+// another connection spent ends this one as soon as it is spent rather than
+// whenever its own peer happens to send again. No frame is consumed before it
+// admits, so a frame is never taken that the finalized evidence could not hold.
+// That is the whole of the backpressure a bound applies: the frames a
+// reached bound will not take stay in their senders' sockets, where the senders
+// still see them, rather than being dropped inside a receiver that promised to
+// keep them. Only reserveFrame refuses a frame that has already begun arriving,
+// and that one is drained into the evidence rather than left to be reset over.
 //
-// An admitted frame is released again by nextFrame when it arrives, or by
-// releaseFrame when the connection ends instead.
+// Admission is room in the session, not this connection's claim on it. A
+// declared message limit is claimed by reserveFrame, once the frame that will
+// fill the claim has actually begun arriving.
 func (r *recorder) admitFrame(s *stream, bounds limits) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -389,15 +393,41 @@ func (r *recorder) admitFrame(s *stream, bounds limits) (bool, error) {
 		r.stopLocked()
 		return false, nil
 	}
-	// The remaining frames are all promised to connections already waiting for
-	// one. This connection is refused a frame it would have to read past the
-	// limit, and only this connection: the session is not finished, because the
-	// frames it is still waiting for have not arrived.
+	return true, nil
+}
+
+// reserveFrame claims one frame of a declared message limit for the connection
+// whose peer has begun sending it, and reports whether the claim was granted.
+//
+// It is asked only once bytes of that frame have arrived, so every reservation
+// stands for a frame that exists. A connection that claimed a slot while merely
+// waiting would hold it on behalf of a peer that had finished sending, and a
+// limit spent on promises like that refuses a peer whose frame has already
+// arrived: the frames the limit counts as promised must be frames in flight.
+//
+// A reservation is released again by nextFrame when the frame arrives, or by
+// releaseFrame when the connection ends instead.
+func (r *recorder) reserveFrame(bounds limits) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.stopped {
+		return false
+	}
+	// The case contract's own cap is checked again here, not only in
+	// admitFrame, because the claim is what must not overshoot it: several
+	// connections can pass admission before any of them claims.
+	if r.received+r.reserving >= MaxMessages {
+		return false
+	}
+	// The remaining frames are all promised to connections already reading one.
+	// This connection is refused a frame it would have to read past the limit,
+	// and only this connection: the session is not finished, because the frames
+	// it is still waiting for have not arrived.
 	if bounds.maxMessages > 0 && r.received+r.reserving >= bounds.maxMessages {
-		return false, nil
+		return false
 	}
 	r.reserving++
-	return true, nil
+	return true
 }
 
 // releaseFrame gives back a frame this connection was admitted to read and did
@@ -432,6 +462,62 @@ func (d deadlineReader) Read(data []byte) (int, error) {
 		return 0, err
 	}
 	return d.Conn.Read(data)
+}
+
+// refusalLinger bounds the wait for the rest of a refused frame. The frame had
+// already begun arriving when it was refused, so this waits for the tail of one
+// message that is on its way, never for a peer to decide to say something.
+const refusalLinger = 250 * time.Millisecond
+
+// halfCloser is a connection that can give up its sending half on its own, so a
+// refused peer learns at once that nothing more is coming. Not every transport
+// is one: net.Pipe is not, and it cannot emit RST either.
+type halfCloser interface{ CloseWrite() error }
+
+// drainRefused ends a connection that was not allowed to read the frame its
+// peer had already begun sending, and returns the bytes it drained so the
+// caller can retain them.
+//
+// Closing a TCP socket that still holds unconsumed inbound bytes emits RST
+// rather than FIN, and a reset also discards whatever this connection had
+// already written and the peer had not yet read. A refusal would then reach the
+// peer as a reset connection, and could destroy acknowledgements this capture
+// had already sent and claimed, rather than as the orderly close it is. So the
+// peer is told there is nothing more to read, and the frame it had begun is
+// drained into the evidence it belongs in: retained as received, never claimed
+// as acknowledged, which is what the bound promised about a frame it would not
+// answer.
+//
+// Draining stops at budget, which callers set to the room this session had just
+// admitted less whatever it has already buffered, so a refusal cannot carry a
+// source past a limit the admission immediately before it had checked. It is
+// therefore an orderly close for one refused frame and no more: a peer that goes
+// on sending past that budget, or past refusalLinger, is still reset, because
+// the alternative is a receiver that reads whatever it is sent to be polite.
+//
+// The caller leaves this connection registered as waiting, and the deadline is
+// armed through armRead under the lock a controlled stop takes, so a stop that
+// arrives during a drain expires it exactly as it expires a read and a drain
+// cannot overwrite a stop's own expiry. A connection that will not take a
+// deadline is already gone, so there is nothing left to drain and nothing a
+// capture-wide error would add.
+func (r *recorder) drainRefused(connection net.Conn, budget int) []byte {
+	if half, ok := connection.(halfCloser); ok {
+		_ = half.CloseWrite()
+	}
+	if err := r.armRead(connection, refusalLinger); err != nil {
+		return nil
+	}
+	var drained []byte
+	buffer := make([]byte, 4096)
+	for len(drained) < budget {
+		read, err := connection.Read(buffer[:min(len(buffer), budget-len(drained))])
+		drained = append(drained, buffer[:read]...)
+		if err != nil {
+			return drained
+		}
+	}
+	return drained
 }
 
 // armRead gives one read its idle deadline, under the same lock a controlled
