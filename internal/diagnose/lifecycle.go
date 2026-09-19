@@ -16,6 +16,7 @@ var hypotheses = map[string]string{
 	AppointmentNotObserved:     "No occurrence booking this filler identifier in the same configured namespace was found in the observed case window. An earlier or uncaptured booking may exist, and equivalence comes only from the configured namespace mapping.",
 	VisitNotObserved:           "No occurrence opening this visit identifier in the same configured namespace was found in the observed case window. An earlier or uncaptured registration or admission may exist, and equivalence comes only from the configured namespace mapping.",
 	MergeIdentifierNotObserved: "No occurrence carrying this prior patient identifier as its first patient identifier repetition in the same configured namespace was found in the observed case window. Further identifier repetitions were not compared, an earlier or uncaptured identity may exist, and equivalence comes only from the configured namespace mapping.",
+	OrderNotObserved:           "No occurrence placing this placer order identifier in the same configured namespace was found in the observed case window. An earlier or uncaptured order may exist, and equivalence comes only from the configured namespace mapping.",
 }
 
 // eventType compares the segment-level event declaration with the trigger the

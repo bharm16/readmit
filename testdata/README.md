@@ -55,6 +55,16 @@ identifier bytes, so each expected classification stays written in the test rath
 than produced by the rules under test. They implement the narrow
 `readmit-lifecycle-v1` test profile, not general HL7 conformance.
 
+Order diagnosis fixtures for issue #50 are independently authored raw messages:
+`diagnose-order.hl7` places an order whose header asks unconditionally for both
+acknowledgement stages, `diagnose-result.hl7` reports a final result for it and
+carries clinical content no rule reads, and `diagnose-order-ack.hl7` is a commit
+acknowledgement that echoes the order's control identifier and declares an error
+location inside it. Status, identifier, condition and error-location variants are
+derived inside the tests by substitution, so each expected classification stays
+written in the test rather than produced by the rules under test. They implement
+the narrow `readmit-order-v1` test profile, not general HL7 conformance.
+
 Issue #8 freezes the implemented v1 generator with independently constructed
 `synth-v1-regression.mllp`, `synth-v1-cancellation.mllp`, and
 `synth-v1-invalid.mllp`. The declared tuple, independent PCG vector, and reviewed

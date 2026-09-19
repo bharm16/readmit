@@ -23,6 +23,13 @@ func LifecycleConfig() Config {
 	return Config{Schema: ConfigSchema, Profile: LifecycleProfile, Ruleset: LifecycleRuleset, Rules: slices.Clone(lifecycleRules), Namespaces: []Namespace{{Key: "READMIT", Namespace: "READMIT"}}}
 }
 
+// OrderConfig selects the separate order, result and acknowledgement contract.
+// It is again the same readmit-diagnose-config/v1 document with different
+// selections; nothing chooses it implicitly.
+func OrderConfig() Config {
+	return Config{Schema: ConfigSchema, Profile: OrderProfile, Ruleset: OrderRuleset, Rules: slices.Clone(orderRules), Namespaces: []Namespace{{Key: "READMIT", Namespace: "READMIT"}}}
+}
+
 // ParseConfig rejects unknown members, duplicate keys, missing contract versions,
 // and conflicting authority mappings. An unknown profile/rule is valid data and
 // is reported explicitly as unsupported by Run.

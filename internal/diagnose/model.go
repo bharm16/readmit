@@ -33,9 +33,25 @@ const (
 	MergeIdentifierNotObserved = "lifecycle.merge-identifier-not-observed"
 )
 
+// The order and result ruleset is a third named contract over ordering and
+// resulting occurrences and over the acknowledgements that answer them. It never
+// changes a byte of readmit-siu-v1 or readmit-lifecycle-v1.
+const (
+	OrderProfile        = "readmit-order-v1"
+	OrderRuleset        = "readmit-order-diagnosis/v1"
+	ACKStageNotObserved = "ack.stage-not-observed"
+	ACKErrorLocation    = "ack.err-location"
+	OrderRequiredField  = "order.required-field"
+	OrderNotObserved    = "order.order-not-observed"
+	DuplicateOutput     = "order.duplicate-output"
+	StatusProgression   = "order.status-progression"
+)
+
 var supportedRules = []string{DuplicateControl, ACKOutcome, ACKError, RequiredField, BookingNotObserved}
 
 var lifecycleRules = []string{DuplicateControl, ACKOutcome, ACKError, LifecycleRequiredField, EventTypeMismatch, VisitNotObserved, AppointmentNotObserved, MergeIdentifierNotObserved}
+
+var orderRules = []string{DuplicateControl, ACKOutcome, ACKError, ACKStageNotObserved, ACKErrorLocation, OrderRequiredField, OrderNotObserved, DuplicateOutput, StatusProgression}
 
 type Namespace struct {
 	Key             string `json:"key"`

@@ -23,6 +23,16 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   within one configured namespace, never order occurrences, and run no ADT or SIU
   state machine. Every lifecycle finding carries the observed capture window, and
   `readmit-siu-v1` gains no member and changes no byte.
+- A separately named `readmit-order-v1` profile and `readmit-order-diagnosis/v1`
+  ruleset, selected explicitly in the same `readmit-diagnose-config/v1` file, add
+  independently selectable rules for order and result correlation, output
+  repeated in the capture, a status progression the named profile declares, the
+  acknowledgement stages an occurrence's own header asks for, and the error
+  location an acknowledgement declares inside the occurrence it answers. Status
+  progression compares the statuses one identity carries and never reconstructs
+  their order, an acknowledgement stage is evaluated only where the header asks
+  for it unconditionally, and clinical content is never interpreted. Both
+  existing diagnosis contracts gain no member and change no byte.
 
 - `synth` creates a reproducible synthetic SIU family with separate regression,
   cancellation, and known-invalid bundles from four explicit generator inputs.

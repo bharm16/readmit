@@ -571,7 +571,12 @@ for ADT registration, admission, transfer, discharge, update, cancellation and
 merge occurrences and for SIU appointment booking, rescheduling, modification,
 cancellation and no-show occurrences. Its correlation rules stay bounded
 not-observed hypotheses inside one configured namespace and run no ADT or SIU
-state machine. See [diagnosis](docs/diagnose.md)
+state machine. A third, `readmit-order-v1` with ruleset
+`readmit-order-diagnosis/v1`, is selected the same way and adds order and result
+correlation, repeated output, profile-declared status progression,
+acknowledgement stages and the error location an acknowledgement declares inside
+the occurrence it answers. It reads order workflow evidence only: no observation
+value is interpreted and no finding is clinical advice. See [diagnosis](docs/diagnose.md)
 and the [shared field selector grammar](docs/selectors.md).
 
 `correlate CASE --rules FILE` links occurrences across the sources and namespaces

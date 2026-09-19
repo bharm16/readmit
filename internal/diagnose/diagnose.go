@@ -101,7 +101,8 @@ func Run(path string, config Config) (Report, error) {
 			e.report.Rules = append(e.report.Rules, rule)
 		}
 	}
-	var messages []message
+	var messages, acks []message
+	requests := newGrouped[string, message]()
 	controlIDs := make(map[string][]Evidence)
 	controlOrder := []string{}
 	for _, event := range b.Events {
@@ -137,13 +138,18 @@ func Run(path string, config Config) (Report, error) {
 			e.unsupportedItem("unsupported_character_set", event.ID, "MSH-18", "Only ASCII (the default) or declared UNICODE UTF-8 values are interpreted.")
 			continue
 		}
-		if e.rules[DuplicateControl] {
-			if id, ok := e.text(m, "MSH-10"); ok && id != "" {
-				if _, exists := controlIDs[id]; !exists {
-					controlOrder = append(controlOrder, id)
-				}
-				controlIDs[id] = append(controlIDs[id], m.evidence("MSH-10"))
+		// The control identifier is decoded once, and only for a ruleset whose
+		// selected rules read one: decoding it otherwise would add unsupported
+		// encoding coverage to a report that never examines the field.
+		controlID, controlOK := "", false
+		if e.rules[DuplicateControl] || e.linksAcknowledgements() {
+			controlID, controlOK = e.text(m, "MSH-10")
+		}
+		if e.rules[DuplicateControl] && controlOK && controlID != "" {
+			if _, exists := controlIDs[controlID]; !exists {
+				controlOrder = append(controlOrder, controlID)
 			}
+			controlIDs[controlID] = append(controlIDs[controlID], m.evidence("MSH-10"))
 		}
 		kind, kindOK := e.text(m, "MSH-9.1")
 		version, versionOK := e.text(m, "MSH-12")
@@ -153,6 +159,9 @@ func Run(path string, config Config) (Report, error) {
 		}
 		if kindOK && kind == "ACK" {
 			e.ack(m)
+			if e.linksAcknowledgements() {
+				acks = append(acks, m)
+			}
 			continue
 		}
 		trigger, triggerOK := e.text(m, "MSH-9.2")
@@ -162,6 +171,11 @@ func Run(path string, config Config) (Report, error) {
 			continue
 		}
 		m.kind, m.trigger = kind, trigger
+		// An acknowledgement answers an occurrence, not a profile rule, so an
+		// occurrence stays answerable even where profile rules are not run.
+		if e.linksAcknowledgements() && controlOK && controlID != "" {
+			requests.add(controlID, m)
+		}
 		if !profileSupported || !wireProfileSupported {
 			continue
 		}
@@ -190,6 +204,8 @@ func Run(path string, config Config) (Report, error) {
 		}
 	}
 	e.correlate(messages)
+	e.outputs(messages)
+	e.acknowledgements(requests, acks)
 	if len(e.report.Findings) == 0 {
 		e.report.NoFindings = fmt.Sprintf("No findings were produced by the listed rules in ruleset %s for profile %s over %s This is not proof of correctness; unsupported items were not evaluated.", e.report.Ruleset, e.report.Profile, e.report.Window.Description)
 	}

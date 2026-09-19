@@ -17,6 +17,9 @@ var profileJSON []byte
 //go:embed lifecycle-profile.json
 var lifecycleProfileJSON []byte
 
+//go:embed order-profile.json
+var orderProfileJSON []byte
+
 // ProfileSnapshot returns the actual embedded readmit-siu-v1 profile and ruleset
 // definition for retained evidence, without exposing mutable package storage.
 func ProfileSnapshot() []byte { return bytes.Clone(profileJSON) }
@@ -25,8 +28,20 @@ type profileDefinition struct {
 	Profile         string              `json:"profile"`
 	Ruleset         string              `json:"ruleset"`
 	HL7Version      string              `json:"hl7_version"`
+	Statuses        []statusDefinition  `json:"statuses"`
 	Triggers        []triggerDefinition `json:"triggers"`
 	AuthorityFields [][]string          `json:"authority_fields"`
+}
+
+// statusDefinition is one declared status code of one named vocabulary and
+// whether this profile treats it as the final word about its identity. Finality
+// is the profile's decision, not a property of the code: a second profile may
+// declare the same code and not end there. The prose that explains a code lives
+// in Go, so a document declares only data.
+type statusDefinition struct {
+	Vocabulary string `json:"vocabulary"`
+	Code       string `json:"code"`
+	Final      bool   `json:"final"`
 }
 
 type triggerDefinition struct {
@@ -36,8 +51,22 @@ type triggerDefinition struct {
 	AuthorityFields [][]string    `json:"authority_fields"`
 	EventType       string        `json:"event_type"`
 	ScalarFields    []string      `json:"scalar_fields"`
+	Output          output        `json:"output"`
 	Correlations    []correlation `json:"correlations"`
 }
+
+// output declares that an occurrence reports one identity as standing in one
+// declared status. It says nothing about when: the rules it feeds compare the
+// statuses one identity carries inside the window and never order them.
+type output struct {
+	Identity   string   `json:"identity"`
+	Authority  []string `json:"authority"`
+	Status     string   `json:"status"`
+	Vocabulary string   `json:"vocabulary"`
+	Evidence   []string `json:"evidence"`
+}
+
+func (o output) declared() bool { return o.Identity != "" }
 
 // correlation declares that an occurrence either establishes the identity one
 // rule is about or depends on one. It relates captured identities inside one
@@ -65,6 +94,7 @@ type rulesetDefinition struct {
 	profile      string
 	rules        []string
 	profileRules []string
+	outputRules  []string
 	requiredRule string
 	profileKind  string
 	statesWindow bool
@@ -75,6 +105,7 @@ type rulesetDefinition struct {
 var rulesets = []rulesetDefinition{
 	{ruleset: Ruleset, profile: Profile, rules: supportedRules, profileRules: []string{RequiredField, BookingNotObserved}, requiredRule: RequiredField, profileKind: "SIU", document: profileJSON, normalize: siuBookings},
 	{ruleset: LifecycleRuleset, profile: LifecycleProfile, rules: lifecycleRules, profileRules: []string{LifecycleRequiredField, EventTypeMismatch, VisitNotObserved, AppointmentNotObserved, MergeIdentifierNotObserved}, requiredRule: LifecycleRequiredField, profileKind: "lifecycle", statesWindow: true, document: lifecycleProfileJSON},
+	{ruleset: OrderRuleset, profile: OrderProfile, rules: orderRules, profileRules: []string{OrderRequiredField, OrderNotObserved, DuplicateOutput, StatusProgression}, outputRules: []string{DuplicateOutput, StatusProgression}, requiredRule: OrderRequiredField, profileKind: "order and result", statesWindow: true, document: orderProfileJSON},
 }
 
 // rulesetFor reports the selected contract. An unknown ruleset falls back to the
@@ -131,8 +162,9 @@ func siuBookings(p *profileDefinition) {
 }
 
 // load refuses an embedded document that names another contract, declares a
-// correlation for a rule this ruleset does not define or cannot explain, or
-// addresses a field no selector can reach.
+// correlation for a rule this ruleset does not define or cannot explain,
+// declares a status this package cannot explain or an output no rule of this
+// ruleset reads, or addresses a field no selector can reach.
 func (r rulesetDefinition) load() (profileDefinition, error) {
 	var p profileDefinition
 	invalid := errors.New("invalid embedded diagnosis profile")
@@ -141,6 +173,17 @@ func (r rulesetDefinition) load() (profileDefinition, error) {
 	}
 	if r.normalize != nil {
 		r.normalize(&p)
+	}
+	// Statuses and outputs are read by named rules. A ruleset that defines none
+	// of them accepts neither member, so a document of one contract cannot
+	// quietly grow the vocabulary of another.
+	if len(r.outputRules) == 0 && len(p.Statuses) > 0 {
+		return p, invalid
+	}
+	for _, status := range p.Statuses {
+		if _, explained := statusLabels[statusCode{status.Vocabulary, status.Code}]; !explained {
+			return p, invalid
+		}
 	}
 	for i, trigger := range p.Triggers {
 		if len(trigger.AuthorityFields) == 0 {
@@ -156,6 +199,18 @@ func (r rulesetDefinition) load() (profileDefinition, error) {
 				return p, invalid
 			}
 			paths = append(paths, group...)
+		}
+		out := trigger.Output
+		switch {
+		case out.declared():
+			if len(r.outputRules) == 0 || len(out.Authority) != 3 || out.Status == "" || !p.declaresVocabulary(out.Vocabulary) {
+				return p, invalid
+			}
+			paths = append(paths, out.Identity, out.Status)
+			paths = append(paths, out.Authority...)
+			paths = append(paths, out.Evidence...)
+		case out.Status != "" || out.Vocabulary != "" || len(out.Authority) > 0 || len(out.Evidence) > 0:
+			return p, invalid
 		}
 		for _, c := range p.Triggers[i].Correlations {
 			if !slices.Contains(r.rules, c.Rule) || len(c.Authority) != 3 || (c.Role != antecedent && c.Role != subsequent) {
@@ -175,6 +230,27 @@ func (r rulesetDefinition) load() (profileDefinition, error) {
 		}
 	}
 	return p, nil
+}
+
+// declaresVocabulary reports whether this document declares any status of that
+// vocabulary, so an output cannot name a table the profile never defined.
+func (p profileDefinition) declaresVocabulary(name string) bool {
+	for _, status := range p.Statuses {
+		if status.Vocabulary == name {
+			return true
+		}
+	}
+	return false
+}
+
+// status resolves one decoded code inside one declared vocabulary.
+func (p profileDefinition) status(vocabulary, code string) (statusDefinition, bool) {
+	for _, declared := range p.Statuses {
+		if declared.Vocabulary == vocabulary && declared.Code == code {
+			return declared, true
+		}
+	}
+	return statusDefinition{}, false
 }
 
 func (p profileDefinition) trigger(kind, code string) (triggerDefinition, bool) {

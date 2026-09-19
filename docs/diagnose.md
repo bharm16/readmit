@@ -244,4 +244,174 @@ a **captured** case does and does not contain. The two share the trigger vocabul
 and nothing else: no transition of one is consulted by the other, and a diagnosis
 never declares an observed sequence legal or illegal.
 
+## The order, result and acknowledgement ruleset
+
+`readmit-order-v1`, with ruleset `readmit-order-diagnosis/v1`, is a third
+**separate** readmit-authored fixture profile, over ordering and resulting
+occurrences and over the acknowledgements that answer them. It is not HL7
+conformance validation, adds no member to any existing document, and changes no
+byte of `readmit-siu-v1` or `readmit-lifecycle-v1`. Nothing selects it
+implicitly; name it, like the others, in the same
+`readmit-diagnose-config/v1` file:
+
+```json
+{
+  "schema": "readmit-diagnose-config/v1",
+  "profile": "readmit-order-v1",
+  "ruleset": "readmit-order-diagnosis/v1",
+  "rules": [
+    "message.duplicate-control-id",
+    "ack.msa-outcome",
+    "ack.err-outcome",
+    "ack.stage-not-observed",
+    "ack.err-location",
+    "order.required-field",
+    "order.order-not-observed",
+    "order.duplicate-output",
+    "order.status-progression"
+  ],
+  "namespaces": [
+    {"key":"site-a","namespace":"READMIT","universal_id":"","universal_id_type":""}
+  ]
+}
+```
+
+```sh
+readmit diagnose case --config order-config.json --output order-diagnosis
+```
+
+The mixing rules are the ones the lifecycle section already describes: a profile
+and a ruleset from different contracts never combine, a rule the named ruleset
+does not define is `unsupported_rule`, an unknown ruleset is `unsupported_ruleset`
+and evaluates nothing while still reporting a rule or profile no registered
+ruleset knows, and a generated bundle whose declared generator profile is not
+`readmit-order-v1` reports `unsupported_bundle_profile` and keeps only the
+message-level rules.
+
+The supported message types are ORM O01, ORU R01 and ACK; any other type or
+trigger is `unsupported_message_type`. An ORM occurrence interprets exactly one
+ORC and one PID, an ORU occurrence exactly one OBR and one PID, and a repeated
+interpreted segment is `unsupported_segment_cardinality`. Order and result
+identifiers are read as single-repetition scalars, so an unexpected repetition is
+`unsupported_field_repetition` and that occurrence is compared with nothing.
+
+| Stable rule ID | Classification | Scope |
+| --- | --- | --- |
+| `order.required-field` | `profile_violation` | Required fields and assigning-authority presence for the named ORM or ORU trigger |
+| `order.order-not-observed` | `hypothesis` | A result whose placer order identifier has no order anywhere in the window |
+| `order.duplicate-output` | `observed_fact` | One identity reported in the same declared status by more than one occurrence |
+| `order.status-progression` | `profile_violation` | One identity carrying more than one status this profile declares final |
+| `ack.stage-not-observed` | `hypothesis` | A stage an occurrence's header asks for unconditionally with no matching acknowledgement in the window |
+| `ack.err-location` | `observed_fact` | Where a captured ERR locates its error inside the occurrence it acknowledges |
+
+Required fields are MSH-10, ORC-1, ORC-2.1, ORC-3.1 and PID-3.1 for ORM O01, and
+MSH-10, OBR-2.1, OBR-3.1 and PID-3.1 for ORU R01. As in the other profiles, each
+identifier needs a complete assigning authority — EI components 2/3/4 for ORC and
+OBR, HD subcomponents in PID-3.4 — and empty, explicit-null and omitted values
+stay distinct evidence states.
+
+`order.order-not-observed` is the same relating operator the lifecycle rules use:
+an ORM O01 establishes its placer order identity and an ORU R01 depends on one,
+and the two are compared as `(configured namespace key, decoded identifier
+bytes)` over the whole verified window. Capture order, MSH-7 and import time
+change nothing, an identifier whose authority is incomplete, explicitly null or
+unmapped correlates with nothing, and an observed order only suppresses the
+hypothesis — it never proves a result was produced, delivered or applied.
+
+### Repeated output and status progression
+
+Both rules read one declaration per occurrence: the filler identity it reports,
+its assigning authority, and the status it declares for that identity. ORM O01
+declares ORC-3 in the `order-status` vocabulary, ORU R01 declares OBR-3 in the
+`result-status` vocabulary, and the two vocabularies never compare: the same
+letter in each is a different code.
+
+| Vocabulary | Field | Declared codes | Declared final |
+| --- | --- | --- | --- |
+| `order-status` | ORC-5 | `SC`, `IP`, `A`, `HD`, `CM`, `CA`, `DC` | `CM`, `CA`, `DC` |
+| `result-status` | OBR-25 | `O`, `I`, `S`, `A`, `P`, `R`, `C`, `F`, `X` | `F`, `X` |
+
+Which codes exist and which of them are final is what **the named profile**
+declares, not a property of the code; a future profile may declare the same code
+and not end there. The codes and their labels were written for this fixture
+profile, like the ERR subset above: they are concise readmit-authored
+explanations, extracted from no distributed source, and no code-system table is
+copied or redistributed here.
+
+`order.duplicate-output` reports one identity reported in the **same** declared
+status by more than one captured occurrence. It states that the output repeats in
+the capture. It does not establish that the reported content is identical, that
+any system received it twice, or that either occurrence is erroneous. Two
+occurrences declaring different statuses are a progression, not a repetition, so
+the status is part of what is compared.
+
+`order.status-progression` reports one identity carrying **more than one status
+the profile declares final** — an order both completed and cancelled, a result
+both final and cancelled. It is a disagreement between occurrences and says
+neither which of them is correct nor the order they happened in. **No status
+sequence is reconstructed**: the capture supplies no business chronology, so no
+status is ever called premature, late or out of order, and nothing here is a
+state machine. That bounds the rule deliberately, and the boundary is the point:
+two statuses the profile does not declare final never conflict, because without a
+chronology a preliminary result and a corrected one are an ordinary progression
+and readmit will not guess which of them came first. A status the profile does not declare is `unsupported_status_value`
+and an occurrence that declares none is `missing_output_status`; neither is
+compared, and neither is read as agreement.
+
+### Acknowledgement stages
+
+An occurrence declares in its own header which acknowledgement stages it asks
+for, exactly as [`collect`](collect.md#original-and-enhanced-acknowledgement-workflows)
+answers them: MSH-15 asks for the **accept** (commit) stage, whose MSA-1 is `CA`,
+`CE` or `CR`, and MSH-16 asks for the **application** stage, whose MSA-1 is `AA`,
+`AE` or `AR`. The two vocabularies never merge, so a commit acknowledgement is
+never read as an application outcome.
+
+`ack.stage-not-observed` evaluates a stage only where the header asks for it
+unconditionally (`AL`) and no captured acknowledgement of that stage is linked to
+the occurrence. Everything else is named rather than passed:
+
+- `NE` asks for nothing and is not evaluated.
+- `ER` and `SU` ask only on a processing outcome the capture cannot establish;
+  the stage is recorded as `conditional_acknowledgement_request` and not
+  evaluated either way.
+- Any other populated value, including an explicit null, is
+  `unsupported_acknowledgement_condition`.
+- Both fields absent or empty is **original acknowledgement mode**, which asks
+  for no stage in its header. readmit infers no expected acknowledgement from
+  that silence.
+
+An acknowledgement is linked to the occurrence whose control identifier it
+echoes, compared **inside one case only**. Exactly one MSA is interpreted for the
+link: an acknowledgement with none or with several is
+`unsupported_acknowledgement_reference`, an MSA-1 in neither stage vocabulary is
+`unsupported_acknowledgement_stage`, an echoed identifier no interpreted
+occurrence carries is `acknowledged_occurrence_not_observed`, and an identifier
+more than one occurrence carries is `ambiguous_acknowledged_occurrence`. An
+unlinked acknowledgement records no stage and locates no error.
+
+### Localized error interpretation
+
+`ack.err-location` reads ERR-2, the error location an acknowledgement declares,
+and resolves it into the occurrence being acknowledged: segment identifier,
+segment sequence, field position, field repetition, component and subcomponent
+become one selector of the [shared grammar](selectors.md), and the report names
+that selector and the **state of that field in the acknowledged occurrence**. It
+reports where the acknowledging system says the error is — never that the field
+is wrong, and never either message's values. A location that does not name a
+segment with positive positions this grammar can address, or that gives a
+subcomponent without its component, is `unsupported_error_location`. An ERR that
+declares no location at all is not an unreadable one and reports nothing; its
+code and severity remain `ack.err-outcome`'s business, whose output is unchanged.
+
+### Clinical content is never interpreted
+
+This ruleset reads order and result **workflow** evidence: identifiers,
+authorities, declared statuses, acknowledgement stages and error locations. It
+does not read OBX observation values, OBR-4 universal service identifiers, or any
+other clinical content, and it produces no clinical interpretation, no
+significance, and no advice. A finding about a result says that the message
+workflow disagrees with itself or with the capture, never anything about a
+patient.
+
 See [selectors.md](selectors.md) for the shared byte-preserving selector grammar.

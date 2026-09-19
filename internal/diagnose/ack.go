@@ -5,10 +5,14 @@ import (
 	"github.com/bharm16/readmit/internal/hl7"
 )
 
+// maxACKSegments bounds the MSA and ERR segments one acknowledgement is decoded
+// through, here and wherever else one is read.
+const maxACKSegments = 128
+
 func (e *evaluator) ack(m message) {
 	msaCount, errCount := m.segmentCount("MSA"), m.segmentCount("ERR")
-	if msaCount > 128 || errCount > 128 {
-		e.unsupportedItem("unsupported_ack_cardinality", m.event.ID, "", "The bounded ACK decoder supports at most 128 MSA and 128 ERR segments per occurrence.")
+	if msaCount > maxACKSegments || errCount > maxACKSegments {
+		e.unsupportedItem("unsupported_ack_cardinality", m.event.ID, "", fmt.Sprintf("The bounded ACK decoder supports at most %d MSA and %d ERR segments per occurrence.", maxACKSegments, maxACKSegments))
 		return
 	}
 	if e.rules[ACKOutcome] {
