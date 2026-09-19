@@ -3,6 +3,8 @@ package tests
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json/v2"
 	"fmt"
 	"os"
@@ -15,8 +17,11 @@ import (
 
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/grid"
+	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/index"
 	"github.com/bharm16/readmit/internal/reproducer"
+	"github.com/bharm16/readmit/internal/testauthor"
+	"github.com/bharm16/readmit/internal/testrunner"
 )
 
 // chosenFolder stands in for the host's native folder dialog.
@@ -372,5 +377,88 @@ func copyTree(t *testing.T, from, to string) {
 	t.Helper()
 	if err := os.CopyFS(to, os.DirFS(from)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// The whole authoring delivery, across both entry points. The window answers a
+// guided flow over a captured incident — what the test is called, which
+// occurrences it sends, the target it sends them to, the boundary that decides
+// it, where that observation is read from, how the fixture is reset, and what
+// the run should have produced — and writes a versioned test. The command line
+// then reads and prepares exactly that file. Nobody edited a document, and the
+// evidence it was authored from is byte-identical afterwards.
+func TestDesktopAuthoredTestIsPreparedByTheCommandLine(t *testing.T) {
+	workspace := t.TempDir()
+	evidence := filepath.Join(workspace, "incident")
+	if _, stderr, err := run(t, "capture", "../testdata/fixtures/synth-v1-regression.mllp", "--output", evidence); err != nil || stderr != "" {
+		t.Fatalf("capture: %v %s", err, stderr)
+	}
+	before := caseFiles(t, evidence)
+	target, err := os.ReadFile("../testdata/fixtures/test-target.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "test-target.json"), target, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	app := desktopApp(t, workspace)
+	opened := app.OpenCase(workspace, "incident")
+	if opened.State != desktop.Completed {
+		t.Fatalf("the case did not verify: %+v", opened)
+	}
+	request := desktop.TestRequest{Workspace: workspace, Case: "incident", Identity: opened.Case.Identity}
+	count, accepted := 1, "AA"
+	for _, answer := range []testauthor.Answer{
+		{Stage: testauthor.StageName, Name: "Rescheduling updates the original appointment"},
+		{Stage: testauthor.StageMessages, Messages: []string{"s0001-e000001", "s0001-e000002"}},
+		{Stage: testauthor.StageTarget, Target: "test-target.json"},
+		{Stage: testauthor.StageBoundary, Boundary: testrunner.LedgerBoundary},
+		{Stage: testauthor.StageObservation, Observation: "test-observation.json"},
+		{Stage: testauthor.StageReset, Reset: "Stop the prior listener, start a fresh one with an empty ledger, and wait for Listening."},
+		{Stage: testauthor.StageExpectations, Expectations: []testauthor.Expectation{
+			{ID: "one-appointment", Operator: testauthor.LedgerCount, Count: &count},
+			{ID: "booking-ack", Operator: testauthor.ACKFieldEquals, Message: "s0001-e000001", Selector: "MSA-1",
+				Field: &testrunner.FieldValue{State: hl7.Present, Text: &accepted}},
+		}},
+	} {
+		request.Answer = answer
+		result := app.AuthorTest(request)
+		if result.State != desktop.Completed {
+			t.Fatalf("the window refused the %s stage: %+v", answer.Stage, result)
+		}
+		request.Draft = result.Test.Draft
+	}
+	request.Answer, request.Output = testauthor.Answer{}, "reschedule-test.json"
+	saved := app.SaveTest(request)
+	if saved.State != desktop.Completed || saved.Test.Output != "reschedule-test.json" {
+		t.Fatalf("the test spec was not written: %+v", saved)
+	}
+	if !reflect.DeepEqual(before, caseFiles(t, evidence)) {
+		t.Fatal("authoring a test changed the evidence it was authored from")
+	}
+
+	// The command line validates the spec the window wrote, resolving the case
+	// and the target it names relative to the document, and connects to
+	// nothing: a saved test is a test, not a run.
+	spec := filepath.Join(workspace, "reschedule-test.json")
+	stdout, stderr, err := run(t, "test", spec)
+	if err != nil || stderr != "" {
+		t.Fatalf("test: %v %s", err, stderr)
+	}
+	for _, want := range []string{"no verdict or result artifact produced", "Observation boundary: appointment-ledger", "Messages: 2"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("the command line did not report %q for the authored spec:\n%s", want, stdout)
+		}
+	}
+	// And the identity the window reported is the identity of the bytes the
+	// command line just read, because both are the file that was written.
+	written, err := os.ReadFile(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(written)
+	if saved.Test.Identity != hex.EncodeToString(sum[:]) {
+		t.Fatalf("the window reported an identity the saved spec does not have: %s", saved.Test.Identity)
 	}
 }

@@ -62,6 +62,8 @@ artifacts are never reported as completed.
 | `EditReproducer` | Adds one step to a reproducer plan and reports what it now means over the case. |
 | `UndoReproducer` | Removes the last step of a plan and resolves what remains. |
 | `BuildReproducer` | Writes the reproducer into a new folder of the open workspace. |
+| `AuthorTest` | Answers one stage of a test draft and reports what it now means over the case. |
+| `SaveTest` | Writes the generated test spec into a new entry of the open workspace. |
 | `Cancel` | Stops the operation that is running now, when it can be interrupted. |
 
 Exactly one operation runs at a time. A second request reports `busy` rather
@@ -85,7 +87,7 @@ than drawing itself with no commands and no privacy status.
 folder and listing it are interruptible; `OpenCase`, `OpenProject`,
 `OpenRevisions`, `SaveNote`, `Search`, `OpenGrid`, `SaveFilter`,
 `SelectFilter`, `InspectOccurrence`, `EditReproducer`, `UndoReproducer`,
-`BuildReproducer` and `RecoverSession` are not, because each runs to completion under its own size
+`BuildReproducer`, `AuthorTest`, `SaveTest` and `RecoverSession` are not, because each runs to completion under its own size
 limits once it starts. The window enables the
 Cancel control only while an interruptible operation runs; `Escape` reaches the
 same operation whenever the palette is not open, and cancelling when nothing is
@@ -379,6 +381,44 @@ share. See [extracting and editing a reproducer](reproducer.md) for both
 contracts, the two dependency relations, every refusal, the bounds, and how to
 register the result as a project revision.
 
+## Authoring a regression test
+
+A case says what happened; a regression test says it should happen again. That
+statement is a `readmit-test/v1` document with seven members and three nested
+objects, and writing one by hand means opening it in a text editor.
+
+**Regression test** is the panel beside the grid that asks it as questions
+instead: what the test is called, which occurrences of the verified case it
+sends, which target configuration it sends them to, what decides the outcome,
+where that observation is read from, how the fixture is reset, and what the run
+should have produced. When every question is answered, the panel writes the spec
+into one new entry of the open workspace, and `readmit test` runs that file
+unchanged.
+
+Nothing about what an answer means is decided here. The interface sends the
+draft and the answer; the engine resolves both against the verified case and the
+open workspace and sends back the question that is still open, the initial state
+the chosen boundary fixed, the order a run will send the selected occurrences
+in, and the targets the workspace offers with the classification each one
+records. An answer the evidence or the boundary does not support leaves the
+draft exactly as it was and reports the refusal, so a half-answered draft is a
+state a person is in and a contradictory one is never reached.
+
+The panel shows positions, not content: an occurrence ID and its kind, a target
+name and the contract it declares, an expectation's identifier, operator and the
+position it addresses. Reading a value is still
+[the inspector](#inspecting-original-values), deliberately, and a position is
+chosen by clicking through its field tree rather than typed from memory. The one
+thing this panel holds that came from a person is an **expected value they
+typed**, which is the same customer-local literal the field it describes holds:
+it lives in the window while the draft is open, is never placed in browser
+storage, and reaches disk only in the spec that was saved.
+
+A saved test is a document beside the evidence, never inside it, and the case it
+names is not changed. See
+[authoring a regression test](test-authoring.md) for the draft contract, every
+stage, every refusal, the bounds, and what this release does not author.
+
 ## Recovering after an interruption
 
 A window can be closed, lost with its process, or killed in the middle of a
@@ -653,10 +693,15 @@ checked to hold no network call and no browser storage at all.
 - Importing evidence, changing evidence, and comparison. No edit the shell makes
   reaches a case, a run, a result, a review or a report: a reproducer is new
   evidence written beside the original, never a rewrite of it.
-- Retaining an unbuilt reproducer plan across an interruption. The working
-  session is one bounded versioned document and it gains no member here, so a
-  plan that has not been built is lost with the window; a reproducer that was
-  built is on disk and is read back from its own manifest.
+- Retaining an unbuilt reproducer plan or an unsaved test draft across an
+  interruption. The working session is one bounded versioned document and it
+  gains no member here, so unstored work of either kind is lost with the window;
+  a reproducer that was built and a test that was saved are on disk and are read
+  back from what was written.
+- Running, editing or importing a test. The panel writes a new spec; executing
+  one is `readmit test`, and reading a saved spec back into a draft is a
+  separate delivery. Suggesting expectations from a run, and approving them, are
+  a separate delivery too.
 - Reduction, replay transformations, reordering or duplicating occurrences, and
   comparing two reproducers. The editor retains what a person selected and what
   their declared dependencies require, and makes no claim of minimality; see

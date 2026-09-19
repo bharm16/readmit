@@ -411,6 +411,8 @@ interface Facade {
   EditReproducer(request: ReproducerRequest): Promise<ReproducerResult>;
   UndoReproducer(request: ReproducerRequest): Promise<ReproducerResult>;
   BuildReproducer(request: ReproducerRequest): Promise<ReproducerResult>;
+  AuthorTest(request: TestRequest): Promise<TestResult>;
+  SaveTest(request: TestRequest): Promise<TestResult>;
 }
 
 declare global {
@@ -731,4 +733,142 @@ export function undoReproducer(request: ReproducerRequest): Promise<ReproducerRe
  * evidence: the case it reads is never changed. */
 export function buildReproducer(request: ReproducerRequest): Promise<ReproducerResult> {
   return guard(() => facade().BuildReproducer(request), { state: "failed" });
+}
+
+/** The stages of the guided authoring flow, in the order the engine asks them.
+ * A boundary decides whether an observation source is read at all and which
+ * expectations a test can make, so it is answered before both. */
+export type TestStage =
+  | "name"
+  | "messages"
+  | "target"
+  | "boundary"
+  | "observation"
+  | "reset"
+  | "expectations";
+
+/** What deciding a test means. The appointment ledger is observed from a known
+ * empty state; the ACK contract observes correlated acknowledgements only. */
+export type TestBoundary = "appointment-ledger" | "ack-contract";
+
+/** The typed expectations this flow authors. They are readmit-test/v1's own
+ * operators, because a test this flow saves is a test `readmit test` runs. */
+export type TestExpectationOperator = "ledger_count" | "ack_field_equals";
+
+/** One expected value. Only a present value carries text; absent, empty and
+ * explicit HL7 null stay three separate expectations. */
+export interface ExpectedFieldValue {
+  state: FieldState;
+  text?: string;
+}
+
+/** One typed expectation. Only the members its own operator declares are
+ * present; the engine refuses one that carries another operator's member. */
+export interface TestExpectation {
+  id: string;
+  operator: TestExpectationOperator;
+  count?: number;
+  message?: string;
+  selector?: string;
+  field?: ExpectedFieldValue;
+}
+
+/** The case a draft is bound to: the entry of the workspace that holds it and
+ * the identity the shared Go reader verified. */
+export interface TestEvidence {
+  entry: string;
+  identity: string;
+}
+
+/** The draft document: what has been answered so far. Every stage is declared
+ * whether or not it has an answer, so an unanswered one is an empty answer
+ * rather than an absent member. It holds expected values a person typed, which
+ * are the same customer-local literals the evidence holds, so it stays in the
+ * window and is never placed in browser storage. */
+export interface TestDraftDocument {
+  schema: string;
+  case: TestEvidence;
+  name: string;
+  messages: string[];
+  target: string;
+  boundary: string;
+  observation: string;
+  reset: string;
+  expectations: TestExpectation[];
+}
+
+/** One typed answer to one stage. It carries the member its own stage declares
+ * and no other, and it replaces that stage's answer rather than adding to it,
+ * so correcting a mistake is the same operation as answering. */
+export interface TestAnswer {
+  stage: TestStage | "";
+  name?: string;
+  messages?: string[];
+  target?: string;
+  boundary?: TestBoundary;
+  observation?: string;
+  reset?: string;
+  expectations?: TestExpectation[];
+}
+
+/** One target configuration this workspace offers, as the shared reader reads
+ * it. `classification` is what the configuration records about the environment
+ * itself; a file declaring the contract that the reader refuses carries the
+ * reason instead, and is shown rather than hidden. */
+export interface TestTarget {
+  name: string;
+  schema: string;
+  environment?: string;
+  classification?: string;
+  reason?: string;
+}
+
+/** What a draft means over the evidence and the workspace: the stage the flow
+ * asks next, everything still unanswered, the initial state the chosen boundary
+ * fixes, the selected occurrences in the order a run sends them, and the
+ * targets this workspace offers. */
+export interface TestResolution {
+  stage: TestStage | "";
+  missing: TestStage[];
+  setup?: string;
+  messages: string[];
+  targets: TestTarget[];
+}
+
+/** The draft and what it resolves to. `output` and `identity` are present only
+ * after a save, and name the entry that was written and the identity
+ * `readmit test` records for those exact bytes. */
+export interface TestDraft {
+  draft: TestDraftDocument;
+  resolution: TestResolution;
+  output?: string;
+  identity?: string;
+}
+
+export interface TestRequest {
+  workspace: string;
+  case: string;
+  identity: string;
+  draft: TestDraftDocument;
+  answer?: TestAnswer;
+  output?: string;
+}
+
+export interface TestResult {
+  state: State;
+  reason?: string;
+  test?: TestDraft;
+}
+
+/** Answers one stage and reports what the draft now means over the verified
+ * case. An answer the evidence or the chosen boundary does not support leaves
+ * the draft exactly as it was. */
+export function authorTest(request: TestRequest): Promise<TestResult> {
+  return guard(() => facade().AuthorTest(request), { state: "failed" });
+}
+
+/** Writes the generated spec into one new entry of the open workspace. It
+ * writes a document, never evidence: the case it names is not touched. */
+export function saveTest(request: TestRequest): Promise<TestResult> {
+  return guard(() => facade().SaveTest(request), { state: "failed" });
 }

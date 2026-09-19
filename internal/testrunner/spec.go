@@ -36,7 +36,7 @@ func ReadSpec(path string) (Spec, error) {
 
 func (s Spec) Validate() error {
 	invalid := errors.New("invalid test spec contract")
-	if s.Schema != SpecSchema || !text(s.Name, 256) || !text(s.Input.Case, 4096) || !text(s.Target, 4096) || !text(s.Setup.ResetInstructions, 8192) || len(s.Input.Messages) == 0 || len(s.Input.Messages) > replay.MaxMessages || len(s.Assertions) == 0 || len(s.Assertions) > maxAssertions {
+	if s.Schema != SpecSchema || !text(s.Name, 256) || !text(s.Input.Case, 4096) || !text(s.Target, 4096) || !text(s.Setup.ResetInstructions, 8192) || len(s.Input.Messages) == 0 || len(s.Input.Messages) > replay.MaxMessages || len(s.Assertions) == 0 || len(s.Assertions) > MaxAssertions {
 		return invalid
 	}
 	if s.Observation.Boundary == LedgerBoundary {
@@ -85,12 +85,7 @@ func (s Spec) Validate() error {
 			if err != nil || !strings.HasPrefix(selector.String(), "MSA[") && !strings.HasPrefix(selector.String(), "ERR[") || !messages[assertion.Message] || v.Field == nil || v.Count != nil || v.Records != nil {
 				return invalid
 			}
-			field := v.Field
-			if field.State == hl7.Present {
-				if field.Text == nil || len(*field.Text) == 0 || len(*field.Text) > 65536 || !utf8.ValidString(*field.Text) {
-					return invalid
-				}
-			} else if field.State != hl7.Empty && field.State != hl7.Null && field.State != hl7.Omitted || field.Text != nil {
+			if v.Field.Validate() != nil {
 				return invalid
 			}
 		default:
@@ -98,6 +93,25 @@ func (s Spec) Validate() error {
 		}
 	}
 	if s.Observation.Boundary == LedgerBoundary && ledgerAssertions == 0 {
+		return invalid
+	}
+	return nil
+}
+
+// Validate holds one expected value to the four states the shared selector
+// returns. Only a present value carries text; every other state omits it, so an
+// absent field and an empty one stay two different expectations. It is exported
+// because a caller authoring a spec holds a value to the rule this reader holds
+// it to rather than to a second copy of it.
+func (f FieldValue) Validate() error {
+	invalid := errors.New("invalid expected field value")
+	if f.State == hl7.Present {
+		if f.Text == nil || len(*f.Text) == 0 || len(*f.Text) > MaxExpectedTextBytes || !utf8.ValidString(*f.Text) {
+			return invalid
+		}
+		return nil
+	}
+	if f.State != hl7.Empty && f.State != hl7.Null && f.State != hl7.Omitted || f.Text != nil {
 		return invalid
 	}
 	return nil

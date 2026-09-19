@@ -357,6 +357,18 @@ complete are reported as undecided, skipped and an execution error rather than
 as a pass. No command reads one yet and `readmit-test/v1` is unchanged. See
 [typed assertions](docs/assertions.md).
 
+A test is authored from evidence rather than typed into a document. The desktop
+shell asks seven questions over a verified case — what the test is called, which
+occurrences it sends, which target configuration it sends them to, what decides
+the outcome, where that observation is read from, how the fixture is reset, and
+what the run should have produced — and writes the `readmit-test/v1` spec the
+command line runs. The boundary fixes the initial state and the evidence fixes
+the send order, so neither is answered twice, and an acknowledgement as a sent
+message, a production-classified target, an expectation the chosen boundary
+cannot make and a message an expectation would be left naming are each refused
+while the answer is given rather than when the spec is run. See
+[authoring a regression test](docs/test-authoring.md).
+
 Durable execution: `readmit run start SPEC --send --output NEW_JOB` retains a
 synced plan and send journal, and `--deadline` bounds the run; `readmit run
 status JOB --json` recovers evidence without resending, and `--recovery` reports
@@ -533,7 +545,10 @@ write the result as a **separate revision**. That revision is new derived
 evidence in its own folder beside a transformation manifest naming the parent
 hash, what was retained and why, and where every edit landed; the case it came
 from is not changed, and nothing about it is a de-identification or sharing
-claim. See [extracting and editing a reproducer](docs/reproducer.md). It
+claim. See [extracting and editing a reproducer](docs/reproducer.md). It turns
+selected evidence into a regression test by answering one question at a time and
+saves a versioned `readmit-test/v1` spec the command line runs unchanged; see
+[authoring a regression test](docs/test-authoring.md). It
 is navigated entirely from the keyboard: five labelled regions in a fixed focus
 order, a command palette, a search over what the open workspace and its project
 declare, resizable evidence and inspector panes, light and dark, and text from
