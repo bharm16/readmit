@@ -232,3 +232,6 @@ trusting a case nobody looked at since.
   and a restore builds it again from the restored canonical evidence.
 
 Customer-hosted deployment: [artifact hub installation and recovery](../hub/README.md).
+
+[Compare retained executions](desktop.md#comparing-retained-executions) in the
+desktop: behavior, drift, approval binding, retained failures and flakiness limits.

@@ -10,6 +10,7 @@ import (
 	"github.com/bharm16/readmit/internal/correlate"
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/diff"
+	"github.com/bharm16/readmit/internal/drift"
 	"github.com/bharm16/readmit/internal/exportreview"
 	"github.com/bharm16/readmit/internal/grid"
 	"github.com/bharm16/readmit/internal/guide"
@@ -17,6 +18,7 @@ import (
 	"github.com/bharm16/readmit/internal/profilepack"
 	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/reproducer"
+	"github.com/bharm16/readmit/internal/runcompare"
 	"github.com/bharm16/readmit/internal/testauthor"
 	"github.com/bharm16/readmit/internal/testrunner"
 	"github.com/bharm16/readmit/internal/transform"
@@ -142,6 +144,21 @@ func TestFrontendBindingsDeclareEveryResultMember(t *testing.T) {
 		reflect.TypeOf(testauthor.Approval{}),
 		reflect.TypeOf(testauthor.Reviewed{}),
 		reflect.TypeOf(testrunner.FieldValue{}),
+		reflect.TypeOf(desktop.RunComparisonRequest{}),
+		reflect.TypeOf(desktop.RunComparisonResult{}),
+		reflect.TypeOf(runcompare.Comparison{}),
+		reflect.TypeOf(runcompare.Execution{}),
+		reflect.TypeOf(runcompare.AssertionState{}),
+		reflect.TypeOf(runcompare.AssertionComparison{}),
+		reflect.TypeOf(runcompare.Stability{}),
+		reflect.TypeOf(drift.Report{}),
+		reflect.TypeOf(drift.Side{}),
+		reflect.TypeOf(drift.InputSide{}),
+		reflect.TypeOf(drift.TargetSide{}),
+		reflect.TypeOf(drift.EnvironmentSide{}),
+		reflect.TypeOf(drift.RuleSide{}),
+		reflect.TypeOf(drift.Drift{}),
+		reflect.TypeOf(drift.Attribution{}),
 		reflect.TypeOf(desktop.BaselineRequest{}),
 		reflect.TypeOf(desktop.BaselineResult{}),
 		reflect.TypeOf(baseline.Comparison{}),
