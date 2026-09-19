@@ -290,7 +290,7 @@ func TestLicenseRefusalsAreNamedAndPrivate(t *testing.T) {
 			return []string{"license", "verify", altered(t, `"seats":5`, `"seats":9`), "--trust", active}
 		}, "entitlement signature does not match its claims"},
 		{"unsupported version", func(t *testing.T) []string {
-			return []string{"license", "verify", altered(t, "readmit-entitlement/v1", "readmit-entitlement/v2"), "--trust", active}
+			return []string{"license", "verify", altered(t, "readmit-entitlement/v1", "readmit-entitlement/v9"), "--trust", active}
 		}, "unsupported entitlement document version"},
 		{"unknown key", func(t *testing.T) []string {
 			return []string{"license", "verify", altered(t, `"key_id":"vendor-test-2026a"`, `"key_id":"vendor-test-2027a"`), "--trust", active}

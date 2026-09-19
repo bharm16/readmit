@@ -41,9 +41,9 @@ import (
 )
 
 const (
-	// Schema is the only entitlement contract version this release reads. A new
-	// or changed member means a new version string and a reader for both, never
-	// a member added here and never an in-place migration.
+	// Schema is the v1 entitlement contract version. A new or changed member
+	// means a new version string with its own reader, as [SchemaV2] is, never a
+	// member added here and never an in-place migration.
 	Schema = "readmit-entitlement/v1"
 
 	// Algorithm is the only signature algorithm this contract defines. Ed25519

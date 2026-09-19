@@ -240,6 +240,16 @@ because no read path consults an entitlement at all — and an offline verifier
 cannot learn of a revocation issued after signing, which the documentation
 states rather than implies. See
 [offline organization entitlements](docs/license.md).
+A `readmit-entitlement/v2` document names authors instead of counting devices:
+each named human is assigned at most two devices, `license import --author
+--device` activates one of them, and runner capacity counts execution instances
+active at once, admitted by a customer-controlled authority. `license runner
+init|admit|renew|release|reconcile|show` keep that authority's
+`readmit-runner-admission/v1` record: an instance that stops without releasing
+holds its capacity until an operator reconciles it, and admission and lease
+renewal are refused after expiry while started work still settles. v1 documents, readers and
+device counts are unchanged, and the D6 clock guard is not part of this. See
+[named authors and active runners](docs/license-v2.md).
 `secret add --secrets FILE --name NAME --store KIND --address HOST:PORT --command
 PROGRAM` registers a reference to a credential that stays in an operating system
 credential store or a customer-managed secret provider. readmit holds no

@@ -146,6 +146,14 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
 - `readmit-entitlement/v1`, `readmit-entitlement-trust/v1` and
   `readmit-entitlement-store/v1` are ordinary strict-JSON contracts read the way
   every other artifact is read.
+- `readmit-entitlement/v2` names authors and runner authorities instead of
+  counting devices: at most two assigned devices per named author, and runner
+  capacity in execution instances active at once. `readmit-entitlement-store/v2`
+  records the author and device an installation activated as, and
+  `readmit-runner-admission/v1` is the customer-controlled authority's local
+  admission record. v1 is unchanged and never doubled to stand in for v2. The
+  D6 clock guard is #116's separate versioned state, not a member of any of
+  these. See [named authors and active runners](license-v2.md).
 - Verification is a pure function of the document bytes and a trust store the
   operator selected with `--trust`. No network call, no activation service, no
   phone-home and no update check. No trust store is embedded: the vendor's
