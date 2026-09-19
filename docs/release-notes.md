@@ -4,6 +4,9 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   TSX, Markdown, JSON, Python or YAML source; binary evidence keeps its existing
   byte-preserving attributes.
 
+- Administrator and security guides connect deployment, identity, runner/scheduler
+  recovery, retention and incident procedures, with explicit SBOM and owner gates.
+
 - Local performance qualification measures CLI peak RSS, exact 5 GiB scanning,
   indexed search, facade navigation, cancellation and interruption recovery.
   Eight isolated suite executions are verified against a loopback barrier.

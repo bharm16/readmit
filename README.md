@@ -1077,3 +1077,6 @@ use the local vendor [commercial administration](docs/commercial-administration.
 Packaged journey checks and retained native sample evidence are documented in
 [native acceptance](docs/native-acceptance.md); passing the local subset does not
 complete finished-product release acceptance.
+
+[Administrator operations](docs/administration.md): deployment, identity, runner recovery, backups and retention.
+[Security operations](docs/security-operations.md): egress, secrets, incident reporting and release dependency/SBOM limits.

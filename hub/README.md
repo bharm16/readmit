@@ -148,6 +148,11 @@ is described under lifecycle administration below.
 
 ## Backup, restore and upgrades
 
+For an initialized scheduler, use the stopped-deployment snapshot described in
+[administrator operations](../docs/administration.md#backup-and-restore-boundaries);
+artifact-only backup refuses rather than omit its claims. The commands below
+apply to a hub without initialized scheduling.
+
 Stop the service first. Every service or maintenance process obtains the same
 PostgreSQL advisory lease. A second process refuses; it cannot back up against
 a running writer. Do not modify the database or filesystem behind that lease.

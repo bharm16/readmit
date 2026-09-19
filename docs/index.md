@@ -259,3 +259,6 @@ use the local vendor [commercial administration](commercial-administration.md) A
 
 See [native acceptance](native-acceptance.md) for archive-bound CLI journeys and
 retained synthetic evidence from the installed desktop sample.
+
+[Administrator operations](administration.md): deployment, identity, runner recovery, backups and retention.
+[Security operations](security-operations.md): egress, secrets, incident reporting and release dependency/SBOM limits.
