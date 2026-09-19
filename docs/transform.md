@@ -220,6 +220,12 @@ terminal rendering prints no value either; reading one is
 
 Nothing is uploaded and no network call is made.
 
+The [desktop shell](desktop.md#previewing-a-transformation) previews the same
+plan over the same evidence, with the rules, the plan and the pinned pack each
+named as one entry of the open workspace. It runs this engine rather than a
+second one, writes nothing either, and shows no value: reading one there is the
+inspector, exactly as it is here.
+
 ## Bounds
 
 | Bound | Value | On reaching it |

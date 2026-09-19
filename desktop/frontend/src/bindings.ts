@@ -418,6 +418,8 @@ interface Facade {
   Guide(workspace: string): Promise<GuideResult>;
   RunPractice(request: PracticeRequest): Promise<PracticeResult>;
   OpenSequence(request: SequenceRequest): Promise<SequenceResult>;
+  PreviewTransformation(request: TransformRequest): Promise<TransformResult>;
+  OpenReview(request: ReviewRequest): Promise<ReviewResult>;
 }
 
 declare global {
@@ -1465,4 +1467,288 @@ export interface SequenceResult {
  * the same case and the same rules. It reads and changes nothing. */
 export function openSequence(request: SequenceRequest): Promise<SequenceResult> {
   return guard(() => facade().OpenSequence(request), { state: "failed" });
+}
+
+/** What a pinned profile pack declares about one level of one combination.
+ * Only `supported` passes; the other three are reasons, never verdicts. */
+export type SupportOutcome = "" | "supported" | "untested" | "unsupported" | "unknown";
+
+/** The profile pack a plan pinned, by id and version. A different version of
+ * the same pack is a different pack. */
+export interface PackIdentity {
+  id: string;
+  version: string;
+}
+
+/** The five typed operators a transformation plan is built from. A step
+ * carrying a member another operator uses is refused rather than ignored. */
+export type TransformOperator =
+  | "rebase-identifiers/v1"
+  | "shift-dates/v1"
+  | "reorder-occurrence/v1"
+  | "duplicate-occurrence/v1"
+  | "drop-occurrence/v1";
+
+/** One typed operator of a plan, with only the members its operator declares. */
+export interface TransformStep {
+  operator: TransformOperator;
+  entry?: string;
+  position?: number;
+  rule?: string;
+  shift?: string;
+}
+
+/** The ordered transformation, bound to the evidence and the declarations it
+ * was authored against: the verified case identity and the SHA-256 of the exact
+ * correlation rules whose relations it preserves. */
+export interface TransformPlan {
+  schema: string;
+  case: string;
+  rules: string;
+  profile?: PackIdentity;
+  steps: TransformStep[];
+}
+
+/** One case, by the contract it declares and the identity its reader verified. */
+export interface TransformArtifact {
+  schema: string;
+  identity: string;
+}
+
+/** One occurrence of the sequence a replay would send. `parent` and `source`
+ * are the case occurrence and case source it came from, retained across every
+ * reorder and duplication. */
+export interface TransformEntry {
+  id: string;
+  parent: string;
+  source: string;
+  position: number;
+  copy?: boolean;
+}
+
+/** One position the transformation would rewrite. There is no value here,
+ * before or after: `state` is what the position held, `group` is the relation a
+ * rename assigned — two changes carrying one group receive one value — and
+ * `length` is the size of the new value. Reading a value is the inspector. */
+export interface TransformChange {
+  entry: string;
+  parent: string;
+  operator: TransformOperator;
+  rule?: string;
+  selector: string;
+  state: FieldState;
+  group?: number;
+  length: number;
+}
+
+/** One correlation the declared rules produced, and what the edited sequence
+ * did to it. `preserved` is true only when every occurrence of the relation is
+ * still in the sequence. */
+export interface TransformRelation {
+  rule: string;
+  operator: CorrelationOperator;
+  linkage: Linkage;
+  occurrences: string[];
+  entries: string[];
+  preserved: boolean;
+  reason?: string;
+}
+
+/** What the transformed sequence declares about itself and what the pinned pack
+ * says about it, at all four levels. */
+export interface TransformCombination {
+  version: string;
+  family: string;
+  entries: number;
+  parse: SupportOutcome;
+  labels: SupportOutcome;
+  structural: SupportOutcome;
+  workflow: SupportOutcome;
+}
+
+/** A position the transformation did not reach and a relation it did not
+ * decide. It never passes: a position listed here was left exactly as the
+ * evidence has it. */
+export interface TransformUnsupported {
+  code: string;
+  entry?: string;
+  parent?: string;
+  rule?: string;
+  selector?: string;
+  detail: string;
+}
+
+export interface TransformSummary {
+  occurrences: number;
+  entries: number;
+  copies: number;
+  changes: number;
+  relations: number;
+  preserved: number;
+  unsupported: number;
+}
+
+/** What one plan means over one verified case, before anything is replayed:
+ * the sequence, every position it would rewrite, what happened to every
+ * declared relation, what the pinned pack says about the result, and everything
+ * that was left alone. `scope` is the engine's own boundary statement. */
+export interface TransformPreview {
+  schema: string;
+  case: TransformArtifact;
+  plan: TransformPlan;
+  summary: TransformSummary;
+  sequence: TransformEntry[];
+  changes: TransformChange[];
+  relations: TransformRelation[];
+  profile: TransformCombination[];
+  unsupported: TransformUnsupported[];
+  scope: string;
+}
+
+/** One plan previewed over one verified case, with the documents it was read
+ * under. `boundary` is what this window states about a preview before anybody
+ * acts on one. */
+export interface Transformation {
+  case: string;
+  rules: string;
+  plan: string;
+  profile?: string;
+  preview: TransformPreview;
+  boundary: string;
+}
+
+/** The case and the three documents a preview is read under, each one entry of
+ * the open workspace. `identity` is the one the window verified, so a preview
+ * against evidence that changed since is refused rather than shown. */
+export interface TransformRequest {
+  workspace: string;
+  case: string;
+  identity: string;
+  rules: string;
+  plan: string;
+  profile?: string;
+}
+
+export interface TransformResult {
+  state: State;
+  reason?: string;
+  transformation?: Transformation;
+}
+
+/** Reports what one transformation plan would do to the sequence a replay
+ * sends. It is the engine `readmit transform` runs: it writes nothing into
+ * evidence and produces no case, no run and no derived bundle. */
+export function previewTransformation(request: TransformRequest): Promise<TransformResult> {
+  return guard(() => facade().PreviewTransformation(request), { state: "failed" });
+}
+
+/** The reviewer's explicit decision over one export review. Each outcome is its
+ * own: a review nobody has decided, an incomplete review that cannot authorize
+ * disclosure whatever identity is named, an approval naming bytes that are not
+ * the ones on disk now, and an approval of exactly these bytes. */
+export type ReviewDecision = "not-decided" | "incomplete-review" | "stale-approval" | "approved";
+
+/** One declared export surface and how much of it the policy settled. A surface
+ * is where the content is and what kind of content it is, both in the reporting
+ * engine's own words, so the source filenames of a case never collapse into its
+ * messages. Every finding belongs to exactly one, and the counts always sum to
+ * the whole inventory. */
+export interface ReviewSurface {
+  name: string;
+  content: string;
+  findings: number;
+  unresolved: number;
+}
+
+/** One located item of the inventory. There is no value here, transformed or
+ * original: a location is where the item is, and reading a transformed value is
+ * the inspector over the derived case the review names. */
+export interface ReviewFinding {
+  surface: string;
+  location: string;
+  class: string;
+  reason: string;
+  policy?: string;
+  resolved: boolean;
+}
+
+/** One of the eighteen checklist categories and what the policy covered at its
+ * listed locations. A configured rule establishes limited coverage there; it
+ * never establishes coverage of the category. */
+export interface ReviewCoverage {
+  class: string;
+  status: string;
+  handled_locations: number;
+  unresolved_locations: number;
+}
+
+/** The known-value residual scan. It checks known byte patterns only, never
+ * identity, inference, unlisted values or legal status, and it says so in its
+ * own limitations rather than leaving that to be assumed. */
+export interface ResidualScan {
+  status: string;
+  files_checked: number;
+  known_values_checked: number;
+  unresolved_locations: string[];
+  limitations: string;
+}
+
+/** One export review of the open workspace. `identity` is what an approval must
+ * name and is recomputed from the bytes that are there now, so changing any
+ * bound input, policy, specification or output changes it. This is a typed value
+ * the interface reads, never a stored document: no approval is retained. */
+export interface Review {
+  name: string;
+  report: string;
+  state: string;
+  data_origin: string;
+  identity: string;
+  input_commitment: string;
+  local_state_commitment: string;
+  derived_case_identity?: string;
+  derived_spec_sha256?: string;
+  policies_applied: string[];
+  surfaces: ReviewSurface[];
+  coverage: ReviewCoverage[];
+  uncovered_classes: string[];
+  residual_scan: ResidualScan;
+  required_failures: number[];
+  original_failed_assertions: number[];
+  establishes?: string;
+  decision: ReviewDecision;
+  decision_reason: string;
+  unresolved: number;
+  offset: number;
+  limit: number;
+  total: number;
+  findings: ReviewFinding[];
+  scope: string;
+  boundary: string;
+}
+
+/** One export review of the open workspace and, optionally, the review identity
+ * the reviewer is approving. `approve` is the reviewer's explicit decision and
+ * nothing else: it is checked against the identity this read computed and is
+ * never written anywhere. */
+export interface ReviewRequest {
+  workspace: string;
+  review: string;
+  approve?: string;
+  offset: number;
+  limit: number;
+}
+
+export interface ReviewResult {
+  state: State;
+  reason?: string;
+  review?: Review;
+}
+
+/** Reads one export review and reports its inventory, its coverage and the
+ * reviewer's decision. It is the same verified offline reader the export gate
+ * uses, so a review whose bound artifacts changed is either refused or reports
+ * an identity the old approval does not name. Nothing is written, nothing is
+ * exported, and the private state directory is never read. */
+export function openReview(request: ReviewRequest): Promise<ReviewResult> {
+  return guard(() => facade().OpenReview(request), { state: "failed" });
 }

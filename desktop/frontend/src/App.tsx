@@ -31,6 +31,10 @@ import {
   openGrid,
   openSequence,
   type SequenceResult,
+  openReview,
+  previewTransformation,
+  type ReviewResult,
+  type TransformResult,
   inspectOccurrence,
   type InspectionResult,
   openProject,
@@ -60,6 +64,7 @@ import {
   type WorkspaceResult,
 } from "./bindings";
 import { Comparison, COMPARISON_WINDOW } from "./Comparison";
+import { Review, REVIEW_WINDOW } from "./Review";
 import { GuidedSample } from "./GuidedSample";
 import { Sequence, SEQUENCE_WINDOW } from "./Sequence";
 import { Inspector } from "./Inspector";
@@ -90,7 +95,9 @@ type Running =
   | "comparison"
   | "revisions"
   | "practice"
-  | "sequence";
+  | "sequence"
+  | "transformation"
+  | "review";
 
 export default function App() {
   const [described, setDescribed] = useState<Shell | null>(null);
@@ -114,6 +121,8 @@ export default function App() {
   const [guideResult, setGuideResult] = useState<GuideResult | null>(null);
   const [practiceResult, setPracticeResult] = useState<PracticeResult | null>(null);
   const [sequenceResult, setSequenceResult] = useState<SequenceResult | null>(null);
+  const [transformResult, setTransformResult] = useState<TransformResult | null>(null);
+  const [reviewResult, setReviewResult] = useState<ReviewResult | null>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -278,6 +287,8 @@ export default function App() {
         setComparisonResult(null);
         setSequenceResult(null);
         setRevisionResult(null);
+        setTransformResult(null);
+        setReviewResult(null);
         setSelectedOccurrence(null);
         setSelected(null);
         setWorkspace(null);
@@ -303,6 +314,8 @@ export default function App() {
         setComparisonResult(null);
         setSequenceResult(null);
         setRevisionResult(null);
+        setTransformResult(null);
+        setReviewResult(null);
         setSelectedOccurrence(null);
         setSelected(name);
         setEvidence(await openCase(folder, name));
@@ -464,6 +477,54 @@ export default function App() {
             right,
             left_result: leftResult,
             right_result: rightResult,
+          }),
+        );
+      });
+    },
+    [operate, root],
+  );
+
+  // A transformation preview is bound to the identity the window verified for
+  // the open case, so a plan is never previewed against evidence that changed
+  // since. It writes nothing at all: the documents are read again on every call
+  // and no preview is held here.
+  const previewPlan = useCallback(
+    async (rules: string, plan: string, profile: string) => {
+      const open = evidence?.case;
+      if (!root || !open) return;
+      await operate("transformation", async () => {
+        setTransformResult(null);
+        setTransformResult(
+          await previewTransformation({
+            workspace: root,
+            case: open.name,
+            identity: open.identity,
+            rules,
+            plan,
+            profile,
+          }),
+        );
+      });
+    },
+    [evidence, operate, root],
+  );
+
+  // An export review is read again on every call, including for the next window
+  // of its inventory, so the identity an approval names is always the one the
+  // bytes on disk have now. The approval a person typed is sent and checked; it
+  // is never retained here or anywhere else.
+  const readReview = useCallback(
+    async (review: string, approve: string, offset: number) => {
+      if (!root) return;
+      await operate("review", async () => {
+        setReviewResult(null);
+        setReviewResult(
+          await openReview({
+            workspace: root,
+            review,
+            approve,
+            offset,
+            limit: REVIEW_WINDOW,
           }),
         );
       });
@@ -1054,6 +1115,24 @@ export default function App() {
             onCompare={(left, right, leftResult, rightResult) =>
               void compareRevisions(left, right, leftResult, rightResult)
             }
+          />
+        ) : null}
+        {opened ? (
+          <Review
+            entries={(opened.artifacts ?? [])
+              .filter((artifact) => artifact.kind === "unsupported")
+              .map((artifact) => artifact.name)}
+            transformResult={transformResult}
+            reviewResult={reviewResult}
+            caseOpen={verified !== null}
+            busy={busy}
+            transformProgress={
+              running === "transformation" ? "Previewing this transformation." : null
+            }
+            reviewProgress={running === "review" ? "Reading this export review." : null}
+            indicators={indicators}
+            onPreview={(rules, plan, profile) => void previewPlan(rules, plan, profile)}
+            onReview={(review, approve, offset) => void readReview(review, approve, offset)}
           />
         ) : null}
         {!evidence && !busy ? <p className="hint">Open a case to see what it holds.</p> : null}

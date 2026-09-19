@@ -202,6 +202,8 @@ artifacts are never reported as completed.
 | `UndoReproducer` | Removes the last step of a plan and resolves what remains. |
 | `BuildReproducer` | Writes the reproducer into a new folder of the open workspace. |
 | `CompareReproducers` | Compares two built reproducer revisions and what the runs retained for each one decided. |
+| `PreviewTransformation` | Reports what one transformation plan would do to the sequence a replay sends, over the verified case. |
+| `OpenReview` | Reads one export review of the open workspace and reports its inventory, its coverage and the reviewer's decision. |
 | `AuthorTest` | Answers one stage of a test draft and reports what it now means over the case. |
 | `SaveTest` | Writes the generated test spec into a new entry of the open workspace. |
 | `Cancel` | Stops the operation that is running now, when it can be interrupted. |
@@ -227,7 +229,8 @@ than drawing itself with no commands and no privacy status.
 folder and listing it are interruptible; `OpenCase`, `OpenProject`,
 `OpenRevisions`, `SaveNote`, `Search`, `OpenGrid`, `SaveFilter`,
 `SelectFilter`, `InspectOccurrence`, `Compare`, `EditReproducer`, `UndoReproducer`,
-`BuildReproducer`, `CompareReproducers`, `AuthorTest`, `SaveTest` and `RecoverSession` are not, because each runs to completion under its own size
+`BuildReproducer`, `CompareReproducers`, `AuthorTest`, `SaveTest`,
+`PreviewTransformation`, `OpenReview` and `RecoverSession` are not, because each runs to completion under its own size
 limits once it starts. The window enables the
 Cancel control only while an interruptible operation runs; `Escape` reaches the
 same operation whenever the palette is not open, and cancelling when nothing is
@@ -791,6 +794,132 @@ a position is the inspector, deliberately, exactly as it is for a comparison.
 Nothing about this panel is written anywhere: not into the case, not into the
 saved filters, and not into the working session.
 
+## Reviewing and transforming the whole case
+
+An incident that is going to leave this machine has to be looked at first, and
+looking at one field at a time is how a surface gets missed. **Review and
+transform** is the panel that answers both halves of that: what a declared
+transformation would do to the sequence a replay sends, and what a declared
+disclosure policy did to every surface that can enter an export.
+
+Neither half is this window's own answer. The preview is the engine
+[`readmit transform`](transform.md) runs and the review is read back through the
+same verified offline reader the export gate uses, so what the panel draws is
+exactly what the command line reports over the same bytes.
+
+### Previewing a transformation
+
+The window names the case it verified and two documents of the open workspace —
+the [`readmit-correlation-rules/v1`](correlate.md) document whose relations are
+preserved and the `readmit-transform-plan/v1` document to preview — and, where
+the plan pinned one, the [profile pack](profile-packs.md) it pinned. Each is one
+entry of the folder the person opened, never a path, and each is read again on
+every preview.
+
+**This writes nothing at all.** No case, no run, no derived bundle and no
+revision: the derivation names [ADR-0004](adr/0004-derived-evidence-and-generated-export.md)
+admits are untouched, there is nothing to cancel and nothing to recover, and the
+[reproducer editor](#building-a-reproducer) gains no operator from it. A plan is
+a document somebody authored beside the evidence; nothing in this window writes
+or edits one.
+
+The panel shows every position the plan would rewrite, what happened to every
+declared relation, what the pinned pack declares about the transformed sequence
+at all four levels, and everything the transformation left exactly as it found
+it. A plan that declares no step is reported as such rather than as a
+transformation, because a plan nobody has added a step to yet is a state a
+person is on the way out of.
+
+### Reading an export review
+
+A review directory is what [`readmit redact`](redact.md) wrote: the located
+findings, the eighteen-category checklist, the known-value residual scan, and
+the derived case and specification it committed to. The window opens one by
+name and groups every finding by the export surface it is on. A preview needs
+the case the window verified; a review does not, so a folder holding only a
+review — which is what a recipient has — is read without one.
+
+A surface is **where** the content is and **what kind** of content it is, both
+in the reporting engine's own words: the first element of the location it wrote,
+and its own word for what was found there. So the source filenames of a case
+never collapse into its messages, its notes and free text never collapse into
+its named fields, and the run values of a retained artifact never collapse into
+its report text.
+
+| Where | What was found there, for example |
+| --- | --- |
+| `case` | the named fields, the unmapped positions, the unknown segments, the free text and embedded payloads, the source filenames, the source metadata and observed times |
+| `spec` | the expected literals bound to a source field, the specification's own name, paths and assertion labels, its filename, and the fresh fixture reruns it requires |
+| `original-artifacts` | the retained runs and results, their replay transformations and acknowledgement text, and the original diagnosis text |
+| `proof` | the original fixture proof |
+| `packet` | the regenerated diagnosis |
+
+Neither half of that pair is matched against a list this window keeps, so every
+finding belongs to exactly one surface, the counts always sum to the whole
+inventory, and a surface a later policy locates is inventoried the moment it
+appears instead of being dropped for not being recognized. A class of surface
+no policy of this release locates at all — a local cache or log written beside
+the evidence, say — is `readmit redact`'s to locate; the window inventories
+whatever that review found and nothing else.
+
+**The private state directory is never named, opened or read here.** Source
+linkage, surrogate mappings, date offsets and known residual values stay exactly
+where `readmit redact` put them; this panel sees what a recipient would see.
+
+### The reviewer's decision
+
+An approval names one review identity. That identity is recomputed from the bytes
+that are on disk now, and it covers the input commitment, the private-state
+commitment, the derived case identity and the derived specification digest — so
+changing the input, the policy, the specification or the output changes it.
+
+| Decision | What it means |
+| --- | --- |
+| `not-decided` | Nobody has approved this review. |
+| `incomplete-review` | The review is blocked, so it cannot authorize disclosure — naming its exact identity does not change that. |
+| `stale-approval` | The approval names a different review than the bytes read here; a bound artifact changed, so review the current one again. |
+| `approved` | The approval names exactly the review that was read. |
+
+**The window records no approval.** A decision is a typed answer about the bytes
+that were just read, not a document, so there is no stored approval to go stale
+quietly and nothing here that another artifact can be approved against later.
+Exporting a packet is `readmit redact export`, which requires the same identity
+and re-verifies everything itself. An interrupted review is refused rather than
+read as a complete one, because the completion marker is written last.
+
+### What a review is, and what it is not
+
+A ready review establishes a **disclosure-reviewed extract** and says so by name.
+It is not a regression-equivalent packet: equivalence needs evidence from the
+actual external target, and fixture proof never substitutes for it. Nothing here
+is uploaded, no network call is made, and neither a review nor a local hash
+claims certification, Safe Harbor status or authentication of the source
+evidence. The panel renders those statements — the engine's own scope, the scan's
+own limitations, and the window's boundary — rather than a summary of them.
+
+### Positions, not values
+
+**No value crosses this boundary, transformed or original.** A change is an
+entry, a position, the state that position was in, the relation number a rename
+assigned and the size of the new value; two changes carrying one relation number
+receive one value, which is the whole of what preserving a relationship means and
+says nothing about what the value is. A finding is a location, a checklist class,
+the engine's own word for what it is and the named policy that handled it.
+
+Reading a transformed value is [the inspector](#inspecting-original-values),
+deliberately, exactly as it is for [a comparison](#comparing-two-collections)
+and for a reproducer: a review's derived case is an ordinary verified
+`readmit-case/v3` bundle, so opening the review folder as a workspace and
+opening the `case` entry in it reveals those bytes through the same verification
+everything else here gets — the surrogate a policy substituted, the shifted
+date, the emptied position. An original value is never on this panel at all, and
+the panel itself carried none to get there.
+
+Nothing about this panel is written anywhere: not into the case, not into the
+review, not into the saved filters, and not into the working session. Both
+operations read again from disk every time, including for the next window of an
+inventory, so a decision is never shown beside counts from bytes that changed.
+
 ## Recovering after an interruption
 
 A window can be closed, lost with its process, or killed in the middle of a
@@ -1148,10 +1277,14 @@ checked to hold no network call and no browser storage at all.
   bounded versioned document and it gains no member here, so which two
   collections were being compared is lost with the window; comparing them again
   reads both from disk and verifies both.
-- Reduction, replay transformations, and reordering or duplicating occurrences.
-  The editor retains what a person selected and what their declared dependencies
-  require, and makes no claim of minimality; see
+- Reduction, replay transformations, and reordering or duplicating occurrences,
+  **inside the reproducer editor**. The editor retains what a person selected
+  and what their declared dependencies require, and makes no claim of
+  minimality; see
   [the reproducer contract](reproducer.md) for what this release does not do.
+  [Review and transform](#reviewing-and-transforming-the-whole-case) previews
+  those operators over the sequence a replay would send and writes nothing, and
+  `readmit-reproducer-plan/v1` gains no operator from it.
 - Retaining which two revisions were being compared across an interruption, and
   any history of what a plan said before a step was undone. A comparison reads
   two reproducers that were built, so it is produced again from disk rather than
@@ -1183,6 +1316,19 @@ checked to hold no network call and no browser storage at all.
   directory entries, and verification is bounded by the case reader's own
   limits. Long-running work, and the progress reporting it needs, arrives with
   the operations that have it.
+- Authoring, editing or writing a transformation plan, a correlation rules
+  document or a redaction policy in the window. All three reach it as documents
+  somebody wrote beside the evidence, exactly as they reach the command line.
+- Creating an export review, exporting a packet, and retaining an approval.
+  `readmit redact` derives a review and `readmit redact export` gates on the
+  same identity this panel reports; the window reads one and states a decision
+  about the bytes it just read, and writes nothing.
+- Reading the private state of a review. Source linkage, surrogate mappings,
+  date offsets and known residual values are never named, opened or read here.
+- Retaining a preview or a review across an interruption. The working session is
+  one bounded versioned document and it gains no member here, so which plan was
+  previewed and which review was read are lost with the window; asking again
+  reads and verifies everything from disk.
 - Installation, upgrade, signing, and a supported desktop platform matrix.
   Continuous integration builds the shell natively on macOS as a build check,
   which is not a support claim.
