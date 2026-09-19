@@ -411,6 +411,7 @@ interface Facade {
   EditReproducer(request: ReproducerRequest): Promise<ReproducerResult>;
   UndoReproducer(request: ReproducerRequest): Promise<ReproducerResult>;
   BuildReproducer(request: ReproducerRequest): Promise<ReproducerResult>;
+  CompareReproducers(request: ReproducerComparisonRequest): Promise<ReproducerComparisonResult>;
   AuthorTest(request: TestRequest): Promise<TestResult>;
   SaveTest(request: TestRequest): Promise<TestResult>;
   Compare(request: CompareRequest): Promise<CompareResult>;
@@ -737,6 +738,162 @@ export function undoReproducer(request: ReproducerRequest): Promise<ReproducerRe
  * evidence: the case it reads is never changed. */
 export function buildReproducer(request: ReproducerRequest): Promise<ReproducerResult> {
   return guard(() => facade().BuildReproducer(request), { state: "failed" });
+}
+
+/** How two reproducer revisions are related, read from the identities their own
+ * manifests name. Nothing is inferred from a folder name or a write order. */
+export type RevisionLineage = "same" | "child" | "parent" | "sibling" | "unrelated";
+
+/** How one occurrence's retention changed. Dropping a setup dependency is told
+ * apart from dropping a selection because they mean opposite things: a
+ * reproducer that stopped retaining the booking a reschedule refers to may have
+ * stopped reproducing anything. */
+export type RetentionChangeKind =
+  | "dropped-selection"
+  | "dropped-prerequisite"
+  | "added-selection"
+  | "added-prerequisite"
+  | "relation-changed";
+
+/** How one step, edit or unsettled report differs between the two revisions. */
+export type RevisionChange = "added" | "removed" | "changed";
+
+/** What a comparison of two retained runs establishes. Neither `not_attempted`
+ * nor `different_test` is a pass and neither is a failure. */
+export type ProofState = "not_attempted" | "different_test" | "compared";
+
+/** What two retained runs said about one expectation. `not_evaluated` is what
+ * an execution error leaves behind, so an error can never read as a failure
+ * that survived a transformation or as one it fixed. */
+export type ProofOutcome = "same_failure" | "same_pass" | "changed" | "not_evaluated";
+
+/** One compared revision as its own evidence declares it. `provenance` and
+ * `derivation` are read from the derived bundle's manifest, so transformed
+ * customer evidence is reported as the transformation it declares. */
+export interface RevisionSummary {
+  parent: ReproducerArtifact;
+  derived: ReproducerArtifact;
+  provenance: string;
+  derivation: string;
+  steps: number;
+  retained: number;
+  edits: number;
+}
+
+/** One case bundle named by the contract it declares and the identity its own
+ * reader verified. */
+export interface ReproducerArtifact {
+  schema: string;
+  identity: string;
+}
+
+/** One authored step only one revision's plan holds, at its place in the plan
+ * that holds it: the earlier plan for a removed step, the later plan for an
+ * added one. */
+export interface StepChange {
+  position: number;
+  change: RevisionChange;
+  step: ReproducerStep;
+}
+
+/** One occurrence the two revisions retain differently. */
+export interface RetentionChange {
+  parent: string;
+  change: RetentionChangeKind;
+  left_reason?: string;
+  right_reason?: string;
+  left_required_by?: string;
+  right_required_by?: string;
+}
+
+/** One edited position the two revisions treat differently. No value is here on
+ * either side, exactly as the manifests themselves carry none. */
+export interface EditChange {
+  parent: string;
+  selector: string;
+  change: RevisionChange;
+  left_operator?: ReproducerOperator;
+  right_operator?: ReproducerOperator;
+  left_state?: FieldState;
+  right_state?: FieldState;
+}
+
+/** One thing a dependency step reached and could not settle that only one
+ * revision reports. */
+export interface UnresolvedChange {
+  occurrence: string;
+  reason: string;
+  change: RevisionChange;
+}
+
+/** One retained run, named by what its own reader verified. `case` is the case
+ * identity it was executed against, which is this revision's derived case. */
+export interface ProofSide {
+  identity: string;
+  case: string;
+  status: string;
+  error_class?: string;
+}
+
+/** What the two retained runs said about one expectation. Only the
+ * expectation's identifier, its operator and the two verdicts are here: the
+ * value it expected and the value it observed never cross this boundary. Each
+ * verdict is the one the runner recorded — `passed`, `failed` or
+ * `not_evaluated`. */
+export interface AssertionProof {
+  assertion: string;
+  operator: string;
+  outcome: ProofOutcome;
+  left_verdict: string;
+  right_verdict: string;
+}
+
+/** What the retained runs of the two revisions establish. There is no overall
+ * verdict: which expectation carries the incident is a person's judgement. */
+export interface RevisionProof {
+  state: ProofState;
+  left?: ProofSide;
+  right?: ProofSide;
+  assertions: AssertionProof[];
+}
+
+/** What two reproducer revisions do differently: a comparison of plans and
+ * manifests, never of messages. The two derived cases are not compared byte for
+ * byte, because where one revision edits a position the other left alone, the
+ * other's bytes there are the original evidence's own value. */
+export interface RevisionComparison {
+  left: RevisionSummary;
+  right: RevisionSummary;
+  lineage: RevisionLineage;
+  steps: StepChange[];
+  retention: RetentionChange[];
+  edits: EditChange[];
+  unresolved: UnresolvedChange[];
+  proof: RevisionProof;
+}
+
+/** Names two built reproducers of the open workspace and, for each one, the
+ * retained run offered as its proof. A revision nobody has run yet names none. */
+export interface ReproducerComparisonRequest {
+  workspace: string;
+  left: string;
+  right: string;
+  left_result?: string;
+  right_result?: string;
+}
+
+export interface ReproducerComparisonResult {
+  state: State;
+  reason?: string;
+  comparison?: RevisionComparison;
+}
+
+/** Compares two built reproducer revisions. It writes nothing and changes
+ * neither revision. */
+export function compareReproducers(
+  request: ReproducerComparisonRequest,
+): Promise<ReproducerComparisonResult> {
+  return guard(() => facade().CompareReproducers(request), { state: "failed" });
 }
 
 /** The stages of the guided authoring flow, in the order the engine asks them.

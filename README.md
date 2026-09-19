@@ -701,7 +701,15 @@ write the result as a **separate revision**. That revision is new derived
 evidence in its own folder beside a transformation manifest naming the parent
 hash, what was retained and why, and where every edit landed; the case it came
 from is not changed, and nothing about it is a de-identification or sharing
-claim. See [extracting and editing a reproducer](docs/reproducer.md). It turns
+claim. It **compares two of those revisions**: how they are related, what the
+second plan does differently, and every occurrence they retain differently —
+naming a setup dependency that stopped being retained separately from a
+selection somebody stopped making, because a reschedule without the booking it
+refers to may no longer reproduce anything. Name the run retained for each one
+and every expectation is reported as failed on both sides, passed on both sides,
+a verdict that moved, or one no execution reached, with a run counting as proof
+only of the revision it was executed against. See
+[extracting and editing a reproducer](docs/reproducer.md). It turns
 selected evidence into a regression test by answering one question at a time and
 saves a versioned `readmit-test/v1` spec the command line runs unchanged; see
 [authoring a regression test](docs/test-authoring.md). It walks that whole

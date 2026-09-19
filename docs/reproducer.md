@@ -207,6 +207,117 @@ directories are re-verified before anything is recorded, and the parent identity
 the project already holds must be the identity the reader just verified. See
 [revisions and the operation manifest](project.md#revisions-and-the-operation-manifest).
 
+## Comparing two revisions
+
+A reproducer is rarely right the first time. The second one keeps fewer
+messages, or edits one more field, or stops retaining a booking the first one
+kept — and the question is always the same: does it still reproduce the
+incident?
+
+A second revision often comes from a [reduction](reduction.md): it reports the
+occurrence identifiers it kept, which are exactly what `select-occurrence/v1`
+steps name, so a reproducer built from those is compared here against the one it
+was reduced from. Nothing is wired between the two — a person carries the
+identifiers across — and a reduction writes no derived evidence of its own.
+
+Comparing two **built** reproducers answers the parts of that question the
+evidence can answer. Each one is read back by the same reader that reads one
+after a build, so a manifest that no longer describes the derived case beside it
+is refused rather than compared, and a derived bundle declaring any other
+transformation is not a reproducer revision at all.
+
+| Reported | What it holds |
+| --- | --- |
+| `lineage` | How the two are related, by the identities their manifests name |
+| `left` / `right` | Each revision's parent and derived identity, and the provenance and derivation the evidence declares about itself |
+| `steps` | The authored change: the steps each plan holds after the prefix they share |
+| `retention` | Every occurrence they retain differently, including the relation that retained it |
+| `edits` | Every position they edit differently, by operator and prior state |
+| `unresolved` | Everything only one of them could not settle |
+| `proof` | What the runs retained for each one decided |
+
+Lineage is read and never guessed:
+
+| `lineage` | What it means |
+| --- | --- |
+| `same` | The same derived evidence, under two names |
+| `child` | The second was built from the first's derived case |
+| `parent` | The first was built from the second's derived case |
+| `sibling` | Both were built from the same case |
+| `unrelated` | Neither was built from the other, and they name different parents |
+
+**This is a comparison of plans and manifests, not of messages.** That is an
+evidence rule rather than an omission. Where one revision edits a position the
+other left alone, the bytes the other holds there are the original evidence's
+own value — and the bytes an edit replaced are deliberately recorded nowhere, so
+a comparison that read them back out of the two derived cases would hand over
+exactly what the manifest refuses to keep. Comparing two collections field by
+field is [`readmit diff`](diff.md), over cases a person named.
+
+Two plans are compared as the prefix they share and the steps each one has after
+it, because that is what a revision of a plan is: this editor changes a plan by
+undoing its last step and adding another, so a divergence is always a suffix. An
+edit's recorded offset is not compared either — an edit lands somewhere else
+simply because an earlier edit of the same occurrence changed length, which is
+not a difference between what the two revisions do.
+
+### Dropped prerequisites
+
+A selection a person stopped making and a setup dependency that stopped being
+retained are separate outcomes, because they mean opposite things:
+
+| `retention` | What it means |
+| --- | --- |
+| `dropped-selection` | The first revision selected it; the second does not retain it |
+| `dropped-prerequisite` | A relation retained it for the first revision; the second does not retain it |
+| `added-selection` | Only the second revision selects it |
+| `added-prerequisite` | Only the second revision retains it, through a relation |
+| `relation-changed` | Both retain it, under a different relation or for a different occurrence |
+
+A dropped prerequisite is the one that costs something: a reschedule without the
+booking it refers to is a reproducer that may no longer reproduce anything, and
+nothing here decides whether it still does.
+
+### Proof from retained runs
+
+A revision is proved by a run, and a run is proof of a revision only when it was
+executed against **that revision's derived case**. The identity a
+[retained result](test-result.md) recorded for its input must be the identity the
+manifest names; a run of other evidence is refused rather than reported beside a
+revision it says nothing about.
+
+| `proof.state` | What it means |
+| --- | --- |
+| `not_attempted` | One of the two revisions names no retained run |
+| `different_test` | The two runs did not evaluate the same ordered expectations, so their verdicts are not comparable |
+| `compared` | Both runs evaluated the same expectations, each against the revision named beside it |
+
+The spec identities are deliberately not compared: a test rebound to a second
+case names a different input and is still the same test. The expectations are
+what decide whether two verdicts mean the same thing.
+
+Each expectation is then reported by name:
+
+| `outcome` | What it means |
+| --- | --- |
+| `same_failure` | It failed on both sides |
+| `same_pass` | It passed on both sides |
+| `changed` | The verdict moved |
+| `not_evaluated` | No execution reached it on at least one side — an execution error leaves every expectation here |
+
+**There is no overall verdict.** Which expectation carries the incident is a
+person's judgement, and an execution error is never substituted for a surviving
+failure. Neither `not_attempted` nor `different_test` is a pass or a failure.
+
+Only an expectation's identifier, its operator and the two verdicts are
+reported. A result holds the value each expectation expected and the value it
+observed; neither crosses this boundary, exactly as no message byte crosses it
+anywhere else in this window.
+
+A comparison writes nothing. It adds no contract and no member to either of the
+two it reads: what it produces is a typed value the window renders, and both
+revisions are byte-identical afterwards.
+
 ## Privacy
 
 A reproducer is derived testing data and is treated as the data it came from.
@@ -267,8 +378,9 @@ A reproducer is derived testing data and is treated as the data it came from.
   component, and every position below an empty or explicit-null ancestor,
   resolve to the ancestor's own span, so a plan naming both is refused rather
   than splicing two values where the message declares one place to put them.
-- Comparing two reproducers, and any retained history of what a plan said
-  before a step was undone.
+- Any retained history of what a plan said before a step was undone. Two
+  reproducers that were **built** are compared above; a plan that was not built
+  is unstored work, and nothing is kept about a step that was undone.
 - Profile support. The editor reads no [profile pack](profile-packs.md) and
   claims no parse, label, structural or workflow support for anything it edits.
   A position is addressed by the shared selector grammar over the original

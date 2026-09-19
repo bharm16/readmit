@@ -33,6 +33,15 @@ const (
 	// a caller holds it to this contract's bound rather than to a copy of it.
 	MaxAssertions        = 256
 	MaxExpectedTextBytes = 65536
+
+	// The verdict one assertion reached. AssertionResult.Status carries one of
+	// these three and nothing else, and an execution error leaves every
+	// assertion at NotEvaluated. They are exported for the same reason the
+	// bounds above are: a consumer reads the verdict this package decided
+	// rather than holding a second copy of how it is spelled.
+	Passed       = "passed"
+	Failed       = "failed"
+	NotEvaluated = "not_evaluated"
 )
 
 type Spec struct {

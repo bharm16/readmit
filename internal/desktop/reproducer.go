@@ -184,3 +184,99 @@ func resolved(source *bundle.Bundle, plan reproducer.Plan) ReproducerResult {
 	}
 	return ReproducerResult{State: Completed, Reproducer: described}
 }
+
+// ReproducerComparisonRequest names two built reproducers of the open
+// workspace and, for each one, the retained run that is its proof.
+//
+// A revision is one folder entry holding a derived case and the manifest
+// beside it. LeftResult and RightResult name retained test results of the same
+// workspace; a revision nobody has run yet names none, and the comparison
+// reports that rather than comparing what was never produced.
+type ReproducerComparisonRequest struct {
+	Workspace   string `json:"workspace"`
+	Left        string `json:"left"`
+	Right       string `json:"right"`
+	LeftResult  string `json:"left_result,omitzero"`
+	RightResult string `json:"right_result,omitzero"`
+}
+
+// ReproducerComparisonResult carries one state. Comparison is present whenever
+// both revisions were read, and there is no empty comparison: two revisions
+// that do the same thing still have a lineage and still have whatever their
+// retained runs decided, so the answer is never nothing. It is a typed value
+// the interface reads: nothing here is written anywhere, and neither revision
+// is changed by producing it.
+type ReproducerComparisonResult struct {
+	State      State                  `json:"state"`
+	Reason     string                 `json:"reason,omitzero"`
+	Comparison *reproducer.Comparison `json:"comparison,omitzero"`
+}
+
+func (r refusal) reproducerComparison() ReproducerComparisonResult {
+	return ReproducerComparisonResult{State: r.state, Reason: r.reason}
+}
+
+// CompareReproducers reports how two built reproducer revisions differ: how
+// they are related, what their plans do differently, which occurrences one
+// retains and the other does not, which of those were setup dependencies rather
+// than selections, and what the runs retained for each one decided.
+//
+// It decides nothing itself. The same reader that reads a reproducer back after
+// a build verifies both, the result reader re-derives every verdict of a
+// retained run, and a run is accepted as proof of a revision only when it was
+// executed against that revision's derived case.
+//
+// This is a comparison of plans and manifests. The two derived cases are never
+// compared byte for byte, because where one revision edits a position the other
+// left alone, the other's bytes there are the original evidence's own value and
+// the manifest contract refuses to record those. Comparing two collections
+// field by field is Compare, over cases a person named.
+//
+// It reads verified artifacts under their readers' own limits and runs to
+// completion once it starts, so it holds the operation slot but is not
+// interruptible. Nothing is changed, and no message byte or field value crosses
+// this boundary.
+func (a *App) CompareReproducers(request ReproducerComparisonRequest) ReproducerComparisonResult {
+	release, claimed := a.claim()
+	if !claimed {
+		return busyRefusal.reproducerComparison()
+	}
+	defer release()
+	root, declined := resolveFolder(request.Workspace)
+	if root == "" {
+		return declined.reproducerComparison()
+	}
+	left, declined := comparedRevision(root, request.Left, request.LeftResult)
+	if left.Path == "" {
+		return declined.reproducerComparison()
+	}
+	right, declined := comparedRevision(root, request.Right, request.RightResult)
+	if right.Path == "" {
+		return declined.reproducerComparison()
+	}
+	comparison, err := reproducer.CompareRevisions(left, right)
+	if err != nil {
+		return ReproducerComparisonResult{State: Failed, Reason: err.Error()}
+	}
+	return ReproducerComparisonResult{State: Completed, Comparison: &comparison}
+}
+
+// comparedRevision resolves one named revision of the open workspace and the
+// retained run offered as its proof. Both are entries of the workspace, so a
+// comparison can no more reach outside the open folder than any other read
+// here can.
+func comparedRevision(root, name, result string) (reproducer.Revision, refusal) {
+	path, err := artifactpath.Child(root, name)
+	if err != nil {
+		return reproducer.Revision{}, refusal{Failed, "a compared revision must be named by one directory entry of the open workspace"}
+	}
+	revision := reproducer.Revision{Path: path}
+	if result != "" {
+		run, err := artifactpath.Child(root, result)
+		if err != nil {
+			return reproducer.Revision{}, refusal{Failed, "a retained run must be named by one directory entry of the open workspace"}
+		}
+		revision.Result = run
+	}
+	return revision, refusal{}
+}

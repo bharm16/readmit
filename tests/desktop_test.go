@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -707,5 +708,269 @@ func TestDesktopComparisonRendersExactlyWhatTheCommandLineDiffReports(t *testing
 	}
 	if displayed == 0 {
 		t.Fatal("the command line displayed no value, so nothing was checked")
+	}
+}
+
+// rescheduleSpec is the committed reschedule test, read once per use so a test
+// that varies an expectation never edits the fixture.
+func rescheduleSpec(t *testing.T) []byte {
+	t.Helper()
+	spec, err := os.ReadFile("../testdata/fixtures/test-reschedule.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return spec
+}
+
+// runRevision executes one test spec against a reproducer revision's derived
+// case and returns the retained result directory.
+//
+// Only the case the spec names is rebound onto this revision: what a verdict
+// depends on — the selected occurrences, the boundary and every expectation —
+// is whatever the caller passed, which is what lets one test vary exactly one
+// of them. mode is the fixture receiver's behaviour; the empty string starts no
+// receiver at all and points the target at a port nothing is listening on,
+// which is how a run that reached no expectation is produced.
+func runRevision(t *testing.T, workspace, revision, output, mode string, spec []byte, want int) string {
+	t.Helper()
+	dir := t.TempDir()
+	specPath := filepath.Join(dir, "test-reschedule.json")
+	if err := os.WriteFile(specPath, spec, 0600); err != nil {
+		t.Fatal(err)
+	}
+	copyTree(t, filepath.Join(workspace, revision, reproducer.CaseName), filepath.Join(dir, "test-case"))
+	wait := func() {}
+	if mode == "" {
+		testTarget(t, dir, "127.0.0.1:1")
+		if err := os.WriteFile(filepath.Join(dir, "test-observation.json"), []byte("[]"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		wait = testListener(t, dir, mode)
+	}
+	stdout, stderr, err := run(t, "test", specPath, "--send", "--output", filepath.Join(workspace, output))
+	if processCode(t, err) != want || stderr != "" {
+		t.Fatalf("this revision's test did not reach the expected outcome: %v %s %s", err, stdout, stderr)
+	}
+	wait()
+	return output
+}
+
+// revisionWorkspace captures one incident and writes two reproducer revisions
+// of it through the window: both keep the booking and the reschedule that
+// depends on it, and the second also replaces a patient name on the way out — a
+// testing transformation of customer evidence, and no de-identification claim
+// about it.
+func revisionWorkspace(t *testing.T) (*desktop.App, string, string, string, string) {
+	t.Helper()
+	workspace := t.TempDir()
+	evidence := filepath.Join(workspace, "incident")
+	if _, stderr, err := run(t, "capture", "../testdata/fixtures/listen-s12.hl7", "../testdata/fixtures/listen-s13.hl7", "--output", evidence); err != nil || stderr != "" {
+		t.Fatalf("capture: %v %s", err, stderr)
+	}
+	before := caseFiles(t, evidence)
+	app := desktopApp(t, workspace)
+	opened := app.OpenCase(workspace, "incident")
+	if opened.State != desktop.Completed {
+		t.Fatalf("the case did not verify: %+v", opened)
+	}
+	build := func(output string, steps ...reproducer.Step) string {
+		t.Helper()
+		request := desktop.ReproducerRequest{Workspace: workspace, Case: "incident", Identity: opened.Case.Identity}
+		for _, step := range steps {
+			request.Step = step
+			result := app.EditReproducer(request)
+			if result.State != desktop.Completed {
+				t.Fatalf("the window refused a step it supports: %+v", result)
+			}
+			request.Plan = result.Reproducer.Plan
+		}
+		request.Step, request.Output = reproducer.Step{}, output
+		if result := app.BuildReproducer(request); result.State != desktop.Completed {
+			t.Fatalf("the reproducer was not written: %+v", result)
+		}
+		return output
+	}
+	selection := []reproducer.Step{
+		{Operator: reproducer.SelectOccurrence, Occurrence: "s0001-e000001"},
+		{Operator: reproducer.SelectOccurrence, Occurrence: "s0002-e000001"},
+	}
+	original := build("incident-reproducer", selection...)
+	transformed := build("incident-reproducer-2", append(slices.Clone(selection),
+		reproducer.Step{Operator: reproducer.SetField, Occurrence: "s0002-e000001", Selector: "PID-5.1", Value: "REPRODUCER"})...)
+	if !reflect.DeepEqual(before, caseFiles(t, evidence)) {
+		t.Fatal("building reproducers changed the evidence they were derived from")
+	}
+	return app, workspace, original, transformed, opened.Case.Identity
+}
+
+// The whole of R09.4 across both entry points: two revisions of one incident,
+// the lineage that relates them, the setup dependency the second one stopped
+// retaining, and the proof that the selected expectation failed the same way
+// before and after the transformation.
+//
+// The runs are real. Each revision's derived case is sent at a fixture receiver
+// by the command line, each result is retained where the workspace can find it,
+// and the window compares what those results decided rather than deciding
+// anything itself.
+func TestDesktopRevisionComparisonProvesTheSameFailureBeforeAndAfter(t *testing.T) {
+	app, workspace, original, transformed, identity := revisionWorkspace(t)
+	spec := rescheduleSpec(t)
+	originalRun := runRevision(t, workspace, original, "incident-reproducer-run", "defective", spec, 1)
+	transformedRun := runRevision(t, workspace, transformed, "incident-reproducer-2-run", "defective", spec, 1)
+
+	compared := app.CompareReproducers(desktop.ReproducerComparisonRequest{
+		Workspace: workspace, Left: original, Right: transformed,
+		LeftResult: originalRun, RightResult: transformedRun,
+	})
+	if compared.State != desktop.Completed || compared.Comparison == nil {
+		t.Fatalf("two revisions of one incident were not compared: %+v", compared)
+	}
+	comparison := compared.Comparison
+	if comparison.Lineage != reproducer.SiblingOf || comparison.Left.Parent.Identity != identity {
+		t.Fatalf("the lineage of two revisions of one case was reported as %q", comparison.Lineage)
+	}
+	// Transformed customer evidence is reported as the transformation it
+	// declares, never as generated material.
+	if comparison.Right.Provenance != "derived" || comparison.Right.Derivation != reproducer.Derivation {
+		t.Fatalf("a revision was not reported as the derived evidence it declares: %+v", comparison.Right)
+	}
+	// Both revisions retain the same two occurrences, and the transformation is
+	// the one authored step and the one edited position that follow from it.
+	if len(comparison.Retention) != 0 {
+		t.Fatalf("two revisions retaining the same occurrences reported a retention change: %+v", comparison.Retention)
+	}
+	if len(comparison.Steps) != 1 || comparison.Steps[0].Change != reproducer.Added ||
+		comparison.Steps[0].Step.Operator != reproducer.SetField {
+		t.Fatalf("the authored transformation was not reported: %+v", comparison.Steps)
+	}
+	if len(comparison.Edits) != 1 || comparison.Edits[0].Change != reproducer.Added ||
+		comparison.Edits[0].Selector != "PID[1]-5[1].1" || comparison.Edits[0].RightOperator != reproducer.SetField {
+		t.Fatalf("the edited position was not reported: %+v", comparison.Edits)
+	}
+	// The proof: both runs evaluated the same expectations, each against the
+	// revision it is offered as proof of, and the selected expectation failed
+	// the same way on both sides.
+	if comparison.Proof.State != reproducer.ProofCompared {
+		t.Fatalf("two real runs of the same test were not compared: %+v", comparison.Proof)
+	}
+	if comparison.Proof.Left.Case != comparison.Left.Derived.Identity ||
+		comparison.Proof.Right.Case != comparison.Right.Derived.Identity {
+		t.Fatal("a retained run was not bound to the revision it is proof of")
+	}
+	outcomes := map[string]string{}
+	for _, assertion := range comparison.Proof.Assertions {
+		outcomes[assertion.Assertion] = assertion.Outcome
+	}
+	if len(outcomes) != 4 || outcomes["one-appointment"] != reproducer.SameFailure {
+		t.Fatalf("the selected failure did not survive the transformation: %+v", comparison.Proof.Assertions)
+	}
+	if outcomes["booking-ack"] != reproducer.SamePass || outcomes["rescheduling-ack"] != reproducer.SamePass {
+		t.Fatalf("the acknowledgement expectations changed across the transformation: %+v", outcomes)
+	}
+
+	// A run of one revision is not proof of the other, and swapping them is
+	// refused rather than reported as a comparison.
+	swapped := app.CompareReproducers(desktop.ReproducerComparisonRequest{
+		Workspace: workspace, Left: original, Right: transformed,
+		LeftResult: transformedRun, RightResult: originalRun,
+	})
+	if swapped.State != desktop.Failed || swapped.Comparison != nil {
+		t.Fatalf("a run of other evidence was accepted as proof of a revision: %+v", swapped)
+	}
+	// A revision with no retained run claims nothing, rather than reading as a
+	// revision that passed.
+	partial := app.CompareReproducers(desktop.ReproducerComparisonRequest{
+		Workspace: workspace, Left: original, Right: transformed, LeftResult: originalRun,
+	})
+	if partial.State != desktop.Completed || partial.Comparison.Proof.State != reproducer.ProofNotAttempted ||
+		len(partial.Comparison.Proof.Assertions) != 0 || partial.Comparison.Proof.Right != nil {
+		t.Fatalf("a revision nobody has run was reported as proved: %+v", partial)
+	}
+	// The run that was named is still read and bound to the revision it belongs
+	// to, so naming one is never silently ignored.
+	if partial.Comparison.Proof.Left == nil || partial.Comparison.Proof.Left.Case != comparison.Left.Derived.Identity {
+		t.Fatalf("the one retained run that was named was not read: %+v", partial.Comparison.Proof)
+	}
+	// No value of the evidence crosses this boundary, including the name the
+	// second revision replaced and the identifiers the expectations compare.
+	reported, err := json.Marshal(compared, json.Deterministic(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, private := range []string{"EXAMPLE", "SYNTH-001", "APPT-001", "FILL-001", "LISTEN-BOOK", "20260103110000", "Rescheduling updates"} {
+		if bytes.Contains(reported, []byte(private)) {
+			t.Fatalf("the comparison disclosed %q", private)
+		}
+	}
+}
+
+// Every outcome a comparison of retained runs refuses to call proof, against
+// real runs. A verdict that moved is not a surviving failure, two runs of
+// different expectations are not comparable at all, and an execution error
+// leaves every expectation unevaluated rather than passing or failing it.
+func TestDesktopRevisionProofNamesWhatItCannotCallProof(t *testing.T) {
+	app, workspace, original, transformed, _ := revisionWorkspace(t)
+	spec := rescheduleSpec(t)
+	// The same expectations, the corrected receiver on one side and the
+	// defective one on the other.
+	failing := runRevision(t, workspace, original, "failing-run", "defective", spec, 1)
+	fixed := runRevision(t, workspace, transformed, "fixed-run", "fixed", spec, 0)
+	// The same receiver, one expectation changed: a test that expects the two
+	// appointments the defect produces is a different test, not a fixed one.
+	expectsTwo := bytes.Replace(spec, []byte(`"expected": {"count": 1}`), []byte(`"expected": {"count": 2}`), 1)
+	if bytes.Equal(expectsTwo, spec) {
+		t.Fatal("the committed spec no longer carries the expectation this test varies")
+	}
+	other := runRevision(t, workspace, transformed, "other-test-run", "defective", expectsTwo, 1)
+	// A target nothing is listening on: the run is retained, it is bound to this
+	// revision, and it reached no expectation at all.
+	unreached := runRevision(t, workspace, transformed, "unreached-run", "", spec, 2)
+
+	outcomes := func(left, right string) (reproducer.Proof, map[string]string) {
+		t.Helper()
+		result := app.CompareReproducers(desktop.ReproducerComparisonRequest{
+			Workspace: workspace, Left: original, Right: transformed,
+			LeftResult: left, RightResult: right,
+		})
+		if result.State != desktop.Completed || result.Comparison == nil {
+			t.Fatalf("two revisions with retained runs were not compared: %+v", result)
+		}
+		named := map[string]string{}
+		for _, assertion := range result.Comparison.Proof.Assertions {
+			named[assertion.Assertion] = assertion.Outcome
+		}
+		return result.Comparison.Proof, named
+	}
+
+	moved, named := outcomes(failing, fixed)
+	if moved.State != reproducer.ProofCompared || named["one-appointment"] != reproducer.VerdictMoved {
+		t.Fatalf("a verdict that moved was not reported as one: %+v", moved)
+	}
+	if named["booking-ack"] != reproducer.SamePass {
+		t.Fatalf("an unchanged expectation was reported as moved: %+v", named)
+	}
+
+	different, named := outcomes(failing, other)
+	if different.State != reproducer.ProofDifferentTest || len(named) != 0 {
+		t.Fatalf("two runs of different expectations were paired anyway: %+v", different)
+	}
+	// Both runs are still reported, because which one decided what is the answer
+	// in that case.
+	if different.Left == nil || different.Right == nil || different.Right.Status != string(testrunner.AssertionFailure) {
+		t.Fatalf("an incomparable pair hid the runs it read: %+v", different)
+	}
+
+	errored, named := outcomes(failing, unreached)
+	if errored.State != reproducer.ProofCompared || errored.Right.Status != string(testrunner.ExecutionError) {
+		t.Fatalf("an execution error was not reported as one: %+v", errored)
+	}
+	if errored.Right.ErrorClass == "" {
+		t.Fatal("an execution error was reported without the class it recorded")
+	}
+	for _, expectation := range []string{"one-appointment", "original-record-moved", "booking-ack", "rescheduling-ack"} {
+		if named[expectation] != reproducer.NotEvaluated {
+			t.Fatalf("an execution error read as a verdict on %s: %q", expectation, named[expectation])
+		}
 	}
 }

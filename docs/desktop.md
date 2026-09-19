@@ -201,6 +201,7 @@ artifacts are never reported as completed.
 | `EditReproducer` | Adds one step to a reproducer plan and reports what it now means over the case. |
 | `UndoReproducer` | Removes the last step of a plan and resolves what remains. |
 | `BuildReproducer` | Writes the reproducer into a new folder of the open workspace. |
+| `CompareReproducers` | Compares two built reproducer revisions and what the runs retained for each one decided. |
 | `AuthorTest` | Answers one stage of a test draft and reports what it now means over the case. |
 | `SaveTest` | Writes the generated test spec into a new entry of the open workspace. |
 | `Cancel` | Stops the operation that is running now, when it can be interrupted. |
@@ -226,7 +227,7 @@ than drawing itself with no commands and no privacy status.
 folder and listing it are interruptible; `OpenCase`, `OpenProject`,
 `OpenRevisions`, `SaveNote`, `Search`, `OpenGrid`, `SaveFilter`,
 `SelectFilter`, `InspectOccurrence`, `Compare`, `EditReproducer`, `UndoReproducer`,
-`BuildReproducer`, `AuthorTest`, `SaveTest` and `RecoverSession` are not, because each runs to completion under its own size
+`BuildReproducer`, `CompareReproducers`, `AuthorTest`, `SaveTest` and `RecoverSession` are not, because each runs to completion under its own size
 limits once it starts. The window enables the
 Cancel control only while an interruptible operation runs; `Escape` reaches the
 same operation whenever the palette is not open, and cancelling when nothing is
@@ -521,6 +522,30 @@ A reproducer is derived testing data, not a redaction and not an approval to
 share. See [extracting and editing a reproducer](reproducer.md) for both
 contracts, the two dependency relations, every refusal, the bounds, and how to
 register the result as a project revision.
+
+### Comparing two revisions
+
+**Reproducer revisions** is the panel beside it. Name two reproducers this
+workspace holds and it reports how they are related, what the second plan does
+differently, and every occurrence they retain differently — telling a selection
+a person stopped making apart from a setup dependency that stopped being
+retained, because a reschedule without the booking it refers to may no longer
+reproduce anything.
+
+Name the run you retained for each revision and it also reports what those runs
+decided, expectation by expectation: failed on both sides, passed on both sides,
+a verdict that moved, or one no execution reached. A run counts as proof of a
+revision only when it was executed against that revision's derived case, and a
+revision nobody has run yet claims nothing rather than reading as one that
+passed. There is no overall verdict here: which expectation carries the incident
+is a person's judgement.
+
+This compares plans and manifests, never messages. The two derived cases are not
+compared byte for byte, because where one revision edits a position the other
+left alone, the other's bytes there are the original evidence's own value, and
+the bytes an edit replaced are recorded nowhere. Comparing two collections field
+by field is the [comparison panel](#comparing-two-collections) over the same
+engine `readmit diff` runs. Nothing is written, and neither revision is changed.
 
 ## Authoring a regression test
 
@@ -1123,10 +1148,14 @@ checked to hold no network call and no browser storage at all.
   bounded versioned document and it gains no member here, so which two
   collections were being compared is lost with the window; comparing them again
   reads both from disk and verifies both.
-- Reduction, replay transformations, reordering or duplicating occurrences, and
-  comparing two reproducers. The editor retains what a person selected and what
-  their declared dependencies require, and makes no claim of minimality; see
+- Reduction, replay transformations, and reordering or duplicating occurrences.
+  The editor retains what a person selected and what their declared dependencies
+  require, and makes no claim of minimality; see
   [the reproducer contract](reproducer.md) for what this release does not do.
+- Retaining which two revisions were being compared across an interruption, and
+  any history of what a plan said before a step was undone. A comparison reads
+  two reproducers that were built, so it is produced again from disk rather than
+  held anywhere.
 - Building an index of any case but the sample one. The grid reads an index that
   `readmit index build` wrote, so which fields are retained, in what form and
   until when stay three declarations an operator made explicitly. The one

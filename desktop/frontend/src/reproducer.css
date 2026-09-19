@@ -42,3 +42,21 @@
 .reproducer .written {
   overflow-wrap: anywhere;
 }
+.reproducer .lineage-sides,
+.reproducer .proof-sides {
+  list-style: none;
+  padding-left: 0;
+}
+.reproducer .lineage-sides li,
+.reproducer .proof-sides li {
+  overflow-wrap: anywhere;
+  padding: 0.2rem 0;
+}
+/* A dropped setup dependency is marked with a rule and heavier text, never by
+   colour alone: a reproducer that stopped retaining what a selection needs may
+   have stopped reproducing anything, and the sentence beside it says so. */
+.reproducer .retention li.dropped-prerequisite {
+  font-weight: bold;
+  border-inline-start: 0.25rem solid currentColor;
+  padding-inline-start: 0.5rem;
+}
