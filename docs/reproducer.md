@@ -243,9 +243,11 @@ A reproducer is derived testing data and is treated as the data it came from.
 
 - Reduction. Nothing here shrinks a reproducer against a failure signature,
   runs bounded trials, checks a flaky oracle, or reports a locally minimal
-  result. That is a separate delivery, and this release makes no claim about
-  minimality: a reproducer holds what a person selected and what their declared
-  dependencies retained.
+  result. That is [its own package](reduction.md), and this editor makes no
+  claim about minimality: a reproducer holds what a person selected and what
+  their declared dependencies retained. A reduction reports occurrence
+  identifiers, which are what `select-occurrence/v1` steps name; it writes no
+  derived evidence of its own.
 - Replay transformations. `set-field/v1` changes one position of one occurrence
   and knows nothing about the others, and this plan gains no operator for the
   ones that do. Renaming the values a correlation rule relates and shifting
