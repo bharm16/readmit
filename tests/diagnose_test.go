@@ -271,3 +271,83 @@ func TestDiagnoseLifecycleRulesetIsSelectedThroughTheConfigurationFile(t *testin
 		t.Fatal("lifecycle diagnosis disclosed identifiers or paths")
 	}
 }
+
+func TestDiagnoseOrderRulesetLinksAcknowledgementsThroughTheConfigurationFile(t *testing.T) {
+	dir := t.TempDir()
+	casePath := filepath.Join(dir, "case")
+	if _, stderr, err := run(t, "capture", "../testdata/fixtures/diagnose-order.hl7", "../testdata/fixtures/diagnose-order-ack.hl7", "../testdata/fixtures/diagnose-result.hl7", "--output", casePath); err != nil {
+		t.Fatalf("capture: %v %s", err, stderr)
+	}
+	configPath := filepath.Join(dir, "order.json")
+	configData, err := json.Marshal(diagnose.OrderConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, configData, 0600); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(dir, "report")
+	stdout, stderr, err := run(t, "diagnose", casePath, "--output", output, "--config", configPath)
+	if err != nil || stderr != "" || !strings.Contains(stdout, diagnose.OrderRuleset) {
+		t.Fatalf("diagnose: %v %q %q", err, stdout, stderr)
+	}
+	data, err := os.ReadFile(filepath.Join(output, "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	markdown, err := os.ReadFile(filepath.Join(output, "report.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report diagnose.Report
+	if err := json.Unmarshal(data, &report, json.RejectUnknownMembers(true)); err != nil {
+		t.Fatal(err)
+	}
+	if report.Schema != diagnose.Schema || report.Profile != diagnose.OrderProfile {
+		t.Fatalf("order ruleset not applied: %+v", report)
+	}
+	located, stage := 0, 0
+	for _, finding := range report.Findings {
+		switch finding.RuleID {
+		case diagnose.ACKErrorLocation:
+			located++
+			if len(finding.Evidence) != 3 || finding.Evidence[1].Occurrence == finding.Evidence[2].Occurrence {
+				t.Fatalf("the error location does not span both occurrences: %+v", finding)
+			}
+		case diagnose.ACKStageNotObserved:
+			stage++
+			if finding.Classification != "hypothesis" || finding.Window != report.Window.Description {
+				t.Fatalf("unbounded stage hypothesis: %+v", finding)
+			}
+		case diagnose.OrderNotObserved:
+			t.Fatalf("the captured order did not correlate with its result: %+v", finding)
+		}
+		if !strings.Contains(string(markdown), finding.Summary) || !strings.Contains(string(markdown), finding.RuleID) {
+			t.Fatal("report formats disagree")
+		}
+	}
+	if located != 1 || stage != 1 {
+		t.Fatalf("acknowledgement rules did not run: %+v", report.Findings)
+	}
+	// The default SIU contract keeps its own meaning over the same evidence.
+	defaultOutput := filepath.Join(dir, "siu-report")
+	if _, stderr, err := run(t, "diagnose", casePath, "--output", defaultOutput); err != nil {
+		t.Fatalf("default diagnosis: %v %s", err, stderr)
+	}
+	defaultData, err := os.ReadFile(filepath.Join(defaultOutput, "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(defaultData), "unsupported_message_type") || strings.Contains(string(defaultData), diagnose.OrderRuleset) {
+		t.Fatal("default contract interpreted order evidence")
+	}
+	rendered := stdout + stderr + string(data) + string(markdown)
+	for _, secret := range []string{"SECRET-", "FILLER-001", "PATIENT-001", "OBX"} {
+		if strings.Contains(rendered, secret) {
+			t.Fatalf("order diagnosis disclosed %s", secret)
+		}
+	}
+	if strings.Contains(stdout+stderr, casePath) {
+		t.Fatal("order diagnosis disclosed paths")
+	}
+}

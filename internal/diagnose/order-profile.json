@@ -1,0 +1,59 @@
+{
+  "profile": "readmit-order-v1",
+  "ruleset": "readmit-order-diagnosis/v1",
+  "hl7_version": "2.5.1",
+  "statuses": [
+    {"vocabulary": "order-status", "code": "SC", "final": false},
+    {"vocabulary": "order-status", "code": "IP", "final": false},
+    {"vocabulary": "order-status", "code": "A", "final": false},
+    {"vocabulary": "order-status", "code": "HD", "final": false},
+    {"vocabulary": "order-status", "code": "CM", "final": true},
+    {"vocabulary": "order-status", "code": "CA", "final": true},
+    {"vocabulary": "order-status", "code": "DC", "final": true},
+    {"vocabulary": "result-status", "code": "O", "final": false},
+    {"vocabulary": "result-status", "code": "I", "final": false},
+    {"vocabulary": "result-status", "code": "S", "final": false},
+    {"vocabulary": "result-status", "code": "A", "final": false},
+    {"vocabulary": "result-status", "code": "P", "final": false},
+    {"vocabulary": "result-status", "code": "R", "final": false},
+    {"vocabulary": "result-status", "code": "C", "final": false},
+    {"vocabulary": "result-status", "code": "F", "final": true},
+    {"vocabulary": "result-status", "code": "X", "final": true}
+  ],
+  "triggers": [
+  {
+    "kind": "ORM",
+    "code": "O01",
+    "required_fields": ["MSH-10", "ORC-1", "ORC-2.1", "ORC-3.1", "PID-3.1"],
+    "authority_fields": [["PID-3.4.1", "PID-3.4.2", "PID-3.4.3"], ["ORC-2.2", "ORC-2.3", "ORC-2.4"], ["ORC-3.2", "ORC-3.3", "ORC-3.4"]],
+    "scalar_fields": ["ORC-2", "ORC-3", "ORC-5"],
+    "output": {
+      "identity": "ORC-3.1",
+      "authority": ["ORC-3.2", "ORC-3.3", "ORC-3.4"],
+      "status": "ORC-5",
+      "vocabulary": "order-status",
+      "evidence": ["MSH-9.2", "ORC-3.1", "ORC-5"]
+    },
+    "correlations": [
+      {"rule": "order.order-not-observed", "role": "antecedent", "value": "ORC-2.1", "authority": ["ORC-2.2", "ORC-2.3", "ORC-2.4"]}
+    ]
+  },
+  {
+    "kind": "ORU",
+    "code": "R01",
+    "required_fields": ["MSH-10", "OBR-2.1", "OBR-3.1", "PID-3.1"],
+    "authority_fields": [["PID-3.4.1", "PID-3.4.2", "PID-3.4.3"], ["OBR-2.2", "OBR-2.3", "OBR-2.4"], ["OBR-3.2", "OBR-3.3", "OBR-3.4"]],
+    "scalar_fields": ["OBR-2", "OBR-3", "OBR-25"],
+    "output": {
+      "identity": "OBR-3.1",
+      "authority": ["OBR-3.2", "OBR-3.3", "OBR-3.4"],
+      "status": "OBR-25",
+      "vocabulary": "result-status",
+      "evidence": ["MSH-9.2", "OBR-3.1", "OBR-25"]
+    },
+    "correlations": [
+      {"rule": "order.order-not-observed", "role": "subsequent", "value": "OBR-2.1", "authority": ["OBR-2.2", "OBR-2.3", "OBR-2.4"], "evidence": ["MSH-9.2", "OBR-2.1", "OBR-2.2", "OBR-2.3", "OBR-2.4"]}
+    ]
+  }
+  ]
+}
