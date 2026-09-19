@@ -4,6 +4,10 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   webview dependencies, offline activation, direct runner TLS, least privilege
   and explicit signed-candidate/enterprise-policy acceptance gates.
 
+- Customer-hosted case reviews add authenticated assignments, threaded evidence
+  comments, exact test-release approvals, internal notifications and searchable
+  decisions. Explicit revision conflicts and backup v3 preserve immutable links.
+
 - Controlled-stop tests now synchronize actual receiver consumption and verify
   exact retained prefixes, including reads returning after shutdown. Unread
   socket data remains outside captured evidence; runtime behavior is unchanged.

@@ -163,9 +163,10 @@ sudo systemctl start readmit-hub
 The destination must be a new directory outside artifact storage. Backup copies
 and verifies exactly the catalogue's objects, preserving their bytes, addresses,
 sizes and timestamps. `manifest.json` is written last and synchronized: without
-it the backup is incomplete. Its strict `readmit-hub-backup/v2` contract declares
-metadata version 3, the ordered object list, project-to-object links and the
-sticky team-mode state, bounded to a 32 MiB manifest. Existing `readmit-hub-backup/v1` documents retain their
+it the backup is incomplete. Its strict `readmit-hub-backup/v3` contract declares
+metadata version 4, the ordered object list, project-to-object links, authenticated
+review events and sticky team-mode state, bounded to a 64 MiB manifest.
+Existing v2 documents retain metadata version 3 and their 32 MiB bound. Existing `readmit-hub-backup/v1` documents retain their
 exact three-member contract, 16 MiB bound and metadata version 2; restoration still accepts
 them as unscoped operator objects. Unknown versions, duplicate
 addresses, omitted fields, corrupt or missing bytes are refused. Hashes detect
@@ -223,7 +224,7 @@ exclusive process ownership, initial/upgrade/future metadata versions, corruptio
 cancellation, backup/restore link preservation and failed-restore recovery.
 Customer DNS/PKI, host permissions, encrypted storage, firewall policy, retained
 backup drills and operator certificate issuance are installation responsibilities,
-not properties established by synthetic tests. Multi-engineer editing and approval
+not properties established by synthetic tests. Desktop multi-engineer editing and approval
 acceptance remains the R19 integration gate after #97–#99.
 
 ## Team access
@@ -323,7 +324,8 @@ export permission cannot prevent copying previously read data. #95 owns reviewed
 packet export. Unscoped `/v1/artifacts/` is absent in team mode.
 
 `POST /v1/projects/P/execution` and `/approvals` check the relevant permission
-then return 501: this service cannot yet execute work or persist approvals.
+then return 501: these legacy operation placeholders remain unavailable.
+Use the authenticated `/reviews` workflow below to persist team approvals.
 Denied subjects get 403 and no operation starts. Health probes retain mTLS-only
 access and disclose no project information. No CORS bypass is enabled.
 
@@ -339,3 +341,94 @@ keys, assign named subjects/projects, provision customer client certificates and
 external credential storage, test actual IdP login/key rotation/removal, and run a
 retained-data backup drill. Local synthetic cryptographic/PostgreSQL tests do not
 claim a live provider or customer deployment has passed these gates.
+
+## Case collaboration and approved tests
+
+Team mode serves `POST /v1/projects/P/reviews`, and `GET` or `POST` at
+`/history` and `/notifications` under the same project prefix. These routes
+use the existing verified mTLS connection and current scoped OIDC access token.
+Writes require a human OIDC identity: analysts/admins/owners use `evidence.write`
+for comments, assignments and review requests; reviewers/owners can comment or
+approve with `approval`. Viewer and runner writes are refused. API tokens cannot
+write collaboration metadata. Reads require `evidence.read`; permissions and
+revocations are rechecked after waiting for the storage lock.
+
+A command is a complete strict JSON document; every field below is required:
+
+```json
+{
+  "schema": "readmit-hub-review-command/v1",
+  "id": "review-booking-1",
+  "expected": 0,
+  "kind": "review-request",
+  "evidence": "EXACT_PROJECT_EVIDENCE_SHA256",
+  "parent": "",
+  "recipient": "OIDC_REVIEWER_SUBJECT",
+  "text": "Review the synthetic rejection expectations",
+  "release": "EXACT_UPLOADED_TEST_RELEASE_SHA256"
+}
+```
+
+The four kinds are `comment`, `assignment`, `review-request`, and `approval`.
+Evidence always names an existing verified project artifact, including a retained
+case representation. The hub does not reinterpret an uploaded blob as a complete
+case bundle. Comments optionally name a prior comment/event ID as `parent`, on
+that exact evidence; assignment and review requests have an empty parent.
+Assignments name a current human project member; the last assignment event for
+an evidence digest is its current assignment. Use a new assignment to change it.
+A review request names a current reviewer/owner other than its author and a
+strict `readmit-test-release/v1` artifact uploaded through the project route.
+Comments and assignments carry an empty `release`.
+
+An approval names the review request in `parent`, has an empty `recipient`, and
+repeats its exact evidence and release digests. Only that requested reviewer can
+approve. The event records the authenticated issuer/subject; the local release's
+approver label is preserved as local provenance and never becomes team identity.
+The first approval for a test ID must be revision 1; later approvals must extend
+the most recent approved release with exact release and baseline predecessor
+commitments and valid profile continuity. A fork or changed release needs a new
+review and explicit resolution against that predecessor. Already approved bytes
+and events cannot be edited or deleted, and approval never means a passing run,
+permission to export evidence, or admission of a future runner job.
+
+Every write supplies the current project history `head` as `expected`. A stale
+head returns 409; fetch history, reconcile both engineers' edits and use a new
+command ID. This is project-wide conflict detection, not silent last-writer-wins.
+IDs are project-scoped lowercase identifiers of 1–64 bytes. Retrying the same ID,
+command and authenticated actor returns its original event with 200; the initial
+commit returns 201. Reusing an ID for different content returns 409. A cancelled
+request commits nothing if cancelled before its transaction commits; after a
+lost response, retry the same ID to resolve uncertainty without duplicating work.
+
+History returns `readmit-hub-review-history/v1` with `head` and `events`; each
+`readmit-hub-review-event/v1` contains `project`, `sequence`, `issuer`, `actor`,
+`at`, and the complete `command`. `GET /notifications` returns events addressed
+to the current subject, inside that project. There is no email, webhook, external
+notification service, read receipt or background polling. For search or a client
+notification cursor, POST this strict document to either read route:
+
+```json
+{"schema":"readmit-hub-review-query/v1","after":0,"text":"synthetic","evidence":""}
+```
+
+Search is case-insensitive literal text matching, optionally constrained to one
+exact evidence digest, and returns events after the specified sequence. A client
+can retain the returned head as its next notification cursor. All events are
+retained, so decision histories remain searchable after reassignment or removal
+of a user. Removed users cannot make new requests; downloaded copies cannot be
+revoked. Text is at most 2,048 UTF-8 bytes, commands at most 8 KiB, search at most
+2 KiB, and this preview retains at most 1,024 events across the hub. Hitting a
+bound refuses the write rather than discarding history. Comments, names, search
+results and notification text can contain PHI: protect metadata and backups with
+the same customer controls as evidence; nothing goes to the vendor.
+
+Metadata migration 4 adds the append-only review table. New backups use
+`readmit-hub-backup/v3` with the v2 members plus required `reviews`, bounded to
+64 MiB, retaining exact authenticated events and immutable evidence links.
+Restore checks event order, parent links, release chains and artifact bytes before
+one metadata transaction. Old v1/v2 backups remain readable with no inferred
+reviews or approvals. The operator must protect backup provenance: a manifest
+is not a cryptographic audit signature. Access policy is still restored separately
+and current policy controls who can read restored histories. Synthetic isolated
+PostgreSQL tests do not establish a live customer IdP or deployment acceptance.
+The API is available now; desktop collaboration UI remains unimplemented.

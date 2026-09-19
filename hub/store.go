@@ -19,7 +19,7 @@ import (
 )
 
 const MaxArtifactBytes int64 = 64 << 20
-const schemaVersion = 3
+const schemaVersion = 4
 const lockID int64 = 0x726561646d6974
 
 var ErrConflict = errors.New("another hub or maintenance operation owns this database")
@@ -132,6 +132,11 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if version < 3 {
 		if _, err = tx.ExecContext(ctx, `ALTER TABLE readmit_hub_schema ADD COLUMN team_enabled boolean NOT NULL DEFAULT false; CREATE TABLE readmit_hub_project_artifacts (project text NOT NULL CHECK(project ~ '^[a-z0-9-]{1,64}$'), digest text NOT NULL REFERENCES readmit_hub_artifacts(digest), PRIMARY KEY(project,digest))`); err != nil {
 			return errors.New("project metadata migration failed")
+		}
+	}
+	if version < 4 {
+		if _, err = tx.ExecContext(ctx, `CREATE TABLE readmit_hub_reviews(project text NOT NULL, sequence integer NOT NULL, id text NOT NULL, document text NOT NULL, PRIMARY KEY(project,sequence), UNIQUE(project,id))`); err != nil {
+			return errors.New("review metadata migration failed")
 		}
 	}
 	if _, err = tx.ExecContext(ctx, "UPDATE readmit_hub_schema SET version=$1", schemaVersion); err != nil {

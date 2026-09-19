@@ -49,6 +49,10 @@ func (s *Store) TeamHandler(access *Access) http.Handler {
 			return
 		}
 		project := parts[2]
+		if len(parts) == 4 && (parts[3] == "reviews" || parts[3] == "history" || parts[3] == "notifications") {
+			s.reviewRequest(w, r, access, project, parts[3])
+			return
+		}
 		var action string
 		switch parts[3] {
 		case "artifacts":
