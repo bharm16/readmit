@@ -33,8 +33,11 @@ const maxIdentity = 64
 
 // version is the engine build identity. It is stamped at link time with
 // -X github.com/bharm16/readmit/internal/engine.version=VERSION and stays
-// "dev" in every unstamped build, which includes every test binary and the
-// desktop shell this release does not package.
+// "dev" in every unstamped build, which includes every test binary. The
+// desktop packages are stamped with the same string as the command-line
+// archives of the same commit, so an installed application and an archive name
+// one build; whether a published installer and a published archive do is a D5
+// release gate, because neither is published yet.
 var version = "dev"
 
 // ErrUnsupportedVersion reports a pin written under a contract, spec or

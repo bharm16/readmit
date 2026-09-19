@@ -389,7 +389,7 @@ GitHub Actions, with the declared release matrix mapped to native runners:
 - Go tests, tooling/independent verification, vulnerability scanning, and three fuzz shards run concurrently. Fuzz targets are discovered from Go's test inventory, including targets added by other worktrees. The stable `quality` check requires every lane to pass.
 - Each Go job owns a compiler/platform/dependency-scoped cache that advances with the commit. Desktop cache identity includes both module checksum files. Superseded PR runs are cancelled; main and release-tag runs are independent.
 - `make test` keeps the small observation boundary under race detection and runs the exact production-size boundary separately without instrumentation. See [validation](agents/testing.md) for the local loop.
-- PR checks: tests, vet, govulncheck, independent endpoint/corpus and mutation checks, and native executable smoke tests. The desktop shell is built and checked in a separate workflow, because it needs cgo and a platform webview that the release jobs deliberately do not.
+- PR checks: tests, vet, govulncheck, independent endpoint/corpus and mutation checks, and native executable smoke tests. The desktop shell is built and checked in a separate workflow, because it needs cgo and a platform webview that the release jobs deliberately do not. That workflow also builds each native desktop package on the runner it targets and installs, checks and removes it there through the platform's own installer; `desktop` is that workflow's stable aggregate over the shell build and the five package jobs. No runner has a display, so no package's window is opened.
 - Release jobs test the exact artifacts being published, not rebuilt equivalents.
 - Release credentials and signing never run in untrusted pull-request workflows.
 
@@ -397,12 +397,21 @@ GitHub Actions, with the declared release matrix mapped to native runners:
 
 - GoReleaser OSS builds the archives: `.tar.gz` for macOS and Linux, `.zip` for Windows, plus SHA-256 checksums, published as GitHub Releases.
 - `actions/attest` v4 for build provenance on the binaries. Attest only build outputs, never customer evidence.
-- Current CLI releases are standalone archives; desktop installers are not yet
-  delivered. There is no automatic update check.
+- Current CLI releases are standalone archives. The desktop packages are built
+  and installation-tested on every push as unsigned development previews and are
+  published nowhere. There is no automatic update check.
 - Selected desktop delivery (#104): Windows MSI with WebView2 handling;
   Developer ID-signed/notarized/stapled macOS DMG plus signed managed PKG;
   Ubuntu `.deb` with WebKitGTK dependencies. The finite OS/architecture targets
   are in [D5](product-decisions.md#d5--desktop-distribution-and-signing).
+  The package formats, prerequisites and target matrix are declared once in
+  `desktop/packaging/packages.json` (`readmit-desktop-packaging/v1`); each build
+  writes a `readmit-desktop-package/v1` manifest with every package's SHA-256
+  and `"signed_for_distribution": false`, which is distinct from the ad-hoc
+  signature Apple silicon requires the linker to apply to any executable. See [the desktop packages](desktop.md#native-packages).
+  The desktop package and the command-line build of one commit carry the same
+  engine stamp, and CI compares what the installed application and the archived
+  executable report.
 - Package work can start before #88 engine-parity completion and signer
   onboarding. Production release still requires both, native installation
   tests, Apple Developer ID/notarytool and Azure Artifact Signing Public Trust.
@@ -425,6 +434,7 @@ Pin the current patch release and bump through reviewed pull requests, never dur
 | Node | 24 in CI; every resolved frontend version is locked in `desktop/frontend/package-lock.json` |
 | govulncheck | v1.8.0 |
 | GoReleaser OSS | v2.18.2 |
+| WiX | 6.0.1 (Windows installer database only; not in the application) |
 | actions/attest | v4, by commit SHA |
 
 Commit `go.mod` and `go.sum`. Neither directive alone locks the compiler.

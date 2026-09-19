@@ -1,0 +1,27 @@
+{
+  "schema": "readmit-desktop-packaging/v1",
+  "product": "readmit-desktop",
+  "display_name": "readmit",
+  "summary": "Local HL7 v2 inspection and case evidence",
+  "manufacturer": "readmit",
+  "maintainer": "readmit maintainers <maintainers@readmit.invalid>",
+  "bundle_identifier": "com.readmit.desktop",
+  "upgrade_code": "1B6F9D3E-4C5A-4F2B-9E7D-3A8C10D45E62",
+  "minimum_macos_version": "13.0",
+  "debian_dependencies": [
+    "libgtk-3-0 (>= 3.24)",
+    "libwebkit2gtk-4.1-0 (>= 2.44)"
+  ],
+  "webview2": {
+    "registry_key": "SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+    "registry_value": "pv",
+    "message": "readmit needs the Microsoft Edge WebView2 Runtime. Install the Evergreen Standalone Installer on this machine first; readmit downloads nothing itself."
+  },
+  "targets": [
+    {"os": "linux", "arch": "amd64", "package_architecture": "amd64", "formats": ["deb"]},
+    {"os": "linux", "arch": "arm64", "package_architecture": "arm64", "formats": ["deb"]},
+    {"os": "darwin", "arch": "amd64", "package_architecture": "x86_64", "formats": ["dmg", "pkg"]},
+    {"os": "darwin", "arch": "arm64", "package_architecture": "arm64", "formats": ["dmg", "pkg"]},
+    {"os": "windows", "arch": "amd64", "package_architecture": "x64", "formats": ["msi"]}
+  ]
+}

@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-09-18
-amended: 2026-09-18
+amended: 2026-09-19
 ---
 
 # The desktop application is a separate module over a typed Go facade
@@ -75,3 +75,21 @@ static build stand unchanged. Nothing here is added to the release archives.
 - Supported desktop platforms, installation, upgrade and signing are not decided
   here. Continuous integration builds the shell natively on macOS; that is a
   build check, not a support claim.
+
+## Native packaging (amended 2026-09-19)
+
+The shell is now packaged for the finite target matrix
+[D5](../product-decisions.md#d5--desktop-distribution-and-signing) names, so
+continuous integration builds it natively on all five of those runners rather
+than on macOS alone, and installs, checks and removes each package there. None
+of that changes the separation this decision records: the packages are built
+from the `desktop/` module only, the release archives still contain none of it,
+and the command-line build keeps `CGO_ENABLED=0` and its own dependency graph.
+The shell is stamped with the same `internal/engine` identity as the command
+line of the same commit, so an installed application and an archived executable
+report one build; the stamp is a link-time value and adds no dependency.
+
+Every package is an unsigned development preview and is published nowhere.
+Signing, notarization, upgrade and rollback remain decided elsewhere, and a
+supported-platform claim still needs the acceptance in
+[release acceptance](../release-acceptance.md), not a green build.

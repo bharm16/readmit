@@ -46,15 +46,20 @@ The `quality` check aggregates Go tests, tooling/independent verification and
 mutations, all fuzz shards, and the vulnerability scan. It fails if any of those
 jobs fails, is skipped, or is cancelled. Packaging and the five native smoke
 tests run concurrently, and test the exact archives later used for publication.
-The desktop module builds and scans separately. Release credentials remain
-exclusive to trusted tag runs.
+The desktop module builds and scans separately, and `desktop` is that workflow's
+equivalent stable aggregate: it requires the macOS shell build and the five
+`desktop-package` jobs, which build one unsigned native package per target and
+install, check and remove it on that runner, and it fails the same way if any of
+them fails, is skipped or is cancelled. Release credentials remain exclusive to
+trusted tag runs; no signing credential reaches any workflow.
 
 Wait for `quality`, `package`, all five `native-smoke` checks, and `desktop` on
-the final PR revision before merging. Require those stable contexts in the
-repository's main-branch protection. After splitting jobs, keep `quality` as the
-stable aggregate so another worktree never has to guess which new job names
-are mandatory. Each PR cancels only its own superseded workflow runs; main and
-tag runs keep independent groups.
+the final PR revision before merging. That list is unchanged by the desktop
+packaging jobs, because they sit behind `desktop`. Require those stable contexts
+in the repository's main-branch protection. After splitting jobs, keep `quality`
+and `desktop` as the stable aggregates of their workflows so another worktree
+never has to guess which new job names are mandatory. Each PR cancels only its
+own superseded workflow runs; main and tag runs keep independent groups.
 
 Each job has its own Go cache scope, including each fuzz shard. Keys include the
 compiler, platform, dependency checksums and commit; a prefix restores the prior

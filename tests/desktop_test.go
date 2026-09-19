@@ -130,6 +130,101 @@ func TestCommandLineReleaseNeverReachesTheDesktopShell(t *testing.T) {
 	}
 }
 
+// The packaging declaration is the one place the finite desktop target matrix
+// and the platform prerequisites of D5 are named. Both the packages and the
+// pages that promise them read it from here, so neither can drift away from
+// what an operator is actually handed.
+func TestDesktopPackagesDeclareThePrerequisitesTheDocumentationPromises(t *testing.T) {
+	var declaration struct {
+		Schema              string   `json:"schema"`
+		Product             string   `json:"product"`
+		DisplayName         string   `json:"display_name"`
+		Summary             string   `json:"summary"`
+		Manufacturer        string   `json:"manufacturer"`
+		Maintainer          string   `json:"maintainer"`
+		BundleIdentifier    string   `json:"bundle_identifier"`
+		UpgradeCode         string   `json:"upgrade_code"`
+		MinimumMacOSVersion string   `json:"minimum_macos_version"`
+		DebianDependencies  []string `json:"debian_dependencies"`
+		WebView2            struct {
+			RegistryKey   string `json:"registry_key"`
+			RegistryValue string `json:"registry_value"`
+			Message       string `json:"message"`
+		} `json:"webview2"`
+		Targets []struct {
+			OS                  string   `json:"os"`
+			Arch                string   `json:"arch"`
+			PackageArchitecture string   `json:"package_architecture"`
+			Formats             []string `json:"formats"`
+		} `json:"targets"`
+	}
+	data, err := os.ReadFile("../desktop/packaging/packages.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, &declaration, json.RejectUnknownMembers(true)); err != nil {
+		t.Fatalf("the packaging declaration is not a document this release reads: %v", err)
+	}
+	if declaration.Schema != "readmit-desktop-packaging/v1" {
+		t.Fatalf("the packaging declaration declares %q", declaration.Schema)
+	}
+	page, err := os.ReadFile("../docs/desktop.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	documented := string(page)
+	for _, dependency := range declaration.DebianDependencies {
+		if !strings.Contains(documented, dependency) {
+			t.Errorf("the .deb depends on %s, which the desktop page does not name", dependency)
+		}
+	}
+	if len(declaration.DebianDependencies) == 0 {
+		t.Error("the .deb declares no platform library")
+	}
+	installer, err := os.ReadFile("../desktop/packaging/readmit-desktop.wxs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Every value the declaration names reaches the installer as a variable, so
+	// the declaration stays the single place it is stated.
+	for _, variable := range []string{"$(var.WebView2Key)", "$(var.WebView2Value)", "$(var.WebView2Message)", "$(var.UpgradeCode)", "$(var.Version)"} {
+		if !strings.Contains(string(installer), variable) {
+			t.Errorf("the installer does not take %s from the packaging declaration", variable)
+		}
+	}
+	if !strings.Contains(string(installer), "Installed OR READMITWEBVIEW2") {
+		t.Error("the installer no longer refuses a machine without the WebView2 runtime")
+	}
+	if !strings.Contains(documented, "WebView2") || !strings.Contains(documented, declaration.MinimumMacOSVersion) {
+		t.Error("the desktop page does not state the WebView2 prerequisite and the macOS floor")
+	}
+	targets := map[string][]string{}
+	for _, target := range declaration.Targets {
+		if target.PackageArchitecture == "" || len(target.Formats) == 0 {
+			t.Fatalf("%s/%s declares no package", target.OS, target.Arch)
+		}
+		targets[target.OS+"/"+target.Arch] = target.Formats
+		for _, format := range target.Formats {
+			if !strings.Contains(documented, "`."+format+"`") {
+				t.Errorf("the desktop page does not describe the .%s package", format)
+			}
+		}
+	}
+	// Restated here on purpose: `packages.json` is where the matrix is declared,
+	// and this is the check that adding a target is a deliberate act rather than
+	// a line that slipped into a data file.
+	expected := map[string][]string{
+		"linux/amd64":   {"deb"},
+		"linux/arm64":   {"deb"},
+		"darwin/amd64":  {"dmg", "pkg"},
+		"darwin/arm64":  {"dmg", "pkg"},
+		"windows/amd64": {"msi"},
+	}
+	if !reflect.DeepEqual(targets, expected) {
+		t.Fatalf("the declared desktop targets are %v, not the finite matrix %v", targets, expected)
+	}
+}
+
 // The desktop module keeps its dependency graph out of the released module, so
 // adding a webview dependency cannot change what the command line resolves.
 func TestDesktopDependenciesStayOutOfTheReleasedModule(t *testing.T) {

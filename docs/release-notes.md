@@ -36,7 +36,8 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
 - A native desktop shell opens a workspace folder, lists what it declares, and
   verifies a case through the same reader the command line uses. It ships the
   frozen synthetic sample workspace and reopens recent folders. It is a separate
-  build and is not included in these archives.
+  build and is not included in these archives; it has its own unsigned native
+  packages, described below.
   The window is navigated from the keyboard alone: five regions in a fixed focus
   order, a command palette, a search over what the open workspace and its project
   declare, keyboard-resizable evidence and inspector panes, light and dark, and
@@ -521,8 +522,8 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   send decision. `readmit-job/v1`, `readmit-run/v1`, `readmit-result/v1` and
   `readmit-test/v1` gain no member and change no byte. Identity parity between
   a published desktop installer and a published command-line archive stays a
-  packaging and signing gate; the desktop shell is not packaged in this
-  release.
+  packaging and signing gate; the desktop shell now has unsigned native
+  packages, and neither they nor a signed installer are published.
 
 - Changing a local profile is versioned, compared and reported against the
   saved tests that pin it, by the new `internal/profileversion`.
@@ -670,6 +671,30 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   Expected and observed values are message content and are hidden unless
   `--show-values`. Nothing is opened beyond the named artifacts, nothing is sent
   and nothing is written: there is no explanation artifact and no new contract.
+
+- The desktop shell is packaged as the platform's own installer, separately
+  from these archives and from any publication: a `.deb` declaring its
+  WebKitGTK and GTK dependencies for Ubuntu 24.04 on x86-64 and arm64, a `.dmg`
+  and a managed-installation `.pkg` for Intel and Apple silicon macOS, and a
+  per-machine `.msi` with silent install and removal for Windows x64, which
+  refuses a machine without the WebView2 runtime instead of installing a window
+  that cannot open. Each package is built on the machine it targets and then
+  installed, checked and removed there by that platform's own installer, and
+  each build records a `readmit-desktop-package/v1` manifest naming every
+  package, its SHA-256 and `"signed_for_distribution": false`. The packaged shell carries the
+  same engine stamp as the command line of the same commit, so an installed
+  application and an archived executable report one build. The installation
+  check runs the installed executable for its identity, which resolves every
+  library it links against; **no window is opened on any target**, because no
+  runner has a display. **These packages are development previews that are not
+  signed for distribution:** no Developer ID signature, no notarization, no
+  stapling and no Windows code signature, they are published nowhere, and
+  Gatekeeper, SmartScreen or endpoint policy may refuse them. On Apple silicon
+  the application carries the ad-hoc signature the linker applies, because
+  macOS runs no arm64 executable without one; it names no authority and is not
+  distribution signing, and the installation test fails if an authority ever
+  appears. Removing the application never removes
+  evidence, a project, or the local shell-state documents.
 
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`

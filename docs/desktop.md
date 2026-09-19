@@ -24,6 +24,140 @@ The interface is bundled into `frontend/dist` and embedded in the executable, so
 binding that no longer matches the facade fails there. The desktop build is not
 part of the release archives and is unsigned.
 
+On Linux the platform webview is WebKitGTK 4.1, so the build needs
+`-tags webkit2_41` and the `libgtk-3-dev` and `libwebkit2gtk-4.1-dev` packages.
+
+## Native packages
+
+The shell is distributed as the platform's own package rather than as an archive
+of the command line. Wails needs cgo and a platform webview, so each package is
+built on the machine it targets, from that machine's own build of the shell.
+
+[`desktop/packaging/packages.json`](https://github.com/bharm16/readmit/blob/main/desktop/packaging/packages.json)
+is a `readmit-desktop-packaging/v1` document: it names the finite target matrix,
+the prerequisites each package declares, and nothing else.
+[`tools/package_desktop.py`](https://github.com/bharm16/readmit/blob/main/tools/package_desktop.py)
+reads it, builds the packages for the machine it runs on, and verifies them.
+
+| Target | Package | What the package declares |
+| --- | --- | --- |
+| Ubuntu 24.04 LTS, x86-64 and arm64 | `.deb` | `Depends: libgtk-3-0 (>= 3.24)` and `libwebkit2gtk-4.1-0 (>= 2.44)`, so the webview arrives with the application instead of failing when the window opens. Installs `/usr/bin/readmit-desktop` and an application entry. |
+| macOS, Intel and Apple silicon | `.dmg` to open and drag, `.pkg` for managed installation | `CFBundleIdentifier` `com.readmit.desktop` and `LSMinimumSystemVersion` 13.0. The `.pkg` installs the same bundle into `/Applications`. |
+| Windows x64 | `.msi` | A per-machine install under `Program Files`, a Start Menu entry, and the Microsoft Edge WebView2 Runtime as a launch condition. |
+
+Each build writes a `readmit-desktop-package/v1` manifest beside the packages
+naming every package, its format and its SHA-256 digest, and recording
+`"signed_for_distribution": false`. The member is named for what it means:
+Apple silicon requires every executable to carry at least an ad-hoc signature,
+which the linker applies while linking, so an arm64 preview *is* signed in that
+weak sense while an Intel one is not signed at all. Neither names a signing
+authority, and the authority is what distribution signing adds. The output directory holds those packages and that manifest
+and nothing else. Verification re-reads the manifest strictly, re-computes every
+digest, and then opens each package with the tools that wrote it: the `.deb`'s
+control member and installed files are read out of the archive, the application
+is read out of the `.dmg` by mounting the image, and the application, identifier
+and install location are read out of the `.pkg` by expanding it. A `.deb` that
+dropped a declared dependency, an application whose identity disagrees with the
+release, a manifest that omits a format its target declares, a manifest naming a
+file beside it that is not there, and a manifest claiming a signature are each
+refused by name, as is an application that names a signing authority while its
+manifest records that it has none — read at `codesign -dvv`, because `-dv`
+prints no authority even for a genuinely signed application. An `.msi` is
+checked here only for being an installer database:
+its own tables are read back by Windows Installer during the installation test
+below, whose verbose log records the WebView2 property the launch condition
+searched for. The macOS packages are read on macOS, and verification says so
+rather than passing where it cannot look.
+
+```sh
+python3 tools/package_desktop.py build --binary desktop/build/readmit-desktop \
+  --version 0.0.0+dev.abc1234 --output dist-desktop --os darwin --arch arm64
+python3 tools/package_desktop.py verify --packages dist-desktop
+```
+
+### Prerequisites and offline handling
+
+Nothing in a package reaches a network, and no package downloads a prerequisite.
+
+- **Windows.** The MSI refuses to install where the WebView2 Runtime is absent
+  and names the Evergreen Standalone Installer an administrator stages offline,
+  rather than installing a window that cannot open. It is a launch condition on
+  the runtime's own registry entry, checked on the machine being installed.
+- **Linux.** The `.deb` declares its WebKitGTK and GTK dependencies, so the
+  package manager resolves them from the distribution's own repositories or
+  refuses the installation. Nothing is vendored into the package.
+- **macOS.** The webview is part of the operating system; the bundle declares
+  the macOS floor and carries no other prerequisite.
+
+### Installing and removing
+
+```sh
+sudo apt-get install ./readmit-desktop_VERSION_amd64.deb   # Ubuntu
+sudo apt-get remove readmit-desktop
+
+sudo installer -pkg readmit-desktop_VERSION_arm64.pkg -target /   # macOS, managed
+sudo rm -rf /Applications/readmit-desktop.app
+```
+
+```
+msiexec /i readmit-desktop_VERSION_x64.msi /qn /norestart
+msiexec /x readmit-desktop_VERSION_x64.msi /qn /norestart
+```
+
+Removing the application removes the application. It never removes evidence, a
+project, or the three local shell-state documents named above; those are files
+in folders an operator chose, and no uninstaller of ours deletes them.
+
+Continuous integration performs exactly these steps on each target: it installs
+the package, reads back what the installed application reports, and removes it,
+checking that nothing is left behind. Running the installed executable resolves
+every library it links against, so a wrong or missing declared dependency fails
+there. **No window is opened on any target**: no runner has a display, so that
+the application draws its interface on each of these platforms is not
+established here, and no managed or customer machine has installed one.
+
+### One build behind both entry points
+
+The shell is stamped with the same engine identity as the command line, so an
+installed application and a release archive name one build rather than two:
+
+```sh
+readmit-desktop --version        # readmit-desktop version 0.0.0+dev.abc1234
+readmit --version                # readmit version 0.0.0+dev.abc1234
+python3 tools/package_desktop.py identity --desktop ... --command-line ...
+```
+
+Answering it opens no window and reads no evidence, which is how an installed
+package is checked on a machine with no display. On Windows the shell is a
+window application with no console attached: redirect its output
+(`readmit-desktop.exe --version > version.txt`) to read the identity back.
+
+An unstamped build — anything a developer compiles with plain `go build` —
+reports `dev`, exactly as an unstamped command line does.
+
+### What these packages are not
+
+Build provenance is attested for each package a run produces, which records the
+workflow and commit that built it. That is not a code signature and claims
+nothing about signing.
+
+Every package this repository builds is a **development preview that is not
+signed for distribution**. There is no Apple Developer ID signature, no
+notarization, no stapled ticket and no Windows code signature, so macOS
+Gatekeeper and Windows SmartScreen will refuse or warn, and endpoint policy may
+block the installation outright. On Apple silicon the application does carry the
+ad-hoc signature the linker applies, because macOS will not run an arm64
+executable without one; it names no authority, proves nothing about origin, and
+is not distribution signing. The manifest records
+`"signed_for_distribution": false` as a value rather than as a sentence someone
+has to read, and the installation test fails loudly if a signing authority ever
+appears on a preview. Signing identities, notarization credentials and the signed
+release packages are release inputs this repository does not hold; see
+[D5](product-decisions.md#d5--desktop-distribution-and-signing) and
+[release acceptance](release-acceptance.md). Automatic updates, upgrade and
+rollback paths and offline licence import are separate deliveries and are not
+here.
+
 ## Operations and states
 
 Every operation returns exactly one state. Unknown, unsupported and incomplete
