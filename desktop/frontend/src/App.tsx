@@ -1,3 +1,4 @@
+import { Baseline } from "./Baseline";
 import { NoteDraft } from "./NoteDraft";
 import { Recovery } from "./Recovery";
 import { RunPanel } from "./RunPanel";
@@ -932,6 +933,7 @@ export default function App() {
     ),
     inspector: (
       <>
+        {root ? <Baseline key={root} workspace={root} busy={busy} /> : null}
         <Report
           indicators={indicators}
           progress={running === "case" ? "Verifying the case." : null}

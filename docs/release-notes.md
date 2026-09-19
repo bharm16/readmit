@@ -1075,3 +1075,7 @@ Prerelease binaries have no Apple notarization or Windows code signing.
   schema migration and verified offline backup/restore. It is an operator-only
   deployment foundation; OIDC/project authorization and team collaboration remain
   separate work. The CLI and desktop remain independent of the service.
+- `baseline review`, `approve` and `show`, also available in the desktop inspector,
+  retain explicit local approvals of immutable regression expectation revisions.
+  Exact spec/parent commitments reject stale approvals; values remain hidden
+  until requested. Local reviewer declarations do not authenticate team identity.

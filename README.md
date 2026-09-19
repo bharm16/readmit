@@ -385,6 +385,11 @@ revision is always stated `unknown`, because readmit records the configuration a
 target was reached by and never the software answering at it. No address, path
 or value appears in the report. See [separating drift](docs/drift.md).
 
+`baseline review SPEC` shows exact expectation and configuration changes before
+`baseline approve` records a local approver and rationale in a new immutable
+revision. The desktop inspector exposes the same review and approval flow.
+Passing tests never promote themselves. See [regression baselines](docs/baseline.md).
+
 `normalize LEFT RIGHT --policy FILE` runs that same field comparison under a
 saved `readmit-normalization-policy/v1` document and shows what it hid. Rules
 are typed and scoped to exactly one canonical selector: a timestamp compared to

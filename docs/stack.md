@@ -25,7 +25,7 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
 
 ## CLI
 
-- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `corpus`, `project`, `backup`, `upgrade`, `license`, `secret`, `protect`, `target`, `source`, `listen`, `replay`, `test`, `observe`, `explain`, `diff`, `drift`, `normalize`, `diagnose`, `correlate`, `transform`, `synth`, `scenario`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
+- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `corpus`, `project`, `backup`, `upgrade`, `license`, `secret`, `protect`, `target`, `source`, `listen`, `replay`, `test`, `observe`, `explain`, `diff`, `drift`, `normalize`, `baseline`, `diagnose`, `correlate`, `transform`, `synth`, `scenario`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
 - Command data goes to stdout, diagnostics to stderr. Machine-readable modes never interleave progress output with JSON.
 - Target configuration is read from explicitly selected files, not hidden global config or environment-variable precedence.
 - Credentials are referenced, never held. A `readmit-secrets/v1` document registers the store kind an operator declared, the single purpose and endpoint address a credential may be bound to, the absolute path of the program that reads it back, and the recorded rotation. The purposes are `mllp-endpoint` and `source-endpoint`; a reference registered for one is refused wherever the other is needed. No command accepts a credential value, and a resolved value masks itself under every formatting verb and refuses to be serialized. See [credential references](secret.md).
@@ -505,3 +505,12 @@ vendor billing and administration policies. A separate vendor service is not
 an evidence-engine dependency. None is implemented merely by being selected.
 
 The offline engine has no database, ORM, web application server, container runtime, hosted backend, external rules engine, message broker, Redis, search server, LLM API, payment integration, licence or activation server, or application authentication system. The separately deployed customer hub has PostgreSQL metadata and mutual TLS; OIDC and project roles remain #97. The case index of [ADR-0008](adr/0008-the-case-index-is-a-derived-disposable-readmit-owned-file.md) is not one of them: it is a derived, disposable file the engine writes and reads the way it writes and reads every other artifact, rebuilt from the canonical case directory and never the only home of anything. Entitlement verification is a local check of a signed file and introduces none of them. Access control is the operating-system account and filesystem permissions, plus the encrypted transfer packages an operator asks for. readmit has no credential or key store of its own: it registers references to credentials and encryption keys kept in an operating system credential store or a customer-managed secret provider, reads one by running the program the operator declared, and never writes to a store, so its own privilege is read access to the values a person registered. Nothing is encrypted implicitly, no key is escrowed or recoverable, and no deletion readmit performs is presented as erasure. The desktop application is a local webview over the same engine, not a hosted web application: it serves nothing over a network and has no accounts.
+
+## Regression baseline approval
+
+`internal/baseline` retains an authored `readmit-test/v1` specification inside a
+separate strict `readmit-baseline/v1` revision with a canonical parent digest,
+review commitment, local approver and rationale. CLI and desktop use the same
+review and approval methods. This neither authenticates a team user nor blesses
+a passing run, changes execution, or snapshots the referenced files. See
+[regression baselines](baseline.md).
