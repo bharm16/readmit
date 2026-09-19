@@ -83,6 +83,16 @@ digest is a placeholder, and it is not a pack of anything real.
 support the contract carries no content for, so the reader refuses it. Every
 other refusal is a single edit of the positive fixture, made in the tests.
 
+`local-profile.json` is a minimal, hand-authored `readmit-local-profile/v1`
+fixture for issue #46: it pins the `fixture-siu` pack above, constrains `SCH`
+and one site-defined `ZPD` segment, and carries one local code table, one
+assigning authority and one date rule, so a field name taken from the pack, a
+name that replaced one, a name that exists only locally and a position nobody
+names are all present in one document. `local-profile-refused.json` is its
+negative counterpart: it binds a local code table to a field whose type carries
+no code, so the reader refuses it. Every other refusal is a single edit of the
+positive fixture, made in the tests.
+
 The issue #6 pair `diff-before.mllp` and `diff-after.mllp` includes an inserted
 message, repeated segments and identifiers, a changed timestamp, and a null
 field that becomes omitted. `diff-expected.json` independently states the

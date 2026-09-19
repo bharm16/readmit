@@ -117,7 +117,10 @@ version that says so.
 Everything below is the boundary #41 (correlation), #46 (the profile editor),
 #57 (the reproducer editor) and #78 (typed assertions) build against. None of
 those features is delivered by this page; each still needs profile-specific
-integration coverage for every combination it claims.
+integration coverage for every combination it claims. The first of them is
+[local profiles](local-profiles.md), which pins one pack, constrains one
+combination, and reports every rule it carries as local because a v1 pack
+declares no structural support for it to stand on.
 
 ```go
 pack, err := profilepack.Decode(data)          // strict; refuses what it cannot stand behind
@@ -173,10 +176,10 @@ is a pack whose answers changed. Publishing a corrected extraction is a new
 `version` of the same `id`; a consumer that pinned the old one keeps getting
 its refusal until somebody re-pins it deliberately.
 
-No consumer of this contract exists yet in the engine, so no existing document
-gains a pin member. When #41, #46, #57 or #78 adds one, it is a member of that
-feature's own contract, and the existing contracts it sits beside keep their
-member sets.
+No existing document gains a pin member. `readmit-local-profile/v1` is the
+first consumer and carries its pin in `base.pack`, in its own contract; when
+#41, #57 or #78 adds one it is likewise a member of that feature's own
+contract, and the existing contracts it sits beside keep their member sets.
 
 ## How the bundled labels would be described
 
@@ -239,9 +242,11 @@ only; a pack extraction takes the same and nothing more.
   either level supported. Adding that content is a new contract name.
 - **No command** reads or lists packs. The contract needs no inspection
   surface until a feature bundles one, and none does.
-- **#41, #46, #57 and #78 are not delivered** by this contract, and neither is
-  the seven-version, four-family library #45 owns. Each combination a
-  downstream feature claims still needs profile-specific fixtures, and #45
-  still records and reviews each extraction separately.
+- **#41, #57 and #78 are not delivered** by this contract, and neither is the
+  seven-version, four-family library #45 owns. #46 is delivered separately, as
+  [local profiles](local-profiles.md), and consumes the interfaces above
+  without changing a byte of this one. Each combination a downstream feature
+  claims still needs profile-specific fixtures, and #45 still records and
+  reviews each extraction separately.
 - **No rights review is performed by software.** The reader requires the
   review to be written down; a person performs it.

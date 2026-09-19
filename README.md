@@ -535,6 +535,12 @@ positional labels. See [dictionary provenance](docs/dictionary-provenance.md).
 The shared `readmit-profile-pack/v1` contract describes such metadata per HL7
 version and message family with separate parse, labels, structural and workflow
 support, and no pack is bundled yet. See [profile packs](docs/profile-packs.md).
+A site writes its own interface contract down beside one in a
+`readmit-local-profile/v1` document: Z-segments, cardinality, conditional
+requirements, types, local code tables, assigning authorities and date
+handling, with every rule marked as coming from the pinned profile, overridden
+locally, or declared only here. No message is evaluated against one yet. See
+[local profiles](docs/local-profiles.md).
 This is **syntax inspection**, not semantic validation or a claim of HL7
 conformance. The separate diagnosis and receiver workflows use the narrow,
 documented readmit SIU fixture profile.

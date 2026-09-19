@@ -58,6 +58,17 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
   v1 pack may claim structural or workflow support, because the contract carries
   no such content. No pack is bundled; the bundled v2.5.1 dictionary is
   unchanged. See [profile packs](profile-packs.md).
+- A site's own interface contract is the separate `readmit-local-profile/v1`
+  document read by `internal/localprofile`: one pinned pack and combination,
+  site-defined Z-segments and constrained standard fields, and per field a
+  usage code, a typed conditional requirement over one named position, a
+  cardinality, a data type, a local code table, an assigning authority and a
+  date rule. A typed editor is the only way it changes, and resolving it
+  against its pinned pack marks every rule `profile`, `overridden`, `local` or
+  `undeclared`. Because a v1 pack carries labels and nothing else, every
+  constraint resolves local and the resolution says so. No message is evaluated
+  against a profile and no profile is bundled. See
+  [local profiles](local-profiles.md).
 
 ## Networking
 

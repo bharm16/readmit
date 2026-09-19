@@ -1,0 +1,145 @@
+{
+  "schema": "readmit-local-profile/v1",
+  "profile": {
+    "id": "fixture-local-siu",
+    "version": "1"
+  },
+  "base": {
+    "pack": {
+      "id": "fixture-siu",
+      "version": "1"
+    },
+    "hl7_version": "2.5.1",
+    "family": "SIU"
+  },
+  "terminology": [
+    {
+      "id": "local-visit-reason",
+      "description": "The reason codes this site sends, hand-authored for the fixture.",
+      "binding": "required",
+      "codes": [
+        {
+          "code": "ROUTINE",
+          "display": "Routine appointment"
+        },
+        {
+          "code": "URGENT",
+          "display": "Urgent appointment"
+        }
+      ]
+    }
+  ],
+  "authorities": [
+    {
+      "id": "local-mrn-authority",
+      "description": "The assigning authority this site issues its medical record numbers under.",
+      "namespace": "FIXTURECARE",
+      "universal_id": "2.16.840.1.113883.3.72",
+      "universal_id_type": "ISO"
+    }
+  ],
+  "dates": [
+    {
+      "id": "appointment-instant",
+      "description": "Appointment times are sent to the minute and always carry an offset.",
+      "precision": "minute",
+      "timezone": "required"
+    }
+  ],
+  "segments": [
+    {
+      "id": "SCH",
+      "description": "The scheduling segment, constrained beyond what the pinned pack labels.",
+      "cardinality": {
+        "min": 1,
+        "max": "1"
+      },
+      "fields": [
+        {
+          "position": 1,
+          "name": "Placer appointment number",
+          "usage": "R",
+          "cardinality": {
+            "min": 1,
+            "max": "1"
+          },
+          "type": "EI"
+        },
+        {
+          "position": 2,
+          "usage": "RE",
+          "type": "EI"
+        },
+        {
+          "position": 11,
+          "usage": "C",
+          "condition": {
+            "segment": "ZPD",
+            "position": 2,
+            "operator": "present"
+          },
+          "type": "DTM",
+          "date": "appointment-instant"
+        }
+      ]
+    },
+    {
+      "id": "ZPD",
+      "description": "The site-defined patient extension this interface adds.",
+      "cardinality": {
+        "min": 0,
+        "max": "*"
+      },
+      "fields": [
+        {
+          "position": 1,
+          "name": "Local record set identifier",
+          "usage": "R",
+          "cardinality": {
+            "min": 1,
+            "max": "1"
+          },
+          "type": "SI"
+        },
+        {
+          "position": 2,
+          "name": "Local medical record number",
+          "usage": "RE",
+          "type": "CX",
+          "authority": "local-mrn-authority"
+        },
+        {
+          "position": 3,
+          "name": "Local visit reason",
+          "usage": "C",
+          "condition": {
+            "segment": "SCH",
+            "position": 25,
+            "operator": "value_in",
+            "values": [
+              "BOOKED",
+              "RESCHEDULED"
+            ]
+          },
+          "type": "IS",
+          "terminology": "local-visit-reason"
+        },
+        {
+          "position": 4,
+          "name": "Local coverage note",
+          "usage": "O",
+          "cardinality": {
+            "min": 0,
+            "max": "3"
+          },
+          "type": "ST"
+        },
+        {
+          "position": 5,
+          "name": "Retired local flag",
+          "usage": "X"
+        }
+      ]
+    }
+  ]
+}
