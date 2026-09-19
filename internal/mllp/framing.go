@@ -68,6 +68,17 @@ func (r *Reader) ReadFrame() ([]byte, error) {
 	}
 }
 
+// Await blocks until the next frame has begun arriving, without consuming any
+// of it, and reports the read's own error when it does not. A caller that must
+// decide whether it may read a frame at all can then decide once a peer has
+// actually started sending one, rather than while that peer may never send
+// another. Bytes read ahead by the wait stay in the buffer, so a caller that
+// then declines the frame still recovers them through Buffered.
+func (r *Reader) Await() error {
+	_, err := r.reader.Peek(1)
+	return err
+}
+
 // Buffered returns already-read bytes following the last returned frame. It is
 // used only at connection shutdown, to preserve evidence without another read.
 func (r *Reader) Buffered() []byte {

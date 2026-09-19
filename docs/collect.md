@@ -82,17 +82,29 @@ refused rather than quietly adjusted.
 **Nothing is read once a bound cannot hold it.** A frame counts against
 `--max-messages` when a connection is admitted to read it, not when it lands, so
 several peers reading at once cannot together overshoot the number asked for.
-The frame that is not read stays in the sender's socket instead of being
-consumed by a receiver that would not keep it, and it is never listed as
+A capture that has reached a bound stops before looking at a socket again, so
+the frames still to come stay in their senders' sockets instead of being
+consumed by a receiver that would not keep them, and they are never listed as
 received.
 
-Two consequences worth stating. When more peers are connected than the remaining
-message budget allows, the peers without room are closed rather than served,
-while the peers holding that room keep waiting: a message this capture has no
-room for is refused at the socket, never accepted and then dropped. And a
-controlled stop expires a read that was already admitted, so a peer that was
-part way through sending a frame when the capture stopped keeps its consumed
-prefix in the case as ordinary evidence, with no receipt claimed for it.
+Room is held only for a frame that has actually begun arriving. A connection
+that has been answered goes back to waiting for a frame its peer may never send,
+and while it waits it holds no share of `--max-messages`: the budget left over
+belongs to frames that are really on their way, so a peer that sent one inside
+the declared number is never refused in favour of peers that have finished
+sending.
+
+Two consequences worth stating. When more peers are sending at once than the
+remaining message budget allows, the peers without room are refused rather than
+served, while the peers holding that room finish their frames; no message is
+accepted and then dropped. A refused peer is closed in an orderly way rather
+than reset: the frame it had begun is drained into the case as received evidence
+and is never claimed as acknowledged, because closing over bytes still in that
+connection's receive queue would reset it, and a reset would also destroy
+acknowledgements this capture had already sent and claimed. And a controlled
+stop expires a read that was already admitted, so a peer that was part way
+through sending a frame when the capture stopped keeps its consumed prefix in
+the case as ordinary evidence, with no receipt claimed for it.
 
 Cancellation is a different thing and is unchanged: Ctrl-C or SIGTERM interrupts
 a blocked accept, receive or acknowledgement write at once and finalizes the
@@ -510,10 +522,11 @@ separation is enforced by the artifact contract, not only by the receiver.
 Each received frame names the connection that carried it: its occurrence must
 live in that session's own source, so a record cannot attribute one session's
 frame to another. Only a connection that carried bytes becomes a session and a
-source. Frames beyond `--max-messages` that arrived in a coalesced read are
-retained as evidence but are never listed as received, so they cannot masquerade
-as acknowledged work. An accepted stage never carries a reason; a frame that was
-answered at all always names the control ID it echoed.
+source. Frames beyond `--max-messages` that arrived in a coalesced read, and the
+frame drained from a refused connection, are retained as evidence but are never
+listed as received, so they cannot masquerade as acknowledged work. An accepted
+stage never carries a reason; a frame that was answered at all always names the
+control ID it echoed.
 
 If an acknowledgement cannot be written completely, the bytes that did reach the
 peer stay in the case as partial outbound evidence and that stage is downgraded

@@ -42,6 +42,30 @@ func TestFramingIgnoresFragmentAndCoalescingBoundaries(t *testing.T) {
 	}
 }
 
+// TestAwaitWaitsWithoutConsuming is the seam a bounded receiver decides on: it
+// must be able to wait for a peer to begin a frame before it commits a slot to
+// one, and waiting must not take a byte the frame itself still needs.
+func TestAwaitWaitsWithoutConsuming(t *testing.T) {
+	reader, err := mllp.NewReader(&fragmented{data: []byte("\x0bfirst\x1c\r"), chunk: 1}, 16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reader.Await(); err != nil {
+		t.Fatalf("waiting for a frame that had begun reported %v", err)
+	}
+	frame, err := reader.ReadFrame()
+	if err != nil || string(frame) != "\x0bfirst\x1c\r" {
+		t.Fatalf("waiting consumed part of the frame: %q %v", frame, err)
+	}
+	if err := reader.Await(); !errors.Is(err, io.EOF) {
+		t.Fatalf("waiting on a peer that sent nothing more reported %v", err)
+	}
+	empty, _ := mllp.NewReader(bytes.NewReader(nil), 16)
+	if err := empty.Await(); !errors.Is(err, io.EOF) {
+		t.Fatalf("waiting on a peer that sent nothing reported %v", err)
+	}
+}
+
 func TestFrameLimitsAndMalformedPrefixes(t *testing.T) {
 	for _, tc := range []struct {
 		raw    string

@@ -311,10 +311,12 @@ func (c *Collector) finalizeJournal(ctx context.Context, err error) {
 func (c *Collector) connection(ctx context.Context, connection net.Conn, state *stream) (bool, error) {
 	bounds := c.bounds()
 	reader, _ := mllp.NewReader(deadlineReader{connection, &c.recorder, c.config.IdleTimeout}, c.config.MaxFrameBytes)
+	var refused []byte
 	defer func() {
-		// A coalesced TCP read may include frames beyond --max-messages. They
-		// are retained as received evidence, never claimed as acknowledged.
-		c.close(state, reader.Buffered())
+		// A coalesced TCP read may include frames beyond --max-messages, and a
+		// refusal drains the frame its peer had already begun. Both are
+		// retained as received evidence, never claimed as acknowledged.
+		c.close(state, append(reader.Buffered(), refused...))
 	}()
 	for {
 		admitted, err := c.admitFrame(state, bounds)
@@ -325,14 +327,35 @@ func (c *Collector) connection(ctx context.Context, connection net.Conn, state *
 		// before a frame is read, so a message this capture would not retain
 		// stays in the sender's socket rather than being consumed and dropped.
 		if !admitted {
-			// Either this session has read every frame it was asked for, or
-			// the ones still to come are promised to peers already waiting.
-			// Only the first of those finishes the session.
 			return c.complete(ctx, c.config.MaxMessages), nil
 		}
 		if !c.awaiting(state, connection) {
-			c.releaseFrame()
 			return true, nil
+		}
+		// The slot in a declared message limit is claimed only once this peer
+		// has actually begun the next frame. A slot claimed while merely
+		// waiting is promised on behalf of a peer that may have finished
+		// sending, and a limit spent on promises like that starves a peer whose
+		// frame has already arrived.
+		if err := reader.Await(); err != nil {
+			c.engaged(state)
+			// An idle or disconnected peer never began another frame. Anything
+			// it did send is read-ahead the deferred close still retains.
+			return false, nil
+		}
+		if !c.reserveFrame(bounds) {
+			// Every frame still to come is promised to a peer already reading
+			// one, so this peer's is refused. It is drained rather than left in
+			// the socket: closing over it would reset this connection instead
+			// of ending it, and the reset would take the acknowledgements this
+			// capture has already sent along with it.
+			buffered := reader.Buffered()
+			refused = append(buffered, c.drainRefused(connection, bounds.maxFrameBytes+frameReserve-len(buffered))...)
+			c.engaged(state)
+			// A refusal is not the end of the session: the frames it is still
+			// waiting for have not arrived. Only a session that has read every
+			// frame it was asked for finishes here.
+			return c.complete(ctx, c.config.MaxMessages), nil
 		}
 		raw, readErr := reader.ReadFrame()
 		c.engaged(state)

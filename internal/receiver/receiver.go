@@ -123,9 +123,11 @@ func (r *Receiver) Serve(ctx context.Context, listener net.Listener) (*bundle.Bu
 func (r *Receiver) connection(ctx context.Context, connection net.Conn, state *stream) (bool, error) {
 	bounds := limits{maxFrameBytes: r.config.MaxFrameBytes, maxMessages: r.config.MaxMessages, maxConnections: 1}
 	reader, _ := mllp.NewReader(deadlineReader{connection, &r.recorder, r.config.IdleTimeout}, r.config.MaxFrameBytes)
-	// A coalesced TCP read may include frames beyond --max-messages. They are
-	// retained as received evidence, but never claimed as processed.
-	defer func() { r.close(state, reader.Buffered()) }()
+	var refused []byte
+	// A coalesced TCP read may include frames beyond --max-messages, and a
+	// refusal drains the frame its peer had already begun. Both are retained as
+	// received evidence, but never claimed as processed.
+	defer func() { r.close(state, append(reader.Buffered(), refused...)) }()
 	for {
 		admitted, err := r.admitFrame(state, bounds)
 		if err != nil {
@@ -138,8 +140,27 @@ func (r *Receiver) connection(ctx context.Context, connection net.Conn, state *s
 			return r.complete(ctx, r.config.MaxMessages), nil
 		}
 		if !r.awaiting(state, connection) {
-			r.releaseFrame()
 			return true, nil
+		}
+		// The slot in a declared message limit is claimed only once this peer
+		// has actually begun the next frame, as it is for the collector. This
+		// fixture serves one connection at a time, so no peer can be starved by
+		// a slot held while waiting; both share one recorder, and a reservation
+		// means the same thing in each.
+		if err := reader.Await(); err != nil {
+			r.engaged(state)
+			return false, nil
+		}
+		if !r.reserveFrame(bounds) {
+			// With one connection at a time only a controlled stop can refuse a
+			// claim here, and it is handled the same way it is for the
+			// collector: closing over a frame still in the receive queue would
+			// reset the connection instead of ending it, so the refused frame
+			// is drained into the evidence rather than left in the socket.
+			buffered := reader.Buffered()
+			refused = append(buffered, r.drainRefused(connection, bounds.maxFrameBytes+frameReserve-len(buffered))...)
+			r.engaged(state)
+			return r.complete(ctx, r.config.MaxMessages), nil
 		}
 		raw, readErr := reader.ReadFrame()
 		r.engaged(state)
