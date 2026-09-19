@@ -8,6 +8,9 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   and environments, retain tags/owners, check sequence, and execute setup
   dependencies through the durable scheduler. Skips never count as passes;
   cancellation preserves uncertain delivery for read-only recovery.
+- Customer runners add scoped mTLS enrollment, exact environment/version admission,
+  renewable exclusive leases, local durable service execution, conservative
+  recovery, resource bounds and customer-signed staged-update verification.
 
 - `scenario check-library` verifies separately versioned template plans against
   independently authored lifecycle and wire expectations. The shipped SIU

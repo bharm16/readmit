@@ -71,6 +71,11 @@ func (s *Store) Serve(ctx context.Context) error {
 }
 
 func (s *Store) ServeTeam(ctx context.Context, access *Access) error {
+	return s.ServeRunners(ctx, access, "")
+}
+
+// ServeRunners enables explicit runner admission alongside team access.
+func (s *Store) ServeRunners(ctx context.Context, access *Access, runnerPolicy string) error {
 	if access == nil {
 		return errAccess
 	}
@@ -79,6 +84,12 @@ func (s *Store) ServeTeam(ctx context.Context, access *Access) error {
 	}
 	if _, err := s.db.ExecContext(ctx, "UPDATE readmit_hub_schema SET team_enabled=true WHERE singleton"); err != nil {
 		return errAccess
+	}
+	if runnerPolicy != "" {
+		if _, err := readRunnerPolicy(runnerPolicy); err != nil {
+			return err
+		}
+		return s.serve(ctx, s.RunnerHandler(access, runnerPolicy))
 	}
 	return s.serve(ctx, s.TeamHandler(access))
 }

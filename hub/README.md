@@ -15,9 +15,11 @@ so subsequently omitting the flag cannot expose evidence through legacy routes.
 Only restoring a separate pre-team snapshot can return to operator-only mode.
 
 Team access uses signed access tokens from a customer's OIDC provider and local
-project assignments, or certificate-bound scoped API/runner tokens. Collaboration,
-review persistence and remote execution remain #98/#100; their routes refuse
-unsupported work even when a principal has the relevant permission. There is no
+project assignments, or certificate-bound scoped API/runner tokens. Collaboration and
+review persistence remain #98; the legacy execution route refuses
+unsupported work even when a principal has the relevant permission. Customer-local
+runner admission is enabled separately with `-runner-policy`; see
+[runner operation](../docs/customer-runner.md). There is no
 browser login UI, invitation email, implicit administrator, or vendor identity
 service. Desktop and CLI continue to work offline without the hub.
 

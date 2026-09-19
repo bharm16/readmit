@@ -17,6 +17,7 @@ import (
 func run() error {
 	configPath := flag.String("config", "", "absolute configuration path")
 	accessPath := flag.String("access-policy", "", "absolute team admission policy path")
+	runnerPath := flag.String("runner-policy", "", "absolute runner admission policy path")
 	directory := flag.String("directory", "", "new backup directory or existing restore directory")
 	flag.Parse()
 	if *configPath == "" || flag.NArg() != 1 {
@@ -50,7 +51,10 @@ func run() error {
 			if err != nil {
 				return err
 			}
-			return store.ServeTeam(ctx, access)
+			return store.ServeRunners(ctx, access, *runnerPath)
+		}
+		if *runnerPath != "" {
+			return fmt.Errorf("runner policy requires team access")
 		}
 		return store.Serve(ctx)
 	}

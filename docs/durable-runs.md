@@ -282,11 +282,9 @@ state is kept between queues.
 ## Engine and contract versions
 
 The desktop's **Durable test runs** panel and `readmit run` are two ways into
-one evaluator, and an enrolled customer runner will be the third: the same
+one evaluator, and the enrolled [customer runner](customer-runner.md) is the third: the same
 `internal/durablerun` and `internal/testrunner` packages, compiled from one
-module, decide what a run sends and what its assertions mean. **No runner is
-enrolled in this release**; what a runner will consume is this contract, not a
-second one. A run is not asked to trust any of that. Every job retains
+module, decide what a run sends and what its assertions mean. The runner consumes this contract, not a second one. A run is not asked to trust any of that. Every job retains
 `engine.json`, a `readmit-engine/v1` document written beside the plan before
 the first journal record, naming the three versions its verdict depends on:
 
