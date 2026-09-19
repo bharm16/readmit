@@ -153,10 +153,38 @@ func TestCustomerRunnerActualTLSExecutionRevocationAndRecovery(t *testing.T) {
 	}()
 	spec := runnerSpec(t, dir, listener.Addr().String())
 	job := customerrunner.Job{Schema: "readmit-runner-job/v1", ID: "first", Spec: spec}
-	passed, e := customerrunner.Run(context.Background(), c, job)
-	if e != nil || passed.State != durablerun.Passed {
-		t.Fatalf("headless passing verdict %+v %v", passed, e)
+	prepared, e := durablerun.Prepare(spec)
+	if e != nil {
+		t.Fatal(e)
 	}
+	identity, e := prepared.InputIdentity()
+	if e != nil {
+		t.Fatal(e)
+	}
+	// A changed schedule pin refuses before the local fixture sees a frame.
+	if _, e := customerrunner.RunPinned(context.Background(), c, job, strings.Repeat("0", 64)); e == nil {
+		t.Fatal("changed pin executed")
+	}
+	now := time.Now().UTC()
+	due := now.Truncate(time.Minute)
+	schedules := hub.SchedulePolicy{Schema: "readmit-hub-schedules/v1", Concurrency: "serial-skip-missed", Schedules: []hub.Schedule{{ID: "scheduled", Zone: "UTC", At: due.Format("15:04"), WindowSeconds: 3600, Runner: configPath, Spec: spec, Input: identity}}}
+	journal := filepath.Join(dir, "schedule-journal")
+	if e := hub.InitializeSchedules(journal, schedules, due.Add(-time.Second)); e != nil {
+		t.Fatal(e)
+	}
+	scheduler, e := hub.OpenScheduler(journal, schedules, hub.ExecuteScheduledRun, nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = scheduler.Tick(context.Background(), now); e != nil {
+		t.Fatal(e)
+	}
+	history := scheduler.History()
+	scheduler.Close()
+	if len(history.Records) != 1 || history.Records[0].State != "passed" {
+		t.Fatalf("scheduled headless verdict %+v", history)
+	}
+	job.ID = history.Records[0].ID
 	if _, e := customerrunner.Run(context.Background(), c, job); e == nil {
 		t.Fatal("completed ID replayed")
 	}

@@ -4,6 +4,11 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   named-author/device and active-runner assignments without sequence collisions,
   and reports annual paid support scope. Commercial terms remain review drafts.
 
+- Opt-in same-host hub schedules persist daily timezone occurrences before
+  ordinary runner execution, report missed windows and uncertain recovery, and
+  send only explicitly approved fixed summaries. Artifact-only backups refuse
+  initialized scheduling deployments rather than omit durable claims.
+
 - Desktop install checks download exact preview packages onto fresh native
   runners, verify installed license/source material and the expected engine with
   empty PATH, and retain synthetic evidence/state across removal. Signed release

@@ -18,6 +18,7 @@ func run() error {
 	configPath := flag.String("config", "", "absolute configuration path")
 	accessPath := flag.String("access-policy", "", "absolute team admission policy path")
 	runnerPath := flag.String("runner-policy", "", "absolute runner admission policy path")
+	schedulePath := flag.String("schedule-policy", "", "absolute initialized recurring schedule policy path")
 	directory := flag.String("directory", "", "new backup directory or existing restore directory")
 	flag.Parse()
 	if *configPath == "" || flag.NArg() != 1 {
@@ -51,9 +52,12 @@ func run() error {
 			if err != nil {
 				return err
 			}
+			if *schedulePath != "" {
+				return store.ServeSchedules(ctx, access, *runnerPath, *schedulePath)
+			}
 			return store.ServeRunners(ctx, access, *runnerPath)
 		}
-		if *runnerPath != "" {
+		if *runnerPath != "" || *schedulePath != "" {
 			return fmt.Errorf("runner policy requires team access")
 		}
 		return store.Serve(ctx)
@@ -61,6 +65,15 @@ func run() error {
 	ctx, cancel = context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 	switch flag.Arg(0) {
+	case "schedule-pin":
+		identity, e := hub.ScheduleInputIdentity(*directory)
+		if e != nil {
+			return e
+		}
+		fmt.Fprintln(os.Stdout, identity)
+		return nil
+	case "schedule-init":
+		return store.InitializeSchedulePolicy(ctx, *schedulePath)
 	case "migrate":
 		return store.Migrate(ctx)
 	case "check":

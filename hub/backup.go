@@ -35,6 +35,11 @@ type backupManifest struct {
 // Backup creates a new, complete directory. The manifest is its completion marker;
 // it is published only after every referenced byte is verified and synchronized.
 func (s *Store) Backup(ctx context.Context, destination string) error {
+	// The artifact backup contract cannot silently omit scheduler claims: restoring
+	// without them could repeat uncertain work. Use a stopped deployment snapshot.
+	if _, err := s.root.Lstat("scheduler"); !os.IsNotExist(err) {
+		return ErrSchedule
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.Ready(ctx); err != nil {

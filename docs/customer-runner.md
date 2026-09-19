@@ -3,8 +3,11 @@
 `readmit runner` operates on a customer-owned host using the same prepared test
 and durable execution engine as `readmit run start`. It adds admission, exclusive
 leases, a private local inbox service and signed update verification. It does
-not download jobs or evidence. Hub schedules remain separate work. Direct local suite CI execution is
-documented in [customer CI](customer-ci.md); it does not acquire runner leases. Existing case, test, run, result, engine-pin and hub-backup contracts are
+not download jobs or evidence. Opt-in same-host hub schedules are described in
+[the hub guide](../hub/README.md#recurring-regression-and-approved-summaries).
+Direct local suite CI execution is documented in [customer CI](customer-ci.md);
+it does not acquire runner leases. Existing case, test, run, result, engine-pin
+and hub-backup contracts are
 unchanged. No data reaches the vendor.
 
 ## Enroll and execute
@@ -81,8 +84,10 @@ letter/digit) and an absolute `spec` path. Example:
 The prepared target must name the configured environment. The existing engine
 still refuses production and permits only literal loopback destinations here;
 use a local fixture or explicitly operated local tunnel. Remote target approval,
-suite submission and hub scheduling are not implemented by this runner.
-The separate direct `suite ci` command provides JSON/JUnit quality gates. Jobs never contain arbitrary executable hooks.
+suite submission is not implemented by this runner. The separate direct
+`suite ci` command provides JSON/JUnit quality gates. The hub scheduler invokes
+the same single-test runner with an approved prepared-input pin and never
+bypasses admission. Jobs never contain arbitrary executable hooks.
 
 ## Leases, recovery and resource bounds
 
