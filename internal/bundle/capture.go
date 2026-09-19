@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"time"
 	"unicode/utf8"
 
@@ -14,6 +15,12 @@ import (
 )
 
 var versionToken = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.+-]{0,127}$`)
+
+// Derivations are the transformations this release writes derived evidence for.
+// The member has always named which one produced a v3 bundle; the set is closed
+// and reviewed, so a derived case can never declare a transformation no code
+// here performs, and a name absent from it is refused rather than recorded.
+var derivations = []string{"readmit-redact/v1", "readmit-reproducer/v1"}
 
 func build(inputs []Input, provenance Provenance) (*Bundle, error) {
 	if len(inputs) == 0 && provenance.Mode != Recorded && provenance.Mode != Collected || len(inputs) > MaxSources {
@@ -104,7 +111,7 @@ func validateProvenance(p Provenance) error {
 			return errors.New("recorded provenance requires startup time and session ID")
 		}
 	case Derived:
-		if p.ImportedAt != nil || p.Generator != nil || p.StartedAt != nil || p.SessionID != "" || p.Derivation != "readmit-redact/v1" {
+		if p.ImportedAt != nil || p.Generator != nil || p.StartedAt != nil || p.SessionID != "" || !slices.Contains(derivations, p.Derivation) {
 			return errors.New("derived provenance requires only the named testing derivation")
 		}
 	default:

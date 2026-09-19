@@ -445,6 +445,32 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   round-trip execution of these operators remain separate deliveries, and no
   profile-specific rule is validated against a profile pack here.
 
+- The desktop shell extracts and edits a reproducer out of a verified case and
+  writes it as a separate revision. A `readmit-reproducer-plan/v1` plan is an
+  ordered list of typed operators `internal/reproducer` interprets: retain and
+  drop occurrences, retain the acknowledgements the case itself correlated,
+  retain the earlier occurrences of the same source that declare an identity an
+  operator named, and replace or clear one declared field position. Undo removes
+  the last step and the plan is replayed from what remains, so dropping an
+  occurrence and undoing that drop returns its edits. A build writes a new
+  `readmit-case/v3` bundle under the `readmit-reproducer/v1` derivation with a
+  `readmit-reproducer/v1` transformation manifest beside it naming the parent
+  hash, every retained occurrence with the relation that retained it, and the
+  position, operator and prior state of every edit — never the bytes an edit
+  replaced. An acknowledgement the case recorded as ambiguous names several
+  candidate messages and none is chosen; an occurrence nothing decoded and one
+  declaring none of the named identity fields match nothing. An omitted
+  position, `MSH-1`, `MSH-2`, a value carrying a delimiter or a control byte,
+  two edits over the same or overlapping bytes and a nonstandard delimiter
+  declaration are each refused. The case read is never changed, the destination
+  must be a new entry outside every retained artifact, and nothing here is a
+  de-identification, minimality or sharing claim: reduction, replay
+  transformations and reproducer comparison are separate deliveries, and
+  `redact` remains where review and approval live. `readmit-case/v1`, `v2` and
+  `v4`, every existing `v3` bundle, the project, index, run, result, report and
+  observation contracts and the command-line tree are unchanged; no command
+  reads a plan.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is

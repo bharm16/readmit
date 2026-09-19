@@ -498,7 +498,16 @@ case, and always states how many records the filter excluded. It comes back from
 an interruption honestly: where you were and the notes you had typed and not
 stored are retained in one per-viewer document outside evidence and restored when
 the window opens, while a run that was in flight is reopened read-only and stays
-interrupted with its delivery uncertain — never resumed, restarted or resent. It
+interrupted with its delivery uncertain — never resumed, restarted or resent.
+It extracts a reproducer without opening evidence in a text editor: retain the
+occurrences that matter, keep the setup dependencies they need — the
+acknowledgements the case correlated, and the earlier occurrences declaring the
+same identity — edit supported fields and repetitions, undo the last step, and
+write the result as a **separate revision**. That revision is new derived
+evidence in its own folder beside a transformation manifest naming the parent
+hash, what was retained and why, and where every edit landed; the case it came
+from is not changed, and nothing about it is a de-identification or sharing
+claim. See [extracting and editing a reproducer](docs/reproducer.md). It
 is navigated entirely from the keyboard: five labelled regions in a fixed focus
 order, a command palette, a search over what the open workspace and its project
 declare, resizable evidence and inspector panes, light and dark, and text from
