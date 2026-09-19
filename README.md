@@ -1058,3 +1058,5 @@ read-only mode. Reports remain sensitive customer-local evidence; see
 [portable reports](docs/report.md#portable-reports-and-read-only-review).
 
 Managed deployment: [silent installation, offline dependencies and activation](docs/managed-installation.md).
+
+Saved suites in customer CI: [headless execution and private CI gates](docs/customer-ci.md).

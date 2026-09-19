@@ -10,6 +10,10 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   retention/retirement without erasure claims. Backup v4 and verification preserve
   recovery bytes, review links and removal decisions.
 
+- Saved-suite CI execution adds fixed-label JSON/JUnit gates while retaining raw
+  evidence privately, with tested customer-hosted pipeline examples and explicit
+  coverage, cancellation and no-retry behavior.
+
 - Managed/offline installation runbook documents native silent deployment, staged
   webview dependencies, offline activation, direct runner TLS, least privilege
   and explicit signed-candidate/enterprise-policy acceptance gates.
