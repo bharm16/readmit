@@ -21,6 +21,11 @@ const maxJournal = 32 << 20
 const maxPlan = 4 << 20
 const maxLease = 64 << 10
 
+// maxResourceName bounds one resource a lease names. It is the widest of the
+// two things a run declares: an environment name is bounded at 64 bytes by the
+// target contract, and an endpoint address by that contract's own address rule.
+const maxResourceName = 1 << 10
+
 // evidenceFile is what one durable write needs from the file it writes. It is
 // the one seam a size-limited stand-in for a full disk takes in tests; every
 // evidence and journal write in this package goes through openEvidence.

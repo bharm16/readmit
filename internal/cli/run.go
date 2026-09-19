@@ -7,12 +7,15 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/engine"
+	"github.com/bharm16/readmit/internal/runqueue"
 	"github.com/spf13/cobra"
 )
 
@@ -115,7 +118,50 @@ func runCommand(ran *bool) *cobra.Command {
 		return printCleanup(cmd, result, cleanJSON)
 	}}
 	clean.Flags().BoolVar(&cleanJSON, "json", false, "Write one versioned machine-readable summary")
-	command.AddCommand(start, status, resume, clean)
+	var queueRuns, queueDeadline string
+	var queueSend, queueJSON bool
+	queue := &cobra.Command{Use: "queue PLAN", Short: "Execute a queue of durable runs with bounded parallelism, serializing every job that shares target state", Args: func(_ *cobra.Command, args []string) error {
+		if len(args) != 1 {
+			return errors.New("run queue requires one queue document")
+		}
+		return nil
+	}, RunE: func(cmd *cobra.Command, args []string) error {
+		*ran = true
+		if !queueSend || queueRuns == "" {
+			return &ExitError{Code: 2, Err: errors.New("run queue requires --send and --runs naming the durable runs directory; existing jobs are never resumed")}
+		}
+		document, err := readInputFile(args[0], runqueue.MaxPlanBytes)
+		if err != nil {
+			return &ExitError{Code: 2, Err: err}
+		}
+		// A queued job names its spec inside the queue document's own
+		// directory, resolved after the document's own symlink exactly as a
+		// reset plan's declared file is, so what a queue may execute is fixed
+		// by where the operator put it rather than by a working directory.
+		resolved, err := artifactpath.Resolve(args[0])
+		if err != nil {
+			return &ExitError{Code: 2, Err: errors.New("cannot resolve the run queue")}
+		}
+		runs, err := artifactpath.Directory(queueRuns)
+		if err != nil {
+			return &ExitError{Code: 2, Err: errors.New("--runs must name the existing directory the durable runs are written beside")}
+		}
+		ctx, cancel, err := runContext(cmd.Context(), queueDeadline)
+		if err != nil {
+			return err
+		}
+		defer cancel()
+		report, err := runqueue.Run(ctx, runqueue.Request{PlanBytes: document, PlanDirectory: filepath.Dir(resolved), Runs: runs})
+		if err != nil {
+			return &ExitError{Code: 2, Err: err}
+		}
+		return printQueue(cmd, report, queueJSON)
+	}}
+	queue.Flags().StringVar(&queueRuns, "runs", "", "Existing directory each queued job writes its new durable run into")
+	queue.Flags().BoolVar(&queueSend, "send", false, "Explicitly authorize the queued executions against their test targets")
+	queue.Flags().StringVar(&queueDeadline, "deadline", "", "Stop the whole queue after this duration; no further job starts and an in-flight delivery is reported uncertain")
+	queue.Flags().BoolVar(&queueJSON, "json", false, "Write one versioned machine-readable report")
+	command.AddCommand(start, status, resume, clean, queue)
 	return command
 }
 
@@ -245,6 +291,41 @@ func printCleanup(cmd *cobra.Command, result durablerun.Cleanup, asJSON bool) er
 	}
 	if err != nil {
 		return &ExitError{Code: 2, Err: errors.New("cannot write durable run cleanup")}
+	}
+	return nil
+}
+
+// printQueue writes the queue's own report. A job's line names the queue's
+// decision, the state of the run when one executed, and the resource the job
+// waited for, so serialization is visible rather than assumed.
+func printQueue(cmd *cobra.Command, result runqueue.Report, asJSON bool) error {
+	var err error
+	if asJSON {
+		err = writeJSON(cmd, result)
+	} else {
+		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Queue parallelism: %d\nJobs: %d executed, %d not started, %d refused, %d skipped\n", result.Parallelism, result.Executed, result.StartFailed, result.Refused, result.Skipped)
+		for _, job := range result.Jobs {
+			if err != nil {
+				break
+			}
+			line := job.ID + ": " + string(job.Admission)
+			if job.Run != nil {
+				line += " (" + string(job.Run.State) + ")"
+			}
+			if job.WaitedFor != "" {
+				line += ", waited for " + job.WaitedFor
+			}
+			if job.Reason != "" {
+				line += ": " + job.Reason
+			}
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), line)
+		}
+	}
+	if err != nil {
+		return &ExitError{Code: 2, Err: errors.New("cannot write the durable run queue report")}
+	}
+	if result.ExitCode() != 0 {
+		return &ExitError{Code: result.ExitCode(), Err: errors.New("the run queue did not pass; inspect each retained run"), Reported: true}
 	}
 	return nil
 }

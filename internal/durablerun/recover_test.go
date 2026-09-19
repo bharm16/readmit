@@ -42,7 +42,15 @@ func TestDeadlineReachedAfterSendIsTimedOutAndUncertain(t *testing.T) {
 	address, _ := peer(t, "")
 	spec, out := setup(t, address)
 	slowTarget(t, spec)
-	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
+	// The deadline must outlast the work before the first intent is synced,
+	// which is disk-sync bound and costs whatever the runner's storage costs;
+	// too short a one stops the run before it sends and asserts the opposite
+	// test's outcome. It is bounded above by the four seconds peer holds its
+	// socket for, measured from a later instant than this deadline is, so the
+	// run always stops on this deadline rather than on the peer closing. It
+	// stays far below the message timeout slowTarget set, so the deadline is
+	// still what stops the run and it is still reached after the send.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	got, err := durablerun.Start(ctx, spec, out)
 	if err != nil {
