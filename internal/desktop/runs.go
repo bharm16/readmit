@@ -1,6 +1,11 @@
 package desktop
 
-import "github.com/bharm16/readmit/internal/durablerun"
+import (
+	"errors"
+
+	"github.com/bharm16/readmit/internal/durablerun"
+	"github.com/bharm16/readmit/internal/engine"
+)
 
 // DurableRunResult separates facade success from the run's execution state.
 // A completed read can report an interrupted or assertion-failed run.
@@ -36,6 +41,9 @@ func (a *App) OpenDurableRun(path string) DurableRunResult {
 	}
 	defer release()
 	result, err := durablerun.Open(path)
+	if errors.Is(err, engine.ErrUnsupportedVersion) {
+		return DurableRunResult{State: Failed, Reason: "the durable run was evaluated by a version this release cannot read; its evidence has not been changed"}
+	}
 	if err != nil {
 		return DurableRunResult{State: Failed, Reason: "the durable run could not be verified; partial evidence has not been changed"}
 	}

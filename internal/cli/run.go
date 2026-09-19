@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/durablerun"
+	"github.com/bharm16/readmit/internal/engine"
 	"github.com/spf13/cobra"
 )
 
@@ -44,7 +45,7 @@ func runCommand(ran *bool) *cobra.Command {
 	start.Flags().BoolVar(&send, "send", false, "Explicitly authorize one execution against the test target")
 	start.Flags().StringVar(&deadline, "deadline", "", "Stop new sends after this duration; an in-flight delivery is reported uncertain")
 	start.Flags().BoolVar(&asJSON, "json", false, "Write one versioned machine-readable summary")
-	var statusJSON, recovery bool
+	var statusJSON, recovery, pinned bool
 	status := &cobra.Command{Use: "status JOB", Short: "Recover retained evidence read-only; never resend", Args: func(_ *cobra.Command, args []string) error {
 		if len(args) != 1 {
 			return errors.New("run status requires one job directory")
@@ -52,6 +53,9 @@ func runCommand(ran *bool) *cobra.Command {
 		return nil
 	}, RunE: func(cmd *cobra.Command, args []string) error {
 		*ran = true
+		if pinned {
+			return printEngine(cmd, args[0], statusJSON)
+		}
 		if recovery {
 			result, err := durablerun.Recover(args[0])
 			if err != nil {
@@ -67,6 +71,8 @@ func runCommand(ran *bool) *cobra.Command {
 	}}
 	status.Flags().BoolVar(&statusJSON, "json", false, "Write one versioned machine-readable summary")
 	status.Flags().BoolVar(&recovery, "recovery", false, "Report what is known about every occurrence, the lease, and whether a resume would repeat only never-attempted work")
+	status.Flags().BoolVar(&pinned, "engine", false, "Report the engine build, spec contract and profile the run retained, and whether this build reads them")
+	status.MarkFlagsMutuallyExclusive("engine", "recovery")
 	var resumeOutput, resumeDeadline string
 	var resumeSend, resumeJSON bool
 	resume := &cobra.Command{Use: "resume JOB SPEC", Short: "Repeat never-attempted work into a new run directory; refuses after any send", Args: func(_ *cobra.Command, args []string) error {
@@ -166,6 +172,33 @@ func runStatus(result durablerun.Summary, err, problem error) error {
 	}
 	if result.ExitCode() != 0 {
 		return &ExitError{Code: result.ExitCode(), Err: errors.New("run did not pass; inspect retained evidence"), Reported: true}
+	}
+	return nil
+}
+
+// printEngine reports the pin a job retained whether or not this build reads
+// it, then exits 2 when it does not, so an operator sees the versions before
+// the refusal rather than only the refusal. The machine form is the retained
+// document's own encoding, not a second one that happens to agree with it.
+func printEngine(cmd *cobra.Command, job string, asJSON bool) error {
+	pin, err := durablerun.Engine(job)
+	if err != nil {
+		return &ExitError{Code: 2, Err: err}
+	}
+	supported := pin.Supported()
+	if asJSON {
+		var document []byte
+		if document, err = engine.Encode(pin); err == nil {
+			_, err = cmd.OutOrStdout().Write(document)
+		}
+	} else {
+		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Engine build: %s\nSpec contract: %s\nProfile: %s\nRead by this build: %t\n", pin.Engine, pin.Spec, pin.Profile, supported == nil)
+	}
+	if err != nil {
+		return &ExitError{Code: 2, Err: errors.New("cannot write durable run engine pin")}
+	}
+	if supported != nil {
+		return &ExitError{Code: 2, Err: errors.New("the durable run was evaluated under a version this release does not read")}
 	}
 	return nil
 }

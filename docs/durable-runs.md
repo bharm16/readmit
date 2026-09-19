@@ -152,10 +152,71 @@ admission: that is the scheduler's, and a held lease is a statement, not a lock.
 stale lease. It verifies the job first, refuses when the run recorded no
 completion because the writer may still hold that lease, and refuses when the
 directory holds an entry this release did not write. **Evidence is never
-removed**: `plan.json`, `intended/`, `journal.jsonl`, `sent/`, `result/` and
-`result.decision.json` are what was meant, what happened and what was decided,
-and cleanup reports them as retained. Removing a whole job directory is a
-person's decision outside readmit.
+removed**: `plan.json`, `engine.json`, `intended/`, `journal.jsonl`, `sent/`,
+`result/` and `result.decision.json` are what was meant, what evaluated it,
+what happened and what was decided, and cleanup reports them as retained.
+Removing a whole job directory is a person's decision outside readmit.
+
+## Engine and contract versions
+
+The desktop's **Durable test runs** panel and `readmit run` are two ways into
+one evaluator, and an enrolled customer runner will be the third: the same
+`internal/durablerun` and `internal/testrunner` packages, compiled from one
+module, decide what a run sends and what its assertions mean. **No runner is
+enrolled in this release**; what a runner will consume is this contract, not a
+second one. A run is not asked to trust any of that. Every job retains
+`engine.json`, a `readmit-engine/v1` document written beside the plan before
+the first journal record, naming the three versions its verdict depends on:
+
+| Member | Meaning |
+| --- | --- |
+| `engine` | the build that executed the run, from the release stamp |
+| `spec` | the test-spec contract the run's own spec declared |
+| `profile` | the semantic profile the build applies to its observations |
+
+```sh
+readmit run status job-001 --engine
+readmit run status job-001 --engine --json
+```
+
+`--engine` reports exactly the document the job retained, whether or not this
+build reads it, so the versions are visible before any refusal rather than only
+the refusal. It is mutually exclusive with `--recovery`. The desktop panel
+reports a version it cannot read as a refusal and does not display the pin;
+reading the versions themselves is this command.
+
+This release evaluates `readmit-test/v1` specs under the `readmit-siu-v1`
+profile. **A build identity this release does not recognize is recorded, never
+refused**: builds change, and the contracts are what decide readability. A spec
+or profile version it does not evaluate is refused by name by `run status`,
+`--recovery`, `run resume`, `run clean` and the desktop's **Recover evidence**,
+and the refusal changes nothing in the job. Restoring a desktop session that
+was watching such a run reports the same fixed unverifiable-run sentence it
+reports for any run it could not read: the view comes back, the run summary
+does not, and nothing is resumed or resent. A directory that retains no
+readable pin is not a job this release
+wrote and is refused as one, rather than read as a run whose evaluator is
+unknown. The pin is synced before the journal is created, so a run that stopped
+or crashed still names its engine, and a failure early enough to leave no pin
+left no journal either and was already unreadable. A job written by a
+development build from before this contract retains no pin and is refused;
+durable runs have never appeared in a published archive, so no released
+artifact is affected.
+
+The build identity is stamped into the released executable. An unstamped build
+reports `dev`, which includes every test binary and **the desktop shell, which
+this release does not package**: a desktop-started run therefore records `dev`
+until a signed installer carries a stamp. Matching the identity a published
+installer reports to the one a published CLI archive reports is a packaging and
+release gate, not something this contract can establish
+([D5](product-decisions.md#d5--desktop-distribution-and-signing)).
+
+The pin is a sibling document, like `lease.json` and `result.decision.json`: it
+is **not** part of the journal's hash chain, which stays chained to the plan. A
+changed pin is detected as a version this release does not read, not as altered
+evidence. `readmit-job/v1`, `readmit-run/v1`, `readmit-result/v1` and
+`readmit-test/v1` gain no member and change no byte; each retained document
+still declares and checks its own contract as before.
 
 ## Retained contract
 
@@ -179,6 +240,8 @@ in browser storage or emitted in routine console summaries.
   exists. Any failed journal write is sticky and halts subsequent sends.
 - `sent/`: exact prefixes reported by the socket write. A crash during the write
   can leave fewer retained bytes than the peer received; intent remains uncertain.
+- `engine.json`: the `readmit-engine/v1` pin described above, naming the build
+  that executed the run and the spec and profile versions it evaluated.
 - `lease.json`: the `readmit-run-lease/v1` document described below, present
   only while the writing process runs or after one that could not release it.
 - `result/` and `result.decision.json`: existing test/replay evidence and the

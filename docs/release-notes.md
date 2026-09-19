@@ -483,6 +483,29 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   `v4`, every existing `v3` bundle, the project, index, run, result, report and
   observation contracts and the command-line tree are unchanged; no command
   reads a plan.
+- Durable runs record which engine evaluated them. Every job retains a
+  `readmit-engine/v1` pin beside its plan, written before the first journal
+  record, naming the build that executed the run, the test-spec contract that
+  spec declared and the semantic profile applied to its observations, and the
+  released executable carries a stamped build identity rather than `dev`.
+  `readmit run status JOB --engine` reports exactly the retained document,
+  whether or not this build reads it, so the versions are visible before any
+  refusal. The desktop panel and the command line remain two ways into one
+  evaluator and an enrolled runner will be the third; a run started through
+  either of the two pins the same versions. A build identity this release does
+  not recognize is recorded, never refused; a spec or profile version it does
+  not evaluate is refused by name by `run status`,
+  `--recovery`, `run resume`, `run clean` and the desktop's **Recover
+  evidence**, and the refusal changes nothing. A job retaining no readable pin
+  is refused as one this release did not write, which includes one written by a
+  development build from before this contract; durable runs have never appeared
+  in a published archive, so no released artifact is affected. The pin is a
+  sibling document outside the journal's hash chain, like the lease and the
+  send decision. `readmit-job/v1`, `readmit-run/v1`, `readmit-result/v1` and
+  `readmit-test/v1` gain no member and change no byte. Identity parity between
+  a published desktop installer and a published command-line archive stays a
+  packaging and signing gate; the desktop shell is not packaged in this
+  release.
 
 - Changing a local profile is versioned, compared and reported against the
   saved tests that pin it, by the new `internal/profileversion`.

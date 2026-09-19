@@ -14,7 +14,7 @@ builds:
         goarch: arm64
     flags: [-trimpath]
     ldflags:
-      - -s -w -X main.version={{.Version}}
+      - -s -w -X github.com/bharm16/readmit/internal/engine.version={{.Version}}
 
 archives:
   - id: readmit

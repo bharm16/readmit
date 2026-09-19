@@ -4,12 +4,11 @@ import (
 	"os"
 
 	"github.com/bharm16/readmit/internal/cli"
+	"github.com/bharm16/readmit/internal/engine"
 )
 
-var version = "dev"
-
 func main() {
-	if err := cli.Execute(version, os.Args[1:], os.Stdout, os.Stderr); err != nil {
+	if err := cli.Execute(engine.Version(), os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		os.Exit(cli.ExitCode(err))
 	}
 }

@@ -2,17 +2,22 @@ package tests
 
 import (
 	"bytes"
+	"context"
 	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/durablerun"
+	"github.com/bharm16/readmit/internal/engine"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/mllp"
 	"github.com/bharm16/readmit/internal/replay"
@@ -171,7 +176,7 @@ func TestRunExecutableResumeRepeatsOnlyNeverAttemptedWork(t *testing.T) {
 		t.Fatalf("%v %s %s", err, stdout, stderr)
 	}
 	var cleanup durablerun.Cleanup
-	if err := json.Unmarshal([]byte(stdout), &cleanup, json.RejectUnknownMembers(true)); err != nil || cleanup.Schema != durablerun.CleanupSchema || len(cleanup.Removed) != 0 || len(cleanup.Retained) != 6 {
+	if err := json.Unmarshal([]byte(stdout), &cleanup, json.RejectUnknownMembers(true)); err != nil || cleanup.Schema != durablerun.CleanupSchema || len(cleanup.Removed) != 0 || len(cleanup.Retained) != 7 {
 		t.Fatalf("%s %v", stdout, err)
 	}
 	lease, _ := json.Marshal(durablerun.Lease{Schema: durablerun.LeaseSchema, Holder: durablerun.Holder{PID: 1, StartedAt: time.Now().UTC()}, Resources: []durablerun.Resource{{Kind: durablerun.EndpointResource, Name: "127.0.0.1:1"}}})
@@ -179,7 +184,7 @@ func TestRunExecutableResumeRepeatsOnlyNeverAttemptedWork(t *testing.T) {
 		t.Fatal(err)
 	}
 	stdout, stderr, err = run(t, "run", "clean", resumed)
-	if err != nil || stderr != "" || !strings.Contains(stdout, "Removed: lease.json\nRetained: intended, journal.jsonl, plan.json, result, result.decision.json, sent\n") {
+	if err != nil || stderr != "" || !strings.Contains(stdout, "Removed: lease.json\nRetained: engine.json, intended, journal.jsonl, plan.json, result, result.decision.json, sent\n") {
 		t.Fatalf("%v %s %s", err, stdout, stderr)
 	}
 	if _, err := os.Lstat(filepath.Join(resumed, "lease.json")); err == nil {
@@ -209,5 +214,137 @@ func TestRunExecutableRefusesUnsafeArguments(t *testing.T) {
 				t.Fatalf("a refused command created an output: %v", entries)
 			}
 		})
+	}
+}
+
+// The desktop shell and the command line are two entry points into one
+// evaluator, so a run started through either must record the same engine, spec
+// contract and profile, and both must refuse a run evaluated under a version
+// this release does not read rather than reporting a verdict about it.
+func TestDesktopAndCommandLineRunOneEngineAndRefuseVersionsItDoesNotRead(t *testing.T) {
+	for _, reached := range []string{"github.com/bharm16/readmit/internal/engine", "github.com/bharm16/readmit/internal/durablerun"} {
+		for _, adapter := range []string{"../cmd/readmit", "../internal/desktop"} {
+			if !strings.Contains(goCommand(t, nil, "list", "-deps", adapter), reached) {
+				t.Fatalf("%s no longer reaches %s", adapter, reached)
+			}
+		}
+	}
+
+	spec, dir := durableSpec(t, durablePeer(t, "AA"))
+	job := filepath.Join(dir, "job")
+	stdout, stderr, err := run(t, "run", "start", spec, "--send", "--output", job, "--json")
+	if err != nil || stderr != "" {
+		t.Fatalf("%v %s %s", err, stdout, stderr)
+	}
+	var summary durablerun.Summary
+	if err := json.Unmarshal([]byte(stdout), &summary, json.RejectUnknownMembers(true)); err != nil || summary.State != durablerun.Passed {
+		t.Fatalf("%s %v", stdout, err)
+	}
+
+	shellSpec, shellDir := durableSpec(t, durablePeer(t, "AA"))
+	shellJob := filepath.Join(shellDir, "job")
+	app := desktop.New(nil, "", "", "")
+	if started := app.StartDurableRun(shellSpec, shellJob); started.State != desktop.Completed || started.Run == nil || started.Run.State != durablerun.Passed {
+		t.Fatalf("%+v", started)
+	}
+
+	fromCLI, err := os.ReadFile(filepath.Join(job, "engine.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromShell, err := os.ReadFile(filepath.Join(shellJob, "engine.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(fromCLI, fromShell) {
+		t.Fatalf("the shell and the command line recorded different engines: %s %s", fromCLI, fromShell)
+	}
+	pin, err := engine.Decode(fromCLI)
+	if err != nil || pin != engine.Current(testrunner.SpecSchema) {
+		t.Fatalf("%+v %v", pin, err)
+	}
+
+	// The reported pin is exactly the document the job retained.
+	stdout, stderr, err = run(t, "run", "status", job, "--engine", "--json")
+	if err != nil || stderr != "" || stdout != string(fromCLI) {
+		t.Fatalf("%v %q %q %s", err, stdout, string(fromCLI), stderr)
+	}
+	stdout, stderr, err = run(t, "run", "status", job, "--engine")
+	if err != nil || stderr != "" || !strings.Contains(stdout, "Spec contract: "+testrunner.SpecSchema+"\n") || !strings.Contains(stdout, "Read by this build: true\n") {
+		t.Fatalf("%v %s %s", err, stdout, stderr)
+	}
+	if _, _, err = run(t, "run", "status", job, "--engine", "--recovery"); processCode(t, err) == 0 {
+		t.Fatal("reported a pin and a recovery classification at once")
+	}
+
+	// A run evaluated under a spec contract this release does not read is
+	// refused by name through both entry points, and its versions are still
+	// reported so an operator reads why.
+	later := engine.Pin{Schema: engine.Schema, Engine: "0.9.0-alpha.7", Spec: "readmit-test/v2", Profile: pin.Profile}
+	raw, err := engine.Encode(later)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(shellJob, "engine.json"), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, err = run(t, "run", "status", shellJob, "--json")
+	if processCode(t, err) != 2 || stdout != "" || !strings.Contains(stderr, "unsupported engine version") {
+		t.Fatalf("%v %s %s", err, stdout, stderr)
+	}
+	stdout, stderr, err = run(t, "run", "status", shellJob, "--engine", "--json")
+	if processCode(t, err) != 2 || stdout != string(raw) || !strings.Contains(stderr, "does not read") {
+		t.Fatalf("%v %s %s", err, stdout, stderr)
+	}
+	opened := app.OpenDurableRun(shellJob)
+	if opened.State != desktop.Failed || !strings.Contains(opened.Reason, "cannot read") {
+		t.Fatalf("%+v", opened)
+	}
+	for _, private := range []string{shellDir, "LISTEN-BOOK", "SYNTH-001"} {
+		if strings.Contains(stdout+stderr+opened.Reason, private) {
+			t.Fatal("an engine pin disclosed private paths or values")
+		}
+	}
+}
+
+// The pin's build identity comes from one linker symbol, and the release
+// configuration is the only thing that stamps it. A rename would ship archives
+// pinning `dev` without failing anything, because the linker ignores -X for a
+// symbol that is not there, so the symbol the archives are built with is read
+// out of .goreleaser.yml and followed all the way into a retained pin.
+func TestTheReleaseStampIsTheIdentityARunRetains(t *testing.T) {
+	configuration, err := os.ReadFile("../.goreleaser.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stamp := regexp.MustCompile(`-X ([^\s=]+)=\{\{\.Version\}\}`).FindSubmatch(configuration)
+	if stamp == nil {
+		t.Fatal("the release configuration stamps no version symbol")
+	}
+	const probe = "0.0.0-stamp-probe"
+	stamped := filepath.Join(t.TempDir(), "readmit-stamped")
+	goCommand(t, []string{"CGO_ENABLED=0"}, "build", "-trimpath", "-ldflags", "-X "+string(stamp[1])+"="+probe, "-o", stamped, "../cmd/readmit")
+
+	execute := func(args ...string) string {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		command := exec.CommandContext(ctx, stamped, args...)
+		var stdout, stderr bytes.Buffer
+		command.Stdout, command.Stderr = &stdout, &stderr
+		if err := command.Run(); err != nil {
+			t.Fatalf("%v %s %s", err, stdout.String(), stderr.String())
+		}
+		return stdout.String()
+	}
+	if version := execute("--version"); !strings.Contains(version, probe) {
+		t.Fatalf("the release stamp did not reach the executable: %q", version)
+	}
+	spec, dir := durableSpec(t, durablePeer(t, "AA"))
+	job := filepath.Join(dir, "job")
+	execute("run", "start", spec, "--send", "--output", job, "--json")
+	pin, err := engine.Decode([]byte(execute("run", "status", job, "--engine", "--json")))
+	if err != nil || pin.Engine != probe {
+		t.Fatalf("the run pinned %+v rather than the stamped build: %v", pin, err)
 	}
 }
