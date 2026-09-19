@@ -104,7 +104,10 @@ connection's receive queue would reset it, and a reset would also destroy
 acknowledgements this capture had already sent and claimed. And a controlled
 stop expires a read that was already admitted, so a peer that was part way
 through sending a frame when the capture stopped keeps its consumed prefix in
-the case as ordinary evidence, with no receipt claimed for it.
+the case as ordinary evidence, with no receipt claimed for it. A successful
+peer TCP write alone does not prove the collector read those bytes: data still
+unread when the stop expires a socket read is not retained or claimed as
+received evidence.
 
 Cancellation is a different thing and is unchanged: Ctrl-C or SIGTERM interrupts
 a blocked accept, receive or acknowledgement write at once and finalizes the

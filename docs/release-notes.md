@@ -1,5 +1,9 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Controlled-stop tests now synchronize actual receiver consumption and verify
+  exact retained prefixes, including reads returning after shutdown. Unread
+  socket data remains outside captured evidence; runtime behavior is unchanged.
+
 - Reusable regression suites bind templates and typed data rows to named sites
   and environments, retain tags/owners, check sequence, and execute setup
   dependencies through the durable scheduler. Skips never count as passes;

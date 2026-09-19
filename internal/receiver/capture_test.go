@@ -582,17 +582,25 @@ offering:
 func TestCollectorControlledStopWakesAnIdlePeerPromptly(t *testing.T) {
 	const frameBytes = 4096
 	const reserve = 16 << 10
-	h := loopback(t, receiver.CollectorConfig{MaxConnections: 2, MaxFrameBytes: frameBytes,
-		MaxCaptureBytes: frameBytes + reserve + 64, IdleTimeout: 30 * time.Second})
-	idle, _ := h.dial(t)
+	listener := newPipeListener()
+	h := serving(t, receiver.CollectorConfig{MaxConnections: 2, MaxFrameBytes: frameBytes,
+		MaxCaptureBytes: frameBytes + reserve + 64, IdleTimeout: 30 * time.Second}, listener)
+	idle, idleServer := net.Pipe()
+	listener.connections <- idleServer
+	_ = idle.SetDeadline(time.Now().Add(10 * time.Second))
 	defer idle.Close()
-	// A start byte with no frame behind it leaves this peer blocked inside a
+	// A pipe write returns only after the collector has consumed the byte; a
+	// successful TCP write alone does not establish that. A start byte leaves a
 	// partial frame rather than merely between frames, which is the harder
 	// case: it has not finished the read a controlled stop has to expire.
 	if _, err := idle.Write([]byte{0x0b}); err != nil {
 		t.Fatal(err)
 	}
-	sender, reader := h.dial(t)
+	sender, senderServer := net.Pipe()
+	defer sender.Close()
+	listener.connections <- senderServer
+	_ = sender.SetDeadline(time.Now().Add(10 * time.Second))
+	reader, _ := mllp.NewReader(sender, frameBytes)
 	if _, err := exchange(sender, reader, "QUIET-001"); err != nil {
 		t.Fatal(err)
 	}
@@ -621,6 +629,7 @@ func TestCollectorControlledStopWakesAnIdlePeerPromptly(t *testing.T) {
 	if len(b.Manifest.Sources) != 2 {
 		t.Fatalf("the interrupted peer's consumed bytes were discarded: %d sources", len(b.Manifest.Sources))
 	}
+	assertStoppedPrefix(t, b)
 }
 
 // caseInsensitive reports whether this filesystem aliases distinct leaf
