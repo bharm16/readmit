@@ -44,6 +44,7 @@ DISTRIBUTION_FILES = (
     "docs/backup.md",
     "docs/license.md",
     "docs/license-v2.md",
+    "docs/billing.md",
     "docs/secret.md",
     "docs/protect.md",
     "docs/target.md",

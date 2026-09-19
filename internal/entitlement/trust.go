@@ -145,6 +145,15 @@ func publicKey(key Key) (ed25519.PublicKey, error) {
 	return ed25519.PublicKey(value), nil
 }
 
+// SigningKey resolves a trusted key by identifier for something signed at an
+// instant, refusing an unknown, revoked or already-retired key by name. It is
+// exported so a second signed contract of this repository — the vendor's own
+// billing events — is authenticated by the same store, the same key states and
+// the same algorithm rather than by a second trust mechanism.
+func (t Trust) SigningKey(id string, signed time.Time) (Key, ed25519.PublicKey, error) {
+	return t.key(id, signed)
+}
+
 // key resolves the signing key of a document. A key this store does not name,
 // one that was revoked, and one that was already retired when the entitlement
 // was issued are each refused by name rather than treated as untrusted alike.

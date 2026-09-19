@@ -468,6 +468,17 @@ func validateScope(scope Scope) error {
 	return nil
 }
 
+// ValidateIdentifier reports whether a name meets the rule every identifier in
+// an entitlement shares. It is exported for the issuing half of the contract,
+// which names the same organizations, plans and keys before it signs them and
+// must refuse exactly what a verifier would refuse.
+func ValidateIdentifier(value string) error { return identifier(value) }
+
+// ValidateInstant reports whether a time meets the rule every recorded instant
+// in an entitlement shares: UTC, whole seconds, inside a bounded range. It is
+// exported for the same reason [ValidateIdentifier] is.
+func ValidateInstant(value time.Time) error { return instant(value) }
+
 // identifier is the character set shared by every name in an entitlement: it
 // carries no separator, no whitespace and no character that changes meaning in
 // a shell, a file name or a rendered report.
