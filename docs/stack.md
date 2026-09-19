@@ -25,7 +25,7 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
 
 ## CLI
 
-- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `corpus`, `project`, `backup`, `upgrade`, `license`, `secret`, `protect`, `target`, `source`, `listen`, `replay`, `test`, `observe`, `explain`, `diff`, `diagnose`, `correlate`, `synth`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
+- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `corpus`, `project`, `backup`, `upgrade`, `license`, `secret`, `protect`, `target`, `source`, `listen`, `replay`, `test`, `observe`, `explain`, `diff`, `diagnose`, `correlate`, `synth`, `scenario`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
 - Command data goes to stdout, diagnostics to stderr. Machine-readable modes never interleave progress output with JSON.
 - Target configuration is read from explicitly selected files, not hidden global config or environment-variable precedence.
 - Credentials are referenced, never held. A `readmit-secrets/v1` document registers the store kind an operator declared, the single purpose and endpoint address a credential may be bound to, the absolute path of the program that reads it back, and the recorded rotation. The purposes are `mllp-endpoint` and `source-endpoint`; a reference registered for one is refused wherever the other is needed. No command accepts a credential value, and a resolved value masks itself under every formatting verb and refuses to be serialized. See [credential references](secret.md).
@@ -113,6 +113,25 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
   version it is on and the version it moves to, and refuses a profile rewritten
   under a version a saved test already pins. See
   [profile versions](profile-versions.md).
+- An interface workflow designed as a sequence is one `readmit-scenario/v1`
+  document read by `internal/scenario`: the fixture lifecycle profile it binds
+  to, the identities it keeps linked across its steps with the state each one
+  begins in, each step's offset from a declared base time, and the outcome its
+  author declared for that step. Two profiles are implemented,
+  `readmit-adt-lifecycle-v1` and `readmit-siu-lifecycle-v1`; each declares the
+  subject kinds and trigger events a scenario bound to it may use, and nothing
+  is borrowed across them. These are readmit fixture lifecycle profiles, not
+  HL7 conformance and not the `readmit-siu-v1` message profile `synth`
+  generates bytes from; a profile pack still declares workflow support
+  separately from parsing and labels, and no `v1` pack may declare it
+  supported. `scenario preview` walks the sequence through the profile's typed
+  transition operators and refuses the whole document when a step's declared
+  outcome and the lifecycle disagree in either direction, so a negative case
+  nobody confirmed is never read as one that was. A refused step changes no
+  state, which is how a cancellation or merge case sits inside one workflow.
+  Nothing generates HL7 bytes, reads evidence or reaches a network, and
+  `readmit-test/v1` gains no member. See
+  [designing a workflow as a sequence](scenario-design.md).
 
 ## Networking
 

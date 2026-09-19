@@ -1,0 +1,13 @@
+{
+  "schema": "readmit-scenario/v1",
+  "scenario": {"id": "siu-cancellation-declared-accepted", "version": "1"},
+  "profile": "readmit-siu-lifecycle-v1",
+  "base_time": "2026-01-01T12:00:00Z",
+  "subjects": [
+    {"id": "patient-a", "kind": "patient", "namespace": "READMIT", "identifier": "SYNTH-PATIENT-A", "initial_state": "active"},
+    {"id": "appointment-a", "kind": "appointment", "namespace": "READMIT", "identifier": "SYNTH-APPOINTMENT-A", "patient": "patient-a", "initial_state": "none"}
+  ],
+  "steps": [
+    {"id": "cancel-before-anything-was-booked", "event": "S15", "subject": "appointment-a", "after": "0s", "expect": "accepted"}
+  ]
+}

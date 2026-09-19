@@ -1,0 +1,29 @@
+{
+  "schema": "readmit-scenario/v1",
+  "scenario": {"id": "adt-visit-lifecycle", "version": "1"},
+  "profile": "readmit-adt-lifecycle-v1",
+  "base_time": "2026-01-01T12:00:00Z",
+  "subjects": [
+    {"id": "patient-a", "kind": "patient", "namespace": "READMIT", "identifier": "SYNTH-PATIENT-A", "initial_state": "active"},
+    {"id": "patient-b", "kind": "patient", "namespace": "READMIT", "identifier": "SYNTH-PATIENT-B", "initial_state": "active"},
+    {"id": "patient-c", "kind": "patient", "namespace": "READMIT", "identifier": "SYNTH-PATIENT-C", "initial_state": "active"},
+    {"id": "visit-a", "kind": "visit", "namespace": "READMIT", "identifier": "SYNTH-VISIT-A", "patient": "patient-a", "initial_state": "none"},
+    {"id": "visit-b", "kind": "visit", "namespace": "READMIT", "identifier": "SYNTH-VISIT-B", "patient": "patient-b", "initial_state": "none"}
+  ],
+  "steps": [
+    {"id": "register", "event": "A04", "subject": "visit-a", "after": "0s", "expect": "accepted"},
+    {"id": "admit", "event": "A01", "subject": "visit-a", "after": "30m", "expect": "accepted"},
+    {"id": "transfer", "event": "A02", "subject": "visit-a", "after": "2h", "expect": "accepted"},
+    {"id": "update", "event": "A08", "subject": "visit-a", "after": "3h", "expect": "accepted"},
+    {"id": "cancel-a-discharge-that-never-happened", "event": "A13", "subject": "visit-a", "after": "4h", "expect": "refused"},
+    {"id": "discharge", "event": "A03", "subject": "visit-a", "after": "26h", "expect": "accepted"},
+    {"id": "cancel-an-admission-already-discharged", "event": "A11", "subject": "visit-a", "after": "27h", "expect": "refused"},
+    {"id": "cancel-the-discharge", "event": "A13", "subject": "visit-a", "after": "28h", "expect": "accepted"},
+    {"id": "admit-the-second-visit", "event": "A01", "subject": "visit-b", "after": "29h", "expect": "accepted"},
+    {"id": "merge-a-patient-into-itself", "event": "A40", "subject": "patient-b", "into": "patient-b", "after": "30h", "expect": "refused"},
+    {"id": "merge-the-duplicate-identity", "event": "A40", "subject": "patient-b", "into": "patient-a", "after": "31h", "expect": "accepted"},
+    {"id": "merge-an-identity-already-merged-away", "event": "A40", "subject": "patient-b", "into": "patient-a", "after": "32h", "expect": "refused"},
+    {"id": "update-the-visit-of-a-merged-identity", "event": "A08", "subject": "visit-b", "after": "33h", "expect": "refused"},
+    {"id": "merge-into-an-identity-already-merged-away", "event": "A40", "subject": "patient-c", "into": "patient-b", "after": "34h", "expect": "refused"}
+  ]
+}
