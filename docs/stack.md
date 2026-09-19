@@ -25,7 +25,7 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
 
 ## CLI
 
-- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `corpus`, `project`, `backup`, `upgrade`, `license`, `secret`, `protect`, `target`, `source`, `listen`, `replay`, `test`, `suite`, `observe`, `explain`, `diff`, `drift`, `normalize`, `baseline`, `diagnose`, `correlate`, `transform`, `synth`, `scenario`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
+- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `corpus`, `project`, `backup`, `upgrade`, `license`, `secret`, `protect`, `target`, `source`, `listen`, `replay`, `test`, `suite`, `observe`, `explain`, `diff`, `drift`, `normalize`, `baseline`, `expectation`, `diagnose`, `correlate`, `transform`, `synth`, `scenario`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
 - Command data goes to stdout, diagnostics to stderr. Machine-readable modes never interleave progress output with JSON.
 - Target configuration is read from explicitly selected files, not hidden global config or environment-variable precedence.
 - Credentials are referenced, never held. A `readmit-secrets/v1` document registers the store kind an operator declared, the single purpose and endpoint address a credential may be bound to, the absolute path of the program that reads it back, and the recorded rotation. The purposes are `mllp-endpoint` and `source-endpoint`; a reference registered for one is refused wherever the other is needed. No command accepts a credential value, and a resolved value masks itself under every formatting verb and refuses to be serialized. See [credential references](secret.md).
@@ -523,9 +523,19 @@ and expands setup dependencies into the existing `internal/runqueue` scheduler.
 `readmit-suite-selection/v1` retains the selected site/environment separately;
 existing test, queue and durable evidence contracts are unchanged. See
 [regression suites](suites.md).
+
 ## Customer runner
 
 `runner` uses the same compiled durable/test engine, with private local jobs and
 short-lived customer-hub admission. See [runner operation](customer-runner.md).
 The hub imports the shared strict protocol from the root module; the root gains
 no dependency. Customer Ed25519 deployment signatures approve staged updates.
+
+
+## Released expectations
+
+`internal/expectation` wraps the existing baseline approval in
+`readmit-test-release/v1`, with exact profileversion seals and predecessor identity.
+`readmit-suite-releases/v1` is the separate optional suite admission pin set.
+See [released expectations](expectations.md); local declarations are not team
+authentication and profile pins imply no new evaluator support.

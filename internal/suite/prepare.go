@@ -10,6 +10,7 @@ import (
 	"slices"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/expectation"
 	"github.com/bharm16/readmit/internal/runqueue"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
@@ -64,6 +65,17 @@ func retain(dir, name string, raw []byte) error {
 // A failed preparation removes only its own new configuration directory; once
 // returned, the directory is retained and every run creates separate evidence.
 func Prepare(path, environment, output string) (prepared Prepared, err error) {
+	return prepare(path, environment, output, "")
+}
+
+// PrepareApproved verifies an explicit pin for every template before expanding rows.
+func PrepareApproved(path, environment, output, references string) (Prepared, error) {
+	if references == "" {
+		return Prepared{}, errors.New("released suite requires references")
+	}
+	return prepare(path, environment, output, references)
+}
+func prepare(path, environment, output, references string) (prepared Prepared, err error) {
 	raw, err := read(path, MaxBytes)
 	if err != nil {
 		return prepared, err
@@ -75,6 +87,14 @@ func Prepare(path, environment, output string) (prepared Prepared, err error) {
 	doc, err := Decode(raw)
 	if err != nil {
 		return prepared, err
+	}
+	var releases map[string]expectation.Release
+	var referencesRaw []byte
+	if references != "" {
+		releases, referencesRaw, err = loadReleases(references, doc)
+		if err != nil {
+			return prepared, err
+		}
 	}
 	var selected *Environment
 	for i := range doc.Environments {
@@ -108,6 +128,18 @@ func Prepare(path, environment, output string) (prepared Prepared, err error) {
 		if e != nil {
 			return prepared, e
 		}
+		if r, approved := releases[test.ID]; approved {
+			if e := baselineSpec(templateRaw, r); e != nil {
+				return prepared, e
+			}
+			encoded, e := r.Encode()
+			if e != nil {
+				return prepared, e
+			}
+			if e := retain(out, "release-"+test.ID+".json", encoded); e != nil {
+				return prepared, e
+			}
+		}
 		for _, table := range doc.Tables {
 			if table.ID != test.Table {
 				continue
@@ -137,6 +169,13 @@ func Prepare(path, environment, output string) (prepared Prepared, err error) {
 				used := 0
 				for i := range spec.Assertions {
 					if expected, ok := row.Expected[spec.Assertions[i].ID]; ok {
+						if _, approved := releases[test.ID]; approved {
+							before, _ := json.Marshal(spec.Assertions[i].Expected, json.Deterministic(true))
+							after, _ := json.Marshal(expected, json.Deterministic(true))
+							if string(before) != string(after) {
+								return prepared, errors.New("suite row changes a released expectation; release a reviewed template for that row")
+							}
+						}
 						spec.Assertions[i].Expected = expected
 						used++
 					}
@@ -171,6 +210,11 @@ func Prepare(path, environment, output string) (prepared Prepared, err error) {
 			}
 		}
 	}
+	if references != "" {
+		if err = retain(out, "release-references.json", referencesRaw); err != nil {
+			return prepared, err
+		}
+	}
 	if err = retainSelection(out, doc, *selected); err != nil {
 		return prepared, err
 	}
@@ -194,7 +238,17 @@ func Prepare(path, environment, output string) (prepared Prepared, err error) {
 // Run expands one selected environment and delegates every scheduling and send
 // decision to runqueue. Existing output is refused, never resumed or resent.
 func Run(ctx context.Context, path, environment, output string) (runqueue.Report, error) {
-	prepared, err := Prepare(path, environment, output)
+	return run(ctx, path, environment, output, "")
+}
+
+func RunApproved(ctx context.Context, path, environment, output, references string) (runqueue.Report, error) {
+	if references == "" {
+		return runqueue.Report{}, errors.New("released suite requires references")
+	}
+	return run(ctx, path, environment, output, references)
+}
+func run(ctx context.Context, path, environment, output, references string) (runqueue.Report, error) {
+	prepared, err := prepare(path, environment, output, references)
 	if err != nil {
 		return runqueue.Report{}, err
 	}

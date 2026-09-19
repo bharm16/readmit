@@ -4,6 +4,11 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   exact retained prefixes, including reads returning after shutdown. Unread
   socket data remains outside captured evidence; runtime behavior is unchanged.
 
+- Reviewed test releases retain baseline approvals, immutable predecessor identities
+  and exact profile pins. Desktop and CLI review share stale-approval refusal;
+  suites can require explicit release pins and report declaration impact without
+  changing expectations or treating review as execution proof.
+
 - Reusable regression suites bind templates and typed data rows to named sites
   and environments, retain tags/owners, check sequence, and execute setup
   dependencies through the durable scheduler. Skips never count as passes;

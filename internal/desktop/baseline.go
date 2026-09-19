@@ -11,14 +11,17 @@ import (
 // BaselineRequest names workspace entries only. Review is the explicit local
 // decision; the engine re-reads both files before accepting it.
 type BaselineRequest struct {
-	Workspace  string `json:"workspace"`
-	Spec       string `json:"spec"`
-	Previous   string `json:"previous"`
-	ShowValues bool   `json:"show_values"`
-	Review     string `json:"review"`
-	Approver   string `json:"approver"`
-	Rationale  string `json:"rationale"`
-	Output     string `json:"output"`
+	Release    bool     `json:"release"`
+	ReleaseID  string   `json:"release_id"`
+	Profiles   []string `json:"profiles"`
+	Workspace  string   `json:"workspace"`
+	Spec       string   `json:"spec"`
+	Previous   string   `json:"previous"`
+	ShowValues bool     `json:"show_values"`
+	Review     string   `json:"review"`
+	Approver   string   `json:"approver"`
+	Rationale  string   `json:"rationale"`
+	Output     string   `json:"output"`
 }
 type BaselineResult struct {
 	State             State                `json:"state"`
@@ -33,14 +36,23 @@ type BaselineResult struct {
 // They hold the operation slot and finish once admitted; Cancel cannot interrupt
 // the short exclusive file write, and no operation sends or resumes a run.
 func (a *App) ReviewBaseline(request BaselineRequest) BaselineResult {
+	if request.Release {
+		return a.expectation(request, false, false)
+	}
 	return a.baseline(request, false)
 }
 func (a *App) ApproveBaseline(request BaselineRequest) BaselineResult {
+	if request.Release {
+		return a.expectation(request, true, false)
+	}
 	return a.baseline(request, true)
 }
 
 // OpenBaseline inspects a retained revision even when its authored spec is gone.
 func (a *App) OpenBaseline(request BaselineRequest) BaselineResult {
+	if request.Release {
+		return a.expectation(request, false, true)
+	}
 	release, ok := a.claim()
 	if !ok {
 		return BaselineResult{State: Busy, Reason: busyRefusal.reason}

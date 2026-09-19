@@ -4,6 +4,9 @@ import { approveBaseline, openBaseline, reviewBaseline, type BaselineResult } fr
 
 /** Local approval is deliberately independent of run completion and session restoration. */
 export function Baseline({ workspace, busy }: { workspace: string; busy: boolean }) {
+  const [released, setReleased] = useState(false);
+  const [releaseID, setReleaseID] = useState("");
+  const [profiles, setProfiles] = useState("");
   const [spec, setSpec] = useState("");
   const [previous, setPrevious] = useState("");
   const [show, setShow] = useState(false);
@@ -19,6 +22,7 @@ export function Baseline({ workspace, busy }: { workspace: string; busy: boolean
     setInspecting(inspect);
     setWorking(true);
     const request = { workspace, spec, previous, show_values: show,
+      release: released, release_id: releaseID, profiles: profiles.split("\n").map(p => p.trim()).filter(Boolean),
       review: review?.identity ?? "", approver, rationale, output };
     try { setResult(await (inspect ? openBaseline(request) : approve ? approveBaseline(request) : reviewBaseline(request))); }
     finally { setWorking(false); }
@@ -28,11 +32,17 @@ export function Baseline({ workspace, busy }: { workspace: string; busy: boolean
     <h2 id="baseline-title">Regression baseline</h2>
     <p>Review saved expectations, then explicitly approve a new immutable revision. A passing run never approves itself. Local reviewer names are not authenticated team identities.</p>
     <fieldset disabled={disabled}>
+      <label><input type="checkbox" checked={released} onChange={e => {setReleased(e.target.checked); setPrevious(""); invalidate();}} />Release a test version with profile pins</label>
+      {released ? <>
+        <label>Stable test identity <input value={releaseID} onChange={e => {setReleaseID(e.target.value); invalidate();}} /></label>
+        <label>Local profile filenames, one per line (empty explicitly pins none) <textarea value={profiles} onChange={e => {setProfiles(e.target.value); invalidate();}} /></label>
+        <p>Profile changes require a fresh review. Suite release references pin the saved file by exact identity; impact summaries are available with expectation impact. No profile evaluation or team authentication is implied.</p>
+      </> : null}
       <label>Candidate specification in this workspace <input value={spec} onChange={e => {setSpec(e.target.value); invalidate();}} /></label>
-      <label>Previous baseline (empty for first revision) <input value={previous} onChange={e => {setPrevious(e.target.value); invalidate();}} /></label>
+      <label>Previous {released ? "released test" : "baseline"} (empty for first revision) <input value={previous} onChange={e => {setPrevious(e.target.value); invalidate();}} /></label>
       <label><input type="checkbox" checked={show} onChange={e => {setShow(e.target.checked); invalidate();}} />Reveal exact expected values and configuration (may contain patient data)</label>
-      <button disabled={!previous} onClick={() => void perform(false, true)}>Inspect retained baseline</button>
-      <button disabled={!spec} onClick={() => void perform(false)}>Review baseline changes</button>
+      <button disabled={!previous} onClick={() => void perform(false, true)}>Inspect retained {released ? "test version" : "baseline"}</button>
+      <button disabled={!spec || (released && !releaseID)} onClick={() => void perform(false)}>Review {released ? "test and profile" : "baseline"} changes</button>
     </fieldset>
     <p role="status">{working ? "Reading baseline files…" : result?.reason ?? (result?.output ? `Approved and saved ${result.output}.` : "")}</p>
     {review ? <>
@@ -46,9 +56,9 @@ export function Baseline({ workspace, busy }: { workspace: string; busy: boolean
       {!inspecting ? <fieldset disabled={disabled || Boolean(result?.output)}>
         <label>Local approver <input value={approver} onChange={e => setApprover(e.target.value)} /></label>
         <label>Approval rationale <textarea value={rationale} onChange={e => setRationale(e.target.value)} /></label>
-        <label>New baseline filename <input value={output} onChange={e => setOutput(e.target.value)} /></label>
+        <label>New {released ? "released test" : "baseline"} filename <input value={output} onChange={e => setOutput(e.target.value)} /></label>
         <p>The private file retains the full specification, including expected values. It does not freeze referenced case or target files and is not permission to send or share evidence.</p>
-        <button disabled={!approver.trim() || !rationale.trim() || !output.trim()} onClick={() => void perform(true)}>Approve this exact baseline revision</button>
+        <button disabled={!approver.trim() || !rationale.trim() || !output.trim()} onClick={() => void perform(true)}>{released ? "Release this exact test version" : "Approve this exact baseline revision"}</button>
         <button onClick={invalidate}>Cancel review</button>
       </fieldset> : null}
     </> : null}
