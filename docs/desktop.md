@@ -1355,3 +1355,12 @@ checked to hold no network call and no browser storage at all.
 - Installation, upgrade, signing, and a supported desktop platform matrix.
   Continuous integration builds the shell natively on macOS as a build check,
   which is not a support claim.
+
+## Regression baselines
+
+The inspector's Regression baseline panel reviews saved specifications, shows
+exact expected-value changes after explicit reveal, and records an approver and
+rationale in one new immutable local revision. Historical revisions remain
+inspectable without their original spec file. The same `internal/baseline`
+engine backs the CLI; passing runs never automatically approve themselves.
+See [baseline review](baseline.md) for privacy, cancellation and identity limits.

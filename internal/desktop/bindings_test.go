@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bharm16/readmit/internal/baseline"
 	"github.com/bharm16/readmit/internal/correlate"
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/diff"
@@ -139,6 +140,10 @@ func TestFrontendBindingsDeclareEveryResultMember(t *testing.T) {
 		reflect.TypeOf(testauthor.Approval{}),
 		reflect.TypeOf(testauthor.Reviewed{}),
 		reflect.TypeOf(testrunner.FieldValue{}),
+		reflect.TypeOf(desktop.BaselineRequest{}),
+		reflect.TypeOf(desktop.BaselineResult{}),
+		reflect.TypeOf(baseline.Comparison{}),
+		reflect.TypeOf(baseline.Change{}),
 		reflect.TypeOf(desktop.CompareRequest{}),
 		reflect.TypeOf(desktop.CompareResult{}),
 		reflect.TypeOf(desktop.Comparison{}),

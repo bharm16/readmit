@@ -416,6 +416,9 @@ interface Facade {
   SaveTest(request: TestRequest): Promise<TestResult>;
   SuggestExpectations(request: TestRequest): Promise<TestResult>;
   ApproveExpectations(request: TestRequest): Promise<TestResult>;
+  OpenBaseline(request: BaselineRequest): Promise<BaselineResult>;
+  ReviewBaseline(request: BaselineRequest): Promise<BaselineResult>;
+  ApproveBaseline(request: BaselineRequest): Promise<BaselineResult>;
   Compare(request: CompareRequest): Promise<CompareResult>;
   Guide(workspace: string): Promise<GuideResult>;
   RunPractice(request: PracticeRequest): Promise<PracticeResult>;
@@ -1901,4 +1904,28 @@ export interface ReviewResult {
  * exported, and the private state directory is never read. */
 export function openReview(request: ReviewRequest): Promise<ReviewResult> {
   return guard(() => facade().OpenReview(request), { state: "failed" });
+}
+
+export interface BaselineRequest {
+  workspace: string; spec: string; previous: string; show_values: boolean;
+  review: string; approver: string; rationale: string; output: string;
+}
+export interface BaselineChange { part: string; kind: string; before?: string; after?: string; }
+export interface BaselineComparison {
+  schema: string; identity: string; revision: number; parent: string;
+  values_shown: boolean; changes: BaselineChange[];
+}
+export interface BaselineResult {
+  state: State; reason?: string; comparison?: BaselineComparison;
+  previous_approver?: string; previous_rationale?: string; output?: string;
+}
+export function reviewBaseline(request: BaselineRequest): Promise<BaselineResult> {
+  return guard(() => facade().ReviewBaseline(request), { state: "failed" });
+}
+export function approveBaseline(request: BaselineRequest): Promise<BaselineResult> {
+  return guard(() => facade().ApproveBaseline(request), { state: "failed" });
+}
+
+export function openBaseline(request: BaselineRequest): Promise<BaselineResult> {
+  return guard(() => facade().OpenBaseline(request), { state: "failed" });
 }
