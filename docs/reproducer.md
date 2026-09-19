@@ -246,10 +246,12 @@ A reproducer is derived testing data and is treated as the data it came from.
   result. That is a separate delivery, and this release makes no claim about
   minimality: a reproducer holds what a person selected and what their declared
   dependencies retained.
-- Replay transformations. Named identifier and date transformations that
-  preserve relationships across a whole reproducer are `replay`'s declared
-  transformations today and a separate delivery here; `set-field/v1` changes one
-  position of one occurrence and knows nothing about the others.
+- Replay transformations. `set-field/v1` changes one position of one occurrence
+  and knows nothing about the others, and this plan gains no operator for the
+  ones that do. Renaming the values a correlation rule relates and shifting
+  every date by one duration are previewed by
+  [`readmit transform`](transform.md), which writes nothing; the two named
+  transformations a send applies are in [replay](replay.md).
 - Reordering, duplicating or repeating occurrences, and editing an occurrence
   into a position the message does not already declare.
 - A dependency that crosses a source boundary. Both relations stay inside one

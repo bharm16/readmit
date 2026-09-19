@@ -105,6 +105,7 @@ REQUIRED_FILES = {
     "docs/synth.md",
     "docs/diagnose.md",
     "docs/correlate.md",
+    "docs/transform.md",
     "testdata/fixtures/correlate-rules.json",
     "docs/selectors.md",
     "testdata/fixtures/diagnose-booking.hl7",

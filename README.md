@@ -587,6 +587,28 @@ equal identifier strings that configured authorities keep in separate links. The
 bytes at all, and adds no member to any case. See
 [correlation](docs/correlate.md).
 
+`transform CASE --rules FILE --plan FILE` previews what a replay transformation
+would do to a case and writes nothing at all. A `readmit-transform-plan/v1`
+document names typed operators — rename the values one declared correlation rule
+relates, shift every supported timestamp by one explicit duration, and reorder,
+duplicate or drop an entry of the sequence a replay would send — and is bound to
+the verified case identity and to the SHA-256 of the exact correlation rules
+whose relations it preserves. Which occurrences belong together stays
+`correlate`'s answer: one surrogate is assigned per relation, so occurrences a
+rule related stay related and occurrences it related to nothing stay apart, an
+intentional duplicate control ID is still a duplicate, a repeated entry receives
+its original's value, and the acknowledgement of a renamed message is rewritten
+onto it rather than stranded. What cannot be kept true is refused — an
+acknowledgement the case tied to several candidates, two changes over the same
+bytes, a timestamp this release cannot move — and what the evidence does not
+settle is reported and left exactly as it is, including equal identifier bytes
+under no configured assigning authority. Every entry keeps the occurrence and
+source it came from, the `readmit-transform-preview/v1` preview carries no value
+byte at all, and only a `supported` profile-pack outcome passes — a combination
+the pinned pack does not declare supported, and the date fields a shift does not
+move, are recorded explicitly rather than left unstated. See
+[previewing transformations](docs/transform.md).
+
 `synth` creates a wholly synthetic SIU scheduling family from four explicit inputs:
 
 ```sh
