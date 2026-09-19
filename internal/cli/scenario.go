@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/scenario"
+	"github.com/bharm16/readmit/internal/scenariogen"
 	"github.com/spf13/cobra"
 )
 
@@ -34,7 +35,33 @@ func scenarioCommand(ran *bool) *cobra.Command {
 			return printTimeline(cmd.OutOrStdout(), timeline)
 		},
 	}
-	command.AddCommand(preview)
+	var output string
+	generate := &cobra.Command{
+		Use: "generate PLAN --output NEW_DIRECTORY", Short: "Generate deterministic synthetic workflow streams with complete inputs",
+		Args: func(_ *cobra.Command, args []string) error {
+			if len(args) != 1 {
+				return errors.New("scenario generate requires one generator plan")
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			*ran = true
+			if output == "" {
+				return errors.New("scenario generate requires --output")
+			}
+			data, err := readInputFile(args[0], scenariogen.MaxBytes)
+			if err != nil {
+				return err
+			}
+			if _, err := scenariogen.Write(cmd.Context(), output, data); err != nil {
+				return err
+			}
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), "Generated synthetic workflow streams; generation.json retains inputs and intended arrivals. No external outcomes verified.")
+			return err
+		},
+	}
+	generate.Flags().StringVar(&output, "output", "", "New directory for streams and their generator record")
+	command.AddCommand(preview, generate)
 	return command
 }
 

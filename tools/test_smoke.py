@@ -114,6 +114,7 @@ DISTRIBUTION_FILES = (
     "testdata/fixtures/scenario-refused.json",
     "testdata/fixtures/scenario-orm.json",
     "testdata/fixtures/scenario-oru.json",
+    "testdata/fixtures/scenario-generator.json",
     "licenses/cobra-LICENSE.txt", "licenses/go-BSD-3-Clause.txt",
     "licenses/mousetrap-LICENSE.txt", "licenses/nhapi-MPL-2.0.txt", "licenses/pflag-LICENSE.txt",
     "testdata/fixtures/adt-cr.hl7", "testdata/fixtures/siu-lf.hl7",

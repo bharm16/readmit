@@ -19,9 +19,10 @@ delivery: editable, profile-bound lifecycle templates with linked identities,
 initial state, event timing and a timeline preview, including cancellation and
 merge-related negative cases.
 
-**Nothing here generates a message.** A scenario carries the identities and the
-timing a generator would need, and this release designs, reads and previews the
-sequence only. No HL7 bytes, no case bundle, no evidence and no network.
+**The preview does not generate a message.** A scenario carries the identities and the
+timing a generator would need, and the preview designs, reads and previews the
+sequence only. The separate [generator](#parameterized-generation) below writes
+fixture message streams from a plan embedding that unchanged document.
 
 ## The one rule
 
@@ -161,7 +162,7 @@ more than `8760h`, and **strictly later than the step before it**.
 Offsets rising strictly is what makes the document's order the sequence's
 order, so a preview never has to pick between two events at one instant. Delayed
 and out-of-order arrival are variants of a designed sequence rather than ways to
-write one down; they are not in this release.
+write one down; they belong to the separate generator below.
 
 Everything a preview reports is a function of the document alone. No clock, no
 environment, no host identity and no filesystem path reaches it, so the same
@@ -234,11 +235,8 @@ correct against a scenario that never asked the question.
 
 ## Not in this release
 
-- **Generating messages.** A scenario declares the identities and the timing a
-  generator needs and generates nothing. `readmit synth` remains the only
-  generator, and it implements its own fixed `readmit-siu-v1` family.
-- Parameter tables, mutations, boundary variants, duplicate and delayed events,
-  out-of-order arrival, uncommon encodings and time-zone boundary variants.
+- Generating messages directly from a preview. Generation requires the separate
+  explicit input plan below.
 - A scenario library, coverage reporting, and expected outcomes versioned apart
   from the template.
 - Expectations, assertions and any binding to a test spec. A scenario is not a
@@ -330,5 +328,96 @@ most 64 KiB, 32 subjects, 64 steps, 32 order bindings and 64 result bindings;
 excess is refused, never truncated. Programmatic preview validates the same
 shape and bounds. Preview prints local subject names and lifecycle outcomes,
 never placer/filler identities, observation codes or values. It writes nothing,
-generates no HL7, and changes no evidence contract. Parameterized generation,
-variants and independent external-target oracles remain separate work.
+generates no HL7, and changes no evidence contract. The separate generator below materializes parameterized variants; independent
+external-target oracles remain separate work.
+
+## Parameterized generation
+
+```sh
+readmit scenario generate testdata/fixtures/scenario-generator.json --output workflow-family
+```
+
+`readmit-scenario-generator/v1` embeds a complete unchanged scenario or order
+scenario as `template`. `generator_version` must be
+`readmit-scenario-generator-v1`; `seed` is an explicit unsigned 64-bit integer,
+including zero. The template supplies the base time, profile, subject identities,
+initial states, event sequence, orders and results. Unknown members and omitted
+or null required members are refused, including nested rows and operators.
+
+`rows` is an ordered data table: each row requires a unique `id`, `patient_name`,
+`notes` (an ordered array of text) and `encoding` (`utf-8` or `iso-8859-1`).
+The name replaces PID-5 in every event, and notes become repeated NTE segments.
+Text is limited to 256 UTF-8 bytes, without control characters, HL7 delimiters
+or double quotes. An empty string is an explicit empty value, not omission.
+Latin-1 generation refuses text it cannot represent; it never substitutes `?`.
+
+`variants` is an ordered array of unique `id` and `mutations`. Every row crosses
+with every variant. An empty mutation array means baseline. Each mutation names
+one original `step` and one closed `op`, with exactly these additional members:
+
+| Operator | Members | Effect |
+| --- | --- | --- |
+| `field` | `field`, `state` | PID-5 or every NTE-3 in that step becomes `absent`, `empty` or HL7 explicit `null` (`""`). Absent removes the final field delimiter; empty retains it. NTE requires notes in every row. |
+| `duplicate` | none | Emit one exact adjacent retransmission, retaining MSH-10 and every byte. |
+| `delay` | `after` | Add a positive whole-second duration (at most 8760h) to intended arrival, leaving message-declared time unchanged. Stable sorting by intended arrival creates out-of-order streams; original step order breaks ties. |
+| `encoding` | `encoding` | Encode this step as UTF-8 or ISO-8859-1 and declare it in MSH-18. |
+| `timezone` | `offset` | Render MSH-7 and ADT EVN-2 at the same instant with an explicit signed `HH:MM` UTC offset, at most 14 hours. |
+
+A step can combine different operators; each operator/step/field target may
+occur only once. A duplicate inherits all mutations of its original and is
+adjacent at the same intended arrival. Timezone offsets can differ across steps,
+so a plan can declare a DST jump or repeated wall-clock minute without depending
+on the host timezone database. No timezone rule is inferred from a place name.
+Years outside 0001–9999 are refused before writing anything. Partial date
+precision, unusual delimiters, other character encodings and arbitrary field
+edits are unsupported by this generator version.
+
+The finite fixture mapping is HL7 2.5.1 with test processing mode, CR segment
+endings and one MLLP frame per occurrence. MSH-10 uses PCG with the declared seed
+and fixed stream `0x726561646d697463`, one draw per authored step. Each row and
+variant restarts that stream so a retransmission or reorder does not change
+control identifiers. Rows are separate workflows; their declared identities
+are intentionally reused. Subject namespaces and linked identities are retained:
+PID-3 for patients, PV1-19 for visits, SCH-1/2 for appointments, and the explicitly
+bound ORC-2/3 and OBR-2/3 for orders. A merge places the surviving identity in
+PID-3 and the prior identity in MRG-1. ORU uses repeated TX OBX segments with the
+exact authored codes, sub-ids, text and statuses, plus OBR-25 report status.
+These are minimal Readmit fixture messages, not complete conformance profiles
+or clinical semantics. Initial state is an input; no setup messages are invented.
+
+Every authored step is emitted, including steps the template declares refused.
+The original lifecycle is validated before mutation. A mutation can invalidate
+that sequence: **its original expected outcome is not a verified expectation
+for the mutated stream**. There is no generated test oracle or auto-pass.
+
+The new output directory holds numbered `.mllp` streams and a completion record,
+`generation.json` (`readmit-scenario-generation/v1`). That record retains the
+entire plan as `inputs`, plus each row/variant, relative file, byte count, SHA-256
+and `intended_arrivals`: one step, relative `after` duration and duplicate flag
+per stream occurrence. These offsets are suitable as explicit downstream
+scheduler inputs, but no existing replay command consumes them automatically.
+They are **not observed times or executed delays**. Stream order is materialized;
+a consumer that ignores the schedule will send without those intended gaps.
+
+No case contract is changed. These are raw generated streams, not generated
+`readmit-case/v1` bundles: that contract cannot retain the additional inputs.
+`capture` can import a stream as ordinary imported evidence, but retain its
+companion generation record to keep all generator inputs. No ACK, observation,
+network operation, target result or assertion is invented. All output is a pure
+function of the plan, with no clock, host identifier, path or timezone database.
+
+The bounds are 256 KiB per plan (64 KiB per embedded scenario), 1–8 rows, 1–16
+variants, at most 8 notes per row, 32 mutations per variant, and 16 MiB of total
+stream bytes. Generation validates and encodes all streams before creating output.
+Files are owner-readable, created exclusively and synced; completion is renamed
+into place last. Cancellation or an I/O failure after directory creation leaves
+incomplete output without `generation.json`. Retry into a new directory; there
+is no implicit recovery, overwrite or resume. Existing evidence destinations
+are refused. Input values never appear in command output or error messages.
+Authored values may still be sensitive: Readmit cannot prove a pasted identifier
+is synthetic. Treat the plan, record and streams together as sensitive data.
+
+The public native smoke runs exercise the shipped plan and literal boundary
+bytes on all five release platforms. External-target behavior and independently
+reviewed expectations remain the owning team's acceptance work. The scenario
+library and separate expected-outcome versioning belong to #64.

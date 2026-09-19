@@ -132,6 +132,7 @@ REQUIRED_FILES = {
     "testdata/fixtures/scenario-refused.json",
     "testdata/fixtures/scenario-orm.json",
     "testdata/fixtures/scenario-oru.json",
+    "testdata/fixtures/scenario-generator.json",
     "licenses/cobra-LICENSE.txt", "licenses/go-BSD-3-Clause.txt",
     "licenses/mousetrap-LICENSE.txt", "licenses/nhapi-MPL-2.0.txt", "licenses/pflag-LICENSE.txt",
 } | {"testdata/fixtures/" + filename for filename, _, _, _ in FIXTURES}
@@ -315,6 +316,7 @@ def smoke(archive, target_os, release_tag=None):
             else:
                 assert interpreted["findings"] == []
         assert not run("synth", *generator_args, "--output", family, success=False).stdout
+        smoke_scenario_generation(archive, work, run)
         smoke_receiver(archive, binary, environment, work, run, family / "regression")
         smoke_replay(binary, environment, work, run, family / "regression")
         smoke_test_runner(archive, binary, environment, work, run)
@@ -323,6 +325,35 @@ def smoke(archive, target_os, release_tag=None):
         smoke_drift(work, run)
         smoke_report(binary, environment, work, run)
     print(f"PASS: {archive.name}; checksum, version, inspection, capture, timeline, privacy, and byte preservation")
+
+
+def smoke_scenario_generation(archive, work, run):
+    plan = work / "scenario-generator.json"
+    plan.write_bytes(member_bytes(archive, "testdata/fixtures/scenario-generator.json"))
+    first, second = work / "workflow-family", work / "workflow-repeat"
+    for destination in (first, second):
+        result = run("scenario", "generate", plan, "--output", destination)
+        assert not result.stderr and b"Caf" not in result.stdout
+    files = {p.name: p.read_bytes() for p in first.iterdir()}
+    assert files == {p.name: p.read_bytes() for p in second.iterdir()}
+    record = json.loads(files["generation.json"])
+    assert record["inputs"] == json.loads(plan.read_bytes())
+    variants = {}
+    for stream in record["streams"]:
+        data = files[stream["file"]]
+        assert len(data) == stream["bytes"]
+        assert hashlib.sha256(data).hexdigest() == stream["sha256"]
+        variants[stream["variant"]] = data
+    assert b"PID|1||SYNTH-PATIENT-A^^^READMIT|\r" in variants["missing"]
+    assert b'NTE|1|L|""\r' in variants["null"]
+    assert b"Caf\xe9\r" in variants["latin"]
+    assert b"|20260101060100-0600||SIU^S12|" in variants["timezone"]
+    base = variants["baseline"].split(b"\x1c\r")
+    repeated = variants["duplicate"].split(b"\x1c\r")
+    assert repeated[1] == repeated[2] == base[1]
+    delayed = variants["delayed"].split(b"\x1c\r")
+    assert delayed[4] == base[1] and delayed[1] == base[2]
+    assert not run("scenario", "generate", plan, "--output", first, success=False).stdout
 
 
 @contextmanager

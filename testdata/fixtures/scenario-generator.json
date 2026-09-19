@@ -1,0 +1,174 @@
+{
+  "schema": "readmit-scenario-generator/v1",
+  "generator_version": "readmit-scenario-generator-v1",
+  "seed": 0,
+  "template": {
+    "schema": "readmit-scenario/v1",
+    "scenario": {
+      "id": "siu-appointment-lifecycle",
+      "version": "1"
+    },
+    "profile": "readmit-siu-lifecycle-v1",
+    "base_time": "2026-01-01T12:00:00Z",
+    "subjects": [
+      {
+        "id": "patient-a",
+        "kind": "patient",
+        "namespace": "READMIT",
+        "identifier": "SYNTH-PATIENT-A",
+        "initial_state": "active"
+      },
+      {
+        "id": "appointment-a",
+        "kind": "appointment",
+        "namespace": "READMIT",
+        "identifier": "SYNTH-APPOINTMENT-A",
+        "patient": "patient-a",
+        "initial_state": "none"
+      }
+    ],
+    "steps": [
+      {
+        "id": "cancel-before-anything-was-booked",
+        "event": "S15",
+        "subject": "appointment-a",
+        "after": "0s",
+        "expect": "refused"
+      },
+      {
+        "id": "book",
+        "event": "S12",
+        "subject": "appointment-a",
+        "after": "1m",
+        "expect": "accepted"
+      },
+      {
+        "id": "book-the-same-appointment-again",
+        "event": "S12",
+        "subject": "appointment-a",
+        "after": "2m",
+        "expect": "refused"
+      },
+      {
+        "id": "reschedule",
+        "event": "S13",
+        "subject": "appointment-a",
+        "after": "3m",
+        "expect": "accepted"
+      },
+      {
+        "id": "modify",
+        "event": "S14",
+        "subject": "appointment-a",
+        "after": "4m",
+        "expect": "accepted"
+      },
+      {
+        "id": "cancel",
+        "event": "S15",
+        "subject": "appointment-a",
+        "after": "24h",
+        "expect": "accepted"
+      },
+      {
+        "id": "cancel-the-cancellation",
+        "event": "S15",
+        "subject": "appointment-a",
+        "after": "25h",
+        "expect": "refused"
+      },
+      {
+        "id": "reschedule-after-cancellation",
+        "event": "S13",
+        "subject": "appointment-a",
+        "after": "26h",
+        "expect": "refused"
+      },
+      {
+        "id": "record-a-no-show-after-cancellation",
+        "event": "S26",
+        "subject": "appointment-a",
+        "after": "27h",
+        "expect": "refused"
+      }
+    ]
+  },
+  "rows": [
+    {
+      "id": "synthetic",
+      "patient_name": "Café",
+      "notes": [
+        "First synthetic note",
+        "Second synthetic note"
+      ],
+      "encoding": "utf-8"
+    }
+  ],
+  "variants": [
+    {
+      "id": "baseline",
+      "mutations": []
+    },
+    {
+      "id": "missing",
+      "mutations": [
+        {
+          "op": "field",
+          "step": "book",
+          "field": "PID-5",
+          "state": "absent"
+        }
+      ]
+    },
+    {
+      "id": "null",
+      "mutations": [
+        {
+          "op": "field",
+          "step": "book",
+          "field": "NTE-3",
+          "state": "null"
+        }
+      ]
+    },
+    {
+      "id": "duplicate",
+      "mutations": [
+        {
+          "op": "duplicate",
+          "step": "book"
+        }
+      ]
+    },
+    {
+      "id": "delayed",
+      "mutations": [
+        {
+          "op": "delay",
+          "step": "book",
+          "after": "5m"
+        }
+      ]
+    },
+    {
+      "id": "latin",
+      "mutations": [
+        {
+          "op": "encoding",
+          "step": "book",
+          "encoding": "iso-8859-1"
+        }
+      ]
+    },
+    {
+      "id": "timezone",
+      "mutations": [
+        {
+          "op": "timezone",
+          "step": "book",
+          "offset": "-06:00"
+        }
+      ]
+    }
+  ]
+}
