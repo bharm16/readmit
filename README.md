@@ -363,7 +363,13 @@ status JOB --json` recovers evidence without resending, and `--recovery` reports
 every occurrence as not attempted, acknowledged or uncertain. `readmit run
 resume JOB SPEC --send --output NEW_JOB` repeats only never-attempted work and
 refuses after any send; `readmit run clean JOB` removes a stale lease and never
-evidence. See [durable local runs](docs/durable-runs.md).
+evidence. Every job also retains a `readmit-engine/v1` pin naming the build that
+evaluated it, the spec contract and the profile, which `readmit run status JOB
+--engine` reports: the desktop and the command line are two ways into one
+evaluator and an enrolled runner will be the third, a build this release does
+not recognize is recorded rather than refused, and a spec or profile version it
+does not evaluate is refused by name. See
+[durable local runs](docs/durable-runs.md).
 
 `observe validate WINDOW` reads a declared `readmit-observation-window/v1`
 document — the source identity and scope in view, the watermark the window opens

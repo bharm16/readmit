@@ -19,8 +19,9 @@ type Cleanup struct {
 // evidenceEntries are the entries a job directory may hold. Every one of them
 // except the lease is evidence and is never removed: the plan and intended
 // bytes say what was meant, the sent prefixes and journal say what happened,
-// and the result holds the replay's own record and the destination decision.
-var evidenceEntries = []string{"plan.json", "intended", "journal.jsonl", "sent", "result", "result.decision.json"}
+// the engine pin says which build evaluated it, and the result holds the
+// replay's own record and the destination decision.
+var evidenceEntries = []string{"plan.json", "engine.json", "intended", "journal.jsonl", "sent", "result", "result.decision.json"}
 
 // Clean removes what a terminal run no longer needs, which is only a lease its
 // writer could not release. It verifies the job first and refuses to change

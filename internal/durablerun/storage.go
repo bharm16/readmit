@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/bharm16/readmit/internal/engine"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
@@ -147,6 +148,29 @@ func openJob(path string) (*os.Root, string, error) {
 	return root, path, nil
 }
 
+// readPin reads the engine pin a run retained beside its plan. A directory
+// that retains none is not a job this release wrote, and is refused rather
+// than read as one whose evaluator is unknown.
+func readPin(root *os.Root) (engine.Pin, error) {
+	raw, err := read(root, "engine.json", engine.MaxPinBytes)
+	if err != nil {
+		return engine.Pin{}, errors.New("durable run retains no readable engine pin")
+	}
+	return engine.Decode(raw)
+}
+
+// Engine reports the pin a job retained whether or not this build evaluates
+// what it names, so an operator reads why a run is unreadable rather than only
+// that it is. It opens no network connection and changes no file.
+func Engine(path string) (engine.Pin, error) {
+	root, _, err := openJob(path)
+	if err != nil {
+		return engine.Pin{}, err
+	}
+	defer root.Close()
+	return readPin(root)
+}
+
 // Open recovers retained evidence without changing files or opening a network
 // connection. An unfinished journal proves no completion: interrupted means
 // completion was not recorded, not that another process is known to be dead.
@@ -173,6 +197,16 @@ func readJob(path string) (Recovery, planDocument, error) {
 		return Recovery{}, planDocument{}, err
 	}
 	defer root.Close()
+	// The pin is read before anything is judged: a run evaluated under a spec
+	// or profile version this release does not read is refused by name, not
+	// reported as invalid evidence.
+	pin, err := readPin(root)
+	if err != nil {
+		return Recovery{}, planDocument{}, err
+	}
+	if err = pin.Supported(); err != nil {
+		return Recovery{}, planDocument{}, err
+	}
 	raw, err := read(root, "plan.json", maxPlan)
 	if err != nil {
 		return Recovery{}, planDocument{}, err

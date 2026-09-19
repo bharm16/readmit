@@ -158,6 +158,10 @@ func (p *Plan) Boundary() string                { return p.spec.Observation.Boun
 func (p *Plan) Target() replay.TargetRecord     { return p.replay.Target() }
 func (p *Plan) Environment() replay.Environment { return p.replay.Environment() }
 
+// SpecContract is the contract version the spec itself declared, so a run
+// records what it was asked to evaluate rather than what a reader assumed.
+func (p *Plan) SpecContract() string { return p.spec.Schema }
+
 // PinnedInputs returns copies of the configuration and intended outbound bytes
 // sealed by Prepare, for durable journals. It cannot authorize or replay them.
 type PinnedInputs struct {

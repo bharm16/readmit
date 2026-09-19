@@ -180,12 +180,12 @@ func TestCleanupRemovesOnlyAStaleLease(t *testing.T) {
 	if _, err := durablerun.Start(context.Background(), spec, out); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"intended", "journal.jsonl", "plan.json", "result", "result.decision.json", "sent"}
+	want := []string{"engine.json", "intended", "journal.jsonl", "plan.json", "result", "result.decision.json", "sent"}
 	cleanup, err := durablerun.Clean(out)
 	if err != nil || cleanup.Schema != durablerun.CleanupSchema || len(cleanup.Removed) != 0 || cleanup.Run.State != durablerun.Passed {
 		t.Fatalf("%+v %v", cleanup, err)
 	}
-	if got, _ := json.Marshal(cleanup.Retained); string(got) != `["intended","journal.jsonl","plan.json","result","result.decision.json","sent"]` {
+	if got, _ := json.Marshal(cleanup.Retained); string(got) != `["engine.json","intended","journal.jsonl","plan.json","result","result.decision.json","sent"]` {
 		t.Fatalf("retained %s, want %v", got, want)
 	}
 	// A writer that stopped after its terminal record but before releasing.

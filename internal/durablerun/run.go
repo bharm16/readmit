@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/bharm16/readmit/internal/engine"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
@@ -241,6 +242,17 @@ func start(ctx context.Context, plan *testrunner.Plan, output string) (summary S
 		return Summary{}, errors.New("cannot encode bounded durable plan")
 	}
 	if err = write(root, "plan.json", raw); err != nil {
+		return Summary{}, err
+	}
+	// The engine pin is a sibling document, like the lease and the send
+	// decision: readmit-job/v1 gains no member. It is written before the first
+	// journal record, so every job this release retains names the build that
+	// wrote it and the versions that build evaluated.
+	pin, err := engine.Encode(engine.Current(plan.SpecContract()))
+	if err != nil {
+		return Summary{}, err
+	}
+	if err = write(root, "engine.json", pin); err != nil {
 		return Summary{}, err
 	}
 	if err = writeLease(ctx, root, plan); err != nil {
