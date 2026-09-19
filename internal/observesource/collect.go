@@ -49,6 +49,12 @@ type attempt struct {
 	// observation states. A read that cannot say how old its state is has no
 	// single reading and is never treated as current.
 	asOf time.Time
+	// from is the earliest point the state this attempt read covers. Only a
+	// source that is an ordered log of its own can say: a document answers with
+	// one state of one age, so its readers leave this zero and are placed by
+	// asOf alone. A capture can say, and a capture that reaches back past the
+	// window's watermark returned evidence from before the window.
+	from time.Time
 	// keys are the record keys in scope, which only an observation has. No
 	// other value is read out of a record, so nothing patient-identifying
 	// reaches a digest, a correlation or a completion record.
@@ -269,6 +275,19 @@ func withWatermark(window observewindow.Window, opened time.Time, taken attempt)
 		taken.status = observewindow.SampleStale
 		taken.record.Note = "the state read was current before the window's watermark"
 		taken.keys = nil
+		return taken
+	}
+	// A source that reaches back past the watermark returned evidence from
+	// before the window as well as evidence from inside it. Counting the whole
+	// of it would attribute what was already there to this run, and silently
+	// dropping the earlier part would decide the count by a filter the retained
+	// record cannot show, which a reader re-deciding from the samples alone
+	// could never check. Reporting the stale evidence it returned is the one
+	// answer that stays re-decidable.
+	if !taken.from.IsZero() && taken.from.Before(floor) {
+		taken.status = observewindow.SampleStale
+		taken.record.Note = "the state read reaches back past the window's watermark, so it returned evidence from before the window"
+		taken.keys = nil
 	}
 	return taken
 }
@@ -410,7 +429,7 @@ func recordKeys(extraction Extraction, records []importer.LocatedRecord) ([]stri
 			return nil, errors.New("a record of this document does not hold the declared record key")
 		}
 		if !printableKey(key) {
-			return nil, errors.New("a record key is one printable value of at most 128 bytes")
+			return nil, errRecordKey
 		}
 		keys = append(keys, key)
 	}
@@ -432,6 +451,23 @@ func validProduced(produced []string) error {
 		seen[occurrence] = true
 	}
 	return nil
+}
+
+// errRecordKey is the one refusal every reader gives a value that cannot be a
+// record key, so the same condition is reported in the same words wherever a
+// source is read.
+var errRecordKey = errors.New("a record key is one printable value of at most 128 bytes")
+
+// dateState places the state one attempt read in time and reports whether it is
+// still inside the declared freshness bound. Every source states how old what
+// it read is in its own way — an export's modification time, a response's age,
+// the times a capture recorded — and one place decides what that age means, so
+// a third reader cannot acquire a fourth reading of "current".
+func dateState(taken *attempt, current time.Time, maxAge time.Duration) bool {
+	taken.asOf = current
+	age := taken.at.Sub(current)
+	taken.record.StatedAge = age.String()
+	return age <= maxAge
 }
 
 func printableKey(value string) bool {

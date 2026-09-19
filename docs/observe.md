@@ -7,12 +7,12 @@ which an operator authors, and an **observation completion**, which a collector
 retains after attempting one.
 
 `validate` and `explain` observe nothing: they read what an operator declared
-and what a collector retained. `collect` is the first source-specific collector,
-and it fills those same slots for two sources — a **bounded file export** and a
-**bounded read of an approved HTTP API** — through a third contract, the
-declared observation source. The collectors still to come, downstream HL7
-captures and read-only database queries, report into the same window and
-completion rather than inventing their own.
+and what a collector retained. `collect` is the source-specific collector, and
+it fills those same slots for three sources — a **bounded file export**, a
+**bounded read of an approved HTTP API**, and a **downstream HL7 capture**
+readmit already retained — through a third contract, the declared observation
+source. The read-only database queries still to come report into the same window
+and completion rather than inventing their own.
 
 ```sh
 readmit observe validate observation-window.json
@@ -208,14 +208,14 @@ deciding what those observations mean.
 
 ## The declared observation source
 
-`readmit-observation-source/v1` says how one source is reached and how its
+`readmit-observation-source/v2` says how one source is reached and how its
 output is read. It is a third document beside the window and the completion,
 because what makes an observation trustworthy is source-neutral and how a source
 is reached is not.
 
 ```json
 {
-  "schema": "readmit-observation-source/v1",
+  "schema": "readmit-observation-source/v2",
   "source": {"kind": "file-export", "identity": "scheduling-archive", "scope": "appointments"},
   "enabled": true,
   "freshness": {"max_age": "5m"},
@@ -226,15 +226,26 @@ is reached is not.
     "record_key": ["appointment"]
   },
   "file": {"path": "exports/appointments.csv", "max_bytes": 1048576},
-  "http": null
+  "http": null,
+  "capture": null
 }
 ```
 
 Like the window, it is explicitly selected and never discovered, every member is
-required, unknown members are refused, and both transports are declared —
-explicitly `null` for the one this source does not use. The export and the
-certificate authority a source names are resolved against the directory the
-document itself lives in, never the caller's working directory.
+required, unknown members are refused, and all three transports are declared —
+explicitly `null` for the ones this source does not use. The export, the capture
+and the certificate authority a source names are resolved against the directory
+the document itself lives in, never the caller's working directory.
+
+`readmit-observation-source/v1` is still read, and means exactly what it always
+meant: two transports, both declared, and an extraction every source is read
+through. The capture transport is a **new version string** rather than a member
+added to that one, because v1 declared the set of transports it had and a
+capture is read through no envelope at all. A v1 document carrying a `capture`
+member is refused the way any other unknown member is; it is never read as
+though v1 had always allowed it. Nothing migrates in place, and
+`readmit-observation-window/v1` and `readmit-observation-completion/v1` are
+untouched by either version.
 
 `source` must be the source the window declares. A collector handed a window
 over some other system, scope or kind reports **unsupported**, which is an
@@ -251,6 +262,12 @@ same readers under the same bounds: `csv`, `json`, `xml` and `text`, one
 declared dialect, a declared encoding, and locators that are positions rather
 than queries. Nothing is normalized and nothing is detected. An export readmit
 can import is an export readmit can observe.
+
+It belongs to a transport that reads a document, and is declared as an explicit
+`null` for one that does not. A downstream capture is HL7 evidence readmit
+already divided into occurrences, so declaring an envelope for it would declare
+a reading nothing performs — and a member an operator does not use is refused
+here rather than ignored.
 
 `record_key` locates the one value this collector reads out of a record. It is
 the whole of what leaves the source: the key is counted, compared between
@@ -289,6 +306,7 @@ an error.
 | --- | --- |
 | `file-export` | The export's own modification time. A file readmit cannot date, or one dated after the read, is ambiguous rather than fresh. |
 | `http-api` | The response's `Age` header where it carries one, and otherwise its `Date`. A response stating neither is **ambiguous**: how current it is has no single reading, and unknown is not current. |
+| `downstream-capture` | The latest time the capture itself recorded, and the session's own start where a receiver declared one and recorded no occurrence. A capture that recorded neither is **ambiguous** rather than fresh. Its *earliest* recorded time is compared with the watermark separately, so a capture reaching back past the window is stale however current its newest occurrence is. |
 
 The age itself is stated in the retained evidence the observation names, not in
 the completion record: `readmit-observation-completion/v1` carries the window's
@@ -378,6 +396,101 @@ one. `readmit-secrets/v1` is unchanged: a credential bound to an observation
 endpoint is a separate contract, exactly as a storage-protection key is, rather
 than a widened `purpose` on an existing version.
 
+## Reading a downstream capture
+
+`capture` names one **retained case** — the evidence a receiver sealed of what a
+downstream system was actually sent. This is what lets a regression assertion
+inspect the system under test rather than a readmit-only appointment ledger.
+
+```json
+"capture": {
+  "path": "downstream.case",
+  "kinds": ["message"],
+  "record_key": "SCH-1.1",
+  "max_occurrences": 1000
+}
+```
+
+**Nobody has to fabricate anything for readmit.** The downstream system accepts
+HL7 the way it always did; [`readmit collect`](collect.md) stands in front of it
+or beside it as a bounded generic sink and retains what it was sent, and this
+collector reads that capture. No acknowledgement receipt, no ledger export and
+no readmit-specific message is asked of the system under test, and the
+`appointment-ledger` boundary [the fixture receiver](listen.md) exports is
+neither used nor needed here.
+
+The capture is opened through the one verifying reader every other command opens
+a case with: the manifest, the identity, every payload digest and the metadata
+derived from the bytes are checked before any evidence is read. Nothing is
+written into it, so the evidence a verdict was decided from is the evidence as
+it was retained.
+
+### The field mapping from input to captured output
+
+`record_key` is one [shared field selector](selectors.md) naming the position
+that carries the key — `SCH-1.1` for an appointment's placer ID, `MSA-2` for the
+control ID an acknowledgement answers, `ORC-2.1` for an order's placer ID. It is
+the same position vocabulary a [correlation rule](correlate.md) declares and it
+carries the same disclaimer: nothing about which field means what is built in,
+and reading a position asserts nothing about its HL7 meaning.
+
+That selector is the whole of the mapping from what a run produced to what the
+downstream system received. The run sends an occurrence carrying a key;
+`--produced KEY` names it; the collector reads the declared position out of the
+capture and correlates the two. It is also the whole of what leaves the capture:
+no other field is read, so nothing else about a message reaches a digest, a
+correlation or a completion record.
+
+`kinds` declares which occurrences are in scope, as at least one of `message`
+and `ack`. It has no default, because an acknowledgement and the message it
+answers carry the declared key in different places, and a scope nobody declared
+is a scope no absence claim can be checked against. An occurrence outside the
+declared kinds is not a record of this observation.
+
+### What is refused
+
+| What the capture holds | What the collector reports |
+| --- | --- |
+| No capture at that path | **Missing**. No state could be obtained, which is not a reading of an empty system. |
+| A capture that is not a case, or one that does not verify | **Failed**. The read errored; it did not observe that nothing is there. |
+| More occurrences than `max_occurrences` | **Truncated**. A prefix of the capture would be read rather than the capture. |
+| An occurrence the case preserved without parsing | **Ambiguous**, whatever scope was declared. Whether it belonged to the scope is exactly what nobody could decode, and reporting the records around it would present "we could not read this" as "this is not there". |
+| An occurrence in scope that does not hold the declared position | **Ambiguous**. The capture has no single reading under this declaration. |
+| A record key that does not decode to a bounded printable value | **Ambiguous**, for the same reason. |
+| State older than the freshness bound | **Stale**. |
+| Any occurrence recorded before the window's watermark | **Stale**, even when the capture also holds occurrences from inside the window. |
+
+### The watermark applies to both ends
+
+A document answers with one state of one age, so a watermark can only ask when
+that state was current. A capture is an **ordered log**: it says not only when
+its state was current — the latest time it recorded — but how far back that
+state reaches. The watermark is applied to both ends.
+
+A capture that **reaches back past the watermark** is stale, even though part of
+it lies inside the window. It returned evidence from before the window, and
+neither other answer is honest: counting the earlier occurrences would attribute
+state that was already there to this run, which is the one thing
+`pre_existing_state` exists to prevent, and dropping them silently would decide
+the record count by a filter the retained record cannot show — `observe explain
+--window` re-decides from the retained samples alone, so a reader could never
+check it. Reporting the stale evidence the capture returned is the one answer
+that stays re-decidable.
+
+The remedy is a declaration, not a flag. Capture the run into its own case —
+`collect --output` refuses a destination that already exists, so a per-run
+capture is the default shape — or declare `watermark: none` and say what was
+already there with `pre_existing_state`: `recorded-baseline` subtracts a
+baseline that was itself observed, and `unknown` completes the window without
+attributing anything to the run.
+
+A capture is a **sealed, bounded artifact**: a receiver writes it when its own
+declared capacity is spent. So `observe collect` runs after the capture
+finishes, and it is never retried inside one read — a read that found no capture
+found none, and reading again until one appears is waiting for a convenient
+answer. What repeated sampling establishes here is the same thing it establishes
+for every other source: that the observed state held still.
+
 ## Sampling and what is retained
 
 The collector polls until the **window's own rule** says it may stop. Whether
@@ -415,6 +528,17 @@ read hit, the attempts and retries it took, the response status, the age the
 source stated, and counts. It holds no field value, no response header, no
 credential and no path.
 
+A downstream capture is the exception, and deliberately: its material is the
+capture's own `identity.sha256` marker, retained byte for byte, rather than a
+copy of the case. The other readers retain the bytes a source answered with
+because nothing else kept them — an export can be rewritten and an API response
+is gone once it is read. A capture is already immutable evidence readmit
+retained under [ADR-0002](adr/0002-case-bundles-are-directories-not-a-database.md),
+at the path the declaration names. Copying it here would put the same messages
+in a second place that nothing verifies and nothing else reads, so the snapshot
+**names** which retained evidence a read observed and the case itself stays the
+thing to re-examine.
+
 An observation's `evidence_identity` is the SHA-256 over the **material** in
 that directory: the relative names and contents of the bytes the source
 answered with, and nothing else. Following
@@ -438,8 +562,12 @@ result, review and report evidence.
 
 ## Not in this release
 
-- No downstream HL7 capture collector and no database collector. Those sources
-  are separate work and report into these same contracts.
+- No database collector. That source is separate work and reports into these
+  same contracts.
+- No capture of any kind from `observe collect`. It reads a capture a receiver
+  already sealed; starting, stopping or waiting on one is not its job.
+- No reading of a capture's message content beyond the one declared position,
+  and no claim about what that position means in HL7.
 - No scheduler and no background service. `observe collect` runs in the
   foreground, for one window, and stops.
 - No write of any kind to an observed source, no method but `GET`, and no
@@ -457,5 +585,8 @@ Per [ADR-0002](adr/0002-case-bundles-are-directories-not-a-database.md) and
 documents are versioned strict-JSON files evaluated by typed Go operators, with
 no database and no expression language. Extending any of them means a new
 version string with a reader for every older version, never a new member on this
-one. `readmit-observation-window/v1` and `readmit-observation-completion/v1` are
-unchanged by the collector: it fills in the slots they already declare.
+one — which is exactly what the capture transport is, and why
+`readmit-observation-source/v1` is still read and still means what it meant.
+`readmit-observation-window/v1` and `readmit-observation-completion/v1` are
+unchanged by every collector: they fill in the slots those contracts already
+declare.

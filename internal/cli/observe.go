@@ -13,10 +13,11 @@ import (
 
 // observeCommand owns the source-neutral observation contracts and the
 // collectors that fill them in. validate and explain observe nothing: they read
-// what an operator declared and what a collector retained. collect is the first
-// source-specific collector, for a bounded file export and a bounded read of an
-// approved HTTP API; the collectors still to come report into the same window
-// and completion rather than inventing their own.
+// what an operator declared and what a collector retained. collect is the
+// source-specific collector, for a bounded file export, a bounded read of an
+// approved HTTP API, and a downstream HL7 capture readmit already retained; the
+// database collector still to come reports into the same window and completion
+// rather than inventing its own.
 func observeCommand(ran *bool) *cobra.Command {
 	command := &cobra.Command{Use: "observe", Short: "Read declared observation windows and retained completions"}
 	var windowJSON bool
@@ -74,18 +75,17 @@ func observeCommand(ran *bool) *cobra.Command {
 	return command
 }
 
-// observeCollectCommand observes one declared source against one declared window. It
-// is the first source-specific collector: it fills in the slots
-// internal/observewindow already defines rather than adding a second set, so a
-// file export and an approved HTTP API produce the same record a downstream
-// capture or a read-only query will.
+// observeCollectCommand observes one declared source against one declared
+// window. It fills in the slots internal/observewindow already defines rather
+// than adding a second set, so a file export, an approved HTTP API and a
+// downstream capture produce the same record a read-only query will.
 func observeCollectCommand(ran *bool) *cobra.Command {
 	var window, output, snapshot, policyPath string
 	var produced []string
 	var completionJSON bool
 	command := &cobra.Command{
 		Use:   "collect SOURCE",
-		Short: "Observe a declared file export or HTTP API for one observation window",
+		Short: "Observe a declared file export, HTTP API or downstream capture for one observation window",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return errors.New("observe collect requires one observation source document")

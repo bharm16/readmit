@@ -63,10 +63,7 @@ func (r *fileReader) read(_ context.Context) attempt {
 	if modified.IsZero() || modified.After(taken.at) {
 		return failure(taken, observewindow.SampleAmbiguous, "the export states a modification time this read cannot place")
 	}
-	taken.asOf = modified
-	age := taken.at.Sub(modified)
-	taken.record.StatedAge = age.String()
-	if age > r.maxAge {
+	if !dateState(&taken, modified, r.maxAge) {
 		return failure(taken, observewindow.SampleStale, "the export's state is older than the declared freshness bound")
 	}
 	taken.evidence = map[string][]byte{"body": data}
@@ -102,7 +99,7 @@ func failure(taken attempt, status observewindow.SampleStatus, note string) atte
 	taken.status = status
 	taken.record.Note = note
 	taken.keys = nil
-	taken.asOf = time.Time{}
+	taken.asOf, taken.from = time.Time{}, time.Time{}
 	return taken
 }
 

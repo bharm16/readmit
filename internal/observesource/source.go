@@ -1,15 +1,16 @@
-// Package observesource is the first source-specific collector behind the
-// source-neutral contracts in internal/observewindow. It observes two kinds of
-// external output: a bounded JSON, CSV, XML or text export on disk, and a
-// bounded read of an approved HTTP API.
+// Package observesource is the source-specific collector behind the
+// source-neutral contracts in internal/observewindow. It observes three kinds
+// of external output: a bounded JSON, CSV, XML or text export on disk, a
+// bounded read of an approved HTTP API, and a downstream HL7 capture readmit
+// already retained as a verified case bundle.
 //
 // It decides nothing about what an observation means. A collector's whole job
 // here is to report honestly what one attempt saw — an observation, or the one
 // way collection failed — and internal/observewindow applies the declared
 // completion rule to those reports. Implementing that package's slots rather
-// than inventing parallel ones is the point: a second collector for a database
-// or a downstream capture fills in the same Sample, EvidenceIdentity and
-// Correlation, so one rule keeps one implementation.
+// than inventing parallel ones is the point: the collector for a database
+// still to come fills in the same Sample, EvidenceIdentity and Correlation, so
+// one rule keeps one implementation.
 //
 // The rule this package must not break is that failed collection never becomes
 // a passing absence assertion. A collector an operator disabled, a read of
@@ -49,22 +50,34 @@ import (
 	"errors"
 	"net"
 	"net/url"
+	"slices"
 	"strconv"
 	"time"
 
+	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/importer"
 	"github.com/bharm16/readmit/internal/observewindow"
 	"github.com/bharm16/readmit/internal/secret"
 	"github.com/bharm16/readmit/internal/sendpolicy"
 )
 
-// Schema is the contract a declared observation source carries. It is a new
+// Schema is the contract a declared observation source carries. It is a
 // document beside readmit-observation-window/v1 and
 // readmit-observation-completion/v1, both of which stay frozen: what makes an
 // observation trustworthy is source-neutral, and how one source is reached is
-// not. A new member here means a new version string with a reader for every
-// older one, never an added member and never an in-place migration.
-const Schema = "readmit-observation-source/v1"
+// not.
+//
+// v2 adds the third transport, a downstream HL7 capture, as a new version
+// string rather than as a member on v1: v1 declared exactly two transports and
+// an envelope every source was read through, and a capture is neither. Both
+// versions are read here, and a v1 document means exactly what it always did.
+const Schema = "readmit-observation-source/v2"
+
+// SchemaV1 is the version this release still reads: two transports, both
+// declared, and an extraction declaration that is never null. A v1 document
+// carrying the v2 capture transport is refused rather than read as a v2 one.
+const SchemaV1 = "readmit-observation-source/v1"
 
 const (
 	// MaxSourceBytes bounds the document a command reads before decoding it.
@@ -100,7 +113,7 @@ const (
 	maxPathBytes = 4096
 )
 
-// The two source kinds this collector supports. A window declaring any other
+// The three source kinds this collector supports. A window declaring any other
 // kind is reported as unsupported, which is an execution error; it is never
 // reported as an observation of nothing.
 const (
@@ -108,7 +121,16 @@ const (
 	FileExport = "file-export"
 	// HTTPAPI is a bounded read of an approved HTTP API over TLS.
 	HTTPAPI = "http-api"
+	// DownstreamCapture is a downstream HL7 capture readmit already retained,
+	// as the verified case bundle a receiver sealed. Only v2 declares it.
+	DownstreamCapture = "downstream-capture"
 )
+
+// The occurrence kinds a capture observation may declare in scope. An
+// occurrence the case preserved without parsing is deliberately absent: it
+// holds no field to read, so declaring it in scope would declare a state that
+// can never be read one way.
+var captureKinds = []string{string(bundle.Message), string(bundle.Acknowledgement)}
 
 // ErrUnsupportedVersion reports a document written under a contract version
 // this release does not read. It is reported, never migrated in place.
@@ -191,6 +213,40 @@ type File struct {
 	MaxBytes int `json:"max_bytes"`
 }
 
+// Capture is a downstream HL7 capture readmit already retained: the case
+// bundle a receiver sealed, read back through the one verifying reader every
+// other command opens a case with. Nothing is captured here and nothing is
+// written into the case: an observation is a bounded read of evidence that
+// already exists.
+//
+// It is what makes an observation of a downstream system possible without that
+// system fabricating anything for readmit. The downstream sink accepts HL7 the
+// way it always did; readmit captures what it was sent, and the observation
+// reads the capture. No acknowledgement receipt, no ledger export and no
+// readmit-specific message is asked of anybody.
+type Capture struct {
+	// Path is the retained case directory, resolved against the directory the
+	// source document itself lives in rather than the caller's working
+	// directory.
+	Path string `json:"path"`
+	// Kinds are the occurrence kinds in scope, at least one of message and
+	// ack. It is declared rather than assumed, because an acknowledgement and
+	// the message it answers hold the declared key in different places, and a
+	// scope nobody declared is a scope nobody can check an absence claim
+	// against.
+	Kinds []string `json:"kinds"`
+	// RecordKey is the shared field selector naming the position that carries
+	// the key this observation reads out of one occurrence — the same position
+	// vocabulary a correlation rule declares. Nothing about which field means
+	// what is built in: a declaration says which position it reads, and the
+	// collector asserts nothing about what that position means in HL7.
+	RecordKey string `json:"record_key"`
+	// MaxOccurrences bounds how many occurrences one read may take. A capture
+	// holding more is a truncated observation, never a completed one: what was
+	// read would be a prefix of the capture rather than the capture.
+	MaxOccurrences int `json:"max_occurrences"`
+}
+
 // HTTP is a bounded read of one approved API endpoint over TLS.
 type HTTP struct {
 	// URL is one absolute https endpoint. There is no plaintext mode and no
@@ -231,13 +287,22 @@ type Source struct {
 	// Enabled is stated rather than assumed. A disabled collector reports that
 	// no state could be obtained, which is an execution error; it never reports
 	// that the source held nothing.
-	Enabled    bool       `json:"enabled"`
-	Freshness  Freshness  `json:"freshness"`
-	Extraction Extraction `json:"extraction"`
-	// Exactly one of File and HTTP is declared, and it is the one the source
-	// kind names. The other is explicitly null.
-	File *File `json:"file"`
-	HTTP *HTTP `json:"http"`
+	Enabled   bool      `json:"enabled"`
+	Freshness Freshness `json:"freshness"`
+	// Extraction is the envelope one source's output is read through. It
+	// belongs to a transport that reads a document and is explicitly null for
+	// one that does not: a capture is HL7 evidence readmit already divided into
+	// occurrences, and declaring an envelope for it would declare a reading
+	// nothing performs.
+	Extraction *Extraction `json:"extraction"`
+	// Exactly one of File, HTTP and Capture is declared, and it is the one the
+	// source kind names. The others are explicitly null. Capture is a v2
+	// member: a v1 document declares the two transports v1 declared, and
+	// carrying this one makes it a v1 document this release refuses rather than
+	// a v2 one it reads.
+	File    *File    `json:"file"`
+	HTTP    *HTTP    `json:"http"`
+	Capture *Capture `json:"capture"`
 }
 
 // UnmarshalJSON requires every member explicitly, so an omitted enablement or
@@ -248,29 +313,46 @@ type Source struct {
 // decode alone would accept as absent members.
 func (s *Source) UnmarshalJSON(data []byte) error {
 	var required struct {
-		Schema     *string               `json:"schema"`
-		Observes   *observewindow.Source `json:"source"`
-		Enabled    *bool                 `json:"enabled"`
-		Freshness  *Freshness            `json:"freshness"`
-		Extraction *Extraction           `json:"extraction"`
+		Schema    *string               `json:"schema"`
+		Observes  *observewindow.Source `json:"source"`
+		Enabled   *bool                 `json:"enabled"`
+		Freshness *Freshness            `json:"freshness"`
 	}
 	if err := json.Unmarshal(data, &required); err != nil || required.Schema == nil {
 		return errors.New("an observation source declares its contract version")
 	}
-	if *required.Schema != Schema {
+	if *required.Schema != Schema && *required.Schema != SchemaV1 {
 		return ErrUnsupportedVersion
 	}
-	if required.Observes == nil || required.Enabled == nil || required.Freshness == nil || required.Extraction == nil {
-		return errors.New("an observation source requires a source, an explicit enablement, a freshness bound, and an extraction declaration")
+	if required.Observes == nil || required.Enabled == nil || required.Freshness == nil {
+		return errors.New("an observation source requires a source, an explicit enablement, and a freshness bound")
 	}
 	var members map[string]any
 	if err := json.Unmarshal(data, &members); err != nil {
 		return errors.New("invalid observation source JSON")
 	}
+	if _, declared := members["extraction"]; !declared {
+		return errors.New("an observation source declares its extraction, explicitly null for a transport that reads no envelope")
+	}
 	_, file := members["file"]
 	_, endpoint := members["http"]
 	if !file || !endpoint {
 		return errors.New("an observation source declares both a file and an http member, explicitly null for the one it does not use")
+	}
+	_, capture := members["capture"]
+	// The capture transport exists in v2 only. A v1 document carrying it is a
+	// v1 document with a member v1 never had, which is refused exactly as any
+	// other unknown member is, and never read as though v1 had always allowed
+	// it.
+	if *required.Schema == SchemaV1 {
+		if capture {
+			return errors.New("the capture transport is declared by " + Schema + "; " + SchemaV1 + " declares a file and an http transport")
+		}
+		if members["extraction"] == nil {
+			return errors.New("a " + SchemaV1 + " observation source declares an extraction for the transport it names")
+		}
+	} else if !capture {
+		return errors.New("an observation source declares a capture member, explicitly null where it is not used")
 	}
 	type plainSource Source
 	var value plainSource
@@ -333,6 +415,25 @@ func (f *File) UnmarshalJSON(data []byte) error {
 		return errors.New("invalid file export declaration")
 	}
 	*f = File(value)
+	return nil
+}
+
+func (c *Capture) UnmarshalJSON(data []byte) error {
+	var required struct {
+		Path           *string   `json:"path"`
+		Kinds          *[]string `json:"kinds"`
+		RecordKey      *string   `json:"record_key"`
+		MaxOccurrences *int      `json:"max_occurrences"`
+	}
+	if err := json.Unmarshal(data, &required); err != nil || required.Path == nil || required.Kinds == nil || required.RecordKey == nil || required.MaxOccurrences == nil {
+		return errors.New("a downstream capture declares the retained case it reads, the occurrence kinds in scope, the position its record key is read from, and the bound on what one read may take")
+	}
+	type plainCapture Capture
+	var value plainCapture
+	if err := json.Unmarshal(data, &value, json.RejectUnknownMembers(true)); err != nil {
+		return errors.New("invalid downstream capture declaration")
+	}
+	*c = Capture(value)
 	return nil
 }
 
@@ -406,7 +507,7 @@ func (c *Credential) UnmarshalJSON(data []byte) error {
 // that could not be collected from is refused when it is read rather than
 // discovered after a window has already been opened against it.
 func (s Source) Validate() error {
-	if s.Schema != Schema {
+	if s.Schema != Schema && s.Schema != SchemaV1 {
 		return ErrUnsupportedVersion
 	}
 	if err := s.Observes.Validate(); err != nil {
@@ -415,17 +516,30 @@ func (s Source) Validate() error {
 	if _, err := boundedDuration(s.Freshness.MaxAge, maxFreshness); err != nil {
 		return errors.New("a freshness bound is a positive duration of at most one week")
 	}
-	if err := s.Extraction.validate(); err != nil {
-		return err
+	// An envelope belongs to a transport that reads a document. A capture is
+	// HL7 evidence readmit already divided into occurrences, so declaring one
+	// for it would declare a reading nothing performs, and a member an operator
+	// does not use is refused here rather than ignored.
+	if s.Observes.Kind == DownstreamCapture {
+		if s.Extraction != nil {
+			return errors.New("a downstream capture reads no envelope, so its extraction is declared as an explicit null")
+		}
+	} else {
+		if s.Extraction == nil {
+			return errors.New("an observation source that reads a document declares the envelope it is read through")
+		}
+		if err := s.Extraction.validate(); err != nil {
+			return err
+		}
 	}
 	declared := 0
-	for _, present := range []bool{s.File != nil, s.HTTP != nil} {
+	for _, present := range []bool{s.File != nil, s.HTTP != nil, s.Capture != nil} {
 		if present {
 			declared++
 		}
 	}
 	if declared != 1 {
-		return errors.New("an observation source declares exactly one of a file export and an http observation")
+		return errors.New("an observation source declares exactly one of a file export, an http observation, and a downstream capture")
 	}
 	switch s.Observes.Kind {
 	case FileExport:
@@ -438,8 +552,13 @@ func (s Source) Validate() error {
 			return errors.New("an http-api source declares an http observation")
 		}
 		return s.HTTP.validate()
+	case DownstreamCapture:
+		if s.Capture == nil {
+			return errors.New("a downstream-capture source declares a capture")
+		}
+		return s.Capture.validate()
 	}
-	return errors.New("an observation source kind is file-export or http-api")
+	return errors.New("an observation source kind is file-export, http-api, or downstream-capture")
 }
 
 // Shape is the envelope half of the extraction declaration, expressed as the
@@ -461,6 +580,51 @@ func (f File) validate() error {
 	}
 	return nil
 }
+
+// validate reports the first reason a declared capture cannot be read. Like
+// every other declaration here it is refused when it is read rather than
+// discovered after a window has been opened against it.
+func (c Capture) validate() error {
+	if c.Path == "" || len(c.Path) > maxPathBytes {
+		return errors.New("a downstream capture names one retained case")
+	}
+	if len(c.Kinds) == 0 || len(c.Kinds) > len(captureKinds) {
+		return errors.New("a downstream capture declares the occurrence kinds in scope, at least one of message and ack")
+	}
+	seen := make(map[string]bool, len(c.Kinds))
+	for _, kind := range c.Kinds {
+		if !slices.Contains(captureKinds, kind) {
+			return errors.New("a capture scope names the occurrence kinds message and ack; an occurrence the case could not parse holds no field to read")
+		}
+		if seen[kind] {
+			return errors.New("a capture scope names the same occurrence kind twice")
+		}
+		seen[kind] = true
+	}
+	if _, err := c.Selector(); err != nil {
+		return err
+	}
+	if c.MaxOccurrences < 1 || c.MaxOccurrences > bundle.MaxEvents {
+		return errors.New("a capture read bound is between 1 and 10000 occurrences")
+	}
+	return nil
+}
+
+// Selector is the position this capture reads its record key from, parsed by
+// the one shared field-selector implementation every other command selects
+// with. A declaration readmit cannot address is refused here, never guessed at
+// while a window is open.
+func (c Capture) Selector() (hl7.Selector, error) {
+	selector, err := hl7.ParseSelector(c.RecordKey)
+	if err != nil {
+		return hl7.Selector{}, errors.New("a capture record key is one shared field selector, such as SCH-1.1")
+	}
+	return selector, nil
+}
+
+// inScope reports whether one occurrence kind the case recorded is inside the
+// scope this capture declared.
+func (c Capture) inScope(kind string) bool { return slices.Contains(c.Kinds, kind) }
 
 func (h HTTP) validate() error {
 	if _, err := h.Endpoint(); err != nil {

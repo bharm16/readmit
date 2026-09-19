@@ -55,7 +55,18 @@ func TestAnUnreadableDeclarationIsRefusedRatherThanRepaired(t *testing.T) {
 		{"a member that is not declared at all", strings.Replace(declaredFileSource, `"enabled": true,`, "", 1)},
 		{"a transport that is not declared as an explicit null", strings.Replace(declaredFileSource, `"http": null`, `"nothing": null`, 1)},
 		{"both transports declared", strings.Replace(declaredFileSource, `"http": null`, `"http": {"url": "https://lab.example.invalid:8443/a", "classification": "nonproduction", "ca_file": "", "server_name": "", "timeout": "1s", "max_bytes": 16, "retry": {"attempts": 0, "delay": "0s"}, "credential": null}`, 1)},
-		{"a source kind no collector here reaches", strings.Replace(declaredFileSource, `"kind": "file-export"`, `"kind": "downstream-capture"`, 1)},
+		{"a source kind declared with a transport it does not name", strings.Replace(declaredFileSource, `"kind": "file-export"`, `"kind": "downstream-capture"`, 1)},
+		{"a source kind no collector here reaches", strings.Replace(declaredFileSource, `"kind": "file-export"`, `"kind": "message-queue"`, 1)},
+		{"a capture with no declared scope", strings.Replace(declaredCaptureSource, `"kinds": ["message"]`, `"kinds": []`, 1)},
+		{"a capture scoping an occurrence nobody could parse", strings.Replace(declaredCaptureSource, `"kinds": ["message"]`, `"kinds": ["unparsed"]`, 1)},
+		{"a capture naming one occurrence kind twice", strings.Replace(declaredCaptureSource, `"kinds": ["message"]`, `"kinds": ["message", "message"]`, 1)},
+		{"a capture record key that is not a field selector", strings.Replace(declaredCaptureSource, `"record_key": "SCH-1.1"`, `"record_key": "the appointment id"`, 1)},
+		{"a capture read bound of nothing", strings.Replace(declaredCaptureSource, `"max_occurrences": 100`, `"max_occurrences": 0`, 1)},
+		{"a capture read bound past the occurrences a case holds", strings.Replace(declaredCaptureSource, `"max_occurrences": 100`, `"max_occurrences": 10001`, 1)},
+		{"a capture declaring an envelope it reads nothing through", strings.Replace(declaredCaptureSource, `"extraction": null`, `"extraction": {`+csvExtraction+`}`, 1)},
+		{"a capture that is not declared at all", strings.Replace(declaredCaptureSource, `"capture": {"path": "downstream.case", "kinds": ["message"], "record_key": "SCH-1.1", "max_occurrences": 100}`, `"capture": null`, 1)},
+		{"a v2 document with no capture member", strings.Replace(declaredFileSource, observesource.SchemaV1, observesource.Schema, 1)},
+		{"a document with no extraction member at all", strings.Replace(declaredCaptureSource, `"extraction": null,`, "", 1)},
 		{"a transport the source kind does not name", strings.Replace(declaredFileSource, `"kind": "file-export"`, `"kind": "http-api"`, 1)},
 		{"a freshness bound that is not a duration", strings.Replace(declaredFileSource, `"max_age": "1h"`, `"max_age": "soon"`, 1)},
 		{"a freshness bound of no time at all", strings.Replace(declaredFileSource, `"max_age": "1h"`, `"max_age": "0s"`, 1)},
@@ -85,10 +96,33 @@ func TestAnUnreadableDeclarationIsRefusedRatherThanRepaired(t *testing.T) {
 }
 
 func TestAContractVersionThisReleaseDoesNotReadIsReportedAsThat(t *testing.T) {
-	later := strings.Replace(declaredFileSource, observesource.Schema, "readmit-observation-source/v2", 1)
-	_, err := observesource.DecodeSource([]byte(later))
-	if !errors.Is(err, observesource.ErrUnsupportedVersion) {
-		t.Fatalf("error = %v, want an unsupported version", err)
+	for _, document := range []string{
+		strings.Replace(declaredFileSource, observesource.SchemaV1, "readmit-observation-source/v3", 1),
+		strings.Replace(declaredCaptureSource, observesource.Schema, "readmit-observation-source/v3", 1),
+	} {
+		_, err := observesource.DecodeSource([]byte(document))
+		if !errors.Is(err, observesource.ErrUnsupportedVersion) {
+			t.Fatalf("error = %v, want an unsupported version", err)
+		}
+	}
+}
+
+// The capture transport is a new version string, not a member added to the one
+// that shipped. A v1 document means exactly what it always meant, and one
+// carrying the v2 transport is refused rather than read as though v1 had
+// always allowed it.
+func TestTheEarlierContractVersionKeepsItsMeaningAndRefusesTheLaterTransport(t *testing.T) {
+	source, err := observesource.DecodeSource([]byte(declaredFileSource))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if source.Schema != observesource.SchemaV1 || source.Capture != nil || source.Extraction == nil {
+		t.Fatalf("a v1 document was not read as the document it is: %+v", source)
+	}
+	widened := strings.Replace(declaredFileSource, `"http": null`,
+		`"http": null, "capture": {"path": "downstream.case", "kinds": ["message"], "record_key": "SCH-1.1", "max_occurrences": 100}`, 1)
+	if _, err := observesource.DecodeSource([]byte(widened)); err == nil {
+		t.Fatal("a v1 document carrying the v2 capture transport was accepted")
 	}
 }
 
