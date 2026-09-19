@@ -9,6 +9,11 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   suites can require explicit release pins and report declaration impact without
   changing expectations or treating review as execution proof.
 
+- Suite coverage assesses explicitly declared requirements against verified retained
+  executions. Skips, unsupported/disabled declarations and quarantines stay visible
+  with reasons and expiry; exclusions never count as passes or shrink the denominator.
+  Selected prior suites reuse retained-run comparison for possible flakiness.
+
 - Reusable regression suites bind templates and typed data rows to named sites
   and environments, retain tags/owners, check sequence, and execute setup
   dependencies through the durable scheduler. Skips never count as passes;

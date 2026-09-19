@@ -495,7 +495,9 @@ admission, what it waited for and its own unchanged summary. See
 `readmit suite prepare` and `readmit suite run` reuse saved test templates across
 typed data rows and explicit site/environment bindings. Suites retain tags and
 owners, check expected send order and run setup dependencies through the same
-durable scheduler. See [regression suites](docs/suites.md).
+durable scheduler. `readmit suite coverage` assesses an explicit requirement
+denominator against retained executions, keeping exclusions and possible
+flakiness visible. See [regression suites](docs/suites.md).
 
 `observe validate WINDOW` reads a declared `readmit-observation-window/v1`
 document — the source identity and scope in view, the watermark the window opens
