@@ -59,6 +59,7 @@ DISTRIBUTION_FILES = (
     "docs/assertions.md",
     "testdata/fixtures/assertion-set.json",
     "testdata/fixtures/assertion-set-refused.json",
+    "docs/explain.md",
     "docs/test-authoring.md",
     "docs/redact.md",
     "docs/reproducer.md",

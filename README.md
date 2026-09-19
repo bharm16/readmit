@@ -354,8 +354,30 @@ per-record quantifiers rather than an expression language. Present, empty,
 explicit null and omitted stay four separate answers, and a value an operator
 cannot read, a condition that did not hold and an observation that did not
 complete are reported as undecided, skipped and an execution error rather than
-as a pass. No command reads one yet and `readmit-test/v1` is unchanged. See
+as a pass. `readmit-test/v1` is unchanged. See
 [typed assertions](docs/assertions.md).
+
+`explain RUN --assertions SET` re-decides a set against one run bundle's own
+retained evidence and writes the whole chain of reasoning to the console, so a
+verdict can be followed without opening a JSON file: the outcome and its
+counts, every assertion with the expectation it declared and the value it was
+decided on, the occurrence and payload file each value came from, the run's
+timings, and the case, target and contract versions it ran under. `input` is
+what the run sent and `observed` is what the interface answered, both addressed
+by the occurrence id a case bundle names a message by. A collection assertion
+reaches real records: `readmit-observation-completion/v1` gains no member, so
+the keys are derived again from the downstream capture the observation read and
+refused unless they agree with the count and the state digest that record
+retains — a file export and an HTTPS API observation are refused by name rather
+than answered from a second, later reading. The occurrences that observation
+recorded as produced are checked against what this run actually produced, so a
+record collected beside some other run is refused rather than reported under
+this run's identity. Expected and observed values are
+hidden unless `--show-values`. Exit codes distinguish pass (`0`), a decided
+disagreement (`1`), and an undecided verdict or execution error (`2`); an
+execution error leaves every assertion unevaluated rather than producing a
+partial verdict. Nothing is opened beyond the named artifacts, nothing is sent
+and nothing is written. See [explaining a run](docs/explain.md).
 
 A test is authored from evidence rather than typed into a document. The desktop
 shell asks seven questions over a verified case — what the test is called, which

@@ -65,7 +65,7 @@ func (r *captureReader) read(_ context.Context) attempt {
 	taken.at = time.Now()
 	taken.record.Bytes = evidenceBytes(evidence)
 	if len(evidence.Events) > r.capture.MaxOccurrences {
-		return failure(taken, observewindow.SampleTruncated, "the capture holds more occurrences than the declared read bound, so a prefix of it would be read rather than the source")
+		return failure(taken, observewindow.SampleTruncated, captureBoundRefusal)
 	}
 	// A capture states how old its state is through the times it recorded. A
 	// capture that recorded none cannot place its own state, which is a
@@ -93,7 +93,7 @@ func (r *captureReader) read(_ context.Context) attempt {
 	//
 	// [ADR-0002]: ../../docs/adr/0002-case-bundles-are-directories-not-a-database.md
 	taken.evidence = map[string][]byte{"identity.sha256": []byte(evidence.Identity + "\n")}
-	keys, err := r.captureKeys(evidence)
+	keys, err := r.capture.recordKeys(evidence)
 	if err != nil {
 		return failure(taken, observewindow.SampleAmbiguous, err.Error())
 	}
@@ -102,18 +102,29 @@ func (r *captureReader) read(_ context.Context) attempt {
 	return taken
 }
 
-// captureKeys maps the declared position onto every occurrence in scope and
+// captureBoundRefusal is the one refusal a capture past its declared read
+// bound gets, wherever that bound is applied. Reading the capture live and
+// deriving its records again later are the same question about the same
+// declaration, so they answer it in the same words.
+const captureBoundRefusal = "the capture holds more occurrences than the declared read bound, so a prefix of it would be read rather than the source"
+
+// recordKeys maps the declared position onto every occurrence in scope and
 // returns the keys it read. It is the whole of what leaves the capture: no
 // other field is read, so nothing else about a message reaches a digest, a
 // correlation or a completion record.
+//
+// It belongs to the declaration rather than to the reader because it is a
+// function of what was declared and what the case holds, and it is asked twice:
+// once when the capture is observed, and once when the records that observation
+// settled on are derived again.
 //
 // An occurrence the case preserved without parsing leaves the capture without a
 // single reading, whatever scope was declared. Whether it belonged to the scope
 // is exactly what nobody could decode, and reporting the records around it as
 // the capture's state would present "we could not read this" as "this is not
 // there" — the one conflation these contracts exist to prevent.
-func (r *captureReader) captureKeys(evidence *bundle.Bundle) ([]string, error) {
-	selector, err := r.capture.Selector()
+func (c Capture) recordKeys(evidence *bundle.Bundle) ([]string, error) {
+	selector, err := c.Selector()
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +133,7 @@ func (r *captureReader) captureKeys(evidence *bundle.Bundle) ([]string, error) {
 		if event.Kind == bundle.Unparsed || event.Fields == nil {
 			return nil, errors.New("the capture holds an occurrence it could not parse, so what is in scope cannot be read one way")
 		}
-		if !r.capture.inScope(string(event.Kind)) {
+		if !c.inScope(string(event.Kind)) {
 			continue
 		}
 		key, err := captureKey(evidence, event, selector)
