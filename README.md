@@ -1069,3 +1069,5 @@ Saved suites in customer CI: [headless execution, reviewed change gates and reta
 Organization contacts, invoice references, assignment transfers and support scope
 use the local vendor [commercial administration](docs/commercial-administration.md) API.
 [Commercial terms](docs/commercial-terms.md) remain an owner/counsel review draft.
+
+[Support operations](docs/support.md): reviewed local diagnostics, synthetic reproductions, customer approval and incident escalation.

@@ -71,6 +71,7 @@ archives:
       - docs/suites.md
       - docs/guided-sample.md
       - docs/redact.md
+      - docs/support.md
       - docs/reproducer.md
       - docs/diff.md
       - docs/drift.md
