@@ -252,11 +252,15 @@ func run(ctx context.Context, path, environment, output, references string) (run
 	if err != nil {
 		return runqueue.Report{}, err
 	}
+	return runPrepared(ctx, prepared, nil)
+}
+
+func runPrepared(ctx context.Context, prepared Prepared, pins map[string]string) (runqueue.Report, error) {
 	raw, err := json.Marshal(prepared.Queue, json.Deterministic(true))
 	if err != nil {
 		return runqueue.Report{}, err
 	}
-	report, err := runqueue.Run(ctx, runqueue.Request{PlanBytes: raw, PlanDirectory: prepared.Directory, Runs: filepath.Join(prepared.Directory, "runs")})
+	report, err := runqueue.Run(ctx, runqueue.Request{PlanBytes: raw, PlanDirectory: prepared.Directory, Runs: filepath.Join(prepared.Directory, "runs"), ApprovedInputs: pins})
 	if err != nil {
 		return report, err
 	}
