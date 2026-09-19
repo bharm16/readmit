@@ -74,6 +74,7 @@ REQUIRED_FILES = {
     "docs/test-runner.md",
     "docs/durable-runs.md",
     "docs/customer-runner.md",
+    "docs/managed-installation.md",
     "runner/readmit-runner.service",
     "runner/Dockerfile",
     "docs/observe.md",

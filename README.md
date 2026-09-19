@@ -1050,3 +1050,5 @@ Portable reports from retained actual evidence: `readmit report export PACKET
 the sealed original packet. `readmit report review NEW_REVIEW` verifies it in
 read-only mode. Reports remain sensitive customer-local evidence; see
 [portable reports](docs/report.md#portable-reports-and-read-only-review).
+
+Managed deployment: [silent installation, offline dependencies and activation](docs/managed-installation.md).
