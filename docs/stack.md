@@ -25,7 +25,7 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
 
 ## CLI
 
-- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `corpus`, `project`, `backup`, `license`, `secret`, `protect`, `target`, `source`, `listen`, `replay`, `test`, `observe`, `diff`, `diagnose`, `correlate`, `synth`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
+- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `corpus`, `project`, `backup`, `license`, `secret`, `protect`, `target`, `source`, `listen`, `replay`, `test`, `observe`, `explain`, `diff`, `diagnose`, `correlate`, `synth`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
 - Command data goes to stdout, diagnostics to stderr. Machine-readable modes never interleave progress output with JSON.
 - Target configuration is read from explicitly selected files, not hidden global config or environment-variable precedence.
 - Credentials are referenced, never held. A `readmit-secrets/v1` document registers the store kind an operator declared, the single purpose and endpoint address a credential may be bound to, the absolute path of the program that reads it back, and the recorded rotation. The purposes are `mllp-endpoint` and `source-endpoint`; a reference registered for one is refused wherever the other is needed. No command accepts a credential value, and a resolved value masks itself under every formatting verb and refuses to be serialized. See [credential references](secret.md).
@@ -204,8 +204,10 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
   exact rationals through `math/big` rather than as floats; a timestamp with no
   offset names no instant. Undecided is a third outcome, and a collection
   question asked of an observation that did not complete is an execution error.
-  `readmit-test/v1` is unchanged and no command reads a set. See
-  [typed assertions](assertions.md).
+  `readmit-test/v1` is unchanged. `readmit explain` reads a set and re-decides
+  it against a run bundle through `internal/runexplain`, which writes no
+  artifact and defines no result document. See
+  [typed assertions](assertions.md) and [explaining a run](explain.md).
 
 ## Randomness
 

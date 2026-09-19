@@ -206,6 +206,19 @@ record whose own samples do not reach the verdict it states is refused. A
 retained verdict is evidence of what was observed; it is not permission to skip
 deciding what those observations mean.
 
+### Getting the records back out
+
+A completion holds counts and digests, not the ordered list of keys an
+observation held, and it gains no member to hold one. A caller that needs the
+keys themselves — a [collection assertion](assertions.md), for instance —
+derives them again from the evidence the observation read and checks the result
+against the count and the state digest the record retains.
+[`readmit explain`](explain.md) does that, and only for a **downstream
+capture**: a sealed case readmit itself retained is still there to open again,
+while a file export and an HTTP response have moved on since they were read.
+Both of those are refused by name rather than answered from a second, later
+reading.
+
 ## The declared observation source
 
 `readmit-observation-source/v2` says how one source is reached and how its
@@ -568,6 +581,10 @@ result, review and report evidence.
   already sealed; starting, stopping or waiting on one is not its job.
 - No reading of a capture's message content beyond the one declared position,
   and no claim about what that position means in HL7.
+- No key list on a retained record. Deriving the records a completed capture
+  observation settled on is [`readmit explain`](explain.md)'s job, against the
+  capture itself; a file export and an approved HTTP API observation cannot be
+  derived again and say so.
 - No scheduler and no background service. `observe collect` runs in the
   foreground, for one window, and stops.
 - No write of any kind to an observed source, no method but `GET`, and no

@@ -215,13 +215,18 @@ reading or a diagnostic.
 
 ### Where one comes from
 
-A caller builds a collection out of evidence it has already verified. **No
-command in this release does**, and that is the honest state of it:
+A caller builds a collection out of evidence it has already verified.
 `readmit-observation-completion/v1` retains sample counts, state digests and
-the correlations a run declared, not the ordered list of keys an observation
-held, so a completed window's keys come from the material its collector
-retained rather than from the completion record. A collector that exposes them
-— and the command that would evaluate a set against one — is separate work.
+the correlations a run declared, **not** the ordered list of keys an
+observation held, and it gains no member here. So a completed window's keys are
+derived again from the evidence its collector read and checked against the
+count and the state digest the record does retain. [`readmit
+explain`](explain.md) does exactly that, and only for a **downstream capture**:
+that is sealed case evidence readmit itself retained and can open again, while
+a file export and an HTTP response are somebody else's material at a moment
+that has passed. Both of those are refused by name rather than answered from a
+second, later reading.
+
 The field, pair and temporal operators need no collection and are decided from
 parsed messages alone.
 
@@ -299,10 +304,12 @@ never a value, a path or a selector:
 
 ## Not in this release
 
-- **No command reads an assertion set**, and nothing shipped produces a
-  collection to evaluate one against. `readmit-assertion-set/v1` is the shared
-  contract the visual authoring, review and round-trip deliveries of the R14
-  area consume; this release ships the contract and the evaluator.
+- **Authoring a set is separate work.** [`readmit explain`](explain.md) reads
+  one and re-decides it against a run's retained evidence;
+  `readmit-assertion-set/v1` remains the shared contract the visual authoring,
+  review and round-trip deliveries of the R14 area consume, and none of those
+  ships here. A collection is reachable only from a downstream capture; a file
+  export and an HTTP API observation are refused by name.
 - **`readmit-test/v1` is unchanged.** It gains no member, changes no byte and
   keeps its own three operators and its two observation boundaries; see
   [the test spec](test-spec.md) and [the test runner](test-runner.md). An
@@ -327,6 +334,7 @@ never a value, a path or a selector:
 - No arithmetic, no derived values, no cross-assertion references, no
   variables, and no negation beyond the operators that carry it.
 - No retained artifact. A report is a Go value a caller decides what to do
-  with; this contract writes no file and defines no result document.
+  with; this contract writes no file and defines no result document, and
+  neither does the command that reads it.
 - No scheduling, no polling and no collection. An assertion set is evaluated
   against evidence that already exists.

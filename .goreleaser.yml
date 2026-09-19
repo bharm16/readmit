@@ -57,6 +57,7 @@ archives:
       - docs/test-spec.md
       - docs/test-result.md
       - docs/assertions.md
+      - docs/explain.md
       - docs/test-authoring.md
       - docs/redact.md
       - docs/reproducer.md

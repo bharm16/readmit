@@ -640,6 +640,37 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   baselines, drift separation, the acknowledgement boundary and comparing runs,
   results or standalone files in the window are separate deliveries.
 
+- `explain RUN --assertions SET` re-decides a `readmit-assertion-set/v1`
+  document against one run bundle's own retained evidence and writes the chain
+  of reasoning to the console, so a verdict can be followed without opening a
+  JSON file: the outcome and its counts, every assertion with the expectation it
+  declared and the value it was decided on, the occurrence and payload file each
+  value came from, the run's per-message and whole-run timings, and the input
+  case, target configuration and contract versions it ran under. `input` is what
+  the run sent and `observed` is what the interface answered, both addressed by
+  the occurrence id a case bundle names a message by; a payload the run retained
+  nothing for and one that does not parse are an `unknown_message` execution
+  error rather than an omitted value. A collection assertion reaches real
+  records without widening anything:
+  `readmit-observation-completion/v1` still retains counts, state digests and
+  correlations and gains no member, so the keys are derived again from the
+  downstream capture the observation read and refused unless they agree with
+  both the settled count and the settled state digest. The occurrences that
+  observation recorded as produced are checked against what this run actually
+  produced, so a record collected beside some other run is refused rather than
+  reported under this run's identity, and one that recorded none says plainly
+  that it binds nothing. A bounded file export and
+  an approved HTTPS API observation are refused by name rather than answered
+  from a second, later reading of material that has moved on, and a scope the
+  set asks about with nothing supplied is refused before anything is evaluated
+  rather than reported as an incomplete observation. Passed, failed, undecided
+  and skipped stay four separate answers; an execution error leaves every
+  assertion unevaluated rather than producing a partial verdict; and exit codes
+  distinguish a pass, a decided disagreement, and a question that was left open.
+  Expected and observed values are message content and are hidden unless
+  `--show-values`. Nothing is opened beyond the named artifacts, nothing is sent
+  and nothing is written: there is no explanation artifact and no new contract.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is
