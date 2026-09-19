@@ -16,6 +16,7 @@ import (
 
 func run() error {
 	configPath := flag.String("config", "", "absolute configuration path")
+	accessPath := flag.String("access-policy", "", "absolute team admission policy path")
 	directory := flag.String("directory", "", "new backup directory or existing restore directory")
 	flag.Parse()
 	if *configPath == "" || flag.NArg() != 1 {
@@ -44,6 +45,13 @@ func run() error {
 	}
 	defer store.Close()
 	if flag.Arg(0) == "serve" {
+		if *accessPath != "" {
+			access, err := hub.OpenAccess(*accessPath)
+			if err != nil {
+				return err
+			}
+			return store.ServeTeam(ctx, access)
+		}
 		return store.Serve(ctx)
 	}
 	ctx, cancel = context.WithTimeout(ctx, 10*time.Minute)

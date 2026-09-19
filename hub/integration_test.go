@@ -57,7 +57,7 @@ func testDatabase(t *testing.T, c hub.Config) *sql.DB {
 }
 func reset(t *testing.T, db *sql.DB) {
 	t.Helper()
-	if _, err := db.Exec("DROP TABLE IF EXISTS readmit_hub_artifacts,readmit_hub_schema"); err != nil {
+	if _, err := db.Exec("DROP TABLE IF EXISTS readmit_hub_project_artifacts,readmit_hub_artifacts,readmit_hub_schema"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -220,7 +220,7 @@ func TestMetadataUpgradeAndFutureVersionRefusal(t *testing.T) {
 	if err = s.Ready(context.Background()); err == nil {
 		t.Fatal("unknown schema ready")
 	}
-	if _, err = db.Exec("DROP TABLE readmit_hub_artifacts"); err != nil {
+	if _, err = db.Exec("DROP TABLE readmit_hub_project_artifacts,readmit_hub_artifacts"); err != nil {
 		t.Fatal(err)
 	}
 	_, err = s.Get(context.Background(), strings.Repeat("a", 64))

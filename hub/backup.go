@@ -16,10 +16,16 @@ type backupEntry struct {
 	Size       int64  `json:"size"`
 	RetainedAt string `json:"retained_at"`
 }
+type projectLink struct {
+	Project string `json:"project"`
+	Digest  string `json:"sha256"`
+}
 type backupManifest struct {
 	Schema          string        `json:"schema"`
 	MetadataVersion int           `json:"metadata_version"`
 	Artifacts       []backupEntry `json:"artifacts"`
+	Projects        []projectLink `json:"projects"`
+	Team            *bool         `json:"team_enabled,omitzero"`
 }
 
 // Backup creates a new, complete directory. The manifest is its completion marker;
@@ -45,7 +51,7 @@ func (s *Store) Backup(ctx context.Context, destination string) error {
 		return err
 	}
 	defer out.Close()
-	m := backupManifest{Schema: "readmit-hub-backup/v1", MetadataVersion: schemaVersion, Artifacts: []backupEntry{}}
+	m := backupManifest{Schema: "readmit-hub-backup/v2", MetadataVersion: schemaVersion, Artifacts: []backupEntry{}}
 	rows, err := s.db.QueryContext(ctx, "SELECT digest,size,retained_at FROM readmit_hub_artifacts ORDER BY digest")
 	if err != nil {
 		return errors.New("metadata unavailable")
@@ -73,12 +79,36 @@ func (s *Store) Backup(ctx context.Context, destination string) error {
 	if err = rows.Err(); err != nil {
 		return errors.New("metadata backup interrupted")
 	}
-	data, err := json.Marshal(m, json.Deterministic(true))
+	var team bool
+	if err = s.db.QueryRowContext(ctx, "SELECT team_enabled FROM readmit_hub_schema WHERE singleton").Scan(&team); err != nil {
+		return err
+	}
+	m.Team = &team
+	m.Projects = []projectLink{}
+	links, err := s.db.QueryContext(ctx, `SELECT project,digest FROM readmit_hub_project_artifacts ORDER BY project COLLATE "C",digest COLLATE "C"`)
 	if err != nil {
 		return err
 	}
-	if len(data) > 16<<20 {
-		return ErrLimit
+	for links.Next() {
+		var link projectLink
+		if err = links.Scan(&link.Project, &link.Digest); err != nil {
+			links.Close()
+			return err
+		}
+		m.Projects = append(m.Projects, link)
+		if len(m.Projects) > 65536 {
+			links.Close()
+			return ErrLimit
+		}
+	}
+	err = links.Err()
+	links.Close()
+	if err != nil {
+		return err
+	}
+	data, err := encodeBackupManifest(m)
+	if err != nil {
+		return err
 	}
 	if err = ctx.Err(); err != nil {
 		return err
@@ -87,6 +117,19 @@ func (s *Store) Backup(ctx context.Context, destination string) error {
 		return err
 	}
 	return syncRoot(out)
+}
+
+// The v2 bound accommodates both bounded catalogues at their maximum field
+// widths. Keep encoding's final bound paired with the reader's bound.
+func encodeBackupManifest(m backupManifest) ([]byte, error) {
+	data, err := json.Marshal(m, json.Deterministic(true))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > 32<<20 {
+		return nil, ErrLimit
+	}
+	return data, nil
 }
 
 func writeNew(root *os.Root, name string, data []byte) error {
@@ -117,7 +160,7 @@ func syncRoot(root *os.Root) error {
 func readBackup(root *os.Root) (backupManifest, error) {
 	var m backupManifest
 	info, err := root.Lstat("manifest.json")
-	if err != nil || !info.Mode().IsRegular() || info.Size() > 16<<20 {
+	if err != nil || !info.Mode().IsRegular() || info.Size() > 32<<20 {
 		return m, errors.New("backup incomplete")
 	}
 	f, err := root.Open("manifest.json")
@@ -125,9 +168,53 @@ func readBackup(root *os.Root) (backupManifest, error) {
 		return m, err
 	}
 	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, (16<<20)+1))
-	if err != nil || len(data) > 16<<20 {
+	data, err := io.ReadAll(io.LimitReader(f, (32<<20)+1))
+	if err != nil || len(data) > 32<<20 {
 		return m, ErrLimit
+	}
+	var envelope map[string]jsontext.Value
+	if err = json.Unmarshal(data, &envelope); err != nil {
+		return m, errors.New("invalid backup manifest")
+	}
+	var schema string
+	if err = json.Unmarshal(envelope["schema"], &schema); err != nil {
+		return m, err
+	}
+	if schema == "readmit-hub-backup/v1" && len(data) > 16<<20 {
+		return m, ErrLimit
+	}
+	var projects []projectLink
+	var team *bool
+	if schema == "readmit-hub-backup/v2" {
+		if requireExactMembers(data, "schema", "metadata_version", "artifacts", "projects", "team_enabled") != nil {
+			return m, errAccess
+		}
+		if err = json.Unmarshal(envelope["team_enabled"], &team); err != nil {
+			return m, err
+		}
+		var raw []jsontext.Value
+		if err = json.Unmarshal(envelope["projects"], &raw); err != nil {
+			return m, err
+		}
+		if len(raw) > 65536 {
+			return m, ErrLimit
+		}
+		for _, entry := range raw {
+			if requireExactMembers(entry, "project", "sha256") != nil {
+				return m, errAccess
+			}
+			var link projectLink
+			if err = json.Unmarshal(entry, &link, json.RejectUnknownMembers(true)); err != nil {
+				return m, err
+			}
+			projects = append(projects, link)
+		}
+		delete(envelope, "projects")
+		delete(envelope, "team_enabled")
+		data, err = json.Marshal(envelope)
+		if err != nil {
+			return m, err
+		}
 	}
 	var presence struct {
 		Schema    *string           `json:"schema"`
@@ -150,7 +237,7 @@ func readBackup(root *os.Root) (backupManifest, error) {
 	if err = json.Unmarshal(data, &m, json.RejectUnknownMembers(true)); err != nil {
 		return m, errors.New("invalid backup manifest")
 	}
-	if m.Schema != "readmit-hub-backup/v1" || m.MetadataVersion != schemaVersion || len(m.Artifacts) > 65536 {
+	if !((m.Schema == "readmit-hub-backup/v1" && m.MetadataVersion == 2) || (m.Schema == "readmit-hub-backup/v2" && m.MetadataVersion == 3)) || len(m.Artifacts) > 65536 {
 		return m, errors.New("unsupported backup")
 	}
 	previous := ""
@@ -163,6 +250,22 @@ func readBackup(root *os.Root) (backupManifest, error) {
 			return m, errors.New("invalid backup timestamp")
 		}
 	}
+	known := map[string]bool{}
+	for _, entry := range m.Artifacts {
+		known[entry.Digest] = true
+	}
+	previousLink := projectLink{}
+	for _, link := range projects {
+		if !validProject(link.Project) || !known[link.Digest] || link.Project < previousLink.Project || (link.Project == previousLink.Project && link.Digest <= previousLink.Digest) {
+			return m, errors.New("invalid project link")
+		}
+		previousLink = link
+	}
+	if len(projects) > 0 && (team == nil || !*team) {
+		return m, errors.New("project links require team mode")
+	}
+	m.Projects = projects
+	m.Team = team
 	return m, nil
 }
 
@@ -233,6 +336,18 @@ func (s *Store) Restore(ctx context.Context, source string) error {
 		if _, err = tx.ExecContext(ctx, "INSERT INTO readmit_hub_artifacts(digest,size,retained_at) VALUES($1,$2,$3)", e.Digest, e.Size, e.RetainedAt); err != nil {
 			return errors.New("metadata restore failed")
 		}
+	}
+	for _, link := range m.Projects {
+		if _, err = tx.ExecContext(ctx, "INSERT INTO readmit_hub_project_artifacts(project,digest) VALUES($1,$2)", link.Project, link.Digest); err != nil {
+			return errors.New("project metadata restore failed")
+		}
+	}
+	team := false
+	if m.Team != nil {
+		team = *m.Team
+	}
+	if _, err = tx.ExecContext(ctx, "UPDATE readmit_hub_schema SET team_enabled=$1 WHERE singleton", team); err != nil {
+		return err
 	}
 	if err = syncRoot(s.root); err != nil {
 		return err
