@@ -1069,3 +1069,9 @@ Prerelease binaries have no Apple notarization or Windows code signing.
   checked without displaying identifiers or values. The existing scenario
   contract is unchanged; templates generate no messages and claim no external
   target or HL7 conformance.
+
+- A separately packaged customer-controlled Go artifact hub stores immutable byte
+  objects with PostgreSQL metadata, requires mutual TLS, and provides explicit
+  schema migration and verified offline backup/restore. It is an operator-only
+  deployment foundation; OIDC/project authorization and team collaboration remain
+  separate work. The CLI and desktop remain independent of the service.

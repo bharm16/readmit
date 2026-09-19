@@ -1012,3 +1012,5 @@ Fixtures and their independently authored intent are described in
 - Stack and version pins: [docs/stack.md](docs/stack.md)
 - Decisions: [docs/adr/](docs/adr/)
 - Agent conventions: [docs/agents/](docs/agents/)
+
+Customer-hosted deployment: [artifact hub installation and recovery](hub/README.md).

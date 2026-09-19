@@ -87,9 +87,46 @@ jobs:
 
   # Keep one stable required context. A skipped, cancelled or failed prerequisite
   # must fail this check as well as block release publication.
+  hub:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-go
+        with:
+          cache-scope: hub
+      - name: Isolated PostgreSQL 16 database with local peer authentication
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-16
+          sudo install -d -o postgres -g postgres -m 0755 /tmp/readmit-hub-ci
+          sudo pg_createcluster 16 readmit --port 55496 --socketdir /tmp/readmit-hub-ci --start -- --auth-local=peer --auth-host=reject
+          sudo -u postgres createuser -h /tmp/readmit-hub-ci -p 55496 --no-superuser --no-createdb --no-createrole runner
+          sudo -u postgres createdb -h /tmp/readmit-hub-ci -p 55496 --owner=runner readmit_hub_test
+      - name: Hub race, transport, recovery and schema tests
+        working-directory: hub
+        env:
+          READMIT_HUB_TEST_SOCKET: /tmp/readmit-hub-ci
+          READMIT_HUB_TEST_PORT: '55496'
+          READMIT_HUB_TEST_USER: runner
+          READMIT_HUB_TEST_BINARY: ./build/package/readmit-hub
+        run: |
+          test -z "$(gofmt -l .)"
+          make package
+          go test -race ./...
+          go vet ./...
+          go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: readmit-hub-linux-amd64
+          path: hub/build/readmit-hub-linux-amd64.tar.gz
+          if-no-files-found: error
+
   quality:
     if: always()
-    needs: [go-tests, tooling, fuzz, security]
+    needs: [go-tests, tooling, fuzz, security, hub]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -99,11 +136,13 @@ jobs:
           TOOLING_RESULT: ${{ needs.tooling.result }}
           FUZZ_RESULT: ${{ needs.fuzz.result }}
           SECURITY_RESULT: ${{ needs.security.result }}
+          HUB_RESULT: ${{ needs.hub.result }}
         run: |
           test "$GO_RESULT" = success
           test "$TOOLING_RESULT" = success
           test "$FUZZ_RESULT" = success
           test "$SECURITY_RESULT" = success
+          test "$HUB_RESULT" = success
 
   package:
     runs-on: ubuntu-24.04

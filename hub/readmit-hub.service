@@ -1,0 +1,22 @@
+[Unit]
+Description=Readmit customer-controlled artifact hub
+After=postgresql.service
+Requires=postgresql.service
+
+[Service]
+User=readmit-hub
+Group=readmit-hub
+UMask=0077
+ExecStart=/usr/local/bin/readmit-hub -config /etc/readmit-hub/config.json serve
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/readmit-hub/artifacts
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
