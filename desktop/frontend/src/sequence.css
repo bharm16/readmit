@@ -1,0 +1,143 @@
+.sequence {
+  border-top: 1px solid currentColor;
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+.sequence form {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.sequence .scope {
+  color: var(--muted);
+  margin: 0.25rem 0;
+}
+
+.sequence h4 {
+  margin: 0.75rem 0 0.25rem;
+}
+
+.sequence-window {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.35rem 0;
+}
+
+.sequence-scroll {
+  margin-top: 0.5rem;
+  max-height: 24rem;
+  max-width: 100%;
+  overflow: auto;
+}
+
+.sequence table {
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  width: 100%;
+}
+
+.sequence table th,
+.sequence table td {
+  border-bottom: 1px solid var(--line);
+  padding: 0.2rem 0.6rem 0.2rem 0;
+  text-align: start;
+  vertical-align: top;
+}
+
+.sequence table thead th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.sequence table caption {
+  color: var(--muted);
+  text-align: start;
+}
+
+/* An event nothing placed is set apart from the ones a recorded time placed,
+   with a word in its own column as well as this border: the distinction is
+   never carried by an appearance alone. */
+.events tr.event-unknown th[scope="row"] {
+  border-inline-start: 3px solid currentColor;
+}
+
+.events tr.opened {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+}
+
+.events .occurrence,
+.events .kind,
+.events .flow,
+.events .gap,
+.events .unplaced {
+  display: block;
+}
+
+.events .kind,
+.events .flow,
+.events .unplaced,
+.events .gaps .none {
+  color: var(--muted);
+}
+
+.sequence .counts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0.5rem 0 0.25rem;
+}
+
+.sequence .counts .boundary,
+.sequence .counts .unsettled {
+  color: var(--muted);
+}
+
+.gap-counts,
+.sequence .gaps,
+.sequence .declared,
+.references,
+.event-gaps {
+  list-style: none;
+  margin: 0.25rem 0;
+  padding: 0;
+}
+
+.gap-counts li.none {
+  color: var(--muted);
+}
+
+.references li,
+.sequence .declared li {
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+}
+
+.references .rule,
+.references .operator,
+.references .authority,
+.references .selector,
+.sequence .declared .operator,
+.sequence .declared .scope-name,
+.sequence .declared .counts {
+  color: var(--muted);
+}
+
+.references .related.absent {
+  font-style: italic;
+}
+
+.event-references {
+  border-top: 1px solid var(--line);
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+}

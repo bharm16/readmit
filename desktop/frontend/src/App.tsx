@@ -27,6 +27,8 @@ import {
   type PracticeResult,
   openCase,
   openGrid,
+  openSequence,
+  type SequenceResult,
   inspectOccurrence,
   type InspectionResult,
   openProject,
@@ -57,6 +59,7 @@ import {
 } from "./bindings";
 import { Comparison, COMPARISON_WINDOW } from "./Comparison";
 import { GuidedSample } from "./GuidedSample";
+import { Sequence, SEQUENCE_WINDOW } from "./Sequence";
 import { Inspector } from "./Inspector";
 import { Reproducer } from "./Reproducer";
 import { TestAuthoring } from "./TestAuthoring";
@@ -82,7 +85,8 @@ type Running =
   | "reproducer"
   | "authoring"
   | "comparison"
-  | "practice";
+  | "practice"
+  | "sequence";
 
 export default function App() {
   const [described, setDescribed] = useState<Shell | null>(null);
@@ -104,6 +108,7 @@ export default function App() {
   const [comparisonResult, setComparisonResult] = useState<CompareResult | null>(null);
   const [guideResult, setGuideResult] = useState<GuideResult | null>(null);
   const [practiceResult, setPracticeResult] = useState<PracticeResult | null>(null);
+  const [sequenceResult, setSequenceResult] = useState<SequenceResult | null>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -266,6 +271,7 @@ export default function App() {
         setReproducerResult(null);
         setTestResult(null);
         setComparisonResult(null);
+        setSequenceResult(null);
         setSelectedOccurrence(null);
         setSelected(null);
         setWorkspace(null);
@@ -289,6 +295,7 @@ export default function App() {
         setReproducerResult(null);
         setTestResult(null);
         setComparisonResult(null);
+        setSequenceResult(null);
         setSelectedOccurrence(null);
         setSelected(name);
         setEvidence(await openCase(folder, name));
@@ -350,18 +357,28 @@ export default function App() {
     [operate],
   );
 
+  // An occurrence is selected from the grid or from the sequence, and both name
+  // the same verified case: the grid's own case when there is one, and the case
+  // the window verified otherwise. Either way the inspector is bound to the
+  // identity that was displayed, so a value is never read out of evidence that
+  // has changed since.
   const inspect = useCallback(
     async (occurrence: string, path: string, nodeOffset: number, byteOffset: number) => {
       const grid = gridResult?.grid;
-      if (!root || !grid) return;
+      const open = grid
+        ? { case: grid.case, identity: grid.identity }
+        : evidence?.case
+          ? { case: evidence.case.name, identity: evidence.case.identity }
+          : null;
+      if (!root || !open) return;
       await operate("inspect", async () => {
         setSelectedOccurrence(occurrence);
         setInspectionResult(null);
         setInspectionResult(
           await inspectOccurrence({
             workspace: root,
-            case: grid.case,
-            identity: grid.identity,
+            case: open.case,
+            identity: open.identity,
             occurrence,
             path,
             node_offset: nodeOffset,
@@ -370,7 +387,7 @@ export default function App() {
         );
       });
     },
-    [gridResult, operate, root],
+    [evidence, gridResult, operate, root],
   );
 
   // A comparison is bound to the identity the window verified for the open
@@ -393,6 +410,31 @@ export default function App() {
             fields,
             offset,
             limit: COMPARISON_WINDOW,
+          }),
+        );
+      });
+    },
+    [evidence, operate, root],
+  );
+
+  // A sequence is bound to the identity the window verified for the open case,
+  // so one is never drawn beside counts from evidence that has changed. Asking
+  // for the next window is another sequence: the case is verified and the rules
+  // are read again rather than an event list being held here.
+  const layOutSequence = useCallback(
+    async (rules: string, offset: number) => {
+      const open = evidence?.case;
+      if (!root || !open) return;
+      await operate("sequence", async () => {
+        setSequenceResult(null);
+        setSequenceResult(
+          await openSequence({
+            workspace: root,
+            case: open.name,
+            identity: open.identity,
+            rules,
+            offset,
+            limit: SEQUENCE_WINDOW,
           }),
         );
       });
@@ -944,6 +986,19 @@ export default function App() {
                 }),
               )
             }
+          />
+        ) : null}
+        {verified ? (
+          <Sequence
+            entries={(opened?.artifacts ?? [])
+              .filter((artifact) => artifact.kind === "unsupported")
+              .map((artifact) => artifact.name)}
+            result={sequenceResult}
+            busy={busy}
+            progress={running === "sequence" ? "Laying this case out as a sequence." : null}
+            indicators={indicators}
+            onOpen={(rules, offset) => void layOutSequence(rules, offset)}
+            onSelect={(occurrence) => void inspect(occurrence, "", 0, -1)}
           />
         ) : null}
         {verified ? (

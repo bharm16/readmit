@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json/v2"
 	"errors"
+	"regexp"
 	"time"
 
 	"github.com/bharm16/readmit/internal/collection"
@@ -200,6 +201,22 @@ func (b *Bundle) Raw(eventID string) ([]byte, error) {
 	}
 	return bytes.Clone(raw), nil
 }
+
+// declaredTimestamp is the shape of an HL7 DTM: a year, optionally narrowing to
+// a month, day, hour, minute and second, optionally a fraction, optionally a
+// UTC offset, and optionally the degree of precision the sender declared.
+var declaredTimestamp = regexp.MustCompile(`^[0-9]{4}([0-9]{2}){0,5}(\.[0-9]{1,4})?([+-][0-9]{4})?(\^[YLDHMS])?$`)
+
+// DeclaredTimestamp reports whether these declared-time bytes are shaped like a
+// timestamp and nothing else. A malformed declared-time field can hold any
+// bytes at all, so a view that displays one without asking first displays only
+// the ones that can be nothing but a time. Everything else is a value, read
+// deliberately like every other value.
+//
+// This is one rule for one question, held here rather than once per view, so
+// the command line and the desktop shell cannot come to disagree about which
+// declared times a person sees without asking for them.
+func DeclaredTimestamp(value []byte) bool { return declaredTimestamp.Match(value) }
 
 // Value returns the exact field bytes; the caller must separately inspect State.
 func (b *Bundle) Value(eventID string, field Field) []byte {

@@ -873,6 +873,32 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   `readmit-job/v1` and `readmit-reset-plan/v1` each gain no member. There is no
   `readmit reduce` command in this release, and no global-minimum, field-level,
   de-identification or sharing claim.
+- The desktop shell lays one verified case out as a synchronized event sequence
+  over the lanes of its declared sources. Every occurrence of every source is in
+  one list, in the order the recorded observed times put them; an occurrence the
+  case recorded no time for is listed after all of them, in the order its own
+  source recorded it, and is never interleaved among them, because sorting an
+  unknown time into a position among known ones invents a precision the evidence
+  does not have. A lane spans its own source's clock and the panel states that
+  no clock is assumed to agree with another, that no offset is corrected, and
+  that order is not causality. Each event carries the time the capture observed
+  beside the time the message declares, the latter displayed only when its bytes
+  can be nothing but a timestamp, exactly as the default `readmit timeline`
+  displays the same field. Opening an event selects the original occurrence in
+  the inspector and lists everything recorded about it: the case bundle's own
+  same-source acknowledgement match, and, where a rules document of the
+  workspace is named, the links, collisions and unsupported items of
+  `readmit correlate`'s own `readmit-correlation/v1` report over the same
+  evidence — observed linkage and inferred linkage stated apart, never blurred.
+  There is no default rule set here either, so a sequence asked for without one
+  shows what the evidence itself recorded and says that no rule was applied. The
+  gaps are the case's own: an unacknowledged message, an acknowledgement that
+  resolved to nothing or to more than one thing, and every occurrence with no
+  observed or declared time, each counted over the whole case beside the window.
+  None of them is explained: a missing acknowledgement stays missing evidence
+  rather than becoming proof that none was sent. No contract gains a member,
+  nothing is written anywhere, and no value crosses the boundary but a declared
+  timestamp.
 
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`

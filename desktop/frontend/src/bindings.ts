@@ -416,6 +416,7 @@ interface Facade {
   Compare(request: CompareRequest): Promise<CompareResult>;
   Guide(workspace: string): Promise<GuideResult>;
   RunPractice(request: PracticeRequest): Promise<PracticeResult>;
+  OpenSequence(request: SequenceRequest): Promise<SequenceResult>;
 }
 
 declare global {
@@ -1115,4 +1116,196 @@ export function guide(workspace: string): Promise<GuideResult> {
  * receiver binds in this process; no other host is reachable from it. */
 export function runPractice(request: PracticeRequest): Promise<PracticeResult> {
   return guard(() => facade().RunPractice(request), { state: "failed" });
+}
+
+/** How one event of a sequence reached the position it occupies. `unknown` is
+ * the case recording no observed time for it: nothing places it against another
+ * source's events, so it is listed after every event that has a time and is
+ * never interleaved among them. */
+export type EventOrdering = "observed" | "unknown";
+
+/** Where this case stops saying what happened. The three acknowledgement
+ * outcomes are the case bundle's own link kinds, so the window and
+ * `readmit timeline` cannot disagree about which occurrence is unacknowledged.
+ * A gap is an absence in the evidence, never an explanation of it. */
+export type SequenceGap =
+  | "unknown_observed_time"
+  | "unknown_declared_time"
+  | "uninterpreted_declared_time"
+  | "unacknowledged_message"
+  | "unmatched_ack"
+  | "ambiguous_ack";
+
+/** Where one relation came from. An `acknowledgement` is the case bundle's own
+ * literal control-ID match inside one source, which evidence carries with no
+ * configuration at all; the other three exist only when a rules document was
+ * named, and are that engine's own reading of this case. */
+export type ReferenceKind = "acknowledgement" | "link" | "collision" | "unsupported";
+
+/** What a correlation claims. `observed` is one occurrence's own bytes naming
+ * what the other declares; `inferred` is a declared rule finding equal keys,
+ * where neither occurrence refers to the other. A collision and an unsupported
+ * item carry neither, because neither one links anything. */
+export type Linkage = "" | "observed" | "inferred";
+
+/** The typed correlation operators. A rules document can ask for these and
+ * nothing else: it carries no expression, pattern, hook or program path. */
+export type CorrelationOperator = "" | "acknowledges" | "control-id" | "identifier";
+
+/** The boundary a rule compares within. Nothing is compared across one, so
+ * equal bytes in two scopes never become one link. */
+export type CorrelationScope = "source" | "session" | "declared";
+
+/** One recorded relation that names this occurrence. `related` is the rest of
+ * it as seen from here and `occurrences` how many it holds in total, so a large
+ * link never reads as the handful of identifiers drawn beside one event. No
+ * field value is here: reading what is at a position is the inspector. */
+export interface EvidenceReference {
+  kind: ReferenceKind;
+  linkage?: Linkage;
+  rule?: string;
+  operator?: CorrelationOperator;
+  authority?: string;
+  reason?: string;
+  field?: string;
+  related: string[];
+  occurrences: number;
+}
+
+/** One occurrence in the sequence and in its source's lane. `declared_time` is
+ * the time the message itself declares and is carried only when its bytes are
+ * shaped like a timestamp and can be nothing else; every other declared time is
+ * reported as `declared_state` alone and read in the inspector. */
+export interface SequenceEvent {
+  position: number;
+  occurrence: string;
+  source_id: string;
+  kind: OccurrenceKind;
+  direction: Flow;
+  offset: number;
+  size: number;
+  ordering: EventOrdering;
+  observed_at: string | null;
+  declared_state: FieldState;
+  declared_time?: string;
+  decoded: boolean;
+  gaps: SequenceGap[];
+  references: EvidenceReference[];
+  referenced: number;
+}
+
+/** One declared source of the case: one swimlane. `earliest` and `latest` span
+ * only what this source recorded a time for, and are its own clock's times —
+ * never comparable with another source's as a duration. */
+export interface SequenceLane {
+  source_id: string;
+  occurrences: number;
+  messages: number;
+  acknowledgements: number;
+  unparsed: number;
+  ordered: number;
+  unordered: number;
+  earliest: string | null;
+  latest: string | null;
+}
+
+/** How many occurrences of the whole case carry one gap. Every gap this view
+ * knows is listed, including the ones nothing carries. */
+export interface SequenceGapCount {
+  gap: SequenceGap;
+  count: number;
+}
+
+/** What the whole case holds, never the drawn window. */
+export interface SequenceSummary {
+  occurrences: number;
+  ordered: number;
+  unordered: number;
+  messages: number;
+  acknowledgements: number;
+  unparsed: number;
+  sent: number;
+  received: number;
+  unknown_direction: number;
+  links: number;
+  collisions: number;
+  unsupported: number;
+}
+
+/** One declared correlation rule restated with what it reached. `considered`
+ * counts the occurrences the rule obtained a usable key from, `linked` those
+ * that ended in at least one link, and `unlinked` the remainder. */
+export interface CorrelationRuleReport {
+  id: string;
+  operator: CorrelationOperator;
+  scope: CorrelationScope;
+  sources?: string[];
+  applied: boolean;
+  considered: number;
+  linked: number;
+  unlinked: number;
+}
+
+/** One piece of evidence or declaration the rules could not be applied to. It
+ * never passes: an occurrence listed here is in no link. */
+export interface CorrelationUnsupported {
+  code: string;
+  rule?: string;
+  occurrence?: string;
+  field?: string;
+  detail: string;
+}
+
+/** One synchronized reading of one verified case. `clock` states what a
+ * recorded time is and is not, `scope` what the ordering itself establishes,
+ * and `boundary` is the correlation report's own statement of what a link is —
+ * all three are rendered rather than summarized. This result is a typed value
+ * the interface reads, never a stored document. */
+export interface Sequence {
+  case: string;
+  identity: string;
+  rules: string;
+  report?: string;
+  rules_sha256?: string;
+  session_declared: boolean;
+  declared: CorrelationRuleReport[];
+  unsupported: CorrelationUnsupported[];
+  lanes: SequenceLane[];
+  gaps: SequenceGapCount[];
+  summary: SequenceSummary;
+  offset: number;
+  limit: number;
+  total: number;
+  events: SequenceEvent[];
+  clock: string;
+  scope: string;
+  boundary?: string;
+}
+
+/** The case to lay out and, optionally, the declared rules to read it under.
+ * `identity` is the one the window verified, so a sequence beside counts from
+ * evidence that changed is refused. An empty `rules` is not a default rule set
+ * but the absence of one: the sequence then reports only what the evidence
+ * itself recorded. */
+export interface SequenceRequest {
+  workspace: string;
+  case: string;
+  identity: string;
+  rules: string;
+  offset: number;
+  limit: number;
+}
+
+export interface SequenceResult {
+  state: State;
+  reason?: string;
+  sequence?: Sequence;
+}
+
+/** Lays one verified case out as a synchronized event sequence over the lanes
+ * of its declared sources. It computes no correlation of its own: the links,
+ * collisions and unsupported items are `readmit correlate`'s own report over
+ * the same case and the same rules. It reads and changes nothing. */
+export function openSequence(request: SequenceRequest): Promise<SequenceResult> {
+  return guard(() => facade().OpenSequence(request), { state: "failed" });
 }

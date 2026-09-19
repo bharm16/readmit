@@ -289,8 +289,11 @@ collision; and the occurrence that is not HL7 takes part in nothing.
 - Manual, analyst-added correlation and overriding an ambiguous one. Every link
   here comes from a declared rule; nothing in this release can record a human
   decision about a correlation.
-- A synchronized timeline or swimlane rendering of what was linked. This
-  command produces the report those views read.
+- A synchronized timeline or swimlane rendering of what was linked, from this
+  command. It produces the report those views read;
+  [the desktop shell's sequence panel](desktop.md#the-event-sequence-and-source-swimlanes)
+  is where this report is laid out over the lanes of the declared sources,
+  beside the times and the gaps the case itself recorded.
 - Retransmission, gap and clock-skew explanation. Equal control IDs in one
   source are reported as a collision, and what that means about retransmission
   is a separate question this release does not answer.
