@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/bharm16/readmit/internal/runqueue"
+	"time"
 
+	"github.com/bharm16/readmit/internal/runqueue"
 	"github.com/bharm16/readmit/internal/suite"
 	"github.com/spf13/cobra"
 )
@@ -73,5 +74,65 @@ func suiteCommand(ran *bool) *cobra.Command {
 		}
 		command.AddCommand(child)
 	}
+	command.AddCommand(suiteCoverageCommand(ran))
+	return command
+}
+
+func suiteCoverageCommand(ran *bool) *cobra.Command {
+	var requirements, at string
+	var repeats []string
+	var asJSON bool
+	command := &cobra.Command{Use: "coverage DIRECTORY", Short: "Assess declared requirements against retained suite executions without sending", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		*ran = true
+		now := time.Now().UTC()
+		if at != "" {
+			var err error
+			now, err = time.Parse(time.RFC3339, at)
+			if err != nil {
+				return &ExitError{Code: 2, Err: errors.New("coverage --at requires an RFC3339 instant")}
+			}
+		}
+		if requirements == "" {
+			return &ExitError{Code: 2, Err: errors.New("coverage requires --requirements")}
+		}
+		report, err := suite.AssessCoverage(cmd.Context(), args[0], requirements, repeats, now)
+		if err != nil {
+			return &ExitError{Code: 2, Err: err}
+		}
+		if asJSON {
+			err = writeJSON(cmd, report)
+		} else {
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Declared requirement coverage: %d/%d (%.2f%%) at %s\n", report.Passed, report.Denominator, report.Percent, report.At.Format(time.RFC3339))
+			for _, r := range report.Requirements {
+				if err == nil {
+					_, err = fmt.Fprintf(cmd.OutOrStdout(), "Requirement %s: %s\n", r.ID, r.State)
+				}
+			}
+			for _, j := range report.Jobs {
+				if err == nil {
+					_, err = fmt.Fprintf(cmd.OutOrStdout(), "Job %s: execution=%s reason=%q expiry=%s; exclusion=%s reason=%q expires=%s expired=%t; stability=%s (%s)\n", j.ID, j.Execution, j.Reason, j.Expiry, j.Exclusion, j.ExclusionReason, j.Expires, j.Expired, j.Stability.State, j.Stability.Reason)
+				}
+			}
+			if err == nil {
+				_, err = fmt.Fprintln(cmd.OutOrStdout(), report.Scope)
+			}
+		}
+		if err != nil {
+			return err
+		}
+		if report.Passed != report.Denominator {
+			return &ExitError{Code: 2, Err: errors.New("declared suite coverage is incomplete")}
+		}
+		for _, j := range report.Jobs {
+			if !j.Eligible {
+				return &ExitError{Code: 2, Err: errors.New("suite has excluded, unverified, failing or unstable jobs")}
+			}
+		}
+		return nil
+	}}
+	command.Flags().StringVar(&requirements, "requirements", "", "Strict readmit-suite-coverage/v1 document with an explicit denominator")
+	command.Flags().StringVar(&at, "at", "", "Assessment instant (RFC3339); defaults to current UTC")
+	command.Flags().StringArrayVar(&repeats, "previous", nil, "Previous retained suite directory in the same environment; repeat up to fifteen times")
+	command.Flags().BoolVar(&asJSON, "json", false, "Write the customer-local coverage view")
 	return command
 }

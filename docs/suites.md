@@ -135,8 +135,99 @@ changed row expectations and retains approval records; see
 
 This release executes v1 ACK and fixture-ledger specs through the established
 loopback-only durable run path. It adds no remote authorization policy, new
-adapter, desktop suite editor, team approval, quarantine,
-coverage percentage, selection rule or scheduling daemon. Those are separate
-deliveries. A site label is not an environment approval. Profile support remains
+adapter, desktop suite editor, team approval, execution filtering,
+selection rule or scheduling daemon. Coverage assessment is described below.
+These absent capabilities remain separate deliveries. A site label is not an environment approval. Profile support remains
 what the underlying spec and evaluator declare; these suites certify no broader
 HL7 or external-system behavior.
+
+## Declared requirement coverage and exclusions
+
+`readmit suite coverage DIRECTORY --requirements coverage.json` assesses a
+prepared or executed suite directory offline. `--json` returns the same view;
+`--at 2026-09-19T00:00:00Z` fixes the assessment time (otherwise current UTC).
+No target, original case or template is reopened, and nothing executes or changes.
+
+The separate strict `readmit-suite-coverage/v1` document binds the exact retained
+`suite.json` bytes with their lowercase SHA-256 (for example, obtain it with
+`shasum -a 256 DIRECTORY/suite.json`). Existing suite and result contracts keep
+their exact members. Use this document shape, replacing the digest:
+
+```json
+{
+  "schema": "readmit-suite-coverage/v1",
+  "suite_sha256": "REPLACE_WITH_64_LOWERCASE_HEX_DIGITS",
+  "specifications": [
+    {"job": "booking-one", "sha256": "REPLACE_WITH_PREPARED_SPEC_SHA256"},
+    {"job": "booking-two", "sha256": "REPLACE_WITH_PREPARED_SPEC_SHA256"}
+  ],
+  "requirements": [
+    {"id": "booking-accepted", "jobs": ["booking-one", "booking-two"]},
+    {"id": "downstream-persistence", "jobs": []}
+  ],
+  "exclusions": [
+    {"job": "booking-two", "state": "quarantined",
+     "reason": "Fixture intermittently refuses bookings; investigate before release",
+     "expires": "2026-10-01T00:00:00Z"}
+  ]
+}
+```
+
+`specifications` must pin every expanded job exactly once, using the SHA-256
+of its prepared `DIRECTORY/TEST-ROW.json` bytes. The coverage author reviews and
+pins these exact assertions; the older suite document does not seal mutable
+template contents, so no template provenance is inferred. The assessor also
+checks recorded case-row paths, occurrence sequence, row expectation overrides
+and selected environment target/observation paths without opening their sources.
+A different prepared spec or a different declared environment binding refuses;
+one passing run/spec pair cannot be transplanted under the existing pins.
+These hashes detect changes relative to declarations, not author authentication
+or proof that the declarations faithfully describe a real interface.
+
+Every requirement is one unit of the configured denominator. An empty `jobs`
+list is explicitly uncovered. A requirement passes only when **every** named
+expanded `TEST-ROW` job has a verified passing durable execution matching the
+prepared spec, no declared exclusion and no unresolved or observed flakiness in
+selected history. No exclusion removes a requirement from the denominator.
+Every suite job is displayed, including jobs no requirement maps. Mapping is the
+operator's declaration, not proof that a test establishes the named real-world
+requirement; this percentage makes no universal HL7 assurance claim.
+
+Exclusions are `skipped`, `unsupported`, `quarantined` or `disabled`; each names
+one actual expanded job and requires a nonempty reason and UTC expiry to the
+second. They are **assessment declarations**, not scheduling controls: `suite
+run` still executes its entire queue. They never replace the displayed actual
+execution state. In particular a quarantined execution that passed does not
+contribute a pass. At or after expiry the declaration is marked expired, stays
+visible and still prevents a pass. Review and replace the coverage document
+explicitly to remove an exclusion; expiry never enables a send automatically.
+
+Actual scheduler skips, refused admissions and start failures display the
+retained reason and `expiry: not_applicable`: a scheduling decision has no
+administrative expiration. A missing final queue report is allowed for crash
+recovery. Verified durable jobs remain readable and absent jobs are `unknown`,
+never inferred skipped or passed. A report claiming an absent execution,
+contradictory admissions, altered evidence, mismatched specs, queue or selection
+refuses assessment. Recovery does not resume or retry a job.
+
+Repeat `--previous PREVIOUS_DIRECTORY` for up to fifteen prior suites with the
+same exact suite document and selected environment. The existing
+[retained-run comparison](durable-runs.md) verifies every selected job and
+classifies stability using unchanged retained specifications, input, rules,
+engine and target configuration. Distinct directories are required, and duplicate
+result identities cannot manufacture repeated observations. Both passes and
+failures remain counted. A pass/failure switch is only **possible flakiness**,
+not a causal diagnosis; changed or incomplete configuration is unresolved and
+cannot improve coverage. Missing history is explicitly unresolved. No history
+means insufficient history, which does not erase the current execution's verdict
+or claim stability. Target software revisions and external state remain unknown.
+
+Exit 0 requires every declared requirement and every suite job to qualify;
+uncovered, excluded, failed, skipped, incomplete or unstable work yields exit 2
+after printing the assessment. Invalid input and cancellation also exit 2.
+The declarations are bounded to 1 MiB, 256 unique requirements, 64 job references
+per requirement, exactly one spec pin per expanded job and 64 exclusions.
+Duplicate/unknown/null/missing members,
+unknown jobs, duplicate references and unsupported versions are refused. Reasons
+are at most 1024 bytes; IDs follow the suite's identifier rules. Coverage output
+and reasons can contain sensitive local metadata and are not disclosure-approved.
