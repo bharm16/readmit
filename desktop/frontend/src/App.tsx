@@ -7,6 +7,8 @@ import {
   authorTest,
   buildReproducer,
   cancel,
+  compare,
+  type CompareResult,
   createSampleWorkspace,
   editReproducer,
   saveTest,
@@ -48,6 +50,7 @@ import {
   type Theme,
   type WorkspaceResult,
 } from "./bindings";
+import { Comparison, COMPARISON_WINDOW } from "./Comparison";
 import { Inspector } from "./Inspector";
 import { Reproducer } from "./Reproducer";
 import { TestAuthoring } from "./TestAuthoring";
@@ -71,7 +74,8 @@ type Running =
   | "filters"
   | "inspect"
   | "reproducer"
-  | "authoring";
+  | "authoring"
+  | "comparison";
 
 export default function App() {
   const [described, setDescribed] = useState<Shell | null>(null);
@@ -90,6 +94,7 @@ export default function App() {
   const [gridResult, setGridResult] = useState<GridResult | null>(null);
   const [reproducerResult, setReproducerResult] = useState<ReproducerResult | null>(null);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
+  const [comparisonResult, setComparisonResult] = useState<CompareResult | null>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -244,6 +249,7 @@ export default function App() {
         setInspectionResult(null);
         setReproducerResult(null);
         setTestResult(null);
+        setComparisonResult(null);
         setSelectedOccurrence(null);
         setSelected(null);
         setWorkspace(null);
@@ -263,6 +269,7 @@ export default function App() {
         setInspectionResult(null);
         setReproducerResult(null);
         setTestResult(null);
+        setComparisonResult(null);
         setSelectedOccurrence(null);
         setSelected(name);
         setEvidence(await openCase(folder, name));
@@ -329,6 +336,33 @@ export default function App() {
       });
     },
     [gridResult, operate, root],
+  );
+
+  // A comparison is bound to the identity the window verified for the open
+  // case, so one is never shown beside counts from evidence that has changed.
+  // Asking for the next window is another comparison: both collections are
+  // read and aligned again rather than a row list being held here.
+  const compareCollections = useCallback(
+    async (right: string, keys: string[], fields: string[], offset: number) => {
+      const open = evidence?.case;
+      if (!root || !open) return;
+      await operate("comparison", async () => {
+        setComparisonResult(null);
+        setComparisonResult(
+          await compare({
+            workspace: root,
+            left: open.name,
+            identity: open.identity,
+            right,
+            keys,
+            fields,
+            offset,
+            limit: COMPARISON_WINDOW,
+          }),
+        );
+      });
+    },
+    [evidence, operate, root],
   );
 
   // A reproducer plan is bound to the case the grid verified, so every step
@@ -857,6 +891,20 @@ export default function App() {
                   output,
                 }),
               )
+            }
+          />
+        ) : null}
+        {verified ? (
+          <Comparison
+            entries={(opened?.artifacts ?? [])
+              .filter((artifact) => artifact.kind === "case")
+              .map((artifact) => artifact.name)}
+            result={comparisonResult}
+            busy={busy}
+            progress={running === "comparison" ? "Comparing these collections." : null}
+            indicators={indicators}
+            onCompare={(right, keys, fields, offset) =>
+              void compareCollections(right, keys, fields, offset)
             }
           />
         ) : null}

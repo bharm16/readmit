@@ -613,6 +613,33 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   `readmit-observation/v1` and every case contract gain no member and change no
   byte.
 
+- The desktop shell compares two collections of the open workspace side by side.
+  It calls the same `internal/diff` engine `readmit diff` runs and renders the
+  `readmit-diff/v1` report it returns as rows: no contract gains a member, no
+  byte of one changes, and no command-line output is parsed. Records pair by the
+  occurrence identity two copies of one verified case already carry, or by the
+  field selectors named as keys; a regenerated control ID stays an ordinary
+  field change rather than becoming a pairing, and two collections with no known
+  mapping and no declared key are refused with what to declare instead of being
+  paired by position. Both panes are columns of one row list, so a record only
+  one side holds keeps a row of its own with the other side stated as empty, and
+  every candidate of a duplicated key keeps one too because none of them is
+  chosen. A window states where it begins and how many rows the comparison
+  holds, beside the counts of everything paired, changed, inserted, missing,
+  unaligned and not compared, how many keys were ambiguous, the versioned engine
+  contract the rows came from and the boundary that was compared. An ambiguous
+  key says to name another field beside it, because the keys together form one
+  ordered composite key. A row names the positions that differ
+  as canonical field selectors with the bundled label and the decoded state of
+  each side; no value, no alignment-key value and no message byte crosses the
+  facade, and reading the bytes stays the inspector. No ignore rule is applied,
+  so nothing the comparison found is suppressed before it is shown, and evidence
+  nothing decoded is listed rather than compared around. The comparison is bound
+  to the identity the window verified, reads two entries of the open folder and
+  writes nothing anywhere. Ignore and normalization policies, reviewed
+  baselines, drift separation, the acknowledgement boundary and comparing runs,
+  results or standalone files in the window are separate deliveries.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is

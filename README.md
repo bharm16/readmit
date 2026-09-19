@@ -567,7 +567,13 @@ from is not changed, and nothing about it is a de-identification or sharing
 claim. See [extracting and editing a reproducer](docs/reproducer.md). It turns
 selected evidence into a regression test by answering one question at a time and
 saves a versioned `readmit-test/v1` spec the command line runs unchanged; see
-[authoring a regression test](docs/test-authoring.md). It
+[authoring a regression test](docs/test-authoring.md). It also
+**compares two collections** of the workspace side by side, through the same
+engine `readmit diff` runs: records pair by the mapping the evidence carries or
+by the fields named as keys, a record only one side holds keeps a row of its own
+rather than shifting the rows after it, a duplicated key leaves every candidate
+unpaired and says to name another field beside it, and a row names the positions
+that differ without revealing a value. It
 is navigated entirely from the keyboard: five labelled regions in a fixed focus
 order, a command palette, a search over what the open workspace and its project
 declare, resizable evidence and inspector panes, light and dark, and text from

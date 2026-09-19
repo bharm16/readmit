@@ -11,11 +11,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/diff"
 	"github.com/bharm16/readmit/internal/grid"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/index"
@@ -460,5 +462,133 @@ func TestDesktopAuthoredTestIsPreparedByTheCommandLine(t *testing.T) {
 	sum := sha256.Sum256(written)
 	if saved.Test.Identity != hex.EncodeToString(sum[:]) {
 		t.Fatalf("the window reported an identity the saved spec does not have: %s", saved.Test.Identity)
+	}
+}
+
+// comparisonLine is one row of a comparison, reduced to what both entry points
+// have to agree on: what the row is, the occurrence on each side, the outcome,
+// and the positions that differ.
+type comparisonLine struct {
+	kind, left, right, status, reason string
+	fields                            []string
+}
+
+func reportedLines(report diff.Report) []comparisonLine {
+	lines := []comparisonLine{}
+	for _, pair := range report.Pairs {
+		selectors := []string{}
+		for _, field := range pair.Fields {
+			selectors = append(selectors, field.Selector+" "+field.Status)
+		}
+		lines = append(lines, comparisonLine{"paired", pair.Left.Occurrence, pair.Right.Occurrence, pair.Status, "", selectors})
+	}
+	for _, missing := range report.Missing {
+		lines = append(lines, comparisonLine{"missing", missing.Occurrence, "", "", "", []string{}})
+	}
+	for _, inserted := range report.Inserted {
+		lines = append(lines, comparisonLine{"inserted", "", inserted.Occurrence, "", "", []string{}})
+	}
+	for _, ambiguity := range report.Ambiguous {
+		for _, candidate := range ambiguity.Left {
+			lines = append(lines, comparisonLine{"ambiguous", candidate.Occurrence, "", "", ambiguity.Reason, []string{}})
+		}
+		for _, candidate := range ambiguity.Right {
+			lines = append(lines, comparisonLine{"ambiguous", "", candidate.Occurrence, "", ambiguity.Reason, []string{}})
+		}
+	}
+	for _, unaligned := range report.Unaligned {
+		line := comparisonLine{"unaligned", "", "", "", unaligned.Reason, []string{}}
+		if unaligned.Side == "left" {
+			line.left = unaligned.Reference.Occurrence
+		} else {
+			line.right = unaligned.Reference.Occurrence
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+func renderedLines(comparison *desktop.Comparison) []comparisonLine {
+	lines := []comparisonLine{}
+	for _, row := range comparison.Rows {
+		line := comparisonLine{kind: string(row.Kind), status: row.Status, reason: row.Reason, fields: []string{}}
+		if row.Left != nil {
+			line.left = row.Left.Occurrence
+		}
+		if row.Right != nil {
+			line.right = row.Right.Occurrence
+		}
+		for _, field := range row.Fields {
+			line.fields = append(line.fields, field.Selector+" "+field.Status)
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+// The desktop shell and the command line are two entry points into one
+// comparison. The window names two entries of a workspace and gets rows back;
+// `readmit diff` prints the same report as a document. Neither aligns evidence
+// of its own, so what the panes draw is exactly what the command line reports —
+// including the record only one side holds. The window shows no value while the
+// command line can be asked for them explicitly.
+func TestDesktopComparisonRendersExactlyWhatTheCommandLineDiffReports(t *testing.T) {
+	workspace := t.TempDir()
+	for name, fixture := range map[string]string{"before": "diff-before.mllp", "after": "diff-after.mllp"} {
+		if _, stderr, err := run(t, "capture", "../testdata/fixtures/"+fixture, "--output", filepath.Join(workspace, name)); err != nil || stderr != "" {
+			t.Fatalf("capture %s: %v %s", fixture, err, stderr)
+		}
+	}
+	left, right := filepath.Join(workspace, "before"), filepath.Join(workspace, "after")
+	report, _ := diffJSON(t, left, right, "--key", "MSH-10")
+	if report.Summary.Paired == 0 || report.Summary.Inserted == 0 || report.Summary.FieldChanges == 0 {
+		t.Fatalf("the fixtures no longer exercise a pairing, an insertion and a field change: %+v", report.Summary)
+	}
+
+	app := desktopApp(t, workspace)
+	opened := app.OpenCase(workspace, "before")
+	if opened.State != desktop.Completed || opened.Case == nil {
+		t.Fatalf("the left collection was not verified: %+v", opened)
+	}
+	result := app.Compare(desktop.CompareRequest{
+		Workspace: workspace, Left: "before", Identity: opened.Case.Identity, Right: "after",
+		Keys: []string{"MSH-10"}, Limit: desktop.MaxComparisonRows,
+	})
+	if result.State != desktop.Completed || result.Comparison == nil {
+		t.Fatalf("the window did not compare the two collections: %+v", result)
+	}
+	if result.Comparison.Alignment != report.Alignment || !reflect.DeepEqual(result.Comparison.Summary, report.Summary) {
+		t.Fatalf("the window counted %+v %q and the command line %+v %q",
+			result.Comparison.Summary, result.Comparison.Alignment, report.Summary, report.Alignment)
+	}
+	if rendered, reported := renderedLines(result.Comparison), reportedLines(report); !reflect.DeepEqual(rendered, reported) {
+		t.Fatalf("the window drew %+v and the command line reported %+v", rendered, reported)
+	}
+
+	// Values are the one thing the two entry points deliberately differ on: the
+	// command line displays them when it is asked to, and the window never does.
+	shown, _ := diffJSON(t, left, right, "--key", "MSH-10", "--show-values")
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	displayed := 0
+	for _, pair := range shown.Pairs {
+		for _, field := range pair.Fields {
+			if field.Left.Display == nil {
+				continue
+			}
+			displayed++
+			value, err := strconv.Unquote(*field.Left.Display)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if value != "" && bytes.Contains(encoded, []byte(value)) {
+				t.Fatalf("the window disclosed a compared value: %s", encoded)
+			}
+		}
+	}
+	if displayed == 0 {
+		t.Fatal("the command line displayed no value, so nothing was checked")
 	}
 }

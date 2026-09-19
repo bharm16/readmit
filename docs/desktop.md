@@ -59,6 +59,7 @@ artifacts are never reported as completed.
 | `RecordView` | Retains the workspace, case, region and run this viewer has open. |
 | `SaveDraft` | Retains one note that has been typed and not stored yet. |
 | `DiscardDraft` | Drops one retained draft, once the note it was an edit of has been stored. |
+| `Compare` | Aligns two collections of the open workspace and reports one window of the rows both panes draw. |
 | `EditReproducer` | Adds one step to a reproducer plan and reports what it now means over the case. |
 | `UndoReproducer` | Removes the last step of a plan and resolves what remains. |
 | `BuildReproducer` | Writes the reproducer into a new folder of the open workspace. |
@@ -86,7 +87,7 @@ than drawing itself with no commands and no privacy status.
 `Cancel` cannot retract bytes an operation has already written. Choosing a
 folder and listing it are interruptible; `OpenCase`, `OpenProject`,
 `OpenRevisions`, `SaveNote`, `Search`, `OpenGrid`, `SaveFilter`,
-`SelectFilter`, `InspectOccurrence`, `EditReproducer`, `UndoReproducer`,
+`SelectFilter`, `InspectOccurrence`, `Compare`, `EditReproducer`, `UndoReproducer`,
 `BuildReproducer`, `AuthorTest`, `SaveTest` and `RecoverSession` are not, because each runs to completion under its own size
 limits once it starts. The window enables the
 Cancel control only while an interruptible operation runs; `Escape` reaches the
@@ -418,6 +419,100 @@ A saved test is a document beside the evidence, never inside it, and the case it
 names is not changed. See
 [authoring a regression test](test-authoring.md) for the draft contract, every
 stage, every refusal, the bounds, and what this release does not author.
+## Comparing two collections
+
+**Compare** is the panel that answers what changed between two collections of
+the open workspace. It is the engine [`readmit diff`](diff.md) runs, called
+directly: the window sends two entry names, the fields that identify a record
+and the fields to compare, and renders the report it gets back as rows. Nothing
+about what is the same record is decided here.
+
+Both collections are verified case bundles named by one entry of the open
+folder, and the left one is the case the window has already verified. Every
+comparison re-reads both and is bound to the identity the window displayed, so
+a comparison beside stale counts is refused rather than shown. Neither collection
+is changed, and a comparison writes nothing at all: there is no output to name.
+
+### How records are paired
+
+| What holds | How records pair |
+| --- | --- |
+| The two collections are copies of one verified case | By the occurrence identity the evidence already carries |
+| Anything else | By the field selectors named as keys, together as one ordered composite key |
+
+A control ID a system regenerated is an ordinary field change and never becomes
+a pairing, so two collections whose identifiers were all rewritten still pair on
+whatever identifies the record itself. Two collections with no known mapping and
+no declared key are refused with what to declare, because pairing them by
+position would be a guess presented as a result. The keys are echoed back in
+their canonical form, so what a row was paired on is visible rather than
+remembered.
+
+### What a row is
+
+Both panes are columns of **one** row list, so a row is the same record on both
+sides and the two cannot drift apart. Every row states what it is:
+
+| Row | What it holds |
+| --- | --- |
+| `paired` | A record on both sides, with the positions that differ |
+| `missing` | A record the left collection holds and the right one does not |
+| `inserted` | A record only the right collection holds |
+| `ambiguous` | One candidate of a key that names more than one record |
+| `unaligned` | One record no key could place, with the reason |
+
+A record only one side holds keeps a row of its own with the other side stated
+as empty, rather than shifting every row after it — an insertion that quietly
+re-pairs everything below it is the hidden alignment assumption a comparison
+exists to avoid. A duplicated key produces one row per candidate, on the side
+that candidate is on: none of them is paired with another, because the evidence
+does not say which pairing it would be. The rows are ordered by what the
+comparison found — paired, then missing, then inserted, then every ambiguous
+candidate, then everything unaligned. That order is not the order either
+collection recorded and it is not evidence of chronology.
+
+A row is a window of a comparison, not the whole of it. Every window states
+where it begins and how many rows the comparison holds, beside the counts of
+everything paired, changed, unchanged, inserted, missing, unaligned and not
+compared — and, separately, how many **keys** were ambiguous, which is a count
+of duplicated keys rather than of the candidate records they left unpaired.
+Every window also names the versioned engine contract the rows were laid out
+from and the boundary that was compared, so a comparison of stored messages
+never reads as a comparison of everything the two collections hold; the counts
+of what each side left outside that boundary are beside it. Asking for the next
+window verifies and aligns both collections again, for the same reason the grid
+re-checks its case and index.
+
+An ambiguous key is resolved where it was declared: name another field beside
+it, and the keys together form one ordered composite key. The window says so on
+the rows it refused to pair, because a group that only reports itself leaves a
+person with nothing to do about it.
+
+### Positions, not values
+
+A paired row names the positions that differ, each as a canonical
+[field selector](selectors.md) with the bundled dictionary's label where both
+messages declare the version it covers, and the decoded state each side held
+there: `present`, `empty`, explicit `null` and `omitted` stay separate. **No
+value crosses this boundary.** Reading what is at a position is
+[the inspector](#inspecting-original-values), deliberately, exactly as it is for
+a reproducer; the selector a row names is the position the inspector addresses.
+Alignment-key values are never shown either, and no comparison is written
+anywhere: nothing about this panel reaches a case, a run, a result, a report,
+the saved filters or the working session.
+
+**No ignore rule is applied here.** Every difference the comparison found is
+shown, including the timestamps and control IDs a person may not care about,
+because a view that suppressed some of them without saying so could conceal the
+change being looked for. Narrowing a comparison is done by naming the fields to
+compare, which the window states beside the result.
+
+Evidence the comparison could not read is listed rather than compared around: an
+occurrence nothing decoded, a position whose escapes this release does not
+resolve, a value that decoded to bytes that are not UTF-8, and a message
+declaring an HL7 version the bundled labels do not cover. Equal fields are not
+proof of delivery or of correct behaviour, and the window renders the engine's
+own statement of that rather than a summary of it.
 
 ## Recovering after an interruption
 
@@ -690,9 +785,6 @@ checked to hold no network call and no browser storage at all.
 - Sharing a working session between viewers or machines, retaining more than one
   session per viewer, and any history of what a draft said before it was
   replaced.
-- Importing evidence, changing evidence, and comparison. No edit the shell makes
-  reaches a case, a run, a result, a review or a report: a reproducer is new
-  evidence written beside the original, never a rewrite of it.
 - Retaining an unbuilt reproducer plan or an unsaved test draft across an
   interruption. The working session is one bounded versioned document and it
   gains no member here, so unstored work of either kind is lost with the window;
@@ -702,6 +794,23 @@ checked to hold no network call and no browser storage at all.
   one is `readmit test`, and reading a saved spec back into a draft is a
   separate delivery. Suggesting expectations from a run, and approving them, are
   a separate delivery too.
+- Importing evidence and changing evidence. No edit the shell makes reaches a
+  case, a run, a result, a review or a report: a reproducer is new evidence
+  written beside the original, never a rewrite of it, and a comparison writes
+  nothing at all.
+- Comparing anything but two case bundles of the open workspace, and comparing
+  stored acknowledgements rather than stored messages. A run, a result, a
+  report and a standalone message file are listed as unsupported entries here;
+  [`readmit diff`](diff.md) compares all of them and both boundaries.
+- Reading a value in a comparison. A row names the positions that differ and the
+  decoded state of each side; the bytes are the inspector.
+- Ignore rules, normalization policies, a reviewed baseline, and telling input
+  drift apart from target, environment and rule drift. Every difference this
+  panel found is shown as it was found; those are separate deliveries.
+- Retaining a comparison across an interruption. The working session is one
+  bounded versioned document and it gains no member here, so which two
+  collections were being compared is lost with the window; comparing them again
+  reads both from disk and verifies both.
 - Reduction, replay transformations, reordering or duplicating occurrences, and
   comparing two reproducers. The editor retains what a person selected and what
   their declared dependencies require, and makes no claim of minimality; see
