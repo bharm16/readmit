@@ -394,13 +394,14 @@ func TestExpiredV2EntitlementKeepsEvidenceReadableAndSettlesStartedWork(t *testi
 
 // No evidence package reaches the entitlement package. The dependency graph
 // settles that no read, verification or export path is gated: inside the engine
-// only the command tree and the vendor's billing ledger import
+// only the command tree and the vendor billing/administration packages import
 // internal/entitlement, and inside the command tree only the license commands
-// import it. internal/billing is the issuing side and is imported by nothing at
-// all, so no command can reach an account ledger or a payment event.
+// import it. Only vendor administration imports billing; nothing imports vendor
+// administration, so no command can reach an account ledger or a payment event.
 func TestOnlyTheLicenseCommandsAndTheVendorLedgerImportEntitlement(t *testing.T) {
 	const entitlementPackage = "github.com/bharm16/readmit/internal/entitlement"
 	const billingPackage = "github.com/bharm16/readmit/internal/billing"
+	const commercialPackage = "github.com/bharm16/readmit/internal/commercial"
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	listed, err := exec.CommandContext(ctx, "go", "list", "-f", `{{.ImportPath}} {{join .Imports " "}}`, "../internal/...").Output()
@@ -413,11 +414,14 @@ func TestOnlyTheLicenseCommandsAndTheVendorLedgerImportEntitlement(t *testing.T)
 			continue
 		}
 		for _, imported := range fields[1:] {
-			if imported == entitlementPackage && fields[0] != "github.com/bharm16/readmit/internal/cli" && fields[0] != billingPackage {
+			if imported == entitlementPackage && fields[0] != "github.com/bharm16/readmit/internal/cli" && fields[0] != billingPackage && fields[0] != commercialPackage {
 				t.Errorf("%s imports the entitlement package", fields[0])
 			}
-			if imported == billingPackage {
+			if imported == billingPackage && fields[0] != commercialPackage {
 				t.Errorf("%s imports the billing package", fields[0])
+			}
+			if imported == commercialPackage {
+				t.Errorf("%s imports the vendor administration package", fields[0])
 			}
 		}
 	}

@@ -64,6 +64,8 @@ REQUIRED_FILES = {
     "docs/license.md",
     "docs/license-v2.md",
     "docs/billing.md",
+    "docs/commercial-administration.md",
+    "docs/commercial-terms.md",
     "docs/secret.md",
     "docs/protect.md",
     "docs/target.md",

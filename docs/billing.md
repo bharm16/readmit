@@ -222,4 +222,5 @@ reads a clock of its own, and nothing here defeats one that is wrong.
   an account ledger, exactly as no command signs an entitlement.
 - **Changing an issue after it is made.** A correction is a new event and the
   next sequence; the ledger deletes nothing.
-- **The trial clock guard and the administration interface.** #116 and #119.
+- **The trial clock guard.** #116. The local vendor administration API is
+  documented in [commercial administration](commercial-administration.md).

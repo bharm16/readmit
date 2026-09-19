@@ -539,3 +539,7 @@ no dependency. Customer Ed25519 deployment signatures approve staged updates.
 `readmit-suite-releases/v1` is the separate optional suite admission pin set.
 See [released expectations](expectations.md); local declarations are not team
 authentication and profile pins imply no new evaluator support.
+
+Organization contacts, invoice references, assignment transfers and support scope
+use the local vendor [commercial administration](commercial-administration.md) API.
+[Commercial terms](commercial-terms.md) remain an owner/counsel review draft.
