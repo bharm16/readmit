@@ -1044,3 +1044,9 @@ Fixtures and their independently authored intent are described in
 Customer-hosted deployment: [artifact hub installation and recovery](hub/README.md).
 
 Customer-controlled execution: [runner enrollment and operation](docs/customer-runner.md).
+
+Portable reports from retained actual evidence: `readmit report export PACKET
+--output NEW_REVIEW` creates offline HTML, PDF, Markdown, JSON and JUnit alongside
+the sealed original packet. `readmit report review NEW_REVIEW` verifies it in
+read-only mode. Reports remain sensitive customer-local evidence; see
+[portable reports](docs/report.md#portable-reports-and-read-only-review).
