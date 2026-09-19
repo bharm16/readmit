@@ -1,5 +1,9 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Git source diffs remain visible when a stray NUL appears in Go, TypeScript,
+  TSX, Markdown, JSON, Python or YAML source; binary evidence keeps its existing
+  byte-preserving attributes.
+
 - Local performance qualification measures CLI peak RSS, exact 5 GiB scanning,
   indexed search, facade navigation, cancellation and interruption recovery.
   Eight isolated suite executions are verified against a loopback barrier.

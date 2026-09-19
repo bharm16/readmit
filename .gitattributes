@@ -1,6 +1,13 @@
-*.go text eol=lf
-*.md text eol=lf
-*.yml text eol=lf
+# text controls line endings; diff keeps source reviewable even with a stray NUL.
+*.go text eol=lf diff
+*.ts text diff
+*.tsx text diff
+*.md text eol=lf diff
+*.json text diff
+*.py text diff
+*.yml text eol=lf diff
+
+# Raw evidence retains byte-preserving binary attributes.
 testdata/fixtures/* binary
 testdata/verification/corpus/*.hl7 binary
 testdata/verification/corpus/*.mllp binary
