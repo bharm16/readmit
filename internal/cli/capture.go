@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"regexp"
 	"strconv"
 	"time"
 
@@ -147,10 +146,6 @@ func enhancedSummary(p collection.Policy) string {
 	return fmt.Sprintf("%s %s %s %s", rule.Operator, rule.AcceptCode, rule.ApplicationCode, rule.ApplicationDelivery)
 }
 
-// Only timestamp-shaped MSH-7 bytes may appear in the default timeline. A
-// malformed MSH-7 can contain arbitrary values, so its bytes require opt-in.
-var declaredTimePattern = regexp.MustCompile(`^[0-9]{4}([0-9]{2}){0,5}(\.[0-9]{1,4})?([+-][0-9]{4})?(\^[YLDHMS])?$`)
-
 func renderBundle(out io.Writer, b *bundle.Bundle, timeline, showValues bool) error {
 	w := bufio.NewWriter(out)
 	kinds := b.Counts()
@@ -212,7 +207,7 @@ func renderBundle(out io.Writer, b *bundle.Bundle, timeline, showValues bool) er
 				if field.State == hl7.Present {
 					value := b.Value(event.ID, field)
 					declared = "uninterpreted (use --show-values)"
-					if declaredTimePattern.Match(value) || showValues {
+					if bundle.DeclaredTimestamp(value) || showValues {
 						declared = strconv.QuoteToASCII(string(value))
 					}
 				}

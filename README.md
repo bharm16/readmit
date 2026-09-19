@@ -718,8 +718,19 @@ engine `readmit diff` runs: records pair by the mapping the evidence carries or
 by the fields named as keys, a record only one side holds keeps a row of its own
 rather than shifting the rows after it, a duplicated key leaves every candidate
 unpaired and says to name another field beside it, and a row names the positions
-that differ without revealing a value. It
-is navigated entirely from the keyboard: five labelled regions in a fixed focus
+that differ without revealing a value. It lays a verified case out as a
+**synchronized event sequence** over the lanes of its declared sources: every
+occurrence in the order the recorded times put them, with an occurrence the case
+recorded no time for listed after them rather than interleaved among them, the
+time the capture observed beside the time the message declares, and the gaps the
+case itself records — an unacknowledged message, an acknowledgement that
+resolved to nothing or to more than one thing. Opening an event selects the
+original occurrence in the inspector and lists everything recorded about it,
+with the links of a declared `readmit-correlation-rules/v1` document beside the
+case's own acknowledgement matching and observed linkage stated apart from
+inferred. No clock is assumed to agree with another and order is not causality;
+see [the sequence panel](docs/desktop.md#the-event-sequence-and-source-swimlanes).
+It is navigated entirely from the keyboard: five labelled regions in a fixed focus
 order, a command palette, a search over what the open workspace and its project
 declare, resizable evidence and inspector panes, light and dark, and text from
 100% to 200%. Every status carries its own word and its own shape, so

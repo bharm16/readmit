@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bharm16/readmit/internal/correlate"
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/diff"
 	"github.com/bharm16/readmit/internal/grid"
@@ -128,6 +129,16 @@ func TestFrontendBindingsDeclareEveryResultMember(t *testing.T) {
 		reflect.TypeOf(desktop.PracticeAssertion{}),
 		reflect.TypeOf(guide.Progress{}),
 		reflect.TypeOf(guide.Step{}),
+		reflect.TypeOf(desktop.SequenceRequest{}),
+		reflect.TypeOf(desktop.SequenceResult{}),
+		reflect.TypeOf(desktop.Sequence{}),
+		reflect.TypeOf(desktop.SequenceEvent{}),
+		reflect.TypeOf(desktop.SequenceSummary{}),
+		reflect.TypeOf(desktop.Lane{}),
+		reflect.TypeOf(desktop.GapCount{}),
+		reflect.TypeOf(desktop.EvidenceReference{}),
+		reflect.TypeOf(correlate.RuleReport{}),
+		reflect.TypeOf(correlate.Unsupported{}),
 		reflect.TypeOf(desktop.InspectRequest{}),
 		reflect.TypeOf(desktop.InspectionResult{}),
 		reflect.TypeOf(desktop.Inspection{}),

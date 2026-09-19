@@ -654,6 +654,118 @@ declaring an HL7 version the bundled labels do not cover. Equal fields are not
 proof of delivery or of correct behaviour, and the window renders the engine's
 own statement of that rather than a summary of it.
 
+## The event sequence and source swimlanes
+
+A case holds what several systems saw, each on its own clock. **Sequence** is
+the panel that lays one verified case out as one list: every occurrence of every
+declared source, in the order the recorded times put them, in the lane of the
+source that holds it. It is a view, not an engine. The case is verified by the
+same reader [`readmit timeline`](../README.md) runs, and where a rules document
+is named the links beside each event are
+[`readmit correlate`](correlate.md)'s own `readmit-correlation/v1` report over
+the same case and the same rules. Nothing is correlated here, and nothing can be
+correlated here that a declared rule did not produce.
+
+Naming a rules document is optional and there is no default rule set, for the
+reason [there is none on the command line](correlate.md#there-is-no-default-rule-set):
+asked without one, the sequence shows what the evidence itself recorded and
+says that no rule was applied. A rules document is an ordinary file of the open
+workspace, so the panel offers the workspace's files and the rules reader
+refuses the ones that are not one.
+
+A sequence writes nothing at all, is bound to the identity the window verified
+for the open case, and re-reads the case and the rules for every window, for the
+same reason the grid re-checks its case and index.
+
+### What places an event, and what does not
+
+| The case recorded | Where the event goes |
+| --- | --- |
+| An observed time | In the one list, at that time, marked `observed` |
+| No observed time | After every event that has one, in the order its own source recorded it, marked `unknown` |
+
+Nothing with no time is interleaved among the events that have one. Sorting an
+unknown time into a position among known ones would be a precision the evidence
+does not have, which is the single thing this view exists to avoid. Two events
+recorded at the same instant keep the order the case recorded them, because
+nothing establishes another.
+
+Every lane is one declared source, including a source that holds no occurrence
+the case could read, and a lane's earliest and latest are its **own** recorded
+times. The panel states the clock assumption rather than implying it: an
+observed time is the time one capture recorded, on that machine's clock and in
+the offset it recorded; no clock is assumed to agree with another, no offset is
+corrected, and no time zone is inferred. The distance between two lanes is
+therefore not a duration, and the order of the list is not causality — one event
+following another establishes neither that it was caused by it nor that it was
+late. Explaining a retransmission, a clock mismatch or an unobserved downstream
+output is a separate delivery.
+
+### Declared and observed times
+
+An event carries both, and neither is derived from the other. The observed time
+is what the capture recorded. The declared time is what the message itself says,
+which is a claim by its sender: it is displayed only when its bytes are shaped
+like a timestamp and can be nothing else, exactly as the default
+`readmit timeline` displays the same field. A declared time that is empty,
+explicitly null, omitted or not shaped like a time is reported as that state and
+read in [the inspector](#inspecting-original-values) like every other value.
+
+### Gaps
+
+A gap is where this case stops saying what happened. Every one of them is
+something the evidence already recorded, in the evidence's own words, and each
+is counted over the whole case beside the window:
+
+| Gap | What the case does not hold |
+| --- | --- |
+| `unknown_observed_time` | No observed time, so nothing places this occurrence |
+| `unknown_declared_time` | Nothing decoded a declared time — the occurrence is unparsed, or the position is empty, explicitly null or omitted |
+| `uninterpreted_declared_time` | A declared time that is not shaped like a timestamp |
+| `unacknowledged_message` | No acknowledgement of this message in this case |
+| `unmatched_ack` | An acknowledgement naming a control ID no occurrence of its source carries |
+| `ambiguous_ack` | An acknowledgement naming a control ID more than one occurrence of its source carries |
+
+The last three are the [case bundle](case-bundle.md)'s own link kinds, so this
+panel and `readmit timeline` cannot come to disagree about which message is
+unacknowledged. None of them is a finding about the interface that produced the
+evidence: a missing acknowledgement is missing evidence, never proof that none
+was sent, and a missing booking in a partial capture stays missing evidence
+rather than becoming a proven invalid appointment.
+
+### Opening an event
+
+Opening an event selects that occurrence, so the inspector beside the panel
+reads the original message, and lists everything recorded about it:
+
+| Reference | What it means |
+| --- | --- |
+| `acknowledgement` | The case bundle's own literal control-ID match inside one source. The evidence carries it with no configuration at all |
+| `link` | A declared rule put these occurrences together, naming the rule, its operator and the configured authority where one applied |
+| `collision` | Equal keys that were never merged, with the reason and every candidate |
+| `unsupported` | A rule that could not be applied to this occurrence. It never passes: the occurrence is in no link of that rule |
+
+A link states whether it is `observed` — one occurrence's own bytes name what
+the other declares — or `inferred`, where a rule found equal keys and neither
+occurrence refers to the other. The two are never blurred together. This release
+has no analyst-added correlation and no way to override an ambiguous one, so
+every link here came from a declared rule; that is a separate delivery.
+
+A very large link is drawn as a window over its membership, with how many
+occurrences it holds beside it, so a rule that put thousands of occurrences
+together never appears as the handful of identifiers drawn beside one event.
+
+### Positions, not values
+
+An event names where the original bytes are — the occurrence, its source, its
+byte offset and size — and never carries them. The one exception is a declared
+time whose bytes can be nothing but a timestamp. No identifier value, no control
+ID and no original source path crosses this boundary; a reference names
+occurrences and rules, never the key two occurrences shared. Reading what is at
+a position is the inspector, deliberately, exactly as it is for a comparison.
+Nothing about this panel is written anywhere: not into the case, not into the
+saved filters, and not into the working session.
+
 ## Recovering after an interruption
 
 A window can be closed, lost with its process, or killed in the middle of a
@@ -982,6 +1094,28 @@ checked to hold no network call and no browser storage at all.
   [`readmit diff`](diff.md) compares all of them and both boundaries.
 - Reading a value in a comparison. A row names the positions that differ and the
   decoded state of each side; the bytes are the inspector.
+- Correlating anything in the sequence panel. Every link it shows came from a
+  declared `readmit-correlation-rules/v1` document or from the case bundle's own
+  same-source acknowledgement matching; the window computes none of its own,
+  and accepting, rejecting or adding a link with a reason is a separate
+  delivery.
+- Explaining a gap. The panel reports the gaps the evidence already records and
+  says nothing about why they are there: telling a duplicate occurrence from a
+  likely retransmission, a missing acknowledgement from an unobserved downstream
+  output, and a clock mismatch from a late message are a separate delivery, as
+  is requiring a stated observation window.
+- Ordering by a declared time, and any order other than the recorded observed
+  times with everything untimed after them. A declared time is the sender's
+  claim about itself, and ordering by it would rank sources by how well their
+  clocks agree with one another.
+- Acknowledgement stages in the sequence. A collected case records an accept
+  stage and an application stage separately; the sequence shows the occurrences
+  and the case's own acknowledgement matching, and `readmit timeline` reports
+  the stages.
+- Retaining a sequence across an interruption. The working session is one
+  bounded versioned document and it gains no member here, so which rules were
+  applied is lost with the window; laying the case out again reads and verifies
+  it from disk.
 - Ignore rules, normalization policies, a reviewed baseline, and telling input
   drift apart from target, environment and rule drift. Every difference this
   panel found is shown as it was found; those are separate deliveries.
