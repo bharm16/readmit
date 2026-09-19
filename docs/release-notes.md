@@ -13,6 +13,16 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
 
 - `diagnose` produces evidence-linked JSON/Markdown findings for the named SIU
   fixture profile, with explicit unsupported cases and capture-window limits.
+- A separately named `readmit-lifecycle-v1` profile and
+  `readmit-lifecycle-diagnosis/v1` ruleset, selected explicitly in the same
+  `readmit-diagnose-config/v1` file, add independently selectable rules for ADT
+  registration, admission, transfer, discharge, update, cancellation and merge
+  occurrences and for SIU appointment booking, rescheduling, modification,
+  cancellation and no-show occurrences. Its correlation rules are bounded
+  not-observed hypotheses over the whole verified window: they relate identities
+  within one configured namespace, never order occurrences, and run no ADT or SIU
+  state machine. Every lifecycle finding carries the observed capture window, and
+  `readmit-siu-v1` gains no member and changes no byte.
 
 - `synth` creates a reproducible synthetic SIU family with separate regression,
   cancellation, and known-invalid bundles from four explicit generator inputs.

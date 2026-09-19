@@ -564,7 +564,14 @@ fixture profile and writes matching JSON and Markdown reports. Findings distingu
 observed facts, profile violations, and hypotheses about the observed window.
 Unknown profiles/rules and unsupported messages are reported explicitly; a clean
 report is not proof of correctness. Configured assigning authorities keep equal
-identifier strings in different namespaces distinct. See [diagnosis](docs/diagnose.md)
+identifier strings in different namespaces distinct. A second named contract,
+`readmit-lifecycle-v1` with ruleset `readmit-lifecycle-diagnosis/v1`, is selected
+explicitly in the same configuration file and adds independently selectable rules
+for ADT registration, admission, transfer, discharge, update, cancellation and
+merge occurrences and for SIU appointment booking, rescheduling, modification,
+cancellation and no-show occurrences. Its correlation rules stay bounded
+not-observed hypotheses inside one configured namespace and run no ADT or SIU
+state machine. See [diagnosis](docs/diagnose.md)
 and the [shared field selector grammar](docs/selectors.md).
 
 `correlate CASE --rules FILE` links occurrences across the sources and namespaces

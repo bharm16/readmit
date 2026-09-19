@@ -204,3 +204,70 @@ func TestDiagnoseImportedWireProfilesArePrivateAndVisibleInBothReports(t *testin
 		}
 	}
 }
+
+func TestDiagnoseLifecycleRulesetIsSelectedThroughTheConfigurationFile(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "input.hl7")
+	raw, err := os.ReadFile("../testdata/fixtures/diagnose-admit.hl7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	discharge := strings.NewReplacer("A01", "A03", "DIAGNOSE-ADMIT", "DIAGNOSE-DISCHARGE", "VISIT-001", "VISIT-002").Replace(string(raw))
+	if err := os.WriteFile(source, []byte(discharge), 0600); err != nil {
+		t.Fatal(err)
+	}
+	casePath := filepath.Join(dir, "case")
+	if _, stderr, err := run(t, "capture", source, "--output", casePath); err != nil {
+		t.Fatalf("capture: %v %s", err, stderr)
+	}
+	configPath := filepath.Join(dir, "lifecycle.json")
+	configData, err := json.Marshal(diagnose.LifecycleConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, configData, 0600); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(dir, "report")
+	stdout, stderr, err := run(t, "diagnose", casePath, "--output", output, "--config", configPath)
+	if err != nil || stderr != "" || !strings.Contains(stdout, diagnose.LifecycleRuleset) {
+		t.Fatalf("diagnose: %v %q %q", err, stdout, stderr)
+	}
+	data, err := os.ReadFile(filepath.Join(output, "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	markdown, err := os.ReadFile(filepath.Join(output, "report.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report diagnose.Report
+	if err := json.Unmarshal(data, &report, json.RejectUnknownMembers(true)); err != nil {
+		t.Fatal(err)
+	}
+	if report.Schema != diagnose.Schema || report.Profile != diagnose.LifecycleProfile || len(report.Findings) != 1 {
+		t.Fatalf("lifecycle ruleset not applied: %+v", report)
+	}
+	finding := report.Findings[0]
+	if finding.RuleID != diagnose.VisitNotObserved || finding.Classification != "hypothesis" || finding.Window != report.Window.Description {
+		t.Fatalf("unbounded lifecycle finding: %+v", finding)
+	}
+	if !strings.Contains(string(markdown), finding.Summary) || !strings.Contains(string(markdown), finding.Window) {
+		t.Fatal("report formats disagree")
+	}
+	// The default SIU contract keeps its own meaning over the same evidence.
+	defaultOutput := filepath.Join(dir, "siu-report")
+	if _, stderr, err := run(t, "diagnose", casePath, "--output", defaultOutput); err != nil {
+		t.Fatalf("default diagnosis: %v %s", err, stderr)
+	}
+	defaultData, err := os.ReadFile(filepath.Join(defaultOutput, "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(defaultData), "unsupported_message_type") || strings.Contains(string(defaultData), diagnose.LifecycleRuleset) {
+		t.Fatal("default contract interpreted ADT evidence")
+	}
+	if strings.Contains(stdout+stderr+string(data)+string(markdown), "VISIT-002") || strings.Contains(stdout+stderr, casePath) {
+		t.Fatal("lifecycle diagnosis disclosed identifiers or paths")
+	}
+}

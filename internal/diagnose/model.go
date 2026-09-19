@@ -1,5 +1,6 @@
-// Package diagnose evaluates a small, named SIU fixture profile against verified
-// case evidence. Findings describe the capture window, never a complete lifecycle.
+// Package diagnose evaluates small, named fixture profiles and their rulesets
+// against verified case evidence. Findings describe the capture window, never a
+// complete lifecycle.
 package diagnose
 
 import (
@@ -20,7 +21,21 @@ const (
 	BookingNotObserved = "siu.booking-not-observed"
 )
 
+// The lifecycle ruleset is a separate named contract over ADT identity/visit and
+// SIU appointment occurrences. It never changes a byte of readmit-siu-v1.
+const (
+	LifecycleProfile           = "readmit-lifecycle-v1"
+	LifecycleRuleset           = "readmit-lifecycle-diagnosis/v1"
+	LifecycleRequiredField     = "lifecycle.required-field"
+	EventTypeMismatch          = "lifecycle.event-type-mismatch"
+	VisitNotObserved           = "lifecycle.visit-not-observed"
+	AppointmentNotObserved     = "lifecycle.appointment-not-observed"
+	MergeIdentifierNotObserved = "lifecycle.merge-identifier-not-observed"
+)
+
 var supportedRules = []string{DuplicateControl, ACKOutcome, ACKError, RequiredField, BookingNotObserved}
+
+var lifecycleRules = []string{DuplicateControl, ACKOutcome, ACKError, LifecycleRequiredField, EventTypeMismatch, VisitNotObserved, AppointmentNotObserved, MergeIdentifierNotObserved}
 
 type Namespace struct {
 	Key             string `json:"key"`

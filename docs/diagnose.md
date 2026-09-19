@@ -25,9 +25,13 @@ rerun into a new directory.
 
 ## Named support boundary
 
-The embedded profile is `readmit-siu-v1`; the ruleset is
-`readmit-siu-diagnosis/v1`. This is a readmit-authored fixture profile, **not a claim
-of HL7 v2.5.1 conformance**. It supports HL7 version `2.5.1`, SIU S12 booking, S13
+The default embedded profile is `readmit-siu-v1`; its ruleset is
+`readmit-siu-diagnosis/v1`. A separately named ADT and appointment lifecycle
+contract is described in [its own section](#the-adt-and-appointment-lifecycle-ruleset);
+neither contract is ever applied without being named in the configuration.
+
+`readmit-siu-v1` is a readmit-authored fixture profile, **not a claim of HL7 v2.5.1
+conformance**. It supports HL7 version `2.5.1`, SIU S12 booking, S13
 rescheduling, S15 cancellation, and ACK outcomes. It interprets one SCH and one PID
 and the first patient identifier repetition. Multiple SCH/PID segments are listed
 as unsupported. Missing required fields still produce profile violations.
@@ -132,5 +136,112 @@ valid configuration are reported as unsupported. Unlisted rules are not evaluate
 reports list the rules selected for evaluation. If a generated bundle declares an
 unsupported generator profile, SIU profile rules are not evaluated. Basic duplicate
 and decoded ACK facts remain independent of that generator profile.
+
+## The ADT and appointment lifecycle ruleset
+
+The SIU fixture profile above is one named contract. `readmit-lifecycle-v1`, with
+ruleset `readmit-lifecycle-diagnosis/v1`, is a **separate** readmit-authored fixture
+profile over ADT identity/visit occurrences and SIU appointment occurrences. It is
+not HL7 conformance validation, adds no member to any existing document, and changes
+no byte of `readmit-siu-v1`: the two profiles keep their own embedded definitions and
+their own rule identifiers, and nothing selects the lifecycle contract implicitly.
+Select it with the same `readmit-diagnose-config/v1` file, naming both the profile
+and the ruleset:
+
+```json
+{
+  "schema": "readmit-diagnose-config/v1",
+  "profile": "readmit-lifecycle-v1",
+  "ruleset": "readmit-lifecycle-diagnosis/v1",
+  "rules": [
+    "message.duplicate-control-id",
+    "ack.msa-outcome",
+    "ack.err-outcome",
+    "lifecycle.required-field",
+    "lifecycle.event-type-mismatch",
+    "lifecycle.visit-not-observed",
+    "lifecycle.appointment-not-observed",
+    "lifecycle.merge-identifier-not-observed"
+  ],
+  "namespaces": [
+    {"key":"site-a","namespace":"READMIT","universal_id":"","universal_id_type":""}
+  ]
+}
+```
+
+```sh
+readmit diagnose case --config lifecycle-config.json --output lifecycle-diagnosis
+```
+
+A profile and a ruleset from different contracts never combine: naming
+`readmit-siu-v1` with the lifecycle ruleset reports `unsupported_profile` and
+evaluates nothing. A rule the named ruleset does not define is `unsupported_rule`.
+An unknown ruleset reports `unsupported_ruleset` and evaluates nothing, and it hides
+no other mistake in the same file: a rule no registered ruleset defines and a profile
+no registered ruleset names are still reported. A generated bundle whose declared
+generator profile is not the named profile reports `unsupported_bundle_profile`, and
+only the message-level duplicate and ACK rules remain.
+
+The supported message types are ADT A01, A02, A03, A04, A08, A11, A13 and A40, SIU
+S12, S13, S14, S15 and S26, and ACK. Any other type or trigger is
+`unsupported_message_type`. Each ADT trigger interprets exactly one EVN, one PID and
+one PV1 segment (A40 interprets EVN, PID and MRG); a repeated interpreted segment is
+`unsupported_segment_cardinality`. Visit, appointment and prior-patient identifiers
+are read as single-repetition scalars, so an unexpected repetition is
+`unsupported_field_repetition` and that occurrence is not correlated. PID-3 keeps
+the profile's first-identifier-repetition reading: an occurrence carrying further
+patient identifier repetitions is still interpreted, but the repetitions past the
+first are not compared, that partial coverage is reported as
+`partial_identifier_repetition` with its occurrence and field, and
+`lifecycle.merge-identifier-not-observed` names the same assumption in its own
+summary.
+
+| Stable rule ID | Classification | Scope |
+| --- | --- | --- |
+| `lifecycle.required-field` | `profile_violation` | Required fields and assigning-authority presence for the named ADT or SIU trigger |
+| `lifecycle.event-type-mismatch` | `profile_violation` | EVN-1 disagrees with the MSH-9.2 trigger of the same occurrence |
+| `lifecycle.visit-not-observed` | `hypothesis` | A transfer, discharge, update or cancellation whose visit identifier has no A01/A04 anywhere in the window |
+| `lifecycle.appointment-not-observed` | `hypothesis` | An S13/S14/S15/S26 filler identifier with no S12 anywhere in the window |
+| `lifecycle.merge-identifier-not-observed` | `hypothesis` | An A40 prior patient identifier that no captured occurrence carries |
+
+Required fields are MSH-10, EVN-1, PID-3.1, PV1-2 and PV1-19.1 for the visit
+triggers; MSH-10, EVN-1, PID-3.1 and MRG-1.1 for A40; and MSH-10, SCH-1.1, SCH-2.1,
+PID-3.1 for the appointment triggers, with SCH-11.4 additionally required by S12,
+S13 and S14. As in the SIU profile, each identifier needs a complete assigning
+authority, and empty, explicit-null and omitted values stay distinct evidence
+states. `lifecycle.event-type-mismatch` reports only that two declarations inside
+one occurrence disagree; it never says which is correct and never copies either
+value into the report.
+
+### Namespace and partial-capture assumptions
+
+Every lifecycle finding carries the observed case window, so no finding can be read
+without the capture bound that produced it. The three correlation rules are
+*not-observed* hypotheses over the whole verified window: they relate identities,
+never order occurrences, so capture order, MSH-7 and import time change nothing, and
+an identical set of occurrences in any order produces identical findings. No ADT or
+SIU state machine is run and no transition is declared legal or illegal.
+
+Correlation compares `(configured namespace key, decoded identifier bytes)`. Equal
+identifier bytes under different configured keys never correlate, and mapping two
+authority tuples to one key is an explicit analyst assertion of equivalence. Each
+hypothesis summary states that equivalence comes only from the configured namespace
+mapping and that an earlier or uncaptured occurrence may exist. An identifier whose
+assigning authority is incomplete, explicitly null, or unmapped is reported as
+`unknown_assigning_authority` or `unconfigured_assigning_authority` and correlates
+with nothing; it never falls back to a global default namespace and never produces a
+hypothesis.
+
+An observed antecedent only suppresses a hypothesis. It does not prove the visit,
+appointment or identity was persisted downstream, that the captured occurrences are
+complete, or that any other field is correct.
+
+This ruleset is not the lifecycle *authoring* contract. The
+`readmit-adt-lifecycle-v1` and `readmit-siu-lifecycle-v1` profiles of
+[scenario design](scenario-design.md) decide whether a step somebody **wrote down**
+is taken or refused by a typed transition; `readmit-lifecycle-v1` decides only what
+a **captured** case does and does not contain. The two share the trigger vocabulary
+and nothing else: no transition of one is consulted by the other, and a diagnosis
+never declares an observed sequence legal or illegal.
 
 See [selectors.md](selectors.md) for the shared byte-preserving selector grammar.

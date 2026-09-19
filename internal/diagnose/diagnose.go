@@ -17,18 +17,20 @@ import (
 )
 
 type evaluator struct {
-	profile     profileDefinition
-	report      Report
-	rules       map[string]bool
-	namespaces  map[authority]string
-	unsupported map[string]bool
+	profile       profileDefinition
+	report        Report
+	rules         map[string]bool
+	namespaces    map[authority]string
+	unsupported   map[string]bool
+	requiredRule  string
+	findingWindow string
 }
 
 type message struct {
-	event   bundle.Event
-	doc     *hl7.Document
-	trigger string
-	utf8    bool
+	event         bundle.Event
+	doc           *hl7.Document
+	kind, trigger string
+	utf8          bool
 }
 
 type identity struct{ namespace, value string }
@@ -40,7 +42,8 @@ func Run(path string, config Config) (Report, error) {
 	if err := config.validate(); err != nil {
 		return Report{}, err
 	}
-	profile, err := loadProfile()
+	set, rulesetSupported := rulesetFor(config.Ruleset)
+	profile, err := set.load()
 	if err != nil {
 		return Report{}, err
 	}
@@ -48,7 +51,7 @@ func Run(path string, config Config) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	e := evaluator{profile: profile, report: Report{Schema: Schema, CaseIdentity: b.Identity, Profile: config.Profile, Ruleset: config.Ruleset, Rules: []string{}, Findings: []Finding{}, Unsupported: []Unsupported{}, Scope: "Only the listed rules of the named readmit fixture profile were examined over the stated observed case window. This is not HL7 conformance validation and is not proof of correctness. The capture may omit earlier or later events; observed times, declared message times, and import times are distinct."}, rules: make(map[string]bool), namespaces: make(map[authority]string), unsupported: make(map[string]bool)}
+	e := evaluator{profile: profile, requiredRule: set.requiredRule, report: Report{Schema: Schema, CaseIdentity: b.Identity, Profile: config.Profile, Ruleset: config.Ruleset, Rules: []string{}, Findings: []Finding{}, Unsupported: []Unsupported{}, Scope: "Only the listed rules of the named readmit fixture profile were examined over the stated observed case window. This is not HL7 conformance validation and is not proof of correctness. The capture may omit earlier or later events; observed times, declared message times, and import times are distinct."}, rules: make(map[string]bool), namespaces: make(map[authority]string), unsupported: make(map[string]bool)}
 	configJSON, err := json.Marshal(config, json.Deterministic(true))
 	if err != nil {
 		return Report{}, errors.New("cannot encode diagnosis configuration")
@@ -59,30 +62,41 @@ func Run(path string, config Config) (Report, error) {
 	for _, ns := range config.Namespaces {
 		e.namespaces[authority{ns.Namespace, ns.UniversalID, ns.UniversalIDType}] = ns.Key
 	}
+	// Without a named ruleset no rule identifier has a meaning here, so a rule is
+	// only unsupported when no registered ruleset defines it, and a profile only
+	// when no registered ruleset names it. Nothing is evaluated either way.
+	known := set.rules
+	if !rulesetSupported {
+		known = registeredRules()
+	}
 	for _, rule := range config.Rules {
-		if !slices.Contains(supportedRules, rule) {
+		if !slices.Contains(known, rule) {
 			e.unsupportedItem("unsupported_rule", "", "", "A configured rule is unsupported: "+rule)
 			continue
 		}
 		e.rules[rule] = true
 	}
-	profileSupported := config.Profile == Profile
-	if !profileSupported {
+	profileSupported := rulesetSupported && config.Profile == set.profile
+	if !registeredProfile(config.Profile) || rulesetSupported && !profileSupported {
 		e.unsupportedItem("unsupported_profile", "", "", "The configured profile is unsupported: "+config.Profile)
 	}
-	if config.Ruleset != Ruleset {
+	if !rulesetSupported {
 		e.unsupportedItem("unsupported_ruleset", "", "", "The configured ruleset is unsupported: "+config.Ruleset)
 	}
-	if !profileSupported || config.Ruleset != Ruleset {
+	if !profileSupported {
 		clear(e.rules)
 	}
-	if generator := b.Manifest.Provenance.Generator; generator != nil && generator.ProfileVersion != Profile {
-		e.unsupportedItem("unsupported_bundle_profile", "", "", "The bundle declares an unsupported generator profile; SIU profile rules were not evaluated.")
+	if generator := b.Manifest.Provenance.Generator; generator != nil && generator.ProfileVersion != set.profile {
+		e.unsupportedItem("unsupported_bundle_profile", "", "", "The bundle declares an unsupported generator profile; "+set.profileKind+" profile rules were not evaluated.")
 		profileSupported = false
-		delete(e.rules, RequiredField)
-		delete(e.rules, BookingNotObserved)
+		for _, rule := range set.profileRules {
+			delete(e.rules, rule)
+		}
 	}
-	for _, rule := range supportedRules {
+	if set.statesWindow {
+		e.findingWindow = e.report.Window.Description
+	}
+	for _, rule := range set.rules {
 		if e.rules[rule] {
 			e.report.Rules = append(e.report.Rules, rule)
 		}
@@ -142,23 +156,28 @@ func Run(path string, config Config) (Report, error) {
 			continue
 		}
 		trigger, triggerOK := e.text(m, "MSH-9.2")
-		_, supportedTrigger := e.profile.trigger(trigger)
-		if !kindOK || kind != "SIU" || !triggerOK || !supportedTrigger {
-			e.unsupportedItem("unsupported_message_type", event.ID, "MSH-9", "Supported message types are SIU S12, S13, S15 and ACK in the fixture profile.")
+		definition, supportedTrigger := e.profile.trigger(kind, trigger)
+		if !kindOK || !triggerOK || !supportedTrigger {
+			e.unsupportedItem("unsupported_message_type", event.ID, "MSH-9", "Supported message types are "+e.profile.messageTypes()+" and ACK in the fixture profile.")
 			continue
 		}
-		m.trigger = trigger
+		m.kind, m.trigger = kind, trigger
 		if !profileSupported || !wireProfileSupported {
 			continue
 		}
-		if m.segmentCount("SCH") > 1 || m.segmentCount("PID") > 1 {
-			e.unsupportedItem("unsupported_segment_cardinality", event.ID, "", "The fixture profile supports exactly one SCH and one PID segment.")
+		if segments := definition.segments(); m.repeatsAny(segments) {
+			e.unsupportedItem("unsupported_segment_cardinality", event.ID, "", "The fixture profile supports exactly one "+strings.Join(segments, " and one ")+" segment.")
 			continue
 		}
 		e.required(m)
-		_, placerSupported := e.value(m, "SCH-1")
-		_, fillerSupported := e.value(m, "SCH-2")
-		if !placerSupported || !fillerSupported {
+		e.eventType(m)
+		scalarsSupported := true
+		for _, field := range definition.ScalarFields {
+			if _, supported := e.value(m, field); !supported {
+				scalarsSupported = false
+			}
+		}
+		if !scalarsSupported {
 			continue
 		}
 		messages = append(messages, m)
@@ -170,9 +189,7 @@ func Run(path string, config Config) (Report, error) {
 			}
 		}
 	}
-	if e.rules[BookingNotObserved] && profileSupported {
-		e.bookings(messages)
-	}
+	e.correlate(messages)
 	if len(e.report.Findings) == 0 {
 		e.report.NoFindings = fmt.Sprintf("No findings were produced by the listed rules in ruleset %s for profile %s over %s This is not proof of correctness; unsupported items were not evaluated.", e.report.Ruleset, e.report.Profile, e.report.Window.Description)
 	}
@@ -266,10 +283,10 @@ func (e *evaluator) finding(rule, class, summary, window string, refs ...Evidenc
 }
 
 func (e *evaluator) required(m message) {
-	if !e.rules[RequiredField] {
+	if !e.rules[e.requiredRule] {
 		return
 	}
-	trigger, _ := e.profile.trigger(m.trigger)
+	trigger, _ := e.profile.trigger(m.kind, m.trigger)
 	paths := trigger.RequiredFields
 	for _, path := range paths {
 		v, supported := e.value(m, path)
@@ -277,14 +294,14 @@ func (e *evaluator) required(m message) {
 			continue
 		}
 		if v.State != hl7.Present {
-			e.finding(RequiredField, "profile_violation", fmt.Sprintf("Profile %s requires %s for SIU %s; the captured field is %s.", Profile, path, m.trigger, v.State), "", m.evidence(path))
+			e.finding(e.requiredRule, "profile_violation", fmt.Sprintf("Profile %s requires %s for %s %s; the captured field is %s.", e.profile.Profile, path, m.kind, m.trigger, v.State), e.findingWindow, m.evidence(path))
 			continue
 		}
 		if text, ok := e.text(m, path); ok && text == "" {
-			e.finding(RequiredField, "profile_violation", fmt.Sprintf("Profile %s requires a nonempty %s for SIU %s.", Profile, path, m.trigger), "", m.evidence(path))
+			e.finding(e.requiredRule, "profile_violation", fmt.Sprintf("Profile %s requires a nonempty %s for %s %s.", e.profile.Profile, path, m.kind, m.trigger), e.findingWindow, m.evidence(path))
 		}
 	}
-	for _, paths := range e.profile.AuthorityFields {
+	for _, paths := range trigger.AuthorityFields {
 		e.authorityFor(m, paths, true)
 	}
 }
@@ -301,7 +318,7 @@ func (e *evaluator) authorityFor(m message, paths []string, reportMissing bool) 
 		}
 		if v.State == hl7.Null {
 			if reportMissing {
-				e.finding(RequiredField, "profile_violation", fmt.Sprintf("Profile %s requires an assigning authority; explicit null is not an authority.", Profile), "", m.evidence(path))
+				e.finding(e.requiredRule, "profile_violation", fmt.Sprintf("Profile %s requires an assigning authority; explicit null is not an authority.", e.profile.Profile), e.findingWindow, m.evidence(path))
 			}
 			e.unsupportedItem("unknown_assigning_authority", m.event.ID, path, "Explicit-null assigning authority cannot be used for correlation.")
 			return "", false
@@ -316,7 +333,7 @@ func (e *evaluator) authorityFor(m message, paths []string, reportMissing bool) 
 	}
 	if parts[0] == "" && parts[1] == "" || (parts[1] == "") != (parts[2] == "") {
 		if reportMissing {
-			e.finding(RequiredField, "profile_violation", fmt.Sprintf("Profile %s requires an assigning authority (namespace or universal identifier and type).", Profile), "", m.evidence(paths[0]), m.evidence(paths[1]), m.evidence(paths[2]))
+			e.finding(e.requiredRule, "profile_violation", fmt.Sprintf("Profile %s requires an assigning authority (namespace or universal identifier and type).", e.profile.Profile), e.findingWindow, m.evidence(paths[0]), m.evidence(paths[1]), m.evidence(paths[2]))
 		}
 		e.unsupportedItem("unknown_assigning_authority", m.event.ID, paths[0], "The assigning authority is missing or incomplete; identifier correlation was not evaluated.")
 		return "", false
@@ -328,38 +345,13 @@ func (e *evaluator) authorityFor(m message, paths []string, reportMissing bool) 
 	return key, ok
 }
 
-func (e *evaluator) filler(m message) (identity, bool) {
-	value, ok := e.text(m, "SCH-2.1")
-	if !ok || value == "" {
-		return identity{}, false
-	}
-	ns, ok := e.authorityFor(m, []string{"SCH-2.2", "SCH-2.3", "SCH-2.4"}, false)
-	return identity{ns, value}, ok
-}
-
-func (e *evaluator) bookings(messages []message) {
-	bookings := make(map[identity]bool)
-	keys := make(map[string]identity)
-	for _, m := range messages {
-		key, ok := e.filler(m)
-		if !ok {
-			continue
-		}
-		keys[m.event.ID] = key
-		if m.trigger == "S12" {
-			bookings[key] = true
+func (m message) repeatsAny(ids []string) bool {
+	for _, id := range ids {
+		if m.segmentCount(id) > 1 {
+			return true
 		}
 	}
-	for _, m := range messages {
-		if m.trigger == "S12" {
-			continue
-		}
-		key, ok := keys[m.event.ID]
-		if !ok || bookings[key] {
-			continue
-		}
-		e.finding(BookingNotObserved, "hypothesis", "No corresponding S12 booking for this filler identifier in the same configured namespace was found in the observed case window. An earlier or uncaptured booking may exist.", e.report.Window.Description, m.evidence("MSH-9.2"), m.evidence("SCH-2.1"), m.evidence("SCH-2.2"), m.evidence("SCH-2.3"), m.evidence("SCH-2.4"))
-	}
+	return false
 }
 
 // value owns support checks before either field-state reasoning or decoding.
