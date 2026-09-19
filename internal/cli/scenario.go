@@ -9,6 +9,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/scenario"
 	"github.com/bharm16/readmit/internal/scenariogen"
+	"github.com/bharm16/readmit/internal/scenariolibrary"
 	"github.com/spf13/cobra"
 )
 
@@ -61,7 +62,24 @@ func scenarioCommand(ran *bool) *cobra.Command {
 		},
 	}
 	generate.Flags().StringVar(&output, "output", "", "New directory for streams and their generator record")
-	command.AddCommand(preview, generate)
+	library := &cobra.Command{Use: "check-library LIBRARY EXPECTATIONS", Short: "Check a pinned scenario against independent fixture expectations", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		*ran = true
+		l, err := readInputFile(args[0], scenariolibrary.MaxBytes)
+		if err != nil {
+			return err
+		}
+		e, err := readInputFile(args[1], scenariolibrary.MaxBytes)
+		if err != nil {
+			return err
+		}
+		result, err := scenariolibrary.Check(cmd.Context(), l, e)
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Fixture checks passed: %d streams, %d fields. External target outcomes: unverified.\n", result.Streams, result.Fields)
+		return err
+	}}
+	command.AddCommand(preview, generate, library)
 	return command
 }
 

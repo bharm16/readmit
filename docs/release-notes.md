@@ -5,6 +5,9 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   dependencies through the durable scheduler. Skips never count as passes;
   cancellation preserves uncertain delivery for read-only recovery.
 
+- `scenario check-library` verifies separately versioned template plans against
+  independently authored lifecycle and wire expectations. The shipped SIU
+  cancellation/booking oracle covers two streams; target outcomes remain unverified.
 - Desktop canonical test import, full-document editing and new-file export retain
   all supported v1 clauses and exact reviewed bytes. The shared CLI reader
   rejects unsupported schemas/operators; desktop and CLI verdict parity is

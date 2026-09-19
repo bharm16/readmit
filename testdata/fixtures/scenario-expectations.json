@@ -1,0 +1,120 @@
+{
+  "schema": "readmit-scenario-expectations/v1",
+  "id": "siu-wire-oracle",
+  "version": "1",
+  "template": "siu-cancel-book",
+  "template_version": "1",
+  "plan_sha256": "8da8dd5e30cc9f7765471e240ab2de7f29da65238f2b435a080da03b5caf53f2",
+  "provenance": "Readmit-authored literal fixture: cancellation from none is refused and preserves none; booking then reaches booked. Wire assertions transcribed from the documented finite mapping. No clinical or external-target authority.",
+  "lifecycle": [
+    {
+      "step": "cancel-before-anything-was-booked",
+      "outcome": "refused",
+      "from": "none",
+      "to": "none"
+    },
+    {
+      "step": "book",
+      "outcome": "accepted",
+      "from": "none",
+      "to": "booked"
+    }
+  ],
+  "streams": [
+    {
+      "row": "synthetic",
+      "variant": "baseline",
+      "messages": [
+        {
+          "step": "cancel-before-anything-was-booked",
+          "after": "0s",
+          "duplicate": false,
+          "fields": [
+            {
+              "selector": "MSH-9",
+              "state": "present",
+              "hex": "5349555e533135"
+            },
+            {
+              "selector": "PID-3",
+              "state": "present",
+              "hex": "53594e54482d50415449454e542d415e5e5e524541444d4954"
+            },
+            {
+              "selector": "PID-5",
+              "state": "present",
+              "hex": "53594e544845544943"
+            }
+          ]
+        },
+        {
+          "step": "book",
+          "after": "1m0s",
+          "duplicate": false,
+          "fields": [
+            {
+              "selector": "MSH-9",
+              "state": "present",
+              "hex": "5349555e533132"
+            },
+            {
+              "selector": "MSH-7",
+              "state": "present",
+              "hex": "32303236303130313132303130302b30303030"
+            },
+            {
+              "selector": "PID-5",
+              "state": "present",
+              "hex": "53594e544845544943"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "row": "synthetic",
+      "variant": "missing",
+      "messages": [
+        {
+          "step": "cancel-before-anything-was-booked",
+          "after": "0s",
+          "duplicate": false,
+          "fields": [
+            {
+              "selector": "MSH-9",
+              "state": "present",
+              "hex": "5349555e533135"
+            },
+            {
+              "selector": "PID-3",
+              "state": "present",
+              "hex": "53594e54482d50415449454e542d415e5e5e524541444d4954"
+            },
+            {
+              "selector": "PID-5",
+              "state": "present",
+              "hex": "53594e544845544943"
+            }
+          ]
+        },
+        {
+          "step": "book",
+          "after": "1m0s",
+          "duplicate": false,
+          "fields": [
+            {
+              "selector": "MSH-9",
+              "state": "present",
+              "hex": "5349555e533132"
+            },
+            {
+              "selector": "PID-5",
+              "state": "omitted",
+              "hex": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
