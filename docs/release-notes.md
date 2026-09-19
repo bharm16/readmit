@@ -565,6 +565,37 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   from a run, approving them, previewing what one inspects, and importing or
   editing an existing spec remain separate deliveries.
 
+- `observe collect` observes a **downstream HL7 capture** and binds what it holds
+  to what a run produced, so a regression assertion can inspect the system
+  actually under test instead of a readmit-only appointment ledger. A
+  `readmit-observation-source/v2` document declares the sealed case a receiver
+  retained, the occurrence kinds in scope, the bound on what one read may take,
+  and one shared field selector naming the position the record key sits at —
+  `SCH-1.1`, `MSA-2` — which is both the whole mapping from what the run
+  produced to what the downstream system received and the whole of what leaves
+  the capture. Nothing is asked of the system under test: no acknowledgement
+  receipt, no ledger export and no readmit-specific message, and the fixture
+  receiver's `appointment-ledger` boundary is neither used nor needed. The
+  capture is opened through the one verifying case reader and never written to;
+  the snapshot names its `identity.sha256` marker rather than copying evidence
+  readmit already retained. A capture states its age from the times it recorded, and
+  because it is an ordered log rather than one state of one age the watermark is
+  applied to both ends of what it covers: one reaching back past the window is
+  stale rather than counted, because counting the earlier occurrences would
+  attribute state that was already there to the run and dropping them would
+  decide the count by a filter the retained record cannot show. The completion
+  rule is the source-neutral one every other collector is held to, and a capture
+  that is absent, that does not
+  verify, that is past its declared occurrence bound, that is stale, that holds
+  an occurrence nobody could parse or that does not hold the declared position
+  each produce a named execution error rather than a passing absence assertion.
+  The capture transport is a new version string, not a member on the contract
+  that shipped: `readmit-observation-source/v1` is still read, still refuses a
+  `capture` member, and `readmit-observation-window/v1`,
+  `readmit-observation-completion/v1`, `readmit-observation-evidence/v1`,
+  `readmit-observation/v1` and every case contract gain no member and change no
+  byte.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is

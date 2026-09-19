@@ -82,5 +82,10 @@ func anchor(source Source, directory string) Source {
 		endpoint.CAFile = artifactpath.JoinReference(directory, endpoint.CAFile)
 		source.HTTP = &endpoint
 	}
+	if source.Capture != nil && source.Capture.Path != "" {
+		capture := *source.Capture
+		capture.Path = artifactpath.JoinReference(directory, capture.Path)
+		source.Capture = &capture
+	}
 	return source
 }

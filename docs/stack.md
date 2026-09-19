@@ -146,12 +146,20 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
   source kind are each execution errors that observed nothing. State that
   existed before the window opened is never evidence that the run produced it,
   and a window declared over an unknown prior state can never attribute one.
-- A `readmit-observation-source/v1` document says how one source is reached and
-  how its output is read. `internal/observesource` is the first source-specific
-  collector: a bounded JSON, CSV, XML or text export on disk, and a bounded read
-  of an approved HTTPS API. It fills in the slots the window contracts already
-  declare — sample status, evidence identity, correlation — rather than adding a
-  parallel set, so the collectors still to come report the same way.
+- A `readmit-observation-source/v2` document says how one source is reached and
+  how its output is read, and `readmit-observation-source/v1` is still read
+  unchanged. `internal/observesource` is the source-specific collector: a
+  bounded JSON, CSV, XML or text export on disk, a bounded read of an approved
+  HTTPS API, and a downstream HL7 capture read back from the case a receiver
+  sealed. It fills in the slots the window contracts already declare — sample
+  status, evidence identity, correlation — rather than adding a parallel set, so
+  the database collector still to come reports the same way.
+- A downstream capture is observed under one shared field selector naming the
+  position its record key sits at, which is the same position vocabulary a
+  correlation rule declares and carries the same disclaimer: reading a position
+  asserts nothing about its HL7 meaning. Nothing is asked of the system under
+  test — no acknowledgement receipt and no ledger export — and the capture is
+  opened through the one verifying case reader and never written to.
 - An export is divided by `internal/importer`'s own envelope readers under the
   bounds a [mapping recipe](mapping.md) is already held to. There is no second
   parser: the CSV and XML traps that would rewrite an HL7 payload's bytes are

@@ -401,10 +401,13 @@ was already there when the window opened is never evidence that the run produced
 it.
 
 `observe collect SOURCE --window WINDOW --out NEW_RECORD --snapshot NEW_DIRECTORY`
-is the first source-specific collector. A `readmit-observation-source/v1`
-document declares a bounded JSON, CSV, XML or text export on disk, or a bounded
-read of an approved HTTPS API, together with the envelope the output is carried
-in and the locator of the key that identifies one record. The export readers are
+is the source-specific collector. A `readmit-observation-source/v2` document
+declares a bounded JSON, CSV, XML or text export on disk, a bounded read of an
+approved HTTPS API, or a downstream HL7 capture readmit already retained,
+together with the envelope the output is carried in and the locator of the key
+that identifies one record. `readmit-observation-source/v1` is still read and
+still means what it meant: the capture transport is a new version string, not a
+member added to the one that shipped. The export readers are
 the ones a [mapping recipe](docs/mapping.md) already uses, so an export readmit
 can import is an export readmit can observe. Every observation states how old
 the material it read is: a cached response carrying an age, and an export older
@@ -416,6 +419,22 @@ answer that was already given. A disabled collector, a stale read, a truncated
 export, a lost connection, an unauthorized read and an ambiguous response each
 produce a named execution error, never a passing absence assertion. The original
 material each read observed is retained unchanged beside the record.
+
+A `downstream-capture` source is how a regression assertion inspects the system
+actually under test rather than a readmit-only appointment ledger. The
+downstream system accepts HL7 the way it always did, [`collect`](docs/collect.md)
+retains what it was sent, and the observation reads that sealed case under one
+[shared field selector](docs/selectors.md) — `SCH-1.1`, `MSA-2` — naming the
+position that carries the key. That selector is the whole mapping from what the
+run produced to what the downstream system received, and the whole of what
+leaves the capture. Nothing is asked of the system under test: no
+acknowledgement receipt, no ledger export, no readmit-specific message. The
+capture is opened through the same verifying case reader every other command
+uses and is never written to, the declared occurrence kinds decide what a record
+is, and a capture that is absent, that does not verify, that is past its
+declared occurrence bound, that holds an occurrence nobody could parse or that
+does not hold the declared position each produce a named execution error rather
+than a passing absence assertion.
 See [trustworthy observation windows](docs/observe.md).
 
 `replay CASE --target CONFIG` previews a replay without opening a connection.

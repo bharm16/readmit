@@ -24,8 +24,11 @@ func newReader(ctx context.Context, source Source, retained *snapshot, options O
 	if err != nil {
 		return nil, errors.New("a freshness bound is a positive duration of at most one week")
 	}
-	if source.Observes.Kind == FileExport {
-		return &fileReader{extraction: source.Extraction, export: *source.File, maxAge: maxAge}, nil
+	switch source.Observes.Kind {
+	case FileExport:
+		return &fileReader{extraction: *source.Extraction, export: *source.File, maxAge: maxAge}, nil
+	case DownstreamCapture:
+		return &captureReader{capture: *source.Capture, maxAge: maxAge}, nil
 	}
 	return newHTTPReader(ctx, source, retained, options, maxAge)
 }
@@ -110,7 +113,7 @@ func newHTTPReader(ctx context.Context, source Source, retained *snapshot, optio
 	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}}
-	return &httpReader{extraction: source.Extraction, endpoint: endpoint, client: client,
+	return &httpReader{extraction: *source.Extraction, endpoint: endpoint, client: client,
 		header: header, locator: locator, maxAge: maxAge, timeout: timeout}, nil
 }
 
@@ -235,11 +238,9 @@ func (r *httpReader) once(ctx context.Context, value *secret.Value) (attempt, bo
 	if !stated {
 		return failure(taken, observewindow.SampleAmbiguous, "the response states neither its age nor when it was generated, so how current it is has no single reading"), false
 	}
-	taken.record.StatedAge = age.String()
-	if age > r.maxAge {
+	if !dateState(&taken, taken.at.Add(-age), r.maxAge) {
 		return failure(taken, observewindow.SampleStale, "the response states an age past the declared freshness bound, so it describes state from before this window"), false
 	}
-	taken.asOf = taken.at.Add(-age)
 	taken.evidence = map[string][]byte{"body": body}
 	keys, err := divide(r.extraction, body)
 	if err != nil {
