@@ -280,8 +280,11 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
   reader and refuses the pair the moment they disagree, so a stale index cannot
   serve answers about evidence that is no longer there.
 - What is retained, in what form, and until when are three declarations with no
-  defaults. A retained decoded field is patient data and is treated as such; a
-  digest of a short value is not de-identification.
+  defaults. The one index this product builds without being asked each time is
+  the sample workspace's own, whose three declarations are fixed and published
+  in [the guided sample](guided-sample.md). A retained decoded field is patient
+  data and is treated as such; a digest of a short value is not
+  de-identification.
 - Bounded at 16 declared fields, 128 retained bytes per value and 16 MiB per
   document. Past the field or document bound the build is refused; a longer
   value keeps its first 128 bytes and is marked `truncated`.

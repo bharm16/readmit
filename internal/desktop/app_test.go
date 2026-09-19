@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/guide"
 	"github.com/bharm16/readmit/internal/project"
 )
 
@@ -68,7 +69,7 @@ func TestSampleWorkspaceIsTheFrozenSyntheticFamilyAndOpensItsCases(t *testing.T)
 	for _, artifact := range result.Workspace.Artifacts {
 		kinds[artifact.Name] = artifact
 	}
-	if len(kinds) != 4 {
+	if len(kinds) != 5 {
 		t.Fatalf("unexpected sample workspace listing: %+v", result.Workspace.Artifacts)
 	}
 	for name := range sampleIdentities {
@@ -77,10 +78,19 @@ func TestSampleWorkspaceIsTheFrozenSyntheticFamilyAndOpensItsCases(t *testing.T)
 			t.Fatalf("sample case %q was not listed as generated case evidence: %+v", name, artifact)
 		}
 	}
-	// The family completion record is not a case bundle. The listing says so
-	// rather than hiding it or implying the shell understands it.
-	if family := kinds["family.json"]; family.Kind != desktop.UnsupportedArtifact || family.Reason == "" {
-		t.Fatalf("family record was not reported as unsupported: %+v", family)
+	// The practice endpoint a test names and the index the grid reads are a
+	// configuration and a derived document, not case bundles. The listing says
+	// so rather than hiding them or implying the shell opens them.
+	for _, name := range []string{guide.TargetName, guide.IndexName} {
+		if entry := kinds[name]; entry.Kind != desktop.UnsupportedArtifact || entry.Reason == "" {
+			t.Fatalf("%s was not reported as unsupported: %+v", name, entry)
+		}
+	}
+	// The sample is a workspace rather than a family: a directory carrying the
+	// family completion record is retained evidence nothing may be written
+	// inside, and the guided sample is saved and run inside this one.
+	if _, err := os.Lstat(filepath.Join(result.Workspace.Root, "family.json")); !os.IsNotExist(err) {
+		t.Fatal("the sample workspace carries a family completion record and cannot be written in")
 	}
 
 	for name, identity := range sampleIdentities {

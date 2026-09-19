@@ -16,6 +16,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/guide"
 	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/synth"
 )
@@ -297,6 +298,22 @@ func (a *App) CreateSampleWorkspace() WorkspaceResult {
 		return probeWriteFailure(parent,
 			"this account cannot create a folder in the chosen folder",
 			"the sample workspace could not be created in the chosen folder").workspace()
+	}
+	// What synth writes is a family, and a family is retained evidence nothing
+	// may be written inside — including the test spec this window's authoring
+	// flow saves and the evidence a practice run retains. A sample nobody can
+	// work in is not a sample, so the generated cases are left exactly as they
+	// were and the directory is prepared as a workspace: the family completion
+	// record is dropped and the practice endpoint a test names is written.
+	if err := guide.PrepareWorkspace(ctx, destination); errors.Is(err, guide.ErrCannotWrite) {
+		// A folder this account cannot write is separated from the rest only
+		// after the write has already failed, and the probe never touches the
+		// generated evidence.
+		return probeWriteFailure(parent,
+			"this account cannot write into the chosen folder",
+			"the sample workspace could not be completed in the chosen folder; incomplete output is retained").workspace()
+	} else if err != nil {
+		return WorkspaceResult{State: Failed, Reason: err.Error()}
 	}
 	return a.openWorkspace(ctx, destination)
 }

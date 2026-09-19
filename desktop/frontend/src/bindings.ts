@@ -414,6 +414,8 @@ interface Facade {
   AuthorTest(request: TestRequest): Promise<TestResult>;
   SaveTest(request: TestRequest): Promise<TestResult>;
   Compare(request: CompareRequest): Promise<CompareResult>;
+  Guide(workspace: string): Promise<GuideResult>;
+  RunPractice(request: PracticeRequest): Promise<PracticeResult>;
 }
 
 declare global {
@@ -1021,4 +1023,96 @@ export interface CompareResult {
  * comparison found is suppressed before the window draws it. */
 export function compare(request: CompareRequest): Promise<CompareResult> {
   return guard(() => facade().Compare(request), { state: "failed" });
+}
+
+/** The two steps of the guided sample that run the saved test. They are the
+ * only trials a practice run takes. */
+export type GuideTrialId = "baseline" | "post-fix";
+
+/** The steps of the guided sample, in the order they are walked. */
+export type GuideStepId = "sample" | "test" | GuideTrialId;
+
+/** One step of the guided sample and what the open folder says about it. Nothing
+ * here is remembered: `done` is true because the evidence that step produces is
+ * on disk and the reader that owns it accepts it, so closing the window and
+ * reopening the folder reports what that folder really holds. */
+export interface GuideStep {
+  id: GuideStepId;
+  title: string;
+  detail: string;
+  done: boolean;
+  /** The workspace entry that shows the step was done, when it was. */
+  entry?: string;
+  /** The verdict the retained result recorded, for the two run steps. */
+  status?: string;
+}
+
+/** The guided sample read out of one folder. `case`, `identity` and `spec` name
+ * the evidence the later steps are bound to, and `next` is the step to perform
+ * now, absent once every step is done. */
+export interface Guide {
+  case?: string;
+  identity?: string;
+  spec?: string;
+  steps: GuideStep[];
+  next?: GuideStepId;
+}
+
+export interface GuideResult {
+  state: State;
+  reason?: string;
+  guide?: Guide;
+}
+
+/** One practice run: the saved spec to execute, which of the two run steps it
+ * is, and the new entry the run is written into. The trial selects the built-in
+ * fixture's behaviour and nothing else, so the two runs differ by the defect
+ * rather than by the test. */
+export interface PracticeRequest {
+  workspace: string;
+  spec: string;
+  trial: GuideTrialId;
+  output: string;
+}
+
+/** One expectation of the executed spec and what the run decided about it.
+ * There is no value here, deliberately: reading a value out of evidence is the
+ * inspector, and a practice run is not a second way to display one. */
+export interface PracticeAssertion {
+  id: string;
+  operator: string;
+  status: string;
+}
+
+/** What one practice run produced. `changed_bindings` names every member of the
+ * saved spec the run rebound onto its own directory, because a run that
+ * silently repointed a test would be a run nobody could trust. */
+export interface Practice {
+  output: string;
+  trial: GuideTrialId;
+  status: string;
+  identity: string;
+  spec_identity: string;
+  assertions: PracticeAssertion[];
+  changed_bindings: string[];
+}
+
+export interface PracticeResult {
+  state: State;
+  reason?: string;
+  practice?: Practice;
+}
+
+/** Reports the guided sample over the open workspace: the steps, what the folder
+ * shows about each, and the step to perform next. It reads and writes nothing. */
+export function guide(workspace: string): Promise<GuideResult> {
+  return guard(() => facade().Guide(workspace), { state: "failed" });
+}
+
+/** Executes a saved regression test against the built-in practice receiver and
+ * writes the run into one new entry of the open workspace. This is the only
+ * operation in the window that sends, and it sends over a loopback port the
+ * receiver binds in this process; no other host is reachable from it. */
+export function runPractice(request: PracticeRequest): Promise<PracticeResult> {
+  return guard(() => facade().RunPractice(request), { state: "failed" });
 }

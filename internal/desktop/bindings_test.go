@@ -9,6 +9,7 @@ import (
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/diff"
 	"github.com/bharm16/readmit/internal/grid"
+	"github.com/bharm16/readmit/internal/guide"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/reproducer"
@@ -120,6 +121,13 @@ func TestFrontendBindingsDeclareEveryResultMember(t *testing.T) {
 		reflect.TypeOf(diff.Summary{}),
 		reflect.TypeOf(diff.SegmentChange{}),
 		reflect.TypeOf(diff.Unsupported{}),
+		reflect.TypeOf(desktop.GuideResult{}),
+		reflect.TypeOf(desktop.PracticeRequest{}),
+		reflect.TypeOf(desktop.PracticeResult{}),
+		reflect.TypeOf(desktop.Practice{}),
+		reflect.TypeOf(desktop.PracticeAssertion{}),
+		reflect.TypeOf(guide.Progress{}),
+		reflect.TypeOf(guide.Step{}),
 		reflect.TypeOf(desktop.InspectRequest{}),
 		reflect.TypeOf(desktop.InspectionResult{}),
 		reflect.TypeOf(desktop.Inspection{}),

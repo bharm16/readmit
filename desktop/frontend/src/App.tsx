@@ -20,6 +20,11 @@ import {
   type ReproducerResult,
   type ReproducerStep,
   filters as readFilters,
+  guide as readGuide,
+  runPractice,
+  type GuideResult,
+  type GuideTrialId,
+  type PracticeResult,
   openCase,
   openGrid,
   inspectOccurrence,
@@ -51,6 +56,7 @@ import {
   type WorkspaceResult,
 } from "./bindings";
 import { Comparison, COMPARISON_WINDOW } from "./Comparison";
+import { GuidedSample } from "./GuidedSample";
 import { Inspector } from "./Inspector";
 import { Reproducer } from "./Reproducer";
 import { TestAuthoring } from "./TestAuthoring";
@@ -75,7 +81,8 @@ type Running =
   | "inspect"
   | "reproducer"
   | "authoring"
-  | "comparison";
+  | "comparison"
+  | "practice";
 
 export default function App() {
   const [described, setDescribed] = useState<Shell | null>(null);
@@ -95,6 +102,8 @@ export default function App() {
   const [reproducerResult, setReproducerResult] = useState<ReproducerResult | null>(null);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [comparisonResult, setComparisonResult] = useState<CompareResult | null>(null);
+  const [guideResult, setGuideResult] = useState<GuideResult | null>(null);
+  const [practiceResult, setPracticeResult] = useState<PracticeResult | null>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -130,6 +139,13 @@ export default function App() {
 
   const refreshRecent = useCallback(async () => {
     setRecent(await recentWorkspaces());
+  }, []);
+
+  // The guided sample is read back out of the open folder rather than
+  // remembered, so it is re-read whenever that folder or what it holds may have
+  // changed. Nothing about where somebody is in it lives in this window.
+  const refreshGuide = useCallback(async (folder: string | null) => {
+    setGuideResult(folder ? await readGuide(folder) : null);
   }, []);
 
   useEffect(() => {
@@ -253,12 +269,15 @@ export default function App() {
         setSelectedOccurrence(null);
         setSelected(null);
         setWorkspace(null);
-        setWorkspace(await operation());
+        const result = await operation();
+        setWorkspace(result);
+        setPracticeResult(null);
+        await refreshGuide(result.workspace?.root ?? null);
       });
       await refreshRecent();
       focusRegion("navigation");
     },
-    [focusRegion, operate, refreshRecent],
+    [focusRegion, operate, refreshGuide, refreshRecent],
   );
 
   const verifyCase = useCallback(
@@ -277,6 +296,22 @@ export default function App() {
       focusRegion("inspector");
     },
     [focusRegion, operate],
+  );
+
+  // One practice run of the guided sample. It is the one operation in this
+  // window that sends, so Cancel is offered while it runs, and what the folder
+  // then holds is read back rather than assumed from the result.
+  const practise = useCallback(
+    async (trial: GuideTrialId, output: string) => {
+      if (!root || !guideResult?.guide?.spec) return;
+      const spec = guideResult.guide.spec;
+      await operate("practice", async () => {
+        setPracticeResult(null);
+        setPracticeResult(await runPractice({ workspace: root, spec, trial, output }));
+      });
+      await refreshGuide(root);
+    },
+    [guideResult, operate, refreshGuide, root],
   );
 
   const readProject = useCallback(
@@ -413,9 +448,14 @@ export default function App() {
         // is shown without replacing the test a person is working on.
         const kept = testResult?.test;
         setTestResult(result.test || !kept ? result : { ...result, test: kept });
+        // A saved spec is a step of the guided sample, so what that folder now
+        // holds is read again rather than inferred from this call succeeding.
+        if (result.test?.output) {
+          await refreshGuide(root);
+        }
       });
     },
-    [gridResult, operate, root, testResult],
+    [gridResult, operate, refreshGuide, root, testResult],
   );
 
   // Changing the filter changes what the open grid is showing, so the window is
@@ -641,6 +681,18 @@ export default function App() {
     ),
     navigation: (
       <>
+        <GuidedSample
+          result={guideResult}
+          practice={practiceResult}
+          busy={busy}
+          progress={running === "practice" ? "Running the saved test against the practice receiver." : null}
+          indicators={indicators}
+          onCreateSample={actions["create-sample-workspace"]}
+          onOpenCase={(name: string) => {
+            if (root) void verifyCase(root, name);
+          }}
+          onRun={(trial, output) => void practise(trial, output)}
+        />
         <Report
           indicators={indicators}
           progress={running === "workspace" ? "Opening the folder." : null}

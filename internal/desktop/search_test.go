@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/guide"
 )
 
 // searchable is the sample workspace with the frozen regression case also
@@ -78,7 +79,7 @@ func TestSearchNavigatesDeclaredEntriesAndRegisteredCases(t *testing.T) {
 		names = append(names, string(match.Kind)+":"+match.Name)
 	}
 	slices.Sort(names)
-	if !slices.Equal(names, []string{"artifact:regression", "registered_case:regression"}) {
+	if !slices.Equal(names, []string{"artifact:regression", "artifact:" + guide.IndexName, "registered_case:regression"}) {
 		t.Fatalf("the regression bundle was not named once as an entry and once as a registered case: %v", names)
 	}
 }
@@ -109,12 +110,12 @@ func TestSearchDeclaresVerifiesNothingAndOpensNothing(t *testing.T) {
 	app := newApp(t, &chooser{folder: t.TempDir()})
 	root := searchable(t, app)
 
-	// The family completion record is not evidence. Search still names it,
-	// because hiding an entry would imply the folder holds only what matched.
-	family := app.Search(root, "family")
-	match, found := matched(family, desktop.ArtifactMatch, "family.json")
+	// The practice endpoint is a configuration, not evidence. Search still names
+	// it, because hiding an entry would imply the folder holds only what matched.
+	practice := app.Search(root, "practice")
+	match, found := matched(practice, desktop.ArtifactMatch, guide.TargetName)
 	if !found || match.Label == "" {
-		t.Fatalf("an unsupported entry was hidden from search: %+v", family)
+		t.Fatalf("an unsupported entry was hidden from search: %+v", practice)
 	}
 
 	// The deliberately invalid bundle declares itself as a case and is found as
@@ -192,7 +193,7 @@ func FuzzSearchQuery(f *testing.F) {
 		f.Fatalf("sample workspace: %+v", created)
 	}
 	root := created.Workspace.Root
-	declared := map[string]bool{"regression": true, "cancellation": true, "invalid": true, "family.json": true, "project.json": true}
+	declared := map[string]bool{"regression": true, "cancellation": true, "invalid": true, "project.json": true, guide.TargetName: true, guide.IndexName: true}
 	document := `{"schema":"readmit-project/v1","settings":{"title":"Epic scheduling interface",` +
 		`"default_owner":"integration-team","default_interface_version":"siu-2.5.1-v1"},` +
 		`"interface_versions":["siu-2.5.1-v1"],"cases":[` + registeredRegression + "]}\n"

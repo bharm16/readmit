@@ -1,0 +1,42 @@
+.guided {
+  border-bottom: 1px solid currentColor;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+}
+.guided .steps {
+  padding-left: 1.2rem;
+}
+.guided .steps li {
+  padding: 0.3rem 0;
+}
+/* The step to perform next is marked with a rule and heavier text, never by
+   colour alone: the badge beside it carries the meaning on its own. */
+.guided .steps li[aria-current="step"] {
+  font-weight: bold;
+  border-inline-start: 0.25rem solid currentColor;
+  padding-inline-start: 0.5rem;
+  margin-inline-start: -0.75rem;
+}
+.guided .steps .detail,
+.guided .hint,
+.guided .rebound {
+  font-weight: normal;
+  margin: 0.2rem 0;
+}
+.guided .actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.guided .expectations {
+  list-style: none;
+  padding-left: 0;
+}
+.guided .expectations li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+}
