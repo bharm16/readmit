@@ -46,7 +46,7 @@ func FuzzProfilePackDocument(f *testing.F) {
 	}
 	versions := profilepack.HL7Versions()
 	families := profilepack.Families()
-	levels := []profilepack.Level{profilepack.LevelParse, profilepack.LevelLabels, profilepack.LevelStructural, profilepack.LevelWorkflow}
+	levels := profilepack.Levels()
 	f.Fuzz(func(t *testing.T, data []byte) {
 		pack, err := profilepack.Decode(data)
 		if err != nil {

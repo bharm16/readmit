@@ -337,6 +337,15 @@ func TestClosedSetsAreExactlyTheDecidedOnes(t *testing.T) {
 	if got := strings.Join(profilepack.Families(), " "); got != "ADT SIU ORM ORU" {
 		t.Fatalf("families %q", got)
 	}
+	declared := profilepack.Levels()
+	if len(declared) != 4 || declared[0] != profilepack.LevelParse || declared[1] != profilepack.LevelLabels ||
+		declared[2] != profilepack.LevelStructural || declared[3] != profilepack.LevelWorkflow {
+		t.Fatalf("levels %q", declared)
+	}
+	declared[0] = "semantic"
+	if profilepack.Levels()[0] != profilepack.LevelParse {
+		t.Fatal("a caller could edit the closed set")
+	}
 	versions := profilepack.HL7Versions()
 	versions[0] = "9.9"
 	if profilepack.HL7Versions()[0] != "2.3.1" {

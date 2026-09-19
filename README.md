@@ -614,6 +614,11 @@ positional labels. See [dictionary provenance](docs/dictionary-provenance.md).
 The shared `readmit-profile-pack/v1` contract describes such metadata per HL7
 version and message family with separate parse, labels, structural and workflow
 support, and no pack is bundled yet. See [profile packs](docs/profile-packs.md).
+The set of packs a release carries is a profile library: one pack answers a
+combination or nobody does, and the published matrix states all 28 combinations
+of the seven versions and four families, covered or not. No library is bundled,
+so every combination it publishes today is unknown. See
+[the profile library](docs/profile-library.md).
 A site writes its own interface contract down beside one in a
 `readmit-local-profile/v1` document: Z-segments, cardinality, conditional
 requirements, types, local code tables, assigning authorities and date

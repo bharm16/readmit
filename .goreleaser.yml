@@ -30,6 +30,7 @@ archives:
       - licenses/*
       - docs/dictionary-provenance.md
       - docs/profile-packs.md
+      - docs/profile-library.md
       - docs/local-profiles.md
       - docs/profile-versions.md
       - docs/case-bundle.md

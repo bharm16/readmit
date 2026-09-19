@@ -1,0 +1,58 @@
+{
+  "schema": "readmit-profile-pack/v1",
+  "pack": {
+    "id": "fixture-adt",
+    "version": "1"
+  },
+  "provenance": {
+    "source": {
+      "name": "readmit fixture authors",
+      "location": "testdata/fixtures/profile-pack-adt.json",
+      "revision": "1"
+    },
+    "extraction": {
+      "method": "Hand-authored field names for the fixture ADT segments; nothing was extracted from an upstream library.",
+      "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "license": {
+      "spdx": "LicenseRef-readmit-fixture",
+      "notice": "testdata/README.md"
+    },
+    "rights_review": {
+      "status": "approved",
+      "reference": "testdata/README.md"
+    }
+  },
+  "coverage": [
+    {
+      "hl7_version": "2.4",
+      "family": "ADT",
+      "parse": "supported",
+      "labels": "supported",
+      "structural": "unsupported",
+      "workflow": "unsupported"
+    },
+    {
+      "hl7_version": "2.8.2",
+      "family": "ADT",
+      "parse": "untested",
+      "labels": "unsupported",
+      "structural": "unsupported",
+      "workflow": "unsupported"
+    }
+  ],
+  "labels": [
+    {
+      "hl7_version": "2.4",
+      "segments": {
+        "EVN": {
+          "1": "Event Type Code",
+          "2": "Recorded Date/Time"
+        },
+        "PID": {
+          "3": "Patient Identifier List"
+        }
+      }
+    }
+  ]
+}
