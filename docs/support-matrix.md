@@ -105,6 +105,7 @@ runner for each target rather than on every older release in the range.
 | Field labels for MSH, MSA, ERR, PID, PV1, SCH, EVN, NTE, RGS, AIS, AIG, AIL, AIP, OBX when MSH-12 is `2.5.1` | Implemented; other versions use positional labels | [dictionary provenance](dictionary-provenance.md) |
 | Semantic profile | `readmit-siu-v1` fixture profile only: SIU S12, S13, S15 and ACK; **not HL7 conformance** | [diagnose](diagnose.md#named-support-boundary) |
 | nHapi 2.3.1 to 2.7.1 and HL7apy 2.8.2 metadata packs | Not available; selected in [D1](product-decisions.md#d1--profile-metadata-and-supported-meaning) | [ADR-0009](adr/0009-profile-packs-are-offline-metadata-with-explicit-support.md) |
+| Local interface contracts: Z-segments, cardinality, conditional requirements, types, local code tables, authorities and date handling | Implemented as a modelled and validated `readmit-local-profile/v1` document with per-rule profile/overridden/local origin; **no message is evaluated against one** | [local profiles](local-profiles.md) |
 
 ## Not available in this preview
 

@@ -401,6 +401,24 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   contains no screenshots: none has been captured from a built release yet, and
   none will be mocked. No contract changes.
 
+- A team models its own interface contract in `readmit-local-profile/v1`, read
+  and edited by `internal/localprofile`. One document pins the exact profile
+  pack and the one HL7 version and message family it constrains, and carries
+  site-defined Z-segments and constrained standard fields with a usage code, a
+  typed conditional requirement, a cardinality, a data type, a local code
+  table, an assigning authority and a date-handling rule. A typed editor adds,
+  replaces and removes each of them; every change is held to the whole contract
+  before it is kept, so a refused change leaves the profile exactly as it was,
+  reverting restores what was opened, and the document is written
+  deterministically. Resolving a profile against its pinned pack answers, per
+  rule, whether the pack declares it, the profile overrode it, the profile
+  declared it alone, or nobody did — and because `readmit-profile-pack/v1`
+  carries field labels and nothing else, every constraint is reported as local
+  with no profile backing, and an unpinned pack contributes nothing at all. No
+  message is evaluated against a profile, no profile is bundled, no command
+  reads one and no window edits one yet; `readmit-profile-pack/v1` and every
+  other existing contract gain no member and change no byte.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is

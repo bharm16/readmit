@@ -1,0 +1,43 @@
+{
+  "schema": "readmit-local-profile/v1",
+  "profile": {
+    "id": "fixture-local-siu-coded-number",
+    "version": "1"
+  },
+  "base": {
+    "pack": {
+      "id": "fixture-siu",
+      "version": "1"
+    },
+    "hl7_version": "2.5.1",
+    "family": "SIU"
+  },
+  "terminology": [
+    {
+      "id": "local-visit-reason",
+      "description": "Hand-authored codes this fixture binds to a field that carries no code, so the reader refuses it.",
+      "binding": "required",
+      "codes": [
+        {
+          "code": "ROUTINE",
+          "display": "Routine appointment"
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "id": "ZPD",
+      "description": "The site-defined patient extension this interface adds.",
+      "fields": [
+        {
+          "position": 3,
+          "name": "Local visit reason",
+          "usage": "O",
+          "type": "NM",
+          "terminology": "local-visit-reason"
+        }
+      ]
+    }
+  ]
+}
