@@ -33,8 +33,10 @@ may hold anyway. A scan is bounded by nothing the file can state, so it holds:
 - **one parsing batch**, at most 256 records or 8 MiB, decoded, counted and
   released before the next batch is read.
 
-That is the whole resident cost, and the scan reports it as `Peak resident
-bytes` beside the `Resident bound` those three add up to. **The number does not
+That is the scanner's logical retained-buffer accounting, reported as `Peak
+resident bytes` beside the `Resident bound` those three add up to. It is not
+OS process RSS: Go runtime, parser allocations and other process memory are
+measured separately by the qualification tool below. **The number does not
 move when the file gets longer.** A stream of 16,000 records reports the same
 peak as one of 2,000, and the production-size regression scans a million records
 and asserts the same bound.
@@ -224,8 +226,9 @@ project on a 16 GiB workstation, warm indexed search p95 under a second,
 ordinary navigation under 200 ms, cancellation acknowledged within two seconds.
 
 Those are **engineering targets, not measurements or customer requirements**,
-and #25 says so itself. This release does not measure them, does not compare a
-measured number against one of them, and reports no verdict about them. They are
+and #25 says so itself. The `readmit-benchmark/v1` scan document does not
+measure search, navigation or cancellation and reports no verdict about those
+targets. The separate qualification below records local measurements and gaps. They are
 recorded inside the document, next to the note that says what they are, so a
 number lifted out of the file cannot arrive somewhere else as a measurement. A
 benchmark whose `note` says anything else is refused by the reader.
@@ -267,9 +270,9 @@ corpus, on this machine, under those bounds.
   bounds are named, not widened.
 - **No index, no case, no project.** A scan builds no catalogue and writes no
   artifact but the benchmark you asked for.
-- **No measurement of the proposed targets**, and no verdict against them. There
-  is no published run on declared reference hardware in this release; what
-  `--report` writes is the run you did, on the machine you did it on.
+- **No passing product-envelope claim.** The local measurements below are
+  limited to the observed machine and stated fixtures. No reference-hardware
+  or native webview acceptance is established; `--report` records your run.
 - **No detection.** Framing, boundary, terminator and encoding are declared, the
   way an import declares them.
 - **No folder, archive or collected stream.** A scan reads one regular file.
@@ -280,3 +283,197 @@ corpus, on this machine, under those bounds.
   [`import`](import.md).
 - **No desktop surface.** The corpus commands are a command-line interface. The
   desktop shell renders a window of a case it has an index for.
+
+## Reproducing the local performance and interruption qualification
+
+The proposed product envelope is **not met**. A scan of a 5 GiB stream does not
+establish a 5 GiB project, and facade navigation already exceeds the proposed
+200 ms target on the local run below. No timing threshold turns unknown or
+unsupported behavior into a pass. These are development measurements, not
+customer requirements or candidate release acceptance.
+
+From a checkout with the pinned compiler and Python standard library:
+
+```sh
+CGO_ENABLED=0 go build -trimpath -o /tmp/readmit-performance ./cmd/readmit
+python3 tools/performance.py --binary /tmp/readmit-performance --large
+make test-performance
+```
+
+The tool accepts an exact CLI executable, including one extracted from a release
+archive. It hashes that executable before/after, creates only synthetic temporary
+files, independently hashes the corpus, checks the scan counted every record,
+then deletes its temporary files. `--large` additionally writes exactly 5 GiB;
+allow at least 6 GiB of free scratch space. It measures actual process peak RSS
+using macOS `/usr/bin/time -l` or Linux `/usr/bin/time -v`, not the scanner's
+logical buffer counter. It refuses missing RSS data and failed commands. Windows
+OS RSS requires a native measurement procedure; it is not synthesized from a
+Go memory counter. Hardware output contains only OS, architecture, CPU count and
+compiler. Installed RAM and SSD class need an explicit operator declaration.
+
+Five scan samples include the first scan; there is no cold-cache claim. Five
+cancellation samples send SIGINT only after the first completed parsing batch,
+require nonzero termination, the cancelled state, and no benchmark file, then
+check the corpus is unchanged. The latency is signal-to-process-exit, including
+its durable/output cleanup. Twenty desktop-facade samples follow one excluded
+warm-up, using a declared 10,000-occurrence case, 200-row window and retained-value
+index. Exact indexed search checks all 10,000 hits. Grid navigation verifies
+returned row counts and total. Nearest-rank p95 is sample 19 of 20, or the maximum
+of five; these small samples are observations, not a statistical guarantee.
+
+`make test-performance` also repeats these public behavior tests with the race
+instrumentation enabled separately from latency measurements:
+
+| Dimension | Executed proof | Scope limitation |
+| --- | --- | --- |
+| Eight parallel executions and isolation | `TestSuiteUsesActualQueueStateIsolation`: eight actual suite jobs meet at a loopback target barrier when isolated; shared-state jobs remain serial | Synthetic ACK target, not eight customer environments |
+| Cancellation | `TestSuiteCancellationPreservesUncertainDeliveryAndRefusesResume`: cancellation after target receives bytes, durable uncertainty, dependent skip, recovery and refused repeat | Local target and filesystem |
+| Network interruption | `TestSuiteNetworkBlackholeRetainsUncertaintyAndRecovers`: target reads complete send and blackholes its ACK; message timeout retains uncertainty and resume refuses | Application-level return-path blackhole; not a router/firewall partition lab |
+| Process crash | `TestSuiteProcessCrashRetainsUncertainJobWithoutStartingDependent`: actual child process killed after send, dependent never starts, recovery does not repeat | Process crash, not power loss or storage-controller failure |
+| Disk-full | `TestDiskFullDuringPayloadWriteHaltsSendsAndRecordsHowTheRunStopped` and `TestDiskFullDuringJournalWriteStopsBeforeTheSend`: bounded partial writes/ENOSPC at payload and journal boundaries | Injected write failure; not filling the user's filesystem |
+| Safe recovery | `TestTornTrailingRecordIsNeitherTerminalNorRepeatable` and `TestCleanupRemovesOnlyAStaleLease`, plus the interruption tests above | Conservative read/repeat/cleanup behavior, no automatic resend |
+
+### Native UI, reference hardware and candidate protocol
+
+Repeat the commands on each claimed native platform against the **exact packaged
+candidate**, retaining commit/tag, compiler, executable and package SHA-256,
+corpus SHA-256, all samples, OS version and generic declared RAM/storage class.
+Keep names, paths, serial numbers and other hardware identifiers out of the
+published record. Record background load and whether caches were warmed. A
+benchmark run during other CI/build work is not an isolated workstation result.
+
+Prepare that exact facade fixture in a fresh scratch directory for native UI
+qualification (the names below must not already exist):
+
+```sh
+python3 - <<'PYTHON'
+from pathlib import Path
+message = b"MSH|^~\\&|READMIT|TEST|RECV|LAB|20260101120000||SIU^S12|CTL-1|P|2.5.1\rPID|1||MRN-1^^^READMIT^MR||DOE^JANE\r"
+with Path("navigation.mllp").open("xb") as stream:
+    stream.write((b"\x0b" + message + b"\x1c\r") * 10000)
+PYTHON
+readmit import --file navigation.mllp --framing mllp --terminator cr \
+  --encoding us-ascii --direction inbound --output scale --receipt receipt.json
+readmit index build scale --output scale.index.json \
+  --field 'PID[1]-3[1]' --field 'MSA[1]-1[1]' --retain values --retain-until indefinite
+```
+
+Confirm the wire digest matches the recorded navigation corpus below. Import
+provenance is a new timestamp, so this recreates message bytes and indexed fields,
+not the exact case identity of the test fixture. Open the scratch folder in the
+native desktop and select `scale` with `scale.index.json`; record the
+initial open separately. After one warm-up, take 20 input-to-next-presented-frame
+samples while paging 200 rows, selecting an occurrence and switching panes.
+Use the native webview performance profiler with screenshots/frame boundaries;
+retain all samples and the nearest-rank p95 per action. Measure long tasks and
+whether Cancel/other controls remain responsive during a running operation.
+Measure cancellation from the user's click to the displayed terminal state, and
+verify the retained job via CLI recovery. An OpenGrid method duration or browser
+mock is not a native painted-frame duration. OpenGrid currently re-verifies the
+case and index on each window and is not interruptible; record that explicitly.
+This protocol adds no frontend test runner and does not resolve #183.
+
+On a disposable, authorized scratch volume, repeat the suite with quota/ENOSPC
+at journal and payload writes; retain complete-prefix evidence and refuse resend
+of uncertain intent. Repeat the loopback blackhole across an authorized isolated
+network with a real return-path drop, and kill the packaged process after the
+peer logs receipt. Recovery must retain uncertainty and leave dependencies
+unstarted. Never fill a customer disk or send to a real clinical endpoint.
+
+The 1M/5GiB **project** path needs independent evidence: create/import through the
+public project interfaces, build the retained index, run 20 warm searches and
+navigate the native UI. The current single-case limits are 10,000 occurrences,
+16 MiB per source and 64 MiB total. A large scan bypasses none of those limits;
+the harness checks that importing its 5 GiB source refuses without a case or
+receipt. Do not report a stream scan as that missing project-scale journey.
+
+### Observed development run, September 19, 2026
+
+Production engine source: `a0ddb663120b8564557de08583d44c3a9844cd28`;
+qualification-only additions are in the change introducing this section. CLI
+build: `CGO_ENABLED=0 go build -trimpath`, Go 1.27.1, darwin/arm64, 10 logical
+CPUs. RAM capacity/storage class were not declared. Other development jobs were
+running; these are **not quiet reference-workstation measurements**. No packaged
+release or other native platform was qualified by this run.
+
+CLI executable SHA-256:
+`9994098d396a5a737d53d440e078c847ef44d99128d4797a1f66e5e5542a1dfa`.
+
+| Corpus | Bytes | SHA-256 |
+| --- | --- | --- |
+| Seed-7 generator, 10,000 messages | 3,040,000 | `4833fdf6a5d022a806e78625d3a4ff2623567fc66f4f3a1edf66bf703ffe0ccf` |
+| Seed-7 generator, 1,000,000 messages | 304,000,000 | `dd7dce80e0155ee58c64e082cce04c034ab87b9ef12c4d7fcacaa26b9107bc2b` |
+| Independent padded-NTE fixture, 1,000,000 messages | 5,368,709,120 | `339ac9172deb242542d63360b9be4090f37c140e779aef876f641b038d33f379` |
+
+The independent fixture repeats the explicit MSH/NTE message in
+`tools/performance.py`, distributes `X` padding to exactly 5 GiB and reuses its
+control ID. It tests byte volume and parser retention, not identifier diversity,
+clinical workflows, imports or a project catalog.
+
+| Observation | All samples (milliseconds unless stated) | Nearest-rank p95 |
+| --- | --- | --- |
+| 10,000-message scan wall time | 55.254, 60.971, 53.434, 51.937, 52.832 | 60.971 ms |
+| 10,000-message OS peak RSS, bytes | 23035904, 22872064, 22413312, 22380544, 22331392 | not a latency |
+| 1,000,000-message scan wall time | 3660.364, 3648.422, 3692.557, 3724.442, 3711.630 | 3724.442 ms |
+| 1,000,000-message OS peak RSS, bytes | 24412160, 24297472, 23740416, 24707072, 23789568 | not a latency |
+| Exact 5 GiB scan wall time | 27246.506 | one sample; no percentile |
+| Exact 5 GiB OS peak RSS, bytes | 26132480 | one sample |
+| SIGINT acknowledgement | 2.349, 2.115, 1.877, 2.310, 2.061 | 2.349 ms |
+
+All scans decoded every declared record. All five SIGINTs produced cancelled
+state, nonzero exit, no benchmark and unchanged corpus bytes. Import of the
+5 GiB source refused without a case or receipt. This is an observed support
+limit, **not a passed project envelope**.
+
+The race-instrumented interruption run passed every test in the table above:
+eight isolated actual suite sends met at the barrier, shared sends remained
+serial, killed-process and torn-journal recovery refused repeats, and injected
+payload/journal ENOSPC retained partial evidence. Cancellation after receipt
+returned a durable uncertain result in 41.808 ms in one sample. ACK blackhole
+with a declared two-second message timeout returned uncertain evidence and
+completed recovery/refused-resume checks in 2150.063 ms in one sample. Neither
+sample establishes a percentile or a physical network/disk failure qualification.
+
+The retained desktop-facade test executable SHA-256 was
+`508eb31da1475cbd9a3ef919f89638c306961050546f23686b4bdba82ebcd4f1`,
+built with `go test -c ./internal/desktop` and no race instrumentation, then run
+with `READMIT_PERFORMANCE=1` and `-test.run '^TestPerformanceEnvelope$'`.
+Its 10,000-message fixture repeats `gridBooking` in `internal/desktop/grid_test.go`:
+1,080,000 bytes, SHA-256
+`3703482330bae90db46acac89e96b39f1ef1c7754a2cbacf167cb148bb548b90`.
+Setup/writes and index construction are excluded from these operation samples;
+this is a worst-case all-hit exact query over a resident index, not a disk-open
+or project-wide search. Grid navigation includes rereading and verifying the
+case/index through the public facade.
+
+All 20 samples, in milliseconds and acquisition order:
+
+```text
+warm indexed exact search:
+2.120667 2.074458 2.145167 2.460083 3.177458
+2.492250 2.126250 2.399583 2.100208 3.046250
+1.542959 2.236417 2.144125 2.840709 1.982625
+2.164625 2.149708 1.393042 2.152541 1.698708
+p95: 3.046250
+
+facade navigation, last 200 rows (not native UI paint):
+560.847375 604.202875 571.472167 579.843500 577.613584
+559.383458 556.566500 554.203541 566.335041 589.362750
+567.945875 561.780583 563.909750 574.152250 557.970792
+553.692333 608.643042 561.043667 567.950042 634.653416
+p95: 608.643042
+
+facade workspace metadata search:
+0.124792 0.123167 0.109250 0.110833 0.112666
+0.115875 0.113792 0.104167 0.116667 0.107500
+0.101709 0.101208 0.098125 0.098750 0.105750
+0.102709 0.106583 0.103791 0.101875 0.107875
+p95: 0.123167
+```
+
+All operations returned the expected counts/state, but every observed grid sample
+exceeded 200 ms before the webview could paint. This is a measured engineering
+gap under the recorded concurrent workload, not a statement about an isolated
+16 GiB SSD reference workstation. Native UI responsiveness remains unmeasured.
+No unsupported platform, hardware profile or full project-scale path receives a
+passing verdict from these narrower results.

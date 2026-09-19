@@ -40,3 +40,10 @@ mutate:
 
 fuzz:
 	python3 tools/fuzz.py $(ARGS)
+
+# Opt-in local measurements: no race instrumentation for latency; interruption
+# correctness runs separately with race. This is not a release-acceptance gate.
+.PHONY: test-performance
+test-performance:
+	READMIT_PERFORMANCE=1 go test ./internal/desktop -run '^TestPerformanceEnvelope$$' -count=1 -v
+	CGO_ENABLED=1 go test -race -short ./internal/suite ./internal/durablerun -run 'TestSuiteNetworkBlackholeRetainsUncertaintyAndRecovers|TestSuiteUsesActualQueueStateIsolation|TestSuiteCancellationPreservesUncertainDeliveryAndRefusesResume|TestSuiteProcessCrashRetainsUncertainJobWithoutStartingDependent|TestDiskFullDuring|TestTornTrailingRecord|TestCleanupRemovesOnlyAStaleLease' -count=1 -v

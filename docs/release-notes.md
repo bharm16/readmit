@@ -1,5 +1,11 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Local performance qualification measures CLI peak RSS, exact 5 GiB scanning,
+  indexed search, facade navigation, cancellation and interruption recovery.
+  Eight isolated suite executions are verified against a loopback barrier.
+  The published local navigation result exceeds the proposed target; native
+  webview and complete project-scale acceptance remain unproven.
+
 - Vendor administration records business contacts and invoice references, reissues
   named-author/device and active-runner assignments without sequence collisions,
   and reports annual paid support scope. Commercial terms remain review drafts.
