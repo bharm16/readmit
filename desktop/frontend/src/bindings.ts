@@ -412,6 +412,9 @@ interface Facade {
   UndoReproducer(request: ReproducerRequest): Promise<ReproducerResult>;
   BuildReproducer(request: ReproducerRequest): Promise<ReproducerResult>;
   CompareReproducers(request: ReproducerComparisonRequest): Promise<ReproducerComparisonResult>;
+  ImportTest(workspace: string, entry: string): Promise<CanonicalTestResult>;
+  ValidateTest(document: string): Promise<CanonicalTestResult>;
+  ExportTest(request: CanonicalTestRequest): Promise<CanonicalTestResult>;
   AuthorTest(request: TestRequest): Promise<TestResult>;
   SaveTest(request: TestRequest): Promise<TestResult>;
   SuggestExpectations(request: TestRequest): Promise<TestResult>;
@@ -1928,4 +1931,37 @@ export function approveBaseline(request: BaselineRequest): Promise<BaselineResul
 
 export function openBaseline(request: BaselineRequest): Promise<BaselineResult> {
   return guard(() => facade().OpenBaseline(request), { state: "failed" });
+}
+
+export interface CanonicalTestRequest {
+  workspace: string;
+  document: string;
+  output: string;
+}
+
+export interface CanonicalTestResult {
+  state: State;
+  reason?: string;
+  document?: string;
+  output?: string;
+  identity?: string;
+}
+
+export function importTest(
+  workspace: string,
+  entry: string,
+): Promise<CanonicalTestResult> {
+  return guard(() => facade().ImportTest(workspace, entry), {
+    state: "failed",
+  });
+}
+
+export function validateTest(document: string): Promise<CanonicalTestResult> {
+  return guard(() => facade().ValidateTest(document), { state: "failed" });
+}
+
+export function exportTest(
+  request: CanonicalTestRequest,
+): Promise<CanonicalTestResult> {
+  return guard(() => facade().ExportTest(request), { state: "failed" });
 }

@@ -1364,3 +1364,13 @@ rationale in one new immutable local revision. Historical revisions remain
 inspectable without their original spec file. The same `internal/baseline`
 engine backs the CLI; passing runs never automatically approve themselves.
 See [baseline review](baseline.md) for privacy, cancellation and identity limits.
+
+## Canonical test import and export
+
+The workspace's **Import and edit a saved test** panel supports complete
+`readmit-test/v1` documents, including clauses outside the guided draft's
+operator subset. It explicitly displays expected values after import, retains
+edits only in memory, validates with the CLI's strict test reader, and exports
+exact reviewed bytes to a new file in the same workspace. No reference is
+rewritten and no send is initiated. See [canonical round trips](test-authoring.md#round-tripping-canonical-specs)
+for supported operators, refusal and recovery behavior, and execution parity.

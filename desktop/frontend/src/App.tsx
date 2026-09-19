@@ -75,6 +75,7 @@ import { Sequence, SEQUENCE_WINDOW } from "./Sequence";
 import { Inspector } from "./Inspector";
 import { Reproducer } from "./Reproducer";
 import { RevisionComparison } from "./RevisionComparison";
+import { CanonicalTestEditor } from "./CanonicalTestEditor";
 import { TestAuthoring } from "./TestAuthoring";
 import { Badge, GRID_WINDOW, MessageGrid, Palette, Report, Separator, Status } from "./shell";
 
@@ -1045,6 +1046,7 @@ export default function App() {
             }
           />
         ) : null}
+        {root ? <CanonicalTestEditor key={root} workspace={root} busy={busy} /> : null}
         {gridResult?.grid ? (
           <TestAuthoring
             rows={gridResult.grid.rows}

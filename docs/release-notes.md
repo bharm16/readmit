@@ -1,5 +1,10 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Desktop canonical test import, full-document editing and new-file export retain
+  all supported v1 clauses and exact reviewed bytes. The shared CLI reader
+  rejects unsupported schemas/operators; desktop and CLI verdict parity is
+  tested for passing and failing exported expectations.
+
 - Byte-preserving raw and MLLP syntax inspection with explicit format reporting.
 - v2.5.1 field labels, positional fallback, distinct empty/null/omitted states.
 - Values hidden by default; `--show-values` explicitly displays escaped bytes.
