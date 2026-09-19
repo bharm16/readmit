@@ -54,6 +54,7 @@ archives:
       - docs/observe.md
       - docs/test-spec.md
       - docs/test-result.md
+      - docs/assertions.md
       - docs/redact.md
       - docs/diff.md
       - docs/report.md

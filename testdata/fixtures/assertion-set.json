@@ -1,0 +1,172 @@
+{
+  "schema": "readmit-assertion-set/v1",
+  "name": "Synthetic reschedule expectations",
+  "assertions": [
+    {
+      "id": "ack-accepted",
+      "operator": "field_equals",
+      "subject": {"field": {"scope": "observed", "message": "s0001-e000001", "selector": "MSA-1"}},
+      "when": null,
+      "expected": {"field": {"state": "present", "text": "AA"}}
+    },
+    {
+      "id": "ack-not-rejected",
+      "operator": "field_not_equals",
+      "subject": {"field": {"scope": "observed", "message": "s0001-e000001", "selector": "MSA-1"}},
+      "when": null,
+      "expected": {"field": {"state": "present", "text": "AR"}}
+    },
+    {
+      "id": "family-name-present",
+      "operator": "field_state",
+      "subject": {"field": {"scope": "observed", "message": "s0001-e000002", "selector": "PID-5.1"}},
+      "when": null,
+      "expected": {"state": "present"}
+    },
+    {
+      "id": "sixth-field-null",
+      "operator": "field_state",
+      "subject": {"field": {"scope": "observed", "message": "s0001-e000002", "selector": "PID-6"}},
+      "when": null,
+      "expected": {"state": "null"}
+    },
+    {
+      "id": "seventh-field-empty",
+      "operator": "field_state",
+      "subject": {"field": {"scope": "observed", "message": "s0001-e000002", "selector": "PID-7"}},
+      "when": null,
+      "expected": {"state": "empty"}
+    },
+    {
+      "id": "eighth-field-omitted",
+      "operator": "field_state",
+      "subject": {"field": {"scope": "observed", "message": "s0001-e000002", "selector": "PID-8"}},
+      "when": null,
+      "expected": {"state": "omitted"}
+    },
+    {
+      "id": "control-id-shape",
+      "operator": "text_matches",
+      "subject": {"field": {"scope": "observed", "message": "s0001-e000001", "selector": "MSA-2"}},
+      "when": null,
+      "expected": {"pattern": "^MSG[0-9]{5}$"}
+    },
+    {
+      "id": "weight-in-range",
+      "operator": "numeric_range",
+      "subject": {"field": {"scope": "observed", "message": "s0001-e000002", "selector": "OBX-5"}},
+      "when": null,
+      "expected": {"range": {"min": "50", "max": "150"}}
+    },
+    {
+      "id": "weight-within-tolerance",
+      "operator": "numeric_tolerance",
+      "subject": {"field": {"scope": "observed", "message": "s0001-e000002", "selector": "OBX-5"}},
+      "when": null,
+      "expected": {"tolerance": {"value": "72", "tolerance": "0.5"}}
+    },
+    {
+      "id": "event-in-window",
+      "operator": "date_window",
+      "subject": {"field": {"scope": "observed", "message": "s0001-e000002", "selector": "EVN-2"}},
+      "when": null,
+      "expected": {"window": {"from": "20260103100000+0000", "to": "20260103120000+0000"}}
+    },
+    {
+      "id": "control-id-mapped",
+      "operator": "values_equal",
+      "subject": {"pair": {
+        "left": {"scope": "input", "message": "s0001-e000001", "selector": "MSH-10"},
+        "right": {"scope": "observed", "message": "s0001-e000001", "selector": "MSA-2"}
+      }},
+      "when": null,
+      "expected": {"holds": true}
+    },
+    {
+      "id": "same-processing-id",
+      "operator": "values_equal",
+      "subject": {"pair": {
+        "left": {"scope": "observed", "message": "s0001-e000001", "selector": "MSH-11"},
+        "right": {"scope": "observed", "message": "s0001-e000002", "selector": "MSH-11"}
+      }},
+      "when": null,
+      "expected": {"holds": true}
+    },
+    {
+      "id": "two-appointments",
+      "operator": "record_count",
+      "subject": {"collection": {"scope": "after"}},
+      "when": null,
+      "expected": {"count": 2}
+    },
+    {
+      "id": "appointments-distinct",
+      "operator": "records_unique",
+      "subject": {"collection": {"scope": "after"}},
+      "when": null,
+      "expected": {"holds": true}
+    },
+    {
+      "id": "both-appointments-observed",
+      "operator": "records_contain",
+      "subject": {"collection": {"scope": "after"}},
+      "when": null,
+      "expected": {"keys": ["appt-9001", "appt-9002"]}
+    },
+    {
+      "id": "appointments-in-order",
+      "operator": "records_ordered",
+      "subject": {"collection": {"scope": "after"}},
+      "when": null,
+      "expected": {"keys": ["appt-9001", "appt-9002"]}
+    },
+    {
+      "id": "one-record-per-appointment",
+      "operator": "record_multiplicity",
+      "subject": {"collection": {"scope": "after"}},
+      "when": null,
+      "expected": {"multiplicity": {"key": "appt-9001", "count": 1}}
+    },
+    {
+      "id": "nothing-before-the-window",
+      "operator": "records_absent",
+      "subject": {"collection": {"scope": "before"}},
+      "when": null,
+      "expected": {"holds": true}
+    },
+    {
+      "id": "every-key-is-an-appointment",
+      "operator": "record_key_matches",
+      "subject": {"each": {"scope": "after", "quantifier": "every"}},
+      "when": null,
+      "expected": {"pattern": "^appt-[0-9]{4}$"}
+    },
+    {
+      "id": "two-appointments-added",
+      "operator": "records_changed",
+      "subject": {"transition": {"from": "before", "to": "after"}},
+      "when": null,
+      "expected": {"change": {"added": 2, "removed": 0}}
+    },
+    {
+      "id": "accepted-run-is-a-test-run",
+      "operator": "field_equals",
+      "subject": {"field": {"scope": "observed", "message": "s0001-e000001", "selector": "MSH-11"}},
+      "when": {
+        "field": {"scope": "observed", "message": "s0001-e000001", "selector": "MSA-1"},
+        "equals": {"state": "present", "text": "AA"}
+      },
+      "expected": {"field": {"state": "present", "text": "P"}}
+    },
+    {
+      "id": "rejected-run-names-its-error",
+      "operator": "field_state",
+      "subject": {"field": {"scope": "observed", "message": "s0001-e000001", "selector": "ERR-3"}},
+      "when": {
+        "field": {"scope": "observed", "message": "s0001-e000001", "selector": "MSA-1"},
+        "equals": {"state": "present", "text": "AR"}
+      },
+      "expected": {"state": "present"}
+    }
+  ]
+}

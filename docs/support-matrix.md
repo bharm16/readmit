@@ -122,7 +122,7 @@ The list is explicit so that nothing has to be inferred from silence.
 - Screenshots of the desktop shell. The site shows none: they will be added
   from a built release, never mocked.
 - Scheduling, daemons, watching a source, incremental or background work.
-- Full-text search, regular expressions, cross-case search.
+- Full-text search, searching by regular expression, cross-case search.
 - HL7 conformance validation, vendor profiles, an ADT or MPI state machine.
 - Any legal certification of redaction, de-identification or HIPAA readiness.
 - Readiness to accept customer PHI under a support arrangement.

@@ -347,6 +347,16 @@ verification. ACK-only success is labelled "ACK contract passed". Without
 See [regression testing](docs/test-runner.md) for the unchanged fail/pass/fail
 scenario, reset procedure, spec format, and result contract.
 
+`readmit-assertion-set/v1` is the separate, shared contract for expressing
+expectations: sixteen typed field, temporal, collection and relationship
+operators over the shared field selector, with finite conditionals and
+per-record quantifiers rather than an expression language. Present, empty,
+explicit null and omitted stay four separate answers, and a value an operator
+cannot read, a condition that did not hold and an observation that did not
+complete are reported as undecided, skipped and an execution error rather than
+as a pass. No command reads one yet and `readmit-test/v1` is unchanged. See
+[typed assertions](docs/assertions.md).
+
 Durable execution: `readmit run start SPEC --send --output NEW_JOB` retains a
 synced plan and send journal, and `--deadline` bounds the run; `readmit run
 status JOB --json` recovers evidence without resending, and `--recovery` reports

@@ -93,6 +93,15 @@ negative counterpart: it binds a local code table to a field whose type carries
 no code, so the reader refuses it. Every other refusal is a single edit of the
 positive fixture, made in the tests.
 
+`assertion-set.json` is a hand-authored `readmit-assertion-set/v1` fixture for
+issue #78: one assertion per typed operator, against two synthetic observed
+messages, one synthetic sent request and two observations of record keys, with
+a satisfied condition and an unsatisfied one. The messages it describes are
+written in the package test rather than committed, because the document under
+test is the set. `assertion-set-refused.json` is its negative counterpart: it
+counts records with a field subject, so the reader refuses the pairing. Every
+other refusal is a single edit of the positive fixture, made in the tests.
+
 The issue #6 pair `diff-before.mllp` and `diff-after.mllp` includes an inserted
 message, repeated segments and identifiers, a changed timestamp, and a null
 field that becomes omitted. `diff-expected.json` independently states the
