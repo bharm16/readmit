@@ -16,7 +16,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/engine"
@@ -71,22 +74,40 @@ func reportsVersion(arguments []string) bool {
 }
 
 func main() {
+	if err := runShell(os.Args[1:]); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func runShell(arguments []string) error {
 	// The shell is stamped with the same engine identity as the command line,
 	// so an installed package and a release archive report one build rather
 	// than two. Answering it opens no window and reads no evidence.
-	if reportsVersion(os.Args[1:]) {
+	if reportsVersion(arguments) {
 		fmt.Printf("readmit-desktop version %s\n", engine.Version())
-		return
+		return nil
 	}
 	// The three files of local shell state, each named explicitly. None holds
 	// evidence: the folders opened recently, the filters this person saved, and
 	// the working session they have not stored, which is what the window
 	// restores after an interruption.
-	recent, err := desktop.DefaultRecentPath()
-	filters, filtersErr := desktop.DefaultFiltersPath()
-	session, sessionErr := desktop.DefaultSessionPath()
-	if err != nil || filtersErr != nil || sessionErr != nil {
-		log.Fatal("readmit: cannot resolve the user configuration directory")
+	startupCheck := len(arguments) == 1 && arguments[0] == "--startup-check"
+	var recent, filters, session string
+	if startupCheck {
+		directory, err := os.MkdirTemp("", "readmit-startup-check-")
+		if err != nil {
+			return errors.New("readmit: startup check storage unavailable")
+		}
+		defer os.RemoveAll(directory)
+		recent, filters, session = filepath.Join(directory, "recent.json"), filepath.Join(directory, "filters.json"), filepath.Join(directory, "session.json")
+	} else {
+		var err, filtersErr, sessionErr error
+		recent, err = desktop.DefaultRecentPath()
+		filters, filtersErr = desktop.DefaultFiltersPath()
+		session, sessionErr = desktop.DefaultSessionPath()
+		if err != nil || filtersErr != nil || sessionErr != nil {
+			return errors.New("readmit: cannot resolve the user configuration directory")
+		}
 	}
 	folders := &dialog{}
 	application := &options.App{
@@ -103,7 +124,28 @@ func main() {
 		// window host is held to errors so it emits no routine output either.
 		LogLevel: logger.ERROR,
 	}
-	if err := wails.Run(application); err != nil {
-		log.Fatal("readmit: the desktop window could not be created")
+	var ready atomic.Bool
+	if startupCheck {
+		// Check the real native webview, without restoring any user's workspace.
+		// A wedged native startup must never become a successful CI install.
+		timer := time.AfterFunc(30*time.Second, func() {
+			fmt.Fprintln(os.Stderr, "readmit: native startup check timed out")
+			os.Exit(2)
+		})
+		defer timer.Stop()
+		application.OnDomReady = func(ctx context.Context) {
+			ready.Store(true)
+			runtime.Quit(ctx)
+		}
 	}
+	if err := wails.Run(application); err != nil {
+		return errors.New("readmit: the desktop window could not be created")
+	}
+	if startupCheck {
+		if !ready.Load() {
+			return errors.New("readmit: native webview did not become ready")
+		}
+		fmt.Println("readmit-desktop native webview ready")
+	}
+	return nil
 }

@@ -3,6 +3,7 @@ package tests
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"os/exec"
@@ -21,6 +22,19 @@ func TestMain(m *testing.M) {
 	// for it. See tests/secret_test.go for what it emits and why.
 	if mode, ok := os.LookupEnv(providerSwitch); ok {
 		os.Exit(testOnlyProvider(mode, os.Args[1:]))
+	}
+	// Acceptance uses the exact archived executable, never a freshly rebuilt
+	// substitute. Ordinary tests retain their existing isolated build.
+	if selected, ok := os.LookupEnv("READMIT_ACCEPTANCE_BINARY"); ok {
+		data, err := os.ReadFile(selected)
+		info, statErr := os.Lstat(selected)
+		if err != nil || statErr != nil || !info.Mode().IsRegular() || !filepath.IsAbs(selected) ||
+			fmt.Sprintf("%x", sha256.Sum256(data)) != os.Getenv("READMIT_ACCEPTANCE_BINARY_SHA256") {
+			fmt.Fprintln(os.Stderr, "acceptance executable identity refused")
+			os.Exit(1)
+		}
+		binary = selected
+		os.Exit(m.Run())
 	}
 	dir, err := os.MkdirTemp("", "readmit-cli-test-")
 	if err != nil {

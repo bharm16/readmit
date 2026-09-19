@@ -17,6 +17,11 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   covers hostile CLI text and records browser keyboard/renderer evidence.
   Native screen-reader and deployment acceptance remain open.
 
+- Native desktop packages now select Wails production mode and link the macOS
+  file-dialog framework. Installed startup checks require a real webview, and
+  packaged CLI/runner journeys plus retained native sample results provide
+  partial acceptance evidence with external release gates still open.
+
 - Vendor administration records business contacts and invoice references, reissues
   named-author/device and active-runner assignments without sequence collisions,
   and reports annual paid support scope. Commercial terms remain review drafts.

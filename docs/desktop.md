@@ -16,8 +16,13 @@ not contain any of this. See
 
 ```sh
 cd desktop/frontend && npm ci && npm run build
-cd .. && go build -o build/readmit-desktop .
+cd .. && go build -tags production -o build/readmit-desktop .
 ```
+
+The `production` tag selects Wails' native application instead of its default
+non-launching stub. On macOS the module also links the UniformTypeIdentifiers
+framework required by the native file dialogs. A `--version` check alone cannot
+prove a window launches.
 
 The interface is bundled into `frontend/dist` and embedded in the executable, so
 `npm run build` must run before `go build`. `npm run build` type-checks first: a
@@ -25,7 +30,7 @@ binding that no longer matches the facade fails there. The desktop build is not
 part of the release archives and is unsigned.
 
 On Linux the platform webview is WebKitGTK 4.1, so the build needs
-`-tags webkit2_41` and the `libgtk-3-dev` and `libwebkit2gtk-4.1-dev` packages.
+`-tags production,webkit2_41` and the `libgtk-3-dev` and `libwebkit2gtk-4.1-dev` packages.
 
 ## Native packages
 
@@ -117,8 +122,12 @@ state markers survive removal. Linux installation uses runtime dependencies;
 no build step runs on the installation runner. Windows also verifies that the
 preview MSI and executable are unsigned.
 
-Hosted runners still contain developer tools. These are **headless preview
-checks**, not proof of an offline dependency closure, interactive webview launch,
+Each installed payload also runs `--startup-check`, which initializes the real
+native webview against fresh temporary shell state and exits only when its DOM
+is ready. Linux supplies Xvfb. See [native acceptance](native-acceptance.md).
+
+Hosted runners still contain developer tools. These are **preview installation
+and startup checks**, not proof of an offline dependency closure, full interactive journeys,
 a clean managed machine, production publisher signatures or the full D5 OS
 version matrix. An empty PATH only rules out PATH-resolved helpers during
 `--version`; it cannot prove every application action needs no runtime tool.

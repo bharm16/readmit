@@ -81,6 +81,7 @@ archives:
       - docs/expectations.md
       - docs/report.md
       - docs/support-matrix.md
+      - docs/native-acceptance.md
 
       - docs/diagnose.md
       - docs/finding-review.md

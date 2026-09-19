@@ -660,6 +660,19 @@ def installed(desktop, command_line, resources, expected_version):
     print(f"PASS: installed legal material and engine {expected_version}; empty-PATH headless check only")
 
 
+def startup(desktop):
+    """Require the installed native webview to initialize, in isolated shell state."""
+    with tempfile.TemporaryDirectory(prefix="readmit-native-startup-") as directory:
+        try:
+            result = subprocess.run([str(Path(desktop).resolve()), "--startup-check"],
+                                    cwd=directory, capture_output=True, timeout=45)
+        except subprocess.TimeoutExpired as error:
+            raise Refused("native startup timed out") from error
+    if result.returncode or result.stdout != b"readmit-desktop native webview ready\n":
+        raise Refused("native webview did not report successful startup")
+    print("PASS: installed native webview initialized; no interactive journey or signing claim")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--declaration", type=Path, default=DECLARATION)
@@ -685,6 +698,9 @@ def main():
     installation.add_argument("--resources", type=Path, required=True)
     installation.add_argument("--version", required=True)
 
+    launching = commands.add_parser("startup", help="initialize the installed native webview (requires a display)")
+    launching.add_argument("--desktop", type=Path, required=True)
+
     args = parser.parse_args()
     declaration = read_declaration(args.declaration)
     if args.command == "build":
@@ -694,6 +710,8 @@ def main():
         build(declaration, args.binary, args.version, select_target(declaration, args.os, args.arch), args.output)
     elif args.command == "verify":
         verify(declaration, args.packages)
+    elif args.command == "startup":
+        startup(args.desktop)
     elif args.command == "installed":
         installed(args.desktop, args.command_line, args.resources, args.version)
     else:
