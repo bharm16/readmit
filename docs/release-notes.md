@@ -1088,3 +1088,10 @@ Prerelease binaries have no Apple notarization or Windows code signing.
   retain explicit local approvals of immutable regression expectation revisions.
   Exact spec/parent commitments reject stale approvals; values remain hidden
   until requested. Local reviewer declarations do not authenticate team identity.
+
+- Customer-hosted hub team access validates pinned RFC 9068 access tokens from
+  an OIDC provider, enforces project roles and certificate-bound scoped tokens,
+  and isolates artifact reads/writes/exports. Metadata v3 and backup/v2 retain
+  project links and prevent legacy-route bypass after enabling team mode; old
+  backup/v1 remains readable. Execution and approval routes authorize then
+  explicitly refuse unsupported operations pending their delivery tickets.

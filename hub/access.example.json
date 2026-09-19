@@ -1,0 +1,9 @@
+{
+  "schema": "readmit-hub-access/v1",
+  "issuer": "https://idp.example",
+  "audience": "https://hub.example",
+  "clients": ["readmit-customer-client"],
+  "keys": [{"kid": "replace-with-provider-key-id", "n": "replace-with-provider-public-rsa-modulus", "e": "AQAB"}],
+  "grants": [{"project": "example", "subject": "replace-with-provider-subject", "role": "owner"}],
+  "tokens": []
+}

@@ -6,16 +6,20 @@ lengths and retention timestamps in PostgreSQL. Neither the CLI nor the desktop
 requires the hub. No evidence is sent to Readmit's vendor. No existing artifact
 contract or payload is changed.
 
-This is the deployment foundation for #96. It is **not yet a multi-user team
-workspace**: #97 owns OIDC and project-scoped authorization, #98 collaboration,
-and #99 governance. Until those exist, issue client certificates only to trusted
-hub operators: **every client trusted by this service's CA can read and add every
-object**. There is no certificate-to-project mapping, browser UI, invitation,
-remote deletion, revocation list, or API-token authentication. To withdraw a
-client now, stop the service, replace the dedicated client CA and client
-certificates, then restart; certificates already downloaded and data already
-exported cannot be revoked remotely. Use a dedicated CA, not an enterprise-wide
-CA whose entire client population would otherwise gain access.
+The hub offers two explicit operating modes. `serve` without `-access-policy`
+is the original operator-only mode: every dedicated-CA client can add/read all
+unscoped objects. **Do not issue operator-only certificates to ordinary users.**
+`serve -access-policy` enables project authorization; the supplied service unit
+uses it. Starting team service permanently marks the database as team-enabled,
+so subsequently omitting the flag cannot expose evidence through legacy routes.
+Only restoring a separate pre-team snapshot can return to operator-only mode.
+
+Team access uses signed access tokens from a customer's OIDC provider and local
+project assignments, or certificate-bound scoped API/runner tokens. Collaboration,
+review persistence and remote execution remain #98/#100; their routes refuse
+unsupported work even when a principal has the relevant permission. There is no
+browser login UI, invitation email, implicit administrator, or vendor identity
+service. Desktop and CLI continue to work offline without the hub.
 
 ## Build and install
 
@@ -29,7 +33,7 @@ make package
 ```
 
 `build/readmit-hub-linux-amd64.tar.gz` contains the static Linux binary, this
-guide, example configuration, systemd unit and dependency licenses. CI builds
+guide, example configuration and access policy, systemd unit and dependency licenses. CI builds
 and uploads this development package and runs the PostgreSQL integration suite
 under the root `quality` gate. It is separate from all five offline CLI archives.
 The package is not signed, not automatically installed, and not a claim of
@@ -81,6 +85,8 @@ settings are replaced, never used for network authentication.
 sudo -u readmit-hub /usr/local/bin/readmit-hub -config /etc/readmit-hub/config.json migrate
 sudo -u readmit-hub /usr/local/bin/readmit-hub -config /etc/readmit-hub/config.json check
 sudo install -o root -g root -m 0644 readmit-hub.service /etc/systemd/system/readmit-hub.service
+# Before starting the supplied team service, install a completed private access
+# policy as /etc/readmit-hub/access.json (see Team access below).
 sudo systemctl daemon-reload
 sudo systemctl enable --now readmit-hub
 ```
@@ -155,12 +161,16 @@ sudo systemctl start readmit-hub
 The destination must be a new directory outside artifact storage. Backup copies
 and verifies exactly the catalogue's objects, preserving their bytes, addresses,
 sizes and timestamps. `manifest.json` is written last and synchronized: without
-it the backup is incomplete. Its strict `readmit-hub-backup/v1` contract declares
-metadata version 2 and the ordered object list. Unknown versions, duplicate
+it the backup is incomplete. Its strict `readmit-hub-backup/v2` contract declares
+metadata version 3, the ordered object list, project-to-object links and the
+sticky team-mode state, bounded to a 32 MiB manifest. Existing `readmit-hub-backup/v1` documents retain their
+exact three-member contract, 16 MiB bound and metadata version 2; restoration still accepts
+them as unscoped operator objects. Unknown versions, duplicate
 addresses, omitted fields, corrupt or missing bytes are refused. Hashes detect
 corruption, not malicious replacement or source authenticity. Protect both the
 manifest and its objects under the same backup policy. CA keys, server keys,
-configuration, OS/database identities and host policy are **not** included;
+configuration (including access-policy grants and token hashes), OS/database
+identities and host policy are **not** included;
 recover those from the customer's separate configuration/secret backups.
 
 For restoration, provision a new dedicated empty database and a new private
@@ -181,7 +191,11 @@ known synthetic object bytes before switching clients to a restored host. Never
 replace a running database or silently overwrite evidence.
 
 Metadata migration is explicit and transactional: version 0 creates the catalogue,
-version 1 upgrades by adding retention timestamps, and version 2 is current.
+version 1 upgrades by adding retention timestamps, and version 2 upgrades to
+version 3 by adding project links and the team-mode flag. Existing objects remain
+unscoped; migration never assigns them to every project. Upload the exact
+verified bytes through the authorized project PUT route to associate an existing
+object. Possession of a digest alone cannot adopt another project's object.
 Concurrent migration is refused by the same lease. Unknown future versions are
 refused, never downgraded. Existing object bytes are not migrated. Before changing
 versions, stop, back up, stage the new binary, run `migrate`, then `check`, then
@@ -209,3 +223,117 @@ Customer DNS/PKI, host permissions, encrypted storage, firewall policy, retained
 backup drills and operator certificate issuance are installation responsibilities,
 not properties established by synthetic tests. Multi-engineer editing and approval
 acceptance remains the R19 integration gate after #97–#99.
+
+## Team access
+
+Install `access.example.json` as `/etc/readmit-hub/access.json`, owned by the
+service identity with mode 0600. Its placeholder key is deliberately invalid:
+replace issuer, audience, client IDs, key ID and RSA public modulus/exponent with
+values independently obtained from the customer's trusted provider. Never paste
+private keys or bearer values into it. Start with:
+
+```sh
+readmit-hub -config /etc/readmit-hub/config.json \
+  -access-policy /etc/readmit-hub/access.json serve
+```
+
+The independent strict `readmit-hub-access/v1` contract requires all seven
+members and every nested member; unknown, duplicate, omitted or null fields
+are refused. Limits: 1 MiB policy, 16 signing keys, 4,096 grants and 4,096 tokens.
+The database admits at most 65,536 project-to-object links, matching backup/v2.
+Project IDs are 1–64 lowercase ASCII letters/digits/hyphens. Each project and
+subject pair has exactly one role. Subjects are stable opaque provider subject
+IDs, never email addresses or client-supplied role claims. One configured issuer
+is the authority for those IDs. The private policy is read on **every request**;
+an unreadable/invalid replacement denies access instead of retaining old grants.
+Update it through an atomic rename, protecting the containing directory from
+untrusted writers. Configuration management is an operator operation; no HTTP
+endpoint permits a user to edit its own grants or issue a stronger token.
+
+The customer OIDC client handles login with authorization code and PKCE. It
+requests a resource-specific access token from the provider and sends it in the
+`Authorization: Bearer` header over mTLS. The hub is the resource server: it
+implements the constrained [RFC 9068 access-token profile](https://www.rfc-editor.org/rfc/rfc9068.html#section-4),
+not an ID-token-to-API-token conversion. Tokens require `typ` of `at+jwt` or
+`application/at+jwt`, `alg` RS256, a pinned `kid`, exact HTTPS `iss`, the one
+configured resource `aud` (string or singleton array), an allowlisted
+`client_id`, nonempty `sub` and `jti`, integer `iat`/`exp`, and an action `scope`.
+An optional future `nbf` refuses admission. Issuance cannot be in the future,
+expiry must be after now, and total lifetime cannot exceed one hour. No clock
+leeway is granted. RSA keys must be 2048–4096 bits with exponent 65537. ID tokens,
+opaque provider tokens, multiple audiences, other algorithms, token-directed key
+URLs and unknown protected headers are refused. External claim extensions are
+ignored, but never grant roles. No discovery, JWKS fetch, userinfo or introspection
+request is made; operator-controlled key rotation adds/removes pinned public keys.
+
+Provider tokens grant only the intersection of their action scopes and the
+current local project role. A subject's removal or role change takes effect on
+its next request, including API tokens. IdP-only session/token revocation is
+**not** learned offline: remove the local grant/key immediately or wait for token
+expiry (at most one hour). Previously admitted bounded transfers may finish;
+previously downloaded bytes cannot be revoked. Do not reuse human subject IDs for
+client-credentials clients. A local grant for a human must not match a machine
+principal minted by the provider.
+
+| Role | Permissions |
+| --- | --- |
+| owner | All listed actions, including ownership administration |
+| admin | Evidence read/write, execution, export, enrollment, administration; no approval or ownership transfer |
+| analyst | Evidence read/write, execution, export |
+| reviewer | Evidence read, approval, export |
+| runner | Evidence read/write, execution, enrollment; only with a registered runner token |
+| viewer | Evidence read |
+
+Action scope strings are `evidence.read`, `evidence.write`, `execution`,
+`approval`, `export`, `enrollment`, `admin`, and `ownership`. Admin/ownership
+permissions are reserved for future authenticated administration; they do not
+create an HTTP management API here. Approval authorization returns the verified
+subject for future approval records; a caller-supplied subject cannot replace it.
+
+API and runner credentials are generated as 32 cryptographically random bytes
+in the customer's credential store, represented as `rh_` plus unpadded base64url.
+Readmit never generates, returns, stores or logs their values. Register only the
+SHA-256 of the complete prefixed token, its subject/project, a subset of current
+role actions, RFC3339 expiry, SHA-256 of its mTLS leaf certificate DER, and `kind`
+(`api` or `runner`) in `tokens`. Tokens cannot carry approval, admin or ownership
+powers. Runner tokens require a current runner grant; runner subjects cannot use
+OIDC or an API token to evade enrollment. Certificate rotation requires explicit
+registration of the new certificate hash. Deleting the token registration
+revokes its next request; policies with orphaned or overprivileged tokens fail
+closed. Remove corresponding tokens when removing a grant or reducing its role.
+
+`POST /v1/projects/P/enrollment` with a registered runner token and matching
+certificate returns 204, proving the preauthorized project/subject/token/certificate
+binding. It creates no new authority and returns no secret. Enrollment is an
+operator-reviewed registration, not a one-time code that mints an unbounded
+credential; execution workers remain #100. API tokens cannot enroll runners.
+
+Team routes require mTLS plus authorization, with no cookies, query tokens or
+role headers. Failures return generic 403 without identity/evidence details.
+`PUT/GET /v1/projects/P/artifacts/DIGEST` enforce evidence write/read and retain
+exact bytes. PUT must supply and verify the entire payload even if its digest
+exists elsewhere. GET requires a stored link to that project: knowing another
+project's digest returns 404. `GET /v1/projects/P/exports/DIGEST` additionally
+requires export and returns the same bytes as an attachment; this is an authorized
+raw artifact download, **not a reviewed/de-identified disclosure packet**. As
+with any evidence viewer, read permission exposes bytes a client can save;
+export permission cannot prevent copying previously read data. #95 owns reviewed
+packet export. Unscoped `/v1/artifacts/` is absent in team mode.
+
+`POST /v1/projects/P/execution` and `/approvals` check the relevant permission
+then return 501: this service cannot yet execute work or persist approvals.
+Denied subjects get 403 and no operation starts. Health probes retain mTLS-only
+access and disclose no project information. No CORS bypass is enabled.
+
+Backup/v2 preserves project links and refuses dangling/duplicate/misordered
+links, malformed entries and links claiming operator-only mode. Restore is atomic
+with artifact metadata and preserves the sticky team flag; failed restore never
+partially grants access. Access policies and IdP/client configuration must be
+restored separately and reviewed for current revocations before restarting.
+
+Owner installation gates: register the resource and OIDC client, configure
+PKCE/token profile and action scopes, pin independently verified issuer/public
+keys, assign named subjects/projects, provision customer client certificates and
+external credential storage, test actual IdP login/key rotation/removal, and run a
+retained-data backup drill. Local synthetic cryptographic/PostgreSQL tests do not
+claim a live provider or customer deployment has passed these gates.

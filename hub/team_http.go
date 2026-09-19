@@ -1,0 +1,133 @@
+package hub
+
+import (
+	"context"
+	"net/http"
+	"strings"
+	"time"
+)
+
+// TeamHandler has no legacy unscoped evidence route. mTLS admits a connection;
+// every project operation additionally requires current identity and permission.
+func (s *Store) TeamHandler(access *Access) http.Handler {
+	slots := make(chan struct{}, 4)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		if access == nil || r.TLS == nil || len(r.TLS.VerifiedChains) == 0 {
+			http.Error(w, "identity required", 401)
+			return
+		}
+		select {
+		case slots <- struct{}{}:
+			defer func() { <-slots }()
+		default:
+			http.Error(w, "busy", 503)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		r = r.WithContext(ctx)
+		if r.URL.Path == "/health/live" && r.Method == "GET" {
+			w.WriteHeader(204)
+			return
+		}
+		if r.URL.Path == "/health/ready" && r.Method == "GET" {
+			s.mu.Lock()
+			e := s.Ready(ctx)
+			s.mu.Unlock()
+			if e != nil {
+				http.Error(w, "not ready", 503)
+				return
+			}
+			w.WriteHeader(204)
+			return
+		}
+		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/"), "/")
+		if len(parts) < 4 || parts[0] != "v1" || parts[1] != "projects" || !validProject(parts[2]) || r.URL.RawQuery != "" {
+			http.NotFound(w, r)
+			return
+		}
+		project := parts[2]
+		var action string
+		switch parts[3] {
+		case "artifacts":
+			if len(parts) != 5 || !validDigest(parts[4]) {
+				http.Error(w, "invalid address", 400)
+				return
+			}
+			switch r.Method {
+			case "GET":
+				action = "evidence.read"
+			case "PUT":
+				action = "evidence.write"
+			}
+		case "exports":
+			if len(parts) != 5 || !validDigest(parts[4]) {
+				http.Error(w, "invalid address", 400)
+				return
+			}
+			if r.Method == "GET" {
+				action = "export"
+			}
+		case "execution":
+			if len(parts) == 4 && r.Method == "POST" {
+				action = "execution"
+			}
+		case "approvals":
+			if len(parts) == 4 && r.Method == "POST" {
+				action = "approval"
+			}
+		case "enrollment":
+			if len(parts) == 4 && r.Method == "POST" {
+				action = "enrollment"
+			}
+		default:
+			http.NotFound(w, r)
+			return
+		}
+		if action == "" {
+			http.Error(w, "method refused", 405)
+			return
+		}
+		principal, e := access.Authorize(r, project, action)
+		if e != nil {
+			http.Error(w, "access refused", 403)
+			return
+		}
+		if action == "execution" || action == "approval" {
+			http.Error(w, "operation not implemented", 501)
+			return
+		}
+		if action == "enrollment" {
+			// Enrollment is the operator's explicit project/subject/certificate/token
+			// registration. This handshake proves all four agree; it grants no new role.
+			if principal.Kind != "runner" {
+				http.Error(w, "scoped runner required", 403)
+				return
+			}
+			w.WriteHeader(204)
+			return
+		}
+		if _, e := s.db.ExecContext(ctx, "UPDATE readmit_hub_schema SET team_enabled=true WHERE singleton"); e != nil {
+			http.Error(w, "metadata unavailable", 503)
+			return
+		}
+		d := parts[4]
+		if r.Method == "GET" {
+			var exists bool
+			if e := s.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM readmit_hub_project_artifacts WHERE project=$1 AND digest=$2)", project, d).Scan(&exists); e != nil {
+				http.Error(w, "metadata unavailable", 503)
+				return
+			}
+			if !exists {
+				http.NotFound(w, r)
+				return
+			}
+		}
+		if action == "export" {
+			w.Header().Set("Content-Disposition", `attachment; filename="artifact.bin"`)
+		}
+		s.artifactRequest(w, r, ctx, d, project)
+	})
+}
