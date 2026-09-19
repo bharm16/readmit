@@ -400,6 +400,19 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   site whose every claim is traced to a page and a test in `site/CLAIMS.md`. It
   contains no screenshots: none has been captured from a built release yet, and
   none will be mocked. No contract changes.
+- `correlate CASE --rules FILE` correlates evidence across declared sources and
+  namespaces under a `readmit-correlation-rules/v1` document: typed
+  `acknowledges`, `control-id` and `identifier` operators, each inside a
+  `source`, `session` or `declared` scope, with assigning authorities mapped
+  explicitly so equal identifier strings in different namespaces stay distinct.
+  Linkage an occurrence declares about itself is distinguished from equality a
+  rule inferred, and colliding identifiers — an ambiguous acknowledgement, a
+  control ID duplicated inside one source, an unqualified identifier, equal
+  strings under different configured authorities — are reported with every
+  candidate and never merged. A rule whose scope the case cannot supply is not
+  applied and says so. The `readmit-correlation/v1` report is derived and
+  disposable and carries no identifier bytes; `readmit-case/v1` and every other
+  existing contract gain no member.
 
 - A team models its own interface contract in `readmit-local-profile/v1`, read
   and edited by `internal/localprofile`. One document pins the exact profile

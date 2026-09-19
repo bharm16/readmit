@@ -468,6 +468,26 @@ report is not proof of correctness. Configured assigning authorities keep equal
 identifier strings in different namespaces distinct. See [diagnosis](docs/diagnose.md)
 and the [shared field selector grammar](docs/selectors.md).
 
+`correlate CASE --rules FILE` links occurrences across the sources and namespaces
+an operator declared, and refuses to merge identifiers that collide. A case
+bundle matches an acknowledgement to its message only inside one source, by
+literal control-ID bytes; everything wider is a declaration somebody writes down.
+A `readmit-correlation-rules/v1` document names typed operators — an
+acknowledgement's own MSA-2 reference, equal message control IDs, or one
+declared clinical identifier qualified by its assigning authority — each
+compared inside one declared scope: a single source, the recorded session the
+case declares, or exactly the source IDs the rule lists. Nothing is compared
+across a scope boundary, there is no default rule set, and a rule whose scope
+the case cannot supply is reported rather than widened. Linkage an occurrence
+declares about itself is reported separately from equality a rule inferred, and
+equal bytes readmit could not stand behind stay a collision that merges nothing:
+an acknowledgement with several candidates, a control ID duplicated inside one
+source, an identifier whose assigning authority is missing or unconfigured, and
+equal identifier strings that configured authorities keep in separate links. The
+`readmit-correlation/v1` report is derived and disposable, carries no identifier
+bytes at all, and adds no member to any case. See
+[correlation](docs/correlate.md).
+
 `synth` creates a wholly synthetic SIU scheduling family from four explicit inputs:
 
 ```sh

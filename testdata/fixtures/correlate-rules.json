@@ -1,0 +1,18 @@
+{
+  "schema": "readmit-correlation-rules/v1",
+  "authorities": [
+    {"key": "READMIT-MR", "namespace": "READMIT", "universal_id": "", "universal_id_type": ""}
+  ],
+  "rules": [
+    {"id": "acknowledgements", "operator": "acknowledges", "scope": "source"},
+    {"id": "same-message", "operator": "control-id", "scope": "declared", "sources": ["s0001", "s0002"]},
+    {
+      "id": "patient",
+      "operator": "identifier",
+      "scope": "declared",
+      "sources": ["s0001", "s0002"],
+      "value": "PID-3.1",
+      "authority": ["PID-3.4.1", "PID-3.4.2", "PID-3.4.3"]
+    }
+  ]
+}
