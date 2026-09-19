@@ -1109,3 +1109,10 @@ Prerelease binaries have no Apple notarization or Windows code signing.
   project links and prevent legacy-route bypass after enabling team mode; old
   backup/v1 remains readable. Execution and approval routes authorize then
   explicitly refuse unsupported operations pending their delivery tickets.
+
+- `report assemble` creates `readmit-retained-packet/v1` from selected actual
+  case/spec/current and optional baseline evidence, preserving original bytes
+  and provenance. `report verify-retained` verifies it offline, reevaluating
+  verdicts and source bindings. Missing baseline stays missing; execution errors
+  and uncertain durable lifecycle remain explicit. The packet is customer-local,
+  not disclosure-approved, and synthetic report/v1 remains unchanged.

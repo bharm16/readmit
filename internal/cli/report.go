@@ -57,7 +57,7 @@ func reportCommand(ran *bool) *cobra.Command {
 	}}
 	prepare.Flags().StringVar(&workspace, "output", "", "New mutable workspace outside the sealed packet")
 	prepare.Flags().StringVar(&address, "address", "127.0.0.1:2575", "Explicit numeric loopback endpoint for manual fixture reruns")
-	command.AddCommand(verify, prepare)
+	command.AddCommand(verify, prepare, retainedAssembleCommand(ran), retainedVerifyCommand(ran))
 	return command
 }
 
@@ -66,4 +66,43 @@ func reportOneArgument(_ *cobra.Command, args []string) error {
 		return errors.New("report subcommand requires exactly one packet")
 	}
 	return nil
+}
+
+func retainedAssembleCommand(ran *bool) *cobra.Command {
+	var input report.RetainedInput
+	var output string
+	cmd := &cobra.Command{Use: "assemble --case CASE --spec SPEC --current RESULT --output NEW_PACKET", Short: "Assemble customer-local evidence from actual retained runs without sending", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		*ran = true
+		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		packet, err := report.Assemble(ctx, input, output)
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Retained packet complete: %s\nCustomer-local only; source values retained; no disclosure approval\nCurrent: %s\nBaseline present: %t\n", packet.Identity, packet.Manifest.Current.Status, packet.Manifest.Baseline != nil)
+		if err != nil {
+			return errors.New("cannot write retained packet summary")
+		}
+		return nil
+	}}
+	cmd.Flags().StringVar(&input.Case, "case", "", "Verified current source case")
+	cmd.Flags().StringVar(&input.Spec, "spec", "", "Exact historical specification retained by current result")
+	cmd.Flags().StringVar(&input.Current, "current", "", "Retained current result directory")
+	cmd.Flags().StringVar(&input.Baseline, "baseline", "", "Optional actual retained baseline result")
+	cmd.Flags().StringVar(&input.BaselineCase, "baseline-case", "", "Baseline source case if different from current case")
+	cmd.Flags().StringVar(&output, "output", "", "New private packet directory; never overwrite")
+	return cmd
+}
+func retainedVerifyCommand(ran *bool) *cobra.Command {
+	return &cobra.Command{Use: "verify-retained PACKET", Short: "Verify actual retained evidence offline without transmitting", Args: reportOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
+		*ran = true
+		packet, err := report.OpenRetained(cmd.Context(), args[0])
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Retained packet verified: %s\nCustomer-local only; integrity is not disclosure approval or source authentication\n", packet.Identity); err != nil {
+			return errors.New("cannot write retained verification")
+		}
+		return nil
+	}}
 }

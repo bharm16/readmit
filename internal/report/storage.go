@@ -56,6 +56,13 @@ func writeFile(dir, name string, data []byte) error {
 // readTree rejects links, devices, oversized input and unindexed empty directories.
 // os.Root confines the bounded reads to the selected directory.
 func readTree(dir string) (map[string][]byte, error) {
+	return readTreeAllowEmptySent(dir, false)
+}
+
+// Retained durable jobs may have no sent bytes after a connection failure.
+// Empty operational sent/ carries no evidence file and is omitted on copy;
+// all other empty directories remain errors, as does sent/ in ordinary input.
+func readTreeAllowEmptySent(dir string, durable bool) (map[string][]byte, error) {
 	invalid := errors.New("report evidence must be bounded regular files without symlinks or empty directories")
 	info, err := os.Lstat(dir)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
@@ -114,8 +121,8 @@ func readTree(dir string) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, populated := range directories {
-		if !populated {
+	for name, populated := range directories {
+		if !populated && !(durable && name == "sent" && files["engine.json"] != nil) {
 			return nil, invalid
 		}
 	}

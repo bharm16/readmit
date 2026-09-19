@@ -177,7 +177,11 @@ the reproducer, verified results, diagnosis, field-aware diff, versioned
 profiles, transformation history, and rerun instructions with file hashes.
 `report verify PACKET` verifies the retained evidence offline; `report prepare`
 creates a separate runnable workspace so the packet stays unchanged. This mode
-accepts only its built-in synthetic scenario. See [engagement packets](docs/report.md).
+accepts only its built-in synthetic scenario. `report assemble --case CASE --spec SPEC
+--current RESULT --output NEW_PACKET` instead preserves actual retained evidence,
+with an optional observed baseline; `report verify-retained` verifies it offline.
+These packets remain customer-local and are not disclosure-approved. See
+[engagement packets](docs/report.md).
 
 `project init --output NEW_DIRECTORY --title TITLE --interface-version ID`
 creates an interface investigation project: a versioned `readmit-project/v1`

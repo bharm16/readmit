@@ -156,3 +156,63 @@ report, report verify, and report prepare exit 0 on success and 1 on an
 invalid contract, unsupported mode, corrupt input or I/O failure. Default console
 output includes identities, counts and fixed labels; it does not echo source
 values, selected paths or endpoints.
+
+## Packets from actual retained runs
+
+`report assemble` copies explicitly supplied evidence. It generates no case,
+opens no receiver and sends nothing:
+
+~~~sh
+readmit report assemble --case CASE --spec SPEC --current RESULT --output NEW_PACKET
+readmit report assemble --case CASE --spec SPEC --current RESULT --baseline BASELINE --baseline-case OLD_CASE --output NEW_PACKET
+readmit report verify-retained NEW_PACKET
+~~~
+
+`--baseline` is optional; absent baseline means **No observed baseline**, never a
+manufactured failure. `--baseline-case` defaults to the current case. Both result
+directories and durable jobs with a finalized result/replay are supported.
+Incomplete jobs without that evidence, configuration-only failures, unsupported
+contracts and results not bound to the selected case are refused. A retained
+execution error remains an error. Durable lifecycle, incomplete journal and
+uncertain delivery are recorded separately from its result verdict: a finalized
+result alone does not establish that the enclosing job completed.
+
+The separate `readmit-retained-packet/v1` manifest binds `case/`, `current/`,
+`spec.json`, optional `baseline/` and `baseline-case/`, `SUMMARY.md`, and `RERUN.md`.
+Every supplied evidence file is copied byte for byte, including historical provenance,
+observations, target configuration, raw sent/received messages and completion
+records. A durable job's empty operational `sent/` directory, left by a
+connection failure, carries no evidence file and is omitted; other empty
+directories are refused. `--spec` must match the current retained specification exactly, including
+formatting. The baseline retains its own historical spec and case, so changed
+inputs and expectations are not silently presented as an unchanged test.
+
+Verification reopens the nested artifacts with their existing readers, reevaluates
+result verdicts, verifies source-case identity and every retained original
+message, and recomputes all packet claims and instructions. Recomputed outer
+hashes cannot disguise a contradictory summary or provenance label. Missing,
+extra, changed, symlinked, nonregular, oversized and unsupported evidence is
+refused. The same 256-file, 16 MiB per-file and 64 MiB total bounds apply; assembly
+reserves space for its own metadata and refuses inputs too large to fit. The
+manifest is canonical strict JSON with required fields; its completion hash is
+written last. On cancellation/failure any partial output remains incomplete;
+retry with a new destination. No overwrite or automatic send recovery exists.
+
+This is **customer-local original evidence**, including sensitive source values,
+historical paths, assertion values and endpoint configuration. It is not a
+redacted extract, disclosure approval or externally equivalent reproducer. Unix
+permissions are 0700/0600; Windows inherits directory ACLs. Console summaries
+carry no values, paths or endpoints. Transfer approval, external setup/reset,
+credential authorization, source authenticity and target software revision are
+not inferred from a hash. Generated fixture provenance remains generated;
+imported/derived provenance is retained as recorded, not certified authentic.
+
+The offline summary distinguishes case, target-configuration and specification
+changes. These do not establish causality or clinical correctness. A baseline
+must be a distinct retained execution, never the current run relabelled.
+`RERUN.md` describes an explicit authorized-target workflow outside the immutable
+packet; missing original-target evidence is never substituted with fixture proof.
+The old synthetic `report`, `report verify`, and `report prepare` contracts and
+readers remain unchanged. HTML/PDF/JUnit rendering and disclosure/export approval
+are separate deliveries; this command supplies an evidence packet and Markdown
+summary only.
