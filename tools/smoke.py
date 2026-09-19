@@ -60,6 +60,7 @@ REQUIRED_FILES = {
     "docs/project.md",
     "docs/project-lifecycle.md",
     "docs/backup.md",
+    "docs/upgrade.md",
     "docs/license.md",
     "docs/license-v2.md",
     "docs/billing.md",

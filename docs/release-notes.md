@@ -738,6 +738,28 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   declared, what it waited for and its own unchanged `readmit-job/v1` summary.
   `readmit-job/v1` and `readmit-run-lease/v1` gain no member and change no byte.
 
+- `upgrade check --candidate STAGED_DIRECTORY` is the explicit, offline update
+  check an administrator runs before installing a newer readmit: it reads the
+  `readmit-desktop-package/v1` manifest of a candidate somebody staged, re-reads
+  every package file against its recorded digest, refuses a staged directory
+  holding a file the manifest does not record, and reports what the build
+  running the check makes of each project and durable run named — `readable`,
+  `unsupported` where it names a contract version this build does not read, or
+  `unreadable`. At least one must be named: a check that reviewed nothing is
+  not a compatibility review and is never reported as ready. It contacts no
+  update service, downloads nothing and writes nothing, and **no evidence is
+  converted, migrated in place or rewritten**:
+  there is no converter for an unknown contract in either direction.
+  `upgrade prepare PROJECT --output NEW_ARCHIVE --approve` takes the verified
+  `readmit-backup/v1` recovery archive the upgrade is rolled back to, and
+  writes nothing at all without that approval. Neither command installs
+  anything: the installation is the platform's own installer run with
+  elevation, which is where an administrator approves it. The plan is a new
+  `readmit-upgrade-plan/v1` contract; no existing document gains a member.
+  Because every package this repository builds records
+  `"signed_for_distribution": false`, the check refuses every candidate staged
+  from one — signing, notarization and publication remain the owner's gate.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is

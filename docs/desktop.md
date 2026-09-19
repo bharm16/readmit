@@ -154,9 +154,13 @@ has to read, and the installation test fails loudly if a signing authority ever
 appears on a preview. Signing identities, notarization credentials and the signed
 release packages are release inputs this repository does not hold; see
 [D5](product-decisions.md#d5--desktop-distribution-and-signing) and
-[release acceptance](release-acceptance.md). Automatic updates, upgrade and
-rollback paths and offline licence import are separate deliveries and are not
-here.
+[release acceptance](release-acceptance.md). Automatic updates, an in-place
+upgrade of an installed application and offline licence import are separate
+deliveries and are not here. What is here is the explicit offline check an
+administrator runs before installing a staged candidate and the recovery
+archive it is rolled back to: [upgrading without losing
+evidence](upgrade.md), which refuses every candidate built here precisely
+because each one records that it is not signed for distribution.
 
 ## Operations and states
 

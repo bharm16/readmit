@@ -225,6 +225,25 @@ restored canonical case, so a damaged index is a rebuild and the values it
 retained are never held in a second place. See
 [backing up a workspace](docs/backup.md).
 
+`upgrade check --candidate STAGED_DIRECTORY --project PROJECT --run RUN` is the
+explicit check an administrator runs before installing a newer readmit on a
+workstation. The candidate is a directory somebody staged — the native packages
+and the `readmit-desktop-package/v1` manifest beside them — so nothing is
+downloaded, no update service is contacted and no check happens on its own. It
+re-reads every staged package against its recorded digest, refuses a staged
+directory holding a file the manifest does not record, and reports what the
+build running the check makes of each project and durable run named: `readable`,
+`unsupported` — it names a contract version this build does not read — or
+`unreadable`. At least one has to be named: a check that reviewed nothing is
+not a compatibility review. **Nothing is converted, migrated in place or
+rewritten**: a build
+that does not read this machine's evidence is a reason to keep the build that
+does. `upgrade prepare PROJECT --output NEW_ARCHIVE --approve` takes the
+verified recovery archive that upgrade is rolled back to, and writes nothing
+without that approval. Every package this repository builds records
+`"signed_for_distribution": false`, so the check refuses every candidate staged
+from one. See [upgrading without losing evidence](docs/upgrade.md).
+
 `license verify ENTITLEMENT --trust TRUST_STORE` verifies a signed organization
 entitlement on the machine that holds it: an Ed25519 signature over a versioned
 `readmit-entitlement/v1` document, checked against vendor signing keys the
