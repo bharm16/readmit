@@ -235,3 +235,5 @@ Customer-hosted deployment: [artifact hub installation and recovery](../hub/READ
 
 [Compare retained executions](desktop.md#comparing-retained-executions) in the
 desktop: behavior, drift, approval binding, retained failures and flakiness limits.
+
+- [Reusable regression suites](suites.md): templates, data tables, environment bindings, setup order and durable execution.

@@ -25,7 +25,7 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
 
 ## CLI
 
-- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `corpus`, `project`, `backup`, `upgrade`, `license`, `secret`, `protect`, `target`, `source`, `listen`, `replay`, `test`, `observe`, `explain`, `diff`, `drift`, `normalize`, `baseline`, `diagnose`, `correlate`, `transform`, `synth`, `scenario`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
+- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `corpus`, `project`, `backup`, `upgrade`, `license`, `secret`, `protect`, `target`, `source`, `listen`, `replay`, `test`, `suite`, `observe`, `explain`, `diff`, `drift`, `normalize`, `baseline`, `diagnose`, `correlate`, `transform`, `synth`, `scenario`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
 - Command data goes to stdout, diagnostics to stderr. Machine-readable modes never interleave progress output with JSON.
 - Target configuration is read from explicitly selected files, not hidden global config or environment-variable precedence.
 - Credentials are referenced, never held. A `readmit-secrets/v1` document registers the store kind an operator declared, the single purpose and endpoint address a credential may be bound to, the absolute path of the program that reads it back, and the recorded rotation. The purposes are `mllp-endpoint` and `source-endpoint`; a reference registered for one is refused wherever the other is needed. No command accepts a credential value, and a resolved value masks itself under every formatting verb and refuses to be serialized. See [credential references](secret.md).
@@ -514,3 +514,12 @@ review commitment, local approver and rationale. CLI and desktop use the same
 review and approval methods. This neither authenticates a team user nor blesses
 a passing run, changes execution, or snapshots the referenced files. See
 [regression baselines](baseline.md).
+
+## Regression suite organization
+
+`internal/suite` interprets `readmit-suite/v1` as reusable v1 test templates,
+typed data rows and named environment bindings. It validates expected sequence
+and expands setup dependencies into the existing `internal/runqueue` scheduler.
+`readmit-suite-selection/v1` retains the selected site/environment separately;
+existing test, queue and durable evidence contracts are unchanged. See
+[regression suites](suites.md).

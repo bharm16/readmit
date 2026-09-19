@@ -79,6 +79,7 @@ func Execute(version string, args []string, stdout, stderr io.Writer) error {
 	root.AddCommand(replayCommand(&ran))
 	root.AddCommand(testCommand(&ran))
 	root.AddCommand(runCommand(&ran))
+	root.AddCommand(suiteCommand(&ran))
 	root.AddCommand(observeCommand(&ran))
 	root.AddCommand(explainCommand(&ran))
 	root.AddCommand(redactCommand(&ran))

@@ -81,6 +81,7 @@ REQUIRED_FILES = {
     "testdata/fixtures/assertion-set-refused.json",
     "docs/explain.md",
     "docs/test-authoring.md",
+    "docs/suites.md",
     "docs/guided-sample.md",
     "docs/redact.md",
     "docs/reproducer.md",
