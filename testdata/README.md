@@ -102,6 +102,22 @@ test is the set. `assertion-set-refused.json` is its negative counterpart: it
 counts records with a field subject, so the reader refuses the pairing. Every
 other refusal is a single edit of the positive fixture, made in the tests.
 
+`profile-version.json` is the `local-profile.json` document above sealed as a
+`readmit-profile-version/v1` record for issue #47, so its length and SHA-256 are
+the real ones of that fixture's canonical form and a test proves it.
+`profile-references.json` is the hand-authored `readmit-profile-references/v1`
+index beside it: one saved test pinned to the version that changed, one already
+on the new version, one on a third version and one pinning another profile
+entirely, so every impact a comparison can report is present in one document.
+Only the reference to `test-reschedule.json` carries that file's real digest,
+and only its pin carries the real digest of the sealed version 1 above; the
+other three name saved tests and profile versions that do not exist and their
+digests are placeholders, which is exactly what the contract records — the bytes
+a reference was made against, never re-read. `profile-references-refused.json` is the
+negative counterpart: it records one saved test pinned to two versions at once,
+the state a historical verdict could not survive, so the reader refuses it.
+Every other refusal is a single edit of the positive fixture, made in the tests.
+
 The issue #6 pair `diff-before.mllp` and `diff-after.mllp` includes an inserted
 message, repeated segments and identifiers, a changed timestamp, and a null
 field that becomes omitted. `diff-expected.json` independently states the

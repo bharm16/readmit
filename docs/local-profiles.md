@@ -255,6 +255,8 @@ of the consumer's own contract.
   unchanged by this release.
 - **No profile is bundled**, and nothing reads the bundled v2.5.1 dictionary
   through this contract.
-- **Versioning, change impact and import/export are not delivered** here. #47
-  owns versioning a profile and reporting which saved tests a change affects;
-  #48 owns importing and exporting reusable contracts.
+- **Versioning, change impact and import/export are not delivered** here.
+  Sealing a profile at a version, comparing two versions and reporting which
+  saved tests a change reaches are the separate contracts on
+  [profile versions](profile-versions.md); #48 owns importing and exporting
+  reusable contracts.

@@ -580,6 +580,13 @@ requirements, types, local code tables, assigning authorities and date
 handling, with every rule marked as coming from the pinned profile, overridden
 locally, or declared only here. No message is evaluated against one yet. See
 [local profiles](docs/local-profiles.md).
+Changing that contract is versioned: `readmit-profile-version/v1` seals a
+profile at one version over the checksum of its canonical document, a
+comparison names every part that differs, and a
+`readmit-profile-references/v1` index says which saved tests pin which version
+and which document that version stood for, so a change lists the tests written
+against the version it changed and moves none of them until somebody upgrades
+one by name. See [profile versions](docs/profile-versions.md).
 This is **syntax inspection**, not semantic validation or a claim of HL7
 conformance. The separate diagnosis and receiver workflows use the narrow,
 documented readmit SIU fixture profile.
