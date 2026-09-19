@@ -16,6 +16,20 @@ The `.gitattributes` rule disables text conversion for these evidence bytes.
 | `reduced-delimiters.hl7` | One raw CR message with only `^~` in MSH-2; escape and subcomponent delimiters are absent, so a literal unmatched backslash is ordinary field data. |
 | `case-evidence.mllp` | Eight framed occurrences: SIU S12/S13 sharing `DUP`; an ambiguous AA ACK with its own ID; an ADT `SOLO` and its uniquely matching CA ACK; SIU `MISSING` with empty MSH-7 and no ACK; an AE ACK for absent `ORPHAN`; a malformed payload containing literal NUL and `ff`. Four messages, three ACKs, one unparsed occurrence. No observed timestamps. Expected links: one matched, one ambiguous, one unmatched ACK, and three messages without a unique ACK. |
 
+`diagnose-acknowledged.mllp` holds two framed occurrences in one source: an SIU
+S12 booking with control ID `DIAGNOSE-ACKED`, and an ACK whose MSA-2 echoes it,
+whose MSA-1 is the escaped hex form of `AE`, and whose single ERR declares code
+`101` with severity `E` under `HL70357`. Both MSA-3 and ERR-3.2 hold literal
+`SECRET-` text that no report or review may ever copy. The pair is the only
+fixture where a captured acknowledgement is correlated to the message it
+answers, which is what a promoted regression assertion reads.
+`finding-decisions.json` and `finding-decisions-refused.json` are hand-authored
+`readmit-finding-decisions/v1` documents: the first records a confirmation, a
+case-scoped suppression and a dismissal, and the second records `not_reviewed`
+as if it were a decision, which the reader refuses whole. Their
+`report_sha256` is a placeholder; a real one names the digest of your own
+`report.json`.
+
 Parser tests assert field numbering and states against literals, then compare
 serialization to the original file bytes. Executable tests assert independently
 specified output labels and behavior. `tools/smoke.py` checks the archive's

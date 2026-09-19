@@ -1,0 +1,11 @@
+{
+  "schema": "readmit-finding-decisions/v1",
+  "report_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "decisions": [
+    {
+      "finding": "f000001",
+      "verdict": "not_reviewed",
+      "rationale": "Leaving a finding undecided is recording no decision at all, so this document is refused whole."
+    }
+  ]
+}

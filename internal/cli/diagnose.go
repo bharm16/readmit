@@ -52,30 +52,8 @@ func diagnoseCommand(ran *bool) *cobra.Command {
 				return errors.New("cannot encode diagnosis report")
 			}
 			markdown := diagnose.Markdown(report)
-			if err := os.Mkdir(resolvedOutput, 0700); err != nil {
-				return errors.New("cannot create report directory; destination must be new and parent writable")
-			}
-			root, err := os.OpenRoot(resolvedOutput)
-			if err != nil {
-				return errors.New("cannot open new report directory")
-			}
-			defer root.Close()
-			for _, file := range []struct {
-				name string
-				data []byte
-			}{{"report.json", jsonData}, {"report.md", markdown}} {
-				f, err := root.OpenFile(file.name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-				if err != nil {
-					return errors.New("cannot create diagnosis file; incomplete report retained")
-				}
-				_, writeErr := f.Write(file.data)
-				if writeErr == nil {
-					writeErr = f.Sync()
-				}
-				closeErr := f.Close()
-				if writeErr != nil || closeErr != nil {
-					return errors.New("cannot write diagnosis file; incomplete report retained")
-				}
+			if err := writeNewReportDirectory(resolvedOutput, "diagnosis", outputFile{"report.json", jsonData}, outputFile{"report.md", markdown}); err != nil {
+				return err
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Diagnosis complete: %d findings, %d unsupported items. Ruleset: %s. JSON and Markdown reports written.\n", len(report.Findings), len(report.Unsupported), report.Ruleset)
 			return err
@@ -83,6 +61,7 @@ func diagnoseCommand(ran *bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&output, "output", "", "New directory for report.json and report.md (never overwrite)")
 	cmd.Flags().StringVar(&configPath, "config", "", "Explicit readmit-diagnose-config/v1 JSON configuration selecting the profile, ruleset, rules and namespaces")
+	cmd.AddCommand(diagnoseReviewCommand(ran))
 	return cmd
 }
 

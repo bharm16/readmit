@@ -414,4 +414,12 @@ significance, and no advice. A finding about a result says that the message
 workflow disagrees with itself or with the capture, never anything about a
 patient.
 
+## Deciding what a finding means
+
+A diagnosis stops at the finding. What an analyst decided about one — confirmed,
+dismissed, or suppressed within a stated scope — is a separate document over this
+report, and a confirmed finding is what
+[a regression test is promoted from](finding-review.md). Nothing in this command
+records a decision, and nothing here promotes anything.
+
 See [selectors.md](selectors.md) for the shared byte-preserving selector grammar.

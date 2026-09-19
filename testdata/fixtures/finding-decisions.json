@@ -1,0 +1,22 @@
+{
+  "schema": "readmit-finding-decisions/v1",
+  "report_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "decisions": [
+    {
+      "finding": "f000001",
+      "verdict": "confirmed",
+      "rationale": "The scheduler must keep rejecting this booking; we hold the vendor to the acknowledgement outcome."
+    },
+    {
+      "finding": "f000002",
+      "verdict": "suppressed",
+      "scope": "case",
+      "rationale": "The error detail is the vendor's own wording in this capture and is not a contract we hold them to."
+    },
+    {
+      "finding": "f000003",
+      "verdict": "dismissed",
+      "rationale": "The missing antecedent is outside the capture window; we re-captured and the booking is there."
+    }
+  ]
+}
