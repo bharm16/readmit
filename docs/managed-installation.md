@@ -198,8 +198,41 @@ must remove the newer package before reinstalling the previously approved one.
 Existing automated coverage is explicit: `tests/license_test.go` and
 `tests/license_v2_test.go` exercise public CLI activation/refusals;
 `tools/test_package_desktop.py` checks package declarations and refusals; the
-`desktop-package` CI matrix installs, checks identity and removes real unsigned
-packages on its five runners. These tests do not certify offline dependency
+`desktop-install` CI matrix downloads, verifies, installs and removes the actual
+unsigned packages on five fresh runners, checking installed legal files, expected
+identity with empty PATH and retention of synthetic evidence/state markers. These tests do not certify offline dependency
 closure, actual signature/notarization/stapling, enterprise policy, interrupted
 native installation or signed upgrade/rollback. Those exact-candidate managed
 lab results and protected signing identities remain owner release gates.
+
+
+## R21.4 exact-candidate acceptance still required
+
+Record the actual download location, release/tag/commit, independently trusted
+checksums and provenance verification, installer and installed executable digests,
+OS edition/version/architecture and each result. Keep logs outside evidence and
+omit hardware identifiers. A CI artifact download is not a public release
+installation, and a copied manifest is not independent publisher authentication.
+
+For macOS retain actual Developer ID application signature verification,
+Gatekeeper assessment, notarization/staple validation for the DMG and signed PKG
+publisher verification. For Windows retain valid Azure Public Trust signature
+verification of both the MSI and installed executable against the approved
+publisher. A signature's mere presence, an ad-hoc signature or a manually changed
+manifest is insufficient. Validate rejection of unsigned/tampered/wrong-publisher
+candidates without disabling OS protection. No current preview can pass this gate.
+
+Run ordinary-user window launch and a synthetic inspection while disconnected on
+all D5 OS versions, with Go, Node, Python, WiX and development SDKs absent. Test
+missing WebView2/WebKitGTK refusal, interrupted install recovery, approved upgrade
+and rollback, and unchanged synthetic project identities. Verify notices and
+all dependency-license obligations on the exact installed output; the existing
+repository texts do not certify a complete transitive-dependency license audit.
+Final application terms remain owner/counsel work under D8.
+
+Uninstall defaults to preserving evidence, activation and local state. Verify
+that behavior using synthetic project and state folders before and after native
+removal. There is no installer purge-evidence option. Deliberate project removal
+uses the separately documented project-retirement/verified-backup workflow;
+removing local state or activation needs a separate explicit administrative
+choice and is not implied by uninstall. Do not call unlinking secure erasure.

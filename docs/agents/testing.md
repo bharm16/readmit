@@ -48,9 +48,9 @@ jobs fails, is skipped, or is cancelled. Packaging and the five native smoke
 tests run concurrently, and test the exact archives later used for publication.
 The desktop module builds and scans separately, and `desktop` is that workflow's
 equivalent stable aggregate: it requires the macOS shell build and the five
-`desktop-package` jobs, which build one unsigned native package per target and
-install, check and remove it on that runner, and it fails the same way if any of
-them fails, is skipped or is cancelled. Release credentials remain exclusive to
+`desktop-package` jobs plus the five `desktop-install` jobs, which download,
+install, check and remove the exact unsigned artifacts on fresh native runners.
+It fails the same way if any of them fails, is skipped or is cancelled. Release credentials remain exclusive to
 trusted tag runs; no signing credential reaches any workflow.
 
 Wait for `quality`, `package`, all five `native-smoke` checks, and `desktop` on

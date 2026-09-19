@@ -152,69 +152,6 @@ jobs:
             --version "$READMIT_PREVIEW_VERSION" --output dist-desktop \
             --os ${{ matrix.os }} --arch ${{ matrix.arch }}
           python3 tools/package_desktop.py verify --packages dist-desktop
-      - name: Install, check and remove the .deb through the platform's own tools
-        if: matrix.os == 'linux'
-        run: |
-          sudo apt-get install -y ./dist-desktop/readmit-desktop_*.deb
-          dpkg -s readmit-desktop | grep -q '^Status: install ok installed'
-          test -f /usr/share/applications/readmit-desktop.desktop
-          # Running the installed executable resolves every library it links
-          # against, so a wrong or missing declared dependency fails here. No
-          # window is opened: this runner has no display.
-          python3 tools/package_desktop.py identity \
-            --desktop /usr/bin/readmit-desktop --command-line build/readmit
-          sudo apt-get remove -y readmit-desktop
-          test ! -e /usr/bin/readmit-desktop
-      - name: Install, check and remove the macOS packages through their own tools
-        if: matrix.os == 'darwin'
-        run: |
-          # The disk image is what a person opens and drags across.
-          mkdir mounted
-          hdiutil attach -nobrowse -readonly -mountpoint mounted dist-desktop/*.dmg
-          cp -R mounted/readmit-desktop.app /Applications/
-          hdiutil detach mounted
-          python3 tools/package_desktop.py identity \
-            --desktop /Applications/readmit-desktop.app/Contents/MacOS/readmit-desktop \
-            --command-line build/readmit
-          rm -rf /Applications/readmit-desktop.app
-          # The installer package is what a managed installation runs.
-          sudo installer -pkg dist-desktop/*.pkg -target /
-          # A preview must not be mistaken for an application signed for
-          # distribution. Apple silicon requires every executable to carry an
-          # ad-hoc signature, which the linker applies, so codesign succeeds on
-          # any arm64 build; only a named signing authority marks a real one,
-          # and it is printed at -dvv and not at -dv.
-          reported=$(codesign -dvv /Applications/readmit-desktop.app 2>&1 || true)
-          if printf '%s\n' "$reported" | grep -q '^Authority='; then
-            echo "this preview is signed for distribution, which it was not built to be:" >&2
-            printf '%s\n' "$reported" | grep '^Authority=' >&2
-            exit 1
-          fi
-          python3 tools/package_desktop.py identity \
-            --desktop /Applications/readmit-desktop.app/Contents/MacOS/readmit-desktop \
-            --command-line build/readmit
-          sudo rm -rf /Applications/readmit-desktop.app
-          test ! -e /Applications/readmit-desktop.app
-      - name: Install, check and remove the MSI silently, as managed deployment does
-        if: matrix.os == 'windows'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $installer = (Get-ChildItem dist-desktop\*.msi).FullName
-          $installed = 'C:\Program Files\readmit\readmit-desktop.exe'
-          $install = Start-Process msiexec -ArgumentList "/i `"$installer`" /qn /norestart /l*v install.log" -Wait -PassThru
-          if ($install.ExitCode -ne 0) { throw "silent install failed: $($install.ExitCode)" }
-          if (-not (Test-Path $installed)) { throw "the installer wrote no application" }
-          # Windows Installer read the database's own tables: the launch
-          # condition searched the registry for the WebView2 runtime, and the
-          # verbose log records the property it resolved.
-          if (-not (Select-String -Path install.log -Pattern 'READMITWEBVIEW2' -Quiet)) {
-            throw "the installer never evaluated the WebView2 prerequisite"
-          }
-          python tools\package_desktop.py identity --desktop "$installed" --command-line build\readmit.exe
-          $remove = Start-Process msiexec -ArgumentList "/x `"$installer`" /qn /norestart" -Wait -PassThru
-          if ($remove.ExitCode -ne 0) { throw "silent removal failed: $($remove.ExitCode)" }
-          if (Test-Path $installed) { throw "removal left the application behind" }
       # Build provenance for the packages this run produced. It records which
       # workflow built them from which commit; it is not a code signature and
       # makes no claim that the packages are signed, notarized or published.
@@ -229,12 +166,143 @@ jobs:
             dist-desktop/manifest.json
             dist-desktop/readmit-desktop_*
 
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: desktop-install-cli-${{ matrix.os }}-${{ matrix.arch }}
+          if-no-files-found: error
+          path: build/readmit*
+
+  # Fresh runners download the artifacts; no Go/Node/WiX build setup here.
+  # Hosted images still contain developer tools. Empty-PATH execution is a
+  # bounded headless check, not clean managed-machine or interactive acceptance.
+  desktop-install:
+    needs: desktop-package
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: linux, arch: amd64, runner: ubuntu-24.04}
+          - {os: linux, arch: arm64, runner: ubuntu-24.04-arm}
+          - {os: darwin, arch: amd64, runner: macos-15-intel}
+          - {os: darwin, arch: arm64, runner: macos-15}
+          - {os: windows, arch: amd64, runner: windows-2025}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: desktop-preview-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist-desktop
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: desktop-install-cli-${{ matrix.os }}-${{ matrix.arch }}
+          path: build
+      - name: Verify downloaded packages and create synthetic retention markers
+        shell: bash
+        run: |
+          echo "READMIT_PREVIEW_VERSION=0.0.0+dev.${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          chmod +x build/readmit* || exit 1
+          python3 tools/package_desktop.py verify --packages dist-desktop
+          mkdir -p "$HOME/readmit-install-retention/project" "$HOME/readmit-install-retention/state"
+          printf 'synthetic evidence retained\n' > "$HOME/readmit-install-retention/project/marker.txt"
+          printf 'synthetic state retained\n' > "$HOME/readmit-install-retention/state/marker.txt"
+      - name: Install declared runtime dependencies only
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-0t64 libwebkit2gtk-4.1-0
+      - name: Install, check and remove the .deb through the platform's own tools
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get install -y ./dist-desktop/readmit-desktop_*.deb
+          dpkg -s readmit-desktop | grep -q '^Status: install ok installed'
+          test -f /usr/share/applications/readmit-desktop.desktop
+          # Running the installed executable resolves every library it links
+          # against, so a wrong or missing declared dependency fails here. No
+          # window is opened: this runner has no display.
+          python3 tools/package_desktop.py installed \
+            --desktop /usr/bin/readmit-desktop --command-line build/readmit \
+            --resources /usr/share/doc/readmit-desktop --version "$READMIT_PREVIEW_VERSION"
+          sudo apt-get remove -y readmit-desktop
+          test ! -e /usr/bin/readmit-desktop
+      - name: Install, check and remove the macOS packages through their own tools
+        if: matrix.os == 'darwin'
+        run: |
+          # The disk image is what a person opens and drags across.
+          mkdir mounted
+          hdiutil attach -nobrowse -readonly -mountpoint mounted dist-desktop/*.dmg
+          cp -R mounted/readmit-desktop.app /Applications/
+          hdiutil detach mounted
+          python3 tools/package_desktop.py installed \
+            --desktop /Applications/readmit-desktop.app/Contents/MacOS/readmit-desktop \
+            --command-line build/readmit \
+            --resources /Applications/readmit-desktop.app/Contents/Resources --version "$READMIT_PREVIEW_VERSION"
+          rm -rf /Applications/readmit-desktop.app
+          # The installer package is what a managed installation runs.
+          sudo installer -pkg dist-desktop/*.pkg -target /
+          # A preview must not be mistaken for an application signed for
+          # distribution. Apple silicon requires every executable to carry an
+          # ad-hoc signature, which the linker applies, so codesign succeeds on
+          # any arm64 build; only a named signing authority marks a real one,
+          # and it is printed at -dvv and not at -dv.
+          reported=$(codesign -dvv /Applications/readmit-desktop.app 2>&1 || true)
+          if printf '%s\n' "$reported" | grep -q '^Authority='; then
+            echo "this preview is signed for distribution, which it was not built to be:" >&2
+            printf '%s\n' "$reported" | grep '^Authority=' >&2
+            exit 1
+          fi
+          python3 tools/package_desktop.py installed \
+            --desktop /Applications/readmit-desktop.app/Contents/MacOS/readmit-desktop \
+            --command-line build/readmit \
+            --resources /Applications/readmit-desktop.app/Contents/Resources --version "$READMIT_PREVIEW_VERSION"
+          sudo rm -rf /Applications/readmit-desktop.app
+          test ! -e /Applications/readmit-desktop.app
+      - name: Install, check and remove the MSI silently, as managed deployment does
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = (Get-ChildItem dist-desktop\*.msi).FullName
+          $installed = 'C:\Program Files\readmit\readmit-desktop.exe'
+          if ((Get-AuthenticodeSignature $installer).Status -ne 'NotSigned') {
+            throw "preview MSI unexpectedly carries signature material"
+          }
+          $install = Start-Process msiexec -ArgumentList "/i `"$installer`" /qn /norestart /l*v install.log" -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "silent install failed: $($install.ExitCode)" }
+          if (-not (Test-Path $installed)) { throw "the installer wrote no application" }
+          # Windows Installer read the database's own tables: the launch
+          # condition searched the registry for the WebView2 runtime, and the
+          # verbose log records the property it resolved.
+          if (-not (Select-String -Path install.log -Pattern 'READMITWEBVIEW2' -Quiet)) {
+            throw "the installer never evaluated the WebView2 prerequisite"
+          }
+          python tools\package_desktop.py installed --desktop "$installed" --command-line build\readmit.exe --resources "C:\Program Files\readmit" --version "$env:READMIT_PREVIEW_VERSION"
+          if ($LASTEXITCODE -ne 0) { throw "installed payload verification failed" }
+          if ((Get-AuthenticodeSignature $installed).Status -ne 'NotSigned') {
+            throw "preview executable unexpectedly carries signature material"
+          }
+          $remove = Start-Process msiexec -ArgumentList "/x `"$installer`" /qn /norestart" -Wait -PassThru
+          if ($remove.ExitCode -ne 0) { throw "silent removal failed: $($remove.ExitCode)" }
+          if (Test-Path $installed) { throw "removal left the application behind" }
+      - name: Removal preserved synthetic evidence and local state
+        shell: bash
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          root = Path.home() / "readmit-install-retention"
+          assert (root / "project/marker.txt").read_bytes() == b"synthetic evidence retained\n"
+          assert (root / "state/marker.txt").read_bytes() == b"synthetic state retained\n"
+          PYTHON
+
   # Keep one stable required context for this workflow, the way ci.yml keeps
   # `quality`. A skipped, cancelled or failed prerequisite must fail this check,
   # so no other worktree has to guess which desktop job names are mandatory.
   desktop:
     if: always()
-    needs: [desktop-shell, desktop-package]
+    needs: [desktop-shell, desktop-package, desktop-install]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -242,6 +310,8 @@ jobs:
         env:
           SHELL_RESULT: ${{ needs.desktop-shell.result }}
           PACKAGE_RESULT: ${{ needs.desktop-package.result }}
+          INSTALL_RESULT: ${{ needs.desktop-install.result }}
         run: |
           test "$SHELL_RESULT" = success
           test "$PACKAGE_RESULT" = success
+          test "$INSTALL_RESULT" = success

@@ -1,5 +1,10 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Desktop install checks download exact preview packages onto fresh native
+  runners, verify installed license/source material and the expected engine with
+  empty PATH, and retain synthetic evidence/state across removal. Signed release
+  and clean managed-machine acceptance remain explicit owner gates.
+
 - Managed/offline installation runbook documents native silent deployment, staged
   webview dependencies, offline activation, direct runner TLS, least privilege
   and explicit signed-candidate/enterprise-policy acceptance gates.

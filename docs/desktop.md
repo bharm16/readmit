@@ -108,13 +108,37 @@ Removing the application removes the application. It never removes evidence, a
 project, or the three local shell-state documents named above; those are files
 in folders an operator chose, and no uninstaller of ours deletes them.
 
-Continuous integration performs exactly these steps on each target: it installs
-the package, reads back what the installed application reports, and removes it,
-checking that nothing is left behind. Running the installed executable resolves
-every library it links against, so a wrong or missing declared dependency fails
-there. **No window is opened on any target**: no runner has a display, so that
-the application draws its interface on each of these platforms is not
-established here, and no managed or customer machine has installed one.
+Continuous integration downloads the built packages onto fresh native runners,
+verifies them, installs and removes them through the native tools. Installation
+checks compare the expected build identity with both executables while their
+PATH is empty, compare installed notices, the repository's license texts and
+dictionary source/provenance byte for byte, and verify synthetic evidence and
+state markers survive removal. Linux installation uses runtime dependencies;
+no build step runs on the installation runner. Windows also verifies that the
+preview MSI and executable are unsigned.
+
+Hosted runners still contain developer tools. These are **headless preview
+checks**, not proof of an offline dependency closure, interactive webview launch,
+a clean managed machine, production publisher signatures or the full D5 OS
+version matrix. An empty PATH only rules out PATH-resolved helpers during
+`--version`; it cannot prove every application action needs no runtime tool.
+Existing license texts are packaged; complete transitive-license and final
+commercial-terms review remain release gates.
+
+The installed material is in `/usr/share/doc/readmit-desktop` on Linux,
+`Contents/Resources` inside the macOS app, and `C:\Program Files\readmit` on
+Windows. Check a selected installed candidate against a checkout of that exact
+candidate:
+
+```sh
+python3 tools/package_desktop.py installed \
+  --desktop /Applications/readmit-desktop.app/Contents/MacOS/readmit-desktop \
+  --command-line /approved/readmit --resources /Applications/readmit-desktop.app/Contents/Resources \
+  --version 0.0.0+dev.abc1234
+```
+
+Python runs the acceptance harness; it is not an application prerequisite.
+This command does not verify a publisher signature or authorize installation.
 
 ### One build behind both entry points
 
