@@ -91,6 +91,7 @@ REQUIRED_FILES = {
     "testdata/fixtures/redact-policy-blocked.json",
     "testdata/fixtures/redact-inventory.json",
     "docs/diff.md",
+    "docs/drift.md",
     "docs/report.md",
     "docs/support-matrix.md",
     "testdata/fixtures/diff-before.mllp",
@@ -307,6 +308,7 @@ def smoke(archive, target_os, release_tag=None):
         smoke_test_runner(archive, binary, environment, work, run)
         smoke_redact(archive, binary, environment, work, run)
         smoke_diff(archive, work, run)
+        smoke_drift(work, run)
         smoke_report(binary, environment, work, run)
     print(f"PASS: {archive.name}; checksum, version, inspection, capture, timeline, privacy, and byte preservation")
 
@@ -577,6 +579,46 @@ def smoke_redact(archive, binary, environment, work, run):
     derived_comparison = json.loads(run("diff", packet / "case", packet / "proof" / "postfix" / "result", "--format", "json").stdout)
     assert derived_comparison["alignment"] == "source-occurrence"
     assert derived_comparison["summary"]["unchanged"] == 2 and derived_comparison["summary"]["field_changes"] == 0
+
+
+def smoke_drift(work, run):
+    """Check the packaged drift report never folds an unknown into agreement."""
+    case = work / "synthetic-family" / "regression"
+    same = json.loads(run("drift", case, case, "--format", "json").stdout)
+    assert same["schema"] == "readmit-drift/v1"
+    causes = {item["cause"]: item for item in same["drift"]}
+    assert causes["input"]["outcome"] == "unchanged"
+    # A case retains no target, engine or profile, so a comparison of two of
+    # them cannot say those did not change, and does not.
+    for cause in ("target", "environment", "rule"):
+        assert causes[cause]["outcome"] == "undeclared" and causes[cause]["comparison"] == "not_compared"
+    assert same["attribution"]["outcome"] == "undecided"
+    assert same["attribution"]["unresolved"] == ["target", "environment", "rule"]
+    assert same["left"]["target"]["revision"] == "unknown"
+    # Half a comparison is not a comparison: the run retains a target and the
+    # case does not.
+    mixed = run("drift", case, work / "replay-fixed.run", "--format", "json")
+    report = json.loads(mixed.stdout)
+    causes = {item["cause"]: item for item in report["drift"]}
+    assert causes["input"]["outcome"] == "unchanged"
+    assert causes["target"]["outcome"] == "undecided"
+    assert causes["target"]["reason"] == "declared_on_one_side"
+    assert report["attribution"]["outcome"] == "undecided"
+    for rendering, reason in (("terminal", b"declared_on_one_side"), ("markdown", b"declared\\_on\\_one\\_side")):
+        rendered = run("drift", case, work / "replay-fixed.run", "--format", rendering).stdout
+        assert b"127.0.0.1" not in rendered and b"SECRET" not in rendered
+        assert reason in rendered and b"revision=unknown" in rendered
+    # Two replays of one case: the declared operators are known input changes,
+    # the endpoint is target drift, and neither is chosen over the other.
+    runs = json.loads(run("drift", work / "replay-fixed.run", work / "replay-defective.run", "--format", "json").stdout)
+    causes = {item["cause"]: item for item in runs["drift"]}
+    assert causes["input"]["outcome"] == "changed"
+    assert "transformations" in causes["input"]["parts"] and "recorded_changes" in causes["input"]["parts"]
+    assert causes["target"]["outcome"] == "changed" and causes["target"]["parts"] == ["address"]
+    assert runs["left"]["input"]["transformations"] == []
+    assert runs["right"]["input"]["transformations"] == ["rebase-control-ids", "shift-timestamps"]
+    assert runs["attribution"]["changed"] == ["input", "target"]
+    assert runs["attribution"]["outcome"] == "undecided"  # A run retains no engine pin.
 
 
 def smoke_diff(archive, work, run):
