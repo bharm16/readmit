@@ -55,7 +55,7 @@ func (s *Store) Backup(ctx context.Context, destination string) error {
 		return err
 	}
 	defer out.Close()
-	m := backupManifest{Schema: "readmit-hub-backup/v4", MetadataVersion: schemaVersion, Artifacts: []backupEntry{}}
+	m := backupManifest{Schema: "readmit-hub-backup/v5", MetadataVersion: schemaVersion, Artifacts: []backupEntry{}}
 	rows, err := s.db.QueryContext(ctx, "SELECT digest,size,retained_at FROM readmit_hub_artifacts ORDER BY digest")
 	if err != nil {
 		return errors.New("metadata unavailable")
@@ -188,7 +188,7 @@ func encodeBackupManifest(m backupManifest) ([]byte, error) {
 	if m.Schema == "readmit-hub-backup/v3" {
 		limit = 64 << 20
 	}
-	if m.Schema == "readmit-hub-backup/v4" {
+	if m.Schema == "readmit-hub-backup/v4" || m.Schema == "readmit-hub-backup/v5" {
 		limit = 128 << 20
 	}
 	if len(data) > limit {
@@ -247,6 +247,23 @@ func readBackup(root *os.Root) (backupManifest, error) {
 	}
 	if (schema == "readmit-hub-backup/v1" && len(data) > 16<<20) || (schema == "readmit-hub-backup/v2" && len(data) > 32<<20) || (schema == "readmit-hub-backup/v3" && len(data) > 64<<20) {
 		return m, ErrLimit
+	}
+	isV5 := schema == "readmit-hub-backup/v5"
+	if isV5 {
+		if requireExactMembers(data, "schema", "metadata_version", "artifacts", "projects", "team_enabled", "reviews", "lifecycle") != nil {
+			return m, ErrIntegrity
+		}
+		var version int
+		if json.Unmarshal(envelope["metadata_version"], &version) != nil || version != 6 {
+			return m, ErrIntegrity
+		}
+		envelope["schema"] = jsontext.Value(`"readmit-hub-backup/v4"`)
+		envelope["metadata_version"] = jsontext.Value(`5`)
+		data, err = json.Marshal(envelope)
+		if err != nil {
+			return m, err
+		}
+		schema = "readmit-hub-backup/v4"
 	}
 	var lifecycle []LifecycleEvent
 	isV4 := schema == "readmit-hub-backup/v4"
@@ -422,7 +439,7 @@ func readBackup(root *os.Root) (backupManifest, error) {
 	byProject := map[string][]ReviewEvent{}
 	lastProject := ""
 	for _, event := range reviews {
-		if event.Schema != "readmit-hub-review-event/v1" || !validProject(event.Project) || event.Project < lastProject || event.Issuer == "" || !reviewText(event.Issuer, 2048) || event.Actor == "" || !reviewText(event.Actor, 256) || event.Sequence != len(byProject[event.Project])+1 || event.Command.Expected != event.Sequence-1 {
+		if !validReviewEventVersion(event, isV5) || !validProject(event.Project) || event.Project < lastProject || event.Issuer == "" || !reviewText(event.Issuer, 2048) || event.Actor == "" || !reviewText(event.Actor, 256) || event.Sequence != len(byProject[event.Project])+1 || event.Command.Expected != event.Sequence-1 {
 			return m, ErrIntegrity
 		}
 		if _, e := time.Parse(time.RFC3339Nano, event.At); e != nil {
@@ -528,6 +545,10 @@ func readBackup(root *os.Root) (backupManifest, error) {
 	if isV4 {
 		m.Schema = "readmit-hub-backup/v4"
 		m.MetadataVersion = 5
+	}
+	if isV5 {
+		m.Schema = "readmit-hub-backup/v5"
+		m.MetadataVersion = 6
 	}
 	return m, nil
 }

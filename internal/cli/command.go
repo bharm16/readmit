@@ -90,6 +90,7 @@ func Execute(version string, args []string, stdout, stderr io.Writer) error {
 	root.AddCommand(baselineCommand(&ran))
 	root.AddCommand(expectationCommand(&ran))
 	root.AddCommand(reportCommand(&ran))
+	root.AddCommand(shareCommand(&ran))
 	root.SetArgs(args)
 	selected, err := root.ExecuteC()
 	if err != nil {

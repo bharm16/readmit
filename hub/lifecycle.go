@@ -366,5 +366,5 @@ func (s *Store) sendLifecycle(w http.ResponseWriter, r *http.Request, status int
 		ReviewHead int              `json:"review_head"`
 		Reviews    []ReviewEvent    `json:"reviews"`
 		Warning    string           `json:"warning"`
-	}{"readmit-hub-audit/v1", event.Project, prefix, len(reviews), reviews, "Downloaded copies remain under local custody and cannot be revoked."})
+	}{auditReviewSchema(reviews), event.Project, prefix, len(reviews), reviews, "Downloaded copies remain under local custody and cannot be revoked."})
 }

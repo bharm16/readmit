@@ -284,3 +284,5 @@ permissions are 0700 and files 0600 on Unix; Windows inherits directory ACLs.
 Cancellation, invalid input and I/O failure may leave an incomplete destination,
 which cannot pass verification. Retry with a new destination; existing outputs
 and paths inside evidence are refused. No automatic resend or recovery occurs.
+
+For disclosure to support, use [`share`](redact.md#reviewed-support-diagnostics-and-sharing-policy) to generate a separately reviewed value-free diagnostic summary. Exporting a portable report remains a customer-local evidence copy and grants no disclosure or team approval.

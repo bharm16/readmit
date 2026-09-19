@@ -297,7 +297,7 @@ func TestPostgresLifecycleBackupRetirementRecovery(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if !strings.Contains(string(original), `"schema":"readmit-hub-backup/v4"`) {
+	if !strings.Contains(string(original), `"schema":"readmit-hub-backup/v5"`) {
 		t.Fatal("missing new backup contract")
 	}
 	s.Close()

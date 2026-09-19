@@ -50,7 +50,7 @@ func TestPostgresTeamIsolationRevocationAndBackup(t *testing.T) {
 	if w := call(h, "GET", "/v1/projects/alpha/exports/"+d, "viewer"); w.Code != 403 {
 		t.Fatalf("viewer export %d", w.Code)
 	}
-	if w := call(h, "GET", "/v1/projects/alpha/exports/"+d, "reviewer"); w.Code != 200 || !bytes.Equal(w.Body.Bytes(), payload) {
+	if w := call(h, "GET", "/v1/projects/alpha/exports/"+d, "reviewer"); w.Code != 403 {
 		t.Fatalf("reviewer export %d", w.Code)
 	}
 	if w := call(h, "GET", "/v1/artifacts/"+d, "owner"); w.Code != 404 {

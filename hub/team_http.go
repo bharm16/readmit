@@ -44,7 +44,7 @@ func (s *Store) TeamHandler(access *Access) http.Handler {
 			return
 		}
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/"), "/")
-		if len(parts) < 4 || parts[0] != "v1" || parts[1] != "projects" || !validProject(parts[2]) || r.URL.RawQuery != "" {
+		if len(parts) < 4 || (parts[0] != "v1" && parts[0] != "v2") || parts[1] != "projects" || !validProject(parts[2]) || r.URL.RawQuery != "" {
 			http.NotFound(w, r)
 			return
 		}
@@ -52,6 +52,16 @@ func (s *Store) TeamHandler(access *Access) http.Handler {
 		if len(parts) == 4 && parts[3] == "lifecycle" {
 			s.lifecycleRequest(w, r, access, project)
 			return
+		}
+		if parts[0] == "v2" {
+			if len(parts) == 5 && parts[3] == "exports" && validDigest(parts[4]) && r.Method == "GET" {
+				s.supportExport(w, r, access, project, parts[4])
+				return
+			}
+			if len(parts) != 4 || (parts[3] != "reviews" && parts[3] != "history" && parts[3] != "notifications") {
+				http.NotFound(w, r)
+				return
+			}
 		}
 		if len(parts) == 4 && (parts[3] == "reviews" || parts[3] == "history" || parts[3] == "notifications") {
 			s.reviewRequest(w, r, access, project, parts[3])
@@ -101,6 +111,10 @@ func (s *Store) TeamHandler(access *Access) http.Handler {
 		principal, e := s.authorize(access, r, project, action)
 		if e != nil {
 			http.Error(w, "access refused", 403)
+			return
+		}
+		if action == "export" {
+			http.Error(w, "reviewed support export requires v2", 403)
 			return
 		}
 		if action == "execution" || action == "approval" {

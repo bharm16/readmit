@@ -19,7 +19,7 @@ import (
 )
 
 const MaxArtifactBytes int64 = 64 << 20
-const schemaVersion = 5
+const schemaVersion = 6
 const lockID int64 = 0x726561646d6974
 
 var ErrConflict = errors.New("another hub or maintenance operation owns this database")

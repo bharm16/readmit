@@ -300,3 +300,71 @@ regression-equivalent, disclosure-approved packet remains unavailable until
 actual authorized target/reset/repeat evidence and all new output surfaces have
 been reviewed. Retain that owner acceptance evidence separately; do not relabel
 the existing fixture export or this assessment as external proof.
+
+## Reviewed support diagnostics and sharing policy
+
+`share` generates a separate value-free support summary from a verified retained
+packet, portable review or complete derived review. It copies **no evidence
+payload**: messages, source names, notes, specification text, run values, original
+reports, caches and logs are excluded. Arbitrary files/directories and archives
+are refused rather than collected recursively. This is diagnostic support, not
+a replacement for the reviewed transformed case or an externally equivalent
+reproducer. The original reports remain customer-local even after this summary
+is approved. Existing `redact export` is a separately approved local fixture
+packet generator; it neither gains team approval nor proves external behavior.
+
+Create an explicit, bounded strict policy (every member is required):
+
+```json
+{"schema":"readmit-sharing-policy/v1","support":true,"destinations":["local-file","customer-hub-download"],"max_bytes":4096}
+```
+
+`support:false` denies preparation. Destinations admit only those two closed
+values, without duplicates; arbitrary addresses and URLs are refused. No local
+sharing command opens a connection, executes a target, reads environment proxy
+settings or uploads to support. `max_bytes` is 1–65536; the policy itself is at
+most 4096 bytes. Policy bytes, including reformatting, are part of the approval.
+
+```sh
+readmit share REVIEW --kind derived-review --local-state PRIVATE --policy sharing.json
+readmit share REVIEW --kind derived-review --local-state PRIVATE --policy sharing.json --approve EXACT_PREVIEW_ID --output NEW_SUPPORT
+```
+
+For a retained packet use `--kind retained-packet`, or `portable-review` for a
+sealed portable review; neither needs `--local-state`. The preview shows every
+summary byte and its identity. Publishing regenerates it, revalidates the source
+and policy, and refuses a stale approval, cancellation, existing destination or
+output within immutable evidence/private mappings. Root symlinks, nested
+symlinks, extra files and malformed sources are refused by their verified readers.
+Parent aliases resolve physically before immutable-output checks. An incomplete
+write has no completion marker and is refused; recovery means a new destination
+and fresh review, never automatic resume or resend.
+
+The new directory contains `support.json`, `event.json` and a completion marker.
+`readmit-support-summary/v1` contains only a closed source kind, source/input/spec
+and policy commitments, a closed outcome, `external_equivalence:"declined"` and
+fixed scope text. No free-form name, error, URL, path, credential or message field
+is available. For derived evidence the outcome `reviewed-extract-only` describes
+the source's reviewed transformation; the support summary contains no extract.
+Run outcomes describe the retained result and never certify an external system.
+Byte commitments can still link related artifacts; review that metadata before
+sharing. Neither a hash nor a local approval identifies a person, authenticates a
+source, detects unknown identifiers, claims Safe Harbor or determines legal status.
+
+The durable `readmit-sharing-event/v1` records a successful local publication,
+its summary identity and the explicit `local-byte-review` approval kind. The CLI
+also emits a `readmit-sharing-security-event/v1` JSON line on stderr for prepared,
+published and refused operations. Those events have fixed vocabulary and no paths,
+values or arbitrary error text. Capture stderr in customer-controlled logging if
+retaining refusals is required; no hidden global log or telemetry exists.
+The canonical JSON summary accepts no active text, and its download is an
+attachment with `nosniff`; customer-local portable reports retain their separately
+verified inert HTML/PDF/Markdown renderers. Support does not render arbitrary
+source strings or extract archives.
+
+Team review and downloading use the customer hub's versioned support-review
+routes documented in [the hub guide](../hub/README.md). A local `--approve` value
+never becomes authenticated team identity. Actual lawful support arrangements,
+recipient authorization, live IdP/key-revocation acceptance and any external
+receiver/reset/repeat evidence remain owner responsibilities; this workflow sends
+no customer material to a vendor.
