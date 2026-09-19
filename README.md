@@ -757,6 +757,19 @@ with the links of a declared `readmit-correlation-rules/v1` document beside the
 case's own acknowledgement matching and observed linkage stated apart from
 inferred. No clock is assumed to agree with another and order is not causality;
 see [the sequence panel](docs/desktop.md#the-event-sequence-and-source-swimlanes).
+It **reviews and transforms the whole case**: it previews what a declared
+`readmit-transform-plan/v1` document would do to the sequence a replay sends,
+through the same engine `readmit transform` runs and writing nothing at all, and
+it reads an export review back through the verified reader the export gate uses,
+inventorying every surface that can enter an export by where it is and what kind
+of content it is, so none is silently omitted.
+An approval names the exact review identity the bytes on disk have now, which
+binds the input, the policy, the specification and the output; an incomplete
+review cannot authorize disclosure whatever identity approves it, the window
+records no approval and exports nothing, and a reviewed extract is labelled a
+disclosure-reviewed extract rather than a regression-equivalent packet. No value
+crosses either boundary; see
+[reviewing and transforming the whole case](docs/desktop.md#reviewing-and-transforming-the-whole-case).
 It is navigated entirely from the keyboard: five labelled regions in a fixed focus
 order, a command palette, a search over what the open workspace and its project
 declare, resizable evidence and inspector panes, light and dark, and text from

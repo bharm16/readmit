@@ -962,6 +962,30 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   comparison `readmit diff` produces is untouched. No address, path, field value
   or message byte appears in a drift report.
 
+- The desktop shell reviews and transforms the whole case. It previews a
+  `readmit-transform-plan/v1` document over the verified case through the engine
+  `readmit transform` runs — every position the plan would rewrite, what happened
+  to every declared relation, what the pinned profile pack declares about the
+  transformed sequence, and everything left exactly as the evidence has it —
+  and it writes nothing at all: no case, no run, no derived bundle, and no
+  operator is added to `readmit-reproducer-plan/v1`. Beside it, the window reads
+  an export review back through the same verified offline reader the export gate
+  uses, groups every located finding by where it is and what kind of content
+  it is, so a case's source filenames never collapse into its messages and no
+  surface is silently omitted, and states the reviewer's decision as its own named
+  outcome: an incomplete review cannot authorize disclosure whatever identity
+  approves it, and an approval that does not name the identity the bytes on disk
+  have now is stale, because that identity binds the input, the policy, the
+  specification and the output. The window records no approval and exports
+  nothing, never reads the private mappings, offsets and residual values, and
+  labels a reviewed extract as a disclosure-reviewed extract rather than as a
+  regression-equivalent packet: equivalence needs evidence from the actual
+  external target, and no review or local hash claims certification, Safe Harbor
+  status or authentication of the source. No contract gains a member, and no
+  value crosses either boundary — a change is a position and a relation number,
+  a finding is a location, and reading a transformed value is the inspector over
+  the derived case the review names.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is

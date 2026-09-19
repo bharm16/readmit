@@ -185,6 +185,12 @@ The existing run/result `customer-local-only` flags retain their original meanin
 only the enclosing explicit review/approval and generated export gates apply to
 this packet. Those flags do not independently approve a result for sharing.
 
+The [desktop shell](desktop.md#reading-an-export-review) reads a review through
+`redact.OpenReview`, groups its located findings by where each one is and
+what kind of content it is, in this command's own words, and states whether an approval names the exact identity the bytes on disk
+have now. It records no approval, exports nothing, and never reads the private
+directory. Deriving a review and exporting a packet remain these commands.
+
 `redact.OpenReview` and `redact.OpenExport` are verified offline Go readers.
 `OpenExport` applies the same review contract to embedded reviews, binds each
 retained run source's bytes and hash to its approved derived occurrence, and

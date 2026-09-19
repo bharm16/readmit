@@ -17,16 +17,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bharm16/readmit/internal/correlate"
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/diff"
 	"github.com/bharm16/readmit/internal/grid"
 	"github.com/bharm16/readmit/internal/guide"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/index"
+	"github.com/bharm16/readmit/internal/redact"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/reproducer"
 	"github.com/bharm16/readmit/internal/testauthor"
 	"github.com/bharm16/readmit/internal/testrunner"
+	"github.com/bharm16/readmit/internal/transform"
 )
 
 // chosenFolder stands in for the host's native folder dialog.
@@ -905,6 +908,84 @@ func TestDesktopRevisionComparisonProvesTheSameFailureBeforeAndAfter(t *testing.
 	}
 }
 
+// The desktop shell and the command line are two entry points into one
+// transformation engine. The window names a case and two authored documents of
+// a workspace and gets a preview back; `readmit transform --format json` prints
+// the same preview as a document. Neither previews a transformation of its own,
+// so what the panel draws is exactly what the command line reports over the
+// same evidence — and neither of them records a value byte.
+func TestDesktopTransformationPreviewMatchesTheCommandLine(t *testing.T) {
+	workspace := t.TempDir()
+	casePath := filepath.Join(workspace, "incident")
+	if _, stderr, err := run(t, "capture",
+		"../testdata/fixtures/listen-s12.hl7", "../testdata/fixtures/listen-s13.hl7", "--output", casePath); err != nil || stderr != "" {
+		t.Fatalf("capture: %v %s", err, stderr)
+	}
+	// Both documents are authored beside the evidence, which is how the window
+	// reaches them: one entry of the folder the person opened, never a path.
+	declared, err := os.ReadFile(correlateRules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules := filepath.Join(workspace, "rules.json")
+	if err := os.WriteFile(rules, declared, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reported, stderr, err := run(t, "correlate", casePath, "--rules", rules, "--format", "json")
+	if err != nil || stderr != "" {
+		t.Fatalf("correlate: %v %s", err, stderr)
+	}
+	var report correlate.Report
+	if err := json.Unmarshal([]byte(reported), &report, json.RejectUnknownMembers(true)); err != nil {
+		t.Fatal(err)
+	}
+	plan := filepath.Join(workspace, "plan.json")
+	if err := os.WriteFile(plan, []byte(`{"schema":"`+transform.PlanSchema+`","case":"`+report.CaseIdentity+
+		`","rules":"`+report.RulesSHA256+`","steps":[`+
+		`{"operator":"rebase-identifiers/v1","rule":"patient"},`+
+		`{"operator":"shift-dates/v1","shift":"24h"},`+
+		`{"operator":"duplicate-occurrence/v1","entry":"t000001"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	printed, stderr, err := run(t, "transform", casePath, "--rules", rules, "--plan", plan, "--format", "json")
+	if err != nil || stderr != "" {
+		t.Fatalf("transform: %v %s", err, stderr)
+	}
+	var previewed transform.Preview
+	if err := json.Unmarshal([]byte(printed), &previewed, json.RejectUnknownMembers(true)); err != nil {
+		t.Fatal(err)
+	}
+
+	app := desktopApp(t, workspace)
+	opened := app.OpenCase(workspace, "incident")
+	if opened.State != desktop.Completed || opened.Case == nil {
+		t.Fatalf("the case was not verified: %+v", opened)
+	}
+	result := app.PreviewTransformation(desktop.TransformRequest{
+		Workspace: workspace, Case: "incident", Identity: opened.Case.Identity,
+		Rules: "rules.json", Plan: "plan.json",
+	})
+	if result.State != desktop.Completed || result.Transformation == nil {
+		t.Fatalf("the window did not preview the plan: %+v", result)
+	}
+	if !reflect.DeepEqual(result.Transformation.Preview, previewed) {
+		t.Fatalf("the window previewed %+v and the command line %+v", result.Transformation.Preview, previewed)
+	}
+	// The one thing this panel must never do. The plan renames an identifier and
+	// shifts every supported timestamp; neither the value that was there nor the
+	// surrogate that would replace it crosses the boundary.
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"SYNTH-001", "LISTEN-BOOK", "READMIT000001", "20260102100000"} {
+		if strings.Contains(string(encoded), value) {
+			t.Fatalf("the window disclosed a transformed or original value: %s", encoded)
+		}
+	}
+}
+
 // Every outcome a comparison of retained runs refuses to call proof, against
 // real runs. A verdict that moved is not a surviving failure, two runs of
 // different expectations are not comparable at all, and an execution error
@@ -971,6 +1052,127 @@ func TestDesktopRevisionProofNamesWhatItCannotCallProof(t *testing.T) {
 	for _, expectation := range []string{"one-appointment", "original-record-moved", "booking-ack", "rescheduling-ack"} {
 		if named[expectation] != reproducer.NotEvaluated {
 			t.Fatalf("an execution error read as a verdict on %s: %q", expectation, named[expectation])
+		}
+	}
+}
+
+// The whole disclosure-review delivery, across both entry points. The command
+// line derives a reviewed extract from a synthetic planted-identifier corpus;
+// the window reads that review back, inventories every export surface it found,
+// and states the reviewer's decision. The identity the window approves is
+// exactly the identity the export gate requires, and nothing else approves it.
+func TestDesktopReviewApprovesExactlyWhatTheExportGateRequires(t *testing.T) {
+	workspace := t.TempDir()
+	request := redactFixture(t)
+	request.Output = filepath.Join(workspace, "review")
+	if _, out, err := run(t, "redact", request.CasePath, "--spec", request.SpecPath,
+		"--policy", request.PolicyPath, "--inventory", request.InventoryPath,
+		"--local-state", request.LocalState, "--output", request.Output); err != nil {
+		t.Fatalf("redact: %v %s", err, out)
+	}
+	created, err := redact.OpenReview(request.Output)
+	if err != nil || created.State != "ready-for-approval" {
+		t.Fatalf("review: %+v %v", created, err)
+	}
+
+	app := desktopApp(t, workspace)
+	read := func(approve string) *desktop.Review {
+		t.Helper()
+		result := app.OpenReview(desktop.ReviewRequest{
+			Workspace: workspace, Review: "review", Approve: approve,
+			Offset: 0, Limit: desktop.MaxReviewFindings,
+		})
+		if result.State != desktop.Completed || result.Review == nil {
+			t.Fatalf("the window did not read the review: %+v", result)
+		}
+		return result.Review
+	}
+
+	undecided := read("")
+	if undecided.Decision != desktop.NotDecided || undecided.Identity != created.Identity {
+		t.Fatalf("an unapproved review was not reported as undecided: %+v", undecided)
+	}
+	// Every surface of the corpus is inventoried, and the counts are the whole
+	// of what the review found rather than a selection of it.
+	counted := 0
+	for _, surface := range undecided.Surfaces {
+		counted += surface.Findings
+	}
+	if counted != undecided.Total || undecided.Total != len(created.Findings) {
+		t.Fatalf("the window inventoried %d of the review's %d findings", counted, len(created.Findings))
+	}
+	if undecided.Establishes != desktop.DisclosureReviewed {
+		t.Fatalf("a ready review did not say what it establishes: %q", undecided.Establishes)
+	}
+
+	// An approval of anything but these exact bytes is stale, because the review
+	// identity binds the input, the policy, the specification and the output.
+	stale := read(strings.Repeat("0", 64))
+	if stale.Decision != desktop.StaleApproval {
+		t.Fatalf("an approval of other bytes was accepted: %+v", stale)
+	}
+
+	approved := read(created.Identity)
+	if approved.Decision != desktop.Approved {
+		t.Fatalf("the exact identity did not approve the review: %+v", approved)
+	}
+
+	// And the identity the window approved is the one the export gate requires:
+	// the command line exports under it, and the packet records it as approved.
+	packet := filepath.Join(t.TempDir(), "packet")
+	if _, out, err := run(t, "redact", "export", request.Output,
+		"--local-state", request.LocalState, "--approve", approved.Identity, "--output", packet); err != nil {
+		t.Fatalf("export: %v %s", err, out)
+	}
+	manifest := redactReadJSON[redact.ExportManifest](t, filepath.Join(packet, "export-review.json"))
+	if manifest.ApprovedReview != approved.Identity {
+		t.Fatalf("the packet was approved under %s and the window under %s", manifest.ApprovedReview, approved.Identity)
+	}
+
+	// A reviewed extract is ordinary verified evidence, so the transformed values
+	// a reviewer has to read are read where every other value in this window is
+	// read: the review folder opens as a workspace, its derived case is verified
+	// by the same reader, and the inspector reveals one position of it. The
+	// planted original is not there, and the review itself carried no value to
+	// get here.
+	derived := desktopApp(t, request.Output)
+	listed := derived.OpenWorkspace(request.Output)
+	if listed.State != desktop.Completed || listed.Workspace == nil {
+		t.Fatalf("the review folder did not open as a workspace: %+v", listed)
+	}
+	extract := derived.OpenCase(request.Output, "case")
+	if extract.State != desktop.Completed || extract.Case == nil {
+		t.Fatalf("the derived case of the review was not verified: %+v", extract)
+	}
+	if extract.Case.Identity != approved.DerivedIdentity {
+		t.Fatalf("the window verified %s and the review named %s", extract.Case.Identity, approved.DerivedIdentity)
+	}
+	inspected := derived.InspectOccurrence(desktop.InspectRequest{
+		Workspace: request.Output, Case: "case", Identity: extract.Case.Identity,
+		Occurrence: "s0001-e000001", Path: "PID-3.1", ByteOffset: -1,
+	})
+	if inspected.State != desktop.Completed || inspected.Inspection == nil {
+		t.Fatalf("the transformed value of the extract could not be read: %+v", inspected)
+	}
+	if inspected.Inspection.Decoded == "" || strings.Contains(inspected.Inspection.Decoded, "PLANTED-PATIENT-7391") {
+		t.Fatalf("the derived case did not hold a transformed value in place of the planted one: %q", inspected.Inspection.Decoded)
+	}
+
+	// The corpus plants a value on every surface a review inventories. None of
+	// them reaches the window, and the private state directory holding the
+	// mappings and the offsets is never named, opened or read.
+	encoded, err := json.Marshal(approved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, planted := range []string{
+		"PLANTED-PATIENT-7391", "PLANTED-NAME-ORCHID", "PLANTED-NTE-ALDER",
+		"PLANTED-ERR-BIRCH", "PLANTED-ACK-WILLOW", "PLANTED-EMBEDDED-ELM",
+		"PLANTED-UNKNOWN-ASH", "PLANTED-FILENAME-CEDAR", "PLANTED-SPEC-JUNIPER",
+		"PLANTED-RESET-SPRUCE",
+	} {
+		if strings.Contains(string(encoded), planted) {
+			t.Fatalf("the window disclosed the planted value %s", planted)
 		}
 	}
 }

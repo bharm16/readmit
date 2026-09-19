@@ -9,13 +9,16 @@ import (
 	"github.com/bharm16/readmit/internal/correlate"
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/diff"
+	"github.com/bharm16/readmit/internal/exportreview"
 	"github.com/bharm16/readmit/internal/grid"
 	"github.com/bharm16/readmit/internal/guide"
 	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/profilepack"
 	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/reproducer"
 	"github.com/bharm16/readmit/internal/testauthor"
 	"github.com/bharm16/readmit/internal/testrunner"
+	"github.com/bharm16/readmit/internal/transform"
 )
 
 // bindingsFile is the frontend's only view of the Go facade. Wails publishes
@@ -134,6 +137,27 @@ func TestFrontendBindingsDeclareEveryResultMember(t *testing.T) {
 		reflect.TypeOf(diff.Summary{}),
 		reflect.TypeOf(diff.SegmentChange{}),
 		reflect.TypeOf(diff.Unsupported{}),
+		reflect.TypeOf(desktop.ReviewRequest{}),
+		reflect.TypeOf(desktop.ReviewResult{}),
+		reflect.TypeOf(desktop.Review{}),
+		reflect.TypeOf(desktop.ReviewSurface{}),
+		reflect.TypeOf(desktop.ReviewFinding{}),
+		reflect.TypeOf(exportreview.Coverage{}),
+		reflect.TypeOf(exportreview.Scan{}),
+		reflect.TypeOf(desktop.TransformRequest{}),
+		reflect.TypeOf(desktop.TransformResult{}),
+		reflect.TypeOf(desktop.Transformation{}),
+		reflect.TypeOf(transform.Preview{}),
+		reflect.TypeOf(transform.Artifact{}),
+		reflect.TypeOf(transform.Plan{}),
+		reflect.TypeOf(transform.Step{}),
+		reflect.TypeOf(transform.Summary{}),
+		reflect.TypeOf(transform.Entry{}),
+		reflect.TypeOf(transform.Change{}),
+		reflect.TypeOf(transform.Relation{}),
+		reflect.TypeOf(transform.Combination{}),
+		reflect.TypeOf(transform.Unsupported{}),
+		reflect.TypeOf(profilepack.Identity{}),
 		reflect.TypeOf(desktop.GuideResult{}),
 		reflect.TypeOf(desktop.PracticeRequest{}),
 		reflect.TypeOf(desktop.PracticeResult{}),
