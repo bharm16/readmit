@@ -820,6 +820,25 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   operators inside the reproducer editor, and any de-identification, minimality
   or sharing claim remain separate deliveries.
 
+- The desktop shell walks a **guided sample without a terminal**: it creates the
+  synthetic sample workspace, an authored regression test is saved into it, that
+  saved spec is run against a practice receiver the application binds on a
+  loopback port of this machine as the fixture's defect makes it behave and
+  fails, and the same spec is run against the corrected receiver and passes. The
+  case, the spec and both results are ordinary artifacts the command line reads.
+  Where somebody is in the path is read back out of the folder every time rather
+  than remembered, so no tutorial state exists to disagree with the evidence. The
+  sample workspace is now a workspace rather than a family: the generated case
+  bundles are byte-identical to `readmit synth`, the `family.json` completion
+  record is not kept because nothing may be written inside retained evidence, and
+  two entries that are not evidence are written beside the cases — a loopback
+  practice endpoint, so a test has a target to name, and a states-only index of
+  the sample case, so the message grid the authoring flow selects occurrences
+  from can be opened without `readmit index build`. That sample index is the only
+  one this product builds without being asked each time, and its three retention
+  declarations are fixed and published. None of this is in these archives, and no
+  desktop package is signed for distribution.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is

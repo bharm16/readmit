@@ -322,7 +322,7 @@ export function MessageGrid({
           disabled={busy || entries.length === 0}
           onChange={(event) => setIndexName(event.target.value)}
         >
-          <option value="">Choose an index built with readmit index build…</option>
+          <option value="">Choose an index of this case…</option>
           {entries.map((entry) => (
             <option key={entry} value={entry}>
               {entry}

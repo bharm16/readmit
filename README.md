@@ -683,7 +683,15 @@ from is not changed, and nothing about it is a de-identification or sharing
 claim. See [extracting and editing a reproducer](docs/reproducer.md). It turns
 selected evidence into a regression test by answering one question at a time and
 saves a versioned `readmit-test/v1` spec the command line runs unchanged; see
-[authoring a regression test](docs/test-authoring.md). It also
+[authoring a regression test](docs/test-authoring.md). It walks that whole
+investigation as a **guided sample without a terminal**: create the synthetic
+sample workspace, author a regression test over its case, run that test against
+a practice receiver the application binds on loopback and watch it fail on the
+fixture's defect, then run the same spec against the corrected receiver and
+watch it pass. The case, the spec and both results are real artifacts the
+command line reads, and where somebody is in the path is read back from the
+folder rather than remembered; see
+[the guided sample](docs/guided-sample.md). It also
 **compares two collections** of the workspace side by side, through the same
 engine `readmit diff` runs: records pair by the mapping the evidence carries or
 by the fields named as keys, a record only one side holds keeps a row of its own

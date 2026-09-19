@@ -61,6 +61,7 @@ archives:
       - docs/assertions.md
       - docs/explain.md
       - docs/test-authoring.md
+      - docs/guided-sample.md
       - docs/redact.md
       - docs/reproducer.md
       - docs/diff.md
