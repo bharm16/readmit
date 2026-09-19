@@ -57,7 +57,7 @@ func testDatabase(t *testing.T, c hub.Config) *sql.DB {
 }
 func reset(t *testing.T, db *sql.DB) {
 	t.Helper()
-	if _, err := db.Exec("DROP TABLE IF EXISTS readmit_hub_project_artifacts,readmit_hub_artifacts,readmit_hub_schema"); err != nil {
+	if _, err := db.Exec("DROP TABLE IF EXISTS readmit_hub_reviews,readmit_hub_project_artifacts,readmit_hub_artifacts,readmit_hub_schema"); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -241,6 +241,7 @@ func (a *Access) policy() (AccessPolicy, error) {
 // Principal is only returned after signature/token validation and a current
 // project grant. Never derive approval identity from a request body or header.
 type Principal struct {
+	Issuer  string
 	Subject string
 	Project string
 	Role    string
@@ -294,7 +295,7 @@ func (a *Access) Authorize(r *http.Request, project, action string) (Principal, 
 	if subject == "" || !roleAllows(role, action) || !slices.Contains(scopes, action) || (role == "runner" && kind != "runner") {
 		return none, errAccess
 	}
-	return Principal{Subject: subject, Project: project, Role: role, Kind: kind}, nil
+	return Principal{Issuer: p.Issuer, Subject: subject, Project: project, Role: role, Kind: kind}, nil
 }
 
 // accessToken implements the constrained RFC 9068 resource-server profile:
