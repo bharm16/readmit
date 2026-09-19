@@ -245,3 +245,58 @@ Collected receiver evidence (`readmit-case/v4`) is refused. A derived case is
 `readmit-case/v3`, which carries no collection record, so transforming one would
 drop the retained receipts, session labels and literal control IDs described in
 [the collector contract](collect.md) without raising a review finding.
+
+## Authorized reexecution and declined external equivalence
+
+`redact reexecute` runs one reviewed transformed phase against the same explicit
+recorded target transport configuration as an actual original execution. It does not
+create a fixture receiver or substitute fixture results for missing original
+runs. Assemble a customer-local retained packet with the actual original phase
+as its **current** run using `report assemble`. Run failure and pass phases
+separately, with separate packets, explicit authorization and operator setup/reset
+before each execution. Private source mappings remain separate.
+
+Copy the reviewed `spec.json` to a separate workspace. Rebind only its case,
+target and observation paths to the approved derived case and the authorized
+target/observation files. Message order, initial-state kind and exact assertions
+must remain unchanged. The original packet must match the privately retained
+original case and original assertion contract. Failure requires exactly the
+review's selected failed positions; pass requires every assertion to pass.
+
+```sh
+readmit redact reexecute REVIEW --local-state PRIVATE --approve REVIEW_ID --original-packet ORIGINAL_FAILURE_PACKET --spec REBOUND_SPEC --phase failure
+readmit redact reexecute REVIEW --local-state PRIVATE --approve REVIEW_ID --original-packet ORIGINAL_FAILURE_PACKET --spec REBOUND_SPEC --phase failure --send --output NEW_JOB
+```
+
+The first command previews locally without sending. The second explicitly sends
+once through the durable runner. Use `--phase pass` with the original passing
+packet after preparing/resetting the passing target. No command executes reset
+prose, changes receiver versions, retries a send or resumes an interrupted phase.
+Use `run status NEW_JOB --recovery` to inspect cancellation or uncertain delivery. Reconcile
+any possible delivery at the target before a separately authorized new attempt;
+never reuse a job directory. A preparation error creates no job. An interruption
+or storage failure may retain an incomplete job, never passing proof.
+
+The output-only `readmit-reexecution-assessment/v1` JSON binds the exact review,
+original packet/result, derived case, rebound execution spec and new result
+identities. `criteria` is `not-executed`, `matched`, `changed`, or
+`unavailable-or-unstable`. Exit 0 after execution means only that this phase's
+criteria matched; it does **not** mean external equivalence. A changed or
+unavailable outcome exits 2. Execution artifacts remain customer-local: new ACKs,
+observations, source metadata and target configuration need fresh disclosure
+review before sharing. An old review approves none of these new outputs.
+
+This version always states `external_equivalence: declined`. Its supported
+review contract supplies built-in appointment-ledger assertions and ACK
+assertions; neither proves an external clinical workflow, software revision,
+reset equivalence or repeat stability. Matching the fields retained by `readmit-result/v1` (address, transport, CA
+digest, timeouts and ACK limit) is not source authentication. That frozen result
+does not retain credential references or the full TLS client configuration;
+those are explicitly selected for the new execution, not certified as identical
+to historical credentials. Unsupported external observations require a separately
+supported contract; no assertion, approval flag or fixture result can bypass
+that boundary. The reusable rerun capability is implemented, while an externally
+regression-equivalent, disclosure-approved packet remains unavailable until
+actual authorized target/reset/repeat evidence and all new output surfaces have
+been reviewed. Retain that owner acceptance evidence separately; do not relabel
+the existing fixture export or this assessment as external proof.

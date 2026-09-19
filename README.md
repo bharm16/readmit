@@ -170,6 +170,10 @@ both fixture modes, and generates fresh results and diagnosis. Coverage and
 residual scans state their limits; this workflow makes no legal certification.
 See [transformation and export review](docs/redact.md) for the policy format,
 whole-packet review, and synthetic acceptance scenario.
+`redact reexecute REVIEW` previews or explicitly reruns an approved transformed
+phase against the target configuration from an actual retained original packet.
+It preserves selected criteria, records a durable customer-local job, and
+explicitly declines external equivalence and approval of newly collected output.
 
 `report --scenario siu-reschedule-v1 --output NEW_PACKET` runs the committed
 synthetic scenario against fresh defective and fixed fixtures, then packages

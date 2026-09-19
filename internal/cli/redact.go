@@ -62,6 +62,6 @@ func redactCommand(ran *bool) *cobra.Command {
 	child.Flags().StringVar(&export.LocalState, "local-state", "", "Private mapping and original-proof directory")
 	child.Flags().StringVar(&export.Approval, "approve", "", "Exact reviewed identity; approval is not a legal determination")
 	child.Flags().StringVar(&export.Output, "output", "", "New packet directory")
-	cmd.AddCommand(child)
+	cmd.AddCommand(child, reexecuteCommand(ran))
 	return cmd
 }
