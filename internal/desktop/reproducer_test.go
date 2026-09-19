@@ -286,3 +286,126 @@ func TestNoReproducerRefusalRepeatsAPathOrAValue(t *testing.T) {
 		}
 	}
 }
+
+// buildRevision writes one reproducer of the open workspace and returns the
+// entry it was written to.
+func buildRevision(t *testing.T, app *desktop.App, root, identity, output string, steps ...reproducer.Step) string {
+	t.Helper()
+	plan := reproducer.Plan{}
+	for _, step := range steps {
+		plan = edit(t, app, root, identity, plan, step).Reproducer.Plan
+	}
+	request := request(root, identity, plan, reproducer.Step{})
+	request.Output = output
+	if result := app.BuildReproducer(request); result.State != desktop.Completed {
+		t.Fatalf("a reproducer this workspace supports was not written: %+v", result)
+	}
+	return output
+}
+
+// Two revisions of one incident, compared in the window: how they are related,
+// what the second plan no longer does, and the setup dependency that went with
+// it. Nothing is written, and neither revision is changed.
+func TestComparingTwoRevisionsShowsLineageAndTheDependencyThatWasDropped(t *testing.T) {
+	app, root, identity := reproducerWorkspace(t)
+	withDependencies := buildRevision(t, app, root, identity, "with-dependencies",
+		reproducer.Step{Operator: reproducer.SelectOccurrence, Occurrence: repRescheduleID},
+		reproducer.Step{Operator: reproducer.IncludePriorIdentity, Identity: []string{"SCH-2.1", "SCH-2.2"}},
+	)
+	alone := buildRevision(t, app, root, identity, "reschedule-alone",
+		reproducer.Step{Operator: reproducer.SelectOccurrence, Occurrence: repRescheduleID},
+	)
+	result := app.CompareReproducers(desktop.ReproducerComparisonRequest{Workspace: root, Left: withDependencies, Right: alone})
+	if result.State != desktop.Completed || result.Comparison == nil {
+		t.Fatalf("two revisions of one workspace were not compared: %+v", result)
+	}
+	comparison := result.Comparison
+	if comparison.Lineage != reproducer.SiblingOf {
+		t.Fatalf("two revisions of one case were related as %q", comparison.Lineage)
+	}
+	if comparison.Left.Derivation != reproducer.Derivation || comparison.Left.Provenance != "derived" {
+		t.Fatalf("a revision was not reported as the derived evidence it declares: %+v", comparison.Left)
+	}
+	dropped := map[string]reproducer.RetentionChange{}
+	for _, change := range comparison.Retention {
+		dropped[change.Parent] = change
+	}
+	if dropped[repBookingID].Change != reproducer.DroppedPrerequisite || dropped[repBookingID].LeftReason != reproducer.PriorIdentity {
+		t.Fatalf("the booking the second revision stopped retaining was not reported as a dropped prerequisite: %+v", comparison.Retention)
+	}
+	if len(comparison.Steps) != 1 || comparison.Steps[0].Change != reproducer.Removed {
+		t.Fatalf("the authored change between the two plans was not reported: %+v", comparison.Steps)
+	}
+	// Nobody has run either revision, so nothing is claimed about either.
+	if comparison.Proof.State != reproducer.ProofNotAttempted || comparison.Proof.Left != nil {
+		t.Fatalf("proof was reported for revisions nobody has run: %+v", comparison.Proof)
+	}
+	// One revision compared with itself has no difference to report and still
+	// has an answer: it is the same evidence, and that is what is said.
+	same := app.CompareReproducers(desktop.ReproducerComparisonRequest{Workspace: root, Left: alone, Right: alone})
+	if same.State != desktop.Completed || same.Comparison == nil || same.Comparison.Lineage != reproducer.SameEvidence ||
+		len(same.Comparison.Steps) != 0 || len(same.Comparison.Retention) != 0 {
+		t.Fatalf("one revision compared with itself was reported as %+v", same)
+	}
+	// Neither revision and neither case was changed by comparing them.
+	if original := app.OpenCase(root, "incident"); original.State != desktop.Completed || original.Case.Identity != identity {
+		t.Fatalf("comparing two revisions changed the evidence they came from: %+v", original)
+	}
+}
+
+// A comparison reaches nothing outside the open workspace and stands behind
+// both revisions or produces nothing.
+func TestComparingRevisionsRefusesWhatItCannotStandBehind(t *testing.T) {
+	app, root, identity := reproducerWorkspace(t)
+	revision := buildRevision(t, app, root, identity, "revision",
+		reproducer.Step{Operator: reproducer.SelectOccurrence, Occurrence: repRescheduleID})
+	for name, request := range map[string]desktop.ReproducerComparisonRequest{
+		"a path rather than an entry":  {Workspace: root, Left: revision, Right: "nested/revision"},
+		"a parent reference":           {Workspace: root, Left: revision, Right: ".."},
+		"an entry that does not exist": {Workspace: root, Left: revision, Right: "absent"},
+		"the case it was derived from": {Workspace: root, Left: revision, Right: "incident"},
+		"a retained run outside the workspace": {
+			Workspace: root, Left: revision, Right: revision,
+			LeftResult: "../run", RightResult: "../run",
+		},
+		"a retained run that is not one": {
+			Workspace: root, Left: revision, Right: revision,
+			LeftResult: "incident", RightResult: "incident",
+		},
+		// A run named beside one revision is read and bound to it even when the
+		// other names none and nothing would have been compared anyway.
+		"a retained run named on one side only": {
+			Workspace: root, Left: revision, Right: revision, LeftResult: "incident",
+		},
+	} {
+		if result := app.CompareReproducers(request); result.State != desktop.Failed || result.Comparison != nil {
+			t.Errorf("a comparison accepted %s: %+v", name, result)
+		}
+	}
+	if missing := app.CompareReproducers(desktop.ReproducerComparisonRequest{Workspace: filepath.Join(root, "absent"), Left: revision, Right: revision}); missing.State == desktop.Completed {
+		t.Fatalf("a comparison ran against a workspace that is not open: %+v", missing)
+	}
+}
+
+// Comparing two revisions verifies both and runs to completion, so it claims
+// the operation slot rather than racing another operation.
+func TestComparingRevisionsRunsOneAtATime(t *testing.T) {
+	app, root, identity := reproducerWorkspace(t)
+	revision := buildRevision(t, app, root, identity, "revision",
+		reproducer.Step{Operator: reproducer.SelectOccurrence, Occurrence: repRescheduleID})
+	reentrant := &chooser{folder: root}
+	second := desktop.New(reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
+	var compared desktop.ReproducerComparisonResult
+	reentrant.before = func() {
+		compared = second.CompareReproducers(desktop.ReproducerComparisonRequest{Workspace: root, Left: revision, Right: revision})
+	}
+	if opened := second.SelectWorkspace(); opened.State != desktop.Completed {
+		t.Fatalf("the first operation did not complete: %+v", opened)
+	}
+	if compared.State != desktop.Busy || compared.Comparison != nil {
+		t.Fatalf("a comparison ran while another operation held the facade: %+v", compared)
+	}
+	if recovered := app.CompareReproducers(desktop.ReproducerComparisonRequest{Workspace: root, Left: revision, Right: revision}); recovered.State != desktop.Completed {
+		t.Fatalf("the facade did not release its slot: %+v", recovered)
+	}
+}

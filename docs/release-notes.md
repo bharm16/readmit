@@ -899,6 +899,28 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   rather than becoming proof that none was sent. No contract gains a member,
   nothing is written anywhere, and no value crosses the boundary but a declared
   timestamp.
+- The desktop shell **compares two built reproducer revisions**: how they are
+  related — the same evidence, one built from the other, both built from one
+  case, or neither — what the second plan does differently, and every occurrence
+  they retain differently. A setup dependency that stopped being retained is its
+  own named outcome, separate from a selection a person stopped making, because a
+  reschedule without the booking it refers to may no longer reproduce anything.
+  Name the run retained for each revision and each expectation is reported as
+  failed on both sides, passed on both sides, a verdict that moved, or one no
+  execution reached; a run counts as proof of a revision only when it was
+  executed against that revision's derived case, and a revision nobody has run
+  claims nothing rather than reading as one that passed. There is no overall
+  verdict, and an execution error is never substituted for a surviving failure.
+  This compares plans and manifests, never messages: the two derived cases are
+  not compared byte for byte, because where one revision edits a position the
+  other left alone, the other's bytes there are the original evidence's own value
+  and the bytes an edit replaced are recorded nowhere. No contract is added and
+  none changes — `readmit-reproducer-plan/v1`, `readmit-reproducer/v1` and
+  `readmit-case/v3` gain no member and change no byte, no derived evidence and no
+  new derivation name is produced, and the comparison is a typed value the window
+  renders rather than a stored document. Only an expectation's identifier, its
+  operator and the two verdicts cross the boundary; the values it expected and
+  observed do not.
 
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`

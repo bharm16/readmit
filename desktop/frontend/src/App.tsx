@@ -6,6 +6,7 @@ import type { CSSProperties, ReactElement } from "react";
 import {
   authorTest,
   buildReproducer,
+  compareReproducers,
   cancel,
   compare,
   type CompareResult,
@@ -17,6 +18,7 @@ import {
   type TestDraftDocument,
   type TestResult,
   type ReproducerPlan,
+  type ReproducerComparisonResult,
   type ReproducerResult,
   type ReproducerStep,
   filters as readFilters,
@@ -62,6 +64,7 @@ import { GuidedSample } from "./GuidedSample";
 import { Sequence, SEQUENCE_WINDOW } from "./Sequence";
 import { Inspector } from "./Inspector";
 import { Reproducer } from "./Reproducer";
+import { RevisionComparison } from "./RevisionComparison";
 import { TestAuthoring } from "./TestAuthoring";
 import { Badge, GRID_WINDOW, MessageGrid, Palette, Report, Separator, Status } from "./shell";
 
@@ -85,6 +88,7 @@ type Running =
   | "reproducer"
   | "authoring"
   | "comparison"
+  | "revisions"
   | "practice"
   | "sequence";
 
@@ -106,6 +110,7 @@ export default function App() {
   const [reproducerResult, setReproducerResult] = useState<ReproducerResult | null>(null);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [comparisonResult, setComparisonResult] = useState<CompareResult | null>(null);
+  const [revisionResult, setRevisionResult] = useState<ReproducerComparisonResult | null>(null);
   const [guideResult, setGuideResult] = useState<GuideResult | null>(null);
   const [practiceResult, setPracticeResult] = useState<PracticeResult | null>(null);
   const [sequenceResult, setSequenceResult] = useState<SequenceResult | null>(null);
@@ -272,6 +277,7 @@ export default function App() {
         setTestResult(null);
         setComparisonResult(null);
         setSequenceResult(null);
+        setRevisionResult(null);
         setSelectedOccurrence(null);
         setSelected(null);
         setWorkspace(null);
@@ -296,6 +302,7 @@ export default function App() {
         setTestResult(null);
         setComparisonResult(null);
         setSequenceResult(null);
+        setRevisionResult(null);
         setSelectedOccurrence(null);
         setSelected(name);
         setEvidence(await openCase(folder, name));
@@ -440,6 +447,28 @@ export default function App() {
       });
     },
     [evidence, operate, root],
+  );
+
+  // Comparing two built revisions reads two finished reproducers and the runs
+  // retained for them. It is bound to nothing the window is holding: both are
+  // named entries of the open workspace and are verified again on every call.
+  const compareRevisions = useCallback(
+    async (left: string, right: string, leftResult: string, rightResult: string) => {
+      if (!root) return;
+      await operate("revisions", async () => {
+        setRevisionResult(null);
+        setRevisionResult(
+          await compareReproducers({
+            workspace: root,
+            left,
+            right,
+            left_result: leftResult,
+            right_result: rightResult,
+          }),
+        );
+      });
+    },
+    [operate, root],
   );
 
   // A reproducer plan is bound to the case the grid verified, so every step
@@ -1012,6 +1041,18 @@ export default function App() {
             indicators={indicators}
             onCompare={(right, keys, fields, offset) =>
               void compareCollections(right, keys, fields, offset)
+            }
+          />
+        ) : null}
+        {verified ? (
+          <RevisionComparison
+            entries={(opened?.artifacts ?? []).map((artifact) => artifact.name)}
+            result={revisionResult}
+            busy={busy}
+            progress={running === "revisions" ? "Comparing these revisions." : null}
+            indicators={indicators}
+            onCompare={(left, right, leftResult, rightResult) =>
+              void compareRevisions(left, right, leftResult, rightResult)
             }
           />
         ) : null}

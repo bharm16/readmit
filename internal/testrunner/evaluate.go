@@ -18,7 +18,7 @@ var sessionID = regexp.MustCompile(`^[0-9a-f]{32}$`)
 func pending(spec Spec) []AssertionResult {
 	assertions := make([]AssertionResult, len(spec.Assertions))
 	for i, assertion := range spec.Assertions {
-		assertions[i] = AssertionResult{Assertion: assertion, Status: "not_evaluated"}
+		assertions[i] = AssertionResult{Assertion: assertion, Status: NotEvaluated}
 	}
 	return assertions
 }
@@ -141,9 +141,9 @@ func evaluate(spec Spec, run *replay.Run, initial, final *observation.Snapshot) 
 			return fail("assertion_evidence_limit")
 		}
 		assertions[i].Observed = &observed
-		assertions[i].Status = "passed"
+		assertions[i].Status = Passed
 		if !reflect.DeepEqual(assertion.Expected, observed) {
-			assertions[i].Status = "failed"
+			assertions[i].Status = Failed
 			status = AssertionFailure
 		}
 	}
