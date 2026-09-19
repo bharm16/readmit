@@ -264,8 +264,8 @@ and nothing an instance did.
   it is invoked explicitly by the runner integration, not by `test`, `replay`
   or any command that reads evidence. Which capabilities gate which commands is
   #116's decision.
-- **The trial clock guard and the administration interface.** #116 and #119
-  respectively. The vendor's account ledger and its authenticated payment events
+- **The trial clock guard.** #116. The administration API is described in
+  [commercial administration](commercial-administration.md). The vendor's account ledger and its authenticated payment events
   are [purchasing through a separate portal](billing.md); the portal itself,
   prices and real invoices stay outside this repository.
 - **Issuing.** No command signs a v2 entitlement; the vectors are signed with a

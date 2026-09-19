@@ -1,5 +1,9 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Vendor administration records business contacts and invoice references, reissues
+  named-author/device and active-runner assignments without sequence collisions,
+  and reports annual paid support scope. Commercial terms remain review drafts.
+
 - Desktop install checks download exact preview packages onto fresh native
   runners, verify installed license/source material and the expected engine with
   empty PATH, and retain synthetic evidence/state across removal. Signed release

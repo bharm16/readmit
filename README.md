@@ -1060,3 +1060,7 @@ read-only mode. Reports remain sensitive customer-local evidence; see
 Managed deployment: [silent installation, offline dependencies and activation](docs/managed-installation.md).
 
 Saved suites in customer CI: [headless execution and private CI gates](docs/customer-ci.md).
+
+Organization contacts, invoice references, assignment transfers and support scope
+use the local vendor [commercial administration](docs/commercial-administration.md) API.
+[Commercial terms](docs/commercial-terms.md) remain an owner/counsel review draft.
