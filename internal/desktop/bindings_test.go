@@ -119,6 +119,8 @@ func TestFrontendBindingsDeclareEveryResultMember(t *testing.T) {
 		reflect.TypeOf(reproducer.ProofSide{}),
 		reflect.TypeOf(reproducer.AssertionProof{}),
 		reflect.TypeOf(desktop.TestRequest{}),
+		reflect.TypeOf(desktop.CanonicalTestRequest{}),
+		reflect.TypeOf(desktop.CanonicalTestResult{}),
 		reflect.TypeOf(desktop.TestResult{}),
 		reflect.TypeOf(desktop.TestDraft{}),
 		reflect.TypeOf(testauthor.Draft{}),

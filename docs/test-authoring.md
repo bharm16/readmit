@@ -397,11 +397,12 @@ to, so a draft cannot be answered into a spec its own reader would refuse.
 - **No approving a run that did not pass.** Updating a baseline whose
   expectations no longer hold is not this delivery: such a run is refused, and
   what it recorded is investigated rather than approved.
-- No `ledger_equals`, no scenario template and no blank workflow. A draft is
-  authored against one case this shell verified.
-- No editing or importing of a spec that already exists. A save writes a new
-  entry; it never replaces one, and reading a saved spec back into a draft is a
-  separate delivery.
+- The guided draft has no `ledger_equals`, scenario template or blank workflow.
+  It is authored against one case this shell verified.
+- The guided draft does not import existing specs. The separate
+  [canonical editor](#round-tripping-canonical-specs) imports and edits all
+  supported clauses without translating them into a draft. Both save paths
+  create new entries and never replace an existing spec.
 - No environment placeholder, deadline or cleanup member. `readmit-test/v1`
   declares none, it gains no member here, and a draft never invents one.
 - No retained draft. An unsaved draft is unstored work the window loses when it
@@ -426,3 +427,43 @@ to, so a draft cannot be answered into a spec its own reader would refuse.
   tolerance above, from the other side: it wanted an explanation too, and
   **provenance** — which diagnosis run a promoted expectation came from.
   `readmit-test/v1` declares none of the three and gained none there either.
+
+## Round-tripping canonical specs
+
+The desktop's **Import and edit a saved test** panel is an advanced JSON editor
+beside the guided questions. Choose an existing test file in the open workspace
+and explicitly import/show its values. Edit the complete document, validate it
+with the shared test reader, then export to a new filename in that same folder.
+The guided draft remains limited to the two operators described above; the
+canonical editor also preserves and edits `ledger_equals`, including an explicit
+empty record collection. It never translates through the guided draft.
+
+Import, validation and export all call `testrunner.DecodeSpec`, the reader used
+by headless execution. Unknown schema versions, operator names or versions,
+unknown or duplicate members, wrong expected-value shapes and documents over
+1 MiB are errors. No clause is silently omitted, repaired or upgraded. V1
+operators have no separate version field; an added version member is unknown
+and refused. Existing test and draft contracts are unchanged.
+
+An unedited import/export preserves the exact bytes and spec identity. An edit
+is exported exactly as reviewed, so formatting edits also change identity.
+Export creates an owner-readable file exclusively, refuses any existing entry
+or destination within retained evidence, and reads it back to verify its bytes.
+Import refuses symlinks and nonregular files. Both filenames must be single
+workspace entries. To edit a spec in another folder, open that folder as the
+workspace; export does not relocate files or rewrite relative references.
+
+The editor does not verify that referenced evidence and endpoints are ready or
+that assertions will pass. Run the new spec through the existing desktop run
+panel or `readmit test NEW_SPEC --send --output NEW_RESULT`. Both use the same
+execution engine and send-approval policy. The public-interface regression tests
+exercise both passing and failing expectations over a loopback fixture through
+those two entry points.
+
+Expected values appear only after explicit import/show, or when typed into the
+editor. They remain customer-local; no browser storage, session draft, logging
+or automatic sharing retains them. A refused import keeps any prior edit; a
+refused export leaves it available for correction. **Discard unstored edits**
+cancels editing without writing, and switching workspaces clears the editor.
+These bounded local file operations hold the facade operation slot and are not
+interruptible; they neither start nor resume a network run.
