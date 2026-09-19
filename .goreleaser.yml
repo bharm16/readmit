@@ -73,6 +73,7 @@ archives:
 
       - docs/synth.md
       - docs/synth-v1-vector.md
+      - docs/scenario-design.md
       - testdata/README.md
       - testdata/fixtures/*
       - src: internal/dictionary/fields-v251.json

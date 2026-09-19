@@ -1,0 +1,21 @@
+{
+  "schema": "readmit-scenario/v1",
+  "scenario": {"id": "siu-appointment-lifecycle", "version": "1"},
+  "profile": "readmit-siu-lifecycle-v1",
+  "base_time": "2026-01-01T12:00:00Z",
+  "subjects": [
+    {"id": "patient-a", "kind": "patient", "namespace": "READMIT", "identifier": "SYNTH-PATIENT-A", "initial_state": "active"},
+    {"id": "appointment-a", "kind": "appointment", "namespace": "READMIT", "identifier": "SYNTH-APPOINTMENT-A", "patient": "patient-a", "initial_state": "none"}
+  ],
+  "steps": [
+    {"id": "cancel-before-anything-was-booked", "event": "S15", "subject": "appointment-a", "after": "0s", "expect": "refused"},
+    {"id": "book", "event": "S12", "subject": "appointment-a", "after": "1m", "expect": "accepted"},
+    {"id": "book-the-same-appointment-again", "event": "S12", "subject": "appointment-a", "after": "2m", "expect": "refused"},
+    {"id": "reschedule", "event": "S13", "subject": "appointment-a", "after": "3m", "expect": "accepted"},
+    {"id": "modify", "event": "S14", "subject": "appointment-a", "after": "4m", "expect": "accepted"},
+    {"id": "cancel", "event": "S15", "subject": "appointment-a", "after": "24h", "expect": "accepted"},
+    {"id": "cancel-the-cancellation", "event": "S15", "subject": "appointment-a", "after": "25h", "expect": "refused"},
+    {"id": "reschedule-after-cancellation", "event": "S13", "subject": "appointment-a", "after": "26h", "expect": "refused"},
+    {"id": "record-a-no-show-after-cancellation", "event": "S26", "subject": "appointment-a", "after": "27h", "expect": "refused"}
+  ]
+}

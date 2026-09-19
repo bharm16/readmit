@@ -601,6 +601,31 @@ and `invalid` (reschedule with an unbooked filler identifier) case bundles.
 Identical declared inputs produce identical bytes. No current clock or machine
 path enters the generated evidence. See [synthetic generation](docs/synth.md).
 
+`scenario preview SCENARIO` shows an interface workflow designed as a sequence
+rather than as a message:
+
+```sh
+readmit scenario preview testdata/fixtures/scenario-siu.json
+```
+
+A `readmit-scenario/v1` document is an ordinary file a person edits. It binds
+one fixture lifecycle profile — `readmit-adt-lifecycle-v1` or
+`readmit-siu-lifecycle-v1` — to the identities the workflow keeps linked from
+its first step to its last, the state each of them starts in, how long after a
+declared base time each event happens, and the outcome its author intended for
+every step. The profile's typed transitions decide whether that is what the
+sequence does: a step declared accepted that the lifecycle refuses, and a step
+declared refused that it takes, each refuse the whole scenario by name, so a
+negative case nobody confirmed is never mistaken for one that was. A refused
+step changes nothing, which is how cancellation and merge cases live inside one
+workflow — cancelling before a booking, cancelling a cancellation, rescheduling
+after one, merging a patient identity into itself or into one already merged
+away, and any event on a visit whose identity was merged away. The preview
+names scenario-local subjects and never the identifiers the document declares,
+and it is a pure function of that document. Nothing here generates HL7 bytes or
+reads evidence. See
+[designing a workflow as a sequence](docs/scenario-design.md).
+
 The desktop shell opens a workspace folder without a terminal: it lists what the
 folder declares it holds, verifies one case at a time through the same reader
 `timeline` uses, reads a project document with the case identities the command

@@ -760,6 +760,24 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   `"signed_for_distribution": false`, the check refuses every candidate staged
   from one — signing, notarization and publication remain the owner's gate.
 
+- `scenario preview SCENARIO` shows an interface workflow designed as a
+  sequence. A `readmit-scenario/v1` document binds one fixture lifecycle
+  profile — `readmit-adt-lifecycle-v1` or `readmit-siu-lifecycle-v1` — to the
+  identities it keeps linked from the first step to the last, the state each of
+  them starts in, when each event happens relative to a declared base time, and
+  the outcome its author intended for every step. The profile's typed
+  transitions decide whether that is what the sequence does: a step declared
+  accepted that the lifecycle refuses, and a step declared refused that it
+  takes, each refuse the whole scenario by name, so a negative case nobody
+  confirmed is never mistaken for one that was. A refused step changes nothing,
+  which is how cancellation and merge cases live inside one workflow — cancelling
+  before a booking, cancelling a cancellation, rescheduling after one, merging a
+  patient identity into itself, merging one already merged away, and any event
+  on a visit whose identity was merged away. Two editable templates ship. The
+  preview names scenario-local subjects and never the identifiers a document
+  declares, it is a pure function of that document, and it generates no message
+  bytes and reads no evidence.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is
