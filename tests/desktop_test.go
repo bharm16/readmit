@@ -16,6 +16,7 @@ import (
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/grid"
 	"github.com/bharm16/readmit/internal/index"
+	"github.com/bharm16/readmit/internal/reproducer"
 )
 
 // chosenFolder stands in for the host's native folder dialog.
@@ -263,4 +264,113 @@ func reportedOccurrences(stdout string) []string {
 		found = append(found, strings.Fields(line)[0])
 	}
 	return found
+}
+
+// The whole reproducer delivery, across both entry points. The window extracts
+// a reproducer out of a captured incident — the reschedule a person selected,
+// the booking its declared identity requires, and one edited field — and the
+// command line then verifies that derived case and registers it as a revision
+// of the evidence it came from. Neither side reimplements the other, and the
+// original is byte-identical afterwards.
+func TestDesktopReproducerIsVerifiedAndRegisteredByTheCommandLine(t *testing.T) {
+	workspace := t.TempDir()
+	evidence := filepath.Join(workspace, "incident")
+	if _, stderr, err := run(t, "capture", "../testdata/fixtures/synth-v1-regression.mllp", "--output", evidence); err != nil || stderr != "" {
+		t.Fatalf("capture: %v %s", err, stderr)
+	}
+	before := caseFiles(t, evidence)
+
+	app := desktopApp(t, workspace)
+	opened := app.OpenCase(workspace, "incident")
+	if opened.State != desktop.Completed {
+		t.Fatalf("the case did not verify: %+v", opened)
+	}
+	build := desktop.ReproducerRequest{Workspace: workspace, Case: "incident", Identity: opened.Case.Identity}
+	for _, step := range []reproducer.Step{
+		{Operator: reproducer.SelectOccurrence, Occurrence: "s0001-e000002"},
+		{Operator: reproducer.IncludePriorIdentity, Identity: []string{"SCH-2.1", "SCH-2.2"}},
+		{Operator: reproducer.SetField, Occurrence: "s0001-e000002", Selector: "PID-3.1", Value: "MRN-REPRODUCER"},
+	} {
+		build.Step = step
+		result := app.EditReproducer(build)
+		if result.State != desktop.Completed {
+			t.Fatalf("the window refused a step it supports: %+v", result)
+		}
+		build.Plan = result.Reproducer.Plan
+	}
+	build.Step, build.Output = reproducer.Step{}, "incident-reproducer"
+	built := app.BuildReproducer(build)
+	if built.State != desktop.Completed || len(built.Reproducer.Resolution.Occurrences) != 2 {
+		t.Fatalf("the reproducer was not written: %+v", built)
+	}
+	if !reflect.DeepEqual(before, caseFiles(t, evidence)) {
+		t.Fatal("building a reproducer changed the evidence it was derived from")
+	}
+
+	// The command line verifies what the window wrote, through the same reader
+	// every other case goes through.
+	derived := filepath.Join(workspace, "incident-reproducer", reproducer.CaseName)
+	stdout, stderr, err := run(t, "timeline", derived)
+	if err != nil || stderr != "" {
+		t.Fatalf("timeline: %v %s", err, stderr)
+	}
+	if !strings.Contains(stdout, built.Reproducer.Identity) || !strings.Contains(stdout, "Occurrences: 2") {
+		t.Fatalf("timeline did not report the reproducer the window wrote:\n%s", stdout)
+	}
+
+	// And a project records where it came from, reading the operation out of the
+	// derivation the derived case declares rather than from anything typed here.
+	project := filepath.Join(workspace, "investigation")
+	if _, stderr, err := run(t, "project", "init", "--output", project, "--title", "Scheduling", "--interface-version", "v1"); err != nil || stderr != "" {
+		t.Fatalf("project init: %v %s", err, stderr)
+	}
+	copyTree(t, evidence, filepath.Join(project, "incident"))
+	copyTree(t, derived, filepath.Join(project, "incident-reproducer"))
+	added, stderr, err := run(t, "project", "add", project, "incident", "--title", "Original incident")
+	if err != nil || stderr != "" {
+		t.Fatalf("project add: %v %s", err, stderr)
+	}
+	stdout, stderr, err = run(t, "project", "revise", project, "incident-reproducer", "--parent", "incident")
+	if err != nil || stderr != "" {
+		t.Fatalf("project revise: %v %s", err, stderr)
+	}
+	for _, want := range []string{
+		"Schema: readmit-case/v3",
+		"Provenance: derived",
+		"Operation: " + reproducer.Derivation,
+		"Parent identity: " + field(t, added, "Identity: "),
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("project revise omitted %q:\n%s", want, stdout)
+		}
+	}
+}
+
+// caseFiles reads every file of a case directory, so a test can assert that
+// deriving from it changed nothing.
+func caseFiles(t *testing.T, root string) map[string]string {
+	t.Helper()
+	files := map[string]string{}
+	err := filepath.WalkDir(root, func(name string, entry os.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		data, err := os.ReadFile(name)
+		relative, _ := filepath.Rel(root, name)
+		files[relative] = string(data)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
+}
+
+// copyTree copies one artifact directory, which is what an operator does before
+// registering derived evidence as a revision of a project.
+func copyTree(t *testing.T, from, to string) {
+	t.Helper()
+	if err := os.CopyFS(to, os.DirFS(from)); err != nil {
+		t.Fatal(err)
+	}
 }

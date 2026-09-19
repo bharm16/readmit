@@ -70,6 +70,7 @@ REQUIRED_FILES = {
     "testdata/fixtures/assertion-set.json",
     "testdata/fixtures/assertion-set-refused.json",
     "docs/redact.md",
+    "docs/reproducer.md",
     "testdata/fixtures/redact-booking.mllp",
     "testdata/fixtures/redact-reschedule.mllp",
     "testdata/fixtures/redact-spec.json",

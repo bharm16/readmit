@@ -10,6 +10,7 @@ import (
 	"github.com/bharm16/readmit/internal/grid"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/project"
+	"github.com/bharm16/readmit/internal/reproducer"
 )
 
 // bindingsFile is the frontend's only view of the Go facade. Wails publishes
@@ -87,6 +88,15 @@ func TestFrontendBindingsDeclareEveryResultMember(t *testing.T) {
 		reflect.TypeOf(desktop.Session{}),
 		reflect.TypeOf(desktop.View{}),
 		reflect.TypeOf(desktop.Draft{}),
+		reflect.TypeOf(desktop.ReproducerRequest{}),
+		reflect.TypeOf(desktop.ReproducerResult{}),
+		reflect.TypeOf(desktop.Reproducer{}),
+		reflect.TypeOf(reproducer.Plan{}),
+		reflect.TypeOf(reproducer.Step{}),
+		reflect.TypeOf(reproducer.Resolution{}),
+		reflect.TypeOf(reproducer.Retained{}),
+		reflect.TypeOf(reproducer.Edit{}),
+		reflect.TypeOf(reproducer.Unresolved{}),
 		reflect.TypeOf(desktop.InspectRequest{}),
 		reflect.TypeOf(desktop.InspectionResult{}),
 		reflect.TypeOf(desktop.Inspection{}),

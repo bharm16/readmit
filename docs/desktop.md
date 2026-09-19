@@ -59,6 +59,9 @@ artifacts are never reported as completed.
 | `RecordView` | Retains the workspace, case, region and run this viewer has open. |
 | `SaveDraft` | Retains one note that has been typed and not stored yet. |
 | `DiscardDraft` | Drops one retained draft, once the note it was an edit of has been stored. |
+| `EditReproducer` | Adds one step to a reproducer plan and reports what it now means over the case. |
+| `UndoReproducer` | Removes the last step of a plan and resolves what remains. |
+| `BuildReproducer` | Writes the reproducer into a new folder of the open workspace. |
 | `Cancel` | Stops the operation that is running now, when it can be interrupted. |
 
 Exactly one operation runs at a time. A second request reports `busy` rather
@@ -81,7 +84,8 @@ than drawing itself with no commands and no privacy status.
 `Cancel` cannot retract bytes an operation has already written. Choosing a
 folder and listing it are interruptible; `OpenCase`, `OpenProject`,
 `OpenRevisions`, `SaveNote`, `Search`, `OpenGrid`, `SaveFilter`,
-`SelectFilter`, `InspectOccurrence` and `RecoverSession` are not, because each runs to completion under its own size
+`SelectFilter`, `InspectOccurrence`, `EditReproducer`, `UndoReproducer`,
+`BuildReproducer` and `RecoverSession` are not, because each runs to completion under its own size
 limits once it starts. The window enables the
 Cancel control only while an interruptible operation runs; `Escape` reaches the
 same operation whenever the palette is not open, and cancelling when nothing is
@@ -338,6 +342,42 @@ file on this machine, it is never written into a case, a run, a result, a review
 or a report, and the privacy region names it. This is the one thing the grid
 keeps that came from a person reading evidence; nothing read out of a case is
 kept anywhere.
+
+## Building a reproducer
+
+An incident holds everything that happened; what a vendor or a regression test
+needs is much smaller. **Reproducer** is the panel beside the grid that extracts
+it: retain the occurrences that matter, keep the setup dependencies they need,
+edit supported fields, and write the result as a separate revision.
+
+This is the one place the window writes evidence, and it writes only **new**
+evidence. The case being read is never changed: a build creates a new folder of
+the open workspace holding a derived `readmit-case/v3` bundle and the
+transformation manifest beside it. A folder that already exists, a name that is
+not one entry of the workspace, and a destination inside any retained artifact
+are each refused by the same output policy that refuses every other write into
+retained evidence.
+
+Nothing about what a step means is decided here. The interface sends the plan
+and the step; the engine resolves both against the verified case and sends back
+what it retained, why, and everything it could not settle — so the panel shows
+what a build would write rather than a second opinion about it. A step the
+evidence does not support leaves the plan exactly as it was and reports the
+refusal, and **Undo the last step** removes the step added last and resolves
+what remains, which is why dropping an occurrence and undoing that drop returns
+its edits as well.
+
+The panel shows positions, not content: an occurrence ID, its kind, the reason
+it is retained and what required it, and for an edit the position it addresses
+and where the new bytes landed. Reading a value is still
+[the inspector](#inspecting-original-values), deliberately. The plan lives in
+the window while it is being edited, is never placed in browser storage, and is
+written nowhere except into the manifest of a reproducer that was built.
+
+A reproducer is derived testing data, not a redaction and not an approval to
+share. See [extracting and editing a reproducer](reproducer.md) for both
+contracts, the two dependency relations, every refusal, the bounds, and how to
+register the result as a project revision.
 
 ## Recovering after an interruption
 
@@ -610,8 +650,17 @@ checked to hold no network call and no browser storage at all.
 - Sharing a working session between viewers or machines, retaining more than one
   session per viewer, and any history of what a draft said before it was
   replaced.
-- Importing evidence, editing evidence, and comparison. No edit the shell makes
-  reaches a case, a run, a result, a review or a report.
+- Importing evidence, changing evidence, and comparison. No edit the shell makes
+  reaches a case, a run, a result, a review or a report: a reproducer is new
+  evidence written beside the original, never a rewrite of it.
+- Retaining an unbuilt reproducer plan across an interruption. The working
+  session is one bounded versioned document and it gains no member here, so a
+  plan that has not been built is lost with the window; a reproducer that was
+  built is on disk and is read back from its own manifest.
+- Reduction, replay transformations, reordering or duplicating occurrences, and
+  comparing two reproducers. The editor retains what a person selected and what
+  their declared dependencies require, and makes no claim of minimality; see
+  [the reproducer contract](reproducer.md) for what this release does not do.
 - Building an index. The grid reads one that `readmit index build` wrote, so
   which fields are retained, in what form and until when stay three declarations
   an operator made explicitly.

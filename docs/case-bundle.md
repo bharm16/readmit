@@ -256,7 +256,16 @@ and controls. Nothing is uploaded, and neither command accesses the network.
 
 The v3 layout, byte-preserving occurrence model, hashes and correlation rules are
 unchanged. Its identity domain is `readmit-case/v3`. Provenance is exactly
-`{"mode":"derived","derivation":"readmit-redact/v1"}`. Sources have no `path`
+`{"mode":"derived","derivation":NAME}`, where `derivation` names the
+transformation that wrote the bundle. The set of names is closed and reviewed,
+so a derived case can never declare a transformation no code here performs:
+
+| Derivation | Written by |
+| --- | --- |
+| `readmit-redact/v1` | [derived testing evidence and export review](redact.md) |
+| `readmit-reproducer/v1` | [a reproducer extracted and edited from a case](reproducer.md) |
+
+Sources have no `path`
 member; provenance has no original import/start time, receiver session, generator,
 or parent identity. Observed/imported event times are null. A v3 manifest cannot
 carry a recorded observation. Legacy-only members are rejected even when null.
@@ -269,10 +278,12 @@ that project's own editable document rather than in the artifact. A derived case
 alone has no export approval; see
 [redact.md](redact.md) for review, exact approval and newly generated proof gates.
 
-`bundle.Write` accepts `Provenance{Mode: Derived, Derivation: "readmit-redact/v1"}`
-and returns the same `Bundle` type. `bundle.Open`, `Raw`, `Value`, and event/source
+`bundle.Write` accepts `Provenance{Mode: Derived, Derivation: NAME}` for either
+declared name and returns the same `Bundle` type; a name absent from that set is
+refused rather than recorded. `bundle.Open`, `Raw`, `Value`, and event/source
 IDs are stable across supported versions. Existing imported/generated v1 and
-recorded v2 artifacts retain their strict versioned contracts.
+recorded v2 artifacts retain their strict versioned contracts, and a v3 bundle
+written before this release gains no member and changes no byte.
 
 ## Collected receiver evidence: readmit-case/v4
 

@@ -408,6 +408,9 @@ interface Facade {
   SelectFilter(name: string): Promise<FiltersResult>;
   SelectWorkspace(): Promise<WorkspaceResult>;
   Shell(): Promise<ShellResult>;
+  EditReproducer(request: ReproducerRequest): Promise<ReproducerResult>;
+  UndoReproducer(request: ReproducerRequest): Promise<ReproducerResult>;
+  BuildReproducer(request: ReproducerRequest): Promise<ReproducerResult>;
 }
 
 declare global {
@@ -619,4 +622,113 @@ export function saveDraft(draft: Draft): Promise<SessionResult> {
 /** Drops one retained draft, once the note it was an edit of has been stored. */
 export function discardDraft(project: string, name: string): Promise<SessionResult> {
   return guard(() => facade().DiscardDraft(project, name), { state: "failed" });
+}
+
+/** The typed operators a reproducer plan is built from. Each names the one
+ * thing it does; the engine interprets them, and nothing here decides what a
+ * step means. */
+export type ReproducerOperator =
+  | "select-occurrence/v1"
+  | "drop-occurrence/v1"
+  | "include-acknowledgements/v1"
+  | "include-prior-identity/v1"
+  | "set-field/v1"
+  | "clear-field/v1";
+
+/** One step. Only the members its operator declares are present; the engine
+ * refuses a step that carries another operator's member. */
+export interface ReproducerStep {
+  operator: ReproducerOperator;
+  occurrence?: string;
+  selector?: string;
+  identity?: string[];
+  value?: string;
+}
+
+/** The ordered transformation, bound to the identity of the case it was
+ * authored against. The window holds no session: every call carries this plan
+ * and gets the next one back, and undo removes its last step. */
+export interface ReproducerPlan {
+  schema: string;
+  case: string;
+  steps: ReproducerStep[];
+}
+
+/** One occurrence the reproducer keeps and why. A dependency also names the
+ * retained occurrence that required it. */
+export interface RetainedOccurrence {
+  parent: string;
+  derived?: string;
+  reason: string;
+  required_by?: string;
+}
+
+/** One applied field change and where it landed in the derived occurrence.
+ * `state` is what the position was before the edit; the bytes that were there
+ * are deliberately not recorded anywhere. */
+export interface ReproducerEdit {
+  parent: string;
+  derived?: string;
+  selector: string;
+  operator: ReproducerOperator;
+  state: string;
+  offset: number;
+  length: number;
+}
+
+/** Something a dependency step reached and could not settle. It is reported
+ * rather than guessed: an ambiguous acknowledgement names several candidate
+ * messages and none of them is chosen here. */
+export interface UnresolvedDependency {
+  occurrence: string;
+  reason: string;
+}
+
+export interface ReproducerResolution {
+  occurrences: RetainedOccurrence[];
+  edits: ReproducerEdit[];
+  unresolved: UnresolvedDependency[];
+}
+
+/** The plan and what it means over the evidence. `output` and `identity` are
+ * present only after a build, and name the folder written and the derived case
+ * in it. */
+export interface Reproducer {
+  plan: ReproducerPlan;
+  resolution: ReproducerResolution;
+  output?: string;
+  identity?: string;
+}
+
+export interface ReproducerRequest {
+  workspace: string;
+  case: string;
+  identity: string;
+  plan: ReproducerPlan;
+  step?: ReproducerStep;
+  output?: string;
+}
+
+export interface ReproducerResult {
+  state: State;
+  reason?: string;
+  reproducer?: Reproducer;
+}
+
+/** Adds one step and reports what the plan now means over the verified case. A
+ * step the evidence does not support leaves the plan exactly as it was. */
+export function editReproducer(request: ReproducerRequest): Promise<ReproducerResult> {
+  return guard(() => facade().EditReproducer(request), { state: "failed" });
+}
+
+/** Removes the last step and resolves what remains. */
+export function undoReproducer(request: ReproducerRequest): Promise<ReproducerResult> {
+  return guard(() => facade().UndoReproducer(request), { state: "failed" });
+}
+
+/** Writes the reproducer into a new folder of the open workspace. This is the
+ * only thing the window writes into a workspace, and it writes only new
+ * evidence: the case it reads is never changed. */
+export function buildReproducer(request: ReproducerRequest): Promise<ReproducerResult> {
+  return guard(() => facade().BuildReproducer(request), { state: "failed" });
 }

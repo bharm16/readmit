@@ -96,3 +96,26 @@ func TestLegacyVersionsStillRejectDerivedMemberEvenNull(t *testing.T) {
 		})
 	}
 }
+
+// The derivation names which transformation wrote a v3 bundle. The set is
+// closed, so a case cannot declare a transformation no code here performs, and
+// each accepted name still produces evidence carrying no source metadata.
+func TestDerivedEvidenceAcceptsOnlyTheNamedTransformations(t *testing.T) {
+	for _, derivation := range []string{"readmit-redact/v1", "readmit-reproducer/v1"} {
+		t.Run(derivation, func(t *testing.T) {
+			path, created := write(t, []bundle.Input{{Data: fixture(t, "listen-s12.hl7")}}, bundle.Provenance{Mode: bundle.Derived, Derivation: derivation})
+			opened, err := bundle.Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if opened.Identity != created.Identity || opened.Manifest.Provenance.Derivation != derivation || opened.Manifest.Sources[0].Path != "" {
+				t.Fatal("derived evidence did not record the transformation that wrote it")
+			}
+		})
+	}
+	for _, derivation := range []string{"", "readmit-reproducer/v2", "readmit-unknown/v1"} {
+		if _, err := bundle.Write(filepath.Join(t.TempDir(), "case"), []bundle.Input{{Data: fixture(t, "listen-s12.hl7")}}, bundle.Provenance{Mode: bundle.Derived, Derivation: derivation}); err == nil {
+			t.Fatalf("derived writer accepted the undeclared derivation %q", derivation)
+		}
+	}
+}

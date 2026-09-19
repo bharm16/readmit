@@ -76,6 +76,7 @@ runner for each target rather than on every older release in the range.
 | Observation window and completion contracts | `observe validate`, `observe explain` | Implemented | [observe](observe.md) | `TestObserveValidateReadsADeclaredWindowWithoutObservingAnything` |
 | Observation of a file export or an approved HTTPS API | `observe collect` | Implemented; `GET` only, TLS 1.2 floor | [observe](observe.md) | `TestObserveCollectObservesADeclaredExportAndRetainsWhatItRead`, `TestAnApprovedEndpointCompletesTheWindowOverTLS` |
 | Desktop workspace, case verification, notes, message grid, session recovery | desktop shell | Implemented as a separate build | [desktop](desktop.md) | `TestDesktopCaseVerificationAgreesWithTheCommandLine`, `TestDesktopGridRendersExactlyWhatTheCommandLineIndexSearchFinds` |
+| Reproducer extracted and edited from a verified case | desktop shell | Implemented; occurrence selection, two declared setup-dependency relations, field edits and undo. No reduction, no replay transformation, and no minimality claim | [reproducer](reproducer.md) | `TestDesktopReproducerIsVerifiedAndRegisteredByTheCommandLine`, `TestCreateWritesASeparateRevisionAndNeverChangesTheOriginal`, `TestEditsAreRefusedWhereThisReleaseCannotApplyThem` |
 | Scripted synthetic evaluation walkthrough | `samples/synthetic-walkthrough` | Implemented | [walkthrough](https://github.com/bharm16/readmit/blob/main/samples/synthetic-walkthrough/README.md) | `TestSyntheticWalkthroughCompletesEveryStepAgainstTheBuiltExecutable` |
 
 ## Observation sources and connectors

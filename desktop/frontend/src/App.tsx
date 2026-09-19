@@ -4,8 +4,14 @@ import { RunPanel } from "./RunPanel";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import {
+  buildReproducer,
   cancel,
   createSampleWorkspace,
+  editReproducer,
+  undoReproducer,
+  type ReproducerPlan,
+  type ReproducerResult,
+  type ReproducerStep,
   filters as readFilters,
   openCase,
   openGrid,
@@ -38,6 +44,7 @@ import {
   type WorkspaceResult,
 } from "./bindings";
 import { Inspector } from "./Inspector";
+import { Reproducer } from "./Reproducer";
 import { Badge, GRID_WINDOW, MessageGrid, Palette, Report, Separator, Status } from "./shell";
 
 /** The panes never collapse to nothing: either one keeps a usable share of the
@@ -48,7 +55,16 @@ const SPLIT_STEP = 5;
 
 /** Verifying a case, reading a project and searching all run to completion once
  * they start, so Cancel is offered only while an interruptible operation runs. */
-type Running = null | "workspace" | "case" | "project" | "search" | "grid" | "filters" | "inspect";
+type Running =
+  | null
+  | "workspace"
+  | "case"
+  | "project"
+  | "search"
+  | "grid"
+  | "filters"
+  | "inspect"
+  | "reproducer";
 
 export default function App() {
   const [described, setDescribed] = useState<Shell | null>(null);
@@ -65,6 +81,7 @@ export default function App() {
   const [inspectionResult, setInspectionResult] = useState<InspectionResult | null>(null);
   const [selectedOccurrence, setSelectedOccurrence] = useState<string | null>(null);
   const [gridResult, setGridResult] = useState<GridResult | null>(null);
+  const [reproducerResult, setReproducerResult] = useState<ReproducerResult | null>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -217,6 +234,7 @@ export default function App() {
         setFound(null);
         setGridResult(null);
         setInspectionResult(null);
+        setReproducerResult(null);
         setSelectedOccurrence(null);
         setSelected(null);
         setWorkspace(null);
@@ -234,6 +252,7 @@ export default function App() {
         setEvidence(null);
         setGridResult(null);
         setInspectionResult(null);
+        setReproducerResult(null);
         setSelectedOccurrence(null);
         setSelected(name);
         setEvidence(await openCase(folder, name));
@@ -300,6 +319,27 @@ export default function App() {
       });
     },
     [gridResult, operate, root],
+  );
+
+  // A reproducer plan is bound to the case the grid verified, so every step
+  // carries the plan back to the engine, which decides what it means. The
+  // window keeps no second copy of the selection or of what a dependency added.
+  const reproduce = useCallback(
+    async (work: (plan: ReproducerPlan, open: { case: string; identity: string }) => Promise<ReproducerResult>) => {
+      const open = gridResult?.grid;
+      if (!root || !open) return;
+      const plan = reproducerResult?.reproducer?.plan ?? ({ schema: "", case: "", steps: [] } as ReproducerPlan);
+      await operate("reproducer", async () => {
+        const result = await work(plan, open);
+        // A refused step leaves the plan exactly as it was, so the refusal is
+        // shown without replacing the reproducer a person is working on.
+        const kept = reproducerResult?.reproducer;
+        setReproducerResult(
+          result.reproducer || !kept ? result : { ...result, reproducer: kept },
+        );
+      });
+    },
+    [gridResult, operate, reproducerResult, root],
   );
 
   // Changing the filter changes what the open grid is showing, so the window is
@@ -688,6 +728,55 @@ export default function App() {
               if (selectedOccurrence)
                 void inspect(selectedOccurrence, path, nodeOffset, byteOffset);
             }}
+          />
+        ) : null}
+        {gridResult?.grid ? (
+          <Reproducer
+            rows={gridResult.grid.rows}
+            result={reproducerResult}
+            inspected={
+              selectedOccurrence && inspectionResult?.inspection
+                ? {
+                    occurrence: selectedOccurrence,
+                    path: inspectionResult.inspection.selected.path,
+                  }
+                : null
+            }
+            busy={busy}
+            progress={running === "reproducer" ? "Resolving this reproducer against the case." : null}
+            indicators={indicators}
+            onStep={(step: ReproducerStep) =>
+              void reproduce((plan, open) =>
+                editReproducer({
+                  workspace: root ?? "",
+                  case: open.case,
+                  identity: open.identity,
+                  plan,
+                  step,
+                }),
+              )
+            }
+            onUndo={() =>
+              void reproduce((plan, open) =>
+                undoReproducer({
+                  workspace: root ?? "",
+                  case: open.case,
+                  identity: open.identity,
+                  plan,
+                }),
+              )
+            }
+            onBuild={(output: string) =>
+              void reproduce((plan, open) =>
+                buildReproducer({
+                  workspace: root ?? "",
+                  case: open.case,
+                  identity: open.identity,
+                  plan,
+                  output,
+                }),
+              )
+            }
           />
         ) : null}
         {!evidence && !busy ? <p className="hint">Open a case to see what it holds.</p> : null}
