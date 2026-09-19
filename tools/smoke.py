@@ -129,6 +129,8 @@ REQUIRED_FILES = {
     "testdata/fixtures/scenario-adt.json",
     "testdata/fixtures/scenario-siu.json",
     "testdata/fixtures/scenario-refused.json",
+    "testdata/fixtures/scenario-orm.json",
+    "testdata/fixtures/scenario-oru.json",
     "licenses/cobra-LICENSE.txt", "licenses/go-BSD-3-Clause.txt",
     "licenses/mousetrap-LICENSE.txt", "licenses/nhapi-MPL-2.0.txt", "licenses/pflag-LICENSE.txt",
 } | {"testdata/fixtures/" + filename for filename, _, _, _ in FIXTURES}

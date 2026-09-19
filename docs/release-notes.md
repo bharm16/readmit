@@ -1062,3 +1062,10 @@ local MLLP test fixture for the documented SIU profile, not a production receive
 or general HL7 conformance validator. All bundled fixtures are synthetic.
 
 Prerelease binaries have no Apple notarization or Windows code signing.
+
+- `scenario preview` reads `readmit-order-scenario/v1` ORM/ORU templates with
+  immutable placer/filler bindings, repeated textual observations and typed
+  fixture status transitions. Positive/negative lifecycle expectations are
+  checked without displaying identifiers or values. The existing scenario
+  contract is unchanged; templates generate no messages and claim no external
+  target or HL7 conformance.

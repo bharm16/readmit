@@ -1,4 +1,4 @@
-# Designing a workflow as a sequence: readmit-scenario/v1
+# Designing a workflow as a sequence
 
 An interface workflow is a sequence, not a message. An appointment is booked,
 rescheduled and cancelled; a visit is registered, admitted, transferred,
@@ -237,7 +237,6 @@ correct against a scenario that never asked the question.
 - **Generating messages.** A scenario declares the identities and the timing a
   generator needs and generates nothing. `readmit synth` remains the only
   generator, and it implements its own fixed `readmit-siu-v1` family.
-- Order and result workflows. `ORM` and `ORU` are not lifecycle profiles here.
 - Parameter tables, mutations, boundary variants, duplicate and delayed events,
   out-of-order arrival, uncommon encodings and time-zone boundary variants.
 - A scenario library, coverage reporting, and expected outcomes versioned apart
@@ -247,8 +246,89 @@ correct against a scenario that never asked the question.
 - Validating a real message, a case or a run against a designed workflow.
   Nothing here reads evidence.
 - Authoring a scenario in the desktop shell. This release ships the contract,
-  the two templates and the command-line preview.
+  the four templates and the command-line preview.
 - More than one patient lifecycle event. `A40` is the only one; identity
   changes such as `A47` and unmerge are not decided.
 - Editing a scenario through readmit. It is an ordinary file, and changing it
   is changing that file.
+
+## Order and result templates: readmit-order-scenario/v1
+
+`scenario preview` also reads a separate strict contract, `readmit-order-scenario/v1`.
+The original `readmit-scenario/v1` reader, member set and profiles are unchanged.
+The editable [ORM template](../testdata/fixtures/scenario-orm.json) and
+[ORU template](../testdata/fixtures/scenario-oru.json) demonstrate positive and
+negative sequences through the same public preview:
+
+```sh
+readmit scenario preview testdata/fixtures/scenario-orm.json
+readmit scenario preview testdata/fixtures/scenario-oru.json
+```
+
+These are intentionally bounded **fixture profiles**, not HL7 conformance or
+external-target acceptance. The event names below are template operators:
+`ORM-NW`, `ORM-XO` and `ORM-CA` describe ORM O01 order-control requests;
+`ORU-P`, `ORU-F` and `ORU-C` describe ORU R01 report statuses. A cancellation
+request accepted by this fixture is not evidence a real filler cancelled it.
+No ACK response, clinical value interpretation or transport is simulated.
+
+| Profile | Event | Taken from | Leaves |
+| --- | --- | --- | --- |
+| `readmit-orm-lifecycle-v1` | `ORM-NW` new | `none` | `ordered` |
+| same | `ORM-XO` update | `ordered` | `ordered` |
+| same | `ORM-CA` cancel | `ordered` | `cancelled` |
+| `readmit-oru-lifecycle-v1` | `ORU-P` preliminary | `ordered`, `preliminary` | `preliminary` |
+| same | `ORU-F` final | `ordered`, `preliminary` | `final` |
+| same | `ORU-C` correction | `final`, `corrected` | `corrected` |
+
+The profiles carry an `active` patient and patient-linked `order` subjects.
+Order initial states are exactly the states in that profile's table. ORU
+starts from an explicitly declared order; it does not infer an ORM history.
+Mixed ORM/ORU sequences and cancellation after result reporting are unsupported.
+A profile refuses another profile's events rather than borrowing their rules.
+The templates demonstrate cancellation before creation, updates after cancellation,
+correction before a final result, and preliminary reporting after finalization.
+Every refused step preserves state, so a subsequent legal correction can proceed.
+
+The document has the same `scenario`, `profile`, `base_time`, `subjects` and
+`steps` shapes and bounds described above, with two additional required arrays:
+
+- `orders`: one binding for every order subject, with `subject`, `placer` and
+  `filler`. Both identifiers require `namespace` and `identifier`. Each is
+  independent of the order subject's own authored synthetic identity. The
+  bindings apply to every event on that subject; updates and corrections cannot
+  quietly switch either identifier. Both are required even for a new-order
+  fixture; assignment of a filler id later in a sequence is unsupported.
+  Two orders may not share a placer identity or a filler identity in the same
+  namespace. Identical identifier strings in different namespaces are distinct.
+- `results`: empty for ORM; exactly one entry per ORU step (including refused
+  steps), containing `step` and `observations`. Each result carries 1–32
+  observations in authored order. Each observation requires `code`, `sub_id`,
+  `value` and `status`. The same code may recur with distinct sub-ids; duplicate
+  code/sub-id pairs in one result are refused. Status is `P`, `F` or `C` and
+  must match its step's event. Mixed per-observation statuses are unsupported.
+
+For example, one ORU step can carry repeated observations:
+
+```json
+{"step":"step-2","observations":[
+  {"code":"SYNTH-TEXT","sub_id":"1","value":"First synthetic value","status":"P"},
+  {"code":"SYNTH-TEXT","sub_id":"2","value":"Second synthetic value","status":"P"}
+]}
+```
+
+Codes, sub-ids and placer/filler identifiers use the same bounded printable
+identifier rules as subjects. Observation values are explicit text of at most
+256 bytes: printable ASCII including spaces, without HL7 delimiters. An empty
+string remains empty; omission and JSON null are refused. Structured datatypes,
+explicit HL7 nulls, NTE, unusual encodings, mixed status panels and deletion of
+observations are not modeled by these templates. Each result is its own full
+report declaration, not a patch inferred from a preceding report.
+
+Unknown members are refused at every nested boundary. A document remains at
+most 64 KiB, 32 subjects, 64 steps, 32 order bindings and 64 result bindings;
+excess is refused, never truncated. Programmatic preview validates the same
+shape and bounds. Preview prints local subject names and lifecycle outcomes,
+never placer/filler identities, observation codes or values. It writes nothing,
+generates no HL7, and changes no evidence contract. Parameterized generation,
+variants and independent external-target oracles remain separate work.

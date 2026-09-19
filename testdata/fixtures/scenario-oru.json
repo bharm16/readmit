@@ -1,0 +1,187 @@
+{
+  "schema": "readmit-order-scenario/v1",
+  "scenario": {
+    "id": "oru-lifecycle",
+    "version": "1"
+  },
+  "profile": "readmit-oru-lifecycle-v1",
+  "base_time": "2026-01-01T12:00:00Z",
+  "subjects": [
+    {
+      "id": "patient-a",
+      "kind": "patient",
+      "namespace": "READMIT",
+      "identifier": "SYNTH-PATIENT-A",
+      "initial_state": "active"
+    },
+    {
+      "id": "order-a",
+      "kind": "order",
+      "namespace": "READMIT",
+      "identifier": "SYNTH-ORDER-A",
+      "patient": "patient-a",
+      "initial_state": "ordered"
+    }
+  ],
+  "steps": [
+    {
+      "id": "step-1",
+      "event": "ORU-C",
+      "subject": "order-a",
+      "after": "0m",
+      "expect": "refused"
+    },
+    {
+      "id": "step-2",
+      "event": "ORU-P",
+      "subject": "order-a",
+      "after": "1m",
+      "expect": "accepted"
+    },
+    {
+      "id": "step-3",
+      "event": "ORU-P",
+      "subject": "order-a",
+      "after": "2m",
+      "expect": "accepted"
+    },
+    {
+      "id": "step-4",
+      "event": "ORU-F",
+      "subject": "order-a",
+      "after": "3m",
+      "expect": "accepted"
+    },
+    {
+      "id": "step-5",
+      "event": "ORU-P",
+      "subject": "order-a",
+      "after": "4m",
+      "expect": "refused"
+    },
+    {
+      "id": "step-6",
+      "event": "ORU-C",
+      "subject": "order-a",
+      "after": "5m",
+      "expect": "accepted"
+    }
+  ],
+  "orders": [
+    {
+      "subject": "order-a",
+      "placer": {
+        "namespace": "SYNTH-PLACER",
+        "identifier": "PLACER-001"
+      },
+      "filler": {
+        "namespace": "SYNTH-FILLER",
+        "identifier": "FILLER-001"
+      }
+    }
+  ],
+  "results": [
+    {
+      "step": "step-1",
+      "observations": [
+        {
+          "code": "SYNTH-TEXT",
+          "sub_id": "1",
+          "value": "Synthetic observation 1",
+          "status": "C"
+        },
+        {
+          "code": "SYNTH-TEXT",
+          "sub_id": "2",
+          "value": "Synthetic observation 2",
+          "status": "C"
+        }
+      ]
+    },
+    {
+      "step": "step-2",
+      "observations": [
+        {
+          "code": "SYNTH-TEXT",
+          "sub_id": "1",
+          "value": "Synthetic observation 1",
+          "status": "P"
+        },
+        {
+          "code": "SYNTH-TEXT",
+          "sub_id": "2",
+          "value": "Synthetic observation 2",
+          "status": "P"
+        }
+      ]
+    },
+    {
+      "step": "step-3",
+      "observations": [
+        {
+          "code": "SYNTH-TEXT",
+          "sub_id": "1",
+          "value": "Synthetic observation 1",
+          "status": "P"
+        },
+        {
+          "code": "SYNTH-TEXT",
+          "sub_id": "2",
+          "value": "Synthetic observation 2",
+          "status": "P"
+        }
+      ]
+    },
+    {
+      "step": "step-4",
+      "observations": [
+        {
+          "code": "SYNTH-TEXT",
+          "sub_id": "1",
+          "value": "Synthetic observation 1",
+          "status": "F"
+        },
+        {
+          "code": "SYNTH-TEXT",
+          "sub_id": "2",
+          "value": "Synthetic observation 2",
+          "status": "F"
+        }
+      ]
+    },
+    {
+      "step": "step-5",
+      "observations": [
+        {
+          "code": "SYNTH-TEXT",
+          "sub_id": "1",
+          "value": "Synthetic observation 1",
+          "status": "P"
+        },
+        {
+          "code": "SYNTH-TEXT",
+          "sub_id": "2",
+          "value": "Synthetic observation 2",
+          "status": "P"
+        }
+      ]
+    },
+    {
+      "step": "step-6",
+      "observations": [
+        {
+          "code": "SYNTH-TEXT",
+          "sub_id": "1",
+          "value": "Synthetic observation 1",
+          "status": "C"
+        },
+        {
+          "code": "SYNTH-TEXT",
+          "sub_id": "2",
+          "value": "Synthetic observation 2",
+          "status": "C"
+        }
+      ]
+    }
+  ]
+}

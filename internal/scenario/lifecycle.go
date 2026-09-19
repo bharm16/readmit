@@ -231,6 +231,10 @@ func Preview(designed Scenario) (Timeline, error) {
 	if err != nil {
 		return Timeline{}, err
 	}
+	return preview(designed, bound)
+}
+
+func preview(designed Scenario, bound profile) (Timeline, error) {
 	reached := walk(designed.Subjects)
 	timeline := Timeline{
 		Scenario: designed.Scenario, Profile: designed.Profile,
