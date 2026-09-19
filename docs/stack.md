@@ -117,7 +117,7 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
   document read by `internal/scenario`: the fixture lifecycle profile it binds
   to, the identities it keeps linked across its steps with the state each one
   begins in, each step's offset from a declared base time, and the outcome its
-  author declared for that step. Two profiles are implemented,
+  author declared for that step. That contract implements two profiles,
   `readmit-adt-lifecycle-v1` and `readmit-siu-lifecycle-v1`; each declares the
   subject kinds and trigger events a scenario bound to it may use, and nothing
   is borrowed across them. These are readmit fixture lifecycle profiles, not
@@ -132,6 +132,13 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
   Nothing generates HL7 bytes, reads evidence or reaches a network, and
   `readmit-test/v1` gains no member. See
   [designing a workflow as a sequence](scenario-design.md).
+- Order/result templates use the separate `readmit-order-scenario/v1` contract
+  in that package, with `readmit-orm-lifecycle-v1` and
+  `readmit-oru-lifecycle-v1` fixture profiles. Placer/filler bindings retain
+  scoped identities, and each ORU report carries repeated textual observations
+  with explicit statuses. Typed transitions decide updates, cancellations and
+  preliminary/final/corrected reports. The existing scenario reader remains
+  unchanged; neither contract generates messages or proves external behavior.
 
 ## Networking
 

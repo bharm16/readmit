@@ -27,11 +27,7 @@ func scenarioCommand(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			designed, err := scenario.Decode(document)
-			if err != nil {
-				return err
-			}
-			timeline, err := scenario.Preview(designed)
+			timeline, err := scenario.PreviewDocument(document)
 			if err != nil {
 				return err
 			}

@@ -102,3 +102,44 @@ func TestScenarioRefusesEveryWorkflowItCannotStandBehind(t *testing.T) {
 		}
 	}
 }
+
+func TestScenarioPreviewsOrderAndResultTemplates(t *testing.T) {
+	for _, tc := range []struct{ family, counts, outcome string }{
+		{"orm", "6 designed; 3 accepted, 3 refused", "ordered -> cancelled (cancel order request)"},
+		{"oru", "6 designed; 4 accepted, 2 refused", "final -> corrected (corrected result report)"},
+	} {
+		t.Run(tc.family, func(t *testing.T) {
+			path := "../testdata/fixtures/scenario-" + tc.family + ".json"
+			stdout, stderr, err := run(t, "scenario", "preview", path)
+			if err != nil || stderr != "" {
+				t.Fatalf("preview failed: %v %s", err, stderr)
+			}
+			for _, want := range []string{tc.counts, tc.outcome, "Profile: readmit-" + tc.family + "-lifecycle-v1"} {
+				if !strings.Contains(stdout, want) {
+					t.Errorf("missing %q: %s", want, stdout)
+				}
+			}
+			for _, secret := range []string{"SYNTH-PATIENT-A", "SYNTH-ORDER-A", "SYNTH-PLACER", "SYNTH-FILLER", "PLACER-001", "FILLER-001", "Synthetic observation"} {
+				if strings.Contains(stdout+stderr, secret) {
+					t.Errorf("disclosed %s", secret)
+				}
+			}
+			again, _, err := run(t, "scenario", "preview", path)
+			if err != nil || again != stdout {
+				t.Fatal("preview changed")
+			}
+			source, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			invalid := filepath.Join(t.TempDir(), "invalid.json")
+			if err := os.WriteFile(invalid, []byte(strings.Replace(string(source), `"expect": "refused"`, `"expect": "accepted"`, 1)), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			stdout, stderr, err = run(t, "scenario", "preview", invalid)
+			if err == nil || stdout != "" || !strings.Contains(stderr, "is declared accepted") {
+				t.Fatalf("false positive preview: %v %s %s", err, stdout, stderr)
+			}
+		})
+	}
+}

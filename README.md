@@ -710,6 +710,12 @@ rather than as a message:
 readmit scenario preview testdata/fixtures/scenario-siu.json
 ```
 
+Order and result templates use the separate `readmit-order-scenario/v1`
+contract: `scenario-orm.json` and `scenario-oru.json` in the same fixture folder.
+They retain patient-linked placer/filler identities, order updates/cancellations,
+repeated observations, and profile-bound preliminary/final/corrected transitions.
+The preview validates intended refusals and hides identifiers and values.
+
 A `readmit-scenario/v1` document is an ordinary file a person edits. It binds
 one fixture lifecycle profile — `readmit-adt-lifecycle-v1` or
 `readmit-siu-lifecycle-v1` — to the identities the workflow keeps linked from

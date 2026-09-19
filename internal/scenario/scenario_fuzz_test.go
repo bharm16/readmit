@@ -72,3 +72,43 @@ func FuzzScenarioDocument(f *testing.F) {
 		}
 	})
 }
+
+func FuzzOrderScenarioDocument(f *testing.F) {
+	for _, file := range []string{"scenario-orm.json", "scenario-oru.json"} {
+		data, err := os.ReadFile("../../testdata/fixtures/" + file)
+		if err != nil {
+			f.Fatal(err)
+		}
+		f.Add(string(data))
+	}
+	f.Add(`{"schema":"readmit-order-scenario/v1"}`)
+	f.Fuzz(func(t *testing.T, document string) {
+		d, err := scenario.DecodeOrders([]byte(document))
+		if err != nil {
+			return
+		}
+		encoded, err := json.Marshal(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		again, err := scenario.DecodeOrders(encoded)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(d, again) {
+			t.Fatal("order scenario did not roundtrip")
+		}
+		timeline, err := scenario.PreviewOrders(d)
+		if err != nil {
+			return
+		}
+		if len(timeline.Steps) != len(d.Steps) || timeline.Accepted+timeline.Refused != len(d.Steps) {
+			t.Fatal("lost steps")
+		}
+		for _, step := range timeline.Steps {
+			if step.Reason != "" && step.From != step.To {
+				t.Fatal("refusal changed state")
+			}
+		}
+	})
+}
