@@ -16,6 +16,13 @@ func DefaultConfig() Config {
 	return Config{Schema: ConfigSchema, Profile: Profile, Ruleset: Ruleset, Rules: slices.Clone(supportedRules), Namespaces: []Namespace{{Key: "READMIT", Namespace: "READMIT"}}}
 }
 
+// LifecycleConfig selects the separate ADT and appointment lifecycle contract.
+// It is the same readmit-diagnose-config/v1 document with different selections;
+// nothing chooses it implicitly, and DefaultConfig keeps naming readmit-siu-v1.
+func LifecycleConfig() Config {
+	return Config{Schema: ConfigSchema, Profile: LifecycleProfile, Ruleset: LifecycleRuleset, Rules: slices.Clone(lifecycleRules), Namespaces: []Namespace{{Key: "READMIT", Namespace: "READMIT"}}}
+}
+
 // ParseConfig rejects unknown members, duplicate keys, missing contract versions,
 // and conflicting authority mappings. An unknown profile/rule is valid data and
 // is reported explicitly as unsupported by Run.

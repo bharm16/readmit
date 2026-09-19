@@ -13,7 +13,7 @@ import (
 func diagnoseCommand(ran *bool) *cobra.Command {
 	var output, configPath string
 	cmd := &cobra.Command{
-		Use: "diagnose BUNDLE --output NEW_DIRECTORY", Short: "Write evidence-bound SIU diagnosis as JSON and Markdown",
+		Use: "diagnose BUNDLE --output NEW_DIRECTORY", Short: "Write evidence-bound appointment or lifecycle diagnosis as JSON and Markdown",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return errors.New("diagnose requires exactly one bundle directory")
@@ -82,7 +82,7 @@ func diagnoseCommand(ran *bool) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&output, "output", "", "New directory for report.json and report.md (never overwrite)")
-	cmd.Flags().StringVar(&configPath, "config", "", "Explicit readmit-diagnose-config/v1 JSON configuration")
+	cmd.Flags().StringVar(&configPath, "config", "", "Explicit readmit-diagnose-config/v1 JSON configuration selecting the profile, ruleset, rules and namespaces")
 	return cmd
 }
 

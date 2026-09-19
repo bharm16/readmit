@@ -46,6 +46,15 @@ partial window, separate assigning authorities, omit a profile-required patient
 field, and supply ACK/ERR evidence. Expected classifications are written directly
 in the tests, not calculated by the diagnosis rules under test.
 
+Lifecycle diagnosis fixtures for issue #49 are independently authored raw ADT
+messages: `diagnose-admit.hl7` opens a visit with a complete assigning authority,
+and `diagnose-merge.hl7` names a prior patient identifier that no other fixture
+carries. Transfer, discharge, update, cancellation and appointment variants are
+derived inside the tests by substituting the trigger, control identifier or
+identifier bytes, so each expected classification stays written in the test rather
+than produced by the rules under test. They implement the narrow
+`readmit-lifecycle-v1` test profile, not general HL7 conformance.
+
 Issue #8 freezes the implemented v1 generator with independently constructed
 `synth-v1-regression.mllp`, `synth-v1-cancellation.mllp`, and
 `synth-v1-invalid.mllp`. The declared tuple, independent PCG vector, and reviewed
