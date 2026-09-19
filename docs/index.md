@@ -230,3 +230,5 @@ trusting a case nobody looked at since.
   is rebuilt from the case. [`readmit backup`](backup.md) does exactly that:
   it records the declarations an index was built under, never a copy of it,
   and a restore builds it again from the restored canonical evidence.
+
+Customer-hosted deployment: [artifact hub installation and recovery](../hub/README.md).

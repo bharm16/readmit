@@ -23,3 +23,9 @@ GoReleaser, WiX and govulncheck are build/development tools, not application
 runtime dependencies. WiX writes the Windows installer database and
 contributes no code to the application that database installs. GitHub Actions
 attests only executable and package build outputs, never customer evidence.
+
+The customer-controlled hub is a separate module and is not in the CLI or
+desktop packages. It uses pgx v5.11.0 (MIT) and its Go dependencies, pinned in
+`hub/go.mod` and `hub/go.sum`. Complete dependency license texts are retained in
+`hub/licenses/` and included in the hub's separate deployment archive. PostgreSQL
+is customer-installed server software, not embedded in any Readmit executable.

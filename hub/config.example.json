@@ -1,0 +1,13 @@
+{
+  "schema": "readmit-hub-config/v1",
+  "listen": "127.0.0.1:8443",
+  "artifact_root": "/var/lib/readmit-hub/artifacts",
+  "postgres_socket": "/var/run/postgresql",
+  "postgres_port": 5432,
+  "postgres_database": "readmit_hub",
+  "postgres_user": "readmit-hub",
+  "tls_certificate": "/etc/readmit-hub/server.pem",
+  "tls_key": "/etc/readmit-hub/server-key.pem",
+  "client_ca": "/etc/readmit-hub/client-ca.pem",
+  "max_storage_bytes": 1073741824
+}
