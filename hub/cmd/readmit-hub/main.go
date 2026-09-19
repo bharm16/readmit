@@ -21,7 +21,7 @@ func run() error {
 	directory := flag.String("directory", "", "new backup directory or existing restore directory")
 	flag.Parse()
 	if *configPath == "" || flag.NArg() != 1 {
-		return fmt.Errorf("usage: readmit-hub -config PATH [-directory PATH] migrate|serve|check|backup|restore")
+		return fmt.Errorf("usage: readmit-hub -config PATH [-directory PATH] migrate|serve|check|backup|verify-backup|restore")
 	}
 	f, err := os.Open(*configPath)
 	if err != nil {
@@ -67,6 +67,8 @@ func run() error {
 		return store.Ready(ctx)
 	case "backup":
 		return store.Backup(ctx, *directory)
+	case "verify-backup":
+		return hub.VerifyBackup(ctx, *directory)
 	case "restore":
 		return store.Restore(ctx, *directory)
 	default:

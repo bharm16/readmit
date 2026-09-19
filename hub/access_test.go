@@ -232,8 +232,15 @@ func TestPublicRunnerEnrollment(t *testing.T) {
 	cert := sha256.Sum256([]byte("synthetic-client-cert"))
 	p.Tokens = []hub.ScopedToken{{Hash: hex.EncodeToString(hash[:]), Subject: "runner", Project: "alpha", Actions: []string{"enrollment"}, Expires: time.Now().Add(time.Hour).UTC().Format(time.RFC3339), Certificate: hex.EncodeToString(cert[:]), Kind: "runner"}}
 	writePolicy(t, path, p)
-	// Enrollment is policy admission; it neither writes evidence nor needs a DB.
-	h := new(hub.Store).TeamHandler(a)
+	// Admission consults durable removals as well as the current policy.
+	c := integrationConfig(t)
+	db := testDatabase(t, c)
+	reset(t, db)
+	store := open(t, c)
+	if e := store.Migrate(context.Background()); e != nil {
+		t.Fatal(e)
+	}
+	h := store.TeamHandler(a)
 	check := func(project string, badCert bool, want int) {
 		r := request(token)
 		r.Method = "POST"

@@ -23,12 +23,13 @@ type projectLink struct {
 	Digest  string `json:"sha256"`
 }
 type backupManifest struct {
-	Schema          string        `json:"schema"`
-	MetadataVersion int           `json:"metadata_version"`
-	Artifacts       []backupEntry `json:"artifacts"`
-	Projects        []projectLink `json:"projects"`
-	Reviews         []ReviewEvent `json:"reviews,omitzero"`
-	Team            *bool         `json:"team_enabled,omitzero"`
+	Schema          string           `json:"schema"`
+	MetadataVersion int              `json:"metadata_version"`
+	Artifacts       []backupEntry    `json:"artifacts"`
+	Projects        []projectLink    `json:"projects"`
+	Reviews         []ReviewEvent    `json:"reviews,omitzero"`
+	Lifecycle       []LifecycleEvent `json:"lifecycle,omitzero"`
+	Team            *bool            `json:"team_enabled,omitzero"`
 }
 
 // Backup creates a new, complete directory. The manifest is its completion marker;
@@ -54,7 +55,7 @@ func (s *Store) Backup(ctx context.Context, destination string) error {
 		return err
 	}
 	defer out.Close()
-	m := backupManifest{Schema: "readmit-hub-backup/v3", MetadataVersion: schemaVersion, Artifacts: []backupEntry{}}
+	m := backupManifest{Schema: "readmit-hub-backup/v4", MetadataVersion: schemaVersion, Artifacts: []backupEntry{}}
 	rows, err := s.db.QueryContext(ctx, "SELECT digest,size,retained_at FROM readmit_hub_artifacts ORDER BY digest")
 	if err != nil {
 		return errors.New("metadata unavailable")
@@ -136,6 +137,33 @@ func (s *Store) Backup(ctx context.Context, destination string) error {
 	if err != nil {
 		return err
 	}
+	m.Lifecycle = []LifecycleEvent{}
+	lifecycleRows, err := s.db.QueryContext(ctx, `SELECT document FROM readmit_hub_lifecycle ORDER BY project COLLATE "C",sequence`)
+	if err != nil {
+		return err
+	}
+	for lifecycleRows.Next() {
+		var raw string
+		var event LifecycleEvent
+		if err = lifecycleRows.Scan(&raw); err != nil {
+			lifecycleRows.Close()
+			return err
+		}
+		if json.Unmarshal([]byte(raw), &event, json.RejectUnknownMembers(true)) != nil {
+			lifecycleRows.Close()
+			return ErrIntegrity
+		}
+		m.Lifecycle = append(m.Lifecycle, event)
+		if len(m.Lifecycle) > maxLifecycle {
+			lifecycleRows.Close()
+			return ErrLimit
+		}
+	}
+	err = lifecycleRows.Err()
+	lifecycleRows.Close()
+	if err != nil {
+		return err
+	}
 	data, err := encodeBackupManifest(m)
 	if err != nil {
 		return err
@@ -159,6 +187,9 @@ func encodeBackupManifest(m backupManifest) ([]byte, error) {
 	limit := 32 << 20
 	if m.Schema == "readmit-hub-backup/v3" {
 		limit = 64 << 20
+	}
+	if m.Schema == "readmit-hub-backup/v4" {
+		limit = 128 << 20
 	}
 	if len(data) > limit {
 		return nil, ErrLimit
@@ -194,7 +225,7 @@ func syncRoot(root *os.Root) error {
 func readBackup(root *os.Root) (backupManifest, error) {
 	var m backupManifest
 	info, err := root.Lstat("manifest.json")
-	if err != nil || !info.Mode().IsRegular() || info.Size() > 64<<20 {
+	if err != nil || !info.Mode().IsRegular() || info.Size() > 128<<20 {
 		return m, errors.New("backup incomplete")
 	}
 	f, err := root.Open("manifest.json")
@@ -202,8 +233,8 @@ func readBackup(root *os.Root) (backupManifest, error) {
 		return m, err
 	}
 	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, (64<<20)+1))
-	if err != nil || len(data) > 64<<20 {
+	data, err := io.ReadAll(io.LimitReader(f, (128<<20)+1))
+	if err != nil || len(data) > 128<<20 {
 		return m, ErrLimit
 	}
 	var envelope map[string]jsontext.Value
@@ -214,8 +245,48 @@ func readBackup(root *os.Root) (backupManifest, error) {
 	if err = json.Unmarshal(envelope["schema"], &schema); err != nil {
 		return m, err
 	}
-	if (schema == "readmit-hub-backup/v1" && len(data) > 16<<20) || (schema == "readmit-hub-backup/v2" && len(data) > 32<<20) {
+	if (schema == "readmit-hub-backup/v1" && len(data) > 16<<20) || (schema == "readmit-hub-backup/v2" && len(data) > 32<<20) || (schema == "readmit-hub-backup/v3" && len(data) > 64<<20) {
 		return m, ErrLimit
+	}
+	var lifecycle []LifecycleEvent
+	isV4 := schema == "readmit-hub-backup/v4"
+	if isV4 {
+		if requireExactMembers(data, "schema", "metadata_version", "artifacts", "projects", "team_enabled", "reviews", "lifecycle") != nil {
+			return m, ErrIntegrity
+		}
+		var version int
+		if json.Unmarshal(envelope["metadata_version"], &version) != nil || version != 5 {
+			return m, ErrIntegrity
+		}
+		var raw []jsontext.Value
+		if json.Unmarshal(envelope["lifecycle"], &raw) != nil || len(raw) > maxLifecycle {
+			return m, ErrIntegrity
+		}
+		for _, entry := range raw {
+			if requireExactMembers(entry, "schema", "project", "sequence", "issuer", "actor", "at", "review_head", "command") != nil {
+				return m, ErrIntegrity
+			}
+			var event LifecycleEvent
+			if json.Unmarshal(entry, &event, json.RejectUnknownMembers(true)) != nil {
+				return m, ErrIntegrity
+			}
+			var fields map[string]jsontext.Value
+			if json.Unmarshal(entry, &fields) != nil {
+				return m, ErrIntegrity
+			}
+			if _, e := decodeLifecycle(fields["command"]); e != nil {
+				return m, ErrIntegrity
+			}
+			lifecycle = append(lifecycle, event)
+		}
+		delete(envelope, "lifecycle")
+		envelope["schema"] = jsontext.Value(`"readmit-hub-backup/v3"`)
+		envelope["metadata_version"] = jsontext.Value(`4`)
+		data, err = json.Marshal(envelope)
+		if err != nil {
+			return m, err
+		}
+		schema = "readmit-hub-backup/v3"
 	}
 	var reviews []ReviewEvent
 	isV3 := schema == "readmit-hub-backup/v3"
@@ -401,6 +472,63 @@ func readBackup(root *os.Root) (backupManifest, error) {
 		byProject[event.Project] = append(byProject[event.Project], event)
 		lastProject = event.Project
 	}
+	if len(lifecycle) > 0 && (team == nil || !*team) {
+		return m, ErrIntegrity
+	}
+	byLifecycleProject := map[string][]LifecycleEvent{}
+	lastProject = ""
+	for _, event := range lifecycle {
+		prior := byLifecycleProject[event.Project]
+		if event.ReviewHead < 0 || event.ReviewHead > len(byProject[event.Project]) || (event.Command.Kind != "audit-export" && event.ReviewHead != 0) {
+			return m, ErrIntegrity
+		}
+		if event.Schema != "readmit-hub-lifecycle-event/v1" || !validProject(event.Project) || event.Project < lastProject || event.Sequence != len(prior)+1 || event.Command.Expected != event.Sequence-1 || event.Issuer == "" || !reviewText(event.Issuer, 2048) || event.Actor == "" || !reviewText(event.Actor, 256) {
+			return m, ErrIntegrity
+		}
+		at, e := time.Parse(time.RFC3339Nano, event.At)
+		if e != nil {
+			return m, ErrIntegrity
+		}
+		for _, p := range prior {
+			if p.Command.ID == event.Command.ID || (p.Command.Kind == "remove-user" && p.Command.Subject == event.Actor && p.Issuer == event.Issuer) {
+				return m, ErrIntegrity
+			}
+		}
+		if event.Command.Kind == "remove-user" && event.Command.Subject == event.Actor {
+			return m, ErrIntegrity
+		}
+		load := func(d string) ([]byte, error) {
+			linked := false
+			for _, p := range projects {
+				if p.Project == event.Project && p.Digest == d {
+					linked = true
+				}
+			}
+			if !linked {
+				return nil, ErrMissing
+			}
+			for _, entry := range m.Artifacts {
+				if entry.Digest == d {
+					reader := &Store{root: root}
+					if e := reader.verify(d, entry.Size); e != nil {
+						return nil, e
+					}
+					return []byte{}, nil
+				}
+			}
+			return nil, ErrMissing
+		}
+		if e := validateLifecycle(event.Command, prior, load, at); e != nil {
+			return m, e
+		}
+		byLifecycleProject[event.Project] = append(prior, event)
+		lastProject = event.Project
+	}
+	m.Lifecycle = lifecycle
+	if isV4 {
+		m.Schema = "readmit-hub-backup/v4"
+		m.MetadataVersion = 5
+	}
 	return m, nil
 }
 
@@ -438,7 +566,7 @@ func (s *Store) Restore(ctx context.Context, source string) error {
 	}
 	defer tx.Rollback()
 	var count int
-	if err = tx.QueryRowContext(ctx, "SELECT (SELECT count(*) FROM readmit_hub_artifacts)+(SELECT count(*) FROM readmit_hub_reviews)").Scan(&count); err != nil || count != 0 {
+	if err = tx.QueryRowContext(ctx, "SELECT (SELECT count(*) FROM readmit_hub_artifacts)+(SELECT count(*) FROM readmit_hub_reviews)+(SELECT count(*) FROM readmit_hub_lifecycle)").Scan(&count); err != nil || count != 0 {
 		return errors.New("restore requires an empty catalogue")
 	}
 	for _, e := range m.Artifacts {
@@ -486,6 +614,15 @@ func (s *Store) Restore(ctx context.Context, source string) error {
 			return errors.New("review restore failed")
 		}
 	}
+	for _, event := range m.Lifecycle {
+		data, e := json.Marshal(event)
+		if e != nil {
+			return e
+		}
+		if _, e = tx.ExecContext(ctx, `INSERT INTO readmit_hub_lifecycle(project,sequence,id,document) VALUES($1,$2,$3,$4)`, event.Project, event.Sequence, event.Command.ID, string(data)); e != nil {
+			return e
+		}
+	}
 	team := false
 	if m.Team != nil {
 		team = *m.Team
@@ -497,4 +634,32 @@ func (s *Store) Restore(ctx context.Context, source string) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// VerifyBackup checks a stopped-service recovery directory without restoring or
+// mutating it. Hashes prove consistency, not authenticity of the backup source.
+func VerifyBackup(ctx context.Context, source string) error {
+	info, e := os.Lstat(source)
+	if e != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return ErrIntegrity
+	}
+	root, e := os.OpenRoot(source)
+	if e != nil {
+		return e
+	}
+	defer root.Close()
+	m, e := readBackup(root)
+	if e != nil {
+		return e
+	}
+	for _, entry := range m.Artifacts {
+		if e = ctx.Err(); e != nil {
+			return e
+		}
+		reader := &Store{root: root}
+		if e = reader.verify(entry.Digest, entry.Size); e != nil {
+			return e
+		}
+	}
+	return ctx.Err()
 }

@@ -5,6 +5,11 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   empty PATH, and retain synthetic evidence/state across removal. Signed release
   and clean managed-machine acceptance remain explicit owner gates.
 
+- Hub lifecycle APIs preserve offline revision branches and explicit resolutions,
+  persist project user removals, export authenticated audit history, and record
+  retention/retirement without erasure claims. Backup v4 and verification preserve
+  recovery bytes, review links and removal decisions.
+
 - Managed/offline installation runbook documents native silent deployment, staged
   webview dependencies, offline activation, direct runner TLS, least privilege
   and explicit signed-candidate/enterprise-policy acceptance gates.
