@@ -1133,3 +1133,9 @@ Prerelease binaries have no Apple notarization or Windows code signing.
   verdicts and source bindings. Missing baseline stays missing; execution errors
   and uncertain durable lifecycle remain explicit. The packet is customer-local,
   not disclosure-approved, and synthetic report/v1 remains unchanged.
+
+
+- Portable retained reports: `report export` creates a sealed private review with
+  byte-identical retained evidence and consistent inert HTML, PDF, Markdown,
+  strict JSON and JUnit. `report review` verifies offline in read-only mode;
+  sensitivity and disclosure restrictions remain attached to every format.

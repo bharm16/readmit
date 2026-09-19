@@ -213,6 +213,74 @@ must be a distinct retained execution, never the current run relabelled.
 `RERUN.md` describes an explicit authorized-target workflow outside the immutable
 packet; missing original-target evidence is never substituted with fixture proof.
 The old synthetic `report`, `report verify`, and `report prepare` contracts and
-readers remain unchanged. HTML/PDF/JUnit rendering and disclosure/export approval
-are separate deliveries; this command supplies an evidence packet and Markdown
-summary only.
+readers remain unchanged. `report assemble` supplies the retained evidence input for portable rendering below. Disclosure/export approval remains separate.
+
+
+## Portable reports and read-only review
+
+~~~sh
+readmit report export RETAINED_PACKET --output NEW_REVIEW
+readmit report review NEW_REVIEW
+readmit report review NEW_REVIEW --format markdown
+~~~
+
+Export writes a new private `readmit-portable-review/v1` directory containing
+`packet/` (the complete original retained packet, byte for byte), `report.html`,
+`report.pdf`, `report.md`, `report.json`, and `junit.xml`, plus `manifest.json`
+and the last-written `identity.sha256` seal. No original artifact is changed,
+no target is contacted, and no fixture execution substitutes for actual evidence.
+Copy the directory and matching binary to review offline without the original
+workspace. Synthetic `report verify` and actual `report verify-retained` remain
+separate unchanged contracts.
+
+All five renderings carry the same canonical report text: packet identity,
+sensitivity, current/baseline limitations and lifecycle, rerun instructions,
+retained result assertions and expected/observed values, historical specification
+and setup, replay events/timings, and relative evidence references. References
+are inert text; inspect raw bytes under `packet/` separately. Profile/version
+claims remain those recorded by the evidence; absence establishes no support.
+`report.json` is a canonical strict `readmit-portable-report/v1` document with
+required `schema`, `packet_identity`, `export_policy`, `contains_source_values`
+and `lines`. Opening a review regenerates every document from verified evidence
+and requires exact canonical bytes, refusing missing/null/unknown/duplicate
+members, invented verdicts and altered renderings even if hashes are recomputed.
+JUnit has one test case per retained execution, includes that same report text
+in `system-out`, and distinguishes assertion failures from execution errors.
+Unresolved durable lifecycle or uncertain delivery is an error, never a pass.
+
+The `review` command is the read-only mode: it verifies without writing,
+executing, resolving historical paths, or transmitting anything. Its default
+output contains only integrity identity and privacy labels. An explicit
+`--format html|pdf|markdown|json|junit` writes sensitive report bytes to stdout;
+redirecting those bytes is an operator-controlled write outside the mode.
+The returned Go review object exposes only verification metadata and a renderer
+for these five formats; no operation to execute or modify evidence exists.
+
+Evidence strings use quoted printable ASCII with reversible Unicode/control
+escapes in every format. Unicode is represented, never dropped or replaced.
+Markdown uses indented code throughout (no live links or raw HTML). HTML uses
+escaped text in a self-contained `pre`, no scripts, forms, images or links, and
+a deny-all content security policy. PDF uses a fixed paginated Courier text
+layout, escapes literal delimiters, and contains no actions, annotations,
+attachments, JavaScript, forms or URLs. Long PDF text wraps at 96 columns;
+this introduces presentation line breaks only. XML escapes text and attributes;
+control characters appear as printable escapes, never forbidden XML bytes.
+No viewer, browser, external converter or runtime dependency is launched.
+
+**Every rendering and the sealed directory inherit source sensitivity.** They
+retain patient values, historical paths, endpoint configuration and assertions.
+Safe rendering does not de-identify data or approve disclosure. This is a local
+report export, not the approved derived export governed by ADR-0004. Required
+privacy review, rights, transfer authorization, authorized targets, reset/setup
+and observation access remain the owner's responsibility. Integrity is neither
+source authentication nor a signature; read-only mode does not prevent another
+program from editing a copied file. Verification detects that editing.
+
+The existing 256-file, 16 MiB/file, 64 MiB/packet, 200-byte-path and five-slash
+bounds apply to the whole review including its nested packet and renderings.
+Canonical report text is limited to 1 MiB before rendering. Inputs exceeding
+these bounds are refused without truncation; select a smaller packet. Directory
+permissions are 0700 and files 0600 on Unix; Windows inherits directory ACLs.
+Cancellation, invalid input and I/O failure may leave an incomplete destination,
+which cannot pass verification. Retry with a new destination; existing outputs
+and paths inside evidence are refused. No automatic resend or recovery occurs.

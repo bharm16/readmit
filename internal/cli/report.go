@@ -57,7 +57,7 @@ func reportCommand(ran *bool) *cobra.Command {
 	}}
 	prepare.Flags().StringVar(&workspace, "output", "", "New mutable workspace outside the sealed packet")
 	prepare.Flags().StringVar(&address, "address", "127.0.0.1:2575", "Explicit numeric loopback endpoint for manual fixture reruns")
-	command.AddCommand(verify, prepare, retainedAssembleCommand(ran), retainedVerifyCommand(ran))
+	command.AddCommand(verify, prepare, retainedAssembleCommand(ran), retainedVerifyCommand(ran), portableExportCommand(ran), portableReviewCommand(ran))
 	return command
 }
 
@@ -105,4 +105,50 @@ func retainedVerifyCommand(ran *bool) *cobra.Command {
 		}
 		return nil
 	}}
+}
+
+func portableExportCommand(ran *bool) *cobra.Command {
+	var output string
+	cmd := &cobra.Command{Use: "export PACKET --output NEW_REVIEW", Short: "Export retained evidence and inert offline reports into a sealed private review", Args: reportOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
+		*ran = true
+		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		review, err := report.ExportReview(ctx, args[0], output)
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Portable review sealed: %s\nCustomer-local sensitive evidence; no disclosure approval\n", review.Identity)
+		if err != nil {
+			return errors.New("cannot write portable review summary")
+		}
+		return nil
+	}}
+	cmd.Flags().StringVar(&output, "output", "", "New private review directory; never overwrite")
+	return cmd
+}
+func portableReviewCommand(ran *bool) *cobra.Command {
+	var format string
+	cmd := &cobra.Command{Use: "review REVIEW", Short: "Verify a portable review offline in read-only mode", Args: reportOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
+		*ran = true
+		review, err := report.OpenReview(cmd.Context(), args[0])
+		if err != nil {
+			return err
+		}
+		if format == "" {
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Read-only review verified: %s\nCustomer-local sensitive evidence; no execution or disclosure approval\n", review.Identity)
+		} else {
+			var data []byte
+			data, err = review.Render(format)
+			if err != nil {
+				return err
+			}
+			_, err = cmd.OutOrStdout().Write(data)
+		}
+		if err != nil {
+			return errors.New("cannot write portable review")
+		}
+		return nil
+	}}
+	cmd.Flags().StringVar(&format, "format", "", "Explicit sensitive content to stdout: html, pdf, markdown, json or junit")
+	return cmd
 }
