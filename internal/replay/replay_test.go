@@ -236,6 +236,93 @@ func TestTransportOutcomesAndNoRetryAfterUncertainDelivery(t *testing.T) {
 	}
 }
 
+// persistingObserver stands in for a durable run's writer: Sent persists the
+// bytes that were written before the acknowledgement is waited for, and
+// persisting takes longer than the whole exchange is budgeted.
+type persistingObserver struct{ pause time.Duration }
+
+func (o persistingObserver) BeforeSend(string) error     { return nil }
+func (o persistingObserver) Sent(string, []byte) error   { time.Sleep(o.pause); return nil }
+func (o persistingObserver) Recorded(replay.Event) error { return nil }
+
+// The message timeout bounds one message and its acknowledgement on the
+// network. A sender's own durability between the two is not network time: a
+// receiver that answers at once is acknowledged however long the sender's
+// fsyncs took, and a receiver that never answers is still an uncertain
+// delivery, bounded by the same budget.
+func TestLocalDurabilityIsNotChargedToTheMessageTimeout(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		answer   bool
+		outcome  replay.Outcome
+		delivery string
+	}{
+		{"an immediate acknowledgement outlives persistence", true, replay.Accepted, "acknowledged"},
+		{"a silent receiver is still an uncertain delivery", false, replay.Timeout, "uncertain"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source := caseAt(t, request("PERSISTED"))
+			address := peer(t, func(c net.Conn) {
+				reader, _ := mllp.NewReader(c, 1<<20)
+				if _, err := reader.ReadFrame(); err != nil {
+					t.Error(err)
+					return
+				}
+				if !tc.answer {
+					// Hold the connection open so the budget, not a
+					// disconnection, is what ends the wait.
+					if remainder, _ := io.ReadAll(c); len(remainder) != 0 {
+						t.Error("sender retried after an uncertain delivery")
+					}
+					return
+				}
+				_, _ = c.Write(ack("AA", "PERSISTED"))
+			})
+			endpoint := target(address)
+			budget, err := time.ParseDuration(endpoint.MessageTimeout)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Twice the message timeout: the window is exhausted by
+			// persistence alone before the acknowledgement is read.
+			pause := 2 * budget
+			plan, err := replay.Prepare(source, endpoint, replay.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+			defer cancel()
+			started := time.Now()
+			path := filepath.Join(t.TempDir(), "run")
+			r, err := replay.ExecuteObserved(ctx, plan, path, nil, nil, persistingObserver{pause: pause})
+			if err != nil {
+				t.Fatal(err)
+			}
+			elapsed := time.Since(started)
+			// The same invariant the shared execute helper asserts: what the
+			// run reports is what the finalized evidence reopens as.
+			verified, err := replay.Open(path)
+			if err != nil {
+				t.Fatalf("final run does not reopen: %v; events=%+v", err, r.Events)
+			}
+			if r.Identity != verified.Identity || !reflect.DeepEqual(r.Events, verified.Events) {
+				t.Fatal("reader changed recorded evidence")
+			}
+			e := r.Events[0]
+			if e.Outcome != tc.outcome || e.Delivery != tc.delivery {
+				t.Fatalf("persistence was charged to the network budget: %+v after %s", e, elapsed)
+			}
+			// The exchange still ends on the budget it declares rather than
+			// waiting out the run: persistence moves the window, it does not
+			// remove it. Three budgets of slack absorb scheduling without
+			// admitting a window that was silently restarted or extended.
+			if elapsed < pause || elapsed > pause+3*budget {
+				t.Fatalf("the acknowledgement window was not bounded: %s", elapsed)
+			}
+		})
+	}
+}
+
 func TestConnectionRefusedIsNotSentAndRunStillFinalizes(t *testing.T) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

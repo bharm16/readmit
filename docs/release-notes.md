@@ -922,6 +922,14 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   operator and the two verdicts cross the boundary; the values it expected and
   observed do not.
 
+- `message_timeout` bounds the network exchange only. A durable run persists what
+  it sent between writing the message and waiting for the acknowledgement, and
+  that local durability is no longer charged to the configured window: the
+  window moves on by exactly what persistence took. A receiver that answers
+  within the budget is acknowledged however slow this sender's storage is, and a
+  receiver that does not answer within it is still an uncertain delivery.
+  `readmit-target/v3` gains no member and changes no byte.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is

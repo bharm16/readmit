@@ -72,7 +72,12 @@ run records `cancelled` or `timed_out` as its stop reason and
 outcome; a deadline that passes before the first intent records `timed_out`
 with nothing uncertain. A deadline is also written into the run's lease as
 `deadline_at`. A message timeout in the target configuration bounds one
-exchange; the deadline bounds the run.
+exchange; the deadline bounds the run. The message timeout bounds the network
+exchange only: persisting what was sent happens between the write and the wait
+for the acknowledgement, and that time is not taken from the window. Storage
+slow enough to matter delays a run without turning an answered send into an
+uncertain delivery. The run deadline still bounds everything, persistence
+included.
 
 ## Recovery classification
 

@@ -145,26 +145,47 @@ func executeObserved(ctx context.Context, plan *Plan, output string, observer Ob
 						}
 					}
 					duration, _ := time.ParseDuration(plan.target.MessageTimeout)
-					deadline := time.Now().Add(duration)
-					if limit, ok := ctx.Deadline(); ok && limit.Before(deadline) {
-						deadline = limit
+					// The message timeout bounds one message and its
+					// acknowledgement on the network, so the same window is
+					// armed for the write and again for the read, never past
+					// the run's own deadline.
+					armWindow := func(at time.Time) error {
+						if limit, ok := ctx.Deadline(); ok && limit.Before(at) {
+							at = limit
+						}
+						return connection.SetDeadline(at)
 					}
-					if err := connection.SetDeadline(deadline); err != nil {
+					deadline := time.Now().Add(duration)
+					if err := armWindow(deadline); err != nil {
 						setFailure(event, "write", err, ctx)
 					} else {
 						n, writeErr := writeAll(connection, message.wire)
 						sent = bytes.Clone(message.wire[:n])
+						var windowErr error
 						if observer != nil {
+							persisting := time.Now()
 							if err := observer.Sent(event.OutboundOccurrence, bytes.Clone(sent)); err != nil {
 								return nil, err
+							}
+							// Persisting what was sent is local durability, not
+							// network time. Move the window on by exactly what
+							// it took, so a healthy receiver is never reported
+							// as an uncertain delivery because of this sender's
+							// own storage. A failed write has no acknowledgement
+							// to wait for.
+							if writeErr == nil {
+								windowErr = armWindow(deadline.Add(time.Since(persisting)))
 							}
 						}
 						if n > 0 {
 							event.Delivery = "uncertain"
 						}
-						if writeErr != nil {
+						switch {
+						case writeErr != nil:
 							setFailure(event, "write", writeErr, ctx)
-						} else {
+						case windowErr != nil:
+							setFailure(event, "read", windowErr, ctx)
+						default:
 							frame, readErr := reader.ReadFrame()
 							extra := reader.Buffered()
 							received = append(frame, extra...)
