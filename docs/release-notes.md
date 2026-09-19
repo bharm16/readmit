@@ -3,6 +3,9 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
 - Managed/offline installation runbook documents native silent deployment, staged
   webview dependencies, offline activation, direct runner TLS, least privilege
   and explicit signed-candidate/enterprise-policy acceptance gates.
+- `redact reexecute` binds reviewed transformations and actual original phase
+  evidence before an explicitly authorized durable rerun. Matching criteria stay
+  distinct from external equivalence, and new evidence requires disclosure review.
 
 - Customer-hosted case reviews add authenticated assignments, threaded evidence
   comments, exact test-release approvals, internal notifications and searchable

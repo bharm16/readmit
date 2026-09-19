@@ -193,6 +193,10 @@ func Prepare(specPath string) (*Prepared, error) {
 	return &Prepared{plan: plan}, nil
 }
 
+// PinnedInputs returns copies of the exact inputs this prepared job will execute.
+// Admission gates can validate these without reopening or substituting its plan.
+func (p *Prepared) PinnedInputs() testrunner.PinnedInputs { return p.plan.PinnedInputs() }
+
 // Resources reports exactly what this run will name in its lease.
 func (p *Prepared) Resources() []Resource { return resources(p.plan) }
 
