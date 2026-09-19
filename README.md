@@ -593,6 +593,21 @@ the occurrence it answers. It reads order workflow evidence only: no observation
 value is interpreted and no finding is clinical advice. See [diagnosis](docs/diagnose.md)
 and the [shared field selector grammar](docs/selectors.md).
 
+`diagnose review DIAGNOSIS --case CASE --decisions FILE --output NEW_DIRECTORY`
+records what an analyst decided about those findings and what the confirmed ones
+promote to. A finding is a hypothesis about evidence and a test is a commitment,
+so nothing is promoted that a person did not confirm: a finding nobody decided
+is `not_reviewed` and becomes nothing, a dismissal and a scoped suppression are
+first-class outcomes, and every decision states its reason. Machine evidence and
+human judgment stay separate documents bound by digest, so a judgment cannot be
+reattached to a diagnosis it was not made about. A confirmed acknowledgement
+finding is answered into the same regression-test draft the authoring flow
+holds, reading the expected value out of the verified case rather than out of
+the report, and carrying a value only from a code vocabulary the named profile
+declares. A confirmed finding this release cannot express as a test is named
+with the reason rather than dropped or approximated. See
+[reviewing findings](docs/finding-review.md).
+
 `correlate CASE --rules FILE` links occurrences across the sources and namespaces
 an operator declared, and refuses to merge identifiers that collide. A case
 bundle matches an acknowledgement to its message only inside one source, by

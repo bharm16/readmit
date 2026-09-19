@@ -33,6 +33,19 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   their order, an acknowledgement stage is evaluated only where the header asks
   for it unconditionally, and clinical content is never interpreted. Both
   existing diagnosis contracts gain no member and change no byte.
+- `diagnose review DIAGNOSIS --case CASE --decisions FILE` records analyst
+  confirmations, dismissals and scoped suppressions over one diagnosis, suggests
+  the evidence that would settle each finding, and promotes a confirmed one into
+  draft regression-test assertions. Machine evidence and human judgment are
+  separate documents — `readmit-finding-decisions/v1` names the report it was
+  read against by digest, `readmit-finding-review/v1` joins the two — and
+  `readmit-diagnosis/v1`, `readmit-test/v1` and `readmit-test-draft/v1` gain no
+  member and change no byte. A finding nobody decided promotes nothing, a
+  promotion reads its expected value out of the verified case rather than out of
+  the report, a promoted expectation carries a value only from a code vocabulary
+  the named profile declares, and a confirmed finding this release cannot
+  express as a test is recorded with a named reason rather than dropped or
+  approximated.
 
 - `synth` creates a reproducible synthetic SIU family with separate regression,
   cancellation, and known-invalid bundles from four explicit generator inputs.

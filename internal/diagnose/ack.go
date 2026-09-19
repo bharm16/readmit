@@ -2,12 +2,35 @@ package diagnose
 
 import (
 	"fmt"
+	"maps"
+	"slices"
+
 	"github.com/bharm16/readmit/internal/hl7"
 )
 
 // maxACKSegments bounds the MSA and ERR segments one acknowledgement is decoded
 // through, here and wherever else one is read.
 const maxACKSegments = 128
+
+// The value vocabularies the acknowledgement rules declare: the outcome an MSA-1
+// states, and the ERR code and severity subset this profile interprets. The
+// labels are concise readmit-authored explanations extracted from no
+// distributed source; see docs/diagnose.md.
+var (
+	ackOutcomes     = map[string]string{"AA": "application accept", "AE": "application error", "AR": "application reject", "CA": "commit accept", "CE": "commit error", "CR": "commit reject"}
+	errorCodes      = map[string]string{"0": "message accepted", "100": "segment sequence error", "101": "required field missing", "102": "data type error", "103": "table value not found", "200": "unsupported message type", "201": "unsupported event code", "202": "unsupported processing ID", "203": "unsupported version ID", "204": "unknown key identifier", "205": "duplicate key identifier", "206": "application record locked", "207": "application internal error"}
+	errorSeverities = map[string]string{"I": "information", "W": "warning", "E": "error", "F": "fatal error"}
+)
+
+// DeclaredACKOutcomes, DeclaredErrorCodes and DeclaredErrorSeverities report the
+// values this profile declares for MSA-1, ERR-3.1 and ERR-4. A reader deciding
+// whether a captured value is one the profile declares compares against these
+// rather than against a second copy of them.
+func DeclaredACKOutcomes() []string { return slices.Sorted(maps.Keys(ackOutcomes)) }
+
+func DeclaredErrorCodes() []string { return slices.Sorted(maps.Keys(errorCodes)) }
+
+func DeclaredErrorSeverities() []string { return slices.Sorted(maps.Keys(errorSeverities)) }
 
 func (e *evaluator) ack(m message) {
 	msaCount, errCount := m.segmentCount("MSA"), m.segmentCount("ERR")
@@ -26,8 +49,7 @@ func (e *evaluator) ack(m message) {
 				continue
 			}
 			code, ok := e.text(m, path)
-			outcomes := map[string]string{"AA": "application accept", "AE": "application error", "AR": "application reject", "CA": "commit accept", "CE": "commit error", "CR": "commit reject"}
-			outcome, known := outcomes[code]
+			outcome, known := ackOutcomes[code]
 			if !ok || !known {
 				e.unsupportedItem("unsupported_ack_code", m.event.ID, path, "MSA-1 is missing or is not a supported acknowledgement code.")
 				continue
@@ -62,10 +84,8 @@ func (e *evaluator) ack(m message) {
 			}
 			code, codeOK := e.text(m, codePath)
 			severity, severityOK := e.text(m, severityPath)
-			codes := map[string]string{"0": "message accepted", "100": "segment sequence error", "101": "required field missing", "102": "data type error", "103": "table value not found", "200": "unsupported message type", "201": "unsupported event code", "202": "unsupported processing ID", "203": "unsupported version ID", "204": "unknown key identifier", "205": "duplicate key identifier", "206": "application record locked", "207": "application internal error"}
-			severities := map[string]string{"I": "information", "W": "warning", "E": "error", "F": "fatal error"}
-			decoded, known := codes[code]
-			level, levelKnown := severities[severity]
+			decoded, known := errorCodes[code]
+			level, levelKnown := errorSeverities[severity]
 			if !codeOK || !known || !severityOK || !levelKnown {
 				e.unsupportedItem("unsupported_err_outcome", m.event.ID, codePath, "ERR code or severity is absent or outside the supported HL7 2.5.1 table subset; free text is not interpreted.")
 				continue

@@ -70,6 +70,7 @@ archives:
       - docs/support-matrix.md
 
       - docs/diagnose.md
+      - docs/finding-review.md
       - docs/correlate.md
       - docs/transform.md
       - docs/reduction.md

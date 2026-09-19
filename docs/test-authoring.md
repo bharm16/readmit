@@ -419,3 +419,10 @@ to, so a draft cannot be answered into a spec its own reader would refuse.
   there.
 - No run. Saving a test sends nothing and opens no connection; executing one is
   [`readmit test`](test-runner.md), explicitly.
+- No finding is promoted here. A draft answered from a reviewed
+  [diagnosis finding](finding-review.md) is answered through this flow's own
+  `Answer`, by `readmit diagnose review`; this flow itself reads no diagnosis.
+  That delivery reached the same missing-member wall as the explanation and
+  tolerance above, from the other side: it wanted an explanation too, and
+  **provenance** — which diagnosis run a promoted expectation came from.
+  `readmit-test/v1` declares none of the three and gained none there either.
