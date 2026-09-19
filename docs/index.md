@@ -244,3 +244,5 @@ Customer execution: [enrollment, leases, runner service and updates](customer-ru
 - [Released behavioral expectations](expectations.md): exact test revisions, profile pins, local review and suite impact.
 
 Managed deployment: [silent installation, offline dependencies and activation](managed-installation.md).
+
+Saved suites in customer CI: [headless execution and private CI gates](customer-ci.md).
