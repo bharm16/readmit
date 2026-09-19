@@ -408,6 +408,27 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   `readmit-entitlement-trust/v1` and `readmit-entitlement-store/v1` gain no
   member and change no byte; the D6 clock guard is not delivered here and stays
   #116's separate versioned state.
+- Purchasing, invoicing, renewal and cancellation happen in the merchant of
+  record's hosted portal, outside this repository. The vendor half is
+  `internal/billing`: a `readmit-billing-account/v1` ledger moved by signed
+  `readmit-billing-event/v1` payment events, authenticated against the same
+  Ed25519 trust store contract the customer side uses. An event identifier is
+  deduplicated so redelivery leaves the ledger byte for byte unchanged, and a
+  late event may stop a renewal but never change what is granted next, so a
+  payment that occurred before, or in the same recorded second as, a
+  cancellation cannot restore the renewal it withdrew. A verified completed
+  payment issues the next organization-scoped entitlement; an invoice alone
+  issues nothing, and only an approved net-terms invoice issues a separately
+  bounded provisional term; a mid-term increase needs explicitly settled
+  proration; a downgrade applies at renewal; cancellation, refund and chargeback
+  stop future renewal while the paid-through term and its grace stand, delete
+  nothing and withdraw no document already signed. No command reads, writes or
+  signs either contract, no payments dependency, HTTP client, webhook endpoint
+  or merchant account is added, prices stay in provider configuration, and no
+  member of either contract can carry a case title, an endpoint, a patient
+  identifier or an evidence hash. Merchant onboarding, production prices,
+  provider sandbox acceptance and the issuer signing identity remain launch
+  gates. Existing entitlement contracts gain no member and change no byte.
 - A support matrix, `docs/support-matrix.md`, states per workflow, source and
   platform exactly what is implemented and what is not available, with the
   documentation page and the test behind each row; it ships in every archive.

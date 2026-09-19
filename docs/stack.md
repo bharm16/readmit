@@ -241,6 +241,13 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
   capability names are members of the document, never constants in engine code.
 - No read, verification or export path consults an entitlement. See
   [offline organization entitlements](license.md).
+- `readmit-billing-event/v1` and `readmit-billing-account/v1` are the vendor's
+  own contracts: a signed payment event and the account ledger it moves, read by
+  `internal/billing` with the same strict decoder, the same trust store contract
+  and the same Ed25519 algorithm. They are the issuing side only. No payments
+  dependency, merchant account, HTTP client, webhook endpoint or provider SDK is
+  introduced, and no command reads either one. See
+  [purchasing through a separate portal](billing.md).
 
 ## Case index
 

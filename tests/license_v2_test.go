@@ -393,11 +393,14 @@ func TestExpiredV2EntitlementKeepsEvidenceReadableAndSettlesStartedWork(t *testi
 }
 
 // No evidence package reaches the entitlement package. The dependency graph
-// settles that no read, verification or export path is gated: the only
-// importer of internal/entitlement inside the engine is the command tree, and
-// inside the command tree only the license commands import it.
-func TestOnlyTheLicenseCommandsImportEntitlement(t *testing.T) {
+// settles that no read, verification or export path is gated: inside the engine
+// only the command tree and the vendor's billing ledger import
+// internal/entitlement, and inside the command tree only the license commands
+// import it. internal/billing is the issuing side and is imported by nothing at
+// all, so no command can reach an account ledger or a payment event.
+func TestOnlyTheLicenseCommandsAndTheVendorLedgerImportEntitlement(t *testing.T) {
 	const entitlementPackage = "github.com/bharm16/readmit/internal/entitlement"
+	const billingPackage = "github.com/bharm16/readmit/internal/billing"
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	listed, err := exec.CommandContext(ctx, "go", "list", "-f", `{{.ImportPath}} {{join .Imports " "}}`, "../internal/...").Output()
@@ -410,8 +413,11 @@ func TestOnlyTheLicenseCommandsImportEntitlement(t *testing.T) {
 			continue
 		}
 		for _, imported := range fields[1:] {
-			if imported == entitlementPackage && fields[0] != "github.com/bharm16/readmit/internal/cli" {
+			if imported == entitlementPackage && fields[0] != "github.com/bharm16/readmit/internal/cli" && fields[0] != billingPackage {
 				t.Errorf("%s imports the entitlement package", fields[0])
+			}
+			if imported == billingPackage {
+				t.Errorf("%s imports the billing package", fields[0])
 			}
 		}
 	}

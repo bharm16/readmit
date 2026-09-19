@@ -250,6 +250,21 @@ holds its capacity until an operator reconciles it, and admission and lease
 renewal are refused after expiry while started work still settles. v1 documents, readers and
 device counts are unchanged, and the D6 clock guard is not part of this. See
 [named authors and active runners](docs/license-v2.md).
+Purchasing, invoicing, renewal and cancellation happen in the merchant of
+record's hosted checkout and customer portal, a vendor service outside this
+repository: readmit adds no payment integration, no payments dependency, no HTTP
+client and no endpoint. The vendor half of that boundary is a `readmit-billing-account/v1`
+ledger moved by signed `readmit-billing-event/v1` payment events, authenticated
+against the same Ed25519 trust store contract the customer side uses,
+deduplicated by event identifier and reconciled so a late event may stop a
+renewal and never change what is granted next. A verified completed payment issues the next organization-scoped
+entitlement; an invoice alone issues nothing; a cancellation, refund or
+chargeback stops future renewal while the paid-through term and its grace stand,
+deletes nothing and withdraws no document already signed. No command reads,
+writes or signs either contract, prices stay in provider configuration, and no
+member of either one can carry a case title, an endpoint, a patient identifier or
+an evidence hash. See
+[purchasing through a separate portal](docs/billing.md).
 `secret add --secrets FILE --name NAME --store KIND --address HOST:PORT --command
 PROGRAM` registers a reference to a credential that stays in an operating system
 credential store or a customer-managed secret provider. readmit holds no
