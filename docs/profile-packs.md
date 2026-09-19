@@ -141,7 +141,7 @@ label := pack.Label(declared.Version, declared.Family, "SCH", 1)
 | `Declared(doc, index)` | The `{Version, Family}` one parsed message declares: the first component of MSH-12 and of MSH-9, as the bytes are written. A message that declares neither declares nothing; nothing is inferred from the segments present. |
 | `Support(version, family, level)` | One `Outcome` for one level of one combination. |
 | `Label(version, family, segment, position)` | `{Outcome, Name}`. The name is withheld unless the combination's labels level is `supported`, so content the pack carries for a version cannot reach a family it was not verified for. A supported combination may still leave a position unlabelled. |
-| `HL7Versions()`, `Families()` | Copies of the closed sets, for an editor that offers them. |
+| `HL7Versions()`, `Families()`, `Levels()` | Copies of the closed sets, for an editor that offers them or a consumer that walks all four levels. |
 
 A `Pack` assembled in Go without going through `Decode` answers `unknown` at
 every level and satisfies no pin, so the reader's refusals cannot be bypassed
@@ -247,6 +247,9 @@ only; a pack extraction takes the same and nothing more.
   [local profiles](local-profiles.md), and consumes the interfaces above
   without changing a byte of this one. Each combination a downstream feature
   claims still needs profile-specific fixtures, and #45 still records and
-  reviews each extraction separately.
+  reviews each extraction separately. How a release's packs are held together,
+  published as one matrix and gated on their rights reviews is
+  [the profile library](profile-library.md); it adds no member to this contract
+  and bundles no pack either.
 - **No rights review is performed by software.** The reader requires the
   review to be written down; a person performs it.

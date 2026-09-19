@@ -83,6 +83,17 @@ digest is a placeholder, and it is not a pack of anything real.
 support the contract carries no content for, so the reader refuses it. Every
 other refusal is a single edit of the positive fixture, made in the tests.
 
+`profile-pack-adt.json` is the second hand-authored pack of the fixture library
+for issue #45: it declares 2.4 ADT with a few written-out `EVN` and `PID` field
+names and 2.8.2 ADT untested, so the library holds one HL7 version answered by
+two different packs at different levels and neither borrows from the other.
+`profile-pack-overlapping.json` and `profile-pack-pending-review.json` are its
+negative counterparts: the first declares 2.5.1 SIU a second time, so a library
+holding it beside `profile-pack.json` is refused, and the second records a
+pending rights review, so it reads normally and the library holding it is not
+bundleable. Nothing in any of them was extracted from nHapi or HL7apy, their
+digests are placeholders, and none is a pack of anything real.
+
 `local-profile.json` is a minimal, hand-authored `readmit-local-profile/v1`
 fixture for issue #46: it pins the `fixture-siu` pack above, constrains `SCH`
 and one site-defined `ZPD` segment, and carries one local code table, one

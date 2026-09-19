@@ -91,6 +91,15 @@ const (
 	LevelWorkflow Level = "workflow"
 )
 
+// levels is the closed set of support levels, in the order a coverage entry
+// declares them. A level outside it is unknown in a query.
+var levels = []Level{LevelParse, LevelLabels, LevelStructural, LevelWorkflow}
+
+// Levels returns the support levels a pack declares separately for every
+// combination it covers, so a consumer that walks all four does not keep its
+// own copy of the set.
+func Levels() []Level { return slices.Clone(levels) }
+
 // Support is what a pack declares for one level of one combination.
 type Support string
 

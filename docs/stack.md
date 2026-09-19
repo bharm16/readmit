@@ -77,6 +77,17 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
   v1 pack may claim structural or workflow support, because the contract carries
   no such content. No pack is bundled; the bundled v2.5.1 dictionary is
   unchanged. See [profile packs](profile-packs.md).
+- The set of packs one release carries is a library, read by
+  `internal/profilelibrary`. It is not a new document: a library is one
+  directory of pack documents, and opening it refuses two packs that declare
+  the same HL7 version and family, two packs sharing an id, a member larger
+  than a pack may be, and anything in the directory that is not a regular pack
+  document, including a symbolic link. One pack answers a combination or nobody does;
+  there is no precedence, no nearest version and no merge. The published matrix
+  states all 28 combinations of the closed sets, covered or not, and a library
+  is bundleable only when every pack it holds records an approved rights
+  review. No library is bundled and no command reads one. See
+  [the profile library](profile-library.md).
 - A site's own interface contract is the separate `readmit-local-profile/v1`
   document read by `internal/localprofile`: one pinned pack and combination,
   site-defined Z-segments and constrained standard fields, and per field a

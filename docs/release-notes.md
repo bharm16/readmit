@@ -359,6 +359,23 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   unchanged, and correlation, the profile and reproducer editors, typed
   assertions and the seven-version library remain separate deliveries.
 
+- The set of packs a release carries is a profile library, read by
+  `internal/profilelibrary` from one directory of pack documents. It adds no
+  document and no member: opening a library refuses two packs that declare the
+  same HL7 version and message family, two packs sharing an id, a document the
+  pack reader refuses, a member larger than a pack may be and anything in the
+  directory that is not a regular pack document, including a symbolic link, so
+  one pack answers a combination or nobody does. There is no precedence, no nearest
+  version, no fallback between families or levels and no merge of two packs'
+  labels. The published matrix states all 28 combinations of the seven versions
+  and four families, covered or not, and every answer names the pack that gave
+  it. A library is bundleable only when it holds at least one pack and every
+  pack records an approved rights review; that check reads what was written
+  down and performs no review. No pack and no library is bundled, so every
+  combination this release publishes is unknown, and extracting the seven
+  version packs and obtaining the rights review of each exact extraction remain
+  the repository owner's work.
+
 - `run` cancels, recovers and cleans up without a duplicate effect: `run start
   --deadline` bounds a run and records `timed_out` with any in-flight delivery
   uncertain; a cancellation after a synced intent stops the send and stays

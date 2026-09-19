@@ -1,0 +1,36 @@
+{
+  "schema": "readmit-profile-pack/v1",
+  "pack": {
+    "id": "fixture-overlap",
+    "version": "1"
+  },
+  "provenance": {
+    "source": {
+      "name": "readmit fixture authors",
+      "location": "testdata/fixtures/profile-pack-overlapping.json",
+      "revision": "1"
+    },
+    "extraction": {
+      "method": "Hand-authored. This pack declares a combination the fixture SIU pack already declares, so a library holding both is refused.",
+      "content_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    },
+    "license": {
+      "spdx": "LicenseRef-readmit-fixture",
+      "notice": "testdata/README.md"
+    },
+    "rights_review": {
+      "status": "approved",
+      "reference": "testdata/README.md"
+    }
+  },
+  "coverage": [
+    {
+      "hl7_version": "2.5.1",
+      "family": "SIU",
+      "parse": "untested",
+      "labels": "unsupported",
+      "structural": "unsupported",
+      "workflow": "unsupported"
+    }
+  ]
+}

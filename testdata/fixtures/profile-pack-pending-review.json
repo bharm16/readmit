@@ -1,0 +1,36 @@
+{
+  "schema": "readmit-profile-pack/v1",
+  "pack": {
+    "id": "fixture-pending",
+    "version": "1"
+  },
+  "provenance": {
+    "source": {
+      "name": "readmit fixture authors",
+      "location": "testdata/fixtures/profile-pack-pending-review.json",
+      "revision": "1"
+    },
+    "extraction": {
+      "method": "Hand-authored. This pack's rights review is pending, so it is readable and a library holding it is not bundleable.",
+      "content_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+    },
+    "license": {
+      "spdx": "LicenseRef-readmit-fixture",
+      "notice": "testdata/README.md"
+    },
+    "rights_review": {
+      "status": "pending",
+      "reference": ""
+    }
+  },
+  "coverage": [
+    {
+      "hl7_version": "2.6",
+      "family": "ORU",
+      "parse": "untested",
+      "labels": "unsupported",
+      "structural": "unsupported",
+      "workflow": "unsupported"
+    }
+  ]
+}
