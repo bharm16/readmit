@@ -839,6 +839,41 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   declarations are fixed and published. None of this is in these archives, and no
   desktop package is signed for distribution.
 
+- Bounded delta reduction with a controlled oracle: `internal/reduce` shrinks
+  the sequence a regression test sends against a chosen assertion-failure
+  signature declared in `readmit-reduction-plan/v1`, and reports every group,
+  every trial and exactly what it established in `readmit-reduction/v1`. The
+  oracle is not trusted: the unreduced sequence must reproduce the signature a
+  declared number of times before a group is removed, the sequence that survives
+  must reproduce it that many times again, and an oracle that disagrees with
+  itself withdraws the result instead of reporting one. Every trial is one
+  durable run of a narrowed copy of the selected `readmit-test/v1` spec into its
+  own fresh destination, preceded by the explicitly selected
+  `readmit-reset-plan/v1`; only a confirmed reset lets a candidate execute, and
+  nothing is resumed, retried or resent. A run that timed out, was cancelled,
+  errored, did not finish or left a delivery uncertain decides nothing and stops
+  the reduction under its own name, and no such state can be declared as the
+  signature at all: a timeout is never an equivalent reduced failure. A run that
+  also failed an assertion the signature does not name failed differently.
+  Messages one declared correlation rule related are one group under
+  `group-by-correlation/v1` and are removed together or not at all, the
+  occurrences the signature is stated about are pinned and recorded as pinned,
+  and equality the rules could not stand behind is reported as
+  `ungrouped-collision` rather than grouped anyway. The claim is exact:
+  `group-1-minimal` is 1-minimality over the declared grouping as this oracle
+  answered and never a global minimum; a spent trial budget reports `bounded`,
+  which rules out no removal, and one spent before the surviving sequence was
+  re-confirmed says so under its own name; a partition with nothing removable in
+  it reports `not_attempted` rather than a vacuous minimum; and an interrupted
+  or undecided reduction establishes nothing at all. The report carries no value byte. Nothing is written into
+  evidence: no case, no revision, no export and no third derivation name, so
+  ADR-0004's closed set is unchanged, and `readmit-reproducer-plan/v1`,
+  `readmit-reproducer/v1`, `readmit-transform-plan/v1`,
+  `readmit-transform-preview/v1`, `readmit-test/v1`, `readmit-result/v1`,
+  `readmit-job/v1` and `readmit-reset-plan/v1` each gain no member. There is no
+  `readmit reduce` command in this release, and no global-minimum, field-level,
+  de-identification or sharing claim.
+
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`
 from the extracted directory (`.\readmit.exe` on Windows). No Go installation is

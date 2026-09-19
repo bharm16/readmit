@@ -245,7 +245,8 @@ Nothing is uploaded and no network call is made.
   about the others.
 - Reduction. Nothing here shrinks a sequence against a failure signature, runs
   bounded trials or reports a minimal result, and no preview is a minimality
-  claim.
+  claim. That is [its own package](reduction.md), which takes a sequence apart
+  rather than transforming one and applies none of these operators.
 - Authoring or editing a plan, and undoing a step. A plan reaches this command
   as a document; there is no editor, no `transform init`, and no retained
   history of what a plan said before a step was removed from it.

@@ -616,6 +616,27 @@ the pinned pack does not declare supported, and the date fields a shift does not
 move, are recorded explicitly rather than left unstated. See
 [previewing transformations](docs/transform.md).
 
+Reduction shrinks a sequence until removing anything more loses the failure a
+person chose to keep, and says exactly how much it established. Nothing in it is
+trusted: the unreduced sequence must reproduce the chosen assertion failure
+repeatably before a message is dropped, the sequence that survives must
+reproduce it again afterwards, every trial runs the selected reset plan first
+and only a confirmed reset lets a candidate execute, and the whole search is
+held to a declared trial budget. A run that timed out, was cancelled, errored or
+left a delivery uncertain is never read as the failure — a timeout cannot even
+be declared as one — and a run that fails something else as well failed
+differently. Messages the declared correlation rules related are removed
+together or not at all, and the occurrences the signature is stated about are
+never removal candidates. What it claims is precise: `group-1-minimal` means no
+single group of the declared partition can be removed, never a global minimum; a
+budget that ran out reports `bounded`, which means the search stopped there and
+no removal was ruled out; a partition with nothing removable in it reports
+`not_attempted` rather than a vacuous minimum; and an oracle that disagreed with
+itself reports `undecided`, which establishes nothing. The `readmit-reduction/v1` report records every trial it spent and no
+value byte, and nothing is written into evidence: no case, no revision and no
+new derivation name. There is no `readmit reduce` command in this release. See
+[reducing a failure with a controlled oracle](docs/reduction.md).
+
 `synth` creates a wholly synthetic SIU scheduling family from four explicit inputs:
 
 ```sh
