@@ -139,6 +139,11 @@ terminal := diff.Terminal(report)
 jsonBytes, err := diff.JSON(report)
 ```
 
+`ErrKeysRequired` is the one refusal a consumer can act on: two collections with
+no known mapping between them need declared keys, and a consumer that is not a
+command line reports it in its own words rather than repeating an option name.
+Every other diagnostic is a bounded sentence carrying no path and no value.
+
 The package is `internal/diff`. `Report` uses `schema: "readmit-diff/v1"` and
 contains boundary/scope, both input summaries, alignment and declared keys,
 selected fields, ignores with application counts, a summary, paired field and
@@ -147,7 +152,9 @@ references, and unsupported evidence. `Value.Display` is absent unless
 `Options.ShowValues` was requested. A report does not carry a global
 "equal/success" verdict that could erase evidence gaps. Packet consumers can
 produce separate sent-message and ACK comparisons; neither replaces recorded
-test verdicts or observation evidence.
+test verdicts or observation evidence. [The desktop shell](desktop.md) renders
+this same report as the rows of two panes over two case bundles; it adds no
+member to the report and reads no value out of one.
 
 Limits: existing artifact-reader limits; 16 MiB per standalone input; 256 field
 selectors, 16 key selectors, 256 exact ignore selectors; 200,000 evaluated field

@@ -11,6 +11,13 @@ import (
 
 type alignedPair struct{ left, right *occurrence }
 
+// ErrKeysRequired is the one alignment refusal a caller can act on: two
+// collections with no known mapping between them are not paired by guesswork,
+// so the caller has to declare which fields identify a record. It is exported
+// so a consumer can report it in its own vocabulary — a window says what to do
+// in the window, and the command line keeps naming its own option.
+var ErrKeysRequired = errors.New("unrelated collections require explicit --key selectors for alignment")
+
 // Known mappings are checked before considering keys. A contradictory source
 // claim is an evidence error, never a reason to silently fall back to a key.
 func align(left, right *evidence, keys []hl7.Selector, boundary Boundary, report *Report) ([]alignedPair, error) {
@@ -39,7 +46,7 @@ func align(left, right *evidence, keys []hl7.Selector, boundary Boundary, report
 		return []alignedPair{{left.items[0], right.items[0]}}, nil
 	}
 	if len(keys) == 0 {
-		return nil, errors.New("unrelated collections require explicit --key selectors for alignment")
+		return nil, ErrKeysRequired
 	}
 	report.Alignment = "declared-keys"
 	return alignKeys(left, right, keys, report), nil

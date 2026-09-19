@@ -413,6 +413,7 @@ interface Facade {
   BuildReproducer(request: ReproducerRequest): Promise<ReproducerResult>;
   AuthorTest(request: TestRequest): Promise<TestResult>;
   SaveTest(request: TestRequest): Promise<TestResult>;
+  Compare(request: CompareRequest): Promise<CompareResult>;
 }
 
 declare global {
@@ -871,4 +872,153 @@ export function authorTest(request: TestRequest): Promise<TestResult> {
  * writes a document, never evidence: the case it names is not touched. */
 export function saveTest(request: TestRequest): Promise<TestResult> {
   return guard(() => facade().SaveTest(request), { state: "failed" });
+}
+
+/** Which collection one side of a comparison read, and how much of it was in
+ * the compared boundary. `excluded` is what the boundary left out, so a
+ * comparison of messages never reads as a comparison of everything a case
+ * holds. Nothing read out of a message is here. */
+export interface ComparedCollection {
+  kind: string;
+  identity: string;
+  source_identity?: string;
+  target_identity?: string;
+  result_status?: string;
+  result_boundary?: string;
+  payloads: string;
+  occurrences: number;
+  excluded: number;
+}
+
+/** One occurrence a row of the panes holds: where it is and what it is, exactly
+ * as a grid row is. `payload_state` says whether its bytes were compared at
+ * all, so an occurrence nothing decoded is never shown as an equal one. */
+export interface ComparedOccurrence {
+  occurrence: string;
+  source_occurrence?: string;
+  kind: OccurrenceKind;
+  payload_state: string;
+  outcome?: string;
+  delivery?: string;
+}
+
+/** What the whole comparison found, over every row and not only the drawn
+ * window. A window of a comparison is shown beside these, so it can never read
+ * as the whole of it. */
+export interface ComparisonSummary {
+  paired: number;
+  changed: number;
+  unchanged: number;
+  uncompared: number;
+  field_changes: number;
+  inserted: number;
+  missing: number;
+  ambiguous: number;
+  unaligned: number;
+}
+
+/** One evidence gap the comparison found and did not compare around: an
+ * occurrence nothing decoded, a position whose escapes are unsupported, or a
+ * message declaring an HL7 version the bundled labels do not cover. */
+export interface ComparisonGap {
+  side: string;
+  occurrence?: string;
+  selector?: string;
+  code: string;
+}
+
+/** One position the segment sequence differs at. Both sides name a segment and
+ * its occurrence, or `omitted` where that side has none. */
+export interface SegmentDifference {
+  position: number;
+  left: string;
+  right: string;
+}
+
+/** One compared position and what each side held there. There is no value here:
+ * the selector is the same position the inspector addresses, and the states are
+ * `present`, `empty`, `null` and `omitted`. Reading the bytes is the inspector,
+ * deliberately. */
+export interface FieldDifference {
+  selector: string;
+  name?: string;
+  status: string;
+  left_state: FieldState;
+  right_state: FieldState;
+}
+
+/** What one row of the two panes is. A record only one side holds keeps a row
+ * of its own, and every candidate of a duplicated key keeps one too, because
+ * nothing here chooses between them. */
+export type ComparisonRowKind = "paired" | "missing" | "inserted" | "ambiguous" | "unaligned";
+
+/** Which payloads of each collection a comparison read. The window compares
+ * stored messages; `readmit diff` compares either. */
+export type ComparisonBoundary = "messages" | "acks";
+
+/** One line both panes draw. `left` and `right` are the occurrences it holds,
+ * and the side that holds none is absent rather than filled in from the other
+ * one, so an insertion is visible instead of shifting every row after it. */
+export interface ComparisonRow {
+  position: number;
+  kind: ComparisonRowKind;
+  status?: string;
+  reason?: string;
+  group?: number;
+  left?: ComparedOccurrence;
+  right?: ComparedOccurrence;
+  fields?: FieldDifference[];
+  segments?: SegmentDifference[];
+}
+
+/** One comparison of two collections, as the rows both panes share. `scope` is
+ * the engine's own statement of what a field comparison does not establish, and
+ * it is rendered rather than summarized. */
+export interface Comparison {
+  left: string;
+  right: string;
+  /** The versioned engine contract these rows were laid out from, and which
+   * payloads of each collection were inside the comparison at all. This result
+   * is a typed value the interface reads, never a stored document. */
+  report: string;
+  boundary: ComparisonBoundary;
+  left_summary: ComparedCollection;
+  right_summary: ComparedCollection;
+  alignment: string;
+  scope: string;
+  keys: string[];
+  fields: string[];
+  summary: ComparisonSummary;
+  offset: number;
+  limit: number;
+  total: number;
+  rows: ComparisonRow[];
+  unsupported: ComparisonGap[];
+}
+
+/** The two collections to compare and how they align. `identity` is the one the
+ * window verified for the left collection, so a comparison against evidence
+ * that changed since is refused rather than shown beside stale counts. */
+export interface CompareRequest {
+  workspace: string;
+  left: string;
+  identity: string;
+  right: string;
+  keys: string[];
+  fields: string[];
+  offset: number;
+  limit: number;
+}
+
+export interface CompareResult {
+  state: State;
+  reason?: string;
+  comparison?: Comparison;
+}
+
+/** Aligns two collections of the open workspace and reports them as rows. It
+ * reads both and changes neither, and no ignore rule is applied, so nothing the
+ * comparison found is suppressed before the window draws it. */
+export function compare(request: CompareRequest): Promise<CompareResult> {
+  return guard(() => facade().Compare(request), { state: "failed" });
 }
