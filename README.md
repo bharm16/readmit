@@ -497,7 +497,9 @@ typed data rows and explicit site/environment bindings. Suites retain tags and
 owners, check expected send order and run setup dependencies through the same
 durable scheduler. `readmit suite coverage` assesses an explicit requirement
 denominator against retained executions, keeping exclusions and possible
-flakiness visible. See [regression suites](docs/suites.md).
+flakiness visible. `suite review-promotion` and `suite approve-promotion` bind
+released expectations to exact environment inputs for `suite run --promotion`.
+See [regression suites](docs/suites.md).
 
 `observe validate WINDOW` reads a declared `readmit-observation-window/v1`
 document — the source identity and scope in view, the watermark the window opens

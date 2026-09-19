@@ -82,6 +82,8 @@ type Request struct {
 	PlanBytes     []byte
 	PlanDirectory string
 	Runs          string
+	// ApprovedInputs, when present, must pin every job before any is started.
+	ApprovedInputs map[string]string
 }
 
 // runner is what the queue needs from one durable run: what it will claim, and
@@ -212,6 +214,9 @@ type schedule struct {
 // one unreadable spec or one run directory that already exists sends nothing
 // at all rather than part of itself.
 func newSchedule(plan Plan, request Request) (*schedule, error) {
+	if request.ApprovedInputs != nil && len(request.ApprovedInputs) != len(plan.Jobs) {
+		return nil, errors.New("approved queue must pin every job")
+	}
 	queue := &schedule{states: make([]*state, len(plan.Jobs)), held: map[string]string{},
 		runs: request.Runs, owned: make(map[string]bool, len(plan.Jobs))}
 	byID := make(map[string]*state, len(plan.Jobs))
@@ -223,6 +228,16 @@ func newSchedule(plan Plan, request Request) (*schedule, error) {
 		prepared, err := prepare(filepath.Join(request.PlanDirectory, job.Spec))
 		if err != nil {
 			return nil, err
+		}
+		if request.ApprovedInputs != nil {
+			sealed, ok := prepared.(interface{ InputIdentity() (string, error) })
+			if !ok {
+				return nil, errors.New("queue cannot verify prepared inputs")
+			}
+			identity, err := sealed.InputIdentity()
+			if err != nil || identity != request.ApprovedInputs[job.ID] {
+				return nil, errors.New("queued inputs differ from approved promotion")
+			}
 		}
 		current := &state{job: job, runner: prepared, output: output,
 			report: JobReport{ID: job.ID, Isolation: job.Isolation, Resources: prepared.Resources()}}

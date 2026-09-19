@@ -8,6 +8,10 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   comments, exact test-release approvals, internal notifications and searchable
   decisions. Explicit revision conflicts and backup v3 preserve immutable links.
 
+- Explicit suite promotion approvals bind exact environment configuration, inputs,
+  released expectations and isolation declarations. Every queued plan is checked
+  before the first send; target software revisions remain operator assertions.
+
 - Controlled-stop tests now synchronize actual receiver consumption and verify
   exact retained prefixes, including reads returning after shutdown. Unread
   socket data remains outside captured evidence; runtime behavior is unchanged.

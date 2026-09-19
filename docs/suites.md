@@ -231,3 +231,82 @@ Duplicate/unknown/null/missing members,
 unknown jobs, duplicate references and unsupported versions are refused. Reasons
 are at most 1024 bytes; IDs follow the suite's identifier rules. Coverage output
 and reasons can contain sensitive local metadata and are not disclosure-approved.
+
+## Promoting an approved suite
+
+A template release alone approves expectations. A promotion additionally approves
+one exact suite, its row inputs, dependency and isolation declarations, and its
+binding to one configured environment. Review and approve each environment
+explicitly; neither copies secret values nor edits expectations:
+
+```sh
+readmit suite review-promotion suite.json --environment dev \
+  --releases releases.json --revision fixture-build-7
+# Inspect the suite, bindings, target files and returned identity/job commitments.
+readmit suite approve-promotion suite.json --environment dev \
+  --releases releases.json --revision fixture-build-7 --review REVIEW_ID \
+  --approver 'Local reviewer' --rationale 'Reviewed dev mapping and isolation' \
+  --output dev-promotion.json
+# The approval command prints its complete identity, including reviewer/rationale.
+readmit suite run suite.json --environment dev --releases releases.json \
+  --promotion dev-promotion.json --promotion-identity APPROVAL_ID \
+  --revision fixture-build-7 --output dev-run --send --json
+```
+
+Repeat for `test` or `staging` using the same unchanged suite and release sidecar,
+selecting that environment's declared bindings and current revision assumption.
+Environment names are operator IDs, not special built-in permissions. A missing
+binding, unknown environment, changed expected value, unreadable case, production
+classification, invalid target or unavailable/mis-scoped credential registration
+refuses preparation. No credential provider executes during review or approval.
+Provider availability and actual credential validity are checked only by the
+existing transport when needed; a local review cannot certify remote acceptance.
+
+The strict `readmit-suite-promotion-review/v1` JSON contains `schema`, `identity`,
+`suite_sha256`, `releases_sha256`, `environment`, `revision_assumption` and
+`jobs` (each has `job` and `sha256`). The identity is SHA-256 over deterministic
+JSON with its own `identity` set to the empty string. Each job commitment seals
+its prepared specification, verified source identity and occurrence mappings,
+effective target and CA identity, credential registration and engine version.
+The suite digest additionally fixes all tables, mappings, owners, tags,
+dependencies, parallelism and isolation. Formatting the suite or sidecar
+differently requires review again; existing document bytes are never rewritten.
+Review compiles into a temporary private directory and removes it on return.
+A process crash can leave that temporary directory for operator inspection.
+
+The separate strict `readmit-suite-promotion/v1` contains `schema`, `review`
+(the complete review), `reviewed` (its exact identity), `approver` and `rationale`.
+Approval re-reads every input and refuses a stale review. It exclusively creates
+a new private file; no overwrite, implicit upgrade or approval from a passing
+run exists. The complete deterministic approval SHA-256 must be supplied
+separately as `--promotion-identity` at execution. Altering approval metadata,
+inputs, releases, environment or the asserted revision invalidates admission.
+Any changed input requires a fresh review and a new approval file.
+
+Before the first send, the queue checks **every** approved job against the same
+sealed durable plan it will execute. A later mismatched job cannot leave earlier
+jobs sent. The private run directory retains `promotion.json` alongside the
+unchanged suite selection, released expectations and durable evidence. Retained
+approval is not execution proof. Existing cancellation, uncertainty, skipped
+jobs and read-only recovery semantics apply; an existing output is never resumed.
+Use the existing coverage assessment for exclusions and configured denominators;
+promotion neither filters tests nor makes a disabled or skipped job pass.
+
+`--revision` is the operator's current assertion about target software, required
+both at review and execution and compared exactly. Readmit verifies configuration
+and evidence commitments, **not** the running external software version or state.
+Owners must independently verify target versions, reset state, isolation and
+site authorization. Local reviewer names and hashes are not authenticated team
+identity and do not grant non-loopback access. Files remain local and sensitive;
+no target discovery, network version probe, telemetry or copying secrets occurs.
+Ordinary `suite run` and `--releases` remain explicitly available and make no
+promotion claim; this is an opt-in local gate, not an organization-wide policy.
+Concurrent external configuration/provider changes cannot be prevented by a local
+approval; run against operator-controlled configuration and storage.
+
+Promotion files remain bounded to 1 MiB and 64 jobs. Revision assumptions and
+reviewer labels are nonempty and at most 256 bytes, rationales at most 1024.
+Unknown/duplicate/null/missing members and malformed commitments are refused.
+All older suite, target, release, result and evidence contract members remain
+unchanged. External-target acceptance and authenticated team promotion remain
+separate owner/integration work.
