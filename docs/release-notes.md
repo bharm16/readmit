@@ -975,6 +975,37 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   comparison `readmit diff` produces is untouched. No address, path, field value
   or message byte appears in a drift report.
 
+- `normalize LEFT RIGHT --policy FILE` runs the same field comparison
+  `readmit diff` runs under an authored `readmit-normalization-policy/v1`
+  document, and shows what that policy hid. A rule is typed data interpreted by
+  a Go operator, never an expression: an `ignore` for a genuinely volatile
+  field, a `timestamp` compared to a declared precision, or a `numeric` value
+  compared within a declared unsigned tolerance, each scoped to exactly one
+  canonical selector with no wildcard and no category. Two rules resolving to
+  one selection, a signed tolerance, a parameter on the wrong operator, an
+  unknown operator, a repeated id and an unknown member each refuse the whole
+  document rather than half-applying it. Every rule is reported with the
+  selections it addressed and how each was settled, including a rule that
+  addressed nothing, and every difference the comparison found is listed
+  whatever a rule said about it: a suppressed one names the rule that
+  suppressed it, so what was hidden and by which rule is always answerable. A
+  field this build did not decode keeps the raw comparison's own word,
+  `uncompared`, is counted apart from the differences and is `undecided`
+  whatever any rule says, because an evidence gap is not a difference. A
+  rule that cannot read the values it was scoped to is `undecided` with a named
+  reason — a value coarser than the precision it is compared at, two declared
+  UTC offsets that are not identical, a value absent on one side, text a
+  numeric rule was scoped to, or evidence this build did not decode — and that
+  is neither agreement nor a reason to conceal the difference. No rule
+  suppresses an inserted, missing, ambiguous or unaligned occurrence, and the
+  alignment, declared keys and field scope are restated in every report. No
+  value appears in any rendering: there is no `--show-values` here and
+  `readmit-normalization/v1` has no member one could live in, so a difference is
+  a canonical selector, the bundled label and each side's decoded state. Both
+  documents are new: `readmit-diff/v1` gains no member, changes no byte, and its
+  raw comparison reports every difference a policy suppressed exactly as it did
+  before. No outcome here is a verdict.
+
 - The desktop shell reviews and transforms the whole case. It previews a
   `readmit-transform-plan/v1` document over the verified case through the engine
   `readmit transform` runs — every position the plan would rewrite, what happened

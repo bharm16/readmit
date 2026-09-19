@@ -385,6 +385,24 @@ revision is always stated `unknown`, because readmit records the configuration a
 target was reached by and never the software answering at it. No address, path
 or value appears in the report. See [separating drift](docs/drift.md).
 
+`normalize LEFT RIGHT --policy FILE` runs that same field comparison under a
+saved `readmit-normalization-policy/v1` document and shows what it hid. Rules
+are typed and scoped to exactly one canonical selector: a timestamp compared to
+a declared precision, a numeric value compared within a declared tolerance, and
+an unconditional ignore for a genuinely volatile field. There is no wildcard, no
+category and no expression language. Every rule is listed with what it settled,
+including a rule that applied to nothing, and **every difference the comparison
+found is listed whatever a rule said about it** — each suppressed one naming the
+rule that suppressed it, so a reader can always see what was hidden and by
+which rule. A rule that cannot read the values it was scoped to is `undecided`
+with a named reason, which is neither agreement nor a reason to conceal a
+difference, and no rule can suppress an inserted, missing, ambiguous or
+unaligned occurrence. A field this build did not decode keeps the raw
+comparison's own word, `uncompared`, and is counted apart from the differences. Values are never displayed: there
+is no `--show-values` here and the contract has no member one could live in.
+`readmit-diff/v1` gains no member and its raw comparison is untouched. See
+[normalization and ignore policies](docs/normalize.md).
+
 `test SPEC --send --output NEW_RESULT_DIRECTORY` evaluates saved assertions over
 actual ACKs or the fixture's appointment ledger. Exit codes distinguish pass
 (`0`), assertion failure (`1`), and execution/configuration error (`2`). Missing,

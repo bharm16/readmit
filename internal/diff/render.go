@@ -23,12 +23,15 @@ type line struct {
 
 // Terminal and Markdown share all content, including empty sections and every
 // ignore rule. Markdown escapes source displays so values cannot become markup.
-func Terminal(report Report) []byte { return render(report, false) }
-func Markdown(report Report) []byte { return render(report, true) }
+func Terminal(report Report) []byte { return write(content(report), false) }
+func Markdown(report Report) []byte { return write(content(report), true) }
 
-func render(report Report, markdown bool) []byte {
+// write is shared by both reports this package renders. Neither adds a section
+// the other's renderer would have to know about; they share only the shape of a
+// heading and a line.
+func write(lines []line, markdown bool) []byte {
 	var out bytes.Buffer
-	for _, line := range content(report) {
+	for _, line := range lines {
 		if line.heading {
 			fmt.Fprintln(&out)
 			if markdown {
