@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Download readmit</title>
+<meta name="description" content="Where the readmit prerelease archives come from, how to check them, and how to build the current branch.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">readmit <span>· unsigned development preview</span></div>
+  <nav aria-label="Site">
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="download.html" aria-current="page">Download</a></li>
+      <li><a href="workflows.html">Workflows</a></li>
+      <li><a href="connectors.html">Sources and connectors</a></li>
+      <li><a href="limitations.html">Limitations</a></li>
+      <li><a href="samples.html">Sample projects</a></li>
+    </ul>
+  </nav>
+</header>
+<main>
+  <h1>Download and install</h1>
+
+  <div class="notice">
+    <strong>Release status: unsigned development preview.</strong>
+    The only published archives are the <code>v0.1.0-alpha.2</code> GitHub prerelease, built from an early commit that shipped <code>readmit inspect</code> alone. Everything else on this site is on <code>main</code> and has not been published as an archive yet. Nothing is code-signed or notarized; an operating-system or endpoint policy may refuse to run it.
+  </div>
+
+  <h2>Published prerelease archives</h2>
+  <p>Archives, <code>checksums.txt</code> and build provenance are published only on <a href="https://github.com/bharm16/readmit/releases">GitHub Releases</a>. Each archive holds one static executable with no runtime, installer or container requirement, plus the README, the documentation pages, third-party notices and licenses, the field-label source, and synthetic fixtures.</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Archive</th><th>Operating-system floor</th><th>Tested in CI on</th></tr></thead>
+    <tbody>
+      <tr><td><code>readmit_VERSION_darwin_arm64.tar.gz</code></td><td>macOS 13 or newer, Apple silicon</td><td><code>macos-15</code></td></tr>
+      <tr><td><code>readmit_VERSION_darwin_amd64.tar.gz</code></td><td>macOS 13 or newer, Intel</td><td><code>macos-15-intel</code></td></tr>
+      <tr><td><code>readmit_VERSION_linux_amd64.tar.gz</code></td><td>Linux kernel 3.2 or newer, x86-64</td><td><code>ubuntu-24.04</code></td></tr>
+      <tr><td><code>readmit_VERSION_linux_arm64.tar.gz</code></td><td>Linux kernel 3.2 or newer, arm64</td><td><code>ubuntu-24.04-arm</code></td></tr>
+      <tr><td><code>readmit_VERSION_windows_amd64.zip</code></td><td>Windows 10 or Windows Server 2016 or newer, x86-64</td><td><code>windows-2025</code></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="muted"><code>VERSION</code> is the release tag without its leading <code>v</code>, so the current prerelease is <code>readmit_0.1.0-alpha.2_darwin_arm64.tar.gz</code>. The floors follow <a href="https://go.dev/wiki/MinimumRequirements">Go's supported platforms</a>. CI runs the exact archives on the current runner for each target; it does not certify every older release in the range. There is no Windows arm64 archive and no desktop installer.</p>
+
+  <h3>Check before you extract</h3>
+  <pre><code>shasum -a 256 readmit_0.1.0-alpha.2_darwin_arm64.tar.gz   # macOS
+sha256sum readmit_0.1.0-alpha.2_linux_amd64.tar.gz        # Linux
+Get-FileHash .\readmit_0.1.0-alpha.2_windows_amd64.zip -Algorithm SHA256   # Windows
+# compare with the matching line of checksums.txt, then extract and run:
+tar -xzf readmit_0.1.0-alpha.2_darwin_arm64.tar.gz
+./readmit inspect testdata/fixtures/adt-cr.hl7</code></pre>
+  <p>GitHub build provenance is attested for each published executable and is separate from OS code signing. With the GitHub CLI: <code>gh attestation verify ./readmit --repo bharm16/readmit</code> (or <code>readmit.exe</code>).</p>
+
+  <h2>Build the current branch</h2>
+  <p>To evaluate the workflows on this site before the next tagged prerelease, build from source with the pinned Go 1.27.1 toolchain. The build is static, needs no C compiler, and produces one file.</p>
+  <pre><code>git clone https://github.com/bharm16/readmit
+cd readmit
+go build -trimpath -o readmit ./cmd/readmit
+./readmit --help
+sh samples/synthetic-walkthrough/walkthrough.sh</code></pre>
+  <p>What CI checks on every push, so you can read its verdict instead of taking this page's word for it: the race-enabled Go suite, an independently implemented HL7 endpoint against an externally authored corpus, mutation checks, fuzz shards, a vulnerability scan, packaging of the five archives, and a native run of each archived executable with an empty <code>PATH</code>. The workflow is <a href="https://github.com/bharm16/readmit/blob/main/.github/workflows/ci.yml">ci.yml</a>; the local loop is in the <a href="https://github.com/bharm16/readmit/blob/main/README.md">README</a>.</p>
+
+  <h2>Desktop shell</h2>
+  <p>The desktop shell is a separate module over the same engine. It is compiled and vetted in CI on macOS only, is not in any archive, and has no installer. Building it needs the Wails 2 toolchain, Node 24 and a platform webview; the procedure is in the <a href="https://github.com/bharm16/readmit/blob/main/README.md">README</a>.</p>
+
+  <h2>What installation does not include</h2>
+  <ul>
+    <li>No installer, service, daemon, scheduled task, shell integration or PATH change. You extract a directory and run a file.</li>
+    <li>No update check. A newer version is a new archive you choose to download.</li>
+    <li>No account, activation or entitlement. Every workflow here runs without one. <code>readmit license</code> verifies an offline entitlement file when an organization has been issued one; none is required to evaluate.</li>
+    <li>No telemetry, crash reporting or analytics, and this site carries none either.</li>
+  </ul>
+
+  <h2>Upgrading and removing</h2>
+  <p>Evidence directories are versioned strict-JSON files and raw payloads that a newer executable reads through explicit contract versions; a version it does not read is refused, never migrated in place. To upgrade, extract the new archive beside or over the old executable. To remove readmit, delete the directory; it wrote nothing anywhere else except the evidence and documents you asked it to write, and the desktop shell's three named local documents described in the <a href="https://github.com/bharm16/readmit/blob/main/docs/desktop.md">desktop contract</a>.</p>
+</main>
+<footer>
+  <p>Every claim on this page traces to <a href="https://github.com/bharm16/readmit/blob/main/site/CLAIMS.md">CLAIMS.md</a>. Full status: <a href="https://github.com/bharm16/readmit/blob/main/docs/support-matrix.md">support matrix</a>.</p>
+</footer>
+</body>
+</html>

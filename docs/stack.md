@@ -179,7 +179,8 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
   defaults. A retained decoded field is patient data and is treated as such; a
   digest of a short value is not de-identification.
 - Bounded at 16 declared fields, 128 retained bytes per value and 16 MiB per
-  document. Past a bound the build is refused, never truncated.
+  document. Past the field or document bound the build is refused; a longer
+  value keeps its first 128 bytes and is marked `truncated`.
 - The desktop message grid is a filtered, windowed view over one such index and
   is not a second search path: every question it asks about a value or a decoded
   state goes through `index.Document.Search`, and every window re-verifies the

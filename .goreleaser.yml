@@ -56,6 +56,7 @@ archives:
       - docs/redact.md
       - docs/diff.md
       - docs/report.md
+      - docs/support-matrix.md
 
       - docs/diagnose.md
       - docs/selectors.md

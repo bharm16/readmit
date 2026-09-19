@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>readmit sample projects</title>
+<meta name="description" content="Synthetic sample projects that complete real readmit workflows, with the transcript of a real run.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">readmit <span>· unsigned development preview</span></div>
+  <nav aria-label="Site">
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="download.html">Download</a></li>
+      <li><a href="workflows.html">Workflows</a></li>
+      <li><a href="connectors.html">Sources and connectors</a></li>
+      <li><a href="limitations.html">Limitations</a></li>
+      <li><a href="samples.html" aria-current="page">Sample projects</a></li>
+    </ul>
+  </nav>
+</header>
+<main>
+  <h1>Sample projects</h1>
+  <p>Every sample is synthetic and every step in it is a command the product actually runs. No sample contains patient data, and none has been edited to look better than it ran. The transcripts below were captured from the built executable on the current branch; the exact text can change as output changes, and the tests, not this page, are what hold each sample to the product.</p>
+
+  <h2>1. The synthetic evaluation walkthrough</h2>
+  <p>One shell script, ten steps, one new directory: inspect, generate, verify, capture, index, diagnose, diff, validate a regression spec locally, run it against fresh loopback fixtures, and verify the sealed packet. It is in the repository at <a href="https://github.com/bharm16/readmit/blob/main/samples/synthetic-walkthrough/README.md">samples/synthetic-walkthrough</a>, and <code>TestSyntheticWalkthroughCompletesEveryStepAgainstTheBuiltExecutable</code> runs the same file in CI.</p>
+  <pre><code>go build -trimpath -o readmit ./cmd/readmit
+sh samples/synthetic-walkthrough/walkthrough.sh</code></pre>
+  <p>Excerpts from a real run (long inspection output elided):</p>
+  <pre><code>== 2. synth: the reproducible seed-zero SIU family
+Synthetic SIU family: complete
+Provenance: generated
+Cases: regression (S12, S13); cancellation (S12, S13, S15); invalid (S12, S13 with an unbooked filler identifier)
+regression: 7d266d0a09e92d3322d6346cf16c9dd37c768c02a11f8ea6c41870adc44915df
+cancellation: 96077b34226faa19325f01f3fbb0d728de88644c22ba8428659c883703d3f438
+invalid: ab6d014aa0fc9e2ed9cba7160e73bba17b8753f6a7ca5c3a8618f3ec8ba095a9
+== 3. timeline: verify and reopen the generated regression case
+Bundle: 7d266d0a09e92d3322d6346cf16c9dd37c768c02a11f8ea6c41870adc44915df
+Schema: readmit-case/v1
+Provenance: generated
+Sources: 1
+Occurrences: 2
+Messages: 2
+ACKs: 0
+Unparsed: 0
+Matched ACKs: 0
+Unmatched ACKs: 0
+Ambiguous ACKs: 0
+Unacknowledged messages: 2
+Unknown observed times: 2
+Timeline (source/sequence order; no inferred cross-source chronology):
+  s0001-e000001 kind=message direction=unknown offset=0 bytes=300 observed=unknown declared="20260101120000+0000" imported=unknown
+  s0001-e000002 kind=message direction=unknown offset=300 bytes=300 observed=unknown declared="20260101120100+0000" imported=unknown
+== 6. diagnose: the regression case, then the known-invalid case
+Diagnosis complete: 0 findings, 0 unsupported items. Ruleset: readmit-siu-diagnosis/v1. JSON and Markdown reports written.
+Diagnosis complete: 1 findings, 0 unsupported items. Ruleset: readmit-siu-diagnosis/v1. JSON and Markdown reports written.
+== 8. test: validate the regression spec locally; no connection, no verdict
+Local validation: no connection opened, no verdict or result artifact produced
+Environment: none
+Classification: unclassified (recorded by a person; readmit did not establish it and never reads it as permission)
+Observation boundary: appointment-ledger
+Messages: 2
+Rerun: reset the declared initial state, then readmit test SPEC --send --output NEW_RESULT
+== 9. report: run the spec against fresh loopback fixtures and seal the packet
+Synthetic-only packet complete
+Execution: fresh built-in defective and fixed fixtures on loopback only
+Observation boundary: appointment-ledger
+Input unchanged; receiver behavior changed
+Baseline: assertion_failure; post-fix: pass
+Rerun: follow the packet's RERUN.md; prepare a new workspace outside the sealed packet
+== 10. report verify: read the sealed packet back
+Synthetic-only; input unchanged; appointment-ledger boundary
+Walkthrough complete: readmit-walkthrough</code></pre>
+  <p>The identities printed by step 2 are the frozen values in <a href="https://github.com/bharm16/readmit/blob/main/docs/synth-v1-vector.md">the v1 reference vector</a>; the packet identity is omitted above because it differs per run, as the packet records fresh loopback ports. The finding in step 6 is <code>siu.booking-not-observed</code>, the hypothesis the documentation reserves for the deliberately defective case. Step 7 writes a Markdown diff whose summary line begins <code>Paired=2; changed=1; unchanged=1</code>: exactly the one filler identifier the invalid case changes.</p>
+
+  <h2>2. The fail, pass, fail regression demonstration</h2>
+  <p>Two terminals: one runs the fixture receiver in defective mode, then fixed mode, then defective again; the other runs the same unchanged spec against each. The baseline fails on the ledger count, the fix passes, and reintroducing the defect fails again. This is the demonstration <code>report --scenario</code> automates; the manual procedure, with its reset instructions, is in the <a href="https://github.com/bharm16/readmit/blob/main/docs/test-runner.md">test runner documentation</a>, and <code>TestTestExecutableUnchangedSpecFailsPassesAndCatchesReintroduction</code> runs it.</p>
+
+  <h2>3. Redact and export a synthetic case</h2>
+  <p>Capture the committed <code>redact-booking.mllp</code> and <code>redact-reschedule.mllp</code> fixtures, apply the committed policy, review the export, and watch the blocked policy refuse. The scenario and the fixtures ship in every archive; the procedure is in the <a href="https://github.com/bharm16/readmit/blob/main/docs/redact.md">redaction documentation</a>, and <code>TestRedactExecutableGeneratesOnlyDerivedProofAndNoPlantedValues</code> runs it.</p>
+
+  <h2>4. The desktop sample workspace</h2>
+  <p>The desktop shell's <em>Create sample workspace</em> action writes the same seed-zero family the walkthrough generates, byte for byte, into a new <code>readmit-sample</code> folder and opens it. <code>TestDesktopSampleWorkspaceIsByteIdenticalToTheCommandLineFamily</code> holds it to the command line's output. There is no screenshot of it yet; see <a href="limitations.html">limitations</a>.</p>
+
+  <h2>What the samples cannot show</h2>
+  <p>None of them touch a database, an integration engine, a vendor endpoint or a customer export, because readmit does not implement the first two and the samples must run anywhere with nothing but the executable. A sample against your own export directory is the <code>source collect</code> workflow with your paths, and the <a href="https://github.com/bharm16/readmit/blob/main/docs/source.md">source documentation</a> walks through it.</p>
+</main>
+<footer>
+  <p>Every claim on this page traces to <a href="https://github.com/bharm16/readmit/blob/main/site/CLAIMS.md">CLAIMS.md</a>. Full status: <a href="https://github.com/bharm16/readmit/blob/main/docs/support-matrix.md">support matrix</a>.</p>
+</footer>
+</body>
+</html>
