@@ -939,6 +939,28 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   within the budget is acknowledged however slow this sender's storage is, and a
   receiver that does not answer within it is still an uncertain delivery.
   `readmit-target/v3` gains no member and changes no byte.
+- `drift LEFT RIGHT` names which of four retained records differ between two
+  artifacts, and keeps them apart: the input that went in, the target
+  configuration it was sent to, the engine build and spec contract that
+  evaluated it, and the profile that evaluation named. Each is read from the one
+  record that carries it — a case identity and a run's declared replay
+  operators, the retained target record, and the `readmit-engine/v1` pin a
+  durable run keeps beside its plan — and each is reported with its own outcome.
+  A cause no side retained is `undeclared` and a cause the evidence does not
+  settle is `undecided`, with a named reason; neither is agreement. A profile
+  identity this release cannot resolve to content stays `undecided` rather than
+  becoming no drift, because no pack is extracted and no library is bundled, and
+  two equal unresolvable names are not established to be equal rules. A pin this
+  build does not read keeps its document fingerprint and is compared raw: the
+  same bytes are no drift, different bytes settle neither the environment nor
+  the rule. Any unsettled cause makes the whole attribution `undecided`, more
+  than one change names all of them and chooses none, and a single named change
+  is still not a claim that a verdict moved because of it. The receiving
+  application's own revision is always stated `unknown`. `readmit-drift/v1` is a
+  new document: `readmit-diff/v1`, `readmit-engine/v1`, `readmit-target/v1` and
+  the profile-version contracts gain no member and change no byte, and the field
+  comparison `readmit diff` produces is untouched. No address, path, field value
+  or message byte appears in a drift report.
 
 Download the archive for your OS and architecture and compare its SHA-256 with
 `checksums.txt` before extraction. Run `readmit inspect testdata/fixtures/adt-cr.hl7`

@@ -65,6 +65,7 @@ archives:
       - docs/redact.md
       - docs/reproducer.md
       - docs/diff.md
+      - docs/drift.md
       - docs/report.md
       - docs/support-matrix.md
 

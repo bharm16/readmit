@@ -73,6 +73,7 @@ DISTRIBUTION_FILES = (
     "testdata/fixtures/redact-policy-blocked.json",
     "testdata/fixtures/redact-inventory.json",
     "docs/diff.md",
+    "docs/drift.md",
     "docs/report.md",
     "docs/support-matrix.md",
     "testdata/fixtures/diff-before.mllp",

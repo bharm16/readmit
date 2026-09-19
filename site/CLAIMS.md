@@ -67,6 +67,7 @@ process, and its evidence is the file that establishes it.
 | Index | [docs/index.md](../docs/index.md) | `TestIndexRetainsNothingNobodyDeclared`, `TestIndexSearchAsksExactlyOneQuestion` |
 | Diagnose | [docs/diagnose.md](../docs/diagnose.md) | `TestDiagnoseExecutableWritesMatchingReportsAndPreservesCase`, `TestDiagnoseOutputCannotMutateInputBundle` |
 | Diff | [docs/diff.md](../docs/diff.md) | `TestDiffUnrelatedCollectionsRequireKeysAndNeverGuessCollisions`, `TestDiffTerminalAndMarkdownContainTheSameReport` |
+| Drift | [docs/drift.md](../docs/drift.md) | `TestDriftNamesTheOneChangedCauseAndNeverInventsTheOthers`, `TestDriftReportsUnretainedAndHalfRetainedCausesWithoutGuessing` |
 | Project, revisions and notes | [docs/project.md](../docs/project.md), [docs/project-lifecycle.md](../docs/project-lifecycle.md) | `TestProjectRecordsCaseMetadataAgainstVerifiedEvidence`, `TestProjectNotesAreEditableAndNeverReachEvidence` |
 | Backup | [docs/backup.md](../docs/backup.md) | `TestBackupReportsEvidenceItCouldNotVerify`, `TestBackupRefusesAnInterruptedBackup` |
 | Explicit offline upgrade check and rollback archive | [docs/upgrade.md](../docs/upgrade.md) | `TestUpgradeChecksAStagedCandidateWithoutRewritingEvidence`, `TestUpgradeRefusesADevelopmentPreviewAndPrintsThePlanAnyway`, `TestUpgradePrepareNeedsApprovalAndTakesAVerifiedRollbackPoint` |

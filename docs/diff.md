@@ -4,6 +4,11 @@
 or test-result directories. It reads no original paths recorded inside an
 artifact, makes no network connection, and leaves every input unchanged.
 
+Which fields differ is this report's answer. **Why** two sides differ — whether
+the input, the target, the environment or the rules drifted — is
+[`readmit drift`](drift.md), a separate report over the same artifacts that adds
+no member to this one and never replaces its raw comparison.
+
 ```sh
 readmit diff before.hl7 after.hl7
 readmit diff before.case after.case --key MSH-10 --ignore MSH-7

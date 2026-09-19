@@ -1,6 +1,6 @@
 # readmit
 
-Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `index`, `project`, `backup`, `secret`, `listen`, `collect`, `replay`, `test`, `diff`, `report`, `redact`, `synth`, `observe`, and `diagnose` are available. See the workflow guides below.
+Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `index`, `project`, `backup`, `secret`, `listen`, `collect`, `replay`, `test`, `diff`, `drift`, `report`, `redact`, `synth`, `observe`, and `diagnose` are available. See the workflow guides below.
 
 ```sh
 readmit inspect message.hl7
@@ -370,6 +370,20 @@ require explicit alignment keys. Ambiguities and inserted/missing occurrences st
 visible. Ignore selectors are scoped and listed in every report. Values are
 hidden unless `--show-values` is requested. See [field-aware comparison](docs/diff.md)
 for boundaries, selectors, alignment, and output options.
+
+`drift LEFT RIGHT` answers the question a comparison leaves behind: which of
+the four things that could have changed actually did. The input that went in,
+the target configuration it was sent to, the engine build and spec contract
+that evaluated it, and the profile that evaluation named are read from separate
+retained records and reported separately. A cause no side retained is
+`undeclared` and a cause the evidence cannot settle is `undecided`; neither is
+folded into agreement, a profile identity this release cannot resolve to
+content stays `undecided` rather than becoming "no drift", and any unsettled
+cause makes the whole attribution `undecided`. When more than one cause changed,
+all of them are named and none is chosen. The receiving application's own
+revision is always stated `unknown`, because readmit records the configuration a
+target was reached by and never the software answering at it. No address, path
+or value appears in the report. See [separating drift](docs/drift.md).
 
 `test SPEC --send --output NEW_RESULT_DIRECTORY` evaluates saved assertions over
 actual ACKs or the fixture's appointment ledger. Exit codes distinguish pass
