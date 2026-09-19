@@ -11,6 +11,7 @@ archives, with attribution and the original source revision in
 `docs/dictionary-provenance.md`. No nHapi runtime code is included.
 
 The desktop shell is a separate module and is not part of the release archives.
+Its native packages carry this file beside the application.
 Its executable contains Wails 2 (MIT) and its dependencies, recorded in
 `desktop/go.mod` and `desktop/go.sum`, and the bundled interface contains React
 and React DOM (MIT), recorded with their exact versions in
@@ -18,6 +19,7 @@ and React DOM (MIT), recorded with their exact versions in
 `licenses/`. Vite, TypeScript and the Vite React plugin build the interface and
 are not shipped inside it.
 
-GoReleaser and govulncheck are build/development tools, not application runtime
-dependencies. GitHub Actions attests only executable build outputs, never
-customer evidence.
+GoReleaser, WiX and govulncheck are build/development tools, not application
+runtime dependencies. WiX writes the Windows installer database and
+contributes no code to the application that database installs. GitHub Actions
+attests only executable and package build outputs, never customer evidence.

@@ -1,0 +1,592 @@
+"""Build and verify the native desktop packages, using only Python's standard library.
+
+The desktop shell is a separate module with a webview and cgo, so each package
+is built on the machine it targets from the executable that machine produced.
+Nothing here signs or notarizes anything: every package this tool writes is an
+unsigned development preview and its manifest records that as a value, not as a
+sentence someone has to read.
+
+The packages carry the same engine build identity the command-line archives
+carry, so an installed application and a release archive name one build.
+"""
+
+import argparse
+from contextlib import contextmanager
+import gzip
+import hashlib
+import io
+import json
+from pathlib import Path
+import platform
+import plistlib
+import shutil
+import subprocess
+import tarfile
+import tempfile
+
+
+DECLARATION_SCHEMA = "readmit-desktop-packaging/v1"
+MANIFEST_SCHEMA = "readmit-desktop-package/v1"
+MANIFEST_NAME = "manifest.json"
+BUNDLE_NAME = "readmit-desktop.app"
+NOTICES = "THIRD_PARTY_NOTICES.md"
+ROOT = Path(__file__).resolve().parent.parent
+DECLARATION = ROOT / "desktop" / "packaging" / "packages.json"
+WIX_SOURCE = ROOT / "desktop" / "packaging" / "readmit-desktop.wxs"
+
+DECLARATION_MEMBERS = (
+    "schema", "product", "display_name", "summary", "manufacturer", "maintainer",
+    "bundle_identifier", "upgrade_code", "minimum_macos_version",
+    "debian_dependencies", "webview2", "targets",
+)
+WEBVIEW2_MEMBERS = ("registry_key", "registry_value", "message")
+TARGET_MEMBERS = ("os", "arch", "package_architecture", "formats")
+MANIFEST_MEMBERS = ("schema", "version", "os", "arch", "signed_for_distribution", "packages")
+PACKAGE_MEMBERS = ("name", "format", "sha256")
+FORMATS = ("deb", "dmg", "pkg", "msi")
+# Microsoft Installer databases are OLE compound files; every other format this
+# tool writes is verified by reading its own members.
+COMPOUND_FILE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+
+
+class Refused(RuntimeError):
+    """A declaration, manifest or built package this tool will not stand behind."""
+
+
+def require_exact_members(document, expected, what):
+    """Accept every declared member and no other, so a later document is refused here."""
+    if not isinstance(document, dict):
+        raise Refused(f"{what} is not an object")
+    unknown = sorted(set(document) - set(expected))
+    if unknown:
+        raise Refused(f"{what} declares members this release does not read: {', '.join(unknown)}")
+    missing = sorted(set(expected) - set(document))
+    if missing:
+        raise Refused(f"{what} is missing: {', '.join(missing)}")
+    return document
+
+
+def read_declaration(path=DECLARATION):
+    """Read the packaging declaration: its version first, then its members."""
+    document = json.loads(path.read_bytes())
+    if not isinstance(document, dict) or document.get("schema") != DECLARATION_SCHEMA:
+        raise Refused(f"{path.name} does not declare {DECLARATION_SCHEMA}")
+    require_exact_members(document, DECLARATION_MEMBERS, path.name)
+    require_exact_members(document["webview2"], WEBVIEW2_MEMBERS, "webview2")
+    if not isinstance(document["targets"], list) or not document["targets"]:
+        raise Refused("the packaging declaration names the targets it packages")
+    if not isinstance(document["debian_dependencies"], list) or not document["debian_dependencies"]:
+        raise Refused("a .deb declares the platform libraries it needs")
+    for target in document["targets"]:
+        require_exact_members(target, TARGET_MEMBERS, "target")
+        unsupported = sorted(set(target["formats"]) - set(FORMATS))
+        if unsupported:
+            raise Refused(f"unsupported package formats: {', '.join(unsupported)}")
+    return document
+
+
+def select_target(declaration, target_os, arch):
+    for target in declaration["targets"]:
+        if (target["os"], target["arch"]) == (target_os, arch):
+            return target
+    raise Refused(f"no desktop package is declared for {target_os}/{arch}")
+
+
+def check_version(version):
+    """Accept the release identity every package format can carry verbatim."""
+    allowed = set("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.+~-")
+    if not version or version[0] not in "0123456789" or set(version) - allowed:
+        raise Refused(f"{version!r} is not a package version")
+    return version
+
+
+def numeric_version(version):
+    """The three-number prefix. An MSI ProductVersion and a CFBundleShortVersionString
+    carry no prerelease or build suffix, so the full identity is reported by the
+    executable itself and checked there rather than inferred from a package field."""
+    head = ""
+    for character in check_version(version):
+        if not character.isdigit() and character != ".":
+            break
+        head += character
+    parts = head.split(".")
+    if len(parts) != 3 or not all(part.isdigit() for part in parts):
+        raise Refused(f"{version!r} does not begin with a three-number version")
+    return ".".join(str(int(part)) for part in parts)
+
+
+def package_name(declaration, version, target, extension):
+    """One naming rule for every format, so a package is found by the same shape."""
+    return f"{declaration['product']}_{version}_{target['package_architecture']}.{extension}"
+
+
+def require_macos(what):
+    if platform.system() != "Darwin":
+        raise Refused(f"{what} is read with the macOS tools that wrote it, on macOS")
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def write_ar(path, members):
+    """Write the `ar` container a .deb is, with no build time or account in it."""
+    with path.open("wb") as archive:
+        archive.write(b"!<arch>\n")
+        for name, payload in members:
+            if len(name) > 16:
+                raise Refused(f"archive member name too long: {name}")
+            header = f"{name:<16}{0:<12}{0:<6}{0:<6}{'100644':<8}{len(payload):<10}".encode() + b"`\n"
+            assert len(header) == 60
+            archive.write(header)
+            archive.write(payload)
+            if len(payload) % 2:
+                archive.write(b"\n")
+
+
+def read_ar(path):
+    data = path.read_bytes()
+    if not data.startswith(b"!<arch>\n"):
+        raise Refused(f"{path.name} is not an ar archive")
+    members, offset = {}, 8
+    while offset + 60 <= len(data):
+        header = data[offset:offset + 60]
+        name = header[:16].decode().strip().rstrip("/")
+        size = int(header[48:58].decode().strip())
+        start = offset + 60
+        members[name] = data[start:start + size]
+        offset = start + size + (size % 2)
+    return members
+
+
+def tar_gz(entries):
+    """Pack files with a fixed time and owner, so the same inputs pack the same bytes."""
+    directories, packed = [], io.BytesIO()
+    for name, _, _ in entries:
+        parts = name.split("/")[:-1]
+        for index in range(2, len(parts) + 1):
+            directory = "/".join(parts[:index]) + "/"
+            if directory not in directories:
+                directories.append(directory)
+    with gzip.GzipFile(fileobj=packed, mode="wb", mtime=0) as compressed:
+        with tarfile.open(fileobj=compressed, mode="w", format=tarfile.GNU_FORMAT) as archive:
+            for directory in directories:
+                info = tarfile.TarInfo(directory)
+                info.type, info.mode, info.uname, info.gname = tarfile.DIRTYPE, 0o755, "root", "root"
+                archive.addfile(info)
+            for name, mode, payload in entries:
+                info = tarfile.TarInfo(name)
+                info.size, info.mode, info.uname, info.gname = len(payload), mode, "root", "root"
+                archive.addfile(info, io.BytesIO(payload))
+    return packed.getvalue()
+
+
+def read_tar_gz(payload):
+    with tarfile.open(fileobj=io.BytesIO(payload)) as archive:
+        return {
+            member.name.removeprefix("./"): (member.mode, archive.extractfile(member).read())
+            for member in archive.getmembers() if member.isfile()
+        }
+
+
+def desktop_entry(declaration):
+    return (
+        "[Desktop Entry]\n"
+        "Type=Application\n"
+        f"Name={declaration['display_name']}\n"
+        f"Comment={declaration['summary']}\n"
+        "Exec=/usr/bin/readmit-desktop\n"
+        "Terminal=false\n"
+        "Categories=Development;Utility;\n"
+    )
+
+
+def control_file(declaration, version, target, installed_size):
+    return (
+        f"Package: {declaration['product']}\n"
+        f"Version: {version}\n"
+        "Section: utils\n"
+        "Priority: optional\n"
+        f"Architecture: {target['package_architecture']}\n"
+        f"Depends: {', '.join(declaration['debian_dependencies'])}\n"
+        f"Installed-Size: {installed_size}\n"
+        f"Maintainer: {declaration['maintainer']}\n"
+        f"Description: {declaration['display_name']} desktop shell\n"
+        f" {declaration['summary']}.\n"
+        " The window reads evidence on this machine only. It contacts no network\n"
+        " service, reports no telemetry and checks for no update.\n"
+    )
+
+
+def build_deb(declaration, binary, notices, version, target, output):
+    payload = [
+        ("./usr/bin/readmit-desktop", 0o755, binary.read_bytes()),
+        ("./usr/share/applications/readmit-desktop.desktop", 0o644, desktop_entry(declaration).encode()),
+        (f"./usr/share/doc/{declaration['product']}/{NOTICES}", 0o644, notices),
+    ]
+    installed_size = max(1, sum(len(content) for _, _, content in payload) // 1024)
+    sums = "".join(
+        f"{hashlib.md5(content).hexdigest()}  {name.removeprefix('./')}\n" for name, _, content in payload
+    )
+    control = tar_gz([
+        ("./control", 0o644, control_file(declaration, version, target, installed_size).encode()),
+        ("./md5sums", 0o644, sums.encode()),
+    ])
+    name = package_name(declaration, version, target, "deb")
+    write_ar(output / name, [
+        ("debian-binary", b"2.0\n"),
+        ("control.tar.gz", control),
+        ("data.tar.gz", tar_gz(payload)),
+    ])
+    return [(name, "deb")]
+
+
+def application_bundle(declaration, binary, notices, version, output):
+    """Stage the .app both macOS packages carry. It is the payload, not a package."""
+    bundle = output / BUNDLE_NAME
+    (bundle / "Contents" / "MacOS").mkdir(parents=True)
+    (bundle / "Contents" / "Resources").mkdir(parents=True)
+    executable = bundle / "Contents" / "MacOS" / "readmit-desktop"
+    executable.write_bytes(binary.read_bytes())
+    executable.chmod(0o755)
+    (bundle / "Contents" / "Resources" / NOTICES).write_bytes(notices)
+    with (bundle / "Contents" / "Info.plist").open("wb") as plist:
+        plistlib.dump({
+            "CFBundleName": declaration["display_name"],
+            "CFBundleDisplayName": declaration["display_name"],
+            "CFBundleExecutable": "readmit-desktop",
+            "CFBundleIdentifier": declaration["bundle_identifier"],
+            "CFBundleInfoDictionaryVersion": "6.0",
+            "CFBundlePackageType": "APPL",
+            "CFBundleShortVersionString": numeric_version(version),
+            "CFBundleVersion": numeric_version(version),
+            "LSMinimumSystemVersion": declaration["minimum_macos_version"],
+            "NSHighResolutionCapable": True,
+            # The full release identity, which a three-number bundle version
+            # cannot hold. The executable reports the same string.
+            "ReadmitBuildIdentity": version,
+        }, plist)
+    return bundle
+
+
+def build_macos(declaration, binary, notices, version, target, output):
+    built, numeric = [], numeric_version(version)
+    with tempfile.TemporaryDirectory(prefix="readmit-desktop-package-") as directory:
+        # The bundle is staged where it is packaged from and nowhere else: the
+        # output directory holds packages and their manifest, so what is
+        # verified and uploaded is what an operator is handed.
+        staged = Path(directory) / "payload"
+        staged.mkdir()
+        application_bundle(declaration, binary, notices, version, staged)
+        if "dmg" in target["formats"]:
+            name = package_name(declaration, version, target, "dmg")
+            subprocess.run([
+                "hdiutil", "create", "-volname", declaration["display_name"],
+                "-srcfolder", str(staged), "-ov", "-format", "UDZO", str(output / name),
+            ], check=True, capture_output=True, timeout=600)
+            built.append((name, "dmg"))
+        if "pkg" in target["formats"]:
+            name = package_name(declaration, version, target, "pkg")
+            subprocess.run([
+                "pkgbuild", "--root", str(staged), "--identifier", declaration["bundle_identifier"],
+                "--version", numeric, "--install-location", "/Applications", str(output / name),
+            ], check=True, capture_output=True, timeout=600)
+            built.append((name, "pkg"))
+    return built
+
+
+def build_msi(declaration, binary, notices, version, target, output):
+    if shutil.which("wix") is None:
+        raise Refused("the WiX command-line tool is not installed; no MSI was built")
+    name = package_name(declaration, version, target, "msi")
+    with tempfile.TemporaryDirectory(prefix="readmit-desktop-package-") as directory:
+        staged = Path(directory)
+        (staged / "readmit-desktop.exe").write_bytes(binary.read_bytes())
+        (staged / NOTICES).write_bytes(notices)
+        subprocess.run([
+            "wix", "build", "-nologo", "-arch", target["package_architecture"],
+            "-d", f"Version={numeric_version(version)}",
+            "-d", f"DisplayName={declaration['display_name']}",
+            "-d", f"Manufacturer={declaration['manufacturer']}",
+            "-d", f"Summary={declaration['summary']}",
+            "-d", f"UpgradeCode={declaration['upgrade_code']}",
+            "-d", f"WebView2Key={declaration['webview2']['registry_key']}",
+            "-d", f"WebView2Value={declaration['webview2']['registry_value']}",
+            "-d", f"WebView2Message={declaration['webview2']['message']}",
+            "-d", f"BuildDir={staged}",
+            "-o", str(output / name), str(WIX_SOURCE),
+        ], check=True, capture_output=True, timeout=900)
+    return [(name, "msi")]
+
+
+def build(declaration, binary, version, target, output):
+    check_version(version)
+    if not binary.is_file():
+        raise Refused(f"{binary} is not a built desktop executable")
+    output.mkdir(parents=True, exist_ok=False)
+    notices = (ROOT / NOTICES).read_bytes()
+    built = []
+    if "deb" in target["formats"]:
+        built += build_deb(declaration, binary, notices, version, target, output)
+    if {"dmg", "pkg"} & set(target["formats"]):
+        built += build_macos(declaration, binary, notices, version, target, output)
+    if "msi" in target["formats"]:
+        built += build_msi(declaration, binary, notices, version, target, output)
+    manifest = {
+        "schema": MANIFEST_SCHEMA,
+        "version": version,
+        "os": target["os"],
+        "arch": target["arch"],
+        # No package this tool writes is signed for distribution or notarized.
+        # Apple silicon requires every executable to carry an ad-hoc signature,
+        # which the linker applies, so an arm64 build is signed in that weak
+        # sense and an Intel one is not signed at all; neither names a signing
+        # authority, and this member is about the one that does. A release that
+        # is signed records it here; nothing infers it from a file being present.
+        "signed_for_distribution": False,
+        "packages": [
+            {"name": name, "format": package_format, "sha256": digest(output / name)}
+            for name, package_format in built
+        ],
+    }
+    (output / MANIFEST_NAME).write_text(json.dumps(manifest, indent=2) + "\n")
+    print(f"BUILT: {len(built)} unsigned {target['os']}/{target['arch']} package(s) for {version}; none is signed for distribution")
+    return manifest
+
+
+def read_manifest(directory):
+    document = json.loads((directory / MANIFEST_NAME).read_bytes())
+    if not isinstance(document, dict) or document.get("schema") != MANIFEST_SCHEMA:
+        raise Refused(f"{MANIFEST_NAME} does not declare {MANIFEST_SCHEMA}")
+    require_exact_members(document, MANIFEST_MEMBERS, MANIFEST_NAME)
+    if not isinstance(document["packages"], list) or not document["packages"]:
+        raise Refused(f"{MANIFEST_NAME} lists no package")
+    for package in document["packages"]:
+        require_exact_members(package, PACKAGE_MEMBERS, "package")
+    return document
+
+
+def verify_deb(declaration, version, target, path):
+    members = read_ar(path)
+    if sorted(members) != ["control.tar.gz", "data.tar.gz", "debian-binary"]:
+        raise Refused(f"{path.name} does not hold the three members a .deb holds")
+    if members["debian-binary"] != b"2.0\n":
+        raise Refused(f"{path.name} declares an archive format this tool did not write")
+    control = read_tar_gz(members["control.tar.gz"])["control"][1].decode()
+    fields = dict(
+        line.split(": ", 1) for line in control.splitlines() if line and not line.startswith(" ")
+    )
+    for field, expected in (("Package", declaration["product"]), ("Version", version),
+                            ("Architecture", target["package_architecture"])):
+        if fields.get(field) != expected:
+            raise Refused(f"{path.name} declares {field} {fields.get(field)!r}, not {expected!r}")
+    declared = [dependency.strip() for dependency in fields.get("Depends", "").split(",")]
+    missing = [
+        dependency for dependency in declaration["debian_dependencies"] if dependency not in declared
+    ]
+    if missing:
+        raise Refused(f"{path.name} does not depend on {', '.join(missing)}")
+    data = read_tar_gz(members["data.tar.gz"])
+    executable = data.get("usr/bin/readmit-desktop")
+    if executable is None or not executable[0] & 0o111:
+        raise Refused(f"{path.name} does not install an executable at /usr/bin/readmit-desktop")
+    if "usr/share/applications/readmit-desktop.desktop" not in data:
+        raise Refused(f"{path.name} installs no application entry")
+
+
+@contextmanager
+def mounted(image):
+    """Attach a disk image read-only, off the desktop, and always detach it."""
+    with tempfile.TemporaryDirectory(prefix="readmit-desktop-verify-") as directory:
+        volume = Path(directory) / "volume"
+        volume.mkdir()
+        subprocess.run([
+            "hdiutil", "attach", "-nobrowse", "-readonly", "-mountpoint", str(volume), str(image),
+        ], check=True, capture_output=True, timeout=600)
+        try:
+            yield volume
+        finally:
+            # Detaching is cleanup, not a verification result: a refusal raised
+            # while the image was open must reach the caller as itself, and the
+            # image must not stay attached for the next run either way.
+            subprocess.run(
+                ["hdiutil", "detach", "-force", str(volume)], capture_output=True, timeout=600,
+            )
+
+
+def verify_disk_image(declaration, version, path):
+    """Read the application out of the image itself, not out of what built it."""
+    require_macos(path.name)
+    with mounted(path) as volume:
+        present = sorted(entry.name for entry in volume.iterdir() if not entry.name.startswith("."))
+        if present != [BUNDLE_NAME]:
+            raise Refused(f"{path.name} holds {', '.join(present) or 'nothing'}, not {BUNDLE_NAME}")
+        verify_bundle(declaration, version, volume / BUNDLE_NAME)
+
+
+def verify_installer_package(declaration, version, path):
+    """Expand the installer package and read what it would actually install."""
+    require_macos(path.name)
+    with tempfile.TemporaryDirectory(prefix="readmit-desktop-verify-") as directory:
+        expanded = Path(directory) / "expanded"
+        subprocess.run(
+            ["pkgutil", "--expand-full", str(path), str(expanded)],
+            check=True, capture_output=True, timeout=600,
+        )
+        information = (expanded / "PackageInfo").read_text()
+        for expected in (f'identifier="{declaration["bundle_identifier"]}"',
+                         f'version="{numeric_version(version)}"',
+                         'install-location="/Applications"'):
+            if expected not in information:
+                raise Refused(f"{path.name} does not declare {expected}")
+        verify_bundle(declaration, version, expanded / "Payload" / BUNDLE_NAME)
+
+
+def verify_installer_database(path):
+    """An MSI is an OLE compound file. Its own tables are read back by Windows
+    Installer during the installation test, which logs the WebView2 property the
+    launch condition searched for; nothing here decompiles the database."""
+    if path.read_bytes()[:8] != COMPOUND_FILE_MAGIC:
+        raise Refused(f"{path.name} is not an installer database")
+
+
+def distribution_authority(bundle):
+    """The signing authority a distribution signature names, or None.
+
+    Apple silicon requires every executable to carry at least an ad-hoc
+    signature, which the linker applies while linking, so `codesign` succeeds on
+    any arm64 build and fails on an unsigned Intel one. Neither names an
+    authority. A Developer ID signature reports one, and that is the difference
+    between a preview and something presented as signed for distribution.
+
+    The second `v` matters: at `-dv` codesign prints no Authority line at all,
+    even for a genuinely signed binary, so a check at that verbosity would pass
+    everything. It is read at `-dvv`, where an ad-hoc signature still reports
+    none and a real one reports its whole chain.
+    """
+    if platform.system() != "Darwin" or shutil.which("codesign") is None:
+        return None
+    reported = subprocess.run(
+        ["codesign", "-dvv", str(bundle)], capture_output=True, text=True, timeout=60,
+    )
+    for line in (reported.stdout + reported.stderr).splitlines():
+        if line.startswith("Authority="):
+            return line.removeprefix("Authority=")
+    return None
+
+
+def verify_bundle(declaration, version, bundle):
+    if not (bundle / "Contents" / "Info.plist").is_file():
+        raise Refused(f"{bundle.name} holds no Info.plist")
+    with (bundle / "Contents" / "Info.plist").open("rb") as plist:
+        information = plistlib.load(plist)
+    for key, expected in (("CFBundleIdentifier", declaration["bundle_identifier"]),
+                          ("CFBundleShortVersionString", numeric_version(version)),
+                          ("ReadmitBuildIdentity", version),
+                          ("LSMinimumSystemVersion", declaration["minimum_macos_version"])):
+        if information.get(key) != expected:
+            raise Refused(f"{BUNDLE_NAME} declares {key} {information.get(key)!r}, not {expected!r}")
+    executable = bundle / "Contents" / "MacOS" / "readmit-desktop"
+    if not executable.is_file() or not executable.stat().st_mode & 0o111:
+        raise Refused(f"{BUNDLE_NAME} holds no executable")
+    # Every manifest this tool verifies records the package as not signed for
+    # distribution, so a signing authority here contradicts what it claims.
+    authority = distribution_authority(bundle)
+    if authority is not None:
+        raise Refused(
+            f"{BUNDLE_NAME} is signed for distribution by {authority}, "
+            "and its manifest records that it is not"
+        )
+
+
+def verify(declaration, directory):
+    document = read_manifest(directory)
+    target = select_target(declaration, document["os"], document["arch"])
+    check_version(document["version"])
+    if document["signed_for_distribution"] is not False:
+        raise Refused("this tool signs nothing for distribution; a signed release records its signatures elsewhere")
+    built = {package["format"] for package in document["packages"]}
+    if built != set(target["formats"]):
+        raise Refused(
+            f"{document['os']}/{document['arch']} declares {sorted(target['formats'])}, "
+            f"and the manifest lists {sorted(built)}"
+        )
+    for package in document["packages"]:
+        path = directory / package["name"]
+        if "/" in package["name"] or "\\" in package["name"] or not path.is_file():
+            raise Refused(f"the manifest lists {package['name']}, which is not a package beside it")
+        if digest(path) != package["sha256"]:
+            raise Refused(f"{package['name']} does not match the checksum its manifest records")
+        if package["format"] == "deb":
+            verify_deb(declaration, document["version"], target, path)
+        elif package["format"] == "dmg":
+            verify_disk_image(declaration, document["version"], path)
+        elif package["format"] == "pkg":
+            verify_installer_package(declaration, document["version"], path)
+        elif package["format"] == "msi":
+            verify_installer_database(path)
+    print(
+        f"PASS: {len(document['packages'])} {document['os']}/{document['arch']} package(s) "
+        f"for {document['version']}, development preview not signed for distribution"
+    )
+    return document
+
+
+def reported_version(executable):
+    """Read the build identity an executable reports, without opening a window."""
+    result = subprocess.run(
+        [str(executable), "--version"], capture_output=True, text=True, timeout=60,
+    )
+    if result.returncode != 0:
+        raise Refused(f"{Path(executable).name} did not report a version: {result.stderr.strip()!r}")
+    reported = result.stdout.split()
+    if len(reported) != 3 or reported[1] != "version":
+        raise Refused(f"{Path(executable).name} reported {result.stdout.strip()!r}")
+    return reported[2]
+
+
+def identity(desktop, command_line):
+    """Both entry points are one engine build, so both report one identity."""
+    shell, released = reported_version(desktop), reported_version(command_line)
+    if shell != released:
+        raise Refused(
+            f"the desktop package reports engine {shell} and the command line reports {released}"
+        )
+    print(f"PASS: the packaged shell and the command line both report engine {shell}")
+    return shell
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--declaration", type=Path, default=DECLARATION)
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    packaging = commands.add_parser("build", help="build the native packages for this machine")
+    packaging.add_argument("--binary", type=Path, required=True)
+    packaging.add_argument("--version", required=True)
+    packaging.add_argument("--output", type=Path, required=True)
+    packaging.add_argument("--os", choices=["linux", "darwin", "windows"], required=True)
+    packaging.add_argument("--arch", choices=["amd64", "arm64"], required=True)
+
+    checking = commands.add_parser("verify", help="verify built packages against their manifest")
+    checking.add_argument("--packages", type=Path, required=True)
+
+    parity = commands.add_parser("identity", help="compare the engine identity of two executables")
+    parity.add_argument("--desktop", type=Path, required=True)
+    parity.add_argument("--command-line", type=Path, required=True)
+
+    args = parser.parse_args()
+    declaration = read_declaration(args.declaration)
+    if args.command == "build":
+        host = platform.system().lower()
+        if host != args.os:
+            raise Refused(f"a {args.os} package is built on {args.os}, not on {host}")
+        build(declaration, args.binary, args.version, select_target(declaration, args.os, args.arch), args.output)
+    elif args.command == "verify":
+        verify(declaration, args.packages)
+    else:
+        identity(args.desktop, args.command_line)
+
+
+if __name__ == "__main__":
+    main()

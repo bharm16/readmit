@@ -602,7 +602,16 @@ declare, resizable evidence and inspector panes, light and dark, and text from
 100% to 200%. Every status carries its own word and its own shape, so
 none of them is told apart by colour, and the window states what stays on this
 machine. It is a separate build with a webview requirement and is not included in
-the release archives. See [the desktop shell](docs/desktop.md).
+the command-line release archives: it is packaged as the platform's own
+installer — a `.deb` declaring its WebKitGTK dependencies, a `.dmg` and a
+managed-installation `.pkg`, and a per-machine `.msi` that refuses a machine
+without the WebView2 runtime — each built on the machine it targets and then
+installed, checked and removed there through that platform's own installer. No
+window is opened in that check: it runs the installed executable, which reports
+the same engine build as the command line of the same commit. Those packages are
+**development previews that are not signed for distribution** and are published
+nowhere. See [the desktop shell](docs/desktop.md) and
+[its native packages](docs/desktop.md#native-packages).
 
 ## Supported input
 
@@ -755,7 +764,13 @@ and checked on its own:
 ```sh
 cd desktop/frontend && npm ci && npm run build
 cd .. && go vet ./... && go build -o build/readmit-desktop .
+cd .. && python3 tools/package_desktop.py build --binary desktop/build/readmit-desktop \
+  --version 0.0.0+dev.local --output dist-desktop --os darwin --arch arm64
+python3 tools/package_desktop.py verify --packages dist-desktop
 ```
+
+On Linux the build needs `-tags webkit2_41` with `libgtk-3-dev` and
+`libwebkit2gtk-4.1-dev` installed.
 
 CI resolves the exact `toolchain` version from `go.mod` with
 `python3 tools/toolchain.py`, passes it explicitly to setup-go, and verifies the

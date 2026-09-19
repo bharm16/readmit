@@ -13,10 +13,13 @@ import (
 	"context"
 	"embed"
 	"errors"
+	"fmt"
 	"log"
+	"os"
 	"sync"
 
 	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/engine"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/logger"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -54,7 +57,27 @@ func (d *dialog) ChooseFolder(title string) (string, error) {
 	return runtime.OpenDirectoryDialog(ctx, runtime.OpenDialogOptions{Title: title})
 }
 
+// reportsVersion reports whether this invocation asks for the build identity
+// the shell was stamped with instead of a window. An installed application is
+// checked on a machine that has no terminal open and, in a packaging check, no
+// display at all, so the identity has to be answerable without creating one.
+func reportsVersion(arguments []string) bool {
+	for _, argument := range arguments {
+		if argument == "--version" || argument == "-version" {
+			return true
+		}
+	}
+	return false
+}
+
 func main() {
+	// The shell is stamped with the same engine identity as the command line,
+	// so an installed package and a release archive report one build rather
+	// than two. Answering it opens no window and reads no evidence.
+	if reportsVersion(os.Args[1:]) {
+		fmt.Printf("readmit-desktop version %s\n", engine.Version())
+		return
+	}
 	// The three files of local shell state, each named explicitly. None holds
 	// evidence: the folders opened recently, the filters this person saved, and
 	// the working session they have not stored, which is what the window

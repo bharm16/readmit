@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Windows installer for the desktop shell. It installs per machine, offers a
+  silent install for managed deployment (msiexec /i readmit-desktop.msi /qn) and
+  the matching silent removal, and refuses to install where the Microsoft Edge
+  WebView2 Runtime is absent rather than installing a window that cannot open.
+  Nothing here reaches a network: the runtime is a prerequisite an administrator
+  stages offline, named in the refusal message.
+
+  Every value that also appears in desktop/packaging/packages.json is passed in
+  by tools/package_desktop.py, so the declaration stays the one source of it.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="$(var.DisplayName)" Manufacturer="$(var.Manufacturer)"
+           Version="$(var.Version)" UpgradeCode="$(var.UpgradeCode)"
+           Scope="perMachine" Compressed="yes">
+    <SummaryInformation Description="$(var.Summary)" />
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="A newer version of $(var.DisplayName) is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Property Id="READMITWEBVIEW2" Secure="yes">
+      <RegistrySearch Id="WebView2Runtime" Root="HKLM" Key="$(var.WebView2Key)"
+                      Name="$(var.WebView2Value)" Type="raw" />
+    </Property>
+    <Launch Condition="Installed OR READMITWEBVIEW2" Message="$(var.WebView2Message)" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="$(var.DisplayName)" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <Feature Id="Main" Title="$(var.DisplayName)" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+    </Feature>
+
+    <ComponentGroup Id="ProductComponents">
+      <Component Directory="INSTALLFOLDER" Bitness="always64">
+        <File Id="ReadmitDesktopExecutable" Source="$(var.BuildDir)\readmit-desktop.exe" KeyPath="yes" />
+      </Component>
+      <Component Directory="INSTALLFOLDER" Bitness="always64">
+        <File Id="ReadmitThirdPartyNotices" Source="$(var.BuildDir)\THIRD_PARTY_NOTICES.md" KeyPath="yes" />
+      </Component>
+      <Component Directory="ProgramMenuFolder" Bitness="always64"
+                 Guid="7C4A1E52-2D93-4B8F-A6C1-5F0E8D7B3A44">
+        <Shortcut Id="ReadmitStartMenu" Name="$(var.DisplayName)"
+                  Target="[INSTALLFOLDER]readmit-desktop.exe" WorkingDirectory="INSTALLFOLDER" />
+        <RegistryValue Root="HKMU" Key="Software\readmit\desktop" Name="installed"
+                       Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+  </Package>
+</Wix>

@@ -1,10 +1,11 @@
 name: Desktop shell
 
-# The desktop shell is a separate Go module with cgo and a platform webview.
-# It is built here so the static command-line release in ci.yml keeps its own
-# build, its own dependency graph, and CGO_ENABLED=0. This workflow never
-# packages or publishes anything: the supported desktop platform matrix,
-# installation and signing are not decided by it.
+# The desktop shell is a separate Go module with cgo and a platform webview. It
+# is built here so the static command-line release in ci.yml keeps its own
+# build, its own dependency graph, and CGO_ENABLED=0. This workflow packages the
+# shell for the finite D5 target matrix and installs each package natively, and
+# it publishes nothing: every package it writes is an unsigned development
+# preview, and signing identities and credentials never reach it.
 
 on:
   pull_request:
@@ -25,7 +26,7 @@ env:
   GOTELEMETRY: 'off'
 
 jobs:
-  desktop:
+  desktop-shell:
     # macOS supplies a webview without extra system packages, so this job
     # exercises the real native build rather than a stub. The built window needs
     # a display, so it is not executed here; the behaviour behind it is
@@ -62,3 +63,185 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
           govulncheck ./...
+
+  # Native desktop packages for the finite target matrix. Each package is built
+  # on the machine it targets, from that machine's own build of the shell, and
+  # then installed, checked and removed through the platform's own installer.
+  # Every package here is an UNSIGNED development preview: no Developer ID
+  # signature, no notarization, no stapling, no Windows code signature. Signing
+  # identities and protected credentials are release inputs this workflow never
+  # sees, and nothing here publishes a package.
+  desktop-package:
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: linux, arch: amd64, runner: ubuntu-24.04}
+          - {os: linux, arch: arm64, runner: ubuntu-24.04-arm}
+          - {os: darwin, arch: amd64, runner: macos-15-intel}
+          - {os: darwin, arch: arm64, runner: macos-15}
+          - {os: windows, arch: amd64, runner: windows-2025}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-go
+        with:
+          cache-scope: desktop-package-${{ matrix.os }}-${{ matrix.arch }}
+          cache-dependency-path: '**/go.sum'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+      - name: Install the WebKitGTK development packages the .deb declares
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+      - name: Install the WiX command line that writes the installer database
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 6.0.1
+          "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+      - name: Name this build, which is a development preview and not a release
+        shell: bash
+        run: echo "READMIT_PREVIEW_VERSION=0.0.0+dev.${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+      - name: Build the embedded frontend from its lock file
+        working-directory: desktop/frontend
+        run: |
+          npm ci
+          npm run build
+      # One stamp for both entry points. The desktop shell and the command line
+      # are one engine build, so an installed package and an archive have to
+      # report one identity rather than two.
+      - name: Build the desktop shell for this target
+        working-directory: desktop
+        shell: bash
+        run: |
+          stamp="-X github.com/bharm16/readmit/internal/engine.version=$READMIT_PREVIEW_VERSION"
+          # Linux and macOS need cgo for the platform webview. The Windows
+          # webview binding is pure Go, so that runner keeps its own default.
+          case "${{ matrix.os }}" in
+            linux)   CGO_ENABLED=1 go build -tags webkit2_41 -trimpath -ldflags "$stamp" -o build/readmit-desktop . ;;
+            darwin)  CGO_ENABLED=1 go build -trimpath -ldflags "$stamp" -o build/readmit-desktop . ;;
+            # A window with no console attached still writes to a redirected
+            # standard output, which is how its identity is read back.
+            windows) go build -trimpath -ldflags "-H windowsgui $stamp" -o build/readmit-desktop.exe . ;;
+          esac
+      - name: Build the command line from the same commit and the same stamp
+        shell: bash
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          go build -trimpath \
+            -ldflags "-s -w -X github.com/bharm16/readmit/internal/engine.version=$READMIT_PREVIEW_VERSION" \
+            -o "build/readmit${{ matrix.os == 'windows' && '.exe' || '' }}" ./cmd/readmit
+      - name: Build and verify the native packages for this target
+        shell: bash
+        run: |
+          python3 tools/package_desktop.py build \
+            --binary "desktop/build/readmit-desktop${{ matrix.os == 'windows' && '.exe' || '' }}" \
+            --version "$READMIT_PREVIEW_VERSION" --output dist-desktop \
+            --os ${{ matrix.os }} --arch ${{ matrix.arch }}
+          python3 tools/package_desktop.py verify --packages dist-desktop
+      - name: Install, check and remove the .deb through the platform's own tools
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get install -y ./dist-desktop/readmit-desktop_*.deb
+          dpkg -s readmit-desktop | grep -q '^Status: install ok installed'
+          test -f /usr/share/applications/readmit-desktop.desktop
+          # Running the installed executable resolves every library it links
+          # against, so a wrong or missing declared dependency fails here. No
+          # window is opened: this runner has no display.
+          python3 tools/package_desktop.py identity \
+            --desktop /usr/bin/readmit-desktop --command-line build/readmit
+          sudo apt-get remove -y readmit-desktop
+          test ! -e /usr/bin/readmit-desktop
+      - name: Install, check and remove the macOS packages through their own tools
+        if: matrix.os == 'darwin'
+        run: |
+          # The disk image is what a person opens and drags across.
+          mkdir mounted
+          hdiutil attach -nobrowse -readonly -mountpoint mounted dist-desktop/*.dmg
+          cp -R mounted/readmit-desktop.app /Applications/
+          hdiutil detach mounted
+          python3 tools/package_desktop.py identity \
+            --desktop /Applications/readmit-desktop.app/Contents/MacOS/readmit-desktop \
+            --command-line build/readmit
+          rm -rf /Applications/readmit-desktop.app
+          # The installer package is what a managed installation runs.
+          sudo installer -pkg dist-desktop/*.pkg -target /
+          # A preview must not be mistaken for an application signed for
+          # distribution. Apple silicon requires every executable to carry an
+          # ad-hoc signature, which the linker applies, so codesign succeeds on
+          # any arm64 build; only a named signing authority marks a real one,
+          # and it is printed at -dvv and not at -dv.
+          reported=$(codesign -dvv /Applications/readmit-desktop.app 2>&1 || true)
+          if printf '%s\n' "$reported" | grep -q '^Authority='; then
+            echo "this preview is signed for distribution, which it was not built to be:" >&2
+            printf '%s\n' "$reported" | grep '^Authority=' >&2
+            exit 1
+          fi
+          python3 tools/package_desktop.py identity \
+            --desktop /Applications/readmit-desktop.app/Contents/MacOS/readmit-desktop \
+            --command-line build/readmit
+          sudo rm -rf /Applications/readmit-desktop.app
+          test ! -e /Applications/readmit-desktop.app
+      - name: Install, check and remove the MSI silently, as managed deployment does
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = (Get-ChildItem dist-desktop\*.msi).FullName
+          $installed = 'C:\Program Files\readmit\readmit-desktop.exe'
+          $install = Start-Process msiexec -ArgumentList "/i `"$installer`" /qn /norestart /l*v install.log" -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "silent install failed: $($install.ExitCode)" }
+          if (-not (Test-Path $installed)) { throw "the installer wrote no application" }
+          # Windows Installer read the database's own tables: the launch
+          # condition searched the registry for the WebView2 runtime, and the
+          # verbose log records the property it resolved.
+          if (-not (Select-String -Path install.log -Pattern 'READMITWEBVIEW2' -Quiet)) {
+            throw "the installer never evaluated the WebView2 prerequisite"
+          }
+          python tools\package_desktop.py identity --desktop "$installed" --command-line build\readmit.exe
+          $remove = Start-Process msiexec -ArgumentList "/x `"$installer`" /qn /norestart" -Wait -PassThru
+          if ($remove.ExitCode -ne 0) { throw "silent removal failed: $($remove.ExitCode)" }
+          if (Test-Path $installed) { throw "removal left the application behind" }
+      # Build provenance for the packages this run produced. It records which
+      # workflow built them from which commit; it is not a code signature and
+      # makes no claim that the packages are signed, notarized or published.
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: dist-desktop/readmit-desktop_*
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: desktop-preview-${{ matrix.os }}-${{ matrix.arch }}
+          if-no-files-found: error
+          path: |
+            dist-desktop/manifest.json
+            dist-desktop/readmit-desktop_*
+
+  # Keep one stable required context for this workflow, the way ci.yml keeps
+  # `quality`. A skipped, cancelled or failed prerequisite must fail this check,
+  # so no other worktree has to guess which desktop job names are mandatory.
+  desktop:
+    if: always()
+    needs: [desktop-shell, desktop-package]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require the shell build and every native package to succeed
+        env:
+          SHELL_RESULT: ${{ needs.desktop-shell.result }}
+          PACKAGE_RESULT: ${{ needs.desktop-package.result }}
+        run: |
+          test "$SHELL_RESULT" = success
+          test "$PACKAGE_RESULT" = success

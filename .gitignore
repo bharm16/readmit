@@ -1,5 +1,7 @@
 /bin/
+/build/
 /dist/
+/dist-desktop/
 /coverage.out
 /tools/__pycache__/
 /desktop/build/

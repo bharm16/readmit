@@ -20,8 +20,8 @@ its #109 system acceptance gates any such claim.
 | --- | --- |
 | Latest published archive | `v0.1.0-alpha.2`, a **GitHub prerelease built from commit `97ae7e6`** (2026-09-18). It contains `readmit inspect` only; every other command on this page landed on `main` afterwards and is not yet in a published archive. |
 | What `main` builds | Every workflow below. CI packages the five archives and runs each executable on its native runner on every push ([ci.yml](https://github.com/bharm16/readmit/blob/main/.github/workflows/ci.yml)), but only a `v*` tag publishes them. Tagging the next prerelease is an owner action. |
-| Signing | **Unsigned development preview.** No Apple Developer ID notarization, no Windows code signing. OS or endpoint policy may block execution. Signed installers are selected in [D5](product-decisions.md#d5--desktop-distribution-and-signing) and not delivered. |
-| Provenance | GitHub build provenance is attested for each published executable; verify with `gh attestation verify ./readmit --repo bharm16/readmit`. This is separate from OS code signing. |
+| Signing | **Unsigned development preview.** No Apple Developer ID notarization, no Windows code signing. OS or endpoint policy may block execution. The desktop packages below are built and installation-tested without any distribution signature; signed installers are selected in [D5](product-decisions.md#d5--desktop-distribution-and-signing) and not delivered. |
+| Provenance | GitHub build provenance is attested for each published executable; verify with `gh attestation verify ./readmit --repo bharm16/readmit`. Each desktop package a run builds is attested the same way, although no desktop package is published. This is separate from OS code signing. |
 | Checksums | `checksums.txt` (SHA-256) is published beside the archives and checked by [tools/smoke.py](https://github.com/bharm16/readmit/blob/main/tools/smoke.py) before publication. |
 | License terms | Not published. The repository carries [third-party notices](../THIRD_PARTY_NOTICES.md) and the `licenses/` texts; Readmit's own terms are an owner/counsel gate under [D8](product-decisions.md#d8--license-direction-seats-support-and-ownership). No open-source license is granted or implied by the absence of a file. |
 | Evaluation entitlement | Not available. `readmit license` verifies a v1 or v2 entitlement file offline; the 30-day trial, clock guard and billing of [D6](product-decisions.md#d6--evaluation-and-clock-policy) and [D7](product-decisions.md#d7--billing-and-entitlement-lifecycle) are not implemented. Every workflow below runs without an entitlement. |
@@ -37,8 +37,10 @@ its #109 system acceptance gates any such claim.
 | Linux kernel 3.2 or newer, arm64 | `linux_arm64` `.tar.gz` | Implemented; executed on `ubuntu-24.04-arm` in CI | same |
 | Windows 10 / Server 2016 or newer, x86-64 | `windows_amd64` `.zip` | Implemented; executed on `windows-2025` in CI | same |
 | Windows arm64 | none | Not available | [ADR-0001](adr/0001-go-single-binary-release-matrix.md) |
-| Desktop shell | not in any archive | Implemented as a separate Wails build, compiled and vetted on `macos-15` in CI only; no installer, no signed build, no Windows or Linux CI build | [desktop](desktop.md), [desktop.yml](https://github.com/bharm16/readmit/blob/main/.github/workflows/desktop.yml), `TestCommandLineReleaseNeverReachesTheDesktopShell` |
-| Installers (MSI, DMG, PKG, `.deb`) | none | Not available; selected in [D5](product-decisions.md#d5--desktop-distribution-and-signing) | — |
+| Desktop shell | not in any CLI archive | Implemented as a separate Wails build, compiled and vetted on `macos-15` in CI, and built natively on all five desktop targets to be packaged | [desktop](desktop.md), [desktop.yml](https://github.com/bharm16/readmit/blob/main/.github/workflows/desktop.yml), `TestCommandLineReleaseNeverReachesTheDesktopShell` |
+| Desktop packages (`.deb`, `.dmg`, `.pkg`, `.msi`) | separate desktop packages | **Development preview, not signed for distribution.** Built on each target runner and installed, checked and removed there through the platform's own installer on every push; the installed application reports the same engine build as the command line of the same commit. No window is opened on any target, because no runner has a display. No Developer ID signature, no notarization, no stapling, no Windows code signature, so Gatekeeper, SmartScreen or endpoint policy may refuse them; on Apple silicon the application carries only the ad-hoc signature the linker applies, which names no authority. Signed packages remain a [D5](product-decisions.md#d5--desktop-distribution-and-signing) release gate, and no package is published | [desktop packages](desktop.md#native-packages), [desktop.yml](https://github.com/bharm16/readmit/blob/main/.github/workflows/desktop.yml), `TestDesktopPackagesDeclareThePrerequisitesTheDocumentationPromises` |
+| Desktop OS/architecture matrix | Ubuntu 24.04 x86-64 and arm64, macOS Intel and Apple silicon, Windows x64 | Packages are built on those runners; the D5 validation targets (Windows 11 24H2/25H2, macOS 15/26) are not otherwise tested, and no managed or customer machine has installed one | [D5](product-decisions.md#d5--desktop-distribution-and-signing), [desktop packages](desktop.md#native-packages) |
+| Signed and notarized installers | none | Not available; selected in [D5](product-decisions.md#d5--desktop-distribution-and-signing) | — |
 
 The operating-system floors are Go's, and CI runs the archives on the current
 runner for each target rather than on every older release in the range.
@@ -122,8 +124,10 @@ The list is explicit so that nothing has to be inferred from silence.
 - Mirth Connect or Open Integration Engine export adapters.
 - An SSH or SFTP client inside readmit.
 - Collecting from an application interface declared as an evidence source.
-- Desktop installers, signed or notarized builds, Windows or Linux desktop
-  builds in CI, automatic updates.
+- Desktop packages signed for distribution or notarized, published desktop
+  packages, automatic updates, upgrade and rollback paths. The `.deb`, `.dmg`,
+  `.pkg` and `.msi` built in CI are development previews carrying no signing
+  authority, and are not released.
 - Evaluation trial, billing, seats, clock guard, activation or any online
   licensing service.
 - Screenshots of the desktop shell. The site shows none: they will be added
