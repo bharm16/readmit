@@ -76,6 +76,10 @@ func TestInstalledExecutableAndInterruptedRestore(t *testing.T) {
 		}
 	}
 	run("migrate")
+	run("-directory", backup, "verify-backup")
+	if err := exec.Command(binary, "-config", config, "-directory", filepath.Join(t.TempDir(), "missing"), "verify-backup").Run(); err == nil {
+		t.Fatal("verified missing backup")
+	}
 	// Enforce a real OS short-write boundary rather than mocking storage. The
 	// failed process must never publish a partial object under its final digest.
 	interrupted := exec.Command("/bin/sh", "-c", `ulimit -f 1; exec "$1" -config "$2" -directory "$3" restore`, "restore-test", binary, config, backup)

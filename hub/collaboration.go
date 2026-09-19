@@ -205,7 +205,7 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 		}
 		// Reviewers can comment with their existing approval scope, but cannot assign.
 		if c.Kind == "comment" {
-			if _, e := a.Authorize(r, project, "approval"); e == nil {
+			if _, e := s.authorize(a, r, project, "approval"); e == nil {
 				action = "approval"
 			}
 		}
@@ -213,7 +213,7 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 		http.Error(w, "method refused", 405)
 		return
 	}
-	principal, e := a.Authorize(r, project, action)
+	principal, e := s.authorize(a, r, project, action)
 	if e != nil {
 		http.Error(w, "access refused", 403)
 		return
@@ -226,7 +226,7 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 	defer s.mu.Unlock()
 	// Reauthorize after waiting for the write/backup lock so queued requests do not
 	// retain a grant that was revoked while another operation held the lock.
-	principal, e = a.Authorize(r, project, action)
+	principal, e = s.authorize(a, r, project, action)
 	if e != nil {
 		http.Error(w, "access refused", 403)
 		return

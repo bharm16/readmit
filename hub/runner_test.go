@@ -74,7 +74,13 @@ func TestCustomerRunnerActualTLSExecutionRevocationAndRecovery(t *testing.T) {
 	grants := runnerprotocol.Policy{Schema: "readmit-runner-policy/v1", Runners: []runnerprotocol.Grant{{Project: "alpha", Subject: "runner", Environment: "lab", Engine: "dev", Spec: "readmit-test/v1", Profile: "readmit-siu-v1", MaxSeconds: 30, MaxJobs: 2}}}
 	raw, _ := json.Marshal(grants)
 	os.WriteFile(runnerPolicy, raw, 0600)
-	store := new(hub.Store)
+	storeConfig := integrationConfig(t)
+	db := testDatabase(t, storeConfig)
+	reset(t, db)
+	store := open(t, storeConfig)
+	if e := store.Migrate(context.Background()); e != nil {
+		t.Fatal(e)
+	}
 	server := httptest.NewUnstartedServer(store.RunnerHandler(a, runnerPolicy))
 	server.TLS, _ = hc.TLS()
 	server.StartTLS()

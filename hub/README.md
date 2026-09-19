@@ -16,7 +16,7 @@ Only restoring a separate pre-team snapshot can return to operator-only mode.
 
 Team access uses signed access tokens from a customer's OIDC provider and local
 project assignments, or certificate-bound scoped API/runner tokens. Collaboration and
-review persistence remain #98; the legacy execution route refuses
+review persistence are available below; the legacy execution route refuses
 unsupported work even when a principal has the relevant permission. Customer-local
 runner admission is enabled separately with `-runner-policy`; see
 [runner operation](../docs/customer-runner.md). There is no
@@ -143,7 +143,8 @@ catalogue row before the bytes are durable. Retry verifies/adopts that object.
 Temporary upload files and unreferenced objects after a process kill are retained
 for administrator inspection; they are not served or copied into a backup.
 Monitor physical disk space separately from catalogued capacity. No automatic
-retention deletion or garbage collection is implemented.
+retention deletion or garbage collection is implemented; explicit logical retirement
+is described under lifecycle administration below.
 
 ## Backup, restore and upgrades
 
@@ -163,9 +164,10 @@ sudo systemctl start readmit-hub
 The destination must be a new directory outside artifact storage. Backup copies
 and verifies exactly the catalogue's objects, preserving their bytes, addresses,
 sizes and timestamps. `manifest.json` is written last and synchronized: without
-it the backup is incomplete. Its strict `readmit-hub-backup/v3` contract declares
-metadata version 4, the ordered object list, project-to-object links, authenticated
-review events and sticky team-mode state, bounded to a 64 MiB manifest.
+it the backup is incomplete. Its strict `readmit-hub-backup/v4` contract declares
+metadata version 5, the ordered object list, project-to-object links, authenticated
+review/lifecycle events and sticky team-mode state, bounded to a 128 MiB manifest.
+Existing v3 documents retain metadata version 4 and their 64 MiB bound.
 Existing v2 documents retain metadata version 3 and their 32 MiB bound. Existing `readmit-hub-backup/v1` documents retain their
 exact three-member contract, 16 MiB bound and metadata version 2; restoration still accepts
 them as unscoped operator objects. Unknown versions, duplicate
@@ -288,9 +290,8 @@ principal minted by the provider.
 | viewer | Evidence read |
 
 Action scope strings are `evidence.read`, `evidence.write`, `execution`,
-`approval`, `export`, `enrollment`, `admin`, and `ownership`. Admin/ownership
-permissions are reserved for future authenticated administration; they do not
-create an HTTP management API here. Approval authorization returns the verified
+`approval`, `export`, `enrollment`, `admin`, and `ownership`. Admin permissions authorize the lifecycle operations documented below; ownership
+transfer has no HTTP management API. Approval authorization returns the verified
 subject for future approval records; a caller-supplied subject cannot replace it.
 
 API and runner credentials are generated as 32 cryptographically random bytes
@@ -422,7 +423,7 @@ bound refuses the write rather than discarding history. Comments, names, search
 results and notification text can contain PHI: protect metadata and backups with
 the same customer controls as evidence; nothing goes to the vendor.
 
-Metadata migration 4 adds the append-only review table. New backups use
+Metadata migration 4 added the append-only review table and introduced
 `readmit-hub-backup/v3` with the v2 members plus required `reviews`, bounded to
 64 MiB, retaining exact authenticated events and immutable evidence links.
 Restore checks event order, parent links, release chains and artifact bytes before
@@ -432,3 +433,112 @@ is not a cryptographic audit signature. Access policy is still restored separate
 and current policy controls who can read restored histories. Synthetic isolated
 PostgreSQL tests do not establish a live customer IdP or deployment acceptance.
 The API is available now; desktop collaboration UI remains unimplemented.
+
+## Offline revisions and lifecycle administration
+
+`GET /v1/projects/P/lifecycle` returns strict
+`readmit-hub-lifecycle-history/v1`: `schema`, `head`, `events`, `tips`, and a
+local-custody `warning`. `tips` maps each resource identifier to its sorted
+unresolved revision IDs. The separate lifecycle head is independent of review
+history. This is an API workflow; desktop synchronization UI is not implemented.
+
+To work offline, download an authorized artifact and retain its lifecycle revision
+ID with your private working copy. Edit the copy without changing the original.
+When reconnecting, upload the complete edited bytes through the project artifact
+PUT route, fetch lifecycle history, and submit the following complete strict JSON
+file to `POST /v1/projects/P/lifecycle` (for example with curl's
+`--data-binary @revision.json` and the same customer mTLS/OIDC credentials):
+
+```json
+{"schema":"readmit-hub-lifecycle-command/v1","id":"edit-two","expected":1,"kind":"revision","resource":"case-one","artifact":"EDITED_BYTES_SHA256","parents":["edit-one"],"subject":"","until":"","reason":"Retained offline edit"}
+```
+
+Replace the digest placeholder with the uploaded object's exact lowercase SHA-256.
+All ten members are required, including empty members. The first revision has
+`parents: []`; later revisions name one existing revision of that resource.
+A resource is an explicit project-scoped identifier, not a filename or inferred
+case identity. Artifact bytes are opaque: revision registration does not validate
+an HL7 case or approve a test. Different engineers can extend the same old parent:
+the hub keeps both authenticated branches and exposes both tips. Neither replaces
+the other. `resolve` names **all** current tips in sorted `parents` (2–64 IDs)
+and an explicitly uploaded resolved artifact; partial, stale or foreign-resource
+resolutions are refused. Original bytes, author identities and parent links remain
+immutable. A revision that would create more than 64 unresolved tips is refused; resolve
+existing branches before adding another fork. Approved release bytes
+and #98 review history remain unchanged; approving a resolved test still requires
+a new review and the existing exact predecessor-release checks.
+
+Every write uses the current lifecycle `head` in `expected`. A 409 requires
+fetching the history and reconciling it before sending a new command; refreshing
+the head does not change the offline parent. Retry the same ID, exact command and
+authenticated actor after uncertain completion: it returns the original event
+with 200; first commit returns 201. Different content at the same ID returns 409.
+Unknown/null/omitted members, invalid kinds and unsorted/duplicate parents return
+400. Viewer, runner and API-token writes are refused. Revisions/resolutions require
+human OIDC `evidence.write`; all following administration requires human OIDC
+`admin`, and audit export additionally requires `export`.
+
+Administrative commands use the same schema with empty `resource` and `parents`:
+
+| Kind | Other populated fields | Effect |
+| --- | --- | --- |
+| `remove-user` | `subject` | Permanently denies that issuer/subject new requests in this project, including registered API/runner tokens. |
+| `retention` | `artifact`, RFC3339 `until` | Records a minimum retention deadline for an existing project object; later deadlines may extend but never shorten it. |
+| `retire` | `artifact` | After the recorded deadline, withdraws this project's object GET/PUT/export routes with 410; original bytes and links remain recoverable. |
+| `audit-export` | none | Appends an export event, then downloads the exact review and lifecycle prefixes committed at that event. |
+
+Each also requires `id`, `expected`, and a nonempty `reason`. Unused `artifact`,
+`subject` and `until` must be empty. Removal cannot target oneself or an owner;
+owner transfer/removal remains a separately controlled access-policy operation.
+Remove obsolete grants and token registrations from the external policy too.
+No HTTP operation grants access or reverses a removal. Previously admitted bounded
+requests may finish, and admitted runner leases expire within their existing
+10-second renewal bound. Reinstating the same subject needs a deliberately
+reviewed recovery/migration outside this preview; do not reuse identities.
+
+Retention never automatically expires or deletes evidence. Retirement is a
+logical access withdrawal, **not physical purge or secure erasure**: recovery
+bytes still count against storage capacity, remain in backups and may be linked
+by other projects. Existing review/revision links remain in immutable history.
+No command edits local downloads, other projects, snapshots or old backups.
+Downloaded copies remain under their recipient's local custody and cannot be
+revoked. Physical storage disposal and backup retention are customer operator
+responsibilities; this preview provides no purge command.
+
+`readmit-hub-lifecycle-event/v1` includes `schema`, `project`, `sequence`,
+`issuer`, `actor`, `at`, `review_head`, and the complete `command`. `review_head`
+is zero except for audit export, where it pins the review prefix. The exported
+`readmit-hub-audit/v1` contains `schema`, `project`, `lifecycle`, `review_head`,
+`reviews`, and `warning`. Retries reproduce the same prefixes even after later
+writes. Audit exports contain sensitive history and identity metadata, are raw
+customer-controlled exports rather than disclosure-reviewed packets, and have no
+cryptographic authenticity signature. No metadata or evidence goes to the vendor.
+At most 1,024 lifecycle events across the hub, 8 KiB per command and 2,048 UTF-8
+bytes per reason are accepted; exhausting capacity refuses rather than pruning
+history. GET history exposes all events only to currently authorized project readers.
+
+Migration 5 adds a separate append-only lifecycle table. New backups use
+`readmit-hub-backup/v4` (metadata 5, 128 MiB manifest bound), adding required
+`lifecycle` to v3. Existing v1/v2/v3 readers retain their exact versions, member
+sets and limits; no new authority is inferred from an older backup. Restore
+validates parent graphs, sequences, retirement deadlines, removal consistency,
+review prefixes, project links and every object's bytes before its metadata
+transaction commits. It preserves sticky team mode, revocations and retired
+objects. Access policies/certificates still require separate recovery and review;
+restoring a historical snapshot can restore historical authority, so review
+current removals before service restart.
+
+With the service stopped and its dedicated lease available, verify a retained
+backup without restoring it:
+
+```sh
+readmit-hub -config /etc/readmit-hub/config.json \
+  -directory /customer-backups/hub-2026-09-19 verify-backup
+```
+
+Success checks all declared bytes and metadata; missing/corrupt/incomplete data
+or cancellation fails. It proves integrity, not authenticity or a successful
+customer deployment drill. Use a separately provisioned empty database for the
+existing restore procedure and test project reads and removal denials before
+switching clients. Customer IdP, real retention policies and retained-data
+recovery drills remain owner acceptance work.

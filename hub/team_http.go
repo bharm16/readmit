@@ -49,6 +49,10 @@ func (s *Store) TeamHandler(access *Access) http.Handler {
 			return
 		}
 		project := parts[2]
+		if len(parts) == 4 && parts[3] == "lifecycle" {
+			s.lifecycleRequest(w, r, access, project)
+			return
+		}
 		if len(parts) == 4 && (parts[3] == "reviews" || parts[3] == "history" || parts[3] == "notifications") {
 			s.reviewRequest(w, r, access, project, parts[3])
 			return
@@ -94,7 +98,7 @@ func (s *Store) TeamHandler(access *Access) http.Handler {
 			http.Error(w, "method refused", 405)
 			return
 		}
-		principal, e := access.Authorize(r, project, action)
+		principal, e := s.authorize(access, r, project, action)
 		if e != nil {
 			http.Error(w, "access refused", 403)
 			return
@@ -118,6 +122,13 @@ func (s *Store) TeamHandler(access *Access) http.Handler {
 			return
 		}
 		d := parts[4]
+		if retired, e := s.retired(ctx, project, d); e != nil {
+			http.Error(w, "metadata unavailable", 503)
+			return
+		} else if retired {
+			http.Error(w, "artifact retired; recovery copy retained", 410)
+			return
+		}
 		if r.Method == "GET" {
 			var exists bool
 			if e := s.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM readmit_hub_project_artifacts WHERE project=$1 AND digest=$2)", project, d).Scan(&exists); e != nil {
@@ -128,6 +139,9 @@ func (s *Store) TeamHandler(access *Access) http.Handler {
 				http.NotFound(w, r)
 				return
 			}
+		}
+		if r.Method == "GET" {
+			w.Header().Set("Readmit-Custody-Warning", "Downloaded copies remain under local custody and cannot be revoked.")
 		}
 		if action == "export" {
 			w.Header().Set("Content-Disposition", `attachment; filename="artifact.bin"`)
