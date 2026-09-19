@@ -168,3 +168,97 @@ GitHub/Azure tenant, GUI suite authoring, remote runner submission or real hospi
 acceptance. Those installation, custody and external-system gates belong to the
 customer. Existing report disclosure approval remains necessary before exporting
 any detailed report; the CI aggregate is not such an approval.
+
+## Reviewed change gates and retained snapshots
+
+`readmit suite gate CURRENT --baseline BASELINE --policy gate-policy.json
+--policy-identity REVIEWED_SHA256 --output NEW_PRIVATE_DIRECTORY` is a separate
+post-execution change gate. Run it after `suite ci`; require both process exits
+in customer branch/environment protection. Run retention even when execution
+fails, but never replace the failed execution exit with a retention exit. This
+command never sends or retries. It reads durable journals and canonical results;
+a passing `ci.json`, JUnit file, or caller-provided boolean cannot authorize it.
+The runner service and direct CI CLI remain separate invocation paths.
+
+The strict `readmit-ci-gate-policy/v1` object has exactly these members:
+
+- `schema`: `readmit-ci-gate-policy/v1`.
+- `environment`, `revision_assumption`, `engine`: the exact declared environment,
+  operator-asserted target revision, and recorded execution build.
+- `promotion_identity`: full identity of the suite promotion retained by both
+  executions, binding the suite and exact released expectation references.
+- `coverage`: the complete existing `readmit-suite-coverage/v1` declaration,
+  including every generated specification pin, requirement and exclusion.
+- `baseline_results`: one `{ "job": "booking-one", "sha256": "FULL_RESULT_ID" }`
+  per expanded job, selecting the actual privately reviewed baseline results.
+- `max_bytes`: positive total private snapshot budget, at most 268435456 bytes
+  (256 MiB), including the final manifest and summary.
+- `retain_until`: explicit UTC RFC3339 end instant, for example
+  `2027-09-19T00:00:00Z`; no default or implicit deletion.
+- `approver`, `rationale`: bounded local review labels, not team authentication.
+
+Review the baseline's actual results, retained released expectations, promotion,
+coverage/quarantine declarations and retention deadline privately. Obtain its
+canonical policy identity with `readmit suite gate-policy gate-policy.json` and
+pin that identity independently in protected customer configuration. Do not
+compute and accept a new identity automatically during the execution pipeline.
+Changing any field needs a new review and selected identity. A local hash/label
+cannot authenticate a reviewer or protect against someone authorized to rewrite
+both policy and its trusted pin. Customer hub roles and pipeline protections
+remain the authorization boundary.
+
+The gate also reconstructs every promotion job commitment from retained inputs.
+The current durable-run contract does not retain credential registrations, so
+credential-bearing runs report unknown rather than consulting a mutable live
+credential store or claiming that approval was verified. Supporting their offline
+approval reconstruction requires a future explicit retained contract.
+
+Both suites must retain complete reports, verified passing durable runs, exact
+released expectations, the pinned promotion and the same compiled specifications
+and retained input/target/engine/profile configuration. Every job's actual
+assertion definition and observed outcome is compared to the pinned baseline;
+changed observations fail even if both individual assertions passed. Unknown
+configuration or changed definitions refuse rather than pretending to establish
+regression equivalence. This deliberately implements an unchanged-behavior gate;
+a deliberate baseline change needs review and a newly selected policy, not an
+ignore override. Collector errors, uncertain journals, skipped required tests,
+missing evidence, uncovered requirements and all exclusions prevent a pass.
+Expired quarantine does not silently restore eligibility. An ACK-only test still
+proves only its declared ACK boundary, never downstream state.
+
+The new directory copies both suite trees, their raw evidence, policies, released
+expectations, engine records, journals, and configuration bytes with private
+permissions. Each input tree is bounded to 256 MiB and 100,000 entries; symlinks
+and special files refuse. The final snapshot, including both trees and final metadata, must fit the
+policy's `max_bytes` budget and the entry limit. Inspection evaluates only the copied bytes, then a
+`readmit-ci-retention/v1` manifest commits their relative names, lengths and
+SHA-256 hashes together with the policy identity and assessment instant.
+Existing artifacts gain no members and original evidence is never modified.
+An interruption leaves an incomplete directory without a valid manifest;
+retain it for private diagnosis and choose a new destination rather than retrying
+into it. Nothing deletes an incomplete or expired snapshot.
+
+`readmit suite verify-gate RETAINED --policy-identity REVIEWED_SHA256` verifies
+all retained bytes and repeats assessment at the original instant, without the
+original suite/case/target/credential files. It checks retention expiry against
+the current clock. This reproduces the evidence assessment, **not a network
+rerun or a full copy of unsent source cases**. The retained intended payloads,
+responses and observations remain evidence of what was attempted. A manifest
+is corruption detection, not a signature, WORM storage or proof against an actor
+who can rewrite all evidence; customer storage and backup controls must preserve
+these bytes through agent loss and satisfy the retention commitment. The local
+clock and target revision are operator assumptions, not independent attestation.
+
+Both commands print only `readmit-ci-gate/v1`: `schema`, `state` (`passed`,
+`failed`, `unknown`), `exit_code` (0, 1, 2 respectively), `approval`, `pins`,
+`coverage`, `baseline` (`passed`, `failed`, `unknown`), `retention` (`retained`,
+`expired`, `unknown`), and `target_revision` (`operator_asserted`, `unknown`).
+A missing/corrupt record, pin mismatch, cancellation or unsupported comparison
+is unknown with exit 2; known rejected coverage or behavioral change fails with
+exit 1. Unknown components can remain in a failed summary when assessment stops
+at a proven failure. Only a complete retained assessment passes. `gate.json`
+is this derived summary; verification recomputes it and never trusts it.
+No raw snapshots, manifests, policies, approval labels or hashes belong in public
+CI logs or hosted artifact uploads. Only synthetic or explicitly authorized data
+may enter hosted CI. Real provider protection, customer custody/backup recovery,
+approved accounts and external-system acceptance remain installation gates.

@@ -9,6 +9,10 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   send only explicitly approved fixed summaries. Artifact-only backups refuse
   initialized scheduling deployments rather than omit durable claims.
 
+- Reviewed CI change gates compare pinned baseline results, released expectations,
+  coverage and execution pins, then retain private snapshots for offline
+  reassessment. Unknown evidence and expired retention never pass.
+
 - Desktop install checks download exact preview packages onto fresh native
   runners, verify installed license/source material and the expected engine with
   empty PATH, and retain synthetic evidence/state across removal. Signed release
