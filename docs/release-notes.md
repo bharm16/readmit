@@ -1,5 +1,10 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Reusable regression suites bind templates and typed data rows to named sites
+  and environments, retain tags/owners, check sequence, and execute setup
+  dependencies through the durable scheduler. Skips never count as passes;
+  cancellation preserves uncertain delivery for read-only recovery.
+
 - Desktop canonical test import, full-document editing and new-file export retain
   all supported v1 clauses and exact reviewed bytes. The shared CLI reader
   rejects unsupported schemas/operators; desktop and CLI verdict parity is
