@@ -245,7 +245,7 @@ Customer execution: [enrollment, leases, runner service and updates](customer-ru
 
 Managed deployment: [silent installation, offline dependencies and activation](managed-installation.md).
 
-Saved suites in customer CI: [headless execution and private CI gates](customer-ci.md).
+Saved suites in customer CI: [headless execution, reviewed change gates and retained evidence](customer-ci.md).
 
 Organization contacts, invoice references, assignment transfers and support scope
 use the local vendor [commercial administration](commercial-administration.md) API.

@@ -85,7 +85,7 @@ func suiteCommand(ran *bool) *cobra.Command {
 		}
 		command.AddCommand(child)
 	}
-	command.AddCommand(suiteCICommand(ran), suiteCoverageCommand(ran), suitePromotionCommand(ran, false), suitePromotionCommand(ran, true))
+	command.AddCommand(suiteGatePolicyCommand(ran), suiteGateCommand(ran, false), suiteGateCommand(ran, true), suiteCICommand(ran), suiteCoverageCommand(ran), suitePromotionCommand(ran, false), suitePromotionCommand(ran, true))
 	return command
 }
 
