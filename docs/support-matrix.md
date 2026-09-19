@@ -60,6 +60,7 @@ runner for each target rather than on every older release in the range.
 | Interface investigation project beside evidence | `project init/add/update/show` | Implemented | [project](project.md) | `TestProjectRecordsCaseMetadataAgainstVerifiedEvidence` |
 | Revisions, notes and drafts kept apart from evidence | `project revise`, `project note` | Implemented | [project lifecycle](project-lifecycle.md) | `TestProjectLifecyclePublicWorkflow` |
 | Verified backup and restore of a project | `backup create/verify/restore` | Implemented | [backup](backup.md) | `TestBackupRestoresAProjectElsewhereAndRebuildsItsIndex` |
+| Explicit offline upgrade check and rollback archive | `upgrade check`, `upgrade prepare` | Implemented as a `readmit-upgrade-plan/v1` review over a staged `readmit-desktop-package/v1` candidate and the projects and runs a machine holds; it installs nothing, opens no network connection, and **refuses every candidate built here** because each records that it is not signed for distribution | [upgrading](upgrade.md) | `TestUpgradeChecksAStagedCandidateWithoutRewritingEvidence`, `TestUpgradeRefusesADevelopmentPreviewAndPrintsThePlanAnyway`, `TestUpgradePrepareNeedsApprovalAndTakesAVerifiedRollbackPoint` |
 | Offline organization entitlement | `license verify/import/show/renew/export/release`, `license runner init/admit/renew/release/reconcile/show` | Implemented (v1 device-bound and v2 named-author/runner-admission contracts; no trial policy, no clock guard) | [license](license.md) | `TestLicenseVerifiesAReceivedEntitlementLocally`, `TestLicenseVerificationHasNoNetworkDependency`, `TestLicenseVerifiesAV2EntitlementByNamedAuthor`, `TestLicenseRunnerAdmitsReleasesAndReconciles` |
 | Credential references, never values | `secret add/show/rotate/scan` | Implemented | [secret](secret.md) | `TestSecretReferencesAreEditedWithoutEverRenderingACredential` |
 | Encrypted transfer packages under a referenced key | `protect register/pack/open/inspect/rotate/retire/discard` | Implemented | [protect](protect.md) | `TestProtectPacksAndOpensEvidenceWithoutRewritingIt` |
@@ -125,9 +126,12 @@ The list is explicit so that nothing has to be inferred from silence.
 - An SSH or SFTP client inside readmit.
 - Collecting from an application interface declared as an evidence source.
 - Desktop packages signed for distribution or notarized, published desktop
-  packages, automatic updates, upgrade and rollback paths. The `.deb`, `.dmg`,
-  `.pkg` and `.msi` built in CI are development previews carrying no signing
-  authority, and are not released.
+  packages, automatic updates, and any in-place upgrade or rollback of an
+  installed application. The `.deb`, `.dmg`, `.pkg` and `.msi` built in CI are
+  development previews carrying no signing authority, and are not released.
+  The explicit offline update check, compatibility review and rollback archive
+  are implemented and refuse every such preview; see
+  [upgrading](upgrade.md).
 - Evaluation trial, billing, seats, clock guard, activation or any online
   licensing service.
 - Screenshots of the desktop shell. The site shows none: they will be added

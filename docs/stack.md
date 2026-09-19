@@ -25,7 +25,7 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
 
 ## CLI
 
-- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `corpus`, `project`, `backup`, `license`, `secret`, `protect`, `target`, `source`, `listen`, `replay`, `test`, `observe`, `explain`, `diff`, `diagnose`, `correlate`, `synth`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
+- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `corpus`, `project`, `backup`, `upgrade`, `license`, `secret`, `protect`, `target`, `source`, `listen`, `replay`, `test`, `observe`, `explain`, `diff`, `diagnose`, `correlate`, `synth`, `redact`, `report`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
 - Command data goes to stdout, diagnostics to stderr. Machine-readable modes never interleave progress output with JSON.
 - Target configuration is read from explicitly selected files, not hidden global config or environment-variable precedence.
 - Credentials are referenced, never held. A `readmit-secrets/v1` document registers the store kind an operator declared, the single purpose and endpoint address a credential may be bound to, the absolute path of the program that reads it back, and the recorded rotation. The purposes are `mllp-endpoint` and `source-endpoint`; a reference registered for one is refused wherever the other is needed. No command accepts a credential value, and a resolved value masks itself under every formatting verb and refuses to be serialized. See [credential references](secret.md).
@@ -371,7 +371,9 @@ Two Go modules. `github.com/bharm16/readmit` holds the engine and produces the r
 
 - `log/slog` with an allowlist of fields: run ID, operation, duration, counts, error class, completion state.
 - Never raw message content, source filenames, or identifiers by default. Evidence lives in bundles; logs do not duplicate it.
-- No telemetry, crash reporting, or update checks.
+- No telemetry, crash reporting, or automatic update check. `upgrade check`
+  is an explicit one an operator runs over a candidate directory somebody
+  already staged: it contacts no service and opens no network connection.
 
 ## Testing and quality
 
