@@ -393,6 +393,9 @@ or value appears in the report. See [separating drift](docs/drift.md).
 `baseline approve` records a local approver and rationale in a new immutable
 revision. The desktop inspector exposes the same review and approval flow.
 Passing tests never promote themselves. See [regression baselines](docs/baseline.md).
+Release test versions with exact profile pins and assess suite impact through
+[`expectation review`, `release`, `show` and `impact`](docs/expectations.md).
+Suites can verify every template with an explicit `--releases` reference file.
 The desktop [execution comparison](docs/desktop.md#comparing-retained-executions)
 separates assertion behavior from configuration drift, keeps every selected
 retained failure visible, and reports unknown revisions and observation gaps.

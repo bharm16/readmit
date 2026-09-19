@@ -86,3 +86,7 @@ execution nor enforce team approval admission. Other specification contracts,
 profile pins, normalization-policy pins and automatic known-good artifact
 snapshots are unsupported here. All existing spec, result and evidence formats
 remain unchanged.
+
+For released test versions with profile pins, suite admission and impact, use
+[released expectations](expectations.md). The desktop panel has a separate release
+mode; plain baseline documents and their approval meaning remain unchanged.

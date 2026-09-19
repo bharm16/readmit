@@ -98,6 +98,7 @@ REQUIRED_FILES = {
     "docs/drift.md",
     "docs/normalize.md",
     "docs/baseline.md",
+    "docs/expectations.md",
     "docs/report.md",
     "docs/support-matrix.md",
     "testdata/fixtures/diff-before.mllp",

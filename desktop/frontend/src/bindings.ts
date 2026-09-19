@@ -1911,6 +1911,7 @@ export function openReview(request: ReviewRequest): Promise<ReviewResult> {
 }
 
 export interface BaselineRequest {
+ release?: boolean; release_id?: string; profiles?: string[];
   workspace: string; spec: string; previous: string; show_values: boolean;
   review: string; approver: string; rationale: string; output: string;
 }

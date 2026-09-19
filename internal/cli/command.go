@@ -88,6 +88,7 @@ func Execute(version string, args []string, stdout, stderr io.Writer) error {
 	root.AddCommand(driftCommand(&ran))
 	root.AddCommand(normalizeCommand(&ran))
 	root.AddCommand(baselineCommand(&ran))
+	root.AddCommand(expectationCommand(&ran))
 	root.AddCommand(reportCommand(&ran))
 	root.SetArgs(args)
 	selected, err := root.ExecuteC()

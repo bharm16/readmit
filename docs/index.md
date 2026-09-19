@@ -237,4 +237,8 @@ Customer-hosted deployment: [artifact hub installation and recovery](../hub/READ
 desktop: behavior, drift, approval binding, retained failures and flakiness limits.
 
 - [Reusable regression suites](suites.md): templates, data tables, environment bindings, setup order and durable execution.
+
 Customer execution: [enrollment, leases, runner service and updates](customer-runner.md).
+
+
+- [Released behavioral expectations](expectations.md): exact test revisions, profile pins, local review and suite impact.

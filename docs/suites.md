@@ -129,9 +129,13 @@ use lowercase letters, digits and hyphens, begin with a letter, and are at most
 64 bytes; each combined `TEST-ROW` job ID also respects 64 bytes. Parallelism
 is 1–16. Bounds refuse rather than truncate.
 
+For released templates, `--releases` verifies exact approval identities, refuses
+changed row expectations and retains approval records; see
+[released expectations](expectations.md). Ordinary suites make no approval claim.
+
 This release executes v1 ACK and fixture-ledger specs through the established
 loopback-only durable run path. It adds no remote authorization policy, new
-adapter, desktop suite editor, approval, immutable revision history, quarantine,
+adapter, desktop suite editor, team approval, quarantine,
 coverage percentage, selection rule or scheduling daemon. Those are separate
 deliveries. A site label is not an environment approval. Profile support remains
 what the underlying spec and evaluator declare; these suites certify no broader
