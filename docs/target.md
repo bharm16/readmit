@@ -83,7 +83,7 @@ the member as it was. Passing `""` clears an optional member.
 | `--client-certificate` | `client_certificate` | PEM certificate chain this environment presents. Requires `tls` and a credential reference. |
 | `--secrets` / `--credential` | `credential` | The [secret reference document](secret.md) and the reference in it naming the client certificate's private key. |
 | `--connect-timeout` | `connect_timeout` | Bounds dialling and TLS setup together. Default `2s`. |
-| `--message-timeout` | `message_timeout` | Bounds one message and its acknowledgement. Default `5s`. |
+| `--message-timeout` | `message_timeout` | Bounds one message and its acknowledgement on the network. Default `5s`. |
 | `--max-ack-bytes` | `max_ack_bytes` | 1 to 1048576. Default `65536`. |
 
 `set` records `readmit-target/v3`. A file that declares `readmit-target/v1` or
