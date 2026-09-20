@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"errors"
-
 	"github.com/bharm16/readmit/internal/correlate"
 	"github.com/spf13/cobra"
 )
@@ -14,12 +12,6 @@ func correlateCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if rulesPath == "" {
 				return usage("correlate requires --rules naming a readmit-correlation-rules/v1 document")
-			}
-			if format != "terminal" && format != "json" {
-				return usage("correlate format must be terminal or json")
-			}
-			if cmd.Flags().Changed("output") && output == "" {
-				return usage("correlate output must name a new file")
 			}
 			declared, err := readInputFile(rulesPath, correlate.MaxRulesBytes)
 			if err != nil {
@@ -33,24 +25,8 @@ func correlateCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			data := correlate.Terminal(report)
-			if format == "json" {
-				if data, err = correlate.JSON(report); err != nil {
-					return err
-				}
-			}
-			if err := checkRendered(data); err != nil {
-				return err
-			}
-			if output != "" {
-				return writeNewFile(output, data,
-					"cannot create correlation output; destination must be new and outside the case",
-					"cannot write correlation output")
-			}
-			if _, err := cmd.OutOrStdout().Write(data); err != nil {
-				return errors.New("cannot write correlation output")
-			}
-			return nil
+			return writeTerminalOrJSON(cmd, format, output, "correlate", "correlation output",
+				correlate.Terminal(report), func() ([]byte, error) { return correlate.JSON(report) })
 		},
 	}
 	cmd.Flags().StringVar(&rulesPath, "rules", "", "Declared readmit-correlation-rules/v1 document (required; there is no default rule set)")

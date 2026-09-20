@@ -159,18 +159,13 @@ func writeSummary(cmd *cobra.Command, result durablerun.Summary) error {
 // printRun writes the summary, then reports a storage failure the run stopped
 // on, so a full disk is named rather than folded into the run's state.
 func printRun(cmd *cobra.Command, result durablerun.Summary, asJSON bool, problem error) error {
-	var err error
-	if asJSON {
-		err = writeJSON(cmd, result)
-	} else {
-		err = writeSummary(cmd, result)
-	}
+	err := writeReport(cmd, asJSON, result, func(c *cobra.Command) error { return writeSummary(c, result) }, "cannot write durable run summary")
 	return runStatus(result, err, problem)
 }
 
 func runStatus(result durablerun.Summary, err, problem error) error {
 	if err != nil {
-		return &ExitError{Code: 2, Err: errors.New("cannot write durable run summary")}
+		return &ExitError{Code: 2, Err: err}
 	}
 	if problem != nil {
 		return &ExitError{Code: 2, Err: problem}
@@ -209,82 +204,80 @@ func printEngine(cmd *cobra.Command, job string, asJSON bool) error {
 }
 
 func printRecovery(cmd *cobra.Command, result durablerun.Recovery, asJSON bool) error {
-	var err error
-	if asJSON {
-		err = writeJSON(cmd, result)
-	} else {
-		err = writeSummary(cmd, result.Run)
-		if err == nil {
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Completion recorded: %t\nOccurrences: %d acknowledged, %d uncertain, %d not attempted\nLease: %s\nSafe to repeat: %t\n", result.Terminal, result.Acknowledged, result.Uncertain, result.NotAttempted, result.Lease, result.SafeToRepeat)
-		}
-		if err == nil && result.ResumeRefusal != "" {
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Resume refused: %s\n", result.ResumeRefusal)
-		}
-	}
+	err := writeReport(cmd, asJSON, result, func(c *cobra.Command) error { return writeRecoverySummary(c, result) }, "cannot write durable run recovery")
 	return runStatus(result.Run, err, nil)
 }
 
-func printResume(cmd *cobra.Command, result durablerun.Resumption, asJSON bool, problem error) error {
-	var err error
-	if asJSON {
-		err = writeJSON(cmd, result)
-	} else {
-		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Resumed from: %s\nRepeated never-attempted occurrences: %d\n", result.ResumedFrom, result.Repeated)
-		if err == nil {
-			err = writeSummary(cmd, result.Run)
+func writeRecoverySummary(cmd *cobra.Command, result durablerun.Recovery) error {
+	if err := writeSummary(cmd, result.Run); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Completion recorded: %t\nOccurrences: %d acknowledged, %d uncertain, %d not attempted\nLease: %s\nSafe to repeat: %t\n", result.Terminal, result.Acknowledged, result.Uncertain, result.NotAttempted, result.Lease, result.SafeToRepeat); err != nil {
+		return err
+	}
+	if result.ResumeRefusal != "" {
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Resume refused: %s\n", result.ResumeRefusal); err != nil {
+			return err
 		}
 	}
+	return nil
+}
+
+func printResume(cmd *cobra.Command, result durablerun.Resumption, asJSON bool, problem error) error {
+	err := writeReport(cmd, asJSON, result, func(c *cobra.Command) error { return writeResumeSummary(c, result) }, "cannot write durable run resume report")
 	return runStatus(result.Run, err, problem)
 }
 
+func writeResumeSummary(cmd *cobra.Command, result durablerun.Resumption) error {
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Resumed from: %s\nRepeated never-attempted occurrences: %d\n", result.ResumedFrom, result.Repeated); err != nil {
+		return err
+	}
+	return writeSummary(cmd, result.Run)
+}
+
 func printCleanup(cmd *cobra.Command, result durablerun.Cleanup, asJSON bool) error {
-	var err error
-	if asJSON {
-		err = writeJSON(cmd, result)
-	} else {
-		removed := "nothing"
-		if len(result.Removed) > 0 {
-			removed = strings.Join(result.Removed, ", ")
-		}
-		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Run state: %s\nRemoved: %s\nRetained: %s\n", result.Run.State, removed, strings.Join(result.Retained, ", "))
+	return writeReport(cmd, asJSON, result, func(c *cobra.Command) error { return writeCleanupSummary(c, result) }, "cannot write durable run cleanup")
+}
+
+func writeCleanupSummary(cmd *cobra.Command, result durablerun.Cleanup) error {
+	removed := "nothing"
+	if len(result.Removed) > 0 {
+		removed = strings.Join(result.Removed, ", ")
 	}
-	if err != nil {
-		return &ExitError{Code: 2, Err: errors.New("cannot write durable run cleanup")}
-	}
-	return nil
+	_, err := fmt.Fprintf(cmd.OutOrStdout(), "Run state: %s\nRemoved: %s\nRetained: %s\n", result.Run.State, removed, strings.Join(result.Retained, ", "))
+	return err
 }
 
 // printQueue writes the queue's own report. A job's line names the queue's
 // decision, the state of the run when one executed, and the resource the job
 // waited for, so serialization is visible rather than assumed.
 func printQueue(cmd *cobra.Command, result runqueue.Report, asJSON bool) error {
-	var err error
-	if asJSON {
-		err = writeJSON(cmd, result)
-	} else {
-		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Queue parallelism: %d\nJobs: %d executed, %d not started, %d refused, %d skipped\n", result.Parallelism, result.Executed, result.StartFailed, result.Refused, result.Skipped)
-		for _, job := range result.Jobs {
-			if err != nil {
-				break
-			}
-			line := job.ID + ": " + string(job.Admission)
-			if job.Run != nil {
-				line += " (" + string(job.Run.State) + ")"
-			}
-			if job.WaitedFor != "" {
-				line += ", waited for " + job.WaitedFor
-			}
-			if job.Reason != "" {
-				line += ": " + job.Reason
-			}
-			_, err = fmt.Fprintln(cmd.OutOrStdout(), line)
-		}
-	}
-	if err != nil {
-		return &ExitError{Code: 2, Err: errors.New("cannot write the durable run queue report")}
+	if err := writeReport(cmd, asJSON, result, func(c *cobra.Command) error { return writeQueueSummary(c, result) }, "cannot write the durable run queue report"); err != nil {
+		return err
 	}
 	if result.ExitCode() != 0 {
 		return &ExitError{Code: result.ExitCode(), Err: errors.New("the run queue did not pass; inspect each retained run"), Reported: true}
 	}
 	return nil
+}
+
+func writeQueueSummary(cmd *cobra.Command, result runqueue.Report) error {
+	_, err := fmt.Fprintf(cmd.OutOrStdout(), "Queue parallelism: %d\nJobs: %d executed, %d not started, %d refused, %d skipped\n", result.Parallelism, result.Executed, result.StartFailed, result.Refused, result.Skipped)
+	for _, job := range result.Jobs {
+		if err != nil {
+			break
+		}
+		line := job.ID + ": " + string(job.Admission)
+		if job.Run != nil {
+			line += " (" + string(job.Run.State) + ")"
+		}
+		if job.WaitedFor != "" {
+			line += ", waited for " + job.WaitedFor
+		}
+		if job.Reason != "" {
+			line += ": " + job.Reason
+		}
+		_, err = fmt.Fprintln(cmd.OutOrStdout(), line)
+	}
+	return err
 }

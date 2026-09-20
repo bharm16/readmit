@@ -2,7 +2,10 @@ package cli
 
 import (
 	"encoding/json/v2"
+	"errors"
 	"fmt"
+
+	"github.com/spf13/cobra"
 )
 
 // usage refuses a command that was invoked wrongly: a missing or empty flag, a
@@ -61,6 +64,58 @@ func humanBytes(n int) string {
 
 func jsonMarshalDeterministic(document any) ([]byte, error) {
 	return json.Marshal(document, json.Deterministic(true))
+}
+
+// writeTerminalOrJSON is the shared tail of every command whose report is one
+// rendered document: the format rule, the size bound, and the destination —
+// stdout, or one new file outside the case — are decided here, while the
+// command supplies its two renderings and the nouns its refusals name. The
+// command noun carries the flag rule ("correlate format must be…"); the
+// artifact noun carries the write refusals ("cannot write correlation
+// output").
+func writeTerminalOrJSON(cmd *cobra.Command, format, output, commandNoun, artifactNoun string, terminal []byte, jsonDocument func() ([]byte, error)) error {
+	if format != "terminal" && format != "json" {
+		return usage("%s format must be terminal or json", commandNoun)
+	}
+	if cmd.Flags().Changed("output") && output == "" {
+		return usage("%s output must name a new file", commandNoun)
+	}
+	data := terminal
+	if format == "json" {
+		var err error
+		if data, err = jsonDocument(); err != nil {
+			return err
+		}
+	}
+	if err := checkRendered(data); err != nil {
+		return err
+	}
+	if output != "" {
+		return writeNewFile(output, data,
+			"cannot create "+artifactNoun+"; destination must be new and outside the case",
+			"cannot write "+artifactNoun)
+	}
+	if _, err := cmd.OutOrStdout().Write(data); err != nil {
+		return errors.New("cannot write " + artifactNoun)
+	}
+	return nil
+}
+
+// writeReport is the one terminal-or-JSON decision for a command summary: the
+// machine form is writeJSON's deterministic encoding, the human form is the
+// command's own rendering, and failing to write either is the command's one
+// refusal at status 2.
+func writeReport(cmd *cobra.Command, asJSON bool, document any, terminal func(*cobra.Command) error, refused string) error {
+	var err error
+	if asJSON {
+		err = writeJSON(cmd, document)
+	} else {
+		err = terminal(cmd)
+	}
+	if err != nil {
+		return &ExitError{Code: 2, Err: errors.New(refused)}
+	}
+	return nil
 }
 
 // declareInterruptible marks a command's work as stoppable by the construction

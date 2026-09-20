@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"errors"
-
 	"github.com/bharm16/readmit/internal/correlate"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/profilepack"
@@ -21,12 +19,6 @@ func transformCommand() *cobra.Command {
 			if planPath == "" {
 				return usage("transform requires --plan naming a readmit-transform-plan/v1 document")
 			}
-			if format != "terminal" && format != "json" {
-				return usage("transform format must be terminal or json")
-			}
-			if cmd.Flags().Changed("output") && output == "" {
-				return usage("transform output must name a new file")
-			}
 			declared, err := readInputFile(rulesPath, correlate.MaxRulesBytes)
 			if err != nil {
 				return err
@@ -43,24 +35,8 @@ func transformCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			data := transform.Terminal(preview)
-			if format == "json" {
-				if data, err = transform.JSON(preview); err != nil {
-					return err
-				}
-			}
-			if err := checkRendered(data); err != nil {
-				return err
-			}
-			if output != "" {
-				return writeNewFile(output, data,
-					"cannot create transformation preview; destination must be new and outside the case",
-					"cannot write transformation preview")
-			}
-			if _, err := cmd.OutOrStdout().Write(data); err != nil {
-				return errors.New("cannot write transformation preview")
-			}
-			return nil
+			return writeTerminalOrJSON(cmd, format, output, "transform", "transformation preview",
+				transform.Terminal(preview), func() ([]byte, error) { return transform.JSON(preview) })
 		},
 	}
 	cmd.Flags().StringVar(&rulesPath, "rules", "", "Declared readmit-correlation-rules/v1 document whose relations are preserved (required)")

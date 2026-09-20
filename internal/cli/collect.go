@@ -155,20 +155,16 @@ func collectStatusCommand() *cobra.Command {
 }
 
 func writeCapture(cmd *cobra.Command, summary capturejournal.Summary, asJSON bool) error {
-	var err error
-	if asJSON {
-		err = writeJSON(cmd, summary)
-	} else {
-		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Capture state: %s\nStop reason: %s\nDelivery uncertain: %t\nReceived frames: %d\nAcknowledgements sent: %d\nAcknowledgements unsent: %d\nAcknowledgements uncertain: %d\n",
-			summary.State, summary.StopReason, summary.DeliveryUncertain, summary.Received, summary.Acknowledged, summary.Unsent, summary.Uncertain)
-		if err == nil && summary.Recovered {
-			_, err = fmt.Fprintln(cmd.OutOrStdout(), "Finalization was not recorded; the writer may still be active. Recovery never sends, resends or resumes.")
-		}
+	return writeReport(cmd, asJSON, summary, func(c *cobra.Command) error { return writeCaptureSummary(c, summary) }, "cannot write capture summary")
+}
+
+func writeCaptureSummary(cmd *cobra.Command, summary capturejournal.Summary) error {
+	_, err := fmt.Fprintf(cmd.OutOrStdout(), "Capture state: %s\nStop reason: %s\nDelivery uncertain: %t\nReceived frames: %d\nAcknowledgements sent: %d\nAcknowledgements unsent: %d\nAcknowledgements uncertain: %d\n",
+		summary.State, summary.StopReason, summary.DeliveryUncertain, summary.Received, summary.Acknowledged, summary.Unsent, summary.Uncertain)
+	if err == nil && summary.Recovered {
+		_, err = fmt.Fprintln(cmd.OutOrStdout(), "Finalization was not recorded; the writer may still be active. Recovery never sends, resends or resumes.")
 	}
-	if err != nil {
-		return &ExitError{Code: 2, Err: errors.New("cannot write capture summary")}
-	}
-	return nil
+	return err
 }
 
 // listenerConfig builds the capture listener's TLS configuration, or nil when
