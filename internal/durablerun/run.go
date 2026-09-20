@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/bharm16/readmit/internal/durablelog"
 	"github.com/bharm16/readmit/internal/engine"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/testrunner"
@@ -150,9 +151,7 @@ type payload struct {
 	SHA256 string `json:"sha256"`
 }
 type entry struct {
-	Sequence   int           `json:"sequence"`
-	Previous   string        `json:"previous"`
-	At         time.Time     `json:"at"`
+	durablelog.Envelope
 	Kind       string        `json:"kind"`
 	Occurrence string        `json:"occurrence,omitzero"`
 	Sent       *payload      `json:"sent,omitzero"`
@@ -160,20 +159,16 @@ type entry struct {
 	Final      *Summary      `json:"final,omitzero"`
 }
 
-// writer's two sticky failures are distinct. failed means the journal can take
-// no further record, so nothing after it is recorded. halted means an evidence
-// write failed, so no further intent is accepted, while the journal may still
-// record how the run stopped.
+// writer's two sticky failures are distinct. the log's own failure means the
+// journal can take no further record, so nothing after it is recorded. halted
+// means an evidence write failed, so no further intent is accepted, while the
+// journal may still record how the run stopped.
 type writer struct {
-	journalBytes int
-	failed       error
-	halted       error
-	finished     bool
-	root         *os.Root
-	journal      evidenceFile
-	sequence     int
-	previous     string
-	summary      Summary
+	log      *durablelog.Writer
+	halted   error
+	finished bool
+	root     *os.Root
+	summary  Summary
 }
 
 // Prepared is one durable run whose spec has already been read. It exists so
@@ -297,8 +292,13 @@ func start(ctx context.Context, plan *testrunner.Plan, output string) (summary S
 		return Summary{}, errors.New("cannot create durable journal")
 	}
 	defer f.Close()
-	w = &writer{root: root, journal: f, previous: digest(raw), summary: Summary{Schema: Schema, State: Ready, StopReason: Ready, Planned: plan.Count()}}
-	if err = w.append(entry{Kind: "ready"}); err != nil {
+	w = &writer{root: root, summary: Summary{Schema: Schema, State: Ready, StopReason: Ready, Planned: plan.Count()}}
+	w.log = durablelog.NewWriter(f, digest(raw), journalLimit, durablelog.Messages{
+		Limit:  errJournalLimit,
+		Sync:   errors.New("cannot sync durable journal; execution stopped"),
+		Encode: errors.New("cannot encode durable journal"),
+	})
+	if err = w.log.Append(&entry{Kind: "ready"}); err != nil {
 		return w.summary, err
 	}
 	// Directory entries must reach stable storage too, before any network effect.
@@ -319,7 +319,7 @@ func start(ctx context.Context, plan *testrunner.Plan, output string) (summary S
 	}
 	w.summary.State = Running
 	w.summary.StopReason = Running
-	if err = w.append(entry{Kind: "running"}); err != nil {
+	if err = w.log.Append(&entry{Kind: "running"}); err != nil {
 		return w.summary, err
 	}
 	artifact, _ := testrunner.ExecuteObserved(ctx, plan, filepath.Join(output, "result"), w)
@@ -363,7 +363,7 @@ func start(ctx context.Context, plan *testrunner.Plan, output string) (summary S
 	if w.summary.DeliveryUncertain {
 		w.summary.State = DeliveryUncertain
 	}
-	if err = w.append(entry{Kind: "finished", Final: &w.summary}); err != nil {
+	if err = w.log.Append(&entry{Kind: "finished", Final: &w.summary}); err != nil {
 		return w.summary, err
 	}
 	w.finished = true
@@ -496,7 +496,7 @@ func (w *writer) BeforeSend(id string) error {
 	}
 	// Set before attempting persistence: failure may leave only partial intent.
 	w.summary.DeliveryUncertain = true
-	err := w.append(entry{Kind: "intent", Occurrence: id})
+	err := w.log.Append(&entry{Kind: "intent", Occurrence: id})
 	if errors.Is(err, errJournalLimit) {
 		// The limit is checked before any byte is written, so no intent exists
 		// and the send it would have preceded was never attempted.
@@ -514,7 +514,7 @@ func (w *writer) Sent(id string, raw []byte) error {
 		w.halted = err
 		return err
 	}
-	return w.append(entry{Kind: "sent", Occurrence: id, Sent: &payload{name, len(raw), digest(raw)}})
+	return w.log.Append(&entry{Kind: "sent", Occurrence: id, Sent: &payload{name, len(raw), digest(raw)}})
 }
 func (w *writer) Recorded(event replay.Event) error {
 	for _, name := range []string{"result/run/payloads", "result/run", "result"} {
@@ -522,7 +522,7 @@ func (w *writer) Recorded(event replay.Event) error {
 			return err
 		}
 	}
-	if err := w.append(entry{Kind: "recorded", Occurrence: event.OutboundOccurrence, Event: &event}); err != nil {
+	if err := w.log.Append(&entry{Kind: "recorded", Occurrence: event.OutboundOccurrence, Event: &event}); err != nil {
 		return err
 	}
 	w.summary.Recorded++

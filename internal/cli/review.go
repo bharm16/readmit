@@ -17,22 +17,15 @@ import (
 // diagnoseReviewCommand records what a person decided about one diagnosis and
 // what those decisions promote to. It runs no rule and produces no finding: the
 // diagnosis it reads is unchanged, and so is the case.
-func diagnoseReviewCommand(ran *bool) *cobra.Command {
+func diagnoseReviewCommand() *cobra.Command {
 	var casePath, decisionsPath, output string
 	cmd := &cobra.Command{
-		Use:         "review DIAGNOSIS --case CASE --decisions FILE --output NEW_DIRECTORY",
+		Use:         "review DIAGNOSIS --case case --decisions file --output new_directory",
 		Annotations: declare(capabilityAuthor),
 		Short:       "Record analyst decisions about findings and promote confirmed ones to draft assertions",
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return errors.New("diagnose review requires exactly one diagnosis report directory")
-			}
-			return nil
-		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if casePath == "" || decisionsPath == "" || output == "" {
-				return errors.New("diagnose review requires --case, --decisions, and --output with a new directory")
+				return usage("diagnose review requires --case, --decisions, and --output with a new directory")
 			}
 			reportPath, err := artifactpath.Directory(args[0])
 			if err != nil {

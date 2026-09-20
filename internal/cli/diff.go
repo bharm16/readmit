@@ -10,24 +10,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func diffCommand(ran *bool) *cobra.Command {
+func diffCommand() *cobra.Command {
 	var options diff.Options
 	var output, format, inputFormat, terminator, boundary string
 	cmd := &cobra.Command{
 		Use: "diff LEFT RIGHT", Short: "Compare named HL7 fields in local messages, cases, runs, or results", Annotations: declare(capabilityFree),
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) != 2 {
-				return errors.New("diff requires exactly two inputs")
-			}
-			return nil
-		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
-			if format != "terminal" && format != "markdown" && format != "json" {
-				return errors.New("diff format must be terminal, markdown, or json")
-			}
 			if cmd.Flags().Changed("output") && output == "" {
-				return errors.New("diff output must name a new file")
+				return usage("diff output must name a new file")
 			}
 			options.Boundary = diff.Boundary(boundary)
 			input := func(path string) diff.Input {
@@ -37,20 +27,12 @@ func diffCommand(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var data []byte
-			switch format {
-			case "terminal":
-				data = diff.Terminal(report)
-			case "markdown":
-				data = diff.Markdown(report)
-			case "json":
-				data, err = diff.JSON(report)
-			}
+			data, err := renderSelection(format, diff.Terminal(report), diff.Markdown(report), report)
 			if err != nil {
 				return err
 			}
-			if len(data) > 32<<20 {
-				return errors.New("diff output exceeds 32 MiB; select a narrower field scope")
+			if err := checkRendered(data); err != nil {
+				return err
 			}
 			if output != "" {
 				resolved, err := artifactpath.Destination(output)

@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"context"
 	"path/filepath"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
@@ -31,6 +32,10 @@ type CorrelationReviewResult struct {
 	Output string                  `json:"output,omitzero"`
 }
 
+func (r *CorrelationReviewResult) refuse(state State, reason string) {
+	r.State, r.Reason = state, reason
+}
+
 // OpenCorrelationReview reconstructs the reviewed links, leaving original
 // sequence findings and evidence intact. A caller reusing derived results must
 // send their Mapping; a stale identity returns no view at all.
@@ -47,16 +52,12 @@ func (a *App) DecideCorrelation(request CorrelationReviewRequest) CorrelationRev
 }
 
 func (a *App) correlationReview(request CorrelationReviewRequest, write bool) CorrelationReviewResult {
-	release, ok := a.claim()
-	if !ok {
-		return CorrelationReviewResult{State: Busy, Reason: busyRefusal.reason}
-	}
-	defer release()
-	if write {
-		if err := a.admitAuthor(); err != nil {
-			return CorrelationReviewResult{State: PermissionDenied, Reason: err.Error()}
-		}
-	}
+	return run(a, false, write, func(context.Context) CorrelationReviewResult {
+		return a.reviewCorrelation(request, write)
+	})
+}
+
+func (a *App) reviewCorrelation(request CorrelationReviewRequest, write bool) CorrelationReviewResult {
 	failure := func(reason string) CorrelationReviewResult {
 		return CorrelationReviewResult{State: Failed, Reason: reason}
 	}

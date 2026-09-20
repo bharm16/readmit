@@ -7,6 +7,45 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// matchesTheUseLine reports whether a command's Args accepts and refuses
+// exactly what the Use line's placeholder count implies at the three decisive
+// counts: one below, the declared count, and one above.
+func matchesTheUseLine(c *cobra.Command, count int) bool {
+	if c.Args(c, make([]string, count)) != nil {
+		return false
+	}
+	if count > 0 && c.Args(c, make([]string, count-1)) == nil {
+		return false
+	}
+	return c.Args(c, make([]string, count+1)) != nil
+}
+
+func TestEveryRunnableCommandDeclaresItsArgsShape(t *testing.T) {
+	root, _ := rootCommand("test")
+	var visit func(c *cobra.Command)
+	visit = func(c *cobra.Command) {
+		if c.RunE != nil {
+			if c.Args == nil {
+				t.Errorf("%s is runnable but declares no argument shape", c.CommandPath())
+			} else if count := placeholderCount(c.Use); matchesTheUseLine(c, count) {
+				// The declared shape and the Use line agree, so a shape that
+				// loosens around the declared count fails here rather than at
+				// an operator's typo.
+				if count > 0 && c.Args(c, make([]string, count-1)) == nil {
+					t.Errorf("%s accepted %d arguments; its Use line declares %d", c.CommandPath(), count-1, count)
+				}
+				if c.Args(c, make([]string, count+1)) == nil {
+					t.Errorf("%s accepted %d arguments; its Use line declares %d", c.CommandPath(), count+1, count)
+				}
+			}
+		}
+		for _, child := range c.Commands() {
+			visit(child)
+		}
+	}
+	visit(root)
+}
+
 func TestEveryCommandDeclaresAnOperationCapability(t *testing.T) {
 	root, _ := rootCommand("test")
 	var visit func(c *cobra.Command)

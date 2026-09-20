@@ -10,29 +10,22 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func transformCommand(ran *bool) *cobra.Command {
+func transformCommand() *cobra.Command {
 	var rulesPath, planPath, profilePath, format, output string
 	cmd := &cobra.Command{
 		Use: "transform CASE", Short: "Preview relationship-preserving replay transformations of a case", Annotations: declare(capabilityFree),
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return errors.New("transform requires exactly one case directory")
-			}
-			return nil
-		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if rulesPath == "" {
-				return errors.New("transform requires --rules naming a readmit-correlation-rules/v1 document")
+				return usage("transform requires --rules naming a readmit-correlation-rules/v1 document")
 			}
 			if planPath == "" {
-				return errors.New("transform requires --plan naming a readmit-transform-plan/v1 document")
+				return usage("transform requires --plan naming a readmit-transform-plan/v1 document")
 			}
 			if format != "terminal" && format != "json" {
-				return errors.New("transform format must be terminal or json")
+				return usage("transform format must be terminal or json")
 			}
 			if cmd.Flags().Changed("output") && output == "" {
-				return errors.New("transform output must name a new file")
+				return usage("transform output must name a new file")
 			}
 			declared, err := readInputFile(rulesPath, correlate.MaxRulesBytes)
 			if err != nil {
@@ -56,8 +49,8 @@ func transformCommand(ran *bool) *cobra.Command {
 					return err
 				}
 			}
-			if len(data) > transform.MaxPreviewBytes {
-				return errors.New("transform output exceeds 32 MiB; transform a smaller sequence")
+			if err := checkRendered(data); err != nil {
+				return err
 			}
 			if output != "" {
 				return writeNewFile(output, data,

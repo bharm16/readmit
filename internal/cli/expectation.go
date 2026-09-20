@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"github.com/bharm16/readmit/internal/baseline"
 	"github.com/bharm16/readmit/internal/expectation"
@@ -10,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func expectationCommand(ran *bool) *cobra.Command {
+func expectationCommand() *cobra.Command {
 	root := &cobra.Command{Use: "expectation", Short: "Review and release immutable test versions with profile pins"}
 	for _, approve := range []bool{false, true} {
 		var id, previous, review, approver, rationale, output string
@@ -23,7 +22,6 @@ func expectationCommand(ran *bool) *cobra.Command {
 			capability = capabilityAuthor
 		}
 		command := &cobra.Command{Use: name + " SPEC", Annotations: declare(capability), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			request := operation.ExpectationRequest{ID: id, Spec: args[0], Previous: previous, Output: output, Profiles: profiles, ShowValues: show, Review: review, Approver: approver, Rationale: rationale}
 			if !approve {
 				result, e := operation.ReviewExpectation(request)
@@ -33,7 +31,7 @@ func expectationCommand(ran *bool) *cobra.Command {
 				return writeJSON(cmd, result.Comparison)
 			}
 			if output == "" {
-				return errors.New("release requires a new --output file")
+				return usage("release requires a new --output file")
 			}
 			result, err := operation.ApproveExpectation(request)
 			if err != nil {
@@ -57,7 +55,6 @@ func expectationCommand(ran *bool) *cobra.Command {
 	}
 	var show bool
 	inspect := &cobra.Command{Use: "show RELEASE", Annotations: declare(capabilityFree), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
 		r, e := expectation.Read(args[0])
 		if e != nil {
 			return e
@@ -82,9 +79,8 @@ func expectationCommand(ran *bool) *cobra.Command {
 	var refs string
 	var impactValues bool
 	impact := &cobra.Command{Use: "impact PREVIOUS RELEASE SUITE", Annotations: declare(capabilityFree), Args: cobra.ExactArgs(3), RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
 		if refs == "" {
-			return errors.New("impact requires --releases reference file")
+			return usage("impact requires --releases reference file")
 		}
 		from, e := expectation.Read(args[0])
 		if e != nil {

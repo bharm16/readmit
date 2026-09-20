@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func suiteCommand(ran *bool) *cobra.Command {
+func suiteCommand() *cobra.Command {
 	command := &cobra.Command{Use: "suite", Short: "Bind reusable regression templates to data rows and an explicit environment"}
 	for _, execute := range []bool{false, true} {
 		var environment, output, deadline, releases, promotion, promotionIdentity, revision string
@@ -22,21 +22,15 @@ func suiteCommand(ran *bool) *cobra.Command {
 			name = "run"
 			capability = capabilityExecute
 		}
-		child := &cobra.Command{Use: name + " FILE", Short: "Prepare a new private suite directory; run requires explicit send authorization", Annotations: declare(capability), Args: func(_ *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return errors.New("suite requires one document")
-			}
-			return nil
-		}, RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
+		child := &cobra.Command{Use: name + " FILE", Short: "Prepare a new private suite directory; run requires explicit send authorization", Annotations: declareInterruptible(capability), RunE: func(cmd *cobra.Command, args []string) error {
 			if (!execute && (promotion != "" || promotionIdentity != "" || revision != "")) || (promotion == "" && (promotionIdentity != "" || revision != "")) || (promotion != "" && (promotionIdentity == "" || revision == "" || releases == "")) {
-				return &ExitError{Code: 2, Err: errors.New("promotion run requires --promotion, --promotion-identity, --revision and --releases together")}
+				return usage("promotion run requires --promotion, --promotion-identity, --revision and --releases together")
 			}
 			if environment == "" || output == "" || execute && !send {
-				return &ExitError{Code: 2, Err: errors.New("suite requires --environment and --output; run additionally requires --send")}
+				return usage("suite requires --environment and --output; run additionally requires --send")
 			}
 			if execute {
-				ctx, cancel, err := runContext(cmd.Context(), deadline)
+				ctx, cancel, err := deadlineContext(cmd.Context(), deadline)
 				if err != nil {
 					return err
 				}
@@ -87,26 +81,25 @@ func suiteCommand(ran *bool) *cobra.Command {
 		}
 		command.AddCommand(child)
 	}
-	command.AddCommand(suiteGatePolicyCommand(ran), suiteGateCommand(ran, false), suiteGateCommand(ran, true), suiteCICommand(ran), suiteCoverageCommand(ran), suitePromotionCommand(ran, false), suitePromotionCommand(ran, true))
+	command.AddCommand(suiteGatePolicyCommand(), suiteGateCommand(false), suiteGateCommand(true), suiteCICommand(), suiteCoverageCommand(), suitePromotionCommand(false), suitePromotionCommand(true))
 	return command
 }
 
-func suiteCoverageCommand(ran *bool) *cobra.Command {
+func suiteCoverageCommand() *cobra.Command {
 	var requirements, at string
 	var repeats []string
 	var asJSON bool
 	command := &cobra.Command{Use: "coverage DIRECTORY", Short: "Assess declared requirements against retained suite executions without sending", Annotations: declare(capabilityFree), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
 		now := time.Now().UTC()
 		if at != "" {
 			var err error
 			now, err = time.Parse(time.RFC3339, at)
 			if err != nil {
-				return &ExitError{Code: 2, Err: errors.New("coverage --at requires an RFC3339 instant")}
+				return usage("coverage --at requires an RFC3339 instant")
 			}
 		}
 		if requirements == "" {
-			return &ExitError{Code: 2, Err: errors.New("coverage requires --requirements")}
+			return usage("coverage requires --requirements")
 		}
 		report, err := suite.AssessCoverage(cmd.Context(), args[0], requirements, repeats, now)
 		if err != nil {
@@ -150,7 +143,7 @@ func suiteCoverageCommand(ran *bool) *cobra.Command {
 	return command
 }
 
-func suitePromotionCommand(ran *bool, approve bool) *cobra.Command {
+func suitePromotionCommand(approve bool) *cobra.Command {
 	var environment, releases, revision, review, approver, rationale, output string
 	name := "review-promotion"
 	capability := capabilityFree
@@ -159,12 +152,11 @@ func suitePromotionCommand(ran *bool, approve bool) *cobra.Command {
 		capability = capabilityAuthor
 	}
 	command := &cobra.Command{Use: name + " FILE", Short: "Review or approve exact suite inputs for one configured environment without sending", Annotations: declare(capability), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
 		if err := cmd.Context().Err(); err != nil {
 			return err
 		}
 		if environment == "" || releases == "" || revision == "" {
-			return &ExitError{Code: 2, Err: errors.New("promotion requires --environment, --releases and --revision")}
+			return usage("promotion requires --environment, --releases and --revision")
 		}
 		if approve {
 			p, err := suite.ApprovePromotion(args[0], environment, releases, revision, review, approver, rationale, output)

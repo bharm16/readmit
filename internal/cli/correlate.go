@@ -7,26 +7,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func correlateCommand(ran *bool) *cobra.Command {
+func correlateCommand() *cobra.Command {
 	var rulesPath, format, output string
 	cmd := &cobra.Command{
 		Use: "correlate CASE", Short: "Link case occurrences under declared source, session and authority rules", Annotations: declare(capabilityFree),
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return errors.New("correlate requires exactly one case directory")
-			}
-			return nil
-		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if rulesPath == "" {
-				return errors.New("correlate requires --rules naming a readmit-correlation-rules/v1 document")
+				return usage("correlate requires --rules naming a readmit-correlation-rules/v1 document")
 			}
 			if format != "terminal" && format != "json" {
-				return errors.New("correlate format must be terminal or json")
+				return usage("correlate format must be terminal or json")
 			}
 			if cmd.Flags().Changed("output") && output == "" {
-				return errors.New("correlate output must name a new file")
+				return usage("correlate output must name a new file")
 			}
 			declared, err := readInputFile(rulesPath, correlate.MaxRulesBytes)
 			if err != nil {
@@ -46,8 +39,8 @@ func correlateCommand(ran *bool) *cobra.Command {
 					return err
 				}
 			}
-			if len(data) > 32<<20 {
-				return errors.New("correlate output exceeds 32 MiB; declare fewer rules or a narrower scope")
+			if err := checkRendered(data); err != nil {
+				return err
 			}
 			if output != "" {
 				return writeNewFile(output, data,

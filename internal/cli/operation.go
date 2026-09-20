@@ -3,9 +3,12 @@ package cli
 import (
 	"bytes"
 	"context"
-	"encoding/json/v2"
 	"errors"
-	"fmt"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+
 	"github.com/bharm16/readmit/internal/suite"
 	"io"
 
@@ -15,19 +18,70 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// The interruptible annotation declares that a command executes work a person
+// can stop: the construction pass gives its RunE a context cancelled by an
+// interrupt or a termination signal. A command without it runs to completion,
+// and its context answers nothing.
+const interruptibleAnnotation = "readmit.dev/interruptible"
+
+// helpTopicAnnotation marks the shell's own help-lookup command, whose refusal
+// is reported before any operation starts.
+const helpTopicAnnotation = "readmit.dev/help-topic"
+
+func interruptible(cmd *cobra.Command) bool {
+	return cmd.Annotations[interruptibleAnnotation] == "true"
+}
+
+// exactArgs derives arg-count validation from the command's Use line: one
+// uppercase placeholder per required argument. A command whose Use carries no
+// placeholders takes none. A command with a shape this cannot express declares
+// its own Args, and the construction pass leaves it alone.
+func exactArgs(command *cobra.Command) cobra.PositionalArgs {
+	return cobra.ExactArgs(placeholderCount(command.Use))
+}
+
+// placeholderCount counts the argument placeholders a Use line declares: the
+// fields after the command name that are entirely uppercase.
+func placeholderCount(use string) int {
+	count := 0
+	for _, field := range strings.Fields(use)[1:] {
+		if field == strings.ToUpper(field) && strings.ContainsFunc(field, func(r rune) bool { return r >= 'A' && r <= 'Z' }) {
+			count++
+		}
+	}
+	return count
+}
+
 // wireOperations wraps the actual operation, ensuring admission is released on
 // every return, including failures. Help, parsing, and retained reads stay free.
+// It is also the one construction pass over the finished command tree: the
+// started mark is set here, once, the moment a command's own RunE begins —
+// never inside the ~110 command bodies — and arg-count validation is derived
+// from each command's Use when the command declares none of its own.
 func wireOperations(root *cobra.Command, policy *string, ran *bool) {
 	var guard *operationguard.Guard
 	var visit func(*cobra.Command)
 	visit = func(command *cobra.Command) {
 		if run := command.RunE; run != nil {
+			if command.Args == nil {
+				command.Args = exactArgs(command)
+			}
 			command.RunE = func(cmd *cobra.Command, args []string) (err error) {
+				// The help topic lookup is not a started operation: its refusal
+				// is reported the way every pre-execution refusal is reported.
+				if cmd.Annotations[helpTopicAnnotation] != "true" {
+					*ran = true
+				}
 				if guard == nil {
 					guard = operationguard.New(*policy)
 				}
 				if cmd.CommandPath() == "readmit runner execute" || cmd.CommandPath() == "readmit runner serve" {
 					cmd.SetContext(customerrunner.WithOperationGuard(cmd.Context(), guard))
+				}
+				if interruptible(cmd) {
+					ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+					defer stop()
+					cmd.SetContext(ctx)
 				}
 				capability := operationCapability(cmd)
 				if capability == "" {
@@ -115,11 +169,10 @@ func operationCapability(cmd *cobra.Command) string {
 	return "unsupported-operation"
 }
 
-func licenseOperation(ran *bool) *cobra.Command {
+func licenseOperation() *cobra.Command {
 	root := &cobra.Command{Use: "operation", Short: "Activate and inspect local operation admission"}
 	for _, action := range []string{"activate", "status", "resolve", "release"} {
 		command := &cobra.Command{Use: action, Args: cobra.NoArgs, Annotations: declare(capabilityFree), RunE: func(cmd *cobra.Command, _ []string) error {
-			*ran = true
 			path, _ := cmd.Flags().GetString("operation-policy")
 			var err error
 			switch action {
@@ -137,12 +190,7 @@ func licenseOperation(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			data, err := json.Marshal(state)
-			if err != nil {
-				return err
-			}
-			_, err = fmt.Fprintln(cmd.OutOrStdout(), string(data))
-			return err
+			return writeJSON(cmd, state)
 		}}
 		root.AddCommand(command)
 	}

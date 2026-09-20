@@ -2,14 +2,10 @@ package cli
 
 import (
 	"context"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"os"
-	"os/signal"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
@@ -19,21 +15,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func runCommand(ran *bool) *cobra.Command {
+func runCommand() *cobra.Command {
 	command := &cobra.Command{Use: "run", Short: "Execute or recover a durable local test run"}
 	var output, deadline string
 	var send, asJSON bool
-	start := &cobra.Command{Use: "start SPEC", Short: "Execute once into a new durable run directory", Annotations: declare(capabilityExecute), Args: func(_ *cobra.Command, args []string) error {
-		if len(args) != 1 {
-			return errors.New("run start requires one spec")
-		}
-		return nil
-	}, RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
+	start := &cobra.Command{Use: "start SPEC", Short: "Execute once into a new durable run directory", Annotations: declareInterruptible(capabilityExecute), RunE: func(cmd *cobra.Command, args []string) error {
 		if !send || output == "" {
-			return &ExitError{Code: 2, Err: errors.New("run start requires --send and --output; existing jobs are never resumed")}
+			return usage("run start requires --send and --output; existing jobs are never resumed")
 		}
-		ctx, cancel, err := runContext(cmd.Context(), deadline)
+		ctx, cancel, err := deadlineContext(cmd.Context(), deadline)
 		if err != nil {
 			return err
 		}
@@ -49,13 +39,7 @@ func runCommand(ran *bool) *cobra.Command {
 	start.Flags().StringVar(&deadline, "deadline", "", "Stop new sends after this duration; an in-flight delivery is reported uncertain")
 	start.Flags().BoolVar(&asJSON, "json", false, "Write one versioned machine-readable summary")
 	var statusJSON, recovery, pinned bool
-	status := &cobra.Command{Use: "status JOB", Short: "Recover retained evidence read-only; never resend", Annotations: declare(capabilityFree), Args: func(_ *cobra.Command, args []string) error {
-		if len(args) != 1 {
-			return errors.New("run status requires one job directory")
-		}
-		return nil
-	}, RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
+	status := &cobra.Command{Use: "status JOB", Short: "Recover retained evidence read-only; never resend", Annotations: declare(capabilityFree), RunE: func(cmd *cobra.Command, args []string) error {
 		if pinned {
 			return printEngine(cmd, args[0], statusJSON)
 		}
@@ -78,17 +62,11 @@ func runCommand(ran *bool) *cobra.Command {
 	status.MarkFlagsMutuallyExclusive("engine", "recovery")
 	var resumeOutput, resumeDeadline string
 	var resumeSend, resumeJSON bool
-	resume := &cobra.Command{Use: "resume JOB SPEC", Short: "Repeat never-attempted work into a new run directory; refuses after any send", Annotations: declare(capabilityExecute), Args: func(_ *cobra.Command, args []string) error {
-		if len(args) != 2 {
-			return errors.New("run resume requires one job directory and one spec")
-		}
-		return nil
-	}, RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
+	resume := &cobra.Command{Use: "resume JOB SPEC", Short: "Repeat never-attempted work into a new run directory; refuses after any send", Annotations: declareInterruptible(capabilityExecute), RunE: func(cmd *cobra.Command, args []string) error {
 		if !resumeSend || resumeOutput == "" {
-			return &ExitError{Code: 2, Err: errors.New("run resume requires --send and a new --output; the existing job is never written")}
+			return usage("run resume requires --send and a new --output; the existing job is never written")
 		}
-		ctx, cancel, err := runContext(cmd.Context(), resumeDeadline)
+		ctx, cancel, err := deadlineContext(cmd.Context(), resumeDeadline)
 		if err != nil {
 			return err
 		}
@@ -104,13 +82,7 @@ func runCommand(ran *bool) *cobra.Command {
 	resume.Flags().StringVar(&resumeDeadline, "deadline", "", "Stop new sends after this duration; an in-flight delivery is reported uncertain")
 	resume.Flags().BoolVar(&resumeJSON, "json", false, "Write one versioned machine-readable summary")
 	var cleanJSON bool
-	clean := &cobra.Command{Use: "clean JOB", Short: "Remove a stale lease after a recorded completion; evidence is never removed", Annotations: declare(capabilityFree), Args: func(_ *cobra.Command, args []string) error {
-		if len(args) != 1 {
-			return errors.New("run clean requires one job directory")
-		}
-		return nil
-	}, RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
+	clean := &cobra.Command{Use: "clean JOB", Short: "Remove a stale lease after a recorded completion; evidence is never removed", Annotations: declare(capabilityFree), RunE: func(cmd *cobra.Command, args []string) error {
 		result, err := durablerun.Clean(args[0])
 		if err != nil {
 			return &ExitError{Code: 2, Err: err}
@@ -120,15 +92,9 @@ func runCommand(ran *bool) *cobra.Command {
 	clean.Flags().BoolVar(&cleanJSON, "json", false, "Write one versioned machine-readable summary")
 	var queueRuns, queueDeadline string
 	var queueSend, queueJSON bool
-	queue := &cobra.Command{Use: "queue PLAN", Short: "Execute a queue of durable runs with bounded parallelism, serializing every job that shares target state", Annotations: declare(capabilityExecute), Args: func(_ *cobra.Command, args []string) error {
-		if len(args) != 1 {
-			return errors.New("run queue requires one queue document")
-		}
-		return nil
-	}, RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
+	queue := &cobra.Command{Use: "queue PLAN", Short: "Execute a queue of durable runs with bounded parallelism, serializing every job that shares target state", Annotations: declareInterruptible(capabilityExecute), RunE: func(cmd *cobra.Command, args []string) error {
 		if !queueSend || queueRuns == "" {
-			return &ExitError{Code: 2, Err: errors.New("run queue requires --send and --runs naming the durable runs directory; existing jobs are never resumed")}
+			return usage("run queue requires --send and --runs naming the durable runs directory; existing jobs are never resumed")
 		}
 		document, err := readInputFile(args[0], runqueue.MaxPlanBytes)
 		if err != nil {
@@ -144,9 +110,9 @@ func runCommand(ran *bool) *cobra.Command {
 		}
 		runs, err := artifactpath.Directory(queueRuns)
 		if err != nil {
-			return &ExitError{Code: 2, Err: errors.New("--runs must name the existing directory the durable runs are written beside")}
+			return usage("--runs must name the existing directory the durable runs are written beside")
 		}
-		ctx, cancel, err := runContext(cmd.Context(), queueDeadline)
+		ctx, cancel, err := deadlineContext(cmd.Context(), queueDeadline)
 		if err != nil {
 			return err
 		}
@@ -165,28 +131,21 @@ func runCommand(ran *bool) *cobra.Command {
 	return command
 }
 
-// runContext stops a run on an interrupt, a termination signal, or the
-// explicit deadline. A deadline is a positive duration from now.
-func runContext(parent context.Context, deadline string) (context.Context, context.CancelFunc, error) {
-	ctx, cancel := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
+// deadlineContext bounds a run by the explicit deadline. A deadline is a
+// positive duration from now. The interrupt itself reaches the run through the
+// construction pass, which gives interruptible commands a context cancelled by
+// an interrupt or a termination signal.
+func deadlineContext(parent context.Context, deadline string) (context.Context, context.CancelFunc, error) {
 	if deadline == "" {
+		ctx, cancel := context.WithCancel(parent)
 		return ctx, cancel, nil
 	}
 	duration, err := time.ParseDuration(deadline)
 	if err != nil || duration <= 0 {
-		cancel()
-		return nil, nil, &ExitError{Code: 2, Err: errors.New("--deadline requires a positive duration such as 30s or 5m")}
+		return nil, nil, usage("--deadline requires a positive duration such as 30s or 5m")
 	}
-	ctx, stop := context.WithTimeout(ctx, duration)
-	return ctx, func() { stop(); cancel() }, nil
-}
-
-func writeJSON(cmd *cobra.Command, document any) error {
-	b, err := json.Marshal(document, json.Deterministic(true))
-	if err == nil {
-		_, err = fmt.Fprintln(cmd.OutOrStdout(), string(b))
-	}
-	return err
+	ctx, cancel := context.WithTimeout(parent, duration)
+	return ctx, cancel, nil
 }
 
 func writeSummary(cmd *cobra.Command, result durablerun.Summary) error {

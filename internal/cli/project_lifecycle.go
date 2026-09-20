@@ -4,18 +4,14 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/bharm16/readmit/internal/lifecycle"
 	"github.com/bharm16/readmit/internal/project"
 	"github.com/spf13/cobra"
 )
 
-func projectMigrationPreview(ran *bool) *cobra.Command {
+func projectMigrationPreview() *cobra.Command {
 	return &cobra.Command{Use: "migration-preview PROJECT", Short: "Preview supported project and index schemas without changing files", Annotations: declare(capabilityFree), Args: projectOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
 		plan, err := lifecycle.Preview(cmd.Context(), args[0])
 		if err != nil {
 			return err
@@ -33,14 +29,13 @@ func projectMigrationPreview(ran *bool) *cobra.Command {
 		return nil
 	}}
 }
-func projectQuota(ran *bool) *cobra.Command {
+func projectQuota() *cobra.Command {
 	var maxBytes int64
 	var maxFiles int
 	command := &cobra.Command{Use: "quota PROJECT [--max-bytes N --max-files N]", Short: "Check retained-file quota, or set explicit positive limits", Annotations: declare(capabilityAuthorIfQuotaChange), Args: projectOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
 		if cmd.Flags().Changed("max-bytes") || cmd.Flags().Changed("max-files") {
 			if !cmd.Flags().Changed("max-bytes") || !cmd.Flags().Changed("max-files") {
-				return errors.New("setting quota requires both --max-bytes and --max-files")
+				return usage("setting quota requires both --max-bytes and --max-files")
 			}
 			if err := project.SetQuota(args[0], project.Quota{Schema: project.QuotaSchema, MaxBytes: maxBytes, MaxFiles: maxFiles}); err != nil {
 				return err
@@ -69,10 +64,9 @@ func projectQuota(ran *bool) *cobra.Command {
 	command.Flags().IntVar(&maxFiles, "max-files", 0, "Maximum retained regular files (1 to 65536)")
 	return command
 }
-func projectRecover(ran *bool) *cobra.Command {
+func projectRecover() *cobra.Command {
 	var name, digest string
 	command := &cobra.Command{Use: "recover PROJECT --document NAME --digest SHA256", Short: "Restore a selected recovery copy and retain the current document", Annotations: declare(capabilityFree), Args: projectOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
 		if err := project.Recover(args[0], name, digest); err != nil {
 			return err
 		}
@@ -83,7 +77,7 @@ func projectRecover(ran *bool) *cobra.Command {
 	command.Flags().StringVar(&digest, "digest", "", "SHA-256 suffix of the selected recovery copy")
 	return command
 }
-func projectArchive(ran *bool, deleteSource bool) *cobra.Command {
+func projectArchive(deleteSource bool) *cobra.Command {
 	var output string
 	var confirm bool
 	name := "archive"
@@ -92,16 +86,14 @@ func projectArchive(ran *bool, deleteSource bool) *cobra.Command {
 		name = "delete"
 		description = "Create a verified recovery archive, then unlink the whole source project"
 	}
-	command := &cobra.Command{Use: name + " PROJECT --output NEW_ARCHIVE", Short: description, Annotations: declare(capabilityFree), Args: projectOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
+	command := &cobra.Command{Use: name + " PROJECT --output NEW_ARCHIVE", Short: description, Annotations: declareInterruptible(capabilityFree), Args: projectOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
 		if output == "" {
 			return errors.New("archive and delete require --output with a new recovery directory")
 		}
 		if deleteSource && !confirm {
-			return errors.New("project delete requires --confirm-delete; recovery archive will be retained")
+			return usage("project delete requires --confirm-delete; recovery archive will be retained")
 		}
-		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-		defer cancel()
+		ctx := cmd.Context()
 		report, operationErr := lifecycle.Archive(ctx, args[0], output, deleteSource)
 		if report.Root != "" {
 			if err := writeBackupReport(cmd.OutOrStdout(), report); err != nil {

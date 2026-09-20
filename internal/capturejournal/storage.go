@@ -1,7 +1,6 @@
 package capturejournal
 
 import (
-	"bytes"
 	"encoding/json/v2"
 	"errors"
 	"io"
@@ -9,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/durablelog"
 	"github.com/bharm16/readmit/internal/durablerun"
 )
 
@@ -216,84 +216,91 @@ func replay(root *os.Root, previous string, journal []byte) (Summary, error) {
 	pending := make(map[string]bool)
 	settled := make(map[string]bool)
 	retained := 0
-	sequence := 0
 	finished := false
-	lines := bytes.Split(journal, []byte{'\n'})
-	truncated := len(lines[len(lines)-1]) > 0
-	for _, line := range lines[:len(lines)-1] {
-		sequence++
-		var e entry
-		if finished || json.Unmarshal(line, &e) != nil || e.Sequence != sequence || e.Previous != previous || e.At.IsZero() {
-			return Summary{}, bad
-		}
-		previous = digest(line)
-		switch e.Kind {
-		case "ready", "running":
-			if sequence != 1 && e.Kind == "ready" || sequence != 2 && e.Kind == "running" {
-				return Summary{}, bad
+	truncated, err := durablelog.Scan(journal, previous, bad,
+		func(line []byte) durablelog.Record {
+			var e entry
+			if json.Unmarshal(line, &e) != nil {
+				return nil
 			}
-		case "received":
-			if sequence < 3 || e.Frame == nil || received[e.Occurrence] || !occurrencePattern.MatchString(e.Occurrence) || !connectionPattern.MatchString(e.Session) || len(e.ControlID) > maxControlBytes {
-				return Summary{}, bad
+			return &e
+		},
+		func(sequence int, r durablelog.Record) error {
+			e := r.(*entry)
+			if finished {
+				return bad
 			}
-			if e.Frame.Path != "received/"+e.Occurrence+".bin" || e.Frame.Size < 0 || e.Frame.Size > maxFrameBytes {
-				return Summary{}, bad
+			switch e.Kind {
+			case "ready", "running":
+				if sequence != 1 && e.Kind == "ready" || sequence != 2 && e.Kind == "running" {
+					return bad
+				}
+			case "received":
+				if sequence < 3 || e.Frame == nil || received[e.Occurrence] || !occurrencePattern.MatchString(e.Occurrence) || !connectionPattern.MatchString(e.Session) || len(e.ControlID) > maxControlBytes {
+					return bad
+				}
+				if e.Frame.Path != "received/"+e.Occurrence+".bin" || e.Frame.Size < 0 || e.Frame.Size > maxFrameBytes {
+					return bad
+				}
+				retained += e.Frame.Size
+				if retained > maxRetainedBytes {
+					return bad
+				}
+				if err := verify(root, *e.Frame); err != nil {
+					return err
+				}
+				received[e.Occurrence] = true
+				summary.Received++
+			case "intent":
+				key, ok := stageKey(*e)
+				if !ok || !received[e.Occurrence] || pending[key] || settled[key] || e.Sent != nil || e.Frame != nil {
+					return bad
+				}
+				if !declaredDestination(e.Destination) {
+					return bad
+				}
+				pending[key] = true
+			case "sent", "unsent":
+				key, ok := stageKey(*e)
+				if !ok || !pending[key] || e.Sent == nil || *e.Sent < 0 || e.Destination != "" || e.Frame != nil {
+					return bad
+				}
+				delete(pending, key)
+				settled[key] = true
+				if e.Kind == "sent" {
+					summary.Acknowledged++
+				} else {
+					summary.Unsent++
+				}
+			case "finished":
+				if sequence < 3 || e.Final == nil {
+					return bad
+				}
+				final := *e.Final
+				summary.Uncertain = len(pending)
+				summary.DeliveryUncertain = summary.Uncertain > 0
+				if final.Schema != Schema || final.Recovered || final.JournalIncomplete || !terminal(final.StopReason) {
+					return bad
+				}
+				if final.Received != summary.Received || final.Acknowledged != summary.Acknowledged || final.Unsent != summary.Unsent || final.Uncertain != summary.Uncertain || final.DeliveryUncertain != summary.DeliveryUncertain {
+					return bad
+				}
+				expected := final.StopReason
+				if summary.DeliveryUncertain {
+					expected = durablerun.DeliveryUncertain
+				}
+				if final.State != expected {
+					return bad
+				}
+				summary = final
+				finished = true
+			default:
+				return bad
 			}
-			retained += e.Frame.Size
-			if retained > maxRetainedBytes {
-				return Summary{}, bad
-			}
-			if err := verify(root, *e.Frame); err != nil {
-				return Summary{}, err
-			}
-			received[e.Occurrence] = true
-			summary.Received++
-		case "intent":
-			key, ok := stageKey(e)
-			if !ok || !received[e.Occurrence] || pending[key] || settled[key] || e.Sent != nil || e.Frame != nil {
-				return Summary{}, bad
-			}
-			if !declaredDestination(e.Destination) {
-				return Summary{}, bad
-			}
-			pending[key] = true
-		case "sent", "unsent":
-			key, ok := stageKey(e)
-			if !ok || !pending[key] || e.Sent == nil || *e.Sent < 0 || e.Destination != "" || e.Frame != nil {
-				return Summary{}, bad
-			}
-			delete(pending, key)
-			settled[key] = true
-			if e.Kind == "sent" {
-				summary.Acknowledged++
-			} else {
-				summary.Unsent++
-			}
-		case "finished":
-			if sequence < 3 || e.Final == nil {
-				return Summary{}, bad
-			}
-			final := *e.Final
-			summary.Uncertain = len(pending)
-			summary.DeliveryUncertain = summary.Uncertain > 0
-			if final.Schema != Schema || final.Recovered || final.JournalIncomplete || !terminal(final.StopReason) {
-				return Summary{}, bad
-			}
-			if final.Received != summary.Received || final.Acknowledged != summary.Acknowledged || final.Unsent != summary.Unsent || final.Uncertain != summary.Uncertain || final.DeliveryUncertain != summary.DeliveryUncertain {
-				return Summary{}, bad
-			}
-			expected := final.StopReason
-			if summary.DeliveryUncertain {
-				expected = durablerun.DeliveryUncertain
-			}
-			if final.State != expected {
-				return Summary{}, bad
-			}
-			summary = final
-			finished = true
-		default:
-			return Summary{}, bad
-		}
+			return nil
+		})
+	if err != nil {
+		return Summary{}, err
 	}
 	if !finished {
 		summary.Uncertain = len(pending)

@@ -5,9 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/bharm16/readmit/internal/replay"
@@ -15,27 +12,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func replayCommand(ran *bool) *cobra.Command {
+func replayCommand() *cobra.Command {
 	var targetPath, output, shift, policyPath, decisionPath string
 	var messages, transforms []string
 	var send bool
 	command := &cobra.Command{
-		Use:         "replay CASE --target CONFIG [--policy FILE --decision NEW_FILE] [--send --output NEW_RUN]",
-		Annotations: declare(capabilityExecuteIfSend),
+		Use:         "replay CASE --target config [--policy file --decision new_file] [--send --output new_run]",
+		Annotations: declareInterruptible(capabilityExecuteIfSend),
 		Short:       "Preview or explicitly send selected case messages and retain local run evidence",
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return errors.New("replay requires exactly one case bundle and an explicitly configured target")
-			}
-			return nil
-		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if targetPath == "" {
-				return errors.New("replay requires --target with a test endpoint configuration")
+				return usage("replay requires --target with a test endpoint configuration")
 			}
 			if send && output == "" {
-				return errors.New("replay --send requires --output with a new run directory")
+				return usage("replay --send requires --output with a new run directory")
 			}
 			// Actual sends always retain their decision, including denials when
 			// no policy was selected. Previews need an explicit destination.
@@ -43,7 +33,7 @@ func replayCommand(ran *bool) *cobra.Command {
 				decisionPath = output + ".decision.json"
 			}
 			if policyPath != "" && decisionPath == "" {
-				return errors.New("a policy preview requires --decision with a new file")
+				return usage("a policy preview requires --decision with a new file")
 			}
 			policy, err := readSendPolicy(policyPath)
 			if err != nil {
@@ -60,14 +50,13 @@ func replayCommand(ran *bool) *cobra.Command {
 				options.Transformations = append(options.Transformations, transformation)
 			}
 			if cmd.Flags().Changed("shift") && !hasShift {
-				return errors.New("--shift requires --transform shift-timestamps")
+				return usage("--shift requires --transform shift-timestamps")
 			}
 			target, err := replay.ReadTarget(targetPath)
 			if err != nil {
 				return err
 			}
-			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer cancel()
+			ctx := cmd.Context()
 			var decision sendpolicy.Decision
 			record := func(value sendpolicy.Decision) error {
 				decision = value

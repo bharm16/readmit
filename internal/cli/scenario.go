@@ -13,18 +13,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func scenarioCommand(ran *bool) *cobra.Command {
+func scenarioCommand() *cobra.Command {
 	command := &cobra.Command{Use: "scenario", Short: "Design an interface workflow as a sequence of lifecycle events"}
 	preview := &cobra.Command{
 		Use: "preview SCENARIO", Short: "Show a designed workflow step by step, with the outcome its profile gives each step", Annotations: declare(capabilityFree),
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return errors.New("scenario preview requires exactly one scenario document")
-			}
-			return nil
-		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			document, err := readInputFile(args[0], scenario.MaxBytes)
 			if err != nil {
 				return err
@@ -38,17 +31,10 @@ func scenarioCommand(ran *bool) *cobra.Command {
 	}
 	var output string
 	generate := &cobra.Command{
-		Use: "generate PLAN --output NEW_DIRECTORY", Short: "Generate deterministic synthetic workflow streams with complete inputs", Annotations: declare(capabilityAuthor),
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return errors.New("scenario generate requires one generator plan")
-			}
-			return nil
-		},
+		Use: "generate PLAN --output new_directory", Short: "Generate deterministic synthetic workflow streams with complete inputs", Annotations: declare(capabilityAuthor),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if output == "" {
-				return errors.New("scenario generate requires --output")
+				return usage("scenario generate requires --output")
 			}
 			data, err := readInputFile(args[0], scenariogen.MaxBytes)
 			if err != nil {
@@ -63,7 +49,6 @@ func scenarioCommand(ran *bool) *cobra.Command {
 	}
 	generate.Flags().StringVar(&output, "output", "", "New directory for streams and their generator record")
 	library := &cobra.Command{Use: "check-library LIBRARY EXPECTATIONS", Short: "Check a pinned scenario against independent fixture expectations", Annotations: declare(capabilityFree), Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
 		l, err := readInputFile(args[0], scenariolibrary.MaxBytes)
 		if err != nil {
 			return err

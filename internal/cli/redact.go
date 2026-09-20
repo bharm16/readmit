@@ -8,17 +8,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func redactCommand(ran *bool) *cobra.Command {
+func redactCommand() *cobra.Command {
 	var request redact.Request
-	cmd := &cobra.Command{Use: "redact CASE", Short: "Derive testing evidence and a fail-closed export review", Annotations: declare(capabilityAuthor), Args: func(_ *cobra.Command, args []string) error {
-		if len(args) != 1 {
-			return errors.New("redact requires one case")
-		}
-		return nil
-	}, RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
+	cmd := &cobra.Command{Use: "redact CASE", Short: "Derive testing evidence and a fail-closed export review", Annotations: declare(capabilityAuthor), RunE: func(cmd *cobra.Command, args []string) error {
 		if request.SpecPath == "" || request.PolicyPath == "" || request.InventoryPath == "" || request.Output == "" || request.LocalState == "" {
-			return errors.New("redact requires spec, policy, inventory, output, and separate local-state paths")
+			return usage("redact requires spec, policy, inventory, output, and separate local-state paths")
 		}
 		request.CasePath = args[0]
 		review, err := redact.Create(cmd.Context(), request)
@@ -41,15 +35,9 @@ func redactCommand(ran *bool) *cobra.Command {
 	cmd.Flags().StringVar(&request.LocalState, "local-state", "", "New private directory outside all derived and shared output")
 	cmd.Flags().StringVar(&request.Output, "output", "", "New review directory outside immutable sources")
 	var export redact.ExportRequest
-	child := &cobra.Command{Use: "export REVIEW", Short: "Approve an exact review and generate a proven fixture packet", Annotations: declare(capabilityFree), Args: func(_ *cobra.Command, args []string) error {
-		if len(args) != 1 {
-			return errors.New("redact export requires one review")
-		}
-		return nil
-	}, RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
+	child := &cobra.Command{Use: "export REVIEW", Short: "Approve an exact review and generate a proven fixture packet", Annotations: declare(capabilityFree), RunE: func(cmd *cobra.Command, args []string) error {
 		if export.LocalState == "" || export.Approval == "" || export.Output == "" {
-			return errors.New("redact export requires local-state, approve, and output")
+			return usage("redact export requires local-state, approve, and output")
 		}
 		export.ReviewPath = args[0]
 		manifest, err := redact.Export(cmd.Context(), export)
@@ -62,6 +50,6 @@ func redactCommand(ran *bool) *cobra.Command {
 	child.Flags().StringVar(&export.LocalState, "local-state", "", "Private mapping and original-proof directory")
 	child.Flags().StringVar(&export.Approval, "approve", "", "Exact reviewed identity; approval is not a legal determination")
 	child.Flags().StringVar(&export.Output, "output", "", "New packet directory")
-	cmd.AddCommand(child, reexecuteCommand(ran))
+	cmd.AddCommand(child, reexecuteCommand())
 	return cmd
 }

@@ -147,21 +147,21 @@ func authorities(named []entitlement.Authority) string {
 // licenseRunner is the runner authority's side of a v2 entitlement: a local
 // admission record the organization keeps, where execution instances are
 // admitted against the granted capacity, released, renewed and reconciled.
-func licenseRunner(ran *bool) *cobra.Command {
+func licenseRunner() *cobra.Command {
 	command := &cobra.Command{
 		Use:         "runner",
 		Short:       "Admit and release execution instances against a v2 entitlement's runner capacity",
 		Args:        cobra.NoArgs,
 		Annotations: declare(capabilityFree),
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return errors.New("license runner requires a subcommand: init, admit, renew, release, reconcile, or show")
+			return usage("license runner requires a subcommand: init, admit, renew, release, reconcile, or show")
 		},
 	}
-	command.AddCommand(runnerInit(ran), runnerAdmit(ran), runnerRenew(ran), runnerRelease(ran), runnerReconcile(ran), runnerShow(ran))
+	command.AddCommand(runnerInit(), runnerAdmit(), runnerRenew(), runnerRelease(), runnerReconcile(), runnerShow())
 	return command
 }
 
-func runnerInit(ran *bool) *cobra.Command {
+func runnerInit() *cobra.Command {
 	var trustPath, authority, output string
 	command := &cobra.Command{
 		Use:         "init ENTITLEMENT --trust TRUST_STORE --authority ID --output NEW_FILE",
@@ -169,12 +169,11 @@ func runnerInit(ran *bool) *cobra.Command {
 		Short:       "Start an empty admission record for one runner authority the entitlement names",
 		Args:        licenseOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if output == "" {
-				return errors.New("license runner init requires --output with a new file")
+				return usage("license runner init requires --output with a new file")
 			}
 			if authority == "" {
-				return errors.New("license runner init requires --authority with the identifier this entitlement names")
+				return usage("license runner init requires --authority with the identifier this entitlement names")
 			}
 			grant, err := readGrantV2(args[0], trustPath)
 			if err != nil {
@@ -193,7 +192,7 @@ func runnerInit(ran *bool) *cobra.Command {
 	return command
 }
 
-func runnerAdmit(ran *bool) *cobra.Command {
+func runnerAdmit() *cobra.Command {
 	var trustPath, instance, lease string
 	command := &cobra.Command{
 		Use:         "admit RECORD ENTITLEMENT --trust TRUST_STORE --instance ID --lease DURATION",
@@ -201,13 +200,12 @@ func runnerAdmit(ran *bool) *cobra.Command {
 		Short:       "Admit one execution instance if the authority has a free instance",
 		Args:        runnerTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			until, err := leaseEnd(lease)
 			if err != nil {
 				return err
 			}
 			if instance == "" {
-				return errors.New("license runner admit requires --instance with the identifier of the instance to admit")
+				return usage("license runner admit requires --instance with the identifier of the instance to admit")
 			}
 			grant, err := readGrantV2(args[1], trustPath)
 			if err != nil {
@@ -229,7 +227,7 @@ func runnerAdmit(ran *bool) *cobra.Command {
 	return command
 }
 
-func runnerRenew(ran *bool) *cobra.Command {
+func runnerRenew() *cobra.Command {
 	var trustPath, instance, lease string
 	command := &cobra.Command{
 		Use:         "renew RECORD ENTITLEMENT --trust TRUST_STORE --instance ID --lease DURATION",
@@ -237,7 +235,6 @@ func runnerRenew(ran *bool) *cobra.Command {
 		Short:       "Extend an admitted instance's lease inside the term; a stale instance reporting in becomes active again",
 		Args:        runnerTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			until, err := leaseEnd(lease)
 			if err != nil {
 				return err
@@ -257,7 +254,7 @@ func runnerRenew(ran *bool) *cobra.Command {
 	return command
 }
 
-func runnerRelease(ran *bool) *cobra.Command {
+func runnerRelease() *cobra.Command {
 	var instance string
 	command := &cobra.Command{
 		Use:         "release RECORD --instance ID",
@@ -265,7 +262,6 @@ func runnerRelease(ran *bool) *cobra.Command {
 		Short:       "Record that an instance finished or was cancelled and hand its capacity back",
 		Args:        licenseOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			return settleInstance(cmd, args[0], instance, "Instance released: ", func(record *entitlement.Admissions) error {
 				return record.Release(instance, licenseNow())
 			})
@@ -275,7 +271,7 @@ func runnerRelease(ran *bool) *cobra.Command {
 	return command
 }
 
-func runnerReconcile(ran *bool) *cobra.Command {
+func runnerReconcile() *cobra.Command {
 	var instance string
 	command := &cobra.Command{
 		Use:         "reconcile RECORD --instance ID",
@@ -283,7 +279,6 @@ func runnerReconcile(ran *bool) *cobra.Command {
 		Short:       "Record that an operator established an instance is no longer running and settle its admission",
 		Args:        licenseOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			return settleInstance(cmd, args[0], instance, "Instance reconciled: ", func(record *entitlement.Admissions) error {
 				return record.Reconcile(instance, licenseNow())
 			})
@@ -293,7 +288,7 @@ func runnerReconcile(ran *bool) *cobra.Command {
 	return command
 }
 
-func runnerShow(ran *bool) *cobra.Command {
+func runnerShow() *cobra.Command {
 	var trustPath string
 	command := &cobra.Command{
 		Use:         "show RECORD ENTITLEMENT --trust TRUST_STORE",
@@ -301,7 +296,6 @@ func runnerShow(ran *bool) *cobra.Command {
 		Short:       "Report what the authority holds against the capacity the entitlement grants it",
 		Args:        runnerTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			grant, err := readGrantV2(args[1], trustPath)
 			if err != nil {
 				return err
@@ -323,7 +317,7 @@ func runnerShow(ran *bool) *cobra.Command {
 // follows the term.
 func settleInstance(cmd *cobra.Command, path, instance, headline string, apply func(*entitlement.Admissions) error) error {
 	if instance == "" {
-		return errors.New("license runner requires --instance with the identifier of an admitted instance")
+		return usage("license runner requires --instance with the identifier of an admitted instance")
 	}
 	record, err := entitlement.OpenAdmissions(path)
 	if err != nil {
@@ -355,11 +349,11 @@ func readGrantV2(path, trustPath string) (entitlement.GrantV2, error) {
 // default.
 func leaseEnd(lease string) (time.Time, error) {
 	if lease == "" {
-		return time.Time{}, errors.New("license runner requires --lease with how long the admission holds, for example 30m")
+		return time.Time{}, usage("license runner requires --lease with how long the admission holds, for example 30m")
 	}
 	duration, err := time.ParseDuration(lease)
 	if err != nil || duration < time.Second || duration%time.Second != 0 {
-		return time.Time{}, errors.New("lease must be a whole number of seconds of at least 1s, for example 30m")
+		return time.Time{}, usage("lease must be a whole number of seconds of at least 1s, for example 30m")
 	}
 	if duration > entitlement.MaxLease {
 		return time.Time{}, entitlement.ErrLeaseTooLong

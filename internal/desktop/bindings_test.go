@@ -5,24 +5,9 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/bharm16/readmit/internal/baseline"
-	"github.com/bharm16/readmit/internal/correlate"
 	"github.com/bharm16/readmit/internal/desktop"
-	"github.com/bharm16/readmit/internal/diff"
-	"github.com/bharm16/readmit/internal/drift"
-	"github.com/bharm16/readmit/internal/exportreview"
-	"github.com/bharm16/readmit/internal/grid"
-	"github.com/bharm16/readmit/internal/guide"
-	"github.com/bharm16/readmit/internal/hl7"
-	"github.com/bharm16/readmit/internal/operationguard"
-	"github.com/bharm16/readmit/internal/profilepack"
-	"github.com/bharm16/readmit/internal/project"
-	"github.com/bharm16/readmit/internal/reproducer"
-	"github.com/bharm16/readmit/internal/runcompare"
-	"github.com/bharm16/readmit/internal/testauthor"
-	"github.com/bharm16/readmit/internal/testrunner"
-	"github.com/bharm16/readmit/internal/transform"
 )
 
 // bindingsFile is the frontend's only view of the Go facade. Wails publishes
@@ -67,177 +52,88 @@ func TestFrontendBindingsDeclareEveryOperationState(t *testing.T) {
 
 // The frontend reads these members by name. A Go member the declarations do not
 // carry is a silently broken interface that still type-checks on both sides, so
-// every member of every bound result type must be declared.
+// every member of every type the facade can cross the seam with must be
+// declared. The set of types is computed from the bound methods' own
+// signatures — parameters and results, and everything reachable from them —
+// so a type added to the facade is checked without this test being told.
 func TestFrontendBindingsDeclareEveryResultMember(t *testing.T) {
 	declarations, err := os.ReadFile(bindingsFile)
 	if err != nil {
 		t.Fatal(err)
 	}
 	bindings := string(declarations)
-	for _, bound := range []reflect.Type{
-		reflect.TypeOf(desktop.OperationResult{}),
-		reflect.TypeOf(operationguard.State{}),
-		reflect.TypeOf(desktop.WorkspaceResult{}),
-		reflect.TypeOf(desktop.Workspace{}),
-		reflect.TypeOf(desktop.Artifact{}),
-		reflect.TypeOf(desktop.CaseResult{}),
-		reflect.TypeOf(desktop.Case{}),
-		reflect.TypeOf(desktop.RecentResult{}),
-		reflect.TypeOf(desktop.ProjectResult{}),
-		reflect.TypeOf(desktop.RevisionsResult{}),
-		reflect.TypeOf(desktop.ShellResult{}),
-		reflect.TypeOf(desktop.Shell{}),
-		reflect.TypeOf(desktop.Region{}),
-		reflect.TypeOf(desktop.Indicator{}),
-		reflect.TypeOf(desktop.Command{}),
-		reflect.TypeOf(desktop.Privacy{}),
-		reflect.TypeOf(desktop.SearchResult{}),
-		reflect.TypeOf(desktop.Match{}),
-		reflect.TypeOf(desktop.FiltersResult{}),
-		reflect.TypeOf(desktop.GridResult{}),
-		reflect.TypeOf(desktop.Grid{}),
-		reflect.TypeOf(desktop.Row{}),
-		reflect.TypeOf(desktop.SessionResult{}),
-		reflect.TypeOf(desktop.RecoveryResult{}),
-		reflect.TypeOf(desktop.Session{}),
-		reflect.TypeOf(desktop.View{}),
-		reflect.TypeOf(desktop.Draft{}),
-		reflect.TypeOf(desktop.ReproducerRequest{}),
-		reflect.TypeOf(desktop.ReproducerResult{}),
-		reflect.TypeOf(desktop.Reproducer{}),
-		reflect.TypeOf(reproducer.Plan{}),
-		reflect.TypeOf(reproducer.Step{}),
-		reflect.TypeOf(reproducer.Resolution{}),
-		reflect.TypeOf(reproducer.Retained{}),
-		reflect.TypeOf(reproducer.Edit{}),
-		reflect.TypeOf(reproducer.Unresolved{}),
-		reflect.TypeOf(desktop.ReproducerComparisonRequest{}),
-		reflect.TypeOf(desktop.ReproducerComparisonResult{}),
-		reflect.TypeOf(reproducer.Comparison{}),
-		reflect.TypeOf(reproducer.RevisionSummary{}),
-		reflect.TypeOf(reproducer.Artifact{}),
-		reflect.TypeOf(reproducer.StepChange{}),
-		reflect.TypeOf(reproducer.RetentionChange{}),
-		reflect.TypeOf(reproducer.EditChange{}),
-		reflect.TypeOf(reproducer.UnresolvedChange{}),
-		reflect.TypeOf(reproducer.Proof{}),
-		reflect.TypeOf(reproducer.ProofSide{}),
-		reflect.TypeOf(reproducer.AssertionProof{}),
-		reflect.TypeOf(desktop.TestRequest{}),
-		reflect.TypeOf(desktop.CanonicalTestRequest{}),
-		reflect.TypeOf(desktop.CanonicalTestResult{}),
-		reflect.TypeOf(desktop.TestResult{}),
-		reflect.TypeOf(desktop.TestDraft{}),
-		reflect.TypeOf(testauthor.Draft{}),
-		reflect.TypeOf(testauthor.Evidence{}),
-		reflect.TypeOf(testauthor.Answer{}),
-		reflect.TypeOf(testauthor.Expectation{}),
-		reflect.TypeOf(testauthor.Resolution{}),
-		reflect.TypeOf(testauthor.Target{}),
-		reflect.TypeOf(testauthor.Coverage{}),
-		reflect.TypeOf(testauthor.LedgerCoverage{}),
-		reflect.TypeOf(testauthor.MessageCoverage{}),
-		reflect.TypeOf(testauthor.SuggestionRequest{}),
-		reflect.TypeOf(testauthor.Suggestions{}),
-		reflect.TypeOf(testauthor.Suggestion{}),
-		reflect.TypeOf(testauthor.Origin{}),
-		reflect.TypeOf(testauthor.Link{}),
-		reflect.TypeOf(testauthor.Review{}),
-		reflect.TypeOf(testauthor.Decision{}),
-		reflect.TypeOf(testauthor.Approval{}),
-		reflect.TypeOf(testauthor.Reviewed{}),
-		reflect.TypeOf(testrunner.FieldValue{}),
-		reflect.TypeOf(desktop.RunComparisonRequest{}),
-		reflect.TypeOf(desktop.RunComparisonResult{}),
-		reflect.TypeOf(runcompare.Comparison{}),
-		reflect.TypeOf(runcompare.Execution{}),
-		reflect.TypeOf(runcompare.AssertionState{}),
-		reflect.TypeOf(runcompare.AssertionComparison{}),
-		reflect.TypeOf(runcompare.Stability{}),
-		reflect.TypeOf(drift.Report{}),
-		reflect.TypeOf(drift.Side{}),
-		reflect.TypeOf(drift.InputSide{}),
-		reflect.TypeOf(drift.TargetSide{}),
-		reflect.TypeOf(drift.EnvironmentSide{}),
-		reflect.TypeOf(drift.RuleSide{}),
-		reflect.TypeOf(drift.Drift{}),
-		reflect.TypeOf(drift.Attribution{}),
-		reflect.TypeOf(desktop.BaselineRequest{}),
-		reflect.TypeOf(desktop.BaselineResult{}),
-		reflect.TypeOf(baseline.Comparison{}),
-		reflect.TypeOf(baseline.Change{}),
-		reflect.TypeOf(desktop.CompareRequest{}),
-		reflect.TypeOf(desktop.CompareResult{}),
-		reflect.TypeOf(desktop.Comparison{}),
-		reflect.TypeOf(desktop.ComparisonRow{}),
-		reflect.TypeOf(desktop.FieldDifference{}),
-		reflect.TypeOf(diff.InputSummary{}),
-		reflect.TypeOf(diff.Reference{}),
-		reflect.TypeOf(diff.Summary{}),
-		reflect.TypeOf(diff.SegmentChange{}),
-		reflect.TypeOf(diff.Unsupported{}),
-		reflect.TypeOf(desktop.ReviewRequest{}),
-		reflect.TypeOf(desktop.ReviewResult{}),
-		reflect.TypeOf(desktop.Review{}),
-		reflect.TypeOf(desktop.ReviewSurface{}),
-		reflect.TypeOf(desktop.ReviewFinding{}),
-		reflect.TypeOf(exportreview.Coverage{}),
-		reflect.TypeOf(exportreview.Scan{}),
-		reflect.TypeOf(desktop.TransformRequest{}),
-		reflect.TypeOf(desktop.TransformResult{}),
-		reflect.TypeOf(desktop.Transformation{}),
-		reflect.TypeOf(transform.Preview{}),
-		reflect.TypeOf(transform.Artifact{}),
-		reflect.TypeOf(transform.Plan{}),
-		reflect.TypeOf(transform.Step{}),
-		reflect.TypeOf(transform.Summary{}),
-		reflect.TypeOf(transform.Entry{}),
-		reflect.TypeOf(transform.Change{}),
-		reflect.TypeOf(transform.Relation{}),
-		reflect.TypeOf(transform.Combination{}),
-		reflect.TypeOf(transform.Unsupported{}),
-		reflect.TypeOf(profilepack.Identity{}),
-		reflect.TypeOf(desktop.GuideResult{}),
-		reflect.TypeOf(desktop.PracticeRequest{}),
-		reflect.TypeOf(desktop.PracticeResult{}),
-		reflect.TypeOf(desktop.Practice{}),
-		reflect.TypeOf(desktop.PracticeAssertion{}),
-		reflect.TypeOf(guide.Progress{}),
-		reflect.TypeOf(guide.Step{}),
-		reflect.TypeOf(desktop.SequenceRequest{}),
-		reflect.TypeOf(desktop.SequenceResult{}),
-		reflect.TypeOf(desktop.Sequence{}),
-		reflect.TypeOf(desktop.SequenceEvent{}),
-		reflect.TypeOf(desktop.SequenceSummary{}),
-		reflect.TypeOf(desktop.Lane{}),
-		reflect.TypeOf(desktop.GapCount{}),
-		reflect.TypeOf(desktop.EvidenceReference{}),
-		reflect.TypeOf(correlate.RuleReport{}),
-		reflect.TypeOf(correlate.Unsupported{}),
-		reflect.TypeOf(desktop.InspectRequest{}),
-		reflect.TypeOf(desktop.InspectionResult{}),
-		reflect.TypeOf(desktop.Inspection{}),
-		reflect.TypeOf(desktop.InspectorByte{}),
-		reflect.TypeOf(desktop.FieldMetadata{}),
-		reflect.TypeOf(hl7.Node{}),
-		reflect.TypeOf(grid.Filter{}),
-		reflect.TypeOf(grid.FieldPredicate{}),
-		reflect.TypeOf(project.Document{}),
-		reflect.TypeOf(project.Settings{}),
-		reflect.TypeOf(project.Case{}),
-		reflect.TypeOf(project.Revisions{}),
-		reflect.TypeOf(project.Revision{}),
-		reflect.TypeOf(project.Operation{}),
-		reflect.TypeOf(project.Note{}),
-	} {
+	for _, bound := range facadeTypes(t) {
 		for i := range bound.NumField() {
-			member, _, _ := strings.Cut(bound.Field(i).Tag.Get("json"), ",")
+			field := bound.Field(i)
+			if !field.IsExported() {
+				continue
+			}
+			member, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+			if member == "-" {
+				continue
+			}
 			if member == "" {
-				t.Fatalf("%s.%s carries no JSON member name", bound.Name(), bound.Field(i).Name)
+				t.Fatalf("%s.%s carries no JSON member name", bound.Name(), field.Name)
 			}
 			if !strings.Contains(bindings, member+":") && !strings.Contains(bindings, member+"?:") {
 				t.Errorf("%s member %q has no typed declaration in %s", bound.Name(), member, bindingsFile)
 			}
 		}
 	}
+}
+
+// facadeTypes walks the facade's bound methods and reports every struct type
+// their signatures can put on the seam. Members of the leaf kinds JSON
+// marshals without structure — strings, numbers, times, byte slices —
+// contribute nothing to check.
+func facadeTypes(t *testing.T) []reflect.Type {
+	t.Helper()
+	facade := reflect.TypeOf(&desktop.App{})
+	if facade.NumMethod() == 0 {
+		t.Fatal("the facade exposes no bound methods")
+	}
+	var seed []reflect.Type
+	for i := range facade.NumMethod() {
+		method := facade.Method(i).Type
+		for j := 1; j < method.NumIn(); j++ {
+			seed = append(seed, method.In(j))
+		}
+		for j := range method.NumOut() {
+			seed = append(seed, method.Out(j))
+		}
+	}
+	var structs []reflect.Type
+	seen := map[reflect.Type]bool{}
+	var walk func(reflect.Type)
+	walk = func(at reflect.Type) {
+		for at.Kind() == reflect.Pointer {
+			at = at.Elem()
+		}
+		if seen[at] {
+			return
+		}
+		seen[at] = true
+		switch at.Kind() {
+		case reflect.Struct:
+			if at == reflect.TypeOf(time.Time{}) {
+				return
+			}
+			structs = append(structs, at)
+			for i := range at.NumField() {
+				walk(at.Field(i).Type)
+			}
+		case reflect.Slice, reflect.Array:
+			walk(at.Elem())
+		case reflect.Map:
+			walk(at.Key())
+			walk(at.Elem())
+		}
+	}
+	for _, at := range seed {
+		walk(at)
+	}
+	if len(structs) == 0 {
+		t.Fatal("the facade's signatures reach no struct type")
+	}
+	return structs
 }

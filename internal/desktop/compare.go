@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"context"
 	"errors"
 	"strconv"
 
@@ -139,6 +140,8 @@ type CompareResult struct {
 	Comparison *Comparison `json:"comparison,omitzero"`
 }
 
+func (r *CompareResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
 func (r refusal) comparison() CompareResult {
 	return CompareResult{State: r.state, Reason: r.reason}
 }
@@ -158,11 +161,12 @@ func (r refusal) comparison() CompareResult {
 // interruptible. Neither collection is changed, and no message byte or field
 // value crosses this boundary.
 func (a *App) Compare(request CompareRequest) CompareResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return busyRefusal.comparison()
-	}
-	defer release()
+	return run(a, false, false, func(context.Context) CompareResult {
+		return a.compare(request)
+	})
+}
+
+func (a *App) compare(request CompareRequest) CompareResult {
 	if request.Offset < 0 || request.Limit < 1 || request.Limit > MaxComparisonRows {
 		return CompareResult{State: Failed, Reason: "a comparison renders a window beginning at or after its first row, of between 1 and " + strconv.Itoa(MaxComparisonRows) + " rows"}
 	}

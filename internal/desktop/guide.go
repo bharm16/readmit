@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"context"
 	"errors"
 
 	"github.com/bharm16/readmit/internal/guide"
@@ -78,6 +79,10 @@ type GuideResult struct {
 // saved spec's own and is never touched.
 var changedBindings = []string{"target", "observation.path", "input.case"}
 
+func (r *GuideResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
+func (r *PracticeResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
 func (r refusal) guide() GuideResult { return GuideResult{State: r.state, Reason: r.reason} }
 
 func (r refusal) practice() PracticeResult {
@@ -92,23 +97,20 @@ func (r refusal) practice() PracticeResult {
 // reopens the folder — or who did a step from the command line — is told exactly
 // what that folder really holds. It reads evidence and writes nothing.
 func (a *App) Guide(workspace string) GuideResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return busyRefusal.guide()
-	}
-	defer release()
-	root, declined := resolveFolder(workspace)
-	if root == "" {
-		return declined.guide()
-	}
-	progress, err := guide.Read(root)
-	if err != nil {
-		return probeReadFailure(root).guide()
-	}
-	if progress.Next == guide.StepSample {
-		return GuideResult{State: Empty, Reason: "this folder is not a sample workspace yet", Guide: &progress}
-	}
-	return GuideResult{State: Completed, Guide: &progress}
+	return run(a, false, false, func(context.Context) GuideResult {
+		root, declined := resolveFolder(workspace)
+		if root == "" {
+			return declined.guide()
+		}
+		progress, err := guide.Read(root)
+		if err != nil {
+			return probeReadFailure(root).guide()
+		}
+		if progress.Next == guide.StepSample {
+			return GuideResult{State: Empty, Reason: "this folder is not a sample workspace yet", Guide: &progress}
+		}
+		return GuideResult{State: Completed, Guide: &progress}
+	})
 }
 
 // RunPractice executes a saved regression test against the built-in practice
@@ -121,11 +123,12 @@ func (a *App) Guide(workspace string) GuideResult {
 // Cancel stops future sends; whatever was already written is retained where it
 // was written and is reported as cancelled rather than as a verdict.
 func (a *App) RunPractice(request PracticeRequest) PracticeResult {
-	ctx, release, claimed := a.begin()
-	if !claimed {
-		return busyRefusal.practice()
-	}
-	defer release()
+	return run(a, true, false, func(ctx context.Context) PracticeResult {
+		return a.runPractice(ctx, request)
+	})
+}
+
+func (a *App) runPractice(ctx context.Context, request PracticeRequest) PracticeResult {
 	if request.Trial != guide.StepBaseline && request.Trial != guide.StepPostFix {
 		return PracticeResult{State: Failed, Reason: "a practice run is one of the two run steps the guided sample declares"}
 	}

@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -75,15 +76,18 @@ type InspectionResult struct {
 	Inspection *Inspection `json:"inspection,omitzero"`
 }
 
+func (r *InspectionResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
 // InspectOccurrence verifies the case on every read and serves bounded tree
 // and byte windows. Like OpenGrid it runs under the operation slot to completion
 // and is not interruptible; the shell must not offer cancellation for this read.
 func (a *App) InspectOccurrence(request InspectRequest) InspectionResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return InspectionResult{State: Busy, Reason: busyRefusal.reason}
-	}
-	defer release()
+	return run(a, false, false, func(context.Context) InspectionResult {
+		return a.inspectOccurrence(request)
+	})
+}
+
+func (a *App) inspectOccurrence(request InspectRequest) InspectionResult {
 	fail := func(reason string) InspectionResult { return InspectionResult{State: Failed, Reason: reason} }
 	if request.NodeOffset < 0 || request.ByteOffset < -1 {
 		return fail("inspector offsets must be in range")

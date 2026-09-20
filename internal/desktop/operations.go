@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"context"
 	"encoding/json/v2"
 	"errors"
 	"io"
@@ -31,6 +32,8 @@ type OperationResult struct {
 	Authors   int                   `json:"author_seats"`
 	Runners   int                   `json:"runner_instances"`
 }
+
+func (r *OperationResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
 // NewWithOperationSelection restores only an explicit prior policy selection.
 // Missing or invalid selection keeps reads available and paid work refused.
@@ -77,16 +80,13 @@ func (a *App) admitAuthor() error {
 // ChooseOperationPolicy uses the native folder chooser for the operator's
 // supplied operation-policy.json. Selection is not activation or trial issuance.
 func (a *App) ChooseOperationPolicy() OperationResult {
-	ctx, done, ok := a.begin()
-	if !ok {
-		return OperationResult{State: Busy, Reason: busyRefusal.reason}
-	}
-	defer done()
-	folder, declined := a.chooseFolder(ctx, "Choose the license activation folder")
-	if folder == "" {
-		return OperationResult{State: declined.state, Reason: declined.reason}
-	}
-	return a.SelectOperationPolicy(filepath.Join(folder, "operation-policy.json"))
+	return run(a, true, false, func(ctx context.Context) OperationResult {
+		folder, declined := a.chooseFolder(ctx, "Choose the license activation folder")
+		if folder == "" {
+			return OperationResult{State: declined.state, Reason: declined.reason}
+		}
+		return a.SelectOperationPolicy(filepath.Join(folder, "operation-policy.json"))
+	})
 }
 
 // SelectOperationPolicy persists only the explicit policy path, outside evidence.
@@ -132,16 +132,13 @@ func (a *App) OperationStatus() OperationResult {
 	return result
 }
 func (a *App) changeOperation(apply func(string) error) OperationResult {
-	release, ok := a.claim()
-	if !ok {
-		return OperationResult{State: Busy, Reason: busyRefusal.reason}
-	}
-	defer release()
-	_, path := a.selectedOperation()
-	if err := apply(path); err != nil {
-		return OperationResult{State: Failed, Reason: err.Error(), Selected: path != ""}
-	}
-	return a.OperationStatus()
+	return run(a, false, false, func(context.Context) OperationResult {
+		_, path := a.selectedOperation()
+		if err := apply(path); err != nil {
+			return OperationResult{State: Failed, Reason: err.Error(), Selected: path != ""}
+		}
+		return a.OperationStatus()
+	})
 }
 func (a *App) ActivateOperations() OperationResult { return a.changeOperation(operationguard.Activate) }
 func (a *App) ResolveOperationClock() OperationResult {

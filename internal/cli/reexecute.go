@@ -3,26 +3,21 @@ package cli
 import (
 	"encoding/json/v2"
 	"errors"
-	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/bharm16/readmit/internal/redact"
 	"github.com/spf13/cobra"
 )
 
-func reexecuteCommand(ran *bool) *cobra.Command {
+func reexecuteCommand() *cobra.Command {
 	var request redact.ReexecutionRequest
 	var output string
 	var send bool
-	cmd := &cobra.Command{Use: "reexecute REVIEW", Short: "Reexecute reviewed transformed evidence against an explicitly selected authorized target", Annotations: declare(capabilityExecute), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
+	cmd := &cobra.Command{Use: "reexecute REVIEW", Short: "Reexecute reviewed transformed evidence against an explicitly selected authorized target", Annotations: declareInterruptible(capabilityExecute), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if send != (output != "") {
-			return errors.New("reexecute requires --send and --output together; omit both for local preview")
+			return usage("reexecute requires --send and --output together; omit both for local preview")
 		}
 		request.ReviewPath = args[0]
-		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-		defer cancel()
+		ctx := cmd.Context()
 		plan, err := redact.PrepareReexecution(ctx, request)
 		if err != nil {
 			return err

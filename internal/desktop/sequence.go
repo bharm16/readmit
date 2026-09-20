@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"context"
 	"errors"
 	"io/fs"
 	"os"
@@ -276,6 +277,8 @@ type SequenceResult struct {
 	Sequence *Sequence `json:"sequence,omitzero"`
 }
 
+func (r *SequenceResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
 func (r refusal) sequence() SequenceResult {
 	return SequenceResult{State: r.state, Reason: r.reason}
 }
@@ -296,11 +299,12 @@ func (r refusal) sequence() SequenceResult {
 // crosses this boundary except a declared time whose bytes can be nothing but a
 // timestamp.
 func (a *App) OpenSequence(request SequenceRequest) SequenceResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return busyRefusal.sequence()
-	}
-	defer release()
+	return run(a, false, false, func(context.Context) SequenceResult {
+		return a.openSequence(request)
+	})
+}
+
+func (a *App) openSequence(request SequenceRequest) SequenceResult {
 	if request.Offset < 0 || request.Limit < 1 || request.Limit > MaxSequenceEvents {
 		return SequenceResult{State: Failed, Reason: "a sequence renders a window beginning at or after its first event, of between 1 and " + strconv.Itoa(MaxSequenceEvents) + " events"}
 	}

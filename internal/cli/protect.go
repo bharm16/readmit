@@ -12,24 +12,24 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func protectCommand(ran *bool) *cobra.Command {
+func protectCommand() *cobra.Command {
 	command := &cobra.Command{
 		Use:         "protect",
 		Annotations: declare(capabilityFree),
 		Short:       "Encrypt evidence and configuration into transfer packages with a key readmit never holds",
 		Args:        cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return errors.New("protect requires a subcommand: register, rotate, retire, show, pack, open, inspect, or discard")
+			return usage("protect requires a subcommand: register, rotate, retire, show, pack, open, inspect, or discard")
 		},
 	}
 	command.AddCommand(
-		protectRegister(ran), protectRotate(ran), protectRetire(ran), protectShow(ran),
-		protectPack(ran), protectOpen(ran), protectInspect(ran), protectDiscard(ran),
+		protectRegister(), protectRotate(), protectRetire(), protectShow(),
+		protectPack(), protectOpen(), protectInspect(), protectDiscard(),
 	)
 	return command
 }
 
-func protectRegister(ran *bool) *cobra.Command {
+func protectRegister() *cobra.Command {
 	var file, name, storage, program, maxAge, retain string
 	var arguments []string
 	command := &cobra.Command{
@@ -38,7 +38,6 @@ func protectRegister(ran *bool) *cobra.Command {
 		Short:       "Register a protection control whose key stays in an OS or customer-managed store",
 		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			*ran = true
 			document, err := openOrEmptyProtection(file)
 			if err != nil {
 				return err
@@ -72,7 +71,7 @@ func protectRegister(ran *bool) *cobra.Command {
 	return command
 }
 
-func protectRotate(ran *bool) *cobra.Command {
+func protectRotate() *cobra.Command {
 	var file, name string
 	command := &cobra.Command{
 		Use:         "rotate --protection FILE --name NAME",
@@ -80,7 +79,6 @@ func protectRotate(ran *bool) *cobra.Command {
 		Short:       "Record that the key behind a control was replaced in its own store",
 		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			*ran = true
 			document, err := readProtection(file)
 			if err != nil {
 				return err
@@ -111,7 +109,7 @@ func protectRotate(ran *bool) *cobra.Command {
 	return command
 }
 
-func protectRetire(ran *bool) *cobra.Command {
+func protectRetire() *cobra.Command {
 	var file, name string
 	command := &cobra.Command{
 		Use:         "retire --protection FILE --name NAME",
@@ -119,7 +117,6 @@ func protectRetire(ran *bool) *cobra.Command {
 		Short:       "Stop a control writing new packages; it still opens the packages it wrote",
 		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			*ran = true
 			document, err := readProtection(file)
 			if err != nil {
 				return err
@@ -139,7 +136,7 @@ func protectRetire(ran *bool) *cobra.Command {
 	return command
 }
 
-func protectShow(ran *bool) *cobra.Command {
+func protectShow() *cobra.Command {
 	var file string
 	command := &cobra.Command{
 		Use:         "show --protection FILE",
@@ -147,7 +144,6 @@ func protectShow(ran *bool) *cobra.Command {
 		Short:       "Show every registered control, its declared storage, rotation and retention, with the key masked",
 		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			*ran = true
 			document, err := readProtection(file)
 			if err != nil {
 				return err
@@ -166,7 +162,7 @@ func protectShow(ran *bool) *cobra.Command {
 	return command
 }
 
-func protectPack(ran *bool) *cobra.Command {
+func protectPack() *cobra.Command {
 	var file, name, output string
 	command := &cobra.Command{
 		Use:         "pack --protection FILE --name NAME --output NEW_DIRECTORY PATH...",
@@ -179,9 +175,8 @@ func protectPack(ran *bool) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if output == "" {
-				return errors.New("protect pack requires --output naming a new directory")
+				return usage("protect pack requires --output naming a new directory")
 			}
 			document, err := readProtection(file)
 			if err != nil {
@@ -213,7 +208,7 @@ func protectPack(ran *bool) *cobra.Command {
 	return command
 }
 
-func protectOpen(ran *bool) *cobra.Command {
+func protectOpen() *cobra.Command {
 	var file, name, source, output string
 	command := &cobra.Command{
 		Use:         "open --protection FILE --package DIRECTORY --output NEW_DIRECTORY",
@@ -221,9 +216,8 @@ func protectOpen(ran *bool) *cobra.Command {
 		Short:       "Decrypt a transfer package into a new directory",
 		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			*ran = true
 			if source == "" || output == "" {
-				return errors.New("protect open requires --package and --output")
+				return usage("protect open requires --package and --output")
 			}
 			document, err := readProtection(file)
 			if err != nil {
@@ -261,14 +255,13 @@ func protectOpen(ran *bool) *cobra.Command {
 	return command
 }
 
-func protectInspect(ran *bool) *cobra.Command {
+func protectInspect() *cobra.Command {
 	command := &cobra.Command{
 		Use:         "inspect PACKAGE",
 		Annotations: declare(capabilityFree),
 		Short:       "Report what a transfer package declares about itself, without a key",
 		Args:        protectOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			descriptor, _, err := protect.ReadPackage(args[0])
 			if err != nil {
 				return err
@@ -284,7 +277,7 @@ func protectInspect(ran *bool) *cobra.Command {
 	return command
 }
 
-func protectDiscard(ran *bool) *cobra.Command {
+func protectDiscard() *cobra.Command {
 	var override bool
 	command := &cobra.Command{
 		Use:         "discard PACKAGE",
@@ -292,7 +285,6 @@ func protectDiscard(ran *bool) *cobra.Command {
 		Short:       "Unlink the files a transfer package declares and state what that does not establish",
 		Args:        protectOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			now := time.Now()
 			descriptor, removed, err := protect.Discard(args[0], now, override)
 			if err != nil {
@@ -325,7 +317,7 @@ func protectionFlag(command *cobra.Command, file *string) {
 
 func readProtection(path string) (protect.Document, error) {
 	if path == "" {
-		return protect.Document{}, errors.New("protect requires --protection naming a protection document")
+		return protect.Document{}, usage("protect requires --protection naming a protection document")
 	}
 	return protect.ReadDocument(path)
 }
@@ -335,7 +327,7 @@ func readProtection(path string) (protect.Document, error) {
 // replaced.
 func openOrEmptyProtection(path string) (protect.Document, error) {
 	if path == "" {
-		return protect.Document{}, errors.New("protect requires --protection naming a protection document")
+		return protect.Document{}, usage("protect requires --protection naming a protection document")
 	}
 	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
 		return protect.Document{Schema: protect.Schema}, nil

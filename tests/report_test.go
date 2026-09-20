@@ -167,7 +167,10 @@ func TestReportPrintedProcedureWorksWithRelocatedBinaryAndPacket(t *testing.T) {
 func TestReportCLIRejectsUnsupportedOrPrivateArgumentsWithoutDisclosure(t *testing.T) {
 	for _, args := range [][]string{{"report"}, {"report", "--scenario", "customer-derived", "--output", "SECRET"}, {"report", "--synthetic", "--output", "SECRET"}, {"report", "verify", "SECRET"}, {"report", "prepare", "SECRET", "--output", "SECRET", "--address", "SECRET"}, {"report", "verify", "SECRET", "extra"}} {
 		stdout, stderr, err := run(t, args...)
-		if processCode(t, err) != 1 || stdout != "" || stderr == "" || len(stderr) > 300 || strings.Contains(stderr, "SECRET") {
+		// A refusal is either the report's own (status 1) or a misuse the
+		// parser refused (the usage status 2); neither may echo an argument.
+		code := processCode(t, err)
+		if (code != 1 && code != 2) || stdout != "" || stderr == "" || len(stderr) > 300 || strings.Contains(stderr, "SECRET") {
 			t.Fatalf("unsafe report error: %v %s %s", err, stdout, stderr)
 		}
 	}

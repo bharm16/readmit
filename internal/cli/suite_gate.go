@@ -9,14 +9,13 @@ import (
 	"time"
 )
 
-func suiteGateCommand(ran *bool, verify bool) *cobra.Command {
+func suiteGateCommand(verify bool) *cobra.Command {
 	var baseline, policy, pin, output string
 	name := "gate"
 	if verify {
 		name = "verify-gate"
 	}
 	command := &cobra.Command{Use: name + " DIRECTORY", Short: "Assess retained suite evidence against an explicitly pinned CI gate policy without sending", Annotations: declare(capabilityFree), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
 		var r suite.GateReport
 		if verify {
 			r = suite.VerifyGate(cmd.Context(), args[0], pin, time.Now().UTC())
@@ -40,9 +39,8 @@ func suiteGateCommand(ran *bool, verify bool) *cobra.Command {
 	return command
 }
 
-func suiteGatePolicyCommand(ran *bool) *cobra.Command {
+func suiteGatePolicyCommand() *cobra.Command {
 	return &cobra.Command{Use: "gate-policy FILE", Short: "Print the canonical identity of a privately reviewed CI gate policy", Annotations: declare(capabilityFree), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
 		raw, e := baseline.ReadBytes(args[0], suite.MaxBytes)
 		if e != nil {
 			return &ExitError{Code: 2, Err: errors.New("cannot read CI gate policy")}

@@ -1,6 +1,8 @@
 package desktop
 
 import (
+	"context"
+
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/expectation"
 	"github.com/bharm16/readmit/internal/operation"
@@ -10,11 +12,12 @@ import (
 // expectation uses the baseline panel's operation and privacy boundary. A
 // release approval re-reads the candidate, profiles and predecessor together.
 func (a *App) expectation(request BaselineRequest, approve, inspect bool) BaselineResult {
-	release, ok := a.claim()
-	if !ok {
-		return BaselineResult{State: Busy, Reason: busyRefusal.reason}
-	}
-	defer release()
+	return run(a, false, false, func(context.Context) BaselineResult {
+		return a.applyExpectation(request, approve, inspect)
+	})
+}
+
+func (a *App) applyExpectation(request BaselineRequest, approve, inspect bool) BaselineResult {
 	failure := func(reason string) BaselineResult { return BaselineResult{State: Failed, Reason: reason} }
 	root, declined := resolveFolder(request.Workspace)
 	if root == "" {

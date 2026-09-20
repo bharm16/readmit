@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"context"
 	"errors"
 	"io/fs"
 	"os"
@@ -166,6 +167,8 @@ type ReviewResult struct {
 	Review *Review `json:"review,omitzero"`
 }
 
+func (r *ReviewResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
 func (r refusal) review() ReviewResult { return ReviewResult{State: r.state, Reason: r.reason} }
 
 // Transformation is one plan previewed over one verified case: the documents it
@@ -203,6 +206,8 @@ type TransformResult struct {
 	Transformation *Transformation `json:"transformation,omitzero"`
 }
 
+func (r *TransformResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
 func (r refusal) transformation() TransformResult {
 	return TransformResult{State: r.state, Reason: r.reason}
 }
@@ -224,11 +229,12 @@ func (r refusal) transformation() TransformResult {
 // interruptible. Nothing is written, nothing is exported, and no approval is
 // retained.
 func (a *App) OpenReview(request ReviewRequest) ReviewResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return busyRefusal.review()
-	}
-	defer release()
+	return run(a, false, false, func(context.Context) ReviewResult {
+		return a.openReview(request)
+	})
+}
+
+func (a *App) openReview(request ReviewRequest) ReviewResult {
 	if request.Offset < 0 || request.Limit < 1 || request.Limit > MaxReviewFindings {
 		return ReviewResult{State: Failed, Reason: "a review renders a window beginning at or after its first finding, of between 1 and " + strconv.Itoa(MaxReviewFindings) + " findings"}
 	}
@@ -265,11 +271,12 @@ func (a *App) OpenReview(request ReviewRequest) ReviewResult {
 // verified evidence under the case reader's own limits and runs to completion
 // once it starts, so it holds the operation slot but is not interruptible.
 func (a *App) PreviewTransformation(request TransformRequest) TransformResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return busyRefusal.transformation()
-	}
-	defer release()
+	return run(a, false, false, func(context.Context) TransformResult {
+		return a.previewTransformation(request)
+	})
+}
+
+func (a *App) previewTransformation(request TransformRequest) TransformResult {
 	root, declined := resolveFolder(request.Workspace)
 	if root == "" {
 		return declined.transformation()

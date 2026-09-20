@@ -8,24 +8,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func normalizeCommand(ran *bool) *cobra.Command {
+func normalizeCommand() *cobra.Command {
 	var options diff.Options
 	var policy, format, inputFormat, terminator, boundary string
 	cmd := &cobra.Command{
-		Use: "normalize LEFT RIGHT --policy FILE", Short: "Compare fields under a declared normalization policy and list every difference it suppresses", Annotations: declare(capabilityFree),
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) != 2 {
-				return errors.New("normalize requires exactly two inputs")
-			}
-			return nil
-		},
+		Use: "normalize LEFT RIGHT --policy file", Short: "Compare fields under a declared normalization policy and list every difference it suppresses", Annotations: declare(capabilityFree),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
-			if format != "terminal" && format != "markdown" && format != "json" {
-				return errors.New("normalize format must be terminal, markdown, or json")
-			}
 			if policy == "" {
-				return errors.New("normalize requires a --policy document")
+				return usage("normalize requires a --policy document")
 			}
 			rules, err := diff.ReadPolicy(policy)
 			if err != nil {
@@ -39,20 +29,12 @@ func normalizeCommand(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var data []byte
-			switch format {
-			case "terminal":
-				data = diff.NormalizationTerminal(report)
-			case "markdown":
-				data = diff.NormalizationMarkdown(report)
-			case "json":
-				data, err = diff.NormalizationJSON(report)
-			}
+			data, err := renderSelection(format, diff.NormalizationTerminal(report), diff.NormalizationMarkdown(report), report)
 			if err != nil {
 				return err
 			}
-			if len(data) > 32<<20 {
-				return errors.New("normalize output exceeds 32 MiB; select a narrower field scope")
+			if err := checkRendered(data); err != nil {
+				return err
 			}
 			if _, err := cmd.OutOrStdout().Write(data); err != nil {
 				return errors.New("cannot write normalize output")

@@ -26,23 +26,16 @@ const hidden = "hidden"
 // stored verdict, and it refuses a question the evidence cannot answer instead
 // of answering a narrower one. Nothing is opened but the artifacts named on the
 // command line, nothing is sent, and nothing is written.
-func explainCommand(ran *bool) *cobra.Command {
+func explainCommand() *cobra.Command {
 	var assertions, before, beforeSource, after, afterSource string
 	var showValues bool
 	command := &cobra.Command{
-		Use:         "explain RUN --assertions SET",
+		Use:         "explain RUN --assertions set",
 		Annotations: declare(capabilityFree),
 		Short:       "Explain what a run's evidence decided, assertion by assertion",
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return errors.New("explain requires exactly one run bundle")
-			}
-			return nil
-		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if assertions == "" {
-				return &ExitError{Code: 2, Err: errors.New("explain requires --assertions naming one " + assertion.Schema + " document")}
+				return usage("explain requires --assertions naming one %s document", assertion.Schema)
 			}
 			explanation, err := runexplain.Explain(cmd.Context(), runexplain.Input{
 				Run: args[0], Assertions: assertions,

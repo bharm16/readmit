@@ -4,32 +4,22 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/bharm16/readmit/internal/sharing"
 	"github.com/spf13/cobra"
 )
 
-func shareCommand(ran *bool) *cobra.Command {
+func shareCommand() *cobra.Command {
 	var r sharing.Request
 	var approve, output string
-	cmd := &cobra.Command{Use: "share SOURCE --kind KIND --policy POLICY", Short: "Review value-free support diagnostics; never upload evidence", Annotations: declare(capabilityFree), Args: func(_ *cobra.Command, args []string) error {
-		if len(args) != 1 {
-			return errors.New("share requires one source")
-		}
-		return nil
-	}, RunE: func(cmd *cobra.Command, args []string) (err error) {
-		*ran = true
+	cmd := &cobra.Command{Use: "share SOURCE --kind kind --policy policy", Short: "Review value-free support diagnostics; never upload evidence", Annotations: declareInterruptible(capabilityFree), RunE: func(cmd *cobra.Command, args []string) (err error) {
 		action := "refused"
 		defer func() {
 			if _, e := fmt.Fprintf(cmd.ErrOrStderr(), "{\"schema\":\"readmit-sharing-security-event/v1\",\"action\":%q}\n", action); err == nil && e != nil {
 				err = errors.New("cannot record sharing security event")
 			}
 		}()
-		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-		defer cancel()
+		ctx := cmd.Context()
 		r.Source = args[0]
 		candidate, e := sharing.Prepare(ctx, r)
 		if e != nil {
@@ -62,14 +52,7 @@ func shareCommand(ran *bool) *cobra.Command {
 	cmd.Flags().StringVar(&output, "output", "", "New private support directory; omit to preview")
 	cmd.AddCommand(&cobra.Command{
 		Use: "verify SUPPORT", Short: "Verify a local reviewed support bundle without opening its source", Annotations: declare(capabilityFree),
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return errors.New("share verify requires one bundle")
-			}
-			return nil
-		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if cmd.Context().Err() != nil {
 				return sharing.ErrRefused
 			}

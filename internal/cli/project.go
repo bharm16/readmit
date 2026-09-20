@@ -26,21 +26,21 @@ const (
 	evidenceMissing    evidenceState = "missing"
 )
 
-func projectCommand(ran *bool) *cobra.Command {
+func projectCommand() *cobra.Command {
 	command := &cobra.Command{
 		Use:         "project",
 		Annotations: declare(capabilityFree),
 		Short:       "Create and manage an interface investigation project",
 		Args:        cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return errors.New("project requires a subcommand: init, settings, add, update, revise, note, show, migration-preview, quota, recover, archive, or delete")
+			return usage("project requires a subcommand: init, settings, add, update, revise, note, show, migration-preview, quota, recover, archive, or delete")
 		},
 	}
-	command.AddCommand(projectInit(ran), projectSettings(ran), projectAdd(ran), projectUpdate(ran), projectRevise(ran), projectNote(ran), projectShow(ran), projectMigrationPreview(ran), projectQuota(ran), projectRecover(ran), projectArchive(ran, false), projectArchive(ran, true))
+	command.AddCommand(projectInit(), projectSettings(), projectAdd(), projectUpdate(), projectRevise(), projectNote(), projectShow(), projectMigrationPreview(), projectQuota(), projectRecover(), projectArchive(false), projectArchive(true))
 	return command
 }
 
-func projectInit(ran *bool) *cobra.Command {
+func projectInit() *cobra.Command {
 	var output, title, owner string
 	var versions []string
 	command := &cobra.Command{
@@ -49,9 +49,8 @@ func projectInit(ran *bool) *cobra.Command {
 		Short:       "Create a new project directory and its first document",
 		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			*ran = true
 			if output == "" {
-				return errors.New("project init requires --output with a new directory")
+				return usage("project init requires --output with a new directory")
 			}
 			document := project.Document{
 				Schema:            project.Schema,
@@ -75,7 +74,7 @@ func projectInit(ran *bool) *cobra.Command {
 	return command
 }
 
-func projectSettings(ran *bool) *cobra.Command {
+func projectSettings() *cobra.Command {
 	var title, owner, defaultVersion string
 	var versions []string
 	command := &cobra.Command{
@@ -84,7 +83,6 @@ func projectSettings(ran *bool) *cobra.Command {
 		Short:       "Change project-level settings and declare interface versions",
 		Args:        projectOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			opened, err := project.Open(args[0])
 			if err != nil {
 				return err
@@ -117,7 +115,7 @@ func projectSettings(ran *bool) *cobra.Command {
 	return command
 }
 
-func projectAdd(ran *bool) *cobra.Command {
+func projectAdd() *cobra.Command {
 	var title, owner, status, version string
 	var tags, incidents []string
 	command := &cobra.Command{
@@ -126,7 +124,6 @@ func projectAdd(ran *bool) *cobra.Command {
 		Short:       "Register a verified case bundle of the project directory",
 		Args:        projectTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			opened, err := project.Open(args[0])
 			if err != nil {
 				return err
@@ -169,7 +166,7 @@ func projectAdd(ran *bool) *cobra.Command {
 	return command
 }
 
-func projectUpdate(ran *bool) *cobra.Command {
+func projectUpdate() *cobra.Command {
 	var title, owner, status, version string
 	var tags, incidents []string
 	command := &cobra.Command{
@@ -178,7 +175,6 @@ func projectUpdate(ran *bool) *cobra.Command {
 		Short:       "Change the title, tags, ownership, status, or linked incidents of a registered case",
 		Args:        projectTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			var change project.Change
 			if cmd.Flags().Changed("title") {
 				change.Title = &title
@@ -208,7 +204,7 @@ func projectUpdate(ran *bool) *cobra.Command {
 				change.Incidents = &declared
 			}
 			if change.Empty() {
-				return errors.New("project update requires at least one change")
+				return usage("project update requires at least one change")
 			}
 			opened, err := project.Open(args[0])
 			if err != nil {
@@ -233,7 +229,7 @@ func projectUpdate(ran *bool) *cobra.Command {
 	return command
 }
 
-func projectRevise(ran *bool) *cobra.Command {
+func projectRevise() *cobra.Command {
 	var parent string
 	command := &cobra.Command{
 		Use:         "revise PROJECT REVISION --parent NAME",
@@ -241,9 +237,8 @@ func projectRevise(ran *bool) *cobra.Command {
 		Short:       "Register derived evidence as a revision of a registered case or revision",
 		Args:        projectTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if parent == "" {
-				return errors.New("project revise requires --parent naming the case or revision it was derived from")
+				return usage("project revise requires --parent naming the case or revision it was derived from")
 			}
 			opened, err := project.Open(args[0])
 			if err != nil {
@@ -290,7 +285,7 @@ func projectRevise(ran *bool) *cobra.Command {
 	return command
 }
 
-func projectNote(ran *bool) *cobra.Command {
+func projectNote() *cobra.Command {
 	var title, body, subject string
 	command := &cobra.Command{
 		Use:         "note PROJECT NAME --title TITLE",
@@ -298,7 +293,6 @@ func projectNote(ran *bool) *cobra.Command {
 		Short:       "Create or replace an editable note or draft beside the evidence",
 		Args:        projectTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			result, err := operation.SetProjectNote(args[0], project.Note{
 				Name:    args[1],
 				Subject: subject,
@@ -317,14 +311,13 @@ func projectNote(ran *bool) *cobra.Command {
 	return command
 }
 
-func projectShow(ran *bool) *cobra.Command {
+func projectShow() *cobra.Command {
 	return &cobra.Command{
 		Use:         "show PROJECT",
 		Annotations: declare(capabilityFree),
 		Short:       "Show project settings and every registered case with its verified identity",
 		Args:        projectOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			opened, err := project.Open(args[0])
 			if err != nil {
 				return err

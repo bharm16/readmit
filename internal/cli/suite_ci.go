@@ -7,16 +7,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func suiteCICommand(ran *bool) *cobra.Command {
+func suiteCICommand() *cobra.Command {
 	var request suite.CIRequest
 	var send bool
 	var deadline string
-	command := &cobra.Command{Use: "ci FILE", Short: "Execute a saved suite once with private evidence and fixed-label CI summaries", Annotations: declare(capabilityExecute), RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
+	command := &cobra.Command{Use: "ci FILE", Short: "Execute a saved suite once with private evidence and fixed-label CI summaries", Annotations: declareInterruptible(capabilityExecute), RunE: func(cmd *cobra.Command, args []string) error {
 		result := suite.CIError()
 		if len(args) == 1 && send {
 			request.Path = args[0]
-			ctx, cancel, err := runContext(cmd.Context(), deadline)
+			ctx, cancel, err := deadlineContext(cmd.Context(), deadline)
 			if err == nil {
 				defer cancel()
 				result = suite.RunCI(ctx, request)

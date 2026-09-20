@@ -18,16 +18,10 @@ import (
 // approved HTTP API, and a downstream HL7 capture readmit already retained; the
 // database collector reports into the same window and completion
 // rather than inventing its own.
-func observeCommand(ran *bool) *cobra.Command {
+func observeCommand() *cobra.Command {
 	command := &cobra.Command{Use: "observe", Short: "Read declared observation windows and retained completions"}
 	var windowJSON bool
-	validate := &cobra.Command{Use: "validate WINDOW", Short: "Validate a declared observation window without observing anything", Annotations: declare(capabilityFree), Args: func(_ *cobra.Command, args []string) error {
-		if len(args) != 1 {
-			return errors.New("observe validate requires one observation window document")
-		}
-		return nil
-	}, RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
+	validate := &cobra.Command{Use: "validate WINDOW", Short: "Validate a declared observation window without observing anything", Annotations: declare(capabilityFree), RunE: func(cmd *cobra.Command, args []string) error {
 		window, err := observewindow.ReadWindow(args[0])
 		if err != nil {
 			return err
@@ -44,13 +38,7 @@ func observeCommand(ran *bool) *cobra.Command {
 	validate.Flags().BoolVar(&windowJSON, "json", false, "Write the canonical readmit-observation-window/v1 document")
 	var completionJSON bool
 	var declared string
-	explain := &cobra.Command{Use: "explain COMPLETION", Short: "Report whether a retained window completed and what it can support", Annotations: declare(capabilityFree), Args: func(_ *cobra.Command, args []string) error {
-		if len(args) != 1 {
-			return errors.New("observe explain requires one observation completion record")
-		}
-		return nil
-	}, RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
+	explain := &cobra.Command{Use: "explain COMPLETION", Short: "Report whether a retained window completed and what it can support", Annotations: declare(capabilityFree), RunE: func(cmd *cobra.Command, args []string) error {
 		completion, err := observewindow.ReadCompletion(args[0])
 		if err != nil {
 			return err
@@ -71,7 +59,7 @@ func observeCommand(ran *bool) *cobra.Command {
 	}}
 	explain.Flags().BoolVar(&completionJSON, "json", false, "Write the canonical readmit-observation-completion/v1 record")
 	explain.Flags().StringVar(&declared, "window", "", "Re-decide the record against the observation window that was declared")
-	command.AddCommand(validate, explain, observeCollectCommand(ran))
+	command.AddCommand(validate, explain, observeCollectCommand())
 	return command
 }
 
@@ -79,7 +67,7 @@ func observeCommand(ran *bool) *cobra.Command {
 // window. It fills in the slots internal/observewindow already defines rather
 // than adding a second set, so a file export, an approved HTTP API and a
 // downstream capture produce the same record a read-only query will.
-func observeCollectCommand(ran *bool) *cobra.Command {
+func observeCollectCommand() *cobra.Command {
 	var window, output, snapshot, policyPath string
 	var produced []string
 	var completionJSON bool
@@ -87,16 +75,9 @@ func observeCollectCommand(ran *bool) *cobra.Command {
 		Use:         "collect SOURCE",
 		Annotations: declare(capabilityExecute),
 		Short:       "Observe a declared file export, HTTP API, downstream capture or database view for one observation window",
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return errors.New("observe collect requires one observation source document")
-			}
-			return nil
-		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if window == "" || output == "" || snapshot == "" {
-				return errors.New("observe collect requires --window, --out, and --snapshot")
+				return usage("observe collect requires --window, --out, and --snapshot")
 			}
 			declared, err := observewindow.ReadWindow(window)
 			if err != nil {

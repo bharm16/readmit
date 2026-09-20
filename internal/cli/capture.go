@@ -28,7 +28,7 @@ type captureObservation struct {
 	ObservedAt *time.Time       `json:"observed_at"`
 }
 
-func captureCommand(ran *bool) *cobra.Command {
+func captureCommand() *cobra.Command {
 	var output, format, terminator, metadata string
 	var showValues bool
 	cmd := &cobra.Command{
@@ -40,12 +40,11 @@ func captureCommand(ran *bool) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if output == "" {
-				return errors.New("capture requires --output with a new directory")
+				return usage("capture requires --output with a new directory")
 			}
 			if cmd.Flags().Changed("metadata") && metadata == "" {
-				return errors.New("metadata file cannot be empty")
+				return usage("metadata file cannot be empty")
 			}
 			importedAt := time.Now().UTC()
 			inputs := make([]bundle.Input, len(args))
@@ -85,18 +84,11 @@ func captureCommand(ran *bool) *cobra.Command {
 	return cmd
 }
 
-func timelineCommand(ran *bool) *cobra.Command {
+func timelineCommand() *cobra.Command {
 	var showValues bool
 	cmd := &cobra.Command{
 		Use: "timeline BUNDLE", Short: "Verify and show case events, independent times, and correlation gaps", Annotations: declare(capabilityFree),
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return errors.New("timeline requires exactly one bundle directory")
-			}
-			return nil
-		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			b, err := bundle.Open(args[0])
 			if err != nil {
 				return err

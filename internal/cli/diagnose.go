@@ -10,25 +10,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func diagnoseCommand(ran *bool) *cobra.Command {
+func diagnoseCommand() *cobra.Command {
 	var output, configPath string
 	cmd := &cobra.Command{
-		Use: "diagnose BUNDLE --output NEW_DIRECTORY", Short: "Write evidence-bound appointment or lifecycle diagnosis as JSON and Markdown", Annotations: declare(capabilityFree),
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return errors.New("diagnose requires exactly one bundle directory")
-			}
-			return nil
-		},
+		Use: "diagnose BUNDLE --output new_directory", Short: "Write evidence-bound appointment or lifecycle diagnosis as JSON and Markdown", Annotations: declare(capabilityFree),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if output == "" {
-				return errors.New("diagnose requires --output with a new directory")
+				return usage("diagnose requires --output with a new directory")
 			}
 			config := diagnose.DefaultConfig()
 			if cmd.Flags().Changed("config") {
 				if configPath == "" {
-					return errors.New("diagnosis configuration file cannot be empty")
+					return usage("diagnosis configuration file cannot be empty")
 				}
 				data, err := readInputFile(configPath, 1<<20)
 				if err != nil {
@@ -61,7 +54,7 @@ func diagnoseCommand(ran *bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&output, "output", "", "New directory for report.json and report.md (never overwrite)")
 	cmd.Flags().StringVar(&configPath, "config", "", "Explicit readmit-diagnose-config/v1 JSON configuration selecting the profile, ruleset, rules and namespaces")
-	cmd.AddCommand(diagnoseReviewCommand(ran), diagnosisGroupsCommand(ran))
+	cmd.AddCommand(diagnoseReviewCommand(), diagnosisGroupsCommand())
 	return cmd
 }
 

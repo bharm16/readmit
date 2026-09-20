@@ -5,11 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"os/signal"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/bharm16/readmit/internal/bundle"
@@ -23,32 +20,31 @@ import (
 // forever because nobody said otherwise.
 const indefinite = "indefinite"
 
-func indexCommand(ran *bool) *cobra.Command {
+func indexCommand() *cobra.Command {
 	command := &cobra.Command{
 		Use:         "index",
 		Annotations: declare(capabilityFree),
 		Short:       "Build and query a derived, disposable index of one case",
 		Args:        cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return errors.New("index requires a subcommand: build, show, or search")
+			return usage("index requires a subcommand: build, show, or search")
 		},
 	}
-	command.AddCommand(indexBuild(ran), indexShow(ran), indexSearch(ran))
+	command.AddCommand(indexBuild(), indexShow(), indexSearch())
 	return command
 }
 
-func indexBuild(ran *bool) *cobra.Command {
+func indexBuild() *cobra.Command {
 	var output, retain, until string
 	var fields []string
 	command := &cobra.Command{
 		Use:         "build CASE --output NEW_FILE --field SELECTOR --retain FORM --retain-until WHEN",
-		Annotations: declare(capabilityAuthor),
+		Annotations: declareInterruptible(capabilityAuthor),
 		Short:       "Build an index of declared fields from canonical case evidence",
 		Args:        indexOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if output == "" {
-				return errors.New("index build requires --output with a new file")
+				return usage("index build requires --output with a new file")
 			}
 			policy, err := declaredPolicy(fields, retain, until)
 			if err != nil {
@@ -58,8 +54,7 @@ func indexBuild(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer cancel()
+			ctx := cmd.Context()
 			at := time.Now().UTC()
 			document, err := index.Build(ctx, opened, policy, at)
 			if err != nil {
@@ -78,14 +73,13 @@ func indexBuild(ran *bool) *cobra.Command {
 	return command
 }
 
-func indexShow(ran *bool) *cobra.Command {
+func indexShow() *cobra.Command {
 	command := &cobra.Command{
 		Use:         "show CASE INDEX",
 		Annotations: declare(capabilityFree),
 		Short:       "Report what an index retains, of which case, and until when",
 		Args:        indexTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			document, err := openIndex(args[0], args[1])
 			if err != nil {
 				return err
@@ -96,7 +90,7 @@ func indexShow(ran *bool) *cobra.Command {
 	return command
 }
 
-func indexSearch(ran *bool) *cobra.Command {
+func indexSearch() *cobra.Command {
 	var field, equals, contains, state string
 	var showValues bool
 	command := &cobra.Command{
@@ -105,7 +99,6 @@ func indexSearch(ran *bool) *cobra.Command {
 		Short:       "Find the occurrences of a case whose indexed fields match",
 		Args:        indexTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			query, err := declaredQuery(cmd, field, equals, contains, state)
 			if err != nil {
 				return err
@@ -155,13 +148,13 @@ func openIndex(casePath, indexPath string) (index.Document, error) {
 // this command exists to prevent.
 func declaredPolicy(fields []string, retain, until string) (index.Policy, error) {
 	if len(fields) == 0 {
-		return index.Policy{}, errors.New("index build requires --field naming each field to retain")
+		return index.Policy{}, usage("index build requires --field naming each field to retain")
 	}
 	if retain == "" {
-		return index.Policy{}, errors.New("index build requires --retain with values, digests, or states")
+		return index.Policy{}, usage("index build requires --retain with values, digests, or states")
 	}
 	if until == "" {
-		return index.Policy{}, errors.New("index build requires --retain-until with an RFC 3339 instant or " + indefinite)
+		return index.Policy{}, usage("index build requires --retain-until with an RFC 3339 instant or %s", indefinite)
 	}
 	policy := index.Policy{Fields: make([]string, 0, len(fields)), Retention: index.Retention(retain)}
 	for _, field := range fields {
@@ -174,7 +167,7 @@ func declaredPolicy(fields []string, retain, until string) (index.Policy, error)
 	if until != indefinite {
 		instant, err := time.Parse(time.RFC3339, until)
 		if err != nil {
-			return index.Policy{}, errors.New("a retention end is an RFC 3339 instant or " + indefinite)
+			return index.Policy{}, usage("a retention end is an RFC 3339 instant or %s", indefinite)
 		}
 		instant = instant.UTC()
 		policy.RetainUntil = &instant
@@ -203,7 +196,7 @@ func declaredQuery(cmd *cobra.Command, field, equals, contains, state string) (i
 		asked, query.Match, query.State = asked+1, index.State, hl7.State(state)
 	}
 	if asked != 1 {
-		return index.Query{}, errors.New("index search asks exactly one of --equals, --contains, or --state")
+		return index.Query{}, usage("index search asks exactly one of --equals, --contains, or --state")
 	}
 	if field != "" {
 		selector, err := hl7.ParseSelector(field)

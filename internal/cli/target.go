@@ -7,10 +7,8 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strconv"
-	"syscall"
 	"time"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
@@ -22,21 +20,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func targetCommand(ran *bool) *cobra.Command {
+func targetCommand() *cobra.Command {
 	command := &cobra.Command{
 		Use:         "target",
 		Annotations: declare(capabilityFree),
 		Short:       "Configure, validate and diagnose one named test environment",
 		Args:        cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return errors.New("target requires a subcommand: set, show, check, or reset")
+			return usage("target requires a subcommand: set, show, check, or reset")
 		},
 	}
-	command.AddCommand(targetSet(ran), targetShow(ran), targetCheck(ran), targetReset(ran))
+	command.AddCommand(targetSet(), targetShow(), targetCheck(), targetReset())
 	return command
 }
 
-func targetSet(ran *bool) *cobra.Command {
+func targetSet() *cobra.Command {
 	var file, name, classification, address, transport string
 	var caFile, serverName, clientCertificate, secretsFile, reference string
 	var connectTimeout, messageTimeout string
@@ -48,7 +46,6 @@ func targetSet(ran *bool) *cobra.Command {
 		Short:       "Record or edit the endpoint, timeouts, TLS material and classification of one environment",
 		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			*ran = true
 			config, err := openOrNewTarget(file)
 			if err != nil {
 				return err
@@ -111,7 +108,7 @@ func targetSet(ran *bool) *cobra.Command {
 	return command
 }
 
-func targetShow(ran *bool) *cobra.Command {
+func targetShow() *cobra.Command {
 	var file string
 	command := &cobra.Command{
 		Use:         "show --target FILE",
@@ -119,7 +116,6 @@ func targetShow(ran *bool) *cobra.Command {
 		Short:       "Validate one environment configuration and show its endpoint, timeouts, TLS material and classification",
 		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			*ran = true
 			config, err := readTargetFile(file)
 			if err != nil {
 				return err
@@ -135,15 +131,14 @@ func targetShow(ran *bool) *cobra.Command {
 	return command
 }
 
-func targetCheck(ran *bool) *cobra.Command {
+func targetCheck() *cobra.Command {
 	var file, policyPath, decisionPath string
 	command := &cobra.Command{
 		Use:         "check --target FILE [--policy FILE]",
-		Annotations: declare(capabilityExecute),
+		Annotations: declareInterruptible(capabilityExecute),
 		Short:       "Reach one configured environment and report the transport, TLS status and send decision, sending no HL7 payload",
 		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			*ran = true
 			config, err := readTargetFile(file)
 			if err != nil {
 				return err
@@ -154,8 +149,7 @@ func targetCheck(ran *bool) *cobra.Command {
 			}
 			// Interrupt and termination reach the diagnosis, so a cancelled
 			// check reports cancellation rather than claiming nothing.
-			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer cancel()
+			ctx := cmd.Context()
 			// The same rule the send path enforces, asked here with the send
 			// not requested, because a check sends nothing. A destination this
 			// reports as refused is one a replay refuses; there is one
@@ -197,25 +191,24 @@ func targetCheck(ran *bool) *cobra.Command {
 	return command
 }
 
-func targetReset(ran *bool) *cobra.Command {
+func targetReset() *cobra.Command {
 	var file, planPath, outcomePath, policyPath string
 	var confirmed []string
 	command := &cobra.Command{
 		Use:         "reset --target FILE --plan FILE --outcome NEW_FILE [--policy FILE] [--confirm ID]",
-		Annotations: declare(capabilityExecute),
+		Annotations: declareInterruptible(capabilityExecute),
 		Short:       "Return one named nonproduction environment to its declared starting state through reviewed reset actions",
 		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			*ran = true
 			config, err := readTargetFile(file)
 			if err != nil {
 				return resetError(err)
 			}
 			if planPath == "" {
-				return resetError(errors.New("target reset requires --plan naming a " + fixturereset.PlanSchema + " document"))
+				return usage("target reset requires --plan naming a %s document", fixturereset.PlanSchema)
 			}
 			if outcomePath == "" {
-				return resetError(errors.New("target reset requires --outcome naming a new file to retain the reset outcome in"))
+				return usage("target reset requires --outcome naming a new file to retain the reset outcome in")
 			}
 			planBytes, err := readInputFile(planPath, fixturereset.MaxPlanBytes)
 			if err != nil {
@@ -242,8 +235,7 @@ func targetReset(ran *bool) *cobra.Command {
 			if _, err := artifactpath.Destination(outcomePath); err != nil {
 				return resetError(err)
 			}
-			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer cancel()
+			ctx := cmd.Context()
 			result, plan := fixturereset.Run(ctx, fixturereset.Request{
 				Target: config, PlanBytes: planBytes, PlanDirectory: filepath.Dir(resolved),
 				Policy: policy, Confirmed: confirmed,
@@ -344,7 +336,7 @@ func newEnvironment() replay.Target {
 
 func readTargetFile(path string) (replay.Target, error) {
 	if path == "" {
-		return replay.Target{}, errors.New("target requires --target naming a target configuration file")
+		return replay.Target{}, usage("target requires --target naming a target configuration file")
 	}
 	return replay.ReadTarget(path)
 }
@@ -355,7 +347,7 @@ func readTargetFile(path string) (replay.Target, error) {
 // readmit-target/v1 and v2 are still read everywhere, and nothing rewrites one.
 func openOrNewTarget(path string) (replay.Target, error) {
 	if path == "" {
-		return replay.Target{}, errors.New("target set requires --target naming the file to record this environment in")
+		return replay.Target{}, usage("target set requires --target naming the file to record this environment in")
 	}
 	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
 		return newEnvironment(), nil

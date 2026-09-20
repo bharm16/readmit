@@ -4,9 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/bharm16/readmit/internal/testrunner"
 	"github.com/spf13/cobra"
@@ -16,21 +13,14 @@ import (
 // instruction deliberately avoids echoing private command-line paths.
 const testRerun = "Rerun: reset the declared initial state, then readmit test SPEC --send --output NEW_RESULT"
 
-func testCommand(ran *bool) *cobra.Command {
+func testCommand() *cobra.Command {
 	var output string
 	var send bool
 	command := &cobra.Command{
-		Use: "test SPEC", Short: "Evaluate a declarative regression test against an explicit test target", Annotations: declare(capabilityExecuteIfSend),
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return errors.New("test requires exactly one spec file")
-			}
-			return nil
-		},
+		Use: "test SPEC", Short: "Evaluate a declarative regression test against an explicit test target", Annotations: declareInterruptible(capabilityExecuteIfSend),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if send && output == "" || !send && output != "" {
-				return &ExitError{Code: 2, Err: errors.New("test requires --send and --output together; omit both for local validation")}
+				return usage("test requires --send and --output together; omit both for local validation")
 			}
 			if !send {
 				plan, err := testrunner.Prepare(args[0])
@@ -46,8 +36,7 @@ func testCommand(ran *bool) *cobra.Command {
 				}
 				return nil
 			}
-			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer cancel()
+			ctx := cmd.Context()
 			artifact, err := testrunner.Run(ctx, args[0], output)
 			if err != nil {
 				return &ExitError{Code: 2, Err: err}
