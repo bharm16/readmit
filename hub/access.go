@@ -9,11 +9,9 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
-	"io"
 	"math/big"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -217,23 +215,9 @@ func OpenAccess(path string) (*Access, error) {
 	return a, e
 }
 func (a *Access) policy() (AccessPolicy, error) {
-	var zero AccessPolicy
-	info, e := os.Lstat(a.path)
-	if e != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || info.Size() > 1<<20 {
-		return zero, errAccess
-	}
-	f, e := os.Open(a.path)
+	b, e := readPrivatePolicy(a.path)
 	if e != nil {
-		return zero, errAccess
-	}
-	defer f.Close()
-	opened, e := f.Stat()
-	if e != nil || !os.SameFile(info, opened) {
-		return zero, errAccess
-	}
-	b, e := io.ReadAll(io.LimitReader(f, (1<<20)+1))
-	if e != nil {
-		return zero, errAccess
+		return AccessPolicy{}, errAccess
 	}
 	return ReadAccessPolicy(b)
 }

@@ -6,9 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
-	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 
 	"github.com/bharm16/readmit/internal/operationguard"
@@ -66,20 +64,7 @@ func (s *Store) SetOperationPolicy(path string) error {
 	if !filepath.IsAbs(path) {
 		return errAccess
 	}
-	info, e := os.Lstat(path)
-	if e != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || info.Size() > 1<<20 {
-		return errAccess
-	}
-	f, e := os.Open(path)
-	if e != nil {
-		return errAccess
-	}
-	defer f.Close()
-	opened, e := f.Stat()
-	if e != nil || !os.SameFile(info, opened) {
-		return errAccess
-	}
-	raw, e := io.ReadAll(io.LimitReader(f, (1<<20)+1))
+	raw, e := readPrivatePolicy(path)
 	if e != nil {
 		return errAccess
 	}
@@ -103,6 +88,39 @@ func (s *Store) admitAuthor(r *http.Request, p Principal) (func() error, error) 
 	}
 	return nil, errAccess
 }
+// authorizeWrite runs the sequence every hub write route runs: authorize,
+// refuse any principal the route's own identity rule declines, admit the
+// operation behind the store's one slot when this request writes, and
+// authorize again, so a write that queued behind another operation cannot
+// retain a grant that was revoked while it waited. accept carries the
+// route's identity rule; nil admits any authorized principal. False means
+// the response is already written, and a caller that defers the returned
+// release writes inside both answers.
+func (s *Store) authorizeWrite(a *Access, r *http.Request, w http.ResponseWriter, project, action string, writes bool, accept func(Principal) bool) (Principal, func() error, bool) {
+	principal, e := s.authorize(a, r, project, action)
+	if e != nil || (accept != nil && !accept(principal)) {
+		http.Error(w, "access refused", 403)
+		return Principal{}, nil, false
+	}
+	var release func() error
+	if writes {
+		release, e = s.admitAuthor(r, principal)
+		if e != nil {
+			http.Error(w, "operation admission refused", 403)
+			return Principal{}, nil, false
+		}
+	}
+	principal, e = s.authorize(a, r, project, action)
+	if e != nil {
+		if release != nil {
+			release()
+		}
+		http.Error(w, "access refused", 403)
+		return Principal{}, nil, false
+	}
+	return principal, release, true
+}
+
 func (s *Store) operationGuard() *operationguard.Guard {
 	if s.operations == nil {
 		return operationguard.New("")

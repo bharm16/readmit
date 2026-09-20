@@ -85,17 +85,11 @@ func (s *Store) teamRequest(w http.ResponseWriter, r *http.Request, access *Acce
 		http.Error(w, "method refused", 405)
 		return
 	}
-	principal, e := s.authorize(access, r, project, action)
-	if e != nil {
-		http.Error(w, "access refused", 403)
+	principal, release, ok := s.authorizeWrite(access, r, w, project, action, action == "evidence.write", nil)
+	if !ok {
 		return
 	}
-	if action == "evidence.write" {
-		release, err := s.admitAuthor(r, principal)
-		if err != nil {
-			http.Error(w, "operation admission refused", 403)
-			return
-		}
+	if release != nil {
 		defer release()
 	}
 	if action == "export" {

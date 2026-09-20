@@ -193,17 +193,15 @@ func (s *Store) lifecycleRequest(w http.ResponseWriter, r *http.Request, a *Acce
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	p, e := s.authorize(a, r, project, action)
-	if e != nil || (r.Method == "POST" && (p.Kind != "oidc" || p.Role == "runner" || !reviewText(p.Issuer, 2048))) {
-		http.Error(w, "access refused", 403)
+	p, release, ok := s.authorizeWrite(a, r, w, project, action,
+		r.Method == "POST" && c.Kind != "audit-export",
+		func(p Principal) bool {
+			return r.Method != "POST" || (p.Kind == "oidc" && p.Role != "runner" && reviewText(p.Issuer, 2048))
+		})
+	if !ok {
 		return
 	}
-	if r.Method == "POST" && c.Kind != "audit-export" {
-		release, err := s.admitAuthor(r, p)
-		if err != nil {
-			http.Error(w, "operation admission refused", 403)
-			return
-		}
+	if release != nil {
 		defer release()
 	}
 	events, e := s.lifecycleEvents(r.Context(), project)

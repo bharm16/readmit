@@ -219,31 +219,17 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 		http.Error(w, "method refused", 405)
 		return
 	}
-	principal, e := s.authorize(a, r, project, action)
-	if e != nil {
-		http.Error(w, "access refused", 403)
-		return
-	}
-	if route == "reviews" && (principal.Kind != "oidc" || principal.Role == "runner" || len(principal.Issuer) > 2048) {
-		http.Error(w, "human identity required", 403)
-		return
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if r.Method != "GET" {
-		release, err := s.admitAuthor(r, principal)
-		if err != nil {
-			http.Error(w, "operation admission refused", 403)
-			return
-		}
-		defer release()
-	}
-	// Reauthorize after waiting for the write/backup lock so queued requests do not
-	// retain a grant that was revoked while another operation held the lock.
-	principal, e = s.authorize(a, r, project, action)
-	if e != nil {
-		http.Error(w, "access refused", 403)
+	principal, release, ok := s.authorizeWrite(a, r, w, project, action, r.Method != "GET",
+		func(p Principal) bool {
+			return route != "reviews" || (p.Kind == "oidc" && p.Role != "runner" && len(p.Issuer) <= 2048)
+		})
+	if !ok {
 		return
+	}
+	if release != nil {
+		defer release()
 	}
 	events, e := s.reviewEvents(r.Context(), project)
 	if e != nil {

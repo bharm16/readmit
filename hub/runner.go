@@ -4,7 +4,6 @@ import (
 	"encoding/json/v2"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -144,23 +143,9 @@ func (s *Store) runnerHandler(access *Access, policyPath string, readyAt time.Ti
 	})
 }
 func readRunnerPolicy(path string) (runnerprotocol.Policy, error) {
-	var zero runnerprotocol.Policy
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || info.Size() > 1<<20 {
-		return zero, errAccess
-	}
-	f, err := os.Open(path)
+	data, err := readPrivatePolicy(path)
 	if err != nil {
-		return zero, errAccess
-	}
-	defer f.Close()
-	opened, err := f.Stat()
-	if err != nil || !os.SameFile(info, opened) {
-		return zero, errAccess
-	}
-	data, err := io.ReadAll(io.LimitReader(f, (1<<20)+1))
-	if err != nil {
-		return zero, errAccess
+		return runnerprotocol.Policy{}, errAccess
 	}
 	return runnerprotocol.DecodePolicy(data)
 }
