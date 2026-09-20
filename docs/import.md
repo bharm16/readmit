@@ -332,8 +332,8 @@ already past rather than widening them. It writes no evidence.
   text-log extraction, including explicit source, direction, channel and
   timestamp mapping, is `--recipe`; see [mapping recipes](mapping.md). A plan
   divides a member by framing alone and reads no value out of it.
-- **No integration-engine export adapter.** A supported engine export format is
-  separate work that is not in this release.
+- **No qualified integration-engine matrix.** The finite local adapter below
+  remains unqualified pending actual exports from both selected releases.
 - **No collection from a remote source.** An import reads containers that are
   already on this machine. Bringing evidence here from an approved
   customer-controlled source — an export directory, or a remote export reached
@@ -357,3 +357,127 @@ already past rather than widening them. It writes no evidence.
 - **No desktop surface.** The import wizard is a command-line interface in this
   release. The desktop shell lists, verifies and searches a workspace; it does
   not import.
+
+## Engine exports: unqualified local adapter
+
+`readmit import engine` is a file-only adapter with explicit declarations. It
+makes no engine connection. **Neither target has passed its real-engine fixture
+matrix.** The names below select a source-model parser; they do not authenticate
+where a file came from or assert compatibility with every export option.
+
+| Declared engine/version | Locally implemented | Qualification |
+| --- | --- | --- |
+| `mirth` / `4.5.2` | raw fallback; finite message XML source-raw subset | pending actual Mirth exports |
+| `oie` / `4.6.0` | raw fallback; finite message XML source-raw subset | pending actual OIE exports |
+
+Save an adapter declaration (all five members required; unknown, duplicate or
+null members and other values are refused):
+
+```json
+{"schema":"readmit-engine-export/v1","engine":"oie","version":"4.6.0","format":"message-xml","terminator":"cr"}
+```
+
+```sh
+readmit import engine --plan adapter.json --file messages.xml --preview
+readmit import engine --plan adapter.json --file messages.xml --output imported.case
+readmit timeline imported.case
+```
+
+Use `format: "raw"` for raw-message fallback, with the actual `cr`, `lf` or
+`crlf` terminator declared. Fallback retains the complete file as one source,
+including exporter-added separators and malformed bytes. It performs no message
+splitting, transcoding, whitespace trimming or stage inference. Direction,
+observed time, content stage and engine correlation remain unknown. Structured
+XML has explicit `raw` stage; correlation/direction/time still remain unknown.
+An XML channel configuration passed to the XML adapter is refused. Raw fallback
+can retain any bytes as unparsed evidence; that never certifies message content.
+
+The finite XML subset is one or more concatenated `message` elements, each with
+one `connectorMessages/entry`, integer key `0`, one `connectorMessage` whose
+`metaDataId` is `0`, and one `raw` member. That member must explicitly declare
+`contentType=RAW`, `dataType=HL7V2`, `encrypted=false`, and scalar `content`.
+Character entities and CDATA decode to message bytes; literal carriage returns
+inside content are refused because XML parsing would normalize them. `&#13;`
+preserves a carriage return. Unselected metadata stays in the original container
+and is not promoted into observations or correlation. Source stage does not
+prove that a downstream system received or accepted anything.
+
+Unsupported: destination connectors, other stages (including transformed,
+encoded, sent and response content), encryption, nonempty attachments, missing or
+contradictory required content declarations, class/reference attributes (except
+`connectorMessages class="linked-hash-map"`), namespaces, XML declarations,
+comments, processing instructions, DTDs/entities, channel configuration exports,
+and other engine versions. An unsupported or truncated structured file refuses
+the whole import and creates no case. Correct the export options, use explicitly
+declared raw retention, or retain the original for a later adapter. Never relabel
+an unsupported export as an accepted compatibility fixture.
+
+One file is limited to 16 MiB, 128 extracted sources, 32 XML nesting levels and
+8,192 XML nodes. Preview emits `readmit-engine-export-preview/v1`: adapter plan,
+`qualification: "unqualified"`, and each enclosing message's byte offset/size,
+content stage and unknown correlation. It carries no message bytes. Interrupting
+before output creation creates nothing; a write interrupted after reservation
+leaves an incomplete case that the reader refuses. Retry with a new destination;
+existing destinations and protected evidence paths are never overwritten.
+
+### Retained provenance: readmit-case/v5
+
+The new case version keeps imported provenance and the ordinary event/source
+contracts. Its only new manifest member is `engine_export`, a size/digest/path
+reference to `engine-export.json` containing the strict adapter declaration.
+`engine-container.bin` retains the complete input bytes, covered by the case
+identity. Payload files contain the extracted message bytes (or unchanged raw
+fallback). Reopening re-extracts the retained container with the declared adapter
+and checks every source, payload, terminator, unknown direction and absent
+observation against it. Offsets and stages are reproducible from these retained
+bytes; they are not guesses reconstructed from the original path. The in-memory
+`Bundle.EngineContainer` returns a private copy for explicit evidence export.
+All v1–v4 readers and identities retain their existing meaning. Original paths
+and containers can contain sensitive material and remain customer-local evidence.
+A digest detects damage, not source authenticity.
+To inspect retained offsets/stages later, preview `engine-container.bin` using
+the case's `engine-export.json` as `--plan`; no original source file is needed.
+
+### Source basis and owner lab protocol
+
+The implementation is independently written against the exporter and serialized
+model fields in [Mirth 4.5.2, commit 1835dca](https://github.com/nextgenhealthcare/connect/tree/1835dca44426ef99b3ce65f860580c52c51034a2)
+and [OIE 4.6.0, commit cd1110e](https://github.com/OpenIntegrationEngine/engine/tree/cd1110e304aa2fbd0bc3de966af8a920d9fc6150).
+Relevant primary files are `server/src/com/mirth/connect/util/messagewriter/MessageWriterFile.java`,
+`donkey/src/main/java/com/mirth/connect/donkey/util/xstream/XStreamSerializer.java`,
+and `donkey/src/main/java/com/mirth/connect/donkey/model/message/{Message,ConnectorMessage,MessageContent}.java`.
+The writer appends CRLF outside its serialized/content output; those bytes stay
+in the retained container. Checked-in tests are hand-authored source-model
+examples, **not exports produced by either engine**, and not lab acceptance.
+
+The owner must provide isolated, authorized Mirth Connect **4.5.2** and Open
+Integration Engine **4.6.0** installations, with pinned installer/image SHA-256
+and platform/runtime versions, and a usable local runtime or disposable lab.
+The development machine's Docker daemon was unavailable during this round; no
+engine lab was started and no real exports were obtained. No patient records
+are needed. Provisioning a lab does not itself complete the matrix.
+
+For each target, generate deterministic synthetic ADT/SIU messages (retain seed,
+generator revision and exact input digests), run a source-only channel and a
+separate multi-destination/transformation channel, and export messages using
+recorded format, content-stage selection, encryption, charset and file-naming
+options. Retain scrubbed channel configuration and its digest as configuration,
+never as message evidence. Keep original export bytes/digests, engine build/image
+digests, options, timestamps, exact Readmit revision and command, preview and
+verified case identity together. Label fixture origin `engine-generated` only
+when this run actually exists; keep credentials out of fixtures and reports.
+
+The matrix must include duplicates, partial/malformed payloads, absent content,
+multiple messages, source and destination stages, encrypted exports, channel-only
+exports, non-ASCII/entity/CDATA/CRLF cases, missing timestamps/correlation, and
+unsupported options. Compare decoded expected bytes against independent seeded
+inputs and account for every container byte; validate refusals, cancellation,
+retry with new destinations and default output privacy through the CLI. Broaden
+the adapter only from actual retained exports. #35 stays open until the required
+structured mappings and both real-engine matrices pass with rights/provenance
+review. Local process tests interrupt the actual CLI after exclusive output reservation
+using process kill and, on Unix, SIGINT. They verify incomplete-case refusal,
+no completion or payload disclosure, and byte-exact retry at a fresh destination.
+Completed attempts that outrun the signal verify before a bounded retry; they do
+not count as interrupted coverage. These synthetic tests do not replace the
+real-engine matrix. Offline file import requires no live engine after export.

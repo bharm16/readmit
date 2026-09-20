@@ -191,6 +191,7 @@ func importCommand(ran *bool) *cobra.Command {
 			return renderImport(cmd.OutOrStdout(), document, b)
 		},
 	}
+	cmd.AddCommand(engineImportCommand(ran))
 	cmd.Flags().StringVar(&mapping, "recipe", "", "Existing readmit-mapping-recipe/v1 JSON file mapping a CSV, JSON, XML, or text envelope")
 	cmd.Flags().StringVar(&saved, "plan", "", "Existing readmit-import-plan/v1 JSON file holding the declarations below")
 	addDeclarationFlags(cmd, &declared, true)

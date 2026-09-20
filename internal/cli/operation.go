@@ -99,7 +99,7 @@ func operationCapability(cmd *cobra.Command) string {
 			return "author"
 		}
 		return ""
-	case "capture", "import", "index build", "corpus generate", "project init", "project add", "project update", "project revise", "project note", "project settings", "scenario generate", "synth", "redact", "diagnose review", "baseline approve", "expectation release", "suite prepare", "suite approve-promotion", "target set", "secret add", "secret update", "secret rotate", "protect register", "protect rotate", "protect retire":
+	case "capture", "import", "import engine", "index build", "corpus generate", "project init", "project add", "project update", "project revise", "project note", "project settings", "scenario generate", "synth", "redact", "diagnose review", "baseline approve", "expectation release", "suite prepare", "suite approve-promotion", "target set", "secret add", "secret update", "secret rotate", "protect register", "protect rotate", "protect retire":
 		return "author"
 	}
 	switch path {
