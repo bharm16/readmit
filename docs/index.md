@@ -254,3 +254,8 @@ use the local vendor [commercial administration](commercial-administration.md) A
 [Support operations](support.md): reviewed local diagnostics, synthetic reproductions, customer approval and incident escalation.
 
 [Local adversarial acceptance](adversarial-acceptance.md): synthetic security, privacy and browser evidence with explicit native acceptance gaps.
+
+## Packaged journey evidence
+
+See [native acceptance](native-acceptance.md) for archive-bound CLI journeys and
+retained synthetic evidence from the installed desktop sample.

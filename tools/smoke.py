@@ -107,6 +107,7 @@ REQUIRED_FILES = {
     "docs/expectations.md",
     "docs/report.md",
     "docs/support-matrix.md",
+    "docs/native-acceptance.md",
     "testdata/fixtures/diff-before.mllp",
     "testdata/fixtures/diff-after.mllp",
     "testdata/fixtures/diff-expected.json",

@@ -1015,7 +1015,7 @@ and checked on its own:
 
 ```sh
 cd desktop/frontend && npm ci && npm run build
-cd .. && go vet ./... && go build -o build/readmit-desktop .
+cd .. && go vet -tags production ./... && go build -tags production -o build/readmit-desktop .
 cd .. && python3 tools/package_desktop.py build --binary desktop/build/readmit-desktop \
   --version 0.0.0+dev.local --output dist-desktop --os darwin --arch arm64
 python3 tools/package_desktop.py verify --packages dist-desktop
@@ -1073,3 +1073,7 @@ use the local vendor [commercial administration](docs/commercial-administration.
 [Support operations](docs/support.md): reviewed local diagnostics, synthetic reproductions, customer approval and incident escalation.
 
 [Local adversarial acceptance](docs/adversarial-acceptance.md): synthetic security, privacy and browser evidence with explicit native acceptance gaps.
+
+Packaged journey checks and retained native sample evidence are documented in
+[native acceptance](docs/native-acceptance.md); passing the local subset does not
+complete finished-product release acceptance.

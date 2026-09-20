@@ -396,6 +396,18 @@ class IdentityTests(unittest.TestCase):
         path.chmod(0o755)
         return path
 
+    def test_native_startup_requires_webview_readiness_not_just_version(self):
+        import subprocess
+        shell = self.executable("native", "readmit-desktop native webview ready")
+        def check():
+            return subprocess.run([sys.executable, str(packaging.ROOT / "tools/package_desktop.py"),
+                                   "startup", "--desktop", str(shell)], capture_output=True, text=True)
+        self.assertEqual(check().returncode, 0)
+        shell.write_text("#!/bin/sh\nprintf 'readmit-desktop version 1.2.3\\n'\n")
+        self.assertNotEqual(check().returncode, 0)
+        shell.write_text("#!/bin/sh\nprintf 'readmit-desktop native webview ready\\n'\nexit 2\n")
+        self.assertNotEqual(check().returncode, 0)
+
     def test_one_build_is_reported_by_the_package_and_the_archive_alike(self):
         shell = self.executable("readmit-desktop", "readmit-desktop version 0.1.0-alpha.2")
         released = self.executable("readmit", "readmit version 0.1.0-alpha.2")

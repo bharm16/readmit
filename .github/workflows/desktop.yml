@@ -55,14 +55,14 @@ jobs:
         env:
           CGO_ENABLED: '1'
         run: |
-          go vet ./...
-          go test ./...
-          go build -o build/readmit-desktop .
+          go vet -tags production ./...
+          go test -tags production ./...
+          go build -tags production -o build/readmit-desktop .
       - name: Vulnerability check for the desktop dependency graph
         working-directory: desktop
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
-          govulncheck ./...
+          govulncheck -tags production ./...
 
   # Native desktop packages for the finite target matrix. Each package is built
   # on the machine it targets, from that machine's own build of the shell, and
@@ -130,11 +130,11 @@ jobs:
           # Linux and macOS need cgo for the platform webview. The Windows
           # webview binding is pure Go, so that runner keeps its own default.
           case "${{ matrix.os }}" in
-            linux)   CGO_ENABLED=1 go build -tags webkit2_41 -trimpath -ldflags "$stamp" -o build/readmit-desktop . ;;
-            darwin)  CGO_ENABLED=1 go build -trimpath -ldflags "$stamp" -o build/readmit-desktop . ;;
+            linux)   CGO_ENABLED=1 go build -tags production,webkit2_41 -trimpath -ldflags "$stamp" -o build/readmit-desktop . ;;
+            darwin)  CGO_ENABLED=1 go build -tags production -trimpath -ldflags "$stamp" -o build/readmit-desktop . ;;
             # A window with no console attached still writes to a redirected
             # standard output, which is how its identity is read back.
-            windows) go build -trimpath -ldflags "-H windowsgui $stamp" -o build/readmit-desktop.exe . ;;
+            windows) go build -tags production -trimpath -ldflags "-H windowsgui $stamp" -o build/readmit-desktop.exe . ;;
           esac
       - name: Build the command line from the same commit and the same stamp
         shell: bash
@@ -213,7 +213,7 @@ jobs:
         if: matrix.os == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-0t64 libwebkit2gtk-4.1-0
+          sudo apt-get install -y libgtk-3-0t64 libwebkit2gtk-4.1-0 xvfb xauth
       - name: Install, check and remove the .deb through the platform's own tools
         if: matrix.os == 'linux'
         run: |
@@ -222,10 +222,12 @@ jobs:
           test -f /usr/share/applications/readmit-desktop.desktop
           # Running the installed executable resolves every library it links
           # against, so a wrong or missing declared dependency fails here. No
-          # window is opened: this runner has no display.
+          # window is opened for this identity check. The next check uses Xvfb
+          # to initialize the installed native webview without a physical display.
           python3 tools/package_desktop.py installed \
             --desktop /usr/bin/readmit-desktop --command-line build/readmit \
             --resources /usr/share/doc/readmit-desktop --version "$READMIT_PREVIEW_VERSION"
+          xvfb-run -a python3 tools/package_desktop.py startup --desktop /usr/bin/readmit-desktop
           sudo apt-get remove -y readmit-desktop
           test ! -e /usr/bin/readmit-desktop
       - name: Install, check and remove the macOS packages through their own tools
@@ -240,6 +242,7 @@ jobs:
             --desktop /Applications/readmit-desktop.app/Contents/MacOS/readmit-desktop \
             --command-line build/readmit \
             --resources /Applications/readmit-desktop.app/Contents/Resources --version "$READMIT_PREVIEW_VERSION"
+          python3 tools/package_desktop.py startup --desktop /Applications/readmit-desktop.app/Contents/MacOS/readmit-desktop
           rm -rf /Applications/readmit-desktop.app
           # The installer package is what a managed installation runs.
           sudo installer -pkg dist-desktop/*.pkg -target /
@@ -258,6 +261,7 @@ jobs:
             --desktop /Applications/readmit-desktop.app/Contents/MacOS/readmit-desktop \
             --command-line build/readmit \
             --resources /Applications/readmit-desktop.app/Contents/Resources --version "$READMIT_PREVIEW_VERSION"
+          python3 tools/package_desktop.py startup --desktop /Applications/readmit-desktop.app/Contents/MacOS/readmit-desktop
           sudo rm -rf /Applications/readmit-desktop.app
           test ! -e /Applications/readmit-desktop.app
       - name: Install, check and remove the MSI silently, as managed deployment does
@@ -281,6 +285,8 @@ jobs:
           }
           python tools\package_desktop.py installed --desktop "$installed" --command-line build\readmit.exe --resources "C:\Program Files\readmit" --version "$env:READMIT_PREVIEW_VERSION"
           if ($LASTEXITCODE -ne 0) { throw "installed payload verification failed" }
+          python tools\package_desktop.py startup --desktop "$installed"
+          if ($LASTEXITCODE -ne 0) { throw "native webview startup failed" }
           if ((Get-AuthenticodeSignature $installed).Status -ne 'NotSigned') {
             throw "preview executable unexpectedly carries signature material"
           }
