@@ -20,6 +20,7 @@ import os
 from pathlib import Path
 import platform
 import plistlib
+import re
 import shutil
 import subprocess
 import sys
@@ -464,6 +465,63 @@ def run_tool(command, refusal):
     return result
 
 
+def attached_images():
+    """Read the OS inventory; an unreadable inventory never authorizes detach."""
+    result = run_tool(["hdiutil", "info", "-plist"], "cannot inspect disk images")
+    try:
+        images = plistlib.loads(result.stdout.encode())["images"]
+        if not isinstance(images, list):
+            raise ValueError("images is not a list")
+        for image in images:
+            if not isinstance(image["image-path"], str):
+                raise ValueError("image path is not text")
+            if not isinstance(image["system-entities"], list):
+                raise ValueError("entities is not a list")
+            for entity in image["system-entities"]:
+                if not isinstance(entity, dict):
+                    raise ValueError("entity is not a dictionary")
+                for key in ("dev-entry", "mount-point"):
+                    if key in entity and not isinstance(entity[key], str):
+                        raise ValueError("entity path is not text")
+        return images
+    except (ValueError, TypeError, KeyError, plistlib.InvalidFileException) as error:
+        raise Refused("cannot inspect disk images: invalid hdiutil inventory") from error
+
+
+def cleanup_failed_attach(image, volume, before):
+    """Detach only new, still-associated devices of our private image copy."""
+    existing = {entity.get("dev-entry", "") for entry in before for entity in entry["system-entities"]}
+    for entry in attached_images():
+        if Path(entry["image-path"]).resolve() != image:
+            continue
+        entities = entry["system-entities"]
+        devices = {entity["dev-entry"] for entity in entities if "dev-entry" in entity}
+        roots = [entity["dev-entry"] for entity in entities
+                 if re.fullmatch(r"/dev/disk[0-9]+", entity.get("dev-entry", ""))]
+
+        def belongs(device):
+            return any(re.fullmatch(re.escape(root) + r"(?:s[0-9]+)*", device) for root in roots)
+
+        if (not roots or len(roots) != len(set(roots)) or
+                any(belongs(device) for device in existing) or
+                any(not belongs(device) for device in devices) or
+                any("mount-point" in entity and Path(entity["mount-point"]).resolve() != volume
+                    for entity in entities)):
+            raise Refused("failed attach cleanup refused: ambiguous device or mount association")
+        # APFS can list a backing disk and a synthesized disk for one image.
+        # Detaching the backing disk normally removes both. Recheck the entire
+        # association before each detach and skip groups already removed.
+        for root in roots:
+            current = attached_images()
+            owners = [item for item in current if any(
+                belongs(entity.get("dev-entry", "")) for entity in item["system-entities"])]
+            if not owners:
+                break
+            if owners != [entry]:
+                raise Refused("failed attach cleanup refused: device association changed")
+            run_tool(["hdiutil", "detach", "-force", root], "failed attach device did not detach")
+
+
 @contextmanager
 def mounted(image):
     """Attach a disk image read-only, off the desktop, and always detach it."""
@@ -471,10 +529,24 @@ def mounted(image):
     try:
         volume = Path(directory) / "volume"
         volume.mkdir()
-        run_tool(
-            ["hdiutil", "attach", "-nobrowse", "-readonly", "-mountpoint", str(volume), str(image)],
-            f"{image.name} did not attach",
-        )
+        # A unique copy makes even a failed, unmounted attachment attributable
+        # to this invocation, including concurrent verification of one artifact.
+        private_image = Path(directory) / "image.dmg"
+        shutil.copyfile(image, private_image)
+        private_image = private_image.resolve()
+        volume = volume.resolve()
+        before = attached_images()
+        try:
+            run_tool(
+                ["hdiutil", "attach", "-nobrowse", "-readonly", "-mountpoint", str(volume), str(private_image)],
+                f"{image.name} did not attach",
+            )
+        except BaseException:
+            try:
+                cleanup_failed_attach(private_image, volume, before)
+            except Exception as leaked:
+                print(f"{image.name}: {leaked}", file=sys.stderr)
+            raise
         detach, refusal = ["hdiutil", "detach", "-force", str(volume)], f"{image.name} did not detach"
         try:
             yield volume

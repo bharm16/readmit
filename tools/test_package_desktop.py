@@ -8,10 +8,12 @@ from pathlib import Path
 import platform
 import plistlib
 import stat
+import subprocess
 import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -280,6 +282,155 @@ class PackagingTests(unittest.TestCase):
         for expected in ("the stand-in tool did not run", "exited 3",
                          "why it refused", "what it had done"):
             self.assertIn(expected, message)
+
+    def test_failed_attach_cleans_its_new_device_and_preserves_the_refusal(self):
+        image = self.work / "failure.dmg"
+        image.write_bytes(b"image bytes")
+        images = [{"image-path": "/someone/else.dmg", "system-entities": [
+            {"dev-entry": "/dev/disk7", "mount-point": "/Volumes/Other"}]}]
+        detached, attempts = [], []
+
+        def command(args, **kwargs):
+            if args[1] == "info":
+                output = plistlib.dumps({"images": images}).decode()
+                return subprocess.CompletedProcess(args, 0, output, "")
+            if args[1] == "attach":
+                attempts.append(args)
+                images.append({"image-path": str(Path(args[-1]).resolve()),
+                               "system-entities": [{"dev-entry": "/dev/disk8"}]})
+                return subprocess.CompletedProcess(args, 1, "partial device", "Resource temporarily unavailable")
+            self.assertEqual(args[1:3], ["detach", "-force"])
+            detached.append(args[-1])
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with patch.object(packaging.subprocess, "run", side_effect=command):
+            with self.assertRaises(packaging.Refused) as refused:
+                with packaging.mounted(image):
+                    self.fail("failed attach must never expose a volume")
+        self.assertEqual(detached, ["/dev/disk8"])
+        self.assertEqual(len(attempts), 1, "no attach retry")
+        self.assertNotEqual(Path(attempts[0][-1]), image)
+        self.assertEqual(image.read_bytes(), b"image bytes")
+        self.assertIn("Resource temporarily unavailable", str(refused.exception))
+        self.assertIn("partial device", str(refused.exception))
+
+    def test_failed_attach_cleanup_refuses_uncertain_ownership_and_keeps_original_error(self):
+        for mode in ("existing", "foreign-mount", "reassigned", "changed-mount", "shared-partition",
+                     "invalid-inventory", "inventory-error", "detach-error", "timeout"):
+            with self.subTest(mode=mode):
+                image = self.work / "failure.dmg"
+                image.write_bytes(b"fixture")
+                owned = {"image-path": "", "system-entities": [{"dev-entry": "/dev/disk8"}]}
+                foreign = {"image-path": "/other.dmg", "system-entities": [{"dev-entry": "/dev/disk8s1"}]}
+                info_count, detach_count = 0, 0
+                failure = subprocess.TimeoutExpired("hdiutil attach", 600, stderr="attach timed out")
+
+                def command(args, **kwargs):
+                    nonlocal info_count, detach_count
+                    if args[1] == "attach":
+                        owned["image-path"] = str(Path(args[-1]).resolve())
+                        if mode == "foreign-mount":
+                            owned["system-entities"][0]["mount-point"] = "/Volumes/Other"
+                        if mode == "timeout":
+                            raise failure
+                        return subprocess.CompletedProcess(args, 1, "", "original attach failure")
+                    if args[1] == "info":
+                        info_count += 1
+                        images = [] if info_count == 1 else [owned]
+                        if mode == "existing" and info_count == 1:
+                            images = [foreign]
+                        if mode == "reassigned" and info_count >= 3:
+                            images = [foreign]
+                        if mode == "changed-mount" and info_count >= 3:
+                            images = [{"image-path": owned["image-path"], "system-entities": [
+                                {"dev-entry": "/dev/disk8", "mount-point": "/Volumes/Changed"}]}]
+                        if mode == "shared-partition" and info_count >= 2:
+                            images = [owned, foreign]
+                        if mode == "inventory-error" and info_count >= 2:
+                            return subprocess.CompletedProcess(args, 1, "", "inventory unavailable")
+                        output = "invalid plist" if mode == "invalid-inventory" and info_count >= 2 else plistlib.dumps({"images": images}).decode()
+                        return subprocess.CompletedProcess(args, 0, output, "")
+                    self.assertEqual(args[1], "detach")
+                    detach_count += 1
+                    return subprocess.CompletedProcess(args, int(mode == "detach-error"), "", "cleanup failure")
+
+                reported = io.StringIO()
+                with patch.object(packaging.subprocess, "run", side_effect=command), redirect_stderr(reported):
+                    with self.assertRaises((packaging.Refused, subprocess.TimeoutExpired)) as refused:
+                        with packaging.mounted(image):
+                            self.fail("failed attach exposed volume")
+                if mode == "timeout":
+                    self.assertIs(refused.exception, failure)
+                else:
+                    self.assertIn("original attach failure", str(refused.exception))
+                    self.assertTrue(reported.getvalue(), "cleanup uncertainty must be visible")
+                self.assertEqual(detach_count, int(mode in ("detach-error", "timeout")))
+
+    def test_failed_attach_rechecks_apfs_group_after_detaching_backing_disk(self):
+        for reassigned in (False, True):
+            with self.subTest(reassigned=reassigned):
+                image = self.work / "apfs.dmg"
+                image.write_bytes(b"fixture")
+                images, detached = [], []
+
+                def command(args, **kwargs):
+                    if args[1] == "info":
+                        return subprocess.CompletedProcess(args, 0, plistlib.dumps({"images": images}).decode(), "")
+                    if args[1] == "attach":
+                        images.append({"image-path": str(Path(args[-1]).resolve()), "system-entities": [
+                            {"dev-entry": "/dev/disk8"}, {"dev-entry": "/dev/disk8s1"},
+                            {"dev-entry": "/dev/disk9"}, {"dev-entry": "/dev/disk9s1"}]})
+                        return subprocess.CompletedProcess(args, 1, "", "original failure")
+                    self.assertEqual(args[1], "detach")
+                    detached.append(args[-1])
+                    images.clear()
+                    if reassigned:
+                        images.append({"image-path": "/someone/else.dmg", "system-entities": [
+                            {"dev-entry": "/dev/disk9"}]})
+                    return subprocess.CompletedProcess(args, 0, "", "")
+
+                reported = io.StringIO()
+                with patch.object(packaging.subprocess, "run", side_effect=command), redirect_stderr(reported):
+                    with self.assertRaisesRegex(packaging.Refused, "original failure"):
+                        with packaging.mounted(image):
+                            self.fail("failed attach exposed volume")
+                self.assertEqual(detached, ["/dev/disk8"])
+                self.assertEqual("association changed" in reported.getvalue(), reassigned)
+
+    @unittest.skipIf(platform.system() != "Darwin", "hdiutil is a macOS tool")
+    def test_failed_attach_releases_a_real_temporary_disk_image(self):
+        source = self.work / "image-source"
+        source.mkdir()
+        (source / "fixture.txt").write_text("synthetic fixture")
+        image = self.work / "fixture.dmg"
+        packaging.run_tool(["hdiutil", "create", "-srcfolder", str(source),
+                            "-format", "UDZO", str(image)], "create test image")
+        original_run = packaging.subprocess.run
+        private_image = None
+        detached = []
+
+        def fail_after_attach(args, **kwargs):
+            nonlocal private_image
+            result = original_run(args, **kwargs)
+            if args[:2] == ["hdiutil", "attach"] and result.returncode == 0:
+                private_image = Path(args[-1])
+                # The real tool created a real device; inject its failure at
+                # the subprocess boundary rather than racing Disk Arbitration.
+                return subprocess.CompletedProcess(args, 1, result.stdout, "injected attach failure")
+            if args[:2] == ["hdiutil", "detach"]:
+                detached.append(args[-1])
+            return result
+
+        with patch.object(packaging.subprocess, "run", side_effect=fail_after_attach):
+            with self.assertRaisesRegex(packaging.Refused, "injected attach failure"):
+                with packaging.mounted(image):
+                    self.fail("failed attach exposed volume")
+        self.assertIsNotNone(private_image)
+        self.assertEqual(len(detached), 1)
+        inventory = plistlib.loads(original_run(["hdiutil", "info", "-plist"], capture_output=True).stdout)
+        self.assertFalse(any(Path(entry["image-path"]).resolve() == private_image
+                             for entry in inventory["images"]))
+        self.assertTrue(image.is_file())
 
     @unittest.skipIf(platform.system() != "Darwin", "hdiutil is a macOS tool")
     def test_an_image_that_does_not_attach_is_refused_in_hdiutil_s_own_words(self):
