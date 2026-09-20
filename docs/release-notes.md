@@ -1,5 +1,9 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- When a macOS disk-image verification attach fails, cleanup releases only its
+  own newly created devices after rechecking image and mount associations. The
+  original tool failure remains visible, and verification never retries attach.
+
 - Git source diffs remain visible when a stray NUL appears in Go, TypeScript,
   TSX, Markdown, JSON, Python or YAML source; binary evidence keeps its existing
   byte-preserving attributes.
