@@ -1,5 +1,8 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Local adversarial acceptance refuses dirty candidates and source changes during
+  execution, retaining the final revision alongside its finite boundary results.
+
 - Desktop regions and operation states now offer offline contextual help, fixed
   support codes, setup/recovery guidance and finite message-family recipes.
 

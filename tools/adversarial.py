@@ -95,13 +95,14 @@ def main():
     socket = os.environ.get('READMIT_HUB_TEST_SOCKET', '')
     if not Path(socket).is_absolute() or not all(os.environ.get(name) for name in ('READMIT_HUB_TEST_PORT', 'READMIT_HUB_TEST_USER')):
         parser.error('provision a disposable PostgreSQL cluster and set READMIT_HUB_TEST_SOCKET, PORT and USER; never use customer data')
+    revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+    if subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=all'], cwd=ROOT):
+        parser.error('requires a clean committed candidate; retain evidence outside the checkout')
     args.output.mkdir(mode=0o700, parents=False, exist_ok=False)
     failed = False
     with (args.output / 'summary.txt').open('x', encoding='utf-8') as summary:
         os.chmod(args.output / 'summary.txt', 0o600)
-        revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
-        dirty = bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT))
-        summary.write(f'Source: {revision}; dirty: {dirty}\nScope: local synthetic boundaries only\n')
+        summary.write(f'Source: {revision}; dirty: False\nScope: local synthetic boundaries only\n')
         diff = subprocess.check_output(['git', 'diff', 'HEAD', '--binary'], cwd=ROOT)
         summary.write('Tracked diff SHA-256: ' + hashlib.sha256(diff).hexdigest() + '\n')
         summary.write('Launcher SHA-256: ' + hashlib.sha256(Path(__file__).read_bytes()).hexdigest() + '\n')
@@ -126,6 +127,12 @@ def main():
             print(line, end='', flush=True)
             summary.write(line + ''.join(f'  {problem}\n' for problem in problems))
             summary.flush()
+        final_revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+        dirty = bool(subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=all'], cwd=ROOT))
+        summary.write(f'Source at completion: {final_revision}; dirty: {dirty}\n')
+        if final_revision != revision or dirty:
+            failed = True
+            summary.write('FAIL source changed during acceptance; rerun on a clean fixed candidate\n')
         summary.write('Not covered: native screen readers, installed platform matrix, independent assessment, customer controls.\n')
         summary.write('Local matrix: ' + ('FAIL' if failed else 'PASS') + '; full #111 acceptance: NOT ESTABLISHED\n')
     return 1 if failed else 0
