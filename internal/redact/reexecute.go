@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
-	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
 
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/report"
+	"github.com/bharm16/readmit/internal/runresult"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
@@ -85,13 +85,17 @@ func PrepareReexecution(ctx context.Context, request ReexecutionRequest) (*Reexe
 		return nil, errors.New("original packet must contain a completed certain run of the reviewed original case")
 	}
 	originalPath := filepath.Join(request.OriginalPacket, "current")
-	if _, err := os.Lstat(filepath.Join(originalPath, "engine.json")); err == nil {
-		originalPath = filepath.Join(originalPath, "result")
-	}
-	observed, err := testrunner.Open(originalPath)
+	retained, err := runresult.Open(originalPath)
 	if err != nil {
 		return nil, err
 	}
+	if retained.Artifact == nil {
+		return nil, errors.New("original packet retains no finalized result")
+	}
+	if usable, _ := retained.Usable(); !usable {
+		return nil, errors.New("original packet must contain a completed certain run")
+	}
+	observed := retained.Artifact
 	sourceSpec, err := testrunner.ReadSpec(local.Sources[1].Path)
 	if err != nil || !sameAssertionContract(&sourceSpec, observed.Spec) || sourceSpec.Setup.InitialState != observed.Spec.Setup.InitialState {
 		return nil, errors.New("actual original execution changed the reviewed failure/pass criteria")
@@ -154,10 +158,17 @@ func (p *Reexecution) Execute(ctx context.Context, output string) (ReexecutionAs
 	if summary.JournalIncomplete || summary.DeliveryUncertain || (summary.State != durablerun.Passed && summary.State != durablerun.AssertionFailed) {
 		return result, nil
 	}
-	artifact, err := testrunner.Open(filepath.Join(output, "result"))
+	retained, err := runresult.Open(output)
 	if err != nil {
 		return result, err
 	}
+	if retained.Artifact == nil {
+		return result, errors.New("reexecution retains no finalized result")
+	}
+	if usable, _ := retained.Usable(); !usable {
+		return result, nil
+	}
+	artifact := retained.Artifact
 	rechecked, err := PrepareReexecution(ctx, p.request)
 	if err != nil || rechecked.binding != p.binding {
 		return result, errors.New("review changed during execution; fresh review required")

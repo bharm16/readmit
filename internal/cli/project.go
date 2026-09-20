@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
-	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/project"
 	"github.com/spf13/cobra"
 )
@@ -292,15 +292,7 @@ func projectNote(ran *bool) *cobra.Command {
 		Args:  projectTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
-			opened, err := project.Open(args[0])
-			if err != nil {
-				return err
-			}
-			revisions, err := project.ReadRevisions(opened.Root)
-			if err != nil {
-				return err
-			}
-			updated, stored, err := project.SetNote(opened.Document, revisions, project.Note{
+			result, err := operation.SetProjectNote(args[0], project.Note{
 				Name:    args[1],
 				Subject: subject,
 				Title:   title,
@@ -309,10 +301,7 @@ func projectNote(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := project.WriteRevisions(opened.Root, updated); err != nil {
-				return err
-			}
-			return writeNote(cmd.OutOrStdout(), "Note saved: "+stored.Name, stored)
+			return writeNote(cmd.OutOrStdout(), "Note saved: "+result.Stored.Name, result.Stored)
 		},
 	}
 	command.Flags().StringVar(&title, "title", "", "Note title")
@@ -385,9 +374,9 @@ func verifiedEvidence(root, name string) (evidence, string, error) {
 	if err != nil {
 		return evidence{}, "", errors.New("a case must be named by one directory entry of the project")
 	}
-	opened, err := bundle.Open(path)
+	opened, err := operation.OpenCase(path)
 	if err != nil {
-		return evidence{}, "", errors.New("the case could not be verified as complete, unmodified evidence")
+		return evidence{}, "", err
 	}
 	return evidence{
 		name:       name,
@@ -409,7 +398,7 @@ func evidenceFor(root string, recorded evidence) evidenceState {
 	if err != nil {
 		return evidenceMissing
 	}
-	opened, err := bundle.Open(path)
+	opened, err := operation.OpenCase(path)
 	if err != nil {
 		return evidenceUnreadable
 	}

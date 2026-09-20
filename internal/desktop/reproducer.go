@@ -5,6 +5,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/reproducer"
 )
 
@@ -158,12 +159,9 @@ func (a *App) opened(request ReproducerRequest) (string, *bundle.Bundle, reprodu
 	if err != nil {
 		return "", nil, reproducer.Plan{}, refusal{Failed, "a case must be named by one directory entry of the open workspace"}
 	}
-	source, err := bundle.Open(path)
+	source, err := operation.OpenVerifiedCase(path, request.Identity)
 	if err != nil {
-		return "", nil, reproducer.Plan{}, refusal{Failed, "the case could not be verified as complete, unmodified evidence"}
-	}
-	if request.Identity == "" || request.Identity != source.Identity {
-		return "", nil, reproducer.Plan{}, refusal{Failed, "the case identity changed; reopen the grid before editing a reproducer"}
+		return "", nil, reproducer.Plan{}, refusal{Failed, err.Error()}
 	}
 	plan := request.Plan
 	if plan.Schema == "" && plan.Case == "" && len(plan.Steps) == 0 {

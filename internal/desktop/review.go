@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
-	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/correlate"
 	"github.com/bharm16/readmit/internal/exportreview"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/profilepack"
 	"github.com/bharm16/readmit/internal/redact"
 	"github.com/bharm16/readmit/internal/transform"
@@ -278,36 +278,25 @@ func (a *App) PreviewTransformation(request TransformRequest) TransformResult {
 	if err != nil {
 		return TransformResult{State: Failed, Reason: "a case must be named by one directory entry of the open workspace"}
 	}
-	opened, err := bundle.Open(casePath)
+	_, err = operation.OpenVerifiedCase(casePath, request.Identity)
 	if err != nil {
-		return TransformResult{State: Failed, Reason: "the case could not be verified as complete, unmodified evidence"}
-	}
-	if request.Identity == "" || request.Identity != opened.Identity {
-		return TransformResult{State: Failed, Reason: "the case identity changed; open the case again before previewing a transformation"}
+		return TransformResult{State: Failed, Reason: err.Error()}
 	}
 	declared, declined := workspaceDocument(root, request.Rules, correlate.MaxRulesBytes,
 		"the correlation rules document")
 	if declined.state != "" {
 		return declined.transformation()
 	}
-	rules, err := correlate.ParseRules(declared)
-	if err != nil {
-		return TransformResult{State: Failed, Reason: err.Error()}
-	}
 	authored, declined := workspaceDocument(root, request.Plan, transform.MaxPlanBytes,
 		"the transformation plan")
 	if declined.state != "" {
 		return declined.transformation()
 	}
-	plan, err := transform.DecodePlan(authored)
-	if err != nil {
-		return TransformResult{State: Failed, Reason: err.Error()}
-	}
 	pack, declined := pinnedPack(root, request.Profile)
 	if declined.state != "" {
 		return declined.transformation()
 	}
-	preview, err := transform.Run(casePath, plan, rules, pack)
+	preview, err := operation.PreviewTransform(operation.TransformRequest{Case: casePath, Rules: declared, Plan: authored, Pack: pack})
 	if err != nil {
 		return TransformResult{State: Failed, Reason: err.Error()}
 	}

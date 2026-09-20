@@ -29,6 +29,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/durablerun"
 )
 
@@ -463,16 +464,11 @@ func (w *Writer) appendLocked(e entry) error {
 }
 
 func writeFile(root *os.Root, name string, data []byte) error {
-	file, err := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if err != nil {
+	err := artifactdir.WriteFile(root, name, data)
+	if errors.Is(err, artifactdir.ErrCreateFile) {
 		return errors.New("cannot create capture evidence")
 	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
+	if err != nil {
 		return errors.New("cannot sync capture evidence; partial evidence retained")
 	}
 	return nil

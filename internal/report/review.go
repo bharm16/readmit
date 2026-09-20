@@ -13,6 +13,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/runresult"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
@@ -228,7 +229,7 @@ func reviewRenderings(ctx context.Context, dir string, p *RetainedPacket, files 
 			meta = *p.Manifest.Baseline
 		}
 		run := reviewRun{Name: name, Status: string(artifact.Result.Status)}
-		if meta.JournalIncomplete || meta.DeliveryUncertain || (meta.RunState != "not_recorded" && meta.RunState != "passed" && meta.RunState != "assertion_failed" && meta.RunState != "execution_error") {
+		if usable, _ := runresult.UsableLifecycle(meta.RunState, meta.JournalIncomplete, meta.DeliveryUncertain); !usable {
 			run.Status = "execution_error"
 		}
 		runs = append(runs, run)

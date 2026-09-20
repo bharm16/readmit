@@ -2,7 +2,6 @@ package redact
 
 import (
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
@@ -13,6 +12,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 )
 
@@ -69,16 +69,14 @@ func destination(path string, protected []string) (string, error) {
 }
 
 func writeFile(dir, name string, raw []byte) error {
-	file, err := os.OpenFile(filepath.Join(dir, filepath.FromSlash(name)), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return errors.New("cannot create redaction artifact file")
 	}
-	_, err = file.Write(raw)
-	if err == nil {
-		err = file.Sync()
-	}
-	closeErr := file.Close()
-	if err != nil || closeErr != nil {
+	defer root.Close()
+	if err := artifactdir.WriteFile(root, filepath.ToSlash(name), raw); errors.Is(err, artifactdir.ErrCreateFile) {
+		return errors.New("cannot create redaction artifact file")
+	} else if err != nil {
 		return errors.New("cannot write redaction artifact file; incomplete output retained")
 	}
 	return nil
@@ -158,20 +156,7 @@ func fileNames(files map[string][]byte) []string {
 }
 
 func identity(schema string, files map[string][]byte) string {
-	h := sha256.New()
-	h.Write([]byte(schema + "\n"))
-	var size [8]byte
-	for _, name := range fileNames(files) {
-		if name == "identity.sha256" {
-			continue
-		}
-		for _, raw := range [][]byte{[]byte(name), files[name]} {
-			binary.BigEndian.PutUint64(size[:], uint64(len(raw)))
-			h.Write(size[:])
-			h.Write(raw)
-		}
-	}
-	return hex.EncodeToString(h.Sum(nil))
+	return artifactdir.Identity(schema, files)
 }
 
 func protectedPaths(local localState) []string {

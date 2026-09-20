@@ -10,6 +10,7 @@ import (
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/dictionary"
 	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/operation"
 )
 
 const InspectorByteWindow = 256
@@ -95,12 +96,9 @@ func (a *App) InspectOccurrence(request InspectRequest) InspectionResult {
 	if err != nil {
 		return fail("a case must be one directory entry of the open workspace")
 	}
-	opened, err := bundle.Open(path)
+	opened, err := operation.OpenVerifiedCase(path, request.Identity)
 	if err != nil {
-		return fail("the case could not be verified as complete, unmodified evidence")
-	}
-	if request.Identity == "" || request.Identity != opened.Identity {
-		return fail("the case identity changed; reopen the grid before inspecting")
+		return fail(err.Error())
 	}
 	var event *bundle.Event
 	for i := range opened.Events {

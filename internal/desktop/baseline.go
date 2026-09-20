@@ -5,7 +5,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/baseline"
-	"github.com/bharm16/readmit/internal/testrunner"
+	"github.com/bharm16/readmit/internal/operation"
 )
 
 // BaselineRequest names workspace entries only. Review is the explicit local
@@ -93,41 +93,37 @@ func (a *App) baseline(request BaselineRequest, approve bool) BaselineResult {
 	if artifactpath.EntryName(request.Spec) != nil {
 		return failure("a specification must be one regular entry of the open workspace")
 	}
-	data, err := baseline.ReadBytes(filepath.Join(root, request.Spec), testrunner.MaxSpecBytes)
-	if err != nil {
-		return failure(err.Error())
-	}
-	var previous *baseline.Revision
+	previousPath := ""
 	if request.Previous != "" {
 		if artifactpath.EntryName(request.Previous) != nil {
 			return failure("a previous baseline must be one regular entry of the open workspace")
 		}
-		p, err := baseline.Read(filepath.Join(root, request.Previous))
-		if err != nil {
-			return failure(err.Error())
-		}
-		previous = &p
+		previousPath = filepath.Join(root, request.Previous)
 	}
-	comparison, err := baseline.Review(data, previous, request.ShowValues)
-	if err != nil {
-		return failure(err.Error())
-	}
-	result := BaselineResult{State: Completed, Comparison: &comparison}
-	if previous != nil {
-		result.PreviousApprover = previous.Approver
-		result.PreviousRationale = previous.Rationale
-	}
+	outputPath := ""
 	if approve {
 		if artifactpath.EntryName(request.Output) != nil {
 			return failure("a baseline is written to one new entry of the open workspace")
 		}
-		revision, err := baseline.Approve(data, previous, request.Review, request.Approver, request.Rationale)
-		if err != nil {
-			return failure(err.Error())
-		}
-		if err := baseline.Save(filepath.Join(root, request.Output), revision); err != nil {
-			return failure(err.Error())
-		}
+		outputPath = filepath.Join(root, request.Output)
+	}
+	op := operation.BaselineRequest{Spec: filepath.Join(root, request.Spec), Previous: previousPath, Output: outputPath, ShowValues: request.ShowValues, Review: request.Review, Approver: request.Approver, Rationale: request.Rationale}
+	var outcome operation.BaselineResult
+	var err error
+	if approve {
+		outcome, err = operation.ApproveBaseline(op)
+	} else {
+		outcome, err = operation.ReviewBaseline(op)
+	}
+	if err != nil {
+		return failure(err.Error())
+	}
+	result := BaselineResult{State: Completed, Comparison: &outcome.Comparison}
+	if outcome.Previous != nil {
+		result.PreviousApprover = outcome.Previous.Approver
+		result.PreviousRationale = outcome.Previous.Rationale
+	}
+	if approve {
 		result.Output = request.Output
 	}
 	return result

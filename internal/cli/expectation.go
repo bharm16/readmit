@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"github.com/bharm16/readmit/internal/baseline"
 	"github.com/bharm16/readmit/internal/expectation"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/suite"
-	"github.com/bharm16/readmit/internal/testrunner"
 	"github.com/spf13/cobra"
 )
 
@@ -22,40 +22,22 @@ func expectationCommand(ran *bool) *cobra.Command {
 		}
 		command := &cobra.Command{Use: name + " SPEC", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
-			raw, err := baseline.ReadBytes(args[0], testrunner.MaxSpecBytes)
-			if err != nil {
-				return err
-			}
-			pins, err := expectation.ReadProfiles(profiles)
-			if err != nil {
-				return err
-			}
-			var parent *expectation.Release
-			if previous != "" {
-				p, e := expectation.Read(previous)
-				if e != nil {
-					return e
-				}
-				parent = &p
-			}
+			request := operation.ExpectationRequest{ID: id, Spec: args[0], Previous: previous, Output: output, Profiles: profiles, ShowValues: show, Review: review, Approver: approver, Rationale: rationale}
 			if !approve {
-				report, e := expectation.Review(id, raw, pins, parent, show)
+				result, e := operation.ReviewExpectation(request)
 				if e != nil {
 					return e
 				}
-				return writeJSON(cmd, report)
+				return writeJSON(cmd, result.Comparison)
 			}
 			if output == "" {
 				return errors.New("release requires a new --output file")
 			}
-			release, err := expectation.Approve(id, raw, pins, parent, review, approver, rationale)
+			result, err := operation.ApproveExpectation(request)
 			if err != nil {
 				return err
 			}
-			if err = expectation.Save(output, release); err != nil {
-				return err
-			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Released test revision %d with identity %s. Local reviewer declaration is not authenticated.\n", release.Baseline.Revision, release.Identity())
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Released test revision %d with identity %s. Local reviewer declaration is not authenticated.\n", result.Approved.Baseline.Revision, result.Approved.Identity())
 			return err
 		}}
 		command.Flags().StringVar(&id, "id", "", "Stable test identity (required)")

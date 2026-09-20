@@ -9,6 +9,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/testauthor"
 )
 
@@ -230,12 +231,9 @@ func (a *App) authoring(request TestRequest) (string, *bundle.Bundle, testauthor
 	if err != nil {
 		return "", nil, testauthor.Draft{}, refusal{Failed, "a case must be named by one directory entry of the open workspace"}
 	}
-	source, err := bundle.Open(path)
+	source, err := operation.OpenVerifiedCase(path, request.Identity)
 	if err != nil {
-		return "", nil, testauthor.Draft{}, refusal{Failed, "the case could not be verified as complete, unmodified evidence"}
-	}
-	if request.Identity == "" || request.Identity != source.Identity {
-		return "", nil, testauthor.Draft{}, refusal{Failed, "the case identity changed; reopen the grid before authoring a test"}
+		return "", nil, testauthor.Draft{}, refusal{Failed, err.Error()}
 	}
 	draft := request.Draft
 	if draft.Schema == "" {

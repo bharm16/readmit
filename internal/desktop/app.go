@@ -17,6 +17,7 @@ import (
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/guide"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/operationguard"
 	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/synth"
@@ -342,9 +343,9 @@ func (a *App) OpenCase(workspace, name string) CaseResult {
 	if err != nil {
 		return CaseResult{State: Failed, Reason: "a case must be named by one directory entry of the open workspace"}
 	}
-	opened, err := bundle.Open(path)
+	opened, err := operation.OpenCase(path)
 	if err != nil {
-		return CaseResult{State: Failed, Reason: "the case could not be verified as complete, unmodified evidence"}
+		return CaseResult{State: Failed, Reason: err.Error()}
 	}
 	counts := opened.Counts()
 	return CaseResult{State: Completed, Case: &Case{
@@ -424,24 +425,35 @@ func (a *App) SaveNote(path string, note project.Note) RevisionsResult {
 	if err := a.admitAuthor(); err != nil {
 		return RevisionsResult{State: PermissionDenied, Reason: err.Error()}
 	}
-	opened, declined := openProjectFolder(path)
-	if opened == nil {
+	root, declined := resolveFolder(path)
+	if root == "" {
 		return declined.revisions()
 	}
-	revisions, declined := readRevisions(opened.Root)
-	if revisions == nil {
-		return declined.revisions()
-	}
-	updated, _, err := project.SetNote(opened.Document, *revisions, note)
+	result, err := operation.SetProjectNote(root, note)
 	if err != nil {
-		return RevisionsResult{State: Failed, Root: opened.Root, Reason: "the note was not stored: it needs a name and a title, its text must be bounded and printable, any subject it names must be a case or revision this project registers, and a project holds a bounded number of notes"}
+		if errors.Is(err, operation.ErrProjectOpen) {
+			if errors.Is(err, project.ErrUnsupportedVersion) {
+				return RevisionsResult{State: Failed, Root: result.Root, Reason: "the project document was written by a version this release cannot read"}
+			}
+			return probeReadFailure(result.Root).revisions()
+		}
+		if errors.Is(err, operation.ErrProjectRevisions) {
+			if errors.Is(err, project.ErrUnsupportedVersion) {
+				return RevisionsResult{State: Failed, Root: result.Root, Reason: "the editable project document was written by a version this release cannot read"}
+			}
+			return RevisionsResult{State: Failed, Root: result.Root, Reason: "the editable project document cannot be read"}
+		}
+		if errors.Is(err, operation.ErrProjectNoteInvalid) {
+			return RevisionsResult{State: Failed, Root: result.Root, Reason: "the note was not stored: it needs a name and a title, its text must be bounded and printable, any subject it names must be a case or revision this project registers, and a project holds a bounded number of notes"}
+		}
+		if errors.Is(err, operation.ErrProjectNoteWrite) {
+			return probeWriteFailure(result.Root,
+				"this account cannot write to the project folder",
+				"the note could not be stored; an interrupted write may be retained beside the project document").revisions()
+		}
+		return RevisionsResult{State: Failed, Root: result.Root, Reason: err.Error()}
 	}
-	if err := project.WriteRevisions(opened.Root, updated); err != nil {
-		return probeWriteFailure(opened.Root,
-			"this account cannot write to the project folder",
-			"the note could not be stored; an interrupted write may be retained beside the project document").revisions()
-	}
-	return RevisionsResult{State: Completed, Root: opened.Root, Revisions: &updated}
+	return RevisionsResult{State: Completed, Root: result.Root, Revisions: &result.Revisions}
 }
 
 // openProjectFolder resolves a folder and reads the project document every

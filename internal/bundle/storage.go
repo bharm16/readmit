@@ -2,20 +2,16 @@ package bundle
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/binary"
-	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"slices"
 	"strings"
 	"time"
 
-	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/collection"
 	"github.com/bharm16/readmit/internal/engineexport"
 	"github.com/bharm16/readmit/internal/hl7"
@@ -65,51 +61,18 @@ func WriteCollected(path string, inputs []Input, startedAt time.Time, record col
 }
 
 func writeBundle(path string, b *Bundle) (*Bundle, error) {
-	path, err := artifactpath.Destination(path)
-	if err != nil {
-		return nil, err
-	}
 	files, err := encode(b)
 	if err != nil {
 		return nil, err
 	}
-	b.Identity = identityFor(b.Manifest.Schema, files)
-	if err := os.Mkdir(path, 0700); err != nil {
+	b.Identity, err = artifactdir.Write(path, artifactdir.WriteOptions{Domain: b.Manifest.Schema, Directories: []string{"payloads"}}, files)
+	if errors.Is(err, artifactdir.ErrCreateDirectory) {
 		return nil, errors.New("cannot create bundle; destination must be new and parent writable")
 	}
-	root, err := os.OpenRoot(path)
 	if err != nil {
-		return nil, errors.New("cannot open new bundle directory")
-	}
-	defer root.Close()
-	if err := root.Mkdir("payloads", 0700); err != nil {
-		return nil, errors.New("cannot create payload directory")
-	}
-	for _, name := range sortedNames(files) {
-		if err := writeFile(root, name, files[name]); err != nil {
-			return nil, err
-		}
-	}
-	if err := writeFile(root, "identity.sha256", []byte(b.Identity+"\n")); err != nil {
-		return nil, err
+		return nil, errors.New("cannot write bundle; incomplete bundle retained")
 	}
 	return b, nil
-}
-
-func writeFile(root *os.Root, name string, data []byte) error {
-	f, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return errors.New("cannot create bundle file; incomplete bundle retained")
-	}
-	_, err = f.Write(data)
-	if err == nil {
-		err = f.Sync()
-	}
-	closeErr := f.Close()
-	if err != nil || closeErr != nil {
-		return errors.New("cannot write bundle file; incomplete bundle retained")
-	}
-	return nil
 }
 
 // supported reports whether a manifest declares a case bundle contract this
@@ -490,117 +453,23 @@ func sameJSON(a, b any) bool {
 }
 
 func readFiles(path string) (map[string][]byte, error) {
-	root, err := os.OpenRoot(path)
-	if err != nil {
-		return nil, errors.New("cannot open bundle directory")
-	}
-	defer root.Close()
-	files := make(map[string][]byte)
-	// Keep one confined handle for this verification's payload directory.
-	// Opening every payload through the case root otherwise repeats the same
-	// parent traversal thousands of times. No handle or bytes survive this read.
-	var payloads *os.Root
-	defer func() {
-		if payloads != nil {
-			payloads.Close()
-		}
-	}()
-	total := 0
-	visit := func(name string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return errors.New("cannot read bundle directory")
-		}
-		if entry.IsDir() {
-			if name != "." && name != "payloads" {
-				return errors.New("unexpected bundle directory")
-			}
-			if name == "payloads" {
-				var err error
-				payloads, err = root.OpenRoot(name)
-				if err != nil {
-					return errors.New("cannot open payload directory")
-				}
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if entry.Type() != 0 {
-			return errors.New("bundle files must be regular files, never symlinks")
-		}
-		if name != "manifest.json" && name != "events.jsonl" && name != "correlations.jsonl" && name != "identity.sha256" && name != "observation.json" && name != "collection.json" && name != "engine-export.json" && name != "engine-container.bin" && !strings.HasPrefix(name, "payloads/") {
-			return errors.New("unexpected bundle file")
-		}
-		if len(files) >= MaxEvents+6 {
-			return errors.New("bundle file limit exceeded")
-		}
-		parent, child := root, name
-		if strings.HasPrefix(name, "payloads/") {
-			if payloads == nil {
-				return errors.New("cannot open payload directory")
-			}
-			parent, child = payloads, strings.TrimPrefix(name, "payloads/")
-		}
-		f, err := parent.Open(child)
-		if err != nil {
-			return errors.New("cannot read bundle file")
-		}
-		info, statErr := f.Stat()
-		if statErr != nil || !info.Mode().IsRegular() {
-			f.Close()
-			return errors.New("bundle files must be regular files")
-		}
-		data, readErr := io.ReadAll(io.LimitReader(f, int64(min(maxFileBytes, maxBundleBytes-total))+1))
-		closeErr := f.Close()
-		if readErr != nil || closeErr != nil {
-			return errors.New("cannot read bundle file")
-		}
-		total += len(data)
-		if len(data) > maxFileBytes || total > maxBundleBytes {
-			return errors.New("bundle contents exceed size limit")
-		}
-		files[name] = data
-		return nil
-	}
-	if err := fs.WalkDir(root.FS(), ".", visit); err != nil {
-		return nil, err
-	}
-	// Enumerate through the same handle used to open payloads. If the
-	// directory is renamed during this read, listing a replacement while
-	// opening the original would combine two different directory views.
-	if payloads != nil {
-		err = fs.WalkDir(payloads.FS(), ".", func(name string, entry fs.DirEntry, walkErr error) error {
-			if name == "." {
-				return walkErr
-			}
-			return visit("payloads/"+name, entry, walkErr)
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	for _, required := range []string{"manifest.json", "events.jsonl", "correlations.jsonl", "identity.sha256"} {
-		if _, ok := files[required]; !ok {
-			return nil, errors.New("bundle is incomplete: required file missing")
-		}
-	}
-	return files, nil
+	return artifactdir.Read(path, artifactdir.Layout{
+		Noun:               "bundle",
+		AllowedDirectories: []string{"payloads"},
+		RequiredFiles:      []string{"manifest.json", "events.jsonl", "correlations.jsonl", "identity.sha256"},
+		AllowFile: func(name string) bool {
+			return name == "manifest.json" || name == "events.jsonl" || name == "correlations.jsonl" || name == "identity.sha256" || name == "observation.json" || name == "collection.json" || name == "engine-export.json" || name == "engine-container.bin" || strings.HasPrefix(name, "payloads/")
+		},
+		MaxFiles:     MaxEvents + 6,
+		MaxFileBytes: maxFileBytes,
+		MaxBytes:     maxBundleBytes,
+	})
 }
 
 // Identity hashes a domain prefix and length-delimited relative paths/contents
 // in bytewise path order. The identity file itself is the only excluded file.
 func identityFor(schema string, files map[string][]byte) string {
-	h := sha256.New()
-	h.Write([]byte(schema + "\n"))
-	var size [8]byte
-	for _, name := range sortedNames(files) {
-		binary.BigEndian.PutUint64(size[:], uint64(len(name)))
-		h.Write(size[:])
-		h.Write([]byte(name))
-		binary.BigEndian.PutUint64(size[:], uint64(len(files[name])))
-		h.Write(size[:])
-		h.Write(files[name])
-	}
-	return hex.EncodeToString(h.Sum(nil))
+	return artifactdir.Identity(schema, files)
 }
 
 func sortedNames(files map[string][]byte) []string {

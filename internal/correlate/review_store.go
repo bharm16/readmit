@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/bundle"
 )
 
@@ -83,29 +83,13 @@ func SaveReview(path string, opened *bundle.Bundle, report Report, r ReviewRevis
 	if len(machine) > maxMachineBytes {
 		return errors.New("machine report exceeds correlation review size limit")
 	}
-	destination, err := artifactpath.Destination(path)
-	if err != nil {
-		return err
-	}
-	if err = os.Mkdir(destination, 0700); err != nil {
+	files := map[string][]byte{"machine.json": machine, "decisions.json": reviewBytes(r)}
+	_, err := artifactdir.Write(path, artifactdir.WriteOptions{Completion: []byte(r.Identity() + "\n")}, files)
+	if errors.Is(err, artifactdir.ErrCreateDirectory) {
 		return errors.New("correlation review destination must be new and writable")
 	}
-	for _, file := range []struct {
-		name string
-		data []byte
-	}{{"machine.json", machine}, {"decisions.json", reviewBytes(r)}, {"identity.sha256", []byte(r.Identity() + "\n")}} {
-		f, err := os.OpenFile(filepath.Join(destination, file.name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-		if err != nil {
-			return errors.New("cannot complete correlation review; incomplete directory retained")
-		}
-		_, writeErr := f.Write(file.data)
-		if writeErr == nil {
-			writeErr = f.Sync()
-		}
-		closeErr := f.Close()
-		if writeErr != nil || closeErr != nil {
-			return errors.New("cannot complete correlation review; incomplete directory retained")
-		}
+	if err != nil {
+		return errors.New("cannot complete correlation review; incomplete directory retained")
 	}
 	return nil
 }

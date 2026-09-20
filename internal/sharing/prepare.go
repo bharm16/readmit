@@ -6,11 +6,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/redact"
 	"github.com/bharm16/readmit/internal/report"
+	"github.com/bharm16/readmit/internal/runresult"
 )
 
 type Request struct{ Source, Kind, Private, Policy string }
@@ -79,7 +79,7 @@ func Prepare(ctx context.Context, r Request) (*Candidate, error) {
 		s.InputCommitment = p.Manifest.Current.CaseIdentity
 		s.SpecIdentity = p.Manifest.Current.SpecIdentity
 		s.Outcome = p.Manifest.Current.Status
-		if p.Manifest.Current.JournalIncomplete || p.Manifest.Current.DeliveryUncertain || !slices.Contains([]string{"not_recorded", "passed", "assertion_failed", "execution_error"}, p.Manifest.Current.RunState) {
+		if usable, _ := runresult.UsableLifecycle(p.Manifest.Current.RunState, p.Manifest.Current.JournalIncomplete, p.Manifest.Current.DeliveryUncertain); !usable {
 			s.Outcome = "execution_error"
 		}
 	case "derived-review":

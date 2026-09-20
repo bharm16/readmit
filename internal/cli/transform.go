@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/bharm16/readmit/internal/correlate"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/profilepack"
 	"github.com/bharm16/readmit/internal/transform"
 	"github.com/spf13/cobra"
@@ -37,15 +38,7 @@ func transformCommand(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			rules, err := correlate.ParseRules(declared)
-			if err != nil {
-				return err
-			}
 			authored, err := readInputFile(planPath, transform.MaxPlanBytes)
-			if err != nil {
-				return err
-			}
-			plan, err := transform.DecodePlan(authored)
 			if err != nil {
 				return err
 			}
@@ -53,7 +46,7 @@ func transformCommand(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			preview, err := transform.Run(args[0], plan, rules, pack)
+			preview, err := operation.PreviewTransform(operation.TransformRequest{Case: args[0], Rules: declared, Plan: authored, Pack: pack})
 			if err != nil {
 				return err
 			}

@@ -8,6 +8,7 @@ import (
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/diff"
 	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/operation"
 )
 
 // MaxComparisonRows bounds one window of a comparison. Two collections align
@@ -180,12 +181,9 @@ func (a *App) Compare(request CompareRequest) CompareResult {
 	// The left collection is the one the window verified and displayed, so the
 	// comparison is bound to that identity the way every other read of an open
 	// case is. The right one was chosen here and is reported as it was read.
-	opened, err := bundle.Open(left)
+	_, err := operation.OpenVerifiedCase(left, request.Identity)
 	if err != nil {
-		return CompareResult{State: Failed, Reason: "the case could not be verified as complete, unmodified evidence"}
-	}
-	if request.Identity == "" || request.Identity != opened.Identity {
-		return CompareResult{State: Failed, Reason: "the case identity changed; open the case again before comparing it"}
+		return CompareResult{State: Failed, Reason: err.Error()}
 	}
 	report, err := diff.Compare(
 		diff.Input{Path: left},

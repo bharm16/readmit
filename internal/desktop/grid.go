@@ -9,6 +9,7 @@ import (
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/grid"
 	"github.com/bharm16/readmit/internal/index"
+	"github.com/bharm16/readmit/internal/operation"
 )
 
 // Row is one occurrence in the grid: where it is, what it is, and the observed
@@ -108,9 +109,9 @@ func (a *App) OpenGrid(workspace, name, indexName string, offset, limit int) Gri
 	if entry, err := os.Lstat(indexPath); err != nil || !entry.Mode().IsRegular() {
 		return GridResult{State: Failed, Reason: "an index must be one regular file of the open workspace"}
 	}
-	opened, err := bundle.Open(casePath)
+	opened, err := operation.OpenCase(casePath)
 	if err != nil {
-		return GridResult{State: Failed, Reason: "the case could not be verified as complete, unmodified evidence"}
+		return GridResult{State: Failed, Reason: err.Error()}
 	}
 	document, declined := openIndex(indexPath, opened)
 	if declined.state != "" {

@@ -17,6 +17,7 @@ import (
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/runcompare"
 	"github.com/bharm16/readmit/internal/runqueue"
+	"github.com/bharm16/readmit/internal/runresult"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
@@ -405,19 +406,17 @@ func coverageJob(ctx context.Context, s coverageSuite, j runqueue.Job) (JobCover
 	if hasReport && admission.Admission != runqueue.Executed {
 		return row, "", errors.New("suite report excludes an existing execution")
 	}
-	summary, err := durablerun.Open(path)
+	retained, err := runresult.Open(path)
 	if err != nil {
 		return row, "", err
 	}
+	summary := retained.Lifecycle
 	row.Execution = string(summary.State)
 	row.Reason = "Retained durable execution; see run status for delivery and recovery details."
 	if summary.ResultIdentity == "" {
 		return row, "", nil
 	}
-	a, err := testrunner.Open(filepath.Join(path, "result"))
-	if err != nil {
-		return row, "", err
-	}
+	a := retained.Artifact
 	specRaw, err := read(filepath.Join(s.dir, j.Spec), testrunner.MaxSpecBytes)
 	if err != nil {
 		return row, "", err
@@ -426,15 +425,16 @@ func coverageJob(ctx context.Context, s coverageSuite, j runqueue.Job) (JobCover
 	if err != nil {
 		return row, "", err
 	}
-	if a.Identity != summary.ResultIdentity || a.Spec == nil || !sameCoverageJSON(*a.Spec, spec) {
+	if a.Identity != summary.ResultIdentity || retained.Spec == nil || !sameCoverageJSON(*retained.Spec, spec) {
 		return row, "", errors.New("retained execution does not match the prepared suite job")
 	}
+	usable, _ := retained.Usable()
 	comparison, err := runcompare.Compare(ctx, runcompare.Input{Baseline: path, Current: path})
 	if err != nil {
 		return row, "", err
 	}
 	row.Stability = comparison.Stability
-	row.Eligible = summary.State == durablerun.Passed && comparison.Current.RunState == string(durablerun.Passed) && comparison.Current.Identity == a.Identity && comparison.Current.Status == string(testrunner.Pass)
+	row.Eligible = usable && summary.State == durablerun.Passed && comparison.Current.RunState == string(durablerun.Passed) && comparison.Current.Identity == a.Identity && comparison.Current.Status == string(testrunner.Pass)
 	return row, path, nil
 }
 

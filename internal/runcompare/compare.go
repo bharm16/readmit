@@ -7,14 +7,12 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
-	"os"
-	"path/filepath"
 
-	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/baseline"
 	"github.com/bharm16/readmit/internal/drift"
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/runexplain"
+	"github.com/bharm16/readmit/internal/runresult"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
@@ -162,40 +160,33 @@ func Compare(ctx context.Context, input Input) (Comparison, error) {
 }
 
 func open(path string) (opened, error) {
-	dir, err := artifactpath.Directory(path)
+	retained, err := runresult.Open(path)
 	if err != nil {
-		return opened{}, errors.New("execution must be a readable result or durable run directory")
+		return opened{}, err
 	}
 	v := Execution{Status: "unknown", Boundary: "unknown", Excluded: "unknown: the original case is not reopened", Gaps: []string{}, Assertions: []AssertionState{}}
-	resultPath := dir
-	if _, err := os.Lstat(filepath.Join(dir, "engine.json")); err == nil {
-		job, err := durablerun.Open(dir)
-		if err != nil {
-			return opened{}, err
-		}
+	if retained.Durable {
+		job := retained.Lifecycle
 		v.RunState = string(job.State)
 		v.Status = "unknown"
-		if job.JournalIncomplete {
+		usable, reason := retained.Usable()
+		if reason == "journal incomplete" {
 			v.Gaps = append(v.Gaps, "journal incomplete: finalized result does not prove execution completed")
 		}
-		if job.DeliveryUncertain {
+		if reason == "delivery uncertain" || job.DeliveryUncertain {
 			v.Gaps = append(v.Gaps, "delivery uncertain; do not infer an unobserved message was not sent")
 		}
 		v.Planned = job.Planned
 		v.Unobserved = job.Planned
 		if job.ResultIdentity == "" {
 			v.Gaps = append(v.Gaps, "no finalized result: assertions and observations are unknown")
-			return opened{view: v, path: dir}, nil
+			return opened{view: v, path: retained.Path}, nil
 		}
-		resultPath, err = artifactpath.Child(dir, "result")
-		if err != nil {
-			return opened{}, err
+		if !usable && reason == "run did not reach a usable terminal state" {
+			v.Gaps = append(v.Gaps, reason)
 		}
 	}
-	a, err := testrunner.Open(resultPath)
-	if err != nil {
-		return opened{}, err
-	}
+	a := retained.Artifact
 	if v.RunState == "" {
 		v.RunState = "not_recorded"
 	}
@@ -206,14 +197,14 @@ func open(path string) (opened, error) {
 	if v.Boundary == "" {
 		v.Boundary = "unknown"
 	}
-	if a.Spec != nil {
-		v.Planned = len(a.Spec.Input.Messages)
+	if retained.Spec != nil {
+		v.Planned = len(retained.Spec.Input.Messages)
 	} else {
 		v.Gaps = append(v.Gaps, "specification unavailable: planned selection and expectations unknown")
 	}
 	responses := map[string]string{}
-	if a.Run != nil {
-		described, err := runexplain.DescribeRun(a.Run)
+	if retained.Run != nil {
+		described, err := runexplain.DescribeRun(retained.Run)
 		if err != nil {
 			return opened{}, err
 		}
@@ -234,7 +225,7 @@ func open(path string) (opened, error) {
 	if v.Boundary == testrunner.LedgerBoundary && a.FinalObservation == nil {
 		v.Gaps = append(v.Gaps, "final ledger observation unavailable")
 	}
-	for _, a := range a.Result.Assertions {
+	for _, a := range retained.Assertions {
 		s := AssertionState{ID: a.Assertion.ID, Operator: a.Assertion.Operator, Status: a.Status, Message: a.Assertion.Message, Selector: a.Assertion.Selector, Evidence: "unobserved"}
 		if a.Status == testrunner.NotEvaluated {
 			v.Unevaluated++
@@ -245,7 +236,7 @@ func open(path string) (opened, error) {
 		}
 		v.Assertions = append(v.Assertions, s)
 	}
-	return opened{view: v, artifact: a, path: dir}, nil
+	return opened{view: v, artifact: a, path: retained.Path}, nil
 }
 func equal(a, b any) bool {
 	left, _ := json.Marshal(a, json.Deterministic(true))

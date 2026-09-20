@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
-	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/correlate"
+	"github.com/bharm16/readmit/internal/operation"
 )
 
 // CorrelationReviewRequest selects an immutable history explicitly. Mapping
@@ -71,12 +71,9 @@ func (a *App) correlationReview(request CorrelationReviewRequest, write bool) Co
 	if err != nil {
 		return failure("a case must be one directory entry of the open workspace")
 	}
-	opened, err := bundle.Open(casePath)
+	opened, err := operation.OpenVerifiedCase(casePath, request.Identity)
 	if err != nil {
-		return failure("the case could not be verified as complete, unmodified evidence")
-	}
-	if request.Identity == "" || request.Identity != opened.Identity {
-		return failure("the case identity changed; reopen the case")
+		return failure(err.Error())
 	}
 	report, declined := correlated(root, casePath, request.Rules)
 	if report == nil {

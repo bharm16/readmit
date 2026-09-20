@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/bharm16/readmit/internal/baseline"
-	"github.com/bharm16/readmit/internal/testrunner"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/spf13/cobra"
 )
 
@@ -21,24 +21,13 @@ func baselineCommand(ran *bool) *cobra.Command {
 		}
 		cmd := &cobra.Command{Use: name + " SPEC", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
-			data, err := baseline.ReadBytes(args[0], testrunner.MaxSpecBytes)
-			if err != nil {
-				return err
-			}
-			var parent *baseline.Revision
-			if previous != "" {
-				r, err := baseline.Read(previous)
-				if err != nil {
-					return err
-				}
-				parent = &r
-			}
+			request := operation.BaselineRequest{Spec: args[0], Previous: previous, Output: output, ShowValues: show, Review: identity, Approver: approver, Rationale: rationale}
 			if !approve {
-				r, err := baseline.Review(data, parent, show)
+				result, err := operation.ReviewBaseline(request)
 				if err != nil {
 					return err
 				}
-				if _, err := cmd.OutOrStdout().Write(r.JSON()); err != nil {
+				if _, err := cmd.OutOrStdout().Write(result.Comparison.JSON()); err != nil {
 					return errors.New("cannot write baseline review")
 				}
 				return nil
@@ -46,14 +35,11 @@ func baselineCommand(ran *bool) *cobra.Command {
 			if output == "" {
 				return errors.New("baseline approval requires a new --output file")
 			}
-			r, err := baseline.Approve(data, parent, identity, approver, rationale)
+			result, err := operation.ApproveBaseline(request)
 			if err != nil {
 				return err
 			}
-			if err := baseline.Save(output, r); err != nil {
-				return err
-			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Approved local baseline revision %d; identity is not authenticated.\n", r.Revision)
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Approved local baseline revision %d; identity is not authenticated.\n", result.Approved.Revision)
 			if err != nil {
 				return errors.New("baseline saved but confirmation could not be written")
 			}

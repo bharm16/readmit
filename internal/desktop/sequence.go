@@ -12,6 +12,7 @@ import (
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/correlate"
 	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/sequenceanalysis"
 )
 
@@ -311,12 +312,9 @@ func (a *App) OpenSequence(request SequenceRequest) SequenceResult {
 	if err != nil {
 		return SequenceResult{State: Failed, Reason: "a case must be named by one directory entry of the open workspace"}
 	}
-	opened, err := bundle.Open(casePath)
+	opened, err := operation.OpenVerifiedCase(casePath, request.Identity)
 	if err != nil {
-		return SequenceResult{State: Failed, Reason: "the case could not be verified as complete, unmodified evidence"}
-	}
-	if request.Identity == "" || request.Identity != opened.Identity {
-		return SequenceResult{State: Failed, Reason: "the case identity changed; open the case again before reading its sequence"}
+		return SequenceResult{State: Failed, Reason: err.Error()}
 	}
 	report, declined := correlated(root, casePath, request.Rules)
 	if declined.state != "" {

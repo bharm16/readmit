@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 )
 
@@ -108,16 +109,11 @@ func Write(ctx context.Context, path string, data []byte) ([]byte, error) {
 	return encoded, nil
 }
 func writeFile(root *os.Root, name string, data []byte) error {
-	f, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
+	err := artifactdir.WriteFile(root, name, data)
+	if errors.Is(err, artifactdir.ErrCreateFile) {
 		return errors.New("cannot create generation file; incomplete output retained")
 	}
-	_, err = f.Write(data)
-	if err == nil {
-		err = f.Sync()
-	}
-	closeErr := f.Close()
-	if err != nil || closeErr != nil {
+	if err != nil {
 		return errors.New("cannot write generation file; incomplete output retained")
 	}
 	return nil

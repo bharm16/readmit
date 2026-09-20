@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/sendpolicy"
 )
@@ -135,16 +136,11 @@ func (s *snapshot) retainDecision(decision sendpolicy.Decision) error {
 }
 
 func (s *snapshot) write(name string, data []byte) error {
-	file, err := s.root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
+	err := artifactdir.WriteFile(s.root, name, data)
+	if errors.Is(err, artifactdir.ErrCreateFile) {
 		return errors.New("cannot create a retained observation file")
 	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
+	if err != nil {
 		return errors.New("cannot write a retained observation file")
 	}
 	return nil
@@ -159,11 +155,7 @@ func evidenceIdentity(material map[string][]byte) string {
 	if len(material) == 0 {
 		return ""
 	}
-	parts := make([][]byte, 0, 2*len(material))
-	for _, name := range sortedNames(material) {
-		parts = append(parts, []byte(name), material[name])
-	}
-	return digestOf(EvidenceSchema, parts)
+	return artifactdir.Identity(EvidenceSchema, material)
 }
 
 // digestOf is the one hash this package takes: a domain prefix, then every part
