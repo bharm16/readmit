@@ -25,7 +25,7 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
 
 ## CLI
 
-- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `corpus`, `project`, `backup`, `upgrade`, `license`, `secret`, `protect`, `target`, `source`, `listen`, `replay`, `test`, `suite`, `observe`, `explain`, `diff`, `drift`, `normalize`, `baseline`, `expectation`, `diagnose`, `correlate`, `transform`, `synth`, `scenario`, `profile`, `redact`, `report`, `share`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
+- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `corpus`, `project`, `backup`, `upgrade`, `license`, `secret`, `protect`, `target`, `source`, `listen`, `replay`, `test`, `suite`, `observe`, `explain`, `diff`, `drift`, `normalize`, `baseline`, `expectation`, `diagnose`, `correlate`, `transform`, `synth`, `scenario`, `profile`, `redact`, `report`, `share`. The database drivers selected by D3 are the other direct third-party dependencies of the released executable. No Viper, no interactive TUI.
 - Command data goes to stdout, diagnostics to stderr. Machine-readable modes never interleave progress output with JSON.
 - Target configuration is read from explicitly selected files, not hidden global config or environment-variable precedence.
 - Credentials are referenced, never held. A `readmit-secrets/v1` document registers the store kind an operator declared, the single purpose and endpoint address a credential may be bound to, the absolute path of the program that reads it back, and the recorded rotation. The purposes are `mllp-endpoint` and `source-endpoint`; a reference registered for one is refused wherever the other is needed. No command accepts a credential value, and a resolved value masks itself under every formatting verb and refuses to be serialized. See [credential references](secret.md).
@@ -161,15 +161,14 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
 ## External observations
 
 - Selected database collectors (#75): `database/sql` with `pgx/v5/stdlib`,
-  `go-mssqldb` and `go-ora/v2`. These drivers are not yet installed. Their
-  version/authentication tests and five-target static builds precede dependency
-  pins and support claims. Defaults are 30 seconds, 10,000 rows and 10 MiB per
+  `go-mssqldb` and `go-ora/v2`, pinned below. Local collectors and synthetic
+  tests are implemented; named server/version authentication and integration
+  acceptance remain required before support claims. Defaults are 30 seconds, 10,000 rows and 10 MiB per
   query, explicitly adjustable under environment policy. Database grants over
   approved views enforce SELECT-only access; reset credentials are separate.
   See [D3](product-decisions.md#d3--database-observations) for the finite test
   matrix and separately authorized Oracle 19c gate. This permits the scoped
-  pure-Go dependencies; today's Cobra-only module is not a permanent ban on
-  the selected collectors, and canonical evidence still is not a database.
+  pure-Go dependencies beyond Cobra; canonical evidence remains files.
 - What makes an observation trustworthy is source-neutral and lives in
   `internal/observewindow`, not in any collector. A
   `readmit-observation-window/v1` document declares the source identity and
@@ -196,7 +195,7 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
   HTTPS API, and a downstream HL7 capture read back from the case a receiver
   sealed. It fills in the slots the window contracts already declare — sample
   status, evidence identity, correlation — rather than adding a parallel set, so
-  the database collector still to come reports the same way.
+  the database collector under source/v3 reports the same way.
 - A downstream capture is observed under one shared field selector naming the
   position its record key sits at, which is the same position vocabulary a
   correlation rule declares and carries the same disclaimer: reading a position
@@ -510,7 +509,7 @@ reads; [D6–D8](product-decisions.md#d6--evaluation-and-clock-policy) select tr
 vendor billing and administration policies. A separate vendor service is not
 an evidence-engine dependency. None is implemented merely by being selected.
 
-The offline engine has no database, ORM, web application server, container runtime, hosted backend, external rules engine, message broker, Redis, search server, LLM API, payment integration, licence or activation server, or application authentication system. The separately deployed customer hub has PostgreSQL metadata, mutual TLS, and an explicit team mode with OIDC-provider access-token validation and project roles; it stores only hashes of scoped API/runner credentials. The case index of [ADR-0008](adr/0008-the-case-index-is-a-derived-disposable-readmit-owned-file.md) is not one of them: it is a derived, disposable file the engine writes and reads the way it writes and reads every other artifact, rebuilt from the canonical case directory and never the only home of anything. Entitlement verification is a local check of a signed file and introduces none of them. Access control is the operating-system account and filesystem permissions, plus the encrypted transfer packages an operator asks for. readmit has no credential or key store of its own: it registers references to credentials and encryption keys kept in an operating system credential store or a customer-managed secret provider, reads one by running the program the operator declared, and never writes to a store, so its own privilege is read access to the values a person registered. Nothing is encrypted implicitly, no key is escrowed or recoverable, and no deletion readmit performs is presented as erasure. The desktop application is a local webview over the same engine, not a hosted web application: it serves nothing over a network and has no accounts.
+The offline engine has no embedded database, ORM, web application server, container runtime, hosted backend, external rules engine, message broker, Redis, search server, LLM API, payment integration, licence or activation server, or application authentication system. The separately deployed customer hub has PostgreSQL metadata, mutual TLS, and an explicit team mode with OIDC-provider access-token validation and project roles; it stores only hashes of scoped API/runner credentials. The case index of [ADR-0008](adr/0008-the-case-index-is-a-derived-disposable-readmit-owned-file.md) is not one of them: it is a derived, disposable file the engine writes and reads the way it writes and reads every other artifact, rebuilt from the canonical case directory and never the only home of anything. Entitlement verification is a local check of a signed file and introduces none of them. Access control is the operating-system account and filesystem permissions, plus the encrypted transfer packages an operator asks for. readmit has no credential or key store of its own: it registers references to credentials and encryption keys kept in an operating system credential store or a customer-managed secret provider, reads one by running the program the operator declared, and never writes to a store, so its own privilege is read access to the values a person registered. Nothing is encrypted implicitly, no key is escrowed or recoverable, and no deletion readmit performs is presented as erasure. The desktop application is a local webview over the same engine, not a hosted web application: it serves nothing over a network and has no accounts.
 
 ## Regression baseline approval
 
@@ -558,3 +557,11 @@ machine findings stay separate and unchanged. Derived human mappings bind the
 case, rules and decision history by identity and refuse stale dependent views.
 Actor/reason text is private by default and is a local declaration, never team
 authentication. See [correlation review](correlate.md#explicit-human-correlation-review).
+
+## Database observations
+
+D3 authorizes `database/sql` collectors using pgx/v5 v5.11.0,
+go-mssqldb v1.11.0 and go-ora/v2 v2.9.0. These are pure-Go drivers; the CLI
+keeps all five static targets. See [observation windows](observe.md#database-queries)
+for explicit TLS, bound filters, SELECT-only grants, typed key mapping, retained
+bounds and the still-unqualified server matrix. No database server is embedded.

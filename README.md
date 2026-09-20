@@ -529,6 +529,12 @@ records and none of them may be read as proof that there are none. State that
 was already there when the window opened is never evidence that the run produced
 it.
 
+Database observations use `readmit-observation-source/v3` to read one bounded
+key column from an approved PostgreSQL, SQL Server or Oracle view, with bound
+filters, verified TLS and separate observation credential references. The
+[named database-version lab matrix](docs/observe.md#qualification-still-required)
+is still unqualified; client implementation is not a server support claim.
+
 `observe collect SOURCE --window WINDOW --out NEW_RECORD --snapshot NEW_DIRECTORY`
 is the source-specific collector. A `readmit-observation-source/v2` document
 declares a bounded JSON, CSV, XML or text export on disk, a bounded read of an

@@ -11,8 +11,8 @@ and what a collector retained. `collect` is the source-specific collector, and
 it fills those same slots for three sources — a **bounded file export**, a
 **bounded read of an approved HTTP API**, and a **downstream HL7 capture**
 readmit already retained — through a third contract, the declared observation
-source. The read-only database queries still to come report into the same window
-and completion rather than inventing their own.
+source. Read-only database views use source/v3 and report into the same window
+and completion.
 
 ```sh
 readmit observe validate observation-window.json
@@ -575,8 +575,8 @@ result, review and report evidence.
 
 ## Not in this release
 
-- No database collector. That source is separate work and reports into these
-  same contracts.
+- Database client implementations are present, but the D3 server/version matrix
+  has not been qualified. See the database section below.
 - No capture of any kind from `observe collect`. It reads a capture a receiver
   already sealed; starting, stopping or waiting on one is not its job.
 - No reading of a capture's message content beyond the one declared position,
@@ -600,10 +600,170 @@ result, review and report evidence.
 Per [ADR-0002](adr/0002-case-bundles-are-directories-not-a-database.md) and
 [ADR-0003](adr/0003-specs-are-strict-json-with-typed-operators.md), all three
 documents are versioned strict-JSON files evaluated by typed Go operators, with
-no database and no expression language. Extending any of them means a new
+no embedded database and no expression language. Extending any of them means a new
 version string with a reader for every older version, never a new member on this
 one — which is exactly what the capture transport is, and why
 `readmit-observation-source/v1` is still read and still means what it meant.
 `readmit-observation-window/v1` and `readmit-observation-completion/v1` are
 unchanged by every collector: they fill in the slots those contracts already
 declare.
+
+## Database queries
+
+`readmit-observation-source/v3` adds `database-query` to the same `observe collect`
+command. v1/v2 sources and existing window/completion/evidence records retain
+exactly their previous member sets and meanings. A v3 source requires a
+`database` member (explicit null for another transport); the other transport
+members remain explicit nulls when a database is selected.
+
+This collector reads **one declared correlation-key column** from an approved
+view, with up to 16 equality filters over declared columns. It does not read
+arbitrary result tables or add row-value assertions. A view owns any required
+joins, database-specific predicates, null handling or bounded key projection.
+No SQL, stored procedure, reset statement, connection string, authentication
+mode override or insecure TLS option is accepted in the document. Filter
+values are bound separately using `$1`, `@p1` or `:1`, never interpolated.
+Identifiers use letters, digits and underscores (a leading digit is refused),
+and the view has one or two qualified components. Oracle identifiers must match
+the view's actual case, normally uppercase for objects created without quotes.
+
+```json
+{
+  "schema": "readmit-observation-source/v3",
+  "source": {"kind": "database-query", "identity": "synthetic-lab", "scope": "appointments"},
+  "enabled": true,
+  "freshness": {"max_age": "1m"},
+  "extraction": null, "file": null, "http": null, "capture": null,
+  "database": {
+    "driver": "postgresql", "address": "127.0.0.1:5432",
+    "classification": "nonproduction", "name": "synthetic", "username": "observer",
+    "ca_file": "lab-ca.pem", "server_name": "database.lab.invalid",
+    "credential": {
+      "store": "customer-managed", "address": "127.0.0.1:5432",
+      "purpose": "database-observation",
+      "command": "/absolute/path/to/credential-provider", "arguments": ["observation-principal"]
+    },
+    "view": ["public", "observed"], "record_key": "appointment", "key_type": "text",
+    "filters": [{"column": "status", "value": "ready"}],
+    "limits": null
+  }
+}
+```
+
+The window must declare that same `database-query` identity/scope. The existing
+`--policy` destination rule applies before resolving credentials or connecting.
+Connections, including driver reconnects, use only the policy-approved address.
+The supplied server name is always verified against TLS certificates, TLS 1.2
+is the minimum, and an explicit CA file replaces system roots. PostgreSQL has
+no plaintext fallback; SQL Server requires encryption; Oracle requires TCPS.
+No driver error, query parameter, DSN or credential is included in diagnostics.
+PostgreSQL connection settings do not inherit `PG*` values or operator service,
+passfile or client-certificate contents. The pinned parser requires a service
+file to override an ambient service, so it reads a private temporary empty
+service entry containing no values, removed immediately after parsing.
+Credentials come only from the existing bounded store reader. Endpoint/purpose
+mismatches, reset-purpose references and unknown credential fields are refused.
+
+**Provision SELECT-only grants over approved views, using a separate principal
+from setup/reset.** The purpose label cannot prove the store returned the right
+principal. A generated SELECT is not an authorization boundary: an approved
+view could call a privileged function, and a misconfigured account could have
+write authority. The database administrator must remove write, schema creation,
+procedure execution and unwanted inherited privileges and test denial with the
+actual principal. Readmit never connects with a reset credential to test this.
+
+`limits: null` selects D3's default **30 seconds, 10,000 rows, 10 MiB**. An
+explicit object must declare all of `timeout`, `max_rows` and `max_bytes`;
+ceilings are five minutes, 100,000 rows and 16 MiB. Every query has a deadline
+bounded by the remaining observation window, and a server-side row limit of
+`max_rows + 1` detects truncation. Returned key bytes are counted before they
+are accumulated. A driver can allocate a single wire value before application
+code receives it; approved views must also bound individual field sizes.
+This is a result budget, not a server query-cost or process-memory guarantee.
+No result is retried inside a sample. The window's own maximum record count,
+quiet period, sample count and deadline remain independent limits.
+
+`key_type` is explicit:
+
+| Type | Accepted representation |
+| --- | --- |
+| `text` | Exact driver-returned text/bytes satisfying the shared printable ASCII correlation-key limit (1–128 bytes). No trimming or normalization. |
+| `integer` | An exact signed 64-bit integer or integer text; floating point is refused. |
+| `decimal` | Exact decimal text, including scale/trailing zeroes; floating point and driver-specific objects are refused. Project a decimal to exact text in the approved view when a driver otherwise supplies a float. |
+| `timestamp` | A timezone-aware native timestamp returned as `time.Time`, represented as a UTC RFC3339Nano instant, or valid RFC3339 text. Zone-less native date/time types are refused. A database may not retain the originally entered zone; no original-zone claim is made. |
+
+Null keys are **ambiguous**, distinct from observed empty results. Long text,
+unsupported types, unexpected column mappings and additional result sets are
+refused rather than silently coerced, shortened or discarded. This finite
+collector does not assert the values of other columns: the SELECT requests
+only the mapped key. In particular, arbitrary LOBs, Oracle-specific datatypes
+and precision-losing numeric conversions are unsupported.
+
+Each sampled attempt retains `database.json`, a strict
+`readmit-database-read/v1` record of driver family, effective limits, declared
+key type and decoded keys. `DecodeDatabaseRead` rejects unknown/missing fields,
+unknown versions, invalid keys and exceeded bounds. This is explicitly the
+**typed result returned by database/sql**, not original network packet bytes.
+Decimal text is retained unchanged; native timestamps preserve the instant at
+nanosecond precision. Failed reads retain bounds with an empty key list, and
+`read.json`/the completion retain the failure, so this empty list is never an
+observed absence. Record keys and filter declarations can be sensitive; use
+synthetic lab data and the same local evidence protection/disclosure review as
+other observation snapshots. No database credential or connection address is
+stored in the per-read result. Cancellation keeps the existing window contract:
+an unfinished sample is omitted and the completion reports cancellation or its
+window timeout. Effective defaults still follow from the selected source.
+
+A SQL query is a current read, dated conservatively from when its attempt began;
+a long-running query can exceed the freshness bound. This does not prove that
+an application populated its view recently. The declared baseline and watermark
+retain their existing meanings. Repeated stable samples establish only the
+observed key state; they do not imply a serializable snapshot across polls.
+
+### Qualification still required
+
+The pinned drivers are [pgx v5.11.0](https://github.com/jackc/pgx/releases/tag/v5.11.0),
+[go-mssqldb v1.11.0](https://github.com/microsoft/go-mssqldb/releases/tag/v1.11.0)
+and [go-ora/v2 v2.9.0](https://github.com/sijms/go-ora/releases/tag/v2.9.0).
+Upstream connector/TLS APIs are checked against those versions' source;
+[Microsoft's driver documentation](https://github.com/microsoft/go-mssqldb)
+and [go-ora's connection options](https://github.com/sijms/go-ora/tree/v2.9.0)
+are configuration references, not proof of this product's compatibility.
+
+No database/server version is yet advertised as qualified. The owner must supply:
+
+- PostgreSQL **16, 17 and 18** isolated synthetic labs with exact patch/image
+  digests recorded. A local PostgreSQL 14 test is developmental evidence only.
+- SQL Server **2019, 2022 and 2025** on native **x86-64 Linux**, with licensed
+  images/installations and exact versions recorded. Apple-Silicon emulation
+  cannot substitute for the reference environment.
+- Oracle **26ai Free**, plus a separately **authorized Oracle 19c installation**,
+  each with exact patch/image identity. 26ai and a protocol fixture cannot
+  establish 19c behavior or rights to run it.
+- A TLS endpoint and trusted CA/name for each lab; separate SELECT-only and
+  setup/reset principals; approved views populated only with synthetic keys.
+  Register store references locally; never attach values or DSNs to issues.
+- Retained `observe collect` completion/snapshot evidence for populated and
+  empty results, null/decimal/timezone/long-text mapping, invalid mapping,
+  refused permissions/writes, row/byte/query deadlines, lost connections,
+  wrong-name/untrusted/no-TLS refusal, cancellation and a fresh successful
+  recovery. Record the actual grants and independent denial tests without
+  credential values. Pin lab images only when their actual identity is known.
+
+The committed TLS PostgreSQL-wire fixture exercises the real pgx driver and
+public collector, including bound injection-like values and failure redaction.
+It is not a real PostgreSQL server, grant proof, SQL Server/Oracle qualification,
+or release acceptance. #75 remains open until the named matrix is exercised.
+
+The optional `TestDatabasePostgreSQLLab` creates and destroys its own isolated
+cluster using an explicitly selected `READMIT_POSTGRES_BIN` directory. It uses
+synthetic data, TLS and a separate view-only principal, verifies write/permission
+denial, exact numeric/timestamp mappings, query timeout and fresh recovery. Its
+loopback-only trust authentication tests grants and transport, **not password
+authentication**. The local run used PostgreSQL 14.19 (Homebrew); all eight D3
+server-version cells remain pending. Example invocation:
+
+```sh
+READMIT_POSTGRES_BIN=/absolute/path/to/postgresql/bin \
+  go test ./internal/observesource -run '^TestDatabasePostgreSQLLab$' -count=1 -v
+```
