@@ -6,7 +6,6 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
-	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/reproducer"
 )
 
@@ -146,17 +145,9 @@ func (a *App) buildReproducer(request ReproducerRequest) ReproducerResult {
 // A request carrying no plan starts one bound to the evidence just verified, so
 // the contract a plan declares is written here rather than in the interface.
 func (a *App) opened(request ReproducerRequest) (string, *bundle.Bundle, reproducer.Plan, refusal) {
-	root, declined := resolveFolder(request.Workspace)
+	root, source, declined := openedCase(request.Workspace, request.Case, request.Identity)
 	if root == "" {
 		return "", nil, reproducer.Plan{}, declined
-	}
-	path, err := artifactpath.Child(root, request.Case)
-	if err != nil {
-		return "", nil, reproducer.Plan{}, refusal{Failed, "a case must be named by one directory entry of the open workspace"}
-	}
-	source, err := operation.OpenVerifiedCase(path, request.Identity)
-	if err != nil {
-		return "", nil, reproducer.Plan{}, refusal{Failed, err.Error()}
 	}
 	plan := request.Plan
 	if plan.Schema == "" && plan.Case == "" && len(plan.Steps) == 0 {

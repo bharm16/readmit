@@ -286,22 +286,36 @@ export default function App() {
     }
   }, []);
 
+  /** Everything derived from the one verified case lives only while that case
+   * is displayed, so one seam clears it when the window's case changes. A
+   * panel whose results derive from the open case registers its setter here
+   * and nowhere else. */
+  const clearCase = useCallback(() => {
+    setEvidence(null);
+    setGridResult(null);
+    setInspectionResult(null);
+    setReproducerResult(null);
+    setTestResult(null);
+    setComparisonResult(null);
+    setSequenceResult(null);
+    setRevisionResult(null);
+    setTransformResult(null);
+    setReviewResult(null);
+    setSelectedOccurrence(null);
+  }, []);
+
+  /** Opening a folder changes the workspace, so everything the previous
+   * workspace derived is cleared alongside the case-derived state. */
+  const clearWorkspace = useCallback(() => {
+    clearCase();
+    setInvestigation(null);
+    setFound(null);
+  }, [clearCase]);
+
   const openFolder = useCallback(
     async (operation: () => Promise<WorkspaceResult>) => {
       await operate("workspace", async () => {
-        setEvidence(null);
-        setInvestigation(null);
-        setFound(null);
-        setGridResult(null);
-        setInspectionResult(null);
-        setReproducerResult(null);
-        setTestResult(null);
-        setComparisonResult(null);
-        setSequenceResult(null);
-        setRevisionResult(null);
-        setTransformResult(null);
-        setReviewResult(null);
-        setSelectedOccurrence(null);
+        clearWorkspace();
         setSelected(null);
         setWorkspace(null);
         const result = await operation();
@@ -312,29 +326,19 @@ export default function App() {
       await refreshRecent();
       focusRegion("navigation");
     },
-    [focusRegion, operate, refreshGuide, refreshRecent],
+    [clearWorkspace, focusRegion, operate, refreshGuide, refreshRecent],
   );
 
   const verifyCase = useCallback(
     async (folder: string, name: string) => {
       await operate("case", async () => {
-        setEvidence(null);
-        setGridResult(null);
-        setInspectionResult(null);
-        setReproducerResult(null);
-        setTestResult(null);
-        setComparisonResult(null);
-        setSequenceResult(null);
-        setRevisionResult(null);
-        setTransformResult(null);
-        setReviewResult(null);
-        setSelectedOccurrence(null);
+        clearCase();
         setSelected(name);
         setEvidence(await openCase(folder, name));
       });
       focusRegion("inspector");
     },
-    [focusRegion, operate],
+    [clearCase, focusRegion, operate],
   );
 
   // One practice run of the guided sample. It is the one operation in this

@@ -7,11 +7,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/dictionary"
 	"github.com/bharm16/readmit/internal/hl7"
-	"github.com/bharm16/readmit/internal/operation"
 )
 
 const InspectorByteWindow = 256
@@ -92,17 +90,9 @@ func (a *App) inspectOccurrence(request InspectRequest) InspectionResult {
 	if request.NodeOffset < 0 || request.ByteOffset < -1 {
 		return fail("inspector offsets must be in range")
 	}
-	root, declined := resolveFolder(request.Workspace)
+	root, opened, declined := openedCase(request.Workspace, request.Case, request.Identity)
 	if root == "" {
 		return InspectionResult{State: declined.state, Reason: declined.reason}
-	}
-	path, err := artifactpath.Child(root, request.Case)
-	if err != nil {
-		return fail("a case must be one directory entry of the open workspace")
-	}
-	opened, err := operation.OpenVerifiedCase(path, request.Identity)
-	if err != nil {
-		return fail(err.Error())
 	}
 	var event *bundle.Event
 	for i := range opened.Events {

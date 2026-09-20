@@ -10,7 +10,6 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
-	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/testauthor"
 )
 
@@ -223,17 +222,9 @@ func (a *App) proposing(request TestRequest) (string, *bundle.Bundle, testauthor
 // verified, so the contract a draft declares is written here rather than in the
 // interface.
 func (a *App) authoring(request TestRequest) (string, *bundle.Bundle, testauthor.Draft, refusal) {
-	root, declined := resolveFolder(request.Workspace)
+	root, source, declined := openedCase(request.Workspace, request.Case, request.Identity)
 	if root == "" {
 		return "", nil, testauthor.Draft{}, declined
-	}
-	path, err := artifactpath.Child(root, request.Case)
-	if err != nil {
-		return "", nil, testauthor.Draft{}, refusal{Failed, "a case must be named by one directory entry of the open workspace"}
-	}
-	source, err := operation.OpenVerifiedCase(path, request.Identity)
-	if err != nil {
-		return "", nil, testauthor.Draft{}, refusal{Failed, err.Error()}
 	}
 	draft := request.Draft
 	if draft.Schema == "" {

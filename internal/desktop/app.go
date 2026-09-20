@@ -576,6 +576,28 @@ func resolveFolder(path string) (string, refusal) {
 	return root, refusal{}
 }
 
+// openedCase is the pipeline every feature composes to read evidence: resolve
+// the open workspace, name the case by one of its entries, and verify the
+// evidence against the identity the window displays. That invariant — every
+// read re-verifies and binds to the identity shown — is written here and
+// nowhere else; a feature adds only what its own flow decides about the
+// verified bundle it receives.
+func openedCase(workspace, caseName, identity string) (string, *bundle.Bundle, refusal) {
+	root, declined := resolveFolder(workspace)
+	if root == "" {
+		return "", nil, declined
+	}
+	path, err := artifactpath.Child(root, caseName)
+	if err != nil {
+		return "", nil, refusal{Failed, "a case must be named by one directory entry of the open workspace"}
+	}
+	source, err := operation.OpenVerifiedCase(path, identity)
+	if err != nil {
+		return "", nil, refusal{Failed, err.Error()}
+	}
+	return root, source, refusal{}
+}
+
 // describe reports what one entry declares. It never verifies evidence, so an
 // entry listed as a case is a claim until OpenCase accepts it.
 func describe(root string, entry fs.DirEntry) Artifact {

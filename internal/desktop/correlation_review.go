@@ -6,7 +6,6 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/correlate"
-	"github.com/bharm16/readmit/internal/operation"
 )
 
 // CorrelationReviewRequest selects an immutable history explicitly. Mapping
@@ -64,18 +63,11 @@ func (a *App) reviewCorrelation(request CorrelationReviewRequest, write bool) Co
 	if request.Offset < 0 {
 		return failure("a correlation review window cannot begin before its first item")
 	}
-	root, declined := resolveFolder(request.Workspace)
+	root, opened, declined := openedCase(request.Workspace, request.Case, request.Identity)
 	if root == "" {
 		return CorrelationReviewResult{State: declined.state, Reason: declined.reason}
 	}
-	casePath, err := artifactpath.Child(root, request.Case)
-	if err != nil {
-		return failure("a case must be one directory entry of the open workspace")
-	}
-	opened, err := operation.OpenVerifiedCase(casePath, request.Identity)
-	if err != nil {
-		return failure(err.Error())
-	}
+	casePath := artifactpath.JoinReference(root, request.Case)
 	report, declined := correlated(root, casePath, request.Rules)
 	if report == nil {
 		if declined.reason != "" {

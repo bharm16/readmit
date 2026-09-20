@@ -13,7 +13,6 @@ import (
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/correlate"
 	"github.com/bharm16/readmit/internal/hl7"
-	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/sequenceanalysis"
 )
 
@@ -308,18 +307,11 @@ func (a *App) openSequence(request SequenceRequest) SequenceResult {
 	if request.Offset < 0 || request.Limit < 1 || request.Limit > MaxSequenceEvents {
 		return SequenceResult{State: Failed, Reason: "a sequence renders a window beginning at or after its first event, of between 1 and " + strconv.Itoa(MaxSequenceEvents) + " events"}
 	}
-	root, declined := resolveFolder(request.Workspace)
+	root, opened, declined := openedCase(request.Workspace, request.Case, request.Identity)
 	if root == "" {
 		return declined.sequence()
 	}
-	casePath, err := artifactpath.Child(root, request.Case)
-	if err != nil {
-		return SequenceResult{State: Failed, Reason: "a case must be named by one directory entry of the open workspace"}
-	}
-	opened, err := operation.OpenVerifiedCase(casePath, request.Identity)
-	if err != nil {
-		return SequenceResult{State: Failed, Reason: err.Error()}
-	}
+	casePath := artifactpath.JoinReference(root, request.Case)
 	report, declined := correlated(root, casePath, request.Rules)
 	if declined.state != "" {
 		return declined.sequence()

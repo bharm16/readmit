@@ -277,18 +277,11 @@ func (a *App) PreviewTransformation(request TransformRequest) TransformResult {
 }
 
 func (a *App) previewTransformation(request TransformRequest) TransformResult {
-	root, declined := resolveFolder(request.Workspace)
+	root, _, declined := openedCase(request.Workspace, request.Case, request.Identity)
 	if root == "" {
 		return declined.transformation()
 	}
-	casePath, err := artifactpath.Child(root, request.Case)
-	if err != nil {
-		return TransformResult{State: Failed, Reason: "a case must be named by one directory entry of the open workspace"}
-	}
-	_, err = operation.OpenVerifiedCase(casePath, request.Identity)
-	if err != nil {
-		return TransformResult{State: Failed, Reason: err.Error()}
-	}
+	casePath := artifactpath.JoinReference(root, request.Case)
 	declared, declined := workspaceDocument(root, request.Rules, correlate.MaxRulesBytes,
 		"the correlation rules document")
 	if declined.state != "" {
