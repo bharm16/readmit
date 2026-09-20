@@ -3,6 +3,10 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
 - Desktop regions and operation states now offer offline contextual help, fixed
   support codes, setup/recovery guidance and finite message-family recipes.
 
+- `diagnose groups` compares recurring rule signatures across selected cases, keeps
+  every finding and unsupported item, and shows representatives and affected
+  occurrences without inferring population-wide rates or shared root causes.
+
 - `profile export` and `profile import` transport reviewed local interface contracts,
   exact metadata pins, version seals and source/license provenance with integrity
   checks. Existing profiles and evidence remain unchanged.

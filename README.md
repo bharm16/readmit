@@ -644,6 +644,11 @@ the occurrence it answers. It reads order workflow evidence only: no observation
 value is interpreted and no finding is clinical advice. See [diagnosis](docs/diagnose.md)
 and the [shared field selector grammar](docs/selectors.md).
 
+`diagnose groups CASE [CASE...] --output NEW_DIRECTORY` compares recurring
+diagnostic signatures with one representative per case, all affected occurrences,
+and every original finding and unsupported item. Counts describe selected captures,
+never population-wide rates. See [recurring groups](docs/diagnose.md#comparing-recurring-failure-groups).
+
 `diagnose review DIAGNOSIS --case CASE --decisions FILE --output NEW_DIRECTORY`
 records what an analyst decided about those findings and what the confirmed ones
 promote to. A finding is a hypothesis about evidence and a test is a commitment,

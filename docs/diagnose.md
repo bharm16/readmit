@@ -426,3 +426,49 @@ report, and a confirmed finding is what
 records a decision, and nothing here promotes anything.
 
 See [selectors.md](selectors.md) for the shared byte-preserving selector grammar.
+
+## Comparing recurring failure groups
+
+```sh
+readmit diagnose groups case-a case-b --output recurring-diagnosis
+# Apply a selected lifecycle or order configuration independently to each case:
+readmit diagnose groups case-a case-b --config order-config.json --output order-groups
+```
+
+This read-only analysis verifies and diagnoses every selected case afresh. It writes
+`report.json` (`readmit-diagnosis-groups/v1`) and `report.md` into a new directory
+outside all input evidence. Existing `readmit-diagnosis/v1` reports and evidence
+remain unchanged. The grouped document is an output-only presentation; it is not
+accepted as a diagnosis by `diagnose review`. Run ordinary `diagnose` on the selected
+case with the same configuration to review or promote its finding.
+
+Each group lists **every** `(case identity, finding ID)` member and every affected
+`(case identity, occurrence ID)`. The representative comparison prints the first
+finding in each represented case, with its classification, rule/profile versions,
+window, field states and original payload byte spans. Use those occurrence IDs in
+`timeline CASE --show-values` only when authorized to inspect values. All complete
+case diagnoses follow the comparison, including every individual finding,
+unsupported item and no-findings disclaimer. A representative never replaces or
+suppresses another finding. The desktop has no diagnosis-group panel in this release.
+
+A signature hashes the configuration digest, rule ID, profile, ruleset version,
+classification, fixed diagnostic summary and ordered field/state evidence shape.
+It excludes case-local occurrence IDs and byte positions, so repeated diagnostic
+shapes can cluster across captures. Different outcomes, field states, selectors,
+profiles, rule versions and configuration choices stay separate. Signature equality
+is **not** a claim of shared root cause, identical payloads or clinical equivalence;
+all evidence references remain available for comparison. No patient value, source
+path or free-text ACK/ERR explanation is copied into the report.
+
+Counts are captured findings and distinct case-local occurrences, never estimated
+rates or percentages. Cases may overlap, and occurrences in different cases are
+not necessarily independent events. Repeated case identities are refused, even
+when selected through different paths. Input order does not change the report.
+
+The command accepts 1–16 cases, each under the existing verified-case bounds, and
+refuses grouped JSON above 64 MiB rather than truncating findings. Any invalid case
+or invalid configuration fails the whole operation before output. The engine
+checks cancellation between bounded case evaluations and while grouping; it does
+not interrupt the existing single-case evaluator mid-evaluation. Process
+interruption during output can leave an incomplete directory, which is not a
+completed result. Retry into a new directory; an existing output is never replaced.

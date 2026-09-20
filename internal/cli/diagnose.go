@@ -61,7 +61,7 @@ func diagnoseCommand(ran *bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&output, "output", "", "New directory for report.json and report.md (never overwrite)")
 	cmd.Flags().StringVar(&configPath, "config", "", "Explicit readmit-diagnose-config/v1 JSON configuration selecting the profile, ruleset, rules and namespaces")
-	cmd.AddCommand(diagnoseReviewCommand(ran))
+	cmd.AddCommand(diagnoseReviewCommand(ran), diagnosisGroupsCommand(ran))
 	return cmd
 }
 
