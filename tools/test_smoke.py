@@ -75,6 +75,8 @@ DISTRIBUTION_FILES = (
     "docs/guided-sample.md",
     "docs/redact.md",
     "docs/support.md",
+    "docs/administration.md",
+    "docs/security-operations.md",
     "docs/reproducer.md",
     "testdata/fixtures/redact-booking.mllp",
     "testdata/fixtures/redact-reschedule.mllp",

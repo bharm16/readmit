@@ -73,6 +73,8 @@ archives:
       - docs/guided-sample.md
       - docs/redact.md
       - docs/support.md
+      - docs/administration.md
+      - docs/security-operations.md
       - docs/reproducer.md
       - docs/diff.md
       - docs/drift.md
