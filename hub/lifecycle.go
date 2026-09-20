@@ -290,10 +290,8 @@ func (s *Store) authorize(a *Access, r *http.Request, project, action string) (P
 	if e != nil {
 		return Principal{}, errAccess
 	}
-	for _, event := range events {
-		if event.Command.Kind == "remove-user" && event.Command.Subject == p.Subject && event.Issuer == p.Issuer {
-			return Principal{}, errAccess
-		}
+	if deriveLifecycle(events).isRemoved(p.Issuer, p.Subject) {
+		return Principal{}, errAccess
 	}
 	return p, nil
 }
@@ -302,12 +300,7 @@ func (s *Store) retired(ctx context.Context, project, digest string) (bool, erro
 	if e != nil {
 		return false, e
 	}
-	for _, event := range events {
-		if event.Command.Kind == "retire" && event.Command.Artifact == digest {
-			return true, nil
-		}
-	}
-	return false, nil
+	return deriveLifecycle(events).isRetired(digest), nil
 }
 func (s *Store) sendLifecycle(w http.ResponseWriter, r *http.Request, status int, event LifecycleEvent, events []LifecycleEvent) {
 	if event.Command.Kind != "audit-export" {
@@ -334,5 +327,5 @@ func (s *Store) sendLifecycle(w http.ResponseWriter, r *http.Request, status int
 		ReviewHead int              `json:"review_head"`
 		Reviews    []ReviewEvent    `json:"reviews"`
 		Warning    string           `json:"warning"`
-	}{auditReviewSchema(reviews), event.Project, prefix, len(reviews), reviews, "Downloaded copies remain under local custody and cannot be revoked."})
+	}{deriveReviews(reviews).auditSchema(), event.Project, prefix, len(reviews), reviews, "Downloaded copies remain under local custody and cannot be revoked."})
 }

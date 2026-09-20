@@ -25,27 +25,27 @@ func TestSupportPolicyAndExactAuthenticatedReview(t *testing.T) {
 	policyCommand := ReviewCommand{Schema: "readmit-hub-review-command/v2", ID: "policy", Kind: "support-policy", Evidence: p, Text: "support"}
 	events := []ReviewEvent{{Schema: "readmit-hub-review-event/v2", Issuer: "issuer", Actor: "admin", Command: policyCommand}}
 	request := ReviewCommand{Schema: "readmit-hub-review-command/v2", ID: "request", Parent: "policy", Kind: "support-request", Evidence: d, Release: p, Recipient: "reviewer", Text: "support"}
-	if e := validateSupport(request, "analyst", "issuer", events, load); e != nil {
+	if e := deriveReviews(events).validate(request, "analyst", "issuer", load); e != nil {
 		t.Fatal(e)
 	}
 	events = append(events, ReviewEvent{Schema: "readmit-hub-review-event/v2", Issuer: "issuer", Actor: "analyst", Command: request})
 	approval := ReviewCommand{Schema: "readmit-hub-review-command/v2", ID: "approve", Kind: "support-approval", Evidence: d, Release: p, Parent: "request", Text: "support"}
-	if _, e := approvedSupport(d, events, load); e == nil {
+	if _, e := deriveReviews(events).approved(d, load); e == nil {
 		t.Fatal("unapproved download")
 	}
 	for _, actor := range []string{"analyst", "owner", "runner"} {
-		if e := validateSupport(approval, actor, "issuer", events, load); e == nil {
+		if e := deriveReviews(events).validate(approval, actor, "issuer", load); e == nil {
 			t.Fatal("wrong actor approved")
 		}
 	}
-	if e := validateSupport(approval, "reviewer", "wrong-issuer", events, load); e == nil {
+	if e := deriveReviews(events).validate(approval, "reviewer", "wrong-issuer", load); e == nil {
 		t.Fatal("wrong issuer approved")
 	}
-	if e := validateSupport(approval, "reviewer", "issuer", events, load); e != nil {
+	if e := deriveReviews(events).validate(approval, "reviewer", "issuer", load); e != nil {
 		t.Fatal(e)
 	}
 	events = append(events, ReviewEvent{Schema: "readmit-hub-review-event/v2", Issuer: "issuer", Actor: "reviewer", Command: approval})
-	if got, e := approvedSupport(d, events, load); e != nil || string(got) != string(raw) {
+	if got, e := deriveReviews(events).approved(d, load); e != nil || string(got) != string(raw) {
 		t.Fatal("approved summary unavailable")
 	}
 	changed := append(policy, ' ')
@@ -55,7 +55,7 @@ func TestSupportPolicyAndExactAuthenticatedReview(t *testing.T) {
 	updated.Evidence = changedID
 	updated.ID = "policy-next"
 	events = append(events, ReviewEvent{Schema: "readmit-hub-review-event/v2", Command: updated})
-	if _, e := approvedSupport(d, events, load); e == nil {
+	if _, e := deriveReviews(events).approved(d, load); e == nil {
 		t.Fatal("old approval survived policy version change")
 	}
 }

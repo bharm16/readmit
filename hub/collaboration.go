@@ -91,10 +91,11 @@ func loadRelease(load func(string) ([]byte, error), digest string) (expectation.
 	return expectation.Decode(data)
 }
 
-func validateReview(c ReviewCommand, actor, issuer string, events []ReviewEvent, load func(string) ([]byte, error)) error {
+func validateReview(c ReviewCommand, actor, issuer string, reviews projectReviews, load func(string) ([]byte, error)) error {
 	if supportCommand(c) {
-		return validateSupport(c, actor, issuer, events, load)
+		return reviews.validate(c, actor, issuer, load)
 	}
+	events := reviews.events
 	if _, e := load(c.Evidence); e != nil {
 		return e
 	}
@@ -239,11 +240,12 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 		http.Error(w, "metadata unavailable", 503)
 		return
 	}
-	if !v2 && hasSupportEvents(events) {
+	reviews := deriveReviews(events)
+	if !v2 && reviews.support {
 		http.Error(w, "history requires v2", 409)
 		return
 	}
-	if route == "reviews" && supportCommand(c) && !supportCurrent(c, events) {
+	if route == "reviews" && supportCommand(c) && !reviews.current(c) {
 		http.Error(w, "sharing policy changed", 409)
 		return
 	}
@@ -272,7 +274,7 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 			Schema string        `json:"schema"`
 			Head   int           `json:"head"`
 			Events []ReviewEvent `json:"events"`
-		}{reviewHistorySchema(v2), len(events), filtered})
+		}{reviews.historySchema(v2), len(events), filtered})
 		return
 	}
 	total, e := reviewLog.total(r.Context(), s.db)
@@ -319,7 +321,7 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 			return
 		}
 	}
-	if e = validateReview(c, principal.Subject, principal.Issuer, events, func(d string) ([]byte, error) {
+	if e = validateReview(c, principal.Subject, principal.Issuer, reviews, func(d string) ([]byte, error) {
 		if supportCommand(c) {
 			return s.supportArtifact(r.Context(), project, d)
 		}

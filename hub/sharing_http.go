@@ -38,7 +38,7 @@ func (s *Store) supportExport(w http.ResponseWriter, r *http.Request, a *Access,
 		http.Error(w, "sharing unavailable", 503)
 		return
 	}
-	data, e := approvedSupport(digest, events, func(d string) ([]byte, error) { return s.supportArtifact(r.Context(), project, d) })
+	data, e := deriveReviews(events).approved(digest, func(d string) ([]byte, error) { return s.supportArtifact(r.Context(), project, d) })
 	if e != nil {
 		http.Error(w, "exact reviewed support unavailable", 403)
 		return

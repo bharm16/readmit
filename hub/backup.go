@@ -429,7 +429,7 @@ func readBackup(root *os.Root) (backupManifest, error) {
 			}
 			return data, nil
 		}
-		if e := validateReview(event.Command, event.Actor, event.Issuer, byProject[event.Project], load); e != nil {
+		if e := validateReview(event.Command, event.Actor, event.Issuer, deriveReviews(byProject[event.Project]), load); e != nil {
 			return m, e
 		}
 		byProject[event.Project] = append(byProject[event.Project], event)
