@@ -59,6 +59,12 @@ func (d Document) Decode(data []byte, target any) error {
 	if !ok {
 		return errors.New(d.MustDeclare)
 	}
+	// An explicit null declares no version at all, so it reports
+	// MustDeclare — a version mismatch is reserved for a document that
+	// plainly names another version of the contract.
+	if strings.TrimSpace(string(raw)) == "null" {
+		return errors.New(d.MustDeclare)
+	}
 	var schema string
 	if err := json.Unmarshal(raw, &schema); err != nil {
 		return errors.New(d.Invalid)

@@ -308,11 +308,9 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 				http.Error(w, "recipient unavailable", 403)
 				return
 			}
-			for _, event := range lifecycle {
-				if event.Command.Kind == "remove-user" && event.Command.Subject == c.Recipient && event.Issuer == principal.Issuer {
-					http.Error(w, "recipient refused", 403)
-					return
-				}
+			if deriveLifecycle(lifecycle).isRemoved(principal.Issuer, c.Recipient) {
+				http.Error(w, "recipient refused", 403)
+				return
 			}
 		}
 		role := policy.role(c.Recipient, project)

@@ -107,3 +107,21 @@ func TestDecodeReportsAVersionMismatchAsUnsupported(t *testing.T) {
 		t.Fatalf("a mismatch without a sentinel reported %v", err)
 	}
 }
+
+// An explicit null names no version at all: it is a missing declaration, never
+// a version mismatch, so it must not read as the unsupported error.
+func TestDecodeReportsANullSchemaAsUndeclared(t *testing.T) {
+	unsupported := errors.New("unsupported demo version")
+	document := strictdoc.Document{
+		MaxBytes: 1024, Schema: "readmit-demo/v1", Required: []string{"name"},
+		Invalid: "invalid demo", TooLarge: "demo too large",
+		MustDeclare: "a demo declares its contract version",
+		Unsupported: unsupported,
+	}
+	if err := document.Decode([]byte(`{"schema":null,"name":"x"}`), &sample{}); err == nil || errors.Is(err, unsupported) {
+		t.Fatalf("a null schema read as a version mismatch: %v", err)
+	}
+	if err := document.Decode([]byte(`{"schema":5,"name":"x"}`), &sample{}); err == nil || err.Error() != "invalid demo" {
+		t.Fatalf("a non-string schema reported %v", err)
+	}
+}

@@ -94,17 +94,8 @@ func (s projectReviews) validate(c ReviewCommand, actor, issuer string, load fun
 	if c.Release != s.policy.Evidence {
 		return ErrConflict
 	}
-	summary, e := sharing.Decode(raw)
-	if e != nil || summary.PolicyIdentity != c.Release {
-		return ErrIntegrity
-	}
-	policyBytes, e := load(c.Release)
-	if e != nil {
+	if e := s.underPolicy(raw, c.Release, ErrIntegrity, load); e != nil {
 		return e
-	}
-	policy, e := sharing.DecodePolicy(policyBytes)
-	if e != nil || !policy.Allows("customer-hub-download", len(raw)) {
-		return errAccess
 	}
 	if c.Kind == "support-request" {
 		if c.Parent != s.policy.ID {
@@ -144,17 +135,8 @@ func (s projectReviews) approved(digest string, load func(string) ([]byte, error
 	if e != nil {
 		return nil, e
 	}
-	summary, e := sharing.Decode(raw)
-	if e != nil || summary.PolicyIdentity != policyID {
-		return nil, errAccess
-	}
-	policyBytes, e := load(policyID)
-	if e != nil {
+	if e := s.underPolicy(raw, policyID, errAccess, load); e != nil {
 		return nil, e
-	}
-	policy, e := sharing.DecodePolicy(policyBytes)
-	if e != nil || !policy.Allows("customer-hub-download", len(raw)) {
-		return nil, errAccess
 	}
 	for _, event := range s.events {
 		if !supportApproval(event.Command) || event.Command.Evidence != digest || event.Command.Release != policyID {
@@ -167,6 +149,26 @@ func (s projectReviews) approved(digest string, load func(string) ([]byte, error
 		}
 	}
 	return nil, errors.New("exact authenticated support approval required")
+}
+
+// underPolicy is the one policy-integrity check behind admission and export
+// alike: the bytes decode as a summary naming the policy in force, the policy
+// itself loads and decodes, and it allows this download of exactly these
+// bytes. A summary naming another policy earns the caller's mismatch error.
+func (s projectReviews) underPolicy(raw []byte, policyID string, mismatch error, load func(string) ([]byte, error)) error {
+	summary, e := sharing.Decode(raw)
+	if e != nil || summary.PolicyIdentity != policyID {
+		return mismatch
+	}
+	policyBytes, e := load(policyID)
+	if e != nil {
+		return e
+	}
+	policy, e := sharing.DecodePolicy(policyBytes)
+	if e != nil || !policy.Allows("customer-hub-download", len(raw)) {
+		return errAccess
+	}
+	return nil
 }
 
 // projectLifecycle is what one read of a project's lifecycle log establishes.
