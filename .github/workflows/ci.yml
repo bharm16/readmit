@@ -173,6 +173,7 @@ jobs:
             dist/checksums.txt
 
   native-smoke:
+    timeout-minutes: 20
     needs: package
     strategy:
       fail-fast: false
@@ -194,6 +195,35 @@ jobs:
           path: dist
       - name: Run the archived executable without a toolchain on PATH
         run: python3 tools/smoke.py --artifacts dist --os ${{ matrix.os }} --arch ${{ matrix.arch }}
+      - uses: ./.github/actions/setup-go
+        with:
+          cache-scope: native-acceptance-${{ matrix.os }}-${{ matrix.arch }}
+      - name: Require the packaged public CLI journeys without skipped tests
+        shell: python
+        env:
+          TARGET_OS: ${{ matrix.os }}
+          TARGET_ARCH: ${{ matrix.arch }}
+        run: |
+          import os
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, str(Path("tools").resolve()))
+          from acceptance import digest, execute
+          from smoke import verified_archives
+          extension = ".zip" if os.environ["TARGET_OS"] == "windows" else ".tar.gz"
+          suffix = "_" + os.environ["TARGET_OS"] + "_" + os.environ["TARGET_ARCH"] + extension
+          archives = [p for p in verified_archives(Path("dist")) if p.name.endswith(suffix)]
+          if len(archives) != 1:
+              raise RuntimeError("expected one native candidate")
+          archive = archives[0]
+          version = archive.name.removeprefix("readmit_").removesuffix(suffix)
+          execute(archive, digest(archive), version, Path("native-acceptance").resolve())
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: native-acceptance-${{ matrix.os }}-${{ matrix.arch }}
+          path: native-acceptance/
+          if-no-files-found: error
 
   publish:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')

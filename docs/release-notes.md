@@ -12,6 +12,10 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   Performance qualification accepts explicit operation policy and distinguishes
   oversized-input refusal from licensing failure. The full envelope remains open.
 
+- Packaged CLI acceptance now runs 23 public journeys on all five native
+  platforms, including portable CI failure propagation and signed trial expiry.
+  Missing or skipped journeys fail; receipts retain the exact candidate identity.
+
 - `profile export` and `profile import` transport reviewed local interface contracts,
   exact metadata pins, version seals and source/license provenance with integrity
   checks. Existing profiles and evidence remain unchanged.
