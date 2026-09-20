@@ -30,8 +30,12 @@ pg_ctl -D "$lab/pg" stop
 Only the local Unix socket is enabled; PostgreSQL TCP listening is disabled.
 Retain `evidence/summary.txt` and its numbered Go JSON event logs privately.
 The summary records source revision, dirty state, tracked-diff and launcher
-SHA-256 digests. Prefer a clean committed candidate; a dirty run also requires
-retaining the exact changed and untracked source files. A missing named test,
+SHA-256 digests. The launcher requires a clean committed candidate and checks
+that the revision is unchanged and the checkout remains clean at completion.
+An edited tracked file, new untracked file or changed commit refuses acceptance
+even when every boundary test passes. Keep evidence outside the checkout. These
+endpoint checks do not detect a temporary edit reverted during execution; use
+an isolated checkout with no concurrent writer. A missing named test,
 skipped test/subtest, failed package, timeout or missing package completion
 makes the launcher fail. A zero-test success is not acceptance. Output must be
 a new directory and is owner-only. The standalone launcher is not a new CI
