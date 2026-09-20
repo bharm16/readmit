@@ -621,3 +621,69 @@ func TestDescribeAcceptsEveryContractVersionTheReaderSupports(t *testing.T) {
 		}
 	}
 }
+
+// Document is the one reading of a verified occurrence: every consumer that
+// interprets a case reads it back under the framing its source recorded and
+// the terminator the occurrence used, or the case is refused.
+func TestDocumentReadsEveryOccurrenceBackOneWay(t *testing.T) {
+	mllpMessage := "MSH|^~\\&|SEND|A|RECV|B|20260101120000||SIU^S12|CTL-1|P|2.5.1\rPID|1||MRN-1^^^READMIT^MR||DOE^JANE\r"
+	rawMessage := strings.ReplaceAll(mllpMessage, "\r", "\n")
+	observed := time.Date(2026, 1, 1, 12, 0, 1, 0, time.UTC)
+	written, err := bundle.Write(filepath.Join(t.TempDir(), "case"), []bundle.Input{
+		{Path: "framed", Data: []byte("\x0b" + mllpMessage + "\x1c\r"), Options: hl7.Options{Format: hl7.MLLP, Terminator: hl7.CR},
+			Observations: map[int]bundle.Observation{1: {Direction: bundle.Outbound, ObservedAt: &observed}}},
+		{Path: "unframed", Data: []byte(rawMessage), Options: hl7.Options{Format: hl7.Raw, Terminator: hl7.LF},
+			Observations: map[int]bundle.Observation{1: {Direction: bundle.Outbound, ObservedAt: &observed}}},
+	}, bundle.Provenance{Mode: bundle.Imported, ImportedAt: &observed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(written.Events) != 2 {
+		t.Fatalf("fixture events: %d", len(written.Events))
+	}
+	for _, event := range written.Events {
+		document, err := written.Document(event)
+		if err != nil {
+			t.Fatalf("%s: %v", event.ID, err)
+		}
+		if len(document.Messages) != 1 {
+			t.Fatalf("%s: %d messages", event.ID, len(document.Messages))
+		}
+		control, err := document.Select(0, mustSelector(t, "MSH-10"))
+		if err != nil || document.Bytes(control.Span) == nil {
+			t.Fatalf("%s: control id unreadable: %v", event.ID, err)
+		}
+		if got := string(document.Bytes(control.Span)); got != "CTL-1" {
+			t.Fatalf("%s: control id %q", event.ID, got)
+		}
+	}
+}
+
+// An occurrence that never parsed is refused rather than re-read under
+// different options: Document is the one reading, and it reads what the
+// capture verified.
+func TestDocumentRefusesAnOccurrenceThatNeverParsed(t *testing.T) {
+	observed := time.Date(2026, 1, 1, 12, 0, 1, 0, time.UTC)
+	written, err := bundle.Write(filepath.Join(t.TempDir(), "case"), []bundle.Input{
+		{Path: "broken", Data: []byte("\x0b" + "NOT-HL7-AT-ALL" + "\x1c\r"), Options: hl7.Options{Format: hl7.MLLP, Terminator: hl7.CR},
+			Observations: map[int]bundle.Observation{1: {Direction: bundle.Outbound, ObservedAt: &observed}}},
+	}, bundle.Provenance{Mode: bundle.Imported, ImportedAt: &observed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(written.Events) != 1 || written.Events[0].Kind != bundle.Unparsed {
+		t.Fatalf("fixture event: %+v", written.Events)
+	}
+	if _, err := written.Document(written.Events[0]); err == nil {
+		t.Fatal("an unparsed occurrence was read as one message")
+	}
+}
+
+func mustSelector(t *testing.T, text string) hl7.Selector {
+	t.Helper()
+	selector, err := hl7.ParseSelector(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return selector
+}

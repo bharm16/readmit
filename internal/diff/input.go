@@ -26,7 +26,6 @@ type occurrence struct {
 	ref   Reference
 	doc   *hl7.Document
 	index int
-	raw   []byte
 }
 
 type evidence struct {
@@ -113,7 +112,7 @@ func openFile(input Input, boundary Boundary) (*evidence, error) {
 	e := &evidence{summary: InputSummary{Kind: "file", Identity: digest(data), Payloads: "provided HL7 message payloads"}}
 	doc, parseErr := hl7.Parse(data, hl7.Options{Format: input.Format, Terminator: input.Terminator})
 	if parseErr != nil {
-		e.items = []*occurrence{{ref: Reference{Occurrence: "m000001", Kind: "unparsed", PayloadState: "unparsed"}, raw: data}}
+		e.items = []*occurrence{{ref: Reference{Occurrence: "m000001", Kind: "unparsed", PayloadState: "unparsed"}}}
 	} else {
 		for i := range doc.Messages {
 			item := &occurrence{ref: Reference{Occurrence: fmt.Sprintf("m%06d", i+1), PayloadState: "complete"}, doc: doc, index: i}
@@ -139,18 +138,15 @@ func fromCase(b *bundle.Bundle, boundary Boundary) (*evidence, error) {
 			e.summary.Excluded++
 			continue
 		}
-		raw, err := b.Raw(event.ID)
-		if err != nil {
-			return nil, err
-		}
-		item := &occurrence{ref: Reference{Occurrence: event.ID, Kind: string(event.Kind), PayloadState: "complete"}, raw: raw}
+		item := &occurrence{ref: Reference{Occurrence: event.ID, Kind: string(event.Kind), PayloadState: "complete"}}
 		if event.Kind == bundle.Unparsed {
 			item.ref.PayloadState = "unparsed"
 		} else {
-			item.doc, err = hl7.Parse(raw, hl7.Options{Terminator: event.Terminator})
-			if err != nil || len(item.doc.Messages) != 1 {
-				return nil, errors.New("verified case occurrence cannot be parsed")
+			doc, err := b.Document(event)
+			if err != nil {
+				return nil, err
 			}
+			item.doc = doc
 		}
 		e.items = append(e.items, item)
 	}
@@ -177,13 +173,16 @@ func fromRun(r *replay.Run, boundary Boundary) (*evidence, error) {
 		if err != nil {
 			return nil, err
 		}
-		item := &occurrence{ref: Reference{Occurrence: event.OutboundOccurrence, SourceOccurrence: event.SourceOccurrence, Kind: kind, PayloadState: "complete", Outcome: string(event.Outcome), Delivery: event.Delivery}, raw: raw}
+		item := &occurrence{ref: Reference{Occurrence: event.OutboundOccurrence, SourceOccurrence: event.SourceOccurrence, Kind: kind, PayloadState: "complete", Outcome: string(event.Outcome), Delivery: event.Delivery}}
 		switch {
 		case len(raw) == 0:
 			item.ref.PayloadState = "no_payload"
 		case boundary == Messages && event.Sent.Size != event.Intended.Size:
 			item.ref.PayloadState = "partial_sent"
 		default:
+			// Run payloads are MLLP-framed wire bytes, not verified case
+			// occurrences: a payload that does not parse is recorded as
+			// unparsed rather than refused.
 			item.doc, err = hl7.Parse(raw, hl7.Options{Format: hl7.MLLP})
 			if err != nil || len(item.doc.Messages) != 1 {
 				item.ref.PayloadState, item.doc = "unparsed", nil

@@ -209,11 +209,7 @@ type decoded struct {
 // than the report, because a report deliberately records that a field was
 // present without recording what it held.
 func read(source *bundle.Bundle, event bundle.Event, selector hl7.Selector) (decoded, error) {
-	raw, err := source.Raw(event.ID)
-	if err != nil {
-		return decoded{}, err
-	}
-	document, err := hl7.Parse(raw, hl7.Options{Terminator: event.Terminator})
+	document, err := source.Document(event)
 	if err != nil {
 		return decoded{}, err
 	}

@@ -110,13 +110,9 @@ func Run(path string, config Config) (Report, error) {
 			e.unsupportedItem("unparsed_occurrence", event.ID, "", "The preserved occurrence cannot be parsed; no semantic rules were evaluated.")
 			continue
 		}
-		raw, err := b.Raw(event.ID)
+		doc, err := b.Document(event)
 		if err != nil {
 			return Report{}, err
-		}
-		doc, err := hl7.Parse(raw, hl7.Options{Terminator: event.Terminator})
-		if err != nil {
-			return Report{}, errors.New("verified occurrence could not be parsed")
 		}
 		m := message{event: event, doc: doc}
 		wireProfileSupported := e.wireProfiles(m)
