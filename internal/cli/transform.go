@@ -19,6 +19,9 @@ func transformCommand() *cobra.Command {
 			if planPath == "" {
 				return usage("transform requires --plan naming a readmit-transform-plan/v1 document")
 			}
+			if err := checkReportFlags(cmd, format, output, "transform"); err != nil {
+				return err
+			}
 			declared, err := readInputFile(rulesPath, correlate.MaxRulesBytes)
 			if err != nil {
 				return err

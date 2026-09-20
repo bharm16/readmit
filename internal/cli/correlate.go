@@ -13,6 +13,9 @@ func correlateCommand() *cobra.Command {
 			if rulesPath == "" {
 				return usage("correlate requires --rules naming a readmit-correlation-rules/v1 document")
 			}
+			if err := checkReportFlags(cmd, format, output, "correlate"); err != nil {
+				return err
+			}
 			declared, err := readInputFile(rulesPath, correlate.MaxRulesBytes)
 			if err != nil {
 				return err

@@ -195,8 +195,11 @@ func (s *Store) lifecycleRequest(w http.ResponseWriter, r *http.Request, a *Acce
 	defer s.mu.Unlock()
 	p, release, ok := s.authorizeWrite(a, r, w, project, action,
 		r.Method == "POST" && c.Kind != "audit-export",
-		func(p Principal) bool {
-			return r.Method != "POST" || (p.Kind == "oidc" && p.Role != "runner" && reviewText(p.Issuer, 2048))
+		func(p Principal) (bool, string) {
+			if r.Method == "POST" && (p.Kind != "oidc" || p.Role == "runner" || !reviewText(p.Issuer, 2048)) {
+				return false, "access refused"
+			}
+			return true, ""
 		})
 	if !ok {
 		return

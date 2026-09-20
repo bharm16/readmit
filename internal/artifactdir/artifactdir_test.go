@@ -131,7 +131,7 @@ func TestWriteFileSyncChecksForAShortWriteBeforeSyncing(t *testing.T) {
 	}
 }
 
-func TestPublishRenamesOnlyAfterTheRecordIsSynced(t *testing.T) {
+func TestPublishReplacesACompleteRecordAndRefusesAStaleIncomplete(t *testing.T) {
 	root, err := os.OpenRoot(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

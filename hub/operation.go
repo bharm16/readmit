@@ -94,14 +94,21 @@ func (s *Store) admitAuthor(r *http.Request, p Principal) (func() error, error) 
 // operation behind the store's one slot when this request writes, and
 // authorize again, so a write that queued behind another operation cannot
 // retain a grant that was revoked while it waited. accept carries the
-// route's identity rule; nil admits any authorized principal. False means
-// the response is already written, and a caller that defers the returned
-// release writes inside both answers.
-func (s *Store) authorizeWrite(a *Access, r *http.Request, w http.ResponseWriter, project, action string, writes bool, accept func(Principal) bool) (Principal, func() error, bool) {
+// route's identity rule and its own refusal sentence — a nil accept admits
+// any authorized principal, and a nil sentence means "access refused". False
+// means the response is already written, and a caller that defers the
+// returned release writes inside both answers.
+func (s *Store) authorizeWrite(a *Access, r *http.Request, w http.ResponseWriter, project, action string, writes bool, accept func(Principal) (bool, string)) (Principal, func() error, bool) {
 	principal, e := s.authorize(a, r, project, action)
-	if e != nil || (accept != nil && !accept(principal)) {
+	if e != nil {
 		http.Error(w, "access refused", 403)
 		return Principal{}, nil, false
+	}
+	if accept != nil {
+		if admitted, sentence := accept(principal); !admitted {
+			http.Error(w, sentence, 403)
+			return Principal{}, nil, false
+		}
 	}
 	var release func() error
 	if writes {

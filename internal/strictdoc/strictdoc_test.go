@@ -63,6 +63,11 @@ func TestDecodeRefusesTheFourWaysADocumentCanBetrayItsContract(t *testing.T) {
 	if err := namedUnknown.Decode([]byte(`not json`), &sample{}); err == nil || err.Error() != "invalid sample JSON" {
 		t.Fatalf("Decode with Unknown still reports Invalid for unparseable bytes: %v", err)
 	}
+	// A type mismatch is not an unknown member: it earns Invalid even when the
+	// contract names the unknown-member refusal its own sentence.
+	if err := namedUnknown.Decode([]byte(`{"schema":"readmit-sample/v1","name":"one","count":"many"}`), &sample{}); err == nil || err.Error() != "invalid sample JSON" {
+		t.Fatalf("Decode with Unknown reports Invalid for a type mismatch: %v", err)
+	}
 	for _, c := range cases {
 		var s sample
 		err := contract().Decode([]byte(c.data), &s)

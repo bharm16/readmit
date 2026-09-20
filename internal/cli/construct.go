@@ -73,12 +73,23 @@ func jsonMarshalDeterministic(document any) ([]byte, error) {
 // command noun carries the flag rule ("correlate format must be…"); the
 // artifact noun carries the write refusals ("cannot write correlation
 // output").
-func writeTerminalOrJSON(cmd *cobra.Command, format, output, commandNoun, artifactNoun string, terminal []byte, jsonDocument func() ([]byte, error)) error {
+// checkReportFlags holds the two flag rules a rendered-report command answers
+// to. writeTerminalOrJSON enforces them again at the point of writing; a
+// command that reads its inputs first calls this before that work, so a
+// misuse keeps its precedence over whatever the inputs refuse.
+func checkReportFlags(cmd *cobra.Command, format, output, commandNoun string) error {
 	if format != "terminal" && format != "json" {
 		return usage("%s format must be terminal or json", commandNoun)
 	}
 	if cmd.Flags().Changed("output") && output == "" {
 		return usage("%s output must name a new file", commandNoun)
+	}
+	return nil
+}
+
+func writeTerminalOrJSON(cmd *cobra.Command, format, output, commandNoun, artifactNoun string, terminal []byte, jsonDocument func() ([]byte, error)) error {
+	if err := checkReportFlags(cmd, format, output, commandNoun); err != nil {
+		return err
 	}
 	data := terminal
 	if format == "json" {

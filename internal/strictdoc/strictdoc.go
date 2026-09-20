@@ -67,7 +67,8 @@ func (d Document) Decode(data []byte, target any) error {
 		}
 	}
 	if err := json.Unmarshal(data, target, json.RejectUnknownMembers(true)); err != nil {
-		if d.Unknown != "" {
+		var semantic *json.SemanticError
+		if d.Unknown != "" && errors.As(err, &semantic) && errors.Is(semantic.Err, json.ErrUnknownName) {
 			return errors.New(d.Unknown)
 		}
 		return errors.New(d.Invalid)

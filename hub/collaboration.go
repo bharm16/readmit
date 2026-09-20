@@ -222,8 +222,11 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	principal, release, ok := s.authorizeWrite(a, r, w, project, action, r.Method != "GET",
-		func(p Principal) bool {
-			return route != "reviews" || (p.Kind == "oidc" && p.Role != "runner" && len(p.Issuer) <= 2048)
+		func(p Principal) (bool, string) {
+			if route == "reviews" && (p.Kind != "oidc" || p.Role == "runner" || len(p.Issuer) > 2048) {
+				return false, "human identity required"
+			}
+			return true, ""
 		})
 	if !ok {
 		return
