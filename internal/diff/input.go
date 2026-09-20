@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
@@ -86,16 +85,17 @@ func open(input Input, boundary Boundary) (*evidence, error) {
 	if json.Unmarshal(data, &header) != nil {
 		return nil, errors.New("invalid diff artifact manifest")
 	}
-	// Dispatch by contract family; bundle.Open owns version support, including
-	// derived-case versions added independently of diff.
-	if strings.HasPrefix(header.Schema, "readmit-case/") {
+	// Dispatch by contract family — artifactpath owns the family list — while
+	// bundle.Open and replay own version support, including derived-case
+	// versions added independently of diff.
+	switch artifactpath.EvidenceFamily(header.Schema) {
+	case artifactpath.FamilyCase:
 		b, err := bundle.Open(input.Path)
 		if err != nil {
 			return nil, err
 		}
 		return fromCase(b, boundary)
-	}
-	if strings.HasPrefix(header.Schema, "readmit-run/") {
+	case artifactpath.FamilyRun:
 		r, err := replay.Open(input.Path)
 		if err != nil {
 			return nil, err

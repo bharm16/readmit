@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
@@ -68,12 +67,13 @@ func openSide(path string) (*side, error) {
 	if json.Unmarshal(data, &header) != nil {
 		return nil, errors.New("invalid drift artifact manifest")
 	}
-	// Dispatch by contract family and let each reader own its own version
-	// support, including derived-case versions added independently of this.
-	if strings.HasPrefix(header.Schema, "readmit-case/") {
+	// Dispatch by contract family — artifactpath owns the family list — and
+	// let each reader own its own version support, including derived-case
+	// versions added independently of this.
+	switch artifactpath.EvidenceFamily(header.Schema) {
+	case artifactpath.FamilyCase:
 		return fromCase(path)
-	}
-	if strings.HasPrefix(header.Schema, "readmit-run/") {
+	case artifactpath.FamilyRun:
 		return fromRun(path)
 	}
 	return nil, errors.New("unsupported drift artifact contract")

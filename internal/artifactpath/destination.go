@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // Destination resolves a new file or directory outside finalized evidence and
@@ -85,10 +84,8 @@ func evidenceDirectory(path string) bool {
 			Schema string `json:"schema"`
 		}
 		if err == nil && len(data) <= 16<<20 && json.Unmarshal(data, &header) == nil {
-			for _, prefix := range []string{"readmit-case/", "readmit-run/", "readmit-result/"} {
-				if strings.HasPrefix(header.Schema, prefix) {
-					return true
-				}
+			if IsEvidenceSchema(header.Schema) {
+				return true
 			}
 		}
 	}
