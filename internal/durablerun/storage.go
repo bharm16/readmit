@@ -195,19 +195,17 @@ func readJob(path string) (Recovery, planDocument, error) {
 			return Recovery{}, planDocument{}, err
 		}
 	}
-	summary := Summary{Schema: Schema, State: Interrupted, StopReason: Interrupted, Planned: len(doc.Payloads), Recovered: true}
-	occurrences := make([]Occurrence, len(doc.Payloads))
-	for i := range occurrences {
-		occurrences[i] = Occurrence{ID: fmt.Sprintf("o%06d", i+1), Delivery: NotAttempted}
+	intended := make([]payload, len(doc.Payloads))
+	sources := make([]string, len(doc.Inputs.Mappings))
+	for i := range doc.Payloads {
+		intended[i] = doc.Payloads[i]
+		sources[i] = doc.Inputs.Mappings[i].SourceSHA256
 	}
+	proto := newProtocol(len(doc.Payloads), intended, sources)
 	journal, err := read(root, "journal.jsonl", maxJournal)
 	if err != nil {
 		return Recovery{}, planDocument{}, err
 	}
-	pending := ""
-	finished := false
-	recordedEvents := []replay.Event{}
-	sentRecorded := false
 	truncated, err := durablelog.Scan(journal, digest(raw), bad,
 		func(line []byte) durablelog.Record {
 			var e entry
@@ -218,85 +216,33 @@ func readJob(path string) (Recovery, planDocument, error) {
 		},
 		func(at int, r durablelog.Record) error {
 			e := r.(*entry)
-			sequence := at
-			if finished || at == 1 && e.Kind != "ready" || at == 2 && e.Kind != "running" {
-				return bad
-			}
 			switch e.Kind {
-			case "ready":
-				if sequence != 1 {
+			case recordReady, recordRunning, recordIntent:
+				if err := proto.apply(e); err != nil {
 					return bad
 				}
-			case "running":
-				if sequence != 2 {
-					return bad
-				}
-			case "intent":
-				if sequence < 3 || pending != "" || e.Occurrence != fmt.Sprintf("o%06d", summary.Recorded+1) {
-					return bad
-				}
-				pending = e.Occurrence
-				sentRecorded = false
-				summary.DeliveryUncertain = true
-				occurrences[summary.Recorded].Delivery = Uncertain
-			case "sent":
-				if sentRecorded || pending == "" || e.Occurrence != pending || e.Sent == nil || e.Sent.Path != "sent/"+pending+".bin" {
+			case recordSent:
+				if err := proto.apply(e); err != nil {
 					return bad
 				}
 				if err := verify(root, *e.Sent); err != nil {
 					return err
 				}
-				sentRecorded = true
-			case "recorded":
-				if summary.Recorded >= summary.Planned || e.Event == nil || e.Occurrence != fmt.Sprintf("o%06d", summary.Recorded+1) || e.Event.OutboundOccurrence != e.Occurrence {
+			case recordRecorded:
+				refs, err := proto.recorded(e)
+				if err != nil {
 					return bad
 				}
-				ev := e.Event
-				if ev.Intended.SHA256 != doc.Payloads[summary.Recorded].SHA256 || ev.Intended.Size != doc.Payloads[summary.Recorded].Size || ev.Source.SHA256 != doc.Inputs.Mappings[summary.Recorded].SourceSHA256 {
-					return bad
-				}
-				recordedEvents = append(recordedEvents, *ev)
-				for _, p := range []struct {
-					name string
-					data payload
-				}{
-					{"source", payload{ev.Source.Path, ev.Source.Size, ev.Source.SHA256}}, {"intended", payload{ev.Intended.Path, ev.Intended.Size, ev.Intended.SHA256}},
-					{"sent", payload{ev.Sent.Path, ev.Sent.Size, ev.Sent.SHA256}}, {"received", payload{ev.Received.Path, ev.Received.Size, ev.Received.SHA256}},
-				} {
-					if p.data.Path != "payloads/"+e.Occurrence+"-"+p.name+".bin" {
-						return bad
-					}
-					ref := p.data
+				for _, declared := range refs {
+					ref := declared
 					ref.Path = "result/run/" + ref.Path
 					if err := verify(root, ref); err != nil {
 						return err
 					}
 				}
-				// A matched ACK is the only outcome that resolves a synced intent. An
-				// event recorded with no intent before it was never attempted: the
-				// transport halted before this occurrence, or failed to dial.
-				if ev.Delivery == "acknowledged" {
-					if pending != e.Occurrence {
-						return bad
-					}
-					occurrences[summary.Recorded].Delivery = Acknowledged
-					summary.DeliveryUncertain = false
-					pending = ""
-				}
-				summary.Recorded++
-			case "finished":
-				if e.Final == nil || !e.Final.StopReason.Terminal() || e.Final.Planned != summary.Planned || e.Final.Recorded != summary.Recorded || e.Final.Schema != Schema || e.Final.DeliveryUncertain != summary.DeliveryUncertain {
-					return bad
-				}
-				final := *e.Final
-				if final.Recovered || final.JournalIncomplete {
-					return bad
-				}
-				expected := final.StopReason
-				if summary.DeliveryUncertain {
-					expected = DeliveryUncertain
-				}
-				if final.State != expected {
+			case recordFinished:
+				final, err := proto.finish(e)
+				if err != nil {
 					return bad
 				}
 				if final.ResultIdentity != "" {
@@ -308,10 +254,11 @@ func readJob(path string) (Recovery, planDocument, error) {
 						return bad
 					}
 					if artifact.Run != nil {
-						if len(recordedEvents) != len(artifact.Run.Events) {
+						events := proto.recordedEvents
+						if len(events) != len(artifact.Run.Events) {
 							return bad
 						}
-						for i, ev := range recordedEvents {
+						for i, ev := range events {
 							actual, _ := json.Marshal(artifact.Run.Events[i], json.Deterministic(true))
 							recorded, _ := json.Marshal(ev, json.Deterministic(true))
 							if !bytes.Equal(actual, recorded) {
@@ -325,8 +272,7 @@ func readJob(path string) (Recovery, planDocument, error) {
 				} else if final.StopReason == Passed || final.StopReason == AssertionFailed {
 					return bad
 				}
-				summary = final
-				finished = true
+				proto.commit(final)
 			default:
 				return bad
 			}
@@ -335,7 +281,9 @@ func readJob(path string) (Recovery, planDocument, error) {
 	if err != nil {
 		return Recovery{}, planDocument{}, err
 	}
-	if !finished {
+	summary := proto.summary
+	occurrences := proto.occurrences
+	if !proto.finished {
 		if summary.DeliveryUncertain {
 			summary.State = DeliveryUncertain
 		}
@@ -356,7 +304,7 @@ func readJob(path string) (Recovery, planDocument, error) {
 			}
 		}
 	}
-	recovery := Recovery{Schema: RecoverySchema, Run: summary, Terminal: finished && !truncated, Occurrences: occurrences}
+	recovery := Recovery{Schema: RecoverySchema, Run: summary, Terminal: proto.finished && !truncated, Occurrences: occurrences}
 	for _, o := range occurrences {
 		switch o.Delivery {
 		case Acknowledged:

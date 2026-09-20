@@ -209,14 +209,6 @@ type payload struct {
 	Size   int    `json:"size"`
 	SHA256 string `json:"sha256"`
 }
-type entry struct {
-	durablelog.Envelope
-	Kind       string        `json:"kind"`
-	Occurrence string        `json:"occurrence,omitzero"`
-	Sent       *payload      `json:"sent,omitzero"`
-	Event      *replay.Event `json:"event,omitzero"`
-	Final      *Summary      `json:"final,omitzero"`
-}
 
 // writer's two sticky failures are distinct. the log's own failure means the
 // journal can take no further record, so nothing after it is recorded. halted
@@ -357,7 +349,7 @@ func start(ctx context.Context, plan *testrunner.Plan, output string) (summary S
 		Sync:   errors.New("cannot sync durable journal; execution stopped"),
 		Encode: errors.New("cannot encode durable journal"),
 	})
-	if err = w.log.Append(&entry{Kind: "ready"}); err != nil {
+	if err = w.appendReady(); err != nil {
 		return w.summary, err
 	}
 	// Directory entries must reach stable storage too, before any network effect.
@@ -378,7 +370,7 @@ func start(ctx context.Context, plan *testrunner.Plan, output string) (summary S
 	}
 	w.summary.State = Running
 	w.summary.StopReason = Running
-	if err = w.log.Append(&entry{Kind: "running"}); err != nil {
+	if err = w.appendRunning(); err != nil {
 		return w.summary, err
 	}
 	artifact, _ := testrunner.ExecuteObserved(ctx, plan, filepath.Join(output, "result"), w)
@@ -422,7 +414,7 @@ func start(ctx context.Context, plan *testrunner.Plan, output string) (summary S
 	if w.summary.DeliveryUncertain {
 		w.summary.State = DeliveryUncertain
 	}
-	if err = w.log.Append(&entry{Kind: "finished", Final: &w.summary}); err != nil {
+	if err = w.appendFinished(); err != nil {
 		return w.summary, err
 	}
 	w.finished = true
@@ -553,19 +545,10 @@ func (w *writer) BeforeSend(id string) error {
 			return err
 		}
 	}
-	// Set before attempting persistence: failure may leave only partial intent.
-	w.summary.DeliveryUncertain = true
-	err := w.log.Append(&entry{Kind: "intent", Occurrence: id})
-	if errors.Is(err, errJournalLimit) {
-		// The limit is checked before any byte is written, so no intent exists
-		// and the send it would have preceded was never attempted.
-		w.summary.DeliveryUncertain = false
-	}
-	return err
+	return w.appendIntent(id)
 }
 func (w *writer) Sent(id string, raw []byte) error {
-	name := "sent/" + id + ".bin"
-	if err := write(w.root, name, raw); err != nil {
+	if err := write(w.root, sentPath(id), raw); err != nil {
 		w.halted = err
 		return err
 	}
@@ -573,7 +556,7 @@ func (w *writer) Sent(id string, raw []byte) error {
 		w.halted = err
 		return err
 	}
-	return w.log.Append(&entry{Kind: "sent", Occurrence: id, Sent: &payload{name, len(raw), digest(raw)}})
+	return w.appendSent(id, raw)
 }
 func (w *writer) Recorded(event replay.Event) error {
 	for _, name := range []string{"result/run/payloads", "result/run", "result"} {
@@ -581,15 +564,7 @@ func (w *writer) Recorded(event replay.Event) error {
 			return err
 		}
 	}
-	if err := w.log.Append(&entry{Kind: "recorded", Occurrence: event.OutboundOccurrence, Event: &event}); err != nil {
-		return err
-	}
-	w.summary.Recorded++
-	// Transport halts after the first error; only a matched ACK resolves intent.
-	if event.Delivery == "acknowledged" {
-		w.summary.DeliveryUncertain = false
-	}
-	return nil
+	return w.appendRecorded(event.OutboundOccurrence, event)
 }
 
 // ResumeSchema is the output of a resume: which job it repeated, how many
