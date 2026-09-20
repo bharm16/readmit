@@ -12,3 +12,6 @@ testdata/fixtures/* binary
 testdata/verification/corpus/*.hl7 binary
 testdata/verification/corpus/*.mllp binary
 testdata/verification/endpoint/*.hl7 binary
+
+# Sealed native acceptance evidence must survive Windows checkout byte-for-byte.
+testdata/acceptance/native-109/** -text

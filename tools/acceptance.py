@@ -30,7 +30,7 @@ JOURNEYS = (
     "TestReportPrintedProcedureWorksWithRelocatedBinaryAndPacket",
     "TestRedactExecutableGeneratesOnlyDerivedProofAndNoPlantedValues",
     "TestRedactRejectsStaleApprovalAndChangedInputs",
-    "TestCustomerCIExamplesExecuteSavedSuiteAndPropagateFailures",
+    "TestCustomerCIPublicCommandPropagatesFailures",
     "TestBackupRestoresAProjectElsewhereAndRebuildsItsIndex",
     "TestBackupRefusesAnInterruptedBackup",
     "TestUpgradeRecoversFromAnInstallationThatDidNotComplete",
@@ -38,6 +38,7 @@ JOURNEYS = (
     "TestLicenseRunnerAdmitsReleasesAndReconciles",
     "TestLicenseV2RefusalsAreNamedAndPrivate",
     "TestExpiredV2EntitlementKeepsEvidenceReadableAndSettlesStartedWork",
+    "TestSignedTrialRunsLocallyAndExpiryKeepsEvidenceReadableExportable",
 )
 
 

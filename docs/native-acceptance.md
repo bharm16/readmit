@@ -19,7 +19,7 @@ python3 tools/acceptance.py --archive /private/candidate/readmit_VERSION_OS_ARCH
 Select the native archive, its separately retained expected checksum and exact
 version explicitly. Checksums identify bytes; they do not authenticate a release.
 The tool checks archive membership and compiler identity, extracts the executable,
-and verifies its reported version with an empty PATH. It then runs 22 named
+and verifies its reported version with an empty PATH. It then runs 23 named
 public CLI journeys against those same executable bytes. The Go test driver
 constructs synthetic inputs and independent expected outcomes; it does not
 rebuild or substitute the application. Ordinary `go test ./tests` still builds
@@ -30,7 +30,15 @@ execution, missing observations, preview without sending, interrupted delivery
 and conservative recovery, evidence explanation, relocated report verification,
 redaction and stale approval refusal, customer CI success/failure propagation,
 backup and upgrade recovery, and named-author/active-runner entitlement refusal
-and expiry. The retained native fixture below is independently re-read too.
+and expiry, including an issued trial whose expiry refuses new work while
+retaining read/export access. The retained native fixture below is independently
+re-read too.
+The CI journey invokes the executable directly on every platform; the separate
+POSIX documentation-example tests are not required on Windows. CI runs this
+harness after the unchanged toolchain-free smoke on all five native runners and
+retains each receipt, test events and executable identity beside the candidate
+archive. A failed or skipped journey fails the native-smoke check.
+
 These finite tests do not establish all production trial-admission or billing
 behavior, real connectors, complete observation, or every desktop interaction.
 
