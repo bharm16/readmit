@@ -90,8 +90,8 @@ func (s *Store) Backup(ctx context.Context, destination string) error {
 	if err = rows.Err(); err != nil {
 		return errors.New("metadata backup interrupted")
 	}
-	var team bool
-	if err = s.db.QueryRowContext(ctx, "SELECT team_enabled FROM readmit_hub_schema WHERE singleton").Scan(&team); err != nil {
+	team, err := s.teamEnabled(ctx)
+	if err != nil {
 		return err
 	}
 	m.Team = &team
@@ -573,28 +573,20 @@ func (s *Store) Restore(ctx context.Context, source string) error {
 		}
 	}
 	for _, event := range m.Reviews {
-		data, e := json.Marshal(event)
-		if e != nil {
-			return e
-		}
-		if _, e = tx.ExecContext(ctx, `INSERT INTO readmit_hub_reviews(project,sequence,id,document) VALUES($1,$2,$3,$4)`, event.Project, event.Sequence, event.Command.ID, string(data)); e != nil {
+		if err = reviewLog.appendInTx(ctx, tx, event.Project, event); err != nil {
 			return errors.New("review restore failed")
 		}
 	}
 	for _, event := range m.Lifecycle {
-		data, e := json.Marshal(event)
-		if e != nil {
-			return e
-		}
-		if _, e = tx.ExecContext(ctx, `INSERT INTO readmit_hub_lifecycle(project,sequence,id,document) VALUES($1,$2,$3,$4)`, event.Project, event.Sequence, event.Command.ID, string(data)); e != nil {
-			return e
+		if err = lifecycleLog.appendInTx(ctx, tx, event.Project, event); err != nil {
+			return err
 		}
 	}
 	team := false
 	if m.Team != nil {
 		team = *m.Team
 	}
-	if _, err = tx.ExecContext(ctx, "UPDATE readmit_hub_schema SET team_enabled=$1 WHERE singleton", team); err != nil {
+	if err = setTeamEnabled(ctx, tx, team); err != nil {
 		return err
 	}
 	if err = syncRoot(s.root); err != nil {

@@ -28,8 +28,7 @@ func (s *Store) operatorRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid artifact address", http.StatusBadRequest)
 		return
 	}
-	var team bool
-	if err := s.db.QueryRowContext(ctx, "SELECT team_enabled FROM readmit_hub_schema WHERE singleton").Scan(&team); err != nil || team {
+	if team, err := s.teamEnabled(ctx); err != nil || team {
 		http.Error(w, "team authorization required", 403)
 		return
 	}
@@ -72,7 +71,7 @@ func (s *Store) runnerService(ctx context.Context, access *Access, runnerPolicy 
 	if err := s.Ready(ctx); err != nil {
 		return nil, time.Time{}, err
 	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE readmit_hub_schema SET team_enabled=true WHERE singleton"); err != nil {
+	if err := setTeamEnabled(ctx, s.db, true); err != nil {
 		return nil, time.Time{}, errAccess
 	}
 	ready := time.Now().Add(10 * time.Second)
@@ -166,20 +165,19 @@ func (s *Store) artifactRequest(w http.ResponseWriter, r *http.Request, ctx cont
 func (s *Store) linkProject(ctx context.Context, project, digest string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var exists bool
-	if err := s.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM readmit_hub_project_artifacts WHERE project=$1 AND digest=$2)", project, digest).Scan(&exists); err != nil {
+	exists, err := s.linkedProjectArtifact(ctx, project, digest)
+	if err != nil {
 		return err
 	}
 	if exists {
 		return nil
 	}
-	var count int
-	if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM readmit_hub_project_artifacts").Scan(&count); err != nil {
+	count, err := s.countProjectLinks(ctx)
+	if err != nil {
 		return err
 	}
 	if count >= 65536 {
 		return ErrLimit
 	}
-	_, err := s.db.ExecContext(ctx, "INSERT INTO readmit_hub_project_artifacts(project,digest) VALUES($1,$2)", project, digest)
-	return err
+	return s.linkProjectArtifact(ctx, project, digest)
 }

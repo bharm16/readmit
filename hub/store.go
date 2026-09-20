@@ -329,3 +329,45 @@ func (s *Store) Get(ctx context.Context, d string) ([]byte, error) {
 	}
 	return data, nil
 }
+
+// executer is what one SQL statement needs, so the store's statements are
+// written once and run the same online and inside a restore transaction.
+type executer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+// teamEnabled reads the singleton team-mode flag.
+func (s *Store) teamEnabled(ctx context.Context) (bool, error) {
+	var team bool
+	err := s.db.QueryRowContext(ctx, "SELECT team_enabled FROM readmit_hub_schema WHERE singleton").Scan(&team)
+	return team, err
+}
+
+// setTeamEnabled writes the singleton team-mode flag, online or inside a
+// transaction the caller owns: the event log records team activity in the
+// same transaction as its event, and a restore sets the flag it retained.
+func setTeamEnabled(ctx context.Context, db executer, enabled bool) error {
+	_, err := db.ExecContext(ctx, "UPDATE readmit_hub_schema SET team_enabled=$1 WHERE singleton", enabled)
+	return err
+}
+
+// linkedProjectArtifact reports whether one project is linked to one digest.
+func (s *Store) linkedProjectArtifact(ctx context.Context, project, digest string) (bool, error) {
+	var exists bool
+	err := s.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM readmit_hub_project_artifacts WHERE project=$1 AND digest=$2)", project, digest).Scan(&exists)
+	return exists, err
+}
+
+// countProjectLinks counts the whole link catalogue, the bound linkProject
+// enforces for backup compatibility.
+func (s *Store) countProjectLinks(ctx context.Context) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM readmit_hub_project_artifacts").Scan(&count)
+	return count, err
+}
+
+// linkProjectArtifact links one project to one artifact digest.
+func (s *Store) linkProjectArtifact(ctx context.Context, project, digest string) error {
+	_, err := s.db.ExecContext(ctx, "INSERT INTO readmit_hub_project_artifacts(project,digest) VALUES($1,$2)", project, digest)
+	return err
+}

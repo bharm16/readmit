@@ -80,8 +80,8 @@ func (s *Store) reviewEvents(ctx context.Context, project string) ([]ReviewEvent
 	return reviewLog.read(ctx, s.db, project)
 }
 func (s *Store) linked(ctx context.Context, project, digest string) bool {
-	var exists bool
-	return s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM readmit_hub_project_artifacts WHERE project=$1 AND digest=$2)`, project, digest).Scan(&exists) == nil && exists
+	exists, e := s.linkedProjectArtifact(ctx, project, digest)
+	return e == nil && exists
 }
 func loadRelease(load func(string) ([]byte, error), digest string) (expectation.Release, error) {
 	data, e := load(digest)

@@ -88,6 +88,7 @@ func (s *Store) admitAuthor(r *http.Request, p Principal) (func() error, error) 
 	}
 	return nil, errAccess
 }
+
 // authorizeWrite runs the sequence every hub write route runs: authorize,
 // refuse any principal the route's own identity rule declines, admit the
 // operation behind the store's one slot when this request writes, and

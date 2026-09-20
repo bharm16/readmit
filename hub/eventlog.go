@@ -123,20 +123,29 @@ func (l eventLog[C, E]) admit(events []E, total int, c C, actor, issuer string) 
 	return zero, false, nil
 }
 
-// commit appends one admitted event and records team activity in the same
-// transaction, so a retry of the same command id is always safe.
-func (l eventLog[C, E]) commit(ctx context.Context, db *sql.DB, project string, event E) error {
+// appendInTx marshals one event and appends it inside a transaction the
+// caller owns. commit appends its admitted event this way and a restore
+// replays a whole catalogue this way, so both tables' column layout lives
+// here and nowhere else.
+func (l eventLog[C, E]) appendInTx(ctx context.Context, tx *sql.Tx, project string, event E) error {
 	data, e := json.Marshal(event)
 	if e != nil {
 		return e
 	}
+	_, e = tx.ExecContext(ctx, `INSERT INTO `+l.table+`(project,sequence,id,document) VALUES($1,$2,$3,$4)`, project, l.sequence(event), l.id(l.command(event)), string(data))
+	return e
+}
+
+// commit appends one admitted event and records team activity in the same
+// transaction, so a retry of the same command id is always safe.
+func (l eventLog[C, E]) commit(ctx context.Context, db *sql.DB, project string, event E) error {
 	tx, e := db.BeginTx(ctx, nil)
 	if e != nil {
 		return e
 	}
 	defer tx.Rollback()
-	if _, e = tx.ExecContext(ctx, `INSERT INTO `+l.table+`(project,sequence,id,document) VALUES($1,$2,$3,$4)`, project, l.sequence(event), l.id(l.command(event)), string(data)); e == nil {
-		_, e = tx.ExecContext(ctx, `UPDATE readmit_hub_schema SET team_enabled=true WHERE singleton`)
+	if e = l.appendInTx(ctx, tx, project, event); e == nil {
+		e = setTeamEnabled(ctx, tx, true)
 	}
 	if e == nil {
 		e = tx.Commit()

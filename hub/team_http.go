@@ -110,7 +110,7 @@ func (s *Store) teamRequest(w http.ResponseWriter, r *http.Request, access *Acce
 		w.WriteHeader(204)
 		return
 	}
-	if _, e := s.db.ExecContext(ctx, "UPDATE readmit_hub_schema SET team_enabled=true WHERE singleton"); e != nil {
+	if e := setTeamEnabled(ctx, s.db, true); e != nil {
 		http.Error(w, "metadata unavailable", 503)
 		return
 	}
@@ -124,7 +124,8 @@ func (s *Store) teamRequest(w http.ResponseWriter, r *http.Request, access *Acce
 	}
 	if r.Method == "GET" {
 		var exists bool
-		if e := s.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM readmit_hub_project_artifacts WHERE project=$1 AND digest=$2)", project, d).Scan(&exists); e != nil {
+		exists, e := s.linkedProjectArtifact(ctx, project, d)
+		if e != nil {
 			http.Error(w, "metadata unavailable", 503)
 			return
 		}
