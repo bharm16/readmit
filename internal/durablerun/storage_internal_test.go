@@ -268,3 +268,49 @@ func TestCancellationBetweenIntentAndSendIsRecordedUncertain(t *testing.T) {
 	}
 	refusesRepeatAndCleanup(t, spec, out, "")
 }
+
+// The state vocabulary is the one classification every consumer reads. A
+// change to what terminal or decided means must be a change here, not a
+// drift between recovery, the queue, comparisons and reports.
+func TestStateVocabularyIsTheOneClassification(t *testing.T) {
+	terminal := map[State]bool{
+		Ready: false, Running: false, Interrupted: false, DeliveryUncertain: false,
+		Passed: true, AssertionFailed: true, ExecutionError: true, Cancelled: true, TimedOut: true,
+	}
+	decided := map[State]bool{
+		Ready: false, Running: false, Interrupted: false, DeliveryUncertain: false,
+		Cancelled: false, TimedOut: false,
+		Passed: true, AssertionFailed: true, ExecutionError: true,
+	}
+	for state, want := range terminal {
+		if got := state.Terminal(); got != want {
+			t.Fatalf("Terminal(%q)=%t", state, got)
+		}
+	}
+	for state, want := range decided {
+		if got := state.Decided(); got != want {
+			t.Fatalf("Decided(%q)=%t", state, got)
+		}
+	}
+}
+
+func TestSummaryUsabilityClassifiesInConsumerOrder(t *testing.T) {
+	usable := Summary{State: Passed, ResultIdentity: "result"}
+	classifications := []struct {
+		name     string
+		summary  Summary
+		expected Usability
+	}{
+		{"certain result", usable, UsableResult},
+		{"no finalized result", Summary{State: Passed}, UsabilityNoResult},
+		{"journal incomplete wins over the state it records", Summary{State: Passed, ResultIdentity: "result", JournalIncomplete: true}, UsabilityJournalIncomplete},
+		{"delivery uncertain", Summary{State: Passed, ResultIdentity: "result", DeliveryUncertain: true}, UsabilityDeliveryUncertain},
+		{"no verdict", Summary{State: Cancelled, ResultIdentity: "result"}, UsabilityUndecided},
+		{"uncertain state carries no verdict", Summary{State: DeliveryUncertain, ResultIdentity: "result"}, UsabilityUndecided},
+	}
+	for _, classification := range classifications {
+		if got := classification.summary.Usability(); got != classification.expected {
+			t.Fatalf("%s: got %d want %d", classification.name, got, classification.expected)
+		}
+	}
+}

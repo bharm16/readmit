@@ -33,6 +33,65 @@ const (
 	DeliveryUncertain State = "delivery_uncertain"
 )
 
+// Terminal reports whether a state is one a run ends in when nothing more
+// will happen to it. Recovery, the queue and every consumer that decides
+// what a retained run means read this rather than restating the list.
+func (s State) Terminal() bool {
+	switch s {
+	case Passed, AssertionFailed, ExecutionError, Cancelled, TimedOut:
+		return true
+	}
+	return false
+}
+
+// Decided reports whether a state carries a verdict the evaluator stands
+// behind: passed, assertion_failed or execution_error. A run that was
+// cancelled, timed out or never stopped carries no verdict at all.
+func (s State) Decided() bool {
+	return s == Passed || s == AssertionFailed || s == ExecutionError
+}
+
+// Usability says what one retained summary may be treated as. It is the one
+// lifecycle classification: whether the journal proves execution completed,
+// whether delivery is certain, and whether the state carries a verdict. Every
+// consumer that requires a certain, finalized result asks the summary itself,
+// so the rules have one implementation and cannot disagree with recovery.
+type Usability uint8
+
+const (
+	// UsableResult means the summary is a certain, finalized result.
+	UsableResult Usability = iota
+	// UsabilityNoResult means the run never recorded a finalized result.
+	UsabilityNoResult
+	// UsabilityJournalIncomplete means the journal does not prove execution
+	// completed, so a finalized result beside it cannot be read as whole.
+	UsabilityJournalIncomplete
+	// UsabilityDeliveryUncertain means whether an unobserved message was
+	// sent is unresolved.
+	UsabilityDeliveryUncertain
+	// UsabilityUndecided means the run stopped in a state that carries no
+	// verdict.
+	UsabilityUndecided
+)
+
+// Usability classifies one summary. The checks run in the order a consumer
+// must rule out: a run with no finalized result is not made usable by a whole
+// journal, and an incomplete journal is not repaired by the state it records.
+func (s Summary) Usability() Usability {
+	switch {
+	case s.ResultIdentity == "":
+		return UsabilityNoResult
+	case s.JournalIncomplete:
+		return UsabilityJournalIncomplete
+	case s.DeliveryUncertain:
+		return UsabilityDeliveryUncertain
+	case s.State.Decided():
+		return UsableResult
+	default:
+		return UsabilityUndecided
+	}
+}
+
 // Summary contains no message values or source paths. StopReason distinguishes
 // why execution stopped from whether a delivery's effect is still unknown.
 type Summary struct {

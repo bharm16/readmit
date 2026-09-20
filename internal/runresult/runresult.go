@@ -61,32 +61,40 @@ func Open(path string) (*Result, error) {
 	return opened, nil
 }
 
+// NoRunState is what a report or comparison records when the execution it
+// describes was not a durable run and so carries no durable state. It is a
+// view convention, not a run state: nothing executed or retained ever has it.
+const NoRunState = "not_recorded"
+
 // Usable is the one lifecycle policy for consumers that require a certain,
 // finalized result. Open remains useful for explaining incomplete jobs.
-func (r Result) Usable() (bool, string) {
+func (r Result) Usable() (bool, durablerun.Usability) {
 	if !r.Durable {
 		if r.Artifact == nil {
-			return false, "no finalized result"
+			return false, durablerun.UsabilityNoResult
 		}
-		return true, ""
+		return true, durablerun.UsableResult
 	}
-	if r.Artifact == nil || r.Lifecycle.ResultIdentity == "" {
-		return false, "no finalized result"
+	if r.Artifact == nil {
+		return false, durablerun.UsabilityNoResult
 	}
-	return UsableLifecycle(string(r.Lifecycle.State), r.Lifecycle.JournalIncomplete, r.Lifecycle.DeliveryUncertain)
+	usability := r.Lifecycle.Usability()
+	return usability == durablerun.UsableResult, usability
 }
 
 // UsableLifecycle is the common policy for retained summaries that no longer
-// sit beside their original directory, such as portable reports.
-func UsableLifecycle(state string, journalIncomplete, deliveryUncertain bool) (bool, string) {
+// sit beside their original directory, such as portable reports. RunState is
+// the recorded view convention: NoRunState for an execution that was not a
+// durable run, or the summary state it recorded.
+func UsableLifecycle(state string, journalIncomplete, deliveryUncertain bool) (bool, durablerun.Usability) {
 	if journalIncomplete {
-		return false, "journal incomplete"
+		return false, durablerun.UsabilityJournalIncomplete
 	}
 	if deliveryUncertain {
-		return false, "delivery uncertain"
+		return false, durablerun.UsabilityDeliveryUncertain
 	}
-	if state != "not_recorded" && state != string(durablerun.Passed) && state != string(durablerun.AssertionFailed) && state != string(durablerun.ExecutionError) {
-		return false, "run did not reach a usable terminal state"
+	if state != NoRunState && !durablerun.State(state).Decided() {
+		return false, durablerun.UsabilityUndecided
 	}
-	return true, ""
+	return true, durablerun.UsableResult
 }

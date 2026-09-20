@@ -259,7 +259,7 @@ func inspectRetainedRun(dir, caseName, runName string) (RetainedRun, error) {
 		return RetainedRun{}, invalid
 	}
 	resultPath := filepath.Join(dir, runName)
-	runState := "not_recorded"
+	runState := runresult.NoRunState
 	retained, err := runresult.Open(resultPath)
 	if err != nil {
 		return RetainedRun{}, invalid

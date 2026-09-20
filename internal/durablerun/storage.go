@@ -285,7 +285,7 @@ func readJob(path string) (Recovery, planDocument, error) {
 				}
 				summary.Recorded++
 			case "finished":
-				if e.Final == nil || !terminal(e.Final.StopReason) || e.Final.Planned != summary.Planned || e.Final.Recorded != summary.Recorded || e.Final.Schema != Schema || e.Final.DeliveryUncertain != summary.DeliveryUncertain {
+				if e.Final == nil || !e.Final.StopReason.Terminal() || e.Final.Planned != summary.Planned || e.Final.Recorded != summary.Recorded || e.Final.Schema != Schema || e.Final.DeliveryUncertain != summary.DeliveryUncertain {
 					return bad
 				}
 				final := *e.Final
@@ -382,11 +382,4 @@ func readJob(path string) (Recovery, planDocument, error) {
 		recovery.SafeToRepeat = true
 	}
 	return recovery, doc, nil
-}
-func terminal(s State) bool {
-	switch s {
-	case Passed, AssertionFailed, ExecutionError, Cancelled, TimedOut:
-		return true
-	}
-	return false
 }

@@ -27,7 +27,9 @@ type Input struct {
 
 // Execution deliberately carries no patient values, target addresses or paths.
 // Excluded is unknown because reopening the original case would substitute
-// today's source for the source that execution actually used.
+// today's source for the source that execution actually used. recorded and
+// state keep the durable summary the RunState string was taken from, so the
+// stability rules read the typed vocabulary instead of matching view strings.
 type Execution struct {
 	RunState    string           `json:"run_state"`
 	Identity    string           `json:"identity"`
@@ -41,6 +43,9 @@ type Execution struct {
 	Excluded    string           `json:"excluded"`
 	Gaps        []string         `json:"gaps"`
 	Assertions  []AssertionState `json:"assertions"`
+
+	recorded bool
+	state    durablerun.State
 }
 type AssertionState struct {
 	ID       string `json:"id"`
@@ -168,12 +173,13 @@ func open(path string) (opened, error) {
 	if retained.Durable {
 		job := retained.Lifecycle
 		v.RunState = string(job.State)
+		v.recorded, v.state = true, job.State
 		v.Status = "unknown"
 		usable, reason := retained.Usable()
-		if reason == "journal incomplete" {
+		if reason == durablerun.UsabilityJournalIncomplete {
 			v.Gaps = append(v.Gaps, "journal incomplete: finalized result does not prove execution completed")
 		}
-		if reason == "delivery uncertain" || job.DeliveryUncertain {
+		if reason == durablerun.UsabilityDeliveryUncertain || job.DeliveryUncertain {
 			v.Gaps = append(v.Gaps, "delivery uncertain; do not infer an unobserved message was not sent")
 		}
 		v.Planned = job.Planned
@@ -182,13 +188,13 @@ func open(path string) (opened, error) {
 			v.Gaps = append(v.Gaps, "no finalized result: assertions and observations are unknown")
 			return opened{view: v, path: retained.Path}, nil
 		}
-		if !usable && reason == "run did not reach a usable terminal state" {
-			v.Gaps = append(v.Gaps, reason)
+		if !usable && reason == durablerun.UsabilityUndecided {
+			v.Gaps = append(v.Gaps, "run did not reach a usable terminal state")
 		}
 	}
 	a := retained.Artifact
 	if v.RunState == "" {
-		v.RunState = "not_recorded"
+		v.RunState = runresult.NoRunState
 	}
 	v.Identity = a.Identity
 	v.Status = string(a.Result.Status)
@@ -298,12 +304,17 @@ func stability(ctx context.Context, runs []opened) (Stability, error) {
 	journals := map[string]bool{}
 	for i := range runs {
 		r := &runs[i]
-		unfinished := r.view.RunState == string(durablerun.Interrupted) || r.view.RunState == string(durablerun.DeliveryUncertain) || r.view.RunState == string(durablerun.Running) || r.view.RunState == string(durablerun.Ready)
+		// A run the durable vocabulary does not call terminal had not stopped
+		// when its journal ends: it is unfinished history, not an outcome.
+		unfinished := r.view.recorded && !r.view.state.Terminal()
 		if unfinished && !journals[r.path] {
 			s.Incomplete++
 		}
 		journals[r.path] = true
-		if r.view.RunState != "not_recorded" && r.view.RunState != string(durablerun.Passed) && r.view.RunState != string(durablerun.AssertionFailed) {
+		// A stability comparison compares verdicts, so an execution that was
+		// not a durable run contributes no state and an execution error is a
+		// difference in circumstances, not a verdict to compare.
+		if r.view.recorded && r.view.state != durablerun.Passed && r.view.state != durablerun.AssertionFailed {
 			comparable = false
 		}
 		if r.view.Identity == "" {

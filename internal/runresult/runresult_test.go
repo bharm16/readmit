@@ -17,8 +17,8 @@ func TestOpenDirectResultClassifiesItOnce(t *testing.T) {
 	if opened.Durable || opened.Artifact == nil || opened.Spec == nil || opened.Run == nil || len(opened.Assertions) == 0 {
 		t.Fatalf("incomplete classification: %+v", opened)
 	}
-	if usable, reason := opened.Usable(); !usable || reason != "" {
-		t.Fatalf("usable=%t reason=%q", usable, reason)
+	if usable, reason := opened.Usable(); !usable || reason != durablerun.UsableResult {
+		t.Fatalf("usable=%t reason=%v", usable, reason)
 	}
 }
 
@@ -27,13 +27,13 @@ func TestUsableOwnsDurableLifecyclePolicy(t *testing.T) {
 		name    string
 		summary durablerun.Summary
 		usable  bool
-		reason  string
+		reason  durablerun.Usability
 	}{
 		{name: "passed", summary: durablerun.Summary{State: durablerun.Passed, ResultIdentity: "result"}, usable: true},
-		{name: "no result", summary: durablerun.Summary{State: durablerun.Interrupted}, reason: "no finalized result"},
-		{name: "journal incomplete", summary: durablerun.Summary{State: durablerun.Passed, ResultIdentity: "result", JournalIncomplete: true}, reason: "journal incomplete"},
-		{name: "delivery uncertain", summary: durablerun.Summary{State: durablerun.DeliveryUncertain, ResultIdentity: "result", DeliveryUncertain: true}, reason: "delivery uncertain"},
-		{name: "nonterminal", summary: durablerun.Summary{State: durablerun.Running, ResultIdentity: "result"}, reason: "run did not reach a usable terminal state"},
+		{name: "no result", summary: durablerun.Summary{State: durablerun.Interrupted}, reason: durablerun.UsabilityNoResult},
+		{name: "journal incomplete", summary: durablerun.Summary{State: durablerun.Passed, ResultIdentity: "result", JournalIncomplete: true}, reason: durablerun.UsabilityJournalIncomplete},
+		{name: "delivery uncertain", summary: durablerun.Summary{State: durablerun.DeliveryUncertain, ResultIdentity: "result", DeliveryUncertain: true}, reason: durablerun.UsabilityDeliveryUncertain},
+		{name: "nonterminal", summary: durablerun.Summary{State: durablerun.Running, ResultIdentity: "result"}, reason: durablerun.UsabilityUndecided},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
