@@ -452,7 +452,7 @@ export default function App() {
   // for the next window is another sequence: the case is verified and the rules
   // are read again rather than an event list being held here.
   const layOutSequence = useCallback(
-    async (rules: string, offset: number) => {
+    async (rules: string, offset: number, analysis = "") => {
       const open = evidence?.case;
       if (!root || !open) return;
       await operate("sequence", async () => {
@@ -463,6 +463,7 @@ export default function App() {
             case: open.name,
             identity: open.identity,
             rules,
+            analysis,
             offset,
             limit: SEQUENCE_WINDOW,
           }),
@@ -1131,7 +1132,7 @@ export default function App() {
             busy={busy}
             progress={running === "sequence" ? "Laying this case out as a sequence." : null}
             indicators={indicators}
-            onOpen={(rules, offset) => void layOutSequence(rules, offset)}
+            onOpen={(rules, offset, analysis) => void layOutSequence(rules, offset, analysis)}
             onSelect={(occurrence) => void inspect(occurrence, "", 0, -1)}
           />
         ) : null}

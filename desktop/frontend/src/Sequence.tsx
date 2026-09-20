@@ -126,10 +126,11 @@ export function Sequence({
   busy: boolean;
   progress: string | null;
   indicators: Indicators;
-  onOpen: (rules: string, offset: number) => void;
+  onOpen: (rules: string, offset: number, analysis: string) => void;
   onSelect: (occurrence: string) => void;
 }) {
   const [rules, setRules] = useState("");
+  const [analysis, setAnalysis] = useState("");
   const [opened, setOpened] = useState<string | null>(null);
 
   const sequence: SequenceView | null = result?.sequence ?? null;
@@ -156,7 +157,7 @@ export function Sequence({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          onOpen(rules, 0);
+          onOpen(rules, 0, analysis);
         }}
       >
         <label htmlFor="sequence-rules">Correlation rules</label>
@@ -172,6 +173,11 @@ export function Sequence({
               {entry}
             </option>
           ))}
+        </select>
+        <label htmlFor="sequence-analysis">Observation windows and explanations</label>
+        <select id="sequence-analysis" value={analysis} disabled={busy} onChange={(event) => setAnalysis(event.target.value)}>
+          <option value="">No analysis — coverage undeclared</option>
+          {entries.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
         </select>
         <button type="submit" disabled={busy}>
           Lay out this case
@@ -220,6 +226,20 @@ export function Sequence({
             onReview={onReview}
           /> : null}
 
+          {sequence.analysis ? <section aria-label="Sequence explanations">
+            <h4>Observation windows and explanations</h4>
+            <p>Applied declaration: {sequence.analysis_entry}; clock comparison tolerance {sequence.analysis.clock_tolerance_seconds} seconds.</p>
+            <p>{sequence.analysis.boundary}</p>
+            <ul>{sequence.analysis.coverage.map((window) => <li key={window.source}>
+              {window.source}: operator-declared coverage {window.coverage}; {window.start ?? "unknown start"} to {window.end ?? "unknown end"}.
+              {" "}{window.untimed} untimed; {window.outside} outside the declared window.
+            </li>)}</ul>
+            <p>{sequence.analysis.total_findings} findings in the whole case; showing findings for this event page.</p>
+            <ul>{sequence.analysis.findings.map((finding, index) => <li key={index}>
+              <button type="button" disabled={busy} onClick={() => onSelect(finding.occurrence)}>{finding.occurrence}</button>
+              {" "}{finding.kind.replaceAll("_", " ")}; source {finding.source}{finding.related ? `; related ${finding.related}` : ""}: {finding.detail}
+            </li>)}</ul>
+          </section> : <p>Observation coverage is undeclared. Choose a sequence analysis document to assess windows, retry declarations and downstream expectations.</p>}
           <h4>Lanes</h4>
           <table className="lanes">
             <thead>
@@ -267,7 +287,7 @@ export function Sequence({
             <button
               type="button"
               disabled={busy || sequence.offset === 0}
-              onClick={() => onOpen(sequence.rules, Math.max(0, sequence.offset - sequence.limit))}
+              onClick={() => onOpen(sequence.rules, Math.max(0, sequence.offset - sequence.limit), sequence.analysis_entry)}
             >
               Previous {sequence.limit}
             </button>
@@ -278,7 +298,7 @@ export function Sequence({
             <button
               type="button"
               disabled={busy || sequence.offset + sequence.events.length >= sequence.total}
-              onClick={() => onOpen(sequence.rules, sequence.offset + sequence.limit)}
+              onClick={() => onOpen(sequence.rules, sequence.offset + sequence.limit, sequence.analysis_entry)}
             >
               Next {sequence.limit}
             </button>

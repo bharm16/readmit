@@ -1311,11 +1311,6 @@ checked to hold no network call and no browser storage at all.
 - Applying human correlation review implicitly to original sequence findings,
   CLI reports, transformations or execution. Human review is a separate,
   explicitly selected mapping; its local actor is not authenticated identity.
-- Explaining a gap. The panel reports the gaps the evidence already records and
-  says nothing about why they are there: telling a duplicate occurrence from a
-  likely retransmission, a missing acknowledgement from an unobserved downstream
-  output, and a clock mismatch from a late message are a separate delivery, as
-  is requiring a stated observation window.
 - Ordering by a declared time, and any order other than the recorded observed
   times with everything untimed after them. A declared time is the sender's
   claim about itself, and ordering by it would rank sources by how well their
@@ -1479,3 +1474,76 @@ Raw replay bundles without test results, assertion-set re-evaluation, suite
 aggregation, export renderings and automatic baseline selection are unsupported
 by this panel. `readmit explain` continues to handle the separate assertion-set
 contract. This adds no member to any retained evidence or approval contract.
+
+## Explaining sequence uncertainty
+
+The Sequence panel optionally reads a `readmit-sequence-analysis/v1` file from
+one regular workspace entry. Select it beside the correlation rules, then lay
+out the case. Results name the selected file; paging keeps that selection and
+re-verifies both evidence and declarations. No analysis is persisted by the shell.
+
+Every declaration binds the exact case identity and explicitly states a clock
+comparison tolerance (0–86400 seconds). Observation windows use inclusive RFC3339
+instants, one per declared source, with `partial` or `complete` coverage. Those
+are operator assertions, not independently verified completeness. Unlisted sources
+remain undeclared. Untimed occurrences and occurrences outside a window are
+counted separately; earliest/latest captured events never fabricate a window.
+
+```json
+{
+  "schema": "readmit-sequence-analysis/v1",
+  "case_identity": "COPY-THE-VERIFIED-CASE-IDENTITY",
+  "rules_sha256": "",
+  "clock_tolerance_seconds": 5,
+  "windows": [
+    {"source":"s0001","start":"2026-01-01T12:00:00Z","end":"2026-01-01T12:01:00Z","coverage":"partial"},
+    {"source":"s0002","start":"2026-01-01T12:00:00Z","end":"2026-01-01T12:01:00Z","coverage":"partial"}
+  ],
+  "retries": [],
+  "downstream": []
+}
+```
+
+All members are required, including empty arrays. Unknown, null, duplicate,
+unsupported or oversized declarations are refused without repeating their values.
+Limits are 1 MiB, 128 source windows, 128 retry pairs and 128 downstream
+expectations. Incorrect identity, unknown sources and non-increasing windows fail;
+a refusal releases the operation slot. Correct the declaration and lay out again.
+The bounded read runs to completion once started; Cancel does not interrupt it.
+
+- `duplicate_occurrence` means distinct retained occurrences have identical
+  bytes. Equal control IDs alone do not qualify. Neither fact proves a retry.
+- A retry entry has `first`, `retry` occurrence IDs and
+  `basis: "operator_reported_retry"`. It yields `likely_retransmission` only
+  with identical message bytes, the same source and known direction, and
+  increasing observed times inside that source's stated window. This remains
+  a declaration-backed inference, not authenticated transport evidence;
+  duplicate capture is possible. Other pairs stay `retry_unresolved`.
+- `missing_ack` means no acknowledgement linked inside the stated window.
+  Missing windows, untimed messages/ACKs and ambiguous linkage stay unresolved.
+  Collection accept and application stages are reported separately by their
+  retained code and destination; a commit ACK never supplies an application
+  verdict. Unrequested or absent enhanced stages are not guessed to be required.
+- A downstream entry names `occurrence`, target `source` and a correlation
+  `rule`. Set `rules_sha256` to the canonical rules SHA-256 reported by the sequence; stale
+  or absent pins refuse downstream expectations. Empty pins are allowed only
+  when no downstream expectation exists. The rule must apply across both sources; source-local and ACK rules
+  cannot establish downstream output. A matching message inside the target
+  window is linked evidence, not processing proof. No match becomes
+  `unobserved_downstream_output`; unsupported parsing, collisions and untimed or
+  out-of-window linked targets stay unresolved. Partial coverage remains visible
+  in either case. Rules and their exact digest remain beside the sequence.
+- `clock_mismatch` means observed and message-declared instants differ beyond
+  the stated tolerance. Clock disagreement and transit delay remain unresolved.
+  Only valid second-precision `YYYYMMDDHHMMSS+HHMM`/`-HHMM` declared timestamps
+  are compared; reduced precision, fractions, missing/unknown offsets (including
+  `-0000`) and malformed calendars remain `clock_unknown`. No timezone or clock
+  correction is inferred. Import time is never substituted or compared.
+
+Findings contain occurrence positions and fixed explanations, not control IDs,
+patient values or arbitrary reason text. Counts cover the whole case and findings
+are paged with their occurrences. No original artifact changes. Clinical profile
+or workflow conformance, transformed retries, proof of message loss, and automatic
+causal diagnosis remain unsupported. This is the desktop sequence's optional
+analysis of automatic rules only; analyst review decisions are not applied.
+The CLI timeline's existing output contract stays unchanged.
