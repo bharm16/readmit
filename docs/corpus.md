@@ -299,12 +299,17 @@ From a checkout with the pinned compiler and Python standard library:
 
 ```sh
 CGO_ENABLED=0 go build -trimpath -o /tmp/readmit-performance ./cmd/readmit
-python3 tools/performance.py --binary /tmp/readmit-performance --large
+python3 tools/performance.py --binary /tmp/readmit-performance \
+  --operation-policy /private/readmit/operation-policy.json --large
 make test-performance
 ```
 
 The tool accepts an exact CLI executable, including one extracted from a release
-archive. It hashes that executable before/after, creates only synthetic temporary
+archive, and an explicitly activated local operation policy for generation and
+import. A shell function that adds license flags does not affect this tool: it
+invokes the executable directly. The policy is passed by path and never printed.
+Missing/expired admission fails the run; an import refusal only counts when it
+reports the source-size limit, never merely a licensing or other error. It hashes that executable before/after, creates only synthetic temporary
 files, independently hashes the corpus, checks the scan counted every record,
 then deletes its temporary files. `--large` additionally writes exactly 5 GiB;
 allow at least 6 GiB of free scratch space. It measures actual process peak RSS
@@ -480,3 +485,132 @@ gap under the recorded concurrent workload, not a statement about an isolated
 16 GiB SSD reference workstation. Native UI responsiveness remains unmeasured.
 No unsupported platform, hardware profile or full project-scale path receives a
 passing verdict from these narrower results.
+
+### Follow-up navigation comparison, September 19, 2026
+
+The verified reader now opens the payload directory once per verification and
+both lists and opens its children through that confined handle. It still reads
+and hashes every payload for every page, rebuilds the same metadata, and checks
+the index. No bytes or directory handles are cached between calls. Finalized
+bundles are immutable; this does not promise an atomic snapshot against a
+concurrent external writer.
+
+A controlled local follow-up used the same retained synthetic 10,000-message
+fixture described above, the same 200-row window at offset 9800, and identical
+standalone measurement source (below). Every call checked the completed state,
+total, row count, and first/last occurrence IDs. Fixture creation and compilation
+were outside the samples. Each process took one excluded warm-up and 20 samples.
+Four processes ran in **baseline, changed, changed, baseline** order (ABBA),
+after the concurrent build/test jobs had stopped. Normal desktop background
+activity remained; this was not a controlled reference-hardware qualification.
+Go 1.27.1, macOS 26.6.2/darwin/arm64, `CGO_ENABLED=0 go build -trimpath`, no race detector or
+CPU profiler. RAM/storage class remained undeclared.
+
+Baseline engine source: `f6ecd2ebb323e321640157fadfb3895672300031`.
+Changed reader Git blob: `9fc6eb3898e0033f3a370de56c0877371b733c18`,
+with otherwise identical engine source. An explicit Go build overlay selected
+baseline `internal/bundle/storage.go`; no runtime cache or fixture alteration
+separated the builds. Case identity:
+`765e969cd7cbda76d9b64922921f2b1528ea1e511bd18bdd3f770041a3ef16e1`.
+
+| Item | SHA-256 |
+| --- | --- |
+| Identical measurement source below | `a0634f4fafaab53a642ddd37db6594ad14f46f43bf396ad40391b6c8109d652e` |
+| Baseline executable | `e51a2210a643f2769434409098d29957e16819724cc049d0afcc89984d6640b7` |
+| Changed executable | `b7e565167335cb3e52b10901f8937641fd042a20d50d2caa544df3f9c59ae345` |
+
+| Batch | Nearest-rank p95 |
+| --- | --- |
+| Baseline A1 | 425.689167 ms |
+| Changed B1 | 343.517417 ms |
+| Changed B2 | 337.765667 ms |
+| Baseline A2 | 424.082625 ms |
+
+The changed batches had approximately 19–20% lower p95 than the adjacent baseline
+batches under this finite workload. Both still exceed 200 ms **before native
+painting**. Earlier exploratory CPU-profiled runs overlapped heavy local tests;
+their wall times were confounded and are not used to substantiate this comparison.
+No search, cancellation, RSS or full-project improvement is inferred from these
+navigation samples. #110's first two checklist items remain unchecked: the
+stated hardware/corpus project journey, native responsiveness/cancellation and
+physical interruption/recovery labs remain unqualified.
+
+All samples in acquisition order, milliseconds:
+
+```text
+A1: [425.689167 421.620042 424.641958 418.412375 420.950125 419.332583 417.481 422.62775 422.334958 418.82925 420.634125 425.379875 421.566708 423.142417 422.998292 426.854583 421.219417 420.212167 423.757875 420.133084]
+B1: [333.750375 330.5695 332.330125 331.096875 335.730916 334.659167 334.2285 330.942958 328.978459 343.517417 376.79975 334.450417 332.5455 333.648917 330.549875 333.783458 333.789417 333.140084 329.656291 330.602]
+B2: [331.691458 332.140791 330.720583 330.455667 333.219 333.780125 332.65175 333.814125 327.41525 332.034542 337.765667 335.512584 331.891542 365.477042 333.727 332.220833 329.027208 330.966625 334.24825 329.370291]
+A2: [419.756542 421.7615 424.082625 421.994042 424.3515 420.246667 420.770666 421.1045 417.220417 418.269292 422.147041 419.249167 422.831958 417.290834 419.378583 420.1235 420.769167 421.279 420.738917 421.25125]
+```
+
+<details>
+<summary>Standalone public-facade measurement source</summary>
+
+Save this source inside the selected engine checkout, build it with the flags
+above, and use `BINARY NEW_DIRECTORY prepare` once. Then run each selected
+binary with that same directory as its only argument in ABBA order. Preparation
+writes only the synthetic fixture and index; measurement only reads. Keep the
+fixture until both revisions finish and retain the exact source and executable
+digests. The source names no customer workspace or hardware identifier.
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/grid"
+	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/index"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+)
+
+func main() {
+	root := os.Args[1]
+	at := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	if len(os.Args) > 2 && os.Args[2] == "prepare" {
+		if err := os.Mkdir(root, 0700); err != nil {
+			panic(err)
+		}
+		wire := strings.Repeat("\x0bMSH|^~\\&|READMIT|TEST|RECV|LAB|20260101120000||SIU^S12|CTL-1|P|2.5.1\rPID|1||MRN-1^^^READMIT^MR||DOE^JANE\r\x1c\r", 10000)
+		b, err := bundle.Write(filepath.Join(root, "scale"), []bundle.Input{{Path: "fixture", Data: []byte(wire), Options: hl7.Options{Format: hl7.MLLP, Terminator: hl7.CR}}}, bundle.Provenance{Mode: bundle.Imported, ImportedAt: &at})
+		if err != nil {
+			panic(err)
+		}
+		d, err := index.Build(context.Background(), b, index.Policy{Fields: []string{"PID[1]-3[1]", grid.AckCodeSelector}, Retention: index.RetainValues}, time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC))
+		if err != nil {
+			panic(err)
+		}
+		if _, err = index.Write(filepath.Join(root, "scale.index.json"), d); err != nil {
+			panic(err)
+		}
+		fmt.Println("prepared", b.Identity)
+		return
+	}
+	app := desktop.New(nil, "", "", "")
+	samples := []float64{}
+	for i := 0; i < 21; i++ {
+		start := time.Now()
+		r := app.OpenGrid(root, "scale", "scale.index.json", 9800, 200)
+		ms := float64(time.Since(start).Nanoseconds()) / 1e6
+		if r.State != desktop.Completed || r.Grid == nil || len(r.Grid.Rows) != 200 || r.Grid.Total != 10000 || r.Grid.Rows[0].ID != "s0001-e009801" || r.Grid.Rows[199].ID != "s0001-e010000" {
+			panic("unexpected grid")
+		}
+		if i > 0 {
+			samples = append(samples, ms)
+		}
+	}
+	fmt.Println("samples_ms", samples)
+	sort.Float64s(samples)
+	fmt.Printf("p95_ms %.6f\n", samples[18])
+}
+```
+
+</details>

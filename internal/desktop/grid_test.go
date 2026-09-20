@@ -10,6 +10,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -560,4 +561,66 @@ func TestOversizedFiltersKeepThePersistedSelection(t *testing.T) {
 		}
 	}
 	t.Fatal("fixture did not exceed the document bound")
+}
+
+// A faster directory traversal must still verify the current bytes on every
+// page, including when the payload directory has been replaced since last use.
+func TestNavigationReverifiesReplacedPayloads(t *testing.T) {
+	for _, change := range []string{"bytes", "directory", "directory-symlink", "payload-symlink", "nested-directory", "extra-file", "missing-file"} {
+		t.Run(change, func(t *testing.T) {
+			app, root, _ := gridWorkspace(t)
+			if got := openGrid(t, app, root, "incident", 0, 2); got.State != desktop.Completed {
+				t.Fatalf("initial navigation: %+v", got)
+			}
+			payloads := filepath.Join(root, "incident", "payloads")
+			payload := filepath.Join(payloads, "s0001-e000001.bin")
+			switch change {
+			case "directory", "directory-symlink":
+				moved := filepath.Join(root, "previous-payloads")
+				if err := os.Rename(payloads, moved); err != nil {
+					t.Fatal(err)
+				}
+				if change == "directory-symlink" {
+					if err := os.Symlink(moved, payloads); err != nil {
+						if runtime.GOOS == "windows" {
+							t.Skipf("symlinks unavailable: %v", err)
+						}
+						t.Fatal(err)
+					}
+				} else if err := os.Mkdir(payloads, 0700); err != nil {
+					t.Fatal(err)
+				}
+			case "payload-symlink":
+				moved := filepath.Join(root, "previous-payload.bin")
+				if err := os.Rename(payload, moved); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(moved, payload); err != nil {
+					if runtime.GOOS == "windows" {
+						t.Skipf("symlinks unavailable: %v", err)
+					}
+					t.Fatal(err)
+				}
+			case "nested-directory":
+				if err := os.Mkdir(filepath.Join(payloads, "unexpected"), 0700); err != nil {
+					t.Fatal(err)
+				}
+			case "extra-file":
+				if err := os.WriteFile(filepath.Join(payloads, "extra.bin"), []byte("untracked"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "missing-file":
+				if err := os.Remove(payload); err != nil {
+					t.Fatal(err)
+				}
+			case "bytes":
+				if err := os.WriteFile(payload, []byte(framed(gridRebooked)), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got := openGrid(t, app, root, "incident", 2, 2); got.State != desktop.Failed || got.Grid != nil {
+				t.Fatalf("navigation reused or followed replaced evidence: %+v", got)
+			}
+		})
+	}
 }
