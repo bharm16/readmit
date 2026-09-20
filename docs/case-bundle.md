@@ -330,3 +330,11 @@ downstream application did with a message.
 `bundle.WriteCollected` writes this format. `bundle.Open`, `Raw`, `Value`, and
 event/source IDs are stable across supported versions; imported/generated v1,
 recorded v2, and derived v3 artifacts keep their existing strict contracts.
+
+## Engine export cases: v5
+
+`readmit-case/v5` retains imported sources, an adapter declaration and original
+container bytes. See [engine export provenance](import.md#retained-provenance-readmit-casev5)
+for the strict contract and its deliberately unqualified support boundary.
+Readers re-extract the original container to verify every source. v1–v4 are
+unchanged.

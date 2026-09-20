@@ -656,8 +656,8 @@ def check_engine_export_corpus(readmit):
     if counts["engine-export"]:
         return f"{counts['engine-export']} supported engine-export cases verified"
     raise RecordedGap(
-        "no supported integration-engine export corpus exists yet; issue #35 is the owner "
-        "decision on supported Mirth/OIE export versions and a legally usable corpus, so "
+        "no qualified integration-engine export corpus exists yet; issue #35 requires "
+        "actual synthetic-message exports from isolated Mirth 4.5.2 and OIE 4.6.0 labs, so "
         "engine-export coverage is unverified rather than passing"
     )
 

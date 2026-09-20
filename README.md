@@ -74,7 +74,9 @@ contradict the declaration, bytes that contradict the declared encoding — is
 refused by name so the operator declares it, rather than split on a likely
 guess. Malformed records, including a member the declared boundary finds no
 message in, are kept with all of their bytes and quarantined, never repaired.
-See [importing real-world files](docs/import.md).
+See [importing real-world files](docs/import.md). The finite `import engine`
+adapter retains original containers and source-raw XML provenance in v5 cases;
+Mirth 4.5.2/OIE 4.6.0 compatibility remains unqualified pending real lab exports.
 
 `source collect SOURCE --output NEW_DIRECTORY --receipt NEW_FILE` brings
 evidence into readmit from a place the customer controls and an operator

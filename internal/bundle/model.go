@@ -10,21 +10,23 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/collection"
+	"github.com/bharm16/readmit/internal/engineexport"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/observation"
 )
 
 const (
-	Schema           = "readmit-case/v1"
-	RecordedSchema   = "readmit-case/v2"
-	DerivedSchema    = "readmit-case/v3"
-	CollectedSchema  = "readmit-case/v4"
-	MaxSources       = 128
-	MaxEvents        = 10000
-	MaxSourceBytes   = hl7.MaxInputBytes
-	MaxEvidenceBytes = 64 << 20
-	maxFileBytes     = 16 << 20
-	maxBundleBytes   = 96 << 20
+	Schema             = "readmit-case/v1"
+	RecordedSchema     = "readmit-case/v2"
+	DerivedSchema      = "readmit-case/v3"
+	CollectedSchema    = "readmit-case/v4"
+	EngineExportSchema = "readmit-case/v5"
+	MaxSources         = 128
+	MaxEvents          = 10000
+	MaxSourceBytes     = hl7.MaxInputBytes
+	MaxEvidenceBytes   = 64 << 20
+	maxFileBytes       = 16 << 20
+	maxBundleBytes     = 96 << 20
 )
 
 type Mode string
@@ -106,13 +108,14 @@ type Source struct {
 }
 
 type Manifest struct {
-	Schema      string     `json:"schema"`
-	State       string     `json:"state"`
-	Provenance  Provenance `json:"provenance"`
-	Sources     []Source   `json:"sources"`
-	EventCount  int        `json:"event_count"`
-	Observation *Payload   `json:"observation,omitzero"`
-	Collection  *Payload   `json:"collection,omitzero"`
+	Schema       string     `json:"schema"`
+	State        string     `json:"state"`
+	Provenance   Provenance `json:"provenance"`
+	Sources      []Source   `json:"sources"`
+	EventCount   int        `json:"event_count"`
+	Observation  *Payload   `json:"observation,omitzero"`
+	Collection   *Payload   `json:"collection,omitzero"`
+	EngineExport *Payload   `json:"engine_export,omitzero"`
 }
 
 // Field refers to exact bytes within an occurrence's payload file. Values never
@@ -174,13 +177,15 @@ type Correlation struct {
 }
 
 type Bundle struct {
-	Manifest     Manifest
-	Events       []Event
-	Correlations []Correlation
-	Identity     string
-	Observation  *observation.Snapshot
-	Collection   *collection.Record
-	payloads     map[string][]byte
+	Manifest        Manifest
+	Events          []Event
+	Correlations    []Correlation
+	Identity        string
+	Observation     *observation.Snapshot
+	Collection      *collection.Record
+	EngineExport    *engineexport.Plan
+	engineContainer []byte
+	payloads        map[string][]byte
 }
 
 // Counts totals occurrences by kind. Callers reporting a case summary share

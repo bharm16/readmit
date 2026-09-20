@@ -3,6 +3,10 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
 - Local adversarial acceptance refuses dirty candidates and source changes during
   execution, retaining the final revision alongside its finite boundary results.
 
+- `import engine` retains raw containers and a finite source-raw XML subset in
+  v5 cases with explicit adapter provenance. Mirth/OIE compatibility remains
+  unqualified until both pinned real-engine export matrices pass.
+
 - Desktop regions and operation states now offer offline contextual help, fixed
   support codes, setup/recovery guidance and finite message-family recipes.
 

@@ -17,6 +17,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/collection"
+	"github.com/bharm16/readmit/internal/engineexport"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/observation"
 )
@@ -116,7 +117,7 @@ func writeFile(root *os.Root, name string, data []byte) error {
 // contract version reaches both readers at once and a listing never disagrees
 // with what opening the same directory would accept.
 func supported(schema string) bool {
-	return schema == Schema || schema == RecordedSchema || schema == DerivedSchema || schema == CollectedSchema
+	return schema == Schema || schema == RecordedSchema || schema == DerivedSchema || schema == CollectedSchema || schema == EngineExportSchema
 }
 
 // Describe reads only the manifest of a case bundle directory so a caller can
@@ -150,6 +151,9 @@ func Describe(path string) (Manifest, error) {
 	if !supported(manifest.Schema) {
 		return Manifest{}, errors.New("unsupported case bundle schema version")
 	}
+	if err := validateEngineManifest(data, manifest); err != nil {
+		return Manifest{}, err
+	}
 	return manifest, nil
 }
 
@@ -167,6 +171,9 @@ func Open(path string) (*Bundle, error) {
 	}
 	if !supported(manifest.Schema) {
 		return nil, errors.New("unsupported case bundle schema version")
+	}
+	if err := validateEngineManifest(files["manifest.json"], manifest); err != nil {
+		return nil, err
 	}
 	if manifest.Schema == RecordedSchema {
 		// Do not relax v2 when adding the v3-only provenance member or the
@@ -284,6 +291,16 @@ func Open(path string) (*Bundle, error) {
 	if err != nil {
 		return nil, err
 	}
+	if manifest.Schema == EngineExportSchema {
+		plan, err := engineexport.Decode(files["engine-export.json"])
+		if err != nil {
+			return nil, err
+		}
+		if err := attachEngineExport(b, plan, files["engine-container.bin"]); err != nil {
+			return nil, err
+		}
+		b.Manifest.EngineExport = &Payload{Path: "engine-export.json", Size: len(files["engine-export.json"]), SHA256: digest(files["engine-export.json"])}
+	}
 	if manifest.Schema == RecordedSchema {
 		snapshot, err := observation.Decode(files["observation.json"])
 		if err != nil {
@@ -323,6 +340,9 @@ func Open(path string) (*Bundle, error) {
 func restoreInputs(manifest Manifest, events []Event, files map[string][]byte) ([]Input, error) {
 	invalid := errors.New("invalid bundle source or occurrence layout")
 	extraFiles := 3
+	if manifest.Schema == EngineExportSchema {
+		extraFiles += 2
+	}
 	if manifest.Schema == RecordedSchema || manifest.Schema == CollectedSchema {
 		extraFiles++
 	}
@@ -377,6 +397,13 @@ func encode(b *Bundle) (map[string][]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+	}
+	if b.EngineExport != nil {
+		files["engine-export.json"], err = json.Marshal(b.EngineExport, json.Deterministic(true))
+		if err != nil {
+			return nil, err
+		}
+		files["engine-container.bin"] = bytes.Clone(b.engineContainer)
 	}
 	files["events.jsonl"], err = encodeLines(b.Events)
 	if err != nil {
@@ -500,10 +527,10 @@ func readFiles(path string) (map[string][]byte, error) {
 		if entry.Type() != 0 {
 			return errors.New("bundle files must be regular files, never symlinks")
 		}
-		if name != "manifest.json" && name != "events.jsonl" && name != "correlations.jsonl" && name != "identity.sha256" && name != "observation.json" && name != "collection.json" && !strings.HasPrefix(name, "payloads/") {
+		if name != "manifest.json" && name != "events.jsonl" && name != "correlations.jsonl" && name != "identity.sha256" && name != "observation.json" && name != "collection.json" && name != "engine-export.json" && name != "engine-container.bin" && !strings.HasPrefix(name, "payloads/") {
 			return errors.New("unexpected bundle file")
 		}
-		if len(files) >= MaxEvents+5 {
+		if len(files) >= MaxEvents+6 {
 			return errors.New("bundle file limit exceeded")
 		}
 		parent, child := root, name
@@ -583,4 +610,36 @@ func sortedNames(files map[string][]byte) []string {
 	}
 	slices.Sort(names)
 	return names
+}
+
+// validateEngineManifest keeps the v5 extension out of every legacy reader,
+// including manifest-only listings that do not authenticate evidence.
+func validateEngineManifest(data []byte, manifest Manifest) error {
+	if manifest.Schema != EngineExportSchema {
+		var members map[string]any
+		if json.Unmarshal(data, &members) != nil {
+			return errors.New("invalid bundle manifest")
+		}
+		if _, exists := members["engine_export"]; exists {
+			return errors.New("legacy case cannot carry engine export provenance")
+		}
+	}
+	if manifest.Schema == EngineExportSchema {
+		var v5 struct {
+			Schema     string `json:"schema"`
+			State      string `json:"state"`
+			Provenance struct {
+				Mode       Mode       `json:"mode"`
+				ImportedAt *time.Time `json:"imported_at"`
+			} `json:"provenance"`
+			Sources      []Source `json:"sources"`
+			EventCount   int      `json:"event_count"`
+			EngineExport *Payload `json:"engine_export"`
+		}
+		if json.Unmarshal(data, &v5, json.RejectUnknownMembers(true)) != nil || v5.EngineExport == nil || v5.Provenance.Mode != Imported {
+			return errors.New("invalid v5 engine export manifest")
+		}
+	}
+
+	return nil
 }

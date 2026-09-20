@@ -239,11 +239,25 @@ func TestTransportOutcomesAndNoRetryAfterUncertainDelivery(t *testing.T) {
 // persistingObserver stands in for a durable run's writer: Sent persists the
 // bytes that were written before the acknowledgement is waited for, and
 // persisting takes longer than the whole exchange is budgeted.
-type persistingObserver struct{ pause time.Duration }
+type persistingObserver struct {
+	pause, recordedPause time.Duration
+	ctx                  context.Context
+	sent, recorded       bool
+	recordedContextErr   error
+}
 
-func (o persistingObserver) BeforeSend(string) error     { return nil }
-func (o persistingObserver) Sent(string, []byte) error   { time.Sleep(o.pause); return nil }
-func (o persistingObserver) Recorded(replay.Event) error { return nil }
+func (o *persistingObserver) BeforeSend(string) error { return nil }
+func (o *persistingObserver) Sent(string, []byte) error {
+	o.sent = true
+	time.Sleep(o.pause)
+	return nil
+}
+func (o *persistingObserver) Recorded(replay.Event) error {
+	o.recorded = true
+	o.recordedContextErr = o.ctx.Err()
+	time.Sleep(o.recordedPause)
+	return nil
+}
 
 // The message timeout bounds one message and its acknowledgement on the
 // network. A sender's own durability between the two is not network time: a
@@ -292,13 +306,15 @@ func TestLocalDurabilityIsNotChargedToTheMessageTimeout(t *testing.T) {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 			defer cancel()
-			started := time.Now()
+			// Slow post-exchange persistence is deliberately longer than the
+			// old whole-execution wall cap permitted. It cannot change which
+			// timer ended the network exchange.
+			observer := &persistingObserver{ctx: ctx, pause: pause, recordedPause: 4 * budget}
 			path := filepath.Join(t.TempDir(), "run")
-			r, err := replay.ExecuteObserved(ctx, plan, path, nil, nil, persistingObserver{pause: pause})
+			r, err := replay.ExecuteObserved(ctx, plan, path, nil, nil, observer)
 			if err != nil {
 				t.Fatal(err)
 			}
-			elapsed := time.Since(started)
 			// The same invariant the shared execute helper asserts: what the
 			// run reports is what the finalized evidence reopens as.
 			verified, err := replay.Open(path)
@@ -310,14 +326,18 @@ func TestLocalDurabilityIsNotChargedToTheMessageTimeout(t *testing.T) {
 			}
 			e := r.Events[0]
 			if e.Outcome != tc.outcome || e.Delivery != tc.delivery {
-				t.Fatalf("persistence was charged to the network budget: %+v after %s", e, elapsed)
+				t.Fatalf("persistence was charged to the network budget: %+v", e)
 			}
-			// The exchange still ends on the budget it declares rather than
-			// waiting out the run: persistence moves the window, it does not
-			// remove it. Three budgets of slack absorb scheduling without
-			// admitting a window that was silently restarted or extended.
-			if elapsed < pause || elapsed > pause+3*budget {
-				t.Fatalf("the acknowledgement window was not bounded: %s", elapsed)
+			// Assert the timer that ended the exchange, not elapsed time for
+			// filesystem setup, syncing/finalization, or scheduler pauses. An
+			// outer deadline or a peer disconnect cannot stand in for the
+			// message read timeout. Callback markers also prevent a skipped
+			// durability hook from making the positive branch vacuously pass.
+			if !observer.sent || !observer.recorded || observer.recordedContextErr != nil {
+				t.Fatalf("exchange did not finish before the run deadline through both durability hooks: %+v", observer)
+			}
+			if !tc.answer && (e.TransportError == nil || e.TransportError.Phase != "read" || e.TransportError.Class != "timeout") {
+				t.Fatalf("silent receiver did not end on the message read timeout: %+v", e.TransportError)
 			}
 		})
 	}

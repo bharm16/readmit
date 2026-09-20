@@ -107,9 +107,11 @@ the corpus statement, not the Python parser, is the expectation.
 `quote_ascii` renders only printable ASCII, so a corpus expectation can never
 depend on a guessed rendering of other bytes.
 
-There is no supported integration-engine export corpus. Issue #35 is the owner
-decision on the supported Mirth/OIE export versions and on a legally usable,
-representative export corpus; no vendor export format is invented here.
+There is no qualified integration-engine export corpus. The selected targets
+are Mirth 4.5.2 and OIE 4.6.0; #35 still requires actual synthetic-message
+exports from isolated instances, with engine/configuration/options provenance.
+The [finite local adapter](import.md#engine-exports-unqualified-local-adapter)
+has hand-authored source-model tests, which do not replace that lab evidence.
 `engine-export-corpus` reports that as a gap, and `tools/verify.py` prints it
 distinctly from a pass.
 
