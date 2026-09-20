@@ -13,6 +13,10 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
 - `share verify` checks reviewed support bundles offline; the support runbook
   covers synthetic reproduction, customer consent, custody and incident escalation.
 
+- Local adversarial acceptance now requires named tests to run without skips,
+  covers hostile CLI text and records browser keyboard/renderer evidence.
+  Native screen-reader and deployment acceptance remain open.
+
 - Vendor administration records business contacts and invoice references, reissues
   named-author/device and active-runner assignments without sequence collisions,
   and reports annual paid support scope. Commercial terms remain review drafts.
