@@ -1553,3 +1553,5 @@ The CLI timeline's existing output contract stays unchanged.
 ## Local evaluation and operation access
 
 The privacy pane selects a supplied `operation-policy.json` through a native folder chooser, activates it explicitly, and shows signed term dates and visible UTC high-water/rollback state. New authoring and execution are admitted through the shared operation guard; unconfigured, expired, released, corrupt or rollback-blocked state refuses them. The application still opens, reads/verifies/exports existing evidence, and runs its frozen synthetic practice without activation. Selection is persisted separately as `readmit-desktop-operation-selection/v1`. See [the local evaluation contract](license-v2.md#complete-local-evaluation-and-operation-admission).
+
+Contextual offline help and recovery codes, with ADT/SIU/ORM/ORU recipes: [workflow help](workflow-help.md).

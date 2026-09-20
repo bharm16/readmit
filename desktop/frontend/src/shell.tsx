@@ -1,3 +1,4 @@
+import { StateHelp } from "./ContextHelp";
 // The window furniture that renders the facade's description of the shell:
 // how a status reads, the command palette, the pane separator, and the message
 // grid. None of it decides anything about evidence; it draws what
@@ -37,6 +38,7 @@ export function Status({
   reason?: string | undefined;
 }) {
   return (
+    <>
     <p className={`status status-${state}`} role="status">
       <span className="symbol" aria-hidden="true">
         {indicator?.symbol}
@@ -44,6 +46,8 @@ export function Status({
       <span className="state">{indicator?.label ?? state}</span>
       {reason ? <span className="reason">{reason}</span> : null}
     </p>
+    <StateHelp state={state} />
+    </>
   );
 }
 

@@ -1,3 +1,4 @@
+import { ContextHelp } from "./ContextHelp";
 import { OperationAccess } from "./OperationAccess";
 import { RunComparison } from "./RunComparison";
 import { Baseline } from "./Baseline";
@@ -1233,6 +1234,7 @@ export default function App() {
               onFocus={() => setFocused(region.id)}
             >
               <h2 id={`${region.id}-heading`}>{region.label}</h2>
+              <ContextHelp region={region.id} />
               {content[region.id]}
             </section>
             {region.id === "evidence" ? (

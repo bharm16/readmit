@@ -268,3 +268,5 @@ retains analyst decisions separately from the original sequence findings.
 
 - [Reusable interface contracts](profile-packages.md): `profile export` and `profile import`, copy migration, integrity and external mapping limitations.
 Local evaluation: [trial issuance, activation and operation clock](license-v2.md#complete-local-evaluation-and-operation-admission). `sample synth/capture/index` prepares the frozen ungated walkthrough.
+
+Contextual offline help and recovery codes, with ADT/SIU/ORM/ORU recipes: [workflow help](workflow-help.md).
