@@ -240,8 +240,8 @@ only; a pack extraction takes the same and nothing more.
   The dictionary keeps its own reader and its documented finite scope.
 - **No structural or workflow content**, and therefore no v1 pack that claims
   either level supported. Adding that content is a new contract name.
-- **No command** reads or lists packs. The contract needs no inspection
-  surface until a feature bundles one, and none does.
+- [Profile packages](profile-packages.md) reads packs for explicit import/export.
+  No pack is activated implicitly and none is bundled.
 - **#41, #57 and #78 are not delivered** by this contract, and neither is the
   seven-version, four-family library #45 owns. #46 is delivered separately, as
   [local profiles](local-profiles.md), and consumes the interfaces above

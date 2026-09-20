@@ -924,6 +924,10 @@ comparison names every part that differs, and a
 and which document that version stood for, so a change lists the tests written
 against the version it changed and moves none of them until somebody upgrades
 one by name. See [profile versions](docs/profile-versions.md).
+
+`profile export` packages a sealed local profile, its pinned metadata and reviewed
+source/license attribution; `profile import` verifies and copies it into a new
+private directory. See [reusable interface contracts](docs/profile-packages.md).
 This is **syntax inspection**, not semantic validation or a claim of HL7
 conformance. The separate diagnosis and receiver workflows use the narrow,
 documented readmit SIU fixture profile.

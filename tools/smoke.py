@@ -47,6 +47,7 @@ REQUIRED_FILES = {
     "testdata/fixtures/local-profile.json",
     "testdata/fixtures/local-profile-refused.json",
     "docs/profile-versions.md",
+    "docs/profile-packages.md",
     "testdata/fixtures/profile-version.json",
     "testdata/fixtures/profile-references.json",
     "testdata/fixtures/profile-references-refused.json",

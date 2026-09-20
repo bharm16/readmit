@@ -33,6 +33,7 @@ archives:
       - docs/profile-library.md
       - docs/local-profiles.md
       - docs/profile-versions.md
+      - docs/profile-packages.md
       - docs/case-bundle.md
       - docs/import.md
       - docs/source.md

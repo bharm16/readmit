@@ -237,9 +237,10 @@ network connection.
   readmit will report.
 - **Nothing is verified against a file.** A recorded digest is not re-checked and
   a path is not resolved, because this package opens nothing.
-- **No command reads either document and no window edits one.** The typed surface
+- **No window edits these documents.** The typed surface
   above is what a suite editor binds to; #81 consumes this same reference
-  contract, and #48 owns importing and exporting reusable contracts.
+  contract. [Profile packages](profile-packages.md) reads the version seal
+  when importing and exporting reusable contracts.
 - **A version is not signed.** Sealing detects change, not forgery. Signed
   documents in this product are [entitlements](license.md), and they are a
   different mechanism for a different problem.

@@ -25,7 +25,7 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
 
 ## CLI
 
-- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `corpus`, `project`, `backup`, `upgrade`, `license`, `secret`, `protect`, `target`, `source`, `listen`, `replay`, `test`, `suite`, `observe`, `explain`, `diff`, `drift`, `normalize`, `baseline`, `expectation`, `diagnose`, `correlate`, `transform`, `synth`, `scenario`, `redact`, `report`, `share`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
+- [Cobra](https://github.com/spf13/cobra) for the command tree: `inspect`, `capture`, `index`, `corpus`, `project`, `backup`, `upgrade`, `license`, `secret`, `protect`, `target`, `source`, `listen`, `replay`, `test`, `suite`, `observe`, `explain`, `diff`, `drift`, `normalize`, `baseline`, `expectation`, `diagnose`, `correlate`, `transform`, `synth`, `scenario`, `profile`, `redact`, `report`, `share`. It is the only direct third-party dependency of the released executable. No Viper, no interactive TUI.
 - Command data goes to stdout, diagnostics to stderr. Machine-readable modes never interleave progress output with JSON.
 - Target configuration is read from explicitly selected files, not hidden global config or environment-variable precedence.
 - Credentials are referenced, never held. A `readmit-secrets/v1` document registers the store kind an operator declared, the single purpose and endpoint address a credential may be bound to, the absolute path of the program that reads it back, and the recorded rotation. The purposes are `mllp-endpoint` and `source-endpoint`; a reference registered for one is refused wherever the other is needed. No command accepts a credential value, and a resolved value masks itself under every formatting verb and refuses to be serialized. See [credential references](secret.md).
@@ -99,6 +99,11 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
   constraint resolves local and the resolution says so. No message is evaluated
   against a profile and no profile is bundled. See
   [local profiles](local-profiles.md).
+- `internal/profilepackage` transports reviewed local contracts and their exact
+  pack/version pins as `readmit-profile-package/v1`, with separate
+  `readmit-profile-origin/v1` attribution. CLI import/export copies to new
+  destinations, retains provenance, and never activates or upgrades a profile.
+  See [profile packages](profile-packages.md).
 - Changing a local profile is versioned by `internal/profileversion`.
   `readmit-profile-version/v1` seals one profile at one version over the length
   and SHA-256 of its canonical document, so reformatting changes nothing and a

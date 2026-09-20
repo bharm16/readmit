@@ -265,3 +265,5 @@ retained synthetic evidence from the installed desktop sample.
 
 Explicit [human correlation review](correlate.md#explicit-human-correlation-review)
 retains analyst decisions separately from the original sequence findings.
+
+- [Reusable interface contracts](profile-packages.md): `profile export` and `profile import`, copy migration, integrity and external mapping limitations.
