@@ -90,9 +90,16 @@ type fake struct {
 	// meet makes a job wait for another job to be inside at the same time, so
 	// declared isolation is proved to permit concurrency rather than assumed.
 	meet bool
+	// identity and identityErr drive the approved-inputs pin through the same
+	// seam a real prepared run answers, so a pin refusal is asserted against
+	// the interface rather than against a live spec.
+	identity    string
+	identityErr error
 }
 
 func (f *fake) Resources() []durablerun.Resource { return f.resources }
+
+func (f *fake) InputIdentity() (string, error) { return f.identity, f.identityErr }
 
 func (f *fake) Start(ctx context.Context, output string) (durablerun.Summary, error) {
 	f.tracker.enter(f.id, f.resources)
@@ -445,5 +452,64 @@ func TestAdmissionIsRecheckedForEachNewJobWithoutStoppingAnAdmittedJob(t *testin
 	}
 	if report.Executed != 1 || report.Refused != 1 || jobs(report)["a"].Run.State != durablerun.Passed || jobs(report)["b"].Run != nil {
 		t.Fatalf("admission did not isolate new work: %+v", report)
+	}
+}
+
+// An approved queue pins every job through the declared seam before anything
+// starts, and a queue whose inputs match the promotion runs.
+func TestAnApprovedQueueRunsWhenEveryJobMatchesItsPin(t *testing.T) {
+	watch := newTracker()
+	queued(t, map[string]*fake{
+		"a.json": {id: "a", resources: environmentResources(), state: durablerun.Passed, tracker: watch, identity: "pin-a"},
+		"b.json": {id: "b", resources: environmentResources(), state: durablerun.Passed, tracker: watch, identity: "pin-b"},
+	})
+	document := `{"schema":"readmit-run-queue/v1","parallelism":2,"jobs":[` +
+		`{"id":"a","spec":"a.json","isolation":"isolated"},` +
+		`{"id":"b","spec":"b.json","isolation":"isolated"}]}`
+	report, err := Run(t.Context(), Request{PlanBytes: []byte(document), PlanDirectory: t.TempDir(),
+		Runs: t.TempDir(), ApprovedInputs: map[string]string{"a": "pin-a", "b": "pin-b"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Executed != 2 || report.ExitCode() != 0 {
+		t.Fatalf("%+v", report)
+	}
+}
+
+// Inputs that differ from the approved promotion are refused while every job
+// is still being read, so nothing starts and nothing executes.
+func TestAnApprovedQueueWhoseInputsDifferFromThePromotionRunsNothing(t *testing.T) {
+	watch := newTracker()
+	queued(t, map[string]*fake{
+		"a.json": {id: "a", resources: environmentResources(), state: durablerun.Passed, tracker: watch, identity: "pin-a"},
+		"b.json": {id: "b", resources: environmentResources(), state: durablerun.Passed, tracker: watch, identity: "pin-b"},
+	})
+	document := `{"schema":"readmit-run-queue/v1","parallelism":2,"jobs":[` +
+		`{"id":"a","spec":"a.json","isolation":"isolated"},` +
+		`{"id":"b","spec":"b.json","isolation":"isolated"}]}`
+	if _, err := Run(t.Context(), Request{PlanBytes: []byte(document), PlanDirectory: t.TempDir(),
+		Runs: t.TempDir(), ApprovedInputs: map[string]string{"a": "pin-a", "b": "changed"}}); err == nil {
+		t.Fatal("an approved queue ran with inputs the promotion did not approve")
+	}
+	if len(watch.order) != 0 {
+		t.Fatalf("a refused queue executed: %v", watch.order)
+	}
+}
+
+// A pin that cannot be computed at all refuses the queue the same way: the
+// approval cannot be checked, so nothing may run.
+func TestAnApprovedQueueRefusesWhenTheIdentityCannotBeComputed(t *testing.T) {
+	watch := newTracker()
+	queued(t, map[string]*fake{
+		"a.json": {id: "a", resources: environmentResources(), state: durablerun.Passed, tracker: watch,
+			identityErr: errors.New("no credential store")},
+	})
+	document := `{"schema":"readmit-run-queue/v1","parallelism":1,"jobs":[{"id":"a","spec":"a.json","isolation":"isolated"}]}`
+	if _, err := Run(t.Context(), Request{PlanBytes: []byte(document), PlanDirectory: t.TempDir(),
+		Runs: t.TempDir(), ApprovedInputs: map[string]string{"a": "pin-a"}}); err == nil {
+		t.Fatal("an approved queue ran with an unpinnable job")
+	}
+	if len(watch.order) != 0 {
+		t.Fatalf("a refused queue executed: %v", watch.order)
 	}
 }
