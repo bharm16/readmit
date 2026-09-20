@@ -1579,7 +1579,17 @@ export interface CorrelationUnsupported {
  * and `boundary` is the correlation report's own statement of what a link is —
  * all three are rendered rather than summarized. This result is a typed value
  * the interface reads, never a stored document. */
+export interface SequenceAnalysis {
+ clock_tolerance_seconds: number;
+ coverage: {source: string; coverage: string; start: string | null; end: string | null; outside: number; untimed: number}[];
+ findings: {kind: string; occurrence: string; related: string; source: string; detail: string}[];
+ boundary: string;
+ total_findings: number;
+}
+
 export interface Sequence {
+ analysis?: SequenceAnalysis;
+ analysis_entry: string;
   case: string;
   identity: string;
   rules: string;
@@ -1606,6 +1616,7 @@ export interface Sequence {
  * but the absence of one: the sequence then reports only what the evidence
  * itself recorded. */
 export interface SequenceRequest {
+ analysis?: string;
   workspace: string;
   case: string;
   identity: string;

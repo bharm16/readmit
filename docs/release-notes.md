@@ -7,6 +7,9 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
 - The desktop records explicit correlation accept/reject/add decisions with a
   local analyst and reason in immutable review revisions. Original machine
   findings remain intact; changed mappings invalidate dependent reviewed views.
+- Sequence explanations distinguish duplicate bytes, declared likely retries,
+  windowed missing ACKs, unobserved downstream links and clock uncertainty.
+  Coverage stays operator-declared and absence never proves message loss.
 
 - Git source diffs remain visible when a stray NUL appears in Go, TypeScript,
   TSX, Markdown, JSON, Python or YAML source; binary evidence keeps its existing

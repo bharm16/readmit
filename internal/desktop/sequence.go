@@ -12,6 +12,7 @@ import (
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/correlate"
 	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/sequenceanalysis"
 )
 
 // MaxSequenceEvents bounds one window of a sequence. A case holds up to the
@@ -215,24 +216,26 @@ type SequenceSummary struct {
 // This result is a typed value the interface reads, not a stored document:
 // nothing here is written anywhere, and no case gains a member from it.
 type Sequence struct {
-	Case            string                  `json:"case"`
-	Identity        string                  `json:"identity"`
-	Rules           string                  `json:"rules"`
-	Report          string                  `json:"report,omitzero"`
-	RulesSHA256     string                  `json:"rules_sha256,omitzero"`
-	SessionDeclared bool                    `json:"session_declared"`
-	Declared        []correlate.RuleReport  `json:"declared"`
-	Unsupported     []correlate.Unsupported `json:"unsupported"`
-	Lanes           []Lane                  `json:"lanes"`
-	Gaps            []GapCount              `json:"gaps"`
-	Summary         SequenceSummary         `json:"summary"`
-	Offset          int                     `json:"offset"`
-	Limit           int                     `json:"limit"`
-	Total           int                     `json:"total"`
-	Events          []SequenceEvent         `json:"events"`
-	Clock           string                  `json:"clock"`
-	Scope           string                  `json:"scope"`
-	Boundary        string                  `json:"boundary,omitzero"`
+	Analysis        *sequenceanalysis.Report `json:"analysis,omitzero"`
+	AnalysisEntry   string                   `json:"analysis_entry"`
+	Case            string                   `json:"case"`
+	Identity        string                   `json:"identity"`
+	Rules           string                   `json:"rules"`
+	Report          string                   `json:"report,omitzero"`
+	RulesSHA256     string                   `json:"rules_sha256,omitzero"`
+	SessionDeclared bool                     `json:"session_declared"`
+	Declared        []correlate.RuleReport   `json:"declared"`
+	Unsupported     []correlate.Unsupported  `json:"unsupported"`
+	Lanes           []Lane                   `json:"lanes"`
+	Gaps            []GapCount               `json:"gaps"`
+	Summary         SequenceSummary          `json:"summary"`
+	Offset          int                      `json:"offset"`
+	Limit           int                      `json:"limit"`
+	Total           int                      `json:"total"`
+	Events          []SequenceEvent          `json:"events"`
+	Clock           string                   `json:"clock"`
+	Scope           string                   `json:"scope"`
+	Boundary        string                   `json:"boundary,omitzero"`
 }
 
 // clockStatement is what a person has to know before reading two sources
@@ -254,6 +257,7 @@ const scopeStatement = "Events are placed by the times this case recorded and by
 // default rule set but the absence of one, and the sequence then reports only
 // what the evidence itself recorded.
 type SequenceRequest struct {
+	Analysis  string `json:"analysis"`
 	Workspace string `json:"workspace"`
 	Case      string `json:"case"`
 	Identity  string `json:"identity"`
@@ -318,7 +322,27 @@ func (a *App) OpenSequence(request SequenceRequest) SequenceResult {
 	if declined.state != "" {
 		return declined.sequence()
 	}
-	return laidOut(request, opened, report)
+	result := laidOut(request, opened, report)
+	if request.Analysis != "" {
+		analysis, refused := analyzeSequence(root, request.Analysis, opened, report)
+		if refused.state != "" {
+			return refused.sequence()
+		}
+		visible := map[string]bool{}
+		for _, event := range result.Sequence.Events {
+			visible[event.Occurrence] = true
+		}
+		findings := make([]sequenceanalysis.Finding, 0)
+		for _, finding := range analysis.Findings {
+			if visible[finding.Occurrence] {
+				findings = append(findings, finding)
+			}
+		}
+		analysis.Findings = findings
+		result.Sequence.Analysis = analysis
+		result.Sequence.AnalysisEntry = request.Analysis
+	}
+	return result
 }
 
 // correlated applies the named rules, or none at all. There is no default rule
