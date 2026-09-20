@@ -33,6 +33,12 @@ type Document struct {
 	// MustDeclare reports a schema member that is missing, null, or not the
 	// contract's schema.
 	MustDeclare string
+	// Unsupported, when set, is returned when the schema member names another
+	// version of the contract. A later release bumps the version precisely
+	// because it adds members, so a version mismatch must read as unsupported
+	// — never as invalid — and callers match it with errors.Is. When nil, a
+	// mismatch reports MustDeclare.
+	Unsupported error
 	// Requires reports a required member besides schema that is missing or
 	// null.
 	Requires string
@@ -58,6 +64,9 @@ func (d Document) Decode(data []byte, target any) error {
 		return errors.New(d.Invalid)
 	}
 	if schema != d.Schema {
+		if d.Unsupported != nil {
+			return d.Unsupported
+		}
 		return errors.New(d.MustDeclare)
 	}
 	for _, name := range d.Required {

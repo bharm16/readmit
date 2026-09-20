@@ -1,6 +1,7 @@
 package strictdoc_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -74,5 +75,35 @@ func TestDecodeRefusesTheFourWaysADocumentCanBetrayItsContract(t *testing.T) {
 		if err == nil || err.Error() != c.want {
 			t.Errorf("%s: Decode = %v, want %q", c.name, err, c.want)
 		}
+	}
+}
+
+// A version mismatch is returned as the caller's own unsupported error, so a
+// later version of a contract reads as unsupported — never as invalid — and a
+// caller can match it with errors.Is.
+func TestDecodeReportsAVersionMismatchAsUnsupported(t *testing.T) {
+	unsupported := errors.New("unsupported demo version")
+	document := strictdoc.Document{
+		MaxBytes:    1024,
+		Schema:      "readmit-demo/v1",
+		Required:    []string{"name"},
+		Invalid:     "invalid demo",
+		TooLarge:    "demo too large",
+		MustDeclare: "a demo declares its contract version",
+		Requires:    "a demo requires a name",
+		Unsupported: unsupported,
+	}
+	if err := document.Decode([]byte(`{"schema":"readmit-demo/v2","name":"x"}`), &struct{}{}); !errors.Is(err, unsupported) {
+		t.Fatalf("a later version was not reported as unsupported: %v", err)
+	}
+	// A document that declares no version at all is not a version mismatch.
+	if err := document.Decode([]byte(`{"name":"x"}`), &struct{}{}); err == nil || errors.Is(err, unsupported) {
+		t.Fatalf("a missing schema read as a version: %v", err)
+	}
+	// Without an unsupported error, a mismatch reports MustDeclare.
+	plain := document
+	plain.Unsupported = nil
+	if err := plain.Decode([]byte(`{"schema":"readmit-demo/v2","name":"x"}`), &struct{}{}); err == nil || err.Error() != "a demo declares its contract version" {
+		t.Fatalf("a mismatch without a sentinel reported %v", err)
 	}
 }

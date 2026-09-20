@@ -22,6 +22,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/strictdoc"
 )
 
 const (
@@ -120,33 +121,29 @@ type Project struct {
 	Document Document
 }
 
+// projectDocument is the one strict reading of a project document, through
+// strictdoc: the declared contract version is read before the strict decode,
+// so a later version reads as the version it declares, never as invalid.
+var projectDocument = strictdoc.Document{
+	MaxBytes:    maxDocumentBytes,
+	Schema:      Schema,
+	Invalid:     "invalid project document",
+	TooLarge:    "project document exceeds its size limit",
+	MustDeclare: "a project document declares its contract version",
+	Unsupported: ErrUnsupportedVersion,
+}
+
 // Decode reads a project document. Unknown members and unknown versions are
 // errors; there is no migration and no repair.
 func Decode(data []byte) (Document, error) {
-	if len(data) > maxDocumentBytes {
-		return Document{}, errors.New("project document exceeds its size limit")
-	}
-	// The declared contract version is read before the strict decode. A later
-	// release bumps the version precisely because it adds members, so deciding
-	// strictness first would report every such document as invalid rather than
-	// as the version it plainly declares.
-	var declared struct {
-		Schema string `json:"schema"`
-	}
-	if err := json.Unmarshal(data, &declared); err != nil {
-		return Document{}, errors.New("invalid project document")
-	}
-	if declared.Schema != Schema {
-		return Document{}, ErrUnsupportedVersion
-	}
-	var document Document
-	if err := json.Unmarshal(data, &document, json.RejectUnknownMembers(true)); err != nil {
-		return Document{}, errors.New("invalid project document")
-	}
-	if err := Validate(document); err != nil {
+	var decoded Document
+	if err := projectDocument.Decode(data, &decoded); err != nil {
 		return Document{}, err
 	}
-	return document, nil
+	if err := Validate(decoded); err != nil {
+		return Document{}, err
+	}
+	return decoded, nil
 }
 
 // Encode writes a validated document deterministically, so the same project

@@ -8,6 +8,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/strictdoc"
 )
 
 // The three contract versions a mapping recipe owns. A new member of any of
@@ -228,31 +229,28 @@ type Recipe struct {
 	Channel    LabelMapping     `json:"channel"`
 }
 
+// recipeDocument is the one strict reading of a recipe, through strictdoc; a
+// later contract version reads as unsupported rather than as invalid.
+var recipeDocument = strictdoc.Document{
+	MaxBytes:    MaxRecipeBytes,
+	Schema:      RecipeSchema,
+	Required:    []string{"name", "revision", "envelope", "encoding", "members"},
+	Invalid:     "invalid mapping recipe",
+	TooLarge:    "mapping recipe exceeds its size limit",
+	MustDeclare: "a mapping recipe declares its contract version",
+	Requires:    "a mapping recipe declares a name, a revision, an envelope, an encoding, and an explicit member list",
+	Unsupported: ErrUnsupportedRecipe,
+}
+
 // UnmarshalJSON requires the declarations whose absence a zero value would
-// hide, then re-decodes with unknown members refused so a misspelled
-// declaration is an error rather than a declaration that quietly did nothing.
+// hide, and refuses unknown members so a misspelled declaration is an error
+// rather than a declaration that quietly did nothing. The reading is
+// strictdoc's.
 func (r *Recipe) UnmarshalJSON(data []byte) error {
-	var required struct {
-		Schema   *string   `json:"schema"`
-		Name     *string   `json:"name"`
-		Revision *int      `json:"revision"`
-		Envelope *string   `json:"envelope"`
-		Encoding *string   `json:"encoding"`
-		Members  *[]string `json:"members"`
-	}
-	if err := json.Unmarshal(data, &required); err != nil || required.Schema == nil {
-		return errors.New("a mapping recipe declares its contract version")
-	}
-	if *required.Schema != RecipeSchema {
-		return ErrUnsupportedRecipe
-	}
-	if required.Name == nil || required.Revision == nil || required.Envelope == nil || required.Encoding == nil || required.Members == nil {
-		return errors.New("a mapping recipe declares a name, a revision, an envelope, an encoding, and an explicit member list")
-	}
 	type plainRecipe Recipe
 	var value plainRecipe
-	if err := json.Unmarshal(data, &value, json.RejectUnknownMembers(true)); err != nil {
-		return errors.New("invalid mapping recipe")
+	if err := recipeDocument.Decode(data, &value); err != nil {
+		return err
 	}
 	*r = Recipe(value)
 	return nil
