@@ -262,3 +262,6 @@ retained synthetic evidence from the installed desktop sample.
 
 [Administrator operations](administration.md): deployment, identity, runner recovery, backups and retention.
 [Security operations](security-operations.md): egress, secrets, incident reporting and release dependency/SBOM limits.
+
+Explicit [human correlation review](correlate.md#explicit-human-correlation-review)
+retains analyst decisions separately from the original sequence findings.

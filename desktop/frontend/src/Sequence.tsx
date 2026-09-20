@@ -7,6 +7,8 @@ import type {
 } from "./bindings";
 import { Report, type Indicators } from "./shell";
 import "./sequence.css";
+import { CorrelationReview } from "./CorrelationReview";
+import type { CorrelationReviewRequest, CorrelationReviewResult } from "./bindings";
 
 /** How many events of a sequence one window asks the facade for. It is the
  * facade's own bound: a large case is laid out one window at a time and the
@@ -111,7 +113,11 @@ export function Sequence({
   indicators,
   onOpen,
   onSelect,
+  workspace,
+  onReview,
 }: {
+  workspace: string;
+  onReview: (request: CorrelationReviewRequest, write: boolean) => Promise<CorrelationReviewResult>;
   /** The entries of the open workspace a rules document could be. A rules
    * document is an ordinary file beside the evidence, so the listing offers
    * every file it holds and the facade refuses the ones that are not one. */
@@ -206,6 +212,13 @@ export function Sequence({
           <p className="scope">{sequence.clock}</p>
           <p className="scope">{sequence.scope}</p>
           {sequence.boundary ? <p className="scope">{sequence.boundary}</p> : null}
+
+          {sequence.rules ? <CorrelationReview
+            key={[workspace, sequence.case, sequence.identity, sequence.rules, sequence.rules_sha256].join("\u0000")}
+            busy={busy} entries={entries}
+            context={{workspace, case: sequence.case, identity: sequence.identity, rules: sequence.rules, rules_sha256: sequence.rules_sha256 ?? ""}}
+            onReview={onReview}
+          /> : null}
 
           <h4>Lanes</h4>
           <table className="lanes">

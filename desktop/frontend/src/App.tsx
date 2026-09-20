@@ -36,6 +36,9 @@ import {
   openCase,
   openGrid,
   openSequence,
+  openCorrelationReview,
+  decideCorrelation,
+  type CorrelationReviewResult,
   type SequenceResult,
   openReview,
   previewTransformation,
@@ -1113,6 +1116,14 @@ export default function App() {
         ) : null}
         {verified ? (
           <Sequence
+            workspace={root ?? ""}
+            onReview={async (request, write) => {
+              let result: CorrelationReviewResult = { state: "failed", reason: "The review did not run." };
+              await operate("sequence", async () => {
+                result = await (write ? decideCorrelation(request) : openCorrelationReview(request));
+              });
+              return result;
+            }}
             entries={(opened?.artifacts ?? [])
               .filter((artifact) => artifact.kind === "unsupported")
               .map((artifact) => artifact.name)}

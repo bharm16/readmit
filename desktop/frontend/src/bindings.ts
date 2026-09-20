@@ -380,6 +380,8 @@ export interface InspectionResult {
 }
 
 interface Facade {
+ OpenCorrelationReview(request: CorrelationReviewRequest): Promise<CorrelationReviewResult>;
+ DecideCorrelation(request: CorrelationReviewRequest): Promise<CorrelationReviewResult>;
   CompareRuns(request: RunComparisonRequest): Promise<RunComparisonResult>;
   StartDurableRun(spec: string, output: string): Promise<DurableRunResult>;
   OpenDurableRun(path: string): Promise<DurableRunResult>;
@@ -1997,4 +1999,29 @@ export interface ExecutionComparison {
 export interface RunComparisonResult { state: State; reason?: string; comparison?: ExecutionComparison; }
 export function compareRuns(request: RunComparisonRequest): Promise<RunComparisonResult> {
  return guard(() => facade().CompareRuns(request), { state: "failed" });
+}
+
+export interface CorrelationDecision {
+ action: "accept" | "reject" | "add"; link: string; from: string; to: string; actor: string; reason: string;
+}
+export interface CorrelationReviewRequest {
+ workspace: string; case: string; identity: string; rules: string; rules_sha256: string; previous: string;
+ mapping: string; show_values: boolean; decision: CorrelationDecision; output: string; offset: number;
+}
+export interface CorrelationOccurrence { occurrence: string; source_id: string; kind: string; }
+export interface CorrelationReviewView {
+ mapping: string; machine: string; values_shown: boolean; boundary: string;
+ offset: number; total_links: number; total_collisions: number; total_decisions: number;
+ links: { id: string; linkage: string; rule: string; status: string;
+   occurrences: CorrelationOccurrence[]; total_occurrences: number }[];
+ collisions: {finding: {rule: string; reason: string; declaring?: CorrelationOccurrence;
+   occurrences: CorrelationOccurrence[]}; total_occurrences: number}[];
+ history: CorrelationDecision[];
+}
+export interface CorrelationReviewResult { state: State; reason?: string; view?: CorrelationReviewView; output?: string; }
+export function openCorrelationReview(request: CorrelationReviewRequest): Promise<CorrelationReviewResult> {
+ return guard(() => facade().OpenCorrelationReview(request), {state: "failed"});
+}
+export function decideCorrelation(request: CorrelationReviewRequest): Promise<CorrelationReviewResult> {
+ return guard(() => facade().DecideCorrelation(request), {state: "failed"});
 }

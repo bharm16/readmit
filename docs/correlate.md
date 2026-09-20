@@ -134,8 +134,8 @@ identifier string never establishes it.
 testimony about a specific control ID. `control-id` and `identifier` produce
 inferred linkage: equality of a key is a reason to look, not proof that two
 occurrences describe one message or one encounter. No link asserts an order, a
-duration or a cause, and none of them is a manual correlation — this release
-has no way to add one.
+duration or a cause. The desktop can record a separate human review described
+below; machine reports themselves never acquire manual links.
 
 ## Colliding identifiers are never merged
 
@@ -286,9 +286,9 @@ collision; and the occurrence that is not HL7 takes part in nothing.
   channel adds, a check digit it strips. Comparison is over the evidence as it
   is, and a transformation that changed which occurrences correlate would need
   its own contract and its own tests.
-- Manual, analyst-added correlation and overriding an ambiguous one. Every link
-  here comes from a declared rule; nothing in this release can record a human
-  decision about a correlation.
+- Applying human review to the CLI report, a transformation, a replay or a
+  regression assertion. Those consumers use original machine semantics. Human
+  review is an explicit separate mapping in the desktop.
 - A synchronized timeline or swimlane rendering of what was linked, from this
   command. It produces the report those views read;
   [the desktop shell's sequence panel](desktop.md#the-event-sequence-and-source-swimlanes)
@@ -307,3 +307,69 @@ collision; and the occurrence that is not HL7 takes part in nothing.
   nothing. Previewing a transformation that keeps them true — one surrogate per
   relation, and the acknowledgement of a renamed message rewritten onto it — is
   [`readmit transform`](transform.md), which writes nothing either.
+
+## Explicit human correlation review
+
+After laying out a case with explicit rules in the desktop sequence panel,
+choose **Open selected mapping**. Leave the retained-review field blank to
+start from the machine findings, or name a prior review directory to continue
+that exact history. There is no hidden latest revision or automatic merge of
+concurrent histories.
+
+Accept or reject an existing link, or add exactly two occurrence IDs with
+**Choose an exact pair**. Every decision requires a local analyst declaration
+and a reason. An ambiguous finding cannot be accepted as a whole: identify the
+specific pair you mean. The original collision and all alternative candidates
+remain visible. A manual pair is an analyst assertion, never an observed match,
+a clinical validation, a clock correction or a causal claim. Unknown, identical
+or unparsed occurrences are refused, as are duplicate active manual pairs and
+reaccepting a replaced pair while its replacement is active.
+
+Save each decision to a new workspace directory. `internal/correlate` writes:
+
+- `machine.json`: the unchanged, deterministic `readmit-correlation/v1` finding
+  reproduced over the verified case and exact rules.
+- `decisions.json`: strict `readmit-correlation-review/v1` with `schema`,
+  `machine` (the machine document digest), `parent` (the previous mapping
+  identity), and the full ordered `decisions` history. Every decision requires
+  `action`, `link`, `from`, `to`, `actor` and `reason`; unused strings are empty.
+  `accept` and `reject` name a link and leave both occurrence strings empty;
+  `add` names two occurrences and leaves the link empty.
+- `identity.sha256`: the completion marker, written last. The identity hashes
+  canonical JSON containing `schema`, `machine` and `decisions`. The parent
+  must equal the identity of the preceding history prefix; it is checked
+  separately. Digests detect changes, not authenticated authorship.
+
+Directories use mode 0700 and files 0600, subject to platform filesystem
+semantics. An existing destination is never replaced. Failed or interrupted
+writes may leave an incomplete directory, which readers refuse; retry with a
+new name. Opening or saving holds the desktop operation slot and completes as
+one bounded local operation once admitted. Cancel does not interrupt the write
+or replay it after restart. No network work is started.
+
+The reviewed mapping is a derived view that retains original observed/inferred
+linkage beside its human status (`unreviewed`, `accepted`, `rejected`); an added
+link has `manual` linkage. `OpenCorrelationReview` and `DecideCorrelation`
+re-verify evidence, reproduce the machine report and validate every retained
+decision. A changed case, rules document, machine finding, history, unknown
+member, unsupported version, missing member, symlink or incomplete artifact is
+refused. A displayed sequence also pins its rules digest before review.
+
+Every derived reviewed view carries `mapping`. Reusing a result under another
+mapping requires passing its identity in the request: a mismatch returns no
+view and requires discarding dependent results and recomputing them. Saving
+requires the exact currently reviewed identity; the desktop discards its prior
+view before the request and renders only the newly computed mapping. Historical
+revisions remain readable as historical mappings, selected explicitly, and are
+not relabelled as the newer result. Original CLI, transformation, replay and
+assertion consumers do not consume human mappings and are unaffected. There is
+no implicit global current mapping, team synchronization or authorization.
+
+A history holds at most 1,000 decisions in 2 MiB; its machine report is bounded
+at 32 MiB. Analyst declarations allow 256 UTF-8 bytes and reasons 1,024, both
+nonblank and without controls. The desktop pages each list at 200 items and
+shows up to 32 occurrence references per link or collision with complete counts.
+All original message values remain in the inspector. Actor and reason may hold
+sensitive text the analyst enters: they stay in the private review artifact and
+are hidden from the derived view until **Reveal retained analyst and reason
+text** is selected. Nothing enters browser storage, logs or telemetry.

@@ -272,7 +272,7 @@ func TestPrivacyStatusNamesWhatIsAbsentAndWhatIsKept(t *testing.T) {
 	// them hold what a person typed — a filter term and an unstored note — which
 	// is the same patient data the evidence beside them holds, so leaving either
 	// unnamed would be the reassurance this status exists to avoid.
-	for _, document := range []string{"readmit-desktop-recent/v1", "readmit-filters/v1", desktop.SessionSchema} {
+	for _, document := range []string{"readmit-desktop-recent/v1", "readmit-filters/v1", desktop.SessionSchema, "readmit-correlation-review/v1"} {
 		if !strings.Contains(kept, strings.ToLower(document)) {
 			t.Errorf("the privacy status does not name %s, which the shell keeps: %v", document, privacy.Kept)
 		}
