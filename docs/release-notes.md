@@ -7,6 +7,11 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   every finding and unsupported item, and shows representatives and affected
   occurrences without inferring population-wide rates or shared root causes.
 
+- Case verification reuses its confined payload-directory handle within each
+  read, reducing repeated traversal while still rereading every payload.
+  Performance qualification accepts explicit operation policy and distinguishes
+  oversized-input refusal from licensing failure. The full envelope remains open.
+
 - `profile export` and `profile import` transport reviewed local interface contracts,
   exact metadata pins, version seals and source/license provenance with integrity
   checks. Existing profiles and evidence remain unchanged.

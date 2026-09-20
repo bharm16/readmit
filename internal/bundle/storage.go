@@ -469,14 +469,31 @@ func readFiles(path string) (map[string][]byte, error) {
 	}
 	defer root.Close()
 	files := make(map[string][]byte)
+	// Keep one confined handle for this verification's payload directory.
+	// Opening every payload through the case root otherwise repeats the same
+	// parent traversal thousands of times. No handle or bytes survive this read.
+	var payloads *os.Root
+	defer func() {
+		if payloads != nil {
+			payloads.Close()
+		}
+	}()
 	total := 0
-	err = fs.WalkDir(root.FS(), ".", func(name string, entry fs.DirEntry, walkErr error) error {
+	visit := func(name string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return errors.New("cannot read bundle directory")
 		}
 		if entry.IsDir() {
 			if name != "." && name != "payloads" {
 				return errors.New("unexpected bundle directory")
+			}
+			if name == "payloads" {
+				var err error
+				payloads, err = root.OpenRoot(name)
+				if err != nil {
+					return errors.New("cannot open payload directory")
+				}
+				return fs.SkipDir
 			}
 			return nil
 		}
@@ -489,7 +506,14 @@ func readFiles(path string) (map[string][]byte, error) {
 		if len(files) >= MaxEvents+5 {
 			return errors.New("bundle file limit exceeded")
 		}
-		f, err := root.Open(name)
+		parent, child := root, name
+		if strings.HasPrefix(name, "payloads/") {
+			if payloads == nil {
+				return errors.New("cannot open payload directory")
+			}
+			parent, child = payloads, strings.TrimPrefix(name, "payloads/")
+		}
+		f, err := parent.Open(child)
 		if err != nil {
 			return errors.New("cannot read bundle file")
 		}
@@ -509,7 +533,21 @@ func readFiles(path string) (map[string][]byte, error) {
 		}
 		files[name] = data
 		return nil
-	})
+	}
+	if err := fs.WalkDir(root.FS(), ".", visit); err != nil {
+		return nil, err
+	}
+	// Enumerate through the same handle used to open payloads. If the
+	// directory is renamed during this read, listing a replacement while
+	// opening the original would combine two different directory views.
+	if payloads != nil {
+		err = fs.WalkDir(payloads.FS(), ".", func(name string, entry fs.DirEntry, walkErr error) error {
+			if name == "." {
+				return walkErr
+			}
+			return visit("payloads/"+name, entry, walkErr)
+		})
+	}
 	if err != nil {
 		return nil, err
 	}

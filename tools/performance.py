@@ -61,10 +61,10 @@ def run(command, timeout=300, **kwargs):
         return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
 
 
-def cancellation(binary, corpus, report):
+def cancellation(command, corpus, report):
     # The first completed batch is a causal barrier; never signal before the
     # CLI has installed its handler or infer cancellation from a killed process.
-    process = subprocess.Popen([binary, 'corpus', 'scan', str(corpus), *PLAN,
+    process = subprocess.Popen([*command, 'corpus', 'scan', str(corpus), *PLAN,
                                 '--progress', '--report', str(report)],
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     try:
@@ -82,27 +82,48 @@ def cancellation(binary, corpus, report):
         if process.returncode == 0 or b'State: cancelled' not in stdout or report.exists():
             raise RuntimeError('interrupted scan did not preserve the cancelled/no-report contract')
         return elapsed
+    except subprocess.TimeoutExpired:
+        raise RuntimeError('cancellation acknowledgement deadline exceeded') from None
     finally:
         if process.poll() is None:
             process.kill()
         process.communicate()
 
 
+def oversized_import(command, corpus, root):
+    try:
+        imported = subprocess.run([*command, 'import', '--file', str(corpus), *PLAN,
+                                   '--output', str(root / 'case'), '--receipt', str(root / 'receipt.json')],
+                                  capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        raise RuntimeError('oversized import could not be measured') from None
+    if (imported.returncode == 0
+            or 'a declared import location exceeds its size limit' not in imported.stderr
+            or (root / 'case').exists() or (root / 'receipt.json').exists()):
+        raise RuntimeError('oversized case import did not reach its size refusal without artifacts')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
+    parser.add_argument('--operation-policy', type=Path, required=True, help='explicit activated local operation policy for synthetic generation and import')
     parser.add_argument('--large', action='store_true', help='also write and scan exactly 5 GiB of synthetic messages once')
     args = parser.parse_args()
     binary = args.binary.resolve(strict=True)
     if sys.platform not in ('darwin', 'linux'):
         parser.error('OS peak RSS measurement supports macOS/Linux only')
+    try:
+        policy = args.operation_policy.resolve(strict=True)
+    except OSError:
+        parser.error('operation policy must name an existing local file')
+    command = [str(binary), '--operation-policy', str(policy)]
     identity = digest(binary)
     with tempfile.TemporaryDirectory(prefix='readmit-performance-') as scratch:
         root = Path(scratch)
         results = []
         for messages in (10000, 1000000):
             corpus, manifest = root / f'{messages}.mllp', root / f'{messages}.json'
-            run([str(binary), 'corpus', 'generate', '--output', str(corpus), '--manifest', str(manifest),
+            run([*command, 'corpus', 'generate', '--output', str(corpus), '--manifest', str(manifest),
                  '--messages', str(messages), *INPUTS, *PLAN])
             declaration = json.loads(manifest.read_text())
             expected = digest(corpus)
@@ -113,7 +134,7 @@ def main():
                 report = root / f'{messages}-{repetition}.json'
                 started = time.monotonic_ns()
                 measured = run(['/usr/bin/time', '-l' if sys.platform == 'darwin' else '-v',
-                                str(binary), 'corpus', 'scan', str(corpus), *PLAN,
+                                *command, 'corpus', 'scan', str(corpus), *PLAN,
                                 '--window-offset', '9800', '--window-limit', '200', '--report', str(report)],
                                env=dict(os.environ, LC_ALL='C'))
                 elapsed.append((time.monotonic_ns() - started) / 1e6)
@@ -140,20 +161,16 @@ def main():
             large_sha = digest(large)
             report = root / 'five-gib.json'
             started = time.monotonic_ns()
-            measured = run(['/usr/bin/time', '-l' if sys.platform == 'darwin' else '-v', str(binary),
+            measured = run(['/usr/bin/time', '-l' if sys.platform == 'darwin' else '-v', *command,
                             'corpus', 'scan', str(large), *PLAN, '--report', str(report)],
                            env=dict(os.environ, LC_ALL='C'))
             wall = (time.monotonic_ns() - started) / 1e6
             observed = json.loads(report.read_text())
             if observed['corpus']['sha256'] != large_sha or observed['measured']['records'] != count or observed['measured']['undecodable'] != 0 or large.stat().st_size != size:
                 raise RuntimeError('5 GiB scan did not read the exact fixture')
-            imported = subprocess.run([str(binary), 'import', '--file', str(large), *PLAN,
-                                       '--output', str(root / 'case'), '--receipt', str(root / 'receipt.json')],
-                                      capture_output=True, text=True, timeout=60)
-            if imported.returncode == 0 or (root / 'case').exists() or (root / 'receipt.json').exists():
-                raise RuntimeError('oversized case import did not refuse without artifacts')
+            oversized_import(command, large, root)
             large_result = (large_sha, wall, rss_bytes(measured.stderr, sys.platform))
-        cancel = [cancellation(str(binary), corpus, root / f'cancel-{i}.json') for i in range(5)]
+        cancel = [cancellation(command, corpus, root / f'cancel-{i}.json') for i in range(5)]
         if digest(corpus) != expected:
             raise RuntimeError('read-only scans changed corpus bytes')
         if digest(binary) != identity:
