@@ -65,8 +65,8 @@ func evaluate(spec Spec, run *replay.Run, initial, final *observation.Snapshot) 
 		if err != nil {
 			return fail("ack_observation")
 		}
-		doc, err := hl7.Parse(raw, hl7.Options{Format: hl7.MLLP})
-		if err != nil || len(doc.Messages) != 1 {
+		doc, failure := ParseACK(raw)
+		if failure != 0 {
 			return fail("ack_observation")
 		}
 		acks[event.SourceOccurrence] = doc
@@ -111,20 +111,9 @@ func evaluate(spec Spec, run *replay.Run, initial, final *observation.Snapshot) 
 			records := final.Records
 			observed.Records = &records
 		case "ack_field_equals":
-			doc := acks[assertion.Message]
-			selector, _ := hl7.ParseSelector(assertion.Selector)
-			value, err := doc.Select(0, selector)
-			if err != nil {
+			field, failure := ACKField(acks[assertion.Message], assertion.Selector)
+			if failure != 0 {
 				return fail("ack_observation")
-			}
-			field := &FieldValue{State: value.State}
-			if value.State == hl7.Present {
-				decoded, err := hl7.Decode(doc.Bytes(value.Span), doc.Messages[0].Delimiters)
-				if err != nil || !utf8.Valid(decoded) {
-					return fail("ack_observation")
-				}
-				text := string(decoded)
-				field.Text = &text
 			}
 			observed.Field = field
 		}
