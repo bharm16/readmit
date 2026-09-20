@@ -241,6 +241,8 @@ artifacts are never reported as completed.
 | `SaveTest` | Writes the generated test spec into a new entry of the open workspace. |
 | `SuggestExpectations` | Proposes the expectations one reviewed run would support, and records none of them. |
 | `ApproveExpectations` | Records what a person decided about those proposals and reports the draft their approvals produced. |
+| `OpenCorrelationReview` | Rebuilds an explicitly selected human mapping over verified findings; refuses stale dependent mapping identities. |
+| `DecideCorrelation` | Saves an explicit accept, reject or added pair with a local analyst and reason in a new immutable review directory. |
 | `Cancel` | Stops the operation that is running now, when it can be interrupted. |
 
 Exactly one operation runs at a time. A second request reports `busy` rather
@@ -747,8 +749,8 @@ source that holds it. It is a view, not an engine. The case is verified by the
 same reader [`readmit timeline`](../README.md) runs, and where a rules document
 is named the links beside each event are
 [`readmit correlate`](correlate.md)'s own `readmit-correlation/v1` report over
-the same case and the same rules. Nothing is correlated here, and nothing can be
-correlated here that a declared rule did not produce.
+the same case and the same rules. The original sequence remains the machine finding. The separate review panel
+records explicit human decisions without changing it.
 
 Naming a rules document is optional and there is no default rule set, for the
 reason [there is none on the command line](correlate.md#there-is-no-default-rule-set):
@@ -831,9 +833,11 @@ reads the original message, and lists everything recorded about it:
 
 A link states whether it is `observed` — one occurrence's own bytes name what
 the other declares — or `inferred`, where a rule found equal keys and neither
-occurrence refers to the other. The two are never blurred together. This release
-has no analyst-added correlation and no way to override an ambiguous one, so
-every link here came from a declared rule; that is a separate delivery.
+occurrence refers to the other. The two are never blurred together. The **Review correlation links** panel
+beside this sequence accepts, rejects or adds links with a local analyst and
+reason. Its separate reviewed mapping labels additions `manual` and retains
+original collisions. See [explicit correlation review](correlate.md#explicit-human-correlation-review)
+for its immutable history, stale-result invalidation and privacy boundary.
 
 A very large link is drawn as a window over its membership, with how many
 occurrences it holds beside it, so a rule that put thousands of occurrences
@@ -1304,11 +1308,9 @@ checked to hold no network call and no browser storage at all.
   [`readmit diff`](diff.md) compares all of them and both boundaries.
 - Reading a value in a comparison. A row names the positions that differ and the
   decoded state of each side; the bytes are the inspector.
-- Correlating anything in the sequence panel. Every link it shows came from a
-  declared `readmit-correlation-rules/v1` document or from the case bundle's own
-  same-source acknowledgement matching; the window computes none of its own,
-  and accepting, rejecting or adding a link with a reason is a separate
-  delivery.
+- Applying human correlation review implicitly to original sequence findings,
+  CLI reports, transformations or execution. Human review is a separate,
+  explicitly selected mapping; its local actor is not authenticated identity.
 - Explaining a gap. The panel reports the gaps the evidence already records and
   says nothing about why they are there: telling a duplicate occurrence from a
   likely retransmission, a missing acknowledgement from an unobserved downstream

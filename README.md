@@ -835,6 +835,9 @@ with the links of a declared `readmit-correlation-rules/v1` document beside the
 case's own acknowledgement matching and observed linkage stated apart from
 inferred. No clock is assumed to agree with another and order is not causality;
 see [the sequence panel](docs/desktop.md#the-event-sequence-and-source-swimlanes).
+Its separate [human review](docs/correlate.md#explicit-human-correlation-review)
+accepts, rejects or adds an exact pair with a local analyst and reason, preserving
+the original finding and invalidating derived views when the mapping changes.
 It **reviews and transforms the whole case**: it previews what a declared
 `readmit-transform-plan/v1` document would do to the sequence a replay sends,
 through the same engine `readmit transform` runs and writing nothing at all, and

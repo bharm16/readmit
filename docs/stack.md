@@ -46,7 +46,7 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
   interprets; it is held in the window while it is edited and stored nowhere
   else. Original evidence is immutable, so this is a new artifact beside it and
   never an in-place rewrite. See [reproducers](reproducer.md).
-- The window's one write of a document into a workspace is a regression test.
+- The window writes regression test documents into a workspace.
   `internal/testauthor` answers a `readmit-test-draft/v1` draft one typed stage
   at a time over a verified case and generates the `readmit-test/v1` spec the
   command line runs, handing the bytes back only after `internal/testrunner`'s
@@ -543,3 +543,12 @@ authentication and profile pins imply no new evaluator support.
 Organization contacts, invoice references, assignment transfers and support scope
 use the local vendor [commercial administration](commercial-administration.md) API.
 [Commercial terms](commercial-terms.md) remain an owner/counsel review draft.
+
+## Human correlation review
+
+`internal/correlate` also owns the separate `readmit-correlation-review/v1`
+history. The desktop selects one immutable revision explicitly; original
+machine findings stay separate and unchanged. Derived human mappings bind the
+case, rules and decision history by identity and refuse stale dependent views.
+Actor/reason text is private by default and is a local declaration, never team
+authentication. See [correlation review](correlate.md#explicit-human-correlation-review).
