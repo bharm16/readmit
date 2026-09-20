@@ -20,8 +20,9 @@ import (
 func diagnoseReviewCommand(ran *bool) *cobra.Command {
 	var casePath, decisionsPath, output string
 	cmd := &cobra.Command{
-		Use:   "review DIAGNOSIS --case CASE --decisions FILE --output NEW_DIRECTORY",
-		Short: "Record analyst decisions about findings and promote confirmed ones to draft assertions",
+		Use:         "review DIAGNOSIS --case CASE --decisions FILE --output NEW_DIRECTORY",
+		Annotations: declare(capabilityAuthor),
+		Short:       "Record analyst decisions about findings and promote confirmed ones to draft assertions",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return errors.New("diagnose review requires exactly one diagnosis report directory")

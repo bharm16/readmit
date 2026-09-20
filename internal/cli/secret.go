@@ -15,9 +15,10 @@ import (
 
 func secretCommand(ran *bool) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "secret",
-		Short: "Reference credentials that stay in an OS or customer-managed secret store",
-		Args:  cobra.NoArgs,
+		Use:         "secret",
+		Annotations: declare(capabilityFree),
+		Short:       "Reference credentials that stay in an OS or customer-managed secret store",
+		Args:        cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			return errors.New("secret requires a subcommand: add, update, rotate, show, or scan")
 		},
@@ -30,9 +31,10 @@ func secretAdd(ran *bool) *cobra.Command {
 	var file, name, store, purpose, address, program, maxAge string
 	var arguments []string
 	command := &cobra.Command{
-		Use:   "add --secrets FILE --name NAME --store KIND --address HOST:PORT --command PROGRAM",
-		Short: "Register a reference to a credential held in a secret store",
-		Args:  cobra.NoArgs,
+		Use:         "add --secrets FILE --name NAME --store KIND --address HOST:PORT --command PROGRAM",
+		Annotations: declare(capabilityAuthor),
+		Short:       "Register a reference to a credential held in a secret store",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			*ran = true
 			document, err := openOrEmptyStore(file)
@@ -74,9 +76,10 @@ func secretUpdate(ran *bool) *cobra.Command {
 	var file, name, store, address, program, maxAge string
 	var arguments []string
 	command := &cobra.Command{
-		Use:   "update --secrets FILE --name NAME",
-		Short: "Change where a registered reference reads its credential from, or what it may be presented to",
-		Args:  cobra.NoArgs,
+		Use:         "update --secrets FILE --name NAME",
+		Annotations: declare(capabilityAuthor),
+		Short:       "Change where a registered reference reads its credential from, or what it may be presented to",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			*ran = true
 			var change secret.Change
@@ -130,9 +133,10 @@ func secretUpdate(ran *bool) *cobra.Command {
 func secretRotate(ran *bool) *cobra.Command {
 	var file, name string
 	command := &cobra.Command{
-		Use:   "rotate --secrets FILE --name NAME",
-		Short: "Record that the credential behind a reference was replaced in its store",
-		Args:  cobra.NoArgs,
+		Use:         "rotate --secrets FILE --name NAME",
+		Annotations: declare(capabilityAuthor),
+		Short:       "Record that the credential behind a reference was replaced in its store",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			*ran = true
 			document, err := readStore(file)
@@ -167,9 +171,10 @@ func secretRotate(ran *bool) *cobra.Command {
 func secretShow(ran *bool) *cobra.Command {
 	var file string
 	command := &cobra.Command{
-		Use:   "show --secrets FILE",
-		Short: "Show every registered reference, its scope and its rotation state, with the credential masked",
-		Args:  cobra.NoArgs,
+		Use:         "show --secrets FILE",
+		Annotations: declare(capabilityFree),
+		Short:       "Show every registered reference, its scope and its rotation state, with the credential masked",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			*ran = true
 			document, err := readStore(file)
@@ -192,8 +197,9 @@ func secretShow(ran *bool) *cobra.Command {
 func secretScan(ran *bool) *cobra.Command {
 	var file, name string
 	command := &cobra.Command{
-		Use:   "scan --secrets FILE PATH...",
-		Short: "Check configuration, manifests, reports, logs and local browser state for a known credential value",
+		Use:         "scan --secrets FILE PATH...",
+		Annotations: declare(capabilityFree),
+		Short:       "Check configuration, manifests, reports, logs and local browser state for a known credential value",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return errors.New("secret scan requires at least one file or directory to check")

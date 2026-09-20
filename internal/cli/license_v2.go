@@ -149,9 +149,10 @@ func authorities(named []entitlement.Authority) string {
 // admitted against the granted capacity, released, renewed and reconciled.
 func licenseRunner(ran *bool) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "runner",
-		Short: "Admit and release execution instances against a v2 entitlement's runner capacity",
-		Args:  cobra.NoArgs,
+		Use:         "runner",
+		Short:       "Admit and release execution instances against a v2 entitlement's runner capacity",
+		Args:        cobra.NoArgs,
+		Annotations: declare(capabilityFree),
 		RunE: func(_ *cobra.Command, _ []string) error {
 			return errors.New("license runner requires a subcommand: init, admit, renew, release, reconcile, or show")
 		},
@@ -163,9 +164,10 @@ func licenseRunner(ran *bool) *cobra.Command {
 func runnerInit(ran *bool) *cobra.Command {
 	var trustPath, authority, output string
 	command := &cobra.Command{
-		Use:   "init ENTITLEMENT --trust TRUST_STORE --authority ID --output NEW_FILE",
-		Short: "Start an empty admission record for one runner authority the entitlement names",
-		Args:  licenseOneArgument,
+		Use:         "init ENTITLEMENT --trust TRUST_STORE --authority ID --output NEW_FILE",
+		Annotations: declare(capabilityFree),
+		Short:       "Start an empty admission record for one runner authority the entitlement names",
+		Args:        licenseOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
 			if output == "" {
@@ -194,9 +196,10 @@ func runnerInit(ran *bool) *cobra.Command {
 func runnerAdmit(ran *bool) *cobra.Command {
 	var trustPath, instance, lease string
 	command := &cobra.Command{
-		Use:   "admit RECORD ENTITLEMENT --trust TRUST_STORE --instance ID --lease DURATION",
-		Short: "Admit one execution instance if the authority has a free instance",
-		Args:  runnerTwoArguments,
+		Use:         "admit RECORD ENTITLEMENT --trust TRUST_STORE --instance ID --lease DURATION",
+		Annotations: declare(capabilityFree),
+		Short:       "Admit one execution instance if the authority has a free instance",
+		Args:        runnerTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
 			until, err := leaseEnd(lease)
@@ -229,9 +232,10 @@ func runnerAdmit(ran *bool) *cobra.Command {
 func runnerRenew(ran *bool) *cobra.Command {
 	var trustPath, instance, lease string
 	command := &cobra.Command{
-		Use:   "renew RECORD ENTITLEMENT --trust TRUST_STORE --instance ID --lease DURATION",
-		Short: "Extend an admitted instance's lease inside the term; a stale instance reporting in becomes active again",
-		Args:  runnerTwoArguments,
+		Use:         "renew RECORD ENTITLEMENT --trust TRUST_STORE --instance ID --lease DURATION",
+		Annotations: declare(capabilityFree),
+		Short:       "Extend an admitted instance's lease inside the term; a stale instance reporting in becomes active again",
+		Args:        runnerTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
 			until, err := leaseEnd(lease)
@@ -256,9 +260,10 @@ func runnerRenew(ran *bool) *cobra.Command {
 func runnerRelease(ran *bool) *cobra.Command {
 	var instance string
 	command := &cobra.Command{
-		Use:   "release RECORD --instance ID",
-		Short: "Record that an instance finished or was cancelled and hand its capacity back",
-		Args:  licenseOneArgument,
+		Use:         "release RECORD --instance ID",
+		Annotations: declare(capabilityFree),
+		Short:       "Record that an instance finished or was cancelled and hand its capacity back",
+		Args:        licenseOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
 			return settleInstance(cmd, args[0], instance, "Instance released: ", func(record *entitlement.Admissions) error {
@@ -273,9 +278,10 @@ func runnerRelease(ran *bool) *cobra.Command {
 func runnerReconcile(ran *bool) *cobra.Command {
 	var instance string
 	command := &cobra.Command{
-		Use:   "reconcile RECORD --instance ID",
-		Short: "Record that an operator established an instance is no longer running and settle its admission",
-		Args:  licenseOneArgument,
+		Use:         "reconcile RECORD --instance ID",
+		Annotations: declare(capabilityFree),
+		Short:       "Record that an operator established an instance is no longer running and settle its admission",
+		Args:        licenseOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
 			return settleInstance(cmd, args[0], instance, "Instance reconciled: ", func(record *entitlement.Admissions) error {
@@ -290,9 +296,10 @@ func runnerReconcile(ran *bool) *cobra.Command {
 func runnerShow(ran *bool) *cobra.Command {
 	var trustPath string
 	command := &cobra.Command{
-		Use:   "show RECORD ENTITLEMENT --trust TRUST_STORE",
-		Short: "Report what the authority holds against the capacity the entitlement grants it",
-		Args:  runnerTwoArguments,
+		Use:         "show RECORD ENTITLEMENT --trust TRUST_STORE",
+		Annotations: declare(capabilityFree),
+		Short:       "Report what the authority holds against the capacity the entitlement grants it",
+		Args:        runnerTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
 			grant, err := readGrantV2(args[1], trustPath)

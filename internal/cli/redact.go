@@ -10,7 +10,7 @@ import (
 
 func redactCommand(ran *bool) *cobra.Command {
 	var request redact.Request
-	cmd := &cobra.Command{Use: "redact CASE", Short: "Derive testing evidence and a fail-closed export review", Args: func(_ *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "redact CASE", Short: "Derive testing evidence and a fail-closed export review", Annotations: declare(capabilityAuthor), Args: func(_ *cobra.Command, args []string) error {
 		if len(args) != 1 {
 			return errors.New("redact requires one case")
 		}
@@ -41,7 +41,7 @@ func redactCommand(ran *bool) *cobra.Command {
 	cmd.Flags().StringVar(&request.LocalState, "local-state", "", "New private directory outside all derived and shared output")
 	cmd.Flags().StringVar(&request.Output, "output", "", "New review directory outside immutable sources")
 	var export redact.ExportRequest
-	child := &cobra.Command{Use: "export REVIEW", Short: "Approve an exact review and generate a proven fixture packet", Args: func(_ *cobra.Command, args []string) error {
+	child := &cobra.Command{Use: "export REVIEW", Short: "Approve an exact review and generate a proven fixture packet", Annotations: declare(capabilityFree), Args: func(_ *cobra.Command, args []string) error {
 		if len(args) != 1 {
 			return errors.New("redact export requires one review")
 		}

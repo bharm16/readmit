@@ -10,7 +10,7 @@ import (
 func correlateCommand(ran *bool) *cobra.Command {
 	var rulesPath, format, output string
 	cmd := &cobra.Command{
-		Use: "correlate CASE", Short: "Link case occurrences under declared source, session and authority rules",
+		Use: "correlate CASE", Short: "Link case occurrences under declared source, session and authority rules", Annotations: declare(capabilityFree),
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return errors.New("correlate requires exactly one case directory")

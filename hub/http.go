@@ -14,62 +14,34 @@ import (
 // Handler exposes opaque immutable objects, not case interpretation or user roles.
 // Every request, including health probes, requires a verified client certificate.
 func (s *Store) Handler() http.Handler {
-	slots := make(chan struct{}, 4)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		select {
-		case slots <- struct{}{}:
-			defer func() { <-slots }()
-		default:
-			http.Error(w, "busy", http.StatusServiceUnavailable)
+	return s.admitRequest(http.HandlerFunc(s.operatorRequest), 30*time.Second)
+}
+
+func (s *Store) operatorRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	if !strings.HasPrefix(r.URL.Path, "/v1/artifacts/") {
+		http.NotFound(w, r)
+		return
+	}
+	d := strings.TrimPrefix(r.URL.Path, "/v1/artifacts/")
+	if !validDigest(d) || r.URL.RawQuery != "" {
+		http.Error(w, "invalid artifact address", http.StatusBadRequest)
+		return
+	}
+	var team bool
+	if err := s.db.QueryRowContext(ctx, "SELECT team_enabled FROM readmit_hub_schema WHERE singleton").Scan(&team); err != nil || team {
+		http.Error(w, "team authorization required", 403)
+		return
+	}
+	if r.Method == "PUT" {
+		release, err := s.admitOperator(r)
+		if err != nil {
+			http.Error(w, "authenticated author required", 403)
 			return
 		}
-		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 {
-			http.Error(w, "client identity required", http.StatusUnauthorized)
-			return
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-		defer cancel()
-		if r.URL.Path == "/health/live" && r.Method == "GET" {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		if r.URL.Path == "/health/ready" && r.Method == "GET" {
-			s.mu.Lock()
-			err := s.Ready(ctx)
-			s.mu.Unlock()
-			if err != nil {
-				http.Error(w, "not ready", http.StatusServiceUnavailable)
-				return
-			}
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		if !strings.HasPrefix(r.URL.Path, "/v1/artifacts/") {
-			http.NotFound(w, r)
-			return
-		}
-		d := strings.TrimPrefix(r.URL.Path, "/v1/artifacts/")
-		if !validDigest(d) || r.URL.RawQuery != "" {
-			http.Error(w, "invalid artifact address", http.StatusBadRequest)
-			return
-		}
-		var team bool
-		if err := s.db.QueryRowContext(ctx, "SELECT team_enabled FROM readmit_hub_schema WHERE singleton").Scan(&team); err != nil || team {
-			http.Error(w, "team authorization required", 403)
-			return
-		}
-		if r.Method == "PUT" {
-			release, err := s.admitOperator(r)
-			if err != nil {
-				http.Error(w, "authenticated author required", 403)
-				return
-			}
-			defer release()
-		}
-		s.artifactRequest(w, r, ctx, d, "")
-	})
+		defer release()
+	}
+	s.artifactRequest(w, r, ctx, d, "")
 }
 
 // Serve never starts an HTTP listener without mutual TLS. Shutdown cancels new

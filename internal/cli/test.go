@@ -20,7 +20,7 @@ func testCommand(ran *bool) *cobra.Command {
 	var output string
 	var send bool
 	command := &cobra.Command{
-		Use: "test SPEC", Short: "Evaluate a declarative regression test against an explicit test target",
+		Use: "test SPEC", Short: "Evaluate a declarative regression test against an explicit test target", Annotations: declare(capabilityExecuteIfSend),
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return errors.New("test requires exactly one spec file")

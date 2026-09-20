@@ -15,7 +15,7 @@ func reexecuteCommand(ran *bool) *cobra.Command {
 	var request redact.ReexecutionRequest
 	var output string
 	var send bool
-	cmd := &cobra.Command{Use: "reexecute REVIEW", Short: "Reexecute reviewed transformed evidence against an explicitly selected authorized target", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "reexecute REVIEW", Short: "Reexecute reviewed transformed evidence against an explicitly selected authorized target", Annotations: declare(capabilityExecute), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		*ran = true
 		if send != (output != "") {
 			return errors.New("reexecute requires --send and --output together; omit both for local preview")

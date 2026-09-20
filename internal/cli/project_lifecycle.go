@@ -14,7 +14,7 @@ import (
 )
 
 func projectMigrationPreview(ran *bool) *cobra.Command {
-	return &cobra.Command{Use: "migration-preview PROJECT", Short: "Preview supported project and index schemas without changing files", Args: projectOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
+	return &cobra.Command{Use: "migration-preview PROJECT", Short: "Preview supported project and index schemas without changing files", Annotations: declare(capabilityFree), Args: projectOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
 		*ran = true
 		plan, err := lifecycle.Preview(cmd.Context(), args[0])
 		if err != nil {
@@ -36,7 +36,7 @@ func projectMigrationPreview(ran *bool) *cobra.Command {
 func projectQuota(ran *bool) *cobra.Command {
 	var maxBytes int64
 	var maxFiles int
-	command := &cobra.Command{Use: "quota PROJECT [--max-bytes N --max-files N]", Short: "Check retained-file quota, or set explicit positive limits", Args: projectOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
+	command := &cobra.Command{Use: "quota PROJECT [--max-bytes N --max-files N]", Short: "Check retained-file quota, or set explicit positive limits", Annotations: declare(capabilityAuthorIfQuotaChange), Args: projectOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
 		*ran = true
 		if cmd.Flags().Changed("max-bytes") || cmd.Flags().Changed("max-files") {
 			if !cmd.Flags().Changed("max-bytes") || !cmd.Flags().Changed("max-files") {
@@ -71,7 +71,7 @@ func projectQuota(ran *bool) *cobra.Command {
 }
 func projectRecover(ran *bool) *cobra.Command {
 	var name, digest string
-	command := &cobra.Command{Use: "recover PROJECT --document NAME --digest SHA256", Short: "Restore a selected recovery copy and retain the current document", Args: projectOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
+	command := &cobra.Command{Use: "recover PROJECT --document NAME --digest SHA256", Short: "Restore a selected recovery copy and retain the current document", Annotations: declare(capabilityFree), Args: projectOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
 		*ran = true
 		if err := project.Recover(args[0], name, digest); err != nil {
 			return err
@@ -92,7 +92,7 @@ func projectArchive(ran *bool, deleteSource bool) *cobra.Command {
 		name = "delete"
 		description = "Create a verified recovery archive, then unlink the whole source project"
 	}
-	command := &cobra.Command{Use: name + " PROJECT --output NEW_ARCHIVE", Short: description, Args: projectOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
+	command := &cobra.Command{Use: name + " PROJECT --output NEW_ARCHIVE", Short: description, Annotations: declare(capabilityFree), Args: projectOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
 		*ran = true
 		if output == "" {
 			return errors.New("archive and delete require --output with a new recovery directory")

@@ -17,7 +17,7 @@ func synthCommand(ran *bool) *cobra.Command {
 	var seed uint64
 	var baseTime, generatorVersion, profileVersion, output string
 	cmd := &cobra.Command{
-		Use: "synth", Short: "Generate reproducible regression, cancellation, and known-invalid SIU case bundles",
+		Use: "synth", Short: "Generate reproducible regression, cancellation, and known-invalid SIU case bundles", Annotations: declare(capabilityAuthor),
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 0 {
 				return errors.New("synth takes no positional arguments")

@@ -12,7 +12,7 @@ func normalizeCommand(ran *bool) *cobra.Command {
 	var options diff.Options
 	var policy, format, inputFormat, terminator, boundary string
 	cmd := &cobra.Command{
-		Use: "normalize LEFT RIGHT --policy FILE", Short: "Compare fields under a declared normalization policy and list every difference it suppresses",
+		Use: "normalize LEFT RIGHT --policy FILE", Short: "Compare fields under a declared normalization policy and list every difference it suppresses", Annotations: declare(capabilityFree),
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 2 {
 				return errors.New("normalize requires exactly two inputs")

@@ -15,9 +15,10 @@ import (
 
 func upgradeCommand(ran *bool) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "upgrade",
-		Short: "Check a staged upgrade against this machine and take the archive it rolls back to",
-		Args:  cobra.NoArgs,
+		Use:         "upgrade",
+		Annotations: declare(capabilityFree),
+		Short:       "Check a staged upgrade against this machine and take the archive it rolls back to",
+		Args:        cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			return errors.New("upgrade requires a subcommand: check or prepare")
 		},
@@ -34,9 +35,10 @@ func upgradeCheck(ran *bool) *cobra.Command {
 	var candidate string
 	var projects, runs []string
 	command := &cobra.Command{
-		Use:   "check --candidate STAGED_DIRECTORY [--project PROJECT] [--run RUN]",
-		Short: "Read a staged candidate and report what this build makes of the evidence here",
-		Args:  cobra.NoArgs,
+		Use:         "check --candidate STAGED_DIRECTORY [--project PROJECT] [--run RUN]",
+		Annotations: declare(capabilityFree),
+		Short:       "Read a staged candidate and report what this build makes of the evidence here",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			*ran = true
 			if candidate == "" {
@@ -79,9 +81,10 @@ func upgradePrepare(ran *bool) *cobra.Command {
 	var candidate, output string
 	var approve bool
 	command := &cobra.Command{
-		Use:   "prepare PROJECT --candidate STAGED_DIRECTORY --output NEW_ARCHIVE --approve",
-		Short: "Take the verified recovery archive this upgrade would be rolled back to",
-		Args:  upgradeOneArgument,
+		Use:         "prepare PROJECT --candidate STAGED_DIRECTORY --output NEW_ARCHIVE --approve",
+		Annotations: declare(capabilityFree),
+		Short:       "Take the verified recovery archive this upgrade would be rolled back to",
+		Args:        upgradeOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
 			if candidate == "" || output == "" {

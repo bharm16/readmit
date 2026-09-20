@@ -99,9 +99,10 @@ func importCommand(ran *bool) *cobra.Command {
 	var preview bool
 	var declared declaration
 	cmd := &cobra.Command{
-		Use:   "import --file FILE --framing raw --terminator cr --encoding utf-8 --direction inbound --output NEW_DIRECTORY --receipt NEW_FILE",
-		Short: "Import declared files, folders, and archives into a new case bundle",
-		Args:  cobra.NoArgs,
+		Use:         "import --file FILE --framing raw --terminator cr --encoding utf-8 --direction inbound --output NEW_DIRECTORY --receipt NEW_FILE",
+		Annotations: declare(capabilityAuthor),
+		Short:       "Import declared files, folders, and archives into a new case bundle",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
 			if preview && (output != "" || receipt != "") {

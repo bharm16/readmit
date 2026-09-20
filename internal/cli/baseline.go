@@ -16,10 +16,12 @@ func baselineCommand(ran *bool) *cobra.Command {
 		var previous, identity, approver, rationale, output string
 		var show bool
 		name := "review"
+		capability := capabilityFree
 		if approve {
 			name = "approve"
+			capability = capabilityAuthor
 		}
-		cmd := &cobra.Command{Use: name + " SPEC", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		cmd := &cobra.Command{Use: name + " SPEC", Annotations: declare(capability), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
 			request := operation.BaselineRequest{Spec: args[0], Previous: previous, Output: output, ShowValues: show, Review: identity, Approver: approver, Rationale: rationale}
 			if !approve {
@@ -58,7 +60,7 @@ func baselineCommand(ran *bool) *cobra.Command {
 	}
 
 	var show bool
-	inspect := &cobra.Command{Use: "show REVISION", Short: "Inspect a retained baseline and its local approval", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	inspect := &cobra.Command{Use: "show REVISION", Short: "Inspect a retained baseline and its local approval", Annotations: declare(capabilityFree), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		*ran = true
 		revision, err := baseline.Read(args[0])
 		if err != nil {

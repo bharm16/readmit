@@ -22,7 +22,7 @@ import (
 func sampleCommand(ran *bool) *cobra.Command {
 	root := &cobra.Command{Use: "sample", Short: "Prepare only the frozen synthetic walkthrough without activation"}
 	var output, fixtures string
-	generate := &cobra.Command{Use: "synth", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	generate := &cobra.Command{Use: "synth", Args: cobra.NoArgs, Annotations: declare(capabilityFree), RunE: func(cmd *cobra.Command, _ []string) error {
 		*ran = true
 		manifest, err := synth.Write(output, bundle.GeneratorInputs{Seed: 0, BaseTime: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC), GeneratorVersion: "readmit-synth-v1", ProfileVersion: "readmit-siu-v1"})
 		if err != nil {
@@ -39,7 +39,7 @@ func sampleCommand(ran *bool) *cobra.Command {
 		return nil
 	}}
 	generate.Flags().StringVar(&output, "output", "", "New frozen family directory")
-	capture := &cobra.Command{Use: "capture", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	capture := &cobra.Command{Use: "capture", Args: cobra.NoArgs, Annotations: declare(capabilityFree), RunE: func(cmd *cobra.Command, _ []string) error {
 		*ran = true
 		inputs := []bundle.Input{}
 		for _, fixture := range []struct{ name, hash string }{{"listen-s12.hl7", "cfb563097687c8b1a5a273a68243648f9d25f42ee8a10516ab6df850fca3e521"}, {"listen-s13.hl7", "291757d6252dc5544e29f8958bdf98abac643ae61804852f617f5708f0f408bb"}} {
@@ -62,7 +62,7 @@ func sampleCommand(ran *bool) *cobra.Command {
 	}}
 	capture.Flags().StringVar(&fixtures, "fixtures", "", "Directory containing the two frozen synthetic receiver fixtures")
 	capture.Flags().StringVar(&output, "output", "", "New sample capture directory")
-	build := &cobra.Command{Use: "index CASE", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	build := &cobra.Command{Use: "index CASE", Args: cobra.ExactArgs(1), Annotations: declare(capabilityFree), RunE: func(cmd *cobra.Command, args []string) error {
 		*ran = true
 		b, err := bundle.Open(args[0])
 		if err != nil {

@@ -13,7 +13,7 @@ import (
 func diagnoseCommand(ran *bool) *cobra.Command {
 	var output, configPath string
 	cmd := &cobra.Command{
-		Use: "diagnose BUNDLE --output NEW_DIRECTORY", Short: "Write evidence-bound appointment or lifecycle diagnosis as JSON and Markdown",
+		Use: "diagnose BUNDLE --output NEW_DIRECTORY", Short: "Write evidence-bound appointment or lifecycle diagnosis as JSON and Markdown", Annotations: declare(capabilityFree),
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return errors.New("diagnose requires exactly one bundle directory")

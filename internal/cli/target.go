@@ -24,9 +24,10 @@ import (
 
 func targetCommand(ran *bool) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "target",
-		Short: "Configure, validate and diagnose one named test environment",
-		Args:  cobra.NoArgs,
+		Use:         "target",
+		Annotations: declare(capabilityFree),
+		Short:       "Configure, validate and diagnose one named test environment",
+		Args:        cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			return errors.New("target requires a subcommand: set, show, check, or reset")
 		},
@@ -42,9 +43,10 @@ func targetSet(ran *bool) *cobra.Command {
 	var maxACKBytes int
 	var approved bool
 	command := &cobra.Command{
-		Use:   "set --target FILE --name NAME --classification CLASS --address HOST:PORT",
-		Short: "Record or edit the endpoint, timeouts, TLS material and classification of one environment",
-		Args:  cobra.NoArgs,
+		Use:         "set --target FILE --name NAME --classification CLASS --address HOST:PORT",
+		Annotations: declare(capabilityAuthor),
+		Short:       "Record or edit the endpoint, timeouts, TLS material and classification of one environment",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			*ran = true
 			config, err := openOrNewTarget(file)
@@ -112,9 +114,10 @@ func targetSet(ran *bool) *cobra.Command {
 func targetShow(ran *bool) *cobra.Command {
 	var file string
 	command := &cobra.Command{
-		Use:   "show --target FILE",
-		Short: "Validate one environment configuration and show its endpoint, timeouts, TLS material and classification",
-		Args:  cobra.NoArgs,
+		Use:         "show --target FILE",
+		Annotations: declare(capabilityFree),
+		Short:       "Validate one environment configuration and show its endpoint, timeouts, TLS material and classification",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			*ran = true
 			config, err := readTargetFile(file)
@@ -135,9 +138,10 @@ func targetShow(ran *bool) *cobra.Command {
 func targetCheck(ran *bool) *cobra.Command {
 	var file, policyPath, decisionPath string
 	command := &cobra.Command{
-		Use:   "check --target FILE [--policy FILE]",
-		Short: "Reach one configured environment and report the transport, TLS status and send decision, sending no HL7 payload",
-		Args:  cobra.NoArgs,
+		Use:         "check --target FILE [--policy FILE]",
+		Annotations: declare(capabilityExecute),
+		Short:       "Reach one configured environment and report the transport, TLS status and send decision, sending no HL7 payload",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			*ran = true
 			config, err := readTargetFile(file)
@@ -197,9 +201,10 @@ func targetReset(ran *bool) *cobra.Command {
 	var file, planPath, outcomePath, policyPath string
 	var confirmed []string
 	command := &cobra.Command{
-		Use:   "reset --target FILE --plan FILE --outcome NEW_FILE [--policy FILE] [--confirm ID]",
-		Short: "Return one named nonproduction environment to its declared starting state through reviewed reset actions",
-		Args:  cobra.NoArgs,
+		Use:         "reset --target FILE --plan FILE --outcome NEW_FILE [--policy FILE] [--confirm ID]",
+		Annotations: declare(capabilityExecute),
+		Short:       "Return one named nonproduction environment to its declared starting state through reviewed reset actions",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			*ran = true
 			config, err := readTargetFile(file)

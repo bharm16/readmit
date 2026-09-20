@@ -28,9 +28,10 @@ const (
 
 func projectCommand(ran *bool) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "project",
-		Short: "Create and manage an interface investigation project",
-		Args:  cobra.NoArgs,
+		Use:         "project",
+		Annotations: declare(capabilityFree),
+		Short:       "Create and manage an interface investigation project",
+		Args:        cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			return errors.New("project requires a subcommand: init, settings, add, update, revise, note, show, migration-preview, quota, recover, archive, or delete")
 		},
@@ -43,9 +44,10 @@ func projectInit(ran *bool) *cobra.Command {
 	var output, title, owner string
 	var versions []string
 	command := &cobra.Command{
-		Use:   "init --output NEW_DIRECTORY --title TITLE --interface-version ID",
-		Short: "Create a new project directory and its first document",
-		Args:  cobra.NoArgs,
+		Use:         "init --output NEW_DIRECTORY --title TITLE --interface-version ID",
+		Annotations: declare(capabilityAuthor),
+		Short:       "Create a new project directory and its first document",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			*ran = true
 			if output == "" {
@@ -77,9 +79,10 @@ func projectSettings(ran *bool) *cobra.Command {
 	var title, owner, defaultVersion string
 	var versions []string
 	command := &cobra.Command{
-		Use:   "settings PROJECT",
-		Short: "Change project-level settings and declare interface versions",
-		Args:  projectOneArgument,
+		Use:         "settings PROJECT",
+		Annotations: declare(capabilityAuthor),
+		Short:       "Change project-level settings and declare interface versions",
+		Args:        projectOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
 			opened, err := project.Open(args[0])
@@ -118,9 +121,10 @@ func projectAdd(ran *bool) *cobra.Command {
 	var title, owner, status, version string
 	var tags, incidents []string
 	command := &cobra.Command{
-		Use:   "add PROJECT CASE --title TITLE",
-		Short: "Register a verified case bundle of the project directory",
-		Args:  projectTwoArguments,
+		Use:         "add PROJECT CASE --title TITLE",
+		Annotations: declare(capabilityAuthor),
+		Short:       "Register a verified case bundle of the project directory",
+		Args:        projectTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
 			opened, err := project.Open(args[0])
@@ -169,9 +173,10 @@ func projectUpdate(ran *bool) *cobra.Command {
 	var title, owner, status, version string
 	var tags, incidents []string
 	command := &cobra.Command{
-		Use:   "update PROJECT CASE",
-		Short: "Change the title, tags, ownership, status, or linked incidents of a registered case",
-		Args:  projectTwoArguments,
+		Use:         "update PROJECT CASE",
+		Annotations: declare(capabilityAuthor),
+		Short:       "Change the title, tags, ownership, status, or linked incidents of a registered case",
+		Args:        projectTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
 			var change project.Change
@@ -231,9 +236,10 @@ func projectUpdate(ran *bool) *cobra.Command {
 func projectRevise(ran *bool) *cobra.Command {
 	var parent string
 	command := &cobra.Command{
-		Use:   "revise PROJECT REVISION --parent NAME",
-		Short: "Register derived evidence as a revision of a registered case or revision",
-		Args:  projectTwoArguments,
+		Use:         "revise PROJECT REVISION --parent NAME",
+		Annotations: declare(capabilityAuthor),
+		Short:       "Register derived evidence as a revision of a registered case or revision",
+		Args:        projectTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
 			if parent == "" {
@@ -287,9 +293,10 @@ func projectRevise(ran *bool) *cobra.Command {
 func projectNote(ran *bool) *cobra.Command {
 	var title, body, subject string
 	command := &cobra.Command{
-		Use:   "note PROJECT NAME --title TITLE",
-		Short: "Create or replace an editable note or draft beside the evidence",
-		Args:  projectTwoArguments,
+		Use:         "note PROJECT NAME --title TITLE",
+		Annotations: declare(capabilityAuthor),
+		Short:       "Create or replace an editable note or draft beside the evidence",
+		Args:        projectTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
 			result, err := operation.SetProjectNote(args[0], project.Note{
@@ -312,9 +319,10 @@ func projectNote(ran *bool) *cobra.Command {
 
 func projectShow(ran *bool) *cobra.Command {
 	return &cobra.Command{
-		Use:   "show PROJECT",
-		Short: "Show project settings and every registered case with its verified identity",
-		Args:  projectOneArgument,
+		Use:         "show PROJECT",
+		Annotations: declare(capabilityFree),
+		Short:       "Show project settings and every registered case with its verified identity",
+		Args:        projectOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
 			opened, err := project.Open(args[0])

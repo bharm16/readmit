@@ -15,7 +15,7 @@ import (
 func shareCommand(ran *bool) *cobra.Command {
 	var r sharing.Request
 	var approve, output string
-	cmd := &cobra.Command{Use: "share SOURCE --kind KIND --policy POLICY", Short: "Review value-free support diagnostics; never upload evidence", Args: func(_ *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "share SOURCE --kind KIND --policy POLICY", Short: "Review value-free support diagnostics; never upload evidence", Annotations: declare(capabilityFree), Args: func(_ *cobra.Command, args []string) error {
 		if len(args) != 1 {
 			return errors.New("share requires one source")
 		}
@@ -61,7 +61,7 @@ func shareCommand(ran *bool) *cobra.Command {
 	cmd.Flags().StringVar(&approve, "approve", "", "Exact preview identity; local approval is not authenticated team approval")
 	cmd.Flags().StringVar(&output, "output", "", "New private support directory; omit to preview")
 	cmd.AddCommand(&cobra.Command{
-		Use: "verify SUPPORT", Short: "Verify a local reviewed support bundle without opening its source",
+		Use: "verify SUPPORT", Short: "Verify a local reviewed support bundle without opening its source", Annotations: declare(capabilityFree),
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return errors.New("share verify requires one bundle")

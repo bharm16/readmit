@@ -25,9 +25,10 @@ const indefinite = "indefinite"
 
 func indexCommand(ran *bool) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "index",
-		Short: "Build and query a derived, disposable index of one case",
-		Args:  cobra.NoArgs,
+		Use:         "index",
+		Annotations: declare(capabilityFree),
+		Short:       "Build and query a derived, disposable index of one case",
+		Args:        cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			return errors.New("index requires a subcommand: build, show, or search")
 		},
@@ -40,9 +41,10 @@ func indexBuild(ran *bool) *cobra.Command {
 	var output, retain, until string
 	var fields []string
 	command := &cobra.Command{
-		Use:   "build CASE --output NEW_FILE --field SELECTOR --retain FORM --retain-until WHEN",
-		Short: "Build an index of declared fields from canonical case evidence",
-		Args:  indexOneArgument,
+		Use:         "build CASE --output NEW_FILE --field SELECTOR --retain FORM --retain-until WHEN",
+		Annotations: declare(capabilityAuthor),
+		Short:       "Build an index of declared fields from canonical case evidence",
+		Args:        indexOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
 			if output == "" {
@@ -78,9 +80,10 @@ func indexBuild(ran *bool) *cobra.Command {
 
 func indexShow(ran *bool) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "show CASE INDEX",
-		Short: "Report what an index retains, of which case, and until when",
-		Args:  indexTwoArguments,
+		Use:         "show CASE INDEX",
+		Annotations: declare(capabilityFree),
+		Short:       "Report what an index retains, of which case, and until when",
+		Args:        indexTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
 			document, err := openIndex(args[0], args[1])
@@ -97,9 +100,10 @@ func indexSearch(ran *bool) *cobra.Command {
 	var field, equals, contains, state string
 	var showValues bool
 	command := &cobra.Command{
-		Use:   "search CASE INDEX --equals VALUE",
-		Short: "Find the occurrences of a case whose indexed fields match",
-		Args:  indexTwoArguments,
+		Use:         "search CASE INDEX --equals VALUE",
+		Annotations: declare(capabilityFree),
+		Short:       "Find the occurrences of a case whose indexed fields match",
+		Args:        indexTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
 			query, err := declaredQuery(cmd, field, equals, contains, state)

@@ -30,8 +30,9 @@ func explainCommand(ran *bool) *cobra.Command {
 	var assertions, before, beforeSource, after, afterSource string
 	var showValues bool
 	command := &cobra.Command{
-		Use:   "explain RUN --assertions SET",
-		Short: "Explain what a run's evidence decided, assertion by assertion",
+		Use:         "explain RUN --assertions SET",
+		Annotations: declare(capabilityFree),
+		Short:       "Explain what a run's evidence decided, assertion by assertion",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return errors.New("explain requires exactly one run bundle")

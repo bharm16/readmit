@@ -53,9 +53,10 @@ func (r *reporter) line(format string, values ...any) {
 
 func corpusCommand(ran *bool) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "corpus",
-		Short: "Generate and stream the declared performance corpus",
-		Args:  cobra.NoArgs,
+		Use:         "corpus",
+		Annotations: declare(capabilityFree),
+		Short:       "Generate and stream the declared performance corpus",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			*ran = true
 			return errors.New("corpus requires a subcommand: generate or scan")
@@ -72,9 +73,10 @@ func corpusGenerateCommand(ran *bool) *cobra.Command {
 	var progress bool
 	var declared declaration
 	cmd := &cobra.Command{
-		Use:   "generate --output NEW_FILE --manifest NEW_FILE --seed N --base-time INSTANT --generator-version readmit-corpus-v1 --profile-version readmit-siu-v1 --messages N --framing mllp --terminator cr --encoding us-ascii --direction inbound",
-		Short: "Write a reproducible performance corpus and the manifest that names its inputs",
-		Args:  cobra.NoArgs,
+		Use:         "generate --output NEW_FILE --manifest NEW_FILE --seed N --base-time INSTANT --generator-version readmit-corpus-v1 --profile-version readmit-siu-v1 --messages N --framing mllp --terminator cr --encoding us-ascii --direction inbound",
+		Annotations: declare(capabilityAuthor),
+		Short:       "Write a reproducible performance corpus and the manifest that names its inputs",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			*ran = true
 			for _, flag := range []string{"seed", "base-time", "generator-version", "profile-version", "messages", "output", "manifest"} {
@@ -125,8 +127,9 @@ func corpusScanCommand(ran *bool) *cobra.Command {
 	var progress bool
 	var declared declaration
 	cmd := &cobra.Command{
-		Use:   "scan FILE --framing mllp --terminator cr --encoding us-ascii --direction inbound",
-		Short: "Stream one declared file in bounded parsing batches and report what it holds",
+		Use:         "scan FILE --framing mllp --terminator cr --encoding us-ascii --direction inbound",
+		Annotations: declare(capabilityFree),
+		Short:       "Stream one declared file in bounded parsing batches and report what it holds",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return errors.New("corpus scan reads exactly one declared file")

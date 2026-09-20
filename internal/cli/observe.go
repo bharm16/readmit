@@ -21,7 +21,7 @@ import (
 func observeCommand(ran *bool) *cobra.Command {
 	command := &cobra.Command{Use: "observe", Short: "Read declared observation windows and retained completions"}
 	var windowJSON bool
-	validate := &cobra.Command{Use: "validate WINDOW", Short: "Validate a declared observation window without observing anything", Args: func(_ *cobra.Command, args []string) error {
+	validate := &cobra.Command{Use: "validate WINDOW", Short: "Validate a declared observation window without observing anything", Annotations: declare(capabilityFree), Args: func(_ *cobra.Command, args []string) error {
 		if len(args) != 1 {
 			return errors.New("observe validate requires one observation window document")
 		}
@@ -44,7 +44,7 @@ func observeCommand(ran *bool) *cobra.Command {
 	validate.Flags().BoolVar(&windowJSON, "json", false, "Write the canonical readmit-observation-window/v1 document")
 	var completionJSON bool
 	var declared string
-	explain := &cobra.Command{Use: "explain COMPLETION", Short: "Report whether a retained window completed and what it can support", Args: func(_ *cobra.Command, args []string) error {
+	explain := &cobra.Command{Use: "explain COMPLETION", Short: "Report whether a retained window completed and what it can support", Annotations: declare(capabilityFree), Args: func(_ *cobra.Command, args []string) error {
 		if len(args) != 1 {
 			return errors.New("observe explain requires one observation completion record")
 		}
@@ -84,8 +84,9 @@ func observeCollectCommand(ran *bool) *cobra.Command {
 	var produced []string
 	var completionJSON bool
 	command := &cobra.Command{
-		Use:   "collect SOURCE",
-		Short: "Observe a declared file export, HTTP API, downstream capture or database view for one observation window",
+		Use:         "collect SOURCE",
+		Annotations: declare(capabilityExecute),
+		Short:       "Observe a declared file export, HTTP API, downstream capture or database view for one observation window",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return errors.New("observe collect requires one observation source document")

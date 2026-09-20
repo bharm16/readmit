@@ -23,7 +23,7 @@ func runCommand(ran *bool) *cobra.Command {
 	command := &cobra.Command{Use: "run", Short: "Execute or recover a durable local test run"}
 	var output, deadline string
 	var send, asJSON bool
-	start := &cobra.Command{Use: "start SPEC", Short: "Execute once into a new durable run directory", Args: func(_ *cobra.Command, args []string) error {
+	start := &cobra.Command{Use: "start SPEC", Short: "Execute once into a new durable run directory", Annotations: declare(capabilityExecute), Args: func(_ *cobra.Command, args []string) error {
 		if len(args) != 1 {
 			return errors.New("run start requires one spec")
 		}
@@ -49,7 +49,7 @@ func runCommand(ran *bool) *cobra.Command {
 	start.Flags().StringVar(&deadline, "deadline", "", "Stop new sends after this duration; an in-flight delivery is reported uncertain")
 	start.Flags().BoolVar(&asJSON, "json", false, "Write one versioned machine-readable summary")
 	var statusJSON, recovery, pinned bool
-	status := &cobra.Command{Use: "status JOB", Short: "Recover retained evidence read-only; never resend", Args: func(_ *cobra.Command, args []string) error {
+	status := &cobra.Command{Use: "status JOB", Short: "Recover retained evidence read-only; never resend", Annotations: declare(capabilityFree), Args: func(_ *cobra.Command, args []string) error {
 		if len(args) != 1 {
 			return errors.New("run status requires one job directory")
 		}
@@ -78,7 +78,7 @@ func runCommand(ran *bool) *cobra.Command {
 	status.MarkFlagsMutuallyExclusive("engine", "recovery")
 	var resumeOutput, resumeDeadline string
 	var resumeSend, resumeJSON bool
-	resume := &cobra.Command{Use: "resume JOB SPEC", Short: "Repeat never-attempted work into a new run directory; refuses after any send", Args: func(_ *cobra.Command, args []string) error {
+	resume := &cobra.Command{Use: "resume JOB SPEC", Short: "Repeat never-attempted work into a new run directory; refuses after any send", Annotations: declare(capabilityExecute), Args: func(_ *cobra.Command, args []string) error {
 		if len(args) != 2 {
 			return errors.New("run resume requires one job directory and one spec")
 		}
@@ -104,7 +104,7 @@ func runCommand(ran *bool) *cobra.Command {
 	resume.Flags().StringVar(&resumeDeadline, "deadline", "", "Stop new sends after this duration; an in-flight delivery is reported uncertain")
 	resume.Flags().BoolVar(&resumeJSON, "json", false, "Write one versioned machine-readable summary")
 	var cleanJSON bool
-	clean := &cobra.Command{Use: "clean JOB", Short: "Remove a stale lease after a recorded completion; evidence is never removed", Args: func(_ *cobra.Command, args []string) error {
+	clean := &cobra.Command{Use: "clean JOB", Short: "Remove a stale lease after a recorded completion; evidence is never removed", Annotations: declare(capabilityFree), Args: func(_ *cobra.Command, args []string) error {
 		if len(args) != 1 {
 			return errors.New("run clean requires one job directory")
 		}
@@ -120,7 +120,7 @@ func runCommand(ran *bool) *cobra.Command {
 	clean.Flags().BoolVar(&cleanJSON, "json", false, "Write one versioned machine-readable summary")
 	var queueRuns, queueDeadline string
 	var queueSend, queueJSON bool
-	queue := &cobra.Command{Use: "queue PLAN", Short: "Execute a queue of durable runs with bounded parallelism, serializing every job that shares target state", Args: func(_ *cobra.Command, args []string) error {
+	queue := &cobra.Command{Use: "queue PLAN", Short: "Execute a queue of durable runs with bounded parallelism, serializing every job that shares target state", Annotations: declare(capabilityExecute), Args: func(_ *cobra.Command, args []string) error {
 		if len(args) != 1 {
 			return errors.New("run queue requires one queue document")
 		}

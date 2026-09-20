@@ -77,27 +77,7 @@ func decodeReviewCommand(data []byte) (ReviewCommand, error) {
 	return c, nil
 }
 func (s *Store) reviewEvents(ctx context.Context, project string) ([]ReviewEvent, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT document FROM readmit_hub_reviews WHERE project=$1 ORDER BY sequence`, project)
-	if e != nil {
-		return nil, e
-	}
-	defer rows.Close()
-	events := []ReviewEvent{}
-	for rows.Next() {
-		var data string
-		if e = rows.Scan(&data); e != nil {
-			return nil, e
-		}
-		var event ReviewEvent
-		if json.Unmarshal([]byte(data), &event, json.RejectUnknownMembers(true)) != nil {
-			return nil, ErrIntegrity
-		}
-		events = append(events, event)
-		if len(events) > maxReviews {
-			return nil, ErrLimit
-		}
-	}
-	return events, rows.Err()
+	return reviewLog.read(ctx, s.db, project)
 }
 func (s *Store) linked(ctx context.Context, project, digest string) bool {
 	var exists bool
@@ -306,24 +286,23 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 		}{reviewHistorySchema(v2), len(events), filtered})
 		return
 	}
-	for _, event := range events {
-		if event.Command.ID == c.ID {
-			if event.Command == c && event.Actor == principal.Subject && event.Issuer == principal.Issuer {
-				supportRecorded = true
-				sendReview(w, 200, event)
-			} else {
-				http.Error(w, "review id conflict", 409)
-			}
-			return
-		}
-	}
-	var total int
-	if e := s.db.QueryRowContext(r.Context(), `SELECT count(*) FROM readmit_hub_reviews`).Scan(&total); e != nil {
+	total, e := reviewLog.total(r.Context(), s.db)
+	if e != nil {
 		http.Error(w, "metadata unavailable", 503)
 		return
 	}
-	if c.Expected != len(events) || total >= maxReviews {
+	existing, replay, e := reviewLog.admit(events, total, c, principal.Subject, principal.Issuer)
+	if errors.Is(e, errLogIDConflict) {
+		http.Error(w, "review id conflict", 409)
+		return
+	}
+	if errors.Is(e, errLogHead) {
 		http.Error(w, "review head conflict or limit", 409)
+		return
+	}
+	if replay {
+		supportRecorded = true
+		sendReview(w, 200, existing)
 		return
 	}
 	policy, e := a.policy()
@@ -375,24 +354,7 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 		eventSchema = "readmit-hub-review-event/v2"
 	}
 	event := ReviewEvent{eventSchema, project, len(events) + 1, principal.Issuer, principal.Subject, time.Now().UTC().Format(time.RFC3339Nano), c}
-	data, e := json.Marshal(event)
-	if e != nil {
-		http.Error(w, "review unavailable", 503)
-		return
-	}
-	tx, e := s.db.BeginTx(r.Context(), nil)
-	if e != nil {
-		http.Error(w, "metadata unavailable", 503)
-		return
-	}
-	defer tx.Rollback()
-	if _, e = tx.ExecContext(r.Context(), `INSERT INTO readmit_hub_reviews(project,sequence,id,document) VALUES($1,$2,$3,$4)`, project, event.Sequence, c.ID, string(data)); e == nil {
-		_, e = tx.ExecContext(r.Context(), `UPDATE readmit_hub_schema SET team_enabled=true WHERE singleton`)
-	}
-	if e == nil {
-		e = tx.Commit()
-	}
-	if e != nil {
+	if e := reviewLog.commit(r.Context(), s.db, project, event); e != nil {
 		http.Error(w, "review commit unavailable; retry same id", 503)
 		return
 	}

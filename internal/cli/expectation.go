@@ -17,10 +17,12 @@ func expectationCommand(ran *bool) *cobra.Command {
 		var profiles []string
 		var show bool
 		name := "review"
+		capability := capabilityFree
 		if approve {
 			name = "release"
+			capability = capabilityAuthor
 		}
-		command := &cobra.Command{Use: name + " SPEC", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		command := &cobra.Command{Use: name + " SPEC", Annotations: declare(capability), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
 			request := operation.ExpectationRequest{ID: id, Spec: args[0], Previous: previous, Output: output, Profiles: profiles, ShowValues: show, Review: review, Approver: approver, Rationale: rationale}
 			if !approve {
@@ -54,7 +56,7 @@ func expectationCommand(ran *bool) *cobra.Command {
 		root.AddCommand(command)
 	}
 	var show bool
-	inspect := &cobra.Command{Use: "show RELEASE", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	inspect := &cobra.Command{Use: "show RELEASE", Annotations: declare(capabilityFree), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		*ran = true
 		r, e := expectation.Read(args[0])
 		if e != nil {
@@ -79,7 +81,7 @@ func expectationCommand(ran *bool) *cobra.Command {
 	root.AddCommand(inspect)
 	var refs string
 	var impactValues bool
-	impact := &cobra.Command{Use: "impact PREVIOUS RELEASE SUITE", Args: cobra.ExactArgs(3), RunE: func(cmd *cobra.Command, args []string) error {
+	impact := &cobra.Command{Use: "impact PREVIOUS RELEASE SUITE", Annotations: declare(capabilityFree), Args: cobra.ExactArgs(3), RunE: func(cmd *cobra.Command, args []string) error {
 		*ran = true
 		if refs == "" {
 			return errors.New("impact requires --releases reference file")

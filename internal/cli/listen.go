@@ -20,9 +20,10 @@ func listenCommand(ran *bool) *cobra.Command {
 	var approvedBind bool
 	var config receiver.Config
 	command := &cobra.Command{
-		Use:   "listen --output NEW_DIRECTORY --observation NEW_FILE",
-		Short: "Run a controlled SIU test fixture and export its appointment ledger",
-		Args:  cobra.NoArgs,
+		Use:         "listen --output NEW_DIRECTORY --observation NEW_FILE",
+		Annotations: declare(capabilityExecute),
+		Short:       "Run a controlled SIU test fixture and export its appointment ledger",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
 			config.Mode = observation.Mode(mode)

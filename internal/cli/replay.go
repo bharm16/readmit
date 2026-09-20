@@ -20,8 +20,9 @@ func replayCommand(ran *bool) *cobra.Command {
 	var messages, transforms []string
 	var send bool
 	command := &cobra.Command{
-		Use:   "replay CASE --target CONFIG [--policy FILE --decision NEW_FILE] [--send --output NEW_RUN]",
-		Short: "Preview or explicitly send selected case messages and retain local run evidence",
+		Use:         "replay CASE --target CONFIG [--policy FILE --decision NEW_FILE] [--send --output NEW_RUN]",
+		Annotations: declare(capabilityExecuteIfSend),
+		Short:       "Preview or explicitly send selected case messages and retain local run evidence",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return errors.New("replay requires exactly one case bundle and an explicitly configured target")

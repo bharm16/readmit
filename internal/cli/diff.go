@@ -14,7 +14,7 @@ func diffCommand(ran *bool) *cobra.Command {
 	var options diff.Options
 	var output, format, inputFormat, terminator, boundary string
 	cmd := &cobra.Command{
-		Use: "diff LEFT RIGHT", Short: "Compare named HL7 fields in local messages, cases, runs, or results",
+		Use: "diff LEFT RIGHT", Short: "Compare named HL7 fields in local messages, cases, runs, or results", Annotations: declare(capabilityFree),
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 2 {
 				return errors.New("diff requires exactly two inputs")

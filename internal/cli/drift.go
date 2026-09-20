@@ -10,7 +10,7 @@ import (
 func driftCommand(ran *bool) *cobra.Command {
 	var format string
 	cmd := &cobra.Command{
-		Use: "drift LEFT RIGHT", Short: "Separate input, target, environment, and rule drift between two artifacts",
+		Use: "drift LEFT RIGHT", Short: "Separate input, target, environment, and rule drift between two artifacts", Annotations: declare(capabilityFree),
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 2 {
 				return errors.New("drift requires exactly two artifact directories")

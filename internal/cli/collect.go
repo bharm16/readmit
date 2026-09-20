@@ -46,9 +46,10 @@ func collectCommand(ran *bool) *cobra.Command {
 	var transport listenerTLS
 	var config receiver.CollectorConfig
 	command := &cobra.Command{
-		Use:   "collect --policy FILE --output NEW_DIRECTORY",
-		Short: "Collect downstream HL7 over MLLP under a declared acknowledgement policy",
-		Args:  cobra.NoArgs,
+		Use:         "collect --policy FILE --output NEW_DIRECTORY",
+		Annotations: declare(capabilityExecute),
+		Short:       "Collect downstream HL7 over MLLP under a declared acknowledgement policy",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
 			if err := sendpolicy.BindAddress(address, approvedBind); err != nil {
@@ -138,8 +139,9 @@ func collectCommand(ran *bool) *cobra.Command {
 func collectStatusCommand(ran *bool) *cobra.Command {
 	var asJSON bool
 	status := &cobra.Command{
-		Use:   "status JOURNAL",
-		Short: "Recover an interrupted capture read-only; never resend or resume",
+		Use:         "status JOURNAL",
+		Annotations: declare(capabilityFree),
+		Short:       "Recover an interrupted capture read-only; never resend or resume",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return errors.New("collect status requires one capture journal directory")

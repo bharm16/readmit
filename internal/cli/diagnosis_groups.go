@@ -14,8 +14,9 @@ import (
 func diagnosisGroupsCommand(ran *bool) *cobra.Command {
 	var output, configPath string
 	cmd := &cobra.Command{
-		Use:   "groups CASE [CASE...] --output NEW_DIRECTORY",
-		Short: "Compare recurring diagnosis signatures without hiding individual findings",
+		Use:         "groups CASE [CASE...] --output NEW_DIRECTORY",
+		Annotations: declare(capabilityFree),
+		Short:       "Compare recurring diagnosis signatures without hiding individual findings",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) < 1 || len(args) > diagnose.MaxGroupCases {
 				return errors.New("diagnosis grouping requires 1 to 16 cases")

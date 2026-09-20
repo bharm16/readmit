@@ -14,7 +14,7 @@ import (
 func reportCommand(ran *bool) *cobra.Command {
 	var scenario, output string
 	command := &cobra.Command{
-		Use: "report --scenario siu-reschedule-v1 --output NEW_PACKET", Short: "Generate a sealed synthetic packet using fresh built-in loopback fixtures",
+		Use: "report --scenario siu-reschedule-v1 --output NEW_PACKET", Short: "Generate a sealed synthetic packet using fresh built-in loopback fixtures", Annotations: declare(capabilityFree),
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			*ran = true
@@ -32,7 +32,7 @@ func reportCommand(ran *bool) *cobra.Command {
 	}
 	command.Flags().StringVar(&scenario, "scenario", "", "Committed synthetic scenario; only siu-reschedule-v1 is supported")
 	command.Flags().StringVar(&output, "output", "", "New sealed packet directory; never overwrite")
-	verify := &cobra.Command{Use: "verify PACKET", Short: "Verify a complete synthetic packet offline", Args: reportOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
+	verify := &cobra.Command{Use: "verify PACKET", Short: "Verify a complete synthetic packet offline", Annotations: declare(capabilityFree), Args: reportOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
 		*ran = true
 		packet, err := report.Open(args[0])
 		if err != nil {
@@ -44,7 +44,7 @@ func reportCommand(ran *bool) *cobra.Command {
 		return nil
 	}}
 	var workspace, address string
-	prepare := &cobra.Command{Use: "prepare PACKET --output NEW_WORKSPACE", Short: "Prepare runnable copies outside a verified sealed packet", Args: reportOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
+	prepare := &cobra.Command{Use: "prepare PACKET --output NEW_WORKSPACE", Short: "Prepare runnable copies outside a verified sealed packet", Annotations: declare(capabilityFree), Args: reportOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
 		*ran = true
 		prepared, err := report.Prepare(args[0], workspace, address)
 		if err != nil {
@@ -71,7 +71,7 @@ func reportOneArgument(_ *cobra.Command, args []string) error {
 func retainedAssembleCommand(ran *bool) *cobra.Command {
 	var input report.RetainedInput
 	var output string
-	cmd := &cobra.Command{Use: "assemble --case CASE --spec SPEC --current RESULT --output NEW_PACKET", Short: "Assemble customer-local evidence from actual retained runs without sending", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "assemble --case CASE --spec SPEC --current RESULT --output NEW_PACKET", Short: "Assemble customer-local evidence from actual retained runs without sending", Annotations: declare(capabilityFree), Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		*ran = true
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
@@ -94,7 +94,7 @@ func retainedAssembleCommand(ran *bool) *cobra.Command {
 	return cmd
 }
 func retainedVerifyCommand(ran *bool) *cobra.Command {
-	return &cobra.Command{Use: "verify-retained PACKET", Short: "Verify actual retained evidence offline without transmitting", Args: reportOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
+	return &cobra.Command{Use: "verify-retained PACKET", Short: "Verify actual retained evidence offline without transmitting", Annotations: declare(capabilityFree), Args: reportOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
 		*ran = true
 		packet, err := report.OpenRetained(cmd.Context(), args[0])
 		if err != nil {
@@ -109,7 +109,7 @@ func retainedVerifyCommand(ran *bool) *cobra.Command {
 
 func portableExportCommand(ran *bool) *cobra.Command {
 	var output string
-	cmd := &cobra.Command{Use: "export PACKET --output NEW_REVIEW", Short: "Export retained evidence and inert offline reports into a sealed private review", Args: reportOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "export PACKET --output NEW_REVIEW", Short: "Export retained evidence and inert offline reports into a sealed private review", Annotations: declare(capabilityFree), Args: reportOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
 		*ran = true
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
@@ -128,7 +128,7 @@ func portableExportCommand(ran *bool) *cobra.Command {
 }
 func portableReviewCommand(ran *bool) *cobra.Command {
 	var format string
-	cmd := &cobra.Command{Use: "review REVIEW", Short: "Verify a portable review offline in read-only mode", Args: reportOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "review REVIEW", Short: "Verify a portable review offline in read-only mode", Annotations: declare(capabilityFree), Args: reportOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
 		*ran = true
 		review, err := report.OpenReview(cmd.Context(), args[0])
 		if err != nil {

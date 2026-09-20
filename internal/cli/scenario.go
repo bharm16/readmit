@@ -16,7 +16,7 @@ import (
 func scenarioCommand(ran *bool) *cobra.Command {
 	command := &cobra.Command{Use: "scenario", Short: "Design an interface workflow as a sequence of lifecycle events"}
 	preview := &cobra.Command{
-		Use: "preview SCENARIO", Short: "Show a designed workflow step by step, with the outcome its profile gives each step",
+		Use: "preview SCENARIO", Short: "Show a designed workflow step by step, with the outcome its profile gives each step", Annotations: declare(capabilityFree),
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return errors.New("scenario preview requires exactly one scenario document")
@@ -38,7 +38,7 @@ func scenarioCommand(ran *bool) *cobra.Command {
 	}
 	var output string
 	generate := &cobra.Command{
-		Use: "generate PLAN --output NEW_DIRECTORY", Short: "Generate deterministic synthetic workflow streams with complete inputs",
+		Use: "generate PLAN --output NEW_DIRECTORY", Short: "Generate deterministic synthetic workflow streams with complete inputs", Annotations: declare(capabilityAuthor),
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return errors.New("scenario generate requires one generator plan")
@@ -62,7 +62,7 @@ func scenarioCommand(ran *bool) *cobra.Command {
 		},
 	}
 	generate.Flags().StringVar(&output, "output", "", "New directory for streams and their generator record")
-	library := &cobra.Command{Use: "check-library LIBRARY EXPECTATIONS", Short: "Check a pinned scenario against independent fixture expectations", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+	library := &cobra.Command{Use: "check-library LIBRARY EXPECTATIONS", Short: "Check a pinned scenario against independent fixture expectations", Annotations: declare(capabilityFree), Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
 		*ran = true
 		l, err := readInputFile(args[0], scenariolibrary.MaxBytes)
 		if err != nil {

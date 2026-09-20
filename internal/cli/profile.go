@@ -15,7 +15,7 @@ func profileCommand(ran *bool) *cobra.Command {
 	command := &cobra.Command{Use: "profile", Short: "Import and export reviewed reusable interface metadata"}
 	var pack, version, origin, output string
 	var reviewed bool
-	export := &cobra.Command{Use: "export PROFILE --pack PACK --version SEAL --origin ORIGIN --output PACKAGE --reviewed", Short: "Copy an existing sealed local profile and its pinned metadata into a package", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	export := &cobra.Command{Use: "export PROFILE --pack PACK --version SEAL --origin ORIGIN --output PACKAGE --reviewed", Short: "Copy an existing sealed local profile and its pinned metadata into a package", Annotations: declare(capabilityFree), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		*ran = true
 		if pack == "" || version == "" || origin == "" || output == "" || !reviewed {
 			return errors.New("profile export requires --pack, --version, --origin, --output and --reviewed")
@@ -55,7 +55,7 @@ func profileCommand(ran *bool) *cobra.Command {
 	export.Flags().StringVar(&output, "output", "", "New package file")
 	export.Flags().BoolVar(&reviewed, "reviewed", false, "Confirm metadata and notices were reviewed for disclosure; no patient data or secrets")
 	var destination string
-	importCommand := &cobra.Command{Use: "import PACKAGE --output NEW_DIRECTORY", Short: "Verify and copy package documents without activating or upgrading a profile", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	importCommand := &cobra.Command{Use: "import PACKAGE --output NEW_DIRECTORY", Short: "Verify and copy package documents without activating or upgrading a profile", Annotations: declare(capabilityFree), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		*ran = true
 		if destination == "" {
 			return errors.New("profile import requires --output")

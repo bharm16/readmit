@@ -13,7 +13,7 @@ import (
 func engineImportCommand(ran *bool) *cobra.Command {
 	var planFile, input, output string
 	var preview bool
-	cmd := &cobra.Command{Use: "engine --plan FILE --file FILE --output NEW_DIRECTORY", Short: "Import an explicitly declared engine export (unqualified compatibility)", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "engine --plan FILE --file FILE --output NEW_DIRECTORY", Short: "Import an explicitly declared engine export (unqualified compatibility)", Annotations: declare(capabilityAuthor), Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		*ran = true
 		if planFile == "" || input == "" || preview && output != "" || !preview && output == "" {
 			return errors.New("engine import requires --plan, --file, and either --preview or --output")

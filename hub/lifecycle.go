@@ -3,9 +3,9 @@ package hub
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"io"
 	"net/http"
-	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -89,30 +89,7 @@ func decodeLifecycle(data []byte) (LifecycleCommand, error) {
 	return c, nil
 }
 func (s *Store) lifecycleEvents(ctx context.Context, project string) ([]LifecycleEvent, error) {
-	if s.db == nil {
-		return nil, errAccess
-	}
-	rows, e := s.db.QueryContext(ctx, `SELECT document FROM readmit_hub_lifecycle WHERE project=$1 ORDER BY sequence`, project)
-	if e != nil {
-		return nil, e
-	}
-	defer rows.Close()
-	events := []LifecycleEvent{}
-	for rows.Next() {
-		var data string
-		var event LifecycleEvent
-		if e = rows.Scan(&data); e != nil {
-			return nil, e
-		}
-		if json.Unmarshal([]byte(data), &event, json.RejectUnknownMembers(true)) != nil {
-			return nil, ErrIntegrity
-		}
-		events = append(events, event)
-		if len(events) > maxLifecycle {
-			return nil, ErrLimit
-		}
-	}
-	return events, rows.Err()
+	return lifecycleLog.read(ctx, s.db, project)
 }
 func revisionTips(events []LifecycleEvent) map[string][]string {
 	tips := map[string][]string{}
@@ -250,23 +227,22 @@ func (s *Store) lifecycleRequest(w http.ResponseWriter, r *http.Request, a *Acce
 			return
 		}
 	}
-	for _, event := range events {
-		if event.Command.ID == c.ID {
-			if reflect.DeepEqual(event.Command, c) && event.Actor == p.Subject && event.Issuer == p.Issuer {
-				s.sendLifecycle(w, r, 200, event, events)
-			} else {
-				http.Error(w, "command id conflict", 409)
-			}
-			return
-		}
-	}
-	var total int
-	if e = s.db.QueryRowContext(r.Context(), `SELECT count(*) FROM readmit_hub_lifecycle`).Scan(&total); e != nil {
+	total, e := lifecycleLog.total(r.Context(), s.db)
+	if e != nil {
 		http.Error(w, "metadata unavailable", 503)
 		return
 	}
-	if c.Expected != len(events) || total >= maxLifecycle {
+	existing, replay, e := lifecycleLog.admit(events, total, c, p.Subject, p.Issuer)
+	if errors.Is(e, errLogIDConflict) {
+		http.Error(w, "command id conflict", 409)
+		return
+	}
+	if errors.Is(e, errLogHead) {
 		http.Error(w, "head conflict or limit", 409)
+		return
+	}
+	if replay {
+		s.sendLifecycle(w, r, 200, existing, events)
 		return
 	}
 	if c.Kind == "remove-user" {
@@ -295,24 +271,7 @@ func (s *Store) lifecycleRequest(w http.ResponseWriter, r *http.Request, a *Acce
 		}
 		event.ReviewHead = len(reviews)
 	}
-	data, e := json.Marshal(event)
-	if e != nil {
-		http.Error(w, "metadata unavailable", 503)
-		return
-	}
-	tx, e := s.db.BeginTx(r.Context(), nil)
-	if e != nil {
-		http.Error(w, "metadata unavailable", 503)
-		return
-	}
-	defer tx.Rollback()
-	if _, e = tx.ExecContext(r.Context(), `INSERT INTO readmit_hub_lifecycle(project,sequence,id,document) VALUES($1,$2,$3,$4)`, project, event.Sequence, c.ID, string(data)); e == nil {
-		_, e = tx.ExecContext(r.Context(), `UPDATE readmit_hub_schema SET team_enabled=true WHERE singleton`)
-	}
-	if e == nil {
-		e = tx.Commit()
-	}
-	if e != nil {
+	if e := lifecycleLog.commit(r.Context(), s.db, project, event); e != nil {
 		http.Error(w, "commit unavailable; retry same id", 503)
 		return
 	}

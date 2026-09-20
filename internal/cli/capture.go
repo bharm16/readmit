@@ -32,7 +32,7 @@ func captureCommand(ran *bool) *cobra.Command {
 	var output, format, terminator, metadata string
 	var showValues bool
 	cmd := &cobra.Command{
-		Use: "capture FILE... --output NEW_DIRECTORY", Short: "Import exact file evidence into a new case bundle",
+		Use: "capture FILE... --output NEW_DIRECTORY", Short: "Import exact file evidence into a new case bundle", Annotations: declare(capabilityAuthor),
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) == 0 || len(args) > bundle.MaxSources {
 				return errors.New("capture requires between 1 and 128 input files")
@@ -88,7 +88,7 @@ func captureCommand(ran *bool) *cobra.Command {
 func timelineCommand(ran *bool) *cobra.Command {
 	var showValues bool
 	cmd := &cobra.Command{
-		Use: "timeline BUNDLE", Short: "Verify and show case events, independent times, and correlation gaps",
+		Use: "timeline BUNDLE", Short: "Verify and show case events, independent times, and correlation gaps", Annotations: declare(capabilityFree),
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return errors.New("timeline requires exactly one bundle directory")

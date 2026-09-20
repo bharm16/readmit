@@ -14,15 +14,37 @@ import (
 // Execute owns command-line wiring and diagnostic privacy. Domain parsing does
 // not depend on Cobra, and Cobra's errors never echo arbitrary arguments.
 func Execute(version string, args []string, stdout, stderr io.Writer) error {
+	root, ran := rootCommand(version)
+	root.SetOut(stdout)
+	root.SetErr(stderr)
+	root.SetArgs(args)
+	selected, err := root.ExecuteC()
+	if err != nil {
+		if !*ran {
+			err = errors.New("invalid command or arguments; use readmit --help")
+			if selected != nil && selected.Name() == "test" {
+				err = &ExitError{Code: 2, Err: err}
+			}
+		}
+		var status *ExitError
+		if !errors.As(err, &status) || !status.Reported {
+			fmt.Fprintln(stderr, "readmit:", err)
+			if selected != nil && selected.Name() == "test" {
+				fmt.Fprintln(stdout, testRerun)
+			}
+		}
+	}
+	return err
+}
+
+func rootCommand(version string) (*cobra.Command, *bool) {
 	root := &cobra.Command{
 		Use: "readmit", Short: "Local HL7 v2 inspection and case evidence", Version: version,
 		SilenceUsage: true, SilenceErrors: true,
 	}
-	root.SetOut(stdout)
-	root.SetErr(stderr)
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.SetHelpCommand(&cobra.Command{
-		Use: "help [command]", Short: "Help about a command",
+		Use: "help [command]", Short: "Help about a command", Annotations: declare(capabilityFree),
 		RunE: func(_ *cobra.Command, args []string) error {
 			target, remaining, err := root.Find(args)
 			if err != nil || len(remaining) > 0 {
@@ -35,7 +57,7 @@ func Execute(version string, args []string, stdout, stderr io.Writer) error {
 	var showValues bool
 	var ran bool
 	inspect := &cobra.Command{
-		Use: "inspect FILE", Short: "Inspect syntax without changing the source",
+		Use: "inspect FILE", Short: "Inspect syntax without changing the source", Annotations: declare(capabilityFree),
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return errors.New("inspect requires exactly one input file")
@@ -95,24 +117,7 @@ func Execute(version string, args []string, stdout, stderr io.Writer) error {
 	var operationPolicy string
 	root.PersistentFlags().StringVar(&operationPolicy, "operation-policy", "", "Explicit local operation admission policy for new authoring and execution")
 	wireOperations(root, &operationPolicy, &ran)
-	root.SetArgs(args)
-	selected, err := root.ExecuteC()
-	if err != nil {
-		if !ran {
-			err = errors.New("invalid command or arguments; use readmit --help")
-			if selected != nil && selected.Name() == "test" {
-				err = &ExitError{Code: 2, Err: err}
-			}
-		}
-		var status *ExitError
-		if !errors.As(err, &status) || !status.Reported {
-			fmt.Fprintln(stderr, "readmit:", err)
-			if selected != nil && selected.Name() == "test" {
-				fmt.Fprintln(stdout, testRerun)
-			}
-		}
-	}
-	return err
+	return root, &ran
 }
 
 func inspectFile(out io.Writer, path string, options hl7.Options, showValues bool, roundtrip string) error {

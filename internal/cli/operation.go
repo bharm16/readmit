@@ -9,8 +9,6 @@ import (
 	"github.com/bharm16/readmit/internal/suite"
 	"io"
 
-	"strings"
-
 	"github.com/bharm16/readmit/internal/customerrunner"
 	"github.com/bharm16/readmit/internal/operationguard"
 	"github.com/bharm16/readmit/internal/runqueue"
@@ -77,53 +75,50 @@ func wireOperations(root *cobra.Command, policy *string, ran *bool) {
 	visit(root)
 }
 
+// Operation capabilities are declared where each command is built, and the
+// admission wrapper reads the declaration instead of classifying command
+// paths. A runnable command that declares nothing is refused closed: it cannot
+// silently acquire the read-only exemption by missing a declaration.
+const capabilityAnnotation = "readmit.dev/operation-capability"
+
+const (
+	capabilityFree                = "free"
+	capabilityAuthor              = "author"
+	capabilityExecute             = "execute"
+	capabilityExecuteIfSend       = "execute-if-send"
+	capabilityAuthorIfQuotaChange = "author-if-quota-change"
+)
+
+func declare(capability string) map[string]string {
+	return map[string]string{capabilityAnnotation: capability}
+}
+
 func operationCapability(cmd *cobra.Command) string {
-	path := strings.TrimPrefix(cmd.CommandPath(), "readmit ")
-	if path == "license" || strings.HasPrefix(path, "license ") {
+	switch declared := cmd.Annotations[capabilityAnnotation]; declared {
+	case capabilityFree:
 		return ""
-	}
-	switch path {
-	case "runner execute", "runner serve":
-		// The long-lived runner checks each job through the installed guard.
-		return ""
-	case "test", "replay":
-		send, _ := cmd.Flags().GetBool("send")
-		if send {
-			return "execute"
+	case capabilityAuthor, capabilityExecute:
+		return declared
+	case capabilityExecuteIfSend:
+		if send, _ := cmd.Flags().GetBool("send"); send {
+			return capabilityExecute
 		}
 		return ""
-	case "run start", "run resume", "run queue", "suite run", "suite ci", "target reset", "redact reexecute", "collect", "listen", "observe collect", "source collect", "source diagnose", "target check":
-		return "execute"
-	case "project quota":
+	case capabilityAuthorIfQuotaChange:
 		if cmd.Flags().Changed("max-bytes") || cmd.Flags().Changed("max-files") {
-			return "author"
+			return capabilityAuthor
 		}
-		return ""
-	case "capture", "import", "import engine", "index build", "corpus generate", "project init", "project add", "project update", "project revise", "project note", "project settings", "scenario generate", "synth", "redact", "diagnose review", "baseline approve", "expectation release", "suite prepare", "suite approve-promotion", "target set", "secret add", "secret update", "secret rotate", "protect register", "protect rotate", "protect retire":
-		return "author"
-	}
-	switch path {
-	case "help", "inspect", "timeline", "index", "index show", "index search", "corpus", "corpus scan",
-		"project", "project show", "project migration-preview", "project recover", "project archive", "project retire", "project delete",
-		"backup", "backup create", "backup verify", "backup restore", "upgrade", "upgrade check", "upgrade prepare",
-		"secret", "secret show", "secret scan", "protect", "protect show", "protect pack", "protect open", "protect inspect", "protect discard",
-		"target", "target show", "source", "collect status", "observe", "observe validate", "observe explain",
-		"diagnose", "diagnose groups", "correlate", "transform", "explain", "diff", "drift", "normalize", "redact export",
-		"scenario preview", "scenario check-library", "baseline review", "baseline show", "expectation review", "expectation show", "expectation impact",
-		"suite coverage", "suite review-promotion", "suite gate", "suite verify-gate", "suite gate-policy", "run status", "run clean",
-		"runner enroll", "runner status", "runner verify-update", "report", "report verify", "report prepare", "report assemble", "report verify-retained", "report export", "report review",
-		"share", "share verify", "sample synth", "sample capture", "sample index", "profile import", "profile export":
 		return ""
 	}
 	// A newly registered operation must be classified explicitly; it cannot
-	// silently acquire the read-only exemption by missing this inventory.
+	// silently acquire the read-only exemption by missing a declaration.
 	return "unsupported-operation"
 }
 
 func licenseOperation(ran *bool) *cobra.Command {
 	root := &cobra.Command{Use: "operation", Short: "Activate and inspect local operation admission"}
 	for _, action := range []string{"activate", "status", "resolve", "release"} {
-		command := &cobra.Command{Use: action, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		command := &cobra.Command{Use: action, Args: cobra.NoArgs, Annotations: declare(capabilityFree), RunE: func(cmd *cobra.Command, _ []string) error {
 			*ran = true
 			path, _ := cmd.Flags().GetString("operation-policy")
 			var err error

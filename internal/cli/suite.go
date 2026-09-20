@@ -17,10 +17,12 @@ func suiteCommand(ran *bool) *cobra.Command {
 		var environment, output, deadline, releases, promotion, promotionIdentity, revision string
 		var send, asJSON bool
 		name := "prepare"
+		capability := capabilityAuthor
 		if execute {
 			name = "run"
+			capability = capabilityExecute
 		}
-		child := &cobra.Command{Use: name + " FILE", Short: "Prepare a new private suite directory; run requires explicit send authorization", Args: func(_ *cobra.Command, args []string) error {
+		child := &cobra.Command{Use: name + " FILE", Short: "Prepare a new private suite directory; run requires explicit send authorization", Annotations: declare(capability), Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return errors.New("suite requires one document")
 			}
@@ -93,7 +95,7 @@ func suiteCoverageCommand(ran *bool) *cobra.Command {
 	var requirements, at string
 	var repeats []string
 	var asJSON bool
-	command := &cobra.Command{Use: "coverage DIRECTORY", Short: "Assess declared requirements against retained suite executions without sending", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	command := &cobra.Command{Use: "coverage DIRECTORY", Short: "Assess declared requirements against retained suite executions without sending", Annotations: declare(capabilityFree), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		*ran = true
 		now := time.Now().UTC()
 		if at != "" {
@@ -151,10 +153,12 @@ func suiteCoverageCommand(ran *bool) *cobra.Command {
 func suitePromotionCommand(ran *bool, approve bool) *cobra.Command {
 	var environment, releases, revision, review, approver, rationale, output string
 	name := "review-promotion"
+	capability := capabilityFree
 	if approve {
 		name = "approve-promotion"
+		capability = capabilityAuthor
 	}
-	command := &cobra.Command{Use: name + " FILE", Short: "Review or approve exact suite inputs for one configured environment without sending", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	command := &cobra.Command{Use: name + " FILE", Short: "Review or approve exact suite inputs for one configured environment without sending", Annotations: declare(capability), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		*ran = true
 		if err := cmd.Context().Err(); err != nil {
 			return err

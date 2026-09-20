@@ -13,7 +13,7 @@ import (
 func transformCommand(ran *bool) *cobra.Command {
 	var rulesPath, planPath, profilePath, format, output string
 	cmd := &cobra.Command{
-		Use: "transform CASE", Short: "Preview relationship-preserving replay transformations of a case",
+		Use: "transform CASE", Short: "Preview relationship-preserving replay transformations of a case", Annotations: declare(capabilityFree),
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return errors.New("transform requires exactly one case directory")

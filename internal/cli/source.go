@@ -19,9 +19,10 @@ import (
 
 func sourceCommand(ran *bool) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "source",
-		Short: "Diagnose access to, and collect evidence from, one approved customer-controlled source",
-		Args:  cobra.NoArgs,
+		Use:         "source",
+		Annotations: declare(capabilityFree),
+		Short:       "Diagnose access to, and collect evidence from, one approved customer-controlled source",
+		Args:        cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			return errors.New("source requires a subcommand: diagnose or collect")
 		},
@@ -35,8 +36,9 @@ func sourceDiagnose(ran *bool) *cobra.Command {
 	var machine bool
 	var declared declaration
 	command := &cobra.Command{
-		Use:   "diagnose SOURCE --framing raw --terminator cr --encoding utf-8 --direction inbound",
-		Short: "Report what access to the declared source was actually available, collecting nothing",
+		Use:         "diagnose SOURCE --framing raw --terminator cr --encoding utf-8 --direction inbound",
+		Annotations: declare(capabilityExecute),
+		Short:       "Report what access to the declared source was actually available, collecting nothing",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return errors.New("source diagnose reads exactly one declared source")
@@ -95,8 +97,9 @@ func sourceCollect(ran *bool) *cobra.Command {
 	var policy, saved, output, receipt string
 	var declared declaration
 	command := &cobra.Command{
-		Use:   "collect SOURCE --output NEW_DIRECTORY --receipt NEW_FILE --framing raw --terminator cr --encoding utf-8 --direction inbound",
-		Short: "Stage the declared source's evidence in a new directory with the receipt of what was collected",
+		Use:         "collect SOURCE --output NEW_DIRECTORY --receipt NEW_FILE --framing raw --terminator cr --encoding utf-8 --direction inbound",
+		Annotations: declare(capabilityExecute),
+		Short:       "Stage the declared source's evidence in a new directory with the receipt of what was collected",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return errors.New("source collect reads exactly one declared source")

@@ -15,7 +15,7 @@ func suiteGateCommand(ran *bool, verify bool) *cobra.Command {
 	if verify {
 		name = "verify-gate"
 	}
-	command := &cobra.Command{Use: name + " DIRECTORY", Short: "Assess retained suite evidence against an explicitly pinned CI gate policy without sending", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	command := &cobra.Command{Use: name + " DIRECTORY", Short: "Assess retained suite evidence against an explicitly pinned CI gate policy without sending", Annotations: declare(capabilityFree), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		*ran = true
 		var r suite.GateReport
 		if verify {
@@ -41,7 +41,7 @@ func suiteGateCommand(ran *bool, verify bool) *cobra.Command {
 }
 
 func suiteGatePolicyCommand(ran *bool) *cobra.Command {
-	return &cobra.Command{Use: "gate-policy FILE", Short: "Print the canonical identity of a privately reviewed CI gate policy", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	return &cobra.Command{Use: "gate-policy FILE", Short: "Print the canonical identity of a privately reviewed CI gate policy", Annotations: declare(capabilityFree), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		*ran = true
 		raw, e := baseline.ReadBytes(args[0], suite.MaxBytes)
 		if e != nil {

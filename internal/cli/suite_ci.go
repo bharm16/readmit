@@ -11,7 +11,7 @@ func suiteCICommand(ran *bool) *cobra.Command {
 	var request suite.CIRequest
 	var send bool
 	var deadline string
-	command := &cobra.Command{Use: "ci FILE", Short: "Execute a saved suite once with private evidence and fixed-label CI summaries", RunE: func(cmd *cobra.Command, args []string) error {
+	command := &cobra.Command{Use: "ci FILE", Short: "Execute a saved suite once with private evidence and fixed-label CI summaries", Annotations: declare(capabilityExecute), RunE: func(cmd *cobra.Command, args []string) error {
 		*ran = true
 		result := suite.CIError()
 		if len(args) == 1 && send {

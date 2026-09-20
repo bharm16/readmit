@@ -26,7 +26,9 @@ func runnerCommand(ran *bool) *cobra.Command {
 			count = 2
 		}
 		var send bool
-		cmd := &cobra.Command{Use: use, Args: cobra.ExactArgs(count), RunE: func(cmd *cobra.Command, args []string) error {
+		// The long-lived runner checks each job through the installed guard, so
+		// execute and serve declare free like the read-only runner operations.
+		cmd := &cobra.Command{Use: use, Args: cobra.ExactArgs(count), Annotations: declare(capabilityFree), RunE: func(cmd *cobra.Command, args []string) error {
 			*ran = true
 			ctx, cancel, err := runContext(cmd.Context(), "")
 			if err != nil {

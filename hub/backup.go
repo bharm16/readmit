@@ -115,57 +115,11 @@ func (s *Store) Backup(ctx context.Context, destination string) error {
 	if err != nil {
 		return err
 	}
-	m.Reviews = []ReviewEvent{}
-	reviewRows, err := s.db.QueryContext(ctx, `SELECT document FROM readmit_hub_reviews ORDER BY project COLLATE "C", sequence`)
+	m.Reviews, err = reviewLog.readAll(ctx, s.db)
 	if err != nil {
 		return err
 	}
-	for reviewRows.Next() {
-		var data string
-		var event ReviewEvent
-		if err = reviewRows.Scan(&data); err != nil {
-			reviewRows.Close()
-			return err
-		}
-		if json.Unmarshal([]byte(data), &event, json.RejectUnknownMembers(true)) != nil {
-			reviewRows.Close()
-			return ErrIntegrity
-		}
-		m.Reviews = append(m.Reviews, event)
-		if len(m.Reviews) > maxReviews {
-			reviewRows.Close()
-			return ErrLimit
-		}
-	}
-	err = reviewRows.Err()
-	reviewRows.Close()
-	if err != nil {
-		return err
-	}
-	m.Lifecycle = []LifecycleEvent{}
-	lifecycleRows, err := s.db.QueryContext(ctx, `SELECT document FROM readmit_hub_lifecycle ORDER BY project COLLATE "C",sequence`)
-	if err != nil {
-		return err
-	}
-	for lifecycleRows.Next() {
-		var raw string
-		var event LifecycleEvent
-		if err = lifecycleRows.Scan(&raw); err != nil {
-			lifecycleRows.Close()
-			return err
-		}
-		if json.Unmarshal([]byte(raw), &event, json.RejectUnknownMembers(true)) != nil {
-			lifecycleRows.Close()
-			return ErrIntegrity
-		}
-		m.Lifecycle = append(m.Lifecycle, event)
-		if len(m.Lifecycle) > maxLifecycle {
-			lifecycleRows.Close()
-			return ErrLimit
-		}
-	}
-	err = lifecycleRows.Err()
-	lifecycleRows.Close()
+	m.Lifecycle, err = lifecycleLog.readAll(ctx, s.db)
 	if err != nil {
 		return err
 	}
