@@ -141,6 +141,17 @@ func TestEveryPublishedClaimCitesAFileAndATestThatExist(t *testing.T) {	defined 
 	}
 }
 
+// cobraBuiltins are the framework's own documentation commands; they ship
+// with the executable but are not workflows the matrix or README catalogue.
+var cobraBuiltins = map[string]bool{"help": true, "completion": true}
+
+// workflowListed answers whether a published command is named by a backticked
+// span that starts with it, so `backup create/verify/restore` answers for
+// `backup` while `license runner init` does not answer for `runner`.
+func workflowListed(text, name string) bool {
+	return regexp.MustCompile("`" + regexp.QuoteMeta(name) + "(`|[^A-Za-z0-9])").MatchString(text)
+}
+
 // rootWorkflows lists the top-level commands the executable itself publishes,
 // which is the interface a reader can run; the help text is its own inventory.
 func rootWorkflows(t *testing.T) []string {
@@ -174,10 +185,8 @@ func rootWorkflows(t *testing.T) []string {
 // TestTheSupportMatrixCarriesEveryRegisteredWorkflow closes the matrix's own
 // completeness claim in the direction no earlier check covered: every command
 // the executable publishes has a row in the Workflows table, so silence is
-// never mistaken for a status. Cobra's own documentation commands are the only
-// deliberate omissions.
+// never mistaken for a status.
 func TestTheSupportMatrixCarriesEveryRegisteredWorkflow(t *testing.T) {
-	documentedElsewhere := map[string]bool{"help": true, "completion": true}
 	matrix, err := os.ReadFile("../docs/support-matrix.md")
 	if err != nil {
 		t.Fatal(err)
@@ -189,14 +198,36 @@ func TestTheSupportMatrixCarriesEveryRegisteredWorkflow(t *testing.T) {
 		t.Fatal("support matrix has no Workflows table")
 	}
 	for _, name := range rootWorkflows(t) {
-		if documentedElsewhere[name] {
+		if cobraBuiltins[name] {
 			continue
 		}
-		// A row names a workflow by a backticked span that starts with the
-		// command, so `backup create/verify/restore` answers for `backup`
-		// while `license runner init` does not answer for `runner`.
-		if !regexp.MustCompile("`" + regexp.QuoteMeta(name) + "(`|[^A-Za-z0-9])").MatchString(table) {
+		if !workflowListed(table, name) {
 			t.Errorf("workflow %q is published by the executable but has no row in the support matrix's Workflows table; the matrix is the single source the site draws its claims from", name)
+		}
+	}
+}
+
+// TestTheReadmeCataloguesEveryRegisteredWorkflow keeps the README's front door
+// honest the same way the matrix is: every published command appears in the
+// catalog, so the README can never list fewer workflows than the executable
+// runs.
+func TestTheReadmeCataloguesEveryRegisteredWorkflow(t *testing.T) {
+	readme, err := os.ReadFile("../README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var catalog string
+	if _, remainder, found := strings.Cut(string(readme), "## Available workflows"); found {
+		catalog, _, _ = strings.Cut(remainder, "\n## ")
+	} else {
+		t.Fatal("README has no Available workflows catalog")
+	}
+	for _, name := range rootWorkflows(t) {
+		if cobraBuiltins[name] {
+			continue
+		}
+		if !workflowListed(catalog, name) {
+			t.Errorf("workflow %q is published by the executable but the README catalog does not list it", name)
 		}
 	}
 }
