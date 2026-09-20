@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/mllp"
 	"github.com/bharm16/readmit/internal/scenario"
 )
 
@@ -125,10 +127,10 @@ func segments(d template, step scenario.Step, r Row, at time.Time, control strin
 	case scenario.ORULifecycle:
 		family, event = "ORU", "R01"
 	}
-	msh := []string{"MSH", "^~\\&", "READMIT", "SYNTHETIC", "RECEIVER", "READMIT", at.Format("20060102150405-0700"), "", family + "^" + event, control, "T", "2.5.1", "", "", "", "", "", ""}
+	msh := []string{"MSH", "^~\\&", "READMIT", "SYNTHETIC", "RECEIVER", "READMIT", at.Format(hl7.TimestampLayout), "", family + "^" + event, control, "T", "2.5.1", "", "", "", "", "", ""}
 	result := [][]string{msh}
 	if family == "ADT" {
-		result = append(result, []string{"EVN", event, at.Format("20060102150405-0700")})
+		result = append(result, []string{"EVN", event, at.Format(hl7.TimestampLayout)})
 	}
 	result = append(result, []string{"PID", "1", "", patient.Identifier + "^^^" + patient.Namespace, "", r.PatientName})
 	switch family {
@@ -184,18 +186,12 @@ func serialize(m message) ([]byte, error) {
 		charset = "8859/1"
 	}
 	m.segments[0][17] = charset
-	var b strings.Builder
-	b.WriteByte(0x0b)
-	for _, s := range m.segments {
-		b.WriteString(strings.Join(s, "|"))
-		b.WriteByte('\r')
-	}
-	b.WriteString("\x1c\r")
+	framed := mllp.Frame(hl7.Encode(m.segments))
 	if m.charset == "utf-8" {
-		return []byte(b.String()), nil
+		return framed, nil
 	}
-	out := make([]byte, 0, b.Len())
-	for _, r := range b.String() {
+	out := make([]byte, 0, len(framed))
+	for _, r := range string(framed) {
 		if r > 255 {
 			return nil, errors.New("row text cannot be represented in ISO-8859-1")
 		}

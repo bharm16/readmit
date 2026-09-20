@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/mllp"
 )
 
 const (
@@ -67,11 +69,9 @@ type identifiers struct {
 func frame(trigger string, sequence int, declared, appointment time.Time, ids identifiers, filler string) []byte {
 	// These are the positions in the readmit-siu-v1 fixture profile, not a
 	// claim to implement every SIU field or validate general HL7 conformance.
-	return fmt.Appendf(nil, "\x0bMSH|^~\\&|READMIT|SYNTHETIC|RECEIVER|READMIT|%s||SIU^%s|SYNTH-%06d|T|2.5.1\r"+
-		"SCH|%s^READMIT|%s^READMIT||||CHECKUP|ROUTINE|NORMAL|30|min|^^^%s^%s\r"+
-		"PID|1||%s^^^READMIT||SYNTHETIC^PATIENT\r\x1c\r",
-		hl7Time(declared), trigger, sequence, ids.placer, filler,
-		hl7Time(appointment), hl7Time(appointment.Add(30*time.Minute)), ids.patient)
+	return mllp.Frame(hl7.Encode([][]string{
+		{"MSH", "^~\\&", "READMIT", "SYNTHETIC", "RECEIVER", "READMIT", hl7.Time(declared), "", "SIU^" + trigger, fmt.Sprintf("SYNTH-%06d", sequence), "T", "2.5.1"},
+		{"SCH", ids.placer + "^READMIT", filler + "^READMIT", "", "", "", "CHECKUP", "ROUTINE", "NORMAL", "30", "min", "^^^" + hl7.Time(appointment) + "^" + hl7.Time(appointment.Add(30*time.Minute))},
+		{"PID", "1", "", ids.patient + "^^^READMIT", "", "SYNTHETIC^PATIENT"},
+	}))
 }
-
-func hl7Time(value time.Time) string { return value.UTC().Format("20060102150405-0700") }

@@ -182,15 +182,18 @@ func acknowledgement(request *request, code, reason string, sequence int, sessio
 	if request.action == "" {
 		trigger = ""
 	}
-	header := fmt.Sprintf("MSH|^~\\&|READMIT|FIXTURE|||%s||ACK^%s|READMITACK%06d|P|%s\r", time.Now().UTC().Format("20060102150405-0700"), trigger, sequence, request.version)
-	text := header + "MSA|" + code + "|" + request.controlID
+	msa := []string{"MSA", code, request.controlID}
 	if reason != "" {
 		// Errors returned on the wire may name explicit MSH-15/16 values. They
 		// never go to terminal diagnostics and cannot introduce HL7 fields.
 		replacer := strings.NewReplacer("\\", `\E\`, "|", `\F\`, "^", `\S\`, "~", `\R\`, "&", `\T\`)
-		text += "|" + replacer.Replace(reason)
+		msa = append(msa, replacer.Replace(reason))
 	}
 	// The fixture receipt binds a ledger handoff to this connection's ACKs.
 	// Generic replay retains this segment without assigning workflow meaning.
-	return mllp.Frame([]byte(text + "\rZRT|readmit-receipt/v1|" + sessionID + "|" + occurrenceID + "\r"))
+	return mllp.Frame(hl7.Encode([][]string{
+		{"MSH", "^~\\&", "READMIT", "FIXTURE", "", "", hl7.Time(time.Now()), "", "ACK^" + trigger, fmt.Sprintf("READMITACK%06d", sequence), "P", request.version},
+		msa,
+		{"ZRT", "readmit-receipt/v1", sessionID, occurrenceID},
+	}))
 }

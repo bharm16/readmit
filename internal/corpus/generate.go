@@ -30,6 +30,7 @@ import (
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/importer"
+	"github.com/bharm16/readmit/internal/mllp"
 	"github.com/bharm16/readmit/internal/synth"
 )
 
@@ -213,21 +214,16 @@ func appendMessage(out []byte, ordinal int, base time.Time, random *rand.Rand, f
 	trigger := triggers[choice%uint64(len(triggers))]
 	declared := base.Add(time.Duration(ordinal) * time.Minute)
 	appointment := declared.Add(24 * time.Hour)
+	message := hl7.Encode([][]string{
+		{"MSH", "^~\\&", "READMIT", "CORPUS", "RECEIVER", "READMIT", hl7.Time(declared), "", "SIU^" + trigger, fmt.Sprintf("CORPUS-%08d", ordinal), "T", "2.5.1"},
+		{"SCH", fmt.Sprintf("PLACER-%016X^READMIT", placer), fmt.Sprintf("FILLER-%016X^READMIT", filler), "", "", "", "CHECKUP", "ROUTINE", "NORMAL", "30", "min", "^^^" + hl7.Time(appointment) + "^" + hl7.Time(appointment.Add(30*time.Minute))},
+		{"PID", "1", "", fmt.Sprintf("CORPUS-%016X", patient) + "^^^READMIT^MR", "", "SYNTHETIC^PATIENT"},
+	})
 	if framed {
-		out = append(out, 0x0b)
+		message = mllp.Frame(message)
 	}
-	out = fmt.Appendf(out, "MSH|^~\\&|READMIT|CORPUS|RECEIVER|READMIT|%s||SIU^%s|CORPUS-%08d|T|2.5.1\r"+
-		"SCH|PLACER-%016X^READMIT|FILLER-%016X^READMIT||||CHECKUP|ROUTINE|NORMAL|30|min|^^^%s^%s\r"+
-		"PID|1||CORPUS-%016X^^^READMIT^MR||SYNTHETIC^PATIENT\r",
-		hl7Time(declared), trigger, ordinal, placer, filler,
-		hl7Time(appointment), hl7Time(appointment.Add(30*time.Minute)), patient)
-	if framed {
-		out = append(out, 0x1c, '\r')
-	}
-	return out
+	return append(out, message...)
 }
 
 // triggers are the SIU trigger events one corpus message is drawn from.
 var triggers = []string{"S12", "S13", "S14", "S15"}
-
-func hl7Time(value time.Time) string { return value.UTC().Format("20060102150405-0700") }
