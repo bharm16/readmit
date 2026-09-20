@@ -16,7 +16,7 @@ import (
 // what an operator declared and what a collector retained. collect is the
 // source-specific collector, for a bounded file export, a bounded read of an
 // approved HTTP API, and a downstream HL7 capture readmit already retained; the
-// database collector still to come reports into the same window and completion
+// database collector reports into the same window and completion
 // rather than inventing its own.
 func observeCommand(ran *bool) *cobra.Command {
 	command := &cobra.Command{Use: "observe", Short: "Read declared observation windows and retained completions"}
@@ -85,7 +85,7 @@ func observeCollectCommand(ran *bool) *cobra.Command {
 	var completionJSON bool
 	command := &cobra.Command{
 		Use:   "collect SOURCE",
-		Short: "Observe a declared file export, HTTP API or downstream capture for one observation window",
+		Short: "Observe a declared file export, HTTP API, downstream capture or database view for one observation window",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return errors.New("observe collect requires one observation source document")

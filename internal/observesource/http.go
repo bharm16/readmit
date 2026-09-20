@@ -25,6 +25,8 @@ func newReader(ctx context.Context, source Source, retained *snapshot, options O
 		return nil, errors.New("a freshness bound is a positive duration of at most one week")
 	}
 	switch source.Observes.Kind {
+	case DatabaseQuery:
+		return newDatabaseReader(ctx, *source.Database, retained, options, maxAge)
 	case FileExport:
 		return &fileReader{extraction: *source.Extraction, export: *source.File, maxAge: maxAge}, nil
 	case DownstreamCapture:

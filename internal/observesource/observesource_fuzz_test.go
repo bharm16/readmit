@@ -18,6 +18,7 @@ func FuzzObservationSourceDocument(f *testing.F) {
 	endpoint := strings.Replace(declaredHTTPSource, "ENDPOINT", "https://lab.example.invalid:8443/appointments", 1)
 	for _, seed := range []string{
 		declaredFileSource,
+		databaseSource,
 		endpoint,
 		strings.Replace(endpoint, `"credential": null`,
 			`"credential": {"store": "os-keychain", "address": "lab.example.invalid:8443", "header": "Authorization", "command": "/usr/bin/true", "arguments": ["-s", "lab"]}`, 1),
@@ -39,7 +40,7 @@ func FuzzObservationSourceDocument(f *testing.F) {
 			return
 		}
 		declared := 0
-		for _, present := range []bool{source.File != nil, source.HTTP != nil, source.Capture != nil} {
+		for _, present := range []bool{source.File != nil, source.HTTP != nil, source.Capture != nil, source.Database != nil} {
 			if present {
 				declared++
 			}
@@ -50,8 +51,14 @@ func FuzzObservationSourceDocument(f *testing.F) {
 		// A capture is declared only by the version that has it, reads no
 		// envelope, and bounds what one read may take by occurrences the case
 		// contract itself can hold.
+		if source.Database != nil {
+			if source.Schema != observesource.SchemaDatabase || source.Observes.Kind != observesource.DatabaseQuery || source.Extraction != nil {
+				t.Fatal("database outside declared version/kind")
+			}
+			return
+		}
 		if source.Capture != nil {
-			if source.Schema != observesource.Schema || source.Observes.Kind != observesource.DownstreamCapture || source.Extraction != nil {
+			if (source.Schema != observesource.Schema && source.Schema != observesource.SchemaDatabase) || source.Observes.Kind != observesource.DownstreamCapture || source.Extraction != nil {
 				t.Fatalf("accepted a capture outside the version and kind that declare it: %+v", source)
 			}
 			if source.Capture.MaxOccurrences < 1 || source.Capture.MaxOccurrences > 10000 || len(source.Capture.Kinds) == 0 {

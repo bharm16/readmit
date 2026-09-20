@@ -1,15 +1,14 @@
 // Package observesource is the source-specific collector behind the
-// source-neutral contracts in internal/observewindow. It observes three kinds
+// source-neutral contracts in internal/observewindow. It observes four kinds
 // of external output: a bounded JSON, CSV, XML or text export on disk, a
 // bounded read of an approved HTTP API, and a downstream HL7 capture readmit
-// already retained as a verified case bundle.
+// already retained as a verified case bundle, plus a bounded database view.
 //
 // It decides nothing about what an observation means. A collector's whole job
 // here is to report honestly what one attempt saw — an observation, or the one
 // way collection failed — and internal/observewindow applies the declared
 // completion rule to those reports. Implementing that package's slots rather
-// than inventing parallel ones is the point: the collector for a database
-// still to come fills in the same Sample, EvidenceIdentity and Correlation, so
+// than inventing parallel ones is the point: the database collector fills in the same Sample, EvidenceIdentity and Correlation, so
 // one rule keeps one implementation.
 //
 // The rule this package must not break is that failed collection never becomes
@@ -77,6 +76,10 @@ const Schema = "readmit-observation-source/v2"
 // SchemaV1 is the version this release still reads: two transports, both
 // declared, and an extraction declaration that is never null. A v1 document
 // carrying the v2 capture transport is refused rather than read as a v2 one.
+const SchemaDatabase = "readmit-observation-source/v3"
+
+const DatabaseQuery = "database-query"
+
 const SchemaV1 = "readmit-observation-source/v1"
 
 const (
@@ -113,7 +116,7 @@ const (
 	maxPathBytes = 4096
 )
 
-// The three source kinds this collector supports. A window declaring any other
+// The source kinds this collector supports. A window declaring any other
 // kind is reported as unsupported, which is an execution error; it is never
 // reported as an observation of nothing.
 const (
@@ -274,7 +277,7 @@ type HTTP struct {
 
 // Source is one declared observation source: which system and scope it names,
 // whether its collector is enabled, how old its state may be, how its output is
-// read, and exactly one of the two ways it is reached.
+// read, and exactly one of the declared ways it is reached.
 //
 // It is explicitly selected, never discovered: readmit has no default source,
 // no implicit file and no environment variable that supplies one.
@@ -295,14 +298,15 @@ type Source struct {
 	// occurrences, and declaring an envelope for it would declare a reading
 	// nothing performs.
 	Extraction *Extraction `json:"extraction"`
-	// Exactly one of File, HTTP and Capture is declared, and it is the one the
+	// Exactly one of File, HTTP, Capture and Database is declared, and it is the one the
 	// source kind names. The others are explicitly null. Capture is a v2
 	// member: a v1 document declares the two transports v1 declared, and
 	// carrying this one makes it a v1 document this release refuses rather than
 	// a v2 one it reads.
-	File    *File    `json:"file"`
-	HTTP    *HTTP    `json:"http"`
-	Capture *Capture `json:"capture"`
+	File     *File     `json:"file"`
+	HTTP     *HTTP     `json:"http"`
+	Capture  *Capture  `json:"capture"`
+	Database *Database `json:"database,omitzero"`
 }
 
 // UnmarshalJSON requires every member explicitly, so an omitted enablement or
@@ -321,7 +325,7 @@ func (s *Source) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &required); err != nil || required.Schema == nil {
 		return errors.New("an observation source declares its contract version")
 	}
-	if *required.Schema != Schema && *required.Schema != SchemaV1 {
+	if *required.Schema != Schema && *required.Schema != SchemaV1 && *required.Schema != SchemaDatabase {
 		return ErrUnsupportedVersion
 	}
 	if required.Observes == nil || required.Enabled == nil || required.Freshness == nil {
@@ -353,6 +357,10 @@ func (s *Source) UnmarshalJSON(data []byte) error {
 		}
 	} else if !capture {
 		return errors.New("an observation source declares a capture member, explicitly null where it is not used")
+	}
+	_, database := members["database"]
+	if (*required.Schema == SchemaDatabase) != database {
+		return errors.New("database member belongs exclusively to observation-source/v3")
 	}
 	type plainSource Source
 	var value plainSource
@@ -507,7 +515,7 @@ func (c *Credential) UnmarshalJSON(data []byte) error {
 // that could not be collected from is refused when it is read rather than
 // discovered after a window has already been opened against it.
 func (s Source) Validate() error {
-	if s.Schema != Schema && s.Schema != SchemaV1 {
+	if s.Schema != Schema && s.Schema != SchemaV1 && s.Schema != SchemaDatabase {
 		return ErrUnsupportedVersion
 	}
 	if err := s.Observes.Validate(); err != nil {
@@ -520,9 +528,9 @@ func (s Source) Validate() error {
 	// HL7 evidence readmit already divided into occurrences, so declaring one
 	// for it would declare a reading nothing performs, and a member an operator
 	// does not use is refused here rather than ignored.
-	if s.Observes.Kind == DownstreamCapture {
+	if s.Observes.Kind == DownstreamCapture || s.Observes.Kind == DatabaseQuery {
 		if s.Extraction != nil {
-			return errors.New("a downstream capture reads no envelope, so its extraction is declared as an explicit null")
+			return errors.New("this observation transport reads no envelope, so extraction must be null")
 		}
 	} else {
 		if s.Extraction == nil {
@@ -533,15 +541,23 @@ func (s Source) Validate() error {
 		}
 	}
 	declared := 0
-	for _, present := range []bool{s.File != nil, s.HTTP != nil, s.Capture != nil} {
+	for _, present := range []bool{s.File != nil, s.HTTP != nil, s.Capture != nil, s.Database != nil} {
 		if present {
 			declared++
 		}
 	}
 	if declared != 1 {
-		return errors.New("an observation source declares exactly one of a file export, an http observation, and a downstream capture")
+		return errors.New("an observation source declares exactly one transport")
+	}
+	if s.Database != nil && s.Schema != SchemaDatabase {
+		return errors.New("database requires observation-source/v3")
 	}
 	switch s.Observes.Kind {
+	case DatabaseQuery:
+		if s.Database == nil {
+			return errors.New("database-query declares a database")
+		}
+		return s.Database.validate()
 	case FileExport:
 		if s.File == nil {
 			return errors.New("a file-export source declares a file export")
@@ -558,7 +574,7 @@ func (s Source) Validate() error {
 		}
 		return s.Capture.validate()
 	}
-	return errors.New("an observation source kind is file-export, http-api, or downstream-capture")
+	return errors.New("an observation source kind is file-export, http-api, downstream-capture or database-query")
 }
 
 // Shape is the envelope half of the extraction declaration, expressed as the

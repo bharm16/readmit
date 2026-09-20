@@ -97,8 +97,8 @@ func TestAnUnreadableDeclarationIsRefusedRatherThanRepaired(t *testing.T) {
 
 func TestAContractVersionThisReleaseDoesNotReadIsReportedAsThat(t *testing.T) {
 	for _, document := range []string{
-		strings.Replace(declaredFileSource, observesource.SchemaV1, "readmit-observation-source/v3", 1),
-		strings.Replace(declaredCaptureSource, observesource.Schema, "readmit-observation-source/v3", 1),
+		strings.Replace(declaredFileSource, observesource.SchemaV1, "readmit-observation-source/v99", 1),
+		strings.Replace(declaredCaptureSource, observesource.Schema, "readmit-observation-source/v99", 1),
 	} {
 		_, err := observesource.DecodeSource([]byte(document))
 		if !errors.Is(err, observesource.ErrUnsupportedVersion) {

@@ -2,6 +2,10 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
 
 - Local adversarial acceptance refuses dirty candidates and source changes during
   execution, retaining the final revision alongside its finite boundary results.
+- `observe collect` can read a bounded key column from approved PostgreSQL, SQL
+  Server and Oracle views using selected pure-Go drivers, bound filters,
+  verified TLS and endpoint-scoped credential references. The database server
+  version matrix remains unqualified; see `docs/observe.md` for owner lab gates.
 
 - `import engine` retains raw containers and a finite source-raw XML subset in
   v5 cases with explicit adapter provenance. Mirth/OIE compatibility remains
