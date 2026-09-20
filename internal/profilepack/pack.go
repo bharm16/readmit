@@ -34,6 +34,8 @@ import (
 	"slices"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/bharm16/readmit/internal/strictdoc"
 )
 
 // Schema is the contract a profile pack declares.
@@ -367,33 +369,26 @@ func (l *Labels) UnmarshalJSON(data []byte) error {
 // twice, a level that claims what the pack carries no content for, and
 // content no coverage entry accounts for.
 func Decode(data []byte) (Pack, error) {
-	if len(data) > MaxPackBytes {
-		return Pack{}, errors.New("a profile pack exceeds its 4 MiB size limit")
-	}
-	var required struct {
-		Schema     *string     `json:"schema"`
-		Pack       *Identity   `json:"pack"`
-		Provenance *Provenance `json:"provenance"`
-		Coverage   *[]Coverage `json:"coverage"`
-	}
-	if err := json.Unmarshal(data, &required); err != nil {
-		return Pack{}, errors.New("invalid profile pack JSON")
-	}
-	if required.Schema == nil || *required.Schema != Schema {
-		return Pack{}, errors.New("a profile pack must declare " + Schema)
-	}
-	if required.Pack == nil || required.Provenance == nil || required.Coverage == nil {
-		return Pack{}, errors.New("a profile pack requires pack, provenance and coverage")
-	}
 	var pack Pack
-	if err := json.Unmarshal(data, &pack, json.RejectUnknownMembers(true)); err != nil {
-		return Pack{}, errors.New("invalid profile pack JSON")
+	if err := packDocument.Decode(data, &pack); err != nil {
+		return Pack{}, err
 	}
 	if err := validate(pack); err != nil {
 		return Pack{}, err
 	}
 	pack.decoded = true
 	return pack, nil
+}
+
+// packDocument states how this contract is read; strictdoc owns the reading.
+var packDocument = strictdoc.Document{
+	MaxBytes:    MaxPackBytes,
+	Schema:      Schema,
+	Required:    []string{"pack", "provenance", "coverage"},
+	Invalid:     "invalid profile pack JSON",
+	TooLarge:    "a profile pack exceeds its 4 MiB size limit",
+	MustDeclare: "a profile pack must declare " + Schema,
+	Requires:    "a profile pack requires pack, provenance and coverage",
 }
 
 func validate(pack Pack) error {

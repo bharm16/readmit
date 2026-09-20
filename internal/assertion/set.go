@@ -29,7 +29,6 @@
 package assertion
 
 import (
-	"encoding/json/v2"
 	"errors"
 	"math/big"
 	"regexp"
@@ -38,6 +37,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/hl7"
+
+	"github.com/bharm16/readmit/internal/strictdoc"
 )
 
 // Schema is the contract an assertion set declares.
@@ -369,6 +370,18 @@ var (
 	decimal = regexp.MustCompile(`^-?[0-9]+(\.[0-9]+)?$`)
 )
 
+// setDocument states how this contract is read; strictdoc owns the reading.
+var setDocument = strictdoc.Document{
+	MaxBytes:    MaxSetBytes,
+	Schema:      Schema,
+	Required:    []string{"name", "assertions"},
+	Invalid:     "invalid assertion set JSON",
+	Unknown:     "an assertion set declares no member beyond schema, name and assertions",
+	TooLarge:    "an assertion set exceeds its 256 KiB size limit",
+	MustDeclare: "an assertion set must declare " + Schema,
+	Requires:    "an assertion set requires name and assertions",
+}
+
 // Decode reads one assertion set exactly as written and refuses every
 // document it could not stand behind: an oversized document, unknown members
 // at any nesting, a contract this release does not read, a duplicate or
@@ -376,26 +389,9 @@ var (
 // does not take, a selector outside the shared grammar, and any bound an
 // accepted set is held to.
 func Decode(data []byte) (Set, error) {
-	if len(data) > MaxSetBytes {
-		return Set{}, errors.New("an assertion set exceeds its 256 KiB size limit")
-	}
-	var required struct {
-		Schema     *string      `json:"schema"`
-		Name       *string      `json:"name"`
-		Assertions *[]Assertion `json:"assertions"`
-	}
-	if err := json.Unmarshal(data, &required); err != nil {
-		return Set{}, errors.New("invalid assertion set JSON")
-	}
-	if required.Schema == nil || *required.Schema != Schema {
-		return Set{}, errors.New("an assertion set must declare " + Schema)
-	}
-	if required.Name == nil || required.Assertions == nil {
-		return Set{}, errors.New("an assertion set requires name and assertions")
-	}
 	var set Set
-	if err := json.Unmarshal(data, &set, json.RejectUnknownMembers(true)); err != nil {
-		return Set{}, errors.New("an assertion set declares no member beyond schema, name and assertions")
+	if err := setDocument.Decode(data, &set); err != nil {
+		return Set{}, err
 	}
 	if err := validate(&set); err != nil {
 		return Set{}, err
