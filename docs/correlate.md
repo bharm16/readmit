@@ -1,5 +1,8 @@
 # Correlating evidence across declared sources and namespaces
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 A case holds what several systems saw. The sender's capture and the receiver's
 capture are separate sources; the same appointment appears in an SIU booking, a
 reschedule and an acknowledgement; and the same six digits are one patient at

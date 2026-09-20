@@ -59,7 +59,7 @@ func sequenceWorkspace(t *testing.T) (*desktop.App, string, string) {
 	t.Helper()
 	root := t.TempDir()
 	state := t.TempDir()
-	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
+	app := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
 	written := writeSequenceCase(t, root, "incident", []bundle.Input{
 		{
 			Path:    "sender-capture-path",

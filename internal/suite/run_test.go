@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bharm16/readmit/internal/cli"
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/mllp"
 	"github.com/bharm16/readmit/internal/runqueue"
@@ -76,7 +75,7 @@ func TestPublicSuiteRunsSameExpectationsAcrossTwoEnvironments(t *testing.T) {
 	for _, env := range []string{"east", "west"} {
 		var stdout, stderr bytes.Buffer
 		out := filepath.Join(dir, env)
-		err := cli.Execute("test", []string{"suite", "run", filepath.Join(dir, "suite.json"), "--environment", env, "--output", out, "--send", "--json"}, &stdout, &stderr)
+		err := licensedCLI(t, []string{"suite", "run", filepath.Join(dir, "suite.json"), "--environment", env, "--output", out, "--send", "--json"}, &stdout, &stderr)
 		if err != nil {
 			t.Fatalf("%v %s", err, stderr.String())
 		}
@@ -155,7 +154,7 @@ func TestSuiteCancellationPreservesUncertainDeliveryAndRefusesResume(t *testing.
 		t.Fatalf("%+v %v", recovered, err)
 	}
 	var stdout, stderr bytes.Buffer
-	err = cli.Execute("test", []string{"run", "resume", filepath.Join(out, "runs", "setup-one"), filepath.Join(out, "setup-one.json"), "--send", "--output", filepath.Join(dir, "again")}, &stdout, &stderr)
+	err = licensedCLI(t, []string{"run", "resume", filepath.Join(out, "runs", "setup-one"), filepath.Join(out, "setup-one.json"), "--send", "--output", filepath.Join(dir, "again")}, &stdout, &stderr)
 	if err == nil {
 		t.Fatal("uncertain send repeated")
 	}
@@ -247,7 +246,7 @@ func TestPublicSuiteRequiresSendAndPrepareNeverSends(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	out := filepath.Join(dir, "out")
 	args := []string{"suite", "run", filepath.Join(dir, "suite.json"), "--environment", "east", "--output", out}
-	if err := cli.Execute("test", args, &stdout, &stderr); err == nil {
+	if err := licensedCLI(t, args, &stdout, &stderr); err == nil {
 		t.Fatal("run authorized implicitly")
 	}
 	if _, err := os.Stat(out); !os.IsNotExist(err) {
@@ -257,7 +256,7 @@ func TestPublicSuiteRequiresSendAndPrepareNeverSends(t *testing.T) {
 	args = append(args, "--json")
 	stdout.Reset()
 	stderr.Reset()
-	if err := cli.Execute("test", args, &stdout, &stderr); err != nil {
+	if err := licensedCLI(t, args, &stdout, &stderr); err != nil {
 		t.Fatal(err)
 	}
 	var queue runqueue.Plan
@@ -361,7 +360,7 @@ func TestSuiteNetworkBlackholeRetainsUncertaintyAndRecovers(t *testing.T) {
 		t.Fatalf("%+v %v", recovered, err)
 	}
 	var stdout, stderr bytes.Buffer
-	err = cli.Execute("test", []string{"run", "resume", filepath.Join(out, "runs", "booking-one"), filepath.Join(out, "booking-one.json"), "--send", "--output", filepath.Join(dir, "again")}, &stdout, &stderr)
+	err = licensedCLI(t, []string{"run", "resume", filepath.Join(out, "runs", "booking-one"), filepath.Join(out, "booking-one.json"), "--send", "--output", filepath.Join(dir, "again")}, &stdout, &stderr)
 	if err == nil {
 		t.Fatal("blackholed send was repeated")
 	}

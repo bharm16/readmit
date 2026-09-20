@@ -27,6 +27,8 @@ func (s *Store) runnerHandler(access *Access, policyPath string, readyAt time.Ti
 		subject  string
 		job      string
 		expires  time.Time
+		deadline time.Time
+		release  func() error
 	}
 	leases := map[string]held{}
 	// A fresh handler waits out grants a stopped predecessor may have issued.
@@ -93,6 +95,9 @@ func (s *Store) runnerHandler(access *Access, policyPath string, readyAt time.Ti
 						http.Error(w, "lease refused", 409)
 						return
 					}
+					if old.release != nil {
+						_ = old.release()
+					}
 					delete(leases, key)
 					mu.Unlock()
 					w.WriteHeader(204)
@@ -105,6 +110,9 @@ func (s *Store) runnerHandler(access *Access, policyPath string, readyAt time.Ti
 				}
 				for key, lease := range leases {
 					if !now.Before(lease.expires) {
+						if lease.release != nil {
+							_ = lease.release()
+						}
 						delete(leases, key)
 					}
 				}
@@ -113,8 +121,27 @@ func (s *Store) runnerHandler(access *Access, policyPath string, readyAt time.Ti
 					http.Error(w, "capacity refused", 503)
 					return
 				}
+				same := now.Before(old.expires) && old.instance == req.Instance && old.job == req.Job && old.subject == p.Subject
+				if same && !now.Before(old.deadline) {
+					mu.Unlock()
+					http.Error(w, "job duration exhausted", 403)
+					return
+				}
+				if !same {
+					release, e := s.operationGuard().AdmitContext(r.Context(), "hub")
+					if e != nil {
+						mu.Unlock()
+						http.Error(w, "operation admission refused", 403)
+						return
+					}
+					old.release = release
+					old.deadline = now.Add(time.Duration(g.MaxSeconds) * time.Second)
+				}
 				expires := now.UTC().Add(10 * time.Second)
-				leases[key] = held{req.Instance, p.Subject, req.Job, expires}
+				if expires.After(old.deadline) {
+					expires = old.deadline
+				}
+				leases[key] = held{instance: req.Instance, subject: p.Subject, job: req.Job, expires: expires, deadline: old.deadline, release: old.release}
 				mu.Unlock()
 				w.Header().Set("Content-Type", "application/json")
 				data, _ := json.Marshal(runnerprotocol.Lease{Schema: "readmit-runner-lease/v1", Expires: expires, MaxSeconds: g.MaxSeconds, MaxJobs: g.MaxJobs})

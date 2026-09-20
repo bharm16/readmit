@@ -1,5 +1,8 @@
 # Extracting and editing a reproducer
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 An incident arrives as a case holding everything that happened. What a vendor,
 a colleague or a regression test needs is much smaller: the messages that matter,
 the setup they depend on, and a few values changed so the material can leave the

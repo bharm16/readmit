@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -30,7 +29,7 @@ func TestDiffRejectsFIFOManifestBeforeOpening(t *testing.T) {
 			t.Fatal(err)
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		cmd := exec.CommandContext(ctx, binary, "diff", dir, "../testdata/fixtures/listen-s12.hl7")
+		cmd := testCommand(ctx, t, "diff", dir, "../testdata/fixtures/listen-s12.hl7")
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &stdout, &stderr
 		err := cmd.Run()

@@ -10,6 +10,8 @@ All evidence is synthetic, every endpoint binds loopback, and every listener is
 opened on port 0 and reaped by this script.
 """
 
+from operation_fixture import activate
+
 import argparse
 from contextlib import contextmanager
 import hashlib
@@ -178,10 +180,16 @@ class Readmit:
         self.binary = str(Path(binary).resolve())
         self.work = work
         self.environment = dict(os.environ, GOTRACEBACK="none")
+        self.operation = None
+
+    def operation_args(self):
+        if self.operation is None:
+            self.operation = activate(self.binary, self.work, self.environment)
+        return self.operation
 
     def run(self, *arguments, expect=0, timeout=60):
         completed = subprocess.run(
-            [self.binary, *[str(argument) for argument in arguments]],
+            [self.binary, *self.operation_args(), *[str(argument) for argument in arguments]],
             cwd=self.work, env=self.environment, capture_output=True, timeout=timeout, check=False,
         )
         require(completed.returncode == expect,
@@ -191,7 +199,7 @@ class Readmit:
 
     def popen(self, *arguments):
         return subprocess.Popen(
-            [self.binary, *[str(argument) for argument in arguments]],
+            [self.binary, *self.operation_args(), *[str(argument) for argument in arguments]],
             cwd=self.work, env=self.environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         )
 

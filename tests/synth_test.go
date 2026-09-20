@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -94,7 +93,7 @@ func TestSynthReproducesEveryFamilyByteAcrossLocationsAndEnvironment(t *testing.
 	second := filepath.Join(t.TempDir(), "SECOND-PRIVATE-PATH")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, binary, synthArgs(second)...)
+	cmd := testCommand(ctx, t, synthArgs(second)...)
 	cmd.Dir = t.TempDir()
 	cmd.Env = append(os.Environ(), "TZ=Pacific/Honolulu")
 	if output, err := cmd.CombinedOutput(); err != nil {

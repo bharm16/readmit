@@ -423,3 +423,27 @@ func TestAnUnreadableRunsDirectoryRefusesTheQueue(t *testing.T) {
 		t.Fatalf("a refused queue executed: %v", watch.order)
 	}
 }
+
+func TestAdmissionIsRecheckedForEachNewJobWithoutStoppingAnAdmittedJob(t *testing.T) {
+	watch := newTracker()
+	queued(t, map[string]*fake{
+		"a.json": {id: "a", state: durablerun.Passed, tracker: watch},
+		"b.json": {id: "b", state: durablerun.Passed, tracker: watch},
+	})
+	document := `{"schema":"readmit-run-queue/v1","parallelism":1,"jobs":[{"id":"a","spec":"a.json","isolation":"isolated"},{"id":"b","spec":"b.json","isolation":"isolated"}]}`
+	remaining := 1
+	ctx := WithAdmission(t.Context(), func() error {
+		if remaining == 0 {
+			return errors.New("term ended")
+		}
+		remaining--
+		return nil
+	})
+	report, err := Run(ctx, Request{PlanBytes: []byte(document), PlanDirectory: t.TempDir(), Runs: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Executed != 1 || report.Refused != 1 || jobs(report)["a"].Run.State != durablerun.Passed || jobs(report)["b"].Run != nil {
+		t.Fatalf("admission did not isolate new work: %+v", report)
+	}
+}

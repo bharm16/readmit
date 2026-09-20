@@ -2,4 +2,4 @@
 FROM scratch
 COPY readmit /readmit
 USER 65532:65532
-ENTRYPOINT ["/readmit", "runner", "serve", "/data/inbox", "--config", "/config/runner.json", "--send"]
+ENTRYPOINT ["/readmit", "--operation-policy", "/config/operation-policy.json", "runner", "serve", "/data/inbox", "--config", "/config/runner.json", "--send"]

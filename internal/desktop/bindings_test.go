@@ -15,6 +15,7 @@ import (
 	"github.com/bharm16/readmit/internal/grid"
 	"github.com/bharm16/readmit/internal/guide"
 	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/operationguard"
 	"github.com/bharm16/readmit/internal/profilepack"
 	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/reproducer"
@@ -74,6 +75,8 @@ func TestFrontendBindingsDeclareEveryResultMember(t *testing.T) {
 	}
 	bindings := string(declarations)
 	for _, bound := range []reflect.Type{
+		reflect.TypeOf(desktop.OperationResult{}),
+		reflect.TypeOf(operationguard.State{}),
 		reflect.TypeOf(desktop.WorkspaceResult{}),
 		reflect.TypeOf(desktop.Workspace{}),
 		reflect.TypeOf(desktop.Artifact{}),

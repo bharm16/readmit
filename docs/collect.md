@@ -1,5 +1,8 @@
 # Generic MLLP collector
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 `readmit collect` is a **bounded generic receiver**: it accepts HL7 v2 messages
 of any type over MLLP, retains every byte it reads and writes, answers with the
 acknowledgement its declared policy names, and labels the evidence it keeps with

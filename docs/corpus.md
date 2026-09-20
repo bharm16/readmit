@@ -1,5 +1,8 @@
 # The performance corpus: `readmit corpus`
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 A case bundle is bounded on purpose: 128 sources, 10,000 occurrences, 16 MiB per
 source and 64 MiB of evidence ([the case bundle contract](case-bundle.md)). The
 question this command answers is a different one — **what does a file far larger

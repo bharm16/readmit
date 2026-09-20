@@ -49,6 +49,10 @@ const (
 	// records as one appointment and the defective fixture records as two.
 	CaseName = "regression"
 
+	// CaseIdentity pins the frozen synthetic walkthrough and prevents a renamed
+	// customer case from becoming a free practice execution.
+	CaseIdentity = "7d266d0a09e92d3322d6346cf16c9dd37c768c02a11f8ea6c41870adc44915df"
+
 	// TargetName is the practice endpoint the sample workspace offers. It is an
 	// ordinary readmit-target/v1 configuration, written beside the evidence so
 	// that the authoring flow has a target to choose and so the command line
@@ -447,7 +451,7 @@ func readSaved(root, name string) (testrunner.Spec, error) {
 	if spec.Input.Case != CaseName || spec.Target != TargetName {
 		return testrunner.Spec{}, errors.New("a practice run executes a test that sends the sample case at the practice endpoint")
 	}
-	if _, err := bundle.Open(artifactpath.JoinReference(root, CaseName)); err != nil {
+	if source, err := bundle.Open(artifactpath.JoinReference(root, CaseName)); err != nil || source.Identity != CaseIdentity {
 		return testrunner.Spec{}, errors.New("the sample case could not be verified as complete, unmodified evidence")
 	}
 	return spec, nil

@@ -1,5 +1,8 @@
 # Mapping log and tabular exports: `readmit import --recipe`
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 A **mapping recipe** brings evidence that arrives inside an envelope — a CSV
 export, a JSON document, an XML document, a timestamped text log — into a
 [case bundle](case-bundle.md) without writing a parser for each incident. It is

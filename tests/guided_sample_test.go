@@ -54,7 +54,7 @@ func guidedTest(t *testing.T, app *desktop.App, root, output string) {
 // reader the window keeps for itself.
 func TestTheGuidedSampleIsCompletedThroughTheWindowAlone(t *testing.T) {
 	parent := t.TempDir()
-	app := desktopApp(t, parent)
+	app := unlicensedDesktopApp(t, parent)
 
 	created := app.CreateSampleWorkspace()
 	if created.State != desktop.Completed || created.Workspace == nil {
@@ -79,7 +79,7 @@ func TestTheGuidedSampleIsCompletedThroughTheWindowAlone(t *testing.T) {
 
 	// Closing the window and opening the folder again reports the same thing,
 	// because nothing about where somebody is was ever written down.
-	reopened := desktopApp(t, parent)
+	reopened := unlicensedDesktopApp(t, parent)
 	progress := reopened.Guide(root)
 	if progress.State != desktop.Completed || progress.Guide == nil || !progress.Guide.Complete() {
 		t.Fatalf("a reopened folder did not report the completed guided sample: %+v", progress)

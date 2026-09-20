@@ -1,5 +1,8 @@
 # Administrator operations
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 Use this guide with the documentation shipped with the exact executable. Record
 `readmit --version`, artifact digests and the deployment's configuration revision
 in the customer's controlled inventory. Current desktop/hub packages are unsigned
@@ -55,7 +58,7 @@ keys are placeholders, not usable provider configuration. The hub's
 readmit-hub -config /etc/readmit-hub/config.json migrate
 readmit-hub -config /etc/readmit-hub/config.json check
 readmit-hub -config /etc/readmit-hub/config.json \
-  -access-policy /etc/readmit-hub/access.json serve
+  -access-policy /etc/readmit-hub/access.json -operation-policy /etc/readmit-hub/operations.json serve
 ```
 
 Run these as the dedicated service identity; all hub flags precede the operation.

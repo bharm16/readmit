@@ -14,6 +14,7 @@ import (
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/guide"
 	"github.com/bharm16/readmit/internal/project"
+	"github.com/bharm16/readmit/internal/testlicense"
 )
 
 // Independently authored identities for the frozen readmit-synth-v1 reference
@@ -44,7 +45,7 @@ func (c *chooser) ChooseFolder(title string) (string, error) {
 
 func newApp(t *testing.T, c *chooser) *desktop.App {
 	t.Helper()
-	return desktop.New(c, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
+	return activatedApp(t, c, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
 }
 
 // sample creates the sample workspace through the public facade and returns it.
@@ -202,7 +203,7 @@ func TestSelectWorkspaceReportsDismissedAndFailedDialogs(t *testing.T) {
 	}
 
 	broken := &chooser{err: errors.New("dialog unavailable")}
-	app := desktop.New(broken, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
+	app := activatedApp(t, broken, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
 	result := app.SelectWorkspace()
 	if result.State != desktop.Failed || result.Workspace != nil {
 		t.Fatalf("a failed folder dialog was not reported as failed: %+v", result)
@@ -221,7 +222,7 @@ func TestCancelStopsTheRunningOperationAndTheFacadeRecovers(t *testing.T) {
 	root := sample(t, preparation).Workspace.Root
 
 	cancelling := &chooser{folder: root}
-	app := desktop.New(cancelling, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
+	app := activatedApp(t, cancelling, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
 	cancelling.before = app.Cancel
 	if result := app.SelectWorkspace(); result.State != desktop.Cancelled || result.Workspace != nil {
 		t.Fatalf("a cancelled open reported a workspace: %+v", result)
@@ -238,7 +239,7 @@ func TestOnlyOneOperationRunsAtATime(t *testing.T) {
 	root := sample(t, preparation).Workspace.Root
 
 	reentrant := &chooser{folder: root}
-	app := desktop.New(reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
+	app := activatedApp(t, reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
 	var concurrent desktop.WorkspaceResult
 	reentrant.before = func() { concurrent = app.OpenWorkspace(root) }
 	if result := app.SelectWorkspace(); result.State != desktop.Completed {
@@ -276,7 +277,7 @@ func TestConcurrentCallersNeverShareAnOperation(t *testing.T) {
 
 func TestRecentWorkspacesRecordOpensMostRecentFirstWithinItsBound(t *testing.T) {
 	store := filepath.Join(t.TempDir(), "recent.json")
-	app := desktop.New(&chooser{}, store, filepath.Join(filepath.Dir(store), "filters.json"), filepath.Join(filepath.Dir(store), "session.json"))
+	app := activatedApp(t, &chooser{}, store, filepath.Join(filepath.Dir(store), "filters.json"), filepath.Join(filepath.Dir(store), "session.json"))
 	if result := app.RecentWorkspaces(); result.State != desktop.Empty || len(result.Roots) != 0 {
 		t.Fatalf("a shell that has opened nothing reported recent workspaces: %+v", result)
 	}
@@ -305,7 +306,7 @@ func TestRecentWorkspacesRecordOpensMostRecentFirstWithinItsBound(t *testing.T) 
 	if reopening := app.OpenWorkspace(want[0]); reopening.State != desktop.Empty {
 		t.Fatalf("reopen: %+v", reopening)
 	}
-	reopened := desktop.New(&chooser{}, store, filepath.Join(filepath.Dir(store), "filters.json"), filepath.Join(filepath.Dir(store), "session.json")).RecentWorkspaces()
+	reopened := activatedApp(t, &chooser{}, store, filepath.Join(filepath.Dir(store), "filters.json"), filepath.Join(filepath.Dir(store), "session.json")).RecentWorkspaces()
 	if len(reopened.Roots) != desktop.MaxRecentWorkspaces || reopened.Roots[0] != recent.Roots[desktop.MaxRecentWorkspaces-1] {
 		t.Fatalf("reopening did not move the workspace to the front: %+v", reopened.Roots)
 	}
@@ -325,7 +326,7 @@ func TestRecentStoreRefusesUnknownVersionsAndMembers(t *testing.T) {
 		if err := os.WriteFile(store, []byte(contents), 0600); err != nil {
 			t.Fatal(err)
 		}
-		app := desktop.New(&chooser{}, store, filepath.Join(filepath.Dir(store), "filters.json"), filepath.Join(filepath.Dir(store), "session.json"))
+		app := activatedApp(t, &chooser{}, store, filepath.Join(filepath.Dir(store), "filters.json"), filepath.Join(filepath.Dir(store), "session.json"))
 		if result := app.RecentWorkspaces(); result.State != desktop.Failed || len(result.Roots) != 0 {
 			t.Fatalf("the recent store accepted an %s: %+v", name, result)
 		}
@@ -343,7 +344,7 @@ func TestRecentStoreRefusesUnknownVersionsAndMembers(t *testing.T) {
 
 func TestRecentStoreIsWrittenCompletelyAndPrivately(t *testing.T) {
 	store := filepath.Join(t.TempDir(), "state", "recent.json")
-	app := desktop.New(&chooser{}, store, filepath.Join(filepath.Dir(store), "filters.json"), filepath.Join(filepath.Dir(store), "session.json"))
+	app := activatedApp(t, &chooser{}, store, filepath.Join(filepath.Dir(store), "filters.json"), filepath.Join(filepath.Dir(store), "session.json"))
 	root := t.TempDir()
 	if result := app.OpenWorkspace(root); result.State != desktop.Empty {
 		t.Fatalf("open: %+v", result)
@@ -445,7 +446,7 @@ func TestOpenCaseHoldsTheSameOperationSlot(t *testing.T) {
 	root := sample(t, preparation).Workspace.Root
 
 	reentrant := &chooser{folder: root}
-	app := desktop.New(reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
+	app := activatedApp(t, reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
 	var concurrent desktop.CaseResult
 	reentrant.before = func() { concurrent = app.OpenCase(root, "regression") }
 	if result := app.SelectWorkspace(); result.State != desktop.Completed {
@@ -571,7 +572,7 @@ func TestWorkspaceListsAProjectDocumentByItsDeclaredContract(t *testing.T) {
 func TestOpenProjectHoldsTheSameOperationSlot(t *testing.T) {
 	root := writeProject(t, t.TempDir(), registeredRegression)
 	reentrant := &chooser{folder: root}
-	app := desktop.New(reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
+	app := activatedApp(t, reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
 	var concurrent desktop.ProjectResult
 	reentrant.before = func() { concurrent = app.OpenProject(root) }
 	if result := app.SelectWorkspace(); result.State != desktop.Completed {
@@ -812,7 +813,7 @@ func TestSaveNoteRefusesMoreNotesThanThisReleaseStores(t *testing.T) {
 func TestSaveNoteHoldsTheSameOperationSlot(t *testing.T) {
 	root := writeProject(t, t.TempDir(), registeredRegression)
 	reentrant := &chooser{folder: root}
-	app := desktop.New(reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
+	app := activatedApp(t, reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
 	var concurrent desktop.RevisionsResult
 	reentrant.before = func() { concurrent = app.SaveNote(root, project.Note{Name: "triage", Title: "Working theory"}) }
 	if result := app.SelectWorkspace(); result.State != desktop.Completed {
@@ -827,4 +828,13 @@ func TestSaveNoteHoldsTheSameOperationSlot(t *testing.T) {
 	if saved := app.SaveNote(root, project.Note{Name: "triage", Title: "Working theory"}); saved.State != desktop.Completed {
 		t.Fatalf("the facade stayed busy after its operation finished: %+v", saved)
 	}
+}
+
+func activatedApp(t testing.TB, chooser desktop.FolderChooser, recent, filters, session string) *desktop.App {
+	t.Helper()
+	app := desktop.New(chooser, recent, filters, session)
+	if result := app.SelectOperationPolicy(testlicense.New(t)); result.State != desktop.Completed {
+		t.Fatal(result)
+	}
+	return app
 }

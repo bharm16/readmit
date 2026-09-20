@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"github.com/bharm16/readmit/internal/testlicense"
 	"io"
 	"net"
 	"os"
@@ -67,7 +68,7 @@ func TestPreparedIPv6ListenerCommandRunsInStrictGlobbingShells(t *testing.T) {
 			}
 			var printedCommand string
 			for _, line := range strings.Split(string(instructions), "\n") {
-				if strings.HasPrefix(line, "./readmit listen ") {
+				if strings.HasPrefix(line, `./readmit --operation-policy "$READMIT_POLICY" listen `) {
 					printedCommand = line
 					break
 				}
@@ -78,8 +79,9 @@ func TestPreparedIPv6ListenerCommandRunsInStrictGlobbingShells(t *testing.T) {
 
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
+			policy := testlicense.New(t)
 			cmd := exec.CommandContext(ctx, shellPath, append(shell.args, printedCommand)...)
-			cmd.Dir, cmd.Env = consumer, packetEnvironment()
+			cmd.Dir, cmd.Env = consumer, append(packetEnvironment(), "READMIT_POLICY="+policy)
 			// A timeout must stop both the shell and its actual listener child.
 			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 			cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
@@ -107,7 +109,7 @@ func TestPreparedIPv6ListenerCommandRunsInStrictGlobbingShells(t *testing.T) {
 				waited = true
 				t.Fatalf("printed IPv6 command did not start listener: %v; %s", waitErr, diagnostic.String())
 			}
-			out, stderr, code := runPacketBinary(t, movedBinary, consumer, []string{"test", "rerun/baseline/spec.json", "--send", "--output", "rerun/baseline/result"})
+			out, stderr, code := runPacketBinary(t, movedBinary, consumer, []string{"--operation-policy", policy, "test", "rerun/baseline/spec.json", "--send", "--output", "rerun/baseline/result"})
 			if code != 1 || stderr != "" {
 				t.Fatalf("IPv6 baseline: %d %s %s", code, out, stderr)
 			}

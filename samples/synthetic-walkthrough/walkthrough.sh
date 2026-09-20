@@ -29,19 +29,16 @@ echo "== 1. inspect: syntax of the frozen synthetic regression pair, values hidd
 "$READMIT" inspect "$FIXTURES/synth-v1-regression.mllp" --format mllp --terminator cr
 
 echo "== 2. synth: the reproducible seed-zero SIU family"
-"$READMIT" synth --seed 0 --base-time 2026-01-01T12:00:00Z \
-  --generator-version readmit-synth-v1 --profile-version readmit-siu-v1 \
-  --output family
+"$READMIT" sample synth --output family
 
 echo "== 3. timeline: verify and reopen the generated regression case"
 "$READMIT" timeline family/regression
 
 echo "== 4. capture: import the receiver fixtures as a case with imported provenance"
-"$READMIT" capture "$FIXTURES/listen-s12.hl7" "$FIXTURES/listen-s13.hl7" --output test-case
+"$READMIT" sample capture --fixtures "$FIXTURES" --output test-case
 
 echo "== 5. index: build a disposable states-only index and ask it one question"
-"$READMIT" index build family/regression --output regression.index.json \
-  --field SCH-2 --field MSH-10 --retain states --retain-until indefinite
+"$READMIT" sample index family/regression --output regression.index.json
 "$READMIT" index search family/regression regression.index.json --field SCH-2 --state present
 
 echo "== 6. diagnose: the regression case, then the known-invalid case"

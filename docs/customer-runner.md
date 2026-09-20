@@ -1,5 +1,8 @@
 # Customer-controlled runner
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 `readmit runner` operates on a customer-owned host using the same prepared test
 and durable execution engine as `readmit run start`. It adds admission, exclusive
 leases, a private local inbox service and signed update verification. It does
@@ -171,3 +174,10 @@ only the staged file at that instant; it does not certify a later replacement
 from a writable path. Never replace a running binary or modify retained evidence.
 Customer signing keys, production certificates and actual host/container rollout
 are external installation gates; synthetic tests do not prove deployment.
+
+The shipped systemd service explicitly selects `/etc/readmit-runner/operation-policy.json`;
+the container selects `/config/operation-policy.json`. Provision and activate that
+policy before starting the service. Its clock/admission paths must be on the
+persistent writable runner volume (`/var/lib/readmit-runner` or `/data`), while
+the signed entitlement/trust may remain in the read-only configuration mount.
+New jobs fail closed without activation; status and retained evidence stay readable.

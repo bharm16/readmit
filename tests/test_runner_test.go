@@ -54,7 +54,7 @@ func testTarget(t *testing.T, dir, address string) {
 func testListener(t *testing.T, dir, mode string) func() {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	cmd := exec.CommandContext(ctx, binary, "listen", "--address", "127.0.0.1:0", "--mode", mode, "--output", filepath.Join(dir, "received-case"), "--observation", filepath.Join(dir, "test-observation.json"), "--max-messages", "2", "--idle-timeout", "3s")
+	cmd := testCommand(ctx, t, "listen", "--address", "127.0.0.1:0", "--mode", mode, "--output", filepath.Join(dir, "received-case"), "--observation", filepath.Join(dir, "test-observation.json"), "--max-messages", "2", "--idle-timeout", "3s")
 	var diagnostic bytes.Buffer
 	cmd.Stderr = &diagnostic
 	pipe, err := cmd.StdoutPipe()

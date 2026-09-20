@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bharm16/readmit/internal/cli"
 	"github.com/bharm16/readmit/internal/runqueue"
 	"github.com/bharm16/readmit/internal/suite"
 )
@@ -37,7 +36,7 @@ func TestPublicPromotionRunsApprovedSuiteInTwoEnvironments(t *testing.T) {
 		common := []string{filepath.Join(dir, "suite.json"), "--environment", env, "--releases", filepath.Join(dir, "releases.json"), "--revision", "fixture-v1"}
 		var stdout, stderr bytes.Buffer
 		args := append([]string{"suite", "review-promotion"}, common...)
-		if e := cli.Execute("test", args, &stdout, &stderr); e != nil {
+		if e := licensedCLI(t, args, &stdout, &stderr); e != nil {
 			t.Fatal(e, stderr.String())
 		}
 		var review suite.PromotionReview
@@ -47,7 +46,7 @@ func TestPublicPromotionRunsApprovedSuiteInTwoEnvironments(t *testing.T) {
 		approval := filepath.Join(dir, env+"-approval.json")
 		args = append(append([]string{"suite", "approve-promotion"}, common...), "--review", review.Identity(), "--approver", "reviewer", "--rationale", "synthetic fixture", "--output", approval)
 		stdout.Reset()
-		if e := cli.Execute("test", args, &stdout, &stderr); e != nil {
+		if e := licensedCLI(t, args, &stdout, &stderr); e != nil {
 			t.Fatal(e, stderr.String())
 		}
 		raw, _ := os.ReadFile(approval)
@@ -57,7 +56,7 @@ func TestPublicPromotionRunsApprovedSuiteInTwoEnvironments(t *testing.T) {
 		}
 		args = append(append([]string{"suite", "run"}, common...), "--promotion", approval, "--promotion-identity", p.Identity(), "--output", filepath.Join(dir, env+"-run"), "--send", "--json")
 		stdout.Reset()
-		if e := cli.Execute("test", args, &stdout, &stderr); e != nil {
+		if e := licensedCLI(t, args, &stdout, &stderr); e != nil {
 			t.Fatal(e, stderr.String())
 		}
 		var report runqueue.Report

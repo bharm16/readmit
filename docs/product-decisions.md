@@ -177,10 +177,11 @@ effective time; larger rollback requires explicit resolution before new paid
 operations. Do not add periodic call-home. Fully offline checks cannot guarantee
 immediate revocation or defeat every VM snapshot rollback.
 
-**Current implementation gap:** v1 verification uses the caller's clock, and
-production operations do not yet enforce this trial policy. #116 owns the new
-operation/clock guard and its separate versioned local state, including missing
-or corrupt state and rollback handling. Reading old evidence must not acquire
+**Implementation:** v1 verification retains the caller's clock. New production
+operations use #116's separate versioned operation/clock guard, including
+missing/corrupt state and rollback handling. Offline trial issuance has its own
+issuer policy and account contract; production signing custody and deployment
+remain owner acceptance requirements. Reading old evidence must not acquire
 that guard. See the amendment to
 [ADR-0007](adr/0007-offline-entitlements-are-signed-documents-verified-locally.md).
 Seven-day, indefinite, card-first and destructive-expiry alternatives are rejected.

@@ -1,3 +1,4 @@
+import { OperationAccess } from "./OperationAccess";
 import { RunComparison } from "./RunComparison";
 import { Baseline } from "./Baseline";
 import { NoteDraft } from "./NoteDraft";
@@ -1185,6 +1186,7 @@ export default function App() {
     ),
     privacy: (
       <>
+        <OperationAccess />
         <p className="statement">{described?.privacy.statement}</p>
         <ul className="absent">
           {(described?.privacy.absent ?? []).map((claim) => (

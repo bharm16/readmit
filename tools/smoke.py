@@ -22,6 +22,7 @@ import threading
 import zipfile
 
 from toolchain import pinned_version
+from operation_fixture import activate
 
 
 FIXTURES = (
@@ -219,10 +220,11 @@ def smoke(archive, target_os, release_tag=None):
         binary.write_bytes(member_bytes(archive, name))
         binary.chmod(0o755)
         environment = dict(os.environ, PATH="")
+        operation = activate(binary, work, environment)
 
         def run(*arguments, success=True):
             result = subprocess.run(
-                [str(binary), *map(str, arguments)], cwd=work, env=environment,
+                [str(binary), *operation, *map(str, arguments)], cwd=work, env=environment,
                 capture_output=True, timeout=15,
             )
             if (result.returncode == 0) != success:
@@ -406,7 +408,7 @@ def fixture_receiver(binary, environment, work, label, mode, observation_path=No
     case = case_path or work / f"receiver-{label}-{mode}.case"
     observation = observation_path or work / f"receiver-{label}-{mode}.json"
     process = subprocess.Popen(
-        [str(binary), "listen", "--address", address, "--mode", mode,
+        [str(binary), *activate(binary, work, environment), "listen", "--address", address, "--mode", mode,
          "--output", str(case), "--observation", str(observation),
          "--max-messages", "2", "--idle-timeout", "5s"],
         cwd=work, env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -766,7 +768,7 @@ def smoke_report(binary, environment, work, run):
     retained = {p.relative_to(packet).as_posix(): p.read_bytes() for p in packet.rglob("*") if p.is_file()}
 
     def relocated_run(*arguments, expected=0):
-        completed = subprocess.run([str(copied_binary), *map(str, arguments)], cwd=isolated,
+        completed = subprocess.run([str(copied_binary), *activate(copied_binary, isolated, environment), *map(str, arguments)], cwd=isolated,
                                    env=environment, capture_output=True, timeout=20)
         if completed.returncode != expected:
             raise RuntimeError(f"Packet handoff exit {completed.returncode}, expected {expected}: {completed.stderr!r}")

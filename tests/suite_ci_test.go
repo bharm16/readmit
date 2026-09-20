@@ -20,6 +20,7 @@ import (
 	"github.com/bharm16/readmit/internal/mllp"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/suite"
+	"github.com/bharm16/readmit/internal/testlicense"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
@@ -34,7 +35,7 @@ func TestCustomerCIExamplesExecuteSavedSuiteAndPropagateFailures(t *testing.T) {
 	var commands []string
 	for _, line := range strings.Split(string(doc), "\n") {
 		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, `"$READMIT_BIN" suite ci `) {
+		if strings.HasPrefix(line, `"$READMIT_BIN" --operation-policy "$OPERATION_POLICY" suite ci `) {
 			commands = append(commands, line)
 		}
 	}
@@ -102,7 +103,7 @@ func TestCustomerCIExamplesExecuteSavedSuiteAndPropagateFailures(t *testing.T) {
 				}
 				put("coverage.json", suite.CoverageDocument{Schema: suite.CoverageSchema, SuiteSHA256: hashFile(filepath.Join(root, "suite.json")), Specifications: []suite.CoverageSpecification{{Job: "booking-one", SHA256: hashFile(filepath.Join(preview.Directory, "booking-one.json"))}}, Requirements: []suite.Requirement{{ID: "booking", Jobs: []string{"booking-one"}}}, Exclusions: []suite.Exclusion{}})
 				cmd := exec.Command("sh", "-c", command)
-				cmd.Env = append(os.Environ(), "READMIT_BIN="+binary, "SUITE_FILE="+filepath.Join(root, "suite.json"), "SUITE_ENVIRONMENT=lab", "RUN_DIRECTORY="+filepath.Join(root, "run"), "COVERAGE_FILE="+filepath.Join(root, "coverage.json"))
+				cmd.Env = append(os.Environ(), "READMIT_BIN="+binary, "OPERATION_POLICY="+testlicense.New(t), "SUITE_FILE="+filepath.Join(root, "suite.json"), "SUITE_ENVIRONMENT=lab", "RUN_DIRECTORY="+filepath.Join(root, "run"), "COVERAGE_FILE="+filepath.Join(root, "coverage.json"))
 				var stdout, stderr bytes.Buffer
 				cmd.Stdout = &stdout
 				cmd.Stderr = &stderr

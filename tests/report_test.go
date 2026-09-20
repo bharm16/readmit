@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"github.com/bharm16/readmit/internal/testlicense"
 	"io"
 	"io/fs"
 	"net"
@@ -70,9 +71,21 @@ func TestReportPrintedProcedureWorksWithRelocatedBinaryAndPacket(t *testing.T) {
 	}
 	address := listener.Addr().String()
 	listener.Close()
+	// Follow current prepared instructions, not immutable historical v1 commands.
+	policy := testlicense.New(t)
+	for _, args := range [][]string{{"report", "verify", "packet"}, {"report", "prepare", "packet", "--output", "rerun", "--address", address}} {
+		if out, diagnostic, code := runPacketBinary(t, movedBinary, consumer, args); code != 0 || diagnostic != "" {
+			t.Fatalf("preparation: %d %s %s", code, out, diagnostic)
+		}
+	}
+	prepared, err := os.ReadFile(filepath.Join(consumer, "rerun", "RERUN.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	instructions = string(prepared)
 	var waitFixture func()
 	testsRun := 0
-	commands := 0
+	commands := 2
 	for _, block := range strings.Split(instructions, "~~~sh\n")[1:] {
 		for _, line := range strings.Split(strings.SplitN(block, "\n~~~", 2)[0], "\n") {
 			args := strings.Fields(strings.ReplaceAll(line, "127.0.0.1:2575", address))
@@ -82,9 +95,16 @@ func TestReportPrintedProcedureWorksWithRelocatedBinaryAndPacket(t *testing.T) {
 			args = args[1:]
 			for i := range args {
 				args[i] = strings.Trim(args[i], "\"")
+				if args[i] == "$READMIT_POLICY" {
+					args[i] = policy
+				}
 			}
 			commands++
-			if args[0] == "listen" {
+			operationArgs := args
+			if args[0] == "--operation-policy" {
+				operationArgs = args[2:]
+			}
+			if operationArgs[0] == "listen" {
 				if waitFixture != nil {
 					t.Fatal("procedure did not finish previous receiver")
 				}
@@ -93,8 +113,8 @@ func TestReportPrintedProcedureWorksWithRelocatedBinaryAndPacket(t *testing.T) {
 			}
 			out, diagnostic, code := runPacketBinary(t, movedBinary, consumer, args)
 			want := 0
-			if args[0] == "test" {
-				if strings.Contains(args[1], "baseline") || strings.Contains(args[1], "reintroduced") {
+			if operationArgs[0] == "test" {
+				if strings.Contains(operationArgs[1], "baseline") || strings.Contains(operationArgs[1], "reintroduced") {
 					want = 1
 				}
 				testsRun++
@@ -102,7 +122,7 @@ func TestReportPrintedProcedureWorksWithRelocatedBinaryAndPacket(t *testing.T) {
 			if code != want || diagnostic != "" {
 				t.Fatalf("printed command %v: exit %d want %d: %s %s", args, code, want, out, diagnostic)
 			}
-			if args[0] == "test" {
+			if operationArgs[0] == "test" {
 				if waitFixture == nil {
 					t.Fatal("test before listener")
 				}

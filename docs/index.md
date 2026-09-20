@@ -267,3 +267,4 @@ Explicit [human correlation review](correlate.md#explicit-human-correlation-revi
 retains analyst decisions separately from the original sequence findings.
 
 - [Reusable interface contracts](profile-packages.md): `profile export` and `profile import`, copy migration, integrity and external mapping limitations.
+Local evaluation: [trial issuance, activation and operation clock](license-v2.md#complete-local-evaluation-and-operation-admission). `sample synth/capture/index` prepares the frozen ungated walkthrough.

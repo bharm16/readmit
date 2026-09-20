@@ -1,6 +1,6 @@
 # readmit
 
-Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `index`, `project`, `backup`, `secret`, `listen`, `collect`, `replay`, `test`, `diff`, `drift`, `report`, `redact`, `share`, `synth`, `observe`, and `diagnose` are available. See the workflow guides below.
+Local-first HL7 v2 incident-reproduction and regression-testing CLI for healthcare integration engineers. `inspect`, `capture`, `timeline`, `index`, `project`, `backup`, `secret`, `listen`, `collect`, `replay`, `test`, `diff`, `drift`, `report`, `redact`, `share`, `synth`, `observe`, and `diagnose` are available. See the workflow guides below. New-work recipes use the [explicit license setup](docs/license-v2.md#running-command-line-recipes-with-an-activated-license); inspection, verification, export and frozen practice remain free.
 
 ```sh
 readmit inspect message.hl7
@@ -1087,3 +1087,4 @@ complete finished-product release acceptance.
 
 [Administrator operations](docs/administration.md): deployment, identity, runner recovery, backups and retention.
 [Security operations](docs/security-operations.md): egress, secrets, incident reporting and release dependency/SBOM limits.
+New authoring and execution require an explicitly activated signed v2 entitlement and `--operation-policy`. Reading, verification, export and the frozen synthetic walkthrough remain available without one. See [local evaluation and activation](docs/license-v2.md#complete-local-evaluation-and-operation-admission).

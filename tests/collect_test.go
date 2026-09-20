@@ -7,7 +7,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -48,7 +47,7 @@ func TestCollectExecutableRetainsLabelledDownstreamEvidence(t *testing.T) {
 	casePath := filepath.Join(dir, "collected")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, binary, "collect", "--address", "127.0.0.1:0", "--policy", policyFile(t, dir, collectPolicy), "--output", casePath, "--max-messages", "2", "--idle-timeout", "2s")
+	command := testCommand(ctx, t, "collect", "--address", "127.0.0.1:0", "--policy", policyFile(t, dir, collectPolicy), "--output", casePath, "--max-messages", "2", "--idle-timeout", "2s")
 	var diagnostic bytes.Buffer
 	command.Stderr = &diagnostic
 	stdout, err := command.StdoutPipe()
@@ -168,7 +167,7 @@ func TestCollectExecutableIsTheDownstreamSinkOfARealReplayRun(t *testing.T) {
 	casePath := filepath.Join(dir, "collected")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, binary, "collect", "--address", "127.0.0.1:0", "--policy", policyFile(t, dir, collectAnyPolicy), "--output", casePath, "--max-messages", "2", "--idle-timeout", "2s")
+	command := testCommand(ctx, t, "collect", "--address", "127.0.0.1:0", "--policy", policyFile(t, dir, collectAnyPolicy), "--output", casePath, "--max-messages", "2", "--idle-timeout", "2s")
 	var diagnostic bytes.Buffer
 	command.Stderr = &diagnostic
 	pipe, err := command.StdoutPipe()
@@ -225,7 +224,7 @@ func TestCollectExecutableBoundsFrameSizeWithoutDiscardingEvidence(t *testing.T)
 	casePath := filepath.Join(dir, "collected")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, binary, "collect", "--address", "127.0.0.1:0", "--policy", policyFile(t, dir, collectAnyPolicy), "--output", casePath, "--max-messages", "1", "--max-frame-bytes", "64", "--idle-timeout", "2s")
+	command := testCommand(ctx, t, "collect", "--address", "127.0.0.1:0", "--policy", policyFile(t, dir, collectAnyPolicy), "--output", casePath, "--max-messages", "1", "--max-frame-bytes", "64", "--idle-timeout", "2s")
 	var diagnostic bytes.Buffer
 	command.Stderr = &diagnostic
 	pipe, err := command.StdoutPipe()
@@ -342,7 +341,7 @@ func TestCollectExecutableSplitsAcknowledgementStagesAcrossEndpoints(t *testing.
 	declared := strings.Replace(collectEnhancedPolicy, "ENDPOINT", sink.Addr().String(), 1)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, binary, "collect", "--address", "127.0.0.1:0", "--policy", policyFile(t, dir, declared),
+	command := testCommand(ctx, t, "collect", "--address", "127.0.0.1:0", "--policy", policyFile(t, dir, declared),
 		"--output", casePath, "--max-messages", "1", "--idle-timeout", "2s", "--application-ack-timeout", "3s")
 	var diagnostic bytes.Buffer
 	command.Stderr = &diagnostic

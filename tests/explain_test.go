@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -86,7 +85,7 @@ func explainableRun(t *testing.T) (runPath, directory string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	receiver := exec.CommandContext(ctx, binary, "listen", "--address", "127.0.0.1:0", "--mode", "fixed",
+	receiver := testCommand(ctx, t, "listen", "--address", "127.0.0.1:0", "--mode", "fixed",
 		"--output", filepath.Join(directory, "recorded"), "--observation", filepath.Join(directory, "observation.json"),
 		"--max-messages", "1", "--idle-timeout", "3s")
 	var diagnostic bytes.Buffer

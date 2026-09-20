@@ -250,6 +250,14 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if r.Method != "GET" {
+		release, err := s.admitAuthor(r, principal)
+		if err != nil {
+			http.Error(w, "operation admission refused", 403)
+			return
+		}
+		defer release()
+	}
 	// Reauthorize after waiting for the write/backup lock so queued requests do not
 	// retain a grant that was revoked while another operation held the lock.
 	principal, e = s.authorize(a, r, project, action)

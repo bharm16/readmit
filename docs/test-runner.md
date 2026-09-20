@@ -1,5 +1,8 @@
 # Declarative regression tests
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 `readmit test SPEC` validates a strict JSON spec and prepares selected messages
 locally. It opens no connection and produces no verdict or result artifact.
 `--send --output NEW_RESULT` explicitly executes it against the target named in

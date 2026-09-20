@@ -13,6 +13,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/durablerun"
+	"github.com/bharm16/readmit/internal/operationguard"
 	"github.com/bharm16/readmit/internal/runnerprotocol"
 )
 
@@ -107,6 +108,13 @@ func storeLease(active string, lease runnerprotocol.Lease) error {
 	return syncDirectory(active)
 }
 
+type operationGuardKey struct{}
+
+// WithOperationGuard binds explicit operator policy to every job in this context.
+func WithOperationGuard(ctx context.Context, guard *operationguard.Guard) context.Context {
+	return context.WithValue(ctx, operationGuardKey{}, guard)
+}
+
 // Run acquires one exclusive environment lease within this configured root. A
 // crash leaves the claim intact. Neither restart nor lease expiry replays work.
 func Run(ctx context.Context, c Config, job Job) (durablerun.Summary, error) {
@@ -121,7 +129,22 @@ func RunPinned(ctx context.Context, c Config, job Job, inputIdentity string) (du
 	}
 	return run(ctx, c, job, inputIdentity)
 }
-func run(ctx context.Context, c Config, job Job, inputIdentity string) (durablerun.Summary, error) {
+func run(ctx context.Context, c Config, job Job, inputIdentity string) (summary durablerun.Summary, resultErr error) {
+	guard, _ := ctx.Value(operationGuardKey{}).(*operationguard.Guard)
+	if guard == nil {
+		guard = operationguard.New("")
+	}
+	release, err := guard.AdmitContext(ctx, "execute")
+	if err != nil {
+		return durablerun.Summary{}, err
+	}
+	defer func() {
+		if e := release(); e != nil && resultErr == nil {
+			resultErr = e
+		}
+	}()
+	ctx, stop := context.WithTimeout(ctx, operationguard.MaxDuration)
+	defer stop()
 	var zero durablerun.Summary
 	if c.validate() != nil {
 		return zero, ErrRefused
@@ -225,7 +248,7 @@ func run(ctx context.Context, c Config, job Job, inputIdentity string) (durabler
 			}
 		}
 	}()
-	summary, err := plan.Start(runCtx, filepath.Join(dir, "run"))
+	summary, err = plan.Start(runCtx, filepath.Join(dir, "run"))
 	cancel()
 	<-done
 	return summary, err

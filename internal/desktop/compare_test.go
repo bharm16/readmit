@@ -51,7 +51,7 @@ func comparisonWorkspace(t *testing.T) (*desktop.App, string, string) {
 	t.Helper()
 	root := t.TempDir()
 	state := t.TempDir()
-	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
+	app := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
 	before := writeCase(t, root, "before", framed(cmpBookedBefore)+framed(cmpMovedBefore))
 	writeCase(t, root, "after", framed(cmpBookedAfter)+framed(cmpInsertedAfter)+framed(cmpMovedAfter))
 	return app, root, before.Identity
@@ -353,7 +353,7 @@ func TestComparingHoldsTheSameOperationSlot(t *testing.T) {
 	app, root, identity := comparisonWorkspace(t)
 
 	reentrant := &chooser{folder: root}
-	second := desktop.New(reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
+	second := activatedApp(t, reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
 	var concurrent desktop.CompareResult
 	reentrant.before = func() { concurrent = second.Compare(compareRequest(root, identity, "after", cmpKey)) }
 	if opened := second.SelectWorkspace(); opened.State != desktop.Completed {

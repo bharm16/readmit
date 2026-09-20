@@ -1,5 +1,8 @@
 # Importing real-world files: `readmit import`
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 `import` brings files, folders, and ZIP archives an engineer already holds into
 one new [case bundle](case-bundle.md). It is the guided form of `capture`: every
 decision that `capture` leaves to a per-file flag or to detection is instead

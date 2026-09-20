@@ -1,5 +1,8 @@
 # Separating input, target, environment, and rule drift
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 `readmit diff` says that two collections differ, and which fields differ.
 `readmit drift` answers the question that is left: **which of the things that
 could have changed actually did.** It keeps four causes apart and never merges

@@ -209,7 +209,7 @@ new record is started beside it once nothing in the old one is held.
 
 ## Policy mapping for #116, #118 and #119
 
-These tickets consume the contract; none of their policy is implemented here.
+These tickets consume the contract; the local trial and operation guard are implemented below.
 The members below are where each adopted decision is carried, so the engine
 stays free of plan and price constants.
 
@@ -222,7 +222,7 @@ stays free of plan and price constants.
 | Renewal, cancellation, downgrade, upgrade (D7) | Each is the next organization-scoped `sequence`; cancellation issues nothing and the paid-through term stands | #118 |
 | Two active author devices per seat, administrator-managed transfer (D8) | `authors.devices_per_seat: 2` and `authors.assignments`; transfer is a reissue plus `license release` | #119 |
 | Runner capacity counts active execution instances (D8) | `runners.instances`, `runners.authorities`, and the admission record | #119 |
-| Expiry stops new execution and authoring; started bounded runs finish (D6) | `license runner admit` refuses when expired; `renew`, `release` and `reconcile` do not. Which commands ask `Allows` is #116's | #116 |
+| Expiry stops new execution and authoring; started bounded runs finish (D6) | The operation guard checks every new job; bounded admitted work finishes and releases capacity | #116 |
 | Free read-only reviewers (D6) | A document with `authors.seats: 0` and `runners.instances: 0`, or no entitlement: reading is never gated | — |
 
 ## Limits, stated
@@ -235,9 +235,7 @@ restores the activation it held. The product makes no claim of globally
 reliable enforcement on disconnected copies; what it claims is that one
 authority, kept in one place, admits no more than it was granted.
 
-**The term is decided from this machine's clock.** As in v1, a clock set
-backwards revives an expired entitlement and readmits instances. **The clock
-guard selected in D6 is not delivered here.** It is separate versioned local
+**Pure verification is decided from the supplied clock.** It can report an old term active after rollback. New work uses the D6 operation guard below, with separate versioned local
 state and an operation-admission rule owned by #116 — visible UTC high-water
 state, in-process monotonic time, a tolerated five-minute correction, explicit
 resolution of a larger rollback, and defined handling of missing or corrupt
@@ -260,11 +258,8 @@ and nothing an instance did.
 
 ## Not supported in this release
 
-- **Gating any command.** `license runner admit` is the one refusal added, and
-  it is invoked explicitly by the runner integration, not by `test`, `replay`
-  or any command that reads evidence. Which capabilities gate which commands is
-  #116's decision.
-- **The trial clock guard.** #116. The administration API is described in
+- **Global disconnected enforcement.** Local operation admission cannot detect copied authority records.
+- **Vendor deployment.** The administration API is described in
   [commercial administration](commercial-administration.md). The vendor's account ledger and its authenticated payment events
   are [purchasing through a separate portal](billing.md); the portal itself,
   prices and real invoices stay outside this repository.
@@ -276,3 +271,171 @@ and nothing an instance did.
 - **Migrating a v1 store or document into v2.** A v1 store keeps working under
   v1 and reports a v2 document as unsupported for renewal; moving an
   organization to named authors is a fresh `import` of a v2 issue.
+
+## Complete local evaluation and operation admission
+
+New authoring and execution now require an explicitly selected signed v2
+entitlement. No policy flag, absent or corrupt activation, a released
+activation, an unassigned author/device, missing capability, a superseded issue,
+or an ended term refuses **before** work starts. The CLI, desktop, hub writes
+and customer runner use `internal/operationguard`; core evidence readers keep
+no licensing dependency. v1 verification and its bound-device meaning remain
+unchanged; v1 does not grant named-author operation admission.
+
+The three operation capabilities are `author`, `execute` and `hub`. Authoring
+checks a signed named-author/device assignment. Execution admits one process instance
+against the selected signed runner authority. A suite/queue holds one instance for its bounded lifetime and rechecks term, clock and authority before each new job without charging a slot per test. It releases its instance on ordinary error or
+completion, and retains uncertain capacity after interruption for explicit
+`license runner reconcile`. A long-running runner checks each new job; the hub
+checks each new authenticated write and runner admission. A running bounded job
+keeps its already admitted permission through expiry, at most seven days. No
+expiry deletes, replays or stops evidence recovery. Reads, verification, exports,
+license management, backups and restoration remain free. The frozen desktop
+practice, `report --scenario siu-reschedule-v1`, and `sample synth`, `sample
+capture` and `sample index` remain ungated; these sample commands accept only
+the pinned synthetic bytes/inputs, never arbitrary evidence or targets.
+
+### Explicit customer activation
+
+The issuer supplies the signed entitlement and its public trust document. The
+operator writes one private `readmit-operation-policy/v1` file selecting local
+absolute paths. All members are required; an unused author/device or
+runner-authority/admissions pair is explicitly empty. Files belong outside
+retained evidence.
+
+```json
+{
+  "schema": "readmit-operation-policy/v1",
+  "entitlement": "/private/readmit/entitlement.json",
+  "trust": "/private/readmit/trust.json",
+  "state": "/private/readmit/clock.json",
+  "author": "alice",
+  "device": "workstation-a",
+  "authority": "local-runner",
+  "admissions": "/private/readmit/admissions.json"
+}
+```
+
+```sh
+readmit --operation-policy /private/readmit/operation-policy.json license operation activate
+readmit --operation-policy /private/readmit/operation-policy.json license operation status
+readmit --operation-policy /private/readmit/operation-policy.json test spec.json --send --output new-result
+readmit --operation-policy /private/readmit/operation-policy.json license operation resolve
+readmit --operation-policy /private/readmit/operation-policy.json license operation release
+```
+
+`activate` creates clock state and a runner admission record explicitly, never
+changes signed dates and never replaces an existing state. An interrupted
+activation may leave an empty runner record before the clock is published. An
+explicit activation retry reuses only an empty record naming the same signed
+organization and authority. A record with any admission history cannot initialize
+a missing clock; it needs explicit retained-state recovery. `release`
+irreversibly marks this local operation activation released; a new explicitly
+created activation under a valid signed document is a separate record. The
+older `license import/release` stores remain separate verification/device
+records; releasing an operation uses the command above.
+
+In the desktop privacy pane, choose the folder containing
+`operation-policy.json`, then activate the received entitlement. The selected
+path is retained in `readmit-desktop-operation-selection/v1` outside evidence;
+selection and activation are separate actions. The pane shows the UTC
+high-water and rollback/release state. A missing policy never prevents opening
+the application or reading a workspace. Hub identity binding and startup
+selection are documented in [the hub guide](../hub/README.md).
+
+### Visible time and refusal recovery
+
+`readmit-operation-clock/v1` requires `schema`, `organization`, `sequence`,
+`high_water` (whole-second UTC), `rollback` and `released`. It contains no work
+identifiers, evidence hashes or machine fingerprints. Admission re-verifies the
+selected signed claims and re-reads state under an exclusive update. It retains
+the greatest UTC seen and in-process monotonic elapsed time, including elapsed
+fractions accumulated across operations. A backward correction of at most five
+minutes never reduces effective time. A larger rollback is recorded and latched:
+fix wall UTC to at least the retained high-water, then explicitly `resolve`.
+A later clock sample alone does not clear that latch.
+
+Missing/corrupt state is not an implicit activation. Concurrent metadata updates allow up to 100 brief, cancellation-aware lock retries before refusing; no execution is retried. An interrupted
+`clock.json.incomplete` update is retained and blocks new work; recovery retains
+and inspects that file outside Readmit before removing the lock, preserving the
+largest known high-water. No recovery command lowers time. A falsely advanced
+clock can require waiting or an owner-supported replacement activation; it is
+never silently corrected backwards. Renewal must carry an organization sequence
+at least as new as the retained state and preserve the organization's signed
+assignment. Time advancement is recorded even when it proves the term expired.
+
+The clock is local evidence, not tamper-proof hardware. Deleting/replacing local
+files, restoring VM snapshots, or copying authority records can defeat local
+history or duplicate disconnected capacity. There is no periodic call-home,
+and a revocation is learned only when updated trust or entitlement files arrive.
+
+### Issuer policy and exactly one extension
+
+`internal/trial` is the vendor-side issuer API. It takes authenticated explicit
+activation or scheduled offline issuance, configuration, named assignments and
+a signing key supplied only in memory. `Issue` returns a strict
+`readmit-trial-account/v1` and exact signed `readmit-entitlement/v2` bytes.
+The issuer commits the returned account under its organization lock/CAS before
+releasing those bytes; retrying delivery reuses the retained bytes. Its sequence
+allocator is shared with paid/admin issuance, so purchasing never resets the
+organization sequence. Production signer custody, approval authentication and
+durable vendor service deployment remain owner responsibilities.
+
+The adopted issuer configuration is a strict `readmit-trial-policy/v1`:
+
+```json
+{
+  "schema": "readmit-trial-policy/v1",
+  "plan": "evaluation",
+  "days": 30,
+  "extension_days": 14,
+  "grace_days": 0,
+  "authors": 3,
+  "devices_per_author": 2,
+  "runners": 1,
+  "capabilities": ["author", "execute", "hub"]
+}
+```
+
+An activation starts at its explicit UTC instant; a scheduled issue names its
+future UTC start. Downloading starts nothing. The initial signed end is exactly
+30 days later. Three named humans each receive up to two assigned devices,
+one runner instance is assigned to the customer authority, and hub operation
+is included. Read-only reviewers require no entitlement. No card, automatic
+conversion or trial grace is present. The account stores the original end and
+one extension decision; an explicitly approved `Extend` signs a later sequence
+with the original end plus 14 days, zero grace, and refuses a second extension
+or an approval after that fixed extension end. Cancelling an issuer operation
+returns no delivery; failed signing changes no account. Trial and paid issuing
+remain separate: paid renewal configuration carries `grace_days: 14`, and the
+same operation guard honors that signed grace. The engine infers no price or
+plan name.
+
+### Running command-line recipes with an activated license
+
+Read-only commands and the frozen walkthrough work directly without this setup.
+For a shell workflow that creates or executes other work, select your supplied
+policy explicitly. In a POSIX shell, this wrapper keeps existing recipe commands
+literal while passing the documented flag on every invocation:
+
+```sh
+READMIT_EXE=/absolute/path/to/readmit
+READMIT_POLICY=/private/readmit/operation-policy.json
+"$READMIT_EXE" --operation-policy "$READMIT_POLICY" license operation activate
+readmit() { "$READMIT_EXE" --operation-policy "$READMIT_POLICY" "$@"; }
+```
+
+Activate once only; if it is already activated, use `license operation status`
+instead. These are shell variables passed as arguments, not environment-variable
+configuration discovered by the engine. In PowerShell use
+`$ReadmitExe = 'C:/tools/readmit.exe'`, `$ReadmitPolicy = 'C:/private/operation-policy.json'`
+and `function readmit { & $ReadmitExe --operation-policy $ReadmitPolicy @args }`.
+Services and CI examples pass the flag explicitly and do not use this wrapper.
+
+Existing sealed v1 reports retain their exact historical `RERUN.md` bytes so they
+still verify. Use `report prepare` and follow the newly prepared workspace's
+instructions with this release; its runnable copy names the explicit activation
+flag. Historical direct execution snippets are not an implicit license selection.
+For retained customer packets, preserve the original packet, copy/rebind outside
+it as documented, and run new sends through the wrapper above. Their read-only
+verification and exports remain available without activation.

@@ -1,5 +1,8 @@
 # Case bundle format: readmit-case/v1
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 This document defines imported and generated v1 bundles. The reader also supports
 `readmit-case/v2` recorded receiver bundles, whose integrity-covered observation
 and recorded provenance are defined in [the receiver contract](listen.md).

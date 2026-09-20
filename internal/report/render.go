@@ -79,3 +79,14 @@ func trialInstructions(address string) []byte {
 	fmt.Fprintln(&out, "\n## Interrupted or repeated trials\n\nIf a listener remains running after a failed test, stop it with Ctrl-C and wait for it to exit. Preserve the partial evidence. Run report prepare again with a new workspace name, then start fresh listeners and use the new workspace paths. Never reuse an observation file, receiver output or result destination. The command refuses existing destinations. There are no executable reset hooks or expressions in a spec.")
 	return out.Bytes()
 }
+
+// Prepared instructions are not sealed evidence. Keep packetInstructions and
+// retainedInstructions byte-identical for the existing v1 readers; only this
+// newly created runnable workspace receives current invocation setup.
+func preparedTrialInstructions(address string) []byte {
+	setup := []byte("## License selection for new manual executions\n\nThe two-terminal listener and sender are two active execution processes and require two runner instances. A one-runner evaluation can use the free single-process desktop practice/report or send to an independently operated test endpoint.\n\nIn BOTH terminals select an already activated policy: READMIT_POLICY=/absolute/path/operation-policy.json in a POSIX shell, or $READMIT_POLICY = 'C:/private/operation-policy.json' in PowerShell. These variables are passed explicitly as command arguments; the engine discovers no environment configuration. Verification and export remain ungated.\n\n")
+	instructions := trialInstructions(address)
+	instructions = bytes.ReplaceAll(instructions, []byte("./readmit listen "), []byte("./readmit --operation-policy \"$READMIT_POLICY\" listen "))
+	instructions = bytes.ReplaceAll(instructions, []byte("./readmit test "), []byte("./readmit --operation-policy \"$READMIT_POLICY\" test "))
+	return append(setup, instructions...)
+}

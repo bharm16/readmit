@@ -245,7 +245,7 @@ private keys or bearer values into it. Start with:
 
 ```sh
 readmit-hub -config /etc/readmit-hub/config.json \
-  -access-policy /etc/readmit-hub/access.json serve
+  -access-policy /etc/readmit-hub/access.json -operation-policy /etc/readmit-hub/operations.json serve
 ```
 
 The independent strict `readmit-hub-access/v1` contract requires all seven
@@ -648,9 +648,9 @@ test-message send, and the same prepared plan whose identity was checked execute
 that pin in the policy, initialize once, then start:
 
 ```sh
-readmit-hub -config CONFIG -schedule-policy /private/schedules.json schedule-init
+readmit-hub -config CONFIG -operation-policy /private/hub-operations.json -schedule-policy /private/schedules.json schedule-init
 readmit-hub -config CONFIG -access-policy ACCESS -runner-policy RUNNERS \
-  -schedule-policy /private/schedules.json serve
+  -operation-policy /private/hub-operations.json -schedule-policy /private/schedules.json serve
 ```
 
 Initialization starts at that instant without backfilling prior occurrences.
@@ -723,3 +723,40 @@ revocations. Never run old and restored authorities simultaneously. An older
 artifact-only restore lacks a journal and cannot start scheduling. There is no
 new backup version or automated scheduler restore. Real PKI, destination/egress
 approval, retention and stopped-snapshot recovery drills remain owner gates.
+
+### Offline operation admission
+
+`readmit-hub -config /private/hub.json -operation-policy /private/hub-operations.json serve` explicitly selects a
+separate strict `readmit-hub-operation-policy/v1` document. The existing hub,
+access, runner and schedule v1 configurations retain their original members.
+Missing operation policy leaves existing evidence reads and exports available;
+new paid mutations and runner admissions are refused. Operator-only writes require the explicit certificate binding described below; team writes require verified OIDC identity.
+
+```json
+{"schema":"readmit-hub-operation-policy/v1","operation_policy":"/private/operations.json","bindings":[{"issuer":"https://idp.example","subject":"alice","certificate_sha256":"0000000000000000000000000000000000000000000000000000000000000000","author":"assigned-author","device":"assigned-device"}]}
+```
+
+Install the file with private permissions before service startup. Each binding
+matches the verified OIDC issuer and subject plus the verified mTLS certificate
+SHA-256 to an author/device assignment in the signed entitlement. The example
+certificate digest must be replaced. Request body author labels never grant a
+seat. Changing bindings requires a service restart; the underlying operation
+policy and signed entitlement are checked for each new operation. Certificates
+are customer-managed identities; the hub does not discover hardware identifiers.
+
+Customer-runner Run, RunPinned and inbox services acquire a fresh execution
+admission for each job from an explicitly bound operation policy and release it
+on completion. Hub scheduling propagates its selected policy into RunPinned.
+Runner admission HTTP checks the hub capability when granting a new job lease;
+renewals retain their original bounded job deadline so expiry of the entitlement
+does not interrupt admitted work. The customer runner owns execution-instance
+accounting, avoiding a second commercial instance charge at the hub.
+
+Operator-only uploads use an explicit binding with `issuer: "mutual-tls"`, `subject` equal to the verified client certificate SHA-256, and the same `certificate_sha256`, mapped to one signed named author/device. The server derives that certificate identity from its verified TLS connection. Team mode still requires its verified OIDC issuer/subject binding and never falls back to certificate-only authority.
+
+The service unit selects `/etc/readmit-hub/operations.json`. Provision the mapped
+operation policy and activate its selected clock before service startup. Keep
+clock/admission records in the separately owned private `/var/lib/readmit-hub/license`
+directory (create it with mode 0700 for the service account); they must not be
+inside sealed artifacts. `schedule-init` also requires the configured local named
+author. Migration, checks, backup, verification and restoration remain free.

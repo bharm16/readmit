@@ -1,5 +1,8 @@
 # Designing a workflow as a sequence
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 An interface workflow is a sequence, not a message. An appointment is booked,
 rescheduled and cancelled; a visit is registered, admitted, transferred,
 discharged and un-discharged; a duplicate patient identity is merged into the

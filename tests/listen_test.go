@@ -8,7 +8,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -29,7 +28,7 @@ func TestListenExecutableExportsBothLedgersAndReopensRecordedCase(t *testing.T) 
 			observationPath := filepath.Join(dir, "observation.json")
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
-			command := exec.CommandContext(ctx, binary, "listen", "--address", "127.0.0.1:0", "--mode", mode, "--output", casePath, "--observation", observationPath, "--max-messages", "2", "--idle-timeout", "2s")
+			command := testCommand(ctx, t, "listen", "--address", "127.0.0.1:0", "--mode", mode, "--output", casePath, "--observation", observationPath, "--max-messages", "2", "--idle-timeout", "2s")
 			var diagnostic bytes.Buffer
 			command.Stderr = &diagnostic
 			stdout, err := command.StdoutPipe()

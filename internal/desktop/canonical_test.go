@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/testlicense"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
@@ -131,7 +132,7 @@ func TestCanonicalOperationsRespectBusySlotAndReleaseIt(t *testing.T) {
 	root := t.TempDir()
 	state := t.TempDir()
 	chooser := &chooser{folder: root}
-	app := desktop.New(chooser, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
+	app := activatedApp(t, chooser, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
 	chooser.before = func() {
 		for _, got := range []desktop.CanonicalTestResult{app.ImportTest(root, "spec.json"), app.ValidateTest(canonicalSpec), app.ExportTest(desktop.CanonicalTestRequest{Workspace: root, Document: canonicalSpec, Output: "spec.json"})} {
 			if got.State != desktop.Busy {
@@ -199,7 +200,7 @@ func TestCanonicalExportExecutesWithDesktopCLIParity(t *testing.T) {
 				t.Fatalf("desktop: %+v", desktopResult)
 			}
 			var stdout, stderr bytes.Buffer
-			cliErr := cli.Execute("dev", []string{"test", spec, "--send", "--output", filepath.Join(root, "cli-run")}, &stdout, &stderr)
+			cliErr := cli.Execute("dev", []string{"--operation-policy", testlicense.New(t), "test", spec, "--send", "--output", filepath.Join(root, "cli-run")}, &stdout, &stderr)
 			want := 0
 			if expected == "AE" {
 				want = 1

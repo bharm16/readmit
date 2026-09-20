@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"fmt"
+	"github.com/bharm16/readmit/internal/testlicense"
 	"io"
 	"net"
 	"os"
@@ -243,7 +244,7 @@ func TestDesktopAndCommandLineRunOneEngineAndRefuseVersionsItDoesNotRead(t *test
 
 	shellSpec, shellDir := durableSpec(t, durablePeer(t, "AA"))
 	shellJob := filepath.Join(shellDir, "job")
-	app := desktop.New(nil, "", "", "")
+	app := desktopApp(t, t.TempDir())
 	if started := app.StartDurableRun(shellSpec, shellJob); started.State != desktop.Completed || started.Run == nil || started.Run.State != durablerun.Passed {
 		t.Fatalf("%+v", started)
 	}
@@ -329,7 +330,7 @@ func TestTheReleaseStampIsTheIdentityARunRetains(t *testing.T) {
 		t.Helper()
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		command := exec.CommandContext(ctx, stamped, args...)
+		command := exec.CommandContext(ctx, stamped, append([]string{"--operation-policy", testlicense.New(t)}, args...)...)
 		var stdout, stderr bytes.Buffer
 		command.Stdout, command.Stderr = &stdout, &stderr
 		if err := command.Run(); err != nil {

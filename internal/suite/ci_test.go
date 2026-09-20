@@ -18,6 +18,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/cli"
 	"github.com/bharm16/readmit/internal/durablerun"
+	"github.com/bharm16/readmit/internal/testlicense"
 )
 
 func TestPublicCISuiteReportsPrivateGateAndRetainsEvidence(t *testing.T) {
@@ -29,7 +30,7 @@ func TestPublicCISuiteReportsPrivateGateAndRetainsEvidence(t *testing.T) {
 			write(t, filepath.Join(dir, "suite.json"), doc)
 			out := filepath.Join(dir, "ci-run")
 			var stdout, stderr bytes.Buffer
-			err := cli.Execute("test", []string{"suite", "ci", filepath.Join(dir, "suite.json"), "--environment", "east", "--output", out, "--send"}, &stdout, &stderr)
+			err := licensedCLI(t, []string{"suite", "ci", filepath.Join(dir, "suite.json"), "--environment", "east", "--output", out, "--send"}, &stdout, &stderr)
 			want := 0
 			if code == "AE" {
 				want = 1
@@ -68,7 +69,7 @@ func TestPublicCISuiteReportsPrivateGateAndRetainsEvidence(t *testing.T) {
 			}
 			stdout.Reset()
 			stderr.Reset()
-			err = cli.Execute("test", []string{"suite", "ci", filepath.Join(dir, "suite.json"), "--environment", "east", "--output", out, "--send"}, &stdout, &stderr)
+			err = licensedCLI(t, []string{"suite", "ci", filepath.Join(dir, "suite.json"), "--environment", "east", "--output", out, "--send"}, &stdout, &stderr)
 			if cli.ExitCode(err) != 2 || strings.Contains(stderr.String(), dir) {
 				t.Fatal("existing output was restarted or disclosed")
 			}
@@ -102,7 +103,7 @@ func TestCIGateExclusionsAndInvalidDeclarationsNeverPass(t *testing.T) {
 			}
 			out := filepath.Join(dir, "ci")
 			var stdout, stderr bytes.Buffer
-			err := cli.Execute("test", []string{"suite", "ci", filepath.Join(dir, "suite.json"), "--environment", "east", "--output", out, "--requirements", policy, "--send"}, &stdout, &stderr)
+			err := licensedCLI(t, []string{"suite", "ci", filepath.Join(dir, "suite.json"), "--environment", "east", "--output", out, "--requirements", policy, "--send"}, &stdout, &stderr)
 			want := 2
 			if exclusion == "" {
 				want = 0
@@ -167,7 +168,7 @@ func TestCIErrorsAreMachineReadableWithoutPatientValues(t *testing.T) {
 	for _, extra := range [][]string{{}, {"--send"}, {"--send", "--deadline", "PRIVATE"}, {"--send", "--previous", "PRIVATE"}, {"--send", "--promotion", "PRIVATE"}} {
 		var out, diagnostic bytes.Buffer
 		args := append([]string{"suite", "ci", "PRIVATE", "--environment", "PRIVATE", "--output", filepath.Join(t.TempDir(), "out")}, extra...)
-		err := cli.Execute("test", args, &out, &diagnostic)
+		err := licensedCLI(t, args, &out, &diagnostic)
 		r, e := suite.DecodeCI(out.Bytes())
 		if cli.ExitCode(err) != 2 || e != nil || r.State != "error" || strings.Contains(out.String()+diagnostic.String(), "PRIVATE") {
 			t.Fatalf("%v %v %s %s", err, e, out.String(), diagnostic.String())
@@ -198,7 +199,7 @@ func TestCIPublicDeadlineAndSkippedJobsNeverPass(t *testing.T) {
 	write(t, filepath.Join(dir, "suite.json"), doc)
 	var stdout, stderr bytes.Buffer
 	out := filepath.Join(dir, "deadline")
-	err := cli.Execute("test", []string{"suite", "ci", filepath.Join(dir, "suite.json"), "--environment", "east", "--output", out, "--send", "--deadline", "100ms"}, &stdout, &stderr)
+	err := licensedCLI(t, []string{"suite", "ci", filepath.Join(dir, "suite.json"), "--environment", "east", "--output", out, "--send", "--deadline", "100ms"}, &stdout, &stderr)
 	r, e := suite.DecodeCI(stdout.Bytes())
 	if cli.ExitCode(err) != 2 || e != nil || r.Skipped < 1 {
 		t.Fatalf("%+v %v %v", r, e, err)
@@ -213,7 +214,7 @@ func TestCICrashHelper(t *testing.T) {
 	if path == "" {
 		return
 	}
-	err := cli.Execute("test", []string{"suite", "ci", filepath.Join(path, "suite.json"), "--environment", "east", "--output", filepath.Join(path, "crashed"), "--send"}, os.Stdout, os.Stderr)
+	err := licensedCLI(t, []string{"suite", "ci", filepath.Join(path, "suite.json"), "--environment", "east", "--output", filepath.Join(path, "crashed"), "--send"}, os.Stdout, os.Stderr)
 	os.Exit(cli.ExitCode(err))
 }
 
@@ -254,8 +255,13 @@ func TestCIPublicProcessCrashRetainsEvidenceWithoutRetry(t *testing.T) {
 		}
 	}
 	var stdout, stderr bytes.Buffer
-	err := cli.Execute("test", []string{"suite", "ci", filepath.Join(dir, "suite.json"), "--environment", "east", "--output", out, "--send"}, &stdout, &stderr)
+	err := licensedCLI(t, []string{"suite", "ci", filepath.Join(dir, "suite.json"), "--environment", "east", "--output", out, "--send"}, &stdout, &stderr)
 	if cli.ExitCode(err) != 2 {
 		t.Fatal("crashed CI restarted")
 	}
+}
+
+func licensedCLI(t testing.TB, args []string, out, diagnostic io.Writer) error {
+	t.Helper()
+	return cli.Execute("test", append([]string{"--operation-policy", testlicense.New(t)}, args...), out, diagnostic)
 }

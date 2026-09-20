@@ -1,5 +1,8 @@
 # Derived testing evidence and export review
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 `readmit redact` applies explicit named policies, writes a separate derived case
 and transformed spec, and creates a located export-review manifest. Original
 bytes stay unchanged. A separate private directory holds source linkage,

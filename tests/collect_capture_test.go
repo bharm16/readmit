@@ -50,7 +50,7 @@ type capturing struct {
 
 func startCapture(t *testing.T, ctx context.Context, args ...string) *capturing {
 	t.Helper()
-	command := exec.CommandContext(ctx, binary, append([]string{"collect"}, args...)...)
+	command := testCommand(ctx, t, append([]string{"collect"}, args...)...)
 	diagnostic := &bytes.Buffer{}
 	command.Stderr = diagnostic
 	pipe, err := command.StdoutPipe()

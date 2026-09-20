@@ -24,8 +24,10 @@ import (
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/mllp"
+	"github.com/bharm16/readmit/internal/operationguard"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/runnerprotocol"
+	"github.com/bharm16/readmit/internal/testlicense"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
@@ -53,7 +55,7 @@ func TestRunnerProcess(t *testing.T) {
 			if err != nil {
 				os.Exit(2)
 			}
-			_, err = customerrunner.Run(context.Background(), c, job)
+			_, err = customerrunner.Run(customerrunner.WithOperationGuard(context.Background(), operationguard.New(testlicense.New(t))), c, job)
 			if err != nil {
 				os.Exit(2)
 			}
@@ -162,7 +164,7 @@ func TestCustomerRunnerActualTLSExecutionRevocationAndRecovery(t *testing.T) {
 		t.Fatal(e)
 	}
 	// A changed schedule pin refuses before the local fixture sees a frame.
-	if _, e := customerrunner.RunPinned(context.Background(), c, job, strings.Repeat("0", 64)); e == nil {
+	if _, e := customerrunner.RunPinned(customerrunner.WithOperationGuard(context.Background(), operationguard.New(testlicense.New(t))), c, job, strings.Repeat("0", 64)); e == nil {
 		t.Fatal("changed pin executed")
 	}
 	now := time.Now().UTC()
@@ -176,7 +178,7 @@ func TestCustomerRunnerActualTLSExecutionRevocationAndRecovery(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = scheduler.Tick(context.Background(), now); e != nil {
+	if e = scheduler.Tick(customerrunner.WithOperationGuard(context.Background(), operationguard.New(testlicense.New(t))), now); e != nil {
 		t.Fatal(e)
 	}
 	history := scheduler.History()
@@ -185,7 +187,7 @@ func TestCustomerRunnerActualTLSExecutionRevocationAndRecovery(t *testing.T) {
 		t.Fatalf("scheduled headless verdict %+v", history)
 	}
 	job.ID = history.Records[0].ID
-	if _, e := customerrunner.Run(context.Background(), c, job); e == nil {
+	if _, e := customerrunner.Run(customerrunner.WithOperationGuard(context.Background(), operationguard.New(testlicense.New(t))), c, job); e == nil {
 		t.Fatal("completed ID replayed")
 	}
 	grants.Runners[0].MaxJobs = 1
@@ -193,7 +195,7 @@ func TestCustomerRunnerActualTLSExecutionRevocationAndRecovery(t *testing.T) {
 	os.WriteFile(runnerPolicy, raw, 0600)
 	next := job
 	next.ID = "quota-refused"
-	if _, e := customerrunner.Run(context.Background(), c, next); e == nil {
+	if _, e := customerrunner.Run(customerrunner.WithOperationGuard(context.Background(), operationguard.New(testlicense.New(t))), c, next); e == nil {
 		t.Fatal("retained job quota ignored")
 	}
 	grants.Runners[0].MaxJobs = 2
@@ -202,7 +204,11 @@ func TestCustomerRunnerActualTLSExecutionRevocationAndRecovery(t *testing.T) {
 	job.ID = "second"
 	result := make(chan durablerun.Summary, 1)
 	errs := make(chan error, 1)
-	go func() { summary, e := customerrunner.Run(context.Background(), c, job); result <- summary; errs <- e }()
+	go func() {
+		summary, e := customerrunner.Run(customerrunner.WithOperationGuard(context.Background(), operationguard.New(testlicense.New(t))), c, job)
+		result <- summary
+		errs <- e
+	}()
 	select {
 	case <-received:
 	case e := <-errs:
@@ -214,7 +220,7 @@ func TestCustomerRunnerActualTLSExecutionRevocationAndRecovery(t *testing.T) {
 	if e != nil || health.State != "lease_current" {
 		t.Fatalf("health %+v %v", health, e)
 	}
-	if _, e := customerrunner.Run(context.Background(), c, customerrunner.Job{Schema: job.Schema, ID: "concurrent", Spec: spec}); e == nil {
+	if _, e := customerrunner.Run(customerrunner.WithOperationGuard(context.Background(), operationguard.New(testlicense.New(t))), c, customerrunner.Job{Schema: job.Schema, ID: "concurrent", Spec: spec}); e == nil {
 		t.Fatal("concurrent root accepted")
 	}
 	if _, e := customerrunner.Enroll(context.Background(), c); e == nil {
@@ -239,7 +245,7 @@ func TestCustomerRunnerActualTLSExecutionRevocationAndRecovery(t *testing.T) {
 	if e != nil || !recovered.Run.DeliveryUncertain || recovered.SafeToRepeat {
 		t.Fatalf("recovery %+v %v", recovered, e)
 	}
-	if _, e := customerrunner.Run(context.Background(), c, job); e == nil {
+	if _, e := customerrunner.Run(customerrunner.WithOperationGuard(context.Background(), operationguard.New(testlicense.New(t))), c, job); e == nil {
 		t.Fatal("revoked/repeated job accepted")
 	}
 	// Killing a real runner process leaves its durable claim and never replays it.
@@ -275,7 +281,7 @@ func TestCustomerRunnerActualTLSExecutionRevocationAndRecovery(t *testing.T) {
 	if e != nil || retained.SafeToRepeat || !retained.Run.DeliveryUncertain {
 		t.Fatalf("crash recovery %+v %v", retained, e)
 	}
-	if _, e := customerrunner.Run(context.Background(), c, job); e == nil {
+	if _, e := customerrunner.Run(customerrunner.WithOperationGuard(context.Background(), operationguard.New(testlicense.New(t))), c, job); e == nil {
 		t.Fatal("crash auto replay")
 	}
 	// Simulate the documented operator action only after the child is confirmed dead.
@@ -284,7 +290,11 @@ func TestCustomerRunnerActualTLSExecutionRevocationAndRecovery(t *testing.T) {
 	os.Remove(filepath.Join(root, ".active"))
 	time.Sleep(10 * time.Second)
 	job.ID = "outage"
-	go func() { summary, e := customerrunner.Run(context.Background(), c, job); result <- summary; errs <- e }()
+	go func() {
+		summary, e := customerrunner.Run(customerrunner.WithOperationGuard(context.Background(), operationguard.New(testlicense.New(t))), c, job)
+		result <- summary
+		errs <- e
+	}()
 	select {
 	case <-outageReceived:
 	case e := <-errs:

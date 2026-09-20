@@ -2,6 +2,10 @@ package desktop
 
 import (
 	"errors"
+	"github.com/bharm16/readmit/internal/guide"
+	"github.com/bharm16/readmit/internal/replay"
+	"path/filepath"
+	"reflect"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
@@ -84,6 +88,11 @@ func (a *App) AuthorTest(request TestRequest) TestResult {
 	if source == nil {
 		return declined.test()
 	}
+	if !sampleAuthoring(request, root, source) {
+		if err := a.admitAuthor(); err != nil {
+			return TestResult{State: PermissionDenied, Reason: err.Error()}
+		}
+	}
 	if request.Answer.Stage != "" {
 		answered, err := draft.Answer(request.Answer)
 		if err != nil {
@@ -111,6 +120,11 @@ func (a *App) SaveTest(request TestRequest) TestResult {
 	root, source, draft, declined := a.authoring(request)
 	if source == nil {
 		return declined.test()
+	}
+	if !sampleAuthoring(request, root, source) {
+		if err := a.admitAuthor(); err != nil {
+			return TestResult{State: PermissionDenied, Reason: err.Error()}
+		}
 	}
 	if err := artifactpath.EntryName(request.Output); err != nil {
 		return TestResult{State: Failed, Reason: "a test spec is written to one new entry of the open workspace"}
@@ -167,6 +181,9 @@ func (a *App) ApproveExpectations(request TestRequest) TestResult {
 		return busyRefusal.test()
 	}
 	defer release()
+	if err := a.admitAuthor(); err != nil {
+		return TestResult{State: PermissionDenied, Reason: err.Error()}
+	}
 	if request.Review == nil {
 		return TestResult{State: Failed, Reason: "an approval states what was decided about the proposals it applies to"}
 	}
@@ -244,4 +261,20 @@ func authored(root string, source *bundle.Bundle, draft testauthor.Draft, saved 
 		return TestResult{State: Empty, Reason: "this test has not been answered yet", Test: &saved}
 	}
 	return TestResult{State: Completed, Test: &saved}
+}
+
+// sampleAuthoring admits only the frozen case at the exact bundled practice
+// target. It cannot author tests over a renamed customer case or external target.
+func sampleAuthoring(request TestRequest, root string, source *bundle.Bundle) bool {
+	if request.Case != guide.CaseName || source.Identity != guide.CaseIdentity {
+		return false
+	}
+	if request.Draft.Target != "" && request.Draft.Target != guide.TargetName {
+		return false
+	}
+	if request.Answer.Target != "" && request.Answer.Target != guide.TargetName {
+		return false
+	}
+	target, err := replay.ReadDeclaredTarget(filepath.Join(root, guide.TargetName))
+	return err == nil && reflect.DeepEqual(target, guide.Target())
 }

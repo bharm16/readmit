@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 User=readmit-runner
 Group=readmit-runner
-ExecStart=/usr/local/bin/readmit runner serve /var/lib/readmit-runner/inbox --config /etc/readmit-runner/config.json --send
+ExecStart=/usr/local/bin/readmit --operation-policy /etc/readmit-runner/operation-policy.json runner serve /var/lib/readmit-runner/inbox --config /etc/readmit-runner/config.json --send
 Restart=no
 TimeoutStopSec=45
 UMask=0077

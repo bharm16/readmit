@@ -1,5 +1,8 @@
 # Reviewing and approving regression baselines
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 A baseline is an explicit local approval of an authored regression specification.
 It is never a passing run promoted automatically. `readmit-baseline/v1` retains
 the complete validated `readmit-test/v1` specification, revision number, previous

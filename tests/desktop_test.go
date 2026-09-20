@@ -28,6 +28,7 @@ import (
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/reproducer"
 	"github.com/bharm16/readmit/internal/testauthor"
+	"github.com/bharm16/readmit/internal/testlicense"
 	"github.com/bharm16/readmit/internal/testrunner"
 	"github.com/bharm16/readmit/internal/transform"
 )
@@ -37,7 +38,7 @@ type chosenFolder string
 
 func (c chosenFolder) ChooseFolder(string) (string, error) { return string(c), nil }
 
-func desktopApp(t *testing.T, folder string) *desktop.App {
+func unlicensedDesktopApp(t *testing.T, folder string) *desktop.App {
 	t.Helper()
 	return desktop.New(chosenFolder(folder), filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
 }
@@ -144,7 +145,7 @@ func TestDesktopCaseVerificationAgreesWithTheCommandLine(t *testing.T) {
 // command line must stay a static build that never reaches it.
 func TestCommandLineReleaseNeverReachesTheDesktopShell(t *testing.T) {
 	packages := goCommand(t, nil, "list", "-deps", "../cmd/readmit")
-	for _, forbidden := range []string{"wails", "github.com/bharm16/readmit/internal/desktop"} {
+	for _, forbidden := range []string{"wails", "github.com/bharm16/readmit/internal/desktop", "github.com/bharm16/readmit/internal/testlicense"} {
 		if strings.Contains(packages, forbidden) {
 			t.Fatalf("the released command line depends on %s", forbidden)
 		}
@@ -1175,4 +1176,13 @@ func TestDesktopReviewApprovesExactlyWhatTheExportGateRequires(t *testing.T) {
 			t.Fatalf("the window disclosed the planted value %s", planted)
 		}
 	}
+}
+
+func desktopApp(t *testing.T, folder string) *desktop.App {
+	t.Helper()
+	app := unlicensedDesktopApp(t, folder)
+	if result := app.SelectOperationPolicy(testlicense.New(t)); result.State != desktop.Completed {
+		t.Fatal(result)
+	}
+	return app
 }

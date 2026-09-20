@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/v2"
-	"github.com/bharm16/readmit/internal/cli"
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/engine"
 	"github.com/bharm16/readmit/internal/expectation"
@@ -66,7 +65,7 @@ func TestGatePublicRetainsAndReassessesWithoutOriginalInputs(t *testing.T) {
 	dir, p := gateFixture(t)
 	output := filepath.Join(t.TempDir(), "retained")
 	var stdout, stderr bytes.Buffer
-	err := cli.Execute("test", []string{"suite", "gate", filepath.Join(dir, "current"), "--baseline", filepath.Join(dir, "baseline"), "--policy", filepath.Join(dir, "policy.json"), "--policy-identity", p.Identity(), "--output", output}, &stdout, &stderr)
+	err := licensedCLI(t, []string{"suite", "gate", filepath.Join(dir, "current"), "--baseline", filepath.Join(dir, "baseline"), "--policy", filepath.Join(dir, "policy.json"), "--policy-identity", p.Identity(), "--output", output}, &stdout, &stderr)
 	if err != nil {
 		t.Fatal(err, stderr.String(), stdout.String())
 	}

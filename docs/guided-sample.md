@@ -1,5 +1,7 @@
 # The guided sample, without a terminal
 
+The complete frozen desktop walkthrough requires no license or activation.
+
 The desktop shell walks one complete investigation over synthetic evidence:
 create the sample, author a regression test over it, run that test against a
 practice receiver behaving as the defect makes it behave and watch it fail, then

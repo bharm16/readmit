@@ -17,6 +17,7 @@ import (
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/guide"
+	"github.com/bharm16/readmit/internal/operationguard"
 	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/synth"
 )
@@ -176,10 +177,14 @@ type FolderChooser interface {
 // rather than racing the first, and a finished operation always releases the
 // slot, including after a failure or a cancellation.
 type App struct {
-	chooser     FolderChooser
-	recentPath  string
-	filtersPath string
-	sessionPath string
+	operationMu            sync.Mutex
+	operationGuard         *operationguard.Guard
+	operationPolicy        string
+	operationSelectionPath string
+	chooser                FolderChooser
+	recentPath             string
+	filtersPath            string
+	sessionPath            string
 
 	mu      sync.Mutex
 	running bool
@@ -197,7 +202,7 @@ type App struct {
 // filters they saved, and the working session they have not stored. Each is
 // named explicitly rather than derived from another, and none holds evidence.
 func New(chooser FolderChooser, recentPath, filtersPath, sessionPath string) *App {
-	return &App{chooser: chooser, recentPath: recentPath, filtersPath: filtersPath, sessionPath: sessionPath}
+	return &App{operationGuard: operationguard.New(""), chooser: chooser, recentPath: recentPath, filtersPath: filtersPath, sessionPath: sessionPath}
 }
 
 // Cancel stops the operation that is running now, when that operation can be
@@ -416,6 +421,9 @@ func (a *App) SaveNote(path string, note project.Note) RevisionsResult {
 		return busyRefusal.revisions()
 	}
 	defer release()
+	if err := a.admitAuthor(); err != nil {
+		return RevisionsResult{State: PermissionDenied, Reason: err.Error()}
+	}
 	opened, declined := openProjectFolder(path)
 	if opened == nil {
 		return declined.revisions()
