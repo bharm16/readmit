@@ -4,8 +4,10 @@ package artifactdir
 
 import "os"
 
-func syncDirectory(path string) error {
-	directory, err := os.Open(path)
+// SyncDirectory syncs a directory entry below root, so the names of the files
+// just written become visible after a crash.
+func SyncDirectory(root *os.Root, name string) error {
+	directory, err := root.Open(name)
 	if err != nil {
 		return err
 	}

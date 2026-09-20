@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/entitlement"
 )
@@ -226,10 +227,7 @@ func update(path string, apply func(*State) error) (State, error) {
 	if err != nil {
 		return abandon(err)
 	}
-	_, err = file.Write(data)
-	if err == nil {
-		err = file.Sync()
-	}
+	err = artifactdir.WriteFileSync(file, data)
 	closeErr := file.Close()
 	if err != nil || closeErr != nil {
 		return State{}, ErrUpdate
@@ -252,10 +250,9 @@ func create(path string, s State) error {
 	if err != nil {
 		return ErrUnavailable
 	}
-	_, writeErr := file.Write(data)
-	syncErr := file.Sync()
+	writeErr := artifactdir.WriteFileSync(file, data)
 	closeErr := file.Close()
-	if errors.Join(writeErr, syncErr, closeErr) != nil {
+	if writeErr != nil || closeErr != nil {
 		return ErrUpdate
 	}
 	return nil

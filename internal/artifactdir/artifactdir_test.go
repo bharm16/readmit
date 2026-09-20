@@ -1,6 +1,8 @@
 package artifactdir_test
 
 import (
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -89,5 +91,91 @@ func TestWriteCreatesIdentityLastArtifact(t *testing.T) {
 	}
 	if _, err := artifactdir.Write(path, artifactdir.WriteOptions{Domain: "readmit-example/v1"}, files); err == nil {
 		t.Fatal("existing artifact overwritten")
+	}
+}
+
+type recordingFile struct {
+	written []byte
+	n       int
+	err     error
+	syncs   int
+	syncErr error
+	closed  int
+}
+
+func (f *recordingFile) Write(p []byte) (int, error) { return f.n, f.err }
+func (f *recordingFile) Sync() error                 { f.syncs++; return f.syncErr }
+func (f *recordingFile) Close() error                { f.closed++; return nil }
+
+func TestWriteFileSyncChecksForAShortWriteBeforeSyncing(t *testing.T) {
+	short := &recordingFile{n: 2}
+	if err := artifactdir.WriteFileSync(short, []byte("abcd")); err == nil {
+		t.Fatal("a short write reported as complete")
+	}
+	if short.syncs != 0 {
+		t.Fatal("synced after a short write")
+	}
+	if short.closed != 0 {
+		t.Fatal("WriteFileSync closed the caller's file")
+	}
+	full := &recordingFile{n: 4}
+	if err := artifactdir.WriteFileSync(full, []byte("abcd")); err != nil {
+		t.Fatalf("full write refused: %v", err)
+	}
+	if full.syncs != 1 {
+		t.Fatal("a full write was not synced")
+	}
+	failing := &recordingFile{n: 4, syncErr: os.ErrInvalid}
+	if err := artifactdir.WriteFileSync(failing, []byte("abcd")); err == nil {
+		t.Fatal("a failed sync reported as complete")
+	}
+}
+
+func TestPublishRenamesOnlyAfterTheRecordIsSynced(t *testing.T) {
+	root, err := os.OpenRoot(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	if err := artifactdir.Publish(root, ".record.incomplete", "record.json", []byte("{}\n")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := root.Stat(".record.incomplete"); err == nil {
+		t.Fatal("incomplete file retained after a completed publish")
+	}
+	data, err := root.OpenFile("record.json", os.O_RDONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer data.Close()
+	read, err := io.ReadAll(data)
+	if err != nil || string(read) != "{}\n" {
+		t.Fatalf("record.json = %q, %v", read, err)
+	}
+	stale, err := root.OpenFile(".record.incomplete", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale.Close()
+	err = artifactdir.Publish(root, ".record.incomplete", "other.json", []byte("{}\n"))
+	if !errors.Is(err, artifactdir.ErrCreateFile) {
+		t.Fatalf("publish over a stale incomplete file = %v", err)
+	}
+	if _, err := root.Stat("other.json"); err == nil {
+		t.Fatal("a refused publish still renamed its record into place")
+	}
+}
+
+func TestPublishRetainsTheIncompleteFileWhenTheRenameFails(t *testing.T) {
+	root, err := os.OpenRoot(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	if err := artifactdir.Publish(root, ".record.incomplete", "missing/record.json", []byte("{}\n")); err == nil {
+		t.Fatal("a rename into a missing directory reported as complete")
+	}
+	if _, err := root.Stat(".record.incomplete"); err != nil {
+		t.Fatal("incomplete file removed when the caller owns the removal policy")
 	}
 }

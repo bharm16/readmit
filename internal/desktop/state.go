@@ -8,6 +8,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 )
 
@@ -52,10 +53,7 @@ func writeShellDocument(path string, data []byte) error {
 	if err != nil {
 		return err
 	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
+	writeErr := artifactdir.WriteFileSync(file, data)
 	closeErr := file.Close()
 	if writeErr != nil || closeErr != nil {
 		os.Remove(incomplete)

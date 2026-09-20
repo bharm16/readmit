@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/bharm16/readmit/internal/artifactdir"
 )
 
 type backupEntry struct {
@@ -156,29 +158,14 @@ func encodeBackupManifest(m backupManifest) ([]byte, error) {
 	return data, nil
 }
 
+// writeNew is the one durable file write of a backup or restore: exclusive
+// create, a short-write check, and a sync, through the shared artifact
+// discipline. A refused or partial write is never reported as complete.
 func writeNew(root *os.Root, name string, data []byte) error {
-	f, err := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if err != nil {
-		return err
-	}
-	if _, err = f.Write(data); err != nil {
-		f.Close()
-		return err
-	}
-	err = f.Sync()
-	closeErr := f.Close()
-	if err != nil {
-		return err
-	}
-	return closeErr
+	return artifactdir.WriteFile(root, name, data)
 }
 func syncRoot(root *os.Root) error {
-	f, err := root.Open(".")
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	return f.Sync()
+	return artifactdir.SyncDirectory(root, ".")
 }
 
 func readBackup(root *os.Root) (backupManifest, error) {

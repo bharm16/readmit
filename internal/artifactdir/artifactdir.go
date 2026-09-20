@@ -91,10 +91,47 @@ func Write(path string, options WriteOptions, files map[string][]byte) (string, 
 	if err := WriteFile(root, "identity.sha256", completion); err != nil {
 		return "", err
 	}
-	if err := syncDirectory(path); err != nil {
+	if err := SyncDirectory(root, "."); err != nil {
 		return "", errors.New("cannot sync artifact directory; incomplete artifact retained")
 	}
 	return identity, nil
+}
+
+// DurableFile is what one durable write needs from the file it writes: a full
+// write and a sync. *os.File satisfies it, and so does a size-limited stand-in
+// for a full disk, which is the seam package tests use.
+type DurableFile interface {
+	io.Writer
+	Sync() error
+}
+
+// WriteFileSync writes data to an already-open file with the shared durable
+// discipline: one full write checked for a short write, then Sync. Close
+// remains the caller's, so a caller that holds a new file open across earlier
+// steps — a replacement created before the bytes it will hold are known —
+// still finishes through the same rule.
+func WriteFileSync(file DurableFile, data []byte) error {
+	n, err := file.Write(data)
+	if err == nil && n != len(data) {
+		err = io.ErrShortWrite
+	}
+	if err == nil {
+		err = file.Sync()
+	}
+	return err
+}
+
+// Publish writes data to incompleteName and renames it onto finalName inside
+// root only after every byte is synced, so finalName never holds a partial
+// record. The incomplete file is a new file written once, the same way
+// WriteFile writes a member, and it must not already exist. A failure retains
+// the incomplete file; a caller whose policy is to remove it removes it
+// itself.
+func Publish(root *os.Root, incompleteName, finalName string, data []byte) error {
+	if err := WriteFile(root, incompleteName, data); err != nil {
+		return err
+	}
+	return root.Rename(incompleteName, finalName)
 }
 
 // WriteFile creates and syncs one new regular file below root. It never
@@ -105,15 +142,11 @@ func WriteFile(root *os.Root, name string, data []byte) error {
 	if err != nil {
 		return ErrCreateFile
 	}
-	n, writeErr := file.Write(data)
-	if writeErr == nil && n != len(data) {
-		writeErr = io.ErrShortWrite
+	if err := WriteFileSync(file, data); err != nil {
+		file.Close()
+		return ErrSyncFile
 	}
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
+	if err := file.Close(); err != nil {
 		return ErrSyncFile
 	}
 	return nil

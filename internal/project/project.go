@@ -20,6 +20,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 )
 
@@ -583,10 +584,7 @@ func installWithQuota(root, name string, data []byte, check bool) error {
 	if err != nil {
 		return errors.New("cannot create the new project document; an interrupted write is retained")
 	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
+	writeErr := artifactdir.WriteFileSync(file, data)
 	closeErr := file.Close()
 	if writeErr != nil || closeErr != nil {
 		os.Remove(incomplete)

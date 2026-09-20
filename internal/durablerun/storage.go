@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/durablelog"
 	"github.com/bharm16/readmit/internal/engine"
 	"github.com/bharm16/readmit/internal/replay"
@@ -50,13 +51,7 @@ func write(root *os.Root, name string, b []byte) error {
 	if e != nil {
 		return errors.New("cannot create durable evidence")
 	}
-	n, e := f.Write(b)
-	if e == nil && n != len(b) {
-		e = io.ErrShortWrite
-	}
-	if e == nil {
-		e = f.Sync()
-	}
+	e = artifactdir.WriteFileSync(f, b)
 	c := f.Close()
 	if e != nil || c != nil {
 		return errors.New("cannot sync durable evidence; partial evidence retained")
