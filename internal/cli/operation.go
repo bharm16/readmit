@@ -108,7 +108,7 @@ func operationCapability(cmd *cobra.Command) string {
 		"backup", "backup create", "backup verify", "backup restore", "upgrade", "upgrade check", "upgrade prepare",
 		"secret", "secret show", "secret scan", "protect", "protect show", "protect pack", "protect open", "protect inspect", "protect discard",
 		"target", "target show", "source", "collect status", "observe", "observe validate", "observe explain",
-		"diagnose", "correlate", "transform", "explain", "diff", "drift", "normalize", "redact export",
+		"diagnose", "diagnose groups", "correlate", "transform", "explain", "diff", "drift", "normalize", "redact export",
 		"scenario preview", "scenario check-library", "baseline review", "baseline show", "expectation review", "expectation show", "expectation impact",
 		"suite coverage", "suite review-promotion", "suite gate", "suite verify-gate", "suite gate-policy", "run status", "run clean",
 		"runner enroll", "runner status", "runner verify-update", "report", "report verify", "report prepare", "report assemble", "report verify-retained", "report export", "report review",
