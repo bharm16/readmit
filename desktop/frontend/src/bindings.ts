@@ -382,6 +382,12 @@ export interface InspectionResult {
 interface Facade {
  OpenCorrelationReview(request: CorrelationReviewRequest): Promise<CorrelationReviewResult>;
  DecideCorrelation(request: CorrelationReviewRequest): Promise<CorrelationReviewResult>;
+  ChooseOperationPolicy(): Promise<OperationResult>;
+  SelectOperationPolicy(path: string): Promise<OperationResult>;
+  OperationStatus(): Promise<OperationResult>;
+  ActivateOperations(): Promise<OperationResult>;
+  ResolveOperationClock(): Promise<OperationResult>;
+  ReleaseOperations(): Promise<OperationResult>;
   CompareRuns(request: RunComparisonRequest): Promise<RunComparisonResult>;
   StartDurableRun(spec: string, output: string): Promise<DurableRunResult>;
   OpenDurableRun(path: string): Promise<DurableRunResult>;
@@ -2036,3 +2042,12 @@ export function openCorrelationReview(request: CorrelationReviewRequest): Promis
 export function decideCorrelation(request: CorrelationReviewRequest): Promise<CorrelationReviewResult> {
  return guard(() => facade().DecideCorrelation(request), {state: "failed"});
 }
+export interface OperationClock {
+ schema: string; organization: string; sequence: number; high_water: string; rollback: boolean; released: boolean;
+}
+export interface OperationResult { state: State; reason?: string; clock?: OperationClock; selected: boolean; term?: string; expires?: string; grace_ends?: string; author_seats?: number; runner_instances?: number; }
+export function chooseOperationPolicy(): Promise<OperationResult> {return guard(() => facade().ChooseOperationPolicy(), {state:"failed", selected:false});}
+export function operationStatus(): Promise<OperationResult> {return guard(() => facade().OperationStatus(), {state:"failed", selected:false});}
+export function activateOperations(): Promise<OperationResult> {return guard(() => facade().ActivateOperations(), {state:"failed", selected:false});}
+export function resolveOperationClock(): Promise<OperationResult> {return guard(() => facade().ResolveOperationClock(), {state:"failed", selected:false});}
+export function releaseOperations(): Promise<OperationResult> {return guard(() => facade().ReleaseOperations(), {state:"failed", selected:false});}

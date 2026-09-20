@@ -1,5 +1,8 @@
 # Durable local runs
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 `readmit run start SPEC --send --output NEW_JOB` executes a saved test spec once
 and retains its configuration, intended bytes and progress in a new private
 folder. It uses the existing test runner and its approved-target boundary. This path

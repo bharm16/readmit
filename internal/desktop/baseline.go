@@ -42,6 +42,9 @@ func (a *App) ReviewBaseline(request BaselineRequest) BaselineResult {
 	return a.baseline(request, false)
 }
 func (a *App) ApproveBaseline(request BaselineRequest) BaselineResult {
+	if err := a.admitAuthor(); err != nil {
+		return BaselineResult{State: PermissionDenied, Reason: err.Error()}
+	}
 	if request.Release {
 		return a.expectation(request, true, false)
 	}

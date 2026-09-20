@@ -75,3 +75,5 @@ the [case bundle contract](../../docs/case-bundle.md) keeps source provenance
 for imported evidence. Treat a workspace the way you would treat any readmit
 output: it holds synthetic evidence and is safe to share, but it is a directory
 readmit wrote, not one it will rewrite.
+
+The script uses `sample synth`, `sample capture` and `sample index`, which accept only the frozen walkthrough inputs and require no activation. General authoring/execution commands require an activated operation policy.

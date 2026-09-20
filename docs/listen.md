@@ -1,5 +1,8 @@
 # Controlled SIU receiver
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 `readmit listen` is a **test fixture**, not a production HL7 receiver. It makes
 one scheduling defect reproducible: an S12 books an appointment and an S13
 reschedules it. Fixed mode changes the original record's time. Defective mode

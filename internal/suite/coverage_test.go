@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
-	"github.com/bharm16/readmit/internal/cli"
 	"github.com/bharm16/readmit/internal/expectation"
 	"net"
 	"os"
@@ -204,7 +203,7 @@ func TestCoveragePublicCLIAndAllExclusions(t *testing.T) {
 			write(t, path, doc)
 			var outJSON, stderr bytes.Buffer
 			args := []string{"suite", "coverage", out, "--requirements", path, "--at", "2026-09-19T00:00:00Z", "--json"}
-			err := cli.Execute("test", args, &outJSON, &stderr)
+			err := licensedCLI(t, args, &outJSON, &stderr)
 			if (err == nil) != (state == "none") {
 				t.Fatalf("%s %v", state, err)
 			}
@@ -216,7 +215,7 @@ func TestCoveragePublicCLIAndAllExclusions(t *testing.T) {
 				t.Fatalf("%+v", report)
 			}
 			outJSON.Reset()
-			_ = cli.Execute("test", args[:len(args)-1], &outJSON, &stderr)
+			_ = licensedCLI(t, args[:len(args)-1], &outJSON, &stderr)
 			if !strings.Contains(outJSON.String(), "Declared requirement coverage:") || !strings.Contains(outJSON.String(), "execution=passed") {
 				t.Fatal(outJSON.String())
 			}
@@ -388,7 +387,7 @@ func TestCoverageReadsApprovedSuiteWithoutChangingApproval(t *testing.T) {
 	out := filepath.Join(dir, "out")
 	var stdout, stderr bytes.Buffer
 	args := []string{"suite", "run", filepath.Join(dir, "suite.json"), "--environment", "east", "--output", out, "--releases", filepath.Join(dir, "releases.json"), "--send", "--json"}
-	if err = cli.Execute("test", args, &stdout, &stderr); err != nil {
+	if err = licensedCLI(t, args, &stdout, &stderr); err != nil {
 		t.Fatalf("%v %s", err, stderr.String())
 	}
 	policy := coveragePolicy(t, out)

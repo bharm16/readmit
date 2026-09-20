@@ -16,7 +16,7 @@ import (
 // can close the shell by dropping the App and open it again over the same file.
 func sessionApp(t *testing.T, store string) *desktop.App {
 	t.Helper()
-	return desktop.New(&chooser{}, filepath.Join(filepath.Dir(store), "recent.json"), filepath.Join(filepath.Dir(store), "filters.json"), store)
+	return activatedApp(t, &chooser{}, filepath.Join(filepath.Dir(store), "recent.json"), filepath.Join(filepath.Dir(store), "filters.json"), store)
 }
 
 func sessionStore(t *testing.T) string {
@@ -345,7 +345,7 @@ func TestRetainingWorkDoesNotWaitForTheOperationSlot(t *testing.T) {
 		during = app.SaveDraft(draft(root, "triage", "First pass", "typed while busy"))
 		recovering = app.RecoverSession()
 	}}
-	app = desktop.New(reentrant, filepath.Join(filepath.Dir(store), "recent.json"), filepath.Join(filepath.Dir(store), "filters.json"), store)
+	app = activatedApp(t, reentrant, filepath.Join(filepath.Dir(store), "recent.json"), filepath.Join(filepath.Dir(store), "filters.json"), store)
 	if opened := app.SelectWorkspace(); opened.State != desktop.Empty {
 		t.Fatalf("select workspace: %+v", opened)
 	}

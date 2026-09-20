@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -33,7 +32,7 @@ func TestCollectFaultExecutableRejectsThenRecovers(t *testing.T) {
 	output := filepath.Join(dir, "case")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, binary, "collect", "--address", address, "--policy", policyFile(t, dir, declaredFaultPolicy(address)), "--output", output, "--max-messages", "2")
+	command := testCommand(ctx, t, "collect", "--address", address, "--policy", policyFile(t, dir, declaredFaultPolicy(address)), "--output", output, "--max-messages", "2")
 	var diagnostic bytes.Buffer
 	command.Stderr = &diagnostic
 	stdout, err := command.StdoutPipe()

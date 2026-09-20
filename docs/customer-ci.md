@@ -97,14 +97,14 @@ repeating a send is safe.
 
 ## Generic CI (POSIX shell)
 
-The customer provisions these five non-secret path/selection variables on the
-agent: `READMIT_BIN`, `SUITE_FILE`, `SUITE_ENVIRONMENT`, `RUN_DIRECTORY`,
+The customer provisions these six non-secret path/selection variables on the
+agent: `OPERATION_POLICY` (an explicitly activated signed operation policy), `READMIT_BIN`, `SUITE_FILE`, `SUITE_ENVIRONMENT`, `RUN_DIRECTORY`,
 `COVERAGE_FILE`. `RUN_DIRECTORY` is a new path on the persistent private volume
 chosen for this one authorized invocation. The examples run this exact command;
 there is no upload, retry, network install or hidden configuration discovery.
 
 ```sh
-"$READMIT_BIN" suite ci "$SUITE_FILE" --environment "$SUITE_ENVIRONMENT" --output "$RUN_DIRECTORY" --requirements "$COVERAGE_FILE" --send --deadline 5m
+"$READMIT_BIN" --operation-policy "$OPERATION_POLICY" suite ci "$SUITE_FILE" --environment "$SUITE_ENVIRONMENT" --output "$RUN_DIRECTORY" --requirements "$COVERAGE_FILE" --send --deadline 5m
 ```
 
 Let the command's exit status fail the job. Do not append `|| true` or ignore a
@@ -115,7 +115,7 @@ these POSIX examples target Linux/macOS agents.
 ## GitHub Actions
 
 Store as a customer-owned workflow. Configure a dedicated trusted self-hosted
-runner with the five variables and reviewed local files already provisioned.
+runner with the six variables and reviewed local files already provisioned.
 Run only trusted manually approved workflow revisions; untrusted pull requests
 must never execute on an agent holding evidence or target credentials.
 
@@ -134,7 +134,7 @@ jobs:
       - name: Execute the saved suite
         shell: bash
         run: |
-          "$READMIT_BIN" suite ci "$SUITE_FILE" --environment "$SUITE_ENVIRONMENT" --output "$RUN_DIRECTORY" --requirements "$COVERAGE_FILE" --send --deadline 5m
+          "$READMIT_BIN" --operation-policy "$OPERATION_POLICY" suite ci "$SUITE_FILE" --environment "$SUITE_ENVIRONMENT" --output "$RUN_DIRECTORY" --requirements "$COVERAGE_FILE" --send --deadline 5m
 ```
 
 GitHub concurrency is repository-scoped; it does not serialize another repository,
@@ -143,7 +143,7 @@ across all of them. No checkout is needed for the pre-provisioned suite.
 
 ## Azure DevOps
 
-Use a dedicated customer-hosted pool with the five variables on its service
+Use a dedicated customer-hosted pool with the six variables on its service
 account, reviewed local inputs and an exclusive fixture. Disable pipeline/job
 retries and any competing execution against that fixture. Environment checks,
 approvals and cross-pipeline locking are customer configuration.
@@ -156,7 +156,7 @@ pool:
 steps:
   - checkout: none
   - bash: |
-      "$READMIT_BIN" suite ci "$SUITE_FILE" --environment "$SUITE_ENVIRONMENT" --output "$RUN_DIRECTORY" --requirements "$COVERAGE_FILE" --send --deadline 5m
+      "$READMIT_BIN" --operation-policy "$OPERATION_POLICY" suite ci "$SUITE_FILE" --environment "$SUITE_ENVIRONMENT" --output "$RUN_DIRECTORY" --requirements "$COVERAGE_FILE" --send --deadline 5m
     displayName: Execute the saved suite
     timeoutInMinutes: 10
 ```

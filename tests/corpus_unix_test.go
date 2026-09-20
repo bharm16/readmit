@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -25,7 +24,7 @@ func TestCorpusScanAcknowledgesAnInterruptWithoutWritingABenchmark(t *testing.T)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	args := append([]string{"corpus", "scan", stream, "--report", report}, framedCorpus...)
-	cmd := exec.CommandContext(ctx, binary, args...)
+	cmd := testCommand(ctx, t, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Start(); err != nil {

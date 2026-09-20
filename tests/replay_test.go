@@ -8,7 +8,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -81,7 +80,7 @@ func TestReplayExecutableAgainstListenPreservesCaseAndMapsOccurrences(t *testing
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	observationPath := filepath.Join(dir, "observation.json")
-	cmd := exec.CommandContext(ctx, binary, "listen", "--address", "127.0.0.1:0", "--mode", "fixed", "--output", filepath.Join(dir, "recorded"), "--observation", observationPath, "--max-messages", "2", "--idle-timeout", "2s")
+	cmd := testCommand(ctx, t, "listen", "--address", "127.0.0.1:0", "--mode", "fixed", "--output", filepath.Join(dir, "recorded"), "--observation", observationPath, "--max-messages", "2", "--idle-timeout", "2s")
 	var diagnostic bytes.Buffer
 	cmd.Stderr = &diagnostic
 	pipe, err := cmd.StdoutPipe()

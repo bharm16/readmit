@@ -52,6 +52,11 @@ func (a *App) correlationReview(request CorrelationReviewRequest, write bool) Co
 		return CorrelationReviewResult{State: Busy, Reason: busyRefusal.reason}
 	}
 	defer release()
+	if write {
+		if err := a.admitAuthor(); err != nil {
+			return CorrelationReviewResult{State: PermissionDenied, Reason: err.Error()}
+		}
+	}
 	failure := func(reason string) CorrelationReviewResult {
 		return CorrelationReviewResult{State: Failed, Reason: reason}
 	}

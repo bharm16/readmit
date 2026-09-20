@@ -158,6 +158,7 @@ var privacyStatus = Privacy{
 	},
 	Kept: []string{
 		"explicit correlation decisions, including analyst and reason text you enter, in separate owner-readable readmit-correlation-review/v1 directories",
+		"the explicitly selected operation policy path, signed entitlement, local UTC high-water and runner admission records; no evidence is stored in them",
 		"the folders you have opened, as paths only, in readmit-desktop-recent/v1",
 		"the filters you have saved, including any value you typed to filter by, in readmit-filters/v1",
 		"the work you had not stored yet, including any note you were writing and the workspace, case and run you had open, in readmit-desktop-session/v1",

@@ -1,5 +1,8 @@
 # Named test environments
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 `readmit target` records one named nonproduction environment, validates it,
 diagnoses reaching it, and returns it to its declared starting state through
 reviewed reset actions. The configuration it writes is the same explicitly

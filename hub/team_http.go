@@ -113,6 +113,14 @@ func (s *Store) TeamHandler(access *Access) http.Handler {
 			http.Error(w, "access refused", 403)
 			return
 		}
+		if action == "evidence.write" {
+			release, err := s.admitAuthor(r, principal)
+			if err != nil {
+				http.Error(w, "operation admission refused", 403)
+				return
+			}
+			defer release()
+		}
 		if action == "export" {
 			http.Error(w, "reviewed support export requires v2", 403)
 			return

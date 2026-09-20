@@ -145,3 +145,7 @@ New state or claims require their own versioned contracts, not new members in
 v1. These policies are adopted requirements, not features already delivered by
 the closed #117. [ADR-0010](0010-vendor-billing-issues-offline-entitlements-without-evidence.md)
 records the separate vendor-billing boundary.
+
+## Operation admission implementation
+
+The D6 guard is now implemented as `readmit-operation-policy/v1` and `readmit-operation-clock/v1`, with mandatory production CLI/desktop/hub/runner admission. It preserves the v1/v2 signed claim formats and pure verifiers. The local trial issuer uses separate strict policy/account contracts and signs v2 claims; production issuer deployment remains external. Frozen practice and existing-evidence access remain ungated.

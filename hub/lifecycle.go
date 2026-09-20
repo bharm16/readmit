@@ -221,6 +221,14 @@ func (s *Store) lifecycleRequest(w http.ResponseWriter, r *http.Request, a *Acce
 		http.Error(w, "access refused", 403)
 		return
 	}
+	if r.Method == "POST" && c.Kind != "audit-export" {
+		release, err := s.admitAuthor(r, p)
+		if err != nil {
+			http.Error(w, "operation admission refused", 403)
+			return
+		}
+		defer release()
+	}
 	events, e := s.lifecycleEvents(r.Context(), project)
 	if e != nil {
 		http.Error(w, "metadata unavailable", 503)

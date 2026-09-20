@@ -1,5 +1,8 @@
 # Authoring a regression test from selected evidence
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 A case holds what happened. A regression test is the much smaller statement
 that it should happen again: these messages, sent to that endpoint, from this
 starting state, and here is what the run should have produced.

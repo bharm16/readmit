@@ -1,5 +1,8 @@
 # Deterministic synthetic SIU cases
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 `readmit synth` writes one fixture family containing three independent case
 bundles. Supply all four generator inputs explicitly, including seed zero when
 that is the intended seed:

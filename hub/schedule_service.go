@@ -85,7 +85,10 @@ func (s *Store) ServeSchedules(ctx context.Context, access *Access, runnerPath, 
 		}
 		return nil
 	}
-	scheduler, e := OpenScheduler(scheduleDirectory(s.config.Root), p, ExecuteScheduledRun, sendScheduleAlert, authorize)
+	execute := func(jobCtx context.Context, spec Schedule, id string) string {
+		return ExecuteScheduledRun(customerrunner.WithOperationGuard(jobCtx, s.operationGuard()), spec, id)
+	}
+	scheduler, e := OpenScheduler(scheduleDirectory(s.config.Root), p, execute, sendScheduleAlert, authorize)
 	if e != nil {
 		return e
 	}

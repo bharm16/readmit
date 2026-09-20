@@ -1,5 +1,8 @@
 # Evidence-bound diagnosis
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 ```sh
 readmit capture testdata/fixtures/diagnose-booking.hl7 --output booking-case
 readmit diagnose booking-case --output booking-diagnosis

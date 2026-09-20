@@ -1227,3 +1227,5 @@ Prerelease binaries have no Apple notarization or Windows code signing.
   byte-identical retained evidence and consistent inert HTML, PDF, Markdown,
   strict JSON and JUnit. `report review` verifies offline in read-only mode;
   sensitivity and disclosure restrictions remain attached to every format.
+
+- Complete local evaluation: explicit signed v2 trial issuance and one approved extension, mandatory operation admission across CLI/desktop/hub/runner, visible UTC rollback recovery, and ungated evidence access and frozen practice. Production signing/issuer service and commercial approval remain owner gates.

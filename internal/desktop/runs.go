@@ -1,10 +1,12 @@
 package desktop
 
 import (
+	"context"
 	"errors"
 
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/engine"
+	"github.com/bharm16/readmit/internal/operationguard"
 )
 
 // DurableRunResult separates facade success from the run's execution state.
@@ -17,13 +19,26 @@ type DurableRunResult struct {
 
 // StartDurableRun sends once with an explicit operator action, retaining a new
 // journal directory. Cancel stops future sends; in-flight effects remain visible.
-func (a *App) StartDurableRun(spec, output string) DurableRunResult {
+func (a *App) StartDurableRun(spec, output string) (out DurableRunResult) {
 	ctx, release, claimed := a.begin()
 	if !claimed {
 		return DurableRunResult{State: Busy, Reason: busyRefusal.reason}
 	}
 	defer release()
-	result, err := durablerun.Start(ctx, spec, output)
+	guard, _ := a.selectedOperation()
+	settle, admissionErr := guard.AdmitContext(ctx, "execute")
+	if admissionErr != nil {
+		return DurableRunResult{State: PermissionDenied, Reason: admissionErr.Error()}
+	}
+	defer func() {
+		if err := settle(); err != nil {
+			out.State = Failed
+			out.Reason = "runner settlement failed; reconcile the retained admission before new work"
+		}
+	}()
+	bounded, cancel := context.WithTimeout(ctx, operationguard.MaxDuration)
+	defer cancel()
+	result, err := durablerun.Start(bounded, spec, output)
 	if err != nil {
 		if result.Schema != "" {
 			return DurableRunResult{State: Failed, Run: &result, Reason: "journal persistence failed; recover retained output before any new execution"}

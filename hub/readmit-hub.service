@@ -7,7 +7,7 @@ Requires=postgresql.service
 User=readmit-hub
 Group=readmit-hub
 UMask=0077
-ExecStart=/usr/local/bin/readmit-hub -config /etc/readmit-hub/config.json -access-policy /etc/readmit-hub/access.json serve
+ExecStart=/usr/local/bin/readmit-hub -config /etc/readmit-hub/config.json -access-policy /etc/readmit-hub/access.json -operation-policy /etc/readmit-hub/operations.json serve
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=45
@@ -15,7 +15,7 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/var/lib/readmit-hub/artifacts
+ReadWritePaths=/var/lib/readmit-hub/artifacts /var/lib/readmit-hub/license
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
 [Install]

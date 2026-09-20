@@ -92,7 +92,7 @@ func runShell(arguments []string) error {
 	// the working session they have not stored, which is what the window
 	// restores after an interruption.
 	startupCheck := len(arguments) == 1 && arguments[0] == "--startup-check"
-	var recent, filters, session string
+	var recent, filters, session, operationSelection string
 	if startupCheck {
 		directory, err := os.MkdirTemp("", "readmit-startup-check-")
 		if err != nil {
@@ -100,11 +100,13 @@ func runShell(arguments []string) error {
 		}
 		defer os.RemoveAll(directory)
 		recent, filters, session = filepath.Join(directory, "recent.json"), filepath.Join(directory, "filters.json"), filepath.Join(directory, "session.json")
+		operationSelection = filepath.Join(directory, "operations.json")
 	} else {
 		var err, filtersErr, sessionErr error
 		recent, err = desktop.DefaultRecentPath()
 		filters, filtersErr = desktop.DefaultFiltersPath()
 		session, sessionErr = desktop.DefaultSessionPath()
+		operationSelection, err = desktop.DefaultOperationSelectionPath()
 		if err != nil || filtersErr != nil || sessionErr != nil {
 			return errors.New("readmit: cannot resolve the user configuration directory")
 		}
@@ -118,7 +120,7 @@ func runShell(arguments []string) error {
 		MinHeight:   480,
 		AssetServer: &assetserver.Options{Assets: assets},
 		OnStartup:   folders.start,
-		Bind:        []any{desktop.New(folders, recent, filters, session)},
+		Bind:        []any{desktop.NewWithOperationSelection(folders, recent, filters, session, operationSelection)},
 		// The shell adds no logging of its own, reports no telemetry, no crash
 		// reports and no update checks, and sends nothing to a network. The
 		// window host is held to errors so it emits no routine output either.

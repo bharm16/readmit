@@ -1,5 +1,8 @@
 # Collecting from an approved source: `readmit source`
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 `readmit source` brings evidence into readmit from a place the **customer**
 controls and an operator explicitly approved: an export directory this machine
 can already open, or a remote export reached by running the customer's own

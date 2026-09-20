@@ -60,6 +60,14 @@ func (s *Store) Handler() http.Handler {
 			http.Error(w, "team authorization required", 403)
 			return
 		}
+		if r.Method == "PUT" {
+			release, err := s.admitOperator(r)
+			if err != nil {
+				http.Error(w, "authenticated author required", 403)
+				return
+			}
+			defer release()
+		}
 		s.artifactRequest(w, r, ctx, d, "")
 	})
 }

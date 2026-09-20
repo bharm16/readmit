@@ -11,6 +11,7 @@ import (
 	"encoding/json/v2"
 	"encoding/pem"
 	"fmt"
+	"github.com/bharm16/readmit/internal/testlicense"
 	"io"
 	"net"
 	"net/http"
@@ -86,7 +87,9 @@ func TestPublicRunnerAndHubProcessesExecuteAndRefuseReuse(t *testing.T) {
 	if output, err := exec.CommandContext(ctx, service, "-config", config, "migrate").CombinedOutput(); err != nil {
 		t.Fatalf("migrate: %v %s", err, output)
 	}
-	process := exec.CommandContext(ctx, service, "-config", config, "-access-policy", accessPath, "-runner-policy", runners, "serve")
+	operationPolicy := testlicense.New(t)
+	hubOperation := write("hub-operation.json", hub.OperationPolicy{Schema: "readmit-hub-operation-policy/v1", Policy: operationPolicy, Bindings: []hub.OperationBinding{}})
+	process := exec.CommandContext(ctx, service, "-operation-policy", hubOperation, "-config", config, "-access-policy", accessPath, "-runner-policy", runners, "serve")
 	if err = process.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +170,9 @@ func TestPublicRunnerAndHubProcessesExecuteAndRefuseReuse(t *testing.T) {
 	}()
 	spec := runnerSpec(t, dir, peer.Addr().String())
 	job := write("job.json", customerrunner.Job{Schema: "readmit-runner-job/v1", ID: "accepted", Spec: spec})
-	command := func(args ...string) ([]byte, error) { return exec.CommandContext(ctx, cli, args...).CombinedOutput() }
+	command := func(args ...string) ([]byte, error) {
+		return exec.CommandContext(ctx, cli, append([]string{"--operation-policy", operationPolicy}, args...)...).CombinedOutput()
+	}
 	output, err := command("runner", "execute", job, "--config", runnerConfig, "--send")
 	if err != nil {
 		t.Fatalf("runner: %v %s", err, output)

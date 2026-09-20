@@ -200,7 +200,7 @@ func TestControlledCrashRestoresUnstoredWorkAndKeepsTheSendUncertain(t *testing.
 	}
 
 	// Restarting the shell is a new facade over the same local state.
-	restarted := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), session)
+	restarted := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), session)
 	restored := restarted.RecoverSession()
 	if restored.State != desktop.Completed || restored.Session == nil {
 		t.Fatalf("the restarted shell restored nothing: %+v", restored)
@@ -296,7 +296,7 @@ func TestAWriteRacingTheKillLeavesACompleteDocument(t *testing.T) {
 	}
 	child.Wait()
 
-	restored := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), session).RecoverSession()
+	restored := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), session).RecoverSession()
 	if restored.State != desktop.Completed || restored.Session == nil {
 		t.Fatalf("a kill during a write left an unreadable session: %+v", restored)
 	}
@@ -315,7 +315,7 @@ func TestAWriteRacingTheKillLeavesACompleteDocument(t *testing.T) {
 // somewhere inside the sequence of replacements.
 func crashDraftLoop(t *testing.T) {
 	state := filepath.Dir(os.Getenv(crashSession))
-	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), os.Getenv(crashSession))
+	app := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), os.Getenv(crashSession))
 	workspace := os.Getenv(crashWorkspace)
 	// The body stays inside the bound a note is held to, so the loop never ends
 	// by being refused: the only thing that stops it is the kill.
@@ -333,7 +333,7 @@ func crashDraftLoop(t *testing.T) {
 // never completes.
 func crashChildRun(t *testing.T) {
 	state := filepath.Dir(os.Getenv(crashSession))
-	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), os.Getenv(crashSession))
+	app := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), os.Getenv(crashSession))
 	workspace := os.Getenv(crashWorkspace)
 	view := desktop.View{Workspace: workspace, Region: "evidence", Case: "case", Run: os.Getenv(crashOutput)}
 	if recorded := app.RecordView(view); recorded.State != desktop.Completed {
@@ -356,7 +356,7 @@ func TestRecoveringACancelledRunKeepsItsStopReasonAndUncertainty(t *testing.T) {
 	workspace, spec, output := crashFixture(t, peer.address)
 	state := t.TempDir()
 	session := filepath.Join(state, "session.json")
-	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), session)
+	app := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), session)
 
 	if recorded := app.RecordView(desktop.View{Workspace: workspace, Region: "evidence", Run: output}); recorded.State != desktop.Completed {
 		t.Fatalf("record view: %+v", recorded)

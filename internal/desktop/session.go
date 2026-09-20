@@ -195,6 +195,9 @@ func (a *App) RecordView(view View) SessionResult {
 func (a *App) SaveDraft(draft Draft) SessionResult {
 	a.sessionMu.Lock()
 	defer a.sessionMu.Unlock()
+	if err := a.admitAuthor(); err != nil {
+		return SessionResult{State: PermissionDenied, Reason: err.Error()}
+	}
 	session, declined := a.retainedSession()
 	if declined.state != "" {
 		return SessionResult{State: declined.state, Reason: declined.reason}

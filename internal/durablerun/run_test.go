@@ -9,6 +9,7 @@ import (
 	"github.com/bharm16/readmit/internal/cli"
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/mllp"
+	"github.com/bharm16/readmit/internal/testlicense"
 	"io"
 	"net"
 	"os"
@@ -257,7 +258,7 @@ func TestCLIAndDesktopExposeTheSameLifecycle(t *testing.T) {
 	address, _ := peer(t, "AA")
 	spec, out := setup(t, address)
 	var stdout, stderr bytes.Buffer
-	err := cli.Execute("test", []string{"run", "start", spec, "--send", "--output", out, "--json"}, &stdout, &stderr)
+	err := cli.Execute("test", []string{"--operation-policy", testlicense.New(t), "run", "start", spec, "--send", "--output", out, "--json"}, &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("%v %s", err, stderr.String())
 	}
@@ -269,6 +270,9 @@ func TestCLIAndDesktopExposeTheSameLifecycle(t *testing.T) {
 	recovered := app.OpenDurableRun(out)
 	if recovered.State != desktop.Completed || recovered.Run == nil || recovered.Run.State != durablerun.Passed {
 		t.Fatalf("%+v", recovered)
+	}
+	if selected := app.SelectOperationPolicy(testlicense.New(t)); selected.State != desktop.Completed {
+		t.Fatal(selected)
 	}
 	address, received := peer(t, "")
 	spec, out = setup(t, address)

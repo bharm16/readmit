@@ -288,7 +288,7 @@ func TestCorrelationReviewWindowsKeepCountsAndStaleRulePinsRefuse(t *testing.T) 
 func TestCorrelationReviewSharesOperationSlotAndCancellationDoesNotReplay(t *testing.T) {
 	_, root, identity := sequenceWorkspace(t)
 	reentrant := &chooser{folder: root}
-	app := desktop.New(reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
+	app := activatedApp(t, reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
 	req := desktop.CorrelationReviewRequest{Workspace: root, Case: "incident", Identity: identity, Rules: seqRulesEntry, Output: "never-written"}
 	reentrant.before = func() {
 		for _, got := range []desktop.CorrelationReviewResult{app.OpenCorrelationReview(req), app.DecideCorrelation(req)} {

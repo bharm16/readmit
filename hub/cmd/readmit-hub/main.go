@@ -16,6 +16,7 @@ import (
 
 func run() error {
 	configPath := flag.String("config", "", "absolute configuration path")
+	operationPath := flag.String("operation-policy", "", "absolute hub operation policy path")
 	accessPath := flag.String("access-policy", "", "absolute team admission policy path")
 	runnerPath := flag.String("runner-policy", "", "absolute runner admission policy path")
 	schedulePath := flag.String("schedule-policy", "", "absolute initialized recurring schedule policy path")
@@ -46,6 +47,9 @@ func run() error {
 		return err
 	}
 	defer store.Close()
+	if err = store.SetOperationPolicy(*operationPath); err != nil {
+		fmt.Fprintln(os.Stderr, "operation policy unavailable; new paid work will be refused")
+	}
 	if flag.Arg(0) == "serve" {
 		if *accessPath != "" {
 			access, err := hub.OpenAccess(*accessPath)
@@ -73,6 +77,11 @@ func run() error {
 		fmt.Fprintln(os.Stdout, identity)
 		return nil
 	case "schedule-init":
+		release, err := store.AdmitLocalAuthor(ctx)
+		if err != nil {
+			return err
+		}
+		defer release()
 		return store.InitializeSchedulePolicy(ctx, *schedulePath)
 	case "migrate":
 		return store.Migrate(ctx)

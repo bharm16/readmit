@@ -30,11 +30,12 @@ var ErrLimit = errors.New("storage limit exceeded")
 // Store holds an exclusive database lease for its entire lifetime. One service
 // owns one local artifact root; replicas and shared network volumes are refused.
 type Store struct {
-	db     *sql.DB
-	lease  *sql.Conn
-	root   *os.Root
-	config Config
-	mu     sync.Mutex
+	operations *OperationPolicy
+	db         *sql.DB
+	lease      *sql.Conn
+	root       *os.Root
+	config     Config
+	mu         sync.Mutex
 }
 
 func Open(ctx context.Context, c Config) (*Store, error) {

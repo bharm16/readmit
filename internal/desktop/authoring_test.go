@@ -23,7 +23,7 @@ func authoringWorkspace(t *testing.T) (*desktop.App, string, string) {
 	t.Helper()
 	root := t.TempDir()
 	state := t.TempDir()
-	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
+	app := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
 	incident := writeCase(t, root, "incident", framed(repBooking)+framed(repAccepted)+framed(repReschedule)+framed(repGarbage))
 	if err := os.WriteFile(filepath.Join(root, "test-target.json"), []byte(authoringTarget), 0600); err != nil {
 		t.Fatal(err)
@@ -206,7 +206,7 @@ func TestSavingATestIsRefusedUntilEveryStageIsAnswered(t *testing.T) {
 func TestAuthoringOperationsRunOneAtATime(t *testing.T) {
 	app, root, identity := authoringWorkspace(t)
 	reentrant := &chooser{folder: root}
-	second := desktop.New(reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
+	second := activatedApp(t, reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
 	var answered, written desktop.TestResult
 	reentrant.before = func() {
 		start := desktop.TestRequest{Workspace: root, Case: "incident", Identity: identity, Output: "test.json"}

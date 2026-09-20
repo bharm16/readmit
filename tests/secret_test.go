@@ -349,7 +349,7 @@ func credentialTargetFile(t *testing.T, directory, address string) string {
 func startFixtureReceiver(t *testing.T, directory string) (string, func()) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	command := exec.CommandContext(ctx, binary, "listen", "--address", "127.0.0.1:0", "--mode", "fixed",
+	command := testCommand(ctx, t, "listen", "--address", "127.0.0.1:0", "--mode", "fixed",
 		"--output", filepath.Join(directory, "recorded"), "--observation", filepath.Join(directory, "observation.json"),
 		"--max-messages", "2", "--idle-timeout", "5s")
 	var diagnostic bytes.Buffer

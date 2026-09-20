@@ -273,8 +273,9 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
   records the author and device an installation activated as, and
   `readmit-runner-admission/v1` is the customer-controlled authority's local
   admission record. v1 is unchanged and never doubled to stand in for v2. The
-  D6 clock guard is #116's separate versioned state, not a member of any of
-  these. See [named authors and active runners](license-v2.md).
+  D6 clock guard is `readmit-operation-clock/v1`, selected by a separate
+  `readmit-operation-policy/v1`. CLI, desktop, hub and customer runners admit new
+  work through it; existing evidence access and frozen practice remain free. See [named authors and active runners](license-v2.md).
 - Verification is a pure function of the document bytes and a trust store the
   operator selected with `--trust`. No network call, no activation service, no
   phone-home and no update check. No trust store is embedded: the vendor's

@@ -69,7 +69,7 @@ func Prepare(packetPath, output, address string) (*Preparation, error) {
 		}
 		preparation.Specs = append(preparation.Specs, RunnableSpec{Path: name, SHA256: digest(raw)})
 	}
-	instructions := append([]byte("# Prepared rerun workspace\n\nUse the directory containing the released binary as your working directory in both terminals. Commands below call this prepared workspace rerun; substitute its actual directory name if different. The retained packet is called packet. On Windows PowerShell replace ./readmit with .\\readmit.exe.\n\n"), trialInstructions(address)...)
+	instructions := append([]byte("# Prepared rerun workspace\n\nUse the directory containing the released binary as your working directory in both terminals. Commands below call this prepared workspace rerun; substitute its actual directory name if different. The retained packet is called packet. On Windows PowerShell replace ./readmit with .\\readmit.exe.\n\n"), preparedTrialInstructions(address)...)
 	if err := writeFile(dir, "RERUN.md", instructions); err != nil {
 		return nil, err
 	}

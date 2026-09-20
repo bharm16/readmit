@@ -1,5 +1,8 @@
 # Released behavioral expectations
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 `readmit expectation` releases an authored test as an immutable local revision
 with explicit profile pins. It reuses [baseline review](baseline.md): the same
 complete specification comparison, operator/selector/occurrence changes, local

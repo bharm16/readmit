@@ -16,7 +16,9 @@ import (
 	"strings"
 	"testing"
 
+	"encoding/json/v2"
 	"github.com/bharm16/readmit/hub"
+	"github.com/bharm16/readmit/internal/testlicense"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 )
@@ -67,6 +69,20 @@ func open(t *testing.T, c hub.Config) *hub.Store {
 	if err != nil {
 		t.Fatal(err)
 	}
+	policy := hub.OperationPolicy{Schema: "readmit-hub-operation-policy/v1", Policy: testlicense.New(t), Bindings: []hub.OperationBinding{}}
+	cert := fmt.Sprintf("%x", sha256.Sum256([]byte("synthetic-client-cert")))
+	for _, subject := range []string{"analyst", "reviewer", "owner", "viewer", "reviewer2", "other", "admin"} {
+		policy.Bindings = append(policy.Bindings, hub.OperationBinding{Issuer: "https://idp.example", Subject: subject, Certificate: cert, Author: "test-author", Device: "test-device"})
+	}
+	policy.Bindings = append(policy.Bindings, hub.OperationBinding{Issuer: "mutual-tls", Subject: cert, Certificate: cert, Author: "test-author", Device: "test-device"})
+	raw, _ := json.Marshal(policy)
+	path := filepath.Join(t.TempDir(), "hub-operation.json")
+	if e := os.WriteFile(path, raw, 0600); e != nil {
+		t.Fatal(e)
+	}
+	if e := s.SetOperationPolicy(path); e != nil {
+		t.Fatal(e)
+	}
 	t.Cleanup(func() { s.Close() })
 	return s
 }
@@ -110,13 +126,16 @@ func TestPostgresPublicTransferBackupRestoreAndRefusals(t *testing.T) {
 	request := func(method, path string, body []byte) *httptest.ResponseRecorder {
 		t.Helper()
 		req := httptest.NewRequest(method, path, bytes.NewReader(body))
-		req.TLS = &tls.ConnectionState{VerifiedChains: [][]*x509.Certificate{{}}}
+		req.TLS = &tls.ConnectionState{VerifiedChains: [][]*x509.Certificate{{{Raw: []byte("synthetic-client-cert")}}}}
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 		return w
 	}
 	if got := request("PUT", "/v1/artifacts/"+digest, payload); got.Code != 201 {
 		t.Fatalf("put %d %s", got.Code, got.Body.String())
+	}
+	if e := s.Put(ctx, digest, bytes.NewReader(payload)); e != nil {
+		t.Fatal(e)
 	}
 	if got := request("GET", "/v1/artifacts/"+digest, nil); got.Code != 200 || !bytes.Equal(got.Body.Bytes(), payload) {
 		t.Fatal("bytes changed", got.Code)

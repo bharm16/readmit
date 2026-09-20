@@ -12,7 +12,7 @@ need named authors with two devices each and runner capacity in active
 instances; those are `readmit-entitlement/v2` claims, described in
 [named authors and active runners](license-v2.md). v1 is not reinterpreted
 under them: its format, readers and device-count semantics are unchanged, and
-the D6 clock guard remains #116's separate concern under both versions.
+new operation admission uses separate explicit v2 policy and clock state.
 
 ```sh
 readmit license verify entitlement.json --trust vendor-keys.json --device ws-0413
@@ -51,10 +51,9 @@ name, one signed by a retired key after its retirement or by a revoked key, one
 that does not name this device, one superseded by a later issue, and one past
 its expiry and configured grace.
 
-It cannot detect a clock that was set back. The term state, the grace window
+Pure v1 verification cannot detect a clock that was set back. The term state, the grace window
 and `--require` are all decided from this machine's clock, so an operator who
-moves it backwards revives an expired entitlement. readmit keeps no hidden
-monotonic record to defeat that, and does not present expiry as tamper-proof.
+moves it backwards revives an expired entitlement. The separate [operation guard](license-v2.md#complete-local-evaluation-and-operation-admission) keeps visible high-water state for new work; the v1 verifier remains unchanged.
 
 It cannot refuse a licence the vendor revoked **after** signing it. A verifier
 that never contacts the vendor has no way to learn that, and readmit does not
@@ -293,17 +292,14 @@ fixed sentences and never echo a path, an identifier or an argument.
 
 ## Not supported in this release
 
-- **Gating any command on an entitlement.** This release delivers the format,
-  the verifier and the store. Which capabilities are licensed, and where they
-  are enforced, is decided with the commercial packaging and is not decided
-  here — which is why an expired licence changes nothing today.
+- **Using v1 device counts for named-author admission.** New paid work uses the separate v2 operation policy; v1 documents and verification remain unchanged.
 - **Issuing.** No command signs an entitlement, and no signing identity or
   built-in trust store ships with this release. No sample entitlement or trust
   store is in the release archive either: a document that verified would have to
   carry a signature, and shipping one beside the product invites mistaking it
   for the product's own licence. The vendor supplies both, and the tests here
   generate their own test-only key pairs rather than committing one.
-- **Detecting a clock set backwards.** See the limits above.
+- **Tamper-proof clock history.** The v2 operation guard detects ordinary rollback; copied or restored local histories remain an offline limitation.
 - **Prices, trial periods, invoices, receipts, a billing portal and renewal or
   cancellation with a payment provider.** None of these are in the engine.
 - **Learning about a revocation offline.** See the limits above.

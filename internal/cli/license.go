@@ -22,7 +22,7 @@ func licenseCommand(ran *bool) *cobra.Command {
 			return errors.New("license requires a subcommand: verify, import, show, renew, export, release, or runner")
 		},
 	}
-	command.AddCommand(licenseVerify(ran), licenseImport(ran), licenseShow(ran), licenseRenew(ran), licenseExport(ran), licenseRelease(ran), licenseRunner(ran))
+	command.AddCommand(licenseOperation(ran), licenseVerify(ran), licenseImport(ran), licenseShow(ran), licenseRenew(ran), licenseExport(ran), licenseRelease(ran), licenseRunner(ran))
 	return command
 }
 

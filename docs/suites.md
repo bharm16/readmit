@@ -1,5 +1,8 @@
 # Reusable regression suites
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 `readmit suite prepare FILE --environment ID --output NEW_DIRECTORY` binds
 reusable test templates and data rows to one named environment without sending.
 `readmit suite run FILE --environment ID --output NEW_DIRECTORY --send` prepares

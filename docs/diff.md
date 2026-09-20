@@ -1,5 +1,8 @@
 # Field-aware comparisons
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 `readmit diff` compares local message files, verified case bundles, replay runs,
 or test-result directories. It reads no original paths recorded inside an
 artifact, makes no network connection, and leaves every input unchanged.

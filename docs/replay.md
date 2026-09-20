@@ -1,5 +1,8 @@
 # Explicit replay and local run evidence
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 `readmit replay` prepares selected messages from a verified case bundle, in source
 order. It opens no socket, performs no TLS handshake, and writes no run unless
 `--send` is present. Previewing still reads and validates the explicitly selected

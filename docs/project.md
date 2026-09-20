@@ -1,5 +1,8 @@
 # Interface investigation projects
 
+Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+
+
 A project is the durable organization around evidence: which versions of an
 interface are under investigation, which cases belong to the work, what a
 person recorded about each one — a title, tags, an owner, a status and the

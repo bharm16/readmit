@@ -392,13 +392,14 @@ func TestExpiredV2EntitlementKeepsEvidenceReadableAndSettlesStartedWork(t *testi
 	}
 }
 
-// No evidence package reaches the entitlement package. The dependency graph
+// No evidence reader package reaches the entitlement package. Operation adapters
+// and vendor issuers are explicit exceptions. The dependency graph
 // settles that no read, verification or export path is gated: inside the engine
 // only the command tree and the vendor billing/administration packages import
 // internal/entitlement, and inside the command tree only the license commands
 // import it. Only vendor administration imports billing; nothing imports vendor
 // administration, so no command can reach an account ledger or a payment event.
-func TestOnlyTheLicenseCommandsAndTheVendorLedgerImportEntitlement(t *testing.T) {
+func TestEvidencePackagesDoNotImportCommercialPolicy(t *testing.T) {
 	const entitlementPackage = "github.com/bharm16/readmit/internal/entitlement"
 	const billingPackage = "github.com/bharm16/readmit/internal/billing"
 	const commercialPackage = "github.com/bharm16/readmit/internal/commercial"
@@ -414,7 +415,7 @@ func TestOnlyTheLicenseCommandsAndTheVendorLedgerImportEntitlement(t *testing.T)
 			continue
 		}
 		for _, imported := range fields[1:] {
-			if imported == entitlementPackage && fields[0] != "github.com/bharm16/readmit/internal/cli" && fields[0] != billingPackage && fields[0] != commercialPackage {
+			if imported == entitlementPackage && fields[0] != "github.com/bharm16/readmit/internal/cli" && fields[0] != billingPackage && fields[0] != commercialPackage && fields[0] != "github.com/bharm16/readmit/internal/operationguard" && fields[0] != "github.com/bharm16/readmit/internal/trial" && fields[0] != "github.com/bharm16/readmit/internal/testlicense" {
 				t.Errorf("%s imports the entitlement package", fields[0])
 			}
 			if imported == billingPackage && fields[0] != commercialPackage {

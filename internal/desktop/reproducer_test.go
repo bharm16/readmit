@@ -33,7 +33,7 @@ func reproducerWorkspace(t *testing.T) (*desktop.App, string, string) {
 	t.Helper()
 	root := t.TempDir()
 	state := t.TempDir()
-	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
+	app := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
 	incident := writeCase(t, root, "incident", framed(repBooking)+framed(repAccepted)+framed(repReschedule)+framed(repGarbage))
 	return app, root, incident.Identity
 }
@@ -220,7 +220,7 @@ func TestBuildingAReproducerRefusesWhatItCannotStandBehind(t *testing.T) {
 func TestReproducerOperationsRunOneAtATime(t *testing.T) {
 	app, root, identity := reproducerWorkspace(t)
 	reentrant := &chooser{folder: root}
-	second := desktop.New(reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
+	second := activatedApp(t, reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
 	var edited, undone, built desktop.ReproducerResult
 	reentrant.before = func() {
 		start := request(root, identity, reproducer.Plan{}, reproducer.Step{Operator: reproducer.SelectOccurrence, Occurrence: repBookingID})
@@ -394,7 +394,7 @@ func TestComparingRevisionsRunsOneAtATime(t *testing.T) {
 	revision := buildRevision(t, app, root, identity, "revision",
 		reproducer.Step{Operator: reproducer.SelectOccurrence, Occurrence: repRescheduleID})
 	reentrant := &chooser{folder: root}
-	second := desktop.New(reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
+	second := activatedApp(t, reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
 	var compared desktop.ReproducerComparisonResult
 	reentrant.before = func() {
 		compared = second.CompareReproducers(desktop.ReproducerComparisonRequest{Workspace: root, Left: revision, Right: revision})

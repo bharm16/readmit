@@ -74,7 +74,7 @@ func Execute(version string, args []string, stdout, stderr io.Writer) error {
 	root.AddCommand(correlateCommand(&ran))
 	root.AddCommand(transformCommand(&ran))
 
-	root.AddCommand(synthCommand(&ran))
+	root.AddCommand(synthCommand(&ran), sampleCommand(&ran))
 	root.AddCommand(scenarioCommand(&ran))
 	root.AddCommand(profileCommand(&ran))
 	root.AddCommand(replayCommand(&ran))
@@ -92,6 +92,9 @@ func Execute(version string, args []string, stdout, stderr io.Writer) error {
 	root.AddCommand(expectationCommand(&ran))
 	root.AddCommand(reportCommand(&ran))
 	root.AddCommand(shareCommand(&ran))
+	var operationPolicy string
+	root.PersistentFlags().StringVar(&operationPolicy, "operation-policy", "", "Explicit local operation admission policy for new authoring and execution")
+	wireOperations(root, &operationPolicy, &ran)
 	root.SetArgs(args)
 	selected, err := root.ExecuteC()
 	if err != nil {

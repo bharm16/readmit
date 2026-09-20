@@ -82,6 +82,9 @@ func (a *App) changed(request ReproducerRequest, apply func(reproducer.Plan) (re
 		return busyRefusal.reproducer()
 	}
 	defer release()
+	if err := a.admitAuthor(); err != nil {
+		return ReproducerResult{State: PermissionDenied, Reason: err.Error()}
+	}
 	_, source, plan, declined := a.opened(request)
 	if source == nil {
 		return declined.reproducer()
@@ -108,6 +111,9 @@ func (a *App) BuildReproducer(request ReproducerRequest) ReproducerResult {
 		return busyRefusal.reproducer()
 	}
 	defer release()
+	if err := a.admitAuthor(); err != nil {
+		return ReproducerResult{State: PermissionDenied, Reason: err.Error()}
+	}
 	root, source, plan, declined := a.opened(request)
 	if source == nil {
 		return declined.reproducer()
