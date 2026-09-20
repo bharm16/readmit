@@ -1,5 +1,9 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- `profile export` and `profile import` transport reviewed local interface contracts,
+  exact metadata pins, version seals and source/license provenance with integrity
+  checks. Existing profiles and evidence remain unchanged.
+
 - When a macOS disk-image verification attach fails, cleanup releases only its
   own newly created devices after rechecking image and mount associations. The
   original tool failure remains visible, and verification never retries attach.

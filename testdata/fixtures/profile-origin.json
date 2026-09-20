@@ -1,0 +1,10 @@
+{
+  "schema": "readmit-profile-origin/v1",
+  "source_format": "readmit-local-profile/v1",
+  "source": "Readmit independently authored local profile fixture",
+  "revision": "1",
+  "license": "LicenseRef-Readmit-Fixture",
+  "notice": "Synthetic fixture metadata for Readmit tests. No external profile content is incorporated.",
+  "mapping_limitations": "No external profile conversion. Local constraints are declarations, not evaluated message conformance.",
+  "review_reference": "testdata/fixtures/local-profile.json"
+}
