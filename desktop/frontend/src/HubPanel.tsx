@@ -17,8 +17,13 @@ import {
   type HubTransferResult,
   type HubCheckItem,
 } from "./bindings";
+import { TeamCollaboration } from "./TeamCollaboration";
+import type { Artifact } from "./bindings";
 
-export function HubPanel() {
+/** The hub panel sits directly above the privacy screens, so the collaboration
+ * journeys it hosts can name the open workspace's sharing-policy entries and
+ * published support bundles without retyping a path. */
+export function HubPanel({ workspace, entries = [] }: { workspace?: string | null; entries?: Artifact[] }) {
   const [status, setStatus] = useState<HubResult | null>(null);
   const [diagnosis, setDiagnosis] = useState<HubDiagnosisResult | null>(null);
   const [authUrl, setAuthUrl] = useState<string | null>(null);
@@ -405,6 +410,15 @@ export function HubPanel() {
             <p>No artifacts found in this project.</p>
           )}
         </div>
+      ) : null}
+
+      {isAuthenticated && selectedProject ? (
+        <TeamCollaboration
+          project={selectedProject}
+          workspace={workspace ?? ""}
+          entries={entries}
+          capabilities={status?.projects?.find((p) => p.project === selectedProject)?.capabilities ?? []}
+        />
       ) : null}
     </section>
   );

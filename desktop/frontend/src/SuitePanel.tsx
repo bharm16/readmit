@@ -13,7 +13,9 @@ import {
   saveSuiteCoverage,
   saveSuiteReleases,
   validateSuite,
+  postHubReleaseReview,
   type EditorDraft,
+  type HubReviewsResult,
   type SuiteDocument,
   type SuiteDocumentResult,
   type SuiteExclusionDeclaration,
@@ -296,6 +298,37 @@ export function SuitePanel({
       );
     });
   }, [impactFrom, impactShow, impactSidecar, impactSuite, impactTo, perform, workspace]);
+
+  // The team review of the successor release: the hub's review-request and
+  // approval commands name the digest of the exact reviewed bytes, derived
+  // from the To entry — never typed. Identity is the signed-in hub session's;
+  // the panel's local approver label does not substitute for it, and the hub
+  // re-verifies the release and the request chain it records.
+  const [hubProject, setHubProject] = useState("");
+  const [teamRecipient, setTeamRecipient] = useState("");
+  const [teamRationale, setTeamRationale] = useState("");
+  const [teamCommandId, setTeamCommandId] = useState("");
+  const [teamReview, setTeamReview] = useState<HubReviewsResult | null>(null);
+
+  const runReleaseReview = useCallback(
+    async (kind: "review-request" | "approval") => {
+      await perform(async () => {
+        setTeamReview(null);
+        setTeamReview(
+          await postHubReleaseReview({
+            project: hubProject.trim(),
+            workspace,
+            entry: impactTo.trim(),
+            kind,
+            id: teamCommandId.trim(),
+            recipient: kind === "review-request" ? teamRecipient.trim() : "",
+            text: teamRationale,
+          }),
+        );
+      });
+    },
+    [hubProject, impactTo, perform, teamCommandId, teamRationale, teamRecipient, workspace],
+  );
 
   // ---------------------------------------------------------------- prepare
   const [prepareEntry, setPrepareEntry] = useState("");
@@ -678,6 +711,52 @@ export function SuitePanel({
               </table>
             </>
           ) : null}
+          <h3>Team review of the successor release</h3>
+          <p>
+            Request review of, or approve, the exact released expectation named by the To entry. The
+            commands name the digest of those reviewed bytes — never a typed value. Identity is the
+            signed-in hub session&rsquo;s: the promotion tab&rsquo;s local approver label records a local
+            decision and cannot approve for the team. Approval chains to the outstanding request naming
+            these exact bytes, and a changed grant or stale head requires a renewed action.
+          </p>
+          <div className="suite-row">
+            <label>
+              Hub project <input value={hubProject} onChange={(event) => setHubProject(event.target.value)} />
+            </label>
+            <label>
+              Request recipient <input value={teamRecipient} onChange={(event) => setTeamRecipient(event.target.value)} />
+            </label>
+            <label>
+              Command id <input value={teamCommandId} onChange={(event) => setTeamCommandId(event.target.value)} />
+            </label>
+            <label>
+              Rationale <input value={teamRationale} onChange={(event) => setTeamRationale(event.target.value)} />
+            </label>
+          </div>
+          <div className="suite-row">
+            <button
+              type="button"
+              disabled={!hubProject.trim() || !impactTo.trim() || !teamCommandId.trim() || !teamRationale.trim() || !teamRecipient.trim()}
+              onClick={() => void runReleaseReview("review-request")}
+            >
+              Request team review
+            </button>
+            <button
+              type="button"
+              disabled={!hubProject.trim() || !impactTo.trim() || !teamCommandId.trim() || !teamRationale.trim()}
+              onClick={() => void runReleaseReview("approval")}
+            >
+              Approve this release
+            </button>
+          </div>
+          {teamReview && teamReview.state !== "completed" ? <p role="alert">{teamReview.reason}</p> : null}
+          {teamReview?.events?.length ? (
+            <p role="status">
+              Recorded: {teamReview.events[0]?.kind} by {teamReview.events[0]?.actor}@{teamReview.events[0]?.issuer}
+              {teamReview.events[0]?.release ? ` · release ${teamReview.events[0]?.release.slice(0, 12)}…` : ""}
+              {teamReview.replay ? " (replayed, same command id)" : ""}
+            </p>
+          ) : null}
         </fieldset>
       ) : null}
       {tab === "prepare" ? (
@@ -948,7 +1027,9 @@ export function SuitePanel({
           <p>
             Review and approve one exact suite against one declared environment and the operator-declared target
             revision. Changed configuration invalidates the review. Promotion grants no send authority and never
-            verifies the target&rsquo;s actual software.
+            verifies the target&rsquo;s actual software. The approval recorded here is a local decision under the
+            approver label typed below; the team&rsquo;s authenticated approval of the released expectations is a
+            separate action in the Releases tab&rsquo;s team review.
           </p>
           <div className="suite-row">
             <label>

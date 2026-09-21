@@ -2153,6 +2153,67 @@ Users can list and transfer authorized project artifacts:
 - Logging out clears the in-memory session and active client credentials immediately.
 - Re-authenticating never automatically replays pending transfers or writes; any operation interrupted by session loss must be re-initiated deliberately by the user.
 
+
+### Team reviews, conflicts and project administration
+
+Once signed in, the customer-hub panel exposes the hub's collaboration and
+lifecycle routes through typed facade methods. Operators navigate assignments,
+evidence-linked comments, review requests and approvals that bind the
+authenticated OIDC actor — never a local reviewer text field. Shared working
+documents use explicit revision/head checks: unresolved tips are listed, and
+resolve names every current tip. Offline draft branches are retained in the
+local editor draft store as `readmit-hub-revision-draft/v1` and reconcile only
+after an explicit reconnect posts a lifecycle revision with the expected head.
+Retried writes reuse the same command id; a stale head or changed grant fails
+and requires renewed user action.
+
+Role-appropriate administration covers remove-user, retention, retire and
+audit-export through the reviewed lifecycle commands. Membership and IdP
+assignment remain customer-admin access-policy operations; the application does
+not accept raw policy JSON as the ordinary path and does not invent an implicit
+administrator. Deleting a server grant or removing a user refuses new authorized
+requests; already-downloaded files and local authorized exports remain under
+local custody and cannot be revoked. Support-export download is available for
+authorized digests; the full privacy-review and sharing-approval journey is
+completed when those surfaces land.
+
+The same `PostHubReview` facade method carries both review command families the
+hub defines. `comment`, `assignment`, `review-request` and `approval` ride
+`readmit-hub-review-command/v1`; a review-request or approval names a released
+expectation by the digest of its uploaded project artifact, and the hub verifies
+the release document, its baseline chain and its profile seals before recording
+an approval. The sharing kinds `support-policy`, `support-request` and
+`support-approval` ride `readmit-hub-review-command/v2` and gate support-export
+download. The facade refuses a kind outside the hub's closed set before any
+network call; the hub remains the authority for command shape, roles and
+permission.
+
+The expectation-review journey starts at the suite panel's release surface, where
+#258's impact comparison names the successor release entry. `PostHubReleaseReview`
+verifies the entry's exact bytes as a released expectation before anything is
+sent, then posts the hub's review-request (uploading those bytes and naming the
+subject asked to review) or the approval of the outstanding request naming the
+same digest — the digest is derived from the reviewed bytes, never typed, and a
+changed grant or stale head requires a renewed action. Identity is the signed-in
+session's: the promotion tab's local approver label records a local decision and
+never substitutes for the team's authenticated approval.
+
+The sharing journey with #260's screens runs from the hub panel directly above
+them. `PostHubSupportReview` carries the three v2 support kinds: announcing the
+project's sharing policy uploads the policy entry's exact bytes and posts
+`support-policy`; requesting approval uploads a published bundle's `support.json`
+and posts `support-request` bound to the policy in force, which the hub panel
+reads from the project's own history; and `support-approval` approves the
+outstanding request naming the same summary bytes, under the asked reviewer's
+signed-in identity. The hub's export route then serves those exact bytes to an
+authorized download, which the same block reaches with `DownloadHubExport` —
+server-side gated on the recorded approval chain and the sharing policy's
+`customer-hub-download` destination, with the custody notice on every result.
+The privacy screens' local approval inputs stay deliberate acts over local
+identities: a team approval never fills them, and a local approval never stands
+in for the team's.
+
+
 ## Interface profile management
 
 The interface profile management panel in the inspector region (`manage-profiles`
