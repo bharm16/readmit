@@ -50,6 +50,7 @@ export type CommandId =
   | "create-sample-workspace"
   | "open-project"
   | "manage-profiles"
+  | "manage-scenarios"
   | "cancel-operation"
   | "next-region"
   | "previous-region"
@@ -647,6 +648,19 @@ export interface Facade {
   StartCapture(request: CaptureRequest): Promise<CaptureSessionResult>;
   OpenCaptureJournal(workspace: string, journalPath: string): Promise<CaptureJournalResult>;
   FinalizeCaptureImport(request: FinalizeCaptureRequest): Promise<ImportCommitResult>;
+  ScenarioCatalog(): Promise<ScenarioCatalogResult>;
+  BindScenarioProfile(request: ScenarioProfileBindRequest): Promise<ScenarioProfileBindResult>;
+  PreviewScenario(request: ScenarioPreviewRequest): Promise<ScenarioPreviewResult>;
+  OpenScenario(workspace: string, entry: string): Promise<ScenarioDocumentResult>;
+  SaveScenario(request: ScenarioSaveRequest): Promise<ScenarioDocumentResult>;
+  GenerateScenario(request: ScenarioGenerateRequest): Promise<ScenarioGenerateResult>;
+  OpenScenarioLibrary(workspace: string, entry: string): Promise<ScenarioLibraryResult>;
+  SaveScenarioLibraryEntry(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult>;
+  CompareScenarioLibraryEntries(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult>;
+  CheckScenarioLibrary(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult>;
+  ExportScenarioLibrary(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult>;
+  ImportScenarioLibrary(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult>;
+  GenerateSynth(request: SynthGenerateRequest): Promise<SynthGenerateResult>;
   StagePastedContent(request: PastedSourceRequest): Promise<PastedSourceResult>;
   PreviewImport(request: ImportRequest): Promise<ImportPreviewResult>;
   CommitImport(request: ImportCommitRequest): Promise<ImportCommitResult>;
