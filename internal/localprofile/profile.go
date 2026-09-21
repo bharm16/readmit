@@ -36,6 +36,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/profilepack"
+
+	"github.com/bharm16/readmit/internal/strictdoc"
 )
 
 // Schema is the contract a local profile declares.
@@ -534,32 +536,25 @@ func (d *DateHandling) UnmarshalJSON(data []byte) error {
 // contradicts the usage it sits under, a reference to a set the profile does
 // not declare, and anything declared twice.
 func Decode(data []byte) (Profile, error) {
-	if len(data) > MaxProfileBytes {
-		return Profile{}, errors.New("a local profile exceeds its 4 MiB size limit")
-	}
-	var required struct {
-		Schema   *string    `json:"schema"`
-		Profile  *Identity  `json:"profile"`
-		Base     *Base      `json:"base"`
-		Segments *[]Segment `json:"segments"`
-	}
-	if err := json.Unmarshal(data, &required); err != nil {
-		return Profile{}, errors.New("invalid local profile JSON")
-	}
-	if required.Schema == nil || *required.Schema != Schema {
-		return Profile{}, errors.New("a local profile must declare " + Schema)
-	}
-	if required.Profile == nil || required.Base == nil || required.Segments == nil {
-		return Profile{}, errors.New("a local profile requires profile, base and segments")
-	}
 	var profile Profile
-	if err := json.Unmarshal(data, &profile, json.RejectUnknownMembers(true)); err != nil {
-		return Profile{}, errors.New("invalid local profile JSON")
+	if err := profileDocument.Decode(data, &profile); err != nil {
+		return Profile{}, err
 	}
 	if err := profile.Validate(); err != nil {
 		return Profile{}, err
 	}
 	return profile, nil
+}
+
+// profileDocument states how this contract is read; strictdoc owns the reading.
+var profileDocument = strictdoc.Document{
+	MaxBytes:    MaxProfileBytes,
+	Schema:      Schema,
+	Required:    []string{"profile", "base", "segments"},
+	Invalid:     "invalid local profile JSON",
+	TooLarge:    "a local profile exceeds its 4 MiB size limit",
+	MustDeclare: "a local profile must declare " + Schema,
+	Requires:    "a local profile requires profile, base and segments",
 }
 
 // Validate is the profile checked against itself: every rule the contract

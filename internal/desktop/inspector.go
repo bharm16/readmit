@@ -1,12 +1,12 @@
 package desktop
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
-	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/dictionary"
 	"github.com/bharm16/readmit/internal/hl7"
@@ -74,33 +74,25 @@ type InspectionResult struct {
 	Inspection *Inspection `json:"inspection,omitzero"`
 }
 
+func (r *InspectionResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
 // InspectOccurrence verifies the case on every read and serves bounded tree
 // and byte windows. Like OpenGrid it runs under the operation slot to completion
 // and is not interruptible; the shell must not offer cancellation for this read.
 func (a *App) InspectOccurrence(request InspectRequest) InspectionResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return InspectionResult{State: Busy, Reason: busyRefusal.reason}
-	}
-	defer release()
+	return run(a, false, false, func(context.Context) InspectionResult {
+		return a.inspectOccurrence(request)
+	})
+}
+
+func (a *App) inspectOccurrence(request InspectRequest) InspectionResult {
 	fail := func(reason string) InspectionResult { return InspectionResult{State: Failed, Reason: reason} }
 	if request.NodeOffset < 0 || request.ByteOffset < -1 {
 		return fail("inspector offsets must be in range")
 	}
-	root, declined := resolveFolder(request.Workspace)
+	root, opened, declined := openedCase(request.Workspace, request.Case, request.Identity)
 	if root == "" {
 		return InspectionResult{State: declined.state, Reason: declined.reason}
-	}
-	path, err := artifactpath.Child(root, request.Case)
-	if err != nil {
-		return fail("a case must be one directory entry of the open workspace")
-	}
-	opened, err := bundle.Open(path)
-	if err != nil {
-		return fail("the case could not be verified as complete, unmodified evidence")
-	}
-	if request.Identity == "" || request.Identity != opened.Identity {
-		return fail("the case identity changed; reopen the grid before inspecting")
 	}
 	var event *bundle.Event
 	for i := range opened.Events {

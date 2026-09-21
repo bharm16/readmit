@@ -1,59 +1,45 @@
 package cli
 
 import (
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 
 	"github.com/bharm16/readmit/internal/baseline"
-	"github.com/bharm16/readmit/internal/testrunner"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/spf13/cobra"
 )
 
-func baselineCommand(ran *bool) *cobra.Command {
+func baselineCommand() *cobra.Command {
 	root := &cobra.Command{Use: "baseline", Short: "Review and explicitly approve immutable regression expectations"}
 	for _, approve := range []bool{false, true} {
 		var previous, identity, approver, rationale, output string
 		var show bool
 		name := "review"
+		capability := capabilityFree
 		if approve {
 			name = "approve"
+			capability = capabilityAuthor
 		}
-		cmd := &cobra.Command{Use: name + " SPEC", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
-			data, err := baseline.ReadBytes(args[0], testrunner.MaxSpecBytes)
-			if err != nil {
-				return err
-			}
-			var parent *baseline.Revision
-			if previous != "" {
-				r, err := baseline.Read(previous)
-				if err != nil {
-					return err
-				}
-				parent = &r
-			}
+		cmd := &cobra.Command{Use: name + " SPEC", Annotations: declare(capability), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+			request := operation.BaselineRequest{Spec: args[0], Previous: previous, Output: output, ShowValues: show, Review: identity, Approver: approver, Rationale: rationale}
 			if !approve {
-				r, err := baseline.Review(data, parent, show)
+				result, err := operation.ReviewBaseline(request)
 				if err != nil {
 					return err
 				}
-				if _, err := cmd.OutOrStdout().Write(r.JSON()); err != nil {
+				if _, err := cmd.OutOrStdout().Write(result.Comparison.JSON()); err != nil {
 					return errors.New("cannot write baseline review")
 				}
 				return nil
 			}
 			if output == "" {
-				return errors.New("baseline approval requires a new --output file")
+				return usage("baseline approval requires a new --output file")
 			}
-			r, err := baseline.Approve(data, parent, identity, approver, rationale)
+			result, err := operation.ApproveBaseline(request)
 			if err != nil {
 				return err
 			}
-			if err := baseline.Save(output, r); err != nil {
-				return err
-			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Approved local baseline revision %d; identity is not authenticated.\n", r.Revision)
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Approved local baseline revision %d; identity is not authenticated.\n", result.Approved.Revision)
 			if err != nil {
 				return errors.New("baseline saved but confirmation could not be written")
 			}
@@ -72,8 +58,7 @@ func baselineCommand(ran *bool) *cobra.Command {
 	}
 
 	var show bool
-	inspect := &cobra.Command{Use: "show REVISION", Short: "Inspect a retained baseline and its local approval", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
+	inspect := &cobra.Command{Use: "show REVISION", Short: "Inspect a retained baseline and its local approval", Annotations: declare(capabilityFree), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		revision, err := baseline.Read(args[0])
 		if err != nil {
 			return err
@@ -82,16 +67,13 @@ func baselineCommand(ran *bool) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		data, err := json.Marshal(struct {
+		document := struct {
 			Schema    string              `json:"schema"`
 			Approver  string              `json:"approver"`
 			Rationale string              `json:"rationale"`
 			Baseline  baseline.Comparison `json:"baseline"`
-		}{"readmit-baseline-inspection/v1", revision.Approver, revision.Rationale, report}, json.Deterministic(true))
-		if err != nil {
-			return errors.New("cannot render baseline")
-		}
-		if _, err := cmd.OutOrStdout().Write(append(data, '\n')); err != nil {
+		}{"readmit-baseline-inspection/v1", revision.Approver, revision.Rationale, report}
+		if err := writeJSONTo(cmd.OutOrStdout(), document); err != nil {
 			return errors.New("cannot write baseline inspection")
 		}
 		return nil

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
@@ -62,28 +63,8 @@ func Write(path string, inputs bundle.GeneratorInputs) (*Manifest, error) {
 	if err != nil {
 		return nil, errors.New("cannot encode synthetic family; incomplete output retained")
 	}
-	if err := writeCompletion(root, append(data, '\n')); err != nil {
-		return nil, err
+	if err := artifactdir.Publish(root, ".family.json.incomplete", "family.json", append(data, '\n')); err != nil {
+		return nil, errors.New("cannot write synthetic family completion record; incomplete output retained")
 	}
 	return manifest, nil
-}
-
-func writeCompletion(root *os.Root, data []byte) error {
-	failed := errors.New("cannot write synthetic family completion record; incomplete output retained")
-	file, err := root.OpenFile(".family.json.incomplete", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return failed
-	}
-	_, err = file.Write(data)
-	if err == nil {
-		err = file.Sync()
-	}
-	closeErr := file.Close()
-	if err != nil || closeErr != nil {
-		return failed
-	}
-	if err := root.Rename(".family.json.incomplete", "family.json"); err != nil {
-		return failed
-	}
-	return nil
 }

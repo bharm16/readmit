@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"context"
 	"encoding/json/v2"
 	"errors"
 	"io/fs"
@@ -112,6 +113,8 @@ type RecoveryResult struct {
 	RunReason string              `json:"run_reason,omitzero"`
 }
 
+func (r *RecoveryResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
 // DefaultSessionPath is the owner-only file the shell retains the session in.
 func DefaultSessionPath() (string, error) { return configPath(sessionName) }
 
@@ -134,11 +137,12 @@ func emptySession() Session { return Session{Schema: SessionSchema, Drafts: []Dr
 // It runs to completion once it starts, so it holds the operation slot but is
 // not interruptible.
 func (a *App) RecoverSession() RecoveryResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return RecoveryResult{State: Busy, Reason: busyRefusal.reason}
-	}
-	defer release()
+	return run(a, false, false, func(context.Context) RecoveryResult {
+		return a.recoverSession()
+	})
+}
+
+func (a *App) recoverSession() RecoveryResult {
 	session, declined := a.retainedSession()
 	if declined.state != "" {
 		return RecoveryResult{State: declined.state, Reason: declined.reason}

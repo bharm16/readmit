@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/strictdoc"
 )
 
 const (
@@ -103,27 +104,24 @@ func registered(document Document, revisions Revisions, name string) (string, bo
 	return "", false
 }
 
+// revisionsDocument is the one strict reading of a revisions document, through
+// strictdoc, for the same reason the project document reads its declared
+// version before the strict decode.
+var revisionsDocument = strictdoc.Document{
+	MaxBytes:    maxDocumentBytes,
+	Schema:      RevisionsSchema,
+	Invalid:     "invalid project revision document",
+	TooLarge:    "project revision document exceeds its size limit",
+	MustDeclare: "a project revision document declares its contract version",
+	Unsupported: ErrUnsupportedVersion,
+}
+
 // DecodeRevisions reads an editable document. Unknown members and unknown
 // versions are errors; there is no migration and no repair.
 func DecodeRevisions(data []byte) (Revisions, error) {
-	if len(data) > maxDocumentBytes {
-		return Revisions{}, errors.New("project revision document exceeds its size limit")
-	}
-	// The declared contract version is read before the strict decode, for the
-	// same reason the project document reads it first: a later release bumps
-	// the version precisely because it adds members.
-	var declared struct {
-		Schema string `json:"schema"`
-	}
-	if err := json.Unmarshal(data, &declared); err != nil {
-		return Revisions{}, errors.New("invalid project revision document")
-	}
-	if declared.Schema != RevisionsSchema {
-		return Revisions{}, ErrUnsupportedVersion
-	}
 	var revisions Revisions
-	if err := json.Unmarshal(data, &revisions, json.RejectUnknownMembers(true)); err != nil {
-		return Revisions{}, errors.New("invalid project revision document")
+	if err := revisionsDocument.Decode(data, &revisions); err != nil {
+		return Revisions{}, err
 	}
 	if err := ValidateRevisions(revisions); err != nil {
 		return Revisions{}, err

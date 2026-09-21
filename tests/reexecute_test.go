@@ -3,7 +3,6 @@ package tests
 import (
 	"bytes"
 	"context"
-	"encoding/json/v2"
 	"net"
 	"os"
 	"os/exec"
@@ -44,10 +43,7 @@ func TestRedactReexecuteCLIRequiresAuthorizationAndPreviewsWithoutSending(t *tes
 	if err != nil {
 		t.Fatalf("preview: %v %s", err, stderr)
 	}
-	var result redact.ReexecutionAssessment
-	if err := json.Unmarshal([]byte(stdout), &result, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatal(err)
-	}
+	result := readStrictOutput[redact.ReexecutionAssessment](t, stdout)
 	if result.Criteria != "not-executed" || result.ExternalEquivalence != "declined" || result.ReviewIdentity != review.Identity {
 		t.Fatalf("false preview: %+v", result)
 	}
@@ -122,10 +118,7 @@ func TestRedactReexecuteCLISendsAndRecoversActualOutcomes(t *testing.T) {
 			if (err == nil) != (outcome == "matched") {
 				t.Fatalf("unexpected exit: %v %s", err, stderr)
 			}
-			var assessment redact.ReexecutionAssessment
-			if err := json.Unmarshal([]byte(stdout), &assessment, json.RejectUnknownMembers(true)); err != nil {
-				t.Fatalf("assessment: %v %s", err, stdout)
-			}
+			assessment := readStrictOutput[redact.ReexecutionAssessment](t, stdout)
 			if assessment.Criteria != outcome || assessment.ExternalEquivalence != "declined" {
 				t.Fatalf("wrong claim: %+v", assessment)
 			}
@@ -152,10 +145,7 @@ func TestRedactReexecuteCLISendsAndRecoversActualOutcomes(t *testing.T) {
 			if code != wantCode {
 				t.Fatalf("recovery exit %d want %d: %s", code, wantCode, stderr)
 			}
-			var recovery durablerun.Recovery
-			if err := json.Unmarshal([]byte(stdout), &recovery, json.RejectUnknownMembers(true)); err != nil {
-				t.Fatal(err)
-			}
+			recovery := readStrictOutput[durablerun.Recovery](t, stdout)
 			if !recovery.Terminal || recovery.Run.ResultIdentity != assessment.ResultIdentity {
 				t.Fatalf("lost execution on recovery: %+v", recovery)
 			}

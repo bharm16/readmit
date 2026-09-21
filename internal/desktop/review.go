@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"context"
 	"errors"
 	"io/fs"
 	"os"
@@ -8,9 +9,9 @@ import (
 	"strings"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
-	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/correlate"
 	"github.com/bharm16/readmit/internal/exportreview"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/profilepack"
 	"github.com/bharm16/readmit/internal/redact"
 	"github.com/bharm16/readmit/internal/transform"
@@ -166,6 +167,8 @@ type ReviewResult struct {
 	Review *Review `json:"review,omitzero"`
 }
 
+func (r *ReviewResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
 func (r refusal) review() ReviewResult { return ReviewResult{State: r.state, Reason: r.reason} }
 
 // Transformation is one plan previewed over one verified case: the documents it
@@ -203,6 +206,8 @@ type TransformResult struct {
 	Transformation *Transformation `json:"transformation,omitzero"`
 }
 
+func (r *TransformResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
 func (r refusal) transformation() TransformResult {
 	return TransformResult{State: r.state, Reason: r.reason}
 }
@@ -224,11 +229,12 @@ func (r refusal) transformation() TransformResult {
 // interruptible. Nothing is written, nothing is exported, and no approval is
 // retained.
 func (a *App) OpenReview(request ReviewRequest) ReviewResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return busyRefusal.review()
-	}
-	defer release()
+	return run(a, false, false, func(context.Context) ReviewResult {
+		return a.openReview(request)
+	})
+}
+
+func (a *App) openReview(request ReviewRequest) ReviewResult {
 	if request.Offset < 0 || request.Limit < 1 || request.Limit > MaxReviewFindings {
 		return ReviewResult{State: Failed, Reason: "a review renders a window beginning at or after its first finding, of between 1 and " + strconv.Itoa(MaxReviewFindings) + " findings"}
 	}
@@ -265,49 +271,32 @@ func (a *App) OpenReview(request ReviewRequest) ReviewResult {
 // verified evidence under the case reader's own limits and runs to completion
 // once it starts, so it holds the operation slot but is not interruptible.
 func (a *App) PreviewTransformation(request TransformRequest) TransformResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return busyRefusal.transformation()
-	}
-	defer release()
-	root, declined := resolveFolder(request.Workspace)
+	return run(a, false, false, func(context.Context) TransformResult {
+		return a.previewTransformation(request)
+	})
+}
+
+func (a *App) previewTransformation(request TransformRequest) TransformResult {
+	root, _, declined := openedCase(request.Workspace, request.Case, request.Identity)
 	if root == "" {
 		return declined.transformation()
 	}
-	casePath, err := artifactpath.Child(root, request.Case)
-	if err != nil {
-		return TransformResult{State: Failed, Reason: "a case must be named by one directory entry of the open workspace"}
-	}
-	opened, err := bundle.Open(casePath)
-	if err != nil {
-		return TransformResult{State: Failed, Reason: "the case could not be verified as complete, unmodified evidence"}
-	}
-	if request.Identity == "" || request.Identity != opened.Identity {
-		return TransformResult{State: Failed, Reason: "the case identity changed; open the case again before previewing a transformation"}
-	}
+	casePath := artifactpath.JoinReference(root, request.Case)
 	declared, declined := workspaceDocument(root, request.Rules, correlate.MaxRulesBytes,
 		"the correlation rules document")
 	if declined.state != "" {
 		return declined.transformation()
-	}
-	rules, err := correlate.ParseRules(declared)
-	if err != nil {
-		return TransformResult{State: Failed, Reason: err.Error()}
 	}
 	authored, declined := workspaceDocument(root, request.Plan, transform.MaxPlanBytes,
 		"the transformation plan")
 	if declined.state != "" {
 		return declined.transformation()
 	}
-	plan, err := transform.DecodePlan(authored)
-	if err != nil {
-		return TransformResult{State: Failed, Reason: err.Error()}
-	}
 	pack, declined := pinnedPack(root, request.Profile)
 	if declined.state != "" {
 		return declined.transformation()
 	}
-	preview, err := transform.Run(casePath, plan, rules, pack)
+	preview, err := operation.PreviewTransform(operation.TransformRequest{Case: casePath, Rules: declared, Plan: authored, Pack: pack})
 	if err != nil {
 		return TransformResult{State: Failed, Reason: err.Error()}
 	}

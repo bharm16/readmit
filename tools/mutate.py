@@ -79,7 +79,7 @@ MUTATIONS = (
     ),
     Mutation(
         name="interrupt-no-longer-cancels",
-        path="internal/cli/replay.go",
+        path="internal/cli/operation.go",
         old="signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)",
         new="signal.NotifyContext(cmd.Context(), os.Kill, syscall.SIGTERM)",
         check="endpoint-cancel",
@@ -96,8 +96,8 @@ MUTATIONS = (
     Mutation(
         name="acknowledgement-echoes-a-constant",
         path="internal/receiver/message.go",
-        old='text := header + "MSA|" + code + "|" + request.controlID',
-        new='text := header + "MSA|" + code + "|READMIT-FIXTURE"',
+        old='msa := []string{"MSA", code, request.controlID}',
+        new='msa := []string{"MSA", code, "READMIT-FIXTURE"}',
         check="listener-ledger",
         rationale="an acknowledgement would no longer echo the control ID it answers",
     ),

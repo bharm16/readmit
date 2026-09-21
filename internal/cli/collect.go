@@ -3,13 +3,9 @@ package cli
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/bharm16/readmit/internal/capturejournal"
@@ -40,22 +36,22 @@ func (t listenerTLS) declared() bool {
 	return t.certificate != "" || t.keyReference != "" || t.secretsFile != "" || t.clientCA != ""
 }
 
-func collectCommand(ran *bool) *cobra.Command {
+func collectCommand() *cobra.Command {
 	var address, policyPath string
 	var approvedBind bool
 	var transport listenerTLS
 	var config receiver.CollectorConfig
 	command := &cobra.Command{
-		Use:   "collect --policy FILE --output NEW_DIRECTORY",
-		Short: "Collect downstream HL7 over MLLP under a declared acknowledgement policy",
-		Args:  cobra.NoArgs,
+		Use:         "collect --policy FILE --output NEW_DIRECTORY",
+		Annotations: declareInterruptible(capabilityExecute),
+		Short:       "Collect downstream HL7 over MLLP under a declared acknowledgement policy",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if err := sendpolicy.BindAddress(address, approvedBind); err != nil {
 				return err
 			}
 			if policyPath == "" {
-				return errors.New("collect requires --policy with a receiver policy file")
+				return usage("collect requires --policy with a receiver policy file")
 			}
 			data, err := readInputFile(policyPath, collection.MaxPolicyBytes)
 			if err != nil {
@@ -70,8 +66,7 @@ func collectCommand(ran *bool) *cobra.Command {
 					return err
 				}
 			}
-			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer cancel()
+			ctx := cmd.Context()
 			secured, err := listenerConfig(ctx, transport, address)
 			if err != nil {
 				return err
@@ -131,32 +126,26 @@ func collectCommand(ran *bool) *cobra.Command {
 	command.Flags().StringVar(&transport.keyReference, "tls-key-reference", "", "Registered credential reference naming the certificate's private key")
 	command.Flags().StringVar(&transport.secretsFile, "secrets", "", "Existing readmit-secrets/v1 store holding that credential reference")
 	command.Flags().StringVar(&transport.clientCA, "client-ca", "", "Existing PEM authority whose client certificates this listener requires and verifies")
-	command.AddCommand(collectStatusCommand(ran))
+	command.AddCommand(collectStatusCommand())
 	return command
 }
 
-func collectStatusCommand(ran *bool) *cobra.Command {
+func collectStatusCommand() *cobra.Command {
 	var asJSON bool
 	status := &cobra.Command{
-		Use:   "status JOURNAL",
-		Short: "Recover an interrupted capture read-only; never resend or resume",
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return errors.New("collect status requires one capture journal directory")
-			}
-			return nil
-		},
+		Use:         "status JOURNAL",
+		Annotations: declare(capabilityFree),
+		Short:       "Recover an interrupted capture read-only; never resend or resume",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			summary, err := capturejournal.Open(args[0])
 			if err != nil {
-				return &ExitError{Code: 2, Err: err}
+				return refusal(err)
 			}
 			if err := writeCapture(cmd, summary, asJSON); err != nil {
 				return err
 			}
 			if summary.ExitCode() != 0 {
-				return &ExitError{Code: summary.ExitCode(), Err: errors.New("capture did not finalize; inspect the retained journal"), Reported: true}
+				return verdict(summary.ExitCode(), errors.New("capture did not finalize; inspect the retained journal"))
 			}
 			return nil
 		},
@@ -166,24 +155,16 @@ func collectStatusCommand(ran *bool) *cobra.Command {
 }
 
 func writeCapture(cmd *cobra.Command, summary capturejournal.Summary, asJSON bool) error {
-	var err error
-	if asJSON {
-		var data []byte
-		data, err = json.Marshal(summary, json.Deterministic(true))
-		if err == nil {
-			_, err = fmt.Fprintln(cmd.OutOrStdout(), string(data))
-		}
-	} else {
-		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Capture state: %s\nStop reason: %s\nDelivery uncertain: %t\nReceived frames: %d\nAcknowledgements sent: %d\nAcknowledgements unsent: %d\nAcknowledgements uncertain: %d\n",
-			summary.State, summary.StopReason, summary.DeliveryUncertain, summary.Received, summary.Acknowledged, summary.Unsent, summary.Uncertain)
-		if err == nil && summary.Recovered {
-			_, err = fmt.Fprintln(cmd.OutOrStdout(), "Finalization was not recorded; the writer may still be active. Recovery never sends, resends or resumes.")
-		}
+	return writeReport(cmd, asJSON, summary, func(c *cobra.Command) error { return writeCaptureSummary(c, summary) }, "cannot write capture summary")
+}
+
+func writeCaptureSummary(cmd *cobra.Command, summary capturejournal.Summary) error {
+	_, err := fmt.Fprintf(cmd.OutOrStdout(), "Capture state: %s\nStop reason: %s\nDelivery uncertain: %t\nReceived frames: %d\nAcknowledgements sent: %d\nAcknowledgements unsent: %d\nAcknowledgements uncertain: %d\n",
+		summary.State, summary.StopReason, summary.DeliveryUncertain, summary.Received, summary.Acknowledged, summary.Unsent, summary.Uncertain)
+	if err == nil && summary.Recovered {
+		_, err = fmt.Fprintln(cmd.OutOrStdout(), "Finalization was not recorded; the writer may still be active. Recovery never sends, resends or resumes.")
 	}
-	if err != nil {
-		return &ExitError{Code: 2, Err: errors.New("cannot write capture summary")}
-	}
-	return nil
+	return err
 }
 
 // listenerConfig builds the capture listener's TLS configuration, or nil when
@@ -195,7 +176,7 @@ func listenerConfig(ctx context.Context, declared listenerTLS, address string) (
 		return nil, nil
 	}
 	if declared.certificate == "" || declared.keyReference == "" || declared.secretsFile == "" {
-		return nil, errors.New("a TLS listener requires --tls-certificate, --tls-key-reference and --secrets together")
+		return nil, usage("a TLS listener requires --tls-certificate, --tls-key-reference and --secrets together")
 	}
 	chain, err := readInputFile(declared.certificate, maxCertificateBytes)
 	if err != nil {

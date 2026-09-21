@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/evidencesource"
@@ -17,34 +15,29 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func sourceCommand(ran *bool) *cobra.Command {
+func sourceCommand() *cobra.Command {
 	command := &cobra.Command{
-		Use:   "source",
-		Short: "Diagnose access to, and collect evidence from, one approved customer-controlled source",
-		Args:  cobra.NoArgs,
+		Use:         "source",
+		Annotations: declare(capabilityFree),
+		Short:       "Diagnose access to, and collect evidence from, one approved customer-controlled source",
+		Args:        cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return errors.New("source requires a subcommand: diagnose or collect")
+			return usage("source requires a subcommand: diagnose or collect")
 		},
 	}
-	command.AddCommand(sourceDiagnose(ran), sourceCollect(ran))
+	command.AddCommand(sourceDiagnose(), sourceCollect())
 	return command
 }
 
-func sourceDiagnose(ran *bool) *cobra.Command {
+func sourceDiagnose() *cobra.Command {
 	var policy, report string
 	var machine bool
 	var declared declaration
 	command := &cobra.Command{
-		Use:   "diagnose SOURCE --framing raw --terminator cr --encoding utf-8 --direction inbound",
-		Short: "Report what access to the declared source was actually available, collecting nothing",
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return errors.New("source diagnose reads exactly one declared source")
-			}
-			return nil
-		},
+		Use:         "diagnose SOURCE --framing raw --terminator cr --encoding utf-8 --direction inbound",
+		Annotations: declareInterruptible(capabilityExecute),
+		Short:       "Report what access to the declared source was actually available, collecting nothing",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			source, options, err := sourceRun(cmd, args[0], policy, declared, "")
 			if err != nil {
 				return err
@@ -54,8 +47,7 @@ func sourceDiagnose(ran *bool) *cobra.Command {
 					return err
 				}
 			}
-			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer cancel()
+			ctx := cmd.Context()
 			access, err := evidencesource.Diagnose(ctx, source, options)
 			if err != nil {
 				return err
@@ -79,7 +71,7 @@ func sourceDiagnose(ran *bool) *cobra.Command {
 				return err
 			}
 			if access.Status != observewindow.Complete {
-				return &ExitError{Code: 2, Err: errors.New("source access is not available: " + access.Reason), Reported: machine}
+				return statedRefusalWhen(machine, errors.New("source access is not available: "+access.Reason))
 			}
 			return nil
 		},
@@ -91,22 +83,16 @@ func sourceDiagnose(ran *bool) *cobra.Command {
 	return command
 }
 
-func sourceCollect(ran *bool) *cobra.Command {
+func sourceCollect() *cobra.Command {
 	var policy, saved, output, receipt string
 	var declared declaration
 	command := &cobra.Command{
-		Use:   "collect SOURCE --output NEW_DIRECTORY --receipt NEW_FILE --framing raw --terminator cr --encoding utf-8 --direction inbound",
-		Short: "Stage the declared source's evidence in a new directory with the receipt of what was collected",
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return errors.New("source collect reads exactly one declared source")
-			}
-			return nil
-		},
+		Use:         "collect SOURCE --output new_directory --receipt new_file --framing raw --terminator cr --encoding utf-8 --direction inbound",
+		Annotations: declareInterruptible(capabilityExecute),
+		Short:       "Stage the declared source's evidence in a new directory with the receipt of what was collected",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if output == "" || receipt == "" {
-				return errors.New("source collect requires --output with a new directory and --receipt with a new file")
+				return usage("source collect requires --output with a new directory and --receipt with a new file")
 			}
 			source, options, err := sourceRun(cmd, args[0], policy, declared, saved)
 			if err != nil {
@@ -119,8 +105,7 @@ func sourceCollect(ran *bool) *cobra.Command {
 			if err := reserveNewFile(receipt, "the collection receipt destination must be a new file"); err != nil {
 				return err
 			}
-			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer cancel()
+			ctx := cmd.Context()
 			collection, collectErr := evidencesource.Collect(ctx, source, output, options)
 			if collectErr != nil && !errors.Is(collectErr, evidencesource.ErrIncomplete) {
 				return collectErr
@@ -138,7 +123,7 @@ func sourceCollect(ran *bool) *cobra.Command {
 				return err
 			}
 			if collectErr != nil {
-				return &ExitError{Code: 2, Err: errors.New("the collection did not complete: " + collection.Reason)}
+				return refusal(errors.New("the collection did not complete: " + collection.Reason))
 			}
 			return nil
 		},

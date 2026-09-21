@@ -9,6 +9,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/mllp"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
@@ -58,8 +59,12 @@ func verifyFixtureACKs(source *bundle.Bundle, artifact *testrunner.Artifact) err
 		if err != nil || parsed.UTC().Format("20060102150405-0700") != stamp {
 			return invalid
 		}
-		want := fmt.Sprintf("\x0bMSH|^~\\&|READMIT|FIXTURE|||%s||ACK^%s|READMITACK%06d|P|2.5.1\rMSA|AA|%s\rZRT|%s|%s|%s\r\x1c\r", stamp, trigger, i+1, controlID, testrunner.ReceiptSchema, artifact.Result.ReceiverSessionID, receivedID)
-		if !bytes.Equal(raw, []byte(want)) {
+		want := mllp.Frame(hl7.Encode([][]string{
+			{"MSH", "^~\\&", "READMIT", "FIXTURE", "", "", stamp, "", "ACK^" + trigger, fmt.Sprintf("READMITACK%06d", i+1), "P", "2.5.1"},
+			{"MSA", "AA", controlID},
+			{"ZRT", testrunner.ReceiptSchema, artifact.Result.ReceiverSessionID, receivedID},
+		}))
+		if !bytes.Equal(raw, want) {
 			return invalid
 		}
 	}

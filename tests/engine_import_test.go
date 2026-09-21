@@ -15,9 +15,9 @@ import (
 
 func TestEngineImportPublicPreviewAndRetainedRawEvidence(t *testing.T) {
 	dir := t.TempDir()
-	plan := importPlanFile(t, dir, "adapter.json", `{"schema":"readmit-engine-export/v1","engine":"oie","version":"4.6.0","format":"raw","terminator":"cr"}`)
+	plan := writeDocument(t, dir, "adapter.json", `{"schema":"readmit-engine-export/v1","engine":"oie","version":"4.6.0","format":"raw","terminator":"cr"}`)
 	raw := importFixture("ENGINE-PRIVATE") + "\r\n\r\n\r\n"
-	file := importPlanFile(t, dir, "export.hl7", raw)
+	file := writeDocument(t, dir, "export.hl7", raw)
 	out, stderr, err := run(t, "import", "engine", "--plan", plan, "--file", file, "--preview")
 	if err != nil || stderr != "" || !strings.Contains(out, `"stage":"unknown"`) || !strings.Contains(out, `"qualification":"unqualified"`) || strings.Contains(out, "ENGINE-PRIVATE") {
 		t.Fatalf("preview: %v %s %s", err, out, stderr)
@@ -46,10 +46,10 @@ func TestEngineImportPublicPreviewAndRetainedRawEvidence(t *testing.T) {
 
 func TestEngineImportStructuredSubsetAndPrivacyRefusal(t *testing.T) {
 	dir := t.TempDir()
-	plan := importPlanFile(t, dir, "adapter.json", `{"schema":"readmit-engine-export/v1","engine":"oie","version":"4.6.0","format":"message-xml","terminator":"cr"}`)
+	plan := writeDocument(t, dir, "adapter.json", `{"schema":"readmit-engine-export/v1","engine":"oie","version":"4.6.0","format":"message-xml","terminator":"cr"}`)
 	// Independently hand-authored model example, not an engine-generated fixture.
 	document := `<message><connectorMessages><entry><int>0</int><connectorMessage><metaDataId>0</metaDataId><raw><contentType>RAW</contentType><content>MSH|^~\&amp;|S|F|R|F|20260101||ADT^A01|PRIVATE-ENGINE|P|2.5.1&#13;PID|1</content><dataType>HL7V2</dataType><encrypted>false</encrypted></raw></connectorMessage></entry></connectorMessages></message>`
-	file := importPlanFile(t, dir, "messages.xml", document+"\r\n"+document)
+	file := writeDocument(t, dir, "messages.xml", document+"\r\n"+document)
 	output := filepath.Join(dir, "case")
 	stdout, stderr, err := run(t, "import", "engine", "--plan", plan, "--file", file, "--output", output)
 	if err != nil || stderr != "" || strings.Contains(stdout+stderr, "PRIVATE-ENGINE") {
@@ -68,7 +68,7 @@ func TestEngineImportStructuredSubsetAndPrivacyRefusal(t *testing.T) {
 			t.Fatal("XML bytes decoded incorrectly")
 		}
 	}
-	bad := importPlanFile(t, dir, "unsupported.xml", strings.Replace(document, "<encrypted>false", "<encrypted>true", 1))
+	bad := writeDocument(t, dir, "unsupported.xml", strings.Replace(document, "<encrypted>false", "<encrypted>true", 1))
 	refused := filepath.Join(dir, "refused")
 	stdout, stderr, err = run(t, "import", "engine", "--plan", plan, "--file", bad, "--output", refused)
 	if err == nil || strings.Contains(stdout+stderr, "PRIVATE-ENGINE") {
@@ -81,8 +81,8 @@ func TestEngineImportStructuredSubsetAndPrivacyRefusal(t *testing.T) {
 
 func TestEngineImportRecoversWithFreshDestinationAfterIncompleteCase(t *testing.T) {
 	dir := t.TempDir()
-	plan := importPlanFile(t, dir, "adapter.json", `{"schema":"readmit-engine-export/v1","engine":"mirth","version":"4.5.2","format":"raw","terminator":"cr"}`)
-	source := importPlanFile(t, dir, "message.hl7", importFixture("RECOVERY"))
+	plan := writeDocument(t, dir, "adapter.json", `{"schema":"readmit-engine-export/v1","engine":"mirth","version":"4.5.2","format":"raw","terminator":"cr"}`)
+	source := writeDocument(t, dir, "message.hl7", importFixture("RECOVERY"))
 	partial := filepath.Join(dir, "partial")
 	if _, stderr, err := run(t, "import", "engine", "--plan", plan, "--file", source, "--output", partial); err != nil {
 		t.Fatalf("setup: %v %s", err, stderr)
@@ -122,12 +122,12 @@ func TestEngineImportProcessInterruptionRetainsIncompleteAndRetriesFresh(t *test
 				t.Skip("Windows does not support sending os.Interrupt to another process; portable kill is covered")
 			}
 			dir := t.TempDir()
-			plan := importPlanFile(t, dir, "adapter.json", `{"schema":"readmit-engine-export/v1","engine":"oie","version":"4.6.0","format":"message-xml","terminator":"cr"}`)
+			plan := writeDocument(t, dir, "adapter.json", `{"schema":"readmit-engine-export/v1","engine":"oie","version":"4.6.0","format":"message-xml","terminator":"cr"}`)
 			// Enough separately synced payloads to interrupt a real writer after its
 			// exclusive reservation. This is synthetic source-model data, not a lab export.
 			record := `<message><connectorMessages><entry><int>0</int><connectorMessage><metaDataId>0</metaDataId><raw><contentType>RAW</contentType><content>MSH|^~\&amp;|S|F|R|F|20260101||ADT^A01|PROCESS-PRIVATE|P|2.5.1&#13;OBX|1|TX|SYNTHETIC||` + strings.Repeat("X", 64<<10) + `</content><dataType>HL7V2</dataType><encrypted>false</encrypted></raw></connectorMessage></entry></connectorMessages></message>`
 			document := strings.Repeat(record, 128)
-			source := importPlanFile(t, dir, "messages.xml", document)
+			source := writeDocument(t, dir, "messages.xml", document)
 			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 			defer cancel()
 			verifyCompleted := func(path string) {

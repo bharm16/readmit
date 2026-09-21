@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/operationguard"
@@ -68,30 +69,27 @@ func Health(root string) (Status, error) {
 	return s, nil
 }
 func persist(path string, data []byte) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	root, err := os.OpenRoot(filepath.Dir(path))
 	if err != nil {
 		return ErrRefused
 	}
-	n, e := f.Write(data)
-	if e == nil && n != len(data) {
-		e = io.ErrShortWrite
-	}
-	if e == nil {
-		e = f.Sync()
-	}
-	closeErr := f.Close()
-	if e != nil || closeErr != nil {
+	defer root.Close()
+	if err := artifactdir.WriteFile(root, filepath.Base(path), data); err != nil {
 		return ErrRefused
 	}
-	return syncDirectory(filepath.Dir(path))
+	if err := artifactdir.SyncDirectory(root, "."); err != nil {
+		return ErrRefused
+	}
+	return nil
 }
+
 func syncDirectory(path string) error {
 	root, err := os.OpenRoot(path)
 	if err != nil {
 		return ErrRefused
 	}
 	defer root.Close()
-	return durablerun.SyncDirectory(root, ".")
+	return artifactdir.SyncDirectory(root, ".")
 }
 func storeLease(active string, lease runnerprotocol.Lease) error {
 	raw, err := json.Marshal(lease)

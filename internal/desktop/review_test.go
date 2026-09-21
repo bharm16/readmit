@@ -47,8 +47,7 @@ const (
 func transformWorkspace(t *testing.T, steps string) (*desktop.App, string, string) {
 	t.Helper()
 	root := t.TempDir()
-	state := t.TempDir()
-	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
+	app := newApp(t, &chooser{})
 	opened := writeCase(t, root, "incident", framed(tfBooking)+framed(tfRescheduled)+framed(tfAccepted))
 	writeDocument(t, root, "rules.json", tfRules)
 	rules, err := correlate.ParseRules([]byte(tfRules))
@@ -62,15 +61,6 @@ func transformWorkspace(t *testing.T, steps string) (*desktop.App, string, strin
 	writeDocument(t, root, "plan.json", `{"schema":"`+transform.PlanSchema+`","case":"`+opened.Identity+
 		`","rules":"`+report.RulesSHA256+`","steps":[`+steps+`]}`)
 	return app, root, opened.Identity
-}
-
-// writeDocument writes one declared document into an open workspace, the way an
-// operator authors a rules or a plan document beside the evidence it is about.
-func writeDocument(t *testing.T, root, name, content string) {
-	t.Helper()
-	if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func transformRequest(root, identity string) desktop.TransformRequest {
@@ -324,8 +314,7 @@ func reviewRequest(root, approve string) desktop.ReviewRequest {
 func TestAReviewInventoriesEveryDeclaredExportSurfaceWithoutOmittingOne(t *testing.T) {
 	root := t.TempDir()
 	created := blockedReview(t, root)
-	state := t.TempDir()
-	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
+	app := newApp(t, &chooser{})
 
 	result := app.OpenReview(reviewRequest(root, ""))
 	if result.State != desktop.Completed || result.Review == nil {
@@ -382,8 +371,7 @@ func TestAReviewInventoriesEveryDeclaredExportSurfaceWithoutOmittingOne(t *testi
 func TestAnIncompleteReviewCannotBeApprovedEvenWithItsExactIdentity(t *testing.T) {
 	root := t.TempDir()
 	created := blockedReview(t, root)
-	state := t.TempDir()
-	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
+	app := newApp(t, &chooser{})
 
 	undecided := app.OpenReview(reviewRequest(root, ""))
 	if undecided.Review == nil || undecided.Review.Decision != desktop.IncompleteReview {
@@ -407,8 +395,7 @@ func TestAnIncompleteReviewCannotBeApprovedEvenWithItsExactIdentity(t *testing.T
 func TestAReviewNeverReportsAValueTheCorpusPlanted(t *testing.T) {
 	root := t.TempDir()
 	blockedReview(t, root)
-	state := t.TempDir()
-	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
+	app := newApp(t, &chooser{})
 
 	encoded, err := json.Marshal(app.OpenReview(reviewRequest(root, "")))
 	if err != nil {
@@ -431,8 +418,7 @@ func TestAReviewNeverReportsAValueTheCorpusPlanted(t *testing.T) {
 func TestChangingAReviewInvalidatesWhatWasReadFromIt(t *testing.T) {
 	root := t.TempDir()
 	created := blockedReview(t, root)
-	state := t.TempDir()
-	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
+	app := newApp(t, &chooser{})
 
 	document := filepath.Join(root, "review", "review.json")
 	raw, err := os.ReadFile(document)
@@ -462,8 +448,7 @@ func TestChangingAReviewInvalidatesWhatWasReadFromIt(t *testing.T) {
 func TestAReviewWindowIsBoundedAndNamedByOneEntryOfTheWorkspace(t *testing.T) {
 	root := t.TempDir()
 	blockedReview(t, root)
-	state := t.TempDir()
-	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
+	app := newApp(t, &chooser{})
 
 	for name, request := range map[string]desktop.ReviewRequest{
 		"a window before the first finding": {Workspace: root, Review: "review", Offset: -1, Limit: 10},
@@ -489,8 +474,7 @@ func TestAReviewWindowIsBoundedAndNamedByOneEntryOfTheWorkspace(t *testing.T) {
 func TestAnInterruptedReviewIsRefusedRatherThanReadAsComplete(t *testing.T) {
 	root := t.TempDir()
 	created := blockedReview(t, root)
-	state := t.TempDir()
-	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
+	app := newApp(t, &chooser{})
 
 	if err := os.Remove(filepath.Join(root, "review", "identity.sha256")); err != nil {
 		t.Fatal(err)
@@ -508,9 +492,8 @@ func TestAnInterruptedReviewIsRefusedRatherThanReadAsComplete(t *testing.T) {
 func TestReviewingAndPreviewingHoldTheOneOperationSlot(t *testing.T) {
 	root := t.TempDir()
 	blockedReview(t, root)
-	state := t.TempDir()
 	reentrant := &chooser{folder: root}
-	app := desktop.New(reentrant, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
+	app := newApp(t, reentrant)
 
 	var concurrentReview desktop.ReviewResult
 	var concurrentPreview desktop.TransformResult

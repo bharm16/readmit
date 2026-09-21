@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"context"
 	"errors"
 	"os"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/grid"
 	"github.com/bharm16/readmit/internal/index"
+	"github.com/bharm16/readmit/internal/operation"
 )
 
 // Row is one occurrence in the grid: where it is, what it is, and the observed
@@ -68,6 +70,8 @@ type GridResult struct {
 	Grid   *Grid  `json:"grid,omitzero"`
 }
 
+func (r *GridResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
 func (r refusal) grid() GridResult { return GridResult{State: r.state, Reason: r.reason} }
 
 // OpenGrid renders one bounded window of one case through one index of it.
@@ -84,11 +88,12 @@ func (r refusal) grid() GridResult { return GridResult{State: r.state, Reason: r
 // the case reader's own limits once it starts, so it holds the operation slot
 // but is not interruptible.
 func (a *App) OpenGrid(workspace, name, indexName string, offset, limit int) GridResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return busyRefusal.grid()
-	}
-	defer release()
+	return run(a, false, false, func(context.Context) GridResult {
+		return a.openGrid(workspace, name, indexName, offset, limit)
+	})
+}
+
+func (a *App) openGrid(workspace, name, indexName string, offset, limit int) GridResult {
 	root, declined := resolveFolder(workspace)
 	if root == "" {
 		return declined.grid()
@@ -108,9 +113,9 @@ func (a *App) OpenGrid(workspace, name, indexName string, offset, limit int) Gri
 	if entry, err := os.Lstat(indexPath); err != nil || !entry.Mode().IsRegular() {
 		return GridResult{State: Failed, Reason: "an index must be one regular file of the open workspace"}
 	}
-	opened, err := bundle.Open(casePath)
+	opened, err := operation.OpenCase(casePath)
 	if err != nil {
-		return GridResult{State: Failed, Reason: "the case could not be verified as complete, unmodified evidence"}
+		return GridResult{State: Failed, Reason: err.Error()}
 	}
 	document, declined := openIndex(indexPath, opened)
 	if declined.state != "" {

@@ -1,13 +1,11 @@
 package cli
 
 import (
-	"encoding/json/v2"
-	"fmt"
 	"github.com/bharm16/readmit/internal/customerrunner"
 	"github.com/spf13/cobra"
 )
 
-func runnerCommand(ran *bool) *cobra.Command {
+func runnerCommand() *cobra.Command {
 	root := &cobra.Command{Use: "runner", Short: "Operate a customer-controlled, hub-enrolled local runner"}
 	var config string
 	root.PersistentFlags().StringVar(&config, "config", "", "Private runner configuration path")
@@ -26,9 +24,10 @@ func runnerCommand(ran *bool) *cobra.Command {
 			count = 2
 		}
 		var send bool
-		cmd := &cobra.Command{Use: use, Args: cobra.ExactArgs(count), RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
-			ctx, cancel, err := runContext(cmd.Context(), "")
+		// The long-lived runner checks each job through the installed guard, so
+		// execute and serve declare free like the read-only runner operations.
+		cmd := &cobra.Command{Use: use, Args: cobra.ExactArgs(count), Annotations: declareInterruptible(capabilityFree), RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, cancel, err := deadlineContext(cmd.Context(), "")
 			if err != nil {
 				return err
 			}
@@ -45,7 +44,7 @@ func runnerCommand(ran *bool) *cobra.Command {
 				result, err = customerrunner.Health(c.Root)
 			case "execute":
 				if !send {
-					return fmt.Errorf("runner execution requires --send")
+					return usage("runner execution requires --send")
 				}
 				job, e := customerrunner.ReadJob(args[0])
 				if e != nil {
@@ -58,7 +57,7 @@ func runnerCommand(ran *bool) *cobra.Command {
 				return printRun(cmd, summary, true, nil)
 			case "serve":
 				if !send {
-					return fmt.Errorf("runner service requires --send")
+					return usage("runner service requires --send")
 				}
 				return customerrunner.Serve(ctx, c, args[0])
 			case "verify-update":
@@ -73,12 +72,7 @@ func runnerCommand(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			data, err := json.Marshal(result)
-			if err != nil {
-				return err
-			}
-			_, err = fmt.Fprintln(cmd.OutOrStdout(), string(data))
-			return err
+			return writeJSON(cmd, result)
 		}}
 		if operation == "execute" || operation == "serve" {
 			cmd.Flags().BoolVar(&send, "send", false, "Explicitly authorize approved nonproduction execution")

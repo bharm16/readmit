@@ -3,13 +3,14 @@ package cli
 import (
 	"bytes"
 	"context"
-	"encoding/json/v2"
 	"errors"
-	"fmt"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+
 	"github.com/bharm16/readmit/internal/suite"
 	"io"
-
-	"strings"
 
 	"github.com/bharm16/readmit/internal/customerrunner"
 	"github.com/bharm16/readmit/internal/operationguard"
@@ -17,19 +18,70 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// The interruptible annotation declares that a command executes work a person
+// can stop: the construction pass gives its RunE a context cancelled by an
+// interrupt or a termination signal. A command without it runs to completion,
+// and its context answers nothing.
+const interruptibleAnnotation = "readmit.dev/interruptible"
+
+// helpTopicAnnotation marks the shell's own help-lookup command, whose refusal
+// is reported before any operation starts.
+const helpTopicAnnotation = "readmit.dev/help-topic"
+
+func interruptible(cmd *cobra.Command) bool {
+	return cmd.Annotations[interruptibleAnnotation] == "true"
+}
+
+// exactArgs derives arg-count validation from the command's Use line: one
+// uppercase placeholder per required argument. A command whose Use carries no
+// placeholders takes none. A command with a shape this cannot express declares
+// its own Args, and the construction pass leaves it alone.
+func exactArgs(command *cobra.Command) cobra.PositionalArgs {
+	return cobra.ExactArgs(placeholderCount(command.Use))
+}
+
+// placeholderCount counts the argument placeholders a Use line declares: the
+// fields after the command name that are entirely uppercase.
+func placeholderCount(use string) int {
+	count := 0
+	for _, field := range strings.Fields(use)[1:] {
+		if field == strings.ToUpper(field) && strings.ContainsFunc(field, func(r rune) bool { return r >= 'A' && r <= 'Z' }) {
+			count++
+		}
+	}
+	return count
+}
+
 // wireOperations wraps the actual operation, ensuring admission is released on
 // every return, including failures. Help, parsing, and retained reads stay free.
+// It is also the one construction pass over the finished command tree: the
+// started mark is set here, once, the moment a command's own RunE begins —
+// never inside the ~110 command bodies — and arg-count validation is derived
+// from each command's Use when the command declares none of its own.
 func wireOperations(root *cobra.Command, policy *string, ran *bool) {
 	var guard *operationguard.Guard
 	var visit func(*cobra.Command)
 	visit = func(command *cobra.Command) {
 		if run := command.RunE; run != nil {
+			if command.Args == nil {
+				command.Args = exactArgs(command)
+			}
 			command.RunE = func(cmd *cobra.Command, args []string) (err error) {
+				// The help topic lookup is not a started operation: its refusal
+				// is reported the way every pre-execution refusal is reported.
+				if cmd.Annotations[helpTopicAnnotation] != "true" {
+					*ran = true
+				}
 				if guard == nil {
 					guard = operationguard.New(*policy)
 				}
 				if cmd.CommandPath() == "readmit runner execute" || cmd.CommandPath() == "readmit runner serve" {
 					cmd.SetContext(customerrunner.WithOperationGuard(cmd.Context(), guard))
+				}
+				if interruptible(cmd) {
+					ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+					defer stop()
+					cmd.SetContext(ctx)
 				}
 				capability := operationCapability(cmd)
 				if capability == "" {
@@ -77,54 +129,50 @@ func wireOperations(root *cobra.Command, policy *string, ran *bool) {
 	visit(root)
 }
 
+// Operation capabilities are declared where each command is built, and the
+// admission wrapper reads the declaration instead of classifying command
+// paths. A runnable command that declares nothing is refused closed: it cannot
+// silently acquire the read-only exemption by missing a declaration.
+const capabilityAnnotation = "readmit.dev/operation-capability"
+
+const (
+	capabilityFree                = "free"
+	capabilityAuthor              = "author"
+	capabilityExecute             = "execute"
+	capabilityExecuteIfSend       = "execute-if-send"
+	capabilityAuthorIfQuotaChange = "author-if-quota-change"
+)
+
+func declare(capability string) map[string]string {
+	return map[string]string{capabilityAnnotation: capability}
+}
+
 func operationCapability(cmd *cobra.Command) string {
-	path := strings.TrimPrefix(cmd.CommandPath(), "readmit ")
-	if path == "license" || strings.HasPrefix(path, "license ") {
+	switch declared := cmd.Annotations[capabilityAnnotation]; declared {
+	case capabilityFree:
 		return ""
-	}
-	switch path {
-	case "runner execute", "runner serve":
-		// The long-lived runner checks each job through the installed guard.
-		return ""
-	case "test", "replay":
-		send, _ := cmd.Flags().GetBool("send")
-		if send {
-			return "execute"
+	case capabilityAuthor, capabilityExecute:
+		return declared
+	case capabilityExecuteIfSend:
+		if send, _ := cmd.Flags().GetBool("send"); send {
+			return capabilityExecute
 		}
 		return ""
-	case "run start", "run resume", "run queue", "suite run", "suite ci", "target reset", "redact reexecute", "collect", "listen", "observe collect", "source collect", "source diagnose", "target check":
-		return "execute"
-	case "project quota":
+	case capabilityAuthorIfQuotaChange:
 		if cmd.Flags().Changed("max-bytes") || cmd.Flags().Changed("max-files") {
-			return "author"
+			return capabilityAuthor
 		}
-		return ""
-	case "capture", "import", "import engine", "index build", "corpus generate", "project init", "project add", "project update", "project revise", "project note", "project settings", "scenario generate", "synth", "redact", "diagnose review", "baseline approve", "expectation release", "suite prepare", "suite approve-promotion", "target set", "secret add", "secret update", "secret rotate", "protect register", "protect rotate", "protect retire":
-		return "author"
-	}
-	switch path {
-	case "help", "inspect", "timeline", "index", "index show", "index search", "corpus", "corpus scan",
-		"project", "project show", "project migration-preview", "project recover", "project archive", "project retire", "project delete",
-		"backup", "backup create", "backup verify", "backup restore", "upgrade", "upgrade check", "upgrade prepare",
-		"secret", "secret show", "secret scan", "protect", "protect show", "protect pack", "protect open", "protect inspect", "protect discard",
-		"target", "target show", "source", "collect status", "observe", "observe validate", "observe explain",
-		"diagnose", "diagnose groups", "correlate", "transform", "explain", "diff", "drift", "normalize", "redact export",
-		"scenario preview", "scenario check-library", "baseline review", "baseline show", "expectation review", "expectation show", "expectation impact",
-		"suite coverage", "suite review-promotion", "suite gate", "suite verify-gate", "suite gate-policy", "run status", "run clean",
-		"runner enroll", "runner status", "runner verify-update", "report", "report verify", "report prepare", "report assemble", "report verify-retained", "report export", "report review",
-		"share", "share verify", "sample synth", "sample capture", "sample index", "profile import", "profile export":
 		return ""
 	}
 	// A newly registered operation must be classified explicitly; it cannot
-	// silently acquire the read-only exemption by missing this inventory.
+	// silently acquire the read-only exemption by missing a declaration.
 	return "unsupported-operation"
 }
 
-func licenseOperation(ran *bool) *cobra.Command {
+func licenseOperation() *cobra.Command {
 	root := &cobra.Command{Use: "operation", Short: "Activate and inspect local operation admission"}
 	for _, action := range []string{"activate", "status", "resolve", "release"} {
-		command := &cobra.Command{Use: action, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-			*ran = true
+		command := &cobra.Command{Use: action, Args: cobra.NoArgs, Annotations: declare(capabilityFree), RunE: func(cmd *cobra.Command, _ []string) error {
 			path, _ := cmd.Flags().GetString("operation-policy")
 			var err error
 			switch action {
@@ -142,12 +190,7 @@ func licenseOperation(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			data, err := json.Marshal(state)
-			if err != nil {
-				return err
-			}
-			_, err = fmt.Fprintln(cmd.OutOrStdout(), string(data))
-			return err
+			return writeJSON(cmd, state)
 		}}
 		root.AddCommand(command)
 	}
@@ -158,5 +201,5 @@ func refusedCI(cmd *cobra.Command) error {
 	if err := writeJSON(cmd, suite.CIError()); err != nil {
 		return err
 	}
-	return &ExitError{Code: 2, Err: errors.New("suite operation admission unavailable"), Reported: true}
+	return statedRefusal(errors.New("suite operation admission unavailable"))
 }

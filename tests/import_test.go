@@ -3,7 +3,6 @@ package tests
 import (
 	"archive/zip"
 	"bytes"
-	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,15 +18,6 @@ func importFixture(control string) string {
 	return strings.ReplaceAll(importMessage, "%s", control)
 }
 
-func importPlanFile(t *testing.T, dir, name, document string) string {
-	t.Helper()
-	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, []byte(document), 0600); err != nil {
-		t.Fatal(err)
-	}
-	return path
-}
-
 func importFolder(t *testing.T) (string, string) {
 	t.Helper()
 	folder := t.TempDir()
@@ -40,7 +30,7 @@ func importFolder(t *testing.T) (string, string) {
 			t.Fatal(err)
 		}
 	}
-	plan := importPlanFile(t, t.TempDir(), "plan.json",
+	plan := writeDocument(t, t.TempDir(), "plan.json",
 		`{"schema":"readmit-import-plan/v1","framing":"raw","terminator":"cr","encoding":"utf-8","direction":"inbound","members":[".hl7"]}`)
 	return folder, plan
 }
@@ -51,10 +41,7 @@ func TestImportPreviewsWithoutWritingAndThenRecordsWhatItWrote(t *testing.T) {
 	if err != nil || stderr != "" {
 		t.Fatalf("preview: %v %s", err, stderr)
 	}
-	var preview importer.Preview
-	if err := json.Unmarshal([]byte(stdout), &preview, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatalf("preview is not a strict readmit-import-preview/v1 document: %v", err)
-	}
+	preview := readStrictOutput[importer.Preview](t, stdout)
 	if preview.Schema != importer.PreviewSchema || preview.Totals.Members != 3 || preview.Totals.Excluded != 1 || preview.Totals.Sources != 2 {
 		t.Fatalf("preview totals: %+v", preview.Totals)
 	}
@@ -90,14 +77,12 @@ func TestImportPreviewsWithoutWritingAndThenRecordsWhatItWrote(t *testing.T) {
 			t.Errorf("the import summary disclosed %q", secret)
 		}
 	}
+	// The raw receipt bytes stay for the exclusion check below.
 	data, err := os.ReadFile(receiptPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var receipt importer.Receipt
-	if err := json.Unmarshal(data, &receipt, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatalf("receipt is not a strict readmit-import-receipt/v1 document: %v", err)
-	}
+	receipt := readStrictOutput[importer.Receipt](t, string(data))
 	b, err := bundle.Open(destination)
 	if err != nil {
 		t.Fatal(err)
@@ -127,7 +112,7 @@ func TestImportRefusesAmbiguousSplittingAndWritesNothing(t *testing.T) {
 	if err := os.WriteFile(member, []byte(importFixture("ONE")+importFixture("TWO")), 0600); err != nil {
 		t.Fatal(err)
 	}
-	plan := importPlanFile(t, dir, "raw.json",
+	plan := writeDocument(t, dir, "raw.json",
 		`{"schema":"readmit-import-plan/v1","framing":"raw","terminator":"cr","encoding":"utf-8","direction":"unknown","members":[]}`)
 	destination := filepath.Join(dir, "refused.case")
 	receiptPath := filepath.Join(dir, "refused.json")
@@ -145,7 +130,7 @@ func TestImportRefusesAmbiguousSplittingAndWritesNothing(t *testing.T) {
 	}
 	// Declaring the boundary is the recovery: the same bytes import once the
 	// operator says where a message begins.
-	declared := importPlanFile(t, dir, "batch.json",
+	declared := writeDocument(t, dir, "batch.json",
 		`{"schema":"readmit-import-plan/v1","framing":"batch","batch_boundary":"segment-start","terminator":"cr","encoding":"utf-8","direction":"unknown","members":[]}`)
 	stdout, stderr, err = run(t, "import", "--plan", declared, "--file", member, "--output", destination, "--receipt", receiptPath)
 	if err != nil || stderr != "" || !strings.Contains(stdout, "Extracted sources: 2") {
@@ -155,7 +140,7 @@ func TestImportRefusesAmbiguousSplittingAndWritesNothing(t *testing.T) {
 
 func TestImportRefusesUnsafeArchiveEntriesAndReusedDestinations(t *testing.T) {
 	dir := t.TempDir()
-	plan := importPlanFile(t, dir, "plan.json",
+	plan := writeDocument(t, dir, "plan.json",
 		`{"schema":"readmit-import-plan/v1","framing":"raw","terminator":"cr","encoding":"utf-8","direction":"unknown","members":[".hl7"]}`)
 	unsafe := filepath.Join(dir, "unsafe.zip")
 	writeArchive(t, unsafe, map[string]string{"../escape.hl7": importFixture("ONE")})
@@ -192,11 +177,11 @@ func TestImportRefusesUndeclaredConfigurationAndProtectedDestinations(t *testing
 	if err := os.WriteFile(member, []byte(importFixture("ONE")), 0600); err != nil {
 		t.Fatal(err)
 	}
-	plan := importPlanFile(t, dir, "plan.json",
+	plan := writeDocument(t, dir, "plan.json",
 		`{"schema":"readmit-import-plan/v1","framing":"raw","terminator":"cr","encoding":"utf-8","direction":"unknown","members":[]}`)
-	unknown := importPlanFile(t, dir, "unknown.json",
+	unknown := writeDocument(t, dir, "unknown.json",
 		`{"schema":"readmit-import-plan/v1","framing":"raw","terminator":"cr","encoding":"utf-8","direction":"unknown","members":[],"split":"auto"}`)
-	later := importPlanFile(t, dir, "later.json",
+	later := writeDocument(t, dir, "later.json",
 		`{"schema":"readmit-import-plan/v9","framing":"raw","terminator":"cr","encoding":"utf-8","direction":"unknown","members":[]}`)
 	for name, args := range map[string][]string{
 		"unknown plan member": {"--plan", unknown, "--file", member, "--output", filepath.Join(dir, "u.case"), "--receipt", filepath.Join(dir, "u.json")},
@@ -238,7 +223,7 @@ func TestImportQuarantinesMalformedEvidenceAndKeepsItsBytes(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(folder, "session.mllp"), []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
-	plan := importPlanFile(t, dir, "plan.json",
+	plan := writeDocument(t, dir, "plan.json",
 		`{"schema":"readmit-import-plan/v1","framing":"mllp","terminator":"cr","encoding":"utf-8","direction":"inbound","members":[".mllp"]}`)
 	destination := filepath.Join(dir, "malformed.case")
 	receiptPath := filepath.Join(dir, "malformed.json")
@@ -253,10 +238,7 @@ func TestImportQuarantinesMalformedEvidenceAndKeepsItsBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var receipt importer.Receipt
-	if err := json.Unmarshal(data, &receipt, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatal(err)
-	}
+	receipt := readStrictOutput[importer.Receipt](t, string(data))
 	if len(receipt.Quarantined) != 1 || !strings.Contains(receipt.Quarantined[0].Reason, "invalid MLLP framing") {
 		t.Fatalf("the receipt does not name why the record was quarantined: %+v", receipt.Quarantined)
 	}
@@ -287,7 +269,7 @@ func TestImportRefusesToWriteACaseWithNoMemberButStillPreviewsWhy(t *testing.T) 
 	if err := os.WriteFile(filepath.Join(folder, "notes.md"), []byte("operator notes"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	plan := importPlanFile(t, dir, "plan.json",
+	plan := writeDocument(t, dir, "plan.json",
 		`{"schema":"readmit-import-plan/v1","framing":"raw","terminator":"cr","encoding":"utf-8","direction":"unknown","members":[".hl7"]}`)
 	stdout, stderr, err := run(t, "import", "--plan", plan, "--folder", folder, "--preview")
 	if err != nil || stderr != "" || !strings.Contains(stdout, importer.ReasonSuffix) {

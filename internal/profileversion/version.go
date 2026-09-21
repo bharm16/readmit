@@ -35,6 +35,8 @@ import (
 	"strconv"
 
 	"github.com/bharm16/readmit/internal/localprofile"
+
+	"github.com/bharm16/readmit/internal/strictdoc"
 )
 
 // VersionSchema is the contract a sealed profile version declares.
@@ -133,31 +135,25 @@ func canonical(profile localprofile.Profile) (localprofile.Profile, Version, err
 // release does not read, an identity no local profile could carry, and a
 // content record that is not a length and a SHA-256.
 func DecodeVersion(data []byte) (Version, error) {
-	if len(data) > MaxVersionBytes {
-		return Version{}, errors.New("a sealed profile version exceeds its 64 KiB size limit")
-	}
-	var required struct {
-		Schema  *string                `json:"schema"`
-		Profile *localprofile.Identity `json:"profile"`
-		Content *Content               `json:"content"`
-	}
-	if err := json.Unmarshal(data, &required); err != nil {
-		return Version{}, errors.New("invalid sealed profile version JSON")
-	}
-	if required.Schema == nil || *required.Schema != VersionSchema {
-		return Version{}, errors.New("a sealed profile version must declare " + VersionSchema)
-	}
-	if required.Profile == nil || required.Content == nil {
-		return Version{}, errors.New("a sealed profile version requires profile and content")
-	}
 	var version Version
-	if err := json.Unmarshal(data, &version, json.RejectUnknownMembers(true)); err != nil {
-		return Version{}, errors.New("invalid sealed profile version JSON")
+	if err := versionDocument.Decode(data, &version); err != nil {
+		return Version{}, err
 	}
 	if err := version.Validate(); err != nil {
 		return Version{}, err
 	}
 	return version, nil
+}
+
+// versionDocument states how this contract is read; strictdoc owns the reading.
+var versionDocument = strictdoc.Document{
+	MaxBytes:    MaxVersionBytes,
+	Schema:      VersionSchema,
+	Required:    []string{"profile", "content"},
+	Invalid:     "invalid sealed profile version JSON",
+	TooLarge:    "a sealed profile version exceeds its 64 KiB size limit",
+	MustDeclare: "a sealed profile version must declare " + VersionSchema,
+	Requires:    "a sealed profile version requires profile and content",
 }
 
 // Validate is the sealed version checked against itself, with no profile

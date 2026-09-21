@@ -141,3 +141,142 @@ func TestEveryPublishedClaimCitesAFileAndATestThatExist(t *testing.T) {
 		}
 	}
 }
+
+// cobraBuiltins are the framework's own documentation commands; they ship
+// with the executable but are not workflows the matrix or README catalogue.
+var cobraBuiltins = map[string]bool{"help": true, "completion": true}
+
+// workflowListed answers whether a published command is named by a backticked
+// span that starts with it, so `backup create/verify/restore` answers for
+// `backup` while `license runner init` does not answer for `runner`. A command
+// name continues through letters, digits and dashes, so `replay-target`
+// cannot masquerade as `replay`.
+func workflowListed(text, name string) bool {
+	return regexp.MustCompile("`" + regexp.QuoteMeta(name) + "(`|[^A-Za-z0-9-])").MatchString(text)
+}
+
+// rootWorkflows lists the top-level commands the executable itself publishes,
+// which is the interface a reader can run; the help text is its own inventory.
+func rootWorkflows(t *testing.T) []string {
+	t.Helper()
+	stdout, stderr, err := run(t, "--help")
+	if err != nil || stderr != "" {
+		t.Fatalf("help: %v %s", err, stderr)
+	}
+	var names []string
+	listing := false
+	for _, line := range strings.Split(stdout, "\n") {
+		switch {
+		case strings.HasPrefix(line, "Available Commands:"):
+			listing = true
+		case listing && strings.HasPrefix(line, "  "):
+			if fields := strings.Fields(line); len(fields) > 0 {
+				names = append(names, fields[0])
+			}
+		case listing:
+			if len(names) > 0 {
+				return names
+			}
+		}
+	}
+	if len(names) == 0 {
+		t.Fatalf("help named no commands:\n%s", stdout)
+	}
+	return names
+}
+
+// TestTheSupportMatrixCarriesEveryRegisteredWorkflow closes the matrix's own
+// completeness claim in the direction no earlier check covered: every command
+// the executable publishes has a row in the Workflows table, so silence is
+// never mistaken for a status.
+func TestTheSupportMatrixCarriesEveryRegisteredWorkflow(t *testing.T) {
+	matrix, err := os.ReadFile("../docs/support-matrix.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var table string
+	if _, remainder, found := strings.Cut(string(matrix), "## Workflows"); found {
+		table, _, _ = strings.Cut(remainder, "\n## ")
+	} else {
+		t.Fatal("support matrix has no Workflows table")
+	}
+	for _, name := range rootWorkflows(t) {
+		if cobraBuiltins[name] {
+			continue
+		}
+		if !workflowListed(table, name) {
+			t.Errorf("workflow %q is published by the executable but has no row in the support matrix's Workflows table; the matrix is the single source the site draws its claims from", name)
+		}
+	}
+}
+
+// TestTheReadmeCataloguesEveryRegisteredWorkflow keeps the README's front door
+// honest the same way the matrix is: every published command appears in the
+// catalog, so the README can never list fewer workflows than the executable
+// runs.
+func TestTheReadmeCataloguesEveryRegisteredWorkflow(t *testing.T) {
+	readme, err := os.ReadFile("../README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var catalog string
+	if _, remainder, found := strings.Cut(string(readme), "## Available workflows"); found {
+		catalog, _, _ = strings.Cut(remainder, "\n## ")
+	} else {
+		t.Fatal("README has no Available workflows catalog")
+	}
+	for _, name := range rootWorkflows(t) {
+		if cobraBuiltins[name] {
+			continue
+		}
+		if !workflowListed(catalog, name) {
+			t.Errorf("workflow %q is published by the executable but the README catalog does not list it", name)
+		}
+	}
+}
+
+// TestPublishedVersionLiteralsAgreeWithTheSupportMatrix gives the one claim
+// category the CLAIMS contract deliberately exempts — release currency — a
+// single home: the matrix's "Latest published archive" row. Every prerelease
+// version literal the README or the site prints must repeat that value, so the
+// next tag is edited once and every straggler fails by name.
+func TestPublishedVersionLiteralsAgreeWithTheSupportMatrix(t *testing.T) {
+	matrix, err := os.ReadFile("../docs/support-matrix.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := ""
+	for _, line := range strings.Split(string(matrix), "\n") {
+		if strings.Contains(line, "Latest published archive") {
+			row = line
+			break
+		}
+	}
+	if row == "" {
+		t.Fatal("support matrix states no latest published archive")
+	}
+	// Published archives are prereleases today, so the tag shape this sweep
+	// recognizes is the prerelease shape; the first stable tag is a deliberate
+	// act that widens this expression beside the release row it changes.
+	prereleaseTag := regexp.MustCompile(`v?(\d+\.\d+\.\d+-alpha\.\d+)\b`)
+	published := prereleaseTag.FindStringSubmatch(row)
+	if published == nil {
+		t.Fatalf("the release row names no prerelease archive: %s", row)
+	}
+	swept, err := filepath.Glob("../site/*.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	swept = append(swept, "../site/CLAIMS.md", "../README.md")
+	for _, document := range swept {
+		data, err := os.ReadFile(document)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, found := range prereleaseTag.FindAllStringSubmatch(string(data), -1) {
+			if found[1] != published[1] {
+				t.Errorf("%s prints %s, but the support matrix publishes %s; the matrix row is the single home of that value", document, found[1], published[1])
+			}
+		}
+	}
+}

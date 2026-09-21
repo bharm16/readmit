@@ -9,7 +9,6 @@ import (
 	"github.com/bharm16/readmit/internal/testlicense"
 	"io"
 	"io/fs"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -65,12 +64,7 @@ func TestReportPrintedProcedureWorksWithRelocatedBinaryAndPacket(t *testing.T) {
 			t.Fatalf("instructions omit %s", required)
 		}
 	}
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	address := listener.Addr().String()
-	listener.Close()
+	address := freeLoopbackAddress(t, "tcp4")
 	// Follow current prepared instructions, not immutable historical v1 commands.
 	policy := testlicense.New(t)
 	for _, args := range [][]string{{"report", "verify", "packet"}, {"report", "prepare", "packet", "--output", "rerun", "--address", address}} {
@@ -167,7 +161,10 @@ func TestReportPrintedProcedureWorksWithRelocatedBinaryAndPacket(t *testing.T) {
 func TestReportCLIRejectsUnsupportedOrPrivateArgumentsWithoutDisclosure(t *testing.T) {
 	for _, args := range [][]string{{"report"}, {"report", "--scenario", "customer-derived", "--output", "SECRET"}, {"report", "--synthetic", "--output", "SECRET"}, {"report", "verify", "SECRET"}, {"report", "prepare", "SECRET", "--output", "SECRET", "--address", "SECRET"}, {"report", "verify", "SECRET", "extra"}} {
 		stdout, stderr, err := run(t, args...)
-		if processCode(t, err) != 1 || stdout != "" || stderr == "" || len(stderr) > 300 || strings.Contains(stderr, "SECRET") {
+		// A refusal is either the report's own (status 1) or a misuse the
+		// parser refused (the usage status 2); neither may echo an argument.
+		code := exitCode(t, err)
+		if (code != 1 && code != 2) || stdout != "" || stderr == "" || len(stderr) > 300 || strings.Contains(stderr, "SECRET") {
 			t.Fatalf("unsafe report error: %v %s %s", err, stdout, stderr)
 		}
 	}
@@ -197,7 +194,7 @@ func runPacketBinary(t *testing.T, binaryPath, cwd string, args []string) (strin
 	if ctx.Err() != nil {
 		t.Fatal("packet procedure timed out")
 	}
-	return out.String(), diagnostic.String(), processCode(t, err)
+	return out.String(), diagnostic.String(), exitCode(t, err)
 }
 
 func startPacketFixture(t *testing.T, binaryPath, cwd string, args []string) func() {

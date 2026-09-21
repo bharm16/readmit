@@ -20,8 +20,6 @@
 package capturejournal
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
 	"os"
@@ -29,6 +27,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
+	"github.com/bharm16/readmit/internal/durablelog"
 	"github.com/bharm16/readmit/internal/durablerun"
 )
 
@@ -154,18 +154,16 @@ type payload struct {
 }
 
 type entry struct {
-	Sequence    int       `json:"sequence"`
-	Previous    string    `json:"previous"`
-	At          time.Time `json:"at"`
-	Kind        string    `json:"kind"`
-	Session     string    `json:"session,omitzero"`
-	Occurrence  string    `json:"occurrence,omitzero"`
-	ControlID   string    `json:"control_id,omitzero"`
-	Stage       string    `json:"stage,omitzero"`
-	Destination string    `json:"destination,omitzero"`
-	Frame       *payload  `json:"frame,omitzero"`
-	Sent        *int      `json:"sent,omitzero"`
-	Final       *Summary  `json:"final,omitzero"`
+	durablelog.Envelope
+	Kind        string   `json:"kind"`
+	Session     string   `json:"session,omitzero"`
+	Occurrence  string   `json:"occurrence,omitzero"`
+	ControlID   string   `json:"control_id,omitzero"`
+	Stage       string   `json:"stage,omitzero"`
+	Destination string   `json:"destination,omitzero"`
+	Frame       *payload `json:"frame,omitzero"`
+	Sent        *int     `json:"sent,omitzero"`
+	Final       *Summary `json:"final,omitzero"`
 }
 
 // Writer appends one capture's journal. Connections are served concurrently, so
@@ -176,15 +174,13 @@ type Writer struct {
 	path     string
 	root     *os.Root
 	journal  *os.File
-	bytes    int
+	log      *durablelog.Writer
 	retained int
-	sequence int
-	previous string
 	failed   error
 	summary  Summary
 }
 
-func digest(b []byte) string { sum := sha256.Sum256(b); return hex.EncodeToString(sum[:]) }
+func digest(b []byte) string { return durablelog.Digest(b) }
 
 // Create reserves a new journal directory and records the capture plan and the
 // two opening records before the caller binds a listener. The destination must
@@ -224,8 +220,13 @@ func Create(path string, capture Capture) (*Writer, error) {
 		root.Close()
 		return nil, errors.New("cannot create capture journal file")
 	}
-	w := &Writer{path: path, root: root, journal: file, previous: digest(raw),
+	w := &Writer{path: path, root: root, journal: file,
 		summary: Summary{Schema: Schema, State: durablerun.Ready, StopReason: durablerun.Ready}}
+	w.log = durablelog.NewWriter(file, digest(raw), maxJournalBytes, durablelog.Messages{
+		Limit:  errors.New("capture journal reached its size limit; capture stopped"),
+		Sync:   errors.New("cannot sync capture journal; capture stopped"),
+		Encode: errors.New("cannot encode capture journal record"),
+	})
 	for _, kind := range []string{"ready", "running"} {
 		if err := w.append(entry{Kind: kind}); err != nil {
 			w.Close()
@@ -394,7 +395,7 @@ func (w *Writer) Err() error {
 // evidence of a message that arrived.
 func (w *Writer) Discard() error {
 	w.mu.Lock()
-	recorded := w.summary.Received > 0 || w.sequence > 2
+	recorded := w.summary.Received > 0 || w.log.Sequence() > 2
 	w.mu.Unlock()
 	if recorded {
 		return errors.New("a capture journal that recorded a frame is never removed")
@@ -437,42 +438,21 @@ func (w *Writer) appendLocked(e entry) error {
 	if w.failed != nil {
 		return w.failed
 	}
-	e.Sequence = w.sequence + 1
-	e.Previous = w.previous
-	e.At = time.Now().UTC()
-	raw, err := json.Marshal(e, json.Deterministic(true))
-	if err != nil {
-		w.failed = errors.New("cannot encode capture journal record")
-		return w.failed
+	if err := w.log.Append(&e); err != nil {
+		// The log's refusals are already the journal's own words and are sticky
+		// inside the log; recording them here stops the capture the same way a
+		// record it could not name does.
+		w.failed = err
 	}
-	if w.bytes+len(raw)+1 > maxJournalBytes {
-		w.failed = errors.New("capture journal reached its size limit; capture stopped")
-		return w.failed
-	}
-	if _, err = w.journal.Write(append(raw, '\n')); err == nil {
-		err = w.journal.Sync()
-	}
-	if err != nil {
-		w.failed = errors.New("cannot sync capture journal; capture stopped")
-		return w.failed
-	}
-	w.bytes += len(raw) + 1
-	w.sequence++
-	w.previous = digest(raw)
-	return nil
+	return w.failed
 }
 
 func writeFile(root *os.Root, name string, data []byte) error {
-	file, err := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if err != nil {
+	err := artifactdir.WriteFile(root, name, data)
+	if errors.Is(err, artifactdir.ErrCreateFile) {
 		return errors.New("cannot create capture evidence")
 	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
+	if err != nil {
 		return errors.New("cannot sync capture evidence; partial evidence retained")
 	}
 	return nil

@@ -13,8 +13,8 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
-	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/runcompare"
+	"github.com/bharm16/readmit/internal/runresult"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
@@ -259,27 +259,30 @@ func inspectRetainedRun(dir, caseName, runName string) (RetainedRun, error) {
 		return RetainedRun{}, invalid
 	}
 	resultPath := filepath.Join(dir, runName)
-	lifecycle := durablerun.Summary{}
-	runState := "not_recorded"
-	if _, err := os.Lstat(filepath.Join(resultPath, "engine.json")); err == nil {
-		lifecycle, err = durablerun.Open(resultPath)
-		if err != nil || lifecycle.ResultIdentity == "" {
-			return RetainedRun{}, invalid
-		}
-		runState = string(lifecycle.State)
-		resultPath = filepath.Join(resultPath, "result")
-	}
-	a, err := testrunner.Open(resultPath)
-	if err != nil || a.Spec == nil || a.Result.InputBundleIdentity != c.Identity || a.Run == nil || (lifecycle.ResultIdentity != "" && lifecycle.ResultIdentity != a.Identity) {
+	runState := runresult.NoRunState
+	retained, err := runresult.Open(resultPath)
+	if err != nil {
 		return RetainedRun{}, invalid
 	}
-	for _, event := range a.Run.Events {
+	usable, _ := retained.Usable()
+	if !usable || retained.Artifact == nil {
+		return RetainedRun{}, invalid
+	}
+	lifecycle := retained.Lifecycle
+	if retained.Durable {
+		runState = string(lifecycle.State)
+	}
+	a := retained.Artifact
+	if retained.Spec == nil || a.Result.InputBundleIdentity != c.Identity || retained.Run == nil {
+		return RetainedRun{}, invalid
+	}
+	for _, event := range retained.Run.Events {
 		original, err := c.Raw(event.SourceOccurrence)
 		if err != nil {
 			return RetainedRun{}, invalid
 		}
-		retained, err := a.Run.Raw(event.Source)
-		if err != nil || !bytes.Equal(original, retained) {
+		retainedBytes, err := retained.Run.Raw(event.Source)
+		if err != nil || !bytes.Equal(original, retainedBytes) {
 			return RetainedRun{}, invalid
 		}
 	}

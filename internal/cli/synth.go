@@ -13,30 +13,23 @@ import (
 
 var synthBaseTimePattern = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-]([01][0-9]|2[0-3]):[0-5][0-9])$`)
 
-func synthCommand(ran *bool) *cobra.Command {
+func synthCommand() *cobra.Command {
 	var seed uint64
 	var baseTime, generatorVersion, profileVersion, output string
 	cmd := &cobra.Command{
-		Use: "synth", Short: "Generate reproducible regression, cancellation, and known-invalid SIU case bundles",
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) != 0 {
-				return errors.New("synth takes no positional arguments")
-			}
-			return nil
-		},
+		Use: "synth", Short: "Generate reproducible regression, cancellation, and known-invalid SIU case bundles", Annotations: declare(capabilityAuthor),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			*ran = true
 			for _, flag := range []string{"seed", "base-time", "generator-version", "profile-version", "output"} {
 				if !cmd.Flags().Changed(flag) {
-					return errors.New("synth requires --seed, --base-time, --generator-version, --profile-version, and --output")
+					return usage("synth requires --seed, --base-time, --generator-version, --profile-version, and --output")
 				}
 			}
 			if output == "" {
-				return errors.New("synthetic family destination cannot be empty")
+				return usage("synthetic family destination cannot be empty")
 			}
 			base, err := time.Parse(time.RFC3339, baseTime)
 			if err != nil || !synthBaseTimePattern.MatchString(baseTime) {
-				return errors.New("base time must be a whole-second RFC3339 timestamp with an explicit timezone")
+				return usage("base time must be a whole-second RFC3339 timestamp with an explicit timezone")
 			}
 			manifest, err := synth.Write(output, bundle.GeneratorInputs{
 				Seed: seed, BaseTime: base, GeneratorVersion: generatorVersion, ProfileVersion: profileVersion,

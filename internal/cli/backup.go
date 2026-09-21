@@ -4,9 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/bharm16/readmit/internal/backup"
@@ -21,32 +18,32 @@ var (
 	incompleteRestore = errors.New("this backup holds evidence the restore could not account for; it is reported exactly as it was found and nothing was put in its place")
 )
 
-func backupCommand(ran *bool) *cobra.Command {
+func backupCommand() *cobra.Command {
 	command := &cobra.Command{
-		Use:   "backup",
-		Short: "Back up a project, verify a backup, and restore one with its indexes rebuilt",
-		Args:  cobra.NoArgs,
+		Use:         "backup",
+		Annotations: declare(capabilityFree),
+		Short:       "Back up a project, verify a backup, and restore one with its indexes rebuilt",
+		Args:        cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return errors.New("backup requires a subcommand: create, verify, or restore")
+			return usage("backup requires a subcommand: create, verify, or restore")
 		},
 	}
-	command.AddCommand(backupCreate(ran), backupVerify(ran), backupRestore(ran))
+	command.AddCommand(backupCreate(), backupVerify(), backupRestore())
 	return command
 }
 
-func backupCreate(ran *bool) *cobra.Command {
+func backupCreate() *cobra.Command {
 	var output string
 	command := &cobra.Command{
-		Use:   "create PROJECT --output NEW_DIRECTORY",
-		Short: "Copy a project into a new verified backup directory",
-		Args:  backupOneArgument,
+		Use:         "create PROJECT --output NEW_DIRECTORY",
+		Annotations: declareInterruptible(capabilityFree),
+		Short:       "Copy a project into a new verified backup directory",
+		Args:        backupOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if output == "" {
-				return errors.New("backup create requires --output with a new directory")
+				return usage("backup create requires --output with a new directory")
 			}
-			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer cancel()
+			ctx := cmd.Context()
 			report, err := backup.Create(ctx, args[0], output)
 			if err != nil {
 				return err
@@ -64,13 +61,13 @@ func backupCreate(ran *bool) *cobra.Command {
 	return command
 }
 
-func backupVerify(ran *bool) *cobra.Command {
+func backupVerify() *cobra.Command {
 	return &cobra.Command{
-		Use:   "verify BACKUP",
-		Short: "Read a backup whole and report what it holds and what it could not verify",
-		Args:  backupOneArgument,
+		Use:         "verify BACKUP",
+		Annotations: declare(capabilityFree),
+		Short:       "Read a backup whole and report what it holds and what it could not verify",
+		Args:        backupOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			document, err := backup.Verify(args[0])
 			if err != nil {
 				return err
@@ -86,19 +83,18 @@ func backupVerify(ran *bool) *cobra.Command {
 	}
 }
 
-func backupRestore(ran *bool) *cobra.Command {
+func backupRestore() *cobra.Command {
 	var output string
 	command := &cobra.Command{
-		Use:   "restore BACKUP --output NEW_DIRECTORY",
-		Short: "Write a backup into a new project directory and rebuild its indexes",
-		Args:  backupOneArgument,
+		Use:         "restore BACKUP --output NEW_DIRECTORY",
+		Annotations: declareInterruptible(capabilityFree),
+		Short:       "Write a backup into a new project directory and rebuild its indexes",
+		Args:        backupOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if output == "" {
-				return errors.New("backup restore requires --output with a new directory")
+				return usage("backup restore requires --output with a new directory")
 			}
-			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer cancel()
+			ctx := cmd.Context()
 			report, err := backup.Restore(ctx, args[0], output, time.Now().UTC())
 			if err != nil {
 				return err

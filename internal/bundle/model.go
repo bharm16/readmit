@@ -207,6 +207,30 @@ func (b *Bundle) Raw(eventID string) ([]byte, error) {
 	return bytes.Clone(raw), nil
 }
 
+// Document reads one retained occurrence back as exactly one decoded message,
+// under the framing its source recorded and the terminator the occurrence
+// itself used at capture. Every consumer that interprets a verified occurrence
+// reads it through this one reading, so a case cannot parse two ways and a
+// change to how occurrences are read is made once, here.
+func (b *Bundle) Document(event Event) (*hl7.Document, error) {
+	raw, err := b.Raw(event.ID)
+	if err != nil {
+		return nil, err
+	}
+	var format hl7.Format
+	for _, source := range b.Manifest.Sources {
+		if source.ID == event.SourceID {
+			format = source.Format
+			break
+		}
+	}
+	document, err := hl7.Parse(raw, hl7.Options{Format: format, Terminator: event.Terminator})
+	if err != nil || len(document.Messages) != 1 {
+		return nil, errors.New("verified case occurrence cannot be parsed")
+	}
+	return document, nil
+}
+
 // declaredTimestamp is the shape of an HL7 DTM: a year, optionally narrowing to
 // a month, day, hour, minute and second, optionally a fraction, optionally a
 // UTC offset, and optionally the degree of precision the sender declared.

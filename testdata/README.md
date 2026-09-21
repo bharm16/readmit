@@ -88,8 +88,8 @@ checks also compare all three payload streams to the packaged goldens.
 
 Replay fixtures for issue #4 include `replay-duplicates.mllp` and the independently
 specified `replay-transformed.mllp`, exercising preserved duplicate control IDs
-and explicit timestamp changes. `replay-target.json` documents the strict target
-shape; tests replace its endpoint with an isolated local peer. Transport failure
+and explicit timestamp changes. Tests build each replay target in a temporary
+directory with its endpoint on an isolated local peer. Transport failure
 and TLS cases use controlled synthetic peers, never customer endpoints.
 
 `test-reschedule.json` is the unchanged regression spec for issue #5. It uses

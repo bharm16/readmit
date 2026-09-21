@@ -86,10 +86,14 @@ type Request struct {
 	ApprovedInputs map[string]string
 }
 
-// runner is what the queue needs from one durable run: what it will claim, and
-// executing it. It is the one seam the scheduler's own tests take.
+// runner is what the queue needs from one durable run: what it will claim,
+// the identity of the prepared inputs it would consume, and executing it. It
+// is the one seam the scheduler's own tests take, and the pin is on the seam
+// itself so an approved queue is checked through the same interface its tests
+// use rather than by discovering a capability at start time.
 type runner interface {
 	Resources() []durablerun.Resource
+	InputIdentity() (string, error)
 	Start(ctx context.Context, output string) (durablerun.Summary, error)
 }
 
@@ -230,11 +234,7 @@ func newSchedule(plan Plan, request Request) (*schedule, error) {
 			return nil, err
 		}
 		if request.ApprovedInputs != nil {
-			sealed, ok := prepared.(interface{ InputIdentity() (string, error) })
-			if !ok {
-				return nil, errors.New("queue cannot verify prepared inputs")
-			}
-			identity, err := sealed.InputIdentity()
+			identity, err := prepared.InputIdentity()
 			if err != nil || identity != request.ApprovedInputs[job.ID] {
 				return nil, errors.New("queued inputs differ from approved promotion")
 			}

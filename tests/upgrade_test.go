@@ -3,7 +3,6 @@ package tests
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -39,32 +38,6 @@ func stagedCandidate(t *testing.T, signed bool, version string) string {
 	return directory
 }
 
-// tree digests every file under a directory by its path relative to it, which
-// is what "the upgrade rewrote nothing" has to be asserted against.
-func tree(t *testing.T, root string) map[string]string {
-	t.Helper()
-	files := map[string]string{}
-	if err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil || entry.IsDir() {
-			return err
-		}
-		data, readErr := os.ReadFile(path)
-		if readErr != nil {
-			return readErr
-		}
-		relative, relErr := filepath.Rel(root, path)
-		if relErr != nil {
-			return relErr
-		}
-		sum := sha256.Sum256(data)
-		files[relative] = hex.EncodeToString(sum[:])
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	return files
-}
-
 func sameTree(t *testing.T, what string, before, after map[string]string) {
 	t.Helper()
 	if len(before) != len(after) {
@@ -91,7 +64,7 @@ func TestUpgradeChecksAStagedCandidateWithoutRewritingEvidence(t *testing.T) {
 	}
 	candidate := stagedCandidate(t, true, "9.9.9")
 
-	beforeProject, beforeJob := tree(t, root), tree(t, job)
+	beforeProject, beforeJob := treeDigests(t, root), treeDigests(t, job)
 	stdout, stderr, err := run(t, "upgrade", "check", "--candidate", candidate, "--project", root, "--run", job)
 	if err != nil || stderr != "" {
 		t.Fatalf("upgrade check: %v %s %s", err, stdout, stderr)
@@ -108,8 +81,8 @@ func TestUpgradeChecksAStagedCandidateWithoutRewritingEvidence(t *testing.T) {
 			t.Fatalf("the plan omitted %s:\n%s", want, stdout)
 		}
 	}
-	sameTree(t, "project", beforeProject, tree(t, root))
-	sameTree(t, "run", beforeJob, tree(t, job))
+	sameTree(t, "project", beforeProject, treeDigests(t, root))
+	sameTree(t, "run", beforeJob, treeDigests(t, job))
 
 	// A plan names what an operator opened, never the path they opened it at,
 	// and it carries no message content.
@@ -125,7 +98,7 @@ func TestUpgradeChecksAStagedCandidateWithoutRewritingEvidence(t *testing.T) {
 // still printed, because an operator reads why before they read that.
 func TestUpgradeRefusesADevelopmentPreviewAndPrintsThePlanAnyway(t *testing.T) {
 	stdout, stderr, err := run(t, "upgrade", "check", "--candidate", stagedCandidate(t, false, "9.9.9"), "--project", newProject(t))
-	if processCode(t, err) != 2 {
+	if exitCode(t, err) != exitRefused {
 		t.Fatalf("a development preview was reported as an upgrade: %v %s", err, stdout)
 	}
 	if !strings.Contains(stdout, `"signed_for_distribution":false`) || !strings.Contains(stdout, `"state":"refused"`) {
@@ -148,7 +121,7 @@ func TestUpgradeRefusesAStagedCandidateThatIsNotWhatItRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 	stdout, stderr, err := run(t, "upgrade", "check", "--candidate", candidate, "--project", root)
-	if processCode(t, err) != 2 || !strings.Contains(stdout, `"state":"altered"`) || !strings.Contains(stderr, "stage the candidate again") {
+	if exitCode(t, err) != exitRefused || !strings.Contains(stdout, `"state":"altered"`) || !strings.Contains(stderr, "stage the candidate again") {
 		t.Fatalf("%v %s %s", err, stdout, stderr)
 	}
 
@@ -178,7 +151,7 @@ func TestUpgradeCheckRefusesToReviewNothing(t *testing.T) {
 // as `intact` and is ready, with the evidence untouched throughout.
 func TestUpgradeRecoversFromAnInstallationThatDidNotComplete(t *testing.T) {
 	root := indexedProject(t)
-	before := tree(t, root)
+	before := treeDigests(t, root)
 	candidate := stagedCandidate(t, true, "9.9.9")
 	name := filepath.Join(candidate, "readmit-desktop_9.9.9_"+runtime.GOARCH+".pkg")
 	whole, err := os.ReadFile(name)
@@ -193,7 +166,7 @@ func TestUpgradeRecoversFromAnInstallationThatDidNotComplete(t *testing.T) {
 		t.Fatal(err)
 	}
 	stdout, _, err := run(t, "upgrade", "check", "--candidate", candidate, "--project", root)
-	if processCode(t, err) != 2 || !strings.Contains(stdout, `"state":"altered"`) {
+	if exitCode(t, err) != exitRefused || !strings.Contains(stdout, `"state":"altered"`) {
 		t.Fatalf("%v %s", err, stdout)
 	}
 	// The plan names the build actually installed, which is what says whether
@@ -209,7 +182,7 @@ func TestUpgradeRecoversFromAnInstallationThatDidNotComplete(t *testing.T) {
 	if err != nil || stderr != "" || !strings.Contains(stdout, `"state":"ready"`) {
 		t.Fatalf("staging the candidate again did not recover: %v %s %s", err, stdout, stderr)
 	}
-	sameTree(t, "project", before, tree(t, root))
+	sameTree(t, "project", before, treeDigests(t, root))
 }
 
 // Taking the archive an upgrade rolls back to is an administrator's explicit
@@ -228,7 +201,7 @@ func TestUpgradePrepareNeedsApprovalAndTakesAVerifiedRollbackPoint(t *testing.T)
 		t.Fatal("an unapproved upgrade wrote its archive anyway")
 	}
 
-	before := tree(t, root)
+	before := treeDigests(t, root)
 	stdout, stderr, err := run(t, "upgrade", "prepare", root, "--candidate", candidate, "--output", archive, "--approve")
 	if err != nil || stderr != "" {
 		t.Fatalf("upgrade prepare: %v %s %s", err, stdout, stderr)
@@ -247,7 +220,7 @@ func TestUpgradePrepareNeedsApprovalAndTakesAVerifiedRollbackPoint(t *testing.T)
 			t.Fatalf("upgrade prepare omitted %q:\n%s", want, stdout)
 		}
 	}
-	sameTree(t, "project", before, tree(t, root))
+	sameTree(t, "project", before, treeDigests(t, root))
 
 	// The boundary the archive states: it restores the project as it was when
 	// it was taken, and work done after that is not in it. Editing the project

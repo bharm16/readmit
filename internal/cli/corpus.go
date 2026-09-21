@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
@@ -51,40 +49,40 @@ func (r *reporter) line(format string, values ...any) {
 	fmt.Fprintf(r.out, format, values...)
 }
 
-func corpusCommand(ran *bool) *cobra.Command {
+func corpusCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "corpus",
-		Short: "Generate and stream the declared performance corpus",
-		Args:  cobra.NoArgs,
+		Use:         "corpus",
+		Annotations: declare(capabilityFree),
+		Short:       "Generate and stream the declared performance corpus",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			*ran = true
-			return errors.New("corpus requires a subcommand: generate or scan")
+			return usage("corpus requires a subcommand: generate or scan")
 		},
 	}
-	cmd.AddCommand(corpusGenerateCommand(ran), corpusScanCommand(ran))
+	cmd.AddCommand(corpusGenerateCommand(), corpusScanCommand())
 	return cmd
 }
 
-func corpusGenerateCommand(ran *bool) *cobra.Command {
+func corpusGenerateCommand() *cobra.Command {
 	var seed uint64
 	var messages int
 	var baseTime, generatorVersion, profileVersion, output, manifest string
 	var progress bool
 	var declared declaration
 	cmd := &cobra.Command{
-		Use:   "generate --output NEW_FILE --manifest NEW_FILE --seed N --base-time INSTANT --generator-version readmit-corpus-v1 --profile-version readmit-siu-v1 --messages N --framing mllp --terminator cr --encoding us-ascii --direction inbound",
-		Short: "Write a reproducible performance corpus and the manifest that names its inputs",
-		Args:  cobra.NoArgs,
+		Use:         "generate --output NEW_FILE --manifest NEW_FILE --seed N --base-time INSTANT --generator-version readmit-corpus-v1 --profile-version readmit-siu-v1 --messages N --framing mllp --terminator cr --encoding us-ascii --direction inbound",
+		Annotations: declareInterruptible(capabilityAuthor),
+		Short:       "Write a reproducible performance corpus and the manifest that names its inputs",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			*ran = true
 			for _, flag := range []string{"seed", "base-time", "generator-version", "profile-version", "messages", "output", "manifest"} {
 				if !cmd.Flags().Changed(flag) {
-					return errors.New("corpus generate requires --seed, --base-time, --generator-version, --profile-version, --messages, --output, and --manifest")
+					return usage("corpus generate requires --seed, --base-time, --generator-version, --profile-version, --messages, --output, and --manifest")
 				}
 			}
 			base, err := time.Parse(time.RFC3339, baseTime)
 			if err != nil || !synthBaseTimePattern.MatchString(baseTime) {
-				return errors.New("base time must be a whole-second RFC3339 timestamp with an explicit timezone")
+				return usage("base time must be a whole-second RFC3339 timestamp with an explicit timezone")
 			}
 			plan, err := declared.plan(cmd, "")
 			if err != nil {
@@ -95,8 +93,7 @@ func corpusGenerateCommand(ran *bool) *cobra.Command {
 				Messages:  messages,
 				Plan:      plan,
 			}
-			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer cancel()
+			ctx := cmd.Context()
 			throttle := newReporter(cmd.ErrOrStderr(), progress)
 			written, err := corpus.Write(ctx, output, manifest, inputs, func(p corpus.Progress) {
 				throttle.line("generating: messages=%d bytes=%d\n", p.Messages, p.Bytes)
@@ -119,22 +116,16 @@ func corpusGenerateCommand(ran *bool) *cobra.Command {
 	return cmd
 }
 
-func corpusScanCommand(ran *bool) *cobra.Command {
+func corpusScanCommand() *cobra.Command {
 	var saved, report string
 	var batchRecords, batchBytes, windowOffset, windowLimit int
 	var progress bool
 	var declared declaration
 	cmd := &cobra.Command{
-		Use:   "scan FILE --framing mllp --terminator cr --encoding us-ascii --direction inbound",
-		Short: "Stream one declared file in bounded parsing batches and report what it holds",
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return errors.New("corpus scan reads exactly one declared file")
-			}
-			return nil
-		},
+		Use:         "scan FILE --framing mllp --terminator cr --encoding us-ascii --direction inbound",
+		Annotations: declareInterruptible(capabilityFree),
+		Short:       "Stream one declared file in bounded parsing batches and report what it holds",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			plan, err := declared.plan(cmd, saved)
 			if err != nil {
 				return err
@@ -156,8 +147,7 @@ func corpusScanCommand(ran *bool) *cobra.Command {
 				return err
 			}
 			defer stream.Close()
-			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer cancel()
+			ctx := cmd.Context()
 			throttle := newReporter(cmd.ErrOrStderr(), progress)
 			started := time.Now()
 			result, scanErr := importer.Scan(ctx, stream, importer.ScanOptions{

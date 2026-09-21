@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 )
@@ -38,16 +39,16 @@ func reserve(output string) (string, error) {
 }
 
 func writeFile(dir, name string, data []byte) error {
-	file, err := os.OpenFile(filepath.Join(dir, filepath.FromSlash(name)), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return errors.New("cannot create report evidence; incomplete output retained")
 	}
-	_, err = file.Write(data)
-	if err == nil {
-		err = file.Sync()
+	defer root.Close()
+	err = artifactdir.WriteFile(root, filepath.ToSlash(name), data)
+	if errors.Is(err, artifactdir.ErrCreateFile) {
+		return errors.New("cannot create report evidence; incomplete output retained")
 	}
-	closeErr := file.Close()
-	if err != nil || closeErr != nil {
+	if err != nil {
 		return errors.New("cannot write report evidence; incomplete output retained")
 	}
 	return nil

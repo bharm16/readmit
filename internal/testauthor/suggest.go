@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/hl7"
@@ -436,22 +435,16 @@ func ackSuggestion(run *replay.Run, event *replay.Event, origin Origin, taken ma
 	if err != nil {
 		return unsupported(suggestion, "that run retained no acknowledgement payload for this occurrence")
 	}
-	document, err := hl7.Parse(raw, hl7.Options{Format: hl7.MLLP})
-	if err != nil || len(document.Messages) != 1 {
+	document, failure := testrunner.ParseACK(raw)
+	if failure == testrunner.ACKUndecodable {
 		return unsupported(suggestion, "the acknowledgement this run retained did not decode as one message")
 	}
-	value, err := document.Select(0, addressed.selector)
-	if err != nil {
+	field, failure := testrunner.ACKField(document, addressed.text)
+	switch failure {
+	case testrunner.ACKNoSuchPosition:
 		return unsupported(suggestion, "this acknowledgement does not address that position")
-	}
-	field := &testrunner.FieldValue{State: value.State}
-	if value.State == hl7.Present {
-		decoded, err := hl7.Decode(document.Bytes(value.Span), document.Messages[0].Delimiters)
-		if err != nil || !utf8.Valid(decoded) {
-			return unsupported(suggestion, "the value at that position is not text an expectation can state")
-		}
-		text := string(decoded)
-		field.Text = &text
+	case testrunner.ACKNotText:
+		return unsupported(suggestion, "the value at that position is not text an expectation can state")
 	}
 	if field.Validate() != nil {
 		return unsupported(suggestion, "the value at that position is not one an expectation can state")

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/bharm16/readmit/internal/localprofile"
@@ -11,14 +10,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func profileCommand(ran *bool) *cobra.Command {
+func profileCommand() *cobra.Command {
 	command := &cobra.Command{Use: "profile", Short: "Import and export reviewed reusable interface metadata"}
 	var pack, version, origin, output string
 	var reviewed bool
-	export := &cobra.Command{Use: "export PROFILE --pack PACK --version SEAL --origin ORIGIN --output PACKAGE --reviewed", Short: "Copy an existing sealed local profile and its pinned metadata into a package", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
+	export := &cobra.Command{Use: "export PROFILE --pack PACK --version SEAL --origin ORIGIN --output PACKAGE --reviewed", Short: "Copy an existing sealed local profile and its pinned metadata into a package", Annotations: declare(capabilityFree), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if pack == "" || version == "" || origin == "" || output == "" || !reviewed {
-			return errors.New("profile export requires --pack, --version, --origin, --output and --reviewed")
+			return usage("profile export requires --pack, --version, --origin, --output and --reviewed")
 		}
 		p, err := readInputFile(args[0], localprofile.MaxProfileBytes)
 		if err != nil {
@@ -55,10 +53,9 @@ func profileCommand(ran *bool) *cobra.Command {
 	export.Flags().StringVar(&output, "output", "", "New package file")
 	export.Flags().BoolVar(&reviewed, "reviewed", false, "Confirm metadata and notices were reviewed for disclosure; no patient data or secrets")
 	var destination string
-	importCommand := &cobra.Command{Use: "import PACKAGE --output NEW_DIRECTORY", Short: "Verify and copy package documents without activating or upgrading a profile", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
+	importCommand := &cobra.Command{Use: "import PACKAGE --output NEW_DIRECTORY", Short: "Verify and copy package documents without activating or upgrading a profile", Annotations: declare(capabilityFree), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if destination == "" {
-			return errors.New("profile import requires --output")
+			return usage("profile import requires --output")
 		}
 		data, err := readInputFile(args[0], profilepackage.MaxBytes)
 		if err != nil {

@@ -2,17 +2,14 @@ package tests
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"fmt"
-	"github.com/bharm16/readmit/internal/testlicense"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 )
 
 var binary string
@@ -55,20 +52,6 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	os.RemoveAll(dir)
 	os.Exit(code)
-}
-
-func run(t *testing.T, args ...string) (string, string, error) {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	cmd := testCommand(ctx, t, args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	err := cmd.Run()
-	if ctx.Err() != nil {
-		t.Fatal("CLI timed out")
-	}
-	return stdout.String(), stderr.String(), err
 }
 
 func TestInspectShowsStructureWithoutPayloadByDefault(t *testing.T) {
@@ -177,11 +160,4 @@ func TestDictionaryNamesKnownFieldsAndKeepsUnknownPositions(t *testing.T) {
 			t.Errorf("missing field label %q", want)
 		}
 	}
-}
-
-// testCommand exercises the release binary with explicit ephemeral signed admission.
-func testCommand(ctx context.Context, t *testing.T, args ...string) *exec.Cmd {
-	t.Helper()
-	args = append([]string{"--operation-policy", testlicense.New(t)}, args...)
-	return exec.CommandContext(ctx, binary, args...)
 }

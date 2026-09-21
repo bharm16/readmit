@@ -13,27 +13,28 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func licenseCommand(ran *bool) *cobra.Command {
+func licenseCommand() *cobra.Command {
 	command := &cobra.Command{
-		Use:   "license",
-		Short: "Verify and manage an offline organization entitlement",
-		Args:  cobra.NoArgs,
+		Use:         "license",
+		Annotations: declare(capabilityFree),
+		Short:       "Verify and manage an offline organization entitlement",
+		Args:        cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return errors.New("license requires a subcommand: verify, import, show, renew, export, release, or runner")
+			return usage("license requires a subcommand: verify, import, show, renew, export, release, or runner")
 		},
 	}
-	command.AddCommand(licenseOperation(ran), licenseVerify(ran), licenseImport(ran), licenseShow(ran), licenseRenew(ran), licenseExport(ran), licenseRelease(ran), licenseRunner(ran))
+	command.AddCommand(licenseOperation(), licenseVerify(), licenseImport(), licenseShow(), licenseRenew(), licenseExport(), licenseRelease(), licenseRunner())
 	return command
 }
 
-func licenseVerify(ran *bool) *cobra.Command {
+func licenseVerify() *cobra.Command {
 	var trustPath, author, device, require string
 	command := &cobra.Command{
-		Use:   "verify ENTITLEMENT --trust TRUST_STORE",
-		Short: "Verify a received entitlement locally against trusted signing keys",
-		Args:  licenseOneArgument,
+		Use:         "verify ENTITLEMENT --trust TRUST_STORE",
+		Annotations: declare(capabilityFree),
+		Short:       "Verify a received entitlement locally against trusted signing keys",
+		Args:        licenseOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			trust, err := readTrust(trustPath)
 			if err != nil {
 				return err
@@ -70,19 +71,19 @@ func licenseVerify(ran *bool) *cobra.Command {
 	return command
 }
 
-func licenseImport(ran *bool) *cobra.Command {
+func licenseImport() *cobra.Command {
 	var trustPath, author, device, output string
 	command := &cobra.Command{
-		Use:   "import ENTITLEMENT --trust TRUST_STORE --device ID --output NEW_DIRECTORY",
-		Short: "Verify a received entitlement and install it for one device",
-		Args:  licenseOneArgument,
+		Use:         "import ENTITLEMENT --trust TRUST_STORE --device ID --output NEW_DIRECTORY",
+		Annotations: declare(capabilityFree),
+		Short:       "Verify a received entitlement and install it for one device",
+		Args:        licenseOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if output == "" {
-				return errors.New("license import requires --output with a new directory")
+				return usage("license import requires --output with a new directory")
 			}
 			if device == "" {
-				return errors.New("license import requires --device with the identifier this entitlement names")
+				return usage("license import requires --device with the identifier this entitlement names")
 			}
 			trust, err := readTrust(trustPath)
 			if err != nil {
@@ -98,7 +99,7 @@ func licenseImport(ran *bool) *cobra.Command {
 			}
 			if version == entitlement.SchemaV2 {
 				if author == "" {
-					return errors.New("license import of a v2 entitlement requires --author with the named author this device is assigned to")
+					return usage("license import of a v2 entitlement requires --author with the named author this device is assigned to")
 				}
 				store, err := entitlement.ImportV2(output, data, trust, author, device, licenseNow())
 				if err != nil {
@@ -123,14 +124,14 @@ func licenseImport(ran *bool) *cobra.Command {
 	return command
 }
 
-func licenseShow(ran *bool) *cobra.Command {
+func licenseShow() *cobra.Command {
 	var trustPath, require string
 	command := &cobra.Command{
-		Use:   "show STORE --trust TRUST_STORE",
-		Short: "Report the installed entitlement, its term state and its scope",
-		Args:  licenseOneArgument,
+		Use:         "show STORE --trust TRUST_STORE",
+		Annotations: declare(capabilityFree),
+		Short:       "Report the installed entitlement, its term state and its scope",
+		Args:        licenseOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			trust, err := readTrust(trustPath)
 			if err != nil {
 				return err
@@ -147,14 +148,14 @@ func licenseShow(ran *bool) *cobra.Command {
 	return command
 }
 
-func licenseRenew(ran *bool) *cobra.Command {
+func licenseRenew() *cobra.Command {
 	var trustPath string
 	command := &cobra.Command{
-		Use:   "renew STORE ENTITLEMENT --trust TRUST_STORE",
-		Short: "Install a later issue of the same entitlement for this device",
-		Args:  licenseTwoArguments,
+		Use:         "renew STORE ENTITLEMENT --trust TRUST_STORE",
+		Annotations: declare(capabilityFree),
+		Short:       "Install a later issue of the same entitlement for this device",
+		Args:        licenseTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			trust, err := readTrust(trustPath)
 			if err != nil {
 				return err
@@ -177,16 +178,16 @@ func licenseRenew(ran *bool) *cobra.Command {
 	return command
 }
 
-func licenseExport(ran *bool) *cobra.Command {
+func licenseExport() *cobra.Command {
 	var output string
 	command := &cobra.Command{
-		Use:   "export STORE --output NEW_FILE",
-		Short: "Write the installed entitlement back out, byte for byte",
-		Args:  licenseOneArgument,
+		Use:         "export STORE --output NEW_FILE",
+		Annotations: declare(capabilityFree),
+		Short:       "Write the installed entitlement back out, byte for byte",
+		Args:        licenseOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if output == "" {
-				return errors.New("license export requires --output with a new file")
+				return usage("license export requires --output with a new file")
 			}
 			store, err := openStore(args[0])
 			if err != nil {
@@ -205,13 +206,13 @@ func licenseExport(ran *bool) *cobra.Command {
 	return command
 }
 
-func licenseRelease(ran *bool) *cobra.Command {
+func licenseRelease() *cobra.Command {
 	command := &cobra.Command{
-		Use:   "release STORE",
-		Short: "Release this device's activation so the seat can be reissued",
-		Args:  licenseOneArgument,
+		Use:         "release STORE",
+		Annotations: declare(capabilityFree),
+		Short:       "Release this device's activation so the seat can be reissued",
+		Args:        licenseOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			store, err := openStore(args[0])
 			if err != nil {
 				return err
@@ -249,7 +250,7 @@ func writeLicense(out io.Writer, render func(io.Writer)) error {
 
 func readTrust(path string) (entitlement.Trust, error) {
 	if path == "" {
-		return entitlement.Trust{}, errors.New("license requires --trust with the vendor signing keys to verify against")
+		return entitlement.Trust{}, usage("license requires --trust with the vendor signing keys to verify against")
 	}
 	data, err := readInputFile(path, entitlement.MaxDocumentBytes)
 	if err != nil {

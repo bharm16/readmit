@@ -34,9 +34,12 @@ func TestPreparedIPv6ListenerCommandRunsInStrictGlobbingShells(t *testing.T) {
 			if err != nil {
 				t.Skip("shell is not installed")
 			}
-			listener, err := net.Listen("tcp6", "[::1]:0")
-			if err != nil {
-				t.Skipf("IPv6 loopback unavailable: %v", err)
+			// freeLoopbackAddress stops the test when the family is
+			// unavailable; this procedure must skip instead, because an
+			// IPv6 loopback is an environment property, not a defect.
+			listener, listenErr := net.Listen("tcp6", "[::1]:0")
+			if listenErr != nil {
+				t.Skipf("IPv6 loopback unavailable: %v", listenErr)
 			}
 			address := listener.Addr().String()
 			listener.Close()

@@ -4,25 +4,23 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/bharm16/readmit/internal/lifecycle"
 	"github.com/bharm16/readmit/internal/upgrade"
 	"github.com/spf13/cobra"
 )
 
-func upgradeCommand(ran *bool) *cobra.Command {
+func upgradeCommand() *cobra.Command {
 	command := &cobra.Command{
-		Use:   "upgrade",
-		Short: "Check a staged upgrade against this machine and take the archive it rolls back to",
-		Args:  cobra.NoArgs,
+		Use:         "upgrade",
+		Annotations: declare(capabilityFree),
+		Short:       "Check a staged upgrade against this machine and take the archive it rolls back to",
+		Args:        cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return errors.New("upgrade requires a subcommand: check or prepare")
+			return usage("upgrade requires a subcommand: check or prepare")
 		},
 	}
-	command.AddCommand(upgradeCheck(ran), upgradePrepare(ran))
+	command.AddCommand(upgradeCheck(), upgradePrepare())
 	return command
 }
 
@@ -30,26 +28,25 @@ func upgradeCommand(ran *bool) *cobra.Command {
 // the candidate is a directory an administrator staged, no network connection
 // is opened, and a refusal is reported after the plan rather than instead of
 // it, so an operator reads why before they read that.
-func upgradeCheck(ran *bool) *cobra.Command {
+func upgradeCheck() *cobra.Command {
 	var candidate string
 	var projects, runs []string
 	command := &cobra.Command{
-		Use:   "check --candidate STAGED_DIRECTORY [--project PROJECT] [--run RUN]",
-		Short: "Read a staged candidate and report what this build makes of the evidence here",
-		Args:  cobra.NoArgs,
+		Use:         "check --candidate STAGED_DIRECTORY [--project PROJECT] [--run RUN]",
+		Annotations: declareInterruptible(capabilityFree),
+		Short:       "Read a staged candidate and report what this build makes of the evidence here",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			*ran = true
 			if candidate == "" {
-				return errors.New("upgrade check requires --candidate with the directory an administrator staged")
+				return usage("upgrade check requires --candidate with the directory an administrator staged")
 			}
 			// A review of nothing is not a compatibility review, and reporting
 			// one as ready would be the auto-pass this command exists to
 			// prevent. What this machine holds is named, never discovered.
 			if len(projects)+len(runs) == 0 {
-				return errors.New("upgrade check requires at least one --project or --run: a check that reviewed nothing is not a compatibility review")
+				return usage("upgrade check requires at least one --project or --run: a check that reviewed nothing is not a compatibility review")
 			}
-			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer cancel()
+			ctx := cmd.Context()
 			plan, err := upgrade.Check(ctx, candidate, projects, runs)
 			if err != nil {
 				return err
@@ -57,8 +54,8 @@ func upgradeCheck(ran *bool) *cobra.Command {
 			if err := writeUpgradePlan(cmd.OutOrStdout(), plan); err != nil {
 				return err
 			}
-			if refusal := plan.Refusal(); refusal != nil {
-				return &ExitError{Code: 2, Err: refusal}
+			if refused := plan.Refusal(); refused != nil {
+				return refusal(refused)
 			}
 			return nil
 		},
@@ -75,23 +72,22 @@ func upgradeCheck(ran *bool) *cobra.Command {
 // signed for distribution: a rollback point must never wait on a signing
 // decision. Its status reports the archive it wrote, never permission to
 // install anything, and it restates the check's refusal on its last line.
-func upgradePrepare(ran *bool) *cobra.Command {
+func upgradePrepare() *cobra.Command {
 	var candidate, output string
 	var approve bool
 	command := &cobra.Command{
-		Use:   "prepare PROJECT --candidate STAGED_DIRECTORY --output NEW_ARCHIVE --approve",
-		Short: "Take the verified recovery archive this upgrade would be rolled back to",
-		Args:  upgradeOneArgument,
+		Use:         "prepare PROJECT --candidate STAGED_DIRECTORY --output NEW_ARCHIVE --approve",
+		Annotations: declareInterruptible(capabilityFree),
+		Short:       "Take the verified recovery archive this upgrade would be rolled back to",
+		Args:        upgradeOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if candidate == "" || output == "" {
-				return errors.New("upgrade prepare requires --candidate with the staged directory and --output with a new recovery archive")
+				return usage("upgrade prepare requires --candidate with the staged directory and --output with a new recovery archive")
 			}
 			if !approve {
-				return errors.New("upgrade prepare requires --approve; an administrator approves an upgrade before anything is written")
+				return usage("upgrade prepare requires --approve; an administrator approves an upgrade before anything is written")
 			}
-			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer cancel()
+			ctx := cmd.Context()
 			plan, err := upgrade.Check(ctx, candidate, []string{args[0]}, nil)
 			if err != nil {
 				return err

@@ -7,10 +7,8 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strconv"
-	"syscall"
 	"time"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
@@ -22,31 +20,32 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func targetCommand(ran *bool) *cobra.Command {
+func targetCommand() *cobra.Command {
 	command := &cobra.Command{
-		Use:   "target",
-		Short: "Configure, validate and diagnose one named test environment",
-		Args:  cobra.NoArgs,
+		Use:         "target",
+		Annotations: declare(capabilityFree),
+		Short:       "Configure, validate and diagnose one named test environment",
+		Args:        cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return errors.New("target requires a subcommand: set, show, check, or reset")
+			return usage("target requires a subcommand: set, show, check, or reset")
 		},
 	}
-	command.AddCommand(targetSet(ran), targetShow(ran), targetCheck(ran), targetReset(ran))
+	command.AddCommand(targetSet(), targetShow(), targetCheck(), targetReset())
 	return command
 }
 
-func targetSet(ran *bool) *cobra.Command {
+func targetSet() *cobra.Command {
 	var file, name, classification, address, transport string
 	var caFile, serverName, clientCertificate, secretsFile, reference string
 	var connectTimeout, messageTimeout string
 	var maxACKBytes int
 	var approved bool
 	command := &cobra.Command{
-		Use:   "set --target FILE --name NAME --classification CLASS --address HOST:PORT",
-		Short: "Record or edit the endpoint, timeouts, TLS material and classification of one environment",
-		Args:  cobra.NoArgs,
+		Use:         "set --target FILE --name NAME --classification CLASS --address HOST:PORT",
+		Annotations: declare(capabilityAuthor),
+		Short:       "Record or edit the endpoint, timeouts, TLS material and classification of one environment",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			*ran = true
 			config, err := openOrNewTarget(file)
 			if err != nil {
 				return err
@@ -109,14 +108,14 @@ func targetSet(ran *bool) *cobra.Command {
 	return command
 }
 
-func targetShow(ran *bool) *cobra.Command {
+func targetShow() *cobra.Command {
 	var file string
 	command := &cobra.Command{
-		Use:   "show --target FILE",
-		Short: "Validate one environment configuration and show its endpoint, timeouts, TLS material and classification",
-		Args:  cobra.NoArgs,
+		Use:         "show --target FILE",
+		Annotations: declare(capabilityFree),
+		Short:       "Validate one environment configuration and show its endpoint, timeouts, TLS material and classification",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			*ran = true
 			config, err := readTargetFile(file)
 			if err != nil {
 				return err
@@ -132,14 +131,14 @@ func targetShow(ran *bool) *cobra.Command {
 	return command
 }
 
-func targetCheck(ran *bool) *cobra.Command {
+func targetCheck() *cobra.Command {
 	var file, policyPath, decisionPath string
 	command := &cobra.Command{
-		Use:   "check --target FILE [--policy FILE]",
-		Short: "Reach one configured environment and report the transport, TLS status and send decision, sending no HL7 payload",
-		Args:  cobra.NoArgs,
+		Use:         "check --target FILE [--policy FILE]",
+		Annotations: declareInterruptible(capabilityExecute),
+		Short:       "Reach one configured environment and report the transport, TLS status and send decision, sending no HL7 payload",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			*ran = true
 			config, err := readTargetFile(file)
 			if err != nil {
 				return err
@@ -150,8 +149,7 @@ func targetCheck(ran *bool) *cobra.Command {
 			}
 			// Interrupt and termination reach the diagnosis, so a cancelled
 			// check reports cancellation rather than claiming nothing.
-			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer cancel()
+			ctx := cmd.Context()
 			// The same rule the send path enforces, asked here with the send
 			// not requested, because a check sends nothing. A destination this
 			// reports as refused is one a replay refuses; there is one
@@ -193,28 +191,33 @@ func targetCheck(ran *bool) *cobra.Command {
 	return command
 }
 
-func targetReset(ran *bool) *cobra.Command {
+// targetReset returns one named nonproduction environment to its declared
+// starting state. Every refusal reached inside the command keeps the
+// execution-error status a reset outcome carries, so nothing a reset does
+// exits 1 and no caller has to read 1 as an assertion failure a reset cannot
+// produce.
+func targetReset() *cobra.Command {
 	var file, planPath, outcomePath, policyPath string
 	var confirmed []string
 	command := &cobra.Command{
-		Use:   "reset --target FILE --plan FILE --outcome NEW_FILE [--policy FILE] [--confirm ID]",
-		Short: "Return one named nonproduction environment to its declared starting state through reviewed reset actions",
-		Args:  cobra.NoArgs,
+		Use:         "reset --target FILE --plan FILE --outcome NEW_FILE [--policy FILE] [--confirm ID]",
+		Annotations: declareInterruptible(capabilityExecute),
+		Short:       "Return one named nonproduction environment to its declared starting state through reviewed reset actions",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			*ran = true
 			config, err := readTargetFile(file)
 			if err != nil {
-				return resetError(err)
+				return refusal(err)
 			}
 			if planPath == "" {
-				return resetError(errors.New("target reset requires --plan naming a " + fixturereset.PlanSchema + " document"))
+				return usage("target reset requires --plan naming a %s document", fixturereset.PlanSchema)
 			}
 			if outcomePath == "" {
-				return resetError(errors.New("target reset requires --outcome naming a new file to retain the reset outcome in"))
+				return usage("target reset requires --outcome naming a new file to retain the reset outcome in")
 			}
 			planBytes, err := readInputFile(planPath, fixturereset.MaxPlanBytes)
 			if err != nil {
-				return resetError(err)
+				return refusal(err)
 			}
 			// A read-authority action names its file inside the plan's own
 			// directory, resolved after the plan's own symlink exactly as a
@@ -223,11 +226,11 @@ func targetReset(ran *bool) *cobra.Command {
 			// directory readmit happened to be started in.
 			resolved, err := artifactpath.Resolve(planPath)
 			if err != nil {
-				return resetError(errors.New("cannot resolve the reset plan"))
+				return refusal(errors.New("cannot resolve the reset plan"))
 			}
 			policy, err := readSendPolicy(policyPath)
 			if err != nil {
-				return resetError(err)
+				return refusal(err)
 			}
 			// The outcome destination is checked before anything runs. A reset
 			// can open a connection, and a destination readmit was never going
@@ -235,17 +238,16 @@ func targetReset(ran *bool) *cobra.Command {
 			// the name here never authorizes overwriting it: the write below is
 			// still exclusive, at the exact path the path owner returned.
 			if _, err := artifactpath.Destination(outcomePath); err != nil {
-				return resetError(err)
+				return refusal(err)
 			}
-			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer cancel()
+			ctx := cmd.Context()
 			result, plan := fixturereset.Run(ctx, fixturereset.Request{
 				Target: config, PlanBytes: planBytes, PlanDirectory: filepath.Dir(resolved),
 				Policy: policy, Confirmed: confirmed,
 			}, sendpolicy.SystemResolver)
 			outcome, err := fixturereset.EncodeOutcome(result)
 			if err != nil {
-				return resetError(err)
+				return refusal(err)
 			}
 			// One reset attempt retains one document. The destination must be
 			// new, so rerunning after performing a manual step needs a new file
@@ -253,7 +255,7 @@ func targetReset(ran *bool) *cobra.Command {
 			if err := writeNewFile(outcomePath, outcome,
 				"cannot create the reset outcome file; the destination must be new and writable",
 				"cannot write the reset outcome"); err != nil {
-				return resetError(err)
+				return refusal(err)
 			}
 			if err := writeLines(cmd.OutOrStdout(), func(w io.Writer) {
 				writeEnvironmentBanner(w, config.Environment())
@@ -261,10 +263,10 @@ func targetReset(ran *bool) *cobra.Command {
 				writeResetLines(w, result)
 				writeResetInstructionLines(w, plan, result)
 			}); err != nil {
-				return resetError(err)
+				return refusal(err)
 			}
 			if result.ExitCode() != 0 {
-				return &ExitError{Code: result.ExitCode(), Err: errors.New("the fixture reset was not confirmed; the retained outcome names why")}
+				return unstatedVerdict(result.ExitCode(), errors.New("the fixture reset was not confirmed; the retained outcome names why"))
 			}
 			return nil
 		},
@@ -276,11 +278,6 @@ func targetReset(ran *bool) *cobra.Command {
 	command.Flags().StringArrayVar(&confirmed, "confirm", nil, "Action id the operator performed and explicitly confirms; repeatable")
 	return command
 }
-
-// resetError gives every refusal reached inside this command the same
-// execution-error status a reset outcome carries, so nothing a reset does exits
-// 1 and no caller has to read 1 as an assertion failure a reset cannot produce.
-func resetError(err error) error { return &ExitError{Code: 2, Err: err} }
 
 // writeResetLines renders one reset outcome and states its boundary. Every
 // action is named with the operator it ran and the authority it ran under, so
@@ -339,7 +336,7 @@ func newEnvironment() replay.Target {
 
 func readTargetFile(path string) (replay.Target, error) {
 	if path == "" {
-		return replay.Target{}, errors.New("target requires --target naming a target configuration file")
+		return replay.Target{}, usage("target requires --target naming a target configuration file")
 	}
 	return replay.ReadTarget(path)
 }
@@ -350,7 +347,7 @@ func readTargetFile(path string) (replay.Target, error) {
 // readmit-target/v1 and v2 are still read everywhere, and nothing rewrites one.
 func openOrNewTarget(path string) (replay.Target, error) {
 	if path == "" {
-		return replay.Target{}, errors.New("target set requires --target naming the file to record this environment in")
+		return replay.Target{}, usage("target set requires --target naming the file to record this environment in")
 	}
 	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
 		return newEnvironment(), nil

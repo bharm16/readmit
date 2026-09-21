@@ -101,7 +101,7 @@ func TestSyntheticWalkthroughCompletesEveryStepAgainstTheBuiltExecutable(t *test
 		}
 	}
 	workspace := filepath.Join(parent, walkthroughWorkspace)
-	written := synthTree(t, workspace)
+	written := treeOf(t, workspace)
 	for _, artifact := range []string{
 		"family/family.json", "family/regression/manifest.json", "family/invalid/manifest.json",
 		"test-case/manifest.json", "regression.index.json",
@@ -139,12 +139,12 @@ func TestSyntheticWalkthroughNeverOverwritesAndItsPacketRefusesTampering(t *test
 		t.Fatalf("first walkthrough: %v %s %s", err, stdout, stderr)
 	}
 	workspace := filepath.Join(parent, walkthroughWorkspace)
-	before := synthTree(t, workspace)
+	before := treeOf(t, workspace)
 	stdout, _, err := runWalkthrough(t, parent, "../testdata/fixtures")
 	if err == nil || strings.Contains(stdout, "Synthetic SIU family") {
 		t.Fatal("a second walkthrough ran into the existing workspace")
 	}
-	if !reflect.DeepEqual(before, synthTree(t, workspace)) {
+	if !reflect.DeepEqual(before, treeOf(t, workspace)) {
 		t.Fatal("a refused second walkthrough changed the first one's artifacts")
 	}
 

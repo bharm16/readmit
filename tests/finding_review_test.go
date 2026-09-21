@@ -3,7 +3,6 @@ package tests
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json/v2"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -64,10 +63,7 @@ func TestDiagnoseReviewPromotesOnlyWhatAPersonConfirmed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var record findingreview.Record
-	if err := json.Unmarshal(data, &record, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatal(err)
-	}
+	record := readStrictOutput[findingreview.Record](t, string(data))
 	if record.Schema != findingreview.Schema || record.Diagnosis.Report != identity || record.Statement == "" {
 		t.Fatalf("the review does not name the diagnosis it was made over: %+v", record)
 	}

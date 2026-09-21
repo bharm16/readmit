@@ -239,13 +239,11 @@ func Build(ctx context.Context, opened *bundle.Bundle, policy Policy, builtAt ti
 		Records: make([]Record, 0, len(opened.Events)),
 	}
 	document.Case.Sources = make([]Source, 0, len(opened.Manifest.Sources))
-	options := make(map[string]hl7.Options, len(opened.Manifest.Sources))
 	for _, source := range opened.Manifest.Sources {
 		document.Case.Sources = append(document.Case.Sources, Source{
 			ID: source.ID, Path: source.Path, Format: source.Format, Terminator: source.Terminator,
 			Size: source.Size, SHA256: source.SHA256, Occurrences: source.Occurrences,
 		})
-		options[source.ID] = hl7.Options{Format: source.Format, Terminator: source.Terminator}
 	}
 	for _, event := range opened.Events {
 		if err := ctx.Err(); err != nil {
@@ -261,13 +259,9 @@ func Build(ctx context.Context, opened *bundle.Bundle, policy Policy, builtAt ti
 			document.Records = append(document.Records, record)
 			continue
 		}
-		raw, err := opened.Raw(event.ID)
+		decoded, err := opened.Document(event)
 		if err != nil {
-			return Document{}, errors.New("case evidence does not hold every occurrence it records")
-		}
-		decoded, err := hl7.Parse(raw, options[event.SourceID])
-		if err != nil {
-			return Document{}, errors.New("case evidence no longer decodes the way its manifest records")
+			return Document{}, errors.New("case evidence no longer reads the way its manifest records")
 		}
 		for i, selector := range parsed {
 			value, err := decoded.Select(0, selector)

@@ -14,15 +14,42 @@ import (
 // Execute owns command-line wiring and diagnostic privacy. Domain parsing does
 // not depend on Cobra, and Cobra's errors never echo arbitrary arguments.
 func Execute(version string, args []string, stdout, stderr io.Writer) error {
+	root, ran := rootCommand(version)
+	root.SetOut(stdout)
+	root.SetErr(stderr)
+	root.SetArgs(args)
+	selected, err := root.ExecuteC()
+	if err != nil {
+		if !*ran {
+			// A command whose operation never began was invoked wrongly: bad
+			// arguments, bad flags, an unknown command. That refusal carries the
+			// same usage status for every command, so a script cannot tell one
+			// entry point apart from another by how it misuses it.
+			err = usage("invalid command or arguments; use readmit --help")
+		}
+		var status *ExitError
+		if !errors.As(err, &status) || !status.Reported {
+			fmt.Fprintln(stderr, "readmit:", err)
+			if selected != nil && selected.Name() == "test" {
+				fmt.Fprintln(stdout, testRerun)
+			}
+		}
+	}
+	return err
+}
+
+func rootCommand(version string) (*cobra.Command, *bool) {
 	root := &cobra.Command{
 		Use: "readmit", Short: "Local HL7 v2 inspection and case evidence", Version: version,
 		SilenceUsage: true, SilenceErrors: true,
 	}
-	root.SetOut(stdout)
-	root.SetErr(stderr)
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.SetHelpCommand(&cobra.Command{
 		Use: "help [command]", Short: "Help about a command",
+		// The help topic lookup reports its own refusal the way every other
+		// pre-execution refusal is reported, so the construction pass does not
+		// mark this command's work as started.
+		Annotations: mergeAnnotations(declare(capabilityFree), map[string]string{helpTopicAnnotation: "true"}),
 		RunE: func(_ *cobra.Command, args []string) error {
 			target, remaining, err := root.Find(args)
 			if err != nil || len(remaining) > 0 {
@@ -35,17 +62,16 @@ func Execute(version string, args []string, stdout, stderr io.Writer) error {
 	var showValues bool
 	var ran bool
 	inspect := &cobra.Command{
-		Use: "inspect FILE", Short: "Inspect syntax without changing the source",
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return errors.New("inspect requires exactly one input file")
-			}
-			return nil
-		},
+		Use: "inspect FILE", Short: "Inspect syntax without changing the source", Annotations: declare(capabilityFree),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ran = true
 			if cmd.Flags().Changed("roundtrip") && roundtrip == "" {
-				return errors.New("round-trip destination cannot be empty")
+				return usage("round-trip destination cannot be empty")
+			}
+			if format != "auto" && format != "raw" && format != "mllp" {
+				return usage("format must be auto, raw, or mllp")
+			}
+			if terminator != "auto" && terminator != "cr" && terminator != "lf" && terminator != "crlf" {
+				return usage("terminator must be auto, cr, lf, or crlf")
 			}
 			return inspectFile(cmd.OutOrStdout(), args[0], hl7.Options{Format: hl7.Format(format), Terminator: hl7.Terminator(terminator)}, showValues, roundtrip)
 		},
@@ -55,64 +81,47 @@ func Execute(version string, args []string, stdout, stderr io.Writer) error {
 	inspect.Flags().BoolVar(&showValues, "show-values", false, "Explicitly display message values as escaped byte strings")
 	inspect.Flags().StringVar(&roundtrip, "roundtrip", "", "Write byte-identical evidence to a new file (never overwrite)")
 	root.AddCommand(inspect)
-	root.AddCommand(captureCommand(&ran), timelineCommand(&ran))
-	root.AddCommand(importCommand(&ran))
-	root.AddCommand(indexCommand(&ran))
-	root.AddCommand(corpusCommand(&ran))
-	root.AddCommand(listenCommand(&ran))
-	root.AddCommand(collectCommand(&ran))
-	root.AddCommand(sourceCommand(&ran))
-	root.AddCommand(projectCommand(&ran))
-	root.AddCommand(backupCommand(&ran))
-	root.AddCommand(upgradeCommand(&ran))
-	root.AddCommand(licenseCommand(&ran))
-	root.AddCommand(secretCommand(&ran))
-	root.AddCommand(protectCommand(&ran))
-	root.AddCommand(targetCommand(&ran))
+	root.AddCommand(captureCommand(), timelineCommand())
+	root.AddCommand(importCommand())
+	root.AddCommand(indexCommand())
+	root.AddCommand(corpusCommand())
+	root.AddCommand(listenCommand())
+	root.AddCommand(collectCommand())
+	root.AddCommand(sourceCommand())
+	root.AddCommand(projectCommand())
+	root.AddCommand(backupCommand())
+	root.AddCommand(upgradeCommand())
+	root.AddCommand(licenseCommand())
+	root.AddCommand(secretCommand())
+	root.AddCommand(protectCommand())
+	root.AddCommand(targetCommand())
 
-	root.AddCommand(diagnoseCommand(&ran))
-	root.AddCommand(correlateCommand(&ran))
-	root.AddCommand(transformCommand(&ran))
+	root.AddCommand(diagnoseCommand())
+	root.AddCommand(correlateCommand())
+	root.AddCommand(transformCommand())
 
-	root.AddCommand(synthCommand(&ran), sampleCommand(&ran))
-	root.AddCommand(scenarioCommand(&ran))
-	root.AddCommand(profileCommand(&ran))
-	root.AddCommand(replayCommand(&ran))
-	root.AddCommand(testCommand(&ran))
-	root.AddCommand(runCommand(&ran))
-	root.AddCommand(suiteCommand(&ran))
-	root.AddCommand(runnerCommand(&ran))
-	root.AddCommand(observeCommand(&ran))
-	root.AddCommand(explainCommand(&ran))
-	root.AddCommand(redactCommand(&ran))
-	root.AddCommand(diffCommand(&ran))
-	root.AddCommand(driftCommand(&ran))
-	root.AddCommand(normalizeCommand(&ran))
-	root.AddCommand(baselineCommand(&ran))
-	root.AddCommand(expectationCommand(&ran))
-	root.AddCommand(reportCommand(&ran))
-	root.AddCommand(shareCommand(&ran))
+	root.AddCommand(synthCommand(), sampleCommand())
+	root.AddCommand(scenarioCommand())
+	root.AddCommand(profileCommand())
+	root.AddCommand(replayCommand())
+	root.AddCommand(testCommand())
+	root.AddCommand(runCommand())
+	root.AddCommand(suiteCommand())
+	root.AddCommand(runnerCommand())
+	root.AddCommand(observeCommand())
+	root.AddCommand(explainCommand())
+	root.AddCommand(redactCommand())
+	root.AddCommand(diffCommand())
+	root.AddCommand(driftCommand())
+	root.AddCommand(normalizeCommand())
+	root.AddCommand(baselineCommand())
+	root.AddCommand(expectationCommand())
+	root.AddCommand(reportCommand())
+	root.AddCommand(shareCommand())
 	var operationPolicy string
 	root.PersistentFlags().StringVar(&operationPolicy, "operation-policy", "", "Explicit local operation admission policy for new authoring and execution")
 	wireOperations(root, &operationPolicy, &ran)
-	root.SetArgs(args)
-	selected, err := root.ExecuteC()
-	if err != nil {
-		if !ran {
-			err = errors.New("invalid command or arguments; use readmit --help")
-			if selected != nil && selected.Name() == "test" {
-				err = &ExitError{Code: 2, Err: err}
-			}
-		}
-		var status *ExitError
-		if !errors.As(err, &status) || !status.Reported {
-			fmt.Fprintln(stderr, "readmit:", err)
-			if selected != nil && selected.Name() == "test" {
-				fmt.Fprintln(stdout, testRerun)
-			}
-		}
-	}
-	return err
+	return root, &ran
 }
 
 func inspectFile(out io.Writer, path string, options hl7.Options, showValues bool, roundtrip string) error {
@@ -139,6 +148,17 @@ func inspectFile(out io.Writer, path string, options hl7.Options, showValues boo
 		return errors.New("cannot write inspection output")
 	}
 	return nil
+}
+
+// mergeAnnotations joins the annotation maps a command is built with.
+func mergeAnnotations(groups ...map[string]string) map[string]string {
+	merged := map[string]string{}
+	for _, group := range groups {
+		for key, value := range group {
+			merged[key] = value
+		}
+	}
+	return merged
 }
 
 func selection(value string) string {

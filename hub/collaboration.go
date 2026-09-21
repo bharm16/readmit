@@ -77,31 +77,11 @@ func decodeReviewCommand(data []byte) (ReviewCommand, error) {
 	return c, nil
 }
 func (s *Store) reviewEvents(ctx context.Context, project string) ([]ReviewEvent, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT document FROM readmit_hub_reviews WHERE project=$1 ORDER BY sequence`, project)
-	if e != nil {
-		return nil, e
-	}
-	defer rows.Close()
-	events := []ReviewEvent{}
-	for rows.Next() {
-		var data string
-		if e = rows.Scan(&data); e != nil {
-			return nil, e
-		}
-		var event ReviewEvent
-		if json.Unmarshal([]byte(data), &event, json.RejectUnknownMembers(true)) != nil {
-			return nil, ErrIntegrity
-		}
-		events = append(events, event)
-		if len(events) > maxReviews {
-			return nil, ErrLimit
-		}
-	}
-	return events, rows.Err()
+	return reviewLog.read(ctx, s.db, project)
 }
 func (s *Store) linked(ctx context.Context, project, digest string) bool {
-	var exists bool
-	return s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM readmit_hub_project_artifacts WHERE project=$1 AND digest=$2)`, project, digest).Scan(&exists) == nil && exists
+	exists, e := s.linkedProjectArtifact(ctx, project, digest)
+	return e == nil && exists
 }
 func loadRelease(load func(string) ([]byte, error), digest string) (expectation.Release, error) {
 	data, e := load(digest)
@@ -111,10 +91,11 @@ func loadRelease(load func(string) ([]byte, error), digest string) (expectation.
 	return expectation.Decode(data)
 }
 
-func validateReview(c ReviewCommand, actor, issuer string, events []ReviewEvent, load func(string) ([]byte, error)) error {
+func validateReview(c ReviewCommand, actor, issuer string, reviews projectReviews, load func(string) ([]byte, error)) error {
 	if supportCommand(c) {
-		return validateSupport(c, actor, issuer, events, load)
+		return reviews.validate(c, actor, issuer, load)
 	}
+	events := reviews.events
 	if _, e := load(c.Evidence); e != nil {
 		return e
 	}
@@ -186,8 +167,48 @@ func sendReview(w http.ResponseWriter, status int, v any) {
 	w.WriteHeader(status)
 	_, _ = w.Write(data)
 }
-func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access, project, route string) {
-	v2 := strings.HasPrefix(r.URL.Path, "/v2/")
+
+// humanReviewer is the identity rule the review route family declares: a
+// review is written by a human the policy identifies, never a machine
+// principal, and an issuer the backup bound cannot retain is refused here
+// rather than mid-commit.
+func humanReviewer(route string) identityRule {
+	return func(p Principal) (bool, string) {
+		if route == "reviews" && (p.Kind != "oidc" || p.Role == "runner" || len(p.Issuer) > 2048) {
+			return false, "human identity required"
+		}
+		return true, ""
+	}
+}
+
+// reviewAdmission is the review route family's one declaration of how a
+// request maps into action vocabulary. History and notifications read; a
+// review writes; and the command kinds escalate — a support policy needs
+// admin, an approval needs approval, and a comment rides the commenter's
+// approval scope when the policy grants one. The comment escalation asks the
+// policy alone: removal is enforced on the final action inside the write
+// sequence, so a removed principal is refused either way.
+func reviewAdmission(route string, c ReviewCommand, a *Access, r *http.Request, project string) teamAdmission {
+	action := "evidence.read"
+	if route == "reviews" {
+		action = "evidence.write"
+		if c.Kind == "support-policy" {
+			action = "admin"
+		}
+		if c.Kind == "approval" || supportApproval(c) {
+			action = "approval"
+		}
+		// Reviewers can comment with their existing approval scope, but cannot assign.
+		if c.Kind == "comment" {
+			if _, e := a.Authorize(r, project, "approval"); e == nil {
+				action = "approval"
+			}
+		}
+	}
+	return teamAdmission{action: action, writes: r.Method != "GET", accept: humanReviewer(route)}
+}
+
+func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access, project, route string, v2 bool) {
 	supportRecorded := false
 	if v2 && route == "reviews" {
 		defer func() {
@@ -199,10 +220,6 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 		}()
 	}
 
-	action := "evidence.read"
-	if route == "reviews" {
-		action = "evidence.write"
-	}
 	var c ReviewCommand
 	if route == "reviews" {
 		if r.Method != "POST" {
@@ -223,58 +240,31 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 			http.Error(w, "review version unavailable", 400)
 			return
 		}
-		if c.Kind == "support-policy" {
-			action = "admin"
-		}
-		if c.Kind == "approval" || supportApproval(c) {
-			action = "approval"
-		}
-		// Reviewers can comment with their existing approval scope, but cannot assign.
-		if c.Kind == "comment" {
-			if _, e := s.authorize(a, r, project, "approval"); e == nil {
-				action = "approval"
-			}
-		}
 	} else if r.Method != "GET" && r.Method != "POST" {
 		http.Error(w, "method refused", 405)
 		return
 	}
-	principal, e := s.authorize(a, r, project, action)
-	if e != nil {
-		http.Error(w, "access refused", 403)
-		return
-	}
-	if route == "reviews" && (principal.Kind != "oidc" || principal.Role == "runner" || len(principal.Issuer) > 2048) {
-		http.Error(w, "human identity required", 403)
-		return
-	}
+	adm := reviewAdmission(route, c, a, r, project)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if r.Method != "GET" {
-		release, err := s.admitAuthor(r, principal)
-		if err != nil {
-			http.Error(w, "operation admission refused", 403)
-			return
-		}
-		defer release()
-	}
-	// Reauthorize after waiting for the write/backup lock so queued requests do not
-	// retain a grant that was revoked while another operation held the lock.
-	principal, e = s.authorize(a, r, project, action)
-	if e != nil {
-		http.Error(w, "access refused", 403)
+	principal, release, ok := s.authorizeWrite(a, r, w, project, adm)
+	if !ok {
 		return
+	}
+	if release != nil {
+		defer release()
 	}
 	events, e := s.reviewEvents(r.Context(), project)
 	if e != nil {
 		http.Error(w, "metadata unavailable", 503)
 		return
 	}
-	if !v2 && hasSupportEvents(events) {
+	reviews := deriveReviews(events)
+	if !v2 && reviews.support {
 		http.Error(w, "history requires v2", 409)
 		return
 	}
-	if route == "reviews" && supportCommand(c) && !supportCurrent(c, events) {
+	if route == "reviews" && supportCommand(c) && !reviews.current(c) {
 		http.Error(w, "sharing policy changed", 409)
 		return
 	}
@@ -303,27 +293,26 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 			Schema string        `json:"schema"`
 			Head   int           `json:"head"`
 			Events []ReviewEvent `json:"events"`
-		}{reviewHistorySchema(v2), len(events), filtered})
+		}{reviews.historySchema(v2), len(events), filtered})
 		return
 	}
-	for _, event := range events {
-		if event.Command.ID == c.ID {
-			if event.Command == c && event.Actor == principal.Subject && event.Issuer == principal.Issuer {
-				supportRecorded = true
-				sendReview(w, 200, event)
-			} else {
-				http.Error(w, "review id conflict", 409)
-			}
-			return
-		}
-	}
-	var total int
-	if e := s.db.QueryRowContext(r.Context(), `SELECT count(*) FROM readmit_hub_reviews`).Scan(&total); e != nil {
+	total, e := reviewLog.total(r.Context(), s.db)
+	if e != nil {
 		http.Error(w, "metadata unavailable", 503)
 		return
 	}
-	if c.Expected != len(events) || total >= maxReviews {
+	existing, replay, e := reviewLog.admit(events, total, c, principal.Subject, principal.Issuer)
+	if errors.Is(e, errLogIDConflict) {
+		http.Error(w, "review id conflict", 409)
+		return
+	}
+	if errors.Is(e, errLogHead) {
 		http.Error(w, "review head conflict or limit", 409)
+		return
+	}
+	if replay {
+		supportRecorded = true
+		sendReview(w, 200, existing)
 		return
 	}
 	policy, e := a.policy()
@@ -338,11 +327,9 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 				http.Error(w, "recipient unavailable", 403)
 				return
 			}
-			for _, event := range lifecycle {
-				if event.Command.Kind == "remove-user" && event.Command.Subject == c.Recipient && event.Issuer == principal.Issuer {
-					http.Error(w, "recipient refused", 403)
-					return
-				}
+			if deriveLifecycle(lifecycle).isRemoved(principal.Issuer, c.Recipient) {
+				http.Error(w, "recipient refused", 403)
+				return
 			}
 		}
 		role := policy.role(c.Recipient, project)
@@ -351,7 +338,7 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 			return
 		}
 	}
-	if e = validateReview(c, principal.Subject, principal.Issuer, events, func(d string) ([]byte, error) {
+	if e = validateReview(c, principal.Subject, principal.Issuer, reviews, func(d string) ([]byte, error) {
 		if supportCommand(c) {
 			return s.supportArtifact(r.Context(), project, d)
 		}
@@ -375,24 +362,7 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 		eventSchema = "readmit-hub-review-event/v2"
 	}
 	event := ReviewEvent{eventSchema, project, len(events) + 1, principal.Issuer, principal.Subject, time.Now().UTC().Format(time.RFC3339Nano), c}
-	data, e := json.Marshal(event)
-	if e != nil {
-		http.Error(w, "review unavailable", 503)
-		return
-	}
-	tx, e := s.db.BeginTx(r.Context(), nil)
-	if e != nil {
-		http.Error(w, "metadata unavailable", 503)
-		return
-	}
-	defer tx.Rollback()
-	if _, e = tx.ExecContext(r.Context(), `INSERT INTO readmit_hub_reviews(project,sequence,id,document) VALUES($1,$2,$3,$4)`, project, event.Sequence, c.ID, string(data)); e == nil {
-		_, e = tx.ExecContext(r.Context(), `UPDATE readmit_hub_schema SET team_enabled=true WHERE singleton`)
-	}
-	if e == nil {
-		e = tx.Commit()
-	}
-	if e != nil {
+	if e := reviewLog.commit(r.Context(), s.db, project, event); e != nil {
 		http.Error(w, "review commit unavailable; retry same id", 503)
 		return
 	}

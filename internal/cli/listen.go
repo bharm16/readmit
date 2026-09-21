@@ -4,9 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/bharm16/readmit/internal/observation"
@@ -15,16 +12,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func listenCommand(ran *bool) *cobra.Command {
+func listenCommand() *cobra.Command {
 	var address, mode string
 	var approvedBind bool
 	var config receiver.Config
 	command := &cobra.Command{
-		Use:   "listen --output NEW_DIRECTORY --observation NEW_FILE",
-		Short: "Run a controlled SIU test fixture and export its appointment ledger",
-		Args:  cobra.NoArgs,
+		Use:         "listen --output NEW_DIRECTORY --observation NEW_FILE",
+		Annotations: declareInterruptible(capabilityExecute),
+		Short:       "Run a controlled SIU test fixture and export its appointment ledger",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			config.Mode = observation.Mode(mode)
 			if err := sendpolicy.BindAddress(address, approvedBind); err != nil {
 				return err
@@ -38,8 +35,7 @@ func listenCommand(ran *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer cancel()
+			ctx := cmd.Context()
 			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Listening: %s\nProfile: %s\nMode: %s\n", listener.Addr(), observation.Profile, mode); err != nil {
 				return errors.New("cannot write receiver startup output")
 			}

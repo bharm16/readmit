@@ -127,8 +127,9 @@ func TestIndexRetainsNothingNobodyDeclared(t *testing.T) {
 		})
 	}
 	// A command group without a subcommand is refused the way every other one
-	// is, rather than indexing something nobody asked to have indexed.
-	if stdout, stderr, err := run(t, "index"); err == nil || stdout != "" || !strings.Contains(stderr, "invalid command or arguments") {
+	// is, rather than indexing something nobody asked to have indexed. A group
+	// refusal is a misuse, so it carries the usage status.
+	if stdout, stderr, err := run(t, "index"); err == nil || stdout != "" || !strings.Contains(stderr, "requires a subcommand") {
 		t.Fatalf("index without a subcommand: %v %s %s", err, stdout, stderr)
 	}
 }

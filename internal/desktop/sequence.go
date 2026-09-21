@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"context"
 	"errors"
 	"io/fs"
 	"os"
@@ -275,6 +276,8 @@ type SequenceResult struct {
 	Sequence *Sequence `json:"sequence,omitzero"`
 }
 
+func (r *SequenceResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
 func (r refusal) sequence() SequenceResult {
 	return SequenceResult{State: r.state, Reason: r.reason}
 }
@@ -295,29 +298,20 @@ func (r refusal) sequence() SequenceResult {
 // crosses this boundary except a declared time whose bytes can be nothing but a
 // timestamp.
 func (a *App) OpenSequence(request SequenceRequest) SequenceResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return busyRefusal.sequence()
-	}
-	defer release()
+	return run(a, false, false, func(context.Context) SequenceResult {
+		return a.openSequence(request)
+	})
+}
+
+func (a *App) openSequence(request SequenceRequest) SequenceResult {
 	if request.Offset < 0 || request.Limit < 1 || request.Limit > MaxSequenceEvents {
 		return SequenceResult{State: Failed, Reason: "a sequence renders a window beginning at or after its first event, of between 1 and " + strconv.Itoa(MaxSequenceEvents) + " events"}
 	}
-	root, declined := resolveFolder(request.Workspace)
+	root, opened, declined := openedCase(request.Workspace, request.Case, request.Identity)
 	if root == "" {
 		return declined.sequence()
 	}
-	casePath, err := artifactpath.Child(root, request.Case)
-	if err != nil {
-		return SequenceResult{State: Failed, Reason: "a case must be named by one directory entry of the open workspace"}
-	}
-	opened, err := bundle.Open(casePath)
-	if err != nil {
-		return SequenceResult{State: Failed, Reason: "the case could not be verified as complete, unmodified evidence"}
-	}
-	if request.Identity == "" || request.Identity != opened.Identity {
-		return SequenceResult{State: Failed, Reason: "the case identity changed; open the case again before reading its sequence"}
-	}
+	casePath := artifactpath.JoinReference(root, request.Case)
 	report, declined := correlated(root, casePath, request.Rules)
 	if declined.state != "" {
 		return declined.sequence()

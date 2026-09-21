@@ -3,9 +3,9 @@ package hub
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"io"
 	"net/http"
-	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -89,30 +89,7 @@ func decodeLifecycle(data []byte) (LifecycleCommand, error) {
 	return c, nil
 }
 func (s *Store) lifecycleEvents(ctx context.Context, project string) ([]LifecycleEvent, error) {
-	if s.db == nil {
-		return nil, errAccess
-	}
-	rows, e := s.db.QueryContext(ctx, `SELECT document FROM readmit_hub_lifecycle WHERE project=$1 ORDER BY sequence`, project)
-	if e != nil {
-		return nil, e
-	}
-	defer rows.Close()
-	events := []LifecycleEvent{}
-	for rows.Next() {
-		var data string
-		var event LifecycleEvent
-		if e = rows.Scan(&data); e != nil {
-			return nil, e
-		}
-		if json.Unmarshal([]byte(data), &event, json.RejectUnknownMembers(true)) != nil {
-			return nil, ErrIntegrity
-		}
-		events = append(events, event)
-		if len(events) > maxLifecycle {
-			return nil, ErrLimit
-		}
-	}
-	return events, rows.Err()
+	return lifecycleLog.read(ctx, s.db, project)
 }
 func revisionTips(events []LifecycleEvent) map[string][]string {
 	tips := map[string][]string{}
@@ -191,12 +168,47 @@ func validateLifecycle(c LifecycleCommand, events []LifecycleEvent, load func(st
 	}
 	return nil
 }
+
+// lifecycleAdmission is the lifecycle route's one declaration of how a
+// request maps into action vocabulary: a read reports history, a revision or
+// resolve writes, every other command is administrative, and an audit-export
+// additionally holds the export grant its content stands for. An audit-export
+// is an export of record rather than new authored work, so it never admits
+// an operation.
+func lifecycleAdmission(method, kind string) teamAdmission {
+	adm := teamAdmission{action: "evidence.read"}
+	if method != "POST" {
+		return adm
+	}
+	adm.writes = kind != "audit-export"
+	if kind == "revision" || kind == "resolve" {
+		adm.action = "evidence.write"
+	} else {
+		adm.action = "admin"
+	}
+	if kind == "audit-export" {
+		adm.further = []furtherGrant{{action: "export", refusal: "export refused"}}
+	}
+	return adm
+}
+
+// lifecycleIdentity is the identity rule the lifecycle route declares: a
+// command is issued by a human the policy identifies, whose issuer the
+// backup bound can retain.
+func lifecycleIdentity(method string) identityRule {
+	return func(p Principal) (bool, string) {
+		if method == "POST" && (p.Kind != "oidc" || p.Role == "runner" || !reviewText(p.Issuer, 2048)) {
+			return false, "access refused"
+		}
+		return true, ""
+	}
+}
+
 func (s *Store) lifecycleRequest(w http.ResponseWriter, r *http.Request, a *Access, project string) {
 	if r.Method != "GET" && r.Method != "POST" {
 		http.Error(w, "method refused", 405)
 		return
 	}
-	action := "evidence.read"
 	var c LifecycleCommand
 	if r.Method == "POST" {
 		data, e := io.ReadAll(io.LimitReader(r.Body, 8193))
@@ -209,24 +221,16 @@ func (s *Store) lifecycleRequest(w http.ResponseWriter, r *http.Request, a *Acce
 			http.Error(w, "invalid command", 400)
 			return
 		}
-		action = "evidence.write"
-		if c.Kind != "revision" && c.Kind != "resolve" {
-			action = "admin"
-		}
 	}
+	adm := lifecycleAdmission(r.Method, c.Kind)
+	adm.accept = lifecycleIdentity(r.Method)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	p, e := s.authorize(a, r, project, action)
-	if e != nil || (r.Method == "POST" && (p.Kind != "oidc" || p.Role == "runner" || !reviewText(p.Issuer, 2048))) {
-		http.Error(w, "access refused", 403)
+	p, release, ok := s.authorizeWrite(a, r, w, project, adm)
+	if !ok {
 		return
 	}
-	if r.Method == "POST" && c.Kind != "audit-export" {
-		release, err := s.admitAuthor(r, p)
-		if err != nil {
-			http.Error(w, "operation admission refused", 403)
-			return
-		}
+	if release != nil {
 		defer release()
 	}
 	events, e := s.lifecycleEvents(r.Context(), project)
@@ -244,29 +248,22 @@ func (s *Store) lifecycleRequest(w http.ResponseWriter, r *http.Request, a *Acce
 		}{"readmit-hub-lifecycle-history/v1", len(events), events, revisionTips(events), "Downloaded copies remain under local custody and cannot be revoked."})
 		return
 	}
-	if c.Kind == "audit-export" {
-		if _, e := s.authorize(a, r, project, "export"); e != nil {
-			http.Error(w, "export refused", 403)
-			return
-		}
-	}
-	for _, event := range events {
-		if event.Command.ID == c.ID {
-			if reflect.DeepEqual(event.Command, c) && event.Actor == p.Subject && event.Issuer == p.Issuer {
-				s.sendLifecycle(w, r, 200, event, events)
-			} else {
-				http.Error(w, "command id conflict", 409)
-			}
-			return
-		}
-	}
-	var total int
-	if e = s.db.QueryRowContext(r.Context(), `SELECT count(*) FROM readmit_hub_lifecycle`).Scan(&total); e != nil {
+	total, e := lifecycleLog.total(r.Context(), s.db)
+	if e != nil {
 		http.Error(w, "metadata unavailable", 503)
 		return
 	}
-	if c.Expected != len(events) || total >= maxLifecycle {
+	existing, replay, e := lifecycleLog.admit(events, total, c, p.Subject, p.Issuer)
+	if errors.Is(e, errLogIDConflict) {
+		http.Error(w, "command id conflict", 409)
+		return
+	}
+	if errors.Is(e, errLogHead) {
 		http.Error(w, "head conflict or limit", 409)
+		return
+	}
+	if replay {
+		s.sendLifecycle(w, r, 200, existing, events)
 		return
 	}
 	if c.Kind == "remove-user" {
@@ -295,24 +292,7 @@ func (s *Store) lifecycleRequest(w http.ResponseWriter, r *http.Request, a *Acce
 		}
 		event.ReviewHead = len(reviews)
 	}
-	data, e := json.Marshal(event)
-	if e != nil {
-		http.Error(w, "metadata unavailable", 503)
-		return
-	}
-	tx, e := s.db.BeginTx(r.Context(), nil)
-	if e != nil {
-		http.Error(w, "metadata unavailable", 503)
-		return
-	}
-	defer tx.Rollback()
-	if _, e = tx.ExecContext(r.Context(), `INSERT INTO readmit_hub_lifecycle(project,sequence,id,document) VALUES($1,$2,$3,$4)`, project, event.Sequence, c.ID, string(data)); e == nil {
-		_, e = tx.ExecContext(r.Context(), `UPDATE readmit_hub_schema SET team_enabled=true WHERE singleton`)
-	}
-	if e == nil {
-		e = tx.Commit()
-	}
-	if e != nil {
+	if e := lifecycleLog.commit(r.Context(), s.db, project, event); e != nil {
 		http.Error(w, "commit unavailable; retry same id", 503)
 		return
 	}
@@ -330,10 +310,8 @@ func (s *Store) authorize(a *Access, r *http.Request, project, action string) (P
 	if e != nil {
 		return Principal{}, errAccess
 	}
-	for _, event := range events {
-		if event.Command.Kind == "remove-user" && event.Command.Subject == p.Subject && event.Issuer == p.Issuer {
-			return Principal{}, errAccess
-		}
+	if deriveLifecycle(events).isRemoved(p.Issuer, p.Subject) {
+		return Principal{}, errAccess
 	}
 	return p, nil
 }
@@ -342,12 +320,7 @@ func (s *Store) retired(ctx context.Context, project, digest string) (bool, erro
 	if e != nil {
 		return false, e
 	}
-	for _, event := range events {
-		if event.Command.Kind == "retire" && event.Command.Artifact == digest {
-			return true, nil
-		}
-	}
-	return false, nil
+	return deriveLifecycle(events).isRetired(digest), nil
 }
 func (s *Store) sendLifecycle(w http.ResponseWriter, r *http.Request, status int, event LifecycleEvent, events []LifecycleEvent) {
 	if event.Command.Kind != "audit-export" {
@@ -374,5 +347,5 @@ func (s *Store) sendLifecycle(w http.ResponseWriter, r *http.Request, status int
 		ReviewHead int              `json:"review_head"`
 		Reviews    []ReviewEvent    `json:"reviews"`
 		Warning    string           `json:"warning"`
-	}{auditReviewSchema(reviews), event.Project, prefix, len(reviews), reviews, "Downloaded copies remain under local custody and cannot be revoked."})
+	}{deriveReviews(reviews).auditSchema(), event.Project, prefix, len(reviews), reviews, "Downloaded copies remain under local custody and cannot be revoked."})
 }

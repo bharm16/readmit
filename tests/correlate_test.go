@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -56,10 +55,7 @@ func TestCorrelateExecutableLinksDeclaredScopesAndRefusesToMergeCollisions(t *te
 	if err != nil || stderr != "" {
 		t.Fatalf("correlate json: %v %s", err, stderr)
 	}
-	var report correlate.Report
-	if err := json.Unmarshal([]byte(jsonOut), &report, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatalf("report is not one strict %s document: %v", correlate.ReportSchema, err)
-	}
+	report := readStrictOutput[correlate.Report](t, jsonOut)
 	if len(report.Links) != 7 || len(report.Collisions) != 4 || len(report.Unsupported) != 4 {
 		t.Fatalf("report disagrees with the rendered summary: %+v", report.Summary)
 	}
@@ -101,14 +97,8 @@ func TestCorrelateWritesOneNewPrivateFileAndNeverIntoTheCase(t *testing.T) {
 	if _, stderr, err := run(t, "correlate", path, "--rules", correlateRules, "--format", "json", "--output", output); err != nil {
 		t.Fatalf("correlate --output: %v %s", err, stderr)
 	}
-	data, err := os.ReadFile(output)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var report correlate.Report
-	if err := json.Unmarshal(data, &report, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatal(err)
-	}
+	// The written report must itself be a strict readmit-correlation/v1 document.
+	readStrictDocument[correlate.Report](t, output)
 	if runtime.GOOS != "windows" {
 		info, err := os.Stat(output)
 		if err != nil || info.Mode().Perm() != 0600 {
@@ -171,10 +161,7 @@ func TestCorrelateReportsDeclaredSourcesTheCaseDoesNotHave(t *testing.T) {
 	if err != nil || stderr != "" {
 		t.Fatalf("correlate: %v %s", err, stderr)
 	}
-	var report correlate.Report
-	if err := json.Unmarshal([]byte(stdout), &report, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatal(err)
-	}
+	report := readStrictOutput[correlate.Report](t, stdout)
 	unknown := 0
 	for _, item := range report.Unsupported {
 		if item.Code == "unknown_source" {

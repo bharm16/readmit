@@ -43,7 +43,7 @@ func TestSequenceAnalysisRequiresWindowsAndBindsEvidence(t *testing.T) {
 func TestSequenceExplainsDuplicatesWithoutInventingRetriesOrCausality(t *testing.T) {
 	app, root, _ := sequenceWorkspace(t)
 	message := strings.Replace(seqBooking, "20260101120000", "20260101120100+0000", 1)
-	written := writeSequenceCase(t, root, "duplicates", []bundle.Input{{Path: "private", Data: []byte(framed(message) + framed(message)), Options: hl7.Options{Format: hl7.MLLP, Terminator: hl7.CR}, Observations: map[int]bundle.Observation{1: {Direction: bundle.Outbound, ObservedAt: seqTime(1)}, 2: {Direction: bundle.Outbound, ObservedAt: seqTime(2)}}}})
+	written := writeInputs(t, root, "duplicates", []bundle.Input{{Path: "private", Data: []byte(framed(message) + framed(message)), Options: hl7.Options{Format: hl7.MLLP, Terminator: hl7.CR}, Observations: map[int]bundle.Observation{1: {Direction: bundle.Outbound, ObservedAt: seqTime(1)}, 2: {Direction: bundle.Outbound, ObservedAt: seqTime(2)}}}})
 	request := sequenceRequest(root, written.Identity, "")
 	request.Case = "duplicates"
 	request.Analysis = "analysis.json"
@@ -198,7 +198,7 @@ func TestSequenceAnalysisRefusalRecoveryAndWindowedACK(t *testing.T) {
 
 func TestSequenceUnobservedOutputIsMissingEvidenceWithinDeclaredPartialWindow(t *testing.T) {
 	app, root, _ := sequenceWorkspace(t)
-	written := writeSequenceCase(t, root, "partial", []bundle.Input{
+	written := writeInputs(t, root, "partial", []bundle.Input{
 		{Path: "sender", Data: []byte(framed(seqBooking)), Options: hl7.Options{Format: hl7.MLLP, Terminator: hl7.CR}, Observations: map[int]bundle.Observation{1: {Direction: bundle.Outbound, ObservedAt: seqTime(1)}}},
 		{Path: "receiver", Data: []byte(framed(strings.ReplaceAll(seqBooking, "CTL-1", "CTL-OTHER"))), Options: hl7.Options{Format: hl7.MLLP, Terminator: hl7.CR}, Observations: map[int]bundle.Observation{1: {Direction: bundle.Inbound, ObservedAt: seqTime(2)}}},
 	})
@@ -266,7 +266,7 @@ func TestSequenceKeepsCollectionAcceptAndApplicationStagesDistinct(t *testing.T)
 
 func TestSequenceAnalysisHonorsDeclaredCrossSourceACKLink(t *testing.T) {
 	app, root, _ := sequenceWorkspace(t)
-	written := writeSequenceCase(t, root, "crossack", []bundle.Input{
+	written := writeInputs(t, root, "crossack", []bundle.Input{
 		{Path: "sender", Data: []byte(framed(seqBooking)), Options: hl7.Options{Format: hl7.MLLP, Terminator: hl7.CR}, Observations: map[int]bundle.Observation{1: {Direction: bundle.Outbound, ObservedAt: seqTime(1)}}},
 		{Path: "ack", Data: []byte(framed(seqBookingACK)), Options: hl7.Options{Format: hl7.MLLP, Terminator: hl7.CR}, Observations: map[int]bundle.Observation{1: {Direction: bundle.Inbound, ObservedAt: seqTime(2)}}},
 	})
@@ -291,7 +291,7 @@ func TestSequenceAnalysisHonorsDeclaredCrossSourceACKLink(t *testing.T) {
 			t.Fatal("selected rule linked cross-source ACK but analysis claimed missing")
 		}
 	}
-	ambiguous := writeSequenceCase(t, root, "ambiguous-ack", []bundle.Input{
+	ambiguous := writeInputs(t, root, "ambiguous-ack", []bundle.Input{
 		{Path: "sender", Data: []byte(framed(seqBooking) + framed(seqBooking)), Options: hl7.Options{Format: hl7.MLLP, Terminator: hl7.CR}, Observations: map[int]bundle.Observation{1: {Direction: bundle.Outbound, ObservedAt: seqTime(1)}, 2: {Direction: bundle.Outbound, ObservedAt: seqTime(2)}}},
 		{Path: "ack", Data: []byte(framed(seqBookingACK)), Options: hl7.Options{Format: hl7.MLLP, Terminator: hl7.CR}, Observations: map[int]bundle.Observation{1: {Direction: bundle.Inbound, ObservedAt: seqTime(3)}}},
 	})

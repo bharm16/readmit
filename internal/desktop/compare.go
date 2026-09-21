@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"context"
 	"errors"
 	"strconv"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/diff"
 	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/operation"
 )
 
 // MaxComparisonRows bounds one window of a comparison. Two collections align
@@ -138,6 +140,8 @@ type CompareResult struct {
 	Comparison *Comparison `json:"comparison,omitzero"`
 }
 
+func (r *CompareResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
 func (r refusal) comparison() CompareResult {
 	return CompareResult{State: r.state, Reason: r.reason}
 }
@@ -157,11 +161,12 @@ func (r refusal) comparison() CompareResult {
 // interruptible. Neither collection is changed, and no message byte or field
 // value crosses this boundary.
 func (a *App) Compare(request CompareRequest) CompareResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return busyRefusal.comparison()
-	}
-	defer release()
+	return run(a, false, false, func(context.Context) CompareResult {
+		return a.compare(request)
+	})
+}
+
+func (a *App) compare(request CompareRequest) CompareResult {
 	if request.Offset < 0 || request.Limit < 1 || request.Limit > MaxComparisonRows {
 		return CompareResult{State: Failed, Reason: "a comparison renders a window beginning at or after its first row, of between 1 and " + strconv.Itoa(MaxComparisonRows) + " rows"}
 	}
@@ -180,12 +185,9 @@ func (a *App) Compare(request CompareRequest) CompareResult {
 	// The left collection is the one the window verified and displayed, so the
 	// comparison is bound to that identity the way every other read of an open
 	// case is. The right one was chosen here and is reported as it was read.
-	opened, err := bundle.Open(left)
+	_, err := operation.OpenVerifiedCase(left, request.Identity)
 	if err != nil {
-		return CompareResult{State: Failed, Reason: "the case could not be verified as complete, unmodified evidence"}
-	}
-	if request.Identity == "" || request.Identity != opened.Identity {
-		return CompareResult{State: Failed, Reason: "the case identity changed; open the case again before comparing it"}
+		return CompareResult{State: Failed, Reason: err.Error()}
 	}
 	report, err := diff.Compare(
 		diff.Input{Path: left},

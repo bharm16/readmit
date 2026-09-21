@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/bharm16/readmit/internal/durablelog"
 	"github.com/bharm16/readmit/internal/engine"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/testrunner"
@@ -31,6 +32,65 @@ const (
 	Interrupted       State = "interrupted"
 	DeliveryUncertain State = "delivery_uncertain"
 )
+
+// Terminal reports whether a state is one a run ends in when nothing more
+// will happen to it. Recovery, the queue and every consumer that decides
+// what a retained run means read this rather than restating the list.
+func (s State) Terminal() bool {
+	switch s {
+	case Passed, AssertionFailed, ExecutionError, Cancelled, TimedOut:
+		return true
+	}
+	return false
+}
+
+// Decided reports whether a state carries a verdict the evaluator stands
+// behind: passed, assertion_failed or execution_error. A run that was
+// cancelled, timed out or never stopped carries no verdict at all.
+func (s State) Decided() bool {
+	return s == Passed || s == AssertionFailed || s == ExecutionError
+}
+
+// Usability says what one retained summary may be treated as. It is the one
+// lifecycle classification: whether the journal proves execution completed,
+// whether delivery is certain, and whether the state carries a verdict. Every
+// consumer that requires a certain, finalized result asks the summary itself,
+// so the rules have one implementation and cannot disagree with recovery.
+type Usability uint8
+
+const (
+	// UsableResult means the summary is a certain, finalized result.
+	UsableResult Usability = iota
+	// UsabilityNoResult means the run never recorded a finalized result.
+	UsabilityNoResult
+	// UsabilityJournalIncomplete means the journal does not prove execution
+	// completed, so a finalized result beside it cannot be read as whole.
+	UsabilityJournalIncomplete
+	// UsabilityDeliveryUncertain means whether an unobserved message was
+	// sent is unresolved.
+	UsabilityDeliveryUncertain
+	// UsabilityUndecided means the run stopped in a state that carries no
+	// verdict.
+	UsabilityUndecided
+)
+
+// Usability classifies one summary. The checks run in the order a consumer
+// must rule out: a run with no finalized result is not made usable by a whole
+// journal, and an incomplete journal is not repaired by the state it records.
+func (s Summary) Usability() Usability {
+	switch {
+	case s.ResultIdentity == "":
+		return UsabilityNoResult
+	case s.JournalIncomplete:
+		return UsabilityJournalIncomplete
+	case s.DeliveryUncertain:
+		return UsabilityDeliveryUncertain
+	case s.State.Decided():
+		return UsableResult
+	default:
+		return UsabilityUndecided
+	}
+}
 
 // Summary contains no message values or source paths. StopReason distinguishes
 // why execution stopped from whether a delivery's effect is still unknown.
@@ -149,31 +209,17 @@ type payload struct {
 	Size   int    `json:"size"`
 	SHA256 string `json:"sha256"`
 }
-type entry struct {
-	Sequence   int           `json:"sequence"`
-	Previous   string        `json:"previous"`
-	At         time.Time     `json:"at"`
-	Kind       string        `json:"kind"`
-	Occurrence string        `json:"occurrence,omitzero"`
-	Sent       *payload      `json:"sent,omitzero"`
-	Event      *replay.Event `json:"event,omitzero"`
-	Final      *Summary      `json:"final,omitzero"`
-}
 
-// writer's two sticky failures are distinct. failed means the journal can take
-// no further record, so nothing after it is recorded. halted means an evidence
-// write failed, so no further intent is accepted, while the journal may still
-// record how the run stopped.
+// writer's two sticky failures are distinct. the log's own failure means the
+// journal can take no further record, so nothing after it is recorded. halted
+// means an evidence write failed, so no further intent is accepted, while the
+// journal may still record how the run stopped.
 type writer struct {
-	journalBytes int
-	failed       error
-	halted       error
-	finished     bool
-	root         *os.Root
-	journal      evidenceFile
-	sequence     int
-	previous     string
-	summary      Summary
+	log      *durablelog.Writer
+	halted   error
+	finished bool
+	root     *os.Root
+	summary  Summary
 }
 
 // Prepared is one durable run whose spec has already been read. It exists so
@@ -297,8 +343,13 @@ func start(ctx context.Context, plan *testrunner.Plan, output string) (summary S
 		return Summary{}, errors.New("cannot create durable journal")
 	}
 	defer f.Close()
-	w = &writer{root: root, journal: f, previous: digest(raw), summary: Summary{Schema: Schema, State: Ready, StopReason: Ready, Planned: plan.Count()}}
-	if err = w.append(entry{Kind: "ready"}); err != nil {
+	w = &writer{root: root, summary: Summary{Schema: Schema, State: Ready, StopReason: Ready, Planned: plan.Count()}}
+	w.log = durablelog.NewWriter(f, digest(raw), journalLimit, durablelog.Messages{
+		Limit:  errJournalLimit,
+		Sync:   errors.New("cannot sync durable journal; execution stopped"),
+		Encode: errors.New("cannot encode durable journal"),
+	})
+	if err = w.appendReady(); err != nil {
 		return w.summary, err
 	}
 	// Directory entries must reach stable storage too, before any network effect.
@@ -319,7 +370,7 @@ func start(ctx context.Context, plan *testrunner.Plan, output string) (summary S
 	}
 	w.summary.State = Running
 	w.summary.StopReason = Running
-	if err = w.append(entry{Kind: "running"}); err != nil {
+	if err = w.appendRunning(); err != nil {
 		return w.summary, err
 	}
 	artifact, _ := testrunner.ExecuteObserved(ctx, plan, filepath.Join(output, "result"), w)
@@ -363,7 +414,7 @@ func start(ctx context.Context, plan *testrunner.Plan, output string) (summary S
 	if w.summary.DeliveryUncertain {
 		w.summary.State = DeliveryUncertain
 	}
-	if err = w.append(entry{Kind: "finished", Final: &w.summary}); err != nil {
+	if err = w.appendFinished(); err != nil {
 		return w.summary, err
 	}
 	w.finished = true
@@ -494,19 +545,10 @@ func (w *writer) BeforeSend(id string) error {
 			return err
 		}
 	}
-	// Set before attempting persistence: failure may leave only partial intent.
-	w.summary.DeliveryUncertain = true
-	err := w.append(entry{Kind: "intent", Occurrence: id})
-	if errors.Is(err, errJournalLimit) {
-		// The limit is checked before any byte is written, so no intent exists
-		// and the send it would have preceded was never attempted.
-		w.summary.DeliveryUncertain = false
-	}
-	return err
+	return w.appendIntent(id)
 }
 func (w *writer) Sent(id string, raw []byte) error {
-	name := "sent/" + id + ".bin"
-	if err := write(w.root, name, raw); err != nil {
+	if err := write(w.root, sentPath(id), raw); err != nil {
 		w.halted = err
 		return err
 	}
@@ -514,7 +556,7 @@ func (w *writer) Sent(id string, raw []byte) error {
 		w.halted = err
 		return err
 	}
-	return w.append(entry{Kind: "sent", Occurrence: id, Sent: &payload{name, len(raw), digest(raw)}})
+	return w.appendSent(id, raw)
 }
 func (w *writer) Recorded(event replay.Event) error {
 	for _, name := range []string{"result/run/payloads", "result/run", "result"} {
@@ -522,15 +564,7 @@ func (w *writer) Recorded(event replay.Event) error {
 			return err
 		}
 	}
-	if err := w.append(entry{Kind: "recorded", Occurrence: event.OutboundOccurrence, Event: &event}); err != nil {
-		return err
-	}
-	w.summary.Recorded++
-	// Transport halts after the first error; only a matched ACK resolves intent.
-	if event.Delivery == "acknowledged" {
-		w.summary.DeliveryUncertain = false
-	}
-	return nil
+	return w.appendRecorded(event.OutboundOccurrence, event)
 }
 
 // ResumeSchema is the output of a resume: which job it repeated, how many

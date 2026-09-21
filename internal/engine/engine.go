@@ -11,11 +11,11 @@
 package engine
 
 import (
-	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 
 	"github.com/bharm16/readmit/internal/observation"
+	"github.com/bharm16/readmit/internal/strictdoc"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
@@ -65,29 +65,27 @@ func Current(spec string) Pin {
 	return Pin{Schema: Schema, Engine: Version(), Spec: spec, Profile: observation.Profile}
 }
 
-// UnmarshalJSON checks the declared members are present before the strict
-// decode, so a pin from a later release is reported as the version it declares
-// rather than as invalid because of the members that version added.
+// pinDocument is the one strict reading of a retained pin, through strictdoc:
+// a pin from a later release is reported as the version it declares rather
+// than as invalid because of the members that version added.
+var pinDocument = strictdoc.Document{
+	MaxBytes:    MaxPinBytes,
+	Schema:      Schema,
+	Required:    []string{"engine", "spec", "profile"},
+	Invalid:     "invalid engine pin",
+	TooLarge:    "engine pin exceeds its size limit",
+	MustDeclare: "an engine pin declares its contract version",
+	Requires:    "an engine pin declares its build, spec contract and profile",
+	Unsupported: ErrUnsupportedVersion,
+}
+
+// UnmarshalJSON requires the declared members are present before the strict
+// decode. The reading is strictdoc's.
 func (p *Pin) UnmarshalJSON(data []byte) error {
-	var required struct {
-		Schema  *string         `json:"schema"`
-		Engine  *jsontext.Value `json:"engine"`
-		Spec    *jsontext.Value `json:"spec"`
-		Profile *jsontext.Value `json:"profile"`
-	}
-	if err := json.Unmarshal(data, &required); err != nil || required.Schema == nil {
-		return errors.New("an engine pin declares its contract version")
-	}
-	if *required.Schema != Schema {
-		return ErrUnsupportedVersion
-	}
-	if required.Engine == nil || required.Spec == nil || required.Profile == nil {
-		return errors.New("an engine pin declares its build, spec contract and profile")
-	}
 	type plainPin Pin
 	var value plainPin
-	if err := json.Unmarshal(data, &value, json.RejectUnknownMembers(true)); err != nil {
-		return errors.New("invalid engine pin")
+	if err := pinDocument.Decode(data, &value); err != nil {
+		return err
 	}
 	*p = Pin(value)
 	return nil

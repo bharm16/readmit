@@ -14,7 +14,6 @@ import (
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/guide"
 	"github.com/bharm16/readmit/internal/project"
-	"github.com/bharm16/readmit/internal/testlicense"
 )
 
 // Independently authored identities for the frozen readmit-synth-v1 reference
@@ -26,40 +25,8 @@ var sampleIdentities = map[string]string{
 	"invalid":      "ab6d014aa0fc9e2ed9cba7160e73bba17b8753f6a7ca5c3a8618f3ec8ba095a9",
 }
 
-// chooser stands in for the host's native folder dialog. before runs while the
-// dialog is notionally open, so a test can cancel or reenter deterministically.
-type chooser struct {
-	folder string
-	err    error
-	before func()
-	titles []string
-}
-
-func (c *chooser) ChooseFolder(title string) (string, error) {
-	c.titles = append(c.titles, title)
-	if c.before != nil {
-		c.before()
-	}
-	return c.folder, c.err
-}
-
-func newApp(t *testing.T, c *chooser) *desktop.App {
-	t.Helper()
-	return activatedApp(t, c, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
-}
-
-// sample creates the sample workspace through the public facade and returns it.
-func sample(t *testing.T, app *desktop.App) desktop.WorkspaceResult {
-	t.Helper()
-	result := app.CreateSampleWorkspace()
-	if result.State != desktop.Completed || result.Workspace == nil {
-		t.Fatalf("sample workspace: %+v", result)
-	}
-	if filepath.Base(result.Workspace.Root) != "readmit-sample" {
-		t.Fatalf("sample workspace was not created in the chosen folder: %s", result.Workspace.Root)
-	}
-	return result
-}
+// chooser, activatedApp, newApp, sample and the other generic verbs these tests
+// share live in harness_test.go.
 
 func TestSampleWorkspaceIsTheFrozenSyntheticFamilyAndOpensItsCases(t *testing.T) {
 	parent := t.TempDir()
@@ -386,31 +353,6 @@ func TestDefaultRecentPathStaysInsideTheUserConfigurationDirectory(t *testing.T)
 	}
 }
 
-func resolved(t *testing.T, root string) string {
-	t.Helper()
-	target, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	absolute, err := filepath.Abs(target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return absolute
-}
-
-func unique(values []string) []string {
-	seen := make(map[string]bool, len(values))
-	var distinct []string
-	for _, value := range values {
-		if !seen[value] {
-			seen[value] = true
-			distinct = append(distinct, value)
-		}
-	}
-	return distinct
-}
-
 func TestSampleWorkspaceRefusesRetainedOutputWithoutReusingIt(t *testing.T) {
 	parent := t.TempDir()
 	app := newApp(t, &chooser{folder: parent})
@@ -460,26 +402,6 @@ func TestOpenCaseHoldsTheSameOperationSlot(t *testing.T) {
 		t.Fatalf("the facade stayed busy after its operation finished: %+v", opened)
 	}
 }
-
-// writeProject puts a project document into folder and returns the folder. The
-// document is authored here, not produced by the facade, so these tests fail if
-// the facade ever rewrites what a project recorded.
-func writeProject(t *testing.T, folder string, cases string) string {
-	t.Helper()
-	document := `{"schema":"readmit-project/v1","settings":{"title":"Epic scheduling interface",` +
-		`"default_owner":"integration-team","default_interface_version":"siu-2.5.1-v1"},` +
-		`"interface_versions":["siu-2.5.1-v1"],"cases":[` + cases + "]}\n"
-	if err := os.WriteFile(filepath.Join(folder, "project.json"), []byte(document), 0600); err != nil {
-		t.Fatal(err)
-	}
-	return folder
-}
-
-// registeredRegression is one case entry naming the frozen reference identity.
-const registeredRegression = `{"name":"regression","identity":"7d266d0a09e92d3322d6346cf16c9dd37c768c02a11f8ea6c41870adc44915df",` +
-	`"schema":"readmit-case/v1","provenance":"generated","interface_version":"siu-2.5.1-v1",` +
-	`"title":"Duplicate appointment after reschedule","status":"investigating","owner":"scheduling-team",` +
-	`"tags":["duplicate","scheduling"],"incidents":["INC-4821"]}`
 
 func TestOpenProjectReportsTheRecordedDocument(t *testing.T) {
 	root := writeProject(t, t.TempDir(), registeredRegression)
@@ -613,32 +535,6 @@ func sampleProject(t *testing.T, app *desktop.App) string {
 		t.Fatal(err)
 	}
 	return root
-}
-
-// bytesUnder records every byte of an artifact directory, so a later comparison
-// proves that editing a project reached no evidence at all.
-func bytesUnder(t *testing.T, dir string) map[string][]byte {
-	t.Helper()
-	files := map[string][]byte{}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, entry := range entries {
-		path := filepath.Join(dir, entry.Name())
-		if entry.IsDir() {
-			for name, data := range bytesUnder(t, path) {
-				files[entry.Name()+"/"+name] = data
-			}
-			continue
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		files[entry.Name()] = data
-	}
-	return files
 }
 
 func TestOpenRevisionsSeparatesAnEmptyDocumentFromAFailure(t *testing.T) {
@@ -828,13 +724,4 @@ func TestSaveNoteHoldsTheSameOperationSlot(t *testing.T) {
 	if saved := app.SaveNote(root, project.Note{Name: "triage", Title: "Working theory"}); saved.State != desktop.Completed {
 		t.Fatalf("the facade stayed busy after its operation finished: %+v", saved)
 	}
-}
-
-func activatedApp(t testing.TB, chooser desktop.FolderChooser, recent, filters, session string) *desktop.App {
-	t.Helper()
-	app := desktop.New(chooser, recent, filters, session)
-	if result := app.SelectOperationPolicy(testlicense.New(t)); result.State != desktop.Completed {
-		t.Fatal(result)
-	}
-	return app
 }

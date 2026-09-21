@@ -1,10 +1,10 @@
 package desktop
 
 import (
+	"context"
 	"path/filepath"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
-	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/correlate"
 )
 
@@ -31,6 +31,10 @@ type CorrelationReviewResult struct {
 	Output string                  `json:"output,omitzero"`
 }
 
+func (r *CorrelationReviewResult) refuse(state State, reason string) {
+	r.State, r.Reason = state, reason
+}
+
 // OpenCorrelationReview reconstructs the reviewed links, leaving original
 // sequence findings and evidence intact. A caller reusing derived results must
 // send their Mapping; a stale identity returns no view at all.
@@ -47,37 +51,23 @@ func (a *App) DecideCorrelation(request CorrelationReviewRequest) CorrelationRev
 }
 
 func (a *App) correlationReview(request CorrelationReviewRequest, write bool) CorrelationReviewResult {
-	release, ok := a.claim()
-	if !ok {
-		return CorrelationReviewResult{State: Busy, Reason: busyRefusal.reason}
-	}
-	defer release()
-	if write {
-		if err := a.admitAuthor(); err != nil {
-			return CorrelationReviewResult{State: PermissionDenied, Reason: err.Error()}
-		}
-	}
+	return run(a, false, write, func(context.Context) CorrelationReviewResult {
+		return a.reviewCorrelation(request, write)
+	})
+}
+
+func (a *App) reviewCorrelation(request CorrelationReviewRequest, write bool) CorrelationReviewResult {
 	failure := func(reason string) CorrelationReviewResult {
 		return CorrelationReviewResult{State: Failed, Reason: reason}
 	}
 	if request.Offset < 0 {
 		return failure("a correlation review window cannot begin before its first item")
 	}
-	root, declined := resolveFolder(request.Workspace)
+	root, opened, declined := openedCase(request.Workspace, request.Case, request.Identity)
 	if root == "" {
 		return CorrelationReviewResult{State: declined.state, Reason: declined.reason}
 	}
-	casePath, err := artifactpath.Child(root, request.Case)
-	if err != nil {
-		return failure("a case must be one directory entry of the open workspace")
-	}
-	opened, err := bundle.Open(casePath)
-	if err != nil {
-		return failure("the case could not be verified as complete, unmodified evidence")
-	}
-	if request.Identity == "" || request.Identity != opened.Identity {
-		return failure("the case identity changed; reopen the case")
-	}
+	casePath := artifactpath.JoinReference(root, request.Case)
 	report, declined := correlated(root, casePath, request.Rules)
 	if report == nil {
 		if declined.reason != "" {

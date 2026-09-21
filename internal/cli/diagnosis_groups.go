@@ -3,19 +3,17 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/spf13/cobra"
 )
 
-func diagnosisGroupsCommand(ran *bool) *cobra.Command {
+func diagnosisGroupsCommand() *cobra.Command {
 	var output, configPath string
 	cmd := &cobra.Command{
-		Use:   "groups CASE [CASE...] --output NEW_DIRECTORY",
-		Short: "Compare recurring diagnosis signatures without hiding individual findings",
+		Use:         "groups CASE [CASE...] --output NEW_DIRECTORY",
+		Annotations: declareInterruptible(capabilityFree),
+		Short:       "Compare recurring diagnosis signatures without hiding individual findings",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) < 1 || len(args) > diagnose.MaxGroupCases {
 				return errors.New("diagnosis grouping requires 1 to 16 cases")
@@ -23,16 +21,14 @@ func diagnosisGroupsCommand(ran *bool) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
-			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer cancel()
+			ctx := cmd.Context()
 			if output == "" {
-				return errors.New("diagnosis grouping requires --output with a new directory")
+				return usage("diagnosis grouping requires --output with a new directory")
 			}
 			config := diagnose.DefaultConfig()
 			if cmd.Flags().Changed("config") {
 				if configPath == "" {
-					return errors.New("diagnosis configuration file cannot be empty")
+					return usage("diagnosis configuration file cannot be empty")
 				}
 				data, err := readInputFile(configPath, 1<<20)
 				if err != nil {

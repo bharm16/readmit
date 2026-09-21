@@ -19,11 +19,7 @@ const (
 // deliberately outside every directory a test packs.
 func keyMaterial(t *testing.T, value string) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "test-only-key-material")
-	if err := os.WriteFile(path, []byte(value+"\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	return path
+	return writeDocument(t, t.TempDir(), "test-only-key-material", value+"\n")
 }
 
 // registerControl registers one control in a new protection document.

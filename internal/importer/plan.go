@@ -26,6 +26,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/strictdoc"
 )
 
 // The three contract versions this package owns. A new member of any of them is
@@ -121,32 +122,29 @@ type Plan struct {
 	Members []string `json:"members"`
 }
 
+// planDocument is the one strict reading of a plan: the four refusals are
+// strictdoc's, tested there once, and a later contract version reads as
+// unsupported rather than as invalid.
+var planDocument = strictdoc.Document{
+	MaxBytes:    MaxPlanBytes,
+	Schema:      PlanSchema,
+	Required:    []string{"framing", "terminator", "encoding", "direction", "members"},
+	Invalid:     "invalid import plan",
+	TooLarge:    "import plan exceeds its size limit",
+	MustDeclare: "an import plan declares its contract version",
+	Requires:    "an import plan declares framing, terminator, encoding, direction, and an explicit member list",
+	Unsupported: ErrUnsupportedVersion,
+}
+
 // UnmarshalJSON requires every member explicitly, so an omitted declaration
-// cannot decode into a silently permissive zero value, and then re-decodes with
-// unknown members refused so a misspelled declaration is an error rather than a
-// declaration that quietly did nothing.
+// cannot decode into a silently permissive zero value, and refuses unknown
+// members so a misspelled declaration is an error rather than a declaration
+// that quietly did nothing. The reading is strictdoc's.
 func (p *Plan) UnmarshalJSON(data []byte) error {
-	var required struct {
-		Schema     *string   `json:"schema"`
-		Framing    *string   `json:"framing"`
-		Terminator *string   `json:"terminator"`
-		Encoding   *string   `json:"encoding"`
-		Direction  *string   `json:"direction"`
-		Members    *[]string `json:"members"`
-	}
-	if err := json.Unmarshal(data, &required); err != nil || required.Schema == nil {
-		return errors.New("an import plan declares its contract version")
-	}
-	if *required.Schema != PlanSchema {
-		return ErrUnsupportedVersion
-	}
-	if required.Framing == nil || required.Terminator == nil || required.Encoding == nil || required.Direction == nil || required.Members == nil {
-		return errors.New("an import plan declares framing, terminator, encoding, direction, and an explicit member list")
-	}
 	type plainPlan Plan
 	var value plainPlan
-	if err := json.Unmarshal(data, &value, json.RejectUnknownMembers(true)); err != nil {
-		return errors.New("invalid import plan")
+	if err := planDocument.Decode(data, &value); err != nil {
+		return err
 	}
 	*p = Plan(value)
 	return nil
@@ -156,9 +154,6 @@ func (p *Plan) UnmarshalJSON(data []byte) error {
 // errors; there is no migration and no repair. Diagnostics name the declaration
 // at fault and never repeat the value that failed.
 func DecodePlan(data []byte) (Plan, error) {
-	if len(data) > MaxPlanBytes {
-		return Plan{}, errors.New("import plan exceeds its size limit")
-	}
 	var plan Plan
 	if err := json.Unmarshal(data, &plan); err != nil {
 		if errors.Is(err, ErrUnsupportedVersion) {

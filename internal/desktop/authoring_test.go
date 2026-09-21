@@ -22,8 +22,7 @@ const authoringTarget = `{"schema":"readmit-target/v1","test_endpoint":true,"add
 func authoringWorkspace(t *testing.T) (*desktop.App, string, string) {
 	t.Helper()
 	root := t.TempDir()
-	state := t.TempDir()
-	app := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
+	app := workspaceApp(t)
 	incident := writeCase(t, root, "incident", framed(repBooking)+framed(repAccepted)+framed(repReschedule)+framed(repGarbage))
 	if err := os.WriteFile(filepath.Join(root, "test-target.json"), []byte(authoringTarget), 0600); err != nil {
 		t.Fatal(err)

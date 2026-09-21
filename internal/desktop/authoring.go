@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"context"
 	"errors"
 	"github.com/bharm16/readmit/internal/guide"
 	"github.com/bharm16/readmit/internal/replay"
@@ -65,6 +66,8 @@ type TestResult struct {
 	Test   *TestDraft `json:"test,omitzero"`
 }
 
+func (r *TestResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
 func (r refusal) test() TestResult { return TestResult{State: r.state, Reason: r.reason} }
 
 // AuthorTest answers one stage of a test draft and reports what the draft now
@@ -79,11 +82,12 @@ func (r refusal) test() TestResult { return TestResult{State: r.state, Reason: r
 // under the case reader's own limits once it starts, so it holds the operation
 // slot but is not interruptible.
 func (a *App) AuthorTest(request TestRequest) TestResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return busyRefusal.test()
-	}
-	defer release()
+	return run(a, false, false, func(context.Context) TestResult {
+		return a.authorTest(request)
+	})
+}
+
+func (a *App) authorTest(request TestRequest) TestResult {
 	root, source, draft, declined := a.authoring(request)
 	if source == nil {
 		return declined.test()
@@ -112,11 +116,12 @@ func (a *App) AuthorTest(request TestRequest) TestResult {
 // afterwards, so the identity this reports is the identity of the bytes that
 // are on disk.
 func (a *App) SaveTest(request TestRequest) TestResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return busyRefusal.test()
-	}
-	defer release()
+	return run(a, false, false, func(context.Context) TestResult {
+		return a.saveTest(request)
+	})
+}
+
+func (a *App) saveTest(request TestRequest) TestResult {
 	root, source, draft, declined := a.authoring(request)
 	if source == nil {
 		return declined.test()
@@ -154,16 +159,13 @@ func (a *App) SaveTest(request TestRequest) TestResult {
 // dropped from the set. Nothing here approves anything, and no proposal reaches
 // the draft until ApproveExpectations is given a decision naming it.
 func (a *App) SuggestExpectations(request TestRequest) TestResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return busyRefusal.test()
-	}
-	defer release()
-	root, source, draft, suggestions, declined := a.proposing(request)
-	if source == nil {
-		return declined.test()
-	}
-	return authored(root, source, draft, TestDraft{Suggestions: &suggestions})
+	return run(a, false, false, func(context.Context) TestResult {
+		root, source, draft, suggestions, declined := a.proposing(request)
+		if source == nil {
+			return declined.test()
+		}
+		return authored(root, source, draft, TestDraft{Suggestions: &suggestions})
+	})
 }
 
 // ApproveExpectations records what a person decided about proposed expectations
@@ -176,14 +178,12 @@ func (a *App) SuggestExpectations(request TestRequest) TestResult {
 // refused by identity, an unsupported proposal cannot be approved at all, and a
 // proposal no decision names is reported as not reviewed and recorded nowhere.
 func (a *App) ApproveExpectations(request TestRequest) TestResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return busyRefusal.test()
-	}
-	defer release()
-	if err := a.admitAuthor(); err != nil {
-		return TestResult{State: PermissionDenied, Reason: err.Error()}
-	}
+	return run(a, false, true, func(context.Context) TestResult {
+		return a.approveExpectations(request)
+	})
+}
+
+func (a *App) approveExpectations(request TestRequest) TestResult {
 	if request.Review == nil {
 		return TestResult{State: Failed, Reason: "an approval states what was decided about the proposals it applies to"}
 	}
@@ -222,20 +222,9 @@ func (a *App) proposing(request TestRequest) (string, *bundle.Bundle, testauthor
 // verified, so the contract a draft declares is written here rather than in the
 // interface.
 func (a *App) authoring(request TestRequest) (string, *bundle.Bundle, testauthor.Draft, refusal) {
-	root, declined := resolveFolder(request.Workspace)
+	root, source, declined := openedCase(request.Workspace, request.Case, request.Identity)
 	if root == "" {
 		return "", nil, testauthor.Draft{}, declined
-	}
-	path, err := artifactpath.Child(root, request.Case)
-	if err != nil {
-		return "", nil, testauthor.Draft{}, refusal{Failed, "a case must be named by one directory entry of the open workspace"}
-	}
-	source, err := bundle.Open(path)
-	if err != nil {
-		return "", nil, testauthor.Draft{}, refusal{Failed, "the case could not be verified as complete, unmodified evidence"}
-	}
-	if request.Identity == "" || request.Identity != source.Identity {
-		return "", nil, testauthor.Draft{}, refusal{Failed, "the case identity changed; reopen the grid before authoring a test"}
 	}
 	draft := request.Draft
 	if draft.Schema == "" {

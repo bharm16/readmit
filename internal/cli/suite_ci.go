@@ -7,26 +7,25 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func suiteCICommand(ran *bool) *cobra.Command {
+func suiteCICommand() *cobra.Command {
 	var request suite.CIRequest
 	var send bool
 	var deadline string
-	command := &cobra.Command{Use: "ci FILE", Short: "Execute a saved suite once with private evidence and fixed-label CI summaries", RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
+	command := &cobra.Command{Use: "ci FILE", Short: "Execute a saved suite once with private evidence and fixed-label CI summaries", Annotations: declareInterruptible(capabilityExecute), RunE: func(cmd *cobra.Command, args []string) error {
 		result := suite.CIError()
 		if len(args) == 1 && send {
 			request.Path = args[0]
-			ctx, cancel, err := runContext(cmd.Context(), deadline)
+			ctx, cancel, err := deadlineContext(cmd.Context(), deadline)
 			if err == nil {
 				defer cancel()
 				result = suite.RunCI(ctx, request)
 			}
 		}
 		if err := writeJSON(cmd, result); err != nil {
-			return &ExitError{Code: 2, Err: errors.New("cannot write CI summary")}
+			return refusal(errors.New("cannot write CI summary"))
 		}
 		if result.ExitCode != 0 {
-			return &ExitError{Code: result.ExitCode, Err: errors.New("suite CI gate did not pass; inspect retained evidence privately"), Reported: true}
+			return verdict(result.ExitCode, errors.New("suite CI gate did not pass; inspect retained evidence privately"))
 		}
 		return nil
 	}}

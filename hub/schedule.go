@@ -286,24 +286,7 @@ func notificationState(v string) bool {
 	return false
 }
 func readScheduleFile(root *os.Root, name string, limit int64) ([]byte, error) {
-	info, e := root.Lstat(name)
-	if e != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || info.Size() > limit {
-		return nil, ErrSchedule
-	}
-	f, e := root.Open(name)
-	if e != nil {
-		return nil, ErrSchedule
-	}
-	defer f.Close()
-	opened, e := f.Stat()
-	if e != nil || !os.SameFile(info, opened) {
-		return nil, ErrSchedule
-	}
-	b, e := io.ReadAll(io.LimitReader(f, limit+1))
-	if e != nil || int64(len(b)) > limit {
-		return nil, ErrSchedule
-	}
-	return b, nil
+	return readPrivatePolicyRoot(root, name, limit)
 }
 func writeScheduleHistory(root *os.Root, h ScheduleHistory) error {
 	b, e := json.Marshal(h)

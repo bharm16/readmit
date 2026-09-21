@@ -32,8 +32,7 @@ const (
 func reproducerWorkspace(t *testing.T) (*desktop.App, string, string) {
 	t.Helper()
 	root := t.TempDir()
-	state := t.TempDir()
-	app := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
+	app := workspaceApp(t)
 	incident := writeCase(t, root, "incident", framed(repBooking)+framed(repAccepted)+framed(repReschedule)+framed(repGarbage))
 	return app, root, incident.Identity
 }

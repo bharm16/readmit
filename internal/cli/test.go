@@ -4,9 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/bharm16/readmit/internal/testrunner"
 	"github.com/spf13/cobra"
@@ -16,41 +13,33 @@ import (
 // instruction deliberately avoids echoing private command-line paths.
 const testRerun = "Rerun: reset the declared initial state, then readmit test SPEC --send --output NEW_RESULT"
 
-func testCommand(ran *bool) *cobra.Command {
+func testCommand() *cobra.Command {
 	var output string
 	var send bool
 	command := &cobra.Command{
-		Use: "test SPEC", Short: "Evaluate a declarative regression test against an explicit test target",
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return errors.New("test requires exactly one spec file")
-			}
-			return nil
-		},
+		Use: "test SPEC", Short: "Evaluate a declarative regression test against an explicit test target", Annotations: declareInterruptible(capabilityExecuteIfSend),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if send && output == "" || !send && output != "" {
-				return &ExitError{Code: 2, Err: errors.New("test requires --send and --output together; omit both for local validation")}
+				return usage("test requires --send and --output together; omit both for local validation")
 			}
 			if !send {
 				plan, err := testrunner.Prepare(args[0])
 				if err != nil {
-					return &ExitError{Code: 2, Err: err}
+					return refusal(err)
 				}
 				if err := writeLines(cmd.OutOrStdout(), func(w io.Writer) {
 					fmt.Fprintln(w, "Local validation: no connection opened, no verdict or result artifact produced")
 					writeEnvironmentBanner(w, plan.Environment())
 					fmt.Fprintf(w, "Observation boundary: %s\nMessages: %d\n%s\n", plan.Boundary(), plan.Count(), testRerun)
 				}); err != nil {
-					return &ExitError{Code: 2, Err: errors.New("cannot write test preview")}
+					return refusal(errors.New("cannot write test preview"))
 				}
 				return nil
 			}
-			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer cancel()
+			ctx := cmd.Context()
 			artifact, err := testrunner.Run(ctx, args[0], output)
 			if err != nil {
-				return &ExitError{Code: 2, Err: err}
+				return refusal(err)
 			}
 			result := artifact.Result
 			label := "Test execution error"
@@ -72,10 +61,10 @@ func testCommand(ran *bool) *cobra.Command {
 				}
 				fmt.Fprintf(w, "Result: %s\nOutcome: %s\nObservation boundary: %s\nAssertions: %d\nContains source values: true (customer-local-only)\n%s\n", artifact.Identity, result.Status, result.ObservationBoundary, len(result.Assertions), testRerun)
 			}); err != nil {
-				return &ExitError{Code: 2, Err: errors.New("cannot write test summary")}
+				return refusal(errors.New("cannot write test summary"))
 			}
 			if result.Status != testrunner.Pass {
-				return &ExitError{Code: result.Status.ExitCode(), Err: errors.New("test completed with a nonpassing result; inspect customer-local evidence"), Reported: true}
+				return verdict(result.Status.ExitCode(), errors.New("test completed with a nonpassing result; inspect customer-local evidence"))
 			}
 			return nil
 		},

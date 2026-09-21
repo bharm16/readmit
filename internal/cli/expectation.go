@@ -1,61 +1,43 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"github.com/bharm16/readmit/internal/baseline"
 	"github.com/bharm16/readmit/internal/expectation"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/suite"
-	"github.com/bharm16/readmit/internal/testrunner"
 	"github.com/spf13/cobra"
 )
 
-func expectationCommand(ran *bool) *cobra.Command {
+func expectationCommand() *cobra.Command {
 	root := &cobra.Command{Use: "expectation", Short: "Review and release immutable test versions with profile pins"}
 	for _, approve := range []bool{false, true} {
 		var id, previous, review, approver, rationale, output string
 		var profiles []string
 		var show bool
 		name := "review"
+		capability := capabilityFree
 		if approve {
 			name = "release"
+			capability = capabilityAuthor
 		}
-		command := &cobra.Command{Use: name + " SPEC", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
-			raw, err := baseline.ReadBytes(args[0], testrunner.MaxSpecBytes)
-			if err != nil {
-				return err
-			}
-			pins, err := expectation.ReadProfiles(profiles)
-			if err != nil {
-				return err
-			}
-			var parent *expectation.Release
-			if previous != "" {
-				p, e := expectation.Read(previous)
-				if e != nil {
-					return e
-				}
-				parent = &p
-			}
+		command := &cobra.Command{Use: name + " SPEC", Annotations: declare(capability), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+			request := operation.ExpectationRequest{ID: id, Spec: args[0], Previous: previous, Output: output, Profiles: profiles, ShowValues: show, Review: review, Approver: approver, Rationale: rationale}
 			if !approve {
-				report, e := expectation.Review(id, raw, pins, parent, show)
+				result, e := operation.ReviewExpectation(request)
 				if e != nil {
 					return e
 				}
-				return writeJSON(cmd, report)
+				return writeJSON(cmd, result.Comparison)
 			}
 			if output == "" {
-				return errors.New("release requires a new --output file")
+				return usage("release requires a new --output file")
 			}
-			release, err := expectation.Approve(id, raw, pins, parent, review, approver, rationale)
+			result, err := operation.ApproveExpectation(request)
 			if err != nil {
 				return err
 			}
-			if err = expectation.Save(output, release); err != nil {
-				return err
-			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Released test revision %d with identity %s. Local reviewer declaration is not authenticated.\n", release.Baseline.Revision, release.Identity())
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Released test revision %d with identity %s. Local reviewer declaration is not authenticated.\n", result.Approved.Baseline.Revision, result.Approved.Identity())
 			return err
 		}}
 		command.Flags().StringVar(&id, "id", "", "Stable test identity (required)")
@@ -72,8 +54,7 @@ func expectationCommand(ran *bool) *cobra.Command {
 		root.AddCommand(command)
 	}
 	var show bool
-	inspect := &cobra.Command{Use: "show RELEASE", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
+	inspect := &cobra.Command{Use: "show RELEASE", Annotations: declare(capabilityFree), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		r, e := expectation.Read(args[0])
 		if e != nil {
 			return e
@@ -97,10 +78,9 @@ func expectationCommand(ran *bool) *cobra.Command {
 	root.AddCommand(inspect)
 	var refs string
 	var impactValues bool
-	impact := &cobra.Command{Use: "impact PREVIOUS RELEASE SUITE", Args: cobra.ExactArgs(3), RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
+	impact := &cobra.Command{Use: "impact PREVIOUS RELEASE SUITE", Annotations: declare(capabilityFree), Args: cobra.ExactArgs(3), RunE: func(cmd *cobra.Command, args []string) error {
 		if refs == "" {
-			return errors.New("impact requires --releases reference file")
+			return usage("impact requires --releases reference file")
 		}
 		from, e := expectation.Read(args[0])
 		if e != nil {

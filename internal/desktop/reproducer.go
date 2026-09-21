@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"context"
 	"errors"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
@@ -44,6 +45,8 @@ type ReproducerResult struct {
 	Reproducer *Reproducer `json:"reproducer,omitzero"`
 }
 
+func (r *ReproducerResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
 func (r refusal) reproducer() ReproducerResult {
 	return ReproducerResult{State: r.state, Reason: r.reason}
 }
@@ -77,23 +80,17 @@ func (a *App) UndoReproducer(request ReproducerRequest) ReproducerResult {
 // that change, so the verification, the operation slot and every refusal around
 // them are written here once.
 func (a *App) changed(request ReproducerRequest, apply func(reproducer.Plan) (reproducer.Plan, error)) ReproducerResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return busyRefusal.reproducer()
-	}
-	defer release()
-	if err := a.admitAuthor(); err != nil {
-		return ReproducerResult{State: PermissionDenied, Reason: err.Error()}
-	}
-	_, source, plan, declined := a.opened(request)
-	if source == nil {
-		return declined.reproducer()
-	}
-	changed, err := apply(plan)
-	if err != nil {
-		return ReproducerResult{State: Failed, Reason: err.Error()}
-	}
-	return resolved(source, changed)
+	return run(a, false, true, func(context.Context) ReproducerResult {
+		_, source, plan, declined := a.opened(request)
+		if source == nil {
+			return declined.reproducer()
+		}
+		changed, err := apply(plan)
+		if err != nil {
+			return ReproducerResult{State: Failed, Reason: err.Error()}
+		}
+		return resolved(source, changed)
+	})
 }
 
 // BuildReproducer writes the reproducer into a new folder of the open
@@ -106,14 +103,12 @@ func (a *App) changed(request ReproducerRequest, apply func(reproducer.Plan) (re
 // artifact is refused by the same output policy the command line uses. The
 // result is read back from what was actually written.
 func (a *App) BuildReproducer(request ReproducerRequest) ReproducerResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return busyRefusal.reproducer()
-	}
-	defer release()
-	if err := a.admitAuthor(); err != nil {
-		return ReproducerResult{State: PermissionDenied, Reason: err.Error()}
-	}
+	return run(a, false, true, func(context.Context) ReproducerResult {
+		return a.buildReproducer(request)
+	})
+}
+
+func (a *App) buildReproducer(request ReproducerRequest) ReproducerResult {
 	root, source, plan, declined := a.opened(request)
 	if source == nil {
 		return declined.reproducer()
@@ -150,20 +145,9 @@ func (a *App) BuildReproducer(request ReproducerRequest) ReproducerResult {
 // A request carrying no plan starts one bound to the evidence just verified, so
 // the contract a plan declares is written here rather than in the interface.
 func (a *App) opened(request ReproducerRequest) (string, *bundle.Bundle, reproducer.Plan, refusal) {
-	root, declined := resolveFolder(request.Workspace)
+	root, source, declined := openedCase(request.Workspace, request.Case, request.Identity)
 	if root == "" {
 		return "", nil, reproducer.Plan{}, declined
-	}
-	path, err := artifactpath.Child(root, request.Case)
-	if err != nil {
-		return "", nil, reproducer.Plan{}, refusal{Failed, "a case must be named by one directory entry of the open workspace"}
-	}
-	source, err := bundle.Open(path)
-	if err != nil {
-		return "", nil, reproducer.Plan{}, refusal{Failed, "the case could not be verified as complete, unmodified evidence"}
-	}
-	if request.Identity == "" || request.Identity != source.Identity {
-		return "", nil, reproducer.Plan{}, refusal{Failed, "the case identity changed; reopen the grid before editing a reproducer"}
 	}
 	plan := request.Plan
 	if plan.Schema == "" && plan.Case == "" && len(plan.Steps) == 0 {
@@ -218,6 +202,10 @@ type ReproducerComparisonResult struct {
 	Comparison *reproducer.Comparison `json:"comparison,omitzero"`
 }
 
+func (r *ReproducerComparisonResult) refuse(state State, reason string) {
+	r.State, r.Reason = state, reason
+}
+
 func (r refusal) reproducerComparison() ReproducerComparisonResult {
 	return ReproducerComparisonResult{State: r.state, Reason: r.reason}
 }
@@ -243,11 +231,12 @@ func (r refusal) reproducerComparison() ReproducerComparisonResult {
 // interruptible. Nothing is changed, and no message byte or field value crosses
 // this boundary.
 func (a *App) CompareReproducers(request ReproducerComparisonRequest) ReproducerComparisonResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return busyRefusal.reproducerComparison()
-	}
-	defer release()
+	return run(a, false, false, func(context.Context) ReproducerComparisonResult {
+		return a.compareReproducers(request)
+	})
+}
+
+func (a *App) compareReproducers(request ReproducerComparisonRequest) ReproducerComparisonResult {
 	root, declined := resolveFolder(request.Workspace)
 	if root == "" {
 		return declined.reproducerComparison()

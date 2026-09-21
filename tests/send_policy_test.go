@@ -61,14 +61,7 @@ func approvedDestinations(t *testing.T, directory string, destinations ...string
 
 func readDecision(t *testing.T, path string) sendpolicy.Decision {
 	t.Helper()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("a policy decision was not retained: %v", err)
-	}
-	var decision sendpolicy.Decision
-	if err := json.Unmarshal(data, &decision, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatalf("a retained decision does not read back strictly: %v", err)
-	}
+	decision := readStrictDocument[sendpolicy.Decision](t, path)
 	if decision.Schema != sendpolicy.DecisionSchema {
 		t.Fatalf("a retained decision declares %q", decision.Schema)
 	}

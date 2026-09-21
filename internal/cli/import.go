@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
@@ -51,9 +49,9 @@ func (d declaration) plan(cmd *cobra.Command, saved string) (importer.Plan, erro
 	stated := declarationStated(cmd)
 	switch {
 	case saved != "" && stated:
-		return importer.Plan{}, errors.New(cmd.Name() + " reads a saved plan or the declaration flags, never both")
+		return importer.Plan{}, usage("%s reads a saved plan or the declaration flags, never both", cmd.Name())
 	case saved == "" && !stated:
-		return importer.Plan{}, errors.New(cmd.Name() + " requires --plan, or --framing, --terminator, --encoding and --direction declared on the command line")
+		return importer.Plan{}, usage("%s requires --plan, or --framing, --terminator, --encoding and --direction declared on the command line", cmd.Name())
 	case saved != "":
 		data, err := readInputFile(saved, importer.MaxPlanBytes)
 		if err != nil {
@@ -84,7 +82,7 @@ func (d declaration) plan(cmd *cobra.Command, saved string) (importer.Plan, erro
 // import actually ran under.
 func readRecipe(cmd *cobra.Command, path, saved string) (importer.Recipe, error) {
 	if saved != "" || declarationStated(cmd) {
-		return importer.Recipe{}, errors.New("import reads a mapping recipe or an import plan, never both")
+		return importer.Recipe{}, usage("import reads a mapping recipe or an import plan, never both")
 	}
 	data, err := readInputFile(path, importer.MaxRecipeBytes)
 	if err != nil {
@@ -93,22 +91,22 @@ func readRecipe(cmd *cobra.Command, path, saved string) (importer.Recipe, error)
 	return importer.DecodeRecipe(data)
 }
 
-func importCommand(ran *bool) *cobra.Command {
+func importCommand() *cobra.Command {
 	var saved, mapping, output, receipt string
 	var files, folders, archives []string
 	var preview bool
 	var declared declaration
 	cmd := &cobra.Command{
-		Use:   "import --file FILE --framing raw --terminator cr --encoding utf-8 --direction inbound --output NEW_DIRECTORY --receipt NEW_FILE",
-		Short: "Import declared files, folders, and archives into a new case bundle",
-		Args:  cobra.NoArgs,
+		Use:         "import --file FILE --framing raw --terminator cr --encoding utf-8 --direction inbound --output NEW_DIRECTORY --receipt NEW_FILE",
+		Annotations: declareInterruptible(capabilityAuthor),
+		Short:       "Import declared files, folders, and archives into a new case bundle",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if preview && (output != "" || receipt != "") {
-				return errors.New("import previews what would be extracted or writes a case, never both")
+				return usage("import previews what would be extracted or writes a case, never both")
 			}
 			if !preview && (output == "" || receipt == "") {
-				return errors.New("import requires --preview, or --output with a new directory and --receipt with a new file")
+				return usage("import requires --preview, or --output with a new directory and --receipt with a new file")
 			}
 			var plan importer.Plan
 			var recipe importer.Recipe
@@ -134,8 +132,7 @@ func importCommand(ran *bool) *cobra.Command {
 					return errors.New("the import receipt destination must be a new file")
 				}
 			}
-			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer cancel()
+			ctx := cmd.Context()
 			importedAt := time.Now().UTC()
 			var extraction *importer.Extraction
 			if mapping != "" {
@@ -191,7 +188,7 @@ func importCommand(ran *bool) *cobra.Command {
 			return renderImport(cmd.OutOrStdout(), document, b)
 		},
 	}
-	cmd.AddCommand(engineImportCommand(ran))
+	cmd.AddCommand(engineImportCommand())
 	cmd.Flags().StringVar(&mapping, "recipe", "", "Existing readmit-mapping-recipe/v1 JSON file mapping a CSV, JSON, XML, or text envelope")
 	cmd.Flags().StringVar(&saved, "plan", "", "Existing readmit-import-plan/v1 JSON file holding the declarations below")
 	addDeclarationFlags(cmd, &declared, true)

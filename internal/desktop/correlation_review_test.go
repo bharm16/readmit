@@ -256,7 +256,7 @@ func TestCorrelationReviewWindowsKeepCountsAndStaleRulePinsRefuse(t *testing.T) 
 	for i := 0; i < 205; i++ {
 		source.WriteString(framed(strings.Replace(seqBooking, "CTL-1", fmt.Sprintf("CTL-%d", i), 1)))
 	}
-	written := writeSequenceCase(t, root, "large", []bundle.Input{
+	written := writeInputs(t, root, "large", []bundle.Input{
 		{Path: "one", Data: []byte(source.String()), Options: hl7.Options{Format: hl7.MLLP, Terminator: hl7.CR}},
 		{Path: "two", Data: []byte(source.String()), Options: hl7.Options{Format: hl7.MLLP, Terminator: hl7.CR}},
 	})

@@ -1,15 +1,9 @@
 package tests
 
 import (
-	"bufio"
-	"bytes"
-	"context"
 	"encoding/base64"
 	"encoding/json/v2"
-	"errors"
-	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -57,11 +51,7 @@ func providerCommand(t *testing.T) string {
 // with. It is deliberately outside every directory a scan is pointed at.
 func testOnlyMaterial(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "test-only-material")
-	if err := os.WriteFile(path, []byte(testOnlyCredential+"\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	return path
+	return writeDocument(t, t.TempDir(), "test-only-material", testOnlyCredential+"\n")
 }
 
 // registerReference registers one reference in a new store and returns both
@@ -79,18 +69,6 @@ func registerReference(t *testing.T, directory, address string, extra ...string)
 		t.Fatalf("secret add: %v %s", err, stderr)
 	}
 	return store, stdout
-}
-
-func exitCode(t *testing.T, err error) int {
-	t.Helper()
-	if err == nil {
-		return 0
-	}
-	var status *exec.ExitError
-	if !errors.As(err, &status) {
-		t.Fatalf("command did not exit with a status: %v", err)
-	}
-	return status.ExitCode()
 }
 
 // requireMasked fails when any readmit output or artifact repeats a credential.
@@ -348,32 +326,12 @@ func credentialTargetFile(t *testing.T, directory, address string) string {
 // have been handled, and returns its address and a function that waits for it.
 func startFixtureReceiver(t *testing.T, directory string) (string, func()) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	command := testCommand(ctx, t, "listen", "--address", "127.0.0.1:0", "--mode", "fixed",
+	receiver := startReceiver(t, 20*time.Second, "listen", "--address", "127.0.0.1:0", "--mode", "fixed",
 		"--output", filepath.Join(directory, "recorded"), "--observation", filepath.Join(directory, "observation.json"),
 		"--max-messages", "2", "--idle-timeout", "5s")
-	var diagnostic bytes.Buffer
-	command.Stderr = &diagnostic
-	pipe, err := command.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := command.Start(); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { cancel(); _ = command.Wait() })
-	reader := bufio.NewReader(pipe)
-	ready, err := reader.ReadString('\n')
-	if err != nil || !strings.HasPrefix(ready, "Listening: ") {
-		t.Fatalf("receiver not ready: %v", err)
-	}
-	address := strings.TrimSpace(strings.TrimPrefix(ready, "Listening: "))
-	return address, func() {
+	return receiver.address, func() {
 		t.Helper()
-		_, _ = io.Copy(io.Discard, reader)
-		if err := command.Wait(); err != nil {
-			t.Fatalf("receiver: %v %s", err, diagnostic.String())
-		}
+		receiver.wait(t)
 	}
 }
 

@@ -1,15 +1,10 @@
 package tests
 
 import (
-	"bufio"
 	"bytes"
-	"context"
 	"encoding/json/v2"
-	"errors"
-	"io"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -53,53 +48,12 @@ func testTarget(t *testing.T, dir, address string) {
 
 func testListener(t *testing.T, dir, mode string) func() {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	cmd := testCommand(ctx, t, "listen", "--address", "127.0.0.1:0", "--mode", mode, "--output", filepath.Join(dir, "received-case"), "--observation", filepath.Join(dir, "test-observation.json"), "--max-messages", "2", "--idle-timeout", "3s")
-	var diagnostic bytes.Buffer
-	cmd.Stderr = &diagnostic
-	pipe, err := cmd.StdoutPipe()
-	if err != nil {
-		cancel()
-		t.Fatal(err)
-	}
-	if err := cmd.Start(); err != nil {
-		cancel()
-		t.Fatal(err)
-	}
-	waited := false
-	t.Cleanup(func() {
-		cancel()
-		if !waited {
-			_ = cmd.Wait()
-		}
-	})
-	reader := bufio.NewReader(pipe)
-	ready, err := reader.ReadString('\n')
-	if err != nil || !strings.HasPrefix(ready, "Listening: ") {
-		t.Fatal("test listener not ready")
-	}
-	testTarget(t, dir, strings.TrimSpace(strings.TrimPrefix(ready, "Listening: ")))
+	receiver := startReceiver(t, 15*time.Second, "listen", "--address", "127.0.0.1:0", "--mode", mode, "--output", filepath.Join(dir, "received-case"), "--observation", filepath.Join(dir, "test-observation.json"), "--max-messages", "2", "--idle-timeout", "3s")
+	testTarget(t, dir, receiver.address)
 	return func() {
 		t.Helper()
-		_, _ = io.Copy(io.Discard, reader)
-		err := cmd.Wait()
-		waited = true
-		if err != nil {
-			t.Fatalf("test listener: %v %s", err, diagnostic.String())
-		}
+		receiver.wait(t)
 	}
-}
-
-func processCode(t *testing.T, err error) int {
-	t.Helper()
-	if err == nil {
-		return 0
-	}
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) {
-		t.Fatal(err)
-	}
-	return exit.ExitCode()
 }
 
 func TestTestExecutableUnchangedSpecFailsPassesAndCatchesReintroduction(t *testing.T) {
@@ -130,7 +84,7 @@ func TestTestExecutableUnchangedSpecFailsPassesAndCatchesReintroduction(t *testi
 			if mode == "defective" {
 				want, status = 1, testrunner.AssertionFailure
 			}
-			if code := processCode(t, err); code != want {
+			if code := exitCode(t, err); code != want {
 				t.Fatalf("exit %d, want %d: %s %s", code, want, stdout, stderr)
 			}
 			wait()
@@ -197,7 +151,7 @@ func TestTestExecutableMissingObservationAndInvalidConfigHaveExitTwo(t *testing.
 			}
 			output := filepath.Join(dir, "result")
 			stdout, stderr, err := run(t, "test", spec, "--send", "--output", output)
-			if processCode(t, err) != 2 {
+			if exitCode(t, err) != exitRefused {
 				t.Fatalf("expected execution error: %v %s %s", err, stdout, stderr)
 			}
 			artifact, err := testrunner.Open(output)
@@ -214,7 +168,7 @@ func TestTestExecutableMissingObservationAndInvalidConfigHaveExitTwo(t *testing.
 func TestTestExecutableCobraErrorsRemainExecutionErrors(t *testing.T) {
 	for _, args := range [][]string{{"test"}, {"test", "SECRET", "extra"}, {"test", "SECRET", "--SECRET-flag"}, {"test", "SECRET", "--send=SECRET"}, {"test", "SECRET", "--send"}} {
 		stdout, stderr, err := run(t, args...)
-		if processCode(t, err) != 2 || stderr == "" || strings.Contains(stdout+stderr, "SECRET") || !strings.HasPrefix(lastLine(stdout), "Rerun: ") {
+		if exitCode(t, err) != exitRefused || stderr == "" || strings.Contains(stdout+stderr, "SECRET") || !strings.HasPrefix(lastLine(stdout), "Rerun: ") {
 			t.Fatalf("wrong test argument outcome: %v %s %s", err, stdout, stderr)
 		}
 	}
@@ -285,7 +239,7 @@ func TestTestExecutableACKOnlySuccessNamesTheACKBoundary(t *testing.T) {
 		done <- err
 	}()
 	stdout, stderr, err := run(t, "test", path, "--send", "--output", filepath.Join(dir, "result"))
-	if processCode(t, err) != 0 || stderr != "" || !strings.Contains(stdout, "ACK contract passed") || strings.Contains(strings.ToLower(stdout), "appointment") {
+	if exitCode(t, err) != 0 || stderr != "" || !strings.Contains(stdout, "ACK contract passed") || strings.Contains(strings.ToLower(stdout), "appointment") {
 		t.Fatalf("wrong ACK-only claim: %v %s %s", err, stdout, stderr)
 	}
 	if err := <-done; err != nil {

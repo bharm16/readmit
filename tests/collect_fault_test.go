@@ -1,11 +1,7 @@
 package tests
 
 import (
-	"bufio"
-	"bytes"
-	"context"
 	"fmt"
-	"io"
 	"net"
 	"path/filepath"
 	"strings"
@@ -22,32 +18,10 @@ func declaredFaultPolicy(address string) string {
 }
 
 func TestCollectFaultExecutableRejectsThenRecovers(t *testing.T) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	address := listener.Addr().String()
-	listener.Close()
+	address := freeLoopbackAddress(t, "tcp")
 	dir := t.TempDir()
 	output := filepath.Join(dir, "case")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	command := testCommand(ctx, t, "collect", "--address", address, "--policy", policyFile(t, dir, declaredFaultPolicy(address)), "--output", output, "--max-messages", "2")
-	var diagnostic bytes.Buffer
-	command.Stderr = &diagnostic
-	stdout, err := command.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := command.Start(); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { cancel(); _ = command.Wait() })
-	reader := bufio.NewReader(stdout)
-	ready, err := reader.ReadString('\n')
-	if err != nil || !strings.HasPrefix(ready, "Listening: ") {
-		t.Fatalf("not ready: %q %v", ready, err)
-	}
+	collector := startReceiver(t, 10*time.Second, "collect", "--address", address, "--policy", policyFile(t, dir, declaredFaultPolicy(address)), "--output", output, "--max-messages", "2")
 	conn, err := net.DialTimeout("tcp", address, 2*time.Second)
 	if err != nil {
 		t.Fatal(err)
@@ -71,15 +45,9 @@ func TestCollectFaultExecutableRejectsThenRecovers(t *testing.T) {
 			t.Fatalf("ACK %s want %s", got, want)
 		}
 	}
-	remaining, err := io.ReadAll(reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := command.Wait(); err != nil {
-		t.Fatalf("collect fault: %v %s", err, diagnostic.String())
-	}
-	if !strings.Contains(string(remaining), "Collection: readmit-collection/v3") || strings.Contains(string(remaining), "COLLECT-001") || diagnostic.Len() != 0 {
-		t.Fatalf("fault output: %s %s", remaining, diagnostic.String())
+	remaining := collector.wait(t)
+	if !strings.Contains(remaining, "Collection: readmit-collection/v3") || strings.Contains(remaining, "COLLECT-001") || collector.diagnostic.Len() != 0 {
+		t.Fatalf("fault output: %s %s", remaining, collector.diagnostic.String())
 	}
 	b, err := bundle.Open(output)
 	if err != nil {

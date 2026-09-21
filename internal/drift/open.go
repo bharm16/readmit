@@ -8,13 +8,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/engine"
 	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/replay"
+	"github.com/bharm16/readmit/internal/runresult"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
@@ -67,12 +67,13 @@ func openSide(path string) (*side, error) {
 	if json.Unmarshal(data, &header) != nil {
 		return nil, errors.New("invalid drift artifact manifest")
 	}
-	// Dispatch by contract family and let each reader own its own version
-	// support, including derived-case versions added independently of this.
-	if strings.HasPrefix(header.Schema, "readmit-case/") {
+	// Dispatch by contract family — artifactpath owns the family list — and
+	// let each reader own its own version support, including derived-case
+	// versions added independently of this.
+	switch artifactpath.EvidenceFamily(header.Schema) {
+	case artifactpath.FamilyCase:
 		return fromCase(path)
-	}
-	if strings.HasPrefix(header.Schema, "readmit-run/") {
+	case artifactpath.FamilyRun:
 		return fromRun(path)
 	}
 	return nil, errors.New("unsupported drift artifact contract")
@@ -128,6 +129,10 @@ func fromResult(path, kind string) (*side, error) {
 	if err != nil {
 		return nil, err
 	}
+	return fromArtifact(artifact, kind)
+}
+
+func fromArtifact(artifact *testrunner.Artifact, kind string) (*side, error) {
 	s := newSide(kind)
 	s.report.Identity = artifact.Identity
 	if artifact.Result.InputBundleIdentity != "" {
@@ -156,25 +161,45 @@ func fromJob(directory string) (*side, error) {
 	}
 	s := newSide(JobKind)
 	fingerprint := digest(raw)
-	if pin, err := engine.Decode(raw); err != nil {
+	pin, pinErr := engine.Decode(raw)
+	if pinErr != nil {
 		s.report.Environment = EnvironmentSide{State: Unreadable, Fingerprint: fingerprint}
 		s.report.Rule = RuleSide{State: Unreadable, Fingerprint: fingerprint}
 	} else {
 		s.report.Environment = EnvironmentSide{State: Declared, Fingerprint: fingerprint, Engine: pin.Engine, Spec: pin.Spec}
 		s.report.Rule = RuleSide{State: Declared, Fingerprint: fingerprint, Profile: pin.Profile, Resolution: resolution(pin.Profile)}
 	}
-	// A job that never reached a result retains no input or target of its own,
-	// and says so. The entry is resolved rather than joined, so a job that
-	// names evidence outside the directory that was opened is refused rather
-	// than read as one that retained nothing.
-	if _, err := os.Lstat(filepath.Join(directory, "result")); err != nil {
+	// A stopped job with no result still carries a useful engine fingerprint.
+	// There is no finalized result whose identity could be cross-checked.
+	if _, err := os.Lstat(filepath.Join(directory, "result")); os.IsNotExist(err) {
 		return s, nil
 	}
-	result, err := artifactpath.Child(directory, "result")
-	if err != nil {
-		return nil, err
+	opened, openErr := runresult.Open(directory)
+	if openErr != nil {
+		// A future engine pin remains useful as an unreadable fingerprint, but
+		// this build cannot recover its lifecycle. Its result is still opened
+		// through the result contract; supported engines may never bypass the
+		// lifecycle/result identity cross-check this way.
+		if errors.Is(pinErr, engine.ErrUnsupportedVersion) || (pinErr == nil && errors.Is(pin.Supported(), engine.ErrUnsupportedVersion)) {
+			result, err := artifactpath.Child(directory, "result")
+			if err != nil {
+				return nil, err
+			}
+			retained, err := fromResult(result, JobKind)
+			if err != nil {
+				return nil, err
+			}
+			s.report.Identity = retained.report.Identity
+			s.report.Input, s.report.Target = retained.report.Input, retained.report.Target
+			s.target, s.transformations = retained.target, retained.transformations
+			return s, nil
+		}
+		return nil, openErr
 	}
-	retained, err := fromResult(result, JobKind)
+	if opened.Artifact == nil {
+		return s, nil
+	}
+	retained, err := fromArtifact(opened.Artifact, JobKind)
 	if err != nil {
 		return nil, err
 	}

@@ -2,16 +2,15 @@ package durablerun
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
+	"github.com/bharm16/readmit/internal/durablelog"
 	"github.com/bharm16/readmit/internal/engine"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/testrunner"
@@ -46,54 +45,17 @@ var (
 // so a send whose intent it refused was never attempted.
 var errJournalLimit = errors.New("durable journal reached its size limit; execution stopped")
 
-func digest(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
+func digest(b []byte) string { return durablelog.Digest(b) }
 func write(root *os.Root, name string, b []byte) error {
 	f, e := openEvidence(root, name)
 	if e != nil {
 		return errors.New("cannot create durable evidence")
 	}
-	n, e := f.Write(b)
-	if e == nil && n != len(b) {
-		e = io.ErrShortWrite
-	}
-	if e == nil {
-		e = f.Sync()
-	}
+	e = artifactdir.WriteFileSync(f, b)
 	c := f.Close()
 	if e != nil || c != nil {
 		return errors.New("cannot sync durable evidence; partial evidence retained")
 	}
-	return nil
-}
-func (w *writer) append(e entry) error {
-	if w.failed != nil {
-		return w.failed
-	}
-	e.Sequence = w.sequence + 1
-	e.Previous = w.previous
-	e.At = time.Now().UTC()
-	b, err := json.Marshal(e, json.Deterministic(true))
-	if err != nil {
-		return errors.New("cannot encode durable journal")
-	}
-	if w.journalBytes+len(b)+1 > journalLimit {
-		w.failed = errJournalLimit
-		return w.failed
-	}
-	n, err := w.journal.Write(append(b, '\n'))
-	if err == nil && n != len(b)+1 {
-		err = io.ErrShortWrite
-	}
-	if err == nil {
-		err = w.journal.Sync()
-	}
-	if err != nil {
-		w.failed = errors.New("cannot sync durable journal; execution stopped")
-		return w.failed
-	}
-	w.journalBytes += len(b) + 1
-	w.sequence++
-	w.previous = digest(b)
 	return nil
 }
 func read(root *os.Root, name string, limit int) ([]byte, error) {
@@ -233,143 +195,95 @@ func readJob(path string) (Recovery, planDocument, error) {
 			return Recovery{}, planDocument{}, err
 		}
 	}
-	summary := Summary{Schema: Schema, State: Interrupted, StopReason: Interrupted, Planned: len(doc.Payloads), Recovered: true}
-	occurrences := make([]Occurrence, len(doc.Payloads))
-	for i := range occurrences {
-		occurrences[i] = Occurrence{ID: fmt.Sprintf("o%06d", i+1), Delivery: NotAttempted}
+	intended := make([]payload, len(doc.Payloads))
+	sources := make([]string, len(doc.Inputs.Mappings))
+	for i := range doc.Payloads {
+		intended[i] = doc.Payloads[i]
+		sources[i] = doc.Inputs.Mappings[i].SourceSHA256
 	}
+	proto := newProtocol(len(doc.Payloads), intended, sources)
 	journal, err := read(root, "journal.jsonl", maxJournal)
 	if err != nil {
 		return Recovery{}, planDocument{}, err
 	}
-	previous := digest(raw)
-	pending := ""
-	finished := false
-	sequence := 0
-	recordedEvents := []replay.Event{}
-	sentRecorded := false
-	lines := bytes.Split(journal, []byte{'\n'})
-	truncated := len(lines[len(lines)-1]) > 0
-	for _, line := range lines[:len(lines)-1] {
-		sequence++
-		var e entry
-		if finished || json.Unmarshal(line, &e, json.RejectUnknownMembers(true)) != nil || e.Sequence != sequence || e.Previous != previous || e.At.IsZero() {
-			return Recovery{}, planDocument{}, bad
-		}
-		previous = digest(line)
-		if sequence == 1 && e.Kind != "ready" || sequence == 2 && e.Kind != "running" {
-			return Recovery{}, planDocument{}, bad
-		}
-		switch e.Kind {
-		case "ready":
-			if sequence != 1 {
-				return Recovery{}, planDocument{}, bad
+	truncated, err := durablelog.Scan(journal, digest(raw), bad,
+		func(line []byte) durablelog.Record {
+			var e entry
+			if json.Unmarshal(line, &e, json.RejectUnknownMembers(true)) != nil {
+				return nil
 			}
-		case "running":
-			if sequence != 2 {
-				return Recovery{}, planDocument{}, bad
-			}
-		case "intent":
-			if sequence < 3 || pending != "" || e.Occurrence != fmt.Sprintf("o%06d", summary.Recorded+1) {
-				return Recovery{}, planDocument{}, bad
-			}
-			pending = e.Occurrence
-			sentRecorded = false
-			summary.DeliveryUncertain = true
-			occurrences[summary.Recorded].Delivery = Uncertain
-		case "sent":
-			if sentRecorded || pending == "" || e.Occurrence != pending || e.Sent == nil || e.Sent.Path != "sent/"+pending+".bin" {
-				return Recovery{}, planDocument{}, bad
-			}
-			if err = verify(root, *e.Sent); err != nil {
-				return Recovery{}, planDocument{}, err
-			}
-			sentRecorded = true
-		case "recorded":
-			if summary.Recorded >= summary.Planned || e.Event == nil || e.Occurrence != fmt.Sprintf("o%06d", summary.Recorded+1) || e.Event.OutboundOccurrence != e.Occurrence {
-				return Recovery{}, planDocument{}, bad
-			}
-			ev := e.Event
-			if ev.Intended.SHA256 != doc.Payloads[summary.Recorded].SHA256 || ev.Intended.Size != doc.Payloads[summary.Recorded].Size || ev.Source.SHA256 != doc.Inputs.Mappings[summary.Recorded].SourceSHA256 {
-				return Recovery{}, planDocument{}, bad
-			}
-			recordedEvents = append(recordedEvents, *ev)
-			for _, p := range []struct {
-				name string
-				data payload
-			}{
-				{"source", payload{ev.Source.Path, ev.Source.Size, ev.Source.SHA256}}, {"intended", payload{ev.Intended.Path, ev.Intended.Size, ev.Intended.SHA256}},
-				{"sent", payload{ev.Sent.Path, ev.Sent.Size, ev.Sent.SHA256}}, {"received", payload{ev.Received.Path, ev.Received.Size, ev.Received.SHA256}},
-			} {
-				if p.data.Path != "payloads/"+e.Occurrence+"-"+p.name+".bin" {
-					return Recovery{}, planDocument{}, bad
+			return &e
+		},
+		func(at int, r durablelog.Record) error {
+			e := r.(*entry)
+			switch e.Kind {
+			case recordReady, recordRunning, recordIntent:
+				if err := proto.apply(e); err != nil {
+					return bad
 				}
-				ref := p.data
-				ref.Path = "result/run/" + ref.Path
-				if err = verify(root, ref); err != nil {
-					return Recovery{}, planDocument{}, err
+			case recordSent:
+				if err := proto.apply(e); err != nil {
+					return bad
 				}
-			}
-			// A matched ACK is the only outcome that resolves a synced intent. An
-			// event recorded with no intent before it was never attempted: the
-			// transport halted before this occurrence, or failed to dial.
-			if ev.Delivery == "acknowledged" {
-				if pending != e.Occurrence {
-					return Recovery{}, planDocument{}, bad
+				if err := verify(root, *e.Sent); err != nil {
+					return err
 				}
-				occurrences[summary.Recorded].Delivery = Acknowledged
-				summary.DeliveryUncertain = false
-				pending = ""
-			}
-			summary.Recorded++
-		case "finished":
-			if e.Final == nil || !terminal(e.Final.StopReason) || e.Final.Planned != summary.Planned || e.Final.Recorded != summary.Recorded || e.Final.Schema != Schema || e.Final.DeliveryUncertain != summary.DeliveryUncertain {
-				return Recovery{}, planDocument{}, bad
-			}
-			final := *e.Final
-			if final.Recovered || final.JournalIncomplete {
-				return Recovery{}, planDocument{}, bad
-			}
-			expected := final.StopReason
-			if summary.DeliveryUncertain {
-				expected = DeliveryUncertain
-			}
-			if final.State != expected {
-				return Recovery{}, planDocument{}, bad
-			}
-			if final.ResultIdentity != "" {
-				artifact, err := testrunner.Open(filepath.Join(path, "result"))
-				if err != nil || artifact.Identity != final.ResultIdentity || artifact.Result.SpecIdentity != digest(doc.Inputs.Spec) || artifact.Result.InputBundleIdentity != doc.Inputs.SourceIdentity {
-					return Recovery{}, planDocument{}, bad
+			case recordRecorded:
+				refs, err := proto.recorded(e)
+				if err != nil {
+					return bad
 				}
-				if artifact.Result.Target == nil || *artifact.Result.Target != doc.Inputs.Target {
-					return Recovery{}, planDocument{}, bad
-				}
-				if artifact.Run != nil {
-					if len(recordedEvents) != len(artifact.Run.Events) {
-						return Recovery{}, planDocument{}, bad
+				for _, declared := range refs {
+					ref := declared
+					ref.Path = "result/run/" + ref.Path
+					if err := verify(root, ref); err != nil {
+						return err
 					}
-					for i, ev := range recordedEvents {
-						actual, _ := json.Marshal(artifact.Run.Events[i], json.Deterministic(true))
-						recorded, _ := json.Marshal(ev, json.Deterministic(true))
-						if !bytes.Equal(actual, recorded) {
-							return Recovery{}, planDocument{}, bad
+				}
+			case recordFinished:
+				final, err := proto.finish(e)
+				if err != nil {
+					return bad
+				}
+				if final.ResultIdentity != "" {
+					artifact, err := testrunner.Open(filepath.Join(path, "result"))
+					if err != nil || artifact.Identity != final.ResultIdentity || artifact.Result.SpecIdentity != digest(doc.Inputs.Spec) || artifact.Result.InputBundleIdentity != doc.Inputs.SourceIdentity {
+						return bad
+					}
+					if artifact.Result.Target == nil || *artifact.Result.Target != doc.Inputs.Target {
+						return bad
+					}
+					if artifact.Run != nil {
+						events := proto.recordedEvents
+						if len(events) != len(artifact.Run.Events) {
+							return bad
+						}
+						for i, ev := range events {
+							actual, _ := json.Marshal(artifact.Run.Events[i], json.Deterministic(true))
+							recorded, _ := json.Marshal(ev, json.Deterministic(true))
+							if !bytes.Equal(actual, recorded) {
+								return bad
+							}
 						}
 					}
+					if final.StopReason == Passed && artifact.Result.Status != testrunner.Pass || final.StopReason == AssertionFailed && artifact.Result.Status != testrunner.AssertionFailure {
+						return bad
+					}
+				} else if final.StopReason == Passed || final.StopReason == AssertionFailed {
+					return bad
 				}
-				if final.StopReason == Passed && artifact.Result.Status != testrunner.Pass || final.StopReason == AssertionFailed && artifact.Result.Status != testrunner.AssertionFailure {
-					return Recovery{}, planDocument{}, bad
-				}
-			} else if final.StopReason == Passed || final.StopReason == AssertionFailed {
-				return Recovery{}, planDocument{}, bad
+				proto.commit(final)
+			default:
+				return bad
 			}
-			summary = final
-			finished = true
-		default:
-			return Recovery{}, planDocument{}, bad
-		}
+			return nil
+		})
+	if err != nil {
+		return Recovery{}, planDocument{}, err
 	}
-	if !finished {
+	summary := proto.summary
+	occurrences := proto.occurrences
+	if !proto.finished {
 		if summary.DeliveryUncertain {
 			summary.State = DeliveryUncertain
 		}
@@ -390,7 +304,7 @@ func readJob(path string) (Recovery, planDocument, error) {
 			}
 		}
 	}
-	recovery := Recovery{Schema: RecoverySchema, Run: summary, Terminal: finished && !truncated, Occurrences: occurrences}
+	recovery := Recovery{Schema: RecoverySchema, Run: summary, Terminal: proto.finished && !truncated, Occurrences: occurrences}
 	for _, o := range occurrences {
 		switch o.Delivery {
 		case Acknowledged:
@@ -416,11 +330,4 @@ func readJob(path string) (Recovery, planDocument, error) {
 		recovery.SafeToRepeat = true
 	}
 	return recovery, doc, nil
-}
-func terminal(s State) bool {
-	switch s {
-	case Passed, AssertionFailed, ExecutionError, Cancelled, TimedOut:
-		return true
-	}
-	return false
 }

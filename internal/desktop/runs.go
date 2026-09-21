@@ -17,50 +17,46 @@ type DurableRunResult struct {
 	Run    *durablerun.Summary `json:"run,omitzero"`
 }
 
+func (r *DurableRunResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
 // StartDurableRun sends once with an explicit operator action, retaining a new
 // journal directory. Cancel stops future sends; in-flight effects remain visible.
-func (a *App) StartDurableRun(spec, output string) (out DurableRunResult) {
-	ctx, release, claimed := a.begin()
-	if !claimed {
-		return DurableRunResult{State: Busy, Reason: busyRefusal.reason}
-	}
-	defer release()
-	guard, _ := a.selectedOperation()
-	settle, admissionErr := guard.AdmitContext(ctx, "execute")
-	if admissionErr != nil {
-		return DurableRunResult{State: PermissionDenied, Reason: admissionErr.Error()}
-	}
-	defer func() {
-		if err := settle(); err != nil {
-			out.State = Failed
-			out.Reason = "runner settlement failed; reconcile the retained admission before new work"
+func (a *App) StartDurableRun(spec, output string) DurableRunResult {
+	return run(a, true, false, func(ctx context.Context) (out DurableRunResult) {
+		guard, _ := a.selectedOperation()
+		settle, admissionErr := guard.AdmitContext(ctx, "execute")
+		if admissionErr != nil {
+			return DurableRunResult{State: PermissionDenied, Reason: admissionErr.Error()}
 		}
-	}()
-	bounded, cancel := context.WithTimeout(ctx, operationguard.MaxDuration)
-	defer cancel()
-	result, err := durablerun.Start(bounded, spec, output)
-	if err != nil {
-		if result.Schema != "" {
-			return DurableRunResult{State: Failed, Run: &result, Reason: "journal persistence failed; recover retained output before any new execution"}
+		defer func() {
+			if err := settle(); err != nil {
+				out.State = Failed
+				out.Reason = "runner settlement failed; reconcile the retained admission before new work"
+			}
+		}()
+		bounded, cancel := context.WithTimeout(ctx, operationguard.MaxDuration)
+		defer cancel()
+		result, err := durablerun.Start(bounded, spec, output)
+		if err != nil {
+			if result.Schema != "" {
+				return DurableRunResult{State: Failed, Run: &result, Reason: "journal persistence failed; recover retained output before any new execution"}
+			}
+			return DurableRunResult{State: Failed, Reason: "the durable run could not finish; recover the retained output to inspect partial evidence"}
 		}
-		return DurableRunResult{State: Failed, Reason: "the durable run could not finish; recover the retained output to inspect partial evidence"}
-	}
-	return DurableRunResult{State: Completed, Run: &result}
+		return DurableRunResult{State: Completed, Run: &result}
+	})
 }
 
 // OpenDurableRun is read-only recovery and never acquires send authority.
 func (a *App) OpenDurableRun(path string) DurableRunResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return DurableRunResult{State: Busy, Reason: busyRefusal.reason}
-	}
-	defer release()
-	result, err := durablerun.Open(path)
-	if errors.Is(err, engine.ErrUnsupportedVersion) {
-		return DurableRunResult{State: Failed, Reason: "the durable run was evaluated by a version this release cannot read; its evidence has not been changed"}
-	}
-	if err != nil {
-		return DurableRunResult{State: Failed, Reason: "the durable run could not be verified; partial evidence has not been changed"}
-	}
-	return DurableRunResult{State: Completed, Run: &result}
+	return run(a, false, false, func(context.Context) DurableRunResult {
+		result, err := durablerun.Open(path)
+		if errors.Is(err, engine.ErrUnsupportedVersion) {
+			return DurableRunResult{State: Failed, Reason: "the durable run was evaluated by a version this release cannot read; its evidence has not been changed"}
+		}
+		if err != nil {
+			return DurableRunResult{State: Failed, Reason: "the durable run could not be verified; partial evidence has not been changed"}
+		}
+		return DurableRunResult{State: Completed, Run: &result}
+	})
 }

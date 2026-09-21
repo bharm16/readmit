@@ -17,6 +17,7 @@ import (
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/guide"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/operationguard"
 	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/synth"
@@ -91,6 +92,8 @@ type WorkspaceResult struct {
 	Workspace *Workspace `json:"workspace,omitzero"`
 }
 
+func (r *WorkspaceResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
 // Case is verified evidence. Every count below was derived after the shared
 // reader checked completion, identity, payload hashes and every record. It
 // carries no message bytes, field values, or original source paths.
@@ -114,6 +117,8 @@ type CaseResult struct {
 	Case   *Case  `json:"case,omitzero"`
 }
 
+func (r *CaseResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
 // ProjectResult carries one state. Project is the document exactly as it was
 // written: the facade never rewrites a recorded case identity, and it verifies
 // no evidence here. Whether a registered case is still the evidence the project
@@ -125,6 +130,8 @@ type ProjectResult struct {
 	Project *project.Document `json:"project,omitzero"`
 }
 
+func (r *ProjectResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
 // RevisionsResult carries one state. Revisions is the editable document of a
 // project exactly as it was written: the notes and drafts a person maintains,
 // and the lineage of every revision derived from registered evidence. It holds
@@ -135,6 +142,8 @@ type RevisionsResult struct {
 	Root      string             `json:"root,omitzero"`
 	Revisions *project.Revisions `json:"revisions,omitzero"`
 }
+
+func (r *RevisionsResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
 // RecentResult lists workspace folders in most-recently-opened order.
 type RecentResult struct {
@@ -252,38 +261,33 @@ func (a *App) begin() (context.Context, func(), bool) {
 
 // SelectWorkspace asks the host for a folder and opens it as a workspace.
 func (a *App) SelectWorkspace() WorkspaceResult {
-	ctx, release, claimed := a.begin()
-	if !claimed {
-		return busyRefusal.workspace()
-	}
-	defer release()
-	folder, declined := a.chooseFolder(ctx, "Open a readmit workspace folder")
-	if folder == "" {
-		return declined.workspace()
-	}
-	return a.openWorkspace(ctx, folder)
+	return run(a, true, false, func(ctx context.Context) WorkspaceResult {
+		folder, declined := a.chooseFolder(ctx, "Open a readmit workspace folder")
+		if folder == "" {
+			return declined.workspace()
+		}
+		return a.openWorkspace(ctx, folder)
+	})
 }
 
 // OpenWorkspace opens a folder the person already knows, such as one returned
 // by RecentWorkspaces. A folder that opens is recorded so it can be reopened.
 func (a *App) OpenWorkspace(path string) WorkspaceResult {
-	ctx, release, claimed := a.begin()
-	if !claimed {
-		return busyRefusal.workspace()
-	}
-	defer release()
-	return a.openWorkspace(ctx, path)
+	return run(a, true, false, func(ctx context.Context) WorkspaceResult {
+		return a.openWorkspace(ctx, path)
+	})
 }
 
 // CreateSampleWorkspace writes the frozen synthetic SIU family into a new
 // folder inside the chosen one and opens it. The evidence is generated, not
 // imported: it is a fixture family, never customer data.
 func (a *App) CreateSampleWorkspace() WorkspaceResult {
-	ctx, release, claimed := a.begin()
-	if !claimed {
-		return busyRefusal.workspace()
-	}
-	defer release()
+	return run(a, true, false, func(ctx context.Context) WorkspaceResult {
+		return a.createSampleWorkspace(ctx)
+	})
+}
+
+func (a *App) createSampleWorkspace(ctx context.Context) WorkspaceResult {
 	parent, declined := a.chooseFolder(ctx, "Choose a folder for the readmit sample workspace")
 	if parent == "" {
 		return declined.workspace()
@@ -329,11 +333,12 @@ func (a *App) CreateSampleWorkspace() WorkspaceResult {
 // reader's own limits and runs to completion once it starts, so it holds the
 // operation slot but is not interruptible.
 func (a *App) OpenCase(workspace, name string) CaseResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return busyRefusal.evidence()
-	}
-	defer release()
+	return run(a, false, false, func(context.Context) CaseResult {
+		return a.openCase(workspace, name)
+	})
+}
+
+func (a *App) openCase(workspace, name string) CaseResult {
 	root, declined := resolveFolder(workspace)
 	if root == "" {
 		return declined.evidence()
@@ -342,9 +347,9 @@ func (a *App) OpenCase(workspace, name string) CaseResult {
 	if err != nil {
 		return CaseResult{State: Failed, Reason: "a case must be named by one directory entry of the open workspace"}
 	}
-	opened, err := bundle.Open(path)
+	opened, err := operation.OpenCase(path)
 	if err != nil {
-		return CaseResult{State: Failed, Reason: "the case could not be verified as complete, unmodified evidence"}
+		return CaseResult{State: Failed, Reason: err.Error()}
 	}
 	counts := opened.Counts()
 	return CaseResult{State: Completed, Case: &Case{
@@ -367,11 +372,12 @@ func (a *App) OpenCase(workspace, name string) CaseResult {
 // reported and left exactly as written. It runs to completion once it starts,
 // so it holds the operation slot but is not interruptible.
 func (a *App) OpenProject(path string) ProjectResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return busyRefusal.project()
-	}
-	defer release()
+	return run(a, false, false, func(context.Context) ProjectResult {
+		return a.openProject(path)
+	})
+}
+
+func (a *App) openProject(path string) ProjectResult {
 	opened, declined := openProjectFolder(path)
 	if opened == nil {
 		return declined.project()
@@ -388,11 +394,12 @@ func (a *App) OpenProject(path string) ProjectResult {
 // nothing yet is Empty rather than missing. It runs to completion once it
 // starts, so it holds the operation slot but is not interruptible.
 func (a *App) OpenRevisions(path string) RevisionsResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return busyRefusal.revisions()
-	}
-	defer release()
+	return run(a, false, false, func(context.Context) RevisionsResult {
+		return a.openRevisions(path)
+	})
+}
+
+func (a *App) openRevisions(path string) RevisionsResult {
 	opened, declined := openProjectFolder(path)
 	if opened == nil {
 		return declined.revisions()
@@ -416,32 +423,41 @@ func (a *App) OpenRevisions(path string) RevisionsResult {
 // passing interchangeable strings. It runs to completion once it starts, so it
 // holds the operation slot but is not interruptible.
 func (a *App) SaveNote(path string, note project.Note) RevisionsResult {
-	release, claimed := a.claim()
-	if !claimed {
-		return busyRefusal.revisions()
-	}
-	defer release()
-	if err := a.admitAuthor(); err != nil {
-		return RevisionsResult{State: PermissionDenied, Reason: err.Error()}
-	}
-	opened, declined := openProjectFolder(path)
-	if opened == nil {
+	return run(a, false, true, func(context.Context) RevisionsResult {
+		return a.saveNote(path, note)
+	})
+}
+
+func (a *App) saveNote(path string, note project.Note) RevisionsResult {
+	root, declined := resolveFolder(path)
+	if root == "" {
 		return declined.revisions()
 	}
-	revisions, declined := readRevisions(opened.Root)
-	if revisions == nil {
-		return declined.revisions()
-	}
-	updated, _, err := project.SetNote(opened.Document, *revisions, note)
+	result, err := operation.SetProjectNote(root, note)
 	if err != nil {
-		return RevisionsResult{State: Failed, Root: opened.Root, Reason: "the note was not stored: it needs a name and a title, its text must be bounded and printable, any subject it names must be a case or revision this project registers, and a project holds a bounded number of notes"}
+		if errors.Is(err, operation.ErrProjectOpen) {
+			if errors.Is(err, project.ErrUnsupportedVersion) {
+				return RevisionsResult{State: Failed, Root: result.Root, Reason: "the project document was written by a version this release cannot read"}
+			}
+			return probeReadFailure(result.Root).revisions()
+		}
+		if errors.Is(err, operation.ErrProjectRevisions) {
+			if errors.Is(err, project.ErrUnsupportedVersion) {
+				return RevisionsResult{State: Failed, Root: result.Root, Reason: "the editable project document was written by a version this release cannot read"}
+			}
+			return RevisionsResult{State: Failed, Root: result.Root, Reason: "the editable project document cannot be read"}
+		}
+		if errors.Is(err, operation.ErrProjectNoteInvalid) {
+			return RevisionsResult{State: Failed, Root: result.Root, Reason: "the note was not stored: it needs a name and a title, its text must be bounded and printable, any subject it names must be a case or revision this project registers, and a project holds a bounded number of notes"}
+		}
+		if errors.Is(err, operation.ErrProjectNoteWrite) {
+			return probeWriteFailure(result.Root,
+				"this account cannot write to the project folder",
+				"the note could not be stored; an interrupted write may be retained beside the project document").revisions()
+		}
+		return RevisionsResult{State: Failed, Root: result.Root, Reason: err.Error()}
 	}
-	if err := project.WriteRevisions(opened.Root, updated); err != nil {
-		return probeWriteFailure(opened.Root,
-			"this account cannot write to the project folder",
-			"the note could not be stored; an interrupted write may be retained beside the project document").revisions()
-	}
-	return RevisionsResult{State: Completed, Root: opened.Root, Revisions: &updated}
+	return RevisionsResult{State: Completed, Root: result.Root, Revisions: &result.Revisions}
 }
 
 // openProjectFolder resolves a folder and reads the project document every
@@ -558,6 +574,28 @@ func resolveFolder(path string) (string, refusal) {
 		return "", refusal{Failed, "a workspace must be an existing folder that is not a symbolic link"}
 	}
 	return root, refusal{}
+}
+
+// openedCase is the pipeline every feature composes to read evidence: resolve
+// the open workspace, name the case by one of its entries, and verify the
+// evidence against the identity the window displays. That invariant — every
+// read re-verifies and binds to the identity shown — is written here and
+// nowhere else; a feature adds only what its own flow decides about the
+// verified bundle it receives.
+func openedCase(workspace, caseName, identity string) (string, *bundle.Bundle, refusal) {
+	root, declined := resolveFolder(workspace)
+	if root == "" {
+		return "", nil, declined
+	}
+	path, err := artifactpath.Child(root, caseName)
+	if err != nil {
+		return "", nil, refusal{Failed, "a case must be named by one directory entry of the open workspace"}
+	}
+	source, err := operation.OpenVerifiedCase(path, identity)
+	if err != nil {
+		return "", nil, refusal{Failed, err.Error()}
+	}
+	return root, source, refusal{}
 }
 
 // describe reports what one entry declares. It never verifies evidence, so an

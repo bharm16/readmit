@@ -1,11 +1,9 @@
 package hub
 
 import (
-	"context"
 	"encoding/json/v2"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -20,7 +18,6 @@ func (s *Store) RunnerHandler(access *Access, policyPath string) http.Handler {
 }
 func (s *Store) runnerHandler(access *Access, policyPath string, readyAt time.Time) http.Handler {
 	team := s.TeamHandler(access)
-	slots := make(chan struct{}, 4)
 	var mu sync.Mutex
 	type held struct {
 		instance string
@@ -33,24 +30,8 @@ func (s *Store) runnerHandler(access *Access, policyPath string, readyAt time.Ti
 	leases := map[string]held{}
 	// A fresh handler waits out grants a stopped predecessor may have issued.
 
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	runner := s.admitRequest(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/"), "/")
-		if len(parts) != 4 || parts[0] != "v1" || parts[1] != "projects" || parts[3] != "runner" {
-			team.ServeHTTP(w, r)
-			return
-		}
-		select {
-		case slots <- struct{}{}:
-			defer func() { <-slots }()
-		default:
-			http.Error(w, "busy", 503)
-			return
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-		defer cancel()
-		r = r.WithContext(ctx)
-		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
 		if (r.Method != "POST" && r.Method != "DELETE") || r.URL.RawQuery != "" || !validProject(parts[2]) {
 			http.Error(w, "request refused", 400)
 			return
@@ -150,26 +131,21 @@ func (s *Store) runnerHandler(access *Access, policyPath string, readyAt time.Ti
 			}
 		}
 		http.Error(w, "version or environment refused", 403)
+	}), 5*time.Second)
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/"), "/")
+		if len(parts) != 4 || parts[0] != "v1" || parts[1] != "projects" || parts[3] != "runner" {
+			team.ServeHTTP(w, r)
+			return
+		}
+		runner.ServeHTTP(w, r)
 	})
 }
 func readRunnerPolicy(path string) (runnerprotocol.Policy, error) {
-	var zero runnerprotocol.Policy
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || info.Size() > 1<<20 {
-		return zero, errAccess
-	}
-	f, err := os.Open(path)
+	data, err := readPrivatePolicy(path)
 	if err != nil {
-		return zero, errAccess
-	}
-	defer f.Close()
-	opened, err := f.Stat()
-	if err != nil || !os.SameFile(info, opened) {
-		return zero, errAccess
-	}
-	data, err := io.ReadAll(io.LimitReader(f, (1<<20)+1))
-	if err != nil {
-		return zero, errAccess
+		return runnerprotocol.Policy{}, errAccess
 	}
 	return runnerprotocol.DecodePolicy(data)
 }

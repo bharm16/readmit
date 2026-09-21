@@ -1,42 +1,44 @@
 package desktop
 
 import (
+	"context"
+
 	"github.com/bharm16/readmit/internal/artifactpath"
-	"github.com/bharm16/readmit/internal/baseline"
 	"github.com/bharm16/readmit/internal/expectation"
-	"github.com/bharm16/readmit/internal/testrunner"
+	"github.com/bharm16/readmit/internal/operation"
 	"path/filepath"
 )
 
 // expectation uses the baseline panel's operation and privacy boundary. A
 // release approval re-reads the candidate, profiles and predecessor together.
 func (a *App) expectation(request BaselineRequest, approve, inspect bool) BaselineResult {
-	release, ok := a.claim()
-	if !ok {
-		return BaselineResult{State: Busy, Reason: busyRefusal.reason}
-	}
-	defer release()
+	return run(a, false, false, func(context.Context) BaselineResult {
+		return a.applyExpectation(request, approve, inspect)
+	})
+}
+
+func (a *App) applyExpectation(request BaselineRequest, approve, inspect bool) BaselineResult {
 	failure := func(reason string) BaselineResult { return BaselineResult{State: Failed, Reason: reason} }
 	root, declined := resolveFolder(request.Workspace)
 	if root == "" {
 		return BaselineResult{State: declined.state, Reason: declined.reason}
 	}
-	var previous *expectation.Release
+	previousPath := ""
 	if request.Previous != "" {
 		if artifactpath.EntryName(request.Previous) != nil {
 			return failure("release must be one regular workspace entry")
 		}
-		r, e := expectation.Read(filepath.Join(root, request.Previous))
+		previousPath = filepath.Join(root, request.Previous)
+	}
+	if inspect {
+		if previousPath == "" {
+			return failure("select a retained release")
+		}
+		previous, e := expectation.Read(previousPath)
 		if e != nil {
 			return failure(e.Error())
 		}
-		previous = &r
-	}
-	if inspect {
-		if previous == nil {
-			return failure("select a retained release")
-		}
-		report, e := expectation.Inspect(*previous, request.ShowValues)
+		report, e := expectation.Inspect(previous, request.ShowValues)
 		if e != nil {
 			return failure(e.Error())
 		}
@@ -45,10 +47,6 @@ func (a *App) expectation(request BaselineRequest, approve, inspect bool) Baseli
 	if artifactpath.EntryName(request.Spec) != nil {
 		return failure("specification must be one regular workspace entry")
 	}
-	raw, e := baseline.ReadBytes(filepath.Join(root, request.Spec), testrunner.MaxSpecBytes)
-	if e != nil {
-		return failure(e.Error())
-	}
 	paths := []string{}
 	for _, name := range request.Profiles {
 		if artifactpath.EntryName(name) != nil {
@@ -56,35 +54,36 @@ func (a *App) expectation(request BaselineRequest, approve, inspect bool) Baseli
 		}
 		paths = append(paths, filepath.Join(root, name))
 	}
-	pins, e := expectation.ReadProfiles(paths)
+	outputPath := ""
+	if approve {
+		if artifactpath.EntryName(request.Output) != nil {
+			return failure("release requires a new workspace entry")
+		}
+		outputPath = filepath.Join(root, request.Output)
+	}
+	op := operation.ExpectationRequest{ID: request.ReleaseID, Spec: filepath.Join(root, request.Spec), Previous: previousPath, Output: outputPath, Profiles: paths, ShowValues: request.ShowValues, Review: request.Review, Approver: request.Approver, Rationale: request.Rationale}
+	var outcome operation.ExpectationResult
+	var e error
+	if approve {
+		outcome, e = operation.ApproveExpectation(op)
+	} else {
+		outcome, e = operation.ReviewExpectation(op)
+	}
 	if e != nil {
 		return failure(e.Error())
 	}
-	comparison, e := expectation.Review(request.ReleaseID, raw, pins, previous, request.ShowValues)
-	if e != nil {
-		return failure(e.Error())
-	}
+	comparison := outcome.Comparison
 	view := comparison.Baseline
 	view.Schema = comparison.Schema
 	view.Identity = comparison.Identity
 	view.Parent = comparison.Parent
 	view.Changes = append(view.Changes, comparison.Profiles...)
 	result := BaselineResult{State: Completed, Comparison: &view}
-	if previous != nil {
-		result.PreviousApprover = previous.Baseline.Approver
-		result.PreviousRationale = previous.Baseline.Rationale
+	if outcome.Previous != nil {
+		result.PreviousApprover = outcome.Previous.Baseline.Approver
+		result.PreviousRationale = outcome.Previous.Baseline.Rationale
 	}
 	if approve {
-		if artifactpath.EntryName(request.Output) != nil {
-			return failure("release requires a new workspace entry")
-		}
-		r, e := expectation.Approve(request.ReleaseID, raw, pins, previous, request.Review, request.Approver, request.Rationale)
-		if e != nil {
-			return failure(e.Error())
-		}
-		if e = expectation.Save(filepath.Join(root, request.Output), r); e != nil {
-			return failure(e.Error())
-		}
 		result.Output = request.Output
 	}
 	return result

@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"context"
 	"errors"
 
 	"github.com/bharm16/readmit/internal/testauthor"
@@ -23,15 +24,18 @@ type CanonicalTestResult struct {
 	Identity string `json:"identity,omitzero"`
 }
 
+func (r *CanonicalTestResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
 // ImportTest opens an existing canonical spec for editing. These bounded local
 // operations hold the operation slot and are not interruptible. They send no
 // messages; cancellation of an edit is simply discarding the unstored text.
 func (a *App) ImportTest(workspace, entry string) CanonicalTestResult {
-	release, ok := a.claim()
-	if !ok {
-		return canonicalRefusal(busyRefusal)
-	}
-	defer release()
+	return run(a, false, false, func(context.Context) CanonicalTestResult {
+		return a.importTest(workspace, entry)
+	})
+}
+
+func (a *App) importTest(workspace, entry string) CanonicalTestResult {
 	root, declined := resolveFolder(workspace)
 	if root == "" {
 		return canonicalRefusal(declined)
@@ -46,23 +50,21 @@ func (a *App) ImportTest(workspace, entry string) CanonicalTestResult {
 // ValidateTest uses exactly the strict reader that headless execution uses.
 // Unknown schemas, members and operators are errors, never discarded clauses.
 func (a *App) ValidateTest(document string) CanonicalTestResult {
-	release, ok := a.claim()
-	if !ok {
-		return canonicalRefusal(busyRefusal)
-	}
-	defer release()
-	if _, err := testrunner.DecodeSpec([]byte(document)); err != nil {
-		return CanonicalTestResult{State: Failed, Reason: err.Error()}
-	}
-	return CanonicalTestResult{State: Completed, Document: document}
+	return run(a, false, false, func(context.Context) CanonicalTestResult {
+		if _, err := testrunner.DecodeSpec([]byte(document)); err != nil {
+			return CanonicalTestResult{State: Failed, Reason: err.Error()}
+		}
+		return CanonicalTestResult{State: Completed, Document: document}
+	})
 }
 
 func (a *App) ExportTest(request CanonicalTestRequest) CanonicalTestResult {
-	release, ok := a.claim()
-	if !ok {
-		return canonicalRefusal(busyRefusal)
-	}
-	defer release()
+	return run(a, false, false, func(context.Context) CanonicalTestResult {
+		return a.exportTest(request)
+	})
+}
+
+func (a *App) exportTest(request CanonicalTestRequest) CanonicalTestResult {
 	root, declined := resolveFolder(request.Workspace)
 	if root == "" {
 		return canonicalRefusal(declined)

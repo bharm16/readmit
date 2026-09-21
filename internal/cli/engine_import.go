@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"encoding/json/v2"
-	"errors"
 	"fmt"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/engineexport"
@@ -10,13 +8,12 @@ import (
 	"time"
 )
 
-func engineImportCommand(ran *bool) *cobra.Command {
+func engineImportCommand() *cobra.Command {
 	var planFile, input, output string
 	var preview bool
-	cmd := &cobra.Command{Use: "engine --plan FILE --file FILE --output NEW_DIRECTORY", Short: "Import an explicitly declared engine export (unqualified compatibility)", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
-		*ran = true
+	cmd := &cobra.Command{Use: "engine --plan FILE --file FILE --output NEW_DIRECTORY", Short: "Import an explicitly declared engine export (unqualified compatibility)", Annotations: declare(capabilityAuthor), Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		if planFile == "" || input == "" || preview && output != "" || !preview && output == "" {
-			return errors.New("engine import requires --plan, --file, and either --preview or --output")
+			return usage("engine import requires --plan, --file, and either --preview or --output")
 		}
 		if err := cmd.Context().Err(); err != nil {
 			return err
@@ -44,12 +41,7 @@ func engineImportCommand(ran *bool) *cobra.Command {
 				Qualification string                `json:"qualification"`
 				Records       []engineexport.Record `json:"records"`
 			}{"readmit-engine-export-preview/v1", plan, "unqualified", records}
-			encoded, err := json.Marshal(document, json.Deterministic(true))
-			if err != nil {
-				return err
-			}
-			_, err = fmt.Fprintln(cmd.OutOrStdout(), string(encoded))
-			return err
+			return writeJSON(cmd, document)
 		}
 		b, err := bundle.WriteEngineExport(cmd.Context(), output, input, data, plan, time.Now().UTC())
 		if err != nil {

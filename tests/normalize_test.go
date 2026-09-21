@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,29 +16,17 @@ const normalizePolicy = "../testdata/fixtures/normalize-policy.json"
 func normalizeJSON(t *testing.T, args ...string) (diff.NormalizationReport, string) {
 	t.Helper()
 	args = append(append([]string{"normalize"}, args...), "--format", "json")
-	stdout, stderr, err := run(t, args...)
-	if err != nil || stderr != "" {
-		t.Fatalf("normalize: %v %s", err, stderr)
-	}
-	var report diff.NormalizationReport
-	if err := json.Unmarshal([]byte(stdout), &report, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatal(err)
-	}
-	return report, stdout
+	return runJSON[diff.NormalizationReport](t, args...)
 }
 
 func writePolicy(t *testing.T, document string) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "policy.json")
-	if err := os.WriteFile(path, []byte(document), 0600); err != nil {
-		t.Fatal(err)
-	}
-	return path
+	return writeDocument(t, t.TempDir(), "policy.json", document)
 }
 
 func TestNormalizeAcceptanceFixtureShowsEveryRuleAndEverySuppression(t *testing.T) {
 	report, stdout := normalizeJSON(t, normalizeBefore, normalizeAfter, "--policy", normalizePolicy)
-	var expected struct {
+	type expectedFixture struct {
 		Summary    diff.NormalizationSummary `json:"summary"`
 		Suppressed []struct {
 			Selector string `json:"selector"`
@@ -51,13 +38,7 @@ func TestNormalizeAcceptanceFixtureShowsEveryRuleAndEverySuppression(t *testing.
 		Unaddressed   string `json:"unaddressed_selector"`
 		UnappliedRule string `json:"unapplied_rule"`
 	}
-	data, err := os.ReadFile("../testdata/fixtures/normalize-expected.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(data, &expected, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatal(err)
-	}
+	expected := readStrictDocument[expectedFixture](t, "../testdata/fixtures/normalize-expected.json")
 	if report.Schema != "readmit-normalization/v1" || report.PolicySchema != "readmit-normalization-policy/v1" {
 		t.Fatalf("wrong contract names: %+v", report)
 	}

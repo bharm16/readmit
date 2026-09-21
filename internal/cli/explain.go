@@ -26,22 +26,16 @@ const hidden = "hidden"
 // stored verdict, and it refuses a question the evidence cannot answer instead
 // of answering a narrower one. Nothing is opened but the artifacts named on the
 // command line, nothing is sent, and nothing is written.
-func explainCommand(ran *bool) *cobra.Command {
+func explainCommand() *cobra.Command {
 	var assertions, before, beforeSource, after, afterSource string
 	var showValues bool
 	command := &cobra.Command{
-		Use:   "explain RUN --assertions SET",
-		Short: "Explain what a run's evidence decided, assertion by assertion",
-		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return errors.New("explain requires exactly one run bundle")
-			}
-			return nil
-		},
+		Use:         "explain RUN --assertions set",
+		Annotations: declare(capabilityFree),
+		Short:       "Explain what a run's evidence decided, assertion by assertion",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			if assertions == "" {
-				return &ExitError{Code: 2, Err: errors.New("explain requires --assertions naming one " + assertion.Schema + " document")}
+				return usage("explain requires --assertions naming one %s document", assertion.Schema)
 			}
 			explanation, err := runexplain.Explain(cmd.Context(), runexplain.Input{
 				Run: args[0], Assertions: assertions,
@@ -49,12 +43,12 @@ func explainCommand(ran *bool) *cobra.Command {
 				After:  runexplain.ObservationInput{Completion: after, Source: afterSource},
 			})
 			if err != nil {
-				return &ExitError{Code: 2, Err: err}
+				return refusal(err)
 			}
 			if err := writeLines(cmd.OutOrStdout(), func(w io.Writer) {
 				writeExplanation(w, explanation, cmd.Root().Version, showValues)
 			}); err != nil {
-				return &ExitError{Code: 2, Err: errors.New("cannot write the explanation")}
+				return refusal(errors.New("cannot write the explanation"))
 			}
 			return explainStatus(explanation)
 		},
@@ -79,15 +73,15 @@ func explainCommand(ran *bool) *cobra.Command {
 // nobody could read. Restating one of them here would state it for all six.
 func explainStatus(explanation runexplain.Explanation) error {
 	if explanation.Failure != nil {
-		return &ExitError{Code: 2, Err: errors.New("this run has no verdict; the explanation names the execution error"), Reported: true}
+		return statedRefusal(errors.New("this run has no verdict; the explanation names the execution error"))
 	}
 	switch explanation.Verdict {
 	case assertion.VerdictFail:
-		return &ExitError{Code: 1, Err: errors.New("this run disagreed with its expectations"), Reported: true}
+		return failure(errors.New("this run disagreed with its expectations"))
 	case assertion.VerdictPass:
 		return nil
 	default:
-		return &ExitError{Code: 2, Err: errors.New("this run's evidence decided nothing; unknown is not a pass"), Reported: true}
+		return statedRefusal(errors.New("this run's evidence decided nothing; unknown is not a pass"))
 	}
 }
 

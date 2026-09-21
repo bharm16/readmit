@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/bharm16/readmit/internal/artifactdir"
 )
 
 type backupEntry struct {
@@ -88,8 +90,8 @@ func (s *Store) Backup(ctx context.Context, destination string) error {
 	if err = rows.Err(); err != nil {
 		return errors.New("metadata backup interrupted")
 	}
-	var team bool
-	if err = s.db.QueryRowContext(ctx, "SELECT team_enabled FROM readmit_hub_schema WHERE singleton").Scan(&team); err != nil {
+	team, err := s.teamEnabled(ctx)
+	if err != nil {
 		return err
 	}
 	m.Team = &team
@@ -115,57 +117,11 @@ func (s *Store) Backup(ctx context.Context, destination string) error {
 	if err != nil {
 		return err
 	}
-	m.Reviews = []ReviewEvent{}
-	reviewRows, err := s.db.QueryContext(ctx, `SELECT document FROM readmit_hub_reviews ORDER BY project COLLATE "C", sequence`)
+	m.Reviews, err = reviewLog.readAll(ctx, s.db)
 	if err != nil {
 		return err
 	}
-	for reviewRows.Next() {
-		var data string
-		var event ReviewEvent
-		if err = reviewRows.Scan(&data); err != nil {
-			reviewRows.Close()
-			return err
-		}
-		if json.Unmarshal([]byte(data), &event, json.RejectUnknownMembers(true)) != nil {
-			reviewRows.Close()
-			return ErrIntegrity
-		}
-		m.Reviews = append(m.Reviews, event)
-		if len(m.Reviews) > maxReviews {
-			reviewRows.Close()
-			return ErrLimit
-		}
-	}
-	err = reviewRows.Err()
-	reviewRows.Close()
-	if err != nil {
-		return err
-	}
-	m.Lifecycle = []LifecycleEvent{}
-	lifecycleRows, err := s.db.QueryContext(ctx, `SELECT document FROM readmit_hub_lifecycle ORDER BY project COLLATE "C",sequence`)
-	if err != nil {
-		return err
-	}
-	for lifecycleRows.Next() {
-		var raw string
-		var event LifecycleEvent
-		if err = lifecycleRows.Scan(&raw); err != nil {
-			lifecycleRows.Close()
-			return err
-		}
-		if json.Unmarshal([]byte(raw), &event, json.RejectUnknownMembers(true)) != nil {
-			lifecycleRows.Close()
-			return ErrIntegrity
-		}
-		m.Lifecycle = append(m.Lifecycle, event)
-		if len(m.Lifecycle) > maxLifecycle {
-			lifecycleRows.Close()
-			return ErrLimit
-		}
-	}
-	err = lifecycleRows.Err()
-	lifecycleRows.Close()
+	m.Lifecycle, err = lifecycleLog.readAll(ctx, s.db)
 	if err != nil {
 		return err
 	}
@@ -202,29 +158,14 @@ func encodeBackupManifest(m backupManifest) ([]byte, error) {
 	return data, nil
 }
 
+// writeNew is the one durable file write of a backup or restore: exclusive
+// create, a short-write check, and a sync, through the shared artifact
+// discipline. A refused or partial write is never reported as complete.
 func writeNew(root *os.Root, name string, data []byte) error {
-	f, err := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if err != nil {
-		return err
-	}
-	if _, err = f.Write(data); err != nil {
-		f.Close()
-		return err
-	}
-	err = f.Sync()
-	closeErr := f.Close()
-	if err != nil {
-		return err
-	}
-	return closeErr
+	return artifactdir.WriteFile(root, name, data)
 }
 func syncRoot(root *os.Root) error {
-	f, err := root.Open(".")
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	return f.Sync()
+	return artifactdir.SyncDirectory(root, ".")
 }
 
 func readBackup(root *os.Root) (backupManifest, error) {
@@ -488,7 +429,7 @@ func readBackup(root *os.Root) (backupManifest, error) {
 			}
 			return data, nil
 		}
-		if e := validateReview(event.Command, event.Actor, event.Issuer, byProject[event.Project], load); e != nil {
+		if e := validateReview(event.Command, event.Actor, event.Issuer, deriveReviews(byProject[event.Project]), load); e != nil {
 			return m, e
 		}
 		byProject[event.Project] = append(byProject[event.Project], event)
@@ -632,28 +573,20 @@ func (s *Store) Restore(ctx context.Context, source string) error {
 		}
 	}
 	for _, event := range m.Reviews {
-		data, e := json.Marshal(event)
-		if e != nil {
-			return e
-		}
-		if _, e = tx.ExecContext(ctx, `INSERT INTO readmit_hub_reviews(project,sequence,id,document) VALUES($1,$2,$3,$4)`, event.Project, event.Sequence, event.Command.ID, string(data)); e != nil {
+		if err = reviewLog.appendInTx(ctx, tx, event.Project, event); err != nil {
 			return errors.New("review restore failed")
 		}
 	}
 	for _, event := range m.Lifecycle {
-		data, e := json.Marshal(event)
-		if e != nil {
-			return e
-		}
-		if _, e = tx.ExecContext(ctx, `INSERT INTO readmit_hub_lifecycle(project,sequence,id,document) VALUES($1,$2,$3,$4)`, event.Project, event.Sequence, event.Command.ID, string(data)); e != nil {
-			return e
+		if err = lifecycleLog.appendInTx(ctx, tx, event.Project, event); err != nil {
+			return err
 		}
 	}
 	team := false
 	if m.Team != nil {
 		team = *m.Team
 	}
-	if _, err = tx.ExecContext(ctx, "UPDATE readmit_hub_schema SET team_enabled=$1 WHERE singleton", team); err != nil {
+	if err = setTeamEnabled(ctx, tx, team); err != nil {
 		return err
 	}
 	if err = syncRoot(s.root); err != nil {

@@ -33,14 +33,12 @@ func TestDiagnoseExecutableWritesMatchingReportsAndPreservesCase(t *testing.T) {
 			if err != nil || stderr != "" || !strings.Contains(stdout, "Diagnosis complete:") {
 				t.Fatalf("diagnose: %v %s %s", err, stdout, stderr)
 			}
+			// The raw report bytes are kept for the disclosure scan below.
 			data, err := os.ReadFile(filepath.Join(output, "report.json"))
 			if err != nil {
 				t.Fatal(err)
 			}
-			var report diagnose.Report
-			if err := json.Unmarshal(data, &report, json.RejectUnknownMembers(true)); err != nil {
-				t.Fatal(err)
-			}
+			report := readStrictOutput[diagnose.Report](t, string(data))
 			markdown, err := os.ReadFile(filepath.Join(output, "report.md"))
 			if err != nil {
 				t.Fatal(err)
@@ -241,10 +239,7 @@ func TestDiagnoseLifecycleRulesetIsSelectedThroughTheConfigurationFile(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	var report diagnose.Report
-	if err := json.Unmarshal(data, &report, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatal(err)
-	}
+	report := readStrictOutput[diagnose.Report](t, string(data))
 	if report.Schema != diagnose.Schema || report.Profile != diagnose.LifecycleProfile || len(report.Findings) != 1 {
 		t.Fatalf("lifecycle ruleset not applied: %+v", report)
 	}
@@ -299,10 +294,7 @@ func TestDiagnoseOrderRulesetLinksAcknowledgementsThroughTheConfigurationFile(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	var report diagnose.Report
-	if err := json.Unmarshal(data, &report, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatal(err)
-	}
+	report := readStrictOutput[diagnose.Report](t, string(data))
 	if report.Schema != diagnose.Schema || report.Profile != diagnose.OrderProfile {
 		t.Fatalf("order ruleset not applied: %+v", report)
 	}

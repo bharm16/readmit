@@ -13,28 +13,29 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func secretCommand(ran *bool) *cobra.Command {
+func secretCommand() *cobra.Command {
 	command := &cobra.Command{
-		Use:   "secret",
-		Short: "Reference credentials that stay in an OS or customer-managed secret store",
-		Args:  cobra.NoArgs,
+		Use:         "secret",
+		Annotations: declare(capabilityFree),
+		Short:       "Reference credentials that stay in an OS or customer-managed secret store",
+		Args:        cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return errors.New("secret requires a subcommand: add, update, rotate, show, or scan")
+			return usage("secret requires a subcommand: add, update, rotate, show, or scan")
 		},
 	}
-	command.AddCommand(secretAdd(ran), secretUpdate(ran), secretRotate(ran), secretShow(ran), secretScan(ran))
+	command.AddCommand(secretAdd(), secretUpdate(), secretRotate(), secretShow(), secretScan())
 	return command
 }
 
-func secretAdd(ran *bool) *cobra.Command {
+func secretAdd() *cobra.Command {
 	var file, name, store, purpose, address, program, maxAge string
 	var arguments []string
 	command := &cobra.Command{
-		Use:   "add --secrets FILE --name NAME --store KIND --address HOST:PORT --command PROGRAM",
-		Short: "Register a reference to a credential held in a secret store",
-		Args:  cobra.NoArgs,
+		Use:         "add --secrets FILE --name NAME --store KIND --address HOST:PORT --command PROGRAM",
+		Annotations: declare(capabilityAuthor),
+		Short:       "Register a reference to a credential held in a secret store",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			*ran = true
 			document, err := openOrEmptyStore(file)
 			if err != nil {
 				return err
@@ -70,15 +71,15 @@ func secretAdd(ran *bool) *cobra.Command {
 	return command
 }
 
-func secretUpdate(ran *bool) *cobra.Command {
+func secretUpdate() *cobra.Command {
 	var file, name, store, address, program, maxAge string
 	var arguments []string
 	command := &cobra.Command{
-		Use:   "update --secrets FILE --name NAME",
-		Short: "Change where a registered reference reads its credential from, or what it may be presented to",
-		Args:  cobra.NoArgs,
+		Use:         "update --secrets FILE --name NAME",
+		Annotations: declare(capabilityAuthor),
+		Short:       "Change where a registered reference reads its credential from, or what it may be presented to",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			*ran = true
 			var change secret.Change
 			if cmd.Flags().Changed("store") {
 				value := secret.Store(store)
@@ -101,7 +102,7 @@ func secretUpdate(ran *bool) *cobra.Command {
 				change.MaxAge = &maxAge
 			}
 			if change.Empty() {
-				return errors.New("secret update requires at least one change")
+				return usage("secret update requires at least one change")
 			}
 			document, err := readStore(file)
 			if err != nil {
@@ -127,14 +128,14 @@ func secretUpdate(ran *bool) *cobra.Command {
 	return command
 }
 
-func secretRotate(ran *bool) *cobra.Command {
+func secretRotate() *cobra.Command {
 	var file, name string
 	command := &cobra.Command{
-		Use:   "rotate --secrets FILE --name NAME",
-		Short: "Record that the credential behind a reference was replaced in its store",
-		Args:  cobra.NoArgs,
+		Use:         "rotate --secrets FILE --name NAME",
+		Annotations: declare(capabilityAuthor),
+		Short:       "Record that the credential behind a reference was replaced in its store",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			*ran = true
 			document, err := readStore(file)
 			if err != nil {
 				return err
@@ -164,14 +165,14 @@ func secretRotate(ran *bool) *cobra.Command {
 	return command
 }
 
-func secretShow(ran *bool) *cobra.Command {
+func secretShow() *cobra.Command {
 	var file string
 	command := &cobra.Command{
-		Use:   "show --secrets FILE",
-		Short: "Show every registered reference, its scope and its rotation state, with the credential masked",
-		Args:  cobra.NoArgs,
+		Use:         "show --secrets FILE",
+		Annotations: declare(capabilityFree),
+		Short:       "Show every registered reference, its scope and its rotation state, with the credential masked",
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			*ran = true
 			document, err := readStore(file)
 			if err != nil {
 				return err
@@ -189,11 +190,12 @@ func secretShow(ran *bool) *cobra.Command {
 	return command
 }
 
-func secretScan(ran *bool) *cobra.Command {
+func secretScan() *cobra.Command {
 	var file, name string
 	command := &cobra.Command{
-		Use:   "scan --secrets FILE PATH...",
-		Short: "Check configuration, manifests, reports, logs and local browser state for a known credential value",
+		Use:         "scan --secrets FILE PATH...",
+		Annotations: declare(capabilityFree),
+		Short:       "Check configuration, manifests, reports, logs and local browser state for a known credential value",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return errors.New("secret scan requires at least one file or directory to check")
@@ -201,27 +203,26 @@ func secretScan(ran *bool) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			*ran = true
 			document, err := readStore(file)
 			if err != nil {
-				return &ExitError{Code: 2, Err: err}
+				return refusal(err)
 			}
 			references := document.References
 			if name != "" {
 				entry, err := secret.Find(document, name)
 				if err != nil {
-					return &ExitError{Code: 2, Err: err}
+					return refusal(err)
 				}
 				references = []secret.Reference{entry}
 			}
 			if len(references) == 0 {
-				return &ExitError{Code: 2, Err: errors.New("the secret reference document registers nothing to check for")}
+				return refusal(errors.New("the secret reference document registers nothing to check for"))
 			}
 			terms := make([][]byte, 0, len(references))
 			for _, entry := range references {
 				resolved, err := secret.Resolve(cmd.Context(), entry)
 				if err != nil {
-					return &ExitError{Code: 2, Err: errors.New("a registered credential did not resolve, so this scan checked nothing")}
+					return refusal(errors.New("a registered credential did not resolve, so this scan checked nothing"))
 				}
 				terms = append(terms, resolved.Expose())
 			}
@@ -230,7 +231,7 @@ func secretScan(ran *bool) *cobra.Command {
 			// to find, and a shared configuration is the first place to look.
 			files, skipped, err := secret.Collect(append([]string{file}, args...))
 			if err != nil {
-				return &ExitError{Code: 2, Err: err}
+				return refusal(err)
 			}
 			scan := exportreview.Residual(files, terms)
 			if err := writeLines(cmd.OutOrStdout(), func(w io.Writer) {
@@ -241,10 +242,10 @@ func secretScan(ran *bool) *cobra.Command {
 				}
 				fmt.Fprintf(w, "Limitations: %s\n", scan.Limitations)
 			}); err != nil {
-				return &ExitError{Code: 2, Err: err}
+				return refusal(err)
 			}
 			if len(scan.Locations) > 0 {
-				return &ExitError{Code: 1, Err: errors.New("a checked location holds a known credential value")}
+				return unstatedFailure(errors.New("a checked location holds a known credential value"))
 			}
 			return nil
 		},
@@ -260,7 +261,7 @@ func secretsFlag(command *cobra.Command, file *string) {
 
 func readStore(path string) (secret.Document, error) {
 	if path == "" {
-		return secret.Document{}, errors.New("secret requires --secrets naming a secret reference document")
+		return secret.Document{}, usage("secret requires --secrets naming a secret reference document")
 	}
 	return secret.ReadStore(path)
 }
@@ -269,7 +270,7 @@ func readStore(path string) (secret.Document, error) {
 // that exists but cannot be read as this contract is reported, never replaced.
 func openOrEmptyStore(path string) (secret.Document, error) {
 	if path == "" {
-		return secret.Document{}, errors.New("secret requires --secrets naming a secret reference document")
+		return secret.Document{}, usage("secret requires --secrets naming a secret reference document")
 	}
 	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
 		return secret.Document{Schema: secret.Schema}, nil

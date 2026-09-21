@@ -3,19 +3,17 @@ package replay
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"io"
-	"io/fs"
 	"os"
 	"regexp"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/mllp"
@@ -175,16 +173,11 @@ func (w *runWriter) finish(r *Run) error {
 }
 
 func writeFile(root *os.Root, path string, data []byte) error {
-	f, err := root.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
+	err := artifactdir.WriteFile(root, path, data)
+	if errors.Is(err, artifactdir.ErrCreateFile) {
 		return errors.New("cannot create run file; incomplete evidence retained")
 	}
-	_, err = f.Write(data)
-	if err == nil {
-		err = f.Sync()
-	}
-	closeErr := f.Close()
-	if err != nil || closeErr != nil {
+	if err != nil {
 		return errors.New("cannot write run file; incomplete evidence retained")
 	}
 	return nil
@@ -386,81 +379,21 @@ func validDigest(value string) bool {
 }
 
 func readFiles(path string) (map[string][]byte, error) {
-	root, err := os.OpenRoot(path)
-	if err != nil {
-		return nil, errors.New("cannot open run directory")
-	}
-	defer root.Close()
-	files, total := make(map[string][]byte), 0
-	err = fs.WalkDir(root.FS(), ".", func(name string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return errors.New("cannot read run directory")
-		}
-		if entry.IsDir() {
-			if name != "." && name != "payloads" {
-				return errors.New("unexpected run directory")
-			}
-			return nil
-		}
-		if entry.Type() != 0 {
-			return errors.New("run files must be regular files, never symlinks")
-		}
-		if name != "manifest.json" && name != "events.jsonl" && name != "identity.sha256" && !strings.HasPrefix(name, "payloads/") {
-			return errors.New("unexpected run file")
-		}
-		if len(files) >= 4*MaxMessages+3 {
-			return errors.New("run file limit exceeded")
-		}
-		f, err := root.Open(name)
-		if err != nil {
-			return errors.New("cannot open run file")
-		}
-		info, err := f.Stat()
-		if err != nil || !info.Mode().IsRegular() {
-			f.Close()
-			return errors.New("run files must be regular")
-		}
-		data, err := io.ReadAll(io.LimitReader(f, int64(min(maxFileBytes, maxRunBytes-total))+1))
-		closeErr := f.Close()
-		if err != nil || closeErr != nil {
-			return errors.New("cannot read run file")
-		}
-		total += len(data)
-		if len(data) > maxFileBytes || total > maxRunBytes {
-			return errors.New("run contents exceed size limit")
-		}
-		files[name] = data
-		return nil
+	return artifactdir.Read(path, artifactdir.Layout{
+		Noun:               "run",
+		AllowedDirectories: []string{"payloads"},
+		RequiredFiles:      []string{"manifest.json", "events.jsonl", "identity.sha256"},
+		AllowFile: func(name string) bool {
+			return name == "manifest.json" || name == "events.jsonl" || name == "identity.sha256" || strings.HasPrefix(name, "payloads/")
+		},
+		MaxFiles:     4*MaxMessages + 3,
+		MaxFileBytes: maxFileBytes,
+		MaxBytes:     maxRunBytes,
 	})
-	if err != nil {
-		return nil, err
-	}
-	for _, name := range []string{"manifest.json", "events.jsonl", "identity.sha256"} {
-		if _, ok := files[name]; !ok {
-			return nil, errors.New("run bundle is incomplete")
-		}
-	}
-	return files, nil
 }
 
 // Identity uses ADR-0002's domain prefix and sorted, length-delimited relative
 // paths and contents. No source path, filesystem time, or absolute path enters it.
 func identityFor(files map[string][]byte) string {
-	h := sha256.New()
-	h.Write([]byte(Schema + "\n"))
-	names := make([]string, 0, len(files))
-	for name := range files {
-		names = append(names, name)
-	}
-	slices.Sort(names)
-	var size [8]byte
-	for _, name := range names {
-		binary.BigEndian.PutUint64(size[:], uint64(len(name)))
-		h.Write(size[:])
-		h.Write([]byte(name))
-		binary.BigEndian.PutUint64(size[:], uint64(len(files[name])))
-		h.Write(size[:])
-		h.Write(files[name])
-	}
-	return hex.EncodeToString(h.Sum(nil))
+	return artifactdir.Identity(Schema, files)
 }

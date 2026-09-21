@@ -22,14 +22,19 @@ type RunComparisonResult struct {
 	Comparison *runcompare.Comparison `json:"comparison,omitzero"`
 }
 
+func (r *RunComparisonResult) refuse(state State, reason string) {
+	r.State, r.Reason = state, reason
+}
+
 // CompareRuns reads only named workspace entries. Cancellation discards the
 // view, never evidence; recovery is a fresh verification of the selected runs.
 func (a *App) CompareRuns(request RunComparisonRequest) RunComparisonResult {
-	ctx, release, ok := a.begin()
-	if !ok {
-		return RunComparisonResult{State: Busy, Reason: busyRefusal.reason}
-	}
-	defer release()
+	return run(a, true, false, func(ctx context.Context) RunComparisonResult {
+		return a.compareRuns(ctx, request)
+	})
+}
+
+func (a *App) compareRuns(ctx context.Context, request RunComparisonRequest) RunComparisonResult {
 	failure := func() RunComparisonResult {
 		return RunComparisonResult{State: Failed, Reason: "comparison requires verified workspace results or durable runs, an optional valid approval, and distinct complete repeat samples"}
 	}

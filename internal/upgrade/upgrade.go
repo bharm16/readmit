@@ -26,7 +26,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"io"
@@ -41,6 +40,7 @@ import (
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/engine"
 	"github.com/bharm16/readmit/internal/lifecycle"
+	"github.com/bharm16/readmit/internal/strictdoc"
 )
 
 const (
@@ -288,32 +288,28 @@ type candidatePackage struct {
 	SHA256 string `json:"sha256"`
 }
 
-// UnmarshalJSON checks the declared members are present before the strict
-// decode, so a manifest from a later release is reported as the version it
-// declares rather than as invalid because of the members that version added.
+// candidateDocument is the one strict reading of a staged package manifest,
+// through strictdoc: a manifest from a later release is reported as the
+// version it declares rather than as invalid because of the members that
+// version added.
+var candidateDocument = strictdoc.Document{
+	MaxBytes:    MaxCandidateBytes,
+	Schema:      CandidateSchema,
+	Required:    []string{"version", "os", "arch", "signed_for_distribution", "packages"},
+	Invalid:     "invalid desktop package manifest",
+	TooLarge:    "desktop package manifest exceeds its size limit",
+	MustDeclare: "a desktop package manifest declares its contract version",
+	Requires:    "a desktop package manifest declares its build, its target, whether it is signed for distribution, and the packages it names",
+	Unsupported: ErrUnsupportedVersion,
+}
+
+// UnmarshalJSON requires the declared members are present before the strict
+// decode. The reading is strictdoc's.
 func (c *candidate) UnmarshalJSON(data []byte) error {
-	var required struct {
-		Schema                *string         `json:"schema"`
-		Version               *jsontext.Value `json:"version"`
-		OS                    *jsontext.Value `json:"os"`
-		Arch                  *jsontext.Value `json:"arch"`
-		SignedForDistribution *jsontext.Value `json:"signed_for_distribution"`
-		Packages              *jsontext.Value `json:"packages"`
-	}
-	if err := json.Unmarshal(data, &required); err != nil || required.Schema == nil {
-		return errors.New("a desktop package manifest declares its contract version")
-	}
-	if *required.Schema != CandidateSchema {
-		return ErrUnsupportedVersion
-	}
-	if required.Version == nil || required.OS == nil || required.Arch == nil ||
-		required.SignedForDistribution == nil || required.Packages == nil {
-		return errors.New("a desktop package manifest declares its build, its target, whether it is signed for distribution, and the packages it names")
-	}
 	type plainCandidate candidate
 	var value plainCandidate
-	if err := json.Unmarshal(data, &value, json.RejectUnknownMembers(true)); err != nil {
-		return errors.New("invalid desktop package manifest")
+	if err := candidateDocument.Decode(data, &value); err != nil {
+		return err
 	}
 	*c = candidate(value)
 	return nil
