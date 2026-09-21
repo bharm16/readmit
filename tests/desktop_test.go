@@ -63,8 +63,8 @@ func TestDesktopSampleWorkspaceHoldsTheCommandLineFamilyBytes(t *testing.T) {
 		t.Fatalf("sample workspace: %+v", result)
 	}
 
-	shell := synthTree(t, result.Workspace.Root)
-	reference := synthTree(t, command)
+	shell := treeOf(t, result.Workspace.Root)
+	reference := treeOf(t, command)
 	for name, want := range reference {
 		if name == "family.json" {
 			if _, present := shell[name]; present {
@@ -162,7 +162,7 @@ func TestCommandLineReleaseNeverReachesTheDesktopShell(t *testing.T) {
 // pages that promise them read it from here, so neither can drift away from
 // what an operator is actually handed.
 func TestDesktopPackagesDeclareThePrerequisitesTheDocumentationPromises(t *testing.T) {
-	var declaration struct {
+	type packagingDeclaration struct {
 		Schema              string   `json:"schema"`
 		Product             string   `json:"product"`
 		DisplayName         string   `json:"display_name"`
@@ -185,13 +185,7 @@ func TestDesktopPackagesDeclareThePrerequisitesTheDocumentationPromises(t *testi
 			Formats             []string `json:"formats"`
 		} `json:"targets"`
 	}
-	data, err := os.ReadFile("../desktop/packaging/packages.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(data, &declaration, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatalf("the packaging declaration is not a document this release reads: %v", err)
-	}
+	declaration := readStrictDocument[packagingDeclaration](t, "../desktop/packaging/packages.json")
 	if declaration.Schema != "readmit-desktop-packaging/v1" {
 		t.Fatalf("the packaging declaration declares %q", declaration.Schema)
 	}
@@ -753,7 +747,7 @@ func runRevision(t *testing.T, workspace, revision, output, mode string, spec []
 		wait = testListener(t, dir, mode)
 	}
 	stdout, stderr, err := run(t, "test", specPath, "--send", "--output", filepath.Join(workspace, output))
-	if processCode(t, err) != want || stderr != "" {
+	if exitCode(t, err) != want || stderr != "" {
 		t.Fatalf("this revision's test did not reach the expected outcome: %v %s %s", err, stdout, stderr)
 	}
 	wait()
@@ -936,10 +930,7 @@ func TestDesktopTransformationPreviewMatchesTheCommandLine(t *testing.T) {
 	if err != nil || stderr != "" {
 		t.Fatalf("correlate: %v %s", err, stderr)
 	}
-	var report correlate.Report
-	if err := json.Unmarshal([]byte(reported), &report, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatal(err)
-	}
+	report := readStrictOutput[correlate.Report](t, reported)
 	plan := filepath.Join(workspace, "plan.json")
 	if err := os.WriteFile(plan, []byte(`{"schema":"`+transform.PlanSchema+`","case":"`+report.CaseIdentity+
 		`","rules":"`+report.RulesSHA256+`","steps":[`+
@@ -953,10 +944,7 @@ func TestDesktopTransformationPreviewMatchesTheCommandLine(t *testing.T) {
 	if err != nil || stderr != "" {
 		t.Fatalf("transform: %v %s", err, stderr)
 	}
-	var previewed transform.Preview
-	if err := json.Unmarshal([]byte(printed), &previewed, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatal(err)
-	}
+	previewed := readStrictOutput[transform.Preview](t, printed)
 
 	app := desktopApp(t, workspace)
 	opened := app.OpenCase(workspace, "incident")
@@ -1125,7 +1113,7 @@ func TestDesktopReviewApprovesExactlyWhatTheExportGateRequires(t *testing.T) {
 		"--local-state", request.LocalState, "--approve", approved.Identity, "--output", packet); err != nil {
 		t.Fatalf("export: %v %s", err, out)
 	}
-	manifest := redactReadJSON[redact.ExportManifest](t, filepath.Join(packet, "export-review.json"))
+	manifest := readStrictDocument[redact.ExportManifest](t, filepath.Join(packet, "export-review.json"))
 	if manifest.ApprovedReview != approved.Identity {
 		t.Fatalf("the packet was approved under %s and the window under %s", manifest.ApprovedReview, approved.Identity)
 	}

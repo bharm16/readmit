@@ -102,10 +102,7 @@ func runsDirectory(t *testing.T, parent string) string {
 
 func decodeQueue(t *testing.T, stdout string) runqueue.Report {
 	t.Helper()
-	var report runqueue.Report
-	if err := json.Unmarshal([]byte(stdout), &report, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatalf("%s %v", stdout, err)
-	}
+	report := readStrictOutput[runqueue.Report](t, stdout)
 	if report.Schema != runqueue.ReportSchema {
 		t.Fatalf("%+v", report)
 	}
@@ -149,10 +146,7 @@ func TestRunExecutableQueueSerializesJobsSharingTargetState(t *testing.T) {
 		if err != nil || stderr != "" {
 			t.Fatalf("%s: %v %s %s", job, err, stdout, stderr)
 		}
-		var recovery durablerun.Recovery
-		if err := json.Unmarshal([]byte(stdout), &recovery, json.RejectUnknownMembers(true)); err != nil {
-			t.Fatal(err)
-		}
+		recovery := readStrictOutput[durablerun.Recovery](t, stdout)
 		if !recovery.Terminal || recovery.Acknowledged != 1 || recovery.Lease != durablerun.LeaseReleased {
 			t.Fatalf("%s: %+v", job, recovery)
 		}
@@ -206,7 +200,7 @@ func TestRunExecutableQueueRefusesAdmissionAgainstAHeldLease(t *testing.T) {
 		runqueue.Job{ID: "first", Spec: filepath.Base(spec), Isolation: runqueue.SharedState},
 		runqueue.Job{ID: "second", Spec: filepath.Base(spec), Isolation: runqueue.SharedState, After: []string{"first"}})
 	stdout, stderr, err := run(t, "run", "queue", plan, "--send", "--runs", runs)
-	if processCode(t, err) != 2 || stderr != "" {
+	if exitCode(t, err) != exitRefused || stderr != "" {
 		t.Fatalf("%v %s %s", err, stdout, stderr)
 	}
 	if !strings.Contains(stdout, "Jobs: 0 executed, 0 not started, 1 refused, 1 skipped\n") ||
@@ -245,7 +239,7 @@ func TestRunExecutableQueueRefusesWhatItCannotSchedule(t *testing.T) {
 		"negative deadline": {"run", "queue", plan, "--send", "--runs", runs, "--deadline", "0s"},
 	} {
 		stdout, stderr, err := run(t, arguments...)
-		if processCode(t, err) != 2 || stdout != "" || stderr == "" {
+		if exitCode(t, err) != exitRefused || stdout != "" || stderr == "" {
 			t.Fatalf("%s: %v %s %s", name, err, stdout, stderr)
 		}
 		if _, err := os.Lstat(filepath.Join(runs, "first")); err == nil {
@@ -264,7 +258,7 @@ func TestRunExecutableQueueDeadlineStartsNothingFurther(t *testing.T) {
 		runqueue.Job{ID: "first", Spec: filepath.Base(spec), Isolation: runqueue.SharedState},
 		runqueue.Job{ID: "second", Spec: filepath.Base(spec), Isolation: runqueue.SharedState})
 	stdout, stderr, err := run(t, "run", "queue", plan, "--send", "--runs", runs, "--deadline", "500ms", "--json")
-	if processCode(t, err) != 2 || stderr != "" {
+	if exitCode(t, err) != exitRefused || stderr != "" {
 		t.Fatalf("%v %s %s", err, stdout, stderr)
 	}
 	report := decodeQueue(t, stdout)
@@ -285,13 +279,10 @@ func TestRunExecutableQueueDeadlineStartsNothingFurther(t *testing.T) {
 	// The run that did start is recovered as the uncertain delivery it is, and
 	// nothing in the queue resent or resumed it.
 	stdout, stderr, err = run(t, "run", "status", filepath.Join(runs, "first"), "--recovery", "--json")
-	if processCode(t, err) != 2 || stderr != "" {
+	if exitCode(t, err) != exitRefused || stderr != "" {
 		t.Fatalf("%v %s %s", err, stdout, stderr)
 	}
-	var recovery durablerun.Recovery
-	if err := json.Unmarshal([]byte(stdout), &recovery, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatal(err)
-	}
+	recovery := readStrictOutput[durablerun.Recovery](t, stdout)
 	if !recovery.Terminal || recovery.Uncertain != 1 || recovery.SafeToRepeat || recovery.Lease != durablerun.LeaseReleased {
 		t.Fatalf("%+v", recovery)
 	}

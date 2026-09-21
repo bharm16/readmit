@@ -1,9 +1,6 @@
 package tests
 
 import (
-	"bufio"
-	"bytes"
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,42 +80,17 @@ func explainableRun(t *testing.T) (runPath, directory string) {
 	if _, stderr, err := run(t, "capture", "../testdata/fixtures/listen-s12.hl7", "--output", source); err != nil {
 		t.Fatalf("capture: %v %s", err, stderr)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	receiver := testCommand(ctx, t, "listen", "--address", "127.0.0.1:0", "--mode", "fixed",
+	receiver := startReceiver(t, 20*time.Second, "listen", "--address", "127.0.0.1:0", "--mode", "fixed",
 		"--output", filepath.Join(directory, "recorded"), "--observation", filepath.Join(directory, "observation.json"),
 		"--max-messages", "1", "--idle-timeout", "3s")
-	var diagnostic bytes.Buffer
-	receiver.Stderr = &diagnostic
-	pipe, err := receiver.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := receiver.Start(); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { cancel(); _ = receiver.Wait() })
-	reader := bufio.NewReader(pipe)
-	ready, err := reader.ReadString('\n')
-	if err != nil || !strings.HasPrefix(ready, "Listening: ") {
-		t.Fatalf("the fixture receiver never became ready: %v %s", err, diagnostic.String())
-	}
 	runPath = filepath.Join(directory, "run")
 	if _, stderr, err := run(t, "replay", source, "--target",
-		replayTarget(t, strings.TrimSpace(strings.TrimPrefix(ready, "Listening: "))),
+		replayTarget(t, receiver.address),
 		"--send", "--output", runPath); err != nil {
 		t.Fatalf("replay: %v %s", err, stderr)
 	}
+	receiver.wait(t)
 	return runPath, directory
-}
-
-func setDocument(t *testing.T, directory, name, document string) string {
-	t.Helper()
-	path := filepath.Join(directory, name)
-	if err := os.WriteFile(path, []byte(document), 0600); err != nil {
-		t.Fatal(err)
-	}
-	return path
 }
 
 // A recipient with no access to the original developer reads the result, the
@@ -126,7 +98,7 @@ func setDocument(t *testing.T, directory, name, document string) string {
 // value came from — from the console, without opening a JSON file.
 func TestExplainExecutableReportsAPassingRunWithoutOpeningAnyJSON(t *testing.T) {
 	bundlePath, directory := explainableRun(t)
-	stdout, stderr, err := run(t, "explain", bundlePath, "--assertions", setDocument(t, directory, "assertions.json", explainAcceptedSet))
+	stdout, stderr, err := run(t, "explain", bundlePath, "--assertions", writeDocument(t, directory, "assertions.json", explainAcceptedSet))
 	if err != nil || stderr != "" {
 		t.Fatalf("a passing run was not explained: %v %s", err, stderr)
 	}
@@ -174,7 +146,7 @@ func TestExplainExecutableReportsAPassingRunWithoutOpeningAnyJSON(t *testing.T) 
 func TestExplainExecutableShowsExpectedAndObservedValuesOnlyWhenAsked(t *testing.T) {
 	bundlePath, directory := explainableRun(t)
 	stdout, stderr, err := run(t, "explain", bundlePath,
-		"--assertions", setDocument(t, directory, "assertions.json", explainAcceptedSet), "--show-values")
+		"--assertions", writeDocument(t, directory, "assertions.json", explainAcceptedSet), "--show-values")
 	if err != nil || stderr != "" {
 		t.Fatalf("explain --show-values: %v %s", err, stderr)
 	}
@@ -193,7 +165,7 @@ func TestExplainExecutableShowsExpectedAndObservedValuesOnlyWhenAsked(t *testing
 // and never a pass; and a skipped assertion asserted nothing.
 func TestExplainExecutableDistinguishesFailedUndecidedAndSkipped(t *testing.T) {
 	bundlePath, directory := explainableRun(t)
-	stdout, _, err := run(t, "explain", bundlePath, "--assertions", setDocument(t, directory, "assertions.json", explainDisagreeingSet))
+	stdout, _, err := run(t, "explain", bundlePath, "--assertions", writeDocument(t, directory, "assertions.json", explainDisagreeingSet))
 	if code := exitCode(t, err); code != 1 {
 		t.Fatalf("a decided disagreement exited %d, want 1:\n%s", code, stdout)
 	}
@@ -220,7 +192,7 @@ func TestExplainExecutableProducesNoVerdictForEvidenceItCannotRead(t *testing.T)
   "assertions": [{"id": "absent", "operator": "field_state",
     "subject": {"field": {"scope": "observed", "message": "s0001-e000404", "selector": "MSA-1"}},
     "when": null, "expected": {"state": "present"}}]}`
-	stdout, _, err := run(t, "explain", bundlePath, "--assertions", setDocument(t, directory, "assertions.json", missing))
+	stdout, _, err := run(t, "explain", bundlePath, "--assertions", writeDocument(t, directory, "assertions.json", missing))
 	if code := exitCode(t, err); code != 2 {
 		t.Fatalf("an execution error exited %d, want 2:\n%s", code, stdout)
 	}
@@ -249,7 +221,7 @@ func TestExplainExecutableAnswersACollectionQuestionFromTheCaptureThatWasObserve
 		"--out", record, "--snapshot", filepath.Join(captureDirectory, "snapshot")); err != nil {
 		t.Fatalf("the downstream capture was not observed: %v %s", err, stderr)
 	}
-	assertions := setDocument(t, directory, "records.json", explainRecordsSet)
+	assertions := writeDocument(t, directory, "records.json", explainRecordsSet)
 	stdout, stderr, err := run(t, "explain", bundlePath, "--assertions", assertions, "--after", record, "--after-source", source)
 	if err != nil || stderr != "" {
 		t.Fatalf("a collection question was not answered: %v %s\n%s", err, stderr, stdout)
@@ -298,7 +270,7 @@ func TestExplainExecutableRefusesRecordsItCannotDeriveAgain(t *testing.T) {
 	if err := os.WriteFile(export, []byte("appointment,status\nAPPT-7710,booked\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	fileSource := setDocument(t, directory, "file-source.json", `{
+	fileSource := writeDocument(t, directory, "file-source.json", `{
   "schema": "readmit-observation-source/v1",
   "source": {"kind": "file-export", "identity": "integration-sink", "scope": "appointments"},
   "enabled": true,
@@ -312,7 +284,7 @@ func TestExplainExecutableRefusesRecordsItCannotDeriveAgain(t *testing.T) {
   "file": {"path": "export.csv", "max_bytes": 65536},
   "http": null
 }`)
-	fileWindow := setDocument(t, directory, "file-window.json", `{
+	fileWindow := writeDocument(t, directory, "file-window.json", `{
   "schema": "readmit-observation-window/v1",
   "source": {"kind": "file-export", "identity": "integration-sink", "scope": "appointments"},
   "watermark": {"kind": "none", "position": ""},
@@ -325,7 +297,7 @@ func TestExplainExecutableRefusesRecordsItCannotDeriveAgain(t *testing.T) {
 		t.Fatalf("the export was not observed: %v %s", err, stderr)
 	}
 	stdout, stderr, err := run(t, "explain", bundlePath,
-		"--assertions", setDocument(t, directory, "records.json", explainRecordsSet), "--after", record, "--after-source", fileSource)
+		"--assertions", writeDocument(t, directory, "records.json", explainRecordsSet), "--after", record, "--after-source", fileSource)
 	if code := exitCode(t, err); code != 2 {
 		t.Fatalf("an unrelinkable source exited %d, want 2:\n%s", code, stdout)
 	}
@@ -349,7 +321,7 @@ func TestExplainExecutableRefusesAnObservationRecordedBesideAnotherRun(t *testin
 		t.Fatalf("the downstream capture was not observed: %v %s", err, stderr)
 	}
 	stdout, stderr, err := run(t, "explain", bundlePath,
-		"--assertions", setDocument(t, directory, "records.json", explainRecordsSet), "--after", record, "--after-source", source)
+		"--assertions", writeDocument(t, directory, "records.json", explainRecordsSet), "--after", record, "--after-source", source)
 	if code := exitCode(t, err); code != 2 {
 		t.Fatalf("an observation of another run exited %d, want 2:\n%s", code, stdout)
 	}
@@ -361,7 +333,7 @@ func TestExplainExecutableRefusesAnObservationRecordedBesideAnotherRun(t *testin
 // Neither half of the invocation is inferred and neither has a default.
 func TestExplainExecutableRequiresOneRunAndOneSet(t *testing.T) {
 	bundlePath, directory := explainableRun(t)
-	assertions := setDocument(t, directory, "assertions.json", explainAcceptedSet)
+	assertions := writeDocument(t, directory, "assertions.json", explainAcceptedSet)
 	for name, args := range map[string][]string{
 		"no assertion set": {"explain", bundlePath},
 		"no run":           {"explain", "--assertions", assertions},
@@ -379,7 +351,7 @@ func TestExplainExecutableRequiresOneRunAndOneSet(t *testing.T) {
 func TestExplainExecutableRefusesAnAssertionSetPastItsContractBound(t *testing.T) {
 	bundlePath, directory := explainableRun(t)
 	oversize := `{"schema": "readmit-assertion-set/v1", "name": "` + strings.Repeat("n", 256<<10) + `", "assertions": []}`
-	stdout, stderr, err := run(t, "explain", bundlePath, "--assertions", setDocument(t, directory, "oversize.json", oversize))
+	stdout, stderr, err := run(t, "explain", bundlePath, "--assertions", writeDocument(t, directory, "oversize.json", oversize))
 	if code := exitCode(t, err); code != 2 {
 		t.Fatalf("an oversize document exited %d, want 2:\n%s", code, stdout)
 	}

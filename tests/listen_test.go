@@ -1,11 +1,6 @@
 package tests
 
 import (
-	"bufio"
-	"bytes"
-	"context"
-	"encoding/json/v2"
-	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -26,29 +21,12 @@ func TestListenExecutableExportsBothLedgersAndReopensRecordedCase(t *testing.T) 
 			dir := t.TempDir()
 			casePath := filepath.Join(dir, "case")
 			observationPath := filepath.Join(dir, "observation.json")
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			defer cancel()
-			command := testCommand(ctx, t, "listen", "--address", "127.0.0.1:0", "--mode", mode, "--output", casePath, "--observation", observationPath, "--max-messages", "2", "--idle-timeout", "2s")
-			var diagnostic bytes.Buffer
-			command.Stderr = &diagnostic
-			stdout, err := command.StdoutPipe()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := command.Start(); err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { cancel(); _ = command.Wait() })
-			reader := bufio.NewReader(stdout)
-			ready, err := reader.ReadString('\n')
-			if err != nil || !strings.HasPrefix(ready, "Listening: ") {
-				t.Fatalf("receiver not ready: %q %v", ready, err)
-			}
+			receiver := startReceiver(t, 15*time.Second, "listen", "--address", "127.0.0.1:0", "--mode", mode, "--output", casePath, "--observation", observationPath, "--max-messages", "2", "--idle-timeout", "2s")
 			initial, err := observation.Read(observationPath)
 			if err != nil {
 				t.Fatal(err)
 			}
-			conn, err := net.DialTimeout("tcp", strings.TrimSpace(strings.TrimPrefix(ready, "Listening: ")), 2*time.Second)
+			conn, err := net.DialTimeout("tcp", receiver.address, 2*time.Second)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -84,17 +62,11 @@ func TestListenExecutableExportsBothLedgersAndReopensRecordedCase(t *testing.T) 
 					t.Fatalf("incomplete handoff after ACK: %+v %v", observed, err)
 				}
 			}
-			remaining, err := io.ReadAll(reader)
-			if err != nil {
-				t.Fatal(err)
+			remaining := receiver.wait(t)
+			if receiver.diagnostic.Len() != 0 {
+				t.Fatalf("unexpected diagnostic: %s", receiver.diagnostic.String())
 			}
-			if err := command.Wait(); err != nil {
-				t.Fatalf("listen: %v %s", err, diagnostic.String())
-			}
-			if diagnostic.Len() != 0 {
-				t.Fatalf("unexpected diagnostic: %s", diagnostic.String())
-			}
-			output := ready + string(remaining)
+			output := receiver.readyLine + remaining
 			for _, want := range []string{"Schema: readmit-case/v2", "Provenance: recorded", "Messages: 2", "ACKs: 2", "Matched ACKs: 2", "Observation: readmit-observation/v1", "Processed occurrences: 2", "Consistent: true"} {
 				if !strings.Contains(output, want) {
 					t.Errorf("missing summary %q in %s", want, output)
@@ -109,14 +81,7 @@ func TestListenExecutableExportsBothLedgersAndReopensRecordedCase(t *testing.T) 
 			if err != nil {
 				t.Fatal(err)
 			}
-			expected, err := os.ReadFile("../testdata/fixtures/listen-" + mode + ".json")
-			if err != nil {
-				t.Fatal(err)
-			}
-			var records []observation.Record
-			if err := json.Unmarshal(expected, &records, json.RejectUnknownMembers(true)); err != nil {
-				t.Fatal(err)
-			}
+			records := readStrictDocument[[]observation.Record](t, "../testdata/fixtures/listen-"+mode+".json")
 			if !reflect.DeepEqual(b.Observation.Records, records) {
 				t.Fatal("executable ledger does not match hand-authored expectation")
 			}

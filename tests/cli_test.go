@@ -12,7 +12,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 )
 
 var binary string
@@ -55,20 +54,6 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	os.RemoveAll(dir)
 	os.Exit(code)
-}
-
-func run(t *testing.T, args ...string) (string, string, error) {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	cmd := testCommand(ctx, t, args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	err := cmd.Run()
-	if ctx.Err() != nil {
-		t.Fatal("CLI timed out")
-	}
-	return stdout.String(), stderr.String(), err
 }
 
 func TestInspectShowsStructureWithoutPayloadByDefault(t *testing.T) {

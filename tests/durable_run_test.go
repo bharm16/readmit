@@ -87,36 +87,30 @@ func TestRunExecutableDeadlineStopsTheRunAndReportsTheDeliveryUncertain(t *testi
 	spec, dir := durableSpec(t, durablePeer(t, ""))
 	job := filepath.Join(dir, "job")
 	stdout, stderr, err := run(t, "run", "start", spec, "--send", "--output", job, "--deadline", "500ms", "--json")
-	if processCode(t, err) != 2 || stderr != "" {
+	if exitCode(t, err) != exitRefused || stderr != "" {
 		t.Fatalf("%v %s %s", err, stdout, stderr)
 	}
-	var summary durablerun.Summary
-	if err := json.Unmarshal([]byte(stdout), &summary, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatalf("%s %v", stdout, err)
-	}
+	summary := readStrictOutput[durablerun.Summary](t, stdout)
 	if summary.Schema != durablerun.Schema || summary.State != durablerun.DeliveryUncertain || summary.StopReason != durablerun.TimedOut || !summary.DeliveryUncertain {
 		t.Fatalf("%+v", summary)
 	}
 	stdout, stderr, err = run(t, "run", "status", job, "--recovery", "--json")
-	if processCode(t, err) != 2 || stderr != "" {
+	if exitCode(t, err) != exitRefused || stderr != "" {
 		t.Fatalf("%v %s %s", err, stdout, stderr)
 	}
-	var recovery durablerun.Recovery
-	if err := json.Unmarshal([]byte(stdout), &recovery, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatalf("%s %v", stdout, err)
-	}
+	recovery := readStrictOutput[durablerun.Recovery](t, stdout)
 	if recovery.Schema != durablerun.RecoverySchema || !recovery.Terminal || recovery.Uncertain != 1 || recovery.SafeToRepeat || recovery.Lease != durablerun.LeaseReleased || recovery.Run != summary {
 		t.Fatalf("%+v", recovery)
 	}
 	stdout, stderr, err = run(t, "run", "status", job, "--recovery")
-	if processCode(t, err) != 2 || !strings.Contains(stdout, "Occurrences: 0 acknowledged, 1 uncertain, 0 not attempted\n") || !strings.Contains(stdout, "Safe to repeat: false\nResume refused: an intent was synced") || stderr != "" {
+	if exitCode(t, err) != exitRefused || !strings.Contains(stdout, "Occurrences: 0 acknowledged, 1 uncertain, 0 not attempted\n") || !strings.Contains(stdout, "Safe to repeat: false\nResume refused: an intent was synced") || stderr != "" {
 		t.Fatalf("%v %s %s", err, stdout, stderr)
 	}
 	// The uncertain send is never repeated, and the refusal writes nothing.
 	before, _ := os.ReadFile(filepath.Join(job, "journal.jsonl"))
 	resumed := filepath.Join(dir, "resumed")
 	stdout, stderr, err = run(t, "run", "resume", job, spec, "--send", "--output", resumed, "--json")
-	if processCode(t, err) != 2 || stdout != "" || !strings.Contains(stderr, "resume refused: an intent was synced without an acknowledged outcome") {
+	if exitCode(t, err) != exitRefused || stdout != "" || !strings.Contains(stderr, "resume refused: an intent was synced without an acknowledged outcome") {
 		t.Fatalf("%v %s %s", err, stdout, stderr)
 	}
 	if _, err := os.Lstat(resumed); err == nil {
@@ -137,27 +131,27 @@ func TestRunExecutableResumeRepeatsOnlyNeverAttemptedWork(t *testing.T) {
 	spec, dir := durableSpec(t, durablePeer(t, "AA"))
 	job := filepath.Join(dir, "job")
 	stdout, stderr, err := run(t, "run", "start", spec, "--send", "--output", job, "--deadline", "1ns", "--json")
-	if processCode(t, err) != 2 || stderr != "" {
+	if exitCode(t, err) != exitRefused || stderr != "" {
 		t.Fatalf("%v %s %s", err, stdout, stderr)
 	}
-	var summary durablerun.Summary
-	if err := json.Unmarshal([]byte(stdout), &summary, json.RejectUnknownMembers(true)); err != nil || summary.State != durablerun.TimedOut || summary.DeliveryUncertain {
-		t.Fatalf("%s %v", stdout, err)
+	summary := readStrictOutput[durablerun.Summary](t, stdout)
+	if summary.State != durablerun.TimedOut || summary.DeliveryUncertain {
+		t.Fatalf("%+v", summary)
 	}
 	stdout, stderr, err = run(t, "run", "status", job, "--recovery", "--json")
-	var recovery durablerun.Recovery
-	if err := json.Unmarshal([]byte(stdout), &recovery, json.RejectUnknownMembers(true)); err != nil || !recovery.SafeToRepeat || recovery.NotAttempted != 1 || stderr != "" {
-		t.Fatalf("%s %s %v", stdout, stderr, err)
+	if stderr != "" {
+		t.Fatalf("recovery wrote diagnostics: %s", stderr)
+	}
+	recovery := readStrictOutput[durablerun.Recovery](t, stdout)
+	if !recovery.SafeToRepeat || recovery.NotAttempted != 1 {
+		t.Fatalf("%+v", recovery)
 	}
 	resumed := filepath.Join(dir, "resumed")
 	stdout, stderr, err = run(t, "run", "resume", job, spec, "--send", "--output", resumed, "--json")
 	if err != nil || stderr != "" {
 		t.Fatalf("%v %s %s", err, stdout, stderr)
 	}
-	var resumption durablerun.Resumption
-	if err := json.Unmarshal([]byte(stdout), &resumption, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatalf("%s %v", stdout, err)
-	}
+	resumption := readStrictOutput[durablerun.Resumption](t, stdout)
 	if resumption.Schema != durablerun.ResumeSchema || resumption.ResumedFrom != durablerun.TimedOut || resumption.Repeated != 1 || resumption.Run.State != durablerun.Passed {
 		t.Fatalf("%+v", resumption)
 	}
@@ -167,7 +161,7 @@ func TestRunExecutableResumeRepeatsOnlyNeverAttemptedWork(t *testing.T) {
 	}
 	// Once acknowledged, the same job is not repeated again.
 	stdout, stderr, err = run(t, "run", "resume", resumed, spec, "--send", "--output", filepath.Join(dir, "again"))
-	if processCode(t, err) != 2 || !strings.Contains(stderr, "resume refused: a delivery was acknowledged") {
+	if exitCode(t, err) != exitRefused || !strings.Contains(stderr, "resume refused: a delivery was acknowledged") {
 		t.Fatalf("%v %s %s", err, stdout, stderr)
 	}
 	// Cleanup removes nothing from a run that released its lease, and only the
@@ -176,9 +170,9 @@ func TestRunExecutableResumeRepeatsOnlyNeverAttemptedWork(t *testing.T) {
 	if err != nil || stderr != "" {
 		t.Fatalf("%v %s %s", err, stdout, stderr)
 	}
-	var cleanup durablerun.Cleanup
-	if err := json.Unmarshal([]byte(stdout), &cleanup, json.RejectUnknownMembers(true)); err != nil || cleanup.Schema != durablerun.CleanupSchema || len(cleanup.Removed) != 0 || len(cleanup.Retained) != 7 {
-		t.Fatalf("%s %v", stdout, err)
+	cleanup := readStrictOutput[durablerun.Cleanup](t, stdout)
+	if cleanup.Schema != durablerun.CleanupSchema || len(cleanup.Removed) != 0 || len(cleanup.Retained) != 7 {
+		t.Fatalf("%+v", cleanup)
 	}
 	lease, _ := json.Marshal(durablerun.Lease{Schema: durablerun.LeaseSchema, Holder: durablerun.Holder{PID: 1, StartedAt: time.Now().UTC()}, Resources: []durablerun.Resource{{Kind: durablerun.EndpointResource, Name: "127.0.0.1:1"}}})
 	if err := os.WriteFile(filepath.Join(resumed, "lease.json"), lease, 0600); err != nil {
@@ -207,7 +201,7 @@ func TestRunExecutableRefusesUnsafeArguments(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			stdout, stderr, err := run(t, args...)
-			if processCode(t, err) == 0 || stdout != "" || !strings.HasPrefix(stderr, "readmit: ") {
+			if exitCode(t, err) == 0 || stdout != "" || !strings.HasPrefix(stderr, "readmit: ") {
 				t.Fatalf("%v %s %s", err, stdout, stderr)
 			}
 			entries, _ := os.ReadDir(dir)
@@ -237,9 +231,9 @@ func TestDesktopAndCommandLineRunOneEngineAndRefuseVersionsItDoesNotRead(t *test
 	if err != nil || stderr != "" {
 		t.Fatalf("%v %s %s", err, stdout, stderr)
 	}
-	var summary durablerun.Summary
-	if err := json.Unmarshal([]byte(stdout), &summary, json.RejectUnknownMembers(true)); err != nil || summary.State != durablerun.Passed {
-		t.Fatalf("%s %v", stdout, err)
+	summary := readStrictOutput[durablerun.Summary](t, stdout)
+	if summary.State != durablerun.Passed {
+		t.Fatalf("%+v", summary)
 	}
 
 	shellSpec, shellDir := durableSpec(t, durablePeer(t, "AA"))
@@ -274,7 +268,7 @@ func TestDesktopAndCommandLineRunOneEngineAndRefuseVersionsItDoesNotRead(t *test
 	if err != nil || stderr != "" || !strings.Contains(stdout, "Spec contract: "+testrunner.SpecSchema+"\n") || !strings.Contains(stdout, "Read by this build: true\n") {
 		t.Fatalf("%v %s %s", err, stdout, stderr)
 	}
-	if _, _, err = run(t, "run", "status", job, "--engine", "--recovery"); processCode(t, err) == 0 {
+	if _, _, err = run(t, "run", "status", job, "--engine", "--recovery"); exitCode(t, err) == 0 {
 		t.Fatal("reported a pin and a recovery classification at once")
 	}
 
@@ -290,11 +284,11 @@ func TestDesktopAndCommandLineRunOneEngineAndRefuseVersionsItDoesNotRead(t *test
 		t.Fatal(err)
 	}
 	stdout, stderr, err = run(t, "run", "status", shellJob, "--json")
-	if processCode(t, err) != 2 || stdout != "" || !strings.Contains(stderr, "unsupported engine version") {
+	if exitCode(t, err) != exitRefused || stdout != "" || !strings.Contains(stderr, "unsupported engine version") {
 		t.Fatalf("%v %s %s", err, stdout, stderr)
 	}
 	stdout, stderr, err = run(t, "run", "status", shellJob, "--engine", "--json")
-	if processCode(t, err) != 2 || stdout != string(raw) || !strings.Contains(stderr, "does not read") {
+	if exitCode(t, err) != exitRefused || stdout != string(raw) || !strings.Contains(stderr, "does not read") {
 		t.Fatalf("%v %s %s", err, stdout, stderr)
 	}
 	opened := app.OpenDurableRun(shellJob)

@@ -1,9 +1,7 @@
 package tests
 
 import (
-	"bufio"
 	"bytes"
-	"context"
 	"io"
 	"net"
 	"os"
@@ -35,35 +33,14 @@ func readFixture(t *testing.T, name string) []byte {
 
 func policyFile(t *testing.T, dir, declared string) string {
 	t.Helper()
-	path := filepath.Join(dir, "policy.json")
-	if err := os.WriteFile(path, []byte(declared), 0600); err != nil {
-		t.Fatal(err)
-	}
-	return path
+	return writeDocument(t, dir, "policy.json", declared)
 }
 
 func TestCollectExecutableRetainsLabelledDownstreamEvidence(t *testing.T) {
 	dir := t.TempDir()
 	casePath := filepath.Join(dir, "collected")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	command := testCommand(ctx, t, "collect", "--address", "127.0.0.1:0", "--policy", policyFile(t, dir, collectPolicy), "--output", casePath, "--max-messages", "2", "--idle-timeout", "2s")
-	var diagnostic bytes.Buffer
-	command.Stderr = &diagnostic
-	stdout, err := command.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := command.Start(); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { cancel(); _ = command.Wait() })
-	reader := bufio.NewReader(stdout)
-	ready, err := reader.ReadString('\n')
-	if err != nil || !strings.HasPrefix(ready, "Listening: ") {
-		t.Fatalf("collector not ready: %q %v", ready, err)
-	}
-	conn, err := net.DialTimeout("tcp", strings.TrimSpace(strings.TrimPrefix(ready, "Listening: ")), 2*time.Second)
+	collector := startReceiver(t, 10*time.Second, "collect", "--address", "127.0.0.1:0", "--policy", policyFile(t, dir, collectPolicy), "--output", casePath, "--max-messages", "2", "--idle-timeout", "2s")
+	conn, err := net.DialTimeout("tcp", collector.address, 2*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,17 +67,11 @@ func TestCollectExecutableRetainsLabelledDownstreamEvidence(t *testing.T) {
 			t.Fatalf("wrong collector acknowledgement: %q", response)
 		}
 	}
-	remaining, err := io.ReadAll(reader)
-	if err != nil {
-		t.Fatal(err)
+	remaining := collector.wait(t)
+	if collector.diagnostic.Len() != 0 {
+		t.Fatalf("unexpected diagnostic: %s", collector.diagnostic.String())
 	}
-	if err := command.Wait(); err != nil {
-		t.Fatalf("collect: %v %s", err, diagnostic.String())
-	}
-	if diagnostic.Len() != 0 {
-		t.Fatalf("unexpected diagnostic: %s", diagnostic.String())
-	}
-	output := ready + string(remaining)
+	output := collector.readyLine + remaining
 	for _, want := range []string{
 		"Policy: downstream-sink", "Source label: downstream-test-endpoint",
 		"Acknowledgement: original-mode-fixed-code AA", "Application processing: none",
@@ -165,34 +136,13 @@ func TestCollectExecutableIsTheDownstreamSinkOfARealReplayRun(t *testing.T) {
 	}
 	dir := t.TempDir()
 	casePath := filepath.Join(dir, "collected")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	command := testCommand(ctx, t, "collect", "--address", "127.0.0.1:0", "--policy", policyFile(t, dir, collectAnyPolicy), "--output", casePath, "--max-messages", "2", "--idle-timeout", "2s")
-	var diagnostic bytes.Buffer
-	command.Stderr = &diagnostic
-	pipe, err := command.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := command.Start(); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { cancel(); _ = command.Wait() })
-	reader := bufio.NewReader(pipe)
-	ready, err := reader.ReadString('\n')
-	if err != nil || !strings.HasPrefix(ready, "Listening: ") {
-		t.Fatalf("collector not ready: %q %v", ready, err)
-	}
-	address := strings.TrimSpace(strings.TrimPrefix(ready, "Listening: "))
+	collector := startReceiver(t, 10*time.Second, "collect", "--address", "127.0.0.1:0", "--policy", policyFile(t, dir, collectAnyPolicy), "--output", casePath, "--max-messages", "2", "--idle-timeout", "2s")
 	output := filepath.Join(dir, "run")
-	stdout, stderr, err := run(t, "replay", source, "--target", replayTarget(t, address), "--send", "--output", output)
+	stdout, stderr, err := run(t, "replay", source, "--target", replayTarget(t, collector.address), "--send", "--output", output)
 	if err != nil || stderr != "" || strings.Count(stdout, "outcome=application_accepted") != 2 {
 		t.Fatalf("replay against the collector: %v %s %s", err, stdout, stderr)
 	}
-	_, _ = io.Copy(io.Discard, reader)
-	if err := command.Wait(); err != nil {
-		t.Fatalf("collector: %v %s", err, diagnostic.String())
-	}
+	collector.wait(t)
 	collected, err := bundle.Open(casePath)
 	if err != nil {
 		t.Fatal(err)
@@ -222,26 +172,8 @@ func TestCollectExecutableIsTheDownstreamSinkOfARealReplayRun(t *testing.T) {
 func TestCollectExecutableBoundsFrameSizeWithoutDiscardingEvidence(t *testing.T) {
 	dir := t.TempDir()
 	casePath := filepath.Join(dir, "collected")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	command := testCommand(ctx, t, "collect", "--address", "127.0.0.1:0", "--policy", policyFile(t, dir, collectAnyPolicy), "--output", casePath, "--max-messages", "1", "--max-frame-bytes", "64", "--idle-timeout", "2s")
-	var diagnostic bytes.Buffer
-	command.Stderr = &diagnostic
-	pipe, err := command.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := command.Start(); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { cancel(); _ = command.Wait() })
-	reader := bufio.NewReader(pipe)
-	ready, err := reader.ReadString('\n')
-	if err != nil || !strings.HasPrefix(ready, "Listening: ") {
-		t.Fatalf("collector not ready: %q %v", ready, err)
-	}
-	address := strings.TrimSpace(strings.TrimPrefix(ready, "Listening: "))
-	oversized, err := net.DialTimeout("tcp", address, 2*time.Second)
+	collector := startReceiver(t, 10*time.Second, "collect", "--address", "127.0.0.1:0", "--policy", policyFile(t, dir, collectAnyPolicy), "--output", casePath, "--max-messages", "1", "--max-frame-bytes", "64", "--idle-timeout", "2s")
+	oversized, err := net.DialTimeout("tcp", collector.address, 2*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +185,7 @@ func TestCollectExecutableBoundsFrameSizeWithoutDiscardingEvidence(t *testing.T)
 	if _, err := io.ReadAll(oversized); err != nil {
 		t.Fatalf("oversized frame was not closed without an acknowledgement: %v", err)
 	}
-	accepted, err := net.DialTimeout("tcp", address, 2*time.Second)
+	accepted, err := net.DialTimeout("tcp", collector.address, 2*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,10 +207,7 @@ func TestCollectExecutableBoundsFrameSizeWithoutDiscardingEvidence(t *testing.T)
 	if msa := doc.Messages[0].Segments[1]; string(doc.Bytes(msa.Field(2).Span)) != "SMALL-1" {
 		t.Fatalf("second session was not acknowledged: %q", response)
 	}
-	_, _ = io.Copy(io.Discard, reader)
-	if err := command.Wait(); err != nil {
-		t.Fatalf("collect: %v %s", err, diagnostic.String())
-	}
+	collector.wait(t)
 	collected, err := bundle.Open(casePath)
 	if err != nil {
 		t.Fatal(err)
@@ -339,26 +268,9 @@ func TestCollectExecutableSplitsAcknowledgementStagesAcrossEndpoints(t *testing.
 		}
 	}()
 	declared := strings.Replace(collectEnhancedPolicy, "ENDPOINT", sink.Addr().String(), 1)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	command := testCommand(ctx, t, "collect", "--address", "127.0.0.1:0", "--policy", policyFile(t, dir, declared),
+	collector := startReceiver(t, 10*time.Second, "collect", "--address", "127.0.0.1:0", "--policy", policyFile(t, dir, declared),
 		"--output", casePath, "--max-messages", "1", "--idle-timeout", "2s", "--application-ack-timeout", "3s")
-	var diagnostic bytes.Buffer
-	command.Stderr = &diagnostic
-	stdout, err := command.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := command.Start(); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { cancel(); _ = command.Wait() })
-	reader := bufio.NewReader(stdout)
-	ready, err := reader.ReadString('\n')
-	if err != nil || !strings.HasPrefix(ready, "Listening: ") {
-		t.Fatalf("collector not ready: %q %v", ready, err)
-	}
-	conn, err := net.DialTimeout("tcp", strings.TrimSpace(strings.TrimPrefix(ready, "Listening: ")), 2*time.Second)
+	conn, err := net.DialTimeout("tcp", collector.address, 2*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,17 +296,11 @@ func TestCollectExecutableSplitsAcknowledgementStagesAcrossEndpoints(t *testing.
 	if code, acknowledged := stageCode(t, application); code != "AA" || acknowledged != "ENHANCED-001" {
 		t.Fatalf("the separate endpoint did not get a correlated application acknowledgement: %s %s", code, acknowledged)
 	}
-	remaining, err := io.ReadAll(reader)
-	if err != nil {
-		t.Fatal(err)
+	remaining := collector.wait(t)
+	if collector.diagnostic.Len() != 0 {
+		t.Fatalf("unexpected diagnostic: %s", collector.diagnostic.String())
 	}
-	if err := command.Wait(); err != nil {
-		t.Fatalf("collect: %v %s", err, diagnostic.String())
-	}
-	if diagnostic.Len() != 0 {
-		t.Fatalf("unexpected diagnostic: %s", diagnostic.String())
-	}
-	output := ready + string(remaining)
+	output := collector.readyLine + remaining
 	for _, want := range []string{
 		"Enhanced acknowledgement: enhanced-mode-fixed-codes CA AA separate-endpoint",
 		"Application processing: none", "Collection: readmit-collection/v2",

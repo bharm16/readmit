@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/json/v2"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -21,27 +19,6 @@ import (
 
 func synthArgs(output string) []string {
 	return []string{"synth", "--seed", "0", "--base-time", "2026-01-01T12:00:00Z", "--generator-version", "readmit-synth-v1", "--profile-version", "readmit-siu-v1", "--output", output}
-}
-
-func synthTree(t *testing.T, path string) map[string][]byte {
-	t.Helper()
-	files := make(map[string][]byte)
-	err := filepath.WalkDir(path, func(name string, entry fs.DirEntry, err error) error {
-		if err != nil || entry.IsDir() {
-			return err
-		}
-		relative, err := filepath.Rel(path, name)
-		if err != nil {
-			return err
-		}
-		data, err := os.ReadFile(name)
-		files[filepath.ToSlash(relative)] = data
-		return err
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return files
 }
 
 func createSynth(t *testing.T, args []string) {
@@ -99,7 +76,7 @@ func TestSynthReproducesEveryFamilyByteAcrossLocationsAndEnvironment(t *testing.
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("synth in different working directory: %v %s", err, output)
 	}
-	left, right := synthTree(t, first), synthTree(t, second)
+	left, right := treeOf(t, first), treeOf(t, second)
 	if !reflect.DeepEqual(left, right) {
 		t.Fatal("identical declared inputs changed file paths or bytes across output locations")
 	}
@@ -113,10 +90,7 @@ func TestSynthReproducesEveryFamilyByteAcrossLocationsAndEnvironment(t *testing.
 			t.Fatalf("temporary or machine-specific data in %s", name)
 		}
 	}
-	var family synth.Manifest
-	if err := json.Unmarshal(left["family.json"], &family, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatal(err)
-	}
+	family := readStrictOutput[synth.Manifest](t, string(left["family.json"]))
 	if family.Schema != "readmit-synth/v1" || family.State != "complete" || family.Generator.Seed != 0 || len(family.Cases) != 3 || !bytes.Contains(left["family.json"], []byte(`"seed":0`)) {
 		t.Fatalf("incomplete family or missing explicitly declared zero seed: %+v", family)
 	}
@@ -135,7 +109,7 @@ func TestSynthReproducesEveryFamilyByteAcrossLocationsAndEnvironment(t *testing.
 		}
 	}
 	stdout, stderr, err := run(t, synthArgs(first)...)
-	if err == nil || stdout != "" || !strings.Contains(stderr, "destination must be new") || !reflect.DeepEqual(left, synthTree(t, first)) {
+	if err == nil || stdout != "" || !strings.Contains(stderr, "destination must be new") || !reflect.DeepEqual(left, treeOf(t, first)) {
 		t.Fatal("existing family was not preserved")
 	}
 }
@@ -272,7 +246,7 @@ func TestSynthDeclaredInputsControlOutputAndVersionsCannotBeRelabeled(t *testing
 	args := synthArgs(equivalent)
 	args[4] = "2026-01-01T07:00:00-05:00"
 	createSynth(t, args)
-	if !reflect.DeepEqual(synthTree(t, baseline), synthTree(t, equivalent)) {
+	if !reflect.DeepEqual(treeOf(t, baseline), treeOf(t, equivalent)) {
 		t.Fatal("base-time representation depends on a local timezone")
 	}
 	for _, index := range []int{6, 8} {

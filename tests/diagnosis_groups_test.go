@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,10 +23,7 @@ func TestDiagnosisGroupsExecutableComparisonAndRefusals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var report diagnose.GroupsReport
-	if err := json.Unmarshal(raw, &report, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatal(err)
-	}
+	report := readStrictOutput[diagnose.GroupsReport](t, string(raw))
 	if len(report.Cases) != 3 || len(report.Groups) == 0 {
 		t.Fatal("missing grouped results")
 	}

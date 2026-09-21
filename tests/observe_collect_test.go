@@ -176,7 +176,7 @@ func TestObserveCollectRequiresTheWindowRecordAndSnapshotItIsGiven(t *testing.T)
 			stdout, stderr, err := run(t, args...)
 			// A missing flag is a misuse refusal, so it carries the usage
 			// status every command reaches through argument parsing.
-			if exitCode(t, err) != 2 {
+			if exitCode(t, err) != exitRefused {
 				t.Fatalf("%s was accepted", name)
 			}
 			if stdout != "" {

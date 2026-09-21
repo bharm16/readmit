@@ -125,7 +125,7 @@ func TestUpgradeChecksAStagedCandidateWithoutRewritingEvidence(t *testing.T) {
 // still printed, because an operator reads why before they read that.
 func TestUpgradeRefusesADevelopmentPreviewAndPrintsThePlanAnyway(t *testing.T) {
 	stdout, stderr, err := run(t, "upgrade", "check", "--candidate", stagedCandidate(t, false, "9.9.9"), "--project", newProject(t))
-	if processCode(t, err) != 2 {
+	if exitCode(t, err) != exitRefused {
 		t.Fatalf("a development preview was reported as an upgrade: %v %s", err, stdout)
 	}
 	if !strings.Contains(stdout, `"signed_for_distribution":false`) || !strings.Contains(stdout, `"state":"refused"`) {
@@ -148,7 +148,7 @@ func TestUpgradeRefusesAStagedCandidateThatIsNotWhatItRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 	stdout, stderr, err := run(t, "upgrade", "check", "--candidate", candidate, "--project", root)
-	if processCode(t, err) != 2 || !strings.Contains(stdout, `"state":"altered"`) || !strings.Contains(stderr, "stage the candidate again") {
+	if exitCode(t, err) != exitRefused || !strings.Contains(stdout, `"state":"altered"`) || !strings.Contains(stderr, "stage the candidate again") {
 		t.Fatalf("%v %s %s", err, stdout, stderr)
 	}
 
@@ -193,7 +193,7 @@ func TestUpgradeRecoversFromAnInstallationThatDidNotComplete(t *testing.T) {
 		t.Fatal(err)
 	}
 	stdout, _, err := run(t, "upgrade", "check", "--candidate", candidate, "--project", root)
-	if processCode(t, err) != 2 || !strings.Contains(stdout, `"state":"altered"`) {
+	if exitCode(t, err) != exitRefused || !strings.Contains(stdout, `"state":"altered"`) {
 		t.Fatalf("%v %s", err, stdout)
 	}
 	// The plan names the build actually installed, which is what says whether

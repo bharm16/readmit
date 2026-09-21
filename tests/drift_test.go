@@ -50,14 +50,7 @@ func driftJob(t *testing.T, source, name string) string {
 
 func driftJSON(t *testing.T, left, right string) (drift.Report, string) {
 	t.Helper()
-	stdout, stderr, err := run(t, "drift", left, right, "--format", "json")
-	if err != nil || stderr != "" {
-		t.Fatalf("drift: %v %s", err, stderr)
-	}
-	var report drift.Report
-	if err := json.Unmarshal([]byte(stdout), &report, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatalf("%s %v", stdout, err)
-	}
+	report, stdout := runJSON[drift.Report](t, "drift", left, right, "--format", "json")
 	if report.Schema != drift.Schema || len(report.Drift) != 4 {
 		t.Fatalf("incorrect drift contract: %+v", report)
 	}
@@ -339,7 +332,7 @@ func TestDriftReadsAStoppedRunAndStillCarriesNoVerdict(t *testing.T) {
 	copyTree(t, source, filepath.Join(dir, "case"))
 	stopped := filepath.Join(dir, "stopped")
 	stdout, stderr, err := run(t, "run", "start", spec, "--send", "--output", stopped, "--deadline", "500ms")
-	if processCode(t, err) != 2 || stderr != "" || !strings.HasPrefix(stdout, "Run state: delivery_uncertain\n") {
+	if exitCode(t, err) != exitRefused || stderr != "" || !strings.HasPrefix(stdout, "Run state: delivery_uncertain\n") {
 		t.Fatalf("stopped run: %v %s %s", err, stdout, stderr)
 	}
 	finished := driftJob(t, source, "finished")

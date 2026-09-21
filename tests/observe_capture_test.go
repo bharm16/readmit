@@ -1,9 +1,6 @@
 package tests
 
 import (
-	"context"
-	"encoding/json/v2"
-	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -65,9 +62,7 @@ func captureDocuments(t *testing.T) (directory, window, source string) {
 // readmit-specific receipt.
 func sealDownstreamCapture(t *testing.T, directory string) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	capture := startCapture(t, ctx, "--address", "127.0.0.1:0",
+	capture := startReceiver(t, 20*time.Second, "collect", "--address", "127.0.0.1:0",
 		"--policy", policyFile(t, directory, collectAnyPolicy),
 		"--output", filepath.Join(directory, "downstream.case"),
 		"--max-messages", "1", "--idle-timeout", "3s")
@@ -86,10 +81,7 @@ func sealDownstreamCapture(t *testing.T, directory string) {
 	if _, err := reader.ReadFrame(); err != nil {
 		t.Fatalf("the downstream sink did not answer: %v", err)
 	}
-	_, _ = io.ReadAll(capture.stdout)
-	if err := capture.command.Wait(); err != nil {
-		t.Fatalf("collect: %v %s", err, capture.diagnostic.String())
-	}
+	capture.wait(t)
 }
 
 // TestObserveCollectBindsDownstreamMessageEvidenceToWhatTheRunProduced is the
@@ -133,14 +125,7 @@ func TestObserveCollectBindsDownstreamMessageEvidenceToWhatTheRunProduced(t *tes
 	// A capture sealed by a live collector states the bytes of evidence the
 	// read covered, from that capture's own manifest. Zero is reserved for a
 	// capture that retained nothing, and this one retained a message.
-	data, err := os.ReadFile(filepath.Join(snapshot, "read-0000", "read.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var read observesource.Evidence
-	if err := json.Unmarshal(data, &read, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatalf("a retained read is not one strict %s record: %v", observesource.EvidenceSchema, err)
-	}
+	read := readStrictDocument[observesource.Evidence](t, filepath.Join(snapshot, "read-0000", "read.json"))
 	if read.Kind != observesource.DownstreamCapture || read.Bytes <= 0 || read.Records != 1 {
 		t.Fatalf("the retained read does not state what it covered: %+v", read)
 	}

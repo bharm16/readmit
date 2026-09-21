@@ -184,7 +184,7 @@ func TestObserveExplainNeverReadsFailedCollectionAsAbsence(t *testing.T) {
 		}
 		// The same untrustworthy record is untrustworthy against the window it
 		// names, so re-deciding it changes nothing.
-		if _, _, err := run(t, "observe", "explain", path, "--window", window); exitCode(t, err) != 2 {
+		if _, _, err := run(t, "observe", "explain", path, "--window", window); exitCode(t, err) != exitRefused {
 			t.Fatalf("%s passed once its window was supplied", name)
 		}
 	}
@@ -211,7 +211,7 @@ func TestObserveExplainRefusesACompletionFromAnotherWindow(t *testing.T) {
 
 	// A verdict its own samples do not support is refused the same way.
 	forged := writeObserveCompletion(t, directory, "forged.json", "complete", observedSamples, "3", "30s")
-	if _, stderr, err := run(t, "observe", "explain", forged, "--window", filepath.Join(directory, "window.json")); exitCode(t, err) != 2 {
+	if _, stderr, err := run(t, "observe", "explain", forged, "--window", filepath.Join(directory, "window.json")); exitCode(t, err) != exitRefused {
 		t.Fatalf("a verdict its samples do not support was accepted: %q", stderr)
 	}
 }
@@ -314,7 +314,7 @@ func TestObserveExplainDistinguishesAnUnobservedBaselineFromAnEmptyOne(t *testin
 			t.Fatal(err)
 		}
 		stdout, _, err := run(t, "observe", "explain", path)
-		if exitCode(t, err) != 2 {
+		if exitCode(t, err) != exitRefused {
 			t.Fatalf("%s did not exit with the observation error status", name)
 		}
 		if !strings.Contains(stdout, "Pre-existing state: "+testCase.expected) {

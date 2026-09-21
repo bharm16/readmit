@@ -91,7 +91,7 @@ func TestTargetResetAwaitsTheOperatorAndExitsTwo(t *testing.T) {
 	directory, targetFile, planFile := resetWorkspace(t, reviewedPlan)
 	outcome := filepath.Join(directory, "reset-outcome.json")
 	stdout, _, err := run(t, "target", "reset", "--target", targetFile, "--plan", planFile, "--outcome", outcome)
-	if exitCode(t, err) != 2 {
+	if exitCode(t, err) != exitRefused {
 		t.Fatalf("an unconfirmed reset must exit 2, got %d", exitCode(t, err))
 	}
 	for _, want := range []string{
@@ -124,7 +124,7 @@ func TestTargetResetRefusesWhatItCannotRunAsReviewed(t *testing.T) {
 		directory, targetFile, planFile := resetWorkspace(t, plan)
 		stdout, stderr, err := run(t, "target", "reset", "--target", targetFile, "--plan", planFile,
 			"--outcome", filepath.Join(directory, "reset-outcome.json"))
-		if exitCode(t, err) != 2 {
+		if exitCode(t, err) != exitRefused {
 			t.Errorf("%s: expected exit 2, got %d; stdout=%s stderr=%s", name, exitCode(t, err), stdout, stderr)
 		}
 		if strings.Contains(stdout+stderr, "confirmed (") {
@@ -144,7 +144,7 @@ func TestTargetResetRefusesAnEnvironmentNobodyRecordedAsNonproduction(t *testing
 		}
 		outcome := filepath.Join(directory, "reset-outcome.json")
 		stdout, stderr, err := run(t, "target", "reset", "--target", targetFile, "--plan", planFile, "--outcome", outcome)
-		if exitCode(t, err) != 2 {
+		if exitCode(t, err) != exitRefused {
 			t.Errorf("%s: expected exit 2, got %d; stderr=%s", class, exitCode(t, err), stderr)
 		}
 		retained, readErr := os.ReadFile(outcome)
@@ -183,7 +183,7 @@ func TestTargetResetRequiresItsDocumentsAndANewOutcomeFile(t *testing.T) {
 		"confirming the machine": {"target", "reset", "--target", targetFile, "--plan", planFile, "--outcome", filepath.Join(directory, "d.json"), "--confirm", "empty-ledger"},
 	} {
 		stdout, stderr, err := run(t, args...)
-		if exitCode(t, err) != 2 {
+		if exitCode(t, err) != exitRefused {
 			t.Errorf("%s: expected exit 2, got %d; stdout=%s stderr=%s", name, exitCode(t, err), stdout, stderr)
 		}
 	}
@@ -217,7 +217,7 @@ func TestAnImportedSpecCannotDirectAResetThroughTheCommandLine(t *testing.T) {
 			t.Fatal(err)
 		}
 		stdout, stderr, err := run(t, "test", path)
-		if exitCode(t, err) != 2 {
+		if exitCode(t, err) != exitRefused {
 			t.Errorf("%s: expected exit 2, got %d; stdout=%s stderr=%s", name, exitCode(t, err), stdout, stderr)
 		}
 	}
@@ -244,7 +244,7 @@ func TestTargetResetHoldsItsOneConnectionToTheSelectedPolicy(t *testing.T) {
 		outcome := filepath.Join(directory, "reset-outcome.json")
 		stdout, stderr, err := run(t, "target", "reset", "--target", targetFile, "--plan", planFile,
 			"--outcome", outcome, "--policy", policyFile, "--confirm", "stop-listener")
-		if exitCode(t, err) != 0 && exitCode(t, err) != 2 {
+		if exitCode(t, err) != 0 && exitCode(t, err) != exitRefused {
 			t.Fatalf("%s: unexpected status %d; stdout=%s stderr=%s", name, exitCode(t, err), stdout, stderr)
 		}
 		retained, readErr := os.ReadFile(outcome)
@@ -255,7 +255,7 @@ func TestTargetResetHoldsItsOneConnectionToTheSelectedPolicy(t *testing.T) {
 			t.Errorf("%s: expected %s in the retained outcome:\n%s", name, selected.decision, retained)
 		}
 		if selected.decision == `"decision":"unapproved_destination"` {
-			if exitCode(t, err) != 2 || !strings.Contains(string(retained), `"reason":"destination_refused"`) {
+			if exitCode(t, err) != exitRefused || !strings.Contains(string(retained), `"reason":"destination_refused"`) {
 				t.Errorf("%s: a denied destination must refuse the reset; status=%d outcome=%s", name, exitCode(t, err), retained)
 			}
 			if strings.Contains(stdout, "endpoint-quiet:") {
@@ -274,7 +274,7 @@ func TestTargetResetHoldsItsOneConnectionToTheSelectedPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, _, err := run(t, "target", "reset", "--target", targetFile, "--plan", planFile,
-		"--outcome", filepath.Join(directory, "e.json"), "--policy", unreadable); exitCode(t, err) != 2 {
+		"--outcome", filepath.Join(directory, "e.json"), "--policy", unreadable); exitCode(t, err) != exitRefused {
 		t.Errorf("an unreadable policy must exit 2, got %d", exitCode(t, err))
 	}
 }
@@ -294,7 +294,7 @@ func TestTargetResetRefusesAnOutcomeInsideRetainedEvidence(t *testing.T) {
 	outcome := filepath.Join(evidence, "reset-outcome.json")
 	stdout, stderr, err := run(t, "target", "reset", "--target", targetFile, "--plan", planFile,
 		"--outcome", outcome, "--confirm", "stop-listener")
-	if exitCode(t, err) != 2 {
+	if exitCode(t, err) != exitRefused {
 		t.Fatalf("expected exit 2, got %d; stdout=%s stderr=%s", exitCode(t, err), stdout, stderr)
 	}
 	if _, err := os.Stat(outcome); !os.IsNotExist(err) {

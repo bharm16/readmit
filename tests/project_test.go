@@ -337,8 +337,8 @@ func TestSameCaseIdentityAcrossDesktopCommandLineAndExportedArtifacts(t *testing
 	if _, stderr, err := run(t, "report", "--scenario", "siu-reschedule-v1", "--output", packet); err != nil || stderr != "" {
 		t.Fatalf("report: %v %s", err, stderr)
 	}
-	registered := synthTree(t, filepath.Join(root, "regression"))
-	retained := synthTree(t, filepath.Join(packet, "reproducer"))
+	registered := treeOf(t, filepath.Join(root, "regression"))
+	retained := treeOf(t, filepath.Join(packet, "reproducer"))
 	if len(registered) != len(retained) {
 		t.Fatalf("the packet retained %d files for a registered case of %d", len(retained), len(registered))
 	}
@@ -551,7 +551,7 @@ func sealed(t *testing.T, root string, names ...string) map[string]map[string][]
 	t.Helper()
 	files := map[string]map[string][]byte{}
 	for _, name := range names {
-		files[name] = redactTree(t, filepath.Join(root, name))
+		files[name] = treeOf(t, filepath.Join(root, name))
 	}
 	return files
 }
@@ -559,7 +559,7 @@ func sealed(t *testing.T, root string, names ...string) map[string]map[string][]
 func assertSealed(t *testing.T, root string, before map[string]map[string][]byte) {
 	t.Helper()
 	for name, want := range before {
-		got := redactTree(t, filepath.Join(root, name))
+		got := treeOf(t, filepath.Join(root, name))
 		if len(got) != len(want) {
 			t.Fatalf("%s gained or lost files: %d then %d", name, len(want), len(got))
 		}
@@ -623,14 +623,7 @@ func TestProjectRevisionRecordsParentIdentityAndOperationManifest(t *testing.T) 
 
 	// The editable document is the canonical record of lineage, beside the
 	// evidence and never inside it.
-	var document project.Revisions
-	data, err := os.ReadFile(filepath.Join(root, project.RevisionsDocumentName))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(data, &document, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatal(err)
-	}
+	document := readStrictDocument[project.Revisions](t, filepath.Join(root, project.RevisionsDocumentName))
 	if document.Schema != project.RevisionsSchema || len(document.Revisions) != 1 {
 		t.Fatalf("the stored document is not one revision of readmit-revisions/v1: %+v", document)
 	}

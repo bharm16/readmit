@@ -6,8 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/json/v2"
 	"fmt"
-	"io/fs"
-	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -64,43 +62,6 @@ func redactJSON(t *testing.T, path string, value any) {
 	}
 }
 
-func redactReadJSON[T any](t *testing.T, path string) T {
-	t.Helper()
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var value T
-	if err := json.Unmarshal(raw, &value, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatal(err)
-	}
-	return value
-}
-
-func redactTree(t *testing.T, dir string) map[string][]byte {
-	t.Helper()
-	files := map[string][]byte{}
-	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		rel, err := filepath.Rel(dir, path)
-		if err != nil {
-			return err
-		}
-		raw, err := os.ReadFile(path)
-		files[filepath.ToSlash(rel)] = raw
-		return err
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return files
-}
-
 func redactField(t *testing.T, b *bundle.Bundle, id, path string) string {
 	t.Helper()
 	raw, err := b.Raw(id)
@@ -129,12 +90,7 @@ func redactField(t *testing.T, b *bundle.Bundle, id, path string) string {
 func redactOriginalArtifacts(t *testing.T, request redact.Request) []string {
 	t.Helper()
 	dir := filepath.Dir(request.CasePath)
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	address := listener.Addr().String()
-	listener.Close()
+	address := freeLoopbackAddress(t, "tcp4")
 	plan, err := replay.Prepare(request.CasePath, replay.Target{Schema: replay.TargetSchema, TestEndpoint: true, Address: address, Transport: "plain", ConnectTimeout: "100ms", MessageTimeout: "100ms", MaxACKBytes: 4096}, replay.Options{Occurrences: []string{"s0001-e000001", "s0002-e000001"}, Transformations: []replay.Transformation{{Name: "rebase-control-ids"}}})
 	if err != nil {
 		t.Fatal(err)
@@ -157,7 +113,7 @@ func redactOriginalArtifacts(t *testing.T, request redact.Request) []string {
 	}
 	report.Findings = append(report.Findings, diagnose.Finding{ID: "f-planted", Summary: "PLANTED-DIAG-MAPLE"})
 	redactJSON(t, filepath.Join(dir, "PLANTED-DIAG-FILENAME.json"), report)
-	inventory := redactReadJSON[redact.Inventory](t, request.InventoryPath)
+	inventory := readStrictDocument[redact.Inventory](t, request.InventoryPath)
 	inventory.Artifacts = []redact.OriginalArtifact{{Kind: "run", Path: "original-run"}, {Kind: "diagnosis-json", Path: "PLANTED-DIAG-FILENAME.json"}}
 	redactJSON(t, request.InventoryPath, inventory)
 	return []string{string(run.Manifest.Changes[0].New), string(run.Manifest.Changes[1].New)}
@@ -166,7 +122,7 @@ func redactOriginalArtifacts(t *testing.T, request redact.Request) []string {
 func TestRedactExecutableGeneratesOnlyDerivedProofAndNoPlantedValues(t *testing.T) {
 	request := redactFixture(t)
 	newOnly := redactOriginalArtifacts(t, request)
-	before := redactTree(t, request.CasePath)
+	before := treeOf(t, request.CasePath)
 	stdout, stderr, err := run(t, "redact", request.CasePath, "--spec", request.SpecPath, "--policy", request.PolicyPath, "--inventory", request.InventoryPath, "--local-state", request.LocalState, "--output", request.Output)
 	if err != nil {
 		t.Fatalf("redact: %v %s %s", err, stdout, stderr)
@@ -183,7 +139,7 @@ func TestRedactExecutableGeneratesOnlyDerivedProofAndNoPlantedValues(t *testing.
 	if err != nil {
 		t.Fatalf("export: %v %s %s", err, out, diagnostic)
 	}
-	manifest := redactReadJSON[redact.ExportManifest](t, filepath.Join(packet, "export-review.json"))
+	manifest := readStrictDocument[redact.ExportManifest](t, filepath.Join(packet, "export-review.json"))
 	if manifest.Proof.BaselineStatus != testrunner.AssertionFailure || manifest.Proof.PostfixStatus != testrunner.Pass || !slices.Equal(manifest.Proof.FailedAssertions, []int{1, 2}) {
 		t.Fatal("packet did not preserve the agreed defect")
 	}
@@ -241,7 +197,7 @@ func TestRedactExecutableGeneratesOnlyDerivedProofAndNoPlantedValues(t *testing.
 		}
 	}
 	forbidden := append([]string{"PLANTED-", "AUTH-ONE", "PRIVATE-APP", "PRIVATE-FACILITY", "patient_key", "\"days\":", "original-proof"}, newOnly...)
-	files := redactTree(t, packet)
+	files := treeOf(t, packet)
 	for name, raw := range files {
 		for _, value := range forbidden {
 			if strings.Contains(name, value) || bytes.Contains(raw, []byte(value)) || bytes.Contains(raw, []byte(base64.StdEncoding.EncodeToString([]byte(value)))) {
@@ -255,7 +211,7 @@ func TestRedactExecutableGeneratesOnlyDerivedProofAndNoPlantedValues(t *testing.
 	if len(manifest.Review.Coverage) != 18 || !slices.Contains(manifest.Review.Uncovered, "face-images") || !slices.Contains(manifest.Review.Uncovered, "dates-and-ages") || manifest.Residual.Limitations == "" {
 		t.Fatal("coverage overclaims or misses categories")
 	}
-	if !reflect.DeepEqual(before, redactTree(t, request.CasePath)) {
+	if !reflect.DeepEqual(before, treeOf(t, request.CasePath)) {
 		t.Fatal("source bundle changed")
 	}
 	private, err := os.ReadFile(filepath.Join(request.LocalState, "state.json"))
@@ -309,7 +265,7 @@ func TestRedactBlocksEachUnreviewedSurface(t *testing.T) {
 		t.Run(surface, func(t *testing.T) {
 			request := redactFixture(t)
 			redactOriginalArtifacts(t, request)
-			policy := redactReadJSON[redact.Policy](t, request.PolicyPath)
+			policy := readStrictDocument[redact.Policy](t, request.PolicyPath)
 			want := ""
 			switch surface {
 			case "pid":
@@ -414,7 +370,7 @@ func TestRedactRejectsStaleApprovalAndChangedInputs(t *testing.T) {
 
 func TestRedactOriginalProofRejectsWrongAgreedFailureSet(t *testing.T) {
 	request := redactFixture(t)
-	policy := redactReadJSON[redact.Policy](t, request.PolicyPath)
+	policy := readStrictDocument[redact.Policy](t, request.PolicyPath)
 	policy.RequiredFailures = []int{1}
 	redactJSON(t, request.PolicyPath, policy)
 	review, err := redact.Create(context.Background(), request)
@@ -431,7 +387,7 @@ func TestRedactRejectsUnknownInventoryAndUnsafeDestination(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			request := redactFixture(t)
 			if kind == "unknown" {
-				inventory := redactReadJSON[redact.Inventory](t, request.InventoryPath)
+				inventory := readStrictDocument[redact.Inventory](t, request.InventoryPath)
 				inventory.Artifacts = []redact.OriginalArtifact{{Kind: "arbitrary-archive", Path: "source.zip"}}
 				redactJSON(t, request.InventoryPath, inventory)
 			} else if kind == "inside-source" {
@@ -509,13 +465,13 @@ func TestRedactLateProofAndResidualFailuresRemainLocatedAndPrivate(t *testing.T)
 		t.Run(failure, func(t *testing.T) {
 			request := redactFixture(t)
 			if failure == "proof" {
-				policy := redactReadJSON[redact.Policy](t, request.PolicyPath)
+				policy := readStrictDocument[redact.Policy](t, request.PolicyPath)
 				policy.Fields = slices.DeleteFunc(policy.Fields, func(rule redact.FieldRule) bool { return rule.Selector == "MSH-9" })
 				value := "S12"
 				policy.Fields = append(policy.Fields, redact.FieldRule{Selector: "MSH-9.1", Policy: redact.Retain, Class: "structural", Allowed: []string{"SIU", "ACK"}}, redact.FieldRule{Selector: "MSH-9.2", Policy: redact.Replace, Class: "structural", Replacement: &value})
 				redactJSON(t, request.PolicyPath, policy)
 			} else {
-				inventory := redactReadJSON[redact.Inventory](t, request.InventoryPath)
+				inventory := readStrictDocument[redact.Inventory](t, request.InventoryPath)
 				value := "READMITACK000001"
 				if failure == "manifest" {
 					value = "readmit-derived-export/v1"
@@ -548,7 +504,7 @@ func TestRedactLateProofAndResidualFailuresRemainLocatedAndPrivate(t *testing.T)
 
 func TestRedactPublicReviewResidualBecomesALocatedBlockedReview(t *testing.T) {
 	request := redactFixture(t)
-	inventory := redactReadJSON[redact.Inventory](t, request.InventoryPath)
+	inventory := readStrictDocument[redact.Inventory](t, request.InventoryPath)
 	inventory.ResidualValues = append(inventory.ResidualValues, "limited-policy-coverage")
 	redactJSON(t, request.InventoryPath, inventory)
 	review, err := redact.Create(context.Background(), request)
@@ -565,7 +521,7 @@ func TestRedactLiteralMismatchFreeTextRetentionAndUnresolvedScopeCannotBeApprove
 	for _, problem := range []string{"literal-mismatch", "free-text", "overlap", "unknown-patient", "control-replacement"} {
 		t.Run(problem, func(t *testing.T) {
 			request := redactFixture(t)
-			policy := redactReadJSON[redact.Policy](t, request.PolicyPath)
+			policy := readStrictDocument[redact.Policy](t, request.PolicyPath)
 			switch problem {
 			case "literal-mismatch":
 				spec, err := testrunner.ReadSpec(request.SpecPath)
@@ -616,7 +572,7 @@ func TestRedactInventoryRevalidatesTheResolvedAliasParentArtifact(t *testing.T) 
 	if err := os.CopyFS(cleanedRun, os.DirFS(realRun)); err != nil {
 		t.Fatal(err)
 	}
-	inventory := redactReadJSON[redact.Inventory](t, request.InventoryPath)
+	inventory := readStrictDocument[redact.Inventory](t, request.InventoryPath)
 	// Keep the raw traversal: filepath.Join would lexically erase alias/.. .
 	inventory.Artifacts[0].Path = "alias/../inventoried-run"
 	redactJSON(t, request.InventoryPath, inventory)

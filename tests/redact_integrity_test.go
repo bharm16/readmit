@@ -49,7 +49,7 @@ func redactIdentity(schema string, files map[string][]byte) string {
 
 func redactReseal(t *testing.T, dir, schema string) string {
 	t.Helper()
-	id := redactIdentity(schema, redactTree(t, dir))
+	id := redactIdentity(schema, treeOf(t, dir))
 	if err := os.WriteFile(filepath.Join(dir, "identity.sha256"), []byte(id+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func TestRedactOpenExportRejectsPairedUnreviewedACKBytes(t *testing.T) {
 			if err := os.CopyFS(packet, os.DirFS(original)); err != nil {
 				t.Fatal(err)
 			}
-			manifest := redactReadJSON[redact.ExportManifest](t, filepath.Join(packet, "export-review.json"))
+			manifest := readStrictDocument[redact.ExportManifest](t, filepath.Join(packet, "export-review.json"))
 			rewrite := func(raw []byte) []byte {
 				switch change {
 				case "note-segment":
@@ -240,7 +240,7 @@ func redactResealPacket(t *testing.T, packet string, manifest redact.ExportManif
 		t.Fatal(err)
 	}
 	manifest.Proof.BaselineIdentity = baseline.Identity
-	files := redactTree(t, packet)
+	files := treeOf(t, packet)
 	for i := range manifest.Files {
 		file := &manifest.Files[i]
 		file.Size, file.SHA256 = len(files[file.Path]), redactDigest(files[file.Path])
@@ -257,7 +257,7 @@ func TestRedactOpenExportRejectsCoherentlyResealedProofBytes(t *testing.T) {
 			if err := os.CopyFS(packet, os.DirFS(original)); err != nil {
 				t.Fatal(err)
 			}
-			manifest := redactReadJSON[redact.ExportManifest](t, filepath.Join(packet, "export-review.json"))
+			manifest := readStrictDocument[redact.ExportManifest](t, filepath.Join(packet, "export-review.json"))
 			receiverPath := filepath.Join(packet, "proof", "baseline", "receiver.case")
 			switch change {
 			case "retained-source":
@@ -286,7 +286,7 @@ func TestRedactOpenExportValidatesTheEmbeddedReviewContract(t *testing.T) {
 			if err := os.CopyFS(packet, os.DirFS(original)); err != nil {
 				t.Fatal(err)
 			}
-			manifest := redactReadJSON[redact.ExportManifest](t, filepath.Join(packet, "export-review.json"))
+			manifest := readStrictDocument[redact.ExportManifest](t, filepath.Join(packet, "export-review.json"))
 			switch change {
 			case "schema":
 				manifest.Review.Schema = "readmit-export-review/v999"
@@ -295,7 +295,7 @@ func TestRedactOpenExportValidatesTheEmbeddedReviewContract(t *testing.T) {
 			case "origin":
 				manifest.Review.DataOrigin = "generated"
 			}
-			files := redactTree(t, packet)
+			files := treeOf(t, packet)
 			raw, err := json.Marshal(manifest.Review, json.Deterministic(true))
 			if err != nil {
 				t.Fatal(err)
@@ -323,7 +323,7 @@ func TestRedactOpenExportRejectsCoherentlyResealedLedger(t *testing.T) {
 			if err := os.CopyFS(packet, os.DirFS(original)); err != nil {
 				t.Fatal(err)
 			}
-			manifest := redactReadJSON[redact.ExportManifest](t, filepath.Join(packet, "export-review.json"))
+			manifest := readStrictDocument[redact.ExportManifest](t, filepath.Join(packet, "export-review.json"))
 			approved := manifest.ApprovedReview
 			resultPath := filepath.Join(packet, "proof", "baseline", "result")
 			artifact, err := testrunner.Open(resultPath)
@@ -363,7 +363,7 @@ func TestRedactOpenExportRejectsCoherentlyResealedLedger(t *testing.T) {
 			redactJSON(t, filepath.Join(resultPath, "result.json"), artifact.Result)
 			redactReseal(t, resultPath, testrunner.Schema)
 			receiverPath := filepath.Join(packet, "proof", "baseline", "receiver.case")
-			recorded := redactReadJSON[bundle.Manifest](t, filepath.Join(receiverPath, "manifest.json"))
+			recorded := readStrictDocument[bundle.Manifest](t, filepath.Join(receiverPath, "manifest.json"))
 			recorded.Observation.Size, recorded.Observation.SHA256 = len(raw), redactDigest(raw)
 			if err := os.WriteFile(filepath.Join(receiverPath, "observation.json"), raw, 0600); err != nil {
 				t.Fatal(err)

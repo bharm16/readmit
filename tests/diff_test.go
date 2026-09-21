@@ -2,7 +2,6 @@ package tests
 
 import (
 	"bytes"
-	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -30,15 +29,7 @@ func diffCases(t *testing.T) (string, string) {
 func diffJSON(t *testing.T, args ...string) (diff.Report, string) {
 	t.Helper()
 	args = append(append([]string{"diff"}, args...), "--format", "json")
-	stdout, stderr, err := run(t, args...)
-	if err != nil || stderr != "" {
-		t.Fatalf("diff: %v %s", err, stderr)
-	}
-	var report diff.Report
-	if err := json.Unmarshal([]byte(stdout), &report, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatal(err)
-	}
-	return report, stdout
+	return runJSON[diff.Report](t, args...)
 }
 
 func TestDiffAcceptanceFixtureAndExplicitIgnore(t *testing.T) {
@@ -46,7 +37,7 @@ func TestDiffAcceptanceFixtureAndExplicitIgnore(t *testing.T) {
 	leftBefore, _ := bundle.Open(left)
 	rightBefore, _ := bundle.Open(right)
 	report, stdout := diffJSON(t, left, right, "--key", "MSH-10", "--ignore", "MSH-7")
-	var expected struct {
+	type expectedFixture struct {
 		Summary          diff.Summary `json:"summary"`
 		ChangedSelectors []string     `json:"changed_selectors"`
 		NullSelector     string       `json:"null_selector"`
@@ -54,13 +45,7 @@ func TestDiffAcceptanceFixtureAndExplicitIgnore(t *testing.T) {
 		UnchangedLeft    string       `json:"unchanged_left"`
 		UnchangedRight   string       `json:"unchanged_right"`
 	}
-	data, err := os.ReadFile("../testdata/fixtures/diff-expected.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(data, &expected, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatal(err)
-	}
+	expected := readStrictDocument[expectedFixture](t, "../testdata/fixtures/diff-expected.json")
 	if report.Schema != "readmit-diff/v1" || report.Alignment != "declared-keys" || report.Summary != expected.Summary || len(report.Unsupported) != 0 {
 		t.Fatalf("incorrect fixture summary: %+v", report)
 	}
@@ -321,7 +306,7 @@ func TestDiffResultReportsWireBoundaryAndProtectsEnclosingResult(t *testing.T) {
 	wait := testListener(t, dir, "defective")
 	result := filepath.Join(dir, "result")
 	_, stderr, err := run(t, "test", spec, "--send", "--output", result)
-	if processCode(t, err) != 1 || stderr != "" {
+	if exitCode(t, err) != 1 || stderr != "" {
 		t.Fatalf("baseline fixture did not fail its ledger test: %v %s", err, stderr)
 	}
 	wait()
@@ -349,7 +334,7 @@ func TestDiffEarlyResultErrorAndUnalignableKeysRemainVisible(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := filepath.Join(dir, "error-result")
-	if _, _, err := run(t, "test", spec, "--send", "--output", result); processCode(t, err) != 2 {
+	if _, _, err := run(t, "test", spec, "--send", "--output", result); exitCode(t, err) != exitRefused {
 		t.Fatal("invalid spec did not produce execution-error evidence")
 	}
 	report, _ := diffJSON(t, result, "../testdata/fixtures/listen-s12.hl7")

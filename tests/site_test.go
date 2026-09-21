@@ -86,7 +86,8 @@ func TestPreviewSiteIsStaticAndEveryLinkResolves(t *testing.T) {
 	}
 }
 
-func TestEveryPublishedClaimCitesAFileAndATestThatExist(t *testing.T) {	defined := make(map[string]bool)
+func TestEveryPublishedClaimCitesAFileAndATestThatExist(t *testing.T) {
+	defined := make(map[string]bool)
 	for _, root := range []string{"../tests", "../internal", "../desktop"} {
 		err := filepath.WalkDir(root, func(name string, entry fs.DirEntry, err error) error {
 			if err != nil {
@@ -274,4 +275,3 @@ func TestPublishedVersionLiteralsAgreeWithTheSupportMatrix(t *testing.T) {
 		}
 	}
 }
-

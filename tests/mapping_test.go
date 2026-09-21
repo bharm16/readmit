@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,7 +36,7 @@ func mappingCorpus(t *testing.T) (string, string) {
 	if err := os.WriteFile(member, []byte(strings.Join(rows, "\r\n")+"\r\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	return member, importPlanFile(t, t.TempDir(), "recipe.json", mappingRecipe)
+	return member, writeDocument(t, t.TempDir(), "recipe.json", mappingRecipe)
 }
 
 func TestImportMapsAnEnvelopeAndRecordsTheRecipeItRanUnder(t *testing.T) {
@@ -46,10 +45,7 @@ func TestImportMapsAnEnvelopeAndRecordsTheRecipeItRanUnder(t *testing.T) {
 	if err != nil || stderr != "" {
 		t.Fatalf("preview: %v %s", err, stderr)
 	}
-	var preview importer.MappingPreview
-	if err := json.Unmarshal([]byte(stdout), &preview, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatalf("preview is not a strict readmit-mapping-preview/v1 document: %v", err)
-	}
+	preview := readStrictOutput[importer.MappingPreview](t, stdout)
 	if preview.Schema != importer.MappingPreviewSchema || preview.Recipe.Revision != 2 ||
 		preview.Totals.Sources != 2 || preview.UnmappedRecords != 1 || len(preview.Identity) != 64 {
 		t.Fatalf("preview: schema=%s revision=%d totals=%+v unmapped=%d", preview.Schema, preview.Recipe.Revision, preview.Totals, preview.UnmappedRecords)
@@ -83,14 +79,7 @@ func TestImportMapsAnEnvelopeAndRecordsTheRecipeItRanUnder(t *testing.T) {
 		}
 	}
 
-	data, err := os.ReadFile(receiptPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var receipt importer.MappingReceipt
-	if err := json.Unmarshal(data, &receipt, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatalf("receipt is not a strict readmit-mapping-receipt/v1 document: %v", err)
-	}
+	receipt := readStrictDocument[importer.MappingReceipt](t, receiptPath)
 	if receipt.Identity != preview.Identity || receipt.UnmappedRecords != 1 || len(receipt.Mappings) != 2 {
 		t.Fatalf("receipt: %+v", receipt)
 	}
@@ -128,7 +117,7 @@ func TestImportMapsAnEnvelopeAndRecordsTheRecipeItRanUnder(t *testing.T) {
 
 func TestImportReadsARecipeOrAPlanButNeverBoth(t *testing.T) {
 	member, recipe := mappingCorpus(t)
-	plan := importPlanFile(t, t.TempDir(), "plan.json",
+	plan := writeDocument(t, t.TempDir(), "plan.json",
 		`{"schema":"readmit-import-plan/v1","framing":"raw","terminator":"cr","encoding":"utf-8","direction":"inbound","members":[]}`)
 	for name, args := range map[string][]string{
 		"recipe and plan":        {"--recipe", recipe, "--plan", plan},
@@ -154,7 +143,7 @@ func TestImportRefusesARecipeItCannotRead(t *testing.T) {
 		"no dialect": strings.Replace(mappingRecipe,
 			`"csv":{"delimiter":",","record_separator":"crlf","header":"present","fields":5},`, "", 1),
 	} {
-		recipe := importPlanFile(t, t.TempDir(), "recipe.json", document)
+		recipe := writeDocument(t, t.TempDir(), "recipe.json", document)
 		_, stderr, err := run(t, "import", "--recipe", recipe, "--file", member, "--preview")
 		if err == nil {
 			t.Errorf("%s was accepted", name)
@@ -170,7 +159,7 @@ func TestImportRefusesARecipeItCannotRead(t *testing.T) {
 	if err := os.WriteFile(other, []byte("a,b\r\n1,2\r\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	recipe := importPlanFile(t, t.TempDir(), "recipe.json", mappingRecipe)
+	recipe := writeDocument(t, t.TempDir(), "recipe.json", mappingRecipe)
 	_, stderr, err := run(t, "import", "--recipe", recipe, "--file", other, "--preview")
 	if err == nil {
 		t.Fatal("a member that is not the declared envelope was accepted")

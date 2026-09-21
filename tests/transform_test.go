@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,10 +34,7 @@ func authoredPlan(t *testing.T, path, steps string) string {
 	if err != nil || stderr != "" {
 		t.Fatalf("correlate: %v %s", err, stderr)
 	}
-	var report correlate.Report
-	if err := json.Unmarshal([]byte(reported), &report, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatal(err)
-	}
+	report := readStrictOutput[correlate.Report](t, reported)
 	plan := `{"schema":"` + transform.PlanSchema + `","case":"` + report.CaseIdentity +
 		`","rules":"` + report.RulesSHA256 + `","steps":[` + steps + `]}`
 	file := filepath.Join(t.TempDir(), "plan.json")
@@ -87,10 +83,7 @@ func TestTransformExecutablePreviewsASequenceWithoutTouchingTheCase(t *testing.T
 	if err != nil || stderr != "" {
 		t.Fatalf("transform json: %v %s", err, stderr)
 	}
-	var preview transform.Preview
-	if err := json.Unmarshal([]byte(rendered), &preview, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatalf("the preview is not one strict %s document: %v", transform.PreviewSchema, err)
-	}
+	preview := readStrictOutput[transform.Preview](t, rendered)
 	if preview.Summary.Copies != 1 || preview.Summary.Entries != preview.Summary.Occurrences+1 {
 		t.Fatalf("the duplicated entry was not previewed: %+v", preview.Summary)
 	}

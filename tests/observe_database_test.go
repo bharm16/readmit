@@ -25,7 +25,7 @@ func TestObserveDatabaseDisabledAndResetCredentialsAreNeverAbsence(t *testing.T)
 				t.Fatalf("reset reference was not refused: %v %s", err, stderr)
 			}
 		} else {
-			if exitCode(t, err) != 2 || !strings.Contains(stdout, `"status":"missing"`) {
+			if exitCode(t, err) != exitRefused || !strings.Contains(stdout, `"status":"missing"`) {
 				t.Fatalf("disabled became an observation: %v %s", err, stdout)
 			}
 		}
