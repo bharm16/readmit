@@ -13,6 +13,14 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   merely because a project reopens. Finalizing collected material imports a
   verified case, links receipt and provenance, and offers exploration and
   observation binding on the existing import and explorer surfaces.
+- The desktop shell gained graphical synthetic scenario authoring (#254). Supported
+  ADT, SIU, ORM and ORU lifecycle sequences are designed with structured controls,
+  previewed through the shared engine, generated into new artifacts with exact
+  provenance, registered in the project, and continued into inspection or a test
+  draft by reference. Scenario library entries can be saved, versioned, compared
+  and imported/exported without silently updating pinned profiles. GUI and CLI
+  generation agree for the same declared inputs; the frozen guided sample is
+  unchanged.
 
 - The desktop shell gained in-app case index building, guided rebuild, and
   content search (#248). Opening a case bundle auto-selects an applicable

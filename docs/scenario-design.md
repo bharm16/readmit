@@ -246,8 +246,7 @@ correct against a scenario that never asked the question.
   `readmit-test/v1` spec, does not become one, and names none.
 - Validating a real message, a case or a run against a designed workflow.
   Nothing here reads evidence.
-- Authoring a scenario in the desktop shell. This release ships the contract,
-  the four templates and the command-line preview.
+- Authoring a scenario in the desktop shell is available through the synthetic scenario panel; see [the desktop shell](desktop.md#synthetic-scenario-authoring).
 - More than one patient lifecycle event. `A40` is the only one; identity
   changes such as `A47` and unmerge are not decided.
 - Editing a scenario through readmit. It is an ordinary file, and changing it

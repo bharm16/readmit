@@ -1088,3 +1088,80 @@ export function defaultTargetResetResult(overrides: Partial<TargetResetResult> =
     ...overrides,
   };
 }
+
+export function scenarioCatalogFixture() {
+  return {
+    state: "completed" as const,
+    catalog: {
+      generator_version: "readmit-scenario-generator-v1",
+      profiles: [
+        {
+          name: "readmit-siu-lifecycle-v1",
+          schema: "readmit-scenario/v1",
+          order: false,
+          kinds: [
+            { kind: "patient", states: ["active"] },
+            { kind: "appointment", states: ["none", "booked", "cancelled", "noshow"] },
+          ],
+          events: [
+            { event: "S12", description: "new appointment booking", kind: "appointment", profile: "readmit-siu-lifecycle-v1", available: true },
+          ],
+        },
+      ],
+      all_events: [
+        {
+          event: "A01",
+          description: "admit or visit notification",
+          kind: "visit",
+          profile: "readmit-siu-lifecycle-v1",
+          available: false,
+          reason: "profile readmit-siu-lifecycle-v1 declares no event A01; it belongs to readmit-adt-lifecycle-v1",
+        },
+      ],
+    },
+  };
+}
+
+export function scenarioPreviewFixture(options: { reveal?: boolean } = {}) {
+  return {
+    state: "completed" as const,
+    scenario: "siu-draft",
+    version: "1",
+    profile: "readmit-siu-lifecycle-v1",
+    base_time: "2026-01-01T12:00:00Z",
+    accepted: 1,
+    refused: 0,
+    subjects: options.reveal
+      ? [
+          {
+            id: "patient-a",
+            kind: "patient",
+            initial_state: "active",
+            masked: false,
+            namespace: "READMIT",
+            identifier: "SYNTH-PATIENT-A",
+          },
+        ]
+      : [
+          {
+            id: "patient-a",
+            kind: "patient",
+            initial_state: "active",
+            masked: true,
+          },
+        ],
+    steps: [
+      {
+        ordinal: 1,
+        id: "book",
+        at: "2026-01-01T12:00:00Z",
+        event: "S12",
+        description: "new appointment booking",
+        subject: "appointment-a",
+        expect: "accepted",
+        from: "none",
+        to: "booked",
+      },
+    ],
+  };
+}

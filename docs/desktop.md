@@ -1862,6 +1862,32 @@ The panel provides five functional tabs:
    - Direct inspection of the canonical JSON representation according to ADR-0003
      and the JSON schema.
 
+## Synthetic scenario authoring
+
+The synthetic scenario panel in the inspector region (`manage-scenarios`
+command, `Ctrl+Shift+S` / `⌘+Shift+S`) finishes the graphical journey over the
+existing `readmit-scenario/v1`, `readmit-order-scenario/v1`,
+`readmit-scenario-generator/v1` and `readmit-scenario-library/v1` contracts.
+
+- Create from a supported ADT, SIU, ORM or ORU lifecycle template or a blank
+  supported sequence. A saved local interface profile (#252) selects the family
+  and pins the generator version without silently substituting another workflow;
+  unavailable events remain listed with their refusal reasons.
+- Preview walks the shared Go engine. Identifiers stay masked until deliberate
+  local reveal. Generation diagnostics and refused steps never become successful
+  validation.
+- Generate writes a new family with `generation.json` provenance, a generated
+  case (never captured customer evidence), optional project registration, and
+  handoff into the existing inspector or test-authoring surface by reference.
+  The full visual test builder (#256) is not required; expected values are never
+  inserted from the generator automatically.
+- Library entries can be saved, reopened, versioned, compared, imported and
+  exported. Reuse never silently updates a pinned profile or overwrites another
+  revision. Independent expectations remain separately authored.
+- The SIU fixture tab exposes `readmit synth` with the same declared seed, base
+  time, generator version and profile version inputs. The free frozen sample is
+  unchanged.
+
 ## Environments, Credential References, Send Policies, and Fixture Reset
 
 The desktop application provides first-party visual authoring and inspection for named

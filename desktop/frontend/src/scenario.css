@@ -1,0 +1,98 @@
+.scenario-panel {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem 0 2rem;
+}
+
+.scenario-header h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.25rem;
+}
+
+.scenario-header p,
+.scenario-note {
+  margin: 0;
+  max-width: 52rem;
+  color: var(--muted, #4a5560);
+}
+
+.scenario-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.scenario-tabs button,
+.scenario-actions button,
+.scenario-section button {
+  border: 1px solid var(--border, #c5ccd3);
+  background: var(--surface, #fff);
+  color: inherit;
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+}
+
+.scenario-tabs button.active {
+  border-color: var(--accent, #245b6b);
+  box-shadow: inset 0 -2px 0 var(--accent, #245b6b);
+}
+
+.scenario-section {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.scenario-section label {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.scenario-section textarea,
+.scenario-section input[type="text"],
+.scenario-section input:not([type]) {
+  font: inherit;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border, #c5ccd3);
+  background: var(--surface, #fff);
+}
+
+.scenario-section textarea {
+  width: min(100%, 52rem);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+.scenario-events {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.scenario-events .unavailable {
+  color: var(--danger, #8a2f2f);
+}
+
+.scenario-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: end;
+}
+
+.scenario-section table {
+  width: min(100%, 56rem);
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.scenario-section th,
+.scenario-section td {
+  border-bottom: 1px solid var(--border, #c5ccd3);
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  vertical-align: top;
+}
+
+.scenario-status {
+  margin: 0;
+  color: var(--muted, #4a5560);
+}
