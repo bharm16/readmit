@@ -195,7 +195,7 @@ func TestCanonicalExportExecutesWithDesktopCLIParity(t *testing.T) {
 				t.Fatal(got)
 			}
 			spec := filepath.Join(root, "edited.json")
-			desktopResult := app.StartDurableRun(spec, filepath.Join(root, "desktop-run"))
+			desktopResult := app.StartDurableRun(desktop.DurableRunRequest{Workspace: root, Spec: "edited.json", Output: "desktop-run"})
 			if desktopResult.State != desktop.Completed || desktopResult.Run == nil {
 				t.Fatalf("desktop: %+v", desktopResult)
 			}

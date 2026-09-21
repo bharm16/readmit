@@ -15,6 +15,23 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   payment completion never activates anything, and checkout return, cancelled
   payment and pending issuance change nothing locally. The pane issues no
   entitlement, holds no signing key, and contacts no service on its own.
+- The desktop shell connects authored tests and suites into preflight,
+  execution, run history and linked assertion evidence (#257). The durable-run
+  panels select a saved test or approved suite from the workspace (native file
+  selection stays as the advanced path), generate and validate fresh output
+  destinations, and preflight locally with no network or verdict: exact input,
+  target and environment, effective configuration, observation and reset
+  requirements, pinned engine versions, limits and the operation guard's own
+  admission decision. Execution is bound to the identity the preflight fixed,
+  so a changed input invalidates it; cancellation names its own operation and
+  duplicate clicks cannot start two runs. Live progress reads the journal
+  read-only through the recovery vocabulary; completed and partial outputs
+  register in run history and reopen read-only through the existing result,
+  recovery and engine-pin readers, with per-assertion expected/observed values
+  revealed only deliberately and evidence links naming the retained payloads
+  and the source case. Suites execute one environment through the existing
+  durable queue with its declared isolation. Operation completion, assertion
+  failure, execution error and delivery uncertainty stay separate facts.
 - The desktop shell authors every supported test and assertion operator through
   structured visual controls (#256). Guided test authoring covers
   `ledger_count`, `ledger_equals` and `ack_field_equals` with inspected-field

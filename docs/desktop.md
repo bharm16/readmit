@@ -288,7 +288,14 @@ artifacts are never reported as completed.
 | `ApproveExpectations` | Records what a person decided about those proposals and reports the draft their approvals produced. |
 | `OpenCorrelationReview` | Rebuilds an explicitly selected human mapping over verified findings; refuses stale dependent mapping identities. |
 | `DecideCorrelation` | Saves an explicit accept, reject or added pair with a local analyst and reason in a new immutable review directory. |
-| `Cancel` | Stops the operation that is running now, when it can be interrupted. |
+| `StartDurableRun` | Sends once with an explicit operator action into a fresh workspace entry, under the identity the preflight fixed; a changed test is refused rather than executed. Cancel stops future sends; in-flight effects remain visible. |
+| `OpenDurableRun` | Recovers one retained run folder read-only; never sends, resumes or resets. |
+| `PreflightRun` | Validates a saved test or suite locally and reports exactly what one execution would do: selected input, target and environment, effective configuration, observation and reset requirements, pinned versions, deadline, a generated fresh destination and the operation guard's admission decision. No network, no verdict. |
+| `StartSuiteRun` | Executes one suite environment through the existing durable queue into a fresh destination, reporting each job's admission and its own durable summary. |
+| `DurableRunProgress` | Reads one run folder's recovery counts read-only while it executes, without claiming the operation slot. |
+| `OpenRunEvidence` | Reopens one retained execution read-only through the result, recovery and engine-pin readers, with per-assertion evidence links and values present only under a deliberate reveal. |
+| `ChooseRunSpec` | Presents the host's native file dialog for a saved test or suite, kept to one entry of the open workspace. |
+| `Cancel` | Stops the operation that is running now, when it can be interrupted. The caller names the operation it means to cancel, so one panel's cancel control can never stop another panel's work; the window's own cancel command names none and cancels whatever is running. |
 
 Exactly one operation runs at a time. A second request reports `busy` rather
 than racing the first, and a finished operation always releases the slot,
@@ -351,6 +358,8 @@ pickers offer applicable entries instead of every entry labelled unsupported:
 | `secret` | A `readmit-secrets/v1` credential-reference document |
 | `policy` | A `readmit-send-policy/v1` approved-destination document |
 | `reset` | A `readmit-reset-plan/v1` plan or a `readmit-reset-outcome/v1` outcome |
+| `suite` | A `readmit-suite/v1` document |
+| `suite-releases` | A `readmit-suite-releases/v1` released-expectation pin set |
 | `unsupported` | Nothing this release reads, with the reason |
 
 Locating a document by a fixed name or a declared contract is how the listing
@@ -1534,12 +1543,12 @@ collaboration UI and are not duplicated here.
 - Sharing a working session between viewers or machines, retaining more than one
   session per viewer, and any history of what a draft said before it was
   replaced.
-- Running a test against anything but the practice receiver of
-  [the guided sample](guided-sample.md), which is the built-in fixture bound on
-  a loopback port inside this application. Executing a spec against a real
-  target is `readmit test` and [durable runs](durable-runs.md). Editing a test,
-  reading a saved spec back into a draft, and suggesting expectations from a run
-  are all separate deliveries.
+- Running a test against a production destination. The practice receiver of
+  [the guided sample](guided-sample.md) is the built-in fixture bound on a
+  loopback port inside this application; a saved test or suite whose target
+  configuration names a recorded nonproduction environment is executed once by
+  the [durable test runs](#durable-test-runs-preflight-execution-and-linked-evidence)
+  panel, and a production classification still refuses every send.
 - Importing evidence and changing evidence. No edit the shell makes reaches a
   case, a run, a result, a review or a report: a reproducer is new evidence
   written beside the original, never a rewrite of it, and a comparison writes
@@ -1649,11 +1658,64 @@ rewritten and no send is initiated. See [canonical round trips](test-authoring.m
 for supported operators, refusal and recovery behavior, and execution parity.
 
 
+## Durable test runs: preflight, execution and linked evidence
+
+The **Durable test runs** panel is the connected execution centre: what the
+authoring panels saved, it selects, validates, executes once and reopens as
+evidence. Selection reads the workspace's own listing — every `spec` entry a
+saved test declared and every `suite` entry a suite document — or the host's
+native file dialog through `ChooseRunSpec`, which stays inside the open
+workspace. No path is typed by hand and no internal path is copied: a fresh
+output folder is generated and validated by the application itself.
+
+**Validate and preflight** is local validation with no network connection, no
+send and no result verdict. It reads the exact plan a send would execute and
+reports: the selected input and the identity of its exact bytes, the target
+configuration and the environment it records (never a credential value — a
+target names a reference), the effective timeouts and limits, the observation
+boundary and reset requirement, the engine/spec/profile pin, the deadline an
+execution is bounded by, the generated destination, and the operation guard's
+own admission decision — the same decision a send would get. A selection that
+changes withdraws the preflight, and **Send and execute once** executes only
+under the identity the preflight fixed: a test rewritten after the preflight is
+refused by the send rather than executed as though nothing had changed.
+
+Execution is the existing durable path (a suite runs through the existing
+durable queue with its declared isolation; this panel adds no parallelism).
+The window stays responsive: the send runs in the engine, the panel polls a
+read-only progress read of the journal being written, and **Cancel run** names
+its own operation, so it can never stop another panel's work and another
+panel's cancel can never stop a run. A duplicate click finds the button
+withdrawn and the facade's single operation slot refuses the second start.
+After the run, the workspace listing is refreshed so completed and partial
+outputs appear in run history at once, and the retained evidence opens
+read-only beside the summary.
+
+**Run history** offers the workspace's retained `job` and `result` entries.
+Opening one reads it through the same readers the command line verifies one
+with — never filename inference — and shows the durable state and stop reason
+alongside the result's own verdict and error class, which stay three separate
+facts; message, acknowledgement and observation counts; the journal's
+acknowledged/uncertain/not-attempted deliveries; the run's timings; the
+retained engine pin; the source case and identity; and one row per assertion
+with its operator, the position it addresses and the retained payload its
+decision was read from. Expected and observed values are hidden until
+**Reveal expected and observed values** is pressed — a deliberate local
+action, the same boundary the baseline panel uses — and the source case is a
+link that opens the case in the inspector, not a value. An incomplete journal
+and a delivery-uncertain run stay exactly what the journal says: no view here
+resumes, resets or resends anything, and executing again is always a fresh
+preflight and a fresh destination. See
+[durable local runs](durable-runs.md) for the retained contracts.
+
 ## Comparing retained executions
 
 The inspector's **Compare retained executions** panel reads a baseline result
-and a current result, with up to fourteen additional retained executions. Enter
-immediate directory names in the open workspace. Each must be a verified
+and a current result, with up to fourteen additional retained executions. The
+baseline and the current run are selected from the workspace's actual retained
+executions — the same run history the durable-run panels register — rather
+than typed from memory; the additional repeats remain a typed list for the
+longer histories. Each must be a verified
 `readmit-result/v1` directory or a durable run containing one; cancelled and
 interrupted durable runs can instead report the missing result explicitly.
 A guided practice folder wraps its result in `result/`: copy that complete

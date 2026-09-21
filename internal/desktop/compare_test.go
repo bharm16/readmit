@@ -362,7 +362,7 @@ func TestComparingHoldsTheSameOperationSlot(t *testing.T) {
 		t.Fatalf("a comparison ran while another operation held the facade: %+v", concurrent)
 	}
 
-	app.Cancel()
+	app.Cancel("")
 	if uninterrupted := compared(t, app, compareRequest(root, identity, "after", cmpKey)); uninterrupted.Total != 3 {
 		t.Fatalf("cancelling changed what a comparison reports: %+v", uninterrupted)
 	}

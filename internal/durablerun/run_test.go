@@ -276,8 +276,9 @@ func TestCLIAndDesktopExposeTheSameLifecycle(t *testing.T) {
 	}
 	address, received := peer(t, "")
 	spec, out = setup(t, address)
+	request := desktop.DurableRunRequest{Workspace: filepath.Dir(spec), Spec: filepath.Base(spec), Output: filepath.Base(out)}
 	done := make(chan desktop.DurableRunResult, 1)
-	go func() { done <- app.StartDurableRun(spec, out) }()
+	go func() { done <- app.StartDurableRun(request) }()
 	select {
 	case <-received:
 	case <-time.After(5 * time.Second):
@@ -286,7 +287,7 @@ func TestCLIAndDesktopExposeTheSameLifecycle(t *testing.T) {
 	if got := app.OpenDurableRun(out); got.State != desktop.Busy {
 		t.Fatalf("overlapping operation %+v", got)
 	}
-	app.Cancel()
+	app.Cancel("")
 	select {
 	case got := <-done:
 		if got.State != desktop.Completed || got.Run == nil || got.Run.StopReason != durablerun.Cancelled || !got.Run.DeliveryUncertain {

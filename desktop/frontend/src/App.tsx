@@ -1517,7 +1517,7 @@ export default function App() {
     "manage-assertions": () => {
       focusRegion("inspector");
     },
-    "cancel-operation": cancel,
+    "cancel-operation": () => cancel(""),
     "next-region": () => step(1),
     "previous-region": () => step(-1),
     "go-to-commands": () => focusRegion("commands"),
@@ -1611,7 +1611,7 @@ export default function App() {
           <button type="button" onClick={actions["command-palette"]}>
             Commands (Ctrl+K)
           </button>
-          <button type="button" disabled={running !== "workspace"} onClick={cancel}>
+          <button type="button" disabled={running !== "workspace"} onClick={() => cancel("")}>
             Cancel
           </button>
         </div>
@@ -1912,7 +1912,16 @@ export default function App() {
             />
             <RetainedDrafts drafts={drafts} onDiscardDraft={dropDraft} />
             <NoteDraft project={workspaceRoot} drafts={drafts} restored={restored} onChanged={() => void restore()} />
-            <RunPanel onWatch={watch} {...(runSpecPath ? { initialSpec: runSpecPath, specPath: runSpecPath } : {})} />
+            <RunPanel
+              workspace={root}
+              entries={opened?.artifacts ?? []}
+              onWatch={watch}
+              onRefresh={() => void refreshListing()}
+              onOpenCase={(name: string) => {
+                if (root) void verifyCase(root, name);
+              }}
+              {...(runSpecPath ? { initialSpec: runSpecPath } : {})}
+            />
             <ProjectPanel
               root={root}
               result={investigation}
@@ -1946,7 +1955,7 @@ export default function App() {
     inspector: (
       <>
         {root ? <Baseline key={root} workspace={root} busy={busy} /> : null}
-        {root ? <RunComparison key={"runs-" + root} workspace={root} busy={busy} /> : null}
+        {root ? <RunComparison key={"runs-" + root} workspace={root} busy={busy} entries={opened?.artifacts ?? []} /> : null}
         <Report
           indicators={indicators}
           progress={running === "case" ? "Verifying the case." : null}
@@ -2322,7 +2331,7 @@ export default function App() {
               caseOpen={verified !== null}
               onPreview={(config) => void runReductionPreview(config)}
               onStart={(config) => void runReduction(config)}
-              onCancel={() => cancel()}
+              onCancel={() => cancel("reduction")}
             />
           ) : null}
           </>

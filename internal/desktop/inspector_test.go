@@ -178,7 +178,7 @@ func TestInspectorSharesOperationSlotAndRecoversAfterCancellation(t *testing.T) 
 	chooser := &chooser{folder: root}
 	second := desktop.New(chooser, filepath.Join(t.TempDir(), "recent.json"), filters, filepath.Join(t.TempDir(), "session.json"), filepath.Join(filepath.Dir(filepath.Join(t.TempDir(), "session.json")), "drafts.json"))
 	var concurrent desktop.InspectionResult
-	chooser.before = func() { concurrent = second.InspectOccurrence(request); second.Cancel() }
+	chooser.before = func() { concurrent = second.InspectOccurrence(request); second.Cancel("") }
 	second.SelectWorkspace()
 	if concurrent.State != desktop.Busy || concurrent.Inspection != nil {
 		t.Fatalf("inspector escaped operation slot: %+v", concurrent)

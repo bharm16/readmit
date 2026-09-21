@@ -123,7 +123,7 @@ func (a *App) Guide(workspace string) GuideResult {
 // Cancel stops future sends; whatever was already written is retained where it
 // was written and is reported as cancelled rather than as a verdict.
 func (a *App) RunPractice(request PracticeRequest) PracticeResult {
-	return run(a, true, false, func(ctx context.Context) PracticeResult {
+	return runNamed[PracticeResult, *PracticeResult](a, "practice", true, false, func(ctx context.Context) PracticeResult {
 		return a.runPractice(ctx, request)
 	})
 }

@@ -17,16 +17,28 @@ type refused interface {
 // a cancellation, and the work itself runs once. interruptible selects the
 // cancellable variant of the slot, the one Cancel can stop; writes selects
 // author admission, so an operation that changes nothing cannot be held to a
-// seat it does not use.
+// seat it does not use. An interruptible operation started this way is
+// unnamed: only the window's own cancel command can stop it, which is why a
+// panel with its own cancel control starts its operation through runNamed.
 func run[R any, PR interface {
 	*R
 	refused
 }](a *App, interruptible, writes bool, work func(context.Context) R) R {
+	return runNamed[R, PR](a, "", interruptible, writes, work)
+}
+
+// runNamed is run for an interruptible operation that names itself, so a panel
+// can cancel exactly the operation it started and nothing else. The name is
+// empty for work that is not interruptible or names no panel of its own.
+func runNamed[R any, PR interface {
+	*R
+	refused
+}](a *App, operation string, interruptible, writes bool, work func(context.Context) R) R {
 	var release func()
 	var claimed bool
 	ctx := context.Background()
 	if interruptible {
-		ctx, release, claimed = a.begin()
+		ctx, release, claimed = a.begin(operation)
 	} else {
 		release, claimed = a.claim()
 	}

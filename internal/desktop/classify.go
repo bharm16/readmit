@@ -59,6 +59,12 @@ var declaredSchemas = map[string]Kind{
 	"readmit-normalization-policy/v1": NormalizationArtifact,
 	"readmit-diagnose-config/v1":      DiagnoseConfigArtifact,
 	"readmit-finding-decisions/v1":    DecisionsArtifact,
+
+	// A suite document is what the durable-run panels execute a whole
+	// environment of; its released-expectation references are the separate
+	// pin set that makes one an approved suite.
+	"readmit-suite/v1":          SuiteArtifact,
+	"readmit-suite-releases/v1": SuiteReleasesArtifact,
 }
 
 // classify reports what one workspace entry declares, beyond what the case

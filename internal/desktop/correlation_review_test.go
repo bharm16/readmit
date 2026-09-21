@@ -300,7 +300,7 @@ func TestCorrelationReviewSharesOperationSlotAndCancellationDoesNotReplay(t *tes
 	if got := app.SelectWorkspace(); got.State != desktop.Completed {
 		t.Fatalf("workspace: %+v", got)
 	}
-	app.Cancel()
+	app.Cancel("")
 	if got := app.OpenCorrelationReview(req); got.State != desktop.Completed {
 		t.Fatalf("cancel prevented read recovery: %+v", got)
 	}

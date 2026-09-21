@@ -987,10 +987,10 @@
       "kind": "cli",
       "capability": "Execute a queue of durable runs with bounded parallelism, serializing every job that shares target state",
       "owner": "bharm16/readmit#257",
-      "screen": "the durable-run panels",
-      "action": "execute, queue, resume, recover and inspect durable runs",
+      "screen": "the durable-run panels of the inspector region",
+      "action": "execute a suite environment through the durable queue with its declared isolation",
       "test": "desktop runs behavior tests plus internal/durablerun tests",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.run.resume",
@@ -1010,7 +1010,7 @@
       "capability": "Execute once into a new durable run directory",
       "owner": "bharm16/readmit#257",
       "screen": "the durable-run panels of the inspector region",
-      "action": "execute a saved spec once into a new retained run directory",
+      "action": "preflight and execute a saved spec once into a new retained run directory",
       "test": "desktop runs behavior tests plus internal/durablerun tests",
       "implemented": true
     },
@@ -1394,10 +1394,10 @@
       "kind": "cli",
       "capability": "Evaluate a declarative regression test against an explicit test target",
       "owner": "bharm16/readmit#257",
-      "screen": "the test authoring panel and the guided practice run",
-      "action": "evaluate a declarative regression test against an explicit target",
-      "test": "desktop authoring and practice behavior tests plus internal/testrunner tests",
-      "implemented": false
+      "screen": "the durable-run panels of the inspector region",
+      "action": "execute a saved spec once against its configured target and reopen its assertion evidence",
+      "test": "desktop runs behavior tests plus internal/testrunner tests",
+      "implemented": true
     },
     {
       "id": "cli.timeline",
@@ -3354,6 +3354,17 @@
       "implemented": true
     },
     {
+      "id": "desktop.ChooseRunSpec",
+      "source": "desktop.App.ChooseRunSpec",
+      "kind": "desktop",
+      "capability": "chooseRunSpec application operation",
+      "owner": "bharm16/readmit#257",
+      "screen": "the durable-run panels of the inspector region",
+      "action": "select a saved test or suite through the host's native file dialog",
+      "test": "desktop runs behavior tests plus internal/desktop run flow tests",
+      "implemented": true
+    },
+    {
       "id": "desktop.CollectSource",
       "source": "desktop.App.CollectSource",
       "kind": "desktop",
@@ -3475,6 +3486,17 @@
       "implemented": true
     },
     {
+      "id": "desktop.DurableRunProgress",
+      "source": "desktop.App.DurableRunProgress",
+      "kind": "desktop",
+      "capability": "durableRunProgress application operation",
+      "owner": "bharm16/readmit#257",
+      "screen": "the durable-run panels of the inspector region",
+      "action": "read one run folder's live recovery counts without claiming the operation slot",
+      "test": "desktop runs behavior tests plus internal/durablerun tests",
+      "implemented": true
+    },
+    {
       "id": "desktop.GroupDiagnoses",
       "source": "desktop.App.GroupDiagnoses",
       "kind": "desktop",
@@ -3552,6 +3574,17 @@
       "implemented": true
     },
     {
+      "id": "desktop.OpenRunEvidence",
+      "source": "desktop.App.OpenRunEvidence",
+      "kind": "desktop",
+      "capability": "openRunEvidence application operation",
+      "owner": "bharm16/readmit#257",
+      "screen": "the durable-run panels of the inspector region",
+      "action": "reopen one retained execution read-only with linked assertion evidence under deliberate reveal",
+      "test": "desktop runs behavior tests plus internal/runresult and internal/runexplain tests",
+      "implemented": true
+    },
+    {
       "id": "desktop.OpenSequenceAnalysis",
       "source": "desktop.App.OpenSequenceAnalysis",
       "kind": "desktop",
@@ -3560,6 +3593,17 @@
       "screen": "the Sequence panel's rules editor",
       "action": "open one sequence-analysis declaration from the open workspace",
       "test": "desktop rules-editor behavior tests plus internal/desktop ruledocs tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.PreflightRun",
+      "source": "desktop.App.PreflightRun",
+      "kind": "desktop",
+      "capability": "preflightRun application operation",
+      "owner": "bharm16/readmit#257",
+      "screen": "the durable-run panels of the inspector region",
+      "action": "validate a saved test or suite locally and show exactly what one execution would do",
+      "test": "desktop runs behavior tests plus internal/desktop run flow tests",
       "implemented": true
     },
     {
@@ -3637,6 +3681,17 @@
       "screen": "the Sequence panel's rules editor",
       "action": "save one canonical sequence-analysis declaration into one new workspace entry",
       "test": "desktop rules-editor behavior tests plus internal/desktop ruledocs tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.StartSuiteRun",
+      "source": "desktop.App.StartSuiteRun",
+      "kind": "desktop",
+      "capability": "startSuiteRun application operation",
+      "owner": "bharm16/readmit#257",
+      "screen": "the durable-run panels of the inspector region",
+      "action": "execute one suite environment through the existing durable queue into a fresh destination",
+      "test": "desktop runs behavior tests plus internal/suite and internal/runqueue tests",
       "implemented": true
     }
   ]
