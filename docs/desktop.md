@@ -1984,8 +1984,24 @@ current bounded authority; there is no arbitrary command console.
 
 Start only after preview. Cancel stops through the shared engine. Reopening a
 project never restarts a listener and never fabricates complete capture after a
-crash. On completion the panel offers opening the case and setting up an index
-on the existing import and explorer surfaces.
+crash. On completion the panel offers opening the case, setting up an index, and
+binding the retained case into Observation setup through `BindCaptureObservation`.
 
 See [source](source.md), [collect](collect.md) and [listen](listen.md).
+
+## Observation sources and windows
+
+The desktop application authors `readmit-observation-source/v1|v2|v3` and
+`readmit-observation-window/v1` documents through structured controls over the
+same Go readers and writers the CLI uses. Opening Observation setup never queries
+a database or HTTPS endpoint. Local validation checks configuration identity and
+source/window agreement only. Collection and connectivity preview require an
+explicit authorize action and retain completions through
+`internal/observesource` and `internal/observewindow`.
+
+Adapter support and qualification state are listed in the panel. Database
+drivers remain unqualified production claims until #75. Downstream-capture
+sources accept a retained case path; Capture completion hands that path into
+`BindCaptureObservation` without starting a second capture UI. Verified window
+references bind into guided test authoring without hand-authored JSON.
 

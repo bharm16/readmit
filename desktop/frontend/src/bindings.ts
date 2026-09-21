@@ -642,6 +642,17 @@ export interface Facade {
   EvaluateSendPolicy(request: SendPolicyEvalRequest): Promise<SendPolicyEvalResult>;
   ReadResetPlan(workspace: string, planFile: string): Promise<ResetPlanResult>;
   SaveResetPlan(request: ResetPlanSaveRequest): Promise<ResetPlanResult>;
+  ObservationSupport(): Promise<ObservationSupportResult>;
+  OpenObservationWindow(workspace: string, windowFile: string): Promise<ObservationWindowResult>;
+  SaveObservationWindow(request: ObservationWindowRequest): Promise<ObservationWindowResult>;
+  ValidateObservationWindow(workspace: string, windowFile: string): Promise<ObservationWindowResult>;
+  OpenObservationSource(workspace: string, sourceFile: string): Promise<ObservationSourceResult>;
+  SaveObservationSource(request: ObservationSourceRequest): Promise<ObservationSourceResult>;
+  ValidateObservationSource(workspace: string, sourceFile: string): Promise<ObservationSourceResult>;
+  ValidateObservationPair(request: ObservationValidateRequest): Promise<ObservationValidateResult>;
+  CollectObservation(request: ObservationCollectFacadeRequest): Promise<ObservationCompletionResult>;
+  ExplainObservation(request: ObservationExplainRequest): Promise<ObservationCompletionResult>;
+  BindCaptureObservation(request: ObservationCaptureBindRequest): Promise<ObservationSourceResult>;
   ChooseImportSources(kind: string): Promise<ImportSourcesResult>;
   ChooseCapturePath(kind: string): Promise<PathChoiceResult>;
   SaveSourceRegistration(request: SourceRegistrationRequest): Promise<SourceRegistrationResult>;
@@ -3472,6 +3483,296 @@ export interface ImportCommitResult {
   receipt_path?: string;
   registered?: boolean;
   project?: ProjectDocument;
+}
+
+
+export interface ObservationAdapterSupport {
+  kind: string;
+  schema: string;
+  adapter: string;
+  version: string;
+  qualification: string;
+  production_claim: boolean;
+  notes?: string;
+}
+
+export interface ObservationSupportResult {
+  state: State;
+  reason?: string;
+  support?: ObservationAdapterSupport[];
+}
+
+export interface ObservationWindowSource {
+  kind: string;
+  identity: string;
+  scope: string;
+}
+
+export interface ObservationWatermark {
+  kind: string;
+  position: string;
+}
+
+export interface ObservationPreExisting {
+  declaration: string;
+  baseline_identity: string;
+}
+
+export interface ObservationRule {
+  deadline: string;
+  quiet_period: string;
+  stable_samples: number;
+  max_records: number;
+  max_samples: number;
+}
+
+export interface ObservationWindow {
+  schema: string;
+  source: ObservationWindowSource;
+  watermark: ObservationWatermark;
+  pre_existing_state: ObservationPreExisting;
+  completion: ObservationRule;
+}
+
+export interface ObservationWindowRequest {
+  workspace: string;
+  window_file: string;
+  window?: ObservationWindow;
+}
+
+export interface ObservationWindowResult {
+  state: State;
+  reason?: string;
+  window?: ObservationWindow;
+  window_file?: string;
+  identity?: string;
+}
+
+export interface ObservationExtraction {
+  envelope: string;
+  encoding: string;
+  csv?: { delimiter: string; record_separator: string; header: string; fields: number };
+  text?: { field_separator: string; record_separator: string; fields: number };
+  json?: { record_path: string[] };
+  xml?: { record_path: string[] };
+  record_key: string[];
+}
+
+export interface ObservationFile {
+  path: string;
+  max_bytes: number;
+}
+
+export interface ObservationHTTP {
+  url: string;
+  classification: string;
+  ca_file: string;
+  server_name: string;
+  timeout: string;
+  max_bytes: number;
+  retry: { attempts: number; delay: string };
+  credential?: {
+    store: string;
+    address: string;
+    header: string;
+    command: string;
+    arguments: string[];
+  } | null;
+}
+
+export interface ObservationCapture {
+  path: string;
+  kinds: string[];
+  record_key: string;
+  max_occurrences: number;
+}
+
+export interface ObservationDatabase {
+  driver: string;
+  address: string;
+  classification: string;
+  name: string;
+  username: string;
+  ca_file: string;
+  server_name: string;
+  credential: {
+    store: string;
+    address: string;
+    purpose: string;
+    command: string;
+    arguments: string[];
+  };
+  view: string[];
+  record_key: string;
+  key_type: string;
+  filters: { column: string; value: string }[];
+  limits?: { timeout: string; max_rows: number; max_bytes: number } | null;
+}
+
+export interface ObservationSource {
+  schema: string;
+  source: ObservationWindowSource;
+  enabled: boolean;
+  freshness: { max_age: string };
+  extraction?: ObservationExtraction | null;
+  file?: ObservationFile | null;
+  http?: ObservationHTTP | null;
+  capture?: ObservationCapture | null;
+  database?: ObservationDatabase | null;
+}
+
+export interface ObservationSourceRequest {
+  workspace: string;
+  source_file: string;
+  source?: ObservationSource;
+}
+
+export interface ObservationSourceResult {
+  state: State;
+  reason?: string;
+  source?: ObservationSource;
+  source_file?: string;
+  identity?: string;
+  support?: ObservationAdapterSupport;
+}
+
+export interface ObservationValidateRequest {
+  workspace: string;
+  source_file: string;
+  window_file: string;
+}
+
+export interface ObservationValidateResult {
+  state: State;
+  reason?: string;
+  source?: ObservationSource;
+  window?: ObservationWindow;
+  support?: ObservationAdapterSupport;
+}
+
+export interface ObservationCollectFacadeRequest {
+  workspace: string;
+  source_file: string;
+  window_file: string;
+  output_file: string;
+  snapshot_dir: string;
+  policy_file?: string;
+  produced?: string[];
+  authorize: boolean;
+}
+
+export interface ObservationAbsenceSummary {
+  supported: boolean;
+  reason?: string;
+  status: string;
+  records_observed: number;
+  mapped_correlations: number;
+  unmapped_correlations: number;
+  stale: boolean;
+  partial: boolean;
+  trustworthy: boolean;
+}
+
+export interface ObservationSample {
+  at: string;
+  status: string;
+  record_count: number;
+  state_digest: string;
+  evidence_identity: string;
+}
+
+export interface ObservationCompletion {
+  schema: string;
+  boundary: string;
+  window_identity: string;
+  source: ObservationWindowSource;
+  watermark?: ObservationWatermark;
+  status: string;
+  stop: string;
+  opened_at: string;
+  closed_at: string;
+  baseline?: ObservationSample | null;
+  samples?: ObservationSample[];
+  correlations?: { produced: string; observed: string; kind: string }[];
+  stable_samples: number;
+  quiet_period: string;
+  records_observed: number;
+  pre_existing_basis: string;
+}
+
+export interface ObservationCompletionResult {
+  state: State;
+  reason?: string;
+  completion?: ObservationCompletion;
+  summary?: ObservationAbsenceSummary;
+  output_file?: string;
+}
+
+export interface ObservationExplainRequest {
+  workspace: string;
+  completion_file: string;
+  window_file?: string;
+}
+
+export interface CaptureObservationBinding {
+  case_path: string;
+  identity: string;
+  scope: string;
+  kinds: string[];
+  record_key: string;
+  max_occurrences: number;
+  freshness?: string;
+}
+
+export interface ObservationCaptureBindRequest {
+  workspace: string;
+  binding: CaptureObservationBinding;
+  relative_case?: string;
+}
+
+
+export function observationSupport(): Promise<ObservationSupportResult> {
+  return guard(() => facade().ObservationSupport(), { state: "failed" });
+}
+
+export function openObservationWindow(workspace: string, windowFile: string): Promise<ObservationWindowResult> {
+  return guard(() => facade().OpenObservationWindow(workspace, windowFile), { state: "failed" });
+}
+
+export function saveObservationWindow(request: ObservationWindowRequest): Promise<ObservationWindowResult> {
+  return guard(() => facade().SaveObservationWindow(request), { state: "failed" });
+}
+
+export function validateObservationWindow(workspace: string, windowFile: string): Promise<ObservationWindowResult> {
+  return guard(() => facade().ValidateObservationWindow(workspace, windowFile), { state: "failed" });
+}
+
+export function openObservationSource(workspace: string, sourceFile: string): Promise<ObservationSourceResult> {
+  return guard(() => facade().OpenObservationSource(workspace, sourceFile), { state: "failed" });
+}
+
+export function saveObservationSource(request: ObservationSourceRequest): Promise<ObservationSourceResult> {
+  return guard(() => facade().SaveObservationSource(request), { state: "failed" });
+}
+
+export function validateObservationSource(workspace: string, sourceFile: string): Promise<ObservationSourceResult> {
+  return guard(() => facade().ValidateObservationSource(workspace, sourceFile), { state: "failed" });
+}
+
+export function validateObservationPair(request: ObservationValidateRequest): Promise<ObservationValidateResult> {
+  return guard(() => facade().ValidateObservationPair(request), { state: "failed" });
+}
+
+export function collectObservation(request: ObservationCollectFacadeRequest): Promise<ObservationCompletionResult> {
+  return guard(() => facade().CollectObservation(request), { state: "failed" });
+}
+
+export function explainObservation(request: ObservationExplainRequest): Promise<ObservationCompletionResult> {
+  return guard(() => facade().ExplainObservation(request), { state: "failed" });
+}
+
+export function bindCaptureObservation(request: ObservationCaptureBindRequest): Promise<ObservationSourceResult> {
+  return guard(() => facade().BindCaptureObservation(request), { state: "failed" });
 }
 
 export function chooseImportSources(kind: string): Promise<ImportSourcesResult> {

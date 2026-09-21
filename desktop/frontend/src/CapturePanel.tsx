@@ -11,6 +11,7 @@ import {
   saveSourceRegistration,
   startCapture,
   type CaptureJournalResult,
+  type CaptureObservationBinding,
   type CapturePreviewResult,
   type CaptureSessionResult,
   type EvidenceSource,
@@ -54,6 +55,7 @@ export function CapturePanel({
   indicators,
   onOpenCase,
   onSetupIndex,
+  onBindObservation,
   onClose,
 }: {
   workspace: string;
@@ -62,6 +64,7 @@ export function CapturePanel({
   indicators: Indicators;
   onOpenCase: (caseName: string) => void;
   onSetupIndex?: (caseName: string) => void;
+  onBindObservation?: (binding: CaptureObservationBinding) => void;
   onClose: () => void;
 }) {
   const [mode, setMode] = useState<Mode>("source");
@@ -99,6 +102,19 @@ export function CapturePanel({
   const [finalized, setFinalized] = useState<ImportCommitResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const locked = busy || operation !== null;
+
+  function observationBinding(caseName: string): CaptureObservationBinding {
+    return {
+      case_path: caseName,
+      identity: "downstream-capture",
+      scope: "appointments",
+      kinds: ["message"],
+      record_key: "SCH-1.1",
+      max_occurrences: 100,
+      freshness: "1h",
+    };
+  }
+
 
   async function pick(kind: string, apply: (path: string) => void) {
     setError(null);
@@ -739,6 +755,14 @@ export function CapturePanel({
                 Open this case to build an index
               </button>
             ) : null}
+            {onBindObservation ? (
+              <button
+                type="button"
+                onClick={() => onBindObservation(observationBinding(finalized.case!.name))}
+              >
+                Set up observation for this capture…
+              </button>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -751,6 +775,15 @@ export function CapturePanel({
           {onSetupIndex ? (
             <button type="button" disabled={locked} onClick={() => onSetupIndex(session.case!.name)}>
               Open this case to build an index
+            </button>
+          ) : null}
+          {onBindObservation ? (
+            <button
+              type="button"
+              disabled={locked}
+              onClick={() => onBindObservation(observationBinding(session.case!.name))}
+            >
+              Set up observation for this capture…
             </button>
           ) : null}
         </div>

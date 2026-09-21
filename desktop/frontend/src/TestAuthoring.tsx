@@ -307,6 +307,10 @@ export function TestAuthoring({
           }}
         >
           <label htmlFor="authoring-observation">{QUESTIONS.observation}</label>
+          <p className="hint">
+            Prefer Observation setup to author a declared window and source, then bind the verified
+            window reference here. A filename remains available for existing CLI documents.
+          </p>
           <input
             id="authoring-observation"
             value={observation}

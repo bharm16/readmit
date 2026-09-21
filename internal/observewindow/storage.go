@@ -31,6 +31,45 @@ func ReadCompletion(path string) (Completion, error) {
 	return DecodeCompletion(data)
 }
 
+// WriteWindow records one declared observation window. It validates before
+// writing, so a window readmit could not read back is never produced, and it
+// writes the file in full to a new owner-only file renamed onto the destination,
+// so a reader never observes a partial document and a failed write leaves the
+// previous one exactly as it was.
+func WriteWindow(path string, w Window) error {
+	data, err := EncodeWindow(w)
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	destination, err := artifactpath.Destination(path)
+	if err != nil {
+		return errors.New("cannot write an observation window here")
+	}
+	incomplete, err := artifactpath.Destination(path + ".incomplete")
+	if err != nil {
+		return errors.New("cannot write an observation window here; an interrupted write may be retained beside it")
+	}
+	file, err := os.OpenFile(incomplete, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return errors.New("cannot create the new observation window; an interrupted write is retained")
+	}
+	_, writeErr := file.Write(data)
+	if writeErr == nil {
+		writeErr = file.Sync()
+	}
+	closeErr := file.Close()
+	if writeErr != nil || closeErr != nil {
+		os.Remove(incomplete)
+		return errors.New("cannot write the new observation window")
+	}
+	if err := os.Rename(incomplete, destination); err != nil {
+		os.Remove(incomplete)
+		return errors.New("cannot replace the observation window")
+	}
+	return nil
+}
+
 // WriteCompletion retains one completion at a new destination. A completion is
 // evidence, so the destination must not already exist: a window's verdict is
 // never rewritten in place, and a second run writes a second record beside the

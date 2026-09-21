@@ -481,10 +481,10 @@
       "kind": "cli",
       "capability": "Observe a declared file export, HTTP API, downstream capture or database view for one observation window",
       "owner": "bharm16/readmit#251",
-      "screen": "an observation screen",
-      "action": "read declared observation windows and retained completions",
+      "screen": "the Observation setup panel of the evidence region",
+      "action": "author observation sources and windows, validate locally, and collect or explain with explicit authorization",
       "test": "desktop observation journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.observe.explain",
@@ -492,10 +492,131 @@
       "kind": "cli",
       "capability": "Report whether a retained window completed and what it can support",
       "owner": "bharm16/readmit#251",
-      "screen": "an observation screen",
-      "action": "read declared observation windows and retained completions",
+      "screen": "the Observation setup panel of the evidence region",
+      "action": "author observation sources and windows, validate locally, and collect or explain with explicit authorization",
       "test": "desktop observation journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
+    },
+    {
+      "id": "desktop.BindCaptureObservation",
+      "source": "desktop.App.BindCaptureObservation",
+      "kind": "desktop",
+      "capability": "bind a retained capture into a downstream-capture observation source without collecting",
+      "owner": "bharm16/readmit#251",
+      "screen": "the Observation setup panel of the evidence region",
+      "action": "author observation sources and windows, validate locally, and collect or explain with explicit authorization",
+      "test": "desktop observation journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.CollectObservation",
+      "source": "desktop.App.CollectObservation",
+      "kind": "desktop",
+      "capability": "collect an observation window only after explicit authorization",
+      "owner": "bharm16/readmit#251",
+      "screen": "the Observation setup panel of the evidence region",
+      "action": "author observation sources and windows, validate locally, and collect or explain with explicit authorization",
+      "test": "desktop observation journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ExplainObservation",
+      "source": "desktop.App.ExplainObservation",
+      "kind": "desktop",
+      "capability": "explain whether a retained observation window completed and what it can support",
+      "owner": "bharm16/readmit#251",
+      "screen": "the Observation setup panel of the evidence region",
+      "action": "author observation sources and windows, validate locally, and collect or explain with explicit authorization",
+      "test": "desktop observation journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ObservationSupport",
+      "source": "desktop.App.ObservationSupport",
+      "kind": "desktop",
+      "capability": "report adapter and qualification support for observation source kinds",
+      "owner": "bharm16/readmit#251",
+      "screen": "the Observation setup panel of the evidence region",
+      "action": "author observation sources and windows, validate locally, and collect or explain with explicit authorization",
+      "test": "desktop observation journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.OpenObservationSource",
+      "source": "desktop.App.OpenObservationSource",
+      "kind": "desktop",
+      "capability": "open a local observation source document without querying remote systems",
+      "owner": "bharm16/readmit#251",
+      "screen": "the Observation setup panel of the evidence region",
+      "action": "author observation sources and windows, validate locally, and collect or explain with explicit authorization",
+      "test": "desktop observation journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.OpenObservationWindow",
+      "source": "desktop.App.OpenObservationWindow",
+      "kind": "desktop",
+      "capability": "open a local observation window document without querying remote systems",
+      "owner": "bharm16/readmit#251",
+      "screen": "the Observation setup panel of the evidence region",
+      "action": "author observation sources and windows, validate locally, and collect or explain with explicit authorization",
+      "test": "desktop observation journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveObservationSource",
+      "source": "desktop.App.SaveObservationSource",
+      "kind": "desktop",
+      "capability": "save a canonical observation source through shared Go writers",
+      "owner": "bharm16/readmit#251",
+      "screen": "the Observation setup panel of the evidence region",
+      "action": "author observation sources and windows, validate locally, and collect or explain with explicit authorization",
+      "test": "desktop observation journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveObservationWindow",
+      "source": "desktop.App.SaveObservationWindow",
+      "kind": "desktop",
+      "capability": "save a canonical observation window through shared Go writers",
+      "owner": "bharm16/readmit#251",
+      "screen": "the Observation setup panel of the evidence region",
+      "action": "author observation sources and windows, validate locally, and collect or explain with explicit authorization",
+      "test": "desktop observation journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ValidateObservationPair",
+      "source": "desktop.App.ValidateObservationPair",
+      "kind": "desktop",
+      "capability": "validate an observation source and window pair locally without collecting",
+      "owner": "bharm16/readmit#251",
+      "screen": "the Observation setup panel of the evidence region",
+      "action": "author observation sources and windows, validate locally, and collect or explain with explicit authorization",
+      "test": "desktop observation journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ValidateObservationSource",
+      "source": "desktop.App.ValidateObservationSource",
+      "kind": "desktop",
+      "capability": "validate an observation source document locally without collecting",
+      "owner": "bharm16/readmit#251",
+      "screen": "the Observation setup panel of the evidence region",
+      "action": "author observation sources and windows, validate locally, and collect or explain with explicit authorization",
+      "test": "desktop observation journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ValidateObservationWindow",
+      "source": "desktop.App.ValidateObservationWindow",
+      "kind": "desktop",
+      "capability": "validate an observation window document locally without collecting",
+      "owner": "bharm16/readmit#251",
+      "screen": "the Observation setup panel of the evidence region",
+      "action": "author observation sources and windows, validate locally, and collect or explain with explicit authorization",
+      "test": "desktop observation journey test and shared-operation parity",
+      "implemented": true
     },
     {
       "id": "cli.observe.validate",
@@ -503,10 +624,10 @@
       "kind": "cli",
       "capability": "Validate a declared observation window without observing anything",
       "owner": "bharm16/readmit#251",
-      "screen": "an observation screen",
-      "action": "read declared observation windows and retained completions",
+      "screen": "the Observation setup panel of the evidence region",
+      "action": "author observation sources and windows, validate locally, and collect or explain with explicit authorization",
       "test": "desktop observation journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.profile.export",

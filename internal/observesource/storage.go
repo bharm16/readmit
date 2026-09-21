@@ -1,6 +1,8 @@
 package observesource
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
 	"io"
@@ -8,7 +10,112 @@ import (
 	"path/filepath"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/observewindow"
 )
+
+// EncodeSource writes one validated source deterministically. Unused transports
+// are emitted as explicit nulls for the schema version in force, so a document
+// written here reads back through DecodeSource without repair.
+func EncodeSource(s Source) ([]byte, error) {
+	if err := s.Validate(); err != nil {
+		return nil, err
+	}
+	var (
+		data []byte
+		err  error
+	)
+	switch s.Schema {
+	case SchemaV1:
+		data, err = json.Marshal(struct {
+			Schema     string               `json:"schema"`
+			Observes   observewindow.Source `json:"source"`
+			Enabled    bool                 `json:"enabled"`
+			Freshness  Freshness            `json:"freshness"`
+			Extraction *Extraction          `json:"extraction"`
+			File       *File                `json:"file"`
+			HTTP       *HTTP                `json:"http"`
+		}{Schema: s.Schema, Observes: s.Observes, Enabled: s.Enabled, Freshness: s.Freshness, Extraction: s.Extraction, File: s.File, HTTP: s.HTTP}, json.Deterministic(true))
+	case Schema:
+		data, err = json.Marshal(struct {
+			Schema     string               `json:"schema"`
+			Observes   observewindow.Source `json:"source"`
+			Enabled    bool                 `json:"enabled"`
+			Freshness  Freshness            `json:"freshness"`
+			Extraction *Extraction          `json:"extraction"`
+			File       *File                `json:"file"`
+			HTTP       *HTTP                `json:"http"`
+			Capture    *Capture             `json:"capture"`
+		}{Schema: s.Schema, Observes: s.Observes, Enabled: s.Enabled, Freshness: s.Freshness, Extraction: s.Extraction, File: s.File, HTTP: s.HTTP, Capture: s.Capture}, json.Deterministic(true))
+	case SchemaDatabase:
+		data, err = json.Marshal(struct {
+			Schema     string               `json:"schema"`
+			Observes   observewindow.Source `json:"source"`
+			Enabled    bool                 `json:"enabled"`
+			Freshness  Freshness            `json:"freshness"`
+			Extraction *Extraction          `json:"extraction"`
+			File       *File                `json:"file"`
+			HTTP       *HTTP                `json:"http"`
+			Capture    *Capture             `json:"capture"`
+			Database   *Database            `json:"database"`
+		}{Schema: s.Schema, Observes: s.Observes, Enabled: s.Enabled, Freshness: s.Freshness, Extraction: s.Extraction, File: s.File, HTTP: s.HTTP, Capture: s.Capture, Database: s.Database}, json.Deterministic(true))
+	default:
+		return nil, ErrUnsupportedVersion
+	}
+	if err != nil {
+		return nil, errors.New("cannot encode observation source")
+	}
+	return data, nil
+}
+
+// Identity names the canonical form of this declared source. It pins a saved
+// configuration when binding to a test; it does not authenticate a file.
+func (s Source) Identity() string {
+	data, err := EncodeSource(s)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+// WriteSource records one declared observation source. It validates before
+// writing and renames an owner-only incomplete file onto the destination, so a
+// reader never observes a partial document and a failed write leaves the
+// previous one exactly as it was. Paths are written as declared; ReadSource
+// resolves them against the document's own directory.
+func WriteSource(path string, s Source) error {
+	data, err := EncodeSource(s)
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	destination, err := artifactpath.Destination(path)
+	if err != nil {
+		return errors.New("cannot write an observation source here")
+	}
+	incomplete, err := artifactpath.Destination(path + ".incomplete")
+	if err != nil {
+		return errors.New("cannot write an observation source here; an interrupted write may be retained beside it")
+	}
+	file, err := os.OpenFile(incomplete, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return errors.New("cannot create the new observation source; an interrupted write is retained")
+	}
+	_, writeErr := file.Write(data)
+	if writeErr == nil {
+		writeErr = file.Sync()
+	}
+	closeErr := file.Close()
+	if writeErr != nil || closeErr != nil {
+		os.Remove(incomplete)
+		return errors.New("cannot write the new observation source")
+	}
+	if err := os.Rename(incomplete, destination); err != nil {
+		os.Remove(incomplete)
+		return errors.New("cannot replace the observation source")
+	}
+	return nil
+}
 
 // DecodeSource reads one declared observation source exactly as written.
 // Unknown members and unknown versions are errors; there is no migration and no
