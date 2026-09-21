@@ -193,7 +193,13 @@ func TestEveryStatusIsDistinguishableWithoutColour(t *testing.T) {
 			t.Errorf("operation state %q has no non-colour indicator", state)
 		}
 	}
-	for _, kind := range []desktop.Kind{desktop.CaseArtifact, desktop.ProjectArtifact, desktop.UnsupportedArtifact} {
+	for _, kind := range []desktop.Kind{
+		desktop.CaseArtifact, desktop.ProjectArtifact, desktop.RevisionsArtifact,
+		desktop.ResultArtifact, desktop.JobArtifact, desktop.ReviewArtifact,
+		desktop.IndexArtifact, desktop.TargetArtifact, desktop.RulesArtifact,
+		desktop.PlanArtifact, desktop.SpecArtifact, desktop.PackArtifact,
+		desktop.AnalysisArtifact, desktop.UnsupportedArtifact,
+	} {
 		if _, declared := indicators[string(kind)]; !declared {
 			t.Errorf("artifact kind %q has no non-colour indicator", kind)
 		}

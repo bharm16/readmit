@@ -48,7 +48,11 @@ import {
   type TransformResult,
   inspectOccurrence,
   type InspectionResult,
-  openProject,
+  openProjectOverview,
+  createProject,
+  updateProjectSettings,
+  registerCase,
+  updateRegisteredCase,
   openWorkspace,
   recentWorkspaces,
   recordView,
@@ -64,7 +68,11 @@ import {
   type FiltersResult,
   type GridResult,
   type Indicator,
-  type ProjectResult,
+  type CaseChange,
+  type CaseRegistration,
+  type Match,
+  type ProjectOverviewResult,
+  type SettingsChange,
   type RecentResult,
   type RegionId,
   type SearchResult,
@@ -84,6 +92,7 @@ import { RevisionComparison } from "./RevisionComparison";
 import { CanonicalTestEditor } from "./CanonicalTestEditor";
 import { TestAuthoring } from "./TestAuthoring";
 import { Badge, GRID_WINDOW, MessageGrid, Palette, Report, Separator, Status } from "./shell";
+import { Breadcrumbs, ProjectPanel } from "./ProjectPanel";
 
 /** The panes never collapse to nothing: either one keeps a usable share of the
  * window, whether it is dragged or moved with a keyboard. */
@@ -119,7 +128,7 @@ export default function App() {
   const [running, setRunning] = useState<Running>(null);
   const [workspace, setWorkspace] = useState<WorkspaceResult | null>(null);
   const [evidence, setEvidence] = useState<CaseResult | null>(null);
-  const [investigation, setInvestigation] = useState<ProjectResult | null>(null);
+  const [investigation, setInvestigation] = useState<ProjectOverviewResult | null>(null);
   const [recent, setRecent] = useState<RecentResult | null>(null);
   const [found, setFound] = useState<SearchResult | null>(null);
   const [savedFilters, setSavedFilters] = useState<FiltersResult | null>(null);
@@ -253,7 +262,11 @@ export default function App() {
     document.documentElement.style.setProperty("--text-scale", String(percent / 100));
   }, [described, scale]);
 
+  const busy = running !== null;
   const root = workspace?.workspace?.root ?? null;
+  const opened = workspace?.workspace;
+  const overview = investigation?.overview ?? null;
+  const verified = evidence?.case ?? null;
 
   const focusRegion = useCallback((region: RegionId) => {
     regionElements.current[region]?.focus();
@@ -357,16 +370,100 @@ export default function App() {
     [guideResult, operate, refreshGuide, root],
   );
 
+  // The project overview re-reads the project from disk every time: what the
+  // window shows is what the project records, never what an earlier action
+  // reported. Every write below returns the refreshed overview, so a panel is
+  // never left beside state the project has moved past.
   const readProject = useCallback(
     async (folder: string) => {
       await operate("project", async () => {
         setInvestigation(null);
-        setInvestigation(await openProject(folder));
+        setInvestigation(await openProjectOverview(folder));
       });
       focusRegion("evidence");
     },
     [focusRegion, operate],
   );
+
+  const startProject = useCallback(
+    async (name: string, title: string, owner: string, versions: string[]) => {
+      await operate("project", async () => {
+        const result = await createProject(name, title, owner, versions);
+        setInvestigation(result);
+      });
+    },
+    [operate],
+  );
+
+  const editSettings = useCallback(
+    async (change: SettingsChange) => {
+      if (!root) return;
+      await operate("project", async () => {
+        setInvestigation(await updateProjectSettings(root, change));
+      });
+    },
+    [operate, root],
+  );
+
+  const register = useCallback(
+    async (name: string, registration: CaseRegistration) => {
+      if (!root) return;
+      await operate("project", async () => {
+        setInvestigation(await registerCase(root, name, registration));
+      });
+    },
+    [operate, root],
+  );
+
+  const updateCase = useCallback(
+    async (name: string, change: CaseChange) => {
+      if (!root) return;
+      await operate("project", async () => {
+        setInvestigation(await updateRegisteredCase(root, name, change));
+      });
+    },
+    [operate, root],
+  );
+
+  // A search result opens the thing it found, the way the window already
+  // opens it: a registered case or a case entry is verified and opened, the
+  // project documents open the project. A result that names an entry this
+  // window does not open still takes the person to its region.
+  const openMatch = useCallback(
+    (match: Match) => {
+      if (!root || busy) return;
+      if (match.kind === "registered_case") {
+        void verifyCase(root, match.name);
+        return;
+      }
+      const artifact = opened?.artifacts.find((entry) => entry.name === match.name);
+      if (artifact?.kind === "case") {
+        void verifyCase(root, match.name);
+        return;
+      }
+      if (artifact?.kind === "project" || artifact?.kind === "revisions") {
+        void readProject(root);
+        return;
+      }
+      focusRegion(match.region);
+    },
+    [busy, focusRegion, opened, readProject, root, verifyCase],
+  );
+
+  // Breadcrumb back navigation: out of the case to the project, and out of
+  // the project to the folder listing. The trail is the way out as well as
+  // the way in.
+  const backToProject = useCallback(() => {
+    clearCase();
+    focusRegion("evidence");
+  }, [clearCase, focusRegion]);
+
+  const backToWorkspace = useCallback(() => {
+    clearWorkspace();
+    setSelected(null);
+    setInvestigation(null);
+    focusRegion("navigation");
+  }, [clearWorkspace, focusRegion]);
 
   const searchWorkspace = useCallback(
     async (folder: string, wanted: string) => {
@@ -628,7 +725,6 @@ export default function App() {
     [gridResult, operate, root, showGrid],
   );
 
-  const busy = running !== null;
 
   // Every command the facade declares has an action here. The record is keyed by
   // the declared identifiers, so a command the window forgot is a type error
@@ -722,9 +818,6 @@ export default function App() {
     return () => window.removeEventListener("keydown", shortcut);
   }, [paletteOpen]);
 
-  const opened = workspace?.workspace;
-  const project = investigation?.project;
-  const verified = evidence?.case ?? null;
   const listed = (described?.commands ?? []).filter((command) => {
     const wanted = paletteQuery.trim().toLowerCase();
     return (
@@ -814,9 +907,10 @@ export default function App() {
               <li key={`${match.kind}:${match.name}:${match.field}`}>
                 <button
                   type="button"
+                  disabled={busy}
                   onClick={() => {
                     setSelected(match.name);
-                    focusRegion(match.region);
+                    openMatch(match);
                   }}
                 >
                   <span className="name">{match.label}</span>
@@ -900,47 +994,31 @@ export default function App() {
     ),
     evidence: (
       <>
+        <Breadcrumbs
+          project={overview?.title ?? null}
+          selectedCase={verified?.name ?? null}
+          onWorkspace={backToWorkspace}
+          onProject={backToProject}
+        />
         <Recovery restored={restored} onChanged={() => void restore()} />
         <NoteDraft project={workspaceRoot} restored={restored} onChanged={() => void restore()} />
         <RunPanel onWatch={watch} />
-        <Report
-          indicators={indicators}
-          progress={running === "project" ? "Reading the project." : null}
+        <ProjectPanel
+          root={root}
           result={investigation}
+          entries={opened?.artifacts ?? []}
+          busy={busy}
+          progress={running === "project" ? "Reading the project." : null}
+          indicators={indicators}
+          selectedCase={verified?.name ?? null}
+          onCreate={(name, title, owner, versions) => void startProject(name, title, owner, versions)}
+          onUpdateSettings={(change) => void editSettings(change)}
+          onRegister={(name, registration) => void register(name, registration)}
+          onUpdateCase={(name, change) => void updateCase(name, change)}
+          onOpenCase={(name: string) => {
+            if (root) void verifyCase(root, name);
+          }}
         />
-        {project ? (
-          <>
-            <h3>{project.settings.title}</h3>
-            <p className="reason">
-              {project.schema} · interface versions {project.interface_versions.join(", ")}
-            </p>
-            <ul className="registered">
-              {project.cases.map((registered) => (
-                <li key={registered.name} aria-current={selected === registered.name ? "true" : undefined}>
-                  <span className="name">{registered.title}</span>
-                  <Badge indicator={indicators.get(registered.status)} fallback={registered.status} />
-                  <span className="badge">{registered.interface_version}</span>
-                  <button
-                    type="button"
-                    disabled={busy || !root}
-                    onClick={() => {
-                      if (root) {
-                        void verifyCase(root, registered.name);
-                      }
-                    }}
-                  >
-                    Verify and open
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </>
-        ) : null}
-        {!investigation && !busy ? (
-          <p className="hint">
-            Read a project document to see the cases it registers, or open a case from the listing.
-          </p>
-        ) : null}
       </>
     ),
     inspector: (
@@ -981,7 +1059,7 @@ export default function App() {
             result={gridResult}
             filters={savedFilters}
             entries={(opened?.artifacts ?? [])
-              .filter((artifact) => artifact.kind === "unsupported")
+              .filter((artifact) => artifact.kind === "index")
               .map((artifact) => artifact.name)}
             busy={busy}
             onOpen={(indexName, offset) => {
@@ -1131,8 +1209,14 @@ export default function App() {
               });
               return result;
             }}
-            entries={(opened?.artifacts ?? [])
-              .filter((artifact) => artifact.kind === "unsupported")
+            rulesEntries={(opened?.artifacts ?? [])
+              .filter((artifact) => artifact.kind === "rules")
+              .map((artifact) => artifact.name)}
+            analyses={(opened?.artifacts ?? [])
+              .filter((artifact) => artifact.kind === "analysis")
+              .map((artifact) => artifact.name)}
+            reviews={(opened?.artifacts ?? [])
+              .filter((artifact) => artifact.kind === "review")
               .map((artifact) => artifact.name)}
             result={sequenceResult}
             busy={busy}
@@ -1170,9 +1254,10 @@ export default function App() {
         ) : null}
         {opened ? (
           <Review
-            entries={(opened.artifacts ?? [])
-              .filter((artifact) => artifact.kind === "unsupported")
-              .map((artifact) => artifact.name)}
+            ruleEntries={(opened.artifacts ?? []).filter((artifact) => artifact.kind === "rules").map((artifact) => artifact.name)}
+            planEntries={(opened.artifacts ?? []).filter((artifact) => artifact.kind === "plan").map((artifact) => artifact.name)}
+            packEntries={(opened.artifacts ?? []).filter((artifact) => artifact.kind === "pack").map((artifact) => artifact.name)}
+            reviewEntries={(opened.artifacts ?? []).filter((artifact) => artifact.kind === "review").map((artifact) => artifact.name)}
             transformResult={transformResult}
             reviewResult={reviewResult}
             caseOpen={verified !== null}

@@ -10,7 +10,21 @@
 
 export type State = "empty" | "busy" | "cancelled" | "failed" | "permission_denied" | "completed";
 
-export type Kind = "case" | "project" | "revisions" | "unsupported";
+export type Kind =
+  | "case"
+  | "project"
+  | "revisions"
+  | "result"
+  | "job"
+  | "review"
+  | "index"
+  | "target"
+  | "rules"
+  | "plan"
+  | "spec"
+  | "pack"
+  | "analysis"
+  | "unsupported";
 
 /** The status of one registered case, maintained by a person. */
 export type CaseStatus = "open" | "investigating" | "resolved" | "closed";
@@ -227,6 +241,88 @@ export interface RevisionsResult {
   revisions?: RevisionsDocument;
 }
 
+/** One registered case of the project overview, with what re-verifying its
+ * evidence found. The evidence facts are reported exactly as recorded, whatever
+ * `evidence` found: `verified`, `changed`, `unreadable` or `missing`. */
+export interface RegisteredCase {
+  name: string;
+  identity: string;
+  schema: string;
+  provenance: string;
+  interface_version: string;
+  title: string;
+  status: CaseStatus;
+  owner?: string;
+  tags: string[];
+  incidents: string[];
+  evidence: string;
+}
+
+/** One registered revision of the project overview, with the lineage the
+ * editable document records and the same evidence state a case carries. */
+export interface RegisteredRevision {
+  name: string;
+  identity: string;
+  schema: string;
+  provenance: string;
+  operation: string;
+  parent: string;
+  evidence: string;
+}
+
+/** What the project holds, re-read from disk: the `readmit project show` of
+ * this window, as one typed value. */
+export interface ProjectOverview {
+  root: string;
+  title: string;
+  default_owner?: string;
+  default_version?: string;
+  interface_versions: string[];
+  cases: RegisteredCase[];
+  revisions: RegisteredRevision[];
+  notes: ProjectNote[];
+}
+
+export interface ProjectOverviewResult {
+  state: State;
+  reason?: string;
+  overview?: ProjectOverview;
+}
+
+/** One project-settings edit. A member left out is left exactly as it was;
+ * `declare_versions` names further interface versions, and one already
+ * declared is left as it was. A declared version is never removed. */
+export interface SettingsChange {
+  title?: string;
+  default_owner?: string;
+  default_interface_version?: string;
+  declare_versions?: string[];
+}
+
+/** The metadata a person supplies when registering a case. A member left out
+ * inherits the project default, exactly as an absent flag does on the command
+ * line. The evidence facts are never taken from here. */
+export interface CaseRegistration {
+  title?: string;
+  owner?: string;
+  status?: CaseStatus | "";
+  interface_version?: string;
+  tags?: string[];
+  incidents?: string[];
+}
+
+/** The mutable metadata of one registered case. A member left out is left
+ * exactly as it was, so changing a status does not restate the tags. No member
+ * can reach the recorded evidence facts. */
+export interface CaseChange {
+  title?: string;
+  owner?: string;
+  status?: CaseStatus;
+  interface_version?: string;
+  tags?: string[];
+  incidents?: string[];
+}
+
 export interface RecentResult {
   state: State;
   reason?: string;
@@ -411,6 +507,11 @@ export interface Facade {
     limit: number,
   ): Promise<GridResult>;
   OpenProject(path: string): Promise<ProjectResult>;
+  OpenProjectOverview(path: string): Promise<ProjectOverviewResult>;
+  CreateProject(name: string, title: string, owner: string, versions: string[]): Promise<ProjectOverviewResult>;
+  UpdateProjectSettings(path: string, change: SettingsChange): Promise<ProjectOverviewResult>;
+  RegisterCase(path: string, name: string, registration: CaseRegistration): Promise<ProjectOverviewResult>;
+  UpdateRegisteredCase(path: string, name: string, change: CaseChange): Promise<ProjectOverviewResult>;
   OpenRevisions(path: string): Promise<RevisionsResult>;
   OpenWorkspace(path: string): Promise<WorkspaceResult>;
   RecentWorkspaces(): Promise<RecentResult>;
@@ -493,6 +594,45 @@ export function openCase(workspace: string, name: string): Promise<CaseResult> {
 
 export function openProject(path: string): Promise<ProjectResult> {
   return guard(() => facade().OpenProject(path), { state: "failed" });
+}
+
+/** What the project now holds, re-verified: the `readmit project show` of this
+ * window. Every registered case and revision carries the evidence state the
+ * shared reader just reported beside the facts the project recorded. */
+export function openProjectOverview(path: string): Promise<ProjectOverviewResult> {
+  return guard(() => facade().OpenProjectOverview(path), { state: "failed" });
+}
+
+/** Creating a project asks the host for its folder, then writes the same
+ * document the command line writes. The answer is the new project re-read
+ * from disk. */
+export function createProject(
+  name: string,
+  title: string,
+  owner: string,
+  versions: string[],
+): Promise<ProjectOverviewResult> {
+  return guard(() => facade().CreateProject(name, title, owner, versions), { state: "failed" });
+}
+
+/** A settings edit returns the project re-read from disk, so the window
+ * renders what is stored rather than what the edit hoped for. */
+export function updateProjectSettings(path: string, change: SettingsChange): Promise<ProjectOverviewResult> {
+  return guard(() => facade().UpdateProjectSettings(path, change), { state: "failed" });
+}
+
+/** Registering a case verifies the bundle through the shared reader and
+ * records what it declared; the metadata a person typed is only the part the
+ * project maintains. The answer is the project re-read from disk. */
+export function registerCase(path: string, name: string, registration: CaseRegistration): Promise<ProjectOverviewResult> {
+  return guard(() => facade().RegisterCase(path, name, registration), { state: "failed" });
+}
+
+/** Updating a registered case changes only the members the form filled; the
+ * recorded evidence facts are out of reach. The answer is the project
+ * re-read from disk. */
+export function updateRegisteredCase(path: string, name: string, change: CaseChange): Promise<ProjectOverviewResult> {
+  return guard(() => facade().UpdateRegisteredCase(path, name, change), { state: "failed" });
 }
 
 export function openRevisions(path: string): Promise<RevisionsResult> {

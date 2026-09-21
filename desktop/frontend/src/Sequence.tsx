@@ -106,7 +106,9 @@ function References({ event }: { event: SequenceEvent }) {
  * an event selects that occurrence, so the inspector beside this panel reads
  * the original message, and shows every relation recorded about it. */
 export function Sequence({
-  entries,
+  rulesEntries,
+  analyses,
+  reviews,
   result,
   busy,
   progress,
@@ -118,10 +120,15 @@ export function Sequence({
 }: {
   workspace: string;
   onReview: (request: CorrelationReviewRequest, write: boolean) => Promise<CorrelationReviewResult>;
-  /** The entries of the open workspace a rules document could be. A rules
-   * document is an ordinary file beside the evidence, so the listing offers
-   * every file it holds and the facade refuses the ones that are not one. */
-  entries: string[];
+  /** The entries of the open workspace that declare the correlation-rules
+   * contract. The listing classifies each entry by what it declares, so this
+   * picker offers the applicable documents instead of every entry. */
+  rulesEntries: string[];
+  /** The entries declaring the sequence-analysis contract: the observation
+   * windows and explanations this panel can lay the case out under. */
+  analyses: string[];
+  /** The retained correlation-review directories the review panel can reopen. */
+  reviews: string[];
   result: SequenceResult | null;
   busy: boolean;
   progress: string | null;
@@ -168,7 +175,7 @@ export function Sequence({
           onChange={(event) => setRules(event.target.value)}
         >
           <option value="">No rules — only what the evidence recorded</option>
-          {entries.map((entry) => (
+          {rulesEntries.map((entry) => (
             <option key={entry} value={entry}>
               {entry}
             </option>
@@ -177,7 +184,7 @@ export function Sequence({
         <label htmlFor="sequence-analysis">Observation windows and explanations</label>
         <select id="sequence-analysis" value={analysis} disabled={busy} onChange={(event) => setAnalysis(event.target.value)}>
           <option value="">No analysis — coverage undeclared</option>
-          {entries.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+          {analyses.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
         </select>
         <button type="submit" disabled={busy}>
           Lay out this case
@@ -221,7 +228,7 @@ export function Sequence({
 
           {sequence.rules ? <CorrelationReview
             key={[workspace, sequence.case, sequence.identity, sequence.rules, sequence.rules_sha256].join("\u0000")}
-            busy={busy} entries={entries}
+            busy={busy} reviews={reviews}
             context={{workspace, case: sequence.case, identity: sequence.identity, rules: sequence.rules, rules_sha256: sequence.rules_sha256 ?? ""}}
             onReview={onReview}
           /> : null}

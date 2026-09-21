@@ -37,7 +37,10 @@ const DECISIONS: Record<ReviewDecision, string> = {
  * over the derived case the review names: open the review folder as a workspace
  * and open the `case` entry in it, exactly as any other evidence is read. */
 export function Review({
-  entries,
+  ruleEntries,
+  planEntries,
+  packEntries,
+  reviewEntries,
   transformResult,
   reviewResult,
   caseOpen,
@@ -48,9 +51,13 @@ export function Review({
   onPreview,
   onReview,
 }: {
-  /** Every entry of the open workspace this release does not read as a case:
-   * the authored rules, plan and pack documents, and the review folders. */
-  entries: string[];
+  /** The entries of the open workspace that declare each contract this panel
+   * names. The listing classifies every entry by what it declares, so each
+   * picker offers the applicable documents instead of every entry. */
+  ruleEntries: string[];
+  planEntries: string[];
+  packEntries: string[];
+  reviewEntries: string[];
   transformResult: TransformResult | null;
   reviewResult: ReviewResult | null;
   /** Whether a case is open. A preview is over one verified case; a review is
@@ -92,11 +99,11 @@ export function Review({
         <select
           id="transform-rules"
           value={rules}
-          disabled={busy || !caseOpen || entries.length === 0}
+          disabled={busy || !caseOpen || ruleEntries.length === 0}
           onChange={(event) => setRules(event.target.value)}
         >
           <option value="">Choose a rules document of this workspace…</option>
-          {entries.map((name) => (
+          {ruleEntries.map((name) => (
             <option key={name} value={name}>
               {name}
             </option>
@@ -107,11 +114,11 @@ export function Review({
         <select
           id="transform-plan"
           value={plan}
-          disabled={busy || !caseOpen || entries.length === 0}
+          disabled={busy || !caseOpen || planEntries.length === 0}
           onChange={(event) => setPlan(event.target.value)}
         >
           <option value="">Choose a plan document of this workspace…</option>
-          {entries.map((name) => (
+          {planEntries.map((name) => (
             <option key={name} value={name}>
               {name}
             </option>
@@ -122,11 +129,11 @@ export function Review({
         <select
           id="transform-profile"
           value={profile}
-          disabled={busy || !caseOpen || entries.length === 0}
+          disabled={busy || !caseOpen || packEntries.length === 0}
           onChange={(event) => setProfile(event.target.value)}
         >
           <option value="">No pinned pack</option>
-          {entries.map((name) => (
+          {packEntries.map((name) => (
             <option key={name} value={name}>
               {name}
             </option>
@@ -155,11 +162,11 @@ export function Review({
         <select
           id="review-entry"
           value={entry}
-          disabled={busy || entries.length === 0}
+          disabled={busy || reviewEntries.length === 0}
           onChange={(event) => setEntry(event.target.value)}
         >
           <option value="">Choose a review folder of this workspace…</option>
-          {entries.map((name) => (
+          {reviewEntries.map((name) => (
             <option key={name} value={name}>
               {name}
             </option>

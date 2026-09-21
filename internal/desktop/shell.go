@@ -101,6 +101,17 @@ var indicators = []Indicator{
 
 	{Status: string(CaseArtifact), Symbol: "▣", Label: "Case evidence"},
 	{Status: string(ProjectArtifact), Symbol: "☰", Label: "Project document"},
+	{Status: string(RevisionsArtifact), Symbol: "▚", Label: "Editable project document"},
+	{Status: string(ResultArtifact), Symbol: "▤", Label: "Retained test result"},
+	{Status: string(JobArtifact), Symbol: "▥", Label: "Durable run"},
+	{Status: string(ReviewArtifact), Symbol: "▦", Label: "Export review"},
+	{Status: string(IndexArtifact), Symbol: "▧", Label: "Case index"},
+	{Status: string(TargetArtifact), Symbol: "▨", Label: "Test environment"},
+	{Status: string(RulesArtifact), Symbol: "▩", Label: "Correlation rules"},
+	{Status: string(PlanArtifact), Symbol: "◈", Label: "Transform plan"},
+	{Status: string(SpecArtifact), Symbol: "◉", Label: "Test specification"},
+	{Status: string(PackArtifact), Symbol: "◎", Label: "Profile pack"},
+	{Status: string(AnalysisArtifact), Symbol: "◒", Label: "Sequence analysis"},
 	{Status: string(UnsupportedArtifact), Symbol: "?", Label: "Unsupported here"},
 
 	{Status: string(project.StatusOpen), Symbol: "◇", Label: "Open"},

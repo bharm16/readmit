@@ -22,6 +22,8 @@ import type {
   Inspection,
   InspectionResult,
   PracticeResult,
+  ProjectOverview,
+  ProjectOverviewResult,
   RecentResult,
   RecoveryResult,
   RevisionsResult,
@@ -67,6 +69,16 @@ function indicatorFixtures(): Shell["indicators"] {
     "case",
     "project",
     "revisions",
+    "result",
+    "job",
+    "review",
+    "index",
+    "target",
+    "rules",
+    "plan",
+    "spec",
+    "pack",
+    "analysis",
     "unsupported",
     "open",
     "investigating",
@@ -129,16 +141,54 @@ export function folderChosen(
   return { state: "completed", workspace: { root, artifacts } };
 }
 
-/** A workspace holding one case entry and the index file listed beside it. */
+/** A workspace holding one case entry and the index file listed beside it.
+ * The index is a file, listed as what it declares rather than as evidence. */
 export function folderWithCase(name: string = CASE_ENTRY): ReturnType<typeof folderChosen> {
   return folderChosen(WORKSPACE_ROOT, [
     { name, kind: "case", schema: "readmit-case/v3", provenance: "generated" },
-    {
-      name: INDEX_ENTRY,
-      kind: "unsupported",
-      reason: "not a case bundle or a project document",
-    },
+    { name: INDEX_ENTRY, kind: "index" },
   ]);
+}
+
+/** A second case entry, for journeys that register or compare. */
+export const OTHER_CASE_ENTRY = "other-case";
+
+/** The project overview the facade re-reads from disk after every read or
+ * write. Synthetic titles, statuses and states only. */
+export function projectOverviewResult(
+  cases: ProjectOverview["cases"] = [],
+  state: ProjectOverviewResult["state"] = cases.length > 0 ? "completed" : "empty",
+): ProjectOverviewResult {
+  return {
+    state,
+    overview: {
+      root: WORKSPACE_ROOT,
+      title: "Scheduling investigation",
+      default_owner: "integration-team",
+      default_version: "siu-2.5.1-v1",
+      interface_versions: ["siu-2.5.1-v1"],
+      cases,
+      revisions: [],
+      notes: [],
+    },
+  };
+}
+
+/** One registered case of the overview, verified beside its recorded facts. */
+export function registeredCase(name: string = CASE_ENTRY): ProjectOverview["cases"][number] {
+  return {
+    name,
+    identity: CASE_IDENTITY,
+    schema: "readmit-case/v3",
+    provenance: "generated",
+    interface_version: "siu-2.5.1-v1",
+    title: "Duplicate appointment after reschedule",
+    status: "open",
+    owner: "integration-team",
+    tags: ["scheduling"],
+    incidents: [],
+    evidence: "verified",
+  };
 }
 
 /** The dialog was dismissed without choosing. */

@@ -242,6 +242,11 @@ artifacts are never reported as completed.
 | `CreateSampleWorkspace` | Writes the sample workspace into the chosen folder and opens it. |
 | `OpenCase` | Verifies one listed entry as case evidence. |
 | `OpenProject` | Reads the project document of a folder. |
+| `OpenProjectOverview` | Re-reads the project and re-verifies every registered case and revision, as `readmit project show` does: the settings, each registered entry with its evidence state, and every note. |
+| `CreateProject` | Asks the host for the parent folder, then writes a new project through the shared operation `readmit project init` runs. Returns the new project re-read from disk. |
+| `UpdateProjectSettings` | Changes the title, defaults and declared interface versions through the shared operation `readmit project settings` runs. Returns the project re-read from disk. |
+| `RegisterCase` | Verifies one case bundle of the project through the shared reader and registers it through the shared operation `readmit project add` runs, inheriting the project defaults the registration leaves unset. Returns the project re-read from disk. |
+| `UpdateRegisteredCase` | Changes the title, owner, status, interface version, tags or linked incidents of one registered case through the shared operation `readmit project update` runs; the recorded evidence facts are out of reach. Returns the project re-read from disk. |
 | `OpenRevisions` | Reads the editable project document: its notes, drafts and recorded revisions. |
 | `SaveNote` | Creates or replaces one editable note of a project. |
 | `RecentWorkspaces` | Lists previously opened folders, most recent first. |
@@ -303,10 +308,38 @@ nothing.
 ## Workspaces and artifacts
 
 A workspace is a folder. Opening it lists each immediate entry with the contract
-that entry **declares**: listing never verifies evidence. An entry that is neither a
-case bundle directory nor a project document this release supports — a file, a
-symbolic link, a folder with no readable manifest — is listed as `unsupported`
+that entry **declares**: listing never verifies evidence. An entry that declares
+nothing this release reads — a file with no recognizable contract, a symbolic
+link, a folder with no readable manifest or record — is listed as `unsupported`
 with the reason, never hidden and never counted as evidence.
+
+The listing distinguishes what entries declare, so navigation and the
+pickers offer applicable entries instead of every entry labelled unsupported:
+
+| Kind | What the entry declares |
+| --- | --- |
+| `case` | A case bundle the shared reader can describe |
+| `project` | The `readmit-project/v1` document |
+| `revisions` | The `readmit-revisions/v1` editable document |
+| `result` | A retained test result record beside its evidence |
+| `job` | A durable run's job record |
+| `review` | An export review's record |
+| `index` | A `readmit-index/v1` file |
+| `target` | A `readmit-target` environment configuration |
+| `rules` | A `readmit-correlation-rules/v1` document |
+| `plan` | A `readmit-transform-plan/v1` document |
+| `spec` | A `readmit-test/v1` specification |
+| `pack` | A `readmit-profile-pack/v1` document |
+| `analysis` | A `readmit-sequence-analysis/v1` document |
+| `unsupported` | Nothing this release reads, with the reason |
+
+Locating a document by a fixed name or a declared contract is how the listing
+makes its claim; opening the entry is still the verification step, and a claim
+the listing makes is never an admission. The pickers read this classification:
+the grid offers `index` entries, the sequence offers `rules` and `analysis`
+entries, and the review-and-transform panel offers `rules`, `plan`, `pack` and
+`review` entries. A name is inspectable text beside what the entry declares,
+never the primary navigation contract.
 
 `OpenCase` is the verification step. It runs the same reader `readmit timeline`
 runs, which checks completion, identity, payload hashes and every record before
@@ -369,9 +402,29 @@ records the bundle identity rather than deriving one of its own.
 Reading a project verifies no evidence and rewrites nothing, so a recorded
 identity reaches the window exactly as it was written. Whether a registered case
 is still the evidence the project recorded is what `readmit project show`
-reports. Creating a project, registering a case or a revision, and changing a
-title, tag, owner, status or linked incident are command-line operations in this
-release.
+reports — and what the window's own project overview reports beside every
+registered entry, through the same shared verification.
+
+The window's **project overview** is the project's navigation home. It shows
+the settings and interface versions, every registered case and revision with
+its evidence state (`verified`, `changed`, `unreadable` or `missing`, the same
+four states the command line reports), and every note. From it the
+investigation continues without retyping anything: a registered case opens
+with one action, a case the workspace lists but the project does not register
+yet is offered in the registration picker, and a case the project records that
+is open in the inspector carries into the grid, the sequence and the authoring
+panels.
+
+Creating a project, changing its settings or declared interface versions,
+registering a case, and changing a title, tag, owner, status or linked
+incident are shared Go operations — the same `internal/operation` and
+`internal/project` code the command line runs. The window supplies a native
+folder chooser and a typed form; it decides nothing a project should refuse.
+Every successful write returns the project re-read from disk, so what the
+window shows is what is stored, and a refused write leaves the project
+exactly as it was. Registering a revision is still a command-line operation,
+because it is a statement about verified lineage rather than an edit; a
+revision registered there is navigable here.
 
 ## Notes and the editable project document
 
@@ -1150,6 +1203,15 @@ own, because a shape depends on the platform font having the glyph, so the shape
 is marked decorative and the word is what an assistive technology reads. A
 selected row is marked with a rule and heavier text rather than a tint.
 
+### Where you are, and back
+
+The evidence region opens with the trail of where the investigation is —
+`Workspace › <project> › <case>` — and each earlier crumb is a button that
+goes back there, clearing exactly what that step held: leaving the case keeps
+the project, leaving the project returns to the folder listing. Nothing derived
+from a case survives the case, so going back never leaves a panel beside
+evidence it was not read from.
+
 ### Commands and search
 
 The command palette lists everything the window can be asked to do, with the
@@ -1168,7 +1230,10 @@ builds no index; it lists the folder again each time under the same bound.
 A result names the thing it found the way the window already names it — the
 entry name, or for a registered case the title the project recorded — the region
 that reveals it, and the **fixed name of the declared field that matched**
-rather than the text that matched. Nothing read out of a case bundle is in a
+rather than the text that matched. Opening a result goes to what was found,
+not merely to a highlighted name: a case or a registered case is verified and
+opened, the project documents open the project, and a result naming an entry
+this window does not open still takes the person to its region. Nothing read out of a case bundle is in a
 result: no message bytes, no field values, and no original source path. Nothing
 to search for and nothing that matched are both `empty`, with different reasons.
 A project document this release cannot read contributes no registered cases; the
@@ -1293,9 +1358,10 @@ checked to hold no network call and no browser storage at all.
 
 ## Not supported in this release
 
-- Creating a project, registering a case or a revision, and any rename, archive
-  or delete operation. The shell opens folders, reads artifacts and edits notes;
-  everything else about a project is `readmit project`.
+- Registering a revision, and any rename, archive, delete or quota operation.
+  The shell creates and opens projects, edits their settings and registered
+  metadata, and writes notes; a revision records lineage about verified
+  evidence and is `readmit project revise`, after which it is navigable here.
 - Removing a note, and the previous text of one that was replaced.
 - Writing more than one note at a time in the window. The facade retains up to
   16 drafts, recovery returns every one of them, and the command line reaches
@@ -1383,11 +1449,13 @@ checked to hold no network call and no browser storage at all.
   the window. The stored contract holds up to 128 sources and 16 field
   questions, and applies every one of them.
 - Sorting a grid, and any order other than the one the case records.
-- Artifacts other than case bundle directories and the two project documents.
-  Run bundles, results, reviews, reports, specs, target configurations and
-  family records are listed as unsupported entries — including the practice
-  endpoint and the run folders the guided sample writes, which that panel names
-  instead.
+- Opening artifacts other than case bundle directories and the two project
+  documents. Run folders, results, reviews, specs, environment configurations,
+  indexes, rules documents and family records are listed as what they declare,
+  and the pickers offer the ones that apply — but only a case is verification
+  and only the project documents are edited here. The practice endpoint and
+  the run folders the guided sample writes are named by their kinds, and the
+  panels that consume them say so.
 - Nested folders. Only the immediate entries of the chosen folder are listed,
   and at most 1024 of them; a larger folder is refused rather than listed in
   part.

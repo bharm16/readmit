@@ -47,11 +47,16 @@ func TestSampleWorkspaceIsTheFrozenSyntheticFamilyAndOpensItsCases(t *testing.T)
 		}
 	}
 	// The practice endpoint a test names and the index the grid reads are a
-	// configuration and a derived document, not case bundles. The listing says
-	// so rather than hiding them or implying the shell opens them.
-	for _, name := range []string{guide.TargetName, guide.IndexName} {
-		if entry := kinds[name]; entry.Kind != desktop.UnsupportedArtifact || entry.Reason == "" {
-			t.Fatalf("%s was not reported as unsupported: %+v", name, entry)
+	// configuration and a derived document, not case bundles. The listing
+	// names what each declares — the environment and the index that the
+	// applicable pickers offer — rather than hiding them or implying the shell
+	// opens them as evidence.
+	for name, want := range map[string]desktop.Kind{
+		guide.TargetName: desktop.TargetArtifact,
+		guide.IndexName:  desktop.IndexArtifact,
+	} {
+		if entry := kinds[name]; entry.Kind != want {
+			t.Fatalf("%s was not reported as %s: %+v", name, want, entry)
 		}
 	}
 	// The sample is a workspace rather than a family: a directory carrying the

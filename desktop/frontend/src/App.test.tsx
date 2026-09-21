@@ -100,11 +100,10 @@ test("opening a workspace lists every entry as it declares itself, evidence or n
   expect(facade.oneCall("Guide")[0]).toBe(WORKSPACE_ROOT);
   const navigation = within(screen.getByRole("region", { name: "Workspace" }));
   expect(navigation.getByText(CASE_ENTRY)).toBeTruthy();
-  // The index file is not evidence, and the listing says why instead of hiding it.
+  // The index file is not evidence: the listing names it by the contract it
+  // declares, so the applicable picker can offer it later.
   expect(navigation.getByText(INDEX_ENTRY)).toBeTruthy();
-  expect(
-    navigation.getByText("not a case bundle or a project document"),
-  ).toBeTruthy();
+  expect(navigation.getByText("index")).toBeTruthy();
 });
 
 test("a dismissed folder dialog is reported as cancelled and opens nothing", async () => {
