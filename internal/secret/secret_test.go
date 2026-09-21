@@ -266,6 +266,35 @@ func TestRotateRecordsAGenerationForAKnownReferenceOnly(t *testing.T) {
 	}
 }
 
+func TestRemoveDeletesKnownReferenceAndLeavesDocumentUnmodified(t *testing.T) {
+	ref1 := reference(t, "lab-mllp", testOnlyValue)
+	ref2 := reference(t, "source-ehr", testOnlyValue)
+	ref2.Purpose = SourceEndpoint
+	document := Document{Schema: Schema, References: []Reference{ref1, ref2}}
+
+	updated, err := Remove(document, "lab-mllp")
+	if err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if len(updated.References) != 1 || updated.References[0].Name != "source-ehr" {
+		t.Fatalf("expected 1 reference named source-ehr, got: %+v", updated.References)
+	}
+	if len(document.References) != 2 {
+		t.Fatal("remove modified the document it was given")
+	}
+	if _, err := Remove(updated, "absent"); err == nil {
+		t.Fatal("an unregistered reference was removed without error")
+	}
+	// Removing the last reference yields a valid empty document
+	empty, err := Remove(updated, "source-ehr")
+	if err != nil {
+		t.Fatalf("remove last reference: %v", err)
+	}
+	if len(empty.References) != 0 {
+		t.Fatalf("expected 0 references, got %d", len(empty.References))
+	}
+}
+
 func TestRotationStateReportsAnOverdueCredentialExplicitly(t *testing.T) {
 	entry := reference(t, "lab-mllp", testOnlyValue)
 	if state := entry.Rotation(entry.RotatedAt.Add(time.Hour)); state != RotationCurrent {

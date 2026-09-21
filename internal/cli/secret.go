@@ -4,11 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
-	"os"
 	"time"
 
-	"github.com/bharm16/readmit/internal/exportreview"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/secret"
 	"github.com/spf13/cobra"
 )
@@ -36,11 +34,7 @@ func secretAdd() *cobra.Command {
 		Short:       "Register a reference to a credential held in a secret store",
 		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			document, err := openOrEmptyStore(file)
-			if err != nil {
-				return err
-			}
-			updated, stored, err := secret.Add(document, secret.Reference{
+			_, stored, err := operation.AddSecretReference(file, secret.Reference{
 				Name:       name,
 				Store:      secret.Store(store),
 				Purpose:    secret.Purpose(purpose),
@@ -52,9 +46,6 @@ func secretAdd() *cobra.Command {
 				MaxAge:     maxAge,
 			})
 			if err != nil {
-				return err
-			}
-			if err := secret.WriteStore(file, updated); err != nil {
 				return err
 			}
 			return writeReference(cmd.OutOrStdout(), "Credential reference registered: "+stored.Name, stored)
@@ -104,15 +95,8 @@ func secretUpdate() *cobra.Command {
 			if change.Empty() {
 				return usage("secret update requires at least one change")
 			}
-			document, err := readStore(file)
+			_, stored, err := operation.UpdateSecretReference(file, name, change)
 			if err != nil {
-				return err
-			}
-			updated, stored, err := secret.Update(document, name, change)
-			if err != nil {
-				return err
-			}
-			if err := secret.WriteStore(file, updated); err != nil {
 				return err
 			}
 			return writeReference(cmd.OutOrStdout(), "Credential reference updated: "+stored.Name, stored)
@@ -136,25 +120,8 @@ func secretRotate() *cobra.Command {
 		Short:       "Record that the credential behind a reference was replaced in its store",
 		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			document, err := readStore(file)
+			_, stored, err := operation.RotateSecretReference(cmd.Context(), file, name)
 			if err != nil {
-				return err
-			}
-			entry, err := secret.Find(document, name)
-			if err != nil {
-				return err
-			}
-			// The store must answer for this reference before a rotation is
-			// recorded, so a generation is never recorded against a credential
-			// readmit cannot read. The value itself is discarded here.
-			if _, err := secret.Resolve(cmd.Context(), entry); err != nil {
-				return errors.New("the credential did not resolve from its declared store; the recorded rotation is unchanged")
-			}
-			updated, stored, err := secret.Rotate(document, name, time.Now())
-			if err != nil {
-				return err
-			}
-			if err := secret.WriteStore(file, updated); err != nil {
 				return err
 			}
 			return writeReference(cmd.OutOrStdout(), "Rotation recorded: "+stored.Name, stored)
@@ -203,37 +170,10 @@ func secretScan() *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			document, err := readStore(file)
+			scan, skipped, err := operation.ScanSecrets(cmd.Context(), file, args, name)
 			if err != nil {
 				return refusal(err)
 			}
-			references := document.References
-			if name != "" {
-				entry, err := secret.Find(document, name)
-				if err != nil {
-					return refusal(err)
-				}
-				references = []secret.Reference{entry}
-			}
-			if len(references) == 0 {
-				return refusal(errors.New("the secret reference document registers nothing to check for"))
-			}
-			terms := make([][]byte, 0, len(references))
-			for _, entry := range references {
-				resolved, err := secret.Resolve(cmd.Context(), entry)
-				if err != nil {
-					return refusal(errors.New("a registered credential did not resolve, so this scan checked nothing"))
-				}
-				terms = append(terms, resolved.Expose())
-			}
-			// The secret reference document is always checked: a store that
-			// carries the value it references is the leak this command exists
-			// to find, and a shared configuration is the first place to look.
-			files, skipped, err := secret.Collect(append([]string{file}, args...))
-			if err != nil {
-				return refusal(err)
-			}
-			scan := exportreview.Residual(files, terms)
 			if err := writeLines(cmd.OutOrStdout(), func(w io.Writer) {
 				fmt.Fprintf(w, "Credential leakage scan\nReferences checked: %d\nFiles checked: %d\nEntries not read: %d\nStatus: %s\nLocations holding a known credential value: %d\n",
 					scan.KnownValues, scan.Files, skipped, scan.Status, len(scan.Locations))
@@ -263,7 +203,7 @@ func readStore(path string) (secret.Document, error) {
 	if path == "" {
 		return secret.Document{}, usage("secret requires --secrets naming a secret reference document")
 	}
-	return secret.ReadStore(path)
+	return operation.ReadSecrets(path)
 }
 
 // openOrEmptyStore reads an existing document, or starts the first one. A path
@@ -272,10 +212,7 @@ func openOrEmptyStore(path string) (secret.Document, error) {
 	if path == "" {
 		return secret.Document{}, usage("secret requires --secrets naming a secret reference document")
 	}
-	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
-		return secret.Document{Schema: secret.Schema}, nil
-	}
-	return secret.ReadStore(path)
+	return operation.OpenOrEmptySecrets(path)
 }
 
 func writeReference(out io.Writer, headline string, entry secret.Reference) error {

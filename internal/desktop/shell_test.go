@@ -199,7 +199,8 @@ func TestEveryStatusIsDistinguishableWithoutColour(t *testing.T) {
 		desktop.IndexArtifact, desktop.TargetArtifact, desktop.RulesArtifact,
 		desktop.PlanArtifact, desktop.SpecArtifact, desktop.PackArtifact,
 		desktop.ProfileArtifact, desktop.PackageArtifact,
-		desktop.AnalysisArtifact, desktop.UnsupportedArtifact,
+		desktop.AnalysisArtifact, desktop.SecretArtifact, desktop.PolicyArtifact,
+		desktop.ResetArtifact, desktop.UnsupportedArtifact,
 	} {
 		if _, declared := indicators[string(kind)]; !declared {
 			t.Errorf("artifact kind %q has no non-colour indicator", kind)

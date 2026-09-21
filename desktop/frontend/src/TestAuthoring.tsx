@@ -13,6 +13,7 @@ import type {
   TestSuggestionRequest,
 } from "./bindings";
 import { Report, type Indicators } from "./shell";
+import { EnvironmentBanner } from "./EnvironmentPanel";
 import "./authoring.css";
 
 /** What each stage asks, in the window's words. The engine names the stage and
@@ -215,6 +216,23 @@ export function TestAuthoring({
       </ul>
       {resolution?.messages.length ? (
         <p className="hint">Sent in the order the case records them: {resolution.messages.join(", ")}.</p>
+      ) : null}
+
+      {draft?.target ? (
+        (() => {
+          const chosen = (resolution?.targets ?? []).find((t) => t.name === draft.target);
+          return (
+            <EnvironmentBanner
+              name={chosen?.environment || draft.target}
+              classification={chosen?.classification}
+              disclaimer={
+                chosen?.classification === "production" || chosen?.classification === "unclassified"
+                  ? `Refusal: ${chosen.classification} targets reject all sends and resets.`
+                  : "Nonproduction environment: Synthetic test execution only."
+              }
+            />
+          );
+        })()
       ) : null}
 
       <h4>{QUESTIONS.target}</h4>

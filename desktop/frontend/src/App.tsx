@@ -6,6 +6,7 @@ import { Baseline } from "./Baseline";
 import { NoteDraft } from "./NoteDraft";
 import { Recovery, RetainedDrafts } from "./Recovery";
 import { RunPanel } from "./RunPanel";
+import { EnvironmentPanel } from "./EnvironmentPanel";
 import { onRetentionResult, savedId } from "./drafting";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
@@ -158,6 +159,10 @@ export default function App() {
   const [reviewResult, setReviewResult] = useState<ReviewResult | null>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
+  const [environmentArtifact, setEnvironmentArtifact] = useState<{
+    name: string;
+    kind: "target" | "secrets" | "policy" | "reset";
+  } | null>(null);
 
   const [restored, setRestored] = useState<RecoveryResult | null>(null);
   const [watchedRun, setWatchedRun] = useState("");
@@ -1320,6 +1325,54 @@ export default function App() {
                     Read the project
                   </button>
                 ) : null}
+                {artifact.kind === "target" ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setSelected(artifact.name);
+                      setEnvironmentArtifact({ name: artifact.name, kind: "target" });
+                    }}
+                  >
+                    Configure target
+                  </button>
+                ) : null}
+                {artifact.kind === "secret" ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setSelected(artifact.name);
+                      setEnvironmentArtifact({ name: artifact.name, kind: "secrets" });
+                    }}
+                  >
+                    Manage secrets
+                  </button>
+                ) : null}
+                {artifact.kind === "policy" ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setSelected(artifact.name);
+                      setEnvironmentArtifact({ name: artifact.name, kind: "policy" });
+                    }}
+                  >
+                    Review policy
+                  </button>
+                ) : null}
+                {artifact.kind === "reset" ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setSelected(artifact.name);
+                      setEnvironmentArtifact({ name: artifact.name, kind: "reset" });
+                    }}
+                  >
+                    Review reset plan
+                  </button>
+                ) : null}
                 {artifact.kind === "unsupported" ? (
                   <span className="unsupported">{artifact.reason}</span>
                 ) : null}
@@ -1507,7 +1560,7 @@ export default function App() {
             }
           />
         ) : null}
-        {root ? <CanonicalTestEditor key={root} workspace={root} drafts={drafts} busy={busy} /> : null}
+        {root ? <CanonicalTestEditor key={"editor-" + root} workspace={root} drafts={drafts} busy={busy} /> : null}
         {root ? <ProfileEditor key={`profile-${root}`} workspace={root} drafts={drafts} busy={busy} /> : null}
         {gridResult?.grid ? (
           <TestAuthoring
@@ -1643,6 +1696,17 @@ export default function App() {
             indicators={indicators}
             onPreview={(rules, plan, profile) => void previewPlan(rules, plan, profile)}
             onReview={(review, approve, offset) => void readReview(review, approve, offset)}
+          />
+        ) : null}
+        {opened ? (
+          <EnvironmentPanel
+            workspace={root ?? ""}
+            targetFile={environmentArtifact?.kind === "target" ? environmentArtifact.name : "targets/default.json"}
+            secretsFile={environmentArtifact?.kind === "secrets" ? environmentArtifact.name : "secrets.json"}
+            policyFile={environmentArtifact?.kind === "policy" ? environmentArtifact.name : "send-policy.json"}
+            planFile={environmentArtifact?.kind === "reset" ? environmentArtifact.name : "reset-plan.json"}
+            initialTab={environmentArtifact?.kind ?? "target"}
+            drafts={drafts}
           />
         ) : null}
         {!evidence && !busy ? <p className="hint">Open a case to see what it holds.</p> : null}
