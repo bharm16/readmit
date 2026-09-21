@@ -111,6 +111,8 @@ var indicators = []Indicator{
 	{Status: string(PlanArtifact), Symbol: "◈", Label: "Transform plan"},
 	{Status: string(SpecArtifact), Symbol: "◉", Label: "Test specification"},
 	{Status: string(PackArtifact), Symbol: "◎", Label: "Profile pack"},
+	{Status: string(ProfileArtifact), Symbol: "◓", Label: "Local profile"},
+	{Status: string(PackageArtifact), Symbol: "◪", Label: "Profile package"},
 	{Status: string(AnalysisArtifact), Symbol: "◒", Label: "Sequence analysis"},
 	{Status: string(UnsupportedArtifact), Symbol: "?", Label: "Unsupported here"},
 
@@ -129,6 +131,7 @@ var commands = []Command{
 	{ID: "open-workspace", Title: "Open a workspace folder…", Keys: "Ctrl+O", Region: NavigationRegion},
 	{ID: "create-sample-workspace", Title: "Create the sample workspace…", Region: NavigationRegion},
 	{ID: "open-project", Title: "Open the project of this workspace", Region: EvidenceRegion},
+	{ID: "manage-profiles", Title: "Manage interface profiles…", Region: InspectorRegion},
 	{ID: "cancel-operation", Title: "Cancel the running operation", Keys: "Escape"},
 	{ID: "next-region", Title: "Go to the next region", Keys: "F6"},
 	{ID: "previous-region", Title: "Go to the previous region", Keys: "Shift+F6"},

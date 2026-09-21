@@ -514,10 +514,10 @@
       "kind": "cli",
       "capability": "Copy an existing sealed local profile and its pinned metadata into a package",
       "owner": "bharm16/readmit#252",
-      "screen": "a profile screen",
+      "screen": "the profile management panel of the inspector region",
       "action": "import and export reviewed interface metadata packages",
       "test": "desktop profile journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.profile.import",
@@ -525,10 +525,10 @@
       "kind": "cli",
       "capability": "Verify and copy package documents without activating or upgrading a profile",
       "owner": "bharm16/readmit#252",
-      "screen": "a profile screen",
+      "screen": "the profile management panel of the inspector region",
       "action": "import and export reviewed interface metadata packages",
       "test": "desktop profile journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.project.add",
@@ -2112,6 +2112,116 @@
       "screen": "the customer-hub panel of the application",
       "action": "publish artifact to customer hub project with author admission",
       "test": "desktop hub tests plus internal/hubclient tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.InspectProfilePack",
+      "source": "desktop.App.InspectProfilePack",
+      "kind": "desktop",
+      "capability": "inspectProfilePack application operation",
+      "owner": "bharm16/readmit#252",
+      "screen": "the profile management panel of the inspector region",
+      "action": "inspect one profile pack and display its provenance and four support levels",
+      "test": "desktop profile behavior tests plus internal/desktop profile tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.OpenProfileLibrary",
+      "source": "desktop.App.OpenProfileLibrary",
+      "kind": "desktop",
+      "capability": "openProfileLibrary application operation",
+      "owner": "bharm16/readmit#252",
+      "screen": "the profile management panel of the inspector region",
+      "action": "open a profile library directory and inspect its published support matrix",
+      "test": "desktop profile behavior tests plus internal/desktop profile tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.OpenProfile",
+      "source": "desktop.App.OpenProfile",
+      "kind": "desktop",
+      "capability": "openProfile application operation",
+      "owner": "bharm16/readmit#252",
+      "screen": "the profile management panel of the inspector region",
+      "action": "open an existing local profile, resolve against its pack and compute its seal",
+      "test": "desktop profile behavior tests plus internal/desktop profile tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ValidateProfile",
+      "source": "desktop.App.ValidateProfile",
+      "kind": "desktop",
+      "capability": "validateProfile application operation",
+      "owner": "bharm16/readmit#252",
+      "screen": "the profile management panel of the inspector region",
+      "action": "strictly validate a profile document and resolve its field origins and findings",
+      "test": "desktop profile behavior tests plus internal/desktop profile tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveProfile",
+      "source": "desktop.App.SaveProfile",
+      "kind": "desktop",
+      "capability": "saveProfile application operation",
+      "owner": "bharm16/readmit#252",
+      "screen": "the profile management panel of the inspector region",
+      "action": "save a canonical profile revision and seal without mutating approved profiles",
+      "test": "desktop profile behavior tests plus internal/desktop profile tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.CompareProfiles",
+      "source": "desktop.App.CompareProfiles",
+      "kind": "desktop",
+      "capability": "compareProfiles application operation",
+      "owner": "bharm16/readmit#252",
+      "screen": "the profile management panel of the inspector region",
+      "action": "compare two profile versions and assess impacted saved tests",
+      "test": "desktop profile behavior tests plus internal/desktop profile tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.UpgradeProfilePin",
+      "source": "desktop.App.UpgradeProfilePin",
+      "kind": "desktop",
+      "capability": "upgradeProfilePin application operation",
+      "owner": "bharm16/readmit#252",
+      "screen": "the profile management panel of the inspector region",
+      "action": "explicitly upgrade a saved test pin to a new profile version",
+      "test": "desktop profile behavior tests plus internal/desktop profile tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ExportProfilePackage",
+      "source": "desktop.App.ExportProfilePackage",
+      "kind": "desktop",
+      "capability": "exportProfilePackage application operation",
+      "owner": "bharm16/readmit#252",
+      "screen": "the profile management panel of the inspector region",
+      "action": "export reviewed interface metadata into a portable package",
+      "test": "desktop profile behavior tests plus internal/desktop profile tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ImportProfilePackage",
+      "source": "desktop.App.ImportProfilePackage",
+      "kind": "desktop",
+      "capability": "importProfilePackage application operation",
+      "owner": "bharm16/readmit#252",
+      "screen": "the profile management panel of the inspector region",
+      "action": "verify and unpack an interface package into a new directory",
+      "test": "desktop profile behavior tests plus internal/desktop profile tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.InspectProfilePackage",
+      "source": "desktop.App.InspectProfilePackage",
+      "kind": "desktop",
+      "capability": "inspectProfilePackage application operation",
+      "owner": "bharm16/readmit#252",
+      "screen": "the profile management panel of the inspector region",
+      "action": "inspect package integrity, provenance, rights review and conflict status",
+      "test": "desktop profile behavior tests plus internal/desktop profile tests",
       "implemented": true
     },
     {

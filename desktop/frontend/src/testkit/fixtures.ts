@@ -802,3 +802,90 @@ export function buildIndexResultFixture(
     ...overrides,
   };
 }
+
+export function profilePackFixture(): import("../bindings").ProfilePackResult {
+  return {
+    state: "completed",
+    pack: { id: "fixture-siu", version: "1" },
+    provenance: {
+      source: { name: "Fixture Author", location: "testdata/fixtures/profile-pack.json", revision: "1" },
+      extraction: { method: "Manual authoring", content_digest: "sha256:0000" },
+      license: { spdx: "LicenseRef-readmit-fixture", notice: "testdata/README.md" },
+      rights_review: { status: "approved", reference: "testdata/README.md" },
+    },
+    coverage: [
+      {
+        hl7_version: "2.5.1",
+        family: "SIU",
+        parse: "supported",
+        labels: "supported",
+        structural: "unsupported",
+        workflow: "unsupported",
+      },
+    ],
+    bundleable: true,
+  };
+}
+
+export function localProfileFixture(): import("../bindings").LocalProfileResult {
+  return {
+    state: "completed",
+    profile: {
+      schema: "readmit-local-profile/v1",
+      profile: { id: "fixture-local-siu", version: "1" },
+      base: { pack: { id: "fixture-siu", version: "1" }, hl7_version: "2.5.1", family: "SIU" },
+      segments: [
+        {
+          id: "SCH",
+          description: "Scheduling segment",
+          cardinality: { min: 1, max: "1" },
+          fields: [
+            {
+              position: 1,
+              name: "Placer appointment number",
+              usage: "R",
+              cardinality: { min: 1, max: "1" },
+              type: "EI",
+            },
+          ],
+        },
+      ],
+    },
+    resolution: {
+      profile: { id: "fixture-local-siu", version: "1" },
+      base: { pack: { id: "fixture-siu", version: "1" }, hl7_version: "2.5.1", family: "SIU" },
+      pinned: true,
+      support: { parse: "supported", labels: "supported", structural: "unsupported", workflow: "unsupported" },
+      segments: [
+        {
+          id: "SCH",
+          description: "Scheduling segment",
+          site_defined: false,
+          cardinality_origin: "local",
+          fields: [
+            {
+              position: 1,
+              name: "Placer appointment number",
+              pack_name: "Placer Appointment Number",
+              name_origin: "profile",
+              usage: "R",
+              usage_origin: "local",
+              condition_origin: "undeclared",
+              cardinality_origin: "local",
+              type_origin: "local",
+              terminology_origin: "undeclared",
+              authority_origin: "undeclared",
+              date_origin: "undeclared",
+            },
+          ],
+        },
+      ],
+      findings: [],
+    },
+    seal: {
+      schema: "readmit-profile-version/v1",
+      profile: { id: "fixture-local-siu", version: "1" },
+      content: { bytes: 3322, sha256: "e96a3350b728a78d063cf99afddeec3854d393682039ed4348fbc89057c55054" },
+    },
+  };
+}

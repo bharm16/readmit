@@ -75,6 +75,8 @@ const (
 	PlanArtifact        Kind = "plan"
 	SpecArtifact        Kind = "spec"
 	PackArtifact        Kind = "pack"
+	ProfileArtifact     Kind = "profile"
+	PackageArtifact     Kind = "package"
 	AnalysisArtifact    Kind = "analysis"
 	UnsupportedArtifact Kind = "unsupported"
 )

@@ -100,6 +100,7 @@ import { Inspector } from "./Inspector";
 import { Reproducer } from "./Reproducer";
 import { RevisionComparison } from "./RevisionComparison";
 import { CanonicalTestEditor } from "./CanonicalTestEditor";
+import { ProfileEditor } from "./ProfileEditor";
 import { TestAuthoring } from "./TestAuthoring";
 import { Badge, GRID_WINDOW, MessageGrid, Palette, Report, Separator, Status } from "./shell";
 import { Breadcrumbs, ProjectPanel } from "./ProjectPanel";
@@ -1098,6 +1099,9 @@ export default function App() {
         void readProject(root);
       }
     },
+    "manage-profiles": () => {
+      focusRegion("inspector");
+    },
     "cancel-operation": cancel,
     "next-region": () => step(1),
     "previous-region": () => step(-1),
@@ -1504,6 +1508,7 @@ export default function App() {
           />
         ) : null}
         {root ? <CanonicalTestEditor key={root} workspace={root} drafts={drafts} busy={busy} /> : null}
+        {root ? <ProfileEditor key={`profile-${root}`} workspace={root} drafts={drafts} busy={busy} /> : null}
         {gridResult?.grid ? (
           <TestAuthoring
             rows={gridResult.grid.rows}
