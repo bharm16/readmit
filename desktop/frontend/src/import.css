@@ -1,0 +1,225 @@
+.import-panel {
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+  margin-top: 1rem;
+}
+
+.import-header {
+  margin-bottom: 1.5rem;
+}
+
+.import-section {
+  background: color-mix(in srgb, var(--surface) 95%, CanvasText 5%);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.import-section h4 {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+}
+
+.import-source-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.import-dropzone {
+  border: 2px dashed var(--line);
+  border-radius: 6px;
+  padding: 1.5rem;
+  text-align: center;
+  margin-bottom: 1rem;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.import-dropzone.dragover {
+  border-color: highlight;
+  background: color-mix(in srgb, highlight 10%, transparent);
+}
+
+.import-paste-box {
+  background: color-mix(in srgb, var(--surface) 90%, CanvasText 10%);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1rem;
+  margin-top: 1rem;
+}
+
+.import-paste-box textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: monospace;
+  font-size: 0.9rem;
+  min-height: 100px;
+  margin-bottom: 0.5rem;
+  resize: vertical;
+}
+
+.import-paste-notice {
+  font-size: 0.85rem;
+  color: color-mix(in srgb, CanvasText 75%, transparent);
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.import-sources-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0 0;
+}
+
+.import-sources-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.9rem;
+}
+
+.import-sources-list li:last-child {
+  border-bottom: none;
+}
+
+.import-mode-selector {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.5rem;
+}
+
+.import-mode-tab {
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
+  cursor: pointer;
+  color: inherit;
+}
+
+.import-mode-tab.active {
+  border-bottom-color: CanvasText;
+  font-weight: bold;
+}
+
+.import-engine-notice {
+  background: color-mix(in srgb, #fff3e0 25%, var(--surface));
+  border-left: 4px solid #f57c00;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.import-controls-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.import-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.import-field label {
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.import-field input,
+.import-field select {
+  padding: 0.4rem;
+  font-size: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  color: inherit;
+}
+
+.import-preview-box {
+  margin-top: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1rem;
+  background: color-mix(in srgb, var(--surface) 95%, CanvasText 5%);
+}
+
+.import-totals-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.import-stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.import-stat-value {
+  font-size: 1.25rem;
+  font-weight: bold;
+}
+
+.import-stat-label {
+  font-size: 0.8rem;
+  color: color-mix(in srgb, CanvasText 70%, transparent);
+}
+
+.import-reveal-banner {
+  background: color-mix(in srgb, var(--surface) 85%, CanvasText 15%);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.6rem 0.8rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.import-preview-table-container {
+  overflow-x: auto;
+  max-height: 400px;
+}
+
+.import-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.import-preview-table th,
+.import-preview-table td {
+  padding: 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+
+.import-preview-table th {
+  background: color-mix(in srgb, var(--surface) 90%, CanvasText 10%);
+  position: sticky;
+  top: 0;
+}
+
+.import-commit-success {
+  background: color-mix(in srgb, #e8f5e9 30%, var(--surface));
+  border-left: 4px solid #2e7d32;
+  padding: 1rem;
+  border-radius: 4px;
+  margin-top: 1rem;
+}
+
+.import-commit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}

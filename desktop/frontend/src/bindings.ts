@@ -635,6 +635,10 @@ export interface Facade {
   EvaluateSendPolicy(request: SendPolicyEvalRequest): Promise<SendPolicyEvalResult>;
   ReadResetPlan(workspace: string, planFile: string): Promise<ResetPlanResult>;
   SaveResetPlan(request: ResetPlanSaveRequest): Promise<ResetPlanResult>;
+  ChooseImportSources(kind: string): Promise<ImportSourcesResult>;
+  StagePastedContent(request: PastedSourceRequest): Promise<PastedSourceResult>;
+  PreviewImport(request: ImportRequest): Promise<ImportPreviewResult>;
+  CommitImport(request: ImportCommitRequest): Promise<ImportCommitResult>;
 }
 
 declare global {
@@ -3190,4 +3194,251 @@ export function readResetPlan(workspace: string, planFile: string): Promise<Rese
 
 export function saveResetPlan(request: ResetPlanSaveRequest): Promise<ResetPlanResult> {
   return guard(() => facade().SaveResetPlan(request), { state: "failed" });
+}
+
+export interface ImportSourcesResult {
+  state: State;
+  reason?: string;
+  kind?: string;
+  paths?: string[];
+}
+
+export interface PastedSourceRequest {
+  workspace: string;
+  project?: string;
+  name: string;
+  content: string;
+  encoding?: string;
+}
+
+export interface PastedSourceResult {
+  state: State;
+  reason?: string;
+  path?: string;
+  name?: string;
+  size?: number;
+  sha256?: string;
+  encoding?: string;
+}
+
+export interface ImportPlan {
+  schema: string;
+  framing: string;
+  batch_boundary?: string;
+  terminator: string;
+  encoding: string;
+  direction: string;
+  members: string[];
+}
+
+export interface CSVDialect {
+  delimiter: string;
+  record_separator: string;
+  header: string;
+  fields: number;
+}
+
+export interface TextDialect {
+  field_separator: string;
+  record_separator: string;
+  fields: number;
+}
+
+export interface DocumentDialect {
+  record_path: string[];
+}
+
+export interface PayloadMapping {
+  operator: string;
+  locator: string[];
+  framing: string;
+  terminator: string;
+}
+
+export interface TimeMapping {
+  operator: string;
+  locator?: string[];
+}
+
+export interface LabelMapping {
+  operator: string;
+  declared?: string;
+  locator?: string[];
+}
+
+export interface DirectionValue {
+  envelope: string;
+  mapped: string;
+}
+
+export interface DirectionMapping {
+  operator: string;
+  declared?: string;
+  locator?: string[];
+  values?: DirectionValue[];
+}
+
+export interface MappingRecipe {
+  schema: string;
+  name: string;
+  revision: number;
+  envelope: string;
+  encoding: string;
+  members: string[];
+  csv?: CSVDialect;
+  text?: TextDialect;
+  json?: DocumentDialect;
+  xml?: DocumentDialect;
+  payload: PayloadMapping;
+  observed_at: TimeMapping;
+  source: LabelMapping;
+  direction: DirectionMapping;
+  channel: LabelMapping;
+}
+
+export interface EnginePlan {
+  schema: string;
+  engine: string;
+  version: string;
+  format: string;
+  terminator: string;
+}
+
+export interface EngineRecord {
+  offset: number;
+  size: number;
+  stage: string;
+  correlation: string;
+}
+
+export interface EngineExportPreview {
+  schema: string;
+  plan: EnginePlan;
+  qualification: string;
+  records: EngineRecord[];
+}
+
+export interface ContainerRecord {
+  source_id: string;
+  offset: number;
+  size: number;
+  occurrences: number;
+}
+
+export interface ContainerMember {
+  name: string;
+  size: number;
+  sha256: string;
+  state: State;
+  reason?: string;
+  records: ContainerRecord[];
+}
+
+export interface ImportContainer {
+  kind: Kind;
+  path: string;
+  size: number;
+  sha256: string;
+  members: ContainerMember[];
+}
+
+export interface ImportTotals {
+  containers: number;
+  members: number;
+  excluded: number;
+  sources: number;
+  occurrences: number;
+}
+
+export interface ImportPlanPreview {
+  schema: string;
+  plan: ImportPlan;
+  containers: ImportContainer[];
+  totals: ImportTotals;
+}
+
+export interface RecipeMapping {
+  source_id: string;
+  state: State;
+  reason?: string;
+  payload_size: number;
+  observed_at?: string;
+  source: string;
+  direction: string;
+  channel: string;
+}
+
+export interface ImportRecipePreview {
+  schema: string;
+  recipe: MappingRecipe;
+  recipe_identity: string;
+  containers: ImportContainer[];
+  mappings: RecipeMapping[];
+  totals: ImportTotals;
+  unmapped_records: number;
+}
+
+export interface ImportRequest {
+  workspace: string;
+  project?: string;
+  mode: string;
+  files?: string[];
+  folders?: string[];
+  archives?: string[];
+  plan?: ImportPlan;
+  recipe?: MappingRecipe;
+  engine_plan?: EnginePlan;
+}
+
+export interface ImportPreviewResult {
+  state: State;
+  reason?: string;
+  mode?: string;
+  plan_preview?: ImportPlanPreview;
+  recipe_preview?: ImportRecipePreview;
+  engine_preview?: EngineExportPreview;
+}
+
+export interface ImportCommitRequest {
+  workspace: string;
+  project?: string;
+  mode: string;
+  output_name: string;
+  receipt_name?: string;
+  files?: string[];
+  folders?: string[];
+  archives?: string[];
+  plan?: ImportPlan;
+  recipe?: MappingRecipe;
+  engine_plan?: EnginePlan;
+  register_in_project?: boolean;
+  case_title?: string;
+  case_owner?: string;
+  case_version?: string;
+}
+
+export interface ImportCommitResult {
+  state: State;
+  reason?: string;
+  case?: CaseEvidence;
+  case_path?: string;
+  receipt_path?: string;
+  registered?: boolean;
+  project?: ProjectDocument;
+}
+
+export function chooseImportSources(kind: string): Promise<ImportSourcesResult> {
+  return guard(() => facade().ChooseImportSources(kind), { state: "failed" });
+}
+
+export function stagePastedContent(request: PastedSourceRequest): Promise<PastedSourceResult> {
+  return guard(() => facade().StagePastedContent(request), { state: "failed" });
+}
+
+export function previewImport(request: ImportRequest): Promise<ImportPreviewResult> {
+  return guard(() => facade().PreviewImport(request), { state: "failed" });
+}
+
+export function commitImport(request: ImportCommitRequest): Promise<ImportCommitResult> {
+  return guard(() => facade().CommitImport(request), { state: "failed" });
 }
