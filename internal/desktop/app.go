@@ -238,6 +238,13 @@ type App struct {
 	hubSession       *hubclient.Session
 	hubAuthFlow      *hubclient.AuthFlow
 
+	// commercialMu guards the retained commercial destinations selection: a
+	// local path the operator chose, read again for each status. It is never
+	// a connection and never restored into an active request.
+	commercialMu            sync.Mutex
+	commercialSelectionPath string
+	commercialConfigPath    string
+
 	mu      sync.Mutex
 	running bool
 	cancel  context.CancelFunc

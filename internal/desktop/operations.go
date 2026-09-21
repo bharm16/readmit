@@ -37,6 +37,8 @@ func (r *OperationResult) refuse(state State, reason string) { r.State, r.Reason
 
 // NewWithOperationSelection restores only an explicit prior policy selection.
 // Missing or invalid selection keeps reads available and paid work refused.
+// The commercial destinations selection lives beside it and restores the same
+// way: a local read that contacts nothing.
 func NewWithOperationSelection(chooser FolderChooser, recent, filters, session, drafts, selection string) *App {
 	a := New(chooser, recent, filters, session, drafts)
 	a.operationSelectionPath = selection
@@ -47,6 +49,9 @@ func NewWithOperationSelection(chooser FolderChooser, recent, filters, session, 
 			a.operationPolicy = selected.Policy
 			a.operationGuard = operationguard.New(selected.Policy)
 		}
+	}
+	if selection != "" {
+		a.restoreCommercialSelection(filepath.Join(filepath.Dir(selection), "commercial.json"))
 	}
 	return a
 }

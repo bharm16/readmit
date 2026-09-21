@@ -335,13 +335,22 @@ created activation under a valid signed document is a separate record. The
 older `license import/release` stores remain separate verification/device
 records; releasing an operation uses the command above.
 
-In the desktop privacy pane, choose the folder containing
-`operation-policy.json`, then activate the received entitlement. The selected
-path is retained in `readmit-desktop-operation-selection/v1` outside evidence;
-selection and activation are separate actions. The pane shows the UTC
-high-water and rollback/release state. A missing policy never prevents opening
-the application or reading a workspace. Hub identity binding and startup
-selection are documented in [the hub guide](../hub/README.md).
+In the desktop privacy pane, either choose a supplied folder containing
+`operation-policy.json`, or import without hand-authored JSON: verify the
+received entitlement and trust document through native file dialogs, choose the
+author, device and runner authority from what the verified document itself
+assigns, choose a private activation folder, and let the pane write the
+documents and the policy there. The selected path is retained in
+`readmit-desktop-operation-selection/v1` outside evidence; creation, selection
+and activation are separate actions. The pane also installs later issues
+(renewals and the one approved extension, refusing transfers), exports the
+installed document byte for byte, and shows and settles the runner authority's
+admissions; it shows the UTC high-water and rollback/release state. A missing
+policy never prevents opening the application or reading a workspace, and every
+license-management action works with no activation at all. Hub identity binding
+and startup selection are documented in [the hub guide](../hub/README.md); the
+customer-facing commercial portal destination is documented in
+[the desktop shell guide](desktop.md#commercial-account-and-checkout-destination-readmit-commercial-destinationsv1).
 
 ### Visible time and refusal recovery
 
