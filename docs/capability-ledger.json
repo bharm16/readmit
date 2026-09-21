@@ -10,8 +10,8 @@
       "owner": "bharm16/readmit#264",
       "screen": "a project maintenance screen",
       "action": "create, verify and restore verified backups of a project",
-      "test": "desktop maintenance journey test and shared-operation parity",
-      "implemented": false
+      "test": "MaintenancePanel.test.tsx journeys plus internal/desktop maintenance tests",
+      "implemented": true
     },
     {
       "id": "cli.backup.restore",
@@ -21,8 +21,8 @@
       "owner": "bharm16/readmit#264",
       "screen": "a project maintenance screen",
       "action": "create, verify and restore verified backups of a project",
-      "test": "desktop maintenance journey test and shared-operation parity",
-      "implemented": false
+      "test": "MaintenancePanel.test.tsx journeys plus internal/desktop maintenance tests",
+      "implemented": true
     },
     {
       "id": "cli.backup.verify",
@@ -32,8 +32,8 @@
       "owner": "bharm16/readmit#264",
       "screen": "a project maintenance screen",
       "action": "create, verify and restore verified backups of a project",
-      "test": "desktop maintenance journey test and shared-operation parity",
-      "implemented": false
+      "test": "MaintenancePanel.test.tsx journeys plus internal/desktop maintenance tests",
+      "implemented": true
     },
     {
       "id": "cli.baseline.approve",
@@ -667,22 +667,22 @@
       "source": "readmit project archive",
       "kind": "cli",
       "capability": "Create a verified recovery archive; keep the source project",
-      "owner": "bharm16/readmit#245",
-      "screen": "the project overview panel of the evidence region",
-      "action": "create, open, register, update and note a project through the shared operations",
-      "test": "project.test.tsx journeys plus internal/desktop and internal/operation tests",
-      "implemented": false
+      "owner": "bharm16/readmit#264",
+      "screen": "a project maintenance screen",
+      "action": "inspect quota, preview migration, archive or delete with confirmation, and recover documents",
+      "test": "MaintenancePanel.test.tsx journeys plus internal/desktop maintenance tests",
+      "implemented": true
     },
     {
       "id": "cli.project.delete",
       "source": "readmit project delete",
       "kind": "cli",
       "capability": "Create a verified recovery archive, then unlink the whole source project",
-      "owner": "bharm16/readmit#245",
-      "screen": "the project overview panel of the evidence region",
-      "action": "create, open, register, update and note a project through the shared operations",
-      "test": "project.test.tsx journeys plus internal/desktop and internal/operation tests",
-      "implemented": false
+      "owner": "bharm16/readmit#264",
+      "screen": "a project maintenance screen",
+      "action": "inspect quota, preview migration, archive or delete with confirmation, and recover documents",
+      "test": "MaintenancePanel.test.tsx journeys plus internal/desktop maintenance tests",
+      "implemented": true
     },
     {
       "id": "cli.project.init",
@@ -700,11 +700,11 @@
       "source": "readmit project migration-preview",
       "kind": "cli",
       "capability": "Preview supported project and index schemas without changing files",
-      "owner": "bharm16/readmit#245",
-      "screen": "the project overview panel of the evidence region",
-      "action": "create, open, register, update and note a project through the shared operations",
-      "test": "project.test.tsx journeys plus internal/desktop and internal/operation tests",
-      "implemented": false
+      "owner": "bharm16/readmit#264",
+      "screen": "a project maintenance screen",
+      "action": "inspect quota, preview migration, archive or delete with confirmation, and recover documents",
+      "test": "MaintenancePanel.test.tsx journeys plus internal/desktop maintenance tests",
+      "implemented": true
     },
     {
       "id": "cli.project.note",
@@ -722,22 +722,22 @@
       "source": "readmit project quota",
       "kind": "cli",
       "capability": "Check retained-file quota, or set explicit positive limits",
-      "owner": "bharm16/readmit#245",
-      "screen": "the project overview panel of the evidence region",
-      "action": "create, open, register, update and note a project through the shared operations",
-      "test": "project.test.tsx journeys plus internal/desktop and internal/operation tests",
-      "implemented": false
+      "owner": "bharm16/readmit#264",
+      "screen": "a project maintenance screen",
+      "action": "inspect quota, preview migration, archive or delete with confirmation, and recover documents",
+      "test": "MaintenancePanel.test.tsx journeys plus internal/desktop maintenance tests",
+      "implemented": true
     },
     {
       "id": "cli.project.recover",
       "source": "readmit project recover",
       "kind": "cli",
       "capability": "Restore a selected recovery copy and retain the current document",
-      "owner": "bharm16/readmit#245",
-      "screen": "the project overview panel of the evidence region",
-      "action": "create, open, register, update and note a project through the shared operations",
-      "test": "project.test.tsx journeys plus internal/desktop and internal/operation tests",
-      "implemented": false
+      "owner": "bharm16/readmit#264",
+      "screen": "a project maintenance screen",
+      "action": "inspect quota, preview migration, archive or delete with confirmation, and recover documents",
+      "test": "MaintenancePanel.test.tsx journeys plus internal/desktop maintenance tests",
+      "implemented": true
     },
     {
       "id": "cli.project.revise",
@@ -1429,8 +1429,8 @@
       "owner": "bharm16/readmit#264",
       "screen": "an upgrade screen",
       "action": "check a staged upgrade and take its recovery archive",
-      "test": "desktop upgrade journey test and shared-operation parity",
-      "implemented": false
+      "test": "MaintenancePanel.test.tsx journeys plus internal/desktop maintenance tests",
+      "implemented": true
     },
     {
       "id": "cli.upgrade.prepare",
@@ -1440,8 +1440,19 @@
       "owner": "bharm16/readmit#264",
       "screen": "an upgrade screen",
       "action": "check a staged upgrade and take its recovery archive",
-      "test": "desktop upgrade journey test and shared-operation parity",
-      "implemented": false
+      "test": "MaintenancePanel.test.tsx journeys plus internal/desktop maintenance tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ArchiveOrDeleteProject",
+      "source": "desktop.App.ArchiveOrDeleteProject",
+      "kind": "desktop",
+      "capability": "archive or delete a project after explicit confirmation and selection match",
+      "owner": "bharm16/readmit#264",
+      "screen": "a project maintenance screen",
+      "action": "inspect quota, preview migration, archive or delete with confirmation, and recover documents",
+      "test": "MaintenancePanel.test.tsx journeys plus internal/desktop maintenance tests",
+      "implemented": true
     },
     {
       "id": "desktop.BindScenarioProfile",
@@ -1477,6 +1488,28 @@
       "implemented": true
     },
     {
+      "id": "desktop.CheckStagedUpgrade",
+      "source": "desktop.App.CheckStagedUpgrade",
+      "kind": "desktop",
+      "capability": "check a staged upgrade candidate offline with installer handoff",
+      "owner": "bharm16/readmit#264",
+      "screen": "an upgrade screen",
+      "action": "check a staged upgrade and take its recovery archive",
+      "test": "MaintenancePanel.test.tsx journeys plus internal/desktop maintenance tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ChooseMaintenancePath",
+      "source": "desktop.App.ChooseMaintenancePath",
+      "kind": "desktop",
+      "capability": "choose a native folder for backup, restore, archive or staged upgrade",
+      "owner": "bharm16/readmit#264",
+      "screen": "a project maintenance screen",
+      "action": "create, verify and restore verified backups of a project",
+      "test": "MaintenancePanel.test.tsx journeys plus internal/desktop maintenance tests",
+      "implemented": true
+    },
+    {
       "id": "desktop.ChooseOperationPolicy",
       "source": "desktop.App.ChooseOperationPolicy",
       "kind": "desktop",
@@ -1496,6 +1529,17 @@
       "screen": "the synthetic scenario panel of the inspector region",
       "action": "design, preview, generate and library-manage lifecycle workflow sequences",
       "test": "desktop scenario journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.CreateProjectBackup",
+      "source": "desktop.App.CreateProjectBackup",
+      "kind": "desktop",
+      "capability": "create a verified project backup through native destination pickers",
+      "owner": "bharm16/readmit#264",
+      "screen": "a project maintenance screen",
+      "action": "create, verify and restore verified backups of a project",
+      "test": "MaintenancePanel.test.tsx journeys plus internal/desktop maintenance tests",
       "implemented": true
     },
     {
@@ -1543,6 +1587,17 @@
       "implemented": true
     },
     {
+      "id": "desktop.InspectProjectQuota",
+      "source": "desktop.App.InspectProjectQuota",
+      "kind": "desktop",
+      "capability": "inspect retained-file quota and explain disposable indexes",
+      "owner": "bharm16/readmit#264",
+      "screen": "a project maintenance screen",
+      "action": "inspect quota, preview migration, archive or delete with confirmation, and recover documents",
+      "test": "MaintenancePanel.test.tsx journeys plus internal/desktop maintenance tests",
+      "implemented": true
+    },
+    {
       "id": "desktop.OpenScenario",
       "source": "desktop.App.OpenScenario",
       "kind": "desktop",
@@ -1565,6 +1620,39 @@
       "implemented": true
     },
     {
+      "id": "desktop.PrepareStagedUpgrade",
+      "source": "desktop.App.PrepareStagedUpgrade",
+      "kind": "desktop",
+      "capability": "take a verified rollback archive after administrator approval",
+      "owner": "bharm16/readmit#264",
+      "screen": "an upgrade screen",
+      "action": "check a staged upgrade and take its recovery archive",
+      "test": "MaintenancePanel.test.tsx journeys plus internal/desktop maintenance tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.PreviewProjectMigration",
+      "source": "desktop.App.PreviewProjectMigration",
+      "kind": "desktop",
+      "capability": "preview supported schema migration without rewriting evidence",
+      "owner": "bharm16/readmit#264",
+      "screen": "a project maintenance screen",
+      "action": "inspect quota, preview migration, archive or delete with confirmation, and recover documents",
+      "test": "MaintenancePanel.test.tsx journeys plus internal/desktop maintenance tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.PreviewProjectRetirement",
+      "source": "desktop.App.PreviewProjectRetirement",
+      "kind": "desktop",
+      "capability": "preview artifacts affected by archive or delete with a selection token",
+      "owner": "bharm16/readmit#264",
+      "screen": "a project maintenance screen",
+      "action": "inspect quota, preview migration, archive or delete with confirmation, and recover documents",
+      "test": "MaintenancePanel.test.tsx journeys plus internal/desktop maintenance tests",
+      "implemented": true
+    },
+    {
       "id": "desktop.PreviewScenario",
       "source": "desktop.App.PreviewScenario",
       "kind": "desktop",
@@ -1573,6 +1661,28 @@
       "screen": "the synthetic scenario panel of the inspector region",
       "action": "design, preview, generate and library-manage lifecycle workflow sequences",
       "test": "desktop scenario journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.RecoverProjectDocument",
+      "source": "desktop.App.RecoverProjectDocument",
+      "kind": "desktop",
+      "capability": "recover a selected project document recovery copy",
+      "owner": "bharm16/readmit#264",
+      "screen": "a project maintenance screen",
+      "action": "inspect quota, preview migration, archive or delete with confirmation, and recover documents",
+      "test": "MaintenancePanel.test.tsx journeys plus internal/desktop maintenance tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.RestoreProjectBackup",
+      "source": "desktop.App.RestoreProjectBackup",
+      "kind": "desktop",
+      "capability": "restore a backup into a new destination and reopen the project",
+      "owner": "bharm16/readmit#264",
+      "screen": "a project maintenance screen",
+      "action": "create, verify and restore verified backups of a project",
+      "test": "MaintenancePanel.test.tsx journeys plus internal/desktop maintenance tests",
       "implemented": true
     },
     {
@@ -1672,6 +1782,17 @@
       "screen": "the compare retained executions panel",
       "action": "align retained results assertion by assertion with drift separated",
       "test": "desktop runs behavior tests plus internal/runcompare tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SetProjectQuota",
+      "source": "desktop.App.SetProjectQuota",
+      "kind": "desktop",
+      "capability": "declare retained-file quota limits for a project",
+      "owner": "bharm16/readmit#264",
+      "screen": "a project maintenance screen",
+      "action": "inspect quota, preview migration, archive or delete with confirmation, and recover documents",
+      "test": "MaintenancePanel.test.tsx journeys plus internal/desktop maintenance tests",
       "implemented": true
     },
     {
@@ -2750,6 +2871,17 @@
       "screen": "the credential reference configuration panel",
       "action": "test that a registered credential reference resolves from its store",
       "test": "desktop environment behavior tests plus internal/desktop environment tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.VerifyProjectBackup",
+      "source": "desktop.App.VerifyProjectBackup",
+      "kind": "desktop",
+      "capability": "verify a backup and show evidence, mutable documents, exclusions and credential references separately",
+      "owner": "bharm16/readmit#264",
+      "screen": "a project maintenance screen",
+      "action": "create, verify and restore verified backups of a project",
+      "test": "MaintenancePanel.test.tsx journeys plus internal/desktop maintenance tests",
       "implemented": true
     },
     {

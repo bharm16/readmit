@@ -137,6 +137,8 @@ export function shellResult(): ShellResult {
       { id: "command-palette", title: "Command palette", keys: "Ctrl+K" },
       { id: "search-workspace", title: "Search this workspace", keys: "Ctrl+F" },
       { id: "open-workspace", title: "Open a workspace folder", keys: "Ctrl+O" },
+      { id: "maintain-workspace", title: "Maintain this workspace…" },
+      { id: "check-staged-upgrade", title: "Check a staged upgrade…" },
       { id: "cancel-operation", title: "Cancel the running operation", keys: "Escape" },
     ],
     themes: ["system", "light", "dark"],

@@ -1,0 +1,877 @@
+package desktop
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json/v2"
+	"errors"
+	"io"
+	"io/fs"
+	"os"
+	"path"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/bharm16/readmit/internal/backup"
+	"github.com/bharm16/readmit/internal/index"
+	"github.com/bharm16/readmit/internal/lifecycle"
+	"github.com/bharm16/readmit/internal/project"
+	"github.com/bharm16/readmit/internal/protect"
+	"github.com/bharm16/readmit/internal/secret"
+	"github.com/bharm16/readmit/internal/upgrade"
+)
+
+// Path class labels for one backup inventory row. They separate what a backup
+// holds without exporting secret values or treating indexes as the only copy.
+const (
+	BackupClassEvidence   = "canonical-evidence"
+	BackupClassMutable    = "mutable-project-document"
+	BackupClassExclusion  = "declared-exclusion"
+	BackupClassCredential = "credential-reference"
+	BackupClassProtection = "protection-key-reference"
+	BackupClassOther      = "other-project-file"
+)
+
+// MaintenancePathResult is one native folder choice for backup, restore or upgrade.
+type MaintenancePathResult struct {
+	State  State  `json:"state"`
+	Reason string `json:"reason,omitzero"`
+	Kind   string `json:"kind,omitzero"`
+	Path   string `json:"path,omitzero"`
+}
+
+func (r *MaintenancePathResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
+// BackupInventoryEntry classifies one file or exclusion the maintenance screen shows.
+type BackupInventoryEntry struct {
+	Path        string `json:"path"`
+	Class       string `json:"class"`
+	Size        int64  `json:"size,omitzero"`
+	SHA256      string `json:"sha256,omitzero"`
+	Kind        string `json:"kind,omitzero"`
+	Identity    string `json:"identity,omitzero"`
+	State       string `json:"state,omitzero"`
+	Recorded    string `json:"recorded,omitzero"`
+	Case        string `json:"case,omitzero"`
+	Retention   string `json:"retention,omitzero"`
+	Explanation string `json:"explanation,omitzero"`
+}
+
+// BackupReportView is the typed account of create, verify or restore for the window.
+type BackupReportView struct {
+	Root        string                 `json:"root"`
+	Complete    bool                   `json:"complete"`
+	Files       int                    `json:"files"`
+	Bytes       int64                  `json:"bytes"`
+	Evidence    []BackupInventoryEntry `json:"evidence"`
+	Mutable     []BackupInventoryEntry `json:"mutable"`
+	Exclusions  []BackupInventoryEntry `json:"exclusions"`
+	Credentials []BackupInventoryEntry `json:"credentials"`
+	Protection  []BackupInventoryEntry `json:"protection"`
+	Other       []BackupInventoryEntry `json:"other"`
+}
+
+// BackupResult carries one backup create, verify or restore outcome.
+type BackupResult struct {
+	State  State             `json:"state"`
+	Reason string            `json:"reason,omitzero"`
+	Report *BackupReportView `json:"report,omitzero"`
+}
+
+func (r *BackupResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
+// BackupCreateRequest names the project and the new destination directory.
+type BackupCreateRequest struct {
+	Project     string `json:"project"`
+	Destination string `json:"destination"`
+}
+
+// BackupRestoreRequest names the backup and the new project destination.
+type BackupRestoreRequest struct {
+	Backup      string `json:"backup"`
+	Destination string `json:"destination"`
+}
+
+// ProjectQuotaView is the retained-file quota declaration and measured usage.
+type ProjectQuotaView struct {
+	Declared  bool   `json:"declared"`
+	MaxBytes  int64  `json:"max_bytes,omitzero"`
+	MaxFiles  int    `json:"max_files,omitzero"`
+	UsedBytes int64  `json:"used_bytes"`
+	UsedFiles int    `json:"used_files"`
+	Within    bool   `json:"within"`
+	Explain   string `json:"explain"`
+}
+
+// ProjectQuotaResult carries quota inspection or an updated declaration.
+type ProjectQuotaResult struct {
+	State  State             `json:"state"`
+	Reason string            `json:"reason,omitzero"`
+	Quota  *ProjectQuotaView `json:"quota,omitzero"`
+}
+
+func (r *ProjectQuotaResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
+// ProjectQuotaChange sets both positive limits together.
+type ProjectQuotaChange struct {
+	Project  string `json:"project"`
+	MaxBytes int64  `json:"max_bytes"`
+	MaxFiles int    `json:"max_files"`
+}
+
+// MigrationPreviewResult carries the schema migration preview without writing.
+type MigrationPreviewResult struct {
+	State    State           `json:"state"`
+	Reason   string          `json:"reason,omitzero"`
+	Plan     *lifecycle.Plan `json:"plan,omitzero"`
+	Guidance string          `json:"guidance,omitzero"`
+}
+
+func (r *MigrationPreviewResult) refuse(state State, reason string) {
+	r.State, r.Reason = state, reason
+}
+
+// RetirementPreview is the concrete affected-artifact preview before archive or delete.
+type RetirementPreview struct {
+	Selection  string                    `json:"selection"`
+	Project    string                    `json:"project"`
+	Compatible bool                      `json:"compatible"`
+	Files      int                       `json:"files"`
+	Bytes      int64                     `json:"bytes"`
+	Documents  []lifecycle.Compatibility `json:"documents"`
+	Explain    string                    `json:"explain"`
+	NotErasure string                    `json:"not_erasure"`
+}
+
+// RetirementPreviewResult carries one retirement preview.
+type RetirementPreviewResult struct {
+	State   State              `json:"state"`
+	Reason  string             `json:"reason,omitzero"`
+	Preview *RetirementPreview `json:"preview,omitzero"`
+}
+
+func (r *RetirementPreviewResult) refuse(state State, reason string) {
+	r.State, r.Reason = state, reason
+}
+
+// ProjectArchiveRequest archives or deletes after an explicit preview selection.
+type ProjectArchiveRequest struct {
+	Project     string `json:"project"`
+	Destination string `json:"destination"`
+	Selection   string `json:"selection"`
+	Delete      bool   `json:"delete,omitzero"`
+	Confirm     bool   `json:"confirm,omitzero"`
+}
+
+// ProjectRecoverRequest restores one retained recovery copy by digest.
+type ProjectRecoverRequest struct {
+	Project  string `json:"project"`
+	Document string `json:"document"`
+	Digest   string `json:"digest"`
+}
+
+// ProjectRecoverResult reports a successful document recovery.
+type ProjectRecoverResult struct {
+	State  State  `json:"state"`
+	Reason string `json:"reason,omitzero"`
+	Root   string `json:"root,omitzero"`
+}
+
+func (r *ProjectRecoverResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
+// UpgradeCheckRequest names a staged candidate and the retained artifacts to review.
+type UpgradeCheckRequest struct {
+	Candidate string   `json:"candidate"`
+	Projects  []string `json:"projects,omitzero"`
+	Runs      []string `json:"runs,omitzero"`
+}
+
+// UpgradePrepareRequest takes the rollback archive after administrator approval.
+type UpgradePrepareRequest struct {
+	Project     string `json:"project"`
+	Candidate   string `json:"candidate"`
+	Destination string `json:"destination"`
+	Approve     bool   `json:"approve"`
+}
+
+// UpgradePlanView is the upgrade plan plus the installer handoff the window states.
+type UpgradePlanView struct {
+	Plan             *upgrade.Plan `json:"plan"`
+	InstallerHandoff string        `json:"installer_handoff"`
+	Offline          string        `json:"offline"`
+	SigningDeferred  string        `json:"signing_deferred"`
+}
+
+// UpgradeResult carries check or prepare outcomes.
+type UpgradeResult struct {
+	State  State             `json:"state"`
+	Reason string            `json:"reason,omitzero"`
+	View   *UpgradePlanView  `json:"view,omitzero"`
+	Report *BackupReportView `json:"report,omitzero"`
+}
+
+func (r *UpgradeResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
+const (
+	installerHandoffText  = "Application and service changes use the platform's own installer run by an administrator (apt-get, installer -pkg, msiexec). readmit never elevates, downloads, or interrupts a service when Settings or this screen opens."
+	upgradeOfflineText    = "This check is offline. It opens no network connection and contacts no update service. Stage packages yourself, then point here at that folder."
+	upgradeSigningText    = "Published signature and clean-machine release gates stay outside this screen. A development preview that is not signed for distribution is reported honestly and never auto-installed."
+	retirementNotErasure  = "Unlinking a project is not forensic secure erasure and does not revoke remote copies. The recovery archive is retained."
+	quotaExplainText      = "These are retained-file limits on this project directory, including recovery copies and indexes. They are not free-space reservations. Indexes are disposable and rebuilt from canonical evidence; they are never the only copy of work."
+	migrationGuidanceText = "Supported documents stay unchanged. Indexes rebuild on restore. There is no in-place converter for an unknown schema and no silent rewrite of retained artifacts or historical verdicts. New semantics require a new compatible version."
+)
+
+// ChooseMaintenancePath presents a native folder picker for backup destinations,
+// restore destinations, backup sources, or staged upgrade candidates.
+func (a *App) ChooseMaintenancePath(kind string) MaintenancePathResult {
+	return run(a, true, false, func(ctx context.Context) MaintenancePathResult {
+		title := "Choose a folder"
+		switch kind {
+		case "backup-destination":
+			title = "Choose a new folder for the backup"
+		case "restore-destination":
+			title = "Choose a new folder for the restored project"
+		case "backup-source":
+			title = "Choose the backup folder to verify or restore"
+		case "upgrade-candidate":
+			title = "Choose the staged upgrade package folder"
+		case "archive-destination":
+			title = "Choose a new folder for the recovery archive"
+		default:
+			return MaintenancePathResult{State: Failed, Reason: "unknown maintenance path kind"}
+		}
+		folder, declined := a.chooseFolder(ctx, title)
+		if folder == "" {
+			return MaintenancePathResult{State: declined.state, Reason: declined.reason, Kind: kind}
+		}
+		return MaintenancePathResult{State: Completed, Kind: kind, Path: folder}
+	})
+}
+
+// CreateProjectBackup copies a project into a new verified backup directory.
+func (a *App) CreateProjectBackup(request BackupCreateRequest) BackupResult {
+	return run(a, true, true, func(ctx context.Context) BackupResult {
+		root, declined := resolveProjectPath(request.Project)
+		if root == "" {
+			return BackupResult{State: declined.state, Reason: declined.reason}
+		}
+		if strings.TrimSpace(request.Destination) == "" {
+			return BackupResult{State: Failed, Reason: "backup create requires a new destination folder"}
+		}
+		report, err := backup.Create(ctx, root, request.Destination)
+		if err != nil {
+			return classifyBackupErr(err)
+		}
+		view := viewFromReport(report)
+		classifyProjectFiles(root, &view)
+		state := Completed
+		reason := ""
+		if !report.Complete() {
+			state = Failed
+			reason = "this project holds evidence the backup could not verify; the backup records what it found and puts nothing in its place"
+		}
+		return BackupResult{State: state, Reason: reason, Report: &view}
+	})
+}
+
+// VerifyProjectBackup reads a backup whole and reports what it holds.
+func (a *App) VerifyProjectBackup(path string) BackupResult {
+	return run(a, false, false, func(context.Context) BackupResult {
+		document, err := backup.Verify(path)
+		if err != nil {
+			return classifyBackupErr(err)
+		}
+		view := viewFromDocument(path, document)
+		state := Completed
+		reason := ""
+		if !document.Complete() {
+			state = Failed
+			reason = "this backup holds evidence it could not verify; nothing was put in its place"
+		}
+		return BackupResult{State: state, Reason: reason, Report: &view}
+	})
+}
+
+// RestoreProjectBackup writes a backup into a new project directory and rebuilds indexes.
+func (a *App) RestoreProjectBackup(request BackupRestoreRequest) BackupResult {
+	return run(a, true, true, func(ctx context.Context) BackupResult {
+		if strings.TrimSpace(request.Backup) == "" || strings.TrimSpace(request.Destination) == "" {
+			return BackupResult{State: Failed, Reason: "restore requires a backup folder and a new destination"}
+		}
+		report, err := backup.Restore(ctx, request.Backup, request.Destination, time.Now().UTC())
+		if err != nil {
+			return classifyBackupErr(err)
+		}
+		view := viewFromReport(report)
+		if report.Root != "" {
+			classifyProjectFiles(report.Root, &view)
+		}
+		state := Completed
+		reason := ""
+		if !report.Complete() {
+			state = Failed
+			reason = "this backup holds evidence the restore could not account for; it is reported exactly as it was found and nothing was put in its place"
+		}
+		return BackupResult{State: state, Reason: reason, Report: &view}
+	})
+}
+
+// InspectProjectQuota reports retained-file usage and any declared limits.
+func (a *App) InspectProjectQuota(path string) ProjectQuotaResult {
+	return run(a, false, false, func(context.Context) ProjectQuotaResult {
+		root, declined := resolveProjectPath(path)
+		if root == "" {
+			return ProjectQuotaResult{State: declined.state, Reason: declined.reason}
+		}
+		view, err := readQuotaView(root)
+		if err != nil {
+			return ProjectQuotaResult{State: Failed, Reason: err.Error()}
+		}
+		return ProjectQuotaResult{State: Completed, Quota: &view}
+	})
+}
+
+// SetProjectQuota declares both positive retained-file limits together.
+func (a *App) SetProjectQuota(change ProjectQuotaChange) ProjectQuotaResult {
+	return run(a, false, true, func(context.Context) ProjectQuotaResult {
+		root, declined := resolveProjectPath(change.Project)
+		if root == "" {
+			return ProjectQuotaResult{State: declined.state, Reason: declined.reason}
+		}
+		if err := project.SetQuota(root, project.Quota{Schema: project.QuotaSchema, MaxBytes: change.MaxBytes, MaxFiles: change.MaxFiles}); err != nil {
+			if errors.Is(err, fs.ErrPermission) {
+				return ProjectQuotaResult{State: PermissionDenied, Reason: "this account cannot write into the open workspace"}
+			}
+			return ProjectQuotaResult{State: Failed, Reason: err.Error()}
+		}
+		view, err := readQuotaView(root)
+		if err != nil {
+			return ProjectQuotaResult{State: Failed, Reason: err.Error()}
+		}
+		return ProjectQuotaResult{State: Completed, Quota: &view}
+	})
+}
+
+// PreviewProjectMigration reports supported schemas without changing files.
+func (a *App) PreviewProjectMigration(path string) MigrationPreviewResult {
+	return run(a, true, false, func(ctx context.Context) MigrationPreviewResult {
+		root, declined := resolveProjectPath(path)
+		if root == "" {
+			return MigrationPreviewResult{State: declined.state, Reason: declined.reason}
+		}
+		plan, err := lifecycle.Preview(ctx, root)
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return MigrationPreviewResult{State: Cancelled, Reason: cancelledRefusal.reason}
+			}
+			return MigrationPreviewResult{State: Failed, Reason: err.Error()}
+		}
+		state := Completed
+		reason := ""
+		if !plan.Compatible {
+			state = Failed
+			reason = "unsupported or damaged documents; no migration available"
+		}
+		return MigrationPreviewResult{State: state, Reason: reason, Plan: &plan, Guidance: migrationGuidanceText}
+	})
+}
+
+// PreviewProjectRetirement inventories what archive or delete would affect.
+func (a *App) PreviewProjectRetirement(path string) RetirementPreviewResult {
+	return run(a, true, false, func(ctx context.Context) RetirementPreviewResult {
+		root, declined := resolveProjectPath(path)
+		if root == "" {
+			return RetirementPreviewResult{State: declined.state, Reason: declined.reason}
+		}
+		plan, err := lifecycle.Preview(ctx, root)
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return RetirementPreviewResult{State: Cancelled, Reason: cancelledRefusal.reason}
+			}
+			return RetirementPreviewResult{State: Failed, Reason: err.Error()}
+		}
+		selection, files, bytes, err := retirementSelection(ctx, root)
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return RetirementPreviewResult{State: Cancelled, Reason: cancelledRefusal.reason}
+			}
+			return RetirementPreviewResult{State: Failed, Reason: err.Error()}
+		}
+		return RetirementPreviewResult{
+			State: Completed,
+			Preview: &RetirementPreview{
+				Selection:  selection,
+				Project:    root,
+				Compatible: plan.Compatible,
+				Files:      files,
+				Bytes:      bytes,
+				Documents:  plan.Documents,
+				Explain:    "Archive writes a verified recovery backup and keeps the source. Delete does the same, then unlinks the source only when this selection still matches.",
+				NotErasure: retirementNotErasure,
+			},
+		}
+	})
+}
+
+// ArchiveOrDeleteProject creates a verified recovery archive, optionally deleting the source.
+func (a *App) ArchiveOrDeleteProject(request ProjectArchiveRequest) BackupResult {
+	return run(a, true, true, func(ctx context.Context) BackupResult {
+		root, declined := resolveProjectPath(request.Project)
+		if root == "" {
+			return BackupResult{State: declined.state, Reason: declined.reason}
+		}
+		if strings.TrimSpace(request.Destination) == "" {
+			return BackupResult{State: Failed, Reason: "archive and delete require a new recovery directory"}
+		}
+		if strings.TrimSpace(request.Selection) == "" {
+			return BackupResult{State: Failed, Reason: "archive and delete require a current retirement preview selection"}
+		}
+		if request.Delete && !request.Confirm {
+			return BackupResult{State: Failed, Reason: "project delete requires explicit confirmation; the recovery archive will be retained"}
+		}
+		current, _, _, err := retirementSelection(ctx, root)
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return BackupResult{State: Cancelled, Reason: cancelledRefusal.reason}
+			}
+			return BackupResult{State: Failed, Reason: err.Error()}
+		}
+		if current != request.Selection {
+			return BackupResult{State: Failed, Reason: "the project changed since the retirement preview; nothing was deleted"}
+		}
+		report, operationErr := lifecycle.Archive(ctx, root, request.Destination, request.Delete)
+		view := BackupReportView{}
+		if report.Root != "" {
+			view = viewFromReport(report)
+		}
+		if operationErr != nil {
+			if errors.Is(operationErr, context.Canceled) {
+				return BackupResult{State: Cancelled, Reason: cancelledRefusal.reason, Report: nonemptyReport(view)}
+			}
+			result := classifyBackupErr(operationErr)
+			if report.Root != "" {
+				result.Report = &view
+			}
+			return result
+		}
+		state := Completed
+		reason := ""
+		if !report.Complete() {
+			state = Failed
+			reason = "archive is incomplete; source retained"
+		} else if request.Delete {
+			reason = "Project unlinked; recovery archive retained. This is not secure erasure."
+		}
+		return BackupResult{State: state, Reason: reason, Report: &view}
+	})
+}
+
+// RecoverProjectDocument restores one selected recovery copy and retains the current bytes.
+func (a *App) RecoverProjectDocument(request ProjectRecoverRequest) ProjectRecoverResult {
+	return run(a, false, true, func(context.Context) ProjectRecoverResult {
+		root, declined := resolveProjectPath(request.Project)
+		if root == "" {
+			return ProjectRecoverResult{State: declined.state, Reason: declined.reason}
+		}
+		if err := project.Recover(root, request.Document, request.Digest); err != nil {
+			if errors.Is(err, fs.ErrPermission) {
+				return ProjectRecoverResult{State: PermissionDenied, Reason: "this account cannot write into the open workspace"}
+			}
+			return ProjectRecoverResult{State: Failed, Reason: err.Error()}
+		}
+		return ProjectRecoverResult{State: Completed, Root: root}
+	})
+}
+
+// CheckStagedUpgrade reviews a staged candidate against named retained artifacts.
+func (a *App) CheckStagedUpgrade(request UpgradeCheckRequest) UpgradeResult {
+	return run(a, true, false, func(ctx context.Context) UpgradeResult {
+		if strings.TrimSpace(request.Candidate) == "" {
+			return UpgradeResult{State: Failed, Reason: "upgrade check requires the directory an administrator staged"}
+		}
+		if len(request.Projects)+len(request.Runs) == 0 {
+			return UpgradeResult{State: Failed, Reason: "upgrade check requires at least one project or run: a check that reviewed nothing is not a compatibility review"}
+		}
+		plan, err := upgrade.Check(ctx, request.Candidate, request.Projects, request.Runs)
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return UpgradeResult{State: Cancelled, Reason: cancelledRefusal.reason}
+			}
+			return UpgradeResult{State: Failed, Reason: err.Error()}
+		}
+		view := &UpgradePlanView{
+			Plan:             &plan,
+			InstallerHandoff: installerHandoffText,
+			Offline:          upgradeOfflineText,
+			SigningDeferred:  upgradeSigningText,
+		}
+		state := Completed
+		reason := ""
+		if refused := plan.Refusal(); refused != nil {
+			state = Failed
+			reason = refused.Error()
+		}
+		return UpgradeResult{State: state, Reason: reason, View: view}
+	})
+}
+
+// PrepareStagedUpgrade takes the verified recovery archive an upgrade rolls back to.
+func (a *App) PrepareStagedUpgrade(request UpgradePrepareRequest) UpgradeResult {
+	return run(a, true, true, func(ctx context.Context) UpgradeResult {
+		root, declined := resolveProjectPath(request.Project)
+		if root == "" {
+			return UpgradeResult{State: declined.state, Reason: declined.reason}
+		}
+		if strings.TrimSpace(request.Candidate) == "" || strings.TrimSpace(request.Destination) == "" {
+			return UpgradeResult{State: Failed, Reason: "upgrade prepare requires a staged candidate and a new recovery archive"}
+		}
+		if !request.Approve {
+			return UpgradeResult{State: Failed, Reason: "upgrade prepare requires administrator approval before anything is written"}
+		}
+		plan, err := upgrade.Check(ctx, request.Candidate, []string{root}, nil)
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return UpgradeResult{State: Cancelled, Reason: cancelledRefusal.reason}
+			}
+			return UpgradeResult{State: Failed, Reason: err.Error()}
+		}
+		view := &UpgradePlanView{
+			Plan:             &plan,
+			InstallerHandoff: installerHandoffText,
+			Offline:          upgradeOfflineText,
+			SigningDeferred:  upgradeSigningText,
+		}
+		if !plan.StagedIntact() {
+			return UpgradeResult{State: Failed, Reason: upgrade.ErrNotStaged.Error(), View: view}
+		}
+		if !plan.RetainedReadable() {
+			return UpgradeResult{State: Failed, Reason: upgrade.ErrNotReadable.Error(), View: view}
+		}
+		report, operationErr := lifecycle.Archive(ctx, root, request.Destination, false)
+		var reportView *BackupReportView
+		if report.Root != "" {
+			v := viewFromReport(report)
+			reportView = &v
+		}
+		if operationErr != nil {
+			if errors.Is(operationErr, context.Canceled) {
+				return UpgradeResult{State: Cancelled, Reason: cancelledRefusal.reason, View: view, Report: reportView}
+			}
+			return UpgradeResult{State: Failed, Reason: operationErr.Error(), View: view, Report: reportView}
+		}
+		state := Completed
+		reason := ""
+		if !report.Complete() {
+			state = Failed
+			reason = "rollback archive is incomplete"
+		} else if refused := plan.Refusal(); refused != nil {
+			reason = "Rollback point taken. Installing this candidate is still refused: " + refused.Error()
+		}
+		return UpgradeResult{State: state, Reason: reason, View: view, Report: reportView}
+	})
+}
+
+func resolveProjectPath(path string) (string, refusal) {
+	root, declined := resolveFolder(path)
+	if root == "" {
+		return "", declined
+	}
+	if _, err := project.Open(root); err != nil {
+		return "", probeReadFailure(root)
+	}
+	return root, refusal{}
+}
+
+func readQuotaView(root string) (ProjectQuotaView, error) {
+	q, present, err := project.ReadQuota(root)
+	if err != nil {
+		return ProjectQuotaView{}, err
+	}
+	usage, checkErr := project.CheckQuota(root)
+	view := ProjectQuotaView{
+		Declared:  present,
+		UsedBytes: usage.Bytes,
+		UsedFiles: usage.Files,
+		Within:    checkErr == nil,
+		Explain:   quotaExplainText,
+	}
+	if present {
+		view.MaxBytes = q.MaxBytes
+		view.MaxFiles = q.MaxFiles
+	}
+	return view, nil
+}
+
+func retirementSelection(ctx context.Context, root string) (string, int, int64, error) {
+	opened, err := os.OpenRoot(root)
+	if err != nil {
+		return "", 0, 0, errors.New("cannot inspect retirement source")
+	}
+	defer opened.Close()
+	type row struct {
+		Name   string
+		Size   int64
+		Digest string
+	}
+	var rows []row
+	var total int64
+	err = fs.WalkDir(opened.FS(), ".", func(name string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return errors.New("cannot enumerate retirement source")
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil || !info.Mode().IsRegular() {
+			return errors.New("retirement refuses nonregular entries")
+		}
+		total += info.Size()
+		f, err := opened.Open(name)
+		if err != nil {
+			return errors.New("cannot read retirement source")
+		}
+		h := sha256.New()
+		n, err := io.Copy(h, io.LimitReader(f, backup.MaxFileBytes+1))
+		closeErr := f.Close()
+		if err != nil || closeErr != nil || n != info.Size() {
+			return errors.New("retirement source changed or could not be read")
+		}
+		rows = append(rows, row{Name: name, Size: n, Digest: hex.EncodeToString(h.Sum(nil))})
+		return nil
+	})
+	if err != nil {
+		return "", 0, 0, err
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].Name < rows[j].Name })
+	h := sha256.New()
+	for _, entry := range rows {
+		_, _ = io.WriteString(h, entry.Name+"\n"+entry.Digest+"\n")
+	}
+	return hex.EncodeToString(h.Sum(nil)), len(rows), total, nil
+}
+
+func viewFromReport(report backup.Report) BackupReportView {
+	view := BackupReportView{
+		Root:        report.Root,
+		Complete:    report.Complete(),
+		Files:       report.Files,
+		Bytes:       report.Bytes,
+		Evidence:    []BackupInventoryEntry{},
+		Mutable:     []BackupInventoryEntry{},
+		Exclusions:  []BackupInventoryEntry{},
+		Credentials: []BackupInventoryEntry{},
+		Protection:  []BackupInventoryEntry{},
+		Other:       []BackupInventoryEntry{},
+	}
+	for _, entry := range report.Evidence {
+		view.Evidence = append(view.Evidence, BackupInventoryEntry{
+			Path:        entry.Name,
+			Class:       BackupClassEvidence,
+			Kind:        string(entry.Kind),
+			Identity:    entry.Identity,
+			State:       string(entry.State),
+			Recorded:    string(entry.Recorded),
+			Explanation: "Canonical registered evidence. Incomplete accounts stay incomplete; nothing is substituted.",
+		})
+	}
+	for _, entry := range report.Indexes {
+		view.Exclusions = append(view.Exclusions, BackupInventoryEntry{
+			Path:        entry.Name,
+			Class:       BackupClassExclusion,
+			Case:        entry.Case,
+			State:       string(entry.State),
+			Explanation: "Derived index declarations only. Disposable; rebuilt from canonical evidence. Never the only copy of work.",
+		})
+	}
+	return view
+}
+
+func viewFromDocument(root string, document backup.Document) BackupReportView {
+	view := BackupReportView{
+		Root:        root,
+		Complete:    document.Complete(),
+		Files:       len(document.Files),
+		Evidence:    []BackupInventoryEntry{},
+		Mutable:     []BackupInventoryEntry{},
+		Exclusions:  []BackupInventoryEntry{},
+		Credentials: []BackupInventoryEntry{},
+		Protection:  []BackupInventoryEntry{},
+		Other:       []BackupInventoryEntry{},
+	}
+	var bytes int64
+	for _, file := range document.Files {
+		bytes += file.Size
+		entry := BackupInventoryEntry{Path: file.Path, Size: file.Size, SHA256: file.SHA256}
+		switch classOfProjectFile(file.Path, schemaOfStoredFile(root, file.Path)) {
+		case BackupClassMutable:
+			entry.Class = BackupClassMutable
+			entry.Explanation = "Mutable project document. Edited separately from immutable evidence."
+			view.Mutable = append(view.Mutable, entry)
+		case BackupClassCredential:
+			entry.Class = BackupClassCredential
+			entry.Explanation = "Credential reference document. References only; secret values are never exported."
+			view.Credentials = append(view.Credentials, entry)
+		case BackupClassProtection:
+			entry.Class = BackupClassProtection
+			entry.Explanation = "Protection control with an external key reference. Key material is never stored or rendered."
+			view.Protection = append(view.Protection, entry)
+		default:
+			entry.Class = BackupClassOther
+			view.Other = append(view.Other, entry)
+		}
+	}
+	view.Bytes = bytes
+	for _, entry := range document.Evidence {
+		view.Evidence = append(view.Evidence, BackupInventoryEntry{
+			Path:        entry.Name,
+			Class:       BackupClassEvidence,
+			Kind:        string(entry.Kind),
+			Identity:    entry.Identity,
+			State:       string(entry.State),
+			Explanation: "Canonical registered evidence recorded in the backup manifest.",
+		})
+	}
+	for _, entry := range document.Indexes {
+		view.Exclusions = append(view.Exclusions, BackupInventoryEntry{
+			Path:        entry.Name,
+			Class:       BackupClassExclusion,
+			Case:        entry.Case,
+			Retention:   string(entry.Retention),
+			State:       string(recordedIndex(entry)),
+			Explanation: "Index recipe only. Values were not copied; restore rebuilds from evidence.",
+		})
+	}
+	return view
+}
+
+func recordedIndex(entry backup.Index) backup.IndexState {
+	if entry.Recipe == backup.Declared {
+		return backup.IndexRecorded
+	}
+	if entry.Recipe == backup.Unregistered {
+		return backup.IndexUnregistered
+	}
+	return backup.IndexUndeclared
+}
+
+func classifyProjectFiles(root string, view *BackupReportView) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !entry.Type().IsRegular() {
+			continue
+		}
+		name := entry.Name()
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		schema := peekSchema(filepath.Join(root, name))
+		class := classOfProjectFile(name, schema)
+		row := BackupInventoryEntry{Path: name, Class: class, Size: info.Size()}
+		switch class {
+		case BackupClassMutable:
+			row.Explanation = "Mutable project document."
+			if !containsPath(view.Mutable, name) {
+				view.Mutable = append(view.Mutable, row)
+			}
+		case BackupClassCredential:
+			row.Explanation = "Credential reference document. Values stay in the external store."
+			if !containsPath(view.Credentials, name) {
+				view.Credentials = append(view.Credentials, row)
+			}
+		case BackupClassProtection:
+			row.Explanation = "Protection key reference. Key material is never exported."
+			if !containsPath(view.Protection, name) {
+				view.Protection = append(view.Protection, row)
+			}
+		}
+	}
+}
+
+func classOfProjectFile(name, schema string) string {
+	base := path.Base(name)
+	switch base {
+	case project.DocumentName, project.RevisionsDocumentName, project.QuotaDocumentName:
+		return BackupClassMutable
+	}
+	if strings.HasPrefix(base, project.DocumentName+".recovery-") ||
+		strings.HasPrefix(base, project.RevisionsDocumentName+".recovery-") ||
+		strings.HasPrefix(base, project.QuotaDocumentName+".recovery-") {
+		return BackupClassMutable
+	}
+	switch schema {
+	case secret.Schema:
+		return BackupClassCredential
+	case protect.Schema:
+		return BackupClassProtection
+	case index.Schema:
+		return BackupClassExclusion
+	}
+	return BackupClassOther
+}
+
+func peekSchema(path string) string {
+	data := mustReadPrefix(path)
+	var probe struct {
+		Schema string `json:"schema"`
+	}
+	_ = json.Unmarshal(data, &probe)
+	return probe.Schema
+}
+
+func schemaOfStoredFile(backupRoot, relative string) string {
+	return peekSchema(filepath.Join(backupRoot, backup.FilesDirectory, filepath.FromSlash(relative)))
+}
+
+func mustReadPrefix(path string) []byte {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	data, _ := io.ReadAll(io.LimitReader(f, 4096))
+	return data
+}
+
+func containsPath(entries []BackupInventoryEntry, name string) bool {
+	for _, entry := range entries {
+		if entry.Path == name {
+			return true
+		}
+	}
+	return false
+}
+
+func nonemptyReport(view BackupReportView) *BackupReportView {
+	if view.Root == "" {
+		return nil
+	}
+	return &view
+}
+
+func classifyBackupErr(err error) BackupResult {
+	if err == nil {
+		return BackupResult{State: Failed, Reason: "backup operation failed"}
+	}
+	if errors.Is(err, context.Canceled) {
+		return BackupResult{State: Cancelled, Reason: cancelledRefusal.reason}
+	}
+	msg := err.Error()
+	if errors.Is(err, fs.ErrPermission) || strings.Contains(msg, "permission") {
+		return BackupResult{State: PermissionDenied, Reason: "this account cannot write into the chosen folder"}
+	}
+	if strings.Contains(msg, "no space") || strings.Contains(msg, "disk full") {
+		return BackupResult{State: Failed, Reason: "the destination volume has no space for this backup"}
+	}
+	return BackupResult{State: Failed, Reason: msg}
+}
