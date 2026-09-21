@@ -82,7 +82,7 @@ test("the canonical editor shows expected values on import and exports exact byt
     ExportTest: (request) =>
       canonicalResult({ output: request.output, identity: "exported-spec-identity" }),
   });
-  render(<CanonicalTestEditor workspace={WORKSPACE_ROOT} busy={false} />);
+  render(<CanonicalTestEditor workspace={WORKSPACE_ROOT} drafts={null} busy={false} />);
   await user.type(screen.getByLabelText("Test file in this workspace"), "saved-test.json");
   await user.click(screen.getByRole("button", { name: "Import and show values" }));
   expect(facade.oneCall("ImportTest")).toEqual([WORKSPACE_ROOT, "saved-test.json"]);
@@ -107,7 +107,7 @@ test("a refused export keeps the edit in the window and says why", async () => {
     ImportTest: () => canonicalResult({ document: "COMPLETE-CANONICAL-SPEC" }),
     ExportTest: () => refused("That name is already an entry of this workspace."),
   });
-  render(<CanonicalTestEditor workspace={WORKSPACE_ROOT} busy={false} />);
+  render(<CanonicalTestEditor workspace={WORKSPACE_ROOT} drafts={null} busy={false} />);
   await user.type(screen.getByLabelText("Test file in this workspace"), "saved-test.json");
   await user.click(screen.getByRole("button", { name: "Import and show values" }));
   await user.type(screen.getByLabelText("New test file in this workspace"), "exported-test.json");

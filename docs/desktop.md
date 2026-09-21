@@ -261,6 +261,9 @@ artifacts are never reported as completed.
 | `RecordView` | Retains the workspace, case, region and run this viewer has open. |
 | `SaveDraft` | Retains one note that has been typed and not stored yet. |
 | `DiscardDraft` | Drops one retained draft, once the note it was an edit of has been stored. |
+| `SaveEditorDraft` | Retains one editor's unstored work under an internal identity, replacing the draft it continues. |
+| `DiscardEditorDraft` | Drops one retained editor draft, once its work is stored or the person asked. |
+| `EditorDrafts` | Lists every editor draft this viewer has retained. |
 | `Compare` | Aligns two collections of the open workspace and reports one window of the rows both panes draw. |
 | `EditReproducer` | Adds one step to a reproducer plan and reports what it now means over the case. |
 | `UndoReproducer` | Removes the last step of a plan and resolves what remains. |
@@ -279,16 +282,17 @@ artifacts are never reported as completed.
 Exactly one operation runs at a time. A second request reports `busy` rather
 than racing the first, and a finished operation always releases the slot,
 including after a failure or a cancellation, so the next request proceeds.
-`RecentWorkspaces`, `Filters`, `Shell`, `RecordView`, `SaveDraft` and
-`DiscardDraft` are the exceptions. The first two read one small local file each
-and `Shell` reads nothing at all, so none of them claims the slot and all stay
-available while an operation runs: the recent list, the selected filter, the
-command palette and the privacy status work whenever the window is open. The
-last three write one small local file each and do not claim it either, for a
-different reason: a crash while a case is being verified is exactly when
-unstored work has to survive, so refusing to retain it because an operation is
-running would lose the state recovery needs most. They are serialized among
-themselves, so a reader never observes a partial document. `Shell` cannot
+`RecentWorkspaces`, `Filters`, `Shell`, `RecordView`, `SaveDraft`,
+`DiscardDraft`, `SaveEditorDraft`, `DiscardEditorDraft` and `EditorDrafts` are
+the exceptions. The first three read one small local file each — `Shell` reads
+nothing at all — so none of them claims the slot and all stay available while
+an operation runs: the recent list, the selected filter, the command palette
+and the privacy status work whenever the window is open. The rest write one
+small local file each and do not claim it either, for a different reason: a
+crash while a case is being verified is exactly when unstored work has to
+survive, so refusing to retain it because an operation is running would lose
+the state recovery needs most. They are serialized among themselves, so a
+reader never observes a partial document. `Shell` cannot
 fail in the facade; it still carries a state, because the binding itself is
 unavailable while the application is starting, and the window says so rather
 than drawing itself with no commands and no privacy status.
@@ -1077,6 +1081,31 @@ user configuration directory:
 {"schema":"readmit-desktop-session/v1","view":{"workspace":"/absolute/folder","region":"evidence","case":"regression","run":"/absolute/folder/job-001"},"drafts":[{"project":"/absolute/folder","note":{"name":"triage","subject":"regression","title":"First pass","body":"still writing this"}}]}
 ```
 
+Everything else a person had not stored — the notes they were writing before
+those notes had names or titles, the test draft they were answering, the
+canonical document they were editing, the reproducer plan they were still
+adding steps to — lives in the separate editor draft store, one bounded,
+versioned `readmit-desktop-drafts/v1` document in `drafts.json` beside it:
+
+```json
+{"schema":"readmit-desktop-drafts/v1","drafts":[{"id":"32-hex-identity","kind":"note","workspace":"/absolute/folder","case":"","identity":"","content_schema":"readmit-note-draft/v1","content":{"schema":"readmit-note-draft/v1","name":"","subject":"","title":"","body":"still writing this"}}]}
+```
+
+One draft is one editor's unstored work, named by an internal identity the
+store mints and held to no rule of a final artifact: a note with no name and no
+title yet is retained exactly like a finished one. The envelope carries the
+editor's kind and the contract the content declares; the content itself is
+interpreted only by the editor that owns it, through that contract's own strict
+reader, so an editor a later release adds can adopt the store without changing
+it. A draft names the workspace it belongs to and, where one applies, the case
+entry and the verified identity it was authored against — so a restored draft
+is adopted only beside the evidence it was written against, and one authored
+against evidence that has since changed or moved is offered as the stale work
+it is, never silently rebound. The store holds no credential value and no
+approval: no editor draft can express either, credentials being references
+([ADR-0006](adr/0006-credentials-are-referenced-never-stored.md)) and an
+approval being a typed decision about bytes just read, never a document.
+
 It is separate from finalized evidence in every sense. It is written outside any
 case, run, result, review or report — the same output policy that refuses every
 other write into retained evidence refuses this one — and it is a per-viewer
@@ -1087,30 +1116,39 @@ already holds, so working text retained here is working text
 nothing into the project, and storing it stays a separate deliberate step.
 
 `RecordView` retains the open workspace, the entry selected in it, the region
-holding focus, and the durable run being watched. `SaveDraft` retains one note
-under the name it will be stored as, replacing exactly that draft; `DiscardDraft`
-drops one, which is what the window does once the note has actually been stored,
-so recovery offers back only work that is still unstored. A viewer retains at
-most 16 drafts, and past that bound the new edit is refused rather than an
-existing one being dropped.
+holding focus, and the durable run being watched. Retaining an editor draft
+replaces exactly the draft it continues, under the identity the store minted
+for it; discarding one drops it, which is what each editor does once its work
+has actually been stored, so recovery offers back only work that is still
+unstored. A viewer retains at most 16 editor drafts, and past that bound the
+new draft is refused rather than an existing one being dropped.
 
 `RecoverSession` is what the window calls when it opens. It returns the retained
-view and every retained draft, and when the session names a durable run it
+view and every retained note draft, and when the session names a durable run it
 reopens that run through the same read-only recovery `OpenDurableRun` uses. The
 window reads it once and hands the answer to the panels that show it, so only
 one of them claims the operation slot.
 
 In the window this is two panels. **Restored after an interruption** states what
 came back — where you were, the state of the run you were watching, and every
-unstored note, each of which can be discarded. **Write a note** is the editor:
-every keystroke is retained through `SaveDraft` — one retention at a time, always
-of the newest text, so a slow earlier write cannot land after a later one —
+unstored note, each of which can be discarded — and offers **Reopen where you
+were** as the one way to go back there. Reopening is a person's own decision,
+made by pressing that button: it opens the retained folder, verifies the
+retained case the ordinary way and moves focus to the retained region, and
+nothing restores itself. What has moved, changed or become unsupported meets
+the same refusal any read meets, shown beside the listing to reopen from, so a
+draft is never bound to different evidence silently. **Write a note** is the
+editor: every keystroke is retained — one retention at a time, always of the
+newest text, from the first letter, before the note has a name or a title —
 **Store this note in the project** writes it into `revisions.json` through
 `SaveNote` and then discards the draft, and a store the project refuses leaves
-the draft retained, because text the project did not take is still unstored work.
-A draft may name the case or revision it is about; whether that subject is one
-the project registers is checked when the note is stored, not while it is being
-typed, because a draft is written before the project is opened. Starting either action in
+the draft retained, because text the project did not take is still unstored
+work. The test authoring, canonical editor and reproducer panels retain through
+the same store the same way, each dropping its draft only once its spec,
+export or build has actually been written. A draft may name the case or
+revision it is about; whether that subject is one the project registers is
+checked when the note is stored, not while it is being typed, because a draft
+is written before the project is opened. Starting either action in
 **Durable test runs** records that folder as the run being watched and waits for
 that record before the action runs, so a crash during a send finds the session
 already naming the folder that holds its evidence. Renaming a note while it is
@@ -1132,17 +1170,33 @@ restored regardless.
 | What is retained | What is not |
 | --- | --- |
 | The workspace, case, region and run that were open | Anything read out of a case: message bytes, field values, decoded text |
-| Notes typed and not stored yet | Notes already stored, which are in the project's own document |
+| Notes typed and not stored yet — from the first letter, before a note has a name or a title | Notes already stored, which are in the project's own document |
+| The test draft, canonical edit and reproducer plan a person was still editing, each under its own internal identity | A credential value, an approval, or any grant a person did not explicitly record |
 | Nothing else | A verdict, a resumed run, or a second send |
 
 Unknown members, unknown versions, a relative folder path, a case naming
 anything but one entry of the open workspace, a region the window does not
-declare, and drafts that are unsorted, duplicated or past the note rule are all
+declare, and drafts that are unsorted, duplicated or past their bounds are all
 errors. There is no migration and no repair. A document this release cannot read
 is reported and left exactly as written: retaining into it is refused rather
 than replacing it, and the rest of the window keeps working. It is replaced
 atomically, so a reader never observes a partial session, and an interrupted
 write retained beside it is reported rather than reused.
+
+A retention the facade refused is never shown as kept: every editor says
+whether its last retention is in flight, retained, refused — with a retry, an
+explicit discard, or, when the identity it was writing under is no longer
+held, an explicit decision to keep the text as a new draft — so text that was
+never durably acknowledged is never claimed as saved. Closing the window needs
+no warning while every edit is retained; after a refused retention there is
+text that was typed and never acknowledged, so closing asks first.
+
+Navigation is committed, not attempted. Opening another folder or verifying
+another case changes what the window shows only once the facade has accepted
+it: a dismissed dialog, an unopenable folder or a refused verification leaves
+the open workspace, the verified case and every panel derived from them on
+screen, with the refusal shown beside them, and an answer that arrives for an
+earlier request after a newer one was asked is dropped rather than shown.
 
 ## The window
 
@@ -1379,11 +1433,6 @@ checked to hold no network call and no browser storage at all.
 - Sharing a working session between viewers or machines, retaining more than one
   session per viewer, and any history of what a draft said before it was
   replaced.
-- Retaining an unbuilt reproducer plan or an unsaved test draft across an
-  interruption. The working session is one bounded versioned document and it
-  gains no member here, so unstored work of either kind is lost with the window;
-  a reproducer that was built and a test that was saved are on disk and are read
-  back from what was written.
 - Running a test against anything but the practice receiver of
   [the guided sample](guided-sample.md), which is the built-in fixture bound on
   a loopback port inside this application. Executing a spec against a real

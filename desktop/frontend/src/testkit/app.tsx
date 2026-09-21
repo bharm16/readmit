@@ -24,12 +24,15 @@ export async function renderApp(handlers: FacadeHandlers = {}) {
     RecentWorkspaces: () => recentResult([]),
     Filters: () => filtersResult(),
     RecoverSession: () => ({ state: "empty" }),
+    EditorDrafts: () => ({ state: "empty" }),
     OperationStatus: () => ({ state: "empty", selected: false }),
     // Retaining where the viewer is and dropping a stored draft answer
     // quietly unless a test is about them.
     RecordView: () => sessionStored,
     SaveDraft: () => sessionStored,
     DiscardDraft: () => sessionStored,
+    SaveEditorDraft: () => ({ state: "completed" }),
+    DiscardEditorDraft: () => ({ state: "completed" }),
     Cancel: async () => {},
     // Opening a folder re-reads the guided sample out of it.
     Guide: () => guideResult("sample", 0),

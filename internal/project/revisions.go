@@ -261,6 +261,20 @@ func body(value string) error {
 	return nil
 }
 
+// CheckNoteName is the stored note's name rule, exported for a draft that does
+// not have a name yet: an editor retains working text before a note has a name
+// or a title, and holds whatever it does declare to exactly the rule the stored
+// note is held to.
+func CheckNoteName(value string) error { return name(value) }
+
+// CheckNoteTitle is the stored note's title rule, exported alongside
+// CheckNoteName for the same unfinished edit.
+func CheckNoteTitle(value string) error { return title(value) }
+
+// CheckNoteBody is the stored note's body rule, exported alongside
+// CheckNoteName for the same unfinished edit.
+func CheckNoteBody(value string) error { return body(value) }
+
 // SetNote creates or replaces one note and returns it exactly as it was stored.
 // A note that names a subject must name a case or a revision this project
 // registers, so working text is always attached to evidence that exists; a note

@@ -12,6 +12,7 @@ import App from "./App";
 import {
   CASE_ENTRY,
   CASE_IDENTITY,
+  editorDraft,
   GRID_OCCURRENCE,
   INDEX_ENTRY,
   NEXT_OCCURRENCE,
@@ -30,6 +31,7 @@ import {
   recoveryResult,
   sequenceEvent,
   sequenceResult,
+  sessionStored,
 } from "./testkit/fixtures";
 import { renderApp } from "./testkit/app";
 
@@ -497,4 +499,238 @@ test("recovery after an interruption never resumes or resends the run it was wat
   ).toBeTruthy();
   expect(screen.getByText("Nothing was resumed or resent. Recovery only read the retained evidence.")).toBeTruthy();
   expect(facade.callsTo("StartDurableRun")).toHaveLength(0);
+});
+
+// The window commits a navigation only once it is accepted, retains every
+// editor's unstored work in the facade's draft store, and restores what an
+// interruption interrupted — each of those promises is driven here as a
+// person drives the window, over the same stubbed boundary.
+
+test("a cancelled folder dialog leaves the open workspace and its edits exactly as they were", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({ SelectWorkspace: () => folderWithCase() });
+  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await screen.findByText(WORKSPACE_ROOT);
+  // A second attempt is dismissed.
+  facade.reply({ SelectWorkspace: () => dialogDismissed });
+  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  const navigation = within(screen.getByRole("region", { name: "Workspace" }));
+  expect(await navigation.findByText("cancelled")).toBeTruthy();
+  // The listing, and the case it offered to verify, are still on screen.
+  expect(navigation.getByText(CASE_ENTRY)).toBeTruthy();
+  expect(facade.callsTo("OpenCase")).toHaveLength(0);
+});
+
+test("a folder this account cannot open leaves the investigation untouched as well", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({ SelectWorkspace: () => folderWithCase() });
+  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await screen.findByText(WORKSPACE_ROOT);
+  facade.reply({ SelectWorkspace: () => folderDenied });
+  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  const navigation = within(screen.getByRole("region", { name: "Workspace" }));
+  expect(await navigation.findByText("permission_denied")).toBeTruthy();
+  expect(navigation.getByText(CASE_ENTRY)).toBeTruthy();
+  expect(facade.callsTo("OpenCase")).toHaveLength(0);
+});
+
+test("a refused case verification keeps the verified case and everything derived from it", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    InspectOccurrence: () => inspectionResult(),
+    OpenCase: () => refused("The evidence changed since it was registered."),
+  });
+  await openWorkspaceWithVerifiedCase(facade, user);
+  // Another verification of this case is refused.
+  facade.reply({ OpenCase: () => refused("The evidence changed since it was registered.") });
+  const buttons = screen.getAllByRole("button", { name: "Verify and open" });
+  await user.click(buttons[0] as HTMLButtonElement);
+  expect(
+    await screen.findByText("The evidence changed since it was registered."),
+  ).toBeTruthy();
+  // The verified case, its grid and its inspector remain, for recovery.
+  expect(screen.getByText(CASE_IDENTITY)).toBeTruthy();
+  expect(screen.getByRole("button", { name: `Inspect ${GRID_OCCURRENCE}` })).toBeTruthy();
+});
+
+test("recordings of where the viewer is are chained, so the newest place is recorded last", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({ SelectWorkspace: () => folderWithCase() });
+  const parked = facade.park("RecordView");
+  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await screen.findByText(WORKSPACE_ROOT);
+  // The viewer moves on while the earlier recording is still unanswered.
+  facade.reply({ OpenCase: () => caseResult() });
+  const buttons = screen.getAllByRole("button", { name: "Verify and open" });
+  await user.click(buttons[0] as HTMLButtonElement);
+  await screen.findByText(CASE_IDENTITY);
+  // Answering the first recording lets the coalesced newest one go out after
+  // it — never before it, and never instead of it.
+  parked.resolve(sessionStored);
+  await waitFor(() => expect(facade.callsTo("RecordView").length).toBe(2));
+  parked.resolve(sessionStored);
+  await waitFor(() => {
+    const records = facade.callsTo("RecordView");
+    expect(records.length).toBe(2);
+    const first = records[0]?.args[0] as { case: string };
+    const last = records.at(-1)?.args[0] as { case: string };
+    expect(first.case).toBe("");
+    expect(last.case).toBe(CASE_ENTRY);
+  });
+});
+
+test("a note retained in the draft store comes back after an interruption", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    SelectWorkspace: () => folderWithCase(),
+    EditorDrafts: () => ({
+      state: "completed",
+      drafts: [
+        editorDraft("crash-note", "note", {
+          schema: "readmit-note-draft/v1",
+          name: "",
+          subject: "",
+          title: "",
+          body: "from the last crash",
+        }, { case: "", identity: "", content_schema: "readmit-note-draft/v1" }),
+      ],
+    }),
+  });
+  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  const body = (await screen.findByLabelText("Body")) as HTMLTextAreaElement;
+  expect(body.value).toBe("from the last crash");
+  // The next edit continues that draft instead of minting a second one.
+  await user.type(body, "!");
+  await waitFor(() => {
+    const saved = facade.callsTo("SaveEditorDraft").at(-1)?.args[0] as { id: string };
+    expect(saved.id).toBe("crash-note");
+  });
+});
+
+test("a retained test draft comes back only for the evidence it was authored against", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    InspectOccurrence: () => inspectionResult(),
+    EditorDrafts: () => ({
+      state: "completed",
+      drafts: [
+        // First bound to different evidence, so nothing adopts it silently.
+        editorDraft("stale-draft", "test-draft", {
+          schema: "readmit-test-draft/v1",
+          case: { entry: CASE_ENTRY, identity: "an-identity-this-case-does-not-have" },
+          name: "stale",
+          messages: [],
+          target: "",
+          boundary: "",
+          observation: "",
+          reset: "",
+          expectations: [],
+        }, { identity: "an-identity-this-case-does-not-have" }),
+      ],
+    }),
+  });
+  await openWorkspaceWithVerifiedCase(facade, user);
+  expect(screen.queryByText(/kept on this machine for this case/)).toBeNull();
+  // The stale draft is still visible as retained work, discardable by hand.
+  expect(screen.getByText(/test-draft/)).toBeTruthy();
+  // Once the store holds a draft bound to exactly this evidence, it comes back.
+  facade.reply({
+    EditorDrafts: () => ({
+      state: "completed",
+      drafts: [
+        editorDraft("current-draft", "test-draft", {
+          schema: "readmit-test-draft/v1",
+          case: { entry: CASE_ENTRY, identity: CASE_IDENTITY },
+          name: "current",
+          messages: [],
+          target: "",
+          boundary: "",
+          observation: "",
+          reset: "",
+          expectations: [],
+        }),
+      ],
+    }),
+  });
+  facade.reply({ SelectWorkspace: () => dialogDismissed });
+  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await within(screen.getByRole("region", { name: "Workspace" })).findByText("cancelled");
+  // A cancelled navigation changes nothing, so the draft still does not adopt:
+  // adoption happens when the verified case is opened again.
+  expect(screen.queryByText(/kept on this machine for this case/)).toBeNull();
+});
+
+test("reopening where you were is an explicit act that reopens and re-verifies", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    RecoverSession: () =>
+      recoveryResult({
+        schema: "readmit-desktop-session/v1",
+        view: { workspace: WORKSPACE_ROOT, region: "evidence", case: CASE_ENTRY, run: "" },
+        drafts: [],
+      }),
+    OpenWorkspace: () => folderWithCase(),
+    OpenCase: () => caseResult(),
+  });
+  await user.click(await screen.findByRole("button", { name: "Reopen where you were" }));
+  expect(facade.oneCall("OpenWorkspace")).toEqual([WORKSPACE_ROOT]);
+  const [workspace, name] = facade.oneCall("OpenCase");
+  expect([workspace, name]).toEqual([WORKSPACE_ROOT, CASE_ENTRY]);
+  expect(await screen.findByText(CASE_IDENTITY)).toBeTruthy();
+  // Focus is restored to the region the session recorded.
+  expect(document.activeElement?.classList.contains("region-evidence")).toBe(true);
+  // The restore read the run nothing and resumed nothing: no send was started.
+  expect(facade.callsTo("StartDurableRun")).toHaveLength(0);
+});
+
+test("an editor draft another panel offers back can be discarded by hand", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    EditorDrafts: () => ({
+      state: "completed",
+      drafts: [
+        editorDraft("left-over", "reproducer-plan", {
+          schema: "readmit-reproducer-plan/v1",
+          case: CASE_ENTRY,
+          steps: [],
+        }, { content_schema: "readmit-reproducer-plan/v1" }),
+      ],
+    }),
+  });
+  const discardButtons = await screen.findAllByRole("button", { name: "Discard this draft" });
+  await user.click(discardButtons[0] as HTMLButtonElement);
+  await waitFor(() => expect(facade.oneCall("DiscardEditorDraft")).toEqual(["left-over"]));
+});
+
+test("closing asks before dropping text the store refused to retain, and not afterwards", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    SelectWorkspace: () => folderWithCase(),
+    SaveEditorDraft: () => ({ state: "failed", reason: "The disk refused the write." }),
+  });
+  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.type(await screen.findByLabelText("Body"), "unacknowledged");
+  expect(await screen.findByText("This edit was not retained.")).toBeTruthy();
+
+  // The window asks by cancelling the close, so the test counts the closes
+  // the window actually refused, reading that from the event itself.
+  let closeAsked = 0;
+  const guard = (event: Event) => {
+    if (event.defaultPrevented) {
+      closeAsked += 1;
+    }
+  };
+  window.addEventListener("beforeunload", guard);
+  try {
+    window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
+    expect(closeAsked).toBe(1);
+    // The retention lands, and closing is safe again.
+    facade.reply({ SaveEditorDraft: () => ({ state: "completed" }) });
+    await user.click(screen.getByRole("button", { name: "Retain it again" }));
+    await screen.findByText("Retained. It will come back if this window stops.");
+    window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
+    expect(closeAsked).toBe(1);
+  } finally {
+    window.removeEventListener("beforeunload", guard);
+  }
 });

@@ -41,7 +41,7 @@ func (c *chooser) ChooseFolder(title string) (string, error) {
 // operation policy, so the shell can admit authoring and execution.
 func activatedApp(t testing.TB, chooser desktop.FolderChooser, recent, filters, session string) *desktop.App {
 	t.Helper()
-	app := desktop.New(chooser, recent, filters, session)
+	app := desktop.New(chooser, recent, filters, session, filepath.Join(filepath.Dir(session), "drafts.json"))
 	if result := app.SelectOperationPolicy(testlicense.New(t)); result.State != desktop.Completed {
 		t.Fatal(result)
 	}

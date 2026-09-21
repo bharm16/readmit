@@ -192,7 +192,7 @@ func TestTheGuidedSampleTakesTheSameOperationSlot(t *testing.T) {
 	spec := authorGuidedTest(t, app, root, "reschedule-test.json", 1)
 
 	reentrant := &chooser{folder: root}
-	second := desktop.New(reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
+	second := desktop.New(reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"), filepath.Join(filepath.Dir(filepath.Join(t.TempDir(), "session.json")), "drafts.json"))
 	var progress desktop.GuideResult
 	var practice desktop.PracticeResult
 	reentrant.before = func() {

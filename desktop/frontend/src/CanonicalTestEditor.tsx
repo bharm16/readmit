@@ -1,19 +1,26 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   exportTest,
   importTest,
   validateTest,
   type CanonicalTestResult,
+  type EditorDraft,
 } from "./bindings";
+import { RetentionStatus, draftFor, useRetainer } from "./drafting";
 
-/** The full canonical document stays in memory, including clauses the guided
- * draft cannot express. Only the engine validates it; exporting creates a new
- * document beside the original so relative references retain their base. */
+/** The full canonical document stays in memory and is retained as it is
+ * edited, including clauses the guided draft cannot express and errors the
+ * reader would refuse today: a draft is kept under its own identity and never
+ * has to be a valid final artifact. Only the engine validates it; exporting
+ * creates a new document beside the original so relative references retain
+ * their base. */
 export function CanonicalTestEditor({
   workspace,
+  drafts,
   busy,
 }: {
   workspace: string;
+  drafts: EditorDraft[] | null;
   busy: boolean;
 }) {
   const [entry, setEntry] = useState("");
@@ -21,22 +28,71 @@ export function CanonicalTestEditor({
   const [document, setDocument] = useState("");
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<CanonicalTestResult | null>(null);
+  const retainer = useRetainer();
   const disabled = busy || pending;
+
+  // Continue the edit this workspace had unstored when the window last
+  // stopped. The load happens once per workspace, so a retention arriving
+  // later never rewrites text being typed right now.
+  const loaded = useRef<string | null>(null);
+  useEffect(() => {
+    if (loaded.current === workspace) {
+      return;
+    }
+    loaded.current = workspace;
+    const held = draftFor(drafts, "canonical-test", workspace);
+    if (held && typeof held.content === "string") {
+      setDocument(held.content);
+      retainer.keepId(held.id);
+    }
+  }, [workspace, drafts, retainer]);
+
+  function edit(next: string) {
+    setDocument(next);
+    setResult(null);
+    if (next === "") {
+      const id = retainer.currentId();
+      if (id !== "") {
+        retainer.drop(id);
+      }
+      return;
+    }
+    retainer.save({
+      id: "",
+      kind: "canonical-test",
+      workspace,
+      case: "",
+      identity: "",
+      content_schema: "readmit-test/v1",
+      content: next,
+    });
+  }
 
   async function perform(
     work: () => Promise<CanonicalTestResult>,
     importing = false,
-  ) {
+  ): Promise<CanonicalTestResult> {
     setPending(true);
     try {
       const next = await work();
       setResult(next);
       // A refusal leaves the previous edit available for correction or discard.
-      if (importing && next.state === "completed")
-        setDocument(next.document ?? "");
+      if (importing && next.state === "completed") setDocument(next.document ?? "");
+      return next;
     } finally {
       setPending(false);
     }
+  }
+
+  // The exported spec is on disk beside the evidence, so the draft has served
+  // its purpose and is dropped only after the write succeeded. The document
+  // itself stays on screen, exactly as it did before the export.
+  function exported() {
+    const id = retainer.currentId();
+    if (id !== "") {
+      retainer.drop(id);
+    }
+    retainer.clear();
   }
 
   return (
@@ -44,9 +100,9 @@ export function CanonicalTestEditor({
       <h3 id="canonical-test-heading">Import and edit a saved test</h3>
       <p className="hint">
         Advanced canonical JSON editor. Import explicitly shows the expected
-        values in the test. All supported clauses are retained, including exact
-        ledger records. Edits stay in this window until you export a new file;
-        no messages are sent.
+        values in the test. All supported clauses are retained, and the edit is
+        kept on this machine until you export a new file or discard it; no
+        messages are sent.
       </p>
       <label htmlFor="canonical-entry">Test file in this workspace</label>
       <input
@@ -68,10 +124,7 @@ export function CanonicalTestEditor({
         spellCheck={false}
         value={document}
         disabled={disabled}
-        onChange={(event) => {
-          setDocument(event.target.value);
-          setResult(null);
-        }}
+        onChange={(event) => edit(event.target.value)}
       />
       <button
         type="button"
@@ -84,6 +137,11 @@ export function CanonicalTestEditor({
         type="button"
         disabled={disabled || !document}
         onClick={() => {
+          const id = retainer.currentId();
+          if (id !== "") {
+            retainer.drop(id);
+          }
+          retainer.clear();
           setDocument("");
           setResult(null);
           setOutput("");
@@ -101,7 +159,11 @@ export function CanonicalTestEditor({
         type="button"
         disabled={disabled || !document || !output}
         onClick={() =>
-          void perform(() => exportTest({ workspace, document, output }))
+          void perform(() => exportTest({ workspace, document, output })).then((next) => {
+            if (next.state === "completed") {
+              exported();
+            }
+          })
         }
       >
         Export new test
@@ -112,6 +174,20 @@ export function CanonicalTestEditor({
         expectations pass. Run the exported file through the run panel or{" "}
         <code>readmit test</code> with the same explicit send approval.
       </p>
+      <RetentionStatus
+        retention={retainer.retention}
+        onRetry={retainer.retry}
+        onKeepAsNew={retainer.keepAsNew}
+        onDiscard={() => {
+          const id = retainer.currentId();
+          if (id !== "") {
+            retainer.drop(id);
+          }
+          retainer.clear();
+          setDocument("");
+          setResult(null);
+        }}
+      />
       <p role="status">
         {pending
           ? "Checking the test document."

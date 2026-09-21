@@ -8,6 +8,7 @@
 import type {
   Artifact,
   CaseResult,
+  EditorDraft,
   Comparison,
   CompareResult,
   ComparisonRow,
@@ -373,6 +374,27 @@ export function retainedDraft(
 
 /** The session a retention or discard changed. */
 export const sessionStored: SessionResult = { state: "completed" };
+
+/** One retained editor draft: the store's envelope around an editor's own
+ * unstored work, carried under an internal identity. Positions and names only,
+ * never a value read out of evidence. */
+export function editorDraft(
+  id: string,
+  kind: string,
+  content: unknown,
+  overrides: Partial<EditorDraft> = {},
+): EditorDraft {
+  return {
+    id,
+    kind,
+    workspace: WORKSPACE_ROOT,
+    case: CASE_ENTRY,
+    identity: CASE_IDENTITY,
+    content_schema: "readmit-test-draft/v1",
+    content,
+    ...overrides,
+  };
+}
 
 /** One synchronized layout of the case: lanes, counts and event positions
  * over sources, with nothing about what any message says. */

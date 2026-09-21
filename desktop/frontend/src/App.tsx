@@ -3,8 +3,9 @@ import { OperationAccess } from "./OperationAccess";
 import { RunComparison } from "./RunComparison";
 import { Baseline } from "./Baseline";
 import { NoteDraft } from "./NoteDraft";
-import { Recovery } from "./Recovery";
+import { Recovery, RetainedDrafts } from "./Recovery";
 import { RunPanel } from "./RunPanel";
+import { onRetentionResult, savedId } from "./drafting";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import {
@@ -15,6 +16,7 @@ import {
   compare,
   type CompareResult,
   createSampleWorkspace,
+  discardEditorDraft,
   editReproducer,
   saveTest,
   suggestExpectations,
@@ -35,6 +37,8 @@ import {
   type GuideResult,
   type GuideTrialId,
   type PracticeResult,
+  editorDrafts as readEditorDrafts,
+  saveEditorDraft,
   openCase,
   openGrid,
   openSequence,
@@ -57,6 +61,7 @@ import {
   recentWorkspaces,
   recordView,
   recoverSession,
+  type EditorDraft,
   type RecoveryResult,
   saveFilter,
   search,
@@ -149,6 +154,17 @@ export default function App() {
 
   const [restored, setRestored] = useState<RecoveryResult | null>(null);
   const [watchedRun, setWatchedRun] = useState("");
+  const [drafts, setDrafts] = useState<EditorDraft[] | null>(null);
+
+  // Refusals of navigation the window has not committed: the workspace and
+  // case a person had stay on screen beside the reason, instead of the old
+  // context being cleared before anyone knows the new one was refused.
+  const [openNotice, setOpenNotice] = useState<WorkspaceResult | null>(null);
+  const [caseNotice, setCaseNotice] = useState<CaseResult | null>(null);
+
+  // A draft write that did not land. Closing the window now could lose text
+  // that was never acknowledged, so closing asks first.
+  const [unsavedFailure, setUnsavedFailure] = useState(false);
 
   const [focused, setFocused] = useState<RegionId>("commands");
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -214,6 +230,33 @@ export default function App() {
     void restore();
   }, [restore]);
 
+  // The editor drafts this viewer has retained: the work every panel of this
+  // window had not stored yet. Retention does not claim the operation slot, so
+  // the list is read before the panels open and is then kept current by the
+  // retention outcomes themselves, each of which carries the store as it now
+  // stands. A read this account cannot complete leaves the list absent and is
+  // reported by the panel that asked.
+  const refreshDrafts = useCallback(async () => {
+    const result = await readEditorDrafts();
+    setDrafts(result.drafts ?? (result.state === "empty" ? [] : null));
+  }, []);
+
+  useEffect(() => {
+    void refreshDrafts();
+  }, [refreshDrafts]);
+
+  useEffect(() => {
+    // A retention that landed keeps the window free to close; one that did not
+    // means text was typed that was never durably acknowledged, so closing
+    // asks before dropping it.
+    return onRetentionResult((result, outcome) => {
+      if (result.drafts) {
+        setDrafts(result.drafts);
+      }
+      setUnsavedFailure(outcome === "save" && result.state !== "completed" && result.state !== "empty");
+    });
+  }, []);
+
   // Where this viewer is, retained by the facade so an interruption does not
   // also lose it: the open workspace, the entry selected in it, the region
   // holding focus, and the run being watched. It goes into the facade's own
@@ -222,7 +265,10 @@ export default function App() {
   // case is being verified, which is exactly when an interruption would
   // otherwise lose the most. Nothing is recorded until there is something to
   // come back to: recording an empty view as the window starts would overwrite
-  // the session this same window is restoring.
+  // the session this same window is restoring. Recordings are chained and
+  // coalesced to the newest view rather than raced, so a slow earlier record
+  // can never land after a later one and leave the session remembering a place
+  // the viewer has already left.
   const workspaceRoot = workspace?.workspace?.root ?? "";
   const view = useCallback((run: string) => ({
     workspace: workspaceRoot,
@@ -231,12 +277,37 @@ export default function App() {
     run,
   }), [workspaceRoot, focused, selected]);
 
+  const recording = useRef(false);
+  const pendingRecord = useRef<ReturnType<typeof view> | null>(null);
+  const flushDone = useRef<Promise<void>>(Promise.resolve());
+  const pushRecord = useCallback((recorded: ReturnType<typeof view>) => {
+    pendingRecord.current = recorded;
+    if (recording.current) {
+      // A flush is already running and sends this view before it stops, so
+      // waiting on it is waiting for this view to land.
+      return flushDone.current;
+    }
+    recording.current = true;
+    flushDone.current = (async () => {
+      try {
+        while (pendingRecord.current) {
+          const next = pendingRecord.current;
+          pendingRecord.current = null;
+          await recordView(next);
+        }
+      } finally {
+        recording.current = false;
+      }
+    })();
+    return flushDone.current;
+  }, []);
+
   useEffect(() => {
     if (workspaceRoot === "" && watchedRun === "") {
       return;
     }
-    void recordView(view(watchedRun));
-  }, [view, watchedRun]);
+    void pushRecord(view(watchedRun));
+  }, [pushRecord, view, watchedRun]);
 
   // Naming the run folder is the one recording that has to have landed before
   // the action it describes runs, so it is awaited rather than left to the
@@ -244,8 +315,8 @@ export default function App() {
   // the folder that holds its evidence.
   const watch = useCallback(async (folder: string) => {
     setWatchedRun(folder);
-    await recordView(view(folder));
-  }, [view]);
+    await pushRecord(view(folder));
+  }, [pushRecord, view]);
 
   // The chosen theme and text size are applied to the document and written
   // nowhere: both follow the system again the next time the window opens.
@@ -325,16 +396,25 @@ export default function App() {
     setFound(null);
   }, [clearCase]);
 
+  // Opening a folder is a navigation, and a navigation is committed only once
+  // it is accepted. A dismissed dialog, a folder that cannot be opened or an
+  // account that cannot read it leaves the investigation exactly as it was,
+  // with the refusal shown beside it; nothing here clears first, so no
+  // cancellation can silently drop the open workspace, its case or an edit.
   const openFolder = useCallback(
     async (operation: () => Promise<WorkspaceResult>) => {
+      setOpenNotice(null);
       await operate("workspace", async () => {
-        clearWorkspace();
-        setSelected(null);
-        setWorkspace(null);
         const result = await operation();
-        setWorkspace(result);
-        setPracticeResult(null);
-        await refreshGuide(result.workspace?.root ?? null);
+        if (result.workspace) {
+          clearWorkspace();
+          setSelected(null);
+          setWorkspace(result);
+          setPracticeResult(null);
+          await refreshGuide(result.workspace.root);
+        } else {
+          setOpenNotice(result);
+        }
       });
       await refreshRecent();
       focusRegion("navigation");
@@ -342,12 +422,22 @@ export default function App() {
     [clearWorkspace, focusRegion, operate, refreshGuide, refreshRecent],
   );
 
+  // Verifying a case is the same kind of committed navigation. The case and
+  // everything derived from it stay while the new one is read — the progress
+  // line says that a read is running — and they stay, marked stale by the
+  // refusal beside them, when the new one is refused.
   const verifyCase = useCallback(
     async (folder: string, name: string) => {
+      setCaseNotice(null);
       await operate("case", async () => {
-        clearCase();
-        setSelected(name);
-        setEvidence(await openCase(folder, name));
+        const result = await openCase(folder, name);
+        if (result.case) {
+          clearCase();
+          setSelected(name);
+          setEvidence(result);
+        } else {
+          setCaseNotice(result);
+        }
       });
       focusRegion("inspector");
     },
@@ -475,19 +565,34 @@ export default function App() {
     [operate],
   );
 
+  // Reads whose answer can be older than the question: only the response to
+  // the latest request commits, so a late answer to an earlier one is dropped
+  // instead of overwriting what the viewer asked for last.
+  const readTickets = useRef(new Map<string, number>());
+  const currentTicket = useCallback((kind: string) => {
+    const ticket = (readTickets.current.get(kind) ?? 0) + 1;
+    readTickets.current.set(kind, ticket);
+    return ticket;
+  }, []);
+  const isCurrent = useCallback((kind: string, ticket: number) => readTickets.current.get(kind) === ticket, []);
+
   // One window of the grid at a time. Asking for the next one re-reads the case
   // and its index, so a window is never served from an index the evidence no
   // longer supports.
   const showGrid = useCallback(
     async (folder: string, name: string, indexName: string, offset: number) => {
+      const ticket = currentTicket("grid");
       await operate("grid", async () => {
         setGridResult(null);
         setInspectionResult(null);
         setSelectedOccurrence(null);
-        setGridResult(await openGrid(folder, name, indexName, offset, GRID_WINDOW));
+        const result = await openGrid(folder, name, indexName, offset, GRID_WINDOW);
+        if (isCurrent("grid", ticket)) {
+          setGridResult(result);
+        }
       });
     },
-    [operate],
+    [currentTicket, isCurrent, operate],
   );
 
   // An occurrence is selected from the grid or from the sequence, and both name
@@ -504,23 +609,25 @@ export default function App() {
           ? { case: evidence.case.name, identity: evidence.case.identity }
           : null;
       if (!root || !open) return;
+      const ticket = currentTicket("inspect");
       await operate("inspect", async () => {
         setSelectedOccurrence(occurrence);
         setInspectionResult(null);
-        setInspectionResult(
-          await inspectOccurrence({
-            workspace: root,
-            case: open.case,
-            identity: open.identity,
-            occurrence,
-            path,
-            node_offset: nodeOffset,
-            byte_offset: byteOffset,
-          }),
-        );
+        const result = await inspectOccurrence({
+          workspace: root,
+          case: open.case,
+          identity: open.identity,
+          occurrence,
+          path,
+          node_offset: nodeOffset,
+          byte_offset: byteOffset,
+        });
+        if (isCurrent("inspect", ticket)) {
+          setInspectionResult(result);
+        }
       });
     },
-    [evidence, gridResult, operate, root],
+    [currentTicket, evidence, gridResult, isCurrent, operate, root],
   );
 
   // A comparison is bound to the identity the window verified for the open
@@ -649,6 +756,39 @@ export default function App() {
   // A reproducer plan is bound to the case the grid verified, so every step
   // carries the plan back to the engine, which decides what it means. The
   // window keeps no second copy of the selection or of what a dependency added.
+  // A plan the engine accepted is retained as an unstored editor draft under an
+  // internal identity, so the editing survives an interruption; a build writes
+  // the real manifest beside the evidence and drops the draft.
+  const reproducerDraftId = useRef("");
+  const testDraftId = useRef("");
+
+  const keepReproducerDraft = useCallback(
+    async (plan: ReproducerPlan, open: { case: string; identity: string }) => {
+      const result = await saveEditorDraft({
+        id: reproducerDraftId.current,
+        kind: "reproducer-plan",
+        workspace: root ?? "",
+        case: open.case,
+        identity: open.identity,
+        content_schema: "readmit-reproducer-plan/v1",
+        content: plan,
+      });
+      if (result.state === "completed" || result.state === "empty") {
+        if (reproducerDraftId.current === "") {
+          reproducerDraftId.current = savedId(result, "reproducer-plan", root ?? "");
+        }
+      }
+    },
+    [root],
+  );
+
+  const dropReproducerDraft = useCallback(async () => {
+    if (reproducerDraftId.current !== "") {
+      await discardEditorDraft(reproducerDraftId.current);
+    }
+    reproducerDraftId.current = "";
+  }, []);
+
   const reproduce = useCallback(
     async (work: (plan: ReproducerPlan, open: { case: string; identity: string }) => Promise<ReproducerResult>) => {
       const open = gridResult?.grid;
@@ -662,15 +802,25 @@ export default function App() {
         setReproducerResult(
           result.reproducer || !kept ? result : { ...result, reproducer: kept },
         );
+        if (result.reproducer) {
+          if (result.reproducer.output) {
+            await dropReproducerDraft();
+          } else {
+            await keepReproducerDraft(result.reproducer.plan, open);
+          }
+        }
       });
     },
-    [gridResult, operate, reproducerResult, root],
+    [dropReproducerDraft, gridResult, keepReproducerDraft, operate, reproducerResult, root],
   );
 
   // A test draft is bound to the case the grid verified, so every answer
   // carries the draft back to the engine, which decides what it now means. The
   // window keeps no second copy of the answers and holds the draft nowhere
-  // else: it is unstored work, and it is never placed in browser storage.
+  // else: it is unstored work, and it is never placed in browser storage. A
+  // draft the engine accepted is retained under an internal identity, so the
+  // authoring survives an interruption; saving the spec writes the real
+  // document beside the evidence and drops the draft.
   const author = useCallback(
     async (work: (draft: TestDraftDocument, open: { case: string; identity: string }) => Promise<TestResult>) => {
       const open = gridResult?.grid;
@@ -690,10 +840,31 @@ export default function App() {
         } as TestDraftDocument);
       await operate("authoring", async () => {
         const result = await work(draft, open);
-        // A refused answer leaves the draft exactly as it was, so the refusal
-        // is shown without replacing the test a person is working on.
+        // A refused answer leaves the draft exactly as it was, so the refusal is
+        // shown without replacing the test a person is working on.
         const kept = testResult?.test;
         setTestResult(result.test || !kept ? result : { ...result, test: kept });
+        if (result.test) {
+          if (result.test.output) {
+            if (testDraftId.current !== "") {
+              await discardEditorDraft(testDraftId.current);
+            }
+            testDraftId.current = "";
+          } else {
+            const retained = await saveEditorDraft({
+              id: testDraftId.current,
+              kind: "test-draft",
+              workspace: root,
+              case: open.case,
+              identity: open.identity,
+              content_schema: "readmit-test-draft/v1",
+              content: result.test.draft,
+            });
+            if ((retained.state === "completed" || retained.state === "empty") && testDraftId.current === "") {
+              testDraftId.current = savedId(retained, "test-draft", root);
+            }
+          }
+        }
         // A saved spec is a step of the guided sample, so what that folder now
         // holds is read again rather than inferred from this call succeeding.
         if (result.test?.output) {
@@ -703,6 +874,114 @@ export default function App() {
     },
     [gridResult, operate, refreshGuide, root, testResult],
   );
+
+  // A test draft this viewer had not stored comes back only when it names the
+  // case the window has verified now, identity and all: a draft authored
+  // against evidence that has changed or moved is offered as what it is —
+  // stale work this window does not silently rebind.
+  useEffect(() => {
+    const grid = gridResult?.grid;
+    if (!grid || !root || testResult !== null) {
+      return;
+    }
+    const held = drafts?.find(
+      (entry) =>
+        entry.kind === "test-draft" &&
+        entry.workspace === root &&
+        entry.case === grid.case &&
+        entry.identity === grid.identity,
+    );
+    if (!held) {
+      return;
+    }
+    testDraftId.current = held.id;
+    setTestResult({
+      state: "completed",
+      test: { draft: held.content as TestDraftDocument },
+    });
+  }, [drafts, gridResult, root, testResult]);
+
+  // The reproducer plan comes back the same way, and under the same rule.
+  useEffect(() => {
+    const grid = gridResult?.grid;
+    if (!grid || !root || reproducerResult !== null) {
+      return;
+    }
+    const held = drafts?.find(
+      (entry) =>
+        entry.kind === "reproducer-plan" &&
+        entry.workspace === root &&
+        entry.case === grid.case &&
+        entry.identity === grid.identity,
+    );
+    if (!held) {
+      return;
+    }
+    reproducerDraftId.current = held.id;
+    setReproducerResult({
+      state: "completed",
+      reproducer: { plan: held.content as ReproducerPlan },
+    });
+  }, [drafts, gridResult, reproducerResult, root]);
+
+  // Drops one retained editor draft and takes it out of the local list at the
+  // same moment, so a panel cannot offer the same draft back again while the
+  // facade's answer is still in flight.
+  const dropDraft = useCallback((id: string) => {
+    setDrafts((current) => current?.filter((draft) => draft.id !== id) ?? null);
+    void discardEditorDraft(id);
+  }, []);
+
+  const discardTestDraft = useCallback(() => {
+    if (testDraftId.current !== "") {
+      dropDraft(testDraftId.current);
+    }
+    testDraftId.current = "";
+    setTestResult(null);
+  }, [dropDraft]);
+
+  const discardReproducerDraft = useCallback(() => {
+    if (reproducerDraftId.current !== "") {
+      dropDraft(reproducerDraftId.current);
+    }
+    reproducerDraftId.current = "";
+    setReproducerResult(null);
+  }, [dropDraft]);
+
+  // Reopening where a person was is their own decision, made by pressing the
+  // one button that offers it; nothing restores a workspace by itself. The
+  // restore is read-only — it opens folders, verifies evidence and moves
+  // focus, and it never resumes or resends anything — and where the retained
+  // artifacts have moved or changed, the ordinary refusals are shown and the
+  // listing is there to reopen from, so a draft is never bound to different
+  // evidence silently.
+  const reopen = useCallback(async () => {
+    const where = restored?.session?.view;
+    if (!where?.workspace) {
+      return;
+    }
+    await openFolder(() => openWorkspace(where.workspace));
+    if (where.case) {
+      await verifyCase(where.workspace, where.case);
+    }
+    if (where.region) {
+      focusRegion(where.region as RegionId);
+    }
+  }, [focusRegion, openFolder, restored, verifyCase]);
+
+  // Closing the window is safe while every edit is durably acknowledged. After
+  // a retention the facade refused, there is text that was typed and never
+  // acknowledged, so closing asks first instead of losing it quietly.
+  useEffect(() => {
+    if (!unsavedFailure) {
+      return;
+    }
+    const guard = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, [unsavedFailure]);
 
   // Changing the filter changes what the open grid is showing, so the window is
   // rendered again from its first page rather than left showing the old view.
@@ -941,6 +1220,9 @@ export default function App() {
           progress={running === "workspace" ? "Opening the folder." : null}
           result={workspace}
         />
+        {openNotice ? (
+          <Report indicators={indicators} progress={null} result={openNotice} />
+        ) : null}
         {opened ? <p className="root">{opened.root}</p> : null}
         {opened && opened.artifacts.length > 0 ? (
           <ul className="artifacts">
@@ -1000,8 +1282,13 @@ export default function App() {
           onWorkspace={backToWorkspace}
           onProject={backToProject}
         />
-        <Recovery restored={restored} onChanged={() => void restore()} />
-        <NoteDraft project={workspaceRoot} restored={restored} onChanged={() => void restore()} />
+        <Recovery
+          restored={restored}
+          onChanged={() => void restore()}
+          onReopen={() => void reopen()}
+        />
+        <RetainedDrafts drafts={drafts} onDiscardDraft={dropDraft} />
+        <NoteDraft project={workspaceRoot} drafts={drafts} restored={restored} onChanged={() => void restore()} />
         <RunPanel onWatch={watch} />
         <ProjectPanel
           root={root}
@@ -1030,6 +1317,9 @@ export default function App() {
           progress={running === "case" ? "Verifying the case." : null}
           result={evidence}
         />
+        {caseNotice ? (
+          <Report indicators={indicators} progress={null} result={caseNotice} />
+        ) : null}
         {evidence?.case ? (
           <dl className="evidence">
             <dt>Name</dt>
@@ -1091,6 +1381,8 @@ export default function App() {
           <Reproducer
             rows={gridResult.grid.rows}
             result={reproducerResult}
+            restoredDraft={Boolean(reproducerResult?.reproducer && !reproducerResult.reproducer.resolution)}
+            onDiscardDraft={discardReproducerDraft}
             inspected={
               selectedOccurrence && inspectionResult?.inspection
                 ? {
@@ -1136,11 +1428,13 @@ export default function App() {
             }
           />
         ) : null}
-        {root ? <CanonicalTestEditor key={root} workspace={root} busy={busy} /> : null}
+        {root ? <CanonicalTestEditor key={root} workspace={root} drafts={drafts} busy={busy} /> : null}
         {gridResult?.grid ? (
           <TestAuthoring
             rows={gridResult.grid.rows}
             result={testResult}
+            restoredDraft={Boolean(testResult?.test && !testResult.test.resolution)}
+            onDiscardDraft={discardTestDraft}
             inspected={
               selectedOccurrence && inspectionResult?.inspection
                 ? {

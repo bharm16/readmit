@@ -172,7 +172,8 @@ var privacyStatus = Privacy{
 		"the explicitly selected operation policy path, signed entitlement, local UTC high-water and runner admission records; no evidence is stored in them",
 		"the folders you have opened, as paths only, in readmit-desktop-recent/v1",
 		"the filters you have saved, including any value you typed to filter by, in readmit-filters/v1",
-		"the work you had not stored yet, including any note you were writing and the workspace, case and run you had open, in readmit-desktop-session/v1",
+		"the notes you had not stored yet and where you were, in readmit-desktop-session/v1",
+		"the editor work you had not stored yet — notes you were writing, test drafts, canonical edits and reproducer plans — in readmit-desktop-drafts/v1",
 	},
 }
 

@@ -408,11 +408,13 @@ to, so a draft cannot be answered into a spec its own reader would refuse.
   create new entries and never replace an existing spec.
 - No environment placeholder, deadline or cleanup member. `readmit-test/v1`
   declares none, it gains no member here, and a draft never invents one.
-- No retained draft. An unsaved draft is unstored work the window loses when it
-  closes: the working session is the bounded `readmit-desktop-session/v1`
-  document [the shell](desktop.md#recovering-after-an-interruption) already
-  keeps, that contract gains no member, and retaining a draft there would be a
-  new version of it.
+- No reading a saved spec back into a draft. The
+  [canonical editor](#round-tripping-canonical-specs) imports and edits saved
+  specs; the draft flow starts from questions. The draft itself is retained
+  while it is being answered: the shell's editor draft store
+  ([the shell](desktop.md#recovering-after-an-interruption)) keeps the answers
+  under an internal identity until the spec is saved, so an interruption
+  returns the draft instead of the questions.
 - No cancelling an answer or a save. Each runs to completion under the case
   reader's own bounds once it starts, so the window does not offer Cancel for
   them; a refused answer changed nothing and a refused save wrote nothing, so

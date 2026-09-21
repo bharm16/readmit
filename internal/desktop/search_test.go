@@ -139,7 +139,7 @@ func TestSearchHoldsTheSameOperationSlot(t *testing.T) {
 	root := searchable(t, newApp(t, &chooser{folder: parent}))
 
 	reentrant := &chooser{folder: root}
-	app := desktop.New(reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
+	app := desktop.New(reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"), filepath.Join(filepath.Dir(filepath.Join(t.TempDir(), "session.json")), "drafts.json"))
 	var concurrent desktop.SearchResult
 	reentrant.before = func() { concurrent = app.Search(root, "regression") }
 	if result := app.SelectWorkspace(); result.State != desktop.Completed {
@@ -187,7 +187,7 @@ func TestSearchCarriesNoMessageContent(t *testing.T) {
 // Search takes a person's typing. Any bytes at all must produce one of the
 // declared states and name only entries the folder actually holds.
 func FuzzSearchQuery(f *testing.F) {
-	app := desktop.New(&chooser{folder: f.TempDir()}, filepath.Join(f.TempDir(), "recent.json"), filepath.Join(f.TempDir(), "filters.json"), filepath.Join(f.TempDir(), "session.json"))
+	app := desktop.New(&chooser{folder: f.TempDir()}, filepath.Join(f.TempDir(), "recent.json"), filepath.Join(f.TempDir(), "filters.json"), filepath.Join(f.TempDir(), "session.json"), filepath.Join(filepath.Dir(filepath.Join(f.TempDir(), "session.json")), "drafts.json"))
 	created := app.CreateSampleWorkspace()
 	if created.State != desktop.Completed || created.Workspace == nil {
 		f.Fatalf("sample workspace: %+v", created)

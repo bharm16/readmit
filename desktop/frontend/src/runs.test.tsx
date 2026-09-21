@@ -124,6 +124,7 @@ test("recovery after an interruption shows the run and never resumes it", async 
         },
       )}
       onChanged={onChanged}
+      onReopen={() => undefined}
     />,
   );
   expect(screen.getByText("Restored after an interruption")).toBeTruthy();
@@ -140,7 +141,7 @@ test("recovery after an interruption shows the run and never resumes it", async 
 
 test("recovery of an empty session draws nothing", () => {
   installFacade({});
-  render(<Recovery restored={null} onChanged={() => undefined} />);
+  render(<Recovery restored={null} onChanged={() => undefined} onReopen={() => undefined} />);
   expect(screen.queryByText("Restored after an interruption")).toBeNull();
 });
 
