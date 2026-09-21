@@ -3673,17 +3673,31 @@ export interface ObservationAbsenceSummary {
   trustworthy: boolean;
 }
 
+export interface ObservationSample {
+  at: string;
+  status: string;
+  record_count: number;
+  state_digest: string;
+  evidence_identity: string;
+}
+
 export interface ObservationCompletion {
   schema: string;
   boundary: string;
   window_identity: string;
   source: ObservationWindowSource;
+  watermark?: ObservationWatermark;
   status: string;
   stop: string;
-  records_observed: number;
+  opened_at: string;
+  closed_at: string;
+  baseline?: ObservationSample | null;
+  samples?: ObservationSample[];
+  correlations?: { produced: string; observed: string; kind: string }[];
   stable_samples: number;
   quiet_period: string;
-  correlations?: { kind: string }[];
+  records_observed: number;
+  pre_existing_basis: string;
 }
 
 export interface ObservationCompletionResult {

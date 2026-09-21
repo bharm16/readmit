@@ -12,6 +12,10 @@ import type {
   CaptureJournalResult,
   CapturePreviewResult,
   CaptureSessionResult,
+  ObservationCaptureBindRequest,
+  ObservationSourceResult,
+  ObservationSupportResult,
+  ObservationWindowResult,
   PathChoiceResult,
   SourceAccessResult,
   SourceCollectionResult,
@@ -279,4 +283,133 @@ test("source collect finalize offers exploration", async () => {
   expect(await screen.findByRole("heading", { name: "Import completed" })).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "Open this case" }));
   expect(facade.oneCall("OpenCase")[1]).toBe("imported-from-capture.case");
+});
+
+test("finalized capture offers observation binding into Observation setup", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user);
+  const binds: ObservationCaptureBindRequest[] = [];
+  facade.reply({
+    ChooseCapturePath: (): Promise<PathChoiceResult> =>
+      Promise.resolve({ state: "completed", paths: ["/workspace-under-test/exports"] }),
+    SaveSourceRegistration: (): Promise<SourceRegistrationResult> =>
+      Promise.resolve({ state: "completed", source_file: "source.json" }),
+    CollectSource: (): Promise<SourceCollectionResult> =>
+      Promise.resolve({
+        state: "completed",
+        output_path: "staged-collection",
+        collection: {
+          schema: "readmit-source-collection/v1",
+          status: "complete",
+          declared: 1,
+          collected: 1,
+          duplicates: 0,
+          excluded: 0,
+          unreadable: 0,
+          not_read: 0,
+          bytes: 120,
+          records: 1,
+          occurrences: 1,
+        },
+      }),
+    FinalizeCaptureImport: () =>
+      Promise.resolve({
+        state: "completed",
+        registered: true,
+        case: {
+          name: "imported-from-capture.case",
+          identity: "sha256:abcd",
+          schema: "readmit-case/v3",
+          provenance: "imported",
+          sources: 1,
+          occurrences: 1,
+          messages: 1,
+          acknowledgements: 0,
+          unparsed: 0,
+        },
+      }),
+    ObservationSupport: (): Promise<ObservationSupportResult> =>
+      Promise.resolve({
+        state: "completed",
+        support: [
+          {
+            kind: "downstream-capture",
+            schema: "readmit-observation-source/v2",
+            adapter: "downstream-capture",
+            version: "v2",
+            qualification: "supported",
+            production_claim: true,
+          },
+        ],
+      }),
+    OpenObservationSource: (): Promise<ObservationSourceResult> =>
+      Promise.resolve({
+        state: "completed",
+        source: {
+          schema: "readmit-observation-source/v2",
+          source: { kind: "downstream-capture", identity: "scheduling-archive", scope: "appointments" },
+          enabled: true,
+          freshness: { max_age: "1h" },
+          extraction: null,
+          file: null,
+          http: null,
+          capture: { path: "downstream.case", kinds: ["message"], record_key: "SCH-1.1", max_occurrences: 100 },
+        },
+        identity: "src",
+      }),
+    OpenObservationWindow: (): Promise<ObservationWindowResult> =>
+      Promise.resolve({
+        state: "completed",
+        window: {
+          schema: "readmit-observation-window/v1",
+          source: { kind: "downstream-capture", identity: "scheduling-archive", scope: "appointments" },
+          watermark: { kind: "none", position: "" },
+          pre_existing_state: { declaration: "declared-empty", baseline_identity: "" },
+          completion: {
+            deadline: "30s",
+            quiet_period: "2s",
+            stable_samples: 3,
+            max_records: 100,
+            max_samples: 16,
+          },
+        },
+        identity: "win",
+      }),
+    BindCaptureObservation: (req): Promise<ObservationSourceResult> => {
+      binds.push(req);
+      return Promise.resolve({
+        state: "completed",
+        source: {
+          schema: "readmit-observation-source/v2",
+          source: { kind: "downstream-capture", identity: "downstream-capture", scope: "appointments" },
+          enabled: true,
+          freshness: { max_age: "1h" },
+          extraction: null,
+          file: null,
+          http: null,
+          capture: {
+            path: req.relative_case ?? "imported-from-capture.case",
+            kinds: ["message"],
+            record_key: "SCH-1.1",
+            max_occurrences: 100,
+          },
+        },
+        identity: "bound",
+      });
+    },
+  });
+
+  await user.click(screen.getByRole("button", { name: "Capture or collect evidence…" }));
+  await user.click(screen.getByRole("button", { name: "Choose folder…" }));
+  await user.click(screen.getByRole("button", { name: "Save registration" }));
+  await user.click(screen.getByRole("button", { name: "Collect into workspace" }));
+  await user.click(screen.getByRole("button", { name: "Finalize into a verified case…" }));
+  expect(await screen.findByRole("heading", { name: "Import completed" })).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Set up observation for this capture…" }));
+  expect(await screen.findByRole("heading", { name: "Observation sources and windows" })).toBeTruthy();
+  await waitFor(() => expect(binds.length).toBeGreaterThanOrEqual(1));
+  expect(binds[0]?.binding.case_path).toBe("imported-from-capture.case");
+  expect(
+    await screen.findByText(/downstream-capture observation source|Bound retained capture|Nothing was collected/i),
+  ).toBeTruthy();
 });

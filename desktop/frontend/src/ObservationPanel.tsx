@@ -196,12 +196,14 @@ export function ObservationPanel({
         setWindowDoc(openedWindow.window);
         setWindowIdentity(openedWindow.identity ?? "");
       }
-      setNotice("Editor opened locally. No database or endpoint was queried.");
+      if (!captureBinding) {
+        setNotice("Editor opened locally. No database or endpoint was queried.");
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [workspace, sourceFile, windowFile]);
+  }, [workspace, sourceFile, windowFile, captureBinding]);
 
   useEffect(() => {
     if (!captureBinding) return;
