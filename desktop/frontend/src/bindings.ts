@@ -635,7 +635,7 @@ export interface Facade {
   EvaluateSendPolicy(request: SendPolicyEvalRequest): Promise<SendPolicyEvalResult>;
   ReadResetPlan(workspace: string, planFile: string): Promise<ResetPlanResult>;
   SaveResetPlan(request: ResetPlanSaveRequest): Promise<ResetPlanResult>;
-ChooseImportSources(kind: string): Promise<ImportSourcesResult>;
+  ChooseImportSources(kind: string): Promise<ImportSourcesResult>;
   StagePastedContent(request: PastedSourceRequest): Promise<PastedSourceResult>;
   PreviewImport(request: ImportRequest): Promise<ImportPreviewResult>;
   CommitImport(request: ImportCommitRequest): Promise<ImportCommitResult>;
@@ -3194,6 +3194,8 @@ export function readResetPlan(workspace: string, planFile: string): Promise<Rese
 
 export function saveResetPlan(request: ResetPlanSaveRequest): Promise<ResetPlanResult> {
   return guard(() => facade().SaveResetPlan(request), { state: "failed" });
+}
+
 export interface ImportSourcesResult {
   state: State;
   reason?: string;

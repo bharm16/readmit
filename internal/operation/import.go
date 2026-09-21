@@ -138,7 +138,7 @@ func ImportEnginePreview(ctx context.Context, plan engineexport.Plan, inputPath 
 	if err := plan.Validate(); err != nil {
 		return EngineExportPreview{}, err
 	}
-	data, err := readBoundedFile(inputPath, engineexport.MaxBytes)
+	data, err := readImportFile(inputPath, engineexport.MaxBytes)
 	if err != nil {
 		return EngineExportPreview{}, err
 	}
@@ -166,7 +166,7 @@ func ImportEngineCommit(ctx context.Context, plan engineexport.Plan, inputPath, 
 	if _, err := os.Lstat(reservedCase); !os.IsNotExist(err) {
 		return nil, ErrImportCaseExists
 	}
-	data, err := readBoundedFile(inputPath, engineexport.MaxBytes)
+	data, err := readImportFile(inputPath, engineexport.MaxBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +241,7 @@ func writeNewReceipt(path string, encoded []byte) error {
 	return nil
 }
 
-func readBoundedFile(path string, limit int) ([]byte, error) {
+func readImportFile(path string, limit int) ([]byte, error) {
 	resolved, err := artifactpath.Resolve(path)
 	if err != nil {
 		return nil, err
