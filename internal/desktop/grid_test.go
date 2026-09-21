@@ -465,14 +465,14 @@ func TestTheGridHoldsTheSameOperationSlot(t *testing.T) {
 // the next window still opens.
 func TestCancelNeverInterruptsAGridAndTheFacadeStaysUsable(t *testing.T) {
 	app, root, _ := gridWorkspace(t)
-	app.Cancel()
+	app.Cancel("")
 
 	var cancelling sync.WaitGroup
 	cancelling.Add(1)
 	go func() {
 		defer cancelling.Done()
 		for range 32 {
-			app.Cancel()
+			app.Cancel("")
 		}
 	}()
 	result := openGrid(t, app, root, "incident", 0, 10)

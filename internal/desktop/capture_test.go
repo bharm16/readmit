@@ -186,7 +186,7 @@ func TestStartCaptureBusyAndCancel(t *testing.T) {
 		// Preview uses non-interruptible claim; Start holds the slot, so Busy is required.
 		t.Fatalf("expected busy while capturing, got %+v", busy)
 	}
-	app.Cancel()
+	app.Cancel("")
 	session := <-done
 	if session.State != desktop.Cancelled && session.State != desktop.Completed {
 		t.Fatalf("cancel session: %+v", session)
@@ -272,7 +272,7 @@ func TestCaptureJournalCrashRecoveryNeverFinalized(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	// Kill the serve without an orderly Cancel finish by cancelling after a connection attempt.
-	app.Cancel()
+	app.Cancel("")
 	<-done
 	journal := app.OpenCaptureJournal(root, "journal")
 	if journal.State != desktop.Completed || journal.Journal == nil {

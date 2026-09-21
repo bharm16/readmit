@@ -35,6 +35,8 @@ export type Kind =
   | "normalization-policy"
   | "diagnose-config"
   | "finding-decisions"
+  | "suite"
+  | "suite-releases"
   | "unsupported";
 
 /** The status of one registered case, maintained by a person. */
@@ -570,8 +572,13 @@ export interface Facade {
   ChooseCommercialDestinations(): Promise<CommercialStatusResult>;
   CommercialStatus(): Promise<CommercialStatusResult>;
   CompareRuns(request: RunComparisonRequest): Promise<RunComparisonResult>;
-  StartDurableRun(spec: string, output: string): Promise<DurableRunResult>;
+  StartDurableRun(request: DurableRunRequest): Promise<DurableRunResult>;
   OpenDurableRun(path: string): Promise<DurableRunResult>;
+  PreflightRun(request: RunPreflightRequest): Promise<RunPreflightResult>;
+  ChooseRunSpec(workspace: string): Promise<RunSpecChoiceResult>;
+  StartSuiteRun(request: SuiteRunRequest): Promise<SuiteRunResult>;
+  DurableRunProgress(workspace: string, entry: string): Promise<RunProgressResult>;
+  OpenRunEvidence(request: RunEvidenceRequest): Promise<RunEvidenceResult>;
   RecoverSession(): Promise<RecoveryResult>;
   RecordView(view: View): Promise<SessionResult>;
   SaveDraft(draft: Draft): Promise<SessionResult>;
@@ -580,7 +587,7 @@ export interface Facade {
   DiscardEditorDraft(id: string): Promise<EditorDraftsResult>;
   EditorDrafts(): Promise<EditorDraftsResult>;
   InspectOccurrence(request: InspectRequest): Promise<InspectionResult>;
-  Cancel(): Promise<void>;
+  Cancel(operation: string): Promise<void>;
   CreateSampleWorkspace(): Promise<WorkspaceResult>;
   Filters(): Promise<FiltersResult>;
   OpenCase(workspace: string, name: string): Promise<CaseResult>;
@@ -766,9 +773,13 @@ async function guard<T extends { state: State; reason?: string }>(
   }
 }
 
-export function cancel(): void {
+/** Cancels the named operation. A cancel that names a different operation
+ * does nothing, so one panel's cancel control can never stop another panel's
+ * work; an empty name cancels whatever is running and is what the window's own
+ * cancel command uses. */
+export function cancel(operation: string = ""): void {
   try {
-    void facade().Cancel();
+    void facade().Cancel(operation);
   } catch {
     // Nothing is running if the facade is not bound yet.
   }
@@ -1161,11 +1172,247 @@ export interface DurableRunResult {
  reason?: string;
  run?: DurableRunSummary;
 }
-export function startDurableRun(spec: string, output: string): Promise<DurableRunResult> {
- return guard(() => facade().StartDurableRun(spec, output), { state: "failed", reason: "The desktop connection was interrupted. Recover the output directory to inspect evidence; do not resend automatically." });
+/** One deliberate execution: the open workspace, the saved spec entry, the
+ * fresh output entry and the spec identity the preflight fixed. A spec whose
+ * bytes changed after the preflight is refused rather than executed. */
+export interface DurableRunRequest {
+  workspace: string;
+  spec: string;
+  output: string;
+  expected_identity: string;
+}
+export function startDurableRun(request: DurableRunRequest): Promise<DurableRunResult> {
+ return guard(() => facade().StartDurableRun(request), { state: "failed", reason: "The desktop connection was interrupted. Recover the output directory to inspect evidence; do not resend automatically." });
 }
 export function openDurableRun(path: string): Promise<DurableRunResult> {
  return guard(() => facade().OpenDurableRun(path), { state: "failed" });
+}
+
+/** What one execution would do, read out of the exact plan a send would
+ * execute: the selected input, the target and environment it names, the
+ * effective configuration, the observation and reset requirements, the pinned
+ * engine versions, the deadline, the fresh destination and the backend's own
+ * admission decision. No network connection, no send, no verdict. */
+export interface RunPreflightRequest {
+  workspace: string;
+  spec: string;
+  environment?: string;
+  output?: string;
+}
+export interface RunSelected {
+  source: string;
+  outbound: string;
+}
+export interface RunTargetView {
+  name?: string;
+  classification: string;
+  address: string;
+  transport: string;
+  test_endpoint: boolean;
+  approved_transport: boolean;
+  connect_timeout: string;
+  message_timeout: string;
+  max_ack_bytes: number;
+  credential: boolean;
+}
+export interface RunEnginePin {
+  engine: string;
+  spec: string;
+  profile: string;
+}
+export interface RunDestination {
+  name: string;
+  generated: boolean;
+  fresh: boolean;
+  reason?: string;
+}
+export interface RunAdmission {
+  admitted: boolean;
+  reason?: string;
+}
+export interface SuiteJobView {
+  id: string;
+  spec: string;
+  parameter: string;
+  isolation: string;
+  after: string[];
+  rows: number;
+  sequence: number;
+}
+export interface SuitePreflight {
+  id: string;
+  environments: string[];
+  environment?: string;
+  site?: string;
+  parallelism: number;
+  references?: string;
+  jobs: SuiteJobView[];
+  targets: RunTargetView[];
+}
+export interface RunPreflight {
+  kind: string;
+  spec: string;
+  name: string;
+  schema: string;
+  identity: string;
+  selected: RunSelected[];
+  target: RunTargetView;
+  boundary: string;
+  observation?: string;
+  initial_state: string;
+  reset?: string;
+  engine: RunEnginePin;
+  deadline: string;
+  destination: RunDestination;
+  admission: RunAdmission;
+  suite?: SuitePreflight;
+}
+export interface RunPreflightResult {
+  state: State;
+  reason?: string;
+  preflight?: RunPreflight;
+}
+export function preflightRun(request: RunPreflightRequest): Promise<RunPreflightResult> {
+  return guard(() => facade().PreflightRun(request), { state: "failed" });
+}
+
+/** The native advanced file selection of a saved test or suite. The chosen
+ * file must be one entry of the open workspace; a dismissed dialog is a
+ * cancellation. */
+export interface RunSpecChoiceResult {
+  state: State;
+  reason?: string;
+  entry?: string;
+}
+export function chooseRunSpec(workspace: string): Promise<RunSpecChoiceResult> {
+  return guard(() => facade().ChooseRunSpec(workspace), { state: "failed" });
+}
+
+/** One deliberate suite execution through the existing durable queue: the
+ * suite entry, the environment it is executed at, the optional released
+ * references that make it an approved suite, the fresh output entry and the
+ * suite identity the preflight fixed. */
+export interface SuiteRunRequest {
+  workspace: string;
+  suite: string;
+  environment: string;
+  references?: string;
+  output: string;
+  expected_identity: string;
+}
+export interface SuiteRunJob {
+  id: string;
+  admission: string;
+  isolation: string;
+  reason?: string;
+  run?: DurableRunSummary;
+}
+export interface SuiteRunReport {
+  schema: string;
+  parallelism: number;
+  executed: number;
+  start_failed: number;
+  refused: number;
+  skipped: number;
+  jobs: SuiteRunJob[];
+}
+export interface SuiteRunResult {
+  state: State;
+  reason?: string;
+  output?: string;
+  report?: SuiteRunReport;
+}
+export function startSuiteRun(request: SuiteRunRequest): Promise<SuiteRunResult> {
+  return guard(() => facade().StartSuiteRun(request), { state: "failed", reason: "The desktop connection was interrupted. Recover the retained suite output to inspect what executed; do not resend automatically." });
+}
+
+/** What one read of a run folder established. Executing is true only while
+ * this window's own run operation is writing that folder; the counts are the
+ * recovery vocabulary, not delivered-message counts. */
+export interface RunProgress {
+  executing: boolean;
+  phase: string;
+  run?: DurableRunSummary;
+  acknowledged: number;
+  uncertain: number;
+  not_attempted: number;
+  lease?: string;
+}
+export interface RunProgressResult {
+  state: State;
+  reason?: string;
+  progress?: RunProgress;
+}
+export function durableRunProgress(workspace: string, entry: string): Promise<RunProgressResult> {
+  return guard(() => facade().DurableRunProgress(workspace, entry), { state: "failed" });
+}
+
+/** One retained execution reopened read-only, with per-assertion expected and
+ * observed values present only under the deliberate reveal. */
+export interface RunEvidenceRequest {
+  workspace: string;
+  entry: string;
+  reveal: boolean;
+}
+export interface RunMessageEvidence {
+  source: string;
+  outbound: string;
+  response?: string;
+  readable: boolean;
+}
+export interface RunAssertionEvidence {
+  id: string;
+  operator: string;
+  message?: string;
+  selector?: string;
+  status: string;
+  expected?: string;
+  observed?: string;
+  evidence?: string;
+}
+export interface RunEvidence {
+  entry: string;
+  durable: boolean;
+  run_state?: string;
+  stop_reason?: string;
+  delivery_uncertain: boolean;
+  journal_incomplete: boolean;
+  recovered: boolean;
+  terminal: boolean;
+  lease?: string;
+  acknowledged: number;
+  uncertain: number;
+  not_attempted: number;
+  status?: string;
+  error_class?: string;
+  identity?: string;
+  spec_identity?: string;
+  spec_name?: string;
+  source_case?: string;
+  source_identity?: string;
+  boundary?: string;
+  started_at?: string;
+  completed_at?: string;
+  elapsed?: string;
+  pin?: RunEnginePin;
+  pin_recorded: boolean;
+  planned: number;
+  readable: number;
+  unreadable: number;
+  initial_records?: number;
+  final_records?: number;
+  messages: RunMessageEvidence[];
+  assertions: RunAssertionEvidence[];
+  gaps: string[];
+  revealed: boolean;
+}
+export interface RunEvidenceResult {
+  state: State;
+  reason?: string;
+  evidence?: RunEvidence;
+}
+export function openRunEvidence(request: RunEvidenceRequest): Promise<RunEvidenceResult> {
+  return guard(() => facade().OpenRunEvidence(request), { state: "failed" });
 }
 
 /** Deliberately reveals one occurrence, with values escaped by the Go engine. */

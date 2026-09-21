@@ -97,7 +97,7 @@ func (a *App) PreviewReduction(request ReductionRequest) ReductionResult {
 // are left for recovery and nothing is resent. The report's own outcome names
 // whether anything was established.
 func (a *App) StartReduction(request ReductionRequest) ReductionResult {
-	return run(a, true, false, func(ctx context.Context) (out ReductionResult) {
+	return runNamed[ReductionResult, *ReductionResult](a, "reduction", true, false, func(ctx context.Context) (out ReductionResult) {
 		guard, _ := a.selectedOperation()
 		settle, admissionErr := guard.AdmitContext(ctx, "execute")
 		if admissionErr != nil {

@@ -1,8 +1,11 @@
 import { useRef, useState } from "react";
-import { cancel, compareRuns, type ExecutionView, type RunComparisonResult } from "./bindings";
+import { cancel, compareRuns, type Artifact, type ExecutionView, type RunComparisonResult } from "./bindings";
 import "./baseline.css";
 
-export function RunComparison({ workspace, busy }: { workspace: string; busy: boolean }) {
+/** Retained executions of the workspace, offered as the actual entries they
+ * are rather than names typed from memory. */
+export function RunComparison({ workspace, busy, entries }: { workspace: string; busy: boolean; entries: Artifact[] }) {
+ const runs = entries.filter((artifact) => artifact.kind === "job" || artifact.kind === "result").map((artifact) => artifact.name);
  const [baseline, setBaseline] = useState("");
  const [current, setCurrent] = useState("");
  const [approval, setApproval] = useState("");
@@ -23,15 +26,21 @@ export function RunComparison({ workspace, busy }: { workspace: string; busy: bo
  const c = result?.comparison;
  return <section className="baseline-panel" aria-labelledby="run-comparison-title">
   <h2 id="run-comparison-title">Compare retained executions</h2>
-  <p>Select result or durable-run directories in this workspace. Reads are offline. Values stay hidden; baseline approval and execution success are separate facts.</p>
+  <p>Select the workspace's retained result and durable-run directories. Reads are offline. Values stay hidden; baseline approval and execution success are separate facts.</p>
   <fieldset disabled={busy || working}>
-   <label>Baseline execution <input value={baseline} onChange={e => {setBaseline(e.target.value); invalidate();}} /></label>
-   <label>Current execution <input value={current} onChange={e => {setCurrent(e.target.value); invalidate();}} /></label>
+   <label htmlFor="comparison-baseline">Baseline execution <select id="comparison-baseline" value={baseline} onChange={e => {setBaseline(e.target.value); invalidate();}}>
+    <option value="">Select a retained execution…</option>
+    {runs.map(name => <option key={name} value={name}>{name}</option>)}
+   </select></label>
+   <label htmlFor="comparison-current">Current execution <select id="comparison-current" value={current} onChange={e => {setCurrent(e.target.value); invalidate();}}>
+    <option value="">Select a retained execution…</option>
+    {runs.map(name => <option key={name} value={name}>{name}</option>)}
+   </select></label>
    <label>Approved baseline file (optional) <input value={approval} onChange={e => {setApproval(e.target.value); invalidate();}} /></label>
    <label>Additional retained executions (one directory per line, up to 14)<textarea value={repeats} onChange={e => {setRepeats(e.target.value); invalidate();}} /></label>
    <button disabled={!baseline || !current} onClick={() => void perform()}>Compare executions</button>
   </fieldset>
-  {working ? <button onClick={() => {generation.current++; cancel(); setResult({state:"cancelled",reason:"Comparison cancelled. Retained evidence is unchanged; compare again to recover."});}}>Cancel comparison</button> : <button onClick={invalidate}>Clear comparison</button>}
+  {working ? <button onClick={() => {generation.current++; cancel("run-comparison"); setResult({state:"cancelled",reason:"Comparison cancelled. Retained evidence is unchanged; compare again to recover."});}}>Cancel comparison</button> : <button onClick={invalidate}>Clear comparison</button>}
   <p role="status">{working ? "Verifying retained executions…" : result?.reason ?? result?.state ?? "Choose retained evidence to compare."}</p>
   {c ? <>
    <p>{c.scope}</p>

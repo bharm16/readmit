@@ -195,7 +195,7 @@ func TestCancelStopsTheRunningOperationAndTheFacadeRecovers(t *testing.T) {
 
 	cancelling := &chooser{folder: root}
 	app := activatedApp(t, cancelling, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
-	cancelling.before = app.Cancel
+	cancelling.before = func() { app.Cancel("") }
 	if result := app.SelectWorkspace(); result.State != desktop.Cancelled || result.Workspace != nil {
 		t.Fatalf("a cancelled open reported a workspace: %+v", result)
 	}

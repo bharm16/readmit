@@ -506,7 +506,7 @@ func TestLayingOutASequenceHoldsTheSameOperationSlot(t *testing.T) {
 		t.Fatalf("a sequence ran while another operation held the facade: %+v", concurrent)
 	}
 
-	app.Cancel()
+	app.Cancel("")
 	if uninterrupted := laidOut(t, app, sequenceRequest(root, identity, seqRulesEntry)); uninterrupted.Total != 6 {
 		t.Fatalf("cancelling changed what a sequence reports: %+v", uninterrupted)
 	}

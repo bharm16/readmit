@@ -172,7 +172,7 @@ func (a *App) StagePastedContent(request PastedSourceRequest) PastedSourceResult
 
 // PreviewImport extracts and previews records without writing any evidence.
 func (a *App) PreviewImport(request ImportRequest) ImportPreviewResult {
-	return run(a, true, false, func(ctx context.Context) ImportPreviewResult {
+	return runNamed[ImportPreviewResult, *ImportPreviewResult](a, "import", true, false, func(ctx context.Context) ImportPreviewResult {
 		switch request.Mode {
 		case "plan":
 			if request.Plan == nil {
@@ -233,7 +233,7 @@ func (a *App) PreviewImport(request ImportRequest) ImportPreviewResult {
 
 // CommitImport commits the extraction to new case and receipt destinations, and registers it if requested.
 func (a *App) CommitImport(request ImportCommitRequest) ImportCommitResult {
-	return run(a, true, true, func(ctx context.Context) ImportCommitResult {
+	return runNamed[ImportCommitResult, *ImportCommitResult](a, "import", true, true, func(ctx context.Context) ImportCommitResult {
 		if err := artifactpath.EntryName(request.OutputName); err != nil {
 			return ImportCommitResult{State: Failed, Reason: "the case destination must be one valid directory entry name"}
 		}

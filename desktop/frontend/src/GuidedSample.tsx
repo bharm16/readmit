@@ -129,7 +129,7 @@ export function GuidedSample({
               ? "Run against the fixture as it misbehaves"
               : "Run against the corrected fixture"}
           </button>
-          <button type="button" disabled={!busy} onClick={() => cancel()}>
+          <button type="button" disabled={!busy} onClick={() => cancel("practice")}>
             Cancel
           </button>
         </div>

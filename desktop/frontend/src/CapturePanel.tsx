@@ -627,7 +627,7 @@ export function CapturePanel({
             <button type="button" disabled={locked || preview?.state !== "completed"} onClick={() => void runStart()}>
               Start collecting
             </button>
-            <button type="button" disabled={operation !== "collecting"} onClick={() => cancel()}>
+            <button type="button" disabled={operation !== "collecting"} onClick={() => cancel("collect")}>
               Cancel
             </button>
             <button type="button" disabled={locked} onClick={() => void runJournal()}>
@@ -680,7 +680,7 @@ export function CapturePanel({
             <button type="button" disabled={locked || preview?.state !== "completed"} onClick={() => void runStart()}>
               Start fixture listener
             </button>
-            <button type="button" disabled={operation !== "listening"} onClick={() => cancel()}>
+            <button type="button" disabled={operation !== "listening"} onClick={() => cancel("capture")}>
               Cancel
             </button>
           </div>

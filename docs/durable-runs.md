@@ -23,12 +23,29 @@ readmit run clean job-001 --json
 readmit run queue nightly.queue.json --send --runs runs --json
 ```
 
-The desktop's **Durable test runs** panel calls the same Go engine. Select the
-saved spec and a fresh output path, then **Send and execute once**. **Cancel run**
-stops future sends; bytes already written can still have affected the receiver.
-**Recover evidence** only reads the existing output. Closing a view does not
-trigger a resend. Killing the desktop process stops its local execution; use
-recovery after restarting. The CLI can run separately from the desktop.
+The desktop's **Durable test runs** panels call the same Go engine. A saved
+test or suite is selected from what the open workspace holds (the host's native
+file dialog remains the advanced selection), the panel validates it locally and
+shows an explicit **preflight** — the exact selected input, the target and the
+environment it records, the effective configuration, the observation and reset
+requirements, the pinned engine versions, the deadline, a generated fresh
+output folder and the operation guard's own admission decision — with no
+network connection and no verdict. A changed selection invalidates the
+preflight: execution is bound to the identity the preflight fixed and refuses a
+spec that no longer hashes to it. **Send and execute once** then runs the
+existing durable path above (a suite through the existing durable queue, with
+its declared isolation and no added parallelism); **Cancel run** stops future
+sends by naming its own operation, so one panel's cancel can never stop
+another's, and bytes already written can still have affected the receiver.
+While a run executes, the panel polls a read-only progress read of the journal
+the run is writing — the recovery vocabulary, never delivered-message counts —
+and the workspace listing is refreshed so completed and partial outputs appear
+in run history immediately. Retained runs and results reopen read-only through
+the same readers the command line verifies one with, per-assertion detail
+included, with expected and observed values revealed only by a deliberate
+local action. Closing a view does not trigger a resend. Killing the desktop
+process stops its local execution; use recovery after restarting. The CLI can
+run separately from the desktop.
 
 The desktop also remembers which output folder a viewer was watching, in its own
 local working session. Reopening the window reads that folder through this same

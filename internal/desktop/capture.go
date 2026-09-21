@@ -248,7 +248,7 @@ func (a *App) DiagnoseSource(request SourceWorkRequest) SourceAccessResult {
 
 // CollectSource stages evidence from an approved source with a receipt.
 func (a *App) CollectSource(request SourceWorkRequest) SourceCollectionResult {
-	return run(a, true, true, func(ctx context.Context) (out SourceCollectionResult) {
+	return runNamed[SourceCollectionResult, *SourceCollectionResult](a, "collect", true, true, func(ctx context.Context) (out SourceCollectionResult) {
 		guard, _ := a.selectedOperation()
 		settle, admissionErr := guard.AdmitContext(ctx, "execute")
 		if admissionErr != nil {
@@ -477,7 +477,7 @@ func (a *App) PreviewCapture(request CaptureRequest) CapturePreviewResult {
 // StartCapture starts a collector or SIU fixture only after explicit authorized
 // action. Stop/cancel uses Cancel through the shared engine.
 func (a *App) StartCapture(request CaptureRequest) CaptureSessionResult {
-	return run(a, true, true, func(ctx context.Context) (out CaptureSessionResult) {
+	return runNamed[CaptureSessionResult, *CaptureSessionResult](a, "capture", true, true, func(ctx context.Context) (out CaptureSessionResult) {
 		guard, _ := a.selectedOperation()
 		settle, admissionErr := guard.AdmitContext(ctx, "execute")
 		if admissionErr != nil {
@@ -637,7 +637,7 @@ type FinalizeCaptureRequest struct {
 // FinalizeCaptureImport commits staged collected material through the shared
 // import operation and links project registration when asked.
 func (a *App) FinalizeCaptureImport(request FinalizeCaptureRequest) ImportCommitResult {
-	return run(a, true, true, func(ctx context.Context) ImportCommitResult {
+	return runNamed[ImportCommitResult, *ImportCommitResult](a, "import", true, true, func(ctx context.Context) ImportCommitResult {
 		folder, ref := resolveWorkspacePath(request.Workspace, request.Folder)
 		if folder == "" {
 			return ImportCommitResult{State: ref.state, Reason: ref.reason}

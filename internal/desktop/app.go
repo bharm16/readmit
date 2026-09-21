@@ -93,7 +93,12 @@ const (
 	NormalizationArtifact     Kind = "normalization-policy"
 	DiagnoseConfigArtifact    Kind = "diagnose-config"
 	DecisionsArtifact         Kind = "finding-decisions"
-	UnsupportedArtifact       Kind = "unsupported"
+	// A suite document declares the environments, data rows and templates the
+	// durable-run panels execute a whole environment of; the releases
+	// document is the separate pin set that makes one an approved suite.
+	SuiteArtifact         Kind = "suite"
+	SuiteReleasesArtifact Kind = "suite-releases"
+	UnsupportedArtifact   Kind = "unsupported"
 )
 
 // Artifact is one entry of a workspace folder. Schema and Provenance are what
@@ -245,9 +250,16 @@ type App struct {
 	commercialSelectionPath string
 	commercialConfigPath    string
 
-	mu      sync.Mutex
-	running bool
-	cancel  context.CancelFunc
+	mu sync.Mutex
+	// running, operation and runOutput are the identity of the one operation
+	// that holds the slot. operation names the interruptible operation the way
+	// the panel that started it does, so a cancel action can say which
+	// operation it is cancelling and cannot reach a different one; runOutput
+	// is the folder a durable run is being written into while it executes.
+	running   bool
+	operation string
+	runOutput string
+	cancel    context.CancelFunc
 
 	// sessionMu serializes the working session alone. Retaining an unstored
 	// note edit and the place it was typed in must not wait for the operation
@@ -274,12 +286,22 @@ func New(chooser FolderChooser, recentPath, filtersPath, sessionPath, draftsPath
 // interrupted. Verifying a case runs to completion once the shared reader
 // starts. Cancel does nothing when nothing is running, and it never retracts
 // bytes an operation already wrote.
-func (a *App) Cancel() {
+//
+// operation names the operation the caller means to cancel, the same name the
+// panel that started it gave it. A cancel naming a different operation does
+// nothing, so one panel's cancel control can never stop another panel's work;
+// an empty name cancels whatever is running and is what the window's own
+// cancel command uses.
+func (a *App) Cancel(operation string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.cancel != nil {
-		a.cancel()
+	if a.cancel == nil {
+		return
 	}
+	if operation != "" && operation != a.operation {
+		return
+	}
+	a.cancel()
 }
 
 // claim reserves the single operation slot for work that runs to completion
@@ -299,11 +321,16 @@ func (a *App) claim() (func(), bool) {
 			a.cancel = nil
 		}
 		a.running = false
+		a.operation = ""
+		a.runOutput = ""
 	}, true
 }
 
-// begin claims the slot for work Cancel can interrupt.
-func (a *App) begin() (context.Context, func(), bool) {
+// begin claims the slot for work Cancel can interrupt. operation names the
+// work the way its own panel does, so a cancel action can name what it is
+// cancelling; an empty name leaves the operation unnamed, cancellable only by
+// the window's own cancel command.
+func (a *App) begin(operation string) (context.Context, func(), bool) {
 	release, claimed := a.claim()
 	if !claimed {
 		return nil, nil, false
@@ -311,6 +338,7 @@ func (a *App) begin() (context.Context, func(), bool) {
 	ctx, cancel := context.WithCancel(context.Background())
 	a.mu.Lock()
 	a.cancel = cancel
+	a.operation = operation
 	a.mu.Unlock()
 	return ctx, release, true
 }

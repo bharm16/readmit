@@ -144,7 +144,7 @@ test("collect preview, busy, cancel, and journal recovery", async () => {
   await user.click(screen.getByRole("button", { name: "Start collecting" }));
   expect(await screen.findByText(/Phase: collecting/)).toBeTruthy();
   await user.click(within(screen.getByRole("heading", { name: "Capture and collect evidence" }).closest("section")!).getByRole("button", { name: "Cancel" }));
-  expect(facade.oneCall("Cancel")).toEqual([]);
+  expect(facade.oneCall("Cancel")).toEqual(["collect"]);
   resolveStart({
     state: "cancelled",
     phase: "stopped",

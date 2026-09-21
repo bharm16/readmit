@@ -253,7 +253,7 @@ func TestControlledCrashRestoresUnstoredWorkAndKeepsTheSendUncertain(t *testing.
 
 	// Executing again is a deliberate act that needs a new output. The retained
 	// run is never reused, so no recovery path can turn into a resend.
-	if reused := restarted.StartDurableRun(spec, output); reused.State != desktop.Failed {
+	if reused := restarted.StartDurableRun(desktop.DurableRunRequest{Workspace: workspace, Spec: "spec.json", Output: "job"}); reused.State != desktop.Failed {
 		t.Fatalf("an interrupted run was executed again in place: %+v", reused)
 	}
 	if accepted, frames = peer.counts(); accepted != 1 || frames != 1 {
@@ -344,7 +344,7 @@ func crashChildRun(t *testing.T) {
 	if retained.State != desktop.Completed {
 		t.Fatalf("child could not retain its draft: %+v", retained)
 	}
-	app.StartDurableRun(os.Getenv(crashSpec), os.Getenv(crashOutput))
+	app.StartDurableRun(desktop.DurableRunRequest{Workspace: workspace, Spec: "spec.json", Output: "job"})
 }
 
 // Cancelling is not the same interruption as a crash, and recovery must not
@@ -353,7 +353,7 @@ func crashChildRun(t *testing.T) {
 // report both of those, and still never resend.
 func TestRecoveringACancelledRunKeepsItsStopReasonAndUncertainty(t *testing.T) {
 	peer := newSilentPeer(t)
-	workspace, spec, output := crashFixture(t, peer.address)
+	workspace, _, output := crashFixture(t, peer.address)
 	state := t.TempDir()
 	session := filepath.Join(state, "session.json")
 	app := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), session)
@@ -362,13 +362,15 @@ func TestRecoveringACancelledRunKeepsItsStopReasonAndUncertainty(t *testing.T) {
 		t.Fatalf("record view: %+v", recorded)
 	}
 	executed := make(chan desktop.DurableRunResult, 1)
-	go func() { executed <- app.StartDurableRun(spec, output) }()
+	go func() {
+		executed <- app.StartDurableRun(desktop.DurableRunRequest{Workspace: workspace, Spec: "spec.json", Output: "job"})
+	}()
 	select {
 	case <-peer.received:
 	case <-time.After(20 * time.Second):
 		t.Fatal("nothing was sent to the test endpoint")
 	}
-	app.Cancel()
+	app.Cancel("")
 	select {
 	case result := <-executed:
 		if result.State != desktop.Completed || result.Run == nil {

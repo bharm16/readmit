@@ -1620,7 +1620,7 @@ export function ImportPanel({
             {previewing ? "Extracting preview…" : "Preview extraction"}
           </button>
           {previewing ? (
-            <button type="button" onClick={() => void cancel()}>
+            <button type="button" onClick={() => void cancel("import")}>
               Cancel
             </button>
           ) : null}
@@ -1905,7 +1905,7 @@ export function ImportPanel({
             {committing ? "Committing import…" : "Commit import"}
           </button>
           {committing ? (
-            <button type="button" onClick={() => void cancel()}>
+            <button type="button" onClick={() => void cancel("import")}>
               Cancel
             </button>
           ) : null}

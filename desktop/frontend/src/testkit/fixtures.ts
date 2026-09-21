@@ -6,6 +6,7 @@
 // in any of them, because what a component does with domain meaning is not
 // these tests' subject: the Go readers decide that, and the Go tests prove it.
 import type {
+  SuiteRunJob,
   Artifact,
   CaseResult,
   EditorDraft,
@@ -71,6 +72,11 @@ import type {
   NormalizationDifference,
   NormalizationRuleReport,
   NormalizeResult,
+  RunPreflightResult,
+  RunProgressResult,
+  RunEvidenceResult,
+  SuiteRunResult,
+  RunSpecChoiceResult,
 } from "../bindings";
 
 /** The synthetic workspace root the fixtures name. It is not a path on any
@@ -694,6 +700,133 @@ export function durableRunResult(state: RunState, overrides: Partial<NonNullable
       ...overrides,
     },
   };
+}
+
+/** One preflight answer: a plan the panel can show for a saved test. */
+export function runPreflightResult(overrides: Partial<NonNullable<RunPreflightResult["preflight"]>> = {}): RunPreflightResult {
+  return {
+    state: "completed",
+    preflight: {
+      kind: "test",
+      spec: "reschedule-test.json",
+      name: "Rescheduling updates the original appointment",
+      schema: "readmit-test/v1",
+      identity: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      selected: [{ source: "s0001-e000001", outbound: "o000001" }],
+      target: {
+        classification: "unclassified",
+        address: "127.0.0.1:25000",
+        transport: "plain",
+        test_endpoint: true,
+        approved_transport: false,
+        connect_timeout: "2s",
+        message_timeout: "5s",
+        max_ack_bytes: 4096,
+        credential: false,
+      },
+      boundary: "ack-contract",
+      initial_state: "operator-declared",
+      reset: "reset the fixture deliberately",
+      engine: { engine: "dev", spec: "readmit-test/v1", profile: "readmit-siu-v1" },
+      deadline: "30m0s",
+      destination: { name: "job-001", generated: true, fresh: true },
+      admission: { admitted: true },
+      ...overrides,
+    },
+  };
+}
+
+/** One read of a run folder's recovery counts. */
+export function runProgressResult(overrides: Partial<NonNullable<RunProgressResult["progress"]>> = {}): RunProgressResult {
+  return {
+    state: "completed",
+    progress: {
+      executing: false,
+      phase: "passed",
+      acknowledged: 1,
+      uncertain: 0,
+      not_attempted: 0,
+      lease: "released",
+      ...overrides,
+    },
+  };
+}
+
+/** One retained execution reopened read-only, values hidden by default. */
+export function runEvidenceResult(overrides: Partial<NonNullable<RunEvidenceResult["evidence"]>> = {}): RunEvidenceResult {
+  return {
+    state: "completed",
+    evidence: {
+      entry: "job-001",
+      durable: true,
+      run_state: "passed",
+      stop_reason: "passed",
+      delivery_uncertain: false,
+      journal_incomplete: false,
+      recovered: false,
+      terminal: true,
+      lease: "released",
+      acknowledged: 1,
+      uncertain: 0,
+      not_attempted: 0,
+      status: "passed",
+      identity: "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+      spec_identity: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      spec_name: "Rescheduling updates the original appointment",
+      source_case: "regression",
+      source_identity: "7d266d0a09e92d3322d6346cf16c9dd37c768c02a11f8ea6c41870adc44915df",
+      boundary: "ack-contract",
+      started_at: "2026-01-01T12:00:00Z",
+      completed_at: "2026-01-01T12:00:01Z",
+      elapsed: "1s",
+      pin: { engine: "dev", spec: "readmit-test/v1", profile: "readmit-siu-v1" },
+      pin_recorded: true,
+      planned: 1,
+      readable: 1,
+      unreadable: 0,
+      messages: [{ source: "s0001-e000001", outbound: "o000001", response: "run/o000001-received.bin", readable: true }],
+      assertions: [
+        {
+          id: "ack",
+          operator: "ack_field_equals",
+          message: "s0001-e000001",
+          selector: "MSA-1",
+          status: "passed",
+          evidence: "run/o000001-received.bin",
+        },
+      ],
+      gaps: [],
+      revealed: false,
+      ...overrides,
+    },
+  };
+}
+
+/** One suite queue report. */
+export function suiteRunResult(): SuiteRunResult {
+  return {
+    state: "completed",
+    output: "suite-run",
+    report: {
+      schema: "readmit-run-queue-report/v1",
+      parallelism: 1,
+      executed: 1,
+      start_failed: 0,
+      refused: 0,
+      skipped: 0,
+      jobs: (() => {
+        const summary = durableRunResult("passed").run;
+        const job: SuiteRunJob = { id: "booking-one", admission: "executed", isolation: "shared" };
+        if (summary) job.run = summary;
+        return [job];
+      })(),
+    },
+  };
+}
+
+/** The native file dialog's selection of one workspace entry. */
+export function runSpecChoice(entry: string): RunSpecChoiceResult {
+  return { state: "completed", entry };
 }
 
 /** The editable project document a stored note lands in. */

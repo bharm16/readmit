@@ -166,7 +166,7 @@ func TestSequenceAnalysisRefusalRecoveryAndWindowedACK(t *testing.T) {
 		}
 	}
 	save(document)
-	app.Cancel()
+	app.Cancel("")
 	got := app.OpenSequence(req)
 	if got.Sequence == nil {
 		t.Fatalf("read-only bounded recovery failed: %+v", got)

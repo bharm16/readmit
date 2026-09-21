@@ -14,7 +14,7 @@ func TestUnactivatedDesktopRetainsSampleReadsButRefusesAuthoring(t *testing.T) {
 	if sample.State != desktop.Completed {
 		t.Fatal(sample)
 	}
-	if result := app.StartDurableRun("absent", "absent"); result.State != desktop.PermissionDenied {
+	if result := app.StartDurableRun(desktop.DurableRunRequest{Workspace: "absent", Spec: "absent", Output: "absent"}); result.State != desktop.PermissionDenied {
 		t.Fatal(result)
 	}
 	if result := app.SaveNote("absent", project.Note{}); result.State != desktop.PermissionDenied {
