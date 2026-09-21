@@ -1,5 +1,20 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The desktop privacy pane completed the license and commercial journey (#265).
+  A received entitlement and trust document verify through native dialogs with
+  the shared v1/v2 readers; a verified v2 document configures the local
+  activation (author, device, runner authority chosen from what the document
+  assigns, private folder chosen natively) without hand-authored
+  operation-policy JSON, re-verifying at creation and never overwriting.
+  Renewal and the one approved extension install later issues, refusing
+  transfers, superseded sequences and released activations; the installed
+  document exports byte for byte; runner capacity is shown and admissions are
+  released or reconciled explicitly. The commercial portal destination is
+  operator-supplied `readmit-commercial-destinations/v1` configuration shown
+  before deliberate navigation, a visible prerequisite until configured;
+  payment completion never activates anything, and checkout return, cancelled
+  payment and pending issuance change nothing locally. The pane issues no
+  entitlement, holds no signing key, and contacts no service on its own.
 - The desktop shell authors every supported test and assertion operator through
   structured visual controls (#256). Guided test authoring covers
   `ledger_count`, `ledger_equals` and `ack_field_equals` with inspected-field

@@ -560,6 +560,15 @@ export interface Facade {
   ActivateOperations(): Promise<OperationResult>;
   ResolveOperationClock(): Promise<OperationResult>;
   ReleaseOperations(): Promise<OperationResult>;
+  VerifyLicenseDocument(): Promise<LicenseVerifyResult>;
+  ChooseLicenseFolder(): Promise<LicenseFolderResult>;
+  CreateLicenseActivation(request: LicenseActivationRequest): Promise<OperationResult>;
+  RenewLicenseDocument(): Promise<OperationResult>;
+  ExportLicenseDocument(): Promise<LicenseExportResult>;
+  ShowRunnerAdmissions(): Promise<RunnerStatusResult>;
+  SettleRunnerAdmission(request: RunnerSettleRequest): Promise<RunnerStatusResult>;
+  ChooseCommercialDestinations(): Promise<CommercialStatusResult>;
+  CommercialStatus(): Promise<CommercialStatusResult>;
   CompareRuns(request: RunComparisonRequest): Promise<RunComparisonResult>;
   StartDurableRun(spec: string, output: string): Promise<DurableRunResult>;
   OpenDurableRun(path: string): Promise<DurableRunResult>;
@@ -3010,6 +3019,42 @@ export function operationStatus(): Promise<OperationResult> {return guard(() => 
 export function activateOperations(): Promise<OperationResult> {return guard(() => facade().ActivateOperations(), {state:"failed", selected:false});}
 export function resolveOperationClock(): Promise<OperationResult> {return guard(() => facade().ResolveOperationClock(), {state:"failed", selected:false});}
 export function releaseOperations(): Promise<OperationResult> {return guard(() => facade().ReleaseOperations(), {state:"failed", selected:false});}
+
+/** What one verified entitlement declares: identifiers, dates and counts the
+ * document itself carries, plus the term state decided from the local clock.
+ * It never carries a signature value or a path. */
+export interface LicenseAssignmentView { author: string; devices: string[]; }
+export interface LicenseAuthorityView { id: string; instances: number; }
+export interface LicenseDocumentView {
+ version: string; id: string; organization: string; plan: string; sequence: number;
+ issued?: string; not_before?: string; expires?: string; grace_days?: number; grace_ends?: string; state?: string;
+ seats?: number; devices_per_seat?: number; devices?: string[]; assignments?: LicenseAssignmentView[];
+ runner_instances?: number; authorities?: LicenseAuthorityView[]; capabilities?: string[];
+ key_id?: string; key_status?: string; operation_capable: boolean;
+}
+export interface LicenseVerifyResult { state: State; reason?: string; entitlement?: string; trust?: string; document?: LicenseDocumentView; }
+export function verifyLicenseDocument(): Promise<LicenseVerifyResult> {return guard(() => facade().VerifyLicenseDocument(), {state:"failed"});}
+export interface LicenseFolderResult { state: State; reason?: string; folder?: string; }
+export function chooseLicenseFolder(): Promise<LicenseFolderResult> {return guard(() => facade().ChooseLicenseFolder(), {state:"failed"});}
+export interface LicenseActivationRequest {
+ entitlement: string; trust: string; author?: string; device?: string; authority?: string; folder: string;
+}
+export function createLicenseActivation(request: LicenseActivationRequest): Promise<OperationResult> {return guard(() => facade().CreateLicenseActivation(request), {state:"failed", selected:false});}
+export function renewLicenseDocument(): Promise<OperationResult> {return guard(() => facade().RenewLicenseDocument(), {state:"failed", selected:false});}
+export interface LicenseExportResult { state: State; reason?: string; document?: string; path?: string; }
+export function exportLicenseDocument(): Promise<LicenseExportResult> {return guard(() => facade().ExportLicenseDocument(), {state:"failed"});}
+export interface RunnerAdmissionView { instance: string; admitted: string; lease_until: string; state: string; }
+export interface RunnerStatusResult {
+ state: State; reason?: string; organization?: string; authority?: string; instances?: number;
+ active?: number; stale?: number; free?: number; admissions?: RunnerAdmissionView[];
+}
+export function showRunnerAdmissions(): Promise<RunnerStatusResult> {return guard(() => facade().ShowRunnerAdmissions(), {state:"failed"});}
+export interface RunnerSettleRequest { instance: string; reconcile: boolean; }
+export function settleRunnerAdmission(request: RunnerSettleRequest): Promise<RunnerStatusResult> {return guard(() => facade().SettleRunnerAdmission(request), {state:"failed"});}
+export interface CommercialStatusResult { state: State; reason?: string; environment?: string; portal?: string; config_path?: string; }
+export function chooseCommercialDestinations(): Promise<CommercialStatusResult> {return guard(() => facade().ChooseCommercialDestinations(), {state:"failed"});}
+export function commercialStatus(): Promise<CommercialStatusResult> {return guard(() => facade().CommercialStatus(), {state:"empty"});}
+
 
 export interface HubProjectInfo {
   project: string;

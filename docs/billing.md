@@ -8,6 +8,13 @@ readmit contains no payment integration, no merchant account, no payments
 dependency, no HTTP client and no endpoint, and it acquires none by being
 purchased.
 
+The customer-facing half of the journey is deliberate navigation only: the
+desktop application's privacy pane shows the operator-supplied portal
+destination and opens it when the person chooses to, handles the return from
+checkout truthfully (payment alone imports nothing), and never sends evidence
+data anywhere. See
+[the desktop shell guide](desktop.md#commercial-account-and-checkout-destination-readmit-commercial-destinationsv1).
+
 What this repository holds is the other half of that boundary: `internal/billing`
 is the vendor's **account ledger** and the **authenticated payment events** that
 move it. It decides, offline and deterministically, what one event does to an
