@@ -42,6 +42,9 @@ import type {
   TestDraftDocument,
   TestResult,
   TestResolution,
+  HubResult,
+  HubDiagnosisResult,
+  HubArtifactsResult,
 } from "../bindings";
 
 /** The synthetic workspace root the fixtures name. It is not a path on any
@@ -679,3 +682,73 @@ export function indicatorTable(): Map<StatusValue, Shell["indicators"][number]> 
   const shell = shellResult().shell;
   return new Map(shell ? shell.indicators.map((indicator) => [indicator.status, indicator]) : []);
 }
+
+export function defaultHubResult(overrides: Partial<HubResult> = {}): HubResult {
+  return {
+    state: "completed",
+    connected: true,
+    authenticated: true,
+    subject: "analyst@customer.example",
+    issuer: "https://idp.customer.example",
+    audience: "readmit-hub",
+    expires_at: "2026-09-21T18:00:00Z",
+    config_path: "/etc/readmit/hub-client.json",
+    hub_url: "https://hub.customer.example:8443",
+    custody_warning: "Downloaded copies remain under local custody and cannot be revoked.",
+    projects: [
+      {
+        project: "cardio-icu",
+        authorized: true,
+        capabilities: ["evidence.read", "evidence.write", "approval"],
+        head: 12,
+        warning: "Custody notice applied",
+      },
+      {
+        project: "restricted-study",
+        authorized: false,
+        reason: "access refused; role or grant denied",
+      },
+    ],
+    ...overrides,
+  };
+}
+
+export function defaultDiagnosisResult(overrides: Partial<HubDiagnosisResult> = {}): HubDiagnosisResult {
+  return {
+    state: "completed",
+    passed: true,
+    checks: [
+      { name: "ca_certificate", passed: true, message: "CA certificate is valid" },
+      { name: "client_certificate", passed: true, message: "client certificate file is readable" },
+      { name: "client_key_reference", passed: true, message: "private key reference resolved successfully" },
+      { name: "key_pair_match", passed: true, message: "certificate and private key match" },
+      { name: "hub_endpoint", passed: true, message: "hub endpoint URL is well-formed", detail: "hub.customer.example:8443" },
+      { name: "hub_tls_handshake", passed: true, message: "mutual TLS connection established" },
+      { name: "hub_liveness", passed: true, message: "hub is live" },
+      { name: "hub_readiness", passed: true, message: "hub is ready" },
+      { name: "idp_configuration", passed: true, message: "IdP configuration is valid", detail: "https://idp.customer.example" },
+    ],
+    ...overrides,
+  };
+}
+
+export function defaultArtifactsResult(overrides: Partial<HubArtifactsResult> = {}): HubArtifactsResult {
+  return {
+    state: "completed",
+    project: "cardio-icu",
+    head: 12,
+    warning: "Custody notice applied",
+    artifacts: [
+      {
+        digest: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        resource: "evidence",
+        kind: "record",
+        actor: "lead@hospital.org",
+        at: "2026-09-21T10:00:00Z",
+        reason: "baseline study data",
+      },
+    ],
+    ...overrides,
+  };
+}
+

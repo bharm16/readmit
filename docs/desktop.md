@@ -1694,4 +1694,92 @@ The CLI timeline's existing output contract stays unchanged.
 
 The privacy pane selects a supplied `operation-policy.json` through a native folder chooser, activates it explicitly, and shows signed term dates and visible UTC high-water/rollback state. New authoring and execution are admitted through the shared operation guard; unconfigured, expired, released, corrupt or rollback-blocked state refuses them. The application still opens, reads/verifies/exports existing evidence, and runs its frozen synthetic practice without activation. Selection is persisted separately as `readmit-desktop-operation-selection/v1`. See [the local evaluation contract](license-v2.md#complete-local-evaluation-and-operation-admission).
 
+## Customer artifact hub
+
+The Customer artifact hub panel in the application's privacy pane connects the
+desktop client to an organization-controlled artifact hub. It supports discovery
+and verified transfer of authorized projects and artifacts without background
+synchronization, telemetry, or cloud dependencies.
+
+### Native configuration (`readmit-hub-client/v1`)
+
+The hub connection is configured through a `readmit-hub-client/v1` JSON document
+selected via native file dialog. The configuration file specifies:
+- `hub_endpoint`: The HTTPS endpoint of the hub service.
+- `ca_certificate_file`: Path to the customer's trusted root CA certificate (PEM format).
+- `client_certificate_file`: Path to the desktop client's mTLS certificate (PEM format).
+- `client_key_reference`: A credential-store reference or protected execution command (e.g. `secret:exec:...` or `pass:...`) resolved through `internal/secret` to obtain the private key at connection time. No unencrypted private key material is authored into the configuration.
+- `idp`: The customer's OpenID Connect / OAuth 2.0 Identity Provider configuration, including `issuer`, `authorization_endpoint`, `token_endpoint`, `client_id`, `audience`, and required scopes.
+- `authorized_projects`: List of declared project identifiers expected to be available to the client.
+
+The application remembers the selected configuration file path in local desktop
+state across sessions as `readmit-desktop-hub-selection/v1`. The configuration
+file itself is never copied into application state or modified by the shell.
+
+### Prerequisite diagnostics
+
+Before connecting or upon selecting a configuration, the **Run diagnostics** action
+verifies prerequisites locally:
+1. `ca_certificate`: Verifies the CA file exists, parses as valid PEM, and contains valid x509 certificates.
+2. `client_certificate`: Verifies the client certificate file exists and contains a valid certificate.
+3. `client_key_reference`: Resolves the client key reference via the credential resolver.
+4. `key_pair_match`: Verifies that the client certificate matches the resolved private key (public key equality).
+5. `hub_endpoint`: Validates the hub URL format and scheme (`https://`).
+6. `hub_tls_handshake`: Establishes a TLS 1.3 handshake with mTLS using the configured CA and client certificate.
+7. `hub_liveness`: Queries the hub's `/health/live` endpoint.
+8. `hub_readiness`: Queries the hub's `/health/ready` endpoint.
+9. `idp_configuration`: Validates IdP endpoint URLs and configuration schema.
+
+Diagnostics report actionable status (`passed`, `failed`, `warning`) for each
+item so administrators and users can isolate certificate, network, or policy issues
+before attempting sign-in.
+
+### Offline and local mode vs deliberate connection
+
+The application starts unconditionally in **offline / local mode**. It performs
+no network probes, startup calls, or background heartbeats. Connecting to the
+hub requires an explicit user action (**Connect**). Disconnecting or closing the
+application immediately returns the client to local mode.
+
+### Customer IdP sign-in and session security
+
+User authentication uses standard authorization code flow with PKCE (RFC 7636, S256):
+1. Selecting **Sign in with IdP** starts a local loopback callback server on `127.0.0.1:0`.
+2. The authorization URL with code challenge and state is generated and launched in the user's default system browser.
+3. Upon completion, the loopback receiver captures the authorization code and exchanges it at the IdP's token endpoint.
+4. The received access token is validated strictly under RFC 9068:
+   - Header `typ` must be `at+jwt`.
+   - Algorithm must be `RS256`.
+   - Claims must include valid `iss`, `aud`, `client_id`, `sub`, `exp`, `iat`, and `scope`.
+   - Token must be cryptographically signed by the IdP and not expired.
+
+Access tokens and session state are held strictly **in memory** within the Go
+engine (`internal/hubclient.Session`). No token, secret, or session cookie is ever
+written to disk, saved in browser storage (localStorage, sessionStorage, IndexedDB),
+or logged.
+
+### Authorized projects and effective capabilities
+
+Once authenticated, the hub reports accessible projects and effective capabilities
+for the user's identity:
+- Projects configured or probed through the hub are listed with their status (`authorized` or `denied`).
+- Effective capabilities (`evidence.read`, `evidence.write`, etc.) are displayed for each authorized project.
+- Denied projects display the refusal reason (e.g. role not granted).
+- Missing permissions cannot fall back to operator-only certificates or unscoped access.
+
+### Artifact discovery, verified transfer, and custody
+
+Users can list and transfer authorized project artifacts:
+- Artifact metadata includes name, artifact type, content length, SHA-256 digest, and modification time.
+- **Downloading** an artifact streams bytes through the mTLS transport, verifies the SHA-256 digest against the hub's declared metadata, and writes atomically with secure permissions (`0600`).
+- Every download displays and enforces the permanent custody warning:
+  `"Downloaded copies remain under local custody and cannot be revoked."`
+- **Uploading** an artifact requires local author admission (`run(..., writes: true)`) before transmitting to the hub, verifies the computed SHA-256 hash, and checks write capability.
+
+### Session revocation and recovery
+
+- Expired sessions, certificate mismatch, denied roles, changed grants, or unavailable hub endpoints are surfaced visibly in the hub panel.
+- Logging out clears the in-memory session and active client credentials immediately.
+- Re-authenticating never automatically replays pending transfers or writes; any operation interrupted by session loss must be re-initiated deliberately by the user.
+
 Contextual offline help and recovery codes, with ADT/SIU/ORM/ORU recipes: [workflow help](workflow-help.md).

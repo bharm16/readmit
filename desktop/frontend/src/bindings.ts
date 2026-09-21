@@ -544,6 +544,17 @@ export interface Facade {
   OpenSequence(request: SequenceRequest): Promise<SequenceResult>;
   PreviewTransformation(request: TransformRequest): Promise<TransformResult>;
   OpenReview(request: ReviewRequest): Promise<ReviewResult>;
+  ChooseHubConfig(): Promise<HubResult>;
+  SelectHubConfig(path: string): Promise<HubResult>;
+  DiagnoseHub(): Promise<HubDiagnosisResult>;
+  ConnectHub(): Promise<HubResult>;
+  DisconnectHub(): Promise<HubResult>;
+  StartHubAuth(): Promise<HubAuthUrlResult>;
+  CompleteHubAuth(code: string, state: string): Promise<HubResult>;
+  HubStatus(): Promise<HubResult>;
+  ListHubProjectArtifacts(project: string): Promise<HubArtifactsResult>;
+  DownloadHubArtifact(request: HubDownloadRequest): Promise<HubTransferResult>;
+  UploadHubArtifact(request: HubUploadRequest): Promise<HubTransferResult>;
 }
 
 declare global {
@@ -2248,3 +2259,131 @@ export function operationStatus(): Promise<OperationResult> {return guard(() => 
 export function activateOperations(): Promise<OperationResult> {return guard(() => facade().ActivateOperations(), {state:"failed", selected:false});}
 export function resolveOperationClock(): Promise<OperationResult> {return guard(() => facade().ResolveOperationClock(), {state:"failed", selected:false});}
 export function releaseOperations(): Promise<OperationResult> {return guard(() => facade().ReleaseOperations(), {state:"failed", selected:false});}
+
+export interface HubProjectInfo {
+  project: string;
+  authorized: boolean;
+  reason?: string;
+  capabilities?: string[];
+  head?: number;
+  warning?: string;
+}
+
+export interface HubResult {
+  state: State;
+  reason?: string;
+  connected: boolean;
+  authenticated: boolean;
+  subject?: string;
+  issuer?: string;
+  audience?: string;
+  expires_at?: string;
+  config_path?: string;
+  hub_url?: string;
+  projects?: HubProjectInfo[];
+  custody_warning?: string;
+}
+
+export interface HubCheckItem {
+  name: string;
+  passed: boolean;
+  message: string;
+  detail?: string;
+}
+
+export interface HubDiagnosisResult {
+  state: State;
+  reason?: string;
+  passed: boolean;
+  checks?: HubCheckItem[];
+}
+
+export interface HubAuthUrlResult {
+  state: State;
+  reason?: string;
+  auth_url?: string;
+  port?: number;
+}
+
+export interface HubArtifactMetadata {
+  digest: string;
+  resource: string;
+  kind: string;
+  actor: string;
+  at: string;
+  reason?: string;
+}
+
+export interface HubArtifactsResult {
+  state: State;
+  reason?: string;
+  project?: string;
+  artifacts?: HubArtifactMetadata[];
+  head?: number;
+  warning?: string;
+}
+
+export interface HubTransferResult {
+  state: State;
+  reason?: string;
+  transfer_state?: string;
+  digest?: string;
+  size?: number;
+  path?: string;
+  warning?: string;
+}
+
+export interface HubDownloadRequest {
+  project: string;
+  digest: string;
+  destination_path: string;
+}
+
+export interface HubUploadRequest {
+  project: string;
+  source_path: string;
+}
+
+export function chooseHubConfig(): Promise<HubResult> {
+  return guard(() => facade().ChooseHubConfig(), { state: "failed", connected: false, authenticated: false });
+}
+
+export function selectHubConfig(path: string): Promise<HubResult> {
+  return guard(() => facade().SelectHubConfig(path), { state: "failed", connected: false, authenticated: false });
+}
+
+export function diagnoseHub(): Promise<HubDiagnosisResult> {
+  return guard(() => facade().DiagnoseHub(), { state: "failed", passed: false });
+}
+
+export function connectHub(): Promise<HubResult> {
+  return guard(() => facade().ConnectHub(), { state: "failed", connected: false, authenticated: false });
+}
+
+export function disconnectHub(): Promise<HubResult> {
+  return guard(() => facade().DisconnectHub(), { state: "failed", connected: false, authenticated: false });
+}
+
+export function startHubAuth(): Promise<HubAuthUrlResult> {
+  return guard(() => facade().StartHubAuth(), { state: "failed" });
+}
+
+export function completeHubAuth(code: string, state: string): Promise<HubResult> {
+  return guard(() => facade().CompleteHubAuth(code, state), { state: "failed", connected: false, authenticated: false });
+}
+
+export function hubStatus(): Promise<HubResult> {
+  return guard(() => facade().HubStatus(), { state: "failed", connected: false, authenticated: false });
+}
+
+export function listHubProjectArtifacts(project: string): Promise<HubArtifactsResult> {
+  return guard(() => facade().ListHubProjectArtifacts(project), { state: "failed" });
+}
+
+export function downloadHubArtifact(request: HubDownloadRequest): Promise<HubTransferResult> {
+  return guard(() => facade().DownloadHubArtifact(request), { state: "failed" });
+}
+
+export function uploadHubArtifact(request: HubUploadRequest): Promise<HubTransferResult> {
+  return guard(() => facade().UploadHubArtifact(request), { state: "failed" });
+}

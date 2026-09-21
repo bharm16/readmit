@@ -17,6 +17,7 @@ import (
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/guide"
+	"github.com/bharm16/readmit/internal/hubclient"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/operationguard"
 	"github.com/bharm16/readmit/internal/project"
@@ -205,6 +206,14 @@ type App struct {
 	filtersPath            string
 	sessionPath            string
 	draftsPath             string
+
+	hubMu            sync.Mutex
+	hubSelectionPath string
+	hubConfigPath    string
+	hubConfig        *hubclient.Config
+	hubClient        *hubclient.Client
+	hubSession       *hubclient.Session
+	hubAuthFlow      *hubclient.AuthFlow
 
 	mu      sync.Mutex
 	running bool
