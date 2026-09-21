@@ -173,10 +173,10 @@
       "kind": "cli",
       "capability": "Manage expectation work",
       "owner": "bharm16/readmit#258",
-      "screen": "a release-review screen",
-      "action": "review and release immutable test versions with profile pins",
-      "test": "desktop expectation journey test and shared-operation parity",
-      "implemented": false
+      "screen": "the Suites and releases panel of the inspector region",
+      "action": "review released expectation impact for a saved suite without moving pins",
+      "test": "SuitePanel.test.tsx journeys plus internal/desktop suite and parity tests",
+      "implemented": true
     },
     {
       "id": "cli.expectation.release",
@@ -184,10 +184,10 @@
       "kind": "cli",
       "capability": "Manage expectation work",
       "owner": "bharm16/readmit#258",
-      "screen": "a release-review screen",
+      "screen": "the Regression baseline panel of the inspector region",
       "action": "review and release immutable test versions with profile pins",
-      "test": "desktop expectation journey test and shared-operation parity",
-      "implemented": false
+      "test": "Baseline journeys plus internal/desktop expectation tests",
+      "implemented": true
     },
     {
       "id": "cli.expectation.review",
@@ -195,10 +195,10 @@
       "kind": "cli",
       "capability": "Manage expectation work",
       "owner": "bharm16/readmit#258",
-      "screen": "a release-review screen",
+      "screen": "the Regression baseline panel of the inspector region",
       "action": "review and release immutable test versions with profile pins",
-      "test": "desktop expectation journey test and shared-operation parity",
-      "implemented": false
+      "test": "Baseline journeys plus internal/desktop expectation tests",
+      "implemented": true
     },
     {
       "id": "cli.expectation.show",
@@ -206,10 +206,10 @@
       "kind": "cli",
       "capability": "Manage expectation work",
       "owner": "bharm16/readmit#258",
-      "screen": "a release-review screen",
-      "action": "review and release immutable test versions with profile pins",
-      "test": "desktop expectation journey test and shared-operation parity",
-      "implemented": false
+      "screen": "the Regression baseline panel of the inspector region",
+      "action": "inspect a retained release and its local approval",
+      "test": "Baseline journeys plus internal/desktop expectation tests",
+      "implemented": true
     },
     {
       "id": "cli.explain",
@@ -1240,10 +1240,10 @@
       "kind": "cli",
       "capability": "Review or approve exact suite inputs for one configured environment without sending",
       "owner": "bharm16/readmit#258",
-      "screen": "a suite screen",
-      "action": "prepare, review, execute and gate declared regression suites",
-      "test": "desktop suite journey test and shared-operation parity",
-      "implemented": false
+      "screen": "the Suites and releases panel of the inspector region",
+      "action": "approve exact suite inputs for one configured environment without sending",
+      "test": "SuitePanel.test.tsx journeys plus internal/desktop suite and parity tests",
+      "implemented": true
     },
     {
       "id": "cli.suite.ci",
@@ -1262,10 +1262,10 @@
       "kind": "cli",
       "capability": "Assess declared requirements against retained suite executions without sending",
       "owner": "bharm16/readmit#258",
-      "screen": "a suite screen",
-      "action": "prepare, review, execute and gate declared regression suites",
-      "test": "desktop suite journey test and shared-operation parity",
-      "implemented": false
+      "screen": "the Suites and releases panel of the inspector region",
+      "action": "author and assess declared requirement coverage over a prepared suite without sending",
+      "test": "SuitePanel.test.tsx journeys plus internal/desktop suite and parity tests",
+      "implemented": true
     },
     {
       "id": "cli.suite.gate",
@@ -1295,10 +1295,10 @@
       "kind": "cli",
       "capability": "Prepare a new private suite directory; run requires explicit send authorization",
       "owner": "bharm16/readmit#258",
-      "screen": "a suite screen",
-      "action": "prepare, review, execute and gate declared regression suites",
-      "test": "desktop suite journey test and shared-operation parity",
-      "implemented": false
+      "screen": "the Suites and releases panel of the inspector region",
+      "action": "compile a saved suite against one environment into a new private workspace directory without sending",
+      "test": "SuitePanel.test.tsx journeys plus internal/desktop suite and parity tests",
+      "implemented": true
     },
     {
       "id": "cli.suite.review-promotion",
@@ -1306,10 +1306,10 @@
       "kind": "cli",
       "capability": "Review or approve exact suite inputs for one configured environment without sending",
       "owner": "bharm16/readmit#258",
-      "screen": "a suite screen",
-      "action": "prepare, review, execute and gate declared regression suites",
-      "test": "desktop suite journey test and shared-operation parity",
-      "implemented": false
+      "screen": "the Suites and releases panel of the inspector region",
+      "action": "review exact suite inputs for one configured environment without sending",
+      "test": "SuitePanel.test.tsx journeys plus internal/desktop suite and parity tests",
+      "implemented": true
     },
     {
       "id": "cli.suite.run",
@@ -1317,10 +1317,10 @@
       "kind": "cli",
       "capability": "Prepare a new private suite directory; run requires explicit send authorization",
       "owner": "bharm16/readmit#258",
-      "screen": "a suite screen",
-      "action": "prepare, review, execute and gate declared regression suites",
-      "test": "desktop suite journey test and shared-operation parity",
-      "implemented": false
+      "screen": "the durable-run panels of the inspector region, seeded from the Suites and releases panel",
+      "action": "execute one prepared suite environment through the existing durable queue with explicit send authorization",
+      "test": "runs.test.tsx and SuitePanel.test.tsx journeys plus internal/desktop suite and parity tests",
+      "implemented": true
     },
     {
       "id": "cli.suite.verify-gate",
@@ -3692,6 +3692,127 @@
       "screen": "the durable-run panels of the inspector region",
       "action": "execute one suite environment through the existing durable queue into a fresh destination",
       "test": "desktop runs behavior tests plus internal/suite and internal/runqueue tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.OpenSuite",
+      "source": "desktop.App.OpenSuite",
+      "kind": "desktop",
+      "capability": "openSuite application operation",
+      "owner": "bharm16/readmit#258",
+      "screen": "the Suites and releases panel of the inspector region",
+      "action": "read one suite entry of the open workspace through the strict suite reader",
+      "test": "SuitePanel.test.tsx journeys plus internal/desktop suite and parity tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ValidateSuite",
+      "source": "desktop.App.ValidateSuite",
+      "kind": "desktop",
+      "capability": "validateSuite application operation",
+      "owner": "bharm16/readmit#258",
+      "screen": "the Suites and releases panel of the inspector region",
+      "action": "decode pasted canonical suite JSON for the structured editor",
+      "test": "SuitePanel.test.tsx journeys plus internal/desktop suite and parity tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveSuite",
+      "source": "desktop.App.SaveSuite",
+      "kind": "desktop",
+      "capability": "saveSuite application operation",
+      "owner": "bharm16/readmit#258",
+      "screen": "the Suites and releases panel of the inspector region",
+      "action": "write one validated canonical suite revision to a new entry",
+      "test": "SuitePanel.test.tsx journeys plus internal/desktop suite and parity tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.PreviewSuite",
+      "source": "desktop.App.PreviewSuite",
+      "kind": "desktop",
+      "capability": "previewSuite application operation",
+      "owner": "bharm16/readmit#258",
+      "screen": "the Suites and releases panel of the inspector region",
+      "action": "show the exact expansion of a suite against one environment without writing",
+      "test": "SuitePanel.test.tsx journeys plus internal/desktop suite and parity tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.PrepareSuite",
+      "source": "desktop.App.PrepareSuite",
+      "kind": "desktop",
+      "capability": "prepareSuite application operation",
+      "owner": "bharm16/readmit#258",
+      "screen": "the Suites and releases panel of the inspector region",
+      "action": "compile a saved suite into a new private directory without sending",
+      "test": "SuitePanel.test.tsx journeys plus internal/desktop suite and parity tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveSuiteCoverage",
+      "source": "desktop.App.SaveSuiteCoverage",
+      "kind": "desktop",
+      "capability": "saveSuiteCoverage application operation",
+      "owner": "bharm16/readmit#258",
+      "screen": "the Suites and releases panel of the inspector region",
+      "action": "author a coverage document whose pins come from the retained bytes",
+      "test": "SuitePanel.test.tsx journeys plus internal/desktop suite and parity tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.AssessSuiteCoverage",
+      "source": "desktop.App.AssessSuiteCoverage",
+      "kind": "desktop",
+      "capability": "assessSuiteCoverage application operation",
+      "owner": "bharm16/readmit#258",
+      "screen": "the Suites and releases panel of the inspector region",
+      "action": "assess a prepared suite against its declared denominator",
+      "test": "SuitePanel.test.tsx journeys plus internal/desktop suite and parity tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ReviewSuitePromotion",
+      "source": "desktop.App.ReviewSuitePromotion",
+      "kind": "desktop",
+      "capability": "reviewSuitePromotion application operation",
+      "owner": "bharm16/readmit#258",
+      "screen": "the Suites and releases panel of the inspector region",
+      "action": "review exact suite inputs and job pins for one environment",
+      "test": "SuitePanel.test.tsx journeys plus internal/desktop suite and parity tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ApproveSuitePromotion",
+      "source": "desktop.App.ApproveSuitePromotion",
+      "kind": "desktop",
+      "capability": "approveSuitePromotion application operation",
+      "owner": "bharm16/readmit#258",
+      "screen": "the Suites and releases panel of the inspector region",
+      "action": "approve one reviewed promotion as a new private file",
+      "test": "SuitePanel.test.tsx journeys plus internal/desktop suite and parity tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveSuiteReleases",
+      "source": "desktop.App.SaveSuiteReleases",
+      "kind": "desktop",
+      "capability": "saveSuiteReleases application operation",
+      "owner": "bharm16/readmit#258",
+      "screen": "the Suites and releases panel of the inspector region",
+      "action": "author a release sidecar with exact release identities",
+      "test": "SuitePanel.test.tsx journeys plus internal/desktop suite and parity tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ExpectationImpact",
+      "source": "desktop.App.ExpectationImpact",
+      "kind": "desktop",
+      "capability": "expectationImpact application operation",
+      "owner": "bharm16/readmit#258",
+      "screen": "the Suites and releases panel of the inspector region",
+      "action": "report what a successor release changes for a saved suite",
+      "test": "SuitePanel.test.tsx journeys plus internal/desktop suite and parity tests",
       "implemented": true
     }
   ]

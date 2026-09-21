@@ -389,6 +389,75 @@ func AssessCoverage(ctx context.Context, directory, policy string, repeats []str
 	return result, nil
 }
 
+// BuildCoverage authors the coverage document of one prepared suite
+// directory. The suite digest and every job's exact specification pin come
+// from the retained bytes the assessor will read back, never from the caller;
+// the requirements and exclusions are the operator's declarations, refused
+// when they name a job the retained suite did not expand. It writes nothing
+// and never opens a target, case or template.
+func BuildCoverage(directory string, requirements []Requirement, exclusions []Exclusion) ([]byte, error) {
+	dir, err := artifactpath.Directory(directory)
+	if err != nil {
+		return nil, errors.New("coverage authoring requires the prepared suite directory")
+	}
+	raw, err := read(filepath.Join(dir, "suite.json"), MaxBytes)
+	if err != nil {
+		return nil, err
+	}
+	document, err := Decode(raw)
+	if err != nil {
+		return nil, err
+	}
+	queue, err := document.queue()
+	if err != nil {
+		return nil, err
+	}
+	retained, err := read(filepath.Join(dir, "queue.json"), runqueue.MaxPlanBytes)
+	if err != nil {
+		return nil, err
+	}
+	retainedQueue, err := runqueue.DecodePlan(retained)
+	if err != nil {
+		return nil, err
+	}
+	if !sameCoverageJSON(queue, retainedQueue) {
+		return nil, errors.New("coverage requires matching retained suite, selection and queue")
+	}
+	sum := sha256.Sum256(raw)
+	pins := make([]CoverageSpecification, 0, len(queue.Jobs))
+	expanded := map[string]bool{}
+	for _, job := range queue.Jobs {
+		specRaw, err := read(filepath.Join(dir, job.Spec), testrunner.MaxSpecBytes)
+		if err != nil {
+			return nil, err
+		}
+		digest := sha256.Sum256(specRaw)
+		pins = append(pins, CoverageSpecification{Job: job.ID, SHA256: hex.EncodeToString(digest[:])})
+		expanded[job.ID] = true
+	}
+	for _, r := range requirements {
+		for _, id := range r.Jobs {
+			if !expanded[id] {
+				return nil, errors.New("coverage requirement names a job this suite did not expand")
+			}
+		}
+	}
+	for _, e := range exclusions {
+		if !expanded[e.Job] {
+			return nil, errors.New("coverage exclusion names a job this suite did not expand")
+		}
+	}
+	authored := CoverageDocument{Schema: CoverageSchema, SuiteSHA256: hex.EncodeToString(sum[:]), Specifications: pins, Requirements: requirements, Exclusions: exclusions}
+	encoded, err := json.Marshal(authored, json.Deterministic(true))
+	if err != nil {
+		return nil, errors.New("cannot encode suite coverage declarations")
+	}
+	if _, err = DecodeCoverage(encoded); err != nil {
+		return nil, err
+	}
+	return encoded, nil
+}
+
 func coverageJob(ctx context.Context, s coverageSuite, j runqueue.Job) (JobCoverage, string, error) {
 	row := JobCoverage{ID: j.ID, Execution: "unknown", Reason: "No durable execution exists; completion is unknown.", Expiry: "not_applicable", Exclusion: "none", Stability: runcompare.Stability{State: "insufficient_history", Reason: "No repeated comparable executions selected.", FlakyAssertions: []string{}}}
 	path := filepath.Join(s.dir, "runs", j.ID)

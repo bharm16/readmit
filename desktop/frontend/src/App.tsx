@@ -6,6 +6,7 @@ import { Baseline } from "./Baseline";
 import { NoteDraft } from "./NoteDraft";
 import { Recovery, RetainedDrafts } from "./Recovery";
 import { RunPanel } from "./RunPanel";
+import { SuitePanel } from "./SuitePanel";
 import { EnvironmentPanel } from "./EnvironmentPanel";
 import { Reduction, type ReductionForm } from "./Reduction";
 import { onRetentionResult, savedId } from "./drafting";
@@ -633,6 +634,18 @@ export default function App() {
       await refreshGuide(root);
     },
     [guideResult, operate, refreshGuide, root],
+  );
+
+  // A suite the suite panel prepared for execution is handed to the durable-run
+  // panel by seeding its selection with the suite entry, so the execution
+  // center's own preflight and explicit send decision take over without a
+  // path being copied by hand.
+  const handoff = useCallback(
+    (entry: string) => {
+      setRunSpecPath(entry);
+      focusRegion("evidence");
+    },
+    [focusRegion],
   );
 
   // The project overview re-reads the project from disk every time: what the
@@ -1956,6 +1969,16 @@ export default function App() {
       <>
         {root ? <Baseline key={root} workspace={root} busy={busy} /> : null}
         {root ? <RunComparison key={"runs-" + root} workspace={root} busy={busy} entries={opened?.artifacts ?? []} /> : null}
+        {root ? (
+          <SuitePanel
+            key={"suite-" + root}
+            workspace={root}
+            busy={busy}
+            entries={opened?.artifacts ?? []}
+            drafts={drafts}
+            onExecute={handoff}
+          />
+        ) : null}
         <Report
           indicators={indicators}
           progress={running === "case" ? "Verifying the case." : null}

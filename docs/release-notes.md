@@ -32,6 +32,19 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   and the source case. Suites execute one environment through the existing
   durable queue with its declared isolation. Operation completion, assertion
   failure, execution error and delivery uncertainty stay separate facts.
+- The desktop shell manages regression suites visually (#258). Suites are
+  authored through structured controls over the canonical readmit-suite/v1
+  contract and reopen CLI-written documents without dropped clauses or
+  migrations; the exact expansion previews before preparation with effective
+  inputs, bindings, release pins, dependencies and the shared-resource
+  serialization rule, never reordering selected input. Release sidecars,
+  expectation impact, private preparation, coverage authoring and assessment
+  over the retained bytes (explicit denominator, exclusions with reason and
+  expiry, unknown executions, stability evidence) and environment promotion
+  review/approval against exact pins all run through the same internal/suite
+  operations the command line uses. Promotion grants no send authority;
+  execution hands the suite entry to the durable-run panels' own preflight and
+  explicit send decision, with no path copied by hand.
 - The desktop shell authors every supported test and assertion operator through
   structured visual controls (#256). Guided test authoring covers
   `ledger_count`, `ledger_equals` and `ack_field_equals` with inspected-field

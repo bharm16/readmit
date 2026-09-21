@@ -77,6 +77,14 @@ import type {
   RunEvidenceResult,
   SuiteRunResult,
   RunSpecChoiceResult,
+  SuiteDocument,
+  SuiteDocumentResult,
+  SuitePreviewResult,
+  SuitePreparedResult,
+  SuiteCoverageResult,
+  SuitePromotionResult,
+  SuiteReleasesResult,
+  SuiteImpactResult,
 } from "../bindings";
 
 /** The synthetic workspace root the fixtures name. It is not a path on any
@@ -1565,6 +1573,237 @@ export function normalizeResult(
       differences,
       unsupported: [],
       ...overrides,
+    },
+  };
+}
+
+/** The synthetic suite vocabulary: entry names, one suite token, one test
+ * template, one prepared directory and fixed identity tokens. Positions and
+ * identities only, never a value read out of evidence. */
+export const SUITE_ENTRY = "nightly-suite.json";
+export const SUITE_TEMPLATE = "booking-template.json";
+export const SUITE_TARGET = "east-target.json";
+export const SUITE_PREPARED = "east-prepared";
+export const SUITE_IDENTITY = "suite-identity-fixed-for-tests";
+export const SUITE_RELEASE_IDENTITY = "release-identity-fixed-for-tests";
+export const SUITE_REVIEW_IDENTITY = "promotion-review-identity-fixed-for-tests";
+export const SUITE_APPROVAL_IDENTITY = "promotion-approval-identity-fixed-for-tests";
+export const SUITE_OCCURRENCE = "s0001-e000001";
+
+/** The workspace listing a suite workflow reads: one suite entry, one
+ * template, one case, one target and one prepared directory. */
+export function suiteArtifacts(): Artifact[] {
+  return [
+    { name: SUITE_ENTRY, kind: "suite", schema: "readmit-suite/v1" },
+    { name: SUITE_TEMPLATE, kind: "spec", schema: "readmit-test/v1" },
+    { name: CASE_ENTRY, kind: "case", schema: "readmit-case/v1", provenance: "generated" },
+    { name: SUITE_TARGET, kind: "target", schema: "readmit-target/v3" },
+    { name: SUITE_PREPARED, kind: "suite", schema: "readmit-suite/v1" },
+  ];
+}
+
+/** The one environment the suite fixture declares. */
+export function suiteEnvironment(): SuiteDocument["environments"][number] {
+  return { id: "east", site: "hospital-a", bindings: [{ parameter: "interface", target: SUITE_TARGET }] };
+}
+
+/** One suite as the strict reader returns it: a template bound to one row and
+ * one environment, with a dependency on a setup test. */
+export function suiteDocument(): SuiteDocument {
+  return {
+    schema: "readmit-suite/v1",
+    id: "nightly",
+    owner: "interop",
+    tags: ["release"],
+    parallelism: 2,
+    environments: [suiteEnvironment()],
+    tables: [{ id: "patients", rows: [{ id: "one", case: CASE_ENTRY }] }],
+    tests: [
+      {
+        id: "setup",
+        spec: SUITE_TEMPLATE,
+        owner: "scheduling",
+        tags: ["smoke"],
+        parameter: "interface",
+        table: "patients",
+        isolation: "shared",
+        sequence: [SUITE_OCCURRENCE],
+        after: [],
+      },
+      {
+        id: "booking",
+        spec: SUITE_TEMPLATE,
+        owner: "scheduling",
+        tags: ["smoke"],
+        parameter: "interface",
+        table: "patients",
+        isolation: "shared",
+        sequence: [SUITE_OCCURRENCE],
+        after: ["setup"],
+      },
+    ],
+  };
+}
+
+/** One opened suite: the typed document beside the canonical text and the
+ * digest of the bytes as they sit in the workspace. */
+export function suiteDocumentResult(): SuiteDocumentResult {
+  return {
+    state: "completed",
+    document: JSON.stringify(suiteDocument(), null, 2),
+    sha256: SUITE_IDENTITY,
+    suite: suiteDocument(),
+  };
+}
+
+/** The exact expansion of the suite above: two shared jobs, the second
+ * depending on the first, with effective inputs and the serialization rule. */
+export function suitePreviewResult(): SuitePreviewResult {
+  return {
+    state: "completed",
+    expansion: {
+      suite: { id: "nightly", owner: "interop", tags: ["release"], parallelism: 2 },
+      environment: suiteEnvironment(),
+      engine: "engine-stamp-fixed-for-tests",
+      releases: [],
+      jobs: [
+        {
+          id: "setup-one",
+          test: "setup",
+          row: "one",
+          spec: SUITE_TEMPLATE,
+          case: `${WORKSPACE_ROOT}/${CASE_ENTRY}`,
+          target: `${WORKSPACE_ROOT}/${SUITE_TARGET}`,
+          boundary: "ack-contract",
+          isolation: "shared",
+          after: [],
+          sequence: [SUITE_OCCURRENCE],
+        },
+        {
+          id: "booking-one",
+          test: "booking",
+          row: "one",
+          spec: SUITE_TEMPLATE,
+          case: `${WORKSPACE_ROOT}/${CASE_ENTRY}`,
+          target: `${WORKSPACE_ROOT}/${SUITE_TARGET}`,
+          boundary: "ack-contract",
+          isolation: "shared",
+          after: ["setup-one"],
+          sequence: [SUITE_OCCURRENCE],
+        },
+      ],
+      order: "Jobs appear in the suite's declared test and row order. The selected input order is exact and is never reordered by preview, preparation or execution.",
+      sharing: "Jobs declaring shared isolation hold the selected environment and the endpoint its target records for their whole run and are serialized against each other; isolated jobs may overlap within the declared parallelism.",
+    },
+  };
+}
+
+/** One prepared suite: the compiled queue plan of the expansion above. */
+export function suitePreparedResult(): SuitePreparedResult {
+  return {
+    state: "completed",
+    directory: SUITE_PREPARED,
+    queue: {
+      schema: "readmit-run-queue/v1",
+      parallelism: 2,
+      jobs: [
+        { id: "setup-one", spec: "setup-one.json", isolation: "shared" },
+        { id: "booking-one", spec: "booking-one.json", isolation: "shared", after: ["setup-one"] },
+      ],
+    },
+  };
+}
+
+/** One coverage assessment: an explicit denominator of two, one requirement
+ * uncovered, one quarantined job whose expiry has passed and one execution
+ * that never happened. */
+export function suiteCoverageResult(): SuiteCoverageResult {
+  return {
+    state: "completed",
+    report: {
+      suite: "nightly",
+      environment: "east",
+      at: "2026-09-19T00:00:00Z",
+      denominator: 2,
+      passed: 0,
+      percent: 0,
+      requirements: [
+        { id: "accept-booking", jobs: ["booking-one"], state: "not_passed" },
+        { id: "downstream-persistence", jobs: [], state: "uncovered" },
+      ],
+      jobs: [
+        {
+          id: "setup-one",
+          execution: "passed",
+          reason: "Retained durable execution; see run status for delivery and recovery details.",
+          expiry: "not_applicable",
+          exclusion: "none",
+          exclusion_reason: "",
+          expires: "",
+          expired: false,
+          eligible: true,
+          stability: { state: "insufficient_history", reason: "No repeated comparable executions selected.", runs: 0, passes: 0, failures: 0, errors: 0, incomplete: 0, flaky_assertions: [] },
+        },
+        {
+          id: "booking-one",
+          execution: "unknown",
+          reason: "No durable execution exists; completion is unknown.",
+          expiry: "not_applicable",
+          exclusion: "quarantined",
+          exclusion_reason: "Fixture intermittently refuses bookings",
+          expires: "2026-09-18T00:00:00Z",
+          expired: true,
+          eligible: false,
+          stability: { state: "unresolved", reason: "A selected prior suite has no finalized execution for this job.", runs: 0, passes: 0, failures: 0, errors: 0, incomplete: 1, flaky_assertions: [] },
+        },
+      ],
+      scope: "Only the explicitly declared requirements form the denominator; this is not universal HL7 assurance.",
+    },
+  };
+}
+
+/** One promotion review with exact pins, then its approval identity. */
+export function suitePromotionReview(): SuitePromotionResult {
+  return {
+    state: "completed",
+    review: {
+      schema: "readmit-suite-promotion-review/v1",
+      identity: SUITE_REVIEW_IDENTITY,
+      suite_sha256: SUITE_IDENTITY,
+      releases_sha256: SUITE_RELEASE_IDENTITY,
+      environment: "east",
+      revision_assumption: "fixture-build-7",
+      jobs: [{ job: "booking-one", sha256: "job-pin-fixed-for-tests" }],
+    },
+  };
+}
+
+export function suitePromotionApproval(): SuitePromotionResult {
+  return { ...suitePromotionReview(), identity: SUITE_APPROVAL_IDENTITY, output: "dev-promotion.json" };
+}
+
+/** One release sidecar save and one impact report over two releases. */
+export function suiteReleasesResult(): SuiteReleasesResult {
+  return {
+    state: "completed",
+    document: "{}",
+    output: "releases.json",
+    references: {
+      schema: "readmit-suite-releases/v1",
+      tests: [{ test: "booking", release: "booking-1.json", identity: SUITE_RELEASE_IDENTITY }],
+    },
+  };
+}
+
+export function suiteImpactResult(): SuiteImpactResult {
+  return {
+    state: "completed",
+    impact: {
+      schema: "readmit-expectation-impact/v1",
+      from: SUITE_RELEASE_IDENTITY,
+      to: "successor-identity-fixed-for-tests",
+      comparison: { schema: "readmit-test/v1", identity: SUITE_IDENTITY, revision: 2, parent: SUITE_RELEASE_IDENTITY, values_shown: false, changes: [{ part: "assertion[ack].expected", kind: "changed" }] },
+      tests: [{ test: "booking", rows: 1, pinned: SUITE_RELEASE_IDENTITY, state: "affected" }],
     },
   };
 }
