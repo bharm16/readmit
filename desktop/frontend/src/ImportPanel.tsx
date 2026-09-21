@@ -1931,6 +1931,8 @@ export function ImportPanel({
             <p><strong>Sources:</strong> {commitResult.case.sources} · <strong>Occurrences:</strong> {commitResult.case.occurrences} · <strong>Messages:</strong> {commitResult.case.messages}</p>
             {commitResult.registered ? (
               <p><em>Registered into project.</em></p>
+            ) : commitResult.reason ? (
+              <p>{commitResult.reason}</p>
             ) : null}
 
             <div className="import-commit-actions">
@@ -1945,7 +1947,7 @@ export function ImportPanel({
                   type="button"
                   onClick={() => onSetupIndex(commitResult.case!.name)}
                 >
-                  Setup search index
+                  Open this case to build an index
                 </button>
               ) : null}
             </div>

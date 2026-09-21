@@ -317,11 +317,18 @@ func (a *App) CommitImport(request ImportCommitRequest) ImportCommitResult {
 				InterfaceVersion: request.CaseVersion,
 			}
 			_, regErr := operation.RegisterCase(request.Project, request.OutputName, reg)
-			if regErr == nil {
-				registered = true
-				if openedProj, openErr := project.Open(request.Project); openErr == nil {
-					projDoc = &openedProj.Document
+			if regErr != nil {
+				return ImportCommitResult{
+					State:       Completed,
+					Reason:      "the case and receipt were written, but the case was not registered: " + regErr.Error(),
+					Case:        c,
+					CasePath:    casePath,
+					ReceiptPath: receiptPath,
 				}
+			}
+			registered = true
+			if openedProj, openErr := project.Open(request.Project); openErr == nil {
+				projDoc = &openedProj.Document
 			}
 		}
 
