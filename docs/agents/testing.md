@@ -14,7 +14,22 @@ compiler, formatting and vet. Keep successful local test caches available.
 
 For Python tooling, use `python3 -m unittest discover -s tools -p 'test_NAME.py' -v`.
 For frontend edits, run `npm ci && npm run build` in `desktop/frontend`; this
-includes TypeScript checking. The desktop module is a separate Go build.
+includes TypeScript checking. Run the frontend behavior tests with `npm test`
+in the same directory: Vitest in run mode, deterministic and offline. The
+desktop module is a separate Go build.
+
+The frontend tests live beside the components and go through
+`desktop/frontend/src/testkit`, which installs a stub of the bindings'
+exported `Facade` interface at the exact `window.go.desktop.App` surface the
+production bindings read. A test can answer only the calls the real facade
+publishes, with the real types; an unanswered call rejects instead of
+succeeding quietly. The kit's fixtures carry positions, states and counts,
+never an HL7 value, a credential, a machine path or a network address, and
+the setup file resets the window and the stub between tests. A workflow that
+changes what the window does gets an interaction test through this entry,
+driving real user events; the shared-operation parity evidence for it stays
+on the Go side, where `internal/desktop` and the domain packages are tested
+against the same readers the command line uses.
 
 ## Before pushing
 
@@ -50,6 +65,9 @@ The desktop module builds and scans separately, and `desktop` is that workflow's
 equivalent stable aggregate: it requires the macOS shell build and the five
 `desktop-package` jobs plus the five `desktop-install` jobs, which download,
 install, check and remove the exact unsigned artifacts on fresh native runners.
+The macOS shell job also executes the frontend behavior tests and publishes
+their output as an artifact, so a failing component test fails the `desktop`
+aggregate rather than only a developer's local run.
 It fails the same way if any of them fails, is skipped or is cancelled. Release credentials remain exclusive to
 trusted tag runs; no signing credential reaches any workflow.
 

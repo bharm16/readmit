@@ -1,5 +1,11 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The desktop frontend gained a behavior-test suite over the typed facade
+  boundary (`npm test`, Vitest with React Testing Library, pinned and
+  development-only). The desktop workflow executes it beside the type check
+  and production build and publishes the output, so a failing component test
+  fails the `desktop` check. Existing panel behavior is pinned; no Go
+  dependency changed.
 - Local adversarial acceptance refuses dirty candidates and source changes during
   execution, retaining the final revision alongside its finite boundary results.
 - `observe collect` can read a bounded key column from approved PostgreSQL, SQL

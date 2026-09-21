@@ -34,7 +34,7 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
 
 ## Desktop application
 
-- [Wails 2](https://wails.io) renders a React and TypeScript interface in the platform webview. It is the only direct third-party dependency of the `desktop` module. Vite builds the interface, which is embedded in the executable; nothing is fetched at run time.
+- [Wails 2](https://wails.io) renders a React and TypeScript interface in the platform webview. It is the only direct third-party dependency of the `desktop` module. Vite builds the interface, which is embedded in the executable; nothing is fetched at run time. Vitest drives the interface's behavior tests against the typed facade boundary; those dependencies are development-only and are never part of any built application.
 - `internal/desktop` is the typed Go facade. Desktop operations return typed results with one explicit state each. The interface never parses command output and never reimplements HL7 or case bundle semantics. See [the desktop contract](desktop.md).
 - The desktop build needs cgo and a platform webview and has its own workflow. It never applies `CGO_ENABLED=0`, never changes the command-line build, and is not in the release archives.
 - The window's one write of evidence into a workspace is a reproducer: the occurrences a
@@ -486,6 +486,7 @@ Pin the current patch release and bump through reviewed pull requests, never dur
 | Wails | v2.16.0 (desktop module only) |
 | React and React DOM | 19.3.0 (with `@types/react` and `@types/react-dom` 19.3.0) |
 | Vite | 8.3.0 (with `@vitejs/plugin-react` 6.1.1) |
+| Vitest | 5.0.1 with `@testing-library/react` 16.3.3, `@testing-library/user-event` 14.6.7, `@testing-library/dom` 10.4.2 and `jsdom` 30.1.0 (desktop frontend tests only; never bundled) |
 | TypeScript | 5.9.3 |
 | Node | 24 in CI; every resolved frontend version is locked in `desktop/frontend/package-lock.json` |
 | govulncheck | v1.8.0 |
