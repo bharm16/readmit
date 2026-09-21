@@ -367,11 +367,10 @@ test("recipe mapping authoring, preview, commit to project, and navigation into 
         registered: true,
       });
     },
-    OpenCase: (ws, name) => {
+    OpenCase: (workspace, name) => {
+      expect(workspace).toBe(WORKSPACE_ROOT);
       expect(name).toBe("imported-case-01");
-      return Promise.resolve(
-        caseResult("imported-case-01", "sha256:finalcase777", "readmit-case/v3", "imported"),
-      );
+      return Promise.resolve(caseResult("imported-case-01", "sha256:finalcase777"));
     },
   });
 
