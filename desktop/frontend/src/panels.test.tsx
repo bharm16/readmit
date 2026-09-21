@@ -7,6 +7,7 @@ import { expect, test } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Baseline } from "./Baseline";
+import { TestAuthoring } from "./TestAuthoring";
 import { CanonicalTestEditor } from "./CanonicalTestEditor";
 import { Comparison } from "./Comparison";
 import { GuidedSample } from "./GuidedSample";
@@ -456,4 +457,67 @@ test("after a build the reproducer offers register and handoff actions", async (
     />,
   );
   expect(screen.queryByLabelText("New project entry for the derived case")).toBeNull();
+});
+
+test("TestAuthoring authors ledger_equals and exact_ledger suggestions", async () => {
+  const user = userEvent.setup();
+  const answers: unknown[] = [];
+  const suggests: unknown[] = [];
+  render(
+    <TestAuthoring
+      rows={[gridRow(GRID_OCCURRENCE, "message")]}
+      result={{
+        state: "completed",
+        test: {
+          draft: {
+            schema: "readmit-test-draft/v1",
+            case: { entry: CASE_ENTRY, identity: "case-identity" },
+            name: "Ledger regression",
+            messages: [GRID_OCCURRENCE],
+            target: "test-target.json",
+            boundary: "appointment-ledger",
+            observation: "ledger.json",
+            reset: "Restart fixture",
+            expectations: [],
+          },
+          resolution: {
+            stage: "",
+            missing: [],
+            messages: [GRID_OCCURRENCE],
+            targets: [],
+            coverage: {
+              ledger: { applies: true, covered: false },
+              messages: [],
+              uncovered: [],
+            },
+          },
+        },
+      }}
+      inspected={null}
+      busy={false}
+      progress={null}
+      indicators={indicatorTable()}
+      onAnswer={(answer) => answers.push(answer)}
+      onSave={() => undefined}
+      onSuggest={(request) => suggests.push(request)}
+      onApprove={() => undefined}
+    />,
+  );
+
+  await user.selectOptions(screen.getByLabelText("Ledger operator"), "ledger_equals");
+  await user.click(screen.getByRole("button", { name: "Expect an empty ledger" }));
+  await user.type(screen.getByLabelText("Expectation name"), "exact-empty");
+  await user.click(screen.getByRole("button", { name: "Expect this exact ledger" }));
+  expect(answers.at(-1)).toEqual({
+    stage: "expectations",
+    expectations: [{ id: "exact-empty", operator: "ledger_equals", records: [] }],
+  });
+
+  await user.type(screen.getByLabelText("Entry holding the reviewed run result"), "baseline-result");
+  await user.click(screen.getByLabelText("Propose the exact ledger that run settled on"));
+  await user.click(screen.getByRole("button", { name: "Suggest expectations from this run" }));
+  expect(suggests.at(-1)).toMatchObject({
+    result: "baseline-result",
+    exact_ledger: true,
+  });
 });

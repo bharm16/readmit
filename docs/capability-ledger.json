@@ -2316,11 +2316,11 @@
       "id": "desktop.AuthorTest",
       "source": "desktop.App.AuthorTest",
       "kind": "desktop",
-      "capability": "authorTest application operation",
+      "capability": "authorTest application operation for typed expectations ledger_count, ledger_equals and ack_field_equals",
       "owner": "bharm16/readmit#256",
       "screen": "the test authoring panel",
-      "action": "answer one draft stage and resolve what it now means",
-      "test": "desktop authoring behavior tests plus internal/testauthor tests",
+      "action": "answer one draft stage and resolve expectations using operators ledger_count, ledger_equals and ack_field_equals",
+      "test": "desktop authoring behavior tests covering ledger_count, ledger_equals and ack_field_equals plus internal/testauthor tests",
       "implemented": true
     },
     {
@@ -2354,6 +2354,61 @@
       "screen": "the test authoring panel",
       "action": "record decisions about proposals into the draft",
       "test": "desktop authoring behavior tests plus internal/testauthor tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.AuthorAssertionSet",
+      "source": "desktop.App.AuthorAssertionSet",
+      "kind": "desktop",
+      "capability": "authorAssertionSet application operation for all 16 operators field_equals, field_not_equals, field_state, text_matches, numeric_range, numeric_tolerance, date_window, values_equal, record_count, records_unique, records_contain, records_ordered, record_multiplicity, records_absent, record_key_matches and records_changed plus when conditions and every/any/none quantifiers",
+      "owner": "bharm16/readmit#256",
+      "screen": "the assertion set authoring panel",
+      "action": "answer structured assertion-set clauses for every supported operator, when condition and quantifier",
+      "test": "desktop assertion-set authoring behavior tests plus internal/assertionauthor tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveAssertionSet",
+      "source": "desktop.App.SaveAssertionSet",
+      "kind": "desktop",
+      "capability": "saveAssertionSet application operation",
+      "owner": "bharm16/readmit#256",
+      "screen": "the assertion set authoring panel",
+      "action": "write the generated assertion set into a new workspace entry",
+      "test": "desktop assertion-set authoring behavior tests plus internal/assertionauthor tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ImportAssertionSet",
+      "source": "desktop.App.ImportAssertionSet",
+      "kind": "desktop",
+      "capability": "importAssertionSet application operation",
+      "owner": "bharm16/readmit#256",
+      "screen": "the assertion set authoring panel",
+      "action": "open an existing complete assertion set into the structured draft",
+      "test": "desktop assertion-set authoring behavior tests plus internal/assertionauthor tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ValidateAssertionSet",
+      "source": "desktop.App.ValidateAssertionSet",
+      "kind": "desktop",
+      "capability": "validateAssertionSet application operation",
+      "owner": "bharm16/readmit#256",
+      "screen": "the assertion set authoring panel",
+      "action": "validate assertion-set bytes with the strict reader",
+      "test": "desktop assertion-set authoring behavior tests plus internal/assertionauthor tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ExportAssertionSet",
+      "source": "desktop.App.ExportAssertionSet",
+      "kind": "desktop",
+      "capability": "exportAssertionSet application operation",
+      "owner": "bharm16/readmit#256",
+      "screen": "the assertion set authoring panel",
+      "action": "export exact reviewed assertion-set bytes to a new workspace entry",
+      "test": "desktop assertion-set authoring behavior tests plus internal/assertionauthor tests",
       "implemented": true
     },
     {

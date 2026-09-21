@@ -14,6 +14,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/testauthor"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
@@ -227,7 +228,7 @@ func TestAnAnswerCarriesOnlyTheMemberItsOwnStageDeclares(t *testing.T) {
 		"reset instructions carrying a control byte": {Stage: testauthor.StageReset, Reset: "stop\athe listener"},
 		"an expectation with no operator":            {Stage: testauthor.StageExpectations, Expectations: []testauthor.Expectation{{ID: "a", Count: &count}}},
 		"an expectation this flow does not author": {Stage: testauthor.StageExpectations, Expectations: []testauthor.Expectation{
-			{ID: "exact-ledger", Operator: "ledger_equals"},
+			{ID: "exact-ledger", Operator: "ledger_snapshot"},
 		}},
 		"an identifier that is not one": {Stage: testauthor.StageExpectations, Expectations: []testauthor.Expectation{
 			{ID: "One Appointment", Operator: testauthor.LedgerCount, Count: &count},
@@ -567,5 +568,53 @@ func TestDecodeDraftReadsOnlyThisContract(t *testing.T) {
 	}
 	if _, err := testauthor.DecodeDraft(make([]byte, testauthor.MaxDraftBytes+1)); err == nil {
 		t.Error("the reader accepted a draft past its size limit")
+	}
+}
+
+// An exact ledger expectation is one of the three operators readmit-test/v1
+// executes, and this flow authors it the same way it authors a record count.
+func TestAnExactLedgerExpectationGeneratesWhatTheRunnerReads(t *testing.T) {
+	root, source := workspace(t)
+	empty := []observation.Record{}
+	authored := draft(t, source,
+		testauthor.Answer{Stage: testauthor.StageName, Name: "The ledger stays empty"},
+		testauthor.Answer{Stage: testauthor.StageMessages, Messages: []string{"s0001-e000001"}},
+		testauthor.Answer{Stage: testauthor.StageTarget, Target: "test-target.json"},
+		testauthor.Answer{Stage: testauthor.StageBoundary, Boundary: testrunner.LedgerBoundary},
+		testauthor.Answer{Stage: testauthor.StageObservation, Observation: "test-observation.json"},
+		testauthor.Answer{Stage: testauthor.StageReset, Reset: "Start from an empty ledger."},
+		testauthor.Answer{Stage: testauthor.StageExpectations, Expectations: []testauthor.Expectation{
+			{ID: "empty-ledger", Operator: testauthor.LedgerEquals, Records: &empty},
+		}},
+	)
+	resolution, err := testauthor.Resolve(root, source, authored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resolution.Missing) != 0 || !resolution.Coverage.Ledger.Covered {
+		t.Fatalf("an exact ledger left the draft unanswered: %+v", resolution)
+	}
+	data, err := testauthor.Generate(authored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec, err := testrunner.DecodeSpec(data)
+	if err != nil {
+		t.Fatalf("the generated document is not a spec this release reads: %v", err)
+	}
+	if len(spec.Assertions) != 1 || spec.Assertions[0].Operator != testauthor.LedgerEquals || spec.Assertions[0].Expected.Records == nil {
+		t.Fatalf("the generated spec lost the exact ledger: %+v", spec.Assertions)
+	}
+	base := draft(t, source,
+		testauthor.Answer{Stage: testauthor.StageName, Name: "ACK only"},
+		testauthor.Answer{Stage: testauthor.StageMessages, Messages: []string{"s0001-e000001"}},
+		testauthor.Answer{Stage: testauthor.StageTarget, Target: "test-target.json"},
+		testauthor.Answer{Stage: testauthor.StageBoundary, Boundary: testrunner.ACKBoundary},
+		testauthor.Answer{Stage: testauthor.StageReset, Reset: "Declare the starting state."},
+	)
+	if _, err := base.Answer(testauthor.Answer{Stage: testauthor.StageExpectations, Expectations: []testauthor.Expectation{
+		{ID: "empty-ledger", Operator: testauthor.LedgerEquals, Records: &empty},
+	}}); err == nil {
+		t.Fatal("an exact ledger at the ack-contract boundary was accepted")
 	}
 }

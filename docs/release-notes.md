@@ -1,5 +1,14 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The desktop shell authors every supported test and assertion operator through
+  structured visual controls (#256). Guided test authoring covers
+  `ledger_count`, `ledger_equals` and `ack_field_equals` with inspected-field
+  selectors, coverage preview, known-good-run suggestion review and finding
+  promotion provenance; saving returns the written identity into the durable-run
+  panel without sending. Assertion sets use a typed panel over all sixteen
+  `readmit-assertion-set/v1` operators, conditions and quantifiers, with
+  canonical JSON remaining an advanced path. Unknown versions and operators are
+  refused or opened read-only; historical specs are never silently downgraded.
 - The desktop shell gained visual authoring for observation sources and
   completion windows (#251). Supported file-export, HTTPS API, downstream-capture
   and database configurations use structured controls; database adapters remain

@@ -136,11 +136,12 @@ mistake was made.
 
 ## What this flow expects of a run
 
-Two of `readmit-test/v1`'s three typed operators:
+All three of `readmit-test/v1`'s typed operators:
 
 | Operator | What it says |
 | --- | --- |
 | `ledger_count` | The observed ledger holds exactly this many records |
+| `ledger_equals` | The observed ledger holds exactly these records in order |
 | `ack_field_equals` | One MSA or ERR position of one message's acknowledgement holds exactly this value |
 
 An expected value is written with the four states the
@@ -152,12 +153,6 @@ A test at the `appointment-ledger` boundary must say what the ledger should
 hold, because a spec at that boundary which only states what an acknowledgement
 said decides nothing about the ledger it declared. The flow asks for the count
 rather than generating a spec its own reader refuses.
-
-**`ledger_equals` is not authored here.** Its expectation is the exact ordered
-record set of an observation, and typing one from nothing is writing evidence by
-hand rather than saying what a run should have produced. Expectations derived
-from a reviewed known-good run, and the approval that is separate from
-generating them, are a separate delivery.
 
 ## Suggesting expectations from a reviewed run
 
@@ -400,7 +395,7 @@ to, so a draft cannot be answered into a spec its own reader would refuse.
 - **No approving a run that did not pass.** Updating a baseline whose
   expectations no longer hold is not this delivery: such a run is refused, and
   what it recorded is investigated rather than approved.
-- The guided draft has no `ledger_equals`, scenario template or blank workflow.
+- The guided draft authors all three test operators; scenario handoff opens the case by reference without inventing expectations.
   It is authored against one case this shell verified.
 - The guided draft does not import existing specs. The separate
   [canonical editor](#round-tripping-canonical-specs) imports and edits all
