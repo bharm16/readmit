@@ -494,6 +494,9 @@ export interface Facade {
   RecordView(view: View): Promise<SessionResult>;
   SaveDraft(draft: Draft): Promise<SessionResult>;
   DiscardDraft(project: string, name: string): Promise<SessionResult>;
+  SaveEditorDraft(draft: EditorDraft): Promise<EditorDraftsResult>;
+  DiscardEditorDraft(id: string): Promise<EditorDraftsResult>;
+  EditorDrafts(): Promise<EditorDraftsResult>;
   InspectOccurrence(request: InspectRequest): Promise<InspectionResult>;
   Cancel(): Promise<void>;
   CreateSampleWorkspace(): Promise<WorkspaceResult>;
@@ -793,6 +796,53 @@ export function discardDraft(project: string, name: string): Promise<SessionResu
   return guard(() => facade().DiscardDraft(project, name), { state: "failed" });
 }
 
+/** One editor's unstored work, retained under an internal identity so it can be
+ * replaced and dropped without ever requiring a valid final artifact. `kind`
+ * names the editor that owns the draft; `content` is that editor's own draft
+ * document, written in the contract `content_schema` declares, and is
+ * interpreted only by that editor. `case` and `identity` name the evidence the
+ * draft was authored against, so a restored draft is never silently rebound to
+ * different evidence. Nothing here is ever a credential value or an approval:
+ * no editor draft can express either. */
+export interface EditorDraft {
+  id: string;
+  kind: string;
+  workspace: string;
+  case: string;
+  identity: string;
+  content_schema: string;
+  content: unknown;
+}
+
+/** The editor drafts the store retains as it now stands. `drafts` is present
+ * whenever the store could be read, so a refused edit still reports what stays
+ * retained rather than an unstored candidate. */
+export interface EditorDraftsResult {
+  state: State;
+  reason?: string;
+  drafts?: EditorDraft[];
+}
+
+/** Retains one editor's unstored work, replacing the draft it is an edit of. An
+ * empty identity mints a new draft and the result names the identity it was
+ * kept under; an identity that is no longer held is refused, so a window that
+ * raced a discard is told so instead of resurrecting dropped work. */
+export function saveEditorDraft(draft: EditorDraft): Promise<EditorDraftsResult> {
+  return guard(() => facade().SaveEditorDraft(draft), { state: "failed" });
+}
+
+/** Drops one retained editor draft, once the work it retains has been stored or
+ * the person explicitly asked to drop it. */
+export function discardEditorDraft(id: string): Promise<EditorDraftsResult> {
+  return guard(() => facade().DiscardEditorDraft(id), { state: "failed" });
+}
+
+/** Lists every editor draft this viewer retains. It claims no operation slot,
+ * so unstored work can be restored while an operation runs. */
+export function editorDrafts(): Promise<EditorDraftsResult> {
+  return guard(() => facade().EditorDrafts(), { state: "failed" });
+}
+
 /** The typed operators a reproducer plan is built from. Each names the one
  * thing it does; the engine interprets them, and nothing here decides what a
  * step means. */
@@ -864,7 +914,9 @@ export interface ReproducerResolution {
  * in it. */
 export interface Reproducer {
   plan: ReproducerPlan;
-  resolution: ReproducerResolution;
+  /** Present on every result the engine produced. A draft the window restored
+   * from this machine carries none, until the engine resolves it again. */
+  resolution?: ReproducerResolution;
   output?: string;
   identity?: string;
 }
@@ -1293,7 +1345,9 @@ export interface TestApproval {
  * `readmit test` records for those exact bytes. */
 export interface TestDraft {
   draft: TestDraftDocument;
-  resolution: TestResolution;
+  /** Present on every result the engine produced. A draft the window restored
+   * from this machine carries none, until the engine resolves it again. */
+  resolution?: TestResolution;
   output?: string;
   identity?: string;
   suggestions?: TestSuggestions;

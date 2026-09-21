@@ -65,6 +65,8 @@ export function TestAuthoring({
   busy,
   progress,
   indicators,
+  restoredDraft,
+  onDiscardDraft,
   onAnswer,
   onSave,
   onSuggest,
@@ -76,6 +78,8 @@ export function TestAuthoring({
   busy: boolean;
   progress: string | null;
   indicators: Indicators;
+  restoredDraft?: boolean;
+  onDiscardDraft?: () => void;
   onAnswer: (answer: TestAnswer) => void;
   onSave: (output: string) => void;
   onSuggest: (request: TestSuggestionRequest) => void;
@@ -142,6 +146,20 @@ export function TestAuthoring({
         engine writes the spec and the command line runs the same file.
       </p>
       <Report indicators={indicators} progress={progress} result={result} />
+      {restoredDraft ? (
+        <div role="status" className="restored-draft">
+          <p>
+            The test draft you had not stored was kept on this machine for this case and
+            is open again. The engine has not resolved it over the evidence yet; answer
+            any question to resolve it, or discard it.
+          </p>
+          {onDiscardDraft ? (
+            <button type="button" onClick={onDiscardDraft}>
+              Discard this restored draft
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       <h4>Questions</h4>
       <ul className="stages">

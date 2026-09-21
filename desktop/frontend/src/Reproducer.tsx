@@ -36,6 +36,8 @@ export function Reproducer({
   busy,
   progress,
   indicators,
+  restoredDraft,
+  onDiscardDraft,
   onStep,
   onUndo,
   onBuild,
@@ -46,6 +48,8 @@ export function Reproducer({
   busy: boolean;
   progress: string | null;
   indicators: Indicators;
+  restoredDraft?: boolean;
+  onDiscardDraft?: () => void;
   onStep: (step: ReproducerStep) => void;
   onUndo: () => void;
   onBuild: (output: string) => void;
@@ -58,8 +62,9 @@ export function Reproducer({
 
   const view = result?.reproducer;
   const plan = view?.plan;
-  const retained = new Map((view?.resolution.occurrences ?? []).map((entry) => [entry.parent, entry]));
-  const editable = view?.resolution.occurrences ?? [];
+  const resolution = view?.resolution;
+  const retained = new Map((resolution?.occurrences ?? []).map((entry) => [entry.parent, entry]));
+  const editable = resolution?.occurrences ?? [];
 
   return (
     <section className="reproducer" aria-label="Reproducer editor">
@@ -69,6 +74,21 @@ export function Reproducer({
         fields, and write a separate revision. The case you are reading is never changed.
       </p>
       <Report indicators={indicators} progress={progress} result={result} />
+      {restoredDraft ? (
+        <div role="status" className="restored-draft">
+          <p>
+            The reproducer plan you had not stored was kept on this machine for this case
+            and is open again. The engine has not resolved it over the evidence yet, so
+            the occurrences below do not show what it retains; one more step or a build
+            resolves it again.
+          </p>
+          {onDiscardDraft ? (
+            <button type="button" onClick={onDiscardDraft}>
+              Discard this restored plan
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       <h4>Occurrences in this window</h4>
       <ul className="selection">
@@ -78,7 +98,9 @@ export function Reproducer({
             <li key={row.id} className={entry ? "retained" : undefined}>
               <span className="occurrence">{row.id}</span>
               <span className="kind">{row.kind}</span>
-              <span className="reason">{entry ? describe(entry.reason) : "Not retained"}</span>
+              <span className="reason">
+                {entry ? describe(entry.reason) : resolution ? "Not retained" : "Not resolved yet"}
+              </span>
               <button
                 type="button"
                 disabled={busy}
@@ -186,11 +208,11 @@ export function Reproducer({
         </button>
       </form>
 
-      {view?.resolution.edits.length ? (
+      {resolution?.edits.length ? (
         <>
           <h4>Applied edits</h4>
           <ul className="edits">
-            {view.resolution.edits.map((edit) => (
+            {resolution.edits.map((edit) => (
               <li key={`${edit.parent}:${edit.selector}`}>
                 {edit.parent} · {edit.selector} · {edit.operator} · was {edit.state} · {edit.length}{" "}
                 bytes at offset {edit.offset}
@@ -200,11 +222,11 @@ export function Reproducer({
         </>
       ) : null}
 
-      {view?.resolution.unresolved.length ? (
+      {resolution?.unresolved.length ? (
         <>
           <h4>Not settled</h4>
           <ul className="unresolved">
-            {view.resolution.unresolved.map((item) => (
+            {resolution.unresolved.map((item) => (
               <li key={`${item.occurrence}:${item.reason}`}>
                 {item.occurrence} · {describe(item.reason)}
               </li>

@@ -390,13 +390,14 @@ A reproducer is derived testing data and is treated as the data it came from.
   bytes; no v1 pack may claim structural or workflow support in any case.
 - A `readmit reproduce` command, and reading or writing a plan as a file. The
   plan reaches the manifest of a reproducer that was built and nowhere else.
-- Surviving an interruption. A plan that has not been built is unstored work the
-  window loses when it closes: the retained working session is the bounded
-  `readmit-desktop-session/v1` document [the shell](desktop.md#recovering-after-an-interruption)
-  already keeps, that contract gains no member, and retaining a plan there would
-  be a new version of it. A reproducer that **was** built is on disk and is read
-  back by its manifest; a build interrupted partway leaves a directory with no
-  manifest, which is refused rather than read as a finished reproducer.
+- Surviving an interruption. A plan that has not been built is retained while
+  it is being edited: the shell's editor draft store
+  ([the shell](desktop.md#recovering-after-an-interruption)) keeps the steps
+  under an internal identity until the reproducer is built, so an interruption
+  returns the plan instead of the selection. A reproducer that **was** built is
+  on disk and is read back by its manifest; a build interrupted partway leaves
+  a directory with no manifest, which is refused rather than read as a finished
+  reproducer.
 - Cancelling a step or a build. Each runs to completion under the case reader's
   own bounds once it starts, so the window does not offer Cancel for them, and a
   build that has written bytes is not retracted by anything.

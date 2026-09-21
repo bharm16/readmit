@@ -9,7 +9,7 @@ import (
 )
 
 func TestUnactivatedDesktopRetainsSampleReadsButRefusesAuthoring(t *testing.T) {
-	app := desktop.New(&chooser{folder: t.TempDir()}, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
+	app := desktop.New(&chooser{folder: t.TempDir()}, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"), filepath.Join(filepath.Dir(filepath.Join(t.TempDir(), "session.json")), "drafts.json"))
 	sample := app.CreateSampleWorkspace()
 	if sample.State != desktop.Completed {
 		t.Fatal(sample)
@@ -40,11 +40,11 @@ func TestUnactivatedDesktopRetainsSampleReadsButRefusesAuthoring(t *testing.T) {
 func TestDesktopOperationSelectionSurvivesRestartWithoutReactivation(t *testing.T) {
 	dir := t.TempDir()
 	selection := filepath.Join(dir, "operations.json")
-	app := desktop.NewWithOperationSelection(&chooser{}, filepath.Join(dir, "recent"), filepath.Join(dir, "filters"), filepath.Join(dir, "session"), selection)
+	app := desktop.NewWithOperationSelection(&chooser{}, filepath.Join(dir, "recent"), filepath.Join(dir, "filters"), filepath.Join(dir, "session"), filepath.Join(dir, "drafts"), selection)
 	if result := app.SelectOperationPolicy(testlicense.New(t)); result.State != desktop.Completed {
 		t.Fatal(result)
 	}
-	next := desktop.NewWithOperationSelection(&chooser{}, filepath.Join(dir, "recent"), filepath.Join(dir, "filters"), filepath.Join(dir, "session"), selection)
+	next := desktop.NewWithOperationSelection(&chooser{}, filepath.Join(dir, "recent"), filepath.Join(dir, "filters"), filepath.Join(dir, "session"), filepath.Join(dir, "drafts"), selection)
 	if result := next.OperationStatus(); result.State != desktop.Completed || result.Clock == nil || result.Clock.Released {
 		t.Fatal(result)
 	}
@@ -60,7 +60,7 @@ func TestDesktopOperationSelectionSurvivesRestartWithoutReactivation(t *testing.
 }
 
 func TestCorrelationWritesRequireActivationButSequenceReadsDoNot(t *testing.T) {
-	app := desktop.New(&chooser{}, "", "", "")
+	app := desktop.New(&chooser{}, "", "", "", "")
 	if got := app.DecideCorrelation(desktop.CorrelationReviewRequest{}); got.State != desktop.PermissionDenied {
 		t.Fatal(got)
 	}

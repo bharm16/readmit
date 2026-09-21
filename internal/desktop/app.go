@@ -204,6 +204,7 @@ type App struct {
 	recentPath             string
 	filtersPath            string
 	sessionPath            string
+	draftsPath             string
 
 	mu      sync.Mutex
 	running bool
@@ -214,14 +215,20 @@ type App struct {
 	// slot, because a crash during a long operation is exactly when that work
 	// has to survive; it still must not race another write of the same file.
 	sessionMu sync.Mutex
+
+	// draftsMu serializes the editor draft store alone, for the same reason:
+	// an editor's unstored work is retained whether or not an operation runs,
+	// and the writes of one small document must never interleave.
+	draftsMu sync.Mutex
 }
 
-// New binds the facade to a host folder dialog and to the three files that hold
+// New binds the facade to a host folder dialog and to the four files that hold
 // this viewer's local shell state: the workspaces they opened recently, the
-// filters they saved, and the working session they have not stored. Each is
-// named explicitly rather than derived from another, and none holds evidence.
-func New(chooser FolderChooser, recentPath, filtersPath, sessionPath string) *App {
-	return &App{operationGuard: operationguard.New(""), chooser: chooser, recentPath: recentPath, filtersPath: filtersPath, sessionPath: sessionPath}
+// filters they saved, the working session they have not stored, and the editor
+// drafts they have not stored. Each is named explicitly rather than derived
+// from another, and none holds evidence.
+func New(chooser FolderChooser, recentPath, filtersPath, sessionPath, draftsPath string) *App {
+	return &App{operationGuard: operationguard.New(""), chooser: chooser, recentPath: recentPath, filtersPath: filtersPath, sessionPath: sessionPath, draftsPath: draftsPath}
 }
 
 // Cancel stops the operation that is running now, when that operation can be

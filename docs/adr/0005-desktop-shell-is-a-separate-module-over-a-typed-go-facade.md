@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-09-18
-amended: 2026-09-19
+amended: 2026-09-20
 ---
 
 # The desktop application is a separate module over a typed Go facade
@@ -56,12 +56,14 @@ static build stand unchanged. Nothing here is added to the release archives.
 - Every new desktop capability is a facade method backed by an internal package.
   A capability the frontend cannot express as a typed call does not belong in the
   frontend.
-- The shell keeps three bounded, versioned local documents: recent folder paths
+- The shell keeps four bounded, versioned local documents: recent folder paths
   (`readmit-desktop-recent/v1`), saved filters with the active selection
-  (`readmit-filters/v1`), and the working session a viewer has not stored
+  (`readmit-filters/v1`), the working session a viewer has not stored
   (`readmit-desktop-session/v1`) — the workspace, case, region and run they had
-  open, and the notes they had typed and not stored. Saved field terms and a
-  retained draft can contain patient data typed by the operator. All three files
+  open, and the note drafts they had typed — and the editor draft store
+  (`readmit-desktop-drafts/v1`) holding every editor's unstored work under
+  internal identities. Saved field terms and a
+  retained draft can contain patient data typed by the operator. All four files
   are owner-readable, replaced atomically, and kept
   outside evidence; unreadable documents are reported rather than overwritten.
   No evidence read from a case is persisted in shell state. No document is
@@ -75,6 +77,27 @@ static build stand unchanged. Nothing here is added to the release archives.
 - Supported desktop platforms, installation, upgrade and signing are not decided
   here. Continuous integration builds the shell natively on macOS; that is a
   build check, not a support claim.
+
+## Editor drafts (amended 2026-09-20)
+
+The working session retained where a viewer was and the note edits they had
+typed, but only once a note had a name and a title, and nothing else the window
+could lose: a test draft half-answered, a canonical document mid-edit and a
+reproducer plan half-built all lived in the process and died with it. A fourth
+document, the editor draft store (`readmit-desktop-drafts/v1`), retains that
+work beside the session. It is an envelope, not a schema per editor: one entry
+is one editor's draft under an internal identity the store mints, carrying the
+editor's kind, the workspace, the case identity the draft was authored against,
+and the draft content as JSON of the contract `content_schema` names. The
+envelope is strict JSON under ADR-0003 like every other document here; the
+content is interpreted only by the owning editor's own strict reader, so an
+editor added later adopts the store without changing it, and a new meaning for
+the envelope itself is a new version read beside this one. The store never
+holds a credential value or an approval — no editor draft can express either.
+Navigation in the window commits only after the facade accepts it, so a
+cancelled dialog or a refused read can no longer clear an investigation, and a
+restore of the retained view happens only on an explicit act by the person who
+saved it.
 
 ## Native packaging (amended 2026-09-19)
 

@@ -28,7 +28,7 @@ func TestPerformanceEnvelope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := desktop.New(&chooser{}, "", "", "")
+	app := desktop.New(&chooser{}, "", "", "", "")
 	t.Logf("fixture messages=10000 bytes=%d sha256=%x; repeated synthetic gridBooking; warm OS cache, no race", len(wire), sha256.Sum256([]byte(wire)))
 	measure := func(label string, operation func()) {
 		operation() // warm-up excluded; report every measured sample.

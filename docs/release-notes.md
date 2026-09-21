@@ -17,7 +17,19 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   CLI-created projects open unchanged; the shell's plain-folder inspection and
   free guided sample are unchanged.
 
-
+- The desktop shell preserves all unsaved work. A new bounded, versioned
+  editor draft store (`readmit-desktop-drafts/v1`, outside evidence, per
+  viewer) retains notes from their first letter — before they have a name or a
+  title — test drafts, canonical edits and reproducer plans under internal
+  identities, each dropped only once its work is stored. Navigation commits
+  only after the facade accepts it, so a cancelled folder dialog, a refused
+  open or a late stale response never clears the open investigation; a refused
+  retention is visible with retry, keep-as-new or explicit discard; closing
+  asks only when text was not durably acknowledged; and reopening the retained
+  workspace, case and region happens only on an explicit button, re-verifying
+  evidence and refusing what moved or changed instead of rebinding a draft
+  silently. `readmit-desktop-session/v1` is unchanged and its readers still
+  restore older documents.
 
 - The desktop frontend gained a behavior-test suite over the typed facade
 

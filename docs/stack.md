@@ -43,8 +43,8 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
   bundle under the `readmit-reproducer/v1` derivation with a
   `readmit-reproducer/v1` transformation manifest beside it. The plan is a
   `readmit-reproducer-plan/v1` list of typed operators `internal/reproducer`
-  interprets; it is held in the window while it is edited and stored nowhere
-  else. Original evidence is immutable, so this is a new artifact beside it and
+  interprets; while it is edited it is retained in the shell's editor draft
+  store, and it is written as evidence only by a build. Original evidence is immutable, so this is a new artifact beside it and
   never an in-place rewrite. See [reproducers](reproducer.md).
 - The window writes regression test documents into a workspace.
   `internal/testauthor` answers a `readmit-test-draft/v1` draft one typed stage
@@ -56,7 +56,7 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
   classification is refused where it is chosen. The draft is held in the window
   while it is answered and stored nowhere else. `readmit-test/v1` gains no
   member. See [authoring a regression test](test-authoring.md).
-- Local shell state is three bounded, versioned documents: the list of recently opened folders, the filters a viewer saved with the one selected now (`readmit-filters/v1`), and the working session that viewer has not stored (`readmit-desktop-session/v1`) — where they were, and the notes they had typed and not stored. A saved filter holds what a person typed to filter by and a retained draft holds a note they were writing, which is the same patient data the evidence beside it holds, so all three are owner-readable, named in the window's privacy status, and never written into evidence. Restoring a session reads; it never resumes or resends network work. No telemetry, crash reporting, update checks, or evidence in browser storage.
+- Local shell state is four bounded, versioned documents: the list of recently opened folders, the filters a viewer saved with the one selected now (`readmit-filters/v1`), the working session that viewer has not stored (`readmit-desktop-session/v1`) — where they were, and the notes they had typed and not stored — and the editor draft store (`readmit-desktop-drafts/v1`) holding every editor's unstored work under internal identities: notes before they have names or titles, test drafts, canonical edits and reproducer plans. A saved filter holds what a person typed to filter by and a retained draft holds work they were writing, which is the same patient data the evidence beside it holds, so all four are owner-readable, named in the window's privacy status, and never written into evidence. Restoring a session reads; it never resumes or resends network work. No telemetry, crash reporting, update checks, or evidence in browser storage.
 
 ## HL7 core
 

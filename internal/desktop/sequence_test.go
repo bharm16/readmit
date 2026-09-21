@@ -496,7 +496,7 @@ func TestLayingOutASequenceHoldsTheSameOperationSlot(t *testing.T) {
 	app, root, identity := sequenceWorkspace(t)
 
 	reentrant := &chooser{folder: root}
-	second := desktop.New(reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
+	second := desktop.New(reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"), filepath.Join(filepath.Dir(filepath.Join(t.TempDir(), "session.json")), "drafts.json"))
 	var concurrent desktop.SequenceResult
 	reentrant.before = func() { concurrent = second.OpenSequence(sequenceRequest(root, identity, seqRulesEntry)) }
 	if opened := second.SelectWorkspace(); opened.State != desktop.Completed {

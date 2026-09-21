@@ -1477,6 +1477,39 @@
       "implemented": true
     },
     {
+      "id": "desktop.SaveEditorDraft",
+      "source": "desktop.App.SaveEditorDraft",
+      "kind": "desktop",
+      "capability": "saveEditorDraft application operation",
+      "owner": "bharm16/readmit#246",
+      "screen": "the active editor panel across note, test, canonical and reproducer workflows",
+      "action": "retain an unsaved editor draft in the local draft store",
+      "test": "desktop drafting behavior tests plus internal/desktop draft store tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.DiscardEditorDraft",
+      "source": "desktop.App.DiscardEditorDraft",
+      "kind": "desktop",
+      "capability": "discardEditorDraft application operation",
+      "owner": "bharm16/readmit#246",
+      "screen": "the active editor panel across note, test, canonical and reproducer workflows",
+      "action": "drop a retained editor draft once its work has been stored or discarded",
+      "test": "desktop drafting behavior tests plus internal/desktop draft store tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.EditorDrafts",
+      "source": "desktop.App.EditorDrafts",
+      "kind": "desktop",
+      "capability": "editorDrafts application operation",
+      "owner": "bharm16/readmit#246",
+      "screen": "the evidence region's retained work panel",
+      "action": "list retained editor drafts for recovery and active editing",
+      "test": "desktop drafting behavior tests plus internal/desktop draft store tests",
+      "implemented": true
+    },
+    {
       "id": "desktop.InspectOccurrence",
       "source": "desktop.App.InspectOccurrence",
       "kind": "desktop",

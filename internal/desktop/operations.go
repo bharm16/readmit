@@ -37,8 +37,8 @@ func (r *OperationResult) refuse(state State, reason string) { r.State, r.Reason
 
 // NewWithOperationSelection restores only an explicit prior policy selection.
 // Missing or invalid selection keeps reads available and paid work refused.
-func NewWithOperationSelection(chooser FolderChooser, recent, filters, session, selection string) *App {
-	a := New(chooser, recent, filters, session)
+func NewWithOperationSelection(chooser FolderChooser, recent, filters, session, drafts, selection string) *App {
+	a := New(chooser, recent, filters, session, drafts)
 	a.operationSelectionPath = selection
 	data, err := readOperationFile(selection)
 	if err == nil {
