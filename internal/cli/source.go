@@ -71,7 +71,7 @@ func sourceDiagnose() *cobra.Command {
 				return err
 			}
 			if access.Status != observewindow.Complete {
-				return &ExitError{Code: 2, Err: errors.New("source access is not available: " + access.Reason), Reported: machine}
+				return statedRefusalWhen(machine, errors.New("source access is not available: "+access.Reason))
 			}
 			return nil
 		},
@@ -123,7 +123,7 @@ func sourceCollect() *cobra.Command {
 				return err
 			}
 			if collectErr != nil {
-				return &ExitError{Code: 2, Err: errors.New("the collection did not complete: " + collection.Reason)}
+				return refusal(errors.New("the collection did not complete: " + collection.Reason))
 			}
 			return nil
 		},

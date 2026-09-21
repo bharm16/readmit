@@ -23,10 +23,10 @@ func suiteGateCommand(verify bool) *cobra.Command {
 			r = suite.RetainGate(cmd.Context(), args[0], baseline, policy, pin, output, time.Now().UTC())
 		}
 		if e := writeJSON(cmd, r); e != nil {
-			return &ExitError{Code: 2, Err: errors.New("cannot write CI gate summary")}
+			return refusal(errors.New("cannot write CI gate summary"))
 		}
 		if r.ExitCode != 0 {
-			return &ExitError{Code: r.ExitCode, Err: errors.New("CI gate did not pass; inspect retained evidence privately"), Reported: true}
+			return verdict(r.ExitCode, errors.New("CI gate did not pass; inspect retained evidence privately"))
 		}
 		return nil
 	}}
@@ -43,11 +43,11 @@ func suiteGatePolicyCommand() *cobra.Command {
 	return &cobra.Command{Use: "gate-policy FILE", Short: "Print the canonical identity of a privately reviewed CI gate policy", Annotations: declare(capabilityFree), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		raw, e := baseline.ReadBytes(args[0], suite.MaxBytes)
 		if e != nil {
-			return &ExitError{Code: 2, Err: errors.New("cannot read CI gate policy")}
+			return refusal(errors.New("cannot read CI gate policy"))
 		}
 		p, e := suite.DecodeGatePolicy(raw)
 		if e != nil {
-			return &ExitError{Code: 2, Err: e}
+			return refusal(e)
 		}
 		_, e = fmt.Fprintln(cmd.OutOrStdout(), p.Identity())
 		return e

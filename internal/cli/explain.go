@@ -43,12 +43,12 @@ func explainCommand() *cobra.Command {
 				After:  runexplain.ObservationInput{Completion: after, Source: afterSource},
 			})
 			if err != nil {
-				return &ExitError{Code: 2, Err: err}
+				return refusal(err)
 			}
 			if err := writeLines(cmd.OutOrStdout(), func(w io.Writer) {
 				writeExplanation(w, explanation, cmd.Root().Version, showValues)
 			}); err != nil {
-				return &ExitError{Code: 2, Err: errors.New("cannot write the explanation")}
+				return refusal(errors.New("cannot write the explanation"))
 			}
 			return explainStatus(explanation)
 		},
@@ -73,15 +73,15 @@ func explainCommand() *cobra.Command {
 // nobody could read. Restating one of them here would state it for all six.
 func explainStatus(explanation runexplain.Explanation) error {
 	if explanation.Failure != nil {
-		return &ExitError{Code: 2, Err: errors.New("this run has no verdict; the explanation names the execution error"), Reported: true}
+		return statedRefusal(errors.New("this run has no verdict; the explanation names the execution error"))
 	}
 	switch explanation.Verdict {
 	case assertion.VerdictFail:
-		return &ExitError{Code: 1, Err: errors.New("this run disagreed with its expectations"), Reported: true}
+		return failure(errors.New("this run disagreed with its expectations"))
 	case assertion.VerdictPass:
 		return nil
 	default:
-		return &ExitError{Code: 2, Err: errors.New("this run's evidence decided nothing; unknown is not a pass"), Reported: true}
+		return statedRefusal(errors.New("this run's evidence decided nothing; unknown is not a pass"))
 	}
 }
 

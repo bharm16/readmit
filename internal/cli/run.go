@@ -30,7 +30,7 @@ func runCommand() *cobra.Command {
 		defer cancel()
 		result, err := durablerun.Start(ctx, args[0], output)
 		if err != nil && result.Schema == "" {
-			return &ExitError{Code: 2, Err: errors.New("durable run could not finish; inspect retained output with run status")}
+			return refusal(errors.New("durable run could not finish; inspect retained output with run status"))
 		}
 		return printRun(cmd, result, asJSON, err)
 	}}
@@ -46,13 +46,13 @@ func runCommand() *cobra.Command {
 		if recovery {
 			result, err := durablerun.Recover(args[0])
 			if err != nil {
-				return &ExitError{Code: 2, Err: err}
+				return refusal(err)
 			}
 			return printRecovery(cmd, result, statusJSON)
 		}
 		result, err := durablerun.Open(args[0])
 		if err != nil {
-			return &ExitError{Code: 2, Err: err}
+			return refusal(err)
 		}
 		return printRun(cmd, result, statusJSON, nil)
 	}}
@@ -73,7 +73,7 @@ func runCommand() *cobra.Command {
 		defer cancel()
 		result, err := durablerun.Resume(ctx, args[0], args[1], resumeOutput)
 		if err != nil && result.Run.Schema == "" {
-			return &ExitError{Code: 2, Err: err}
+			return refusal(err)
 		}
 		return printResume(cmd, result, resumeJSON, err)
 	}}
@@ -85,7 +85,7 @@ func runCommand() *cobra.Command {
 	clean := &cobra.Command{Use: "clean JOB", Short: "Remove a stale lease after a recorded completion; evidence is never removed", Annotations: declare(capabilityFree), RunE: func(cmd *cobra.Command, args []string) error {
 		result, err := durablerun.Clean(args[0])
 		if err != nil {
-			return &ExitError{Code: 2, Err: err}
+			return refusal(err)
 		}
 		return printCleanup(cmd, result, cleanJSON)
 	}}
@@ -98,7 +98,7 @@ func runCommand() *cobra.Command {
 		}
 		document, err := readInputFile(args[0], runqueue.MaxPlanBytes)
 		if err != nil {
-			return &ExitError{Code: 2, Err: err}
+			return refusal(err)
 		}
 		// A queued job names its spec inside the queue document's own
 		// directory, resolved after the document's own symlink exactly as a
@@ -106,7 +106,7 @@ func runCommand() *cobra.Command {
 		// by where the operator put it rather than by a working directory.
 		resolved, err := artifactpath.Resolve(args[0])
 		if err != nil {
-			return &ExitError{Code: 2, Err: errors.New("cannot resolve the run queue")}
+			return refusal(errors.New("cannot resolve the run queue"))
 		}
 		runs, err := artifactpath.Directory(queueRuns)
 		if err != nil {
@@ -119,7 +119,7 @@ func runCommand() *cobra.Command {
 		defer cancel()
 		report, err := runqueue.Run(ctx, runqueue.Request{PlanBytes: document, PlanDirectory: filepath.Dir(resolved), Runs: runs})
 		if err != nil {
-			return &ExitError{Code: 2, Err: err}
+			return refusal(err)
 		}
 		return printQueue(cmd, report, queueJSON)
 	}}
@@ -165,13 +165,13 @@ func printRun(cmd *cobra.Command, result durablerun.Summary, asJSON bool, proble
 
 func runStatus(result durablerun.Summary, err, problem error) error {
 	if err != nil {
-		return &ExitError{Code: 2, Err: err}
+		return refusal(err)
 	}
 	if problem != nil {
-		return &ExitError{Code: 2, Err: problem}
+		return refusal(problem)
 	}
 	if result.ExitCode() != 0 {
-		return &ExitError{Code: result.ExitCode(), Err: errors.New("run did not pass; inspect retained evidence"), Reported: true}
+		return verdict(result.ExitCode(), errors.New("run did not pass; inspect retained evidence"))
 	}
 	return nil
 }
@@ -183,7 +183,7 @@ func runStatus(result durablerun.Summary, err, problem error) error {
 func printEngine(cmd *cobra.Command, job string, asJSON bool) error {
 	pin, err := durablerun.Engine(job)
 	if err != nil {
-		return &ExitError{Code: 2, Err: err}
+		return refusal(err)
 	}
 	supported := pin.Supported()
 	if asJSON {
@@ -195,10 +195,10 @@ func printEngine(cmd *cobra.Command, job string, asJSON bool) error {
 		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Engine build: %s\nSpec contract: %s\nProfile: %s\nRead by this build: %t\n", pin.Engine, pin.Spec, pin.Profile, supported == nil)
 	}
 	if err != nil {
-		return &ExitError{Code: 2, Err: errors.New("cannot write durable run engine pin")}
+		return refusal(errors.New("cannot write durable run engine pin"))
 	}
 	if supported != nil {
-		return &ExitError{Code: 2, Err: errors.New("the durable run was evaluated under a version this release does not read")}
+		return refusal(errors.New("the durable run was evaluated under a version this release does not read"))
 	}
 	return nil
 }
@@ -256,7 +256,7 @@ func printQueue(cmd *cobra.Command, result runqueue.Report, asJSON bool) error {
 		return err
 	}
 	if result.ExitCode() != 0 {
-		return &ExitError{Code: result.ExitCode(), Err: errors.New("the run queue did not pass; inspect each retained run"), Reported: true}
+		return verdict(result.ExitCode(), errors.New("the run queue did not pass; inspect each retained run"))
 	}
 	return nil
 }

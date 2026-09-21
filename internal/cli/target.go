@@ -191,6 +191,11 @@ func targetCheck() *cobra.Command {
 	return command
 }
 
+// targetReset returns one named nonproduction environment to its declared
+// starting state. Every refusal reached inside the command keeps the
+// execution-error status a reset outcome carries, so nothing a reset does
+// exits 1 and no caller has to read 1 as an assertion failure a reset cannot
+// produce.
 func targetReset() *cobra.Command {
 	var file, planPath, outcomePath, policyPath string
 	var confirmed []string
@@ -202,7 +207,7 @@ func targetReset() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			config, err := readTargetFile(file)
 			if err != nil {
-				return resetError(err)
+				return refusal(err)
 			}
 			if planPath == "" {
 				return usage("target reset requires --plan naming a %s document", fixturereset.PlanSchema)
@@ -212,7 +217,7 @@ func targetReset() *cobra.Command {
 			}
 			planBytes, err := readInputFile(planPath, fixturereset.MaxPlanBytes)
 			if err != nil {
-				return resetError(err)
+				return refusal(err)
 			}
 			// A read-authority action names its file inside the plan's own
 			// directory, resolved after the plan's own symlink exactly as a
@@ -221,11 +226,11 @@ func targetReset() *cobra.Command {
 			// directory readmit happened to be started in.
 			resolved, err := artifactpath.Resolve(planPath)
 			if err != nil {
-				return resetError(errors.New("cannot resolve the reset plan"))
+				return refusal(errors.New("cannot resolve the reset plan"))
 			}
 			policy, err := readSendPolicy(policyPath)
 			if err != nil {
-				return resetError(err)
+				return refusal(err)
 			}
 			// The outcome destination is checked before anything runs. A reset
 			// can open a connection, and a destination readmit was never going
@@ -233,7 +238,7 @@ func targetReset() *cobra.Command {
 			// the name here never authorizes overwriting it: the write below is
 			// still exclusive, at the exact path the path owner returned.
 			if _, err := artifactpath.Destination(outcomePath); err != nil {
-				return resetError(err)
+				return refusal(err)
 			}
 			ctx := cmd.Context()
 			result, plan := fixturereset.Run(ctx, fixturereset.Request{
@@ -242,7 +247,7 @@ func targetReset() *cobra.Command {
 			}, sendpolicy.SystemResolver)
 			outcome, err := fixturereset.EncodeOutcome(result)
 			if err != nil {
-				return resetError(err)
+				return refusal(err)
 			}
 			// One reset attempt retains one document. The destination must be
 			// new, so rerunning after performing a manual step needs a new file
@@ -250,7 +255,7 @@ func targetReset() *cobra.Command {
 			if err := writeNewFile(outcomePath, outcome,
 				"cannot create the reset outcome file; the destination must be new and writable",
 				"cannot write the reset outcome"); err != nil {
-				return resetError(err)
+				return refusal(err)
 			}
 			if err := writeLines(cmd.OutOrStdout(), func(w io.Writer) {
 				writeEnvironmentBanner(w, config.Environment())
@@ -258,10 +263,10 @@ func targetReset() *cobra.Command {
 				writeResetLines(w, result)
 				writeResetInstructionLines(w, plan, result)
 			}); err != nil {
-				return resetError(err)
+				return refusal(err)
 			}
 			if result.ExitCode() != 0 {
-				return &ExitError{Code: result.ExitCode(), Err: errors.New("the fixture reset was not confirmed; the retained outcome names why")}
+				return unstatedVerdict(result.ExitCode(), errors.New("the fixture reset was not confirmed; the retained outcome names why"))
 			}
 			return nil
 		},
@@ -273,11 +278,6 @@ func targetReset() *cobra.Command {
 	command.Flags().StringArrayVar(&confirmed, "confirm", nil, "Action id the operator performed and explicitly confirms; repeatable")
 	return command
 }
-
-// resetError gives every refusal reached inside this command the same
-// execution-error status a reset outcome carries, so nothing a reset does exits
-// 1 and no caller has to read 1 as an assertion failure a reset cannot produce.
-func resetError(err error) error { return &ExitError{Code: 2, Err: err} }
 
 // writeResetLines renders one reset outcome and states its boundary. Every
 // action is named with the operator it ran and the authority it ran under, so

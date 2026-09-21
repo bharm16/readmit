@@ -8,15 +8,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// usage refuses a command that was invoked wrongly: a missing or empty flag, a
-// format that is not one of the declared choices, a deadline that does not
-// parse. It is the one shape for that refusal, so a misuse carries one process
-// status everywhere — the same one a command reaches through argument parsing —
-// while an execution failure keeps status 1. The message stays the command's
-// own; only the decision is shared.
-func usage(format string, args ...any) error {
-	return &ExitError{Code: 2, Err: fmt.Errorf(format, args...)}
-}
+// usage lives in exit.go with the rest of the status vocabulary.
 
 // maxRenderedOutput bounds one rendered report a command holds in memory before
 // it is written. A larger rendering is refused rather than truncated, and the
@@ -124,7 +116,7 @@ func writeReport(cmd *cobra.Command, asJSON bool, document any, terminal func(*c
 		err = terminal(cmd)
 	}
 	if err != nil {
-		return &ExitError{Code: 2, Err: errors.New(refused)}
+		return refusal(errors.New(refused))
 	}
 	return nil
 }

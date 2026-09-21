@@ -139,13 +139,13 @@ func collectStatusCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			summary, err := capturejournal.Open(args[0])
 			if err != nil {
-				return &ExitError{Code: 2, Err: err}
+				return refusal(err)
 			}
 			if err := writeCapture(cmd, summary, asJSON); err != nil {
 				return err
 			}
 			if summary.ExitCode() != 0 {
-				return &ExitError{Code: summary.ExitCode(), Err: errors.New("capture did not finalize; inspect the retained journal"), Reported: true}
+				return verdict(summary.ExitCode(), errors.New("capture did not finalize; inspect the retained journal"))
 			}
 			return nil
 		},

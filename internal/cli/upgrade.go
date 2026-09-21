@@ -54,8 +54,8 @@ func upgradeCheck() *cobra.Command {
 			if err := writeUpgradePlan(cmd.OutOrStdout(), plan); err != nil {
 				return err
 			}
-			if refusal := plan.Refusal(); refusal != nil {
-				return &ExitError{Code: 2, Err: refusal}
+			if refused := plan.Refusal(); refused != nil {
+				return refusal(refused)
 			}
 			return nil
 		},

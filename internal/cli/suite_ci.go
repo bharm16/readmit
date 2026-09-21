@@ -22,10 +22,10 @@ func suiteCICommand() *cobra.Command {
 			}
 		}
 		if err := writeJSON(cmd, result); err != nil {
-			return &ExitError{Code: 2, Err: errors.New("cannot write CI summary")}
+			return refusal(errors.New("cannot write CI summary"))
 		}
 		if result.ExitCode != 0 {
-			return &ExitError{Code: result.ExitCode, Err: errors.New("suite CI gate did not pass; inspect retained evidence privately"), Reported: true}
+			return verdict(result.ExitCode, errors.New("suite CI gate did not pass; inspect retained evidence privately"))
 		}
 		return nil
 	}}

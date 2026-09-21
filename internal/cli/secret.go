@@ -205,24 +205,24 @@ func secretScan() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			document, err := readStore(file)
 			if err != nil {
-				return &ExitError{Code: 2, Err: err}
+				return refusal(err)
 			}
 			references := document.References
 			if name != "" {
 				entry, err := secret.Find(document, name)
 				if err != nil {
-					return &ExitError{Code: 2, Err: err}
+					return refusal(err)
 				}
 				references = []secret.Reference{entry}
 			}
 			if len(references) == 0 {
-				return &ExitError{Code: 2, Err: errors.New("the secret reference document registers nothing to check for")}
+				return refusal(errors.New("the secret reference document registers nothing to check for"))
 			}
 			terms := make([][]byte, 0, len(references))
 			for _, entry := range references {
 				resolved, err := secret.Resolve(cmd.Context(), entry)
 				if err != nil {
-					return &ExitError{Code: 2, Err: errors.New("a registered credential did not resolve, so this scan checked nothing")}
+					return refusal(errors.New("a registered credential did not resolve, so this scan checked nothing"))
 				}
 				terms = append(terms, resolved.Expose())
 			}
@@ -231,7 +231,7 @@ func secretScan() *cobra.Command {
 			// to find, and a shared configuration is the first place to look.
 			files, skipped, err := secret.Collect(append([]string{file}, args...))
 			if err != nil {
-				return &ExitError{Code: 2, Err: err}
+				return refusal(err)
 			}
 			scan := exportreview.Residual(files, terms)
 			if err := writeLines(cmd.OutOrStdout(), func(w io.Writer) {
@@ -242,10 +242,10 @@ func secretScan() *cobra.Command {
 				}
 				fmt.Fprintf(w, "Limitations: %s\n", scan.Limitations)
 			}); err != nil {
-				return &ExitError{Code: 2, Err: err}
+				return refusal(err)
 			}
 			if len(scan.Locations) > 0 {
-				return &ExitError{Code: 1, Err: errors.New("a checked location holds a known credential value")}
+				return unstatedFailure(errors.New("a checked location holds a known credential value"))
 			}
 			return nil
 		},

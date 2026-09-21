@@ -48,7 +48,7 @@ func suiteCommand() *cobra.Command {
 				}
 				report, err := run(ctx, args[0], environment, output)
 				if err != nil {
-					return &ExitError{Code: 2, Err: err}
+					return refusal(err)
 				}
 				return printQueue(cmd, report, asJSON)
 			}
@@ -60,7 +60,7 @@ func suiteCommand() *cobra.Command {
 			}
 			prepared, err := prepare(args[0], environment, output)
 			if err != nil {
-				return &ExitError{Code: 2, Err: err}
+				return refusal(err)
 			}
 			if asJSON {
 				return writeJSON(cmd, prepared.Queue)
@@ -103,7 +103,7 @@ func suiteCoverageCommand() *cobra.Command {
 		}
 		report, err := suite.AssessCoverage(cmd.Context(), args[0], requirements, repeats, now)
 		if err != nil {
-			return &ExitError{Code: 2, Err: err}
+			return refusal(err)
 		}
 		if asJSON {
 			err = writeJSON(cmd, report)
@@ -127,11 +127,11 @@ func suiteCoverageCommand() *cobra.Command {
 			return err
 		}
 		if report.Passed != report.Denominator {
-			return &ExitError{Code: 2, Err: errors.New("declared suite coverage is incomplete")}
+			return refusal(errors.New("declared suite coverage is incomplete"))
 		}
 		for _, j := range report.Jobs {
 			if !j.Eligible {
-				return &ExitError{Code: 2, Err: errors.New("suite has excluded, unverified, failing or unstable jobs")}
+				return refusal(errors.New("suite has excluded, unverified, failing or unstable jobs"))
 			}
 		}
 		return nil
@@ -161,14 +161,14 @@ func suitePromotionCommand(approve bool) *cobra.Command {
 		if approve {
 			p, err := suite.ApprovePromotion(args[0], environment, releases, revision, review, approver, rationale, output)
 			if err != nil {
-				return &ExitError{Code: 2, Err: err}
+				return refusal(err)
 			}
 			_, err = fmt.Fprintln(cmd.OutOrStdout(), p.Identity())
 			return err
 		}
 		r, err := suite.ReviewPromotion(args[0], environment, releases, revision)
 		if err != nil {
-			return &ExitError{Code: 2, Err: err}
+			return refusal(err)
 		}
 		return writeJSON(cmd, r)
 	}}

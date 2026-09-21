@@ -24,7 +24,7 @@ func redactCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return &ExitError{Code: 2, Err: errors.New("unresolved redaction review"), Reported: true}
+			return statedRefusal(errors.New("unresolved redaction review"))
 		}
 		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Review ready for explicit approval: %s\nThe original fixture failure and fixed pass are verified. Export will rerun the derived case and scan the generated packet.\n", review.Identity)
 		return err

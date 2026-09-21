@@ -201,5 +201,5 @@ func refusedCI(cmd *cobra.Command) error {
 	if err := writeJSON(cmd, suite.CIError()); err != nil {
 		return err
 	}
-	return &ExitError{Code: 2, Err: errors.New("suite operation admission unavailable"), Reported: true}
+	return statedRefusal(errors.New("suite operation admission unavailable"))
 }

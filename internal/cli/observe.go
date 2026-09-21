@@ -52,7 +52,7 @@ func observeCommand() *cobra.Command {
 			// samples do not support, is untrustworthy evidence rather than an
 			// unreadable file, so it exits with the observation error status.
 			if err := window.Verify(completion); err != nil {
-				return &ExitError{Code: 2, Err: err}
+				return refusal(err)
 			}
 		}
 		return reportCompletion(cmd.OutOrStdout(), completion, completionJSON)
@@ -133,7 +133,7 @@ func reportCompletion(out io.Writer, completion observewindow.Completion, asJSON
 		return err
 	}
 	if err := completion.Err(); err != nil {
-		return &ExitError{Code: 2, Err: err, Reported: !asJSON}
+		return statedRefusalWhen(!asJSON, err)
 	}
 	return nil
 }

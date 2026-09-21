@@ -37,7 +37,7 @@ func reexecuteCommand() *cobra.Command {
 			return errors.New("cannot write reexecution assessment")
 		}
 		if send && result.Criteria != "matched" {
-			return &ExitError{Code: 2, Err: errors.New("external equivalence declined; execution did not preserve selected criteria"), Reported: true}
+			return statedRefusal(errors.New("external equivalence declined; execution did not preserve selected criteria"))
 		}
 		return nil
 	}}

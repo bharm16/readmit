@@ -25,7 +25,7 @@ func Execute(version string, args []string, stdout, stderr io.Writer) error {
 			// arguments, bad flags, an unknown command. That refusal carries the
 			// same usage status for every command, so a script cannot tell one
 			// entry point apart from another by how it misuses it.
-			err = &ExitError{Code: 2, Err: errors.New("invalid command or arguments; use readmit --help")}
+			err = usage("invalid command or arguments; use readmit --help")
 		}
 		var status *ExitError
 		if !errors.As(err, &status) || !status.Reported {
