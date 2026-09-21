@@ -844,11 +844,15 @@ Alignment-key values are never shown either, and no comparison is written
 anywhere: nothing about this panel reaches a case, a run, a result, a report,
 the saved filters or the working session.
 
-**No ignore rule is applied here.** Every difference the comparison found is
-shown, including the timestamps and control IDs a person may not care about,
-because a view that suppressed some of them without saying so could conceal the
-change being looked for. Narrowing a comparison is done by naming the fields to
-compare, which the window states beside the result.
+**The raw comparison applies no ignore or normalization rule.** Every
+difference it found is shown, including the timestamps and control IDs a person
+may not care about, because a view that suppressed some of them without saying
+so could conceal the change being looked for. Narrowing a comparison is done by
+naming the fields to compare, which the window states beside the result. A
+separate policy-scoped preview under a declared `readmit-normalization-policy/v1`
+document lists every difference again beside what the policy did about it —
+suppressed, retained, undecided or unaddressed — and never edits the raw
+comparison or any source byte.
 
 Evidence the comparison could not read is listed rather than compared around: an
 occurrence nothing decoded, a position whose escapes this release does not
@@ -856,6 +860,26 @@ resolve, a value that decoded to bytes that are not UTF-8, and a message
 declaring an HL7 version the bundled labels do not cover. Equal fields are not
 proof of delivery or of correct behaviour, and the window renders the engine's
 own statement of that rather than a summary of it.
+
+## Diagnosis and finding review
+
+**Diagnosis** runs a supported fixture profile (`readmit-siu-v1`,
+`readmit-lifecycle-v1` or `readmit-order-v1`, or an authored
+`readmit-diagnose-config/v1`) over the verified case and writes a new report
+directory exactly as [`readmit diagnose`](diagnose.md) does. Findings are
+grouped by signature without hiding individuals. Every fact, violation,
+hypothesis and unsupported item links to its evidence occurrence so the
+inspector can open the original bytes.
+
+**Finding review** records confirm, dismiss and scoped suppression decisions
+with a required rationale, writes `readmit-finding-decisions/v1` and a
+`readmit-finding-review/v1` directory the same way
+[`readmit diagnose review`](finding-review.md) does, and promotes only
+explicitly confirmed, expressible findings into the existing test-authoring
+draft with provenance. Unreviewed and unsupported findings remain visible and
+cannot become approved expectations. Local interface profiles continue to be
+authored in the profile editor; diagnosis selects a named diagnose profile or
+saved configuration rather than a local profile pack.
 
 ## The event sequence and source swimlanes
 
@@ -1498,9 +1522,10 @@ checked to hold no network call and no browser storage at all.
   bounded versioned document and it gains no member here, so which rules were
   applied is lost with the window; laying the case out again reads and verifies
   it from disk.
-- The field-comparison panel applies no normalization or ignore policy and
-  shows every difference it found. Baseline approval and execution drift are
-  shown in the separate panels described below.
+- The field-comparison panel's raw view applies no normalization or ignore
+  policy and shows every difference it found; a separate policy-scoped preview
+  lists suppressed differences without changing source bytes. Baseline approval
+  and execution drift are shown in the separate panels described below.
 - Retaining a comparison across an interruption. The working session is one
   bounded versioned document and it gains no member here, so which two
   collections were being compared is lost with the window; comparing them again

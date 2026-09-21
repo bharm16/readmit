@@ -21,6 +21,20 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   and imported/exported without silently updating pinned profiles. GUI and CLI
   generation agree for the same declared inputs; the frozen guided sample is
   unchanged.
+- The desktop shell completes visual correlation, diagnosis, finding review and
+  comparison policies (#253). Correlation and sequence-analysis rules, diagnose
+  configurations and normalization policies are authored with structured
+  controls and saved through the same Go readers the command line uses.
+  Diagnosis runs over the verified case under a named builtin or saved config,
+  groups findings by signature, and records confirm, dismiss and scoped
+  suppression decisions with rationale; only explicitly confirmed, expressible
+  findings promote into the existing test-authoring draft with provenance, and
+  unsupported or unreviewed findings stay visible without becoming expectations.
+  Collection comparison still shows every raw difference; a separate
+  policy-scoped preview lists every suppressed, retained, undecided and
+  unaddressed difference beside the rule that addressed it, without changing
+  source bytes. Retained diagnosis and finding-review directories are byte-
+  identical to `readmit diagnose` / `readmit diagnose review` output.
 
 - The desktop shell gained in-app case index building, guided rebuild, and
   content search (#248). Opening a case bundle auto-selects an applicable

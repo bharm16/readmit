@@ -22,6 +22,9 @@ import {
   gridRow,
   guideResult,
   indicatorTable,
+  normalizationDifference,
+  normalizationRuleReport,
+  normalizeResult,
   refused,
   reproducerResult,
 } from "./testkit/fixtures";
@@ -331,4 +334,68 @@ test("a comparison is paired on the fields a person named, and shows positions o
   expect(screen.getByText("Differs")).toBeTruthy();
   expect(screen.getByText("present → empty")).toBeTruthy();
   expect(screen.getByText("These are positions, not values. Open the occurrence in the inspector to read what is at one of them.")).toBeTruthy();
+});
+
+test("a normalization preview lists suppressed differences beside their rules and keeps the raw comparison", async () => {
+  const user = userEvent.setup();
+  let normalized: unknown = null;
+  const raw = compareResult([
+    comparisonRow(0, "paired", {
+      left: { occurrence: GRID_OCCURRENCE, kind: "message", payload_state: "compared" },
+      right: { occurrence: "occ-000001", kind: "message", payload_state: "compared" },
+      fields: [
+        { selector: "MSH-7", status: "changed", left_state: "present", right_state: "present" },
+      ],
+    }),
+  ]);
+  const panel = (result: ReturnType<typeof normalizeResult> | null) => (
+    <Comparison
+      entries={["other-case"]}
+      result={raw}
+      busy={false}
+      progress={null}
+      indicators={indicatorTable()}
+      onCompare={() => undefined}
+      workspace={WORKSPACE_ROOT}
+      policyEntries={["policy-1.json"]}
+      normalizeResult={result}
+      onNormalize={(right, policy, keys, fields, offset) => {
+        normalized = { right, policy, keys, fields, offset };
+      }}
+    />
+  );
+  const { rerender } = render(panel(null));
+  await user.selectOptions(screen.getByLabelText("Compare with"), "other-case");
+  await user.selectOptions(screen.getByLabelText("Normalization policy"), "policy-1.json");
+  await user.click(screen.getByRole("button", { name: "Preview under this policy" }));
+  expect(normalized).toEqual({
+    right: "other-case",
+    policy: "policy-1.json",
+    keys: [],
+    fields: [],
+    offset: 0,
+  });
+  rerender(
+    panel(
+      normalizeResult(
+        [
+          normalizationDifference("MSH-7", "suppressed", { rule: "sending-time" }),
+          normalizationDifference("PID-3", "retained", { rule: "keep-ids" }),
+          normalizationDifference("MSA-1", "unaddressed"),
+        ],
+        [normalizationRuleReport("sending-time", "MSH-7")],
+      ),
+    ),
+  );
+  // The raw comparison stays exactly as it was, above the policy-scoped
+  // reading: a suppressed difference is previewed as hidden, never removed.
+  expect(screen.getByText("Paired")).toBeTruthy();
+  expect(screen.getByText(/3 differences · 1 suppressed · 1 retained/)).toBeTruthy();
+  // Every rule appears with its counts, and each difference is shown beside
+  // what the policy did about it and the rule that did it.
+  expect(screen.getByText("Hidden by the policy")).toBeTruthy();
+  expect(screen.getByText("rule sending-time")).toBeTruthy();
+  expect(screen.getByText("Kept by the policy")).toBeTruthy();
+  expect(screen.getByText("No rule addresses this position")).toBeTruthy();
+  expect(screen.getByText(/policy normalization-policy\.json · exact bytes hash to/)).toBeTruthy();
 });

@@ -8,6 +8,7 @@ import type {
 import { Report, type Indicators } from "./shell";
 import "./sequence.css";
 import { CorrelationReview } from "./CorrelationReview";
+import { CorrelationRulesEditor, SequenceAnalysisEditor } from "./RulesEditor";
 import type { CorrelationReviewRequest, CorrelationReviewResult } from "./bindings";
 
 /** How many events of a sequence one window asks the facade for. It is the
@@ -116,10 +117,18 @@ export function Sequence({
   onOpen,
   onSelect,
   workspace,
+  caseIdentity,
   onReview,
+  onSaved,
 }: {
   workspace: string;
+  /** The identity of the verified case, which an authored sequence-analysis
+   * declaration binds to. */
+  caseIdentity?: string;
   onReview: (request: CorrelationReviewRequest, write: boolean) => Promise<CorrelationReviewResult>;
+  /** Called after an authored document landed, so the listing and the pickers
+   * above offer the new revision. */
+  onSaved?: () => void;
   /** The entries of the open workspace that declare the correlation-rules
    * contract. The listing classifies each entry by what it declares, so this
    * picker offers the applicable documents instead of every entry. */
@@ -191,6 +200,27 @@ export function Sequence({
         </button>
       </form>
 
+      <details className="rules-authoring">
+        <summary>Author correlation rules and sequence analysis</summary>
+        <p className="hint">
+          Documents are composed with typed controls and validated by the same strict readers the
+          command line uses. Saving writes a new entry; the pickers above then offer it.
+        </p>
+        <CorrelationRulesEditor
+          workspace={workspace}
+          entries={rulesEntries}
+          busy={busy}
+          {...(onSaved ? { onSaved } : {})}
+        />
+        <SequenceAnalysisEditor
+          workspace={workspace}
+          caseIdentity={caseIdentity ?? ""}
+          entries={analyses}
+          busy={busy}
+          {...(onSaved ? { onSaved } : {})}
+        />
+      </details>
+
       <Report indicators={indicators} progress={progress} result={result} />
 
       {sequence ? (
@@ -231,6 +261,7 @@ export function Sequence({
             busy={busy} reviews={reviews}
             context={{workspace, case: sequence.case, identity: sequence.identity, rules: sequence.rules, rules_sha256: sequence.rules_sha256 ?? ""}}
             onReview={onReview}
+            onSelect={onSelect}
           /> : null}
 
           {sequence.analysis ? <section aria-label="Sequence explanations">

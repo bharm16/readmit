@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
-import type { Comparison as ComparisonView, CompareResult, ComparisonRow } from "./bindings";
+import type {
+  Comparison as ComparisonView,
+  CompareResult,
+  ComparisonRow,
+  Normalization,
+  NormalizeResult,
+} from "./bindings";
+import { NormalizationPolicyEditor } from "./RulesEditor";
 import { Report, type Indicators } from "./shell";
 import "./comparison.css";
 
@@ -47,6 +54,13 @@ const GAPS: Record<string, string> = {
   result_without_run: "This result retains no run to compare",
 };
 
+const NORMALIZATION_OUTCOMES: Record<string, string> = {
+  suppressed: "Hidden by the policy",
+  retained: "Kept by the policy",
+  undecided: "The policy could not decide",
+  unaddressed: "No rule addresses this position",
+};
+
 function describe(table: Record<string, string>, code: string): string {
   return table[code] ?? code;
 }
@@ -83,6 +97,11 @@ export function Comparison({
   progress,
   indicators,
   onCompare,
+  workspace = "",
+  policyEntries = [],
+  normalizeResult = null,
+  onNormalize,
+  onSaved,
 }: {
   /** The case bundles of the open workspace, including the one that is open:
    * comparing a case with a copy of itself is how a copy is checked. */
@@ -92,10 +111,24 @@ export function Comparison({
   progress: string | null;
   indicators: Indicators;
   onCompare: (right: string, keys: string[], fields: string[], offset: number) => void;
+  /** The open workspace, for authoring a normalization policy beside the
+   * preview. */
+  workspace?: string;
+  /** The entries of the open workspace declaring the normalization-policy
+   * contract. The listing classifies them, so this picker offers the
+   * applicable documents instead of every entry. */
+  policyEntries?: string[];
+  normalizeResult?: NormalizeResult | null;
+  /** Reads the same two collections under the declared policy. The raw
+   * comparison above stays exactly as it is; nothing here edits it. */
+  onNormalize?: (right: string, policy: string, keys: string[], fields: string[], offset: number) => void;
+  /** Called after an authored policy landed, so the picker offers it. */
+  onSaved?: () => void;
 }) {
   const [right, setRight] = useState("");
   const [keys, setKeys] = useState("");
   const [fields, setFields] = useState("");
+  const [policy, setPolicy] = useState("");
   const [selected, setSelected] = useState<number | null>(null);
 
   const comparison: ComparisonView | null = result?.comparison ?? null;
@@ -365,6 +398,200 @@ export function Comparison({
         </>
       ) : null}
 
+      {onNormalize ? (
+        <section className="normalization" aria-label="Comparison under a normalization policy">
+          <h4>Normalization</h4>
+          <p className="hint">
+            A separate reading of the same comparison under a declared policy. The raw comparison
+            above stays complete and unchanged; every difference a rule suppresses is listed here
+            beside the rule that suppressed it, and no source byte is ever changed. Execution drift
+            is reported by the retained-executions panel, not here.
+          </p>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              onNormalize(right, policy, terms(keys), terms(fields), 0);
+            }}
+          >
+            <label htmlFor="normalization-policy-entry">Normalization policy</label>
+            <select
+              id="normalization-policy-entry"
+              value={policy}
+              disabled={busy || policyEntries.length === 0}
+              onChange={(event) => setPolicy(event.target.value)}
+            >
+              <option value="">Choose a policy of this workspace…</option>
+              {policyEntries.map((entry) => (
+                <option key={entry} value={entry}>
+                  {entry}
+                </option>
+              ))}
+            </select>
+            <button type="submit" disabled={busy || right === "" || policy === ""}>
+              Preview under this policy
+            </button>
+          </form>
+          <details>
+            <summary>Author a normalization policy</summary>
+            <NormalizationPolicyEditor
+              workspace={workspace}
+              entries={policyEntries}
+              busy={busy}
+              {...(onSaved ? { onSaved } : {})}
+            />
+          </details>
+          <Report
+            indicators={indicators}
+            progress={null}
+            result={normalizeResult && normalizeResult.state !== "completed" ? normalizeResult : null}
+          />
+          {normalizeResult?.normalization ? (
+            <NormalizationView
+              normalization={normalizeResult.normalization}
+              busy={busy}
+              onNormalize={onNormalize}
+            />
+          ) : null}
+        </section>
+      ) : null}
+
     </section>
+  );
+}
+
+/** One policy-scoped reading of one comparison. Every rule appears, including
+ * one that addressed nothing, and every reported difference appears beside
+ * what the policy did about it — hidden differences are previewed, never
+ * removed from the record. */
+function NormalizationView({
+  normalization,
+  busy,
+  onNormalize,
+}: {
+  normalization: Normalization;
+  busy: boolean;
+  onNormalize: (right: string, policy: string, keys: string[], fields: string[], offset: number) => void;
+}) {
+  const window = (offset: number) =>
+    onNormalize(
+      normalization.right,
+      normalization.policy,
+      normalization.keys,
+      normalization.fields,
+      offset,
+    );
+  return (
+    <>
+      <p className="counts">
+        <span>
+          {normalization.summary.differences} difference
+          {normalization.summary.differences === 1 ? "" : "s"} ·{" "}
+          {normalization.summary.suppressed} suppressed · {normalization.summary.retained} retained
+        </span>
+        <span className="unsettled">
+          {normalization.summary.undecided} undecided · {normalization.summary.unaddressed} not
+          addressed by any rule
+        </span>
+        <span className="boundary">
+          policy {normalization.policy} · exact bytes hash to {normalization.policy_sha256} ·{" "}
+          {normalization.report}
+        </span>
+      </p>
+      <p className="scope">{normalization.scope}</p>
+
+      <h5>What each rule did</h5>
+      <table className="panes">
+        <thead>
+          <tr>
+            <th scope="col">Rule</th>
+            <th scope="col">Selector</th>
+            <th scope="col">Operator</th>
+            <th scope="col">Compared</th>
+            <th scope="col">Suppressed</th>
+            <th scope="col">Retained</th>
+            <th scope="col">Undecided</th>
+          </tr>
+        </thead>
+        <tbody>
+          {normalization.rules.map((rule) => (
+            <tr key={rule.id}>
+              <th scope="row">{rule.id}</th>
+              <td>{rule.selector}</td>
+              <td>
+                {rule.operator}
+                {rule.precision ? ` · ${rule.precision}` : ""}
+                {rule.tolerance ? ` · ±${rule.tolerance}` : ""}
+              </td>
+              <td>{rule.compared}</td>
+              <td>{rule.suppressed}</td>
+              <td>{rule.retained}</td>
+              <td>{rule.undecided}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="comparison-window">
+        <button
+          type="button"
+          disabled={busy || normalization.offset === 0}
+          onClick={() => window(Math.max(0, normalization.offset - normalization.limit))}
+        >
+          Previous {normalization.limit}
+        </button>
+        <span>
+          Differences{" "}
+          {normalization.differences.length === 0
+            ? normalization.offset
+            : normalization.offset + 1}
+          –{normalization.offset + normalization.differences.length} of {normalization.total}
+        </span>
+        <button
+          type="button"
+          disabled={
+            busy || normalization.offset + normalization.differences.length >= normalization.total
+          }
+          onClick={() => window(normalization.offset + normalization.limit)}
+        >
+          Next {normalization.limit}
+        </button>
+      </div>
+
+      <ul className="fields">
+        {normalization.differences.map((difference, index) => (
+          <li
+            key={`${difference.left_occurrence}:${difference.right_occurrence}:${difference.selector}:${index}`}
+            className={`outcome-${difference.outcome}`}
+          >
+            <span className="occurrence">
+              {difference.left_occurrence || "—"} ↔ {difference.right_occurrence || "—"}
+            </span>
+            <span className="selector">{difference.selector}</span>
+            {difference.name ? <span className="label">{difference.name}</span> : null}
+            <span className="states">
+              {difference.left_state} → {difference.right_state}
+            </span>
+            <span className="status">{describe(NORMALIZATION_OUTCOMES, difference.outcome)}</span>
+            {difference.rule ? <span className="rule">rule {difference.rule}</span> : null}
+            {difference.reason ? <span className="reason">{difference.reason}</span> : null}
+          </li>
+        ))}
+      </ul>
+
+      {normalization.unsupported.length > 0 ? (
+        <>
+          <h5>Evidence this reading did not compare</h5>
+          <ul className="gaps">
+            {normalization.unsupported.map((gap) => (
+              <li key={`${gap.side}:${gap.occurrence ?? ""}:${gap.selector ?? ""}:${gap.code}`}>
+                {gap.side === "left" ? normalization.left : normalization.right}
+                {gap.occurrence ? ` · ${gap.occurrence}` : ""}
+                {gap.selector ? ` · ${gap.selector}` : ""} · {describe(GAPS, gap.code)}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+    </>
   );
 }

@@ -35,6 +35,15 @@ import {
   sequenceEvent,
   sequenceResult,
   sessionStored,
+  diagnosisResult,
+  diagnosisFinding,
+  findingReviewResult,
+  findingStatus,
+  findingPromotion,
+  REPORT_ENTRY,
+  REPORT_SHA256,
+  testResult,
+  NO_STAGES_MISSING,
 } from "./testkit/fixtures";
 import { renderApp } from "./testkit/app";
 
@@ -837,3 +846,119 @@ test("building an index from the unindexed case view calls BuildIndex and opens 
   expect(await screen.findByText(`Inspect ${GRID_OCCURRENCE}`)).toBeTruthy();
 });
 
+
+test("case through rules, diagnosis, inspection, review and draft handoff", async () => {
+  // Acceptance journey for UX09: open a verified case, lay out a sequence,
+  // run diagnosis, inspect evidence from a finding, record an explicit review
+  // decision, and promote only a confirmed finding into the existing
+  // test-authoring draft with provenance. Unreviewed findings promote nothing.
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    InspectOccurrence: () => inspectionResult(),
+    OpenSequence: () =>
+      sequenceResult([sequenceEvent(GRID_OCCURRENCE, 0), sequenceEvent(NEXT_OCCURRENCE, 1)], {
+        rules: "rules-1.json",
+        rules_sha256: "rules-sha256-fixed-for-tests",
+      }),
+    RunDiagnosis: () => diagnosisResult([diagnosisFinding("f000001")]),
+    ReviewFindings: () =>
+      findingReviewResult([
+        findingStatus("f000001", "confirmed", {
+          promotion: findingPromotion([GRID_OCCURRENCE]),
+          rationale: "scheduler must keep rejecting",
+        }),
+        findingStatus("f000002", "not_reviewed"),
+      ]),
+    DecideFindings: () =>
+      findingReviewResult(
+        [
+          findingStatus("f000001", "confirmed", {
+            promotion: findingPromotion([GRID_OCCURRENCE]),
+            rationale: "scheduler must keep rejecting",
+          }),
+          findingStatus("f000002", "not_reviewed"),
+        ],
+        {},
+        { output: "review-1", decisions_output: "decisions-1.json" },
+      ),
+    AuthorTest: (request) => {
+      const draft = {
+        schema: "readmit-test-draft/v1" as const,
+        case: { entry: CASE_ENTRY, identity: CASE_IDENTITY },
+        name: "",
+        messages: request.answer?.messages ?? request.draft.messages,
+        target: "",
+        boundary: ((request.answer?.boundary ?? request.draft.boundary) || "") as "" | "ack-contract" | "appointment-ledger",
+        observation: "",
+        reset: "",
+        expectations: request.answer?.expectations ?? request.draft.expectations,
+      };
+      return testResult(draft, NO_STAGES_MISSING);
+    },
+    SaveEditorDraft: () => ({ state: "completed" as const, drafts: [] }),
+  });
+  await openWorkspaceWithVerifiedCase(facade, user);
+
+  await user.click(screen.getByRole("button", { name: "Lay out this case" }));
+  expect(facade.oneCall("OpenSequence")[0]).toMatchObject({
+    workspace: WORKSPACE_ROOT,
+    case: CASE_ENTRY,
+    identity: CASE_IDENTITY,
+  });
+  // Position buttons are the sequence's own selection into the inspector.
+  await user.click(screen.getByRole("button", { name: "1" }));
+  expect(facade.oneCall("InspectOccurrence")[0]).toMatchObject({
+    occurrence: NEXT_OCCURRENCE,
+  });
+
+  await user.selectOptions(screen.getByLabelText("Configuration"), "builtin:siu");
+  await user.type(screen.getByLabelText("New report directory in this workspace"), REPORT_ENTRY);
+  await user.click(screen.getByRole("button", { name: "Run this diagnosis" }));
+  expect(facade.oneCall("RunDiagnosis")[0]).toMatchObject({
+    builtin: "siu",
+    output: REPORT_ENTRY,
+    case: CASE_ENTRY,
+    identity: CASE_IDENTITY,
+  });
+  expect(await screen.findByText("f000001")).toBeTruthy();
+
+  // Evidence on the finding opens the inspector again for the original bytes.
+  const diagnosis = screen.getByRole("region", { name: "Diagnosis and finding review" });
+  await user.click(within(diagnosis).getAllByRole("button", { name: GRID_OCCURRENCE })[0]!);
+  expect(facade.callsTo("InspectOccurrence").at(-1)?.args[0]).toMatchObject({
+    occurrence: GRID_OCCURRENCE,
+  });
+
+  // Explicit decisions with rationale, then record them.
+  await user.selectOptions(within(diagnosis).getByLabelText("Decision"), "confirmed");
+  await user.type(within(diagnosis).getByLabelText("Rationale"), "scheduler must keep rejecting");
+  await user.type(screen.getByLabelText("New finding-review directory"), "review-1");
+  await user.type(screen.getByLabelText("New decisions document"), "decisions-1.json");
+  await user.click(screen.getByRole("button", { name: "Record these finding decisions" }));
+  await waitFor(() => expect(facade.callsTo("DecideFindings").length).toBe(1));
+  expect(facade.oneCall("DecideFindings")[0]).toMatchObject({
+    report_sha256: REPORT_SHA256,
+    decisions_output: "decisions-1.json",
+    output: "review-1",
+  });
+
+  await user.click(screen.getByRole("button", { name: "Draft a test from f000001" }));
+  await waitFor(() => expect(facade.callsTo("AuthorTest").length).toBeGreaterThanOrEqual(3));
+  const stages = facade.callsTo("AuthorTest").map((call) => (call.args[0] as { answer?: { stage?: string } }).answer?.stage);
+  expect(stages).toEqual(["boundary", "messages", "expectations"]);
+  await waitFor(() => {
+    const retained = facade.callsTo("SaveEditorDraft").map((call) => call.args[0] as {
+      kind: string;
+      content_schema: string;
+      content: { provenance?: { finding?: string; report_sha256?: string; review?: string } };
+    });
+    const promoted = retained.find((entry) => entry.kind === "promoted-test-draft");
+    expect(promoted?.content_schema).toBe("readmit-promoted-test-draft/v1");
+    expect(promoted?.content.provenance).toMatchObject({
+      finding: "f000001",
+      report_sha256: REPORT_SHA256,
+      review: "review-1",
+    });
+  });
+  expect(screen.getByText("Only a confirmed finding promotes anything.")).toBeTruthy();
+});
