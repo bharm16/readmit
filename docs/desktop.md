@@ -1470,10 +1470,10 @@ checked to hold no network call and no browser storage at all.
 
 ## Not supported in this release
 
-- Registering a revision, and any rename, archive, delete or quota operation.
-  The shell creates and opens projects, edits their settings and registered
-  metadata, and writes notes; a revision records lineage about verified
-  evidence and is `readmit project revise`, after which it is navigable here.
+- Rename, archive, delete or quota operations on a project. The shell creates
+  and opens projects, edits their settings and registered metadata, writes
+  notes, and registers a built revision's lineage through the same
+  `project revise` operation the command line runs.
 - Removing a note, and the previous text of one that was replaced.
 - Writing more than one note at a time in the window. The facade retains up to
   16 drafts, recovery returns every one of them, and the command line reaches
@@ -1530,14 +1530,14 @@ checked to hold no network call and no browser storage at all.
   bounded versioned document and it gains no member here, so which two
   collections were being compared is lost with the window; comparing them again
   reads both from disk and verifies both.
-- Reduction, replay transformations, and reordering or duplicating occurrences,
-  **inside the reproducer editor**. The editor retains what a person selected
-  and what their declared dependencies require, and makes no claim of
-  minimality; see
-  [the reproducer contract](reproducer.md) for what this release does not do.
-  [Review and transform](#reviewing-and-transforming-the-whole-case) previews
-  those operators over the sequence a replay would send and writes nothing, and
-  `readmit-reproducer-plan/v1` gains no operator from it.
+- Reordering, duplicating or reducing occurrences **inside the reproducer
+  editor**. The editor retains what a person selected and what their declared
+  dependencies require, and makes no claim of minimality; see
+  [the reproducer contract](reproducer.md). [Review and transform](#reviewing-and-transforming-the-whole-case)
+  authors and previews relationship-preserving operators over the replay
+  sequence, and the controlled reduction panel runs a bounded search against a
+  chosen failure signature. `readmit-reproducer-plan/v1` gains no operator from
+  either.
 - Retaining which two revisions were being compared across an interruption, and
   any history of what a plan said before a step was undone. A comparison reads
   two reproducers that were built, so it is produced again from disk rather than
@@ -1567,9 +1567,11 @@ checked to hold no network call and no browser storage at all.
   directory entries, and verification is bounded by the case reader's own
   limits. Long-running work, and the progress reporting it needs, arrives with
   the operations that have it.
-- Authoring, editing or writing a transformation plan, a correlation rules
-  document or a redaction policy in the window. All three reach it as documents
-  somebody wrote beside the evidence, exactly as they reach the command line.
+- Authoring a correlation rules document or a redaction policy in the window
+  (rules authoring is owned by the sequence panel). A transformation plan is
+  authored in Review and transform through the same typed operators
+  `readmit transform` previews; a redaction policy still reaches the window as
+  a document somebody wrote beside the evidence.
 - Creating an export review, exporting a packet, and retaining an approval.
   `readmit redact` derives a review and `readmit redact export` gates on the
   same identity this panel reports; the window reads one and states a decision

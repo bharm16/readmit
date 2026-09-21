@@ -545,8 +545,14 @@ export const NO_STAGES_MISSING: TestResolution["missing"] = [];
 export function reproducerResult(
   plan: ReproducerPlan,
   resolution: ReproducerResolution,
+  built?: { output: string; identity: string },
 ): ReproducerResult {
-  return { state: "completed", reproducer: { plan, resolution } };
+  return {
+    state: "completed",
+    reproducer: built
+      ? { plan, resolution, output: built.output, identity: built.identity }
+      : { plan, resolution },
+  };
 }
 
 /** One row both panes of a comparison draw. */

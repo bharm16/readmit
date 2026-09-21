@@ -8,6 +8,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/project"
+	"github.com/bharm16/readmit/internal/reproducer"
 )
 
 // createdProject creates a project through the facade's native create flow and
@@ -392,3 +393,96 @@ func TestListingAClassifiedArtifactVerifiesNothing(t *testing.T) {
 }
 
 func strPtr(value string) *string { return &value }
+
+func TestRegisterRevisionRecordsLineageFromABuiltReproducer(t *testing.T) {
+	parent := t.TempDir()
+	app := newApp(t, &chooser{folder: parent})
+	root, _ := createdProject(t, app, parent)
+	incident := writeCase(t, root, "incident", framed(repBooking)+framed(repAccepted)+framed(repReschedule))
+	registered := app.RegisterCase(root, "incident", desktop.CaseRegistration{Title: "Original incident"})
+	if registered.State != desktop.Completed {
+		t.Fatalf("register parent: %+v", registered)
+	}
+
+	selected := app.EditReproducer(desktop.ReproducerRequest{
+		Workspace: root, Case: "incident", Identity: incident.Identity,
+		Step: reproducer.Step{Operator: reproducer.SelectOccurrence, Occurrence: repRescheduleID},
+	})
+	if selected.Reproducer == nil {
+		t.Fatalf("select: %+v", selected)
+	}
+	build := desktop.ReproducerRequest{
+		Workspace: root, Case: "incident", Identity: incident.Identity,
+		Plan: selected.Reproducer.Plan, Output: "incident-reproducer",
+	}
+	built := app.BuildReproducer(build)
+	if built.State != desktop.Completed || built.Reproducer == nil {
+		t.Fatalf("build: %+v", built)
+	}
+
+	result := app.RegisterRevision(desktop.RevisionRegistration{
+		Workspace: root,
+		Source:    "incident-reproducer",
+		Name:      "incident-revision",
+		Parent:    "incident",
+	})
+	if result.State != desktop.Completed || result.Overview == nil {
+		t.Fatalf("register revision: %+v", result)
+	}
+	if len(result.Overview.Revisions) != 1 {
+		t.Fatalf("overview missing revision: %+v", result.Overview)
+	}
+	entry := result.Overview.Revisions[0]
+	if entry.Name != "incident-revision" || entry.Parent != "incident" || entry.Operation != reproducer.Derivation {
+		t.Fatalf("lineage was not recorded from the evidence: %+v", entry)
+	}
+	if entry.Identity != built.Reproducer.Identity || entry.Evidence != "verified" {
+		t.Fatalf("placed case does not match the build: %+v", entry)
+	}
+	// The build folder is still there for comparison; the parent is unchanged.
+	if _, err := os.Stat(filepath.Join(root, "incident-reproducer", reproducer.CaseName)); err != nil {
+		t.Fatalf("registering removed the build folder: %v", err)
+	}
+	if original := app.OpenCase(root, "incident"); original.State != desktop.Completed || original.Case.Identity != incident.Identity {
+		t.Fatalf("registering changed the parent: %+v", original)
+	}
+	opened := app.OpenCase(root, "incident-revision")
+	if opened.State != desktop.Completed || opened.Case.Identity != built.Reproducer.Identity {
+		t.Fatalf("the placed revision cannot be opened as a case: %+v", opened)
+	}
+}
+
+func TestRegisterRevisionRefusesWhatItCannotStandBehind(t *testing.T) {
+	parent := t.TempDir()
+	app := newApp(t, &chooser{folder: parent})
+	root, _ := createdProject(t, app, parent)
+	incident := writeCase(t, root, "incident", framed(repBooking))
+	app.RegisterCase(root, "incident", desktop.CaseRegistration{Title: "Original"})
+	selected := app.EditReproducer(desktop.ReproducerRequest{
+		Workspace: root, Case: "incident", Identity: incident.Identity,
+		Step: reproducer.Step{Operator: reproducer.SelectOccurrence, Occurrence: repBookingID},
+	})
+	build := desktop.ReproducerRequest{
+		Workspace: root, Case: "incident", Identity: incident.Identity,
+		Plan: selected.Reproducer.Plan, Output: "built",
+	}
+	if built := app.BuildReproducer(build); built.State != desktop.Completed {
+		t.Fatalf("build: %+v", built)
+	}
+
+	refusals := []desktop.ProjectOverviewResult{
+		app.RegisterRevision(desktop.RevisionRegistration{Workspace: root, Name: "rev", Parent: ""}),
+		app.RegisterRevision(desktop.RevisionRegistration{Workspace: root, Source: "built", Name: "incident", Parent: "incident"}),
+		app.RegisterRevision(desktop.RevisionRegistration{Workspace: root, Source: "missing", Name: "rev", Parent: "incident"}),
+		app.RegisterRevision(desktop.RevisionRegistration{Workspace: root, Name: "absent", Parent: "incident"}),
+		app.RegisterRevision(desktop.RevisionRegistration{Workspace: root, Source: "built", Name: "../escape", Parent: "incident"}),
+	}
+	for _, result := range refusals {
+		if result.State != desktop.Failed || result.Overview != nil {
+			t.Fatalf("a refusal was not reported: %+v", result)
+		}
+	}
+	if again := app.OpenProjectOverview(root); again.State != desktop.Completed || len(again.Overview.Revisions) != 0 {
+		t.Fatalf("a refused registration changed the project: %+v", again)
+	}
+}

@@ -4,7 +4,10 @@ import type {
   ReviewDecision,
   ReviewResult,
   Transformation,
+  TransformOperator,
+  TransformPlanResult,
   TransformResult,
+  TransformStep,
 } from "./bindings";
 import { Report, type Indicators } from "./shell";
 import "./review.css";
@@ -42,13 +45,16 @@ export function Review({
   packEntries,
   reviewEntries,
   transformResult,
+  planResult,
   reviewResult,
   caseOpen,
   busy,
   transformProgress,
+  planProgress,
   reviewProgress,
   indicators,
   onPreview,
+  onSavePlan,
   onReview,
 }: {
   /** The entries of the open workspace that declare each contract this panel
@@ -59,15 +65,18 @@ export function Review({
   packEntries: string[];
   reviewEntries: string[];
   transformResult: TransformResult | null;
+  planResult: TransformPlanResult | null;
   reviewResult: ReviewResult | null;
   /** Whether a case is open. A preview is over one verified case; a review is
    * over a folder, and a workspace holding only a review is read without one. */
   caseOpen: boolean;
   busy: boolean;
   transformProgress: string | null;
+  planProgress: string | null;
   reviewProgress: string | null;
   indicators: Indicators;
   onPreview: (rules: string, plan: string, profile: string) => void;
+  onSavePlan: (rules: string, profile: string, steps: TransformStep[], output: string) => void;
   onReview: (review: string, approve: string, offset: number) => void;
 }) {
   const [rules, setRules] = useState("");
@@ -75,6 +84,13 @@ export function Review({
   const [profile, setProfile] = useState("");
   const [entry, setEntry] = useState("");
   const [approval, setApproval] = useState("");
+  const [planOutput, setPlanOutput] = useState("");
+  const [operator, setOperator] = useState<TransformOperator>("rebase-identifiers/v1");
+  const [stepRule, setStepRule] = useState("patient");
+  const [stepShift, setStepShift] = useState("24h");
+  const [stepEntry, setStepEntry] = useState("t000001");
+  const [stepPosition, setStepPosition] = useState("1");
+  const [authoredSteps, setAuthoredSteps] = useState<TransformStep[]>([]);
 
   const transformation: Transformation | null = transformResult?.transformation ?? null;
   const review: ReviewDocument | null = reviewResult?.review ?? null;
@@ -88,6 +104,108 @@ export function Review({
         is a position and a finding is a location, and reading a transformed value is the inspector
         over the derived case a review names.
       </p>
+
+      <h4>Author a transformation plan</h4>
+      <p className="hint">
+        Compose the operators the engine already supports. Correlation rules are
+        selected documents authored in the Sequence panel — this panel does not
+        invent a second rules editor. Preview effects before anything is applied;
+        originals are never normalised or redacted in place.
+      </p>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          const step: TransformStep = { operator };
+          if (operator === "rebase-identifiers/v1") step.rule = stepRule;
+          if (operator === "shift-dates/v1") step.shift = stepShift;
+          if (operator === "reorder-occurrence/v1") {
+            step.entry = stepEntry;
+            step.position = Number(stepPosition);
+          }
+          if (operator === "duplicate-occurrence/v1" || operator === "drop-occurrence/v1") {
+            step.entry = stepEntry;
+          }
+          setAuthoredSteps((current) => [...current, step]);
+        }}
+      >
+        <label htmlFor="transform-step-operator">Operator</label>
+        <select
+          id="transform-step-operator"
+          value={operator}
+          disabled={busy || !caseOpen}
+          onChange={(event) => setOperator(event.target.value as TransformOperator)}
+        >
+          <option value="rebase-identifiers/v1">Rebase identifiers of one correlation rule</option>
+          <option value="shift-dates/v1">Shift dates by a duration</option>
+          <option value="reorder-occurrence/v1">Reorder one sequence entry</option>
+          <option value="duplicate-occurrence/v1">Duplicate one sequence entry</option>
+          <option value="drop-occurrence/v1">Drop one sequence entry</option>
+        </select>
+        {operator === "rebase-identifiers/v1" ? (
+          <>
+            <label htmlFor="transform-step-rule">Correlation rule id</label>
+            <input id="transform-step-rule" value={stepRule} onChange={(e) => setStepRule(e.target.value)} />
+          </>
+        ) : null}
+        {operator === "shift-dates/v1" ? (
+          <>
+            <label htmlFor="transform-step-shift">Shift duration</label>
+            <input id="transform-step-shift" value={stepShift} onChange={(e) => setStepShift(e.target.value)} />
+          </>
+        ) : null}
+        {operator === "reorder-occurrence/v1" || operator === "duplicate-occurrence/v1" || operator === "drop-occurrence/v1" ? (
+          <>
+            <label htmlFor="transform-step-entry">Sequence entry</label>
+            <input id="transform-step-entry" value={stepEntry} onChange={(e) => setStepEntry(e.target.value)} />
+          </>
+        ) : null}
+        {operator === "reorder-occurrence/v1" ? (
+          <>
+            <label htmlFor="transform-step-position">One-based position</label>
+            <input id="transform-step-position" value={stepPosition} onChange={(e) => setStepPosition(e.target.value)} />
+          </>
+        ) : null}
+        <button type="submit" disabled={busy || !caseOpen}>
+          Add this step
+        </button>
+      </form>
+      {authoredSteps.length ? (
+        <ol className="steps" aria-label="Authored transformation steps">
+          {authoredSteps.map((step, index) => (
+            <li key={`${index}:${step.operator}`}>
+              {step.operator}
+              {step.rule ? ` · ${step.rule}` : ""}
+              {step.shift ? ` · ${step.shift}` : ""}
+              {step.entry ? ` · ${step.entry}` : ""}
+              {step.position ? ` · position ${step.position}` : ""}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSavePlan(rules, profile, authoredSteps, planOutput);
+        }}
+      >
+        <label htmlFor="transform-plan-output">New plan document in this workspace</label>
+        <input
+          id="transform-plan-output"
+          value={planOutput}
+          disabled={busy || !caseOpen}
+          onChange={(event) => setPlanOutput(event.target.value)}
+        />
+        <button type="submit" disabled={busy || !caseOpen || rules === "" || planOutput === ""}>
+          Save this transformation plan
+        </button>
+      </form>
+      <Report indicators={indicators} progress={planProgress} result={planResult} />
+      {planResult?.plan ? (
+        <p className="hint">
+          Saved {planResult.plan.output} · rules digest {planResult.plan.digest}. Select it below to preview.
+        </p>
+      ) : null}
+
 
       <form
         onSubmit={(event) => {

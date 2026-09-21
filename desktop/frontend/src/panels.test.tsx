@@ -399,3 +399,61 @@ test("a normalization preview lists suppressed differences beside their rules an
   expect(screen.getByText("No rule addresses this position")).toBeTruthy();
   expect(screen.getByText(/policy normalization-policy\.json · exact bytes hash to/)).toBeTruthy();
 });
+
+test("after a build the reproducer offers register and handoff actions", async () => {
+  const user = userEvent.setup();
+  const acts: string[] = [];
+  const { rerender } = render(
+    <Reproducer
+      rows={[gridRow(GRID_OCCURRENCE)]}
+      result={reproducerResult(
+        { schema: "readmit-reproducer-plan/v1", case: "sample-case", steps: [] },
+        {
+          occurrences: [{ parent: GRID_OCCURRENCE, reason: "selected" }],
+          edits: [],
+          unresolved: [],
+        },
+        { output: "incident-reproducer", identity: "derived-identity-fixed-for-tests" },
+      )}
+      inspected={null}
+      busy={false}
+      progress={null}
+      indicators={indicatorTable()}
+      parentCase={CASE_ENTRY}
+      onStep={() => undefined}
+      onUndo={() => undefined}
+      onBuild={() => undefined}
+      onRegister={(source, name, parent) => acts.push(`register:${source}:${name}:${parent}`)}
+      onOpenRevision={(name) => acts.push(`open:${name}`)}
+      onCompareRevision={(built, registered) => acts.push(`compare:${built}:${registered}`)}
+      onCreateTest={(name) => acts.push(`test:${name}`)}
+    />,
+  );
+  await user.type(screen.getByLabelText("New project entry for the derived case"), "incident-revision");
+  await user.click(screen.getByRole("button", { name: "Register this revision" }));
+  expect(acts).toEqual([`register:incident-reproducer:incident-revision:${CASE_ENTRY}`]);
+  await user.click(screen.getByRole("button", { name: "Open the registered revision" }));
+  await user.click(screen.getByRole("button", { name: "Compare build with this revision" }));
+  await user.click(screen.getByRole("button", { name: "Create a test from this revision" }));
+  expect(acts).toEqual([
+    `register:incident-reproducer:incident-revision:${CASE_ENTRY}`,
+    "open:incident-revision",
+    "compare:incident-reproducer:incident-revision",
+    "test:incident-revision",
+  ]);
+  // Existing props remain optional for callers that have not built yet.
+  rerender(
+    <Reproducer
+      rows={[gridRow(GRID_OCCURRENCE)]}
+      result={null}
+      inspected={null}
+      busy={false}
+      progress={null}
+      indicators={indicatorTable()}
+      onStep={() => undefined}
+      onUndo={() => undefined}
+      onBuild={() => undefined}
+    />,
+  );
+  expect(screen.queryByLabelText("New project entry for the derived case")).toBeNull();
+});

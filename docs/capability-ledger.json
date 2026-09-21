@@ -744,11 +744,11 @@
       "source": "readmit project revise",
       "kind": "cli",
       "capability": "Register derived evidence as a revision of a registered case or revision",
-      "owner": "bharm16/readmit#245",
-      "screen": "the project overview panel of the evidence region",
-      "action": "create, open, register, update and note a project through the shared operations",
-      "test": "project.test.tsx journeys plus internal/desktop and internal/operation tests",
-      "implemented": false
+      "owner": "bharm16/readmit#255",
+      "screen": "the reproducer panel's post-build register handoff",
+      "action": "register a built revision's lineage through the shared revise operation",
+      "test": "desktop revision-registration behavior tests plus internal/operation project tests",
+      "implemented": true
     },
     {
       "id": "cli.project.settings",
@@ -1417,8 +1417,8 @@
       "capability": "Preview relationship-preserving replay transformations of a case",
       "owner": "bharm16/readmit#255",
       "screen": "the review-and-transform panel beside a verified case",
-      "action": "preview relationship-preserving replay transformations",
-      "test": "desktop behavior tests plus internal/transform tests",
+      "action": "author and preview relationship-preserving replay transformations",
+      "test": "desktop transform-plan behavior tests plus internal/transform tests",
       "implemented": true
     },
     {
@@ -2088,8 +2088,63 @@
       "capability": "buildReproducer application operation",
       "owner": "bharm16/readmit#255",
       "screen": "the reproducer panel beside the grid",
-      "action": "write the reproducer as a new derived case folder",
-      "test": "desktop reproducer behavior tests plus internal/reproducer tests",
+      "action": "write the reproducer as a new derived case folder and offer register/compare/test handoffs",
+      "test": "desktop reproducer behavior tests covering register and handoff plus internal/reproducer tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.StartReduction",
+      "source": "desktop.App.StartReduction",
+      "kind": "desktop",
+      "capability": "startReduction application operation",
+      "owner": "bharm16/readmit#255",
+      "screen": "the controlled reduction panel",
+      "action": "run a bounded reduction under existing execution and reset authorisation",
+      "test": "desktop reduction behavior tests plus internal/reduce tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.PreviewReduction",
+      "source": "desktop.App.PreviewReduction",
+      "kind": "desktop",
+      "capability": "previewReduction application operation",
+      "owner": "bharm16/readmit#255",
+      "screen": "the controlled reduction panel",
+      "action": "preview partition, pinned groups and the bounded-minimality boundary without sending",
+      "test": "desktop reduction behavior tests plus internal/reduce tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.OpenTransformPlan",
+      "source": "desktop.App.OpenTransformPlan",
+      "kind": "desktop",
+      "capability": "openTransformPlan application operation",
+      "owner": "bharm16/readmit#255",
+      "screen": "the review-and-transform panel",
+      "action": "read a saved transform plan through the shared decoder",
+      "test": "desktop transform-plan behavior tests plus internal/transform tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveTransformPlan",
+      "source": "desktop.App.SaveTransformPlan",
+      "kind": "desktop",
+      "capability": "saveTransformPlan application operation",
+      "owner": "bharm16/readmit#255",
+      "screen": "the review-and-transform panel",
+      "action": "author a relationship-preserving transform plan with rules and profile pins",
+      "test": "desktop transform-plan behavior tests plus internal/transform tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.RegisterRevision",
+      "source": "desktop.App.RegisterRevision",
+      "kind": "desktop",
+      "capability": "registerRevision application operation",
+      "owner": "bharm16/readmit#255",
+      "screen": "the reproducer panel's post-build register handoff",
+      "action": "place a built reproducer's derived case and register its lineage",
+      "test": "desktop revision-registration behavior tests plus internal/operation project tests",
       "implemented": true
     },
     {
@@ -2264,8 +2319,8 @@
       "capability": "previewTransformation application operation",
       "owner": "bharm16/readmit#255",
       "screen": "the review-and-transform panel",
-      "action": "preview what a transform plan would do, writing nothing",
-      "test": "desktop review behavior tests plus internal/transform tests",
+      "action": "author or select a transform plan, preview effects and relations, writing nothing into evidence",
+      "test": "desktop review and transform-plan behavior tests plus internal/transform tests",
       "implemented": true
     },
     {

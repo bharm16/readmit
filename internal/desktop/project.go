@@ -3,11 +3,16 @@ package desktop
 import (
 	"context"
 	"errors"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/project"
+	"github.com/bharm16/readmit/internal/reproducer"
 )
 
 // RegisteredCase is one registered case of the project overview: the metadata
@@ -349,4 +354,77 @@ func refusedOverview(path string, err error) ProjectOverviewResult {
 		return ProjectOverviewResult{State: Failed, Reason: err.Error()}
 	}
 	return ProjectOverviewResult{State: Failed, Reason: err.Error()}
+}
+
+// RevisionRegistration registers one derived case as a revision of a registered
+// case or revision. Name is the project entry that holds the derived case.
+// Source, when set, is a built reproducer folder of the same project: its
+// derived case is copied into Name first, exactly as the documented
+// `cp -R …/case` step does on the command line, and the build folder is left
+// intact so comparison can still open it. Nothing here rewrites the parent.
+type RevisionRegistration struct {
+	Workspace string `json:"workspace"`
+	Name      string `json:"name"`
+	Parent    string `json:"parent"`
+	Source    string `json:"source,omitzero"`
+}
+
+// RegisterRevision registers derived evidence as a revision through the shared
+// operation `readmit project revise` runs, and returns the project re-read from
+// disk. When Source names a built reproducer folder, the derived case inside it
+// is copied into Name first; an entry that already exists is refused rather
+// than replaced. Original evidence is never touched.
+func (a *App) RegisterRevision(request RevisionRegistration) ProjectOverviewResult {
+	return run(a, false, true, func(context.Context) ProjectOverviewResult {
+		root, declined := resolveFolder(request.Workspace)
+		if root == "" {
+			return declined.projectOverview()
+		}
+		if request.Parent == "" {
+			return ProjectOverviewResult{State: Failed, Reason: "a revision names the registered case or revision it was derived from"}
+		}
+		if request.Source != "" {
+			if err := placeDerivedCase(root, request.Source, request.Name); err != nil {
+				if errors.Is(err, fs.ErrPermission) {
+					return ProjectOverviewResult{State: PermissionDenied, Reason: "this account cannot write into the open workspace"}
+				}
+				return ProjectOverviewResult{State: Failed, Reason: err.Error()}
+			}
+		}
+		if _, err := operation.RegisterRevision(root, request.Name, request.Parent); err != nil {
+			return refusedOverview(root, err)
+		}
+		return a.refreshOverview(root)
+	})
+}
+
+// placeDerivedCase copies the derived case out of a built reproducer folder
+// into one new entry of the project. The build folder itself stays where it is.
+func placeDerivedCase(root, source, destination string) error {
+	if err := artifactpath.EntryName(source); err != nil {
+		return errors.New("a built reproducer must be named by one directory entry of the open workspace")
+	}
+	if err := artifactpath.EntryName(destination); err != nil {
+		return errors.New("a revision must be named by one directory entry of the project")
+	}
+	from := filepath.Join(artifactpath.JoinReference(root, source), reproducer.CaseName)
+	if _, err := bundle.Open(from); err != nil {
+		return errors.New("the built reproducer's derived case could not be verified as complete, unmodified evidence")
+	}
+	to := artifactpath.JoinReference(root, destination)
+	if _, err := os.Lstat(to); err == nil {
+		return errors.New("that name is already an entry of this workspace")
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return errors.New("the revision folder could not be created in the open workspace")
+	}
+	if err := os.Mkdir(to, 0700); err != nil {
+		return err
+	}
+	if err := os.CopyFS(to, os.DirFS(from)); err != nil {
+		return errors.New("the derived case could not be placed beside the project evidence")
+	}
+	if _, err := bundle.Open(to); err != nil {
+		return errors.New("the placed derived case could not be verified as complete, unmodified evidence")
+	}
+	return nil
 }

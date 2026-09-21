@@ -37,10 +37,15 @@ export function Reproducer({
   progress,
   indicators,
   restoredDraft,
+  parentCase,
   onDiscardDraft,
   onStep,
   onUndo,
   onBuild,
+  onRegister,
+  onOpenRevision,
+  onCompareRevision,
+  onCreateTest,
 }: {
   rows: GridRow[];
   result: ReproducerResult | null;
@@ -49,16 +54,24 @@ export function Reproducer({
   progress: string | null;
   indicators: Indicators;
   restoredDraft?: boolean;
+  /** The open case this plan was authored against; used as the revision parent. */
+  parentCase?: string;
   onDiscardDraft?: () => void;
   onStep: (step: ReproducerStep) => void;
   onUndo: () => void;
   onBuild: (output: string) => void;
+  onRegister?: (source: string, name: string, parent: string) => void;
+  onOpenRevision?: (name: string) => void;
+  onCompareRevision?: (built: string, registered: string) => void;
+  onCreateTest?: (name: string) => void;
 }) {
   const [identity, setIdentity] = useState("SCH-2.1 SCH-2.2");
   const [occurrence, setOccurrence] = useState("");
   const [selector, setSelector] = useState("");
   const [value, setValue] = useState("");
   const [output, setOutput] = useState("");
+  const [revisionName, setRevisionName] = useState("");
+  const [registeredAs, setRegisteredAs] = useState("");
 
   const view = result?.reproducer;
   const plan = view?.plan;
@@ -269,11 +282,67 @@ export function Reproducer({
         </button>
       </form>
       {view?.output ? (
-        <p className="written">
-          Written to {view.output} · derived case identity{" "}
-          <span className="identity">{view.identity}</span>. Register it with{" "}
-          <code>readmit project revise</code> to record its lineage beside the evidence.
-        </p>
+        <div className="written" role="status">
+          <p>
+            Written to {view.output} · derived case identity{" "}
+            <span className="identity">{view.identity}</span>. Register its lineage
+            here to place the derived case beside the project evidence. The build
+            folder stays available for comparison.
+          </p>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!onRegister || !parentCase || !view.output) return;
+              onRegister(view.output, revisionName, parentCase);
+              setRegisteredAs(revisionName);
+            }}
+          >
+            <label htmlFor="reproducer-revision-name">
+              New project entry for the derived case
+            </label>
+            <input
+              id="reproducer-revision-name"
+              value={revisionName}
+              placeholder={`${view.output}-case`}
+              onChange={(event) => setRevisionName(event.target.value)}
+            />
+            <button
+              type="submit"
+              disabled={busy || !onRegister || !parentCase || revisionName === ""}
+            >
+              Register this revision
+            </button>
+          </form>
+          {registeredAs ? (
+            <div className="handoffs" aria-label="Revision handoffs">
+              <p>
+                Registered as {registeredAs}. Choose an explicit next step — an
+                existing test draft for the original case is not retargeted.
+              </p>
+              <button
+                type="button"
+                disabled={busy || !onOpenRevision}
+                onClick={() => onOpenRevision?.(registeredAs)}
+              >
+                Open the registered revision
+              </button>
+              <button
+                type="button"
+                disabled={busy || !onCompareRevision || !view.output}
+                onClick={() => onCompareRevision?.(view.output!, registeredAs)}
+              >
+                Compare build with this revision
+              </button>
+              <button
+                type="button"
+                disabled={busy || !onCreateTest}
+                onClick={() => onCreateTest?.(registeredAs)}
+              >
+                Create a test from this revision
+              </button>
+            </div>
+          ) : null}
+        </div>
       ) : null}
     </section>
   );
