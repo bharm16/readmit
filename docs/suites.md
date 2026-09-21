@@ -137,9 +137,13 @@ changed row expectations and retains approval records; see
 [released expectations](expectations.md). Ordinary suites make no approval claim.
 
 This release executes v1 ACK and fixture-ledger specs through the established
-loopback-only durable run path. It adds no remote authorization policy, new
-adapter, desktop suite editor, team approval, execution filtering,
-selection rule or scheduling daemon. Coverage assessment is described below.
+loopback-only durable run path. The desktop **Suites and releases** panel
+authors, previews, prepares, assesses and promotes suites through the same
+contracts and the same engine as these commands; it adds no second suite
+language and sends nothing, handing prepared suites to the durable-run panels
+for their preflight and explicit send decision. This release adds no remote authorization policy,
+new adapter, team approval, execution filtering, selection rule or scheduling
+daemon. Coverage assessment is described below.
 These absent capabilities remain separate deliveries. A site label is not an environment approval. Profile support remains
 what the underlying spec and evaluator declare; these suites certify no broader
 HL7 or external-system behavior.

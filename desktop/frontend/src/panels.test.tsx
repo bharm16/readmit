@@ -521,3 +521,56 @@ test("TestAuthoring authors ledger_equals and exact_ledger suggestions", async (
     exact_ledger: true,
   });
 });
+
+// Releasing a test version is the same deliberate local review with profile
+// pins: the release id is required, the review names the exact commitment,
+// and saving writes one new immutable file. A passing run is never the
+// approver.
+test("releasing a test version pins profiles and saves one immutable revision", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade({
+    ReviewBaseline: (request) => ({
+      state: "completed" as const,
+      comparison: {
+        schema: "readmit-test-release/v1",
+        identity: "release-review-identity-fixed-for-tests",
+        revision: 3,
+        parent: "parent-release-identity-fixed-for-tests",
+        values_shown: request.show_values,
+        changes: [{ part: "profile siu-rules", kind: "added" }],
+      },
+    }),
+    ApproveBaseline: () => ({ state: "completed" as const, output: "booking-3.json" }),
+  });
+  render(<Baseline workspace={WORKSPACE_ROOT} busy={false} />);
+  await user.click(screen.getByLabelText("Release a test version with profile pins"));
+  await user.type(screen.getByLabelText("Stable test identity"), "booking");
+  await user.type(
+    screen.getByLabelText(/Local profile filenames, one per line/),
+    "siu-rules.json",
+  );
+  await user.type(screen.getByLabelText("Candidate specification in this workspace"), "booking.json");
+  await user.type(screen.getByLabelText("Previous released test (empty for first revision)"), "booking-2.json");
+  const release = () => screen.getByRole("button", { name: "Review test and profile changes" }) as HTMLButtonElement;
+  // The review needs the stable identity before it can run at all.
+  const identity = screen.getByLabelText("Stable test identity");
+  await user.clear(identity);
+  expect(release().disabled).toBe(true);
+  await user.type(identity, "booking");
+  await user.click(release());
+  const review = facade.oneCall("ReviewBaseline")[0];
+  expect(review).toMatchObject({ release: true, release_id: "booking", profiles: ["siu-rules.json"], previous: "booking-2.json" });
+  await user.type(screen.getByLabelText("Local approver"), "sam");
+  await user.type(screen.getByLabelText("Approval rationale"), "reviewed profile pin");
+  await user.type(screen.getByLabelText("New released test filename"), "booking-3.json");
+  await user.click(screen.getByRole("button", { name: "Release this exact test version" }));
+  const approval = facade.oneCall("ApproveBaseline")[0];
+  expect(approval).toMatchObject({
+    release: true,
+    release_id: "booking",
+    review: "release-review-identity-fixed-for-tests",
+    output: "booking-3.json",
+  });
+  expect(await screen.findByText("Approved and saved booking-3.json.")).toBeTruthy();
+  expect(screen.getByText(/not authenticated team identities/i)).toBeTruthy();
+});

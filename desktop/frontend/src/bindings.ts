@@ -645,6 +645,17 @@ export interface Facade {
   ValidateAssertionSet(document: string): Promise<CanonicalAssertionResult>;
   ExportAssertionSet(request: CanonicalAssertionRequest): Promise<CanonicalAssertionResult>;
   OpenBaseline(request: BaselineRequest): Promise<BaselineResult>;
+  OpenSuite(workspace: string, entry: string): Promise<SuiteDocumentResult>;
+  ValidateSuite(canonical: string): Promise<SuiteDocumentResult>;
+  SaveSuite(request: { workspace: string; document: string; output: string }): Promise<SuiteDocumentResult>;
+  PreviewSuite(request: SuitePreviewRequest): Promise<SuitePreviewResult>;
+  PrepareSuite(request: SuitePrepareRequest): Promise<SuitePreparedResult>;
+  SaveSuiteCoverage(request: SuiteCoverageSaveRequest): Promise<SuiteCoverageResult>;
+  AssessSuiteCoverage(request: SuiteCoverageAssessRequest): Promise<SuiteCoverageResult>;
+  ReviewSuitePromotion(request: SuitePromotionRequest): Promise<SuitePromotionResult>;
+  ApproveSuitePromotion(request: SuitePromotionApproveRequest): Promise<SuitePromotionResult>;
+  SaveSuiteReleases(request: { workspace: string; document: string; output: string }): Promise<SuiteReleasesResult>;
+  ExpectationImpact(request: SuiteImpactRequest): Promise<SuiteImpactResult>;
   ReviewBaseline(request: BaselineRequest): Promise<BaselineResult>;
   ApproveBaseline(request: BaselineRequest): Promise<BaselineResult>;
   Compare(request: CompareRequest): Promise<CompareResult>;
@@ -3229,6 +3240,398 @@ export interface ExecutionComparison {
  scope: string;
 }
 export interface RunComparisonResult { state: State; reason?: string; comparison?: ExecutionComparison; }
+
+// ---------------------------------------------------------------------------
+// Suite management
+// ---------------------------------------------------------------------------
+
+/** One reusable regression suite, the exact readmit-suite/v1 contract: test
+ * templates bound to typed data tables and named environments. The structured
+ * editor edits every member; a suite this window did not write opens with no
+ * clause dropped and no member invented. */
+export interface SuiteDocument {
+  schema: string;
+  id: string;
+  owner: string;
+  tags: string[];
+  parallelism: number;
+  environments: SuiteEnvironment[];
+  tables: SuiteTable[];
+  tests: SuiteTest[];
+}
+
+/** One declared environment: an explicit id and site, and the parameter
+ * bindings that map each test parameter to a target configuration and, for
+ * ledger tests, an observation path. */
+export interface SuiteEnvironment {
+  id: string;
+  site: string;
+  bindings: SuiteBinding[];
+}
+
+/** One named parameter binding. Neither the site nor this binding is a claim
+ * of safety, approval or permission to send. */
+export interface SuiteBinding {
+  parameter: string;
+  target: string;
+  observation?: string;
+}
+
+/** One data table of typed rows. A row replaces only the template's case
+ * reference and explicitly named expected values. */
+export interface SuiteTable {
+  id: string;
+  rows: SuiteRow[];
+}
+
+/** One data row. Expected maps existing assertion ids to their complete typed
+ * expected values; unknown ids and mismatched shapes are refused. */
+export interface SuiteRow {
+  id: string;
+  case: string;
+  expected?: Record<string, SuiteExpectationValue>;
+}
+
+/** One typed expected value, the same union an assertion takes. */
+export interface SuiteExpectationValue {
+  count?: number;
+  records?: ObservationRecord[];
+  field?: ExpectedFieldValue;
+}
+
+/** One test of the suite: a template, its parameter, table, fixture
+ * isolation, dependencies and the exact selected occurrence order. */
+export interface SuiteTest {
+  id: string;
+  spec: string;
+  owner: string;
+  tags: string[];
+  parameter: string;
+  table: string;
+  isolation: string;
+  sequence: string[];
+  after?: string[];
+}
+
+/** Carries one suite: the canonical text the entry holds or the save wrote,
+ * the digest of those exact bytes, and the typed document the structured
+ * editor edits. */
+export interface SuiteDocumentResult {
+  state: State;
+  reason?: string;
+  document?: string;
+  output?: string;
+  sha256?: string;
+  suite?: SuiteDocument;
+}
+
+/** Names the suite to expand — canonical text an editor holds, or one entry of
+ * the open workspace — with the environment to bind and, optionally, a
+ * release-references entry whose pins are verified. Exactly one of document
+ * and entry names the suite. */
+export interface SuitePreviewRequest {
+  workspace: string;
+  document: string;
+  entry: string;
+  environment: string;
+  releases: string;
+}
+
+/** The exact expansion of one suite against one environment: the jobs
+ * preparation would compile, their effective inputs and bindings, the release
+ * pins in force and the resource serialization the queue holds. */
+export interface SuiteExpansion {
+  suite: { id: string; owner: string; tags: string[]; parallelism: number };
+  environment: SuiteEnvironment;
+  engine: string;
+  releases: { test: string; identity: string }[];
+  jobs: SuiteExpandedJob[];
+  order: string;
+  sharing: string;
+}
+
+/** One TEST-ROW job exactly as preparation would compile it. Sequence is the
+ * declared send order; isolation is the operator's declaration, never
+ * inferred. */
+export interface SuiteExpandedJob {
+  id: string;
+  test: string;
+  row: string;
+  spec: string;
+  case: string;
+  target: string;
+  boundary: string;
+  observation?: string;
+  isolation: string;
+  after: string[];
+  sequence: string[];
+  release?: string;
+}
+
+export interface SuitePreviewResult {
+  state: State;
+  reason?: string;
+  expansion?: SuiteExpansion;
+}
+
+/** Compiles one saved suite entry against one declared environment into a new
+ * private directory entry. Nothing is sent; execution is a separate explicit
+ * step. */
+export interface SuitePrepareRequest {
+  workspace: string;
+  entry: string;
+  environment: string;
+  releases: string;
+  output: string;
+}
+
+/** One job of the compiled queue plan, the existing readmit-run-queue/v1
+ * contract. */
+export interface SuiteQueueJob {
+  id: string;
+  spec: string;
+  isolation: string;
+  after?: string[];
+}
+
+export interface SuiteQueuePlan {
+  schema: string;
+  parallelism: number;
+  jobs: SuiteQueueJob[];
+}
+
+export interface SuitePreparedResult {
+  state: State;
+  reason?: string;
+  directory?: string;
+  queue?: SuiteQueuePlan;
+}
+
+/** Authors the coverage document of one prepared suite directory: the suite
+ * digest and every specification pin come from the retained bytes, and only
+ * the requirements and exclusions are declarations. */
+export interface SuiteCoverageSaveRequest {
+  workspace: string;
+  prepared: string;
+  requirements: SuiteRequirementDeclaration[];
+  exclusions: SuiteExclusionDeclaration[];
+  output: string;
+}
+
+/** One unit of the explicit denominator: a requirement and the expanded jobs
+ * that establish it. An empty list is explicitly uncovered. */
+export interface SuiteRequirementDeclaration {
+  id: string;
+  jobs: string[];
+}
+
+/** One assessment declaration: skipped, unsupported, quarantined or disabled,
+ * each with a nonempty reason and a UTC expiry. It never filters execution. */
+export interface SuiteExclusionDeclaration {
+  job: string;
+  state: string;
+  reason: string;
+  expires: string;
+}
+
+export interface SuiteCoverageResult {
+  state: State;
+  reason?: string;
+  document?: string;
+  output?: string;
+  report?: SuiteCoverageReport;
+}
+
+/** The read-only coverage view: the explicit denominator, every requirement
+ * and every job, including jobs no requirement maps. */
+export interface SuiteCoverageReport {
+  suite: string;
+  environment: string;
+  at: string;
+  denominator: number;
+  passed: number;
+  percent: number;
+  requirements: { id: string; jobs: string[]; state: string }[];
+  jobs: SuiteJobCoverage[];
+  scope: string;
+}
+
+/** One expanded job in a coverage assessment: its actual execution state, any
+ * exclusion with reason and expiry, and the retained stability evidence. */
+export interface SuiteJobCoverage {
+  id: string;
+  execution: string;
+  reason: string;
+  expiry: string;
+  exclusion: string;
+  exclusion_reason: string;
+  expires: string;
+  expired: boolean;
+  eligible: boolean;
+  stability: {
+    state: string;
+    reason: string;
+    runs: number;
+    passes: number;
+    failures: number;
+    errors: number;
+    incomplete: number;
+    flaky_assertions: string[];
+  };
+}
+
+/** Assesses one prepared suite directory against an explicit coverage
+ * document, with up to fifteen previous directories and an optional fixed
+ * assessment instant. */
+export interface SuiteCoverageAssessRequest {
+  workspace: string;
+  prepared: string;
+  requirements: string;
+  previous?: string[];
+  at: string;
+}
+
+/** Reviews one saved suite against one declared environment, its release
+ * sidecar and the operator's current revision assumption. */
+export interface SuitePromotionRequest {
+  workspace: string;
+  entry: string;
+  environment: string;
+  releases: string;
+  revision: string;
+}
+
+/** Records the explicit local approval of one reviewed promotion. Reviewed
+ * names the review identity that was displayed; the engine re-reads every
+ * input and refuses a stale commitment. */
+export interface SuitePromotionApproveRequest {
+  workspace: string;
+  entry: string;
+  environment: string;
+  releases: string;
+  revision: string;
+  reviewed: string;
+  approver: string;
+  rationale: string;
+  output: string;
+}
+
+/** Carries the review's exact commitments and, after an approval, the
+ * complete approval identity. An approval grants no send authority. */
+export interface SuitePromotionResult {
+  state: State;
+  reason?: string;
+  review?: {
+    schema: string;
+    identity: string;
+    suite_sha256: string;
+    releases_sha256: string;
+    environment: string;
+    revision_assumption: string;
+    jobs: { job: string; sha256: string }[];
+  };
+  identity?: string;
+  output?: string;
+}
+
+/** One authored readmit-suite-releases/v1 sidecar: the canonical text, the
+ * entry it was written to and the typed references. */
+export interface SuiteReleasesResult {
+  state: State;
+  reason?: string;
+  document?: string;
+  output?: string;
+  references?: {
+    schema: string;
+    tests: { test: string; release: string; identity: string }[];
+  };
+}
+
+/** Names the suite, its sidecar and two retained releases; from must be the
+ * direct predecessor of to. */
+export interface SuiteImpactRequest {
+  workspace: string;
+  suite: string;
+  releases: string;
+  from: string;
+  to: string;
+  show_values: boolean;
+}
+
+/** The impact report: which suite tests pin the old release, which are
+ * already current, and the exact specification changes between the two. */
+export interface SuiteImpactResult {
+  state: State;
+  reason?: string;
+  impact?: {
+    schema: string;
+    from: string;
+    to: string;
+    comparison: BaselineComparison;
+    tests: { test: string; rows: number; pinned: string; state: string }[];
+  };
+}
+
+export function openSuite(workspace: string, entry: string): Promise<SuiteDocumentResult> {
+  return guard(() => facade().OpenSuite(workspace, entry), { state: "failed" });
+}
+
+export function validateSuite(canonical: string): Promise<SuiteDocumentResult> {
+  return guard(() => facade().ValidateSuite(canonical), { state: "failed" });
+}
+
+export function saveSuite(request: {
+  workspace: string;
+  document: string;
+  output: string;
+}): Promise<SuiteDocumentResult> {
+  return guard(() => facade().SaveSuite(request), { state: "failed" });
+}
+
+export function previewSuite(request: SuitePreviewRequest): Promise<SuitePreviewResult> {
+  return guard(() => facade().PreviewSuite(request), { state: "failed" });
+}
+
+export function prepareSuite(request: SuitePrepareRequest): Promise<SuitePreparedResult> {
+  return guard(() => facade().PrepareSuite(request), { state: "failed" });
+}
+
+export function saveSuiteCoverage(
+  request: SuiteCoverageSaveRequest,
+): Promise<SuiteCoverageResult> {
+  return guard(() => facade().SaveSuiteCoverage(request), { state: "failed" });
+}
+
+export function assessSuiteCoverage(
+  request: SuiteCoverageAssessRequest,
+): Promise<SuiteCoverageResult> {
+  return guard(() => facade().AssessSuiteCoverage(request), { state: "failed" });
+}
+
+export function reviewSuitePromotion(
+  request: SuitePromotionRequest,
+): Promise<SuitePromotionResult> {
+  return guard(() => facade().ReviewSuitePromotion(request), { state: "failed" });
+}
+
+export function approveSuitePromotion(
+  request: SuitePromotionApproveRequest,
+): Promise<SuitePromotionResult> {
+  return guard(() => facade().ApproveSuitePromotion(request), { state: "failed" });
+}
+
+export function saveSuiteReleases(request: {
+  workspace: string;
+  document: string;
+  output: string;
+}): Promise<SuiteReleasesResult> {
+  return guard(() => facade().SaveSuiteReleases(request), { state: "failed" });
+}
+
+export function expectationImpact(request: SuiteImpactRequest): Promise<SuiteImpactResult> {
+  return guard(() => facade().ExpectationImpact(request), { state: "failed" });
+}
+
 export function compareRuns(request: RunComparisonRequest): Promise<RunComparisonResult> {
  return guard(() => facade().CompareRuns(request), { state: "failed" });
 }

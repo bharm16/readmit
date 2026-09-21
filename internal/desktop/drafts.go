@@ -398,6 +398,9 @@ func validateEditorDraft(draft EditorDraft) error {
 	if draft.ContentSchema == NoteDraftSchema {
 		return validateNoteDraft(draft.Content)
 	}
+	if draft.ContentSchema == SuiteDraftSchema {
+		return validateSuiteDraft([]byte(draft.Content))
+	}
 	return nil
 }
 

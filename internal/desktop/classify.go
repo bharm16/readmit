@@ -32,6 +32,9 @@ var schemaMarkerFiles = []struct {
 	{"review.json", ReviewArtifact},
 	{"report.json", DiagnosisArtifact},
 	{"machine.json", CorrelationReviewArtifact},
+	// A prepared suite directory retains the suite it compiled beside its
+	// queue and generated specifications.
+	{"suite.json", SuiteArtifact},
 }
 
 // declaredSchemas are the contracts a regular file can declare that this
@@ -62,9 +65,14 @@ var declaredSchemas = map[string]Kind{
 
 	// A suite document is what the durable-run panels execute a whole
 	// environment of; its released-expectation references are the separate
-	// pin set that makes one an approved suite.
-	"readmit-suite/v1":          SuiteArtifact,
-	"readmit-suite-releases/v1": SuiteReleasesArtifact,
+	// pin set that makes one an approved suite. A released test version, a
+	// coverage document and a promotion approval are the suite workflow's own
+	// artifacts; the suite panel opens each through its own strict reader.
+	"readmit-suite/v1":           SuiteArtifact,
+	"readmit-suite-releases/v1":  SuiteReleasesArtifact,
+	"readmit-test-release/v1":    SuiteArtifact,
+	"readmit-suite-coverage/v1":  SuiteArtifact,
+	"readmit-suite-promotion/v1": SuiteArtifact,
 }
 
 // classify reports what one workspace entry declares, beyond what the case

@@ -93,9 +93,12 @@ const (
 	NormalizationArtifact     Kind = "normalization-policy"
 	DiagnoseConfigArtifact    Kind = "diagnose-config"
 	DecisionsArtifact         Kind = "finding-decisions"
-	// A suite document declares the environments, data rows and templates the
-	// durable-run panels execute a whole environment of; the releases
-	// document is the separate pin set that makes one an approved suite.
+	// A suite document — or the directory a preparation or an execution
+	// retained — declares the environments, data rows and templates the
+	// durable-run panels execute a whole environment of; the releases document
+	// is the separate pin set that makes one an approved suite. A released test
+	// version, a coverage document and a promotion approval are the suite
+	// workflow's own artifacts beside them; the suite panel offers them all.
 	SuiteArtifact         Kind = "suite"
 	SuiteReleasesArtifact Kind = "suite-releases"
 	UnsupportedArtifact   Kind = "unsupported"

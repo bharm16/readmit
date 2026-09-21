@@ -123,6 +123,7 @@ var indicators = []Indicator{
 	{Status: string(NormalizationArtifact), Symbol: "⊡", Label: "Normalization policy"},
 	{Status: string(DiagnoseConfigArtifact), Symbol: "⌬", Label: "Diagnose configuration"},
 	{Status: string(DecisionsArtifact), Symbol: "⊦", Label: "Finding decisions"},
+	{Status: string(SuiteArtifact), Symbol: "◫", Label: "Suite management"},
 	{Status: string(UnsupportedArtifact), Symbol: "?", Label: "Unsupported here"},
 
 	{Status: string(project.StatusOpen), Symbol: "◇", Label: "Open"},
@@ -189,7 +190,7 @@ var privacyStatus = Privacy{
 		"the folders you have opened, as paths only, in readmit-desktop-recent/v1",
 		"the filters you have saved, including any value you typed to filter by, in readmit-filters/v1",
 		"the notes you had not stored yet and where you were, in readmit-desktop-session/v1",
-		"the editor work you had not stored yet — notes you were writing, test drafts, assertion-set drafts, canonical edits and reproducer plans — in readmit-desktop-drafts/v1",
+		"the editor work you had not stored yet — notes you were writing, test drafts, assertion-set drafts, canonical edits, suite drafts and reproducer plans — in readmit-desktop-drafts/v1",
 	},
 }
 

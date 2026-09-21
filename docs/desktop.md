@@ -1647,6 +1647,58 @@ inspectable without their original spec file. The same `internal/baseline`
 engine backs the CLI; passing runs never automatically approve themselves.
 See [baseline review](baseline.md) for privacy, cancellation and identity limits.
 
+## Suite management
+
+The inspector's **Suites and releases** panel manages
+[regression suites](suites.md) through structured controls over the one
+canonical `readmit-suite/v1` contract: suite identity and organization
+metadata, environments with parameter bindings, data tables with typed
+expected-value overrides, and tests with templates, tables, fixture isolation,
+dependencies and exact send order. The facade operations call the same
+`internal/suite` readers and writers `readmit suite` uses, so a suite the
+command line wrote opens with no clause dropped and no member invented, and a
+version this release cannot read is refused rather than migrated. Versioning a
+suite is saving a new entry: canonical bytes, SHA-256 identity, no in-place
+rewrite. Pasting canonical JSON remains the expert import path and every save
+displays the canonical text it wrote.
+
+**Preview the exact expansion** expands the suite against one declared
+environment exactly as preparation would, without writing anything: every
+`TEST-ROW` job in declared order, its effective case and target after bindings
+resolve, the ledger observation binding, dependencies, isolation and send
+order, the release pins in force when a sidecar is selected, the engine stamp,
+and the serialization rule the queue holds — shared jobs hold the selected
+environment and its endpoint for their whole run and are never silently
+parallelized; the selected input order is never changed. A preview the engine
+refuses is shown as its refusal, never as an empty expansion.
+
+The panel also connects the workflow the CLI owns: the **release sidecar**
+editor authors `readmit-suite-releases/v1` with exact release identities;
+**expectation impact** reports what one released template's successor changes
+for a saved suite without moving a pin; **prepare** compiles a saved suite into
+a new private workspace directory exactly as `readmit suite prepare` writes it,
+states that nothing was sent, and hands the suite entry itself to the
+durable-run panels — seeding their selection, so their own preflight and
+explicit send decision take over with no path copied by hand; **coverage** authors the `readmit-suite-coverage/v1` document — the
+suite digest and every specification pin computed from the retained bytes, with
+requirements and exclusions as the only declarations — and assesses a prepared
+suite with the same strict reader `readmit suite coverage` uses, showing the
+explicit denominator, uncovered requirements, exclusion reasons and expiry
+(expired stays visible and never enables a send), blocked, skipped and unknown
+executions, and retained stability evidence; and **promotion** reviews and
+approves one exact suite against one environment and the operator-declared
+target revision, showing the exact suite, releases and per-job pins, refusing a
+stale review after any input changed, and stating that approval grants no send
+authority and never verifies the target's actual software.
+
+A suite being edited is retained as unstored work in the editor draft store
+under the `readmit-suite-draft/v1` content contract, and storing it discards
+the draft. Suite artifacts — suites, prepared directories, sidecars, released
+test versions, coverage documents and promotion approvals — are listed as the
+`suite` kind, so the pickers resolve references from what the workspace
+declares. See [regression suites](suites.md) and
+[released expectations](expectations.md) for the contracts' own limits.
+
 ## Canonical test import and export
 
 The workspace's **Import and edit a saved test** panel supports complete

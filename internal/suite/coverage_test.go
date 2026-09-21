@@ -400,3 +400,71 @@ func TestCoverageReadsApprovedSuiteWithoutChangingApproval(t *testing.T) {
 		t.Fatalf("approval changed: %v", err)
 	}
 }
+
+// BuildCoverage authors the coverage document of one prepared directory: the
+// suite digest and every specification pin come from the retained bytes, so a
+// declaration authored in a window can never name pins it computed itself.
+func TestBuildCoveragePinsTheExactRetainedBytes(t *testing.T) {
+	dir, _ := fixture(t, "127.0.0.1:1")
+	out := filepath.Join(dir, "out")
+	if _, err := suite.Prepare(filepath.Join(dir, "suite.json"), "east", out); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := suite.BuildCoverage(out, []suite.Requirement{{ID: "accept-booking", Jobs: []string{"booking-one"}}, {ID: "downstream", Jobs: []string{}}}, []suite.Exclusion{{Job: "booking-one", State: "quarantined", Reason: "fixture under investigation", Expires: "2026-10-01T00:00:00Z"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	document, err := suite.DecodeCoverage(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	suiteRaw, _ := os.ReadFile(filepath.Join(out, "suite.json"))
+	sum := sha256.Sum256(suiteRaw)
+	specRaw, _ := os.ReadFile(filepath.Join(out, "booking-one.json"))
+	specSum := sha256.Sum256(specRaw)
+	if document.SuiteSHA256 != hex.EncodeToString(sum[:]) || len(document.Specifications) != 1 || document.Specifications[0].Job != "booking-one" || document.Specifications[0].SHA256 != hex.EncodeToString(specSum[:]) {
+		t.Fatalf("%+v", document)
+	}
+	// The authored document is exactly what assessment reads.
+	path := filepath.Join(t.TempDir(), "authored.json")
+	if err = os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	report, err := suite.AssessCoverage(t.Context(), out, path, nil, time.Date(2026, 9, 19, 0, 0, 0, 0, time.UTC))
+	if err != nil || report.Denominator != 2 || report.Passed != 0 || report.Jobs[0].Exclusion != "quarantined" {
+		t.Fatalf("%+v %v", report, err)
+	}
+}
+
+func TestBuildCoverageRefusesDeclarationsTheRetainedSuiteDoesNotSupport(t *testing.T) {
+	dir, _ := fixture(t, "127.0.0.1:1")
+	out := filepath.Join(dir, "out")
+	if _, err := suite.Prepare(filepath.Join(dir, "suite.json"), "east", out); err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"unknown-job", "unknown-exclusion", "empty-denominator", "duplicate-requirement", "missing-reason", "bad-expiry", "bad-state"} {
+		t.Run(kind, func(t *testing.T) {
+			requirements := []suite.Requirement{{ID: "accept", Jobs: []string{"booking-one"}}}
+			exclusions := []suite.Exclusion{}
+			switch kind {
+			case "unknown-job":
+				requirements = []suite.Requirement{{ID: "accept", Jobs: []string{"absent-one"}}}
+			case "unknown-exclusion":
+				exclusions = []suite.Exclusion{{Job: "absent-one", State: "skipped", Reason: "r", Expires: "2026-10-01T00:00:00Z"}}
+			case "empty-denominator":
+				requirements = nil
+			case "duplicate-requirement":
+				requirements = []suite.Requirement{{ID: "accept", Jobs: []string{"booking-one"}}, {ID: "accept", Jobs: []string{}}}
+			case "missing-reason":
+				exclusions = []suite.Exclusion{{Job: "booking-one", State: "skipped", Reason: "", Expires: "2026-10-01T00:00:00Z"}}
+			case "bad-expiry":
+				exclusions = []suite.Exclusion{{Job: "booking-one", State: "skipped", Reason: "r", Expires: "2026-10-01"}}
+			case "bad-state":
+				exclusions = []suite.Exclusion{{Job: "booking-one", State: "passed", Reason: "r", Expires: "2026-10-01T00:00:00Z"}}
+			}
+			if _, err := suite.BuildCoverage(out, requirements, exclusions); err == nil {
+				t.Fatal("authored an unsupported coverage declaration")
+			}
+		})
+	}
+}
