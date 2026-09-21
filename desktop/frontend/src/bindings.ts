@@ -26,6 +26,9 @@ export type Kind =
   | "profile"
   | "package"
   | "analysis"
+  | "secret"
+  | "policy"
+  | "reset"
   | "unsupported";
 
 /** The status of one registered case, maintained by a person. */
@@ -617,6 +620,21 @@ export interface Facade {
   ListHubProjectArtifacts(project: string): Promise<HubArtifactsResult>;
   DownloadHubArtifact(request: HubDownloadRequest): Promise<HubTransferResult>;
   UploadHubArtifact(request: HubUploadRequest): Promise<HubTransferResult>;
+  SaveTarget(request: TargetSaveRequest): Promise<TargetResult>;
+  ReadTarget(workspace: string, targetFile: string): Promise<TargetResult>;
+  CheckTarget(request: TargetCheckRequest): Promise<TargetCheckResult>;
+  ResetTarget(request: TargetResetRequest): Promise<TargetResetResult>;
+  ReadSecrets(workspace: string, secretsFile: string): Promise<SecretsResult>;
+  SaveSecretReference(request: SecretSaveRequest): Promise<SecretsResult>;
+  RemoveSecretReference(workspace: string, secretsFile: string, name: string): Promise<SecretsResult>;
+  TestSecretReference(workspace: string, secretsFile: string, name: string): Promise<SecretTestResult>;
+  RotateSecretReference(workspace: string, secretsFile: string, name: string): Promise<SecretsResult>;
+  ScanSecrets(request: SecretScanRequest): Promise<SecretScanResult>;
+  ReadSendPolicy(workspace: string, policyFile: string): Promise<SendPolicyResult>;
+  SaveSendPolicy(request: SendPolicySaveRequest): Promise<SendPolicyResult>;
+  EvaluateSendPolicy(request: SendPolicyEvalRequest): Promise<SendPolicyEvalResult>;
+  ReadResetPlan(workspace: string, planFile: string): Promise<ResetPlanResult>;
+  SaveResetPlan(request: ResetPlanSaveRequest): Promise<ResetPlanResult>;
 }
 
 declare global {
@@ -2859,4 +2877,317 @@ export function importProfilePackage(request: ProfilePackageImportRequest): Prom
 
 export function inspectProfilePackage(workspace: string, entry: string): Promise<ProfilePackageResult> {
   return guard(() => facade().InspectProfilePackage(workspace, entry), { state: "failed" });
+}
+
+export type TargetClassification = "nonproduction" | "production" | "unclassified";
+
+export interface TargetCredential {
+  secrets_file: string;
+  reference: string;
+}
+
+export interface Target {
+  schema: string;
+  test_endpoint: boolean;
+  address: string;
+  transport: string;
+  approved_transport: boolean;
+  ca_file?: string;
+  connect_timeout: string;
+  message_timeout: string;
+  max_ack_bytes: number;
+  credential?: TargetCredential;
+  name?: string;
+  classification?: TargetClassification;
+  server_name?: string;
+  client_certificate?: string;
+}
+
+export interface TargetSaveRequest {
+  workspace: string;
+  target_file: string;
+  target: Target;
+}
+
+export interface TargetResult {
+  state: State;
+  reason?: string;
+  target?: Target;
+  target_file?: string;
+}
+
+export interface TargetCheckRequest {
+  workspace: string;
+  target_file: string;
+  policy_file?: string;
+  decision_file?: string;
+}
+
+export interface EnvironmentReport {
+  name: string;
+  classification: string;
+  peer: string;
+  outcome: string;
+  phase: string;
+  server_name?: string;
+  cipher_suite?: string;
+  tls_version?: string;
+  client_certificate_requested?: boolean;
+  client_certificate_presented?: boolean;
+  unsolicited: number;
+}
+
+export interface SendPolicyDecision {
+  schema: string;
+  allowed: boolean;
+  reason: string;
+  address: string;
+  classification: string;
+  explicit_send: boolean;
+  policy_selected: boolean;
+  approved_destinations: string[];
+  resolved_addresses: string[];
+  decided_at: string;
+}
+
+export interface TargetCheckResult {
+  state: State;
+  reason?: string;
+  report?: EnvironmentReport;
+  decision?: SendPolicyDecision;
+}
+
+export type ResetOperator = "operator_confirms" | "observation_empty" | "endpoint_quiet";
+export type ResetAuthority = "none" | "read_declared_file" | "connect_approved_target";
+
+export interface ResetAction {
+  id: string;
+  operator: ResetOperator;
+  authority: ResetAuthority;
+  instructions: string;
+  observation?: string;
+}
+
+export interface ResetPlan {
+  schema: string;
+  environment: string;
+  actions: ResetAction[];
+}
+
+export interface ResetActionOutcome {
+  id: string;
+  operator: string;
+  authority: string;
+  outcome: string;
+  reason: string;
+  diagnosis?: string;
+}
+
+export interface ResetResult {
+  schema: string;
+  state: State;
+  outcome: string;
+  reason: string;
+  environment: string;
+  classification: string;
+  plan_sha256: string;
+  decision?: string;
+  actions: ResetActionOutcome[];
+  attempted_at: string;
+}
+
+export interface TargetResetRequest {
+  workspace: string;
+  target_file: string;
+  plan_file: string;
+  outcome_file: string;
+  policy_file?: string;
+  confirmed?: string[];
+}
+
+export interface TargetResetResult {
+  state: State;
+  reason?: string;
+  result?: ResetResult;
+  plan?: ResetPlan;
+}
+
+export type SecretStore = "os-keychain" | "customer-managed";
+export type SecretPurpose = "mllp-endpoint" | "source-endpoint";
+
+export interface SecretReference {
+  name: string;
+  store: SecretStore;
+  purpose: SecretPurpose;
+  address: string;
+  command: string;
+  arguments: string[];
+  generation: number;
+  rotated_at: string;
+  max_age?: string;
+}
+
+export interface SecretDocument {
+  schema: string;
+  references: SecretReference[];
+}
+
+export interface SecretsResult {
+  state: State;
+  reason?: string;
+  document?: SecretDocument;
+  secrets_file?: string;
+}
+
+export interface SecretSaveRequest {
+  workspace: string;
+  secrets_file: string;
+  reference: SecretReference;
+  is_update?: boolean;
+}
+
+export interface SecretTestResult {
+  state: State;
+  reason?: string;
+  name?: string;
+  success: boolean;
+}
+
+export interface SecretScanRequest {
+  workspace: string;
+  secrets_file: string;
+  paths: string[];
+  name?: string;
+}
+
+export interface ResidualScan {
+  status: string;
+  files_checked: number;
+  known_values_checked: number;
+  unresolved_locations: string[];
+  limitations: string;
+}
+
+export interface SecretScanResult {
+  state: State;
+  reason?: string;
+  scan?: ResidualScan;
+  skipped: number;
+}
+
+export interface SendPolicy {
+  schema: string;
+  approved_destinations: string[];
+}
+
+export interface SendPolicyResult {
+  state: State;
+  reason?: string;
+  policy?: SendPolicy;
+  policy_file?: string;
+}
+
+export interface SendPolicySaveRequest {
+  workspace: string;
+  policy_file: string;
+  policy: SendPolicy;
+}
+
+export interface SendPolicyEvalRequest {
+  workspace: string;
+  policy_file?: string;
+  address: string;
+  classification: string;
+  explicit?: boolean;
+}
+
+export interface SendPolicyEvalResult {
+  state: State;
+  reason?: string;
+  decision?: SendPolicyDecision;
+}
+
+export interface ResetPlanResult {
+  state: State;
+  reason?: string;
+  plan?: ResetPlan;
+  plan_file?: string;
+}
+
+export interface ResetPlanSaveRequest {
+  workspace: string;
+  plan_file: string;
+  plan: ResetPlan;
+}
+
+export function saveTarget(request: TargetSaveRequest): Promise<TargetResult> {
+  return guard(() => facade().SaveTarget(request), { state: "failed" });
+}
+
+export function readTarget(workspace: string, targetFile: string): Promise<TargetResult> {
+  return guard(() => facade().ReadTarget(workspace, targetFile), { state: "failed" });
+}
+
+export function checkTarget(request: TargetCheckRequest): Promise<TargetCheckResult> {
+  return guard(() => facade().CheckTarget(request), { state: "failed" });
+}
+
+export function resetTarget(request: TargetResetRequest): Promise<TargetResetResult> {
+  return guard(() => facade().ResetTarget(request), { state: "failed" });
+}
+
+export function readSecrets(workspace: string, secretsFile: string): Promise<SecretsResult> {
+  return guard(() => facade().ReadSecrets(workspace, secretsFile), { state: "failed" });
+}
+
+export function saveSecretReference(request: SecretSaveRequest): Promise<SecretsResult> {
+  return guard(() => facade().SaveSecretReference(request), { state: "failed" });
+}
+
+export function removeSecretReference(
+  workspace: string,
+  secretsFile: string,
+  name: string,
+): Promise<SecretsResult> {
+  return guard(() => facade().RemoveSecretReference(workspace, secretsFile, name), { state: "failed" });
+}
+
+export function testSecretReference(
+  workspace: string,
+  secretsFile: string,
+  name: string,
+): Promise<SecretTestResult> {
+  return guard(() => facade().TestSecretReference(workspace, secretsFile, name), { state: "failed", success: false });
+}
+
+export function rotateSecretReference(
+  workspace: string,
+  secretsFile: string,
+  name: string,
+): Promise<SecretsResult> {
+  return guard(() => facade().RotateSecretReference(workspace, secretsFile, name), { state: "failed" });
+}
+
+export function scanSecrets(request: SecretScanRequest): Promise<SecretScanResult> {
+  return guard(() => facade().ScanSecrets(request), { state: "failed", skipped: 0 });
+}
+
+export function readSendPolicy(workspace: string, policyFile: string): Promise<SendPolicyResult> {
+  return guard(() => facade().ReadSendPolicy(workspace, policyFile), { state: "failed" });
+}
+
+export function saveSendPolicy(request: SendPolicySaveRequest): Promise<SendPolicyResult> {
+  return guard(() => facade().SaveSendPolicy(request), { state: "failed" });
+}
+
+export function evaluateSendPolicy(request: SendPolicyEvalRequest): Promise<SendPolicyEvalResult> {
+  return guard(() => facade().EvaluateSendPolicy(request), { state: "failed" });
+}
+
+export function readResetPlan(workspace: string, planFile: string): Promise<ResetPlanResult> {
+  return guard(() => facade().ReadResetPlan(workspace, planFile), { state: "failed" });
+}
+
+export function saveResetPlan(request: ResetPlanSaveRequest): Promise<ResetPlanResult> {
+  return guard(() => facade().SaveResetPlan(request), { state: "failed" });
 }

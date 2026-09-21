@@ -114,6 +114,9 @@ var indicators = []Indicator{
 	{Status: string(ProfileArtifact), Symbol: "◓", Label: "Local profile"},
 	{Status: string(PackageArtifact), Symbol: "◪", Label: "Profile package"},
 	{Status: string(AnalysisArtifact), Symbol: "◒", Label: "Sequence analysis"},
+	{Status: string(SecretArtifact), Symbol: "⚿", Label: "Credential references"},
+	{Status: string(PolicyArtifact), Symbol: "◖", Label: "Send policy"},
+	{Status: string(ResetArtifact), Symbol: "↺", Label: "Fixture reset"},
 	{Status: string(UnsupportedArtifact), Symbol: "?", Label: "Unsupported here"},
 
 	{Status: string(project.StatusOpen), Symbol: "◇", Label: "Open"},

@@ -78,6 +78,9 @@ const (
 	ProfileArtifact     Kind = "profile"
 	PackageArtifact     Kind = "package"
 	AnalysisArtifact    Kind = "analysis"
+	SecretArtifact      Kind = "secret"
+	PolicyArtifact      Kind = "policy"
+	ResetArtifact       Kind = "reset"
 	UnsupportedArtifact Kind = "unsupported"
 )
 

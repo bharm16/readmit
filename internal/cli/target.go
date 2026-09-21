@@ -1,12 +1,9 @@
 package cli
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -14,6 +11,7 @@ import (
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/environment"
 	"github.com/bharm16/readmit/internal/fixturereset"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/secret"
 	"github.com/bharm16/readmit/internal/sendpolicy"
@@ -73,13 +71,7 @@ func targetSet() *cobra.Command {
 			if changed("approved-transport") {
 				config.ApprovedTransport = approved
 			}
-			if err := replay.WriteTarget(file, config); err != nil {
-				return err
-			}
-			// The configuration is read back through the same reader every
-			// other command uses, so what is reported is what readmit reads
-			// rather than what this command intended to write.
-			stored, err := replay.ReadTarget(file)
+			stored, err := operation.SaveTarget(file, config)
 			if err != nil {
 				return err
 			}
@@ -147,25 +139,13 @@ func targetCheck() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			// Interrupt and termination reach the diagnosis, so a cancelled
-			// check reports cancellation rather than claiming nothing.
 			ctx := cmd.Context()
-			// The same rule the send path enforces, asked here with the send
-			// not requested, because a check sends nothing. A destination this
-			// reports as refused is one a replay refuses; there is one
-			// implementation of the rule and no second copy to drift from it.
-			duration, _ := time.ParseDuration(config.ConnectTimeout)
-			decisionCtx, stop := context.WithTimeout(ctx, duration)
-			decision := sendpolicy.Decide(decisionCtx, policy, sendpolicy.Request{
-				Address: config.Address, Classification: string(config.Environment().Classification),
-			}, sendpolicy.SystemResolver)
-			stop()
+			report, decision, err := operation.DiagnoseTarget(ctx, config, policy, sendpolicy.SystemResolver)
 			if decisionPath != "" {
 				if err := sendpolicy.WriteDecision(decisionPath, decision); err != nil {
 					return err
 				}
 			}
-			report, err := environment.Diagnose(ctx, config)
 			if err != nil {
 				return err
 			}
@@ -241,20 +221,11 @@ func targetReset() *cobra.Command {
 				return refusal(err)
 			}
 			ctx := cmd.Context()
-			result, plan := fixturereset.Run(ctx, fixturereset.Request{
+			result, plan, err := operation.ResetEnvironment(ctx, fixturereset.Request{
 				Target: config, PlanBytes: planBytes, PlanDirectory: filepath.Dir(resolved),
 				Policy: policy, Confirmed: confirmed,
-			}, sendpolicy.SystemResolver)
-			outcome, err := fixturereset.EncodeOutcome(result)
+			}, outcomePath, sendpolicy.SystemResolver)
 			if err != nil {
-				return refusal(err)
-			}
-			// One reset attempt retains one document. The destination must be
-			// new, so rerunning after performing a manual step needs a new file
-			// and the attempt that stopped is still there to read.
-			if err := writeNewFile(outcomePath, outcome,
-				"cannot create the reset outcome file; the destination must be new and writable",
-				"cannot write the reset outcome"); err != nil {
 				return refusal(err)
 			}
 			if err := writeLines(cmd.OutOrStdout(), func(w io.Writer) {
@@ -338,7 +309,7 @@ func readTargetFile(path string) (replay.Target, error) {
 	if path == "" {
 		return replay.Target{}, usage("target requires --target naming a target configuration file")
 	}
-	return replay.ReadTarget(path)
+	return operation.ReadTarget(path)
 }
 
 // openOrNewTarget reads a configuration to edit, or starts the first one. A
@@ -349,17 +320,7 @@ func openOrNewTarget(path string) (replay.Target, error) {
 	if path == "" {
 		return replay.Target{}, usage("target set requires --target naming the file to record this environment in")
 	}
-	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
-		return newEnvironment(), nil
-	}
-	config, err := replay.ReadDeclaredTarget(path)
-	if err != nil {
-		return replay.Target{}, err
-	}
-	if config.Schema != replay.TargetSchemaV3 {
-		return replay.Target{}, errors.New("that file declares " + config.Schema + " and target set records " + replay.TargetSchemaV3 + "; record the named environment in a new file and leave this one as it is")
-	}
-	return config, nil
+	return operation.OpenOrNewTarget(path)
 }
 
 // writeConfigurationLines renders one configuration below its banner. Declared

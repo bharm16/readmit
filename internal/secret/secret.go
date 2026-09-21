@@ -484,6 +484,22 @@ func Rotate(document Document, name string, at time.Time) (Document, Reference, 
 	return updated, entry, nil
 }
 
+// Remove removes one registered reference by name and returns the updated
+// document. The document it is given is not modified.
+func Remove(document Document, name string) (Document, error) {
+	index := indexOf(document, name)
+	if index < 0 {
+		return Document{}, errors.New("no credential reference is registered under that name")
+	}
+	updated := document
+	updated.References = slices.Clip(slices.Clone(document.References))
+	updated.References = slices.Delete(updated.References, index, index+1)
+	if err := Validate(updated); err != nil {
+		return Document{}, err
+	}
+	return updated, nil
+}
+
 // Resolve reads one credential from the store the reference declares.
 //
 // The declared program is run directly by absolute path, never looked up on

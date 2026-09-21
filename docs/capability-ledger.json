@@ -1034,7 +1034,7 @@
       "screen": "a credential-reference screen",
       "action": "register and rotate credential references that stay in a store",
       "test": "desktop secret journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.secret.rotate",
@@ -1045,7 +1045,7 @@
       "screen": "a credential-reference screen",
       "action": "register and rotate credential references that stay in a store",
       "test": "desktop secret journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.secret.scan",
@@ -1056,7 +1056,7 @@
       "screen": "a credential-reference screen",
       "action": "register and rotate credential references that stay in a store",
       "test": "desktop secret journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.secret.show",
@@ -1067,7 +1067,7 @@
       "screen": "a credential-reference screen",
       "action": "register and rotate credential references that stay in a store",
       "test": "desktop secret journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.secret.update",
@@ -1078,7 +1078,7 @@
       "screen": "a credential-reference screen",
       "action": "register and rotate credential references that stay in a store",
       "test": "desktop secret journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.share.verify",
@@ -1232,7 +1232,7 @@
       "screen": "the test authoring panel's target choices beside a verified case",
       "action": "configure, validate, diagnose and reset one named test environment",
       "test": "desktop authoring behavior tests plus internal/environment tests",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.target.reset",
@@ -1243,7 +1243,7 @@
       "screen": "the test authoring panel's target choices beside a verified case",
       "action": "configure, validate, diagnose and reset one named test environment",
       "test": "desktop authoring behavior tests plus internal/environment tests",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.target.set",
@@ -1254,7 +1254,7 @@
       "screen": "the test authoring panel's target choices beside a verified case",
       "action": "configure, validate, diagnose and reset one named test environment",
       "test": "desktop authoring behavior tests plus internal/environment tests",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.target.show",
@@ -1265,7 +1265,7 @@
       "screen": "the test authoring panel's target choices beside a verified case",
       "action": "configure, validate, diagnose and reset one named test environment",
       "test": "desktop authoring behavior tests plus internal/environment tests",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.test",
@@ -2222,6 +2222,171 @@
       "screen": "the profile management panel of the inspector region",
       "action": "inspect package integrity, provenance, rights review and conflict status",
       "test": "desktop profile behavior tests plus internal/desktop profile tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.CheckTarget",
+      "source": "desktop.App.CheckTarget",
+      "kind": "desktop",
+      "capability": "checkTarget application operation",
+      "owner": "bharm16/readmit#249",
+      "screen": "the environment configuration panel and test authoring target selector",
+      "action": "reach configured environment and diagnose transport, TLS and send policy without HL7 payloads",
+      "test": "desktop environment behavior tests plus internal/desktop environment tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.EvaluateSendPolicy",
+      "source": "desktop.App.EvaluateSendPolicy",
+      "kind": "desktop",
+      "capability": "evaluateSendPolicy application operation",
+      "owner": "bharm16/readmit#249",
+      "screen": "the send policy configuration panel",
+      "action": "evaluate an address and classification against approved destinations locally without connecting",
+      "test": "desktop environment behavior tests plus internal/desktop environment tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ReadResetPlan",
+      "source": "desktop.App.ReadResetPlan",
+      "kind": "desktop",
+      "capability": "readResetPlan application operation",
+      "owner": "bharm16/readmit#249",
+      "screen": "the fixture reset authoring panel",
+      "action": "read a reviewed fixture reset plan",
+      "test": "desktop environment behavior tests plus internal/desktop environment tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ReadSecrets",
+      "source": "desktop.App.ReadSecrets",
+      "kind": "desktop",
+      "capability": "readSecrets application operation",
+      "owner": "bharm16/readmit#249",
+      "screen": "the credential reference configuration panel",
+      "action": "read registered credential references with masked values",
+      "test": "desktop environment behavior tests plus internal/desktop environment tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ReadSendPolicy",
+      "source": "desktop.App.ReadSendPolicy",
+      "kind": "desktop",
+      "capability": "readSendPolicy application operation",
+      "owner": "bharm16/readmit#249",
+      "screen": "the send policy configuration panel",
+      "action": "read approved send policy CIDR prefixes",
+      "test": "desktop environment behavior tests plus internal/desktop environment tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ReadTarget",
+      "source": "desktop.App.ReadTarget",
+      "kind": "desktop",
+      "capability": "readTarget application operation",
+      "owner": "bharm16/readmit#249",
+      "screen": "the environment configuration panel and test authoring target selector",
+      "action": "read configured environment fields",
+      "test": "desktop environment behavior tests plus internal/desktop environment tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.RemoveSecretReference",
+      "source": "desktop.App.RemoveSecretReference",
+      "kind": "desktop",
+      "capability": "removeSecretReference application operation",
+      "owner": "bharm16/readmit#249",
+      "screen": "the credential reference configuration panel",
+      "action": "remove a registered credential reference from the store",
+      "test": "desktop environment behavior tests plus internal/desktop environment tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ResetTarget",
+      "source": "desktop.App.ResetTarget",
+      "kind": "desktop",
+      "capability": "resetTarget application operation",
+      "owner": "bharm16/readmit#249",
+      "screen": "the fixture reset authoring panel",
+      "action": "execute reviewed reset actions and record retained outcome",
+      "test": "desktop environment behavior tests plus internal/desktop environment tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.RotateSecretReference",
+      "source": "desktop.App.RotateSecretReference",
+      "kind": "desktop",
+      "capability": "rotateSecretReference application operation",
+      "owner": "bharm16/readmit#249",
+      "screen": "the credential reference configuration panel",
+      "action": "verify and record credential rotation in the store",
+      "test": "desktop environment behavior tests plus internal/desktop environment tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveResetPlan",
+      "source": "desktop.App.SaveResetPlan",
+      "kind": "desktop",
+      "capability": "saveResetPlan application operation",
+      "owner": "bharm16/readmit#249",
+      "screen": "the fixture reset authoring panel",
+      "action": "save reviewed reset actions and instructions atomically",
+      "test": "desktop environment behavior tests plus internal/desktop environment tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveSecretReference",
+      "source": "desktop.App.SaveSecretReference",
+      "kind": "desktop",
+      "capability": "saveSecretReference application operation",
+      "owner": "bharm16/readmit#249",
+      "screen": "the credential reference configuration panel",
+      "action": "add or update credential references without storing secret values",
+      "test": "desktop environment behavior tests plus internal/desktop environment tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveSendPolicy",
+      "source": "desktop.App.SaveSendPolicy",
+      "kind": "desktop",
+      "capability": "saveSendPolicy application operation",
+      "owner": "bharm16/readmit#249",
+      "screen": "the send policy configuration panel",
+      "action": "save approved destination prefixes atomically",
+      "test": "desktop environment behavior tests plus internal/desktop environment tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveTarget",
+      "source": "desktop.App.SaveTarget",
+      "kind": "desktop",
+      "capability": "saveTarget application operation",
+      "owner": "bharm16/readmit#249",
+      "screen": "the environment configuration panel and test authoring target selector",
+      "action": "record or edit named target configuration",
+      "test": "desktop environment behavior tests plus internal/desktop environment tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ScanSecrets",
+      "source": "desktop.App.ScanSecrets",
+      "kind": "desktop",
+      "capability": "scanSecrets application operation",
+      "owner": "bharm16/readmit#249",
+      "screen": "the credential reference configuration panel",
+      "action": "scan workspace files and configuration for known credential values",
+      "test": "desktop environment behavior tests plus internal/desktop environment tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.TestSecretReference",
+      "source": "desktop.App.TestSecretReference",
+      "kind": "desktop",
+      "capability": "testSecretReference application operation",
+      "owner": "bharm16/readmit#249",
+      "screen": "the credential reference configuration panel",
+      "action": "test that a registered credential reference resolves from its store",
+      "test": "desktop environment behavior tests plus internal/desktop environment tests",
       "implemented": true
     },
     {

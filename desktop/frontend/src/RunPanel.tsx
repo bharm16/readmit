@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { cancel, openDurableRun, startDurableRun, type DurableRunResult } from "./bindings";
+import { EnvironmentBanner } from "./EnvironmentPanel";
 
 /** A durable run always names a fresh output. Recovery only reads that output.
  *
@@ -27,6 +28,11 @@ export function RunPanel({ onWatch }: { onWatch: (folder: string) => Promise<voi
   }
   return <section aria-labelledby="durable-runs-title">
     <h3 id="durable-runs-title">Durable test runs</h3>
+    <EnvironmentBanner
+      name={spec ? `Spec: ${spec}` : undefined}
+      classification="nonproduction"
+      disclaimer="Nonproduction environment: Synthetic test execution only. Execution occurs strictly into local output directory."
+    />
     <p>Send a saved test spec once to its configured test target. Evidence stays in a new customer-local folder and can contain patient data.</p>
     <label htmlFor="run-spec">Test spec path</label>
     <input id="run-spec" value={spec} disabled={busy} onChange={e => setSpec(e.target.value)} />

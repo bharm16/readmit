@@ -46,6 +46,10 @@ var declaredSchemas = map[string]Kind{
 	"readmit-local-profile/v1":     ProfileArtifact,
 	"readmit-profile-package/v1":   PackageArtifact,
 	"readmit-sequence-analysis/v1": AnalysisArtifact,
+	"readmit-secrets/v1":           SecretArtifact,
+	"readmit-send-policy/v1":       PolicyArtifact,
+	"readmit-reset-plan/v1":        ResetArtifact,
+	"readmit-reset-outcome/v1":     ResetArtifact,
 }
 
 // classify reports what one workspace entry declares, beyond what the case

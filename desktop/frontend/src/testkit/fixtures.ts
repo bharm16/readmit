@@ -48,6 +48,15 @@ import type {
   BuildIndexResult,
   IndexDetails,
   IndexResult,
+  TargetResult,
+  TargetCheckResult,
+  SecretsResult,
+  SecretTestResult,
+  SecretScanResult,
+  SendPolicyResult,
+  SendPolicyEvalResult,
+  ResetPlanResult,
+  TargetResetResult,
 } from "../bindings";
 
 /** The synthetic workspace root the fixtures name. It is not a path on any
@@ -887,5 +896,195 @@ export function localProfileFixture(): import("../bindings").LocalProfileResult 
       profile: { id: "fixture-local-siu", version: "1" },
       content: { bytes: 3322, sha256: "e96a3350b728a78d063cf99afddeec3854d393682039ed4348fbc89057c55054" },
     },
+  };
+}
+
+export function defaultTargetResult(overrides: Partial<TargetResult> = {}): TargetResult {
+  return {
+    state: "completed",
+    target_file: "targets/default.json",
+    target: {
+      schema: "readmit-target/v3",
+      name: "staging-mllp",
+      classification: "nonproduction",
+      address: "127.0.0.1:2575",
+      transport: "plain",
+      approved_transport: true,
+      test_endpoint: true,
+      connect_timeout: "5s",
+      message_timeout: "10s",
+      max_ack_bytes: 1024,
+      credential: {
+        secrets_file: "secrets.json",
+        reference: "mllp-basic-auth",
+      },
+    },
+    ...overrides,
+  };
+}
+
+export function defaultTargetCheckResult(overrides: Partial<TargetCheckResult> = {}): TargetCheckResult {
+  return {
+    state: "completed",
+    report: {
+      name: "staging-mllp",
+      classification: "isolated_testing",
+      peer: "127.0.0.1:2575",
+      outcome: "connected",
+      phase: "established",
+      unsolicited: 0,
+    },
+    decision: {
+      schema: "readmit-send-decision/v1",
+      allowed: true,
+      reason: "address matches approved destination list",
+      address: "127.0.0.1:2575",
+      classification: "isolated_testing",
+      explicit_send: true,
+      policy_selected: true,
+      approved_destinations: ["127.0.0.1:2575"],
+      resolved_addresses: ["127.0.0.1:2575"],
+      decided_at: "2026-09-21T12:00:00Z",
+    },
+    ...overrides,
+  };
+}
+
+export function defaultSecretsResult(overrides: Partial<SecretsResult> = {}): SecretsResult {
+  return {
+    state: "completed",
+    secrets_file: "secrets.json",
+    document: {
+      schema: "readmit-secrets/v1",
+      references: [
+        {
+          name: "mllp-basic-auth",
+          store: "os-keychain",
+          purpose: "mllp-endpoint",
+          address: "127.0.0.1:2575",
+          command: "security",
+          arguments: ["find-generic-password", "-s", "mllp"],
+          generation: 1,
+          rotated_at: "2026-09-21T12:00:00Z",
+          max_age: "720h",
+        },
+      ],
+    },
+    ...overrides,
+  };
+}
+
+export function defaultSecretTestResult(overrides: Partial<SecretTestResult> = {}): SecretTestResult {
+  return {
+    state: "completed",
+    name: "mllp-basic-auth",
+    success: true,
+    ...overrides,
+  };
+}
+
+export function defaultSecretScanResult(overrides: Partial<SecretScanResult> = {}): SecretScanResult {
+  return {
+    state: "completed",
+    skipped: 0,
+    scan: {
+      status: "clean",
+      files_checked: 5,
+      known_values_checked: 1,
+      unresolved_locations: [],
+      limitations: "Checked known secret hashes across workspace",
+    },
+    ...overrides,
+  };
+}
+
+export function defaultSendPolicyResult(overrides: Partial<SendPolicyResult> = {}): SendPolicyResult {
+  return {
+    state: "completed",
+    policy_file: "send-policy.json",
+    policy: {
+      schema: "readmit-send-policy/v1",
+      approved_destinations: ["127.0.0.1:2575", "10.0.0.5:2575"],
+    },
+    ...overrides,
+  };
+}
+
+export function defaultSendPolicyEvalResult(overrides: Partial<SendPolicyEvalResult> = {}): SendPolicyEvalResult {
+  return {
+    state: "completed",
+    decision: {
+      schema: "readmit-send-decision/v1",
+      allowed: true,
+      reason: "address matches approved destination list",
+      address: "127.0.0.1:2575",
+      classification: "isolated_testing",
+      explicit_send: true,
+      policy_selected: true,
+      approved_destinations: ["127.0.0.1:2575"],
+      resolved_addresses: ["127.0.0.1:2575"],
+      decided_at: "2026-09-21T12:00:00Z",
+    },
+    ...overrides,
+  };
+}
+
+export function defaultResetPlanResult(overrides: Partial<ResetPlanResult> = {}): ResetPlanResult {
+  return {
+    state: "completed",
+    plan_file: "reset-plan.json",
+    plan: {
+      schema: "readmit-reset-plan/v1",
+      environment: "staging-mllp",
+      actions: [
+        {
+          id: "step-1",
+          operator: "operator_confirms",
+          authority: "none",
+          instructions: "Confirm patient database is wiped.",
+        },
+        {
+          id: "step-2",
+          operator: "observation_empty",
+          authority: "read_declared_file",
+          instructions: "Check observation file is empty.",
+          observation: "inbox.json",
+        },
+      ],
+    },
+    ...overrides,
+  };
+}
+
+export function defaultTargetResetResult(overrides: Partial<TargetResetResult> = {}): TargetResetResult {
+  return {
+    state: "completed",
+    result: {
+      schema: "readmit-reset-outcome/v1",
+      state: "completed",
+      outcome: "succeeded",
+      reason: "all reset actions executed successfully",
+      environment: "staging-mllp",
+      classification: "isolated_testing",
+      plan_sha256: "abc123def456",
+      actions: [
+        {
+          id: "step-1",
+          operator: "operator_confirms",
+          authority: "none",
+          outcome: "confirmed",
+          reason: "operator confirmed",
+        },
+        {
+          id: "step-2",
+          operator: "observation_empty",
+          authority: "read_declared_file",
+          outcome: "observed",
+          reason: "file empty",
+        },
+      ],
+      attempted_at: "2026-09-21T12:00:00Z",
+    },
+    ...overrides,
   };
 }

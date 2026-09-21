@@ -339,6 +339,9 @@ pickers offer applicable entries instead of every entry labelled unsupported:
 | `analysis` | A `readmit-sequence-analysis/v1` document |
 | `profile` | A `readmit-local-profile/v1` document |
 | `package` | A `readmit-profile-package/v1` portable package |
+| `secret` | A `readmit-secrets/v1` credential-reference document |
+| `policy` | A `readmit-send-policy/v1` approved-destination document |
+| `reset` | A `readmit-reset-plan/v1` plan or a `readmit-reset-outcome/v1` outcome |
 | `unsupported` | Nothing this release reads, with the reason |
 
 Locating a document by a fixed name or a declared contract is how the listing
@@ -1858,5 +1861,53 @@ The panel provides five functional tabs:
 5. **Raw Schema JSON**:
    - Direct inspection of the canonical JSON representation according to ADR-0003
      and the JSON schema.
+
+## Environments, Credential References, Send Policies, and Fixture Reset
+
+The desktop application provides first-party visual authoring and inspection for named
+test environments, credential references, approved send policies, and fixture reset plans.
+These capabilities share the Go engine with the CLI, maintaining strict parity with
+`readmit target`, `readmit secret`, `readmit send-policy`, and `readmit fixture-reset`.
+
+### Persistent environment banner
+
+Whenever operations execute against an environment, an immutable environment banner is
+prominently rendered:
+- Identifies the target environment name, classification, transport, and peer address.
+- Highlights nonproduction status ("Nonproduction environment: Synthetic test execution only").
+- Surfaces immediate refusal banners for unclassified or production environments ("Refusal: Production targets reject all sends and resets").
+- Banner presence is integrated across the Environment panel, Test Authoring view, and Durable Run dashboard.
+
+### Named target configuration (`readmit-target/v3`)
+
+Users can inspect, author, save, and diagnose named target configurations:
+- Structured controls configure destination address, transport (`plain` unencrypted TCP/MLLP or `tls` verified TLS), server name (SNI), CA certificate paths, client certificate paths, and credential reference bindings.
+- Target reachability diagnostics (`environment.Diagnose`) run strictly on deliberate action without transmitting any HL7 payloads or test messages.
+- Reports full transport outcome (`reachable`, `refused`), connection phase, TLS version, cipher suite, and unsolicited bytes received.
+
+### Credential references (`readmit-secrets/v1`) and provisioning handoff
+
+Readmit does not store credentials in application state, configuration files, logs, or browser storage:
+- References declare native OS keychain (macOS Keychain, Linux Secret Service) or customer-vault locator commands and arguments.
+- Secret values are masked (`••••••••`) across all UI tables and reports.
+- Step-by-step native store and customer-vault provisioning handoff instructions guide users on how to store secrets in their native keychain.
+- "Test resolution" executes the locator in memory, verifies stdout output, and clears memory immediately without capturing the secret value.
+- "Rotate" updates the reference generation and timestamp after verifying resolution.
+- "Scan workspace for residual leaks" scans files across the open workspace for leaked secret hashes.
+
+### Approved send policies (`readmit-send-policy/v1`) and local evaluation
+
+All message transmission requires explicit approved-destination policy rules:
+- Users can visually author and save approved CIDR prefix lists (e.g. `127.0.0.1/32`, `10.1.0.0/16`).
+- Local destination evaluation checks address approval and classification rules entirely offline without initiating a network connection.
+- Refusal rules strictly enforce that unclassified destinations and production targets reject all sends.
+
+### Fixture reset plans (`readmit-reset-plan/v1`) and deliberate execution
+
+Fixture reset plans return nonproduction test fixtures to a declared starting state:
+- Step authoring defines operator (`operator_confirms`, `observation_empty`, `endpoint_quiet`), authority (`none`, `read_declared_file`, `connect_approved_target`), and instructions.
+- Reset execution requires explicit human confirmation checkboxes (`--confirm`) for operator confirmation steps. Resets without required human confirmations are stopped and reported as `unconfirmed`.
+- Arbitrary shell hooks are prohibited.
+- Retained outcomes are written to `readmit-reset-outcome/v1` documents recording per-action statuses and SHA-256 plan digests.
 
 Contextual offline help and recovery codes, with ADT/SIU/ORM/ORU recipes: [workflow help](workflow-help.md).
