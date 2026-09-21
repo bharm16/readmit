@@ -1706,6 +1706,7 @@ export default function App() {
             policyFile={environmentArtifact?.kind === "policy" ? environmentArtifact.name : "send-policy.json"}
             planFile={environmentArtifact?.kind === "reset" ? environmentArtifact.name : "reset-plan.json"}
             initialTab={environmentArtifact?.kind ?? "target"}
+            drafts={drafts}
           />
         ) : null}
         {!evidence && !busy ? <p className="hint">Open a case to see what it holds.</p> : null}

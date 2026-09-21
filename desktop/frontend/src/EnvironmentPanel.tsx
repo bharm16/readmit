@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import "./environment.css";
 import {
   saveTarget,
@@ -32,8 +32,54 @@ import {
   type ResetOperator,
   type ResetAuthority,
   type ResetResult,
+  type EditorDraft,
 } from "./bindings";
-import { useRetainer, RetentionStatus } from "./drafting";
+import { draftFor, useRetainer, RetentionStatus } from "./drafting";
+
+
+function draftRecord(content: unknown): Record<string, unknown> | null {
+  if (typeof content === "string") {
+    try {
+      content = JSON.parse(content);
+    } catch {
+      return null;
+    }
+  }
+  if (content && typeof content === "object" && !Array.isArray(content)) {
+    return content as Record<string, unknown>;
+  }
+  return null;
+}
+
+function goDurationMs(value: string): number | null {
+  const match = /^(\d+(?:\.\d+)?)(ns|us|µs|ms|s|m|h)$/.exec(value.trim());
+  if (!match) return null;
+  const amount = Number(match[1]);
+  const unit = match[2];
+  const scale: Record<string, number> = {
+    ns: 1e-6,
+    us: 0.001,
+    "µs": 0.001,
+    ms: 1,
+    s: 1000,
+    m: 60_000,
+    h: 3_600_000,
+  };
+  const factor = unit ? scale[unit] : undefined;
+  if (factor == null || Number.isNaN(amount)) return null;
+  return amount * factor;
+}
+
+function rotationStatus(ref: SecretReference, now = Date.now()): { label: string; tone: "current" | "overdue" | "not-declared" } {
+  if (!ref.max_age) return { label: "Rotation age not declared", tone: "not-declared" };
+  const windowMs = goDurationMs(ref.max_age);
+  const rotated = Date.parse(ref.rotated_at);
+  if (windowMs == null || Number.isNaN(rotated)) {
+    return { label: "Rotation unreadable — declare a duration such as 720h", tone: "not-declared" };
+  }
+  if (now > rotated + windowMs) return { label: "Overdue — rotate before use", tone: "overdue" };
+  return { label: `Current (generation ${ref.generation})`, tone: "current" };
+}
 
 export function EnvironmentBanner({
   name,
@@ -82,6 +128,7 @@ export function EnvironmentPanel({
   policyFile = "send-policy.json",
   planFile = "reset-plan.json",
   initialTab = "target",
+  drafts = null,
   onTargetChange,
 }: {
   workspace: string;
@@ -90,6 +137,7 @@ export function EnvironmentPanel({
   policyFile?: string;
   planFile?: string;
   initialTab?: "target" | "secrets" | "policy" | "reset";
+  drafts?: EditorDraft[] | null;
   onTargetChange?: (target: Target | null) => void;
 }) {
   const [activeTab, setActiveTab] = useState<"target" | "secrets" | "policy" | "reset">(initialTab);
@@ -101,14 +149,13 @@ export function EnvironmentPanel({
   const [target, setTarget] = useState<Target>({
     schema: "readmit-target/v3",
     test_endpoint: true,
-    address: "127.0.0.1:2575",
+    address: "",
     transport: "plain",
-    approved_transport: true,
-    connect_timeout: "5s",
+    approved_transport: false,
+    connect_timeout: "2s",
     message_timeout: "5s",
-    max_ack_bytes: 1024,
-    name: "local-dev",
-    classification: "nonproduction",
+    max_ack_bytes: 65536,
+    classification: "unclassified",
   });
   const [checkReport, setCheckReport] = useState<EnvironmentReport | null>(null);
   const [checkDecision, setCheckDecision] = useState<SendPolicyDecision | null>(null);
@@ -130,10 +177,10 @@ export function EnvironmentPanel({
   const [currentPolicyFile, setCurrentPolicyFile] = useState(policyFile);
   const [policy, setPolicy] = useState<SendPolicy>({
     schema: "readmit-send-policy/v1",
-    approved_destinations: ["127.0.0.1/32"],
+    approved_destinations: [],
   });
   const [newDestination, setNewDestination] = useState("");
-  const [evalAddress, setEvalAddress] = useState("127.0.0.1:2575");
+  const [evalAddress, setEvalAddress] = useState("");
   const [evalClassification, setEvalClassification] = useState<TargetClassification>("nonproduction");
   const [evalExplicit, setEvalExplicit] = useState(true);
   const [evalDecision, setEvalDecision] = useState<SendPolicyDecision | null>(null);
@@ -182,16 +229,24 @@ export function EnvironmentPanel({
   );
 
   // Load initial data
+  const targetLoad = useRef(0);
+  const policyLoad = useRef(0);
+  const planLoad = useRef(0);
+  const adoptedDrafts = useRef(false);
+  const holdInitialLoad = useRef({ target: false, policy: false, plan: false });
+
   const loadTarget = useCallback(async (file: string) => {
+    const token = ++targetLoad.current;
     setBusy(true);
     try {
       const res = await readTarget(workspace, file);
+      if (token !== targetLoad.current) return;
       if (res.state === "completed" && res.target) {
         setTarget(res.target);
         if (onTargetChange) onTargetChange(res.target);
       }
     } finally {
-      setBusy(false);
+      if (token === targetLoad.current) setBusy(false);
     }
   }, [workspace, onTargetChange]);
 
@@ -208,34 +263,70 @@ export function EnvironmentPanel({
   }, [workspace]);
 
   const loadPolicy = useCallback(async (file: string) => {
+    const token = ++policyLoad.current;
     setBusy(true);
     try {
       const res = await readSendPolicy(workspace, file);
+      if (token !== policyLoad.current) return;
       if (res.state === "completed" && res.policy) {
         setPolicy(res.policy);
       }
     } finally {
-      setBusy(false);
+      if (token === policyLoad.current) setBusy(false);
     }
   }, [workspace]);
 
   const loadPlan = useCallback(async (file: string) => {
+    const token = ++planLoad.current;
     setBusy(true);
     try {
       const res = await readResetPlan(workspace, file);
+      if (token !== planLoad.current) return;
       if (res.state === "completed" && res.plan) {
         setResetPlan(res.plan);
       }
     } finally {
-      setBusy(false);
+      if (token === planLoad.current) setBusy(false);
     }
   }, [workspace]);
 
   useEffect(() => {
-    void loadTarget(currentTargetFile);
+    if (adoptedDrafts.current || !drafts) return;
+    adoptedDrafts.current = true;
+    const targetDraft = draftFor(drafts, "environment/target", workspace);
+    const targetRecord = draftRecord(targetDraft?.content);
+    if (targetRecord?.schema === "readmit-target/v3") {
+      targetLoad.current += 1;
+      holdInitialLoad.current.target = true;
+      setTarget(targetRecord as unknown as Target);
+      if (targetDraft) retainer.keepId(targetDraft.id);
+    }
+    const policyDraft = draftFor(drafts, "environment/policy", workspace);
+    const policyRecord = draftRecord(policyDraft?.content);
+    if (policyRecord?.schema === "readmit-send-policy/v1") {
+      policyLoad.current += 1;
+      holdInitialLoad.current.policy = true;
+      setPolicy(policyRecord as unknown as SendPolicy);
+      if (policyDraft) retainer.keepId(policyDraft.id);
+    }
+    const planDraft = draftFor(drafts, "environment/reset", workspace);
+    const planRecord = draftRecord(planDraft?.content);
+    if (planRecord?.schema === "readmit-reset-plan/v1") {
+      planLoad.current += 1;
+      holdInitialLoad.current.plan = true;
+      setResetPlan(planRecord as unknown as ResetPlan);
+      if (planDraft) retainer.keepId(planDraft.id);
+    }
+  }, [drafts, retainer, workspace]);
+
+  useEffect(() => {
+    if (holdInitialLoad.current.target) holdInitialLoad.current.target = false;
+    else void loadTarget(currentTargetFile);
     void loadSecrets(currentSecretsFile);
-    void loadPolicy(currentPolicyFile);
-    void loadPlan(currentPlanFile);
+    if (holdInitialLoad.current.policy) holdInitialLoad.current.policy = false;
+    else void loadPolicy(currentPolicyFile);
+    if (holdInitialLoad.current.plan) holdInitialLoad.current.plan = false;
+    else void loadPlan(currentPlanFile);
   }, [currentTargetFile, currentSecretsFile, currentPolicyFile, currentPlanFile, loadTarget, loadSecrets, loadPolicy, loadPlan]);
 
   // Handle Target Save
@@ -705,6 +796,66 @@ export function EnvironmentPanel({
               />
             </div>
 
+
+            <div className="environment-field">
+              <label htmlFor="target-connect-timeout">Connect timeout</label>
+              <input
+                id="target-connect-timeout"
+                value={target.connect_timeout}
+                disabled={busy}
+                onChange={(e) => updateTarget({ connect_timeout: e.target.value })}
+              />
+            </div>
+
+            <div className="environment-field">
+              <label htmlFor="target-message-timeout">Message timeout</label>
+              <input
+                id="target-message-timeout"
+                value={target.message_timeout}
+                disabled={busy}
+                onChange={(e) => updateTarget({ message_timeout: e.target.value })}
+              />
+            </div>
+
+            <div className="environment-field">
+              <label htmlFor="target-max-ack">Maximum acknowledgement size (bytes)</label>
+              <input
+                id="target-max-ack"
+                type="number"
+                min={1}
+                value={target.max_ack_bytes}
+                disabled={busy}
+                onChange={(e) => updateTarget({ max_ack_bytes: Number(e.target.value) })}
+              />
+            </div>
+
+            <div className="environment-field">
+              <label htmlFor="target-test-endpoint">
+                <input
+                  id="target-test-endpoint"
+                  type="checkbox"
+                  checked={target.test_endpoint}
+                  disabled={busy}
+                  onChange={(e) => updateTarget({ test_endpoint: e.target.checked })}
+                />
+                Test endpoint
+              </label>
+            </div>
+
+            <div className="environment-field">
+              <label htmlFor="target-approved-transport">
+                <input
+                  id="target-approved-transport"
+                  type="checkbox"
+                  checked={target.approved_transport}
+                  disabled={busy}
+                  onChange={(e) => updateTarget({ approved_transport: e.target.checked })}
+                />
+                Approved transport
+              </label>
+              <p className="hint">Off until this transport is explicitly approved. Choosing the target does not grant send or reset authority.</p>
+            </div>
+
             <div className="environment-field">
               <label htmlFor="target-secret-ref">Credential Reference</label>
               <select
@@ -831,7 +982,16 @@ export function EnvironmentPanel({
                     <td><code>{r.command} {r.arguments.join(" ")}</code></td>
                     <td><span className="report-value">••••••••</span></td>
                     <td>
-                      <span className="rotation-badge current">Current (Gen {r.generation})</span>
+                      {(() => {
+                        const rotation = rotationStatus(r);
+                        const inaccessible = testResult?.name === r.name && testResult.success === false;
+                        return (
+                          <>
+                            <span className={`rotation-badge ${rotation.tone}`}>{rotation.label}</span>
+                            {inaccessible ? <p className="hint">Inaccessible — the locator did not resolve. Provision the reference in its store, then test again.</p> : null}
+                          </>
+                        );
+                      })()}
                     </td>
                     <td>
                       <div style={{ display: "flex", gap: "0.3rem" }}>
@@ -913,7 +1073,7 @@ export function EnvironmentPanel({
               <input
                 id="secret-address"
                 value={newSecretAddress}
-                placeholder="e.g. 127.0.0.1:2575"
+                placeholder="host:port"
                 disabled={busy}
                 onChange={(e) => setNewSecretAddress(e.target.value)}
               />
@@ -1008,7 +1168,7 @@ export function EnvironmentPanel({
 
           <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
             <input
-              placeholder="e.g. 10.1.0.0/16 or 127.0.0.1/32"
+              placeholder="network/prefix"
               value={newDestination}
               disabled={busy}
               onChange={(e) => setNewDestination(e.target.value)}

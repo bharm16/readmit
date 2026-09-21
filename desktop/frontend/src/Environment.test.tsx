@@ -44,7 +44,7 @@ test("EnvironmentPanel displays target configuration and runs deliberate diagnos
   // Initial read calls
   expect(facade.callsTo("ReadTarget").length).toBe(1);
   expect(await screen.findByDisplayValue("staging-mllp")).toBeTruthy();
-  expect(screen.getByDisplayValue("127.0.0.1:2575")).toBeTruthy();
+  expect(screen.getByDisplayValue("peer-under-test")).toBeTruthy();
 
   // Run deliberate diagnostics
   const diagBtn = screen.getByRole("button", { name: /Check Target Reachability & TLS/i });
@@ -141,8 +141,8 @@ test("EnvironmentPanel authors send policy and evaluates local destinations", as
   );
 
   expect(facade.callsTo("ReadSendPolicy").length).toBe(1);
-  expect(await screen.findByText("127.0.0.1:2575")).toBeTruthy();
-  expect(screen.getByText("10.0.0.5:2575")).toBeTruthy();
+  expect(await screen.findByText("approved-peer")).toBeTruthy();
+  expect(screen.getByText("second-peer")).toBeTruthy();
 
   // Evaluate destination locally
   const evalBtn = screen.getByRole("button", { name: /Evaluate Destination Locally/i });
@@ -203,21 +203,21 @@ test("EnvironmentBanner displays target details and warns on dangerous classific
     <EnvironmentBanner
       name="staging-mllp"
       classification="nonproduction"
-      address="127.0.0.1:2575"
+      address="peer-under-test"
       transport="mllp"
     />,
   );
 
   expect(screen.getByText(/Environment: staging-mllp/i)).toBeTruthy();
   expect(screen.getAllByText(/nonproduction/i).length).toBeGreaterThan(0);
-  expect(screen.getByText(/127\.0\.0\.1:2575/i)).toBeTruthy();
+  expect(screen.getByText(/peer-under-test/i)).toBeTruthy();
 
   // Rerender with production classification to verify warning alert
   rerender(
     <EnvironmentBanner
       name="prod-endpoint"
       classification="production"
-      address="prod.hospital.internal:2575"
+      address="production-peer"
       transport="mllp"
     />,
   );
@@ -225,4 +225,87 @@ test("EnvironmentBanner displays target details and warns on dangerous classific
   expect(screen.getByText(/Environment: prod-endpoint/i)).toBeTruthy();
   expect(screen.getAllByText(/production/i).length).toBeGreaterThan(0);
   expect(screen.getByText(/Refusal: Production targets reject all sends and resets/i)).toBeTruthy();
+});
+
+test("an unfinished target draft is kept and transport approval stays off until chosen", async () => {
+  const user = userEvent.setup();
+  const base = defaultTargetResult().target;
+  if (!base) throw new Error("fixture target missing");
+  const saved = defaultTargetResult({
+    target: { ...base, name: "from-file", approved_transport: true },
+  });
+  let savedRequest: unknown;
+  installFacade({
+    ReadTarget: async () => saved,
+    SaveTarget: async (request) => {
+      savedRequest = request;
+      return saved;
+    },
+    ReadSendPolicy: async () => defaultSendPolicyResult(),
+    ReadSecrets: async () => defaultSecretsResult(),
+    ReadResetPlan: async () => defaultResetPlanResult(),
+  });
+
+  const draftTarget = { ...base, name: "from-draft", approved_transport: false, connect_timeout: "3s" };
+  render(
+    <EnvironmentPanel
+      workspace={WORKSPACE_ROOT}
+      targetFile="targets/default.json"
+      secretsFile="secrets.json"
+      policyFile="send-policy.json"
+      planFile="reset-plan.json"
+      drafts={[
+        {
+          id: "draft-target",
+          kind: "environment/target",
+          workspace: WORKSPACE_ROOT,
+          case: "",
+          identity: "",
+          content_schema: "readmit-target-draft/v1",
+          content: draftTarget,
+        },
+      ]}
+    />,
+  );
+
+  expect(await screen.findByDisplayValue("from-draft")).toBeTruthy();
+  expect(screen.queryByDisplayValue("from-file")).toBeNull();
+  const approval = screen.getByLabelText("Approved transport") as HTMLInputElement;
+  expect(approval.checked).toBe(false);
+  expect(screen.getByDisplayValue("3s")).toBeTruthy();
+
+  await user.click(approval);
+  await user.click(screen.getByRole("button", { name: "Save Target Configuration" }));
+  expect(savedRequest).toMatchObject({ target: { approved_transport: true, name: "from-draft" } });
+  uninstallFacade();
+});
+
+test("an overdue credential reference says so instead of claiming it is current", async () => {
+  const secrets = defaultSecretsResult();
+  const document = secrets.document;
+  const reference = document?.references[0];
+  if (!document || !reference) throw new Error("fixture secret missing");
+  document.references[0] = {
+    ...reference,
+    max_age: "1s",
+    rotated_at: "2020-01-01T00:00:00Z",
+  };
+  installFacade({
+    ReadTarget: async () => defaultTargetResult(),
+    ReadSendPolicy: async () => defaultSendPolicyResult(),
+    ReadSecrets: async () => secrets,
+    ReadResetPlan: async () => defaultResetPlanResult(),
+  });
+  render(
+    <EnvironmentPanel
+      workspace={WORKSPACE_ROOT}
+      targetFile="targets/default.json"
+      secretsFile="secrets.json"
+      policyFile="send-policy.json"
+      planFile="reset-plan.json"
+      initialTab="secrets"
+    />,
+  );
+  expect(await screen.findByText("Overdue — rotate before use")).toBeTruthy();
+  uninstallFacade();
 });
