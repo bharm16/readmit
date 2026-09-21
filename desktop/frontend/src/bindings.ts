@@ -57,6 +57,8 @@ export type CommandId =
   | "open-project"
   | "manage-profiles"
   | "manage-scenarios"
+  | "maintain-workspace"
+  | "check-staged-upgrade"
   | "cancel-operation"
   | "next-region"
   | "previous-region"
@@ -583,6 +585,18 @@ export interface Facade {
   DescribeIndex(workspace: string, caseName: string, indexName: string): Promise<IndexResult>;
   OpenProject(path: string): Promise<ProjectResult>;
   OpenProjectOverview(path: string): Promise<ProjectOverviewResult>;
+  ChooseMaintenancePath(kind: string): Promise<MaintenancePathResult>;
+  CreateProjectBackup(request: BackupCreateRequest): Promise<BackupResult>;
+  VerifyProjectBackup(path: string): Promise<BackupResult>;
+  RestoreProjectBackup(request: BackupRestoreRequest): Promise<BackupResult>;
+  InspectProjectQuota(path: string): Promise<ProjectQuotaResult>;
+  SetProjectQuota(change: ProjectQuotaChange): Promise<ProjectQuotaResult>;
+  PreviewProjectMigration(path: string): Promise<MigrationPreviewResult>;
+  PreviewProjectRetirement(path: string): Promise<RetirementPreviewResult>;
+  ArchiveOrDeleteProject(request: ProjectArchiveRequest): Promise<BackupResult>;
+  RecoverProjectDocument(request: ProjectRecoverRequest): Promise<ProjectRecoverResult>;
+  CheckStagedUpgrade(request: UpgradeCheckRequest): Promise<UpgradeResult>;
+  PrepareStagedUpgrade(request: UpgradePrepareRequest): Promise<UpgradeResult>;
   CreateProject(name: string, title: string, owner: string, versions: string[]): Promise<ProjectOverviewResult>;
   UpdateProjectSettings(path: string, change: SettingsChange): Promise<ProjectOverviewResult>;
   RegisterCase(path: string, name: string, registration: CaseRegistration): Promise<ProjectOverviewResult>;
@@ -760,6 +774,235 @@ export function openProject(path: string): Promise<ProjectResult> {
 /** What the project now holds, re-verified: the `readmit project show` of this
  * window. Every registered case and revision carries the evidence state the
  * shared reader just reported beside the facts the project recorded. */
+
+export interface BackupInventoryEntry {
+  path: string;
+  class: string;
+  size?: number;
+  sha256?: string;
+  kind?: string;
+  identity?: string;
+  state?: string;
+  recorded?: string;
+  case?: string;
+  retention?: string;
+  explanation?: string;
+}
+
+export interface BackupReportView {
+  root: string;
+  complete: boolean;
+  files: number;
+  bytes: number;
+  evidence: BackupInventoryEntry[];
+  mutable: BackupInventoryEntry[];
+  exclusions: BackupInventoryEntry[];
+  credentials: BackupInventoryEntry[];
+  protection: BackupInventoryEntry[];
+  other: BackupInventoryEntry[];
+}
+
+export interface BackupResult {
+  state: State;
+  reason?: string;
+  report?: BackupReportView;
+}
+
+export interface BackupCreateRequest {
+  project: string;
+  destination: string;
+}
+
+export interface BackupRestoreRequest {
+  backup: string;
+  destination: string;
+}
+
+export interface MaintenancePathResult {
+  state: State;
+  reason?: string;
+  kind?: string;
+  path?: string;
+}
+
+export interface ProjectQuotaView {
+  declared: boolean;
+  max_bytes?: number;
+  max_files?: number;
+  used_bytes: number;
+  used_files: number;
+  within: boolean;
+  explain: string;
+}
+
+export interface ProjectQuotaResult {
+  state: State;
+  reason?: string;
+  quota?: ProjectQuotaView;
+}
+
+export interface ProjectQuotaChange {
+  project: string;
+  max_bytes: number;
+  max_files: number;
+}
+
+export interface MigrationCompatibility {
+  document: string;
+  supported: string;
+  action: string;
+}
+
+export interface MigrationPlan {
+  schema: string;
+  compatible: boolean;
+  documents: MigrationCompatibility[];
+}
+
+export interface MigrationPreviewResult {
+  state: State;
+  reason?: string;
+  plan?: MigrationPlan;
+  guidance?: string;
+}
+
+export interface RetirementPreview {
+  selection: string;
+  project: string;
+  compatible: boolean;
+  files: number;
+  bytes: number;
+  documents: MigrationCompatibility[];
+  explain: string;
+  not_erasure: string;
+}
+
+export interface RetirementPreviewResult {
+  state: State;
+  reason?: string;
+  preview?: RetirementPreview;
+}
+
+export interface ProjectArchiveRequest {
+  project: string;
+  destination: string;
+  selection: string;
+  delete?: boolean;
+  confirm?: boolean;
+}
+
+export interface ProjectRecoverRequest {
+  project: string;
+  document: string;
+  digest: string;
+}
+
+export interface ProjectRecoverResult {
+  state: State;
+  reason?: string;
+  root?: string;
+}
+
+export interface UpgradeCheckRequest {
+  candidate: string;
+  projects?: string[];
+  runs?: string[];
+}
+
+export interface UpgradePrepareRequest {
+  project: string;
+  candidate: string;
+  destination: string;
+  approve: boolean;
+}
+
+export interface UpgradeStagedPackage {
+  name: string;
+  format: string;
+  state: string;
+}
+
+export interface UpgradeRetained {
+  name: string;
+  kind: string;
+  state: string;
+}
+
+export interface UpgradePlan {
+  schema: string;
+  installed: string;
+  candidate: string;
+  os: string;
+  arch: string;
+  signed_for_distribution: boolean;
+  staged: UpgradeStagedPackage[];
+  retained: UpgradeRetained[];
+  state: string;
+}
+
+export interface UpgradePlanView {
+  plan?: UpgradePlan;
+  installer_handoff: string;
+  offline: string;
+  signing_deferred: string;
+}
+
+export interface UpgradeResult {
+  state: State;
+  reason?: string;
+  view?: UpgradePlanView;
+  report?: BackupReportView;
+}
+
+
+export function chooseMaintenancePath(kind: string): Promise<MaintenancePathResult> {
+  return guard(() => facade().ChooseMaintenancePath(kind), { state: "failed" });
+}
+
+export function createProjectBackup(request: BackupCreateRequest): Promise<BackupResult> {
+  return guard(() => facade().CreateProjectBackup(request), { state: "failed" });
+}
+
+export function verifyProjectBackup(path: string): Promise<BackupResult> {
+  return guard(() => facade().VerifyProjectBackup(path), { state: "failed" });
+}
+
+export function restoreProjectBackup(request: BackupRestoreRequest): Promise<BackupResult> {
+  return guard(() => facade().RestoreProjectBackup(request), { state: "failed" });
+}
+
+export function inspectProjectQuota(path: string): Promise<ProjectQuotaResult> {
+  return guard(() => facade().InspectProjectQuota(path), { state: "failed" });
+}
+
+export function setProjectQuota(change: ProjectQuotaChange): Promise<ProjectQuotaResult> {
+  return guard(() => facade().SetProjectQuota(change), { state: "failed" });
+}
+
+export function previewProjectMigration(path: string): Promise<MigrationPreviewResult> {
+  return guard(() => facade().PreviewProjectMigration(path), { state: "failed" });
+}
+
+export function previewProjectRetirement(path: string): Promise<RetirementPreviewResult> {
+  return guard(() => facade().PreviewProjectRetirement(path), { state: "failed" });
+}
+
+export function archiveOrDeleteProject(request: ProjectArchiveRequest): Promise<BackupResult> {
+  return guard(() => facade().ArchiveOrDeleteProject(request), { state: "failed" });
+}
+
+export function recoverProjectDocument(request: ProjectRecoverRequest): Promise<ProjectRecoverResult> {
+  return guard(() => facade().RecoverProjectDocument(request), { state: "failed" });
+}
+
+export function checkStagedUpgrade(request: UpgradeCheckRequest): Promise<UpgradeResult> {
+  return guard(() => facade().CheckStagedUpgrade(request), { state: "failed" });
+}
+
+export function prepareStagedUpgrade(request: UpgradePrepareRequest): Promise<UpgradeResult> {
+  return guard(() => facade().PrepareStagedUpgrade(request), { state: "failed" });
+}
+
 export function openProjectOverview(path: string): Promise<ProjectOverviewResult> {
   return guard(() => facade().OpenProjectOverview(path), { state: "failed" });
 }

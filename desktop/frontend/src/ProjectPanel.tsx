@@ -32,6 +32,7 @@ export function Breadcrumbs({
   importing,
   capturing,
   observing,
+  maintaining,
   onWorkspace,
   onProject,
 }: {
@@ -40,6 +41,7 @@ export function Breadcrumbs({
   importing?: boolean;
   capturing?: boolean;
   observing?: boolean;
+  maintaining?: boolean;
   onWorkspace: () => void;
   onProject: () => void;
 }) {
@@ -59,6 +61,14 @@ export function Breadcrumbs({
           </button>
           <span aria-hidden="true">›</span>
           <span aria-current="page">Capture and collect</span>
+        </>
+      ) : maintaining ? (
+        <>
+          <button type="button" onClick={onProject}>
+            {project}
+          </button>
+          <span aria-hidden="true">›</span>
+          <span aria-current="page">Maintain workspace</span>
         </>
       ) : importing ? (
         <>
@@ -543,6 +553,7 @@ export function ProjectPanel({
   onStartImport,
   onStartCapture,
   onStartObservation,
+  onStartMaintenance,
 }: {
   root: string | null;
   result: ProjectOverviewResult | null;
@@ -559,6 +570,7 @@ export function ProjectPanel({
   onStartImport?: () => void;
   onStartCapture?: () => void;
   onStartObservation?: () => void;
+  onStartMaintenance?: () => void;
 }) {
   const [creating, setCreating] = useState(false);
   const [editingSettings, setEditingSettings] = useState(false);
@@ -676,6 +688,16 @@ export function ProjectPanel({
                 style={{ marginLeft: "0.5rem" }}
               >
                 Set up observation…
+              </button>
+            ) : null}
+            {onStartMaintenance ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onStartMaintenance}
+                style={{ marginLeft: "0.5rem" }}
+              >
+                Maintain this workspace…
               </button>
             ) : null}
           </div>

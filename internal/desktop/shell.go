@@ -142,6 +142,8 @@ var commands = []Command{
 	{ID: "open-project", Title: "Open the project of this workspace", Region: EvidenceRegion},
 	{ID: "manage-profiles", Title: "Manage interface profiles…", Region: InspectorRegion},
 	{ID: "manage-scenarios", Title: "Design synthetic scenarios…", Keys: "Ctrl+Shift+S", Region: InspectorRegion},
+	{ID: "maintain-workspace", Title: "Maintain this workspace…", Region: EvidenceRegion},
+	{ID: "check-staged-upgrade", Title: "Check a staged upgrade…", Region: EvidenceRegion},
 	{ID: "cancel-operation", Title: "Cancel the running operation", Keys: "Escape"},
 	{ID: "next-region", Title: "Go to the next region", Keys: "F6"},
 	{ID: "previous-region", Title: "Go to the previous region", Keys: "Shift+F6"},

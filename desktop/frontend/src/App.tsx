@@ -132,6 +132,7 @@ import { Breadcrumbs, ProjectPanel } from "./ProjectPanel";
 import { ImportPanel } from "./ImportPanel";
 import { CapturePanel } from "./CapturePanel";
 import { ObservationPanel } from "./ObservationPanel";
+import { MaintenancePanel } from "./MaintenancePanel";
 import type { CaptureObservationBinding } from "./bindings";
 
 /** The panes never collapse to nothing: either one keeps a usable share of the
@@ -211,6 +212,8 @@ export default function App() {
   const [importing, setImporting] = useState(false);
   const [observing, setObserving] = useState(false);
   const [captureBinding, setCaptureBinding] = useState<CaptureObservationBinding | null>(null);
+  const [maintaining, setMaintaining] = useState(false);
+  const [maintenanceTab, setMaintenanceTab] = useState<"backup" | "restore" | "storage" | "lifecycle" | "upgrade">("backup");
 
   // Refusals of navigation the window has not committed: the workspace and
   // case a person had stay on screen beside the reason, instead of the old
@@ -733,6 +736,7 @@ export default function App() {
     setCapturing(false);
     setObserving(false);
     setCaptureBinding(null);
+    setMaintaining(false);
     clearCase();
     focusRegion("evidence");
   }, [clearCase, focusRegion]);
@@ -742,6 +746,7 @@ export default function App() {
     setCapturing(false);
     setObserving(false);
     setCaptureBinding(null);
+    setMaintaining(false);
     clearWorkspace();
     setSelected(null);
     setInvestigation(null);
@@ -1487,6 +1492,22 @@ export default function App() {
     "manage-profiles": () => {
       focusRegion("inspector");
     },
+    "maintain-workspace": () => {
+      if (!root) {
+        return;
+      }
+      setMaintenanceTab("backup");
+      setMaintaining(true);
+      focusRegion("evidence");
+    },
+    "check-staged-upgrade": () => {
+      if (!root) {
+        return;
+      }
+      setMaintenanceTab("upgrade");
+      setMaintaining(true);
+      focusRegion("evidence");
+    },
     "manage-scenarios": () => {
       focusRegion("inspector");
     },
@@ -1792,6 +1813,7 @@ export default function App() {
           importing={importing}
           capturing={capturing}
           observing={observing}
+          maintaining={maintaining}
           onWorkspace={backToWorkspace}
           onProject={backToProject}
         />
@@ -1841,6 +1863,21 @@ export default function App() {
             }}
             onClose={() => setCapturing(false)}
           />
+        ) : maintaining && root ? (
+          <MaintenancePanel
+            workspace={root}
+            project={investigation?.overview?.root ?? null}
+            busy={busy}
+            indicators={indicators}
+            initialTab={maintenanceTab}
+            onReopen={(path) => {
+              setMaintaining(false);
+              void openFolder(() => openWorkspace(path)).then(() => {
+                void openProjectOverview(path).then((result) => setInvestigation(result));
+              });
+            }}
+            onClose={() => setMaintaining(false)}
+          />
         ) : importing && root ? (
           <ImportPanel
             workspace={root}
@@ -1888,6 +1925,10 @@ export default function App() {
               onStartObservation={() => {
                 setCaptureBinding(null);
                 setObserving(true);
+              }}
+              onStartMaintenance={() => {
+                setMaintenanceTab("backup");
+                setMaintaining(true);
               }}
             />
           </>

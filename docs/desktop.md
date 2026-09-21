@@ -255,6 +255,15 @@ artifacts are never reported as completed.
 | `OpenGrid` | Renders one bounded window of one case through one index of it. |
 | `BuildIndex` | Builds an index of declared fields and retention choices for a verified case bundle into a new derived artifact, re-reads the workspace and returns the outcome. |
 | `DescribeIndex` | Inspects the index status of a case, reporting whether an index is applicable, stale, expired, damaged, or unsupported. |
+| `ChooseMaintenancePath` | Presents a native folder picker for backup, restore, archive or staged-upgrade destinations. |
+| `CreateProjectBackup` | Copies a project into a new verified backup and reports evidence, mutable documents, exclusions and credential references separately. |
+| `VerifyProjectBackup` | Reads a backup whole and reports what it holds without writing. |
+| `RestoreProjectBackup` | Restores a backup into a new destination and rebuilds disposable indexes. |
+| `InspectProjectQuota` / `SetProjectQuota` | Reports or declares retained-file quota and explains that indexes are disposable. |
+| `PreviewProjectMigration` | Previews supported schemas without rewriting retained artifacts. |
+| `PreviewProjectRetirement` / `ArchiveOrDeleteProject` | Previews archive/delete effects with a selection token; delete requires confirmation and a matching selection. |
+| `RecoverProjectDocument` | Restores one selected recovery copy and retains the current document bytes. |
+| `CheckStagedUpgrade` / `PrepareStagedUpgrade` | Reviews a staged candidate offline and, with administrator approval, takes a rollback archive. Installation stays a native handoff. |
 | `Filters` | Lists the filters this viewer saved and the one selected now. |
 | `SaveFilter` | Stores one named filter and selects it. |
 | `SelectFilter` | Records which saved filter the grid applies. |
@@ -1467,6 +1476,26 @@ That status is part
 of the facade, so it is the same fact the rest of the product is built on rather
 than a sentence the interface maintains separately, and the frontend sources are
 checked to hold no network call and no browser storage at all.
+
+## Project maintenance, backup and staged upgrades
+
+The **project maintenance** screen is the graphical path for the same operations
+`readmit backup`, `readmit project archive|delete|quota|migration-preview|recover`
+and `readmit upgrade` already own. Native folder pickers choose backup sources and
+destinations, restore destinations, recovery archives and staged package folders.
+The typed facade calls the shared Go packages; the interface never reimplements
+backup, retirement or upgrade semantics and never holds secret values.
+
+What a backup holds is shown in separate inventories: canonical registered
+evidence, mutable project documents, declared index exclusions, credential
+reference documents and protection key references. Indexes remain disposable and
+are rebuilt through the existing `BuildIndex` / `DescribeIndex` controls rather
+than a second search path. Archive and delete require a retirement preview whose
+selection token must still match; cancellation or a stale selection deletes
+nothing. Opening Settings or the upgrade tab never contacts a network, downloads
+packages, elevates or interrupts a service — installation stays a native
+administrator handoff. Customer-hub administration journeys stay with the hub
+collaboration UI and are not duplicated here.
 
 ## Not supported in this release
 

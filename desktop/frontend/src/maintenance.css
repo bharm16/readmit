@@ -1,0 +1,47 @@
+.maintenance {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 48rem;
+}
+
+.maintenance-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.maintenance-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.maintenance-tabs button[aria-selected="true"] {
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.maintenance-inventory ul,
+.maintenance-preview ul {
+  list-style: none;
+  padding: 0;
+  margin: 0.35rem 0;
+}
+
+.maintenance-inventory li {
+  margin-bottom: 0.5rem;
+}
+
+.maintenance .warning {
+  color: var(--danger, #8a1f1f);
+}
+
+.maintenance-report,
+.maintenance-preview,
+.maintenance-upgrade {
+  border-top: 1px solid var(--border, #ccc);
+  padding-top: 0.75rem;
+  margin-top: 0.5rem;
+}

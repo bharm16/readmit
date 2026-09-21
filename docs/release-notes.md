@@ -22,6 +22,8 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   verified case, links receipt and provenance, and offers exploration and
   observation binding on the existing import and explorer surfaces.
 - The desktop shell gained graphical synthetic scenario authoring (#254). Supported
+- Desktop project maintenance: native pickers for backup create/verify/restore, quota and disposable index rebuild, archive/delete with selection-bound confirmation, schema migration preview, and offline staged-upgrade check/prepare with explicit installer handoff. Hub administration remains separate.
+
   ADT, SIU, ORM and ORU lifecycle sequences are designed with structured controls,
   previewed through the shared engine, generated into new artifacts with exact
   provenance, registered in the project, and continued into inspection or a test
