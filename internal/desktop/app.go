@@ -198,6 +198,12 @@ type FolderChooser interface {
 	ChooseFolder(title string) (string, error)
 }
 
+// FileChooser presents the host's native file dialog for one or more files.
+// An empty slice with a nil error means the person dismissed it without choosing.
+type FileChooser interface {
+	ChooseFiles(title, filterName, filterPattern string) ([]string, error)
+}
+
 // App runs exactly one operation at a time: a second request reports Busy
 // rather than racing the first, and a finished operation always releases the
 // slot, including after a failure or a cancellation.
@@ -551,6 +557,24 @@ func (a *App) chooseFolder(ctx context.Context, title string) (string, refusal) 
 		return "", refusal{Cancelled, "no folder was chosen"}
 	}
 	return folder, refusal{}
+}
+
+func (a *App) chooseFiles(ctx context.Context, title, filterName, filterPattern string) ([]string, refusal) {
+	if ctx.Err() != nil {
+		return nil, cancelledRefusal
+	}
+	fc, ok := a.chooser.(FileChooser)
+	if !ok {
+		return nil, refusal{Failed, "the file dialog is unavailable"}
+	}
+	files, err := fc.ChooseFiles(title, filterName, filterPattern)
+	switch {
+	case err != nil:
+		return nil, refusal{Failed, "the file dialog is unavailable"}
+	case len(files) == 0:
+		return nil, refusal{Cancelled, "no file was chosen"}
+	}
+	return files, refusal{}
 }
 
 func (a *App) openWorkspace(ctx context.Context, path string) WorkspaceResult {

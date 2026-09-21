@@ -77,7 +77,7 @@
       "screen": "an evidence-entry screen",
       "action": "import exact file evidence into a new case bundle",
       "test": "desktop entry journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.collect.status",
@@ -231,7 +231,7 @@
       "screen": "an evidence-entry screen",
       "action": "import declared files, folders and archives into a case bundle",
       "test": "desktop import journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.index.build",
@@ -1650,6 +1650,50 @@
       "screen": "the project overview panel's case editor",
       "action": "change a registered case's mutable metadata through the shared operation",
       "test": "project.test.tsx journeys plus internal/desktop and internal/operation tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ChooseImportSources",
+      "source": "desktop.App.ChooseImportSources",
+      "kind": "desktop",
+      "capability": "chooseImportSources application operation",
+      "owner": "bharm16/readmit#247",
+      "screen": "an evidence-entry screen",
+      "action": "choose files, folders or archives to import with native dialogs",
+      "test": "desktop import journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.StagePastedContent",
+      "source": "desktop.App.StagePastedContent",
+      "kind": "desktop",
+      "capability": "stagePastedContent application operation",
+      "owner": "bharm16/readmit#247",
+      "screen": "an evidence-entry screen",
+      "action": "retain pasted text as a newly declared source with its actual bytes",
+      "test": "desktop entry journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.PreviewImport",
+      "source": "desktop.App.PreviewImport",
+      "kind": "desktop",
+      "capability": "previewImport application operation",
+      "owner": "bharm16/readmit#247",
+      "screen": "an evidence-entry screen",
+      "action": "render a bounded preview of extracted, excluded, unmapped and quarantined records",
+      "test": "desktop import journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.CommitImport",
+      "source": "desktop.App.CommitImport",
+      "kind": "desktop",
+      "capability": "commitImport application operation",
+      "owner": "bharm16/readmit#247",
+      "screen": "an evidence-entry screen",
+      "action": "commit extraction to case bundle and receipt destinations and register in project",
+      "test": "desktop import journey test and shared-operation parity",
       "implemented": true
     },
     {

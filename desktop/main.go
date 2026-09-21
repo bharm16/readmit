@@ -60,6 +60,20 @@ func (d *dialog) ChooseFolder(title string) (string, error) {
 	return runtime.OpenDirectoryDialog(ctx, runtime.OpenDialogOptions{Title: title})
 }
 
+func (d *dialog) ChooseFiles(title, filterName, filterPattern string) ([]string, error) {
+	d.mu.Lock()
+	ctx := d.ctx
+	d.mu.Unlock()
+	if ctx == nil {
+		return nil, errors.New("the application window is not ready")
+	}
+	var filters []runtime.FileFilter
+	if filterName != "" && filterPattern != "" {
+		filters = []runtime.FileFilter{{DisplayName: filterName, Pattern: filterPattern}}
+	}
+	return runtime.OpenMultipleFilesDialog(ctx, runtime.OpenDialogOptions{Title: title, Filters: filters})
+}
+
 // reportsVersion reports whether this invocation asks for the build identity
 // the shell was stamped with instead of a window. An installed application is
 // checked on a machine that has no terminal open and, in a packaging check, no

@@ -105,6 +105,7 @@ import { ProfileEditor } from "./ProfileEditor";
 import { TestAuthoring } from "./TestAuthoring";
 import { Badge, GRID_WINDOW, MessageGrid, Palette, Report, Separator, Status } from "./shell";
 import { Breadcrumbs, ProjectPanel } from "./ProjectPanel";
+import { ImportPanel } from "./ImportPanel";
 
 /** The panes never collapse to nothing: either one keeps a usable share of the
  * window, whether it is dragged or moved with a keyboard. */
@@ -167,6 +168,7 @@ export default function App() {
   const [restored, setRestored] = useState<RecoveryResult | null>(null);
   const [watchedRun, setWatchedRun] = useState("");
   const [drafts, setDrafts] = useState<EditorDraft[] | null>(null);
+  const [importing, setImporting] = useState(false);
 
   // Refusals of navigation the window has not committed: the workspace and
   // case a person had stay on screen beside the reason, instead of the old
@@ -680,11 +682,13 @@ export default function App() {
   // the project to the folder listing. The trail is the way out as well as
   // the way in.
   const backToProject = useCallback(() => {
+    setImporting(false);
     clearCase();
     focusRegion("evidence");
   }, [clearCase, focusRegion]);
 
   const backToWorkspace = useCallback(() => {
+    setImporting(false);
     clearWorkspace();
     setSelected(null);
     setInvestigation(null);
@@ -1404,33 +1408,56 @@ export default function App() {
         <Breadcrumbs
           project={overview?.title ?? null}
           selectedCase={verified?.name ?? null}
+          importing={importing}
           onWorkspace={backToWorkspace}
           onProject={backToProject}
         />
-        <Recovery
-          restored={restored}
-          onChanged={() => void restore()}
-          onReopen={() => void reopen()}
-        />
-        <RetainedDrafts drafts={drafts} onDiscardDraft={dropDraft} />
-        <NoteDraft project={workspaceRoot} drafts={drafts} restored={restored} onChanged={() => void restore()} />
-        <RunPanel onWatch={watch} />
-        <ProjectPanel
-          root={root}
-          result={investigation}
-          entries={opened?.artifacts ?? []}
-          busy={busy}
-          progress={running === "project" ? "Reading the project." : null}
-          indicators={indicators}
-          selectedCase={verified?.name ?? null}
-          onCreate={(name, title, owner, versions) => void startProject(name, title, owner, versions)}
-          onUpdateSettings={(change) => void editSettings(change)}
-          onRegister={(name, registration) => void register(name, registration)}
-          onUpdateCase={(name, change) => void updateCase(name, change)}
-          onOpenCase={(name: string) => {
-            if (root) void verifyCase(root, name);
-          }}
-        />
+        {importing && root ? (
+          <ImportPanel
+            workspace={root}
+            project={investigation?.overview?.root ?? null}
+            drafts={drafts}
+            busy={busy}
+            indicators={indicators}
+            onOpenCase={(name) => {
+              setImporting(false);
+              void verifyCase(root, name);
+            }}
+            onSetupIndex={(name) => {
+              setImporting(false);
+              void verifyCase(root, name);
+            }}
+            onClose={() => setImporting(false)}
+          />
+        ) : (
+          <>
+            <Recovery
+              restored={restored}
+              onChanged={() => void restore()}
+              onReopen={() => void reopen()}
+            />
+            <RetainedDrafts drafts={drafts} onDiscardDraft={dropDraft} />
+            <NoteDraft project={workspaceRoot} drafts={drafts} restored={restored} onChanged={() => void restore()} />
+            <RunPanel onWatch={watch} />
+            <ProjectPanel
+              root={root}
+              result={investigation}
+              entries={opened?.artifacts ?? []}
+              busy={busy}
+              progress={running === "project" ? "Reading the project." : null}
+              indicators={indicators}
+              selectedCase={verified?.name ?? null}
+              onCreate={(name, title, owner, versions) => void startProject(name, title, owner, versions)}
+              onUpdateSettings={(change) => void editSettings(change)}
+              onRegister={(name, registration) => void register(name, registration)}
+              onUpdateCase={(name, change) => void updateCase(name, change)}
+              onOpenCase={(name: string) => {
+                if (root) void verifyCase(root, name);
+              }}
+              onStartImport={() => setImporting(true)}
+            />
+          </>
+        )}
       </>
     ),
     inspector: (

@@ -24,6 +24,7 @@ import (
 // dialog is notionally open, so a test can cancel or reenter deterministically.
 type chooser struct {
 	folder string
+	files  []string
 	err    error
 	before func()
 	titles []string
@@ -35,6 +36,14 @@ func (c *chooser) ChooseFolder(title string) (string, error) {
 		c.before()
 	}
 	return c.folder, c.err
+}
+
+func (c *chooser) ChooseFiles(title, filterName, filterPattern string) ([]string, error) {
+	c.titles = append(c.titles, title)
+	if c.before != nil {
+		c.before()
+	}
+	return c.files, c.err
 }
 
 // activatedApp wires an app over explicit state files and selects the test

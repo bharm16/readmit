@@ -29,11 +29,13 @@ function registrable(overview: ProjectOverview | null, entries: Artifact[]): Art
 export function Breadcrumbs({
   project,
   selectedCase,
+  importing,
   onWorkspace,
   onProject,
 }: {
   project: string | null;
   selectedCase: string | null;
+  importing?: boolean;
   onWorkspace: () => void;
   onProject: () => void;
 }) {
@@ -46,7 +48,15 @@ export function Breadcrumbs({
         Workspace
       </button>
       <span aria-hidden="true">›</span>
-      {selectedCase ? (
+      {importing ? (
+        <>
+          <button type="button" onClick={onProject}>
+            {project}
+          </button>
+          <span aria-hidden="true">›</span>
+          <span aria-current="page">Import evidence</span>
+        </>
+      ) : selectedCase ? (
         <>
           <button type="button" onClick={onProject}>
             {project}
@@ -510,6 +520,7 @@ export function ProjectPanel({
   onRegister,
   onUpdateCase,
   onOpenCase,
+  onStartImport,
 }: {
   root: string | null;
   result: ProjectOverviewResult | null;
@@ -523,6 +534,7 @@ export function ProjectPanel({
   onRegister: (name: string, registration: CaseRegistration) => void;
   onUpdateCase: (name: string, change: CaseChange) => void;
   onOpenCase: (name: string) => void;
+  onStartImport?: () => void;
 }) {
   const [creating, setCreating] = useState(false);
   const [editingSettings, setEditingSettings] = useState(false);
@@ -548,6 +560,11 @@ export function ProjectPanel({
         <button type="button" disabled={busy} aria-expanded={creating} onClick={() => setCreating(!creating)}>
           {creating ? "Close the project form" : "Create a project…"}
         </button>
+        {onStartImport ? (
+          <button type="button" disabled={busy} onClick={onStartImport} style={{ marginLeft: "0.5rem" }}>
+            Import evidence…
+          </button>
+        ) : null}
         {creating ? <CreateForm busy={busy} onCreate={onCreate} /> : null}
       </div>
     );
@@ -600,6 +617,18 @@ export function ProjectPanel({
             busy={busy}
             onRegister={onRegister}
           />
+
+          {onStartImport ? (
+            <div style={{ marginTop: "1rem" }}>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onStartImport}
+              >
+                Import evidence into this project…
+              </button>
+            </div>
+          ) : null}
 
           <h4>Revisions</h4>
           {overview.revisions.length === 0 ? (
