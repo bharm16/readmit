@@ -68,23 +68,23 @@ test("opening import panel from project, selecting sources via native dialogs, a
       return Promise.resolve({
         state: "completed",
         kind: "files",
-        paths: ["/data/adt-feed-01.hl7", "/data/adt-feed-02.hl7"],
+        paths: ["adt-feed-01.hl7", "adt-feed-02.hl7"],
       });
     },
   });
   await user.click(screen.getByRole("button", { name: "Select Files…" }));
-  expect(await screen.findByText("/data/adt-feed-01.hl7")).toBeTruthy();
-  expect(await screen.findByText("/data/adt-feed-02.hl7")).toBeTruthy();
+  expect(await screen.findByText("adt-feed-01.hl7")).toBeTruthy();
+  expect(await screen.findByText("adt-feed-02.hl7")).toBeTruthy();
 
   // Test staging pasted content
   facade.reply({
     StagePastedContent: (req): Promise<PastedSourceResult> => {
-      expect(req.content).toBe("MSH|^~\\&|ADT|HOSP|RECEIVER|FAC|20260921||ADT^A01|001|P|2.5");
+      expect(req.content).toBe("synthetic-bytes");
       expect(req.name).toBe("emergency-adt.hl7");
       expect(req.encoding).toBe("utf-8");
       return Promise.resolve({
         state: "completed",
-        path: "/workspace/staged-sources/emergency-adt.hl7",
+        path: "staged-sources/emergency-adt.hl7",
         name: "emergency-adt.hl7",
         size: 58,
         sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -94,7 +94,7 @@ test("opening import panel from project, selecting sources via native dialogs, a
   });
 
   const pasteArea = screen.getByLabelText("Pasted evidence content");
-  await user.type(pasteArea, "MSH|^~\\&|ADT|HOSP|RECEIVER|FAC|20260921||ADT^A01|001|P|2.5");
+  await user.type(pasteArea, "synthetic-bytes");
   const nameInput = screen.getByLabelText("Source name");
   await user.clear(nameInput);
   await user.type(nameInput, "emergency-adt.hl7");
@@ -119,11 +119,11 @@ test("plan authoring, extraction preview with deliberate reveal toggle, and inva
       Promise.resolve({
         state: "completed",
         kind: "files",
-        paths: ["/data/batch-feed.hl7"],
+        paths: ["batch-feed.hl7"],
       }),
   });
   await user.click(screen.getByRole("button", { name: "Select Files…" }));
-  await screen.findByText("/data/batch-feed.hl7");
+  await screen.findByText("batch-feed.hl7");
 
   // Configure import plan controls
   await user.selectOptions(screen.getByLabelText("Framing"), "batch");
@@ -149,7 +149,7 @@ test("plan authoring, extraction preview with deliberate reveal toggle, and inva
       containers: [
         {
           kind: "case",
-          path: "/data/batch-feed.hl7",
+          path: "batch-feed.hl7",
           size: 1024,
           sha256: "abc123",
           members: [
@@ -231,7 +231,7 @@ test("engine export authoring displays unqualified compatibility notice and prev
       Promise.resolve({
         state: "completed",
         kind: "files",
-        paths: ["/data/mirth-export.xml"],
+        paths: ["mirth-export.xml"],
       }),
   });
   await user.click(screen.getByRole("button", { name: "Select Files…" }));
@@ -290,7 +290,7 @@ test("recipe mapping authoring, preview, commit to project, and navigation into 
       Promise.resolve({
         state: "completed",
         kind: "files",
-        paths: ["/data/messages.csv"],
+        paths: ["messages.csv"],
       }),
   });
   await user.click(screen.getByRole("button", { name: "Select Files…" }));
@@ -362,8 +362,8 @@ test("recipe mapping authoring, preview, commit to project, and navigation into 
           acknowledgements: 0,
           unparsed: 0,
         },
-        case_path: "/workspace/imported-case-01",
-        receipt_path: "/workspace/imported-case-01-receipt.json",
+        case_path: "imported-case-01",
+        receipt_path: "imported-case-01-receipt.json",
         registered: true,
       });
     },
@@ -379,7 +379,7 @@ test("recipe mapping authoring, preview, commit to project, and navigation into 
   // Check commit completion card
   expect(await screen.findByText("Import Completed Successfully")).toBeTruthy();
   expect(screen.getByText(/imported-case-01 \(sha256:finalcase777\)/)).toBeTruthy();
-  expect(screen.getByText("/workspace/imported-case-01-receipt.json")).toBeTruthy();
+  expect(screen.getByText("imported-case-01-receipt.json")).toBeTruthy();
   expect(screen.getByText("Registered into project.")).toBeTruthy();
 
   // Click "Open this case in inspector"
@@ -416,7 +416,7 @@ test("draft retention restores draft state and handles cancellation", async () =
               terminator: "lf",
               encoding: "us-ascii",
               direction: "outbound",
-              files: ["/retained/stream.mllp"],
+              files: ["retained-stream.mllp"],
               outputName: "retained-case-99",
             },
           },
@@ -438,7 +438,7 @@ test("draft retention restores draft state and handles cancellation", async () =
   await user.click(screen.getByRole("button", { name: "Import evidence into this project…" }));
 
   // Verify restored draft values
-  expect(await screen.findByText("/retained/stream.mllp")).toBeTruthy();
+  expect(await screen.findByText("retained-stream.mllp")).toBeTruthy();
   expect(screen.getByDisplayValue("retained-case-99")).toBeTruthy();
   expect(screen.getByDisplayValue("MLLP")).toBeTruthy();
   expect(screen.getByDisplayValue("LF (\\n)")).toBeTruthy();
