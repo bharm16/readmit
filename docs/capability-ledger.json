@@ -998,10 +998,10 @@
       "kind": "cli",
       "capability": "Check a pinned scenario against independent fixture expectations",
       "owner": "bharm16/readmit#254",
-      "screen": "a scenario screen",
-      "action": "design, preview and generate lifecycle workflow sequences",
+      "screen": "the synthetic scenario panel of the inspector region",
+      "action": "design, preview, generate and library-manage lifecycle workflow sequences",
       "test": "desktop scenario journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.scenario.generate",
@@ -1009,10 +1009,10 @@
       "kind": "cli",
       "capability": "Generate deterministic synthetic workflow streams with complete inputs",
       "owner": "bharm16/readmit#254",
-      "screen": "a scenario screen",
-      "action": "design, preview and generate lifecycle workflow sequences",
+      "screen": "the synthetic scenario panel of the inspector region",
+      "action": "design, preview, generate and library-manage lifecycle workflow sequences",
       "test": "desktop scenario journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.scenario.preview",
@@ -1020,10 +1020,10 @@
       "kind": "cli",
       "capability": "Show a designed workflow step by step, with the outcome its profile gives each step",
       "owner": "bharm16/readmit#254",
-      "screen": "a scenario screen",
-      "action": "design, preview and generate lifecycle workflow sequences",
+      "screen": "the synthetic scenario panel of the inspector region",
+      "action": "design, preview, generate and library-manage lifecycle workflow sequences",
       "test": "desktop scenario journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.secret.add",
@@ -1218,10 +1218,10 @@
       "kind": "cli",
       "capability": "Generate reproducible regression, cancellation, and known-invalid SIU case bundles",
       "owner": "bharm16/readmit#254",
-      "screen": "a fixture-generation screen",
+      "screen": "the synthetic scenario panel of the inspector region",
       "action": "generate reproducible SIU case bundles from declared inputs",
-      "test": "desktop synth journey test and shared-operation parity",
-      "implemented": false
+      "test": "desktop scenario journey test and shared-operation parity",
+      "implemented": true
     },
     {
       "id": "cli.target.check",
@@ -1323,6 +1323,17 @@
       "implemented": false
     },
     {
+      "id": "desktop.BindScenarioProfile",
+      "source": "desktop.App.BindScenarioProfile",
+      "kind": "desktop",
+      "capability": "select lifecycle profile and generator version from a saved local interface profile",
+      "owner": "bharm16/readmit#254",
+      "screen": "the synthetic scenario panel of the inspector region",
+      "action": "design, preview, generate and library-manage lifecycle workflow sequences",
+      "test": "desktop scenario journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
       "id": "desktop.Cancel",
       "source": "desktop.App.Cancel",
       "kind": "desktop",
@@ -1334,6 +1345,17 @@
       "implemented": true
     },
     {
+      "id": "desktop.CheckScenarioLibrary",
+      "source": "desktop.App.CheckScenarioLibrary",
+      "kind": "desktop",
+      "capability": "check independent fixture expectations against a pinned library template",
+      "owner": "bharm16/readmit#254",
+      "screen": "the synthetic scenario panel of the inspector region",
+      "action": "design, preview, generate and library-manage lifecycle workflow sequences",
+      "test": "desktop scenario journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
       "id": "desktop.ChooseOperationPolicy",
       "source": "desktop.App.ChooseOperationPolicy",
       "kind": "desktop",
@@ -1342,6 +1364,127 @@
       "screen": "the operation-access pane of the privacy region",
       "action": "select the operation policy through the native chooser",
       "test": "desktop operation-access tests plus internal/operationguard tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.CompareScenarioLibraryEntries",
+      "source": "desktop.App.CompareScenarioLibraryEntries",
+      "kind": "desktop",
+      "capability": "compare two pinned library revisions without mutating either",
+      "owner": "bharm16/readmit#254",
+      "screen": "the synthetic scenario panel of the inspector region",
+      "action": "design, preview, generate and library-manage lifecycle workflow sequences",
+      "test": "desktop scenario journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ExportScenarioLibrary",
+      "source": "desktop.App.ExportScenarioLibrary",
+      "kind": "desktop",
+      "capability": "export a scenario library to a new destination",
+      "owner": "bharm16/readmit#254",
+      "screen": "the synthetic scenario panel of the inspector region",
+      "action": "design, preview, generate and library-manage lifecycle workflow sequences",
+      "test": "desktop scenario journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.GenerateScenario",
+      "source": "desktop.App.GenerateScenario",
+      "kind": "desktop",
+      "capability": "generate deterministic streams and a generated case with provenance and optional registration",
+      "owner": "bharm16/readmit#254",
+      "screen": "the synthetic scenario panel of the inspector region",
+      "action": "design, preview, generate and library-manage lifecycle workflow sequences",
+      "test": "desktop scenario journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.GenerateSynth",
+      "source": "desktop.App.GenerateSynth",
+      "kind": "desktop",
+      "capability": "generate reproducible SIU synthetic case bundles from declared inputs",
+      "owner": "bharm16/readmit#254",
+      "screen": "the synthetic scenario panel of the inspector region",
+      "action": "design, preview, generate and library-manage lifecycle workflow sequences",
+      "test": "desktop scenario journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ImportScenarioLibrary",
+      "source": "desktop.App.ImportScenarioLibrary",
+      "kind": "desktop",
+      "capability": "import a scenario library into a new workspace entry",
+      "owner": "bharm16/readmit#254",
+      "screen": "the synthetic scenario panel of the inspector region",
+      "action": "design, preview, generate and library-manage lifecycle workflow sequences",
+      "test": "desktop scenario journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.OpenScenario",
+      "source": "desktop.App.OpenScenario",
+      "kind": "desktop",
+      "capability": "open a saved scenario or order-scenario document",
+      "owner": "bharm16/readmit#254",
+      "screen": "the synthetic scenario panel of the inspector region",
+      "action": "design, preview, generate and library-manage lifecycle workflow sequences",
+      "test": "desktop scenario journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.OpenScenarioLibrary",
+      "source": "desktop.App.OpenScenarioLibrary",
+      "kind": "desktop",
+      "capability": "open a reusable scenario library document",
+      "owner": "bharm16/readmit#254",
+      "screen": "the synthetic scenario panel of the inspector region",
+      "action": "design, preview, generate and library-manage lifecycle workflow sequences",
+      "test": "desktop scenario journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.PreviewScenario",
+      "source": "desktop.App.PreviewScenario",
+      "kind": "desktop",
+      "capability": "preview a designed workflow through the shared engine with deliberate identifier reveal",
+      "owner": "bharm16/readmit#254",
+      "screen": "the synthetic scenario panel of the inspector region",
+      "action": "design, preview, generate and library-manage lifecycle workflow sequences",
+      "test": "desktop scenario journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveScenario",
+      "source": "desktop.App.SaveScenario",
+      "kind": "desktop",
+      "capability": "save a validated scenario document without overwriting another entry",
+      "owner": "bharm16/readmit#254",
+      "screen": "the synthetic scenario panel of the inspector region",
+      "action": "design, preview, generate and library-manage lifecycle workflow sequences",
+      "test": "desktop scenario journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveScenarioLibraryEntry",
+      "source": "desktop.App.SaveScenarioLibraryEntry",
+      "kind": "desktop",
+      "capability": "save or version a library template without overwriting another revision",
+      "owner": "bharm16/readmit#254",
+      "screen": "the synthetic scenario panel of the inspector region",
+      "action": "design, preview, generate and library-manage lifecycle workflow sequences",
+      "test": "desktop scenario journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ScenarioCatalog",
+      "source": "desktop.App.ScenarioCatalog",
+      "kind": "desktop",
+      "capability": "list supported lifecycle profiles and event availability with refusal reasons",
+      "owner": "bharm16/readmit#254",
+      "screen": "the synthetic scenario panel of the inspector region",
+      "action": "design, preview, generate and library-manage lifecycle workflow sequences",
+      "test": "desktop scenario journey test and shared-operation parity",
       "implemented": true
     },
     {

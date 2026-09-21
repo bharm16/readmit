@@ -3786,3 +3786,252 @@ export function openCaptureJournal(workspace: string, journalPath: string): Prom
 export function finalizeCaptureImport(request: FinalizeCaptureRequest): Promise<ImportCommitResult> {
   return guard(() => facade().FinalizeCaptureImport(request), { state: "failed" });
 }
+
+// --- Synthetic scenario authoring (readmit-scenario/v1, generator, library) ---
+
+export interface ScenarioEventAvailability {
+  event: string;
+  description: string;
+  kind: string;
+  profile: string;
+  available: boolean;
+  reason?: string;
+}
+
+export interface ScenarioKindAvailability {
+  kind: string;
+  states: string[];
+}
+
+export interface ScenarioProfileCatalog {
+  name: string;
+  kinds: ScenarioKindAvailability[];
+  events: ScenarioEventAvailability[];
+  schema: string;
+  order: boolean;
+}
+
+export interface ScenarioCatalog {
+  profiles: ScenarioProfileCatalog[];
+  generator_version: string;
+  all_events: ScenarioEventAvailability[];
+}
+
+export interface ScenarioCatalogResult {
+  state: State;
+  reason?: string;
+  catalog?: ScenarioCatalog;
+}
+
+export interface ScenarioPreviewRequest {
+  workspace: string;
+  document: string;
+  reveal_sensitive?: boolean;
+}
+
+export interface ScenarioStepView {
+  ordinal: number;
+  id: string;
+  at: string;
+  event: string;
+  description: string;
+  subject: string;
+  into?: string;
+  expect: string;
+  from: string;
+  to: string;
+  reason?: string;
+}
+
+export interface ScenarioSubjectView {
+  id: string;
+  kind: string;
+  initial_state: string;
+  namespace?: string;
+  identifier?: string;
+  patient?: string;
+  masked: boolean;
+}
+
+export interface ScenarioPreviewResult {
+  state: State;
+  reason?: string;
+  scenario?: string;
+  version?: string;
+  profile?: string;
+  base_time?: string;
+  accepted?: number;
+  refused?: number;
+  subjects?: ScenarioSubjectView[];
+  steps?: ScenarioStepView[];
+}
+
+export interface ScenarioDocumentResult {
+  state: State;
+  reason?: string;
+  document?: string;
+  output?: string;
+  profile?: string;
+  id?: string;
+  version?: string;
+}
+
+export interface ScenarioSaveRequest {
+  workspace: string;
+  document: string;
+  output: string;
+}
+
+export interface ScenarioGenerateRequest {
+  workspace: string;
+  document: string;
+  output_name: string;
+  case_name?: string;
+  register_in_project?: boolean;
+  case_title?: string;
+  case_owner?: string;
+  case_version?: string;
+}
+
+export interface ScenarioGenerateResult {
+  state: State;
+  reason?: string;
+  output_path?: string;
+  generation_path?: string;
+  stream_count?: number;
+  case_name?: string;
+  case_identity?: string;
+  provenance_mode?: string;
+  registered?: boolean;
+  generator_seed?: number;
+  generator_version?: string;
+  profile_version?: string;
+  base_time?: string;
+}
+
+export interface ScenarioLibraryRequest {
+  workspace: string;
+  library: string;
+  expectations?: string;
+  output?: string;
+  template_id?: string;
+  template_version?: string;
+  plan?: string;
+  coverage?: string;
+  profile?: string;
+}
+
+export interface ScenarioLibraryTemplateView {
+  id: string;
+  version: string;
+  profile: string;
+  coverage: string[];
+  plan_sha256: string;
+}
+
+export interface ScenarioLibraryCompareView {
+  id: string;
+  from_version: string;
+  to_version: string;
+  same_plan: boolean;
+  from_sha256: string;
+  to_sha256: string;
+}
+
+export interface ScenarioLibraryResult {
+  state: State;
+  reason?: string;
+  document?: string;
+  output?: string;
+  templates?: ScenarioLibraryTemplateView[];
+  streams?: number;
+  fields?: number;
+  target?: string;
+  compared?: ScenarioLibraryCompareView[];
+}
+
+export interface ScenarioProfileBindRequest {
+  workspace: string;
+  entry: string;
+  pack_entry?: string;
+}
+
+export interface ScenarioProfileBindResult {
+  state: State;
+  reason?: string;
+  profile_id?: string;
+  profile_version?: string;
+  family?: string;
+  hl7_version?: string;
+  lifecycle_profile?: string;
+  generator_version?: string;
+  available?: boolean;
+}
+
+export interface SynthGenerateRequest {
+  workspace: string;
+  output_name: string;
+  seed: number;
+  base_time: string;
+  generator_version: string;
+  profile_version: string;
+}
+
+export interface SynthGenerateResult {
+  state: State;
+  reason?: string;
+  output_path?: string;
+  cases?: string[];
+}
+
+export function scenarioCatalog(): Promise<ScenarioCatalogResult> {
+  return guard(() => facade().ScenarioCatalog(), { state: "failed" });
+}
+
+export function bindScenarioProfile(request: ScenarioProfileBindRequest): Promise<ScenarioProfileBindResult> {
+  return guard(() => facade().BindScenarioProfile(request), { state: "failed" });
+}
+
+export function previewScenario(request: ScenarioPreviewRequest): Promise<ScenarioPreviewResult> {
+  return guard(() => facade().PreviewScenario(request), { state: "failed" });
+}
+
+export function openScenario(workspace: string, entry: string): Promise<ScenarioDocumentResult> {
+  return guard(() => facade().OpenScenario(workspace, entry), { state: "failed" });
+}
+
+export function saveScenario(request: ScenarioSaveRequest): Promise<ScenarioDocumentResult> {
+  return guard(() => facade().SaveScenario(request), { state: "failed" });
+}
+
+export function generateScenario(request: ScenarioGenerateRequest): Promise<ScenarioGenerateResult> {
+  return guard(() => facade().GenerateScenario(request), { state: "failed" });
+}
+
+export function openScenarioLibrary(workspace: string, entry: string): Promise<ScenarioLibraryResult> {
+  return guard(() => facade().OpenScenarioLibrary(workspace, entry), { state: "failed" });
+}
+
+export function saveScenarioLibraryEntry(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult> {
+  return guard(() => facade().SaveScenarioLibraryEntry(request), { state: "failed" });
+}
+
+export function compareScenarioLibraryEntries(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult> {
+  return guard(() => facade().CompareScenarioLibraryEntries(request), { state: "failed" });
+}
+
+export function checkScenarioLibrary(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult> {
+  return guard(() => facade().CheckScenarioLibrary(request), { state: "failed" });
+}
+
+export function exportScenarioLibrary(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult> {
+  return guard(() => facade().ExportScenarioLibrary(request), { state: "failed" });
+}
+
+export function importScenarioLibrary(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult> {
+  return guard(() => facade().ImportScenarioLibrary(request), { state: "failed" });
+}
+
+export function generateSynth(request: SynthGenerateRequest): Promise<SynthGenerateResult> {
+  return guard(() => facade().GenerateSynth(request), { state: "failed" });
+}
