@@ -636,6 +636,17 @@ export interface Facade {
   ReadResetPlan(workspace: string, planFile: string): Promise<ResetPlanResult>;
   SaveResetPlan(request: ResetPlanSaveRequest): Promise<ResetPlanResult>;
   ChooseImportSources(kind: string): Promise<ImportSourcesResult>;
+  ChooseCapturePath(kind: string): Promise<PathChoiceResult>;
+  SaveSourceRegistration(request: SourceRegistrationRequest): Promise<SourceRegistrationResult>;
+  ReadSourceRegistration(workspace: string, sourceFile: string): Promise<SourceRegistrationResult>;
+  DiagnoseSource(request: SourceWorkRequest): Promise<SourceAccessResult>;
+  CollectSource(request: SourceWorkRequest): Promise<SourceCollectionResult>;
+  SaveReceiverPolicy(request: ReceiverPolicyRequest): Promise<ReceiverPolicyResult>;
+  ReadReceiverPolicy(workspace: string, policyFile: string): Promise<ReceiverPolicyResult>;
+  PreviewCapture(request: CaptureRequest): Promise<CapturePreviewResult>;
+  StartCapture(request: CaptureRequest): Promise<CaptureSessionResult>;
+  OpenCaptureJournal(workspace: string, journalPath: string): Promise<CaptureJournalResult>;
+  FinalizeCaptureImport(request: FinalizeCaptureRequest): Promise<ImportCommitResult>;
   StagePastedContent(request: PastedSourceRequest): Promise<PastedSourceResult>;
   PreviewImport(request: ImportRequest): Promise<ImportPreviewResult>;
   CommitImport(request: ImportCommitRequest): Promise<ImportCommitResult>;
@@ -3441,4 +3452,337 @@ export function previewImport(request: ImportRequest): Promise<ImportPreviewResu
 
 export function commitImport(request: ImportCommitRequest): Promise<ImportCommitResult> {
   return guard(() => facade().CommitImport(request), { state: "failed" });
+}
+
+export type CapturePhase =
+  | "idle"
+  | "previewing"
+  | "listening"
+  | "collecting"
+  | "stopping"
+  | "stopped"
+  | "failed";
+
+export interface PathChoiceResult {
+  state: State;
+  reason?: string;
+  kind?: string;
+  paths?: string[];
+}
+
+export interface EvidenceSourceQuota {
+  max_entries: number;
+  max_entry_bytes: number;
+  max_total_bytes: number;
+}
+
+export interface EvidenceSourceRetry {
+  attempts: number;
+  backoff: string;
+}
+
+export interface EvidenceSource {
+  schema: string;
+  name: string;
+  kind: string;
+  scope: string;
+  quota: EvidenceSourceQuota;
+  retry: EvidenceSourceRetry;
+  root?: string;
+  address?: string;
+  classification?: string;
+  command?: string;
+  arguments?: string[];
+  secrets_file?: string;
+  credential?: string;
+}
+
+export interface SourceRegistrationRequest {
+  workspace: string;
+  source_file: string;
+  source: EvidenceSource;
+}
+
+export interface SourceRegistrationResult {
+  state: State;
+  reason?: string;
+  source?: EvidenceSource;
+  source_file?: string;
+}
+
+export interface ImportPlanFields {
+  schema: string;
+  framing: string;
+  batch_boundary?: string;
+  terminator: string;
+  encoding: string;
+  direction: string;
+  members: string[];
+}
+
+export interface SourceWorkRequest {
+  workspace: string;
+  source_file?: string;
+  source?: EvidenceSource;
+  policy_file?: string;
+  plan?: ImportPlanFields;
+  output_name?: string;
+  receipt_name?: string;
+}
+
+export interface SourceAccessTotals {
+  status?: string;
+  reason?: string;
+  listed?: boolean;
+  declared?: number;
+  selected?: number;
+  readable?: number;
+  unreadable?: number;
+  not_read?: number;
+  declared_bytes?: number;
+}
+
+export interface SourceAccessResult {
+  state: State;
+  reason?: string;
+  access?: {
+    schema: string;
+    status: string;
+    reason?: string;
+    listed: boolean;
+    declared: number;
+    selected: number;
+    readable: number;
+    unreadable: number;
+    not_read: number;
+    source_name?: string;
+    source_kind?: string;
+    scope?: string;
+  };
+}
+
+export interface SourceCollectionResult {
+  state: State;
+  reason?: string;
+  collection?: {
+    schema: string;
+    status: string;
+    reason?: string;
+    declared: number;
+    collected: number;
+    duplicates: number;
+    excluded: number;
+    unreadable: number;
+    not_read: number;
+    bytes: number;
+    records: number;
+    occurrences: number;
+  };
+  output_path?: string;
+  receipt_path?: string;
+}
+
+export interface ReceiverAckRule {
+  operator: string;
+  code: string;
+}
+
+export interface ReceiverMessageTypeRule {
+  operator: string;
+  values: string[];
+}
+
+export interface ReceiverEnhancedRule {
+  operator: string;
+  accept_code: string;
+  application_code: string;
+  application_delivery: string;
+  application_endpoint: string;
+  approved_transport: boolean;
+}
+
+export interface ReceiverFaultStep {
+  message: number;
+  stage: string;
+  action: string;
+  delay_ms: number;
+}
+
+export interface ReceiverFaultPolicy {
+  environment_class: string;
+  approved_test_endpoints: string[];
+  steps: ReceiverFaultStep[];
+}
+
+export interface ReceiverPolicy {
+  schema: string;
+  name: string;
+  source_label: string;
+  acknowledgement: ReceiverAckRule;
+  accepted_message_types: ReceiverMessageTypeRule;
+  enhanced_acknowledgement?: ReceiverEnhancedRule;
+  faults?: ReceiverFaultPolicy;
+}
+
+export interface ReceiverPolicyRequest {
+  workspace: string;
+  policy_file: string;
+  policy: ReceiverPolicy;
+}
+
+export interface ReceiverPolicyResult {
+  state: State;
+  reason?: string;
+  policy?: ReceiverPolicy;
+  policy_file?: string;
+}
+
+export interface CaptureRequest {
+  workspace: string;
+  kind: string;
+  address: string;
+  approved_bind?: boolean;
+  policy_file?: string;
+  policy?: ReceiverPolicy;
+  fixture_mode?: string;
+  output_name: string;
+  journal_name?: string;
+  observation_name?: string;
+  max_frame_bytes?: number;
+  idle_timeout?: string;
+  application_ack_timeout?: string;
+  max_messages?: number;
+  max_connections?: number;
+  max_sessions?: number;
+  max_capture_bytes?: number;
+  tls_certificate_file?: string;
+  tls_key_reference?: string;
+  secrets_file?: string;
+  client_ca_file?: string;
+}
+
+export interface CapturePreview {
+  kind: string;
+  address: string;
+  approved_bind: boolean;
+  policy_name?: string;
+  policy_schema?: string;
+  source_label?: string;
+  acknowledgement?: string;
+  enhanced?: string;
+  fixture_mode?: string;
+  fixture_label?: string;
+  transport: string;
+  client_certificate: boolean;
+  key_reference?: string;
+  max_connections?: number;
+  max_messages?: number;
+  max_sessions?: number;
+  max_capture_bytes?: number;
+  max_frame_bytes: number;
+  idle_timeout: string;
+  journal_enabled: boolean;
+  output_name?: string;
+  observation_name?: string;
+}
+
+export interface CapturePreviewResult {
+  state: State;
+  reason?: string;
+  phase?: CapturePhase;
+  preview?: CapturePreview;
+}
+
+export interface CaptureJournalSummary {
+  schema: string;
+  state: string;
+  stop_reason: string;
+  delivery_uncertain: boolean;
+  received: number;
+  acknowledged: number;
+  unsent: number;
+  uncertain: number;
+  recovered: boolean;
+  journal_incomplete: boolean;
+}
+
+export interface CaptureSessionResult {
+  state: State;
+  reason?: string;
+  phase?: CapturePhase;
+  bound_address?: string;
+  case?: {
+    name: string;
+    identity: string;
+    schema: string;
+    provenance: string;
+    sources: number;
+    occurrences: number;
+    messages: number;
+    acknowledgements: number;
+    unparsed: number;
+  };
+  case_path?: string;
+  journal?: CaptureJournalSummary;
+  journal_path?: string;
+  observation_path?: string;
+  received?: number;
+  connections?: number;
+  dropped?: number;
+  preview?: CapturePreview;
+}
+
+export interface CaptureJournalResult {
+  state: State;
+  reason?: string;
+  phase?: CapturePhase;
+  journal?: CaptureJournalSummary;
+  path?: string;
+}
+
+export interface FinalizeCaptureRequest {
+  workspace: string;
+  project?: string;
+  folder: string;
+  output_name: string;
+  receipt_name?: string;
+  plan?: ImportPlanFields;
+  register_in_project?: boolean;
+  case_title?: string;
+  case_owner?: string;
+  case_version?: string;
+}
+
+export function chooseCapturePath(kind: string): Promise<PathChoiceResult> {
+  return guard(() => facade().ChooseCapturePath(kind), { state: "failed" });
+}
+export function saveSourceRegistration(request: SourceRegistrationRequest): Promise<SourceRegistrationResult> {
+  return guard(() => facade().SaveSourceRegistration(request), { state: "failed" });
+}
+export function readSourceRegistration(workspace: string, sourceFile: string): Promise<SourceRegistrationResult> {
+  return guard(() => facade().ReadSourceRegistration(workspace, sourceFile), { state: "failed" });
+}
+export function diagnoseSource(request: SourceWorkRequest): Promise<SourceAccessResult> {
+  return guard(() => facade().DiagnoseSource(request), { state: "failed" });
+}
+export function collectSource(request: SourceWorkRequest): Promise<SourceCollectionResult> {
+  return guard(() => facade().CollectSource(request), { state: "failed" });
+}
+export function saveReceiverPolicy(request: ReceiverPolicyRequest): Promise<ReceiverPolicyResult> {
+  return guard(() => facade().SaveReceiverPolicy(request), { state: "failed" });
+}
+export function readReceiverPolicy(workspace: string, policyFile: string): Promise<ReceiverPolicyResult> {
+  return guard(() => facade().ReadReceiverPolicy(workspace, policyFile), { state: "failed" });
+}
+export function previewCapture(request: CaptureRequest): Promise<CapturePreviewResult> {
+  return guard(() => facade().PreviewCapture(request), { state: "failed" });
+}
+export function startCapture(request: CaptureRequest): Promise<CaptureSessionResult> {
+  return guard(() => facade().StartCapture(request), { state: "failed" });
+}
+export function openCaptureJournal(workspace: string, journalPath: string): Promise<CaptureJournalResult> {
+  return guard(() => facade().OpenCaptureJournal(workspace, journalPath), { state: "failed" });
+}
+export function finalizeCaptureImport(request: FinalizeCaptureRequest): Promise<ImportCommitResult> {
+  return guard(() => facade().FinalizeCaptureImport(request), { state: "failed" });
 }

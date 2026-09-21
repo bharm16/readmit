@@ -1911,3 +1911,30 @@ Fixture reset plans return nonproduction test fixtures to a declared starting st
 - Retained outcomes are written to `readmit-reset-outcome/v1` documents recording per-action statuses and SHA-256 plan digests.
 
 Contextual offline help and recovery codes, with ADT/SIU/ORM/ORU recipes: [workflow help](workflow-help.md).
+
+## Capture, collect and listen
+
+**Capture** is the evidence-region panel that exposes source diagnosis and
+collection, the generic MLLP collector, and the built-in SIU fixture receiver
+through the typed facade. It does not replace the receiver and does not add a
+production inline proxy. Customer programs and listeners retain exactly their
+current bounded authority; there is no arbitrary command console.
+
+| Facade operation | What it does |
+| --- | --- |
+| `ChooseCapturePath` | Native dialogs for source roots, transfer programs, certificates, policies and journals. |
+| `SaveSourceRegistration` / `ReadSourceRegistration` | Write and reopen a `readmit-source/v1` registration with structured controls. |
+| `DiagnoseSource` / `CollectSource` | The shared operations behind `readmit source diagnose` and `readmit source collect`. |
+| `SaveReceiverPolicy` / `ReadReceiverPolicy` | Author and reopen declarative `readmit-receiver-policy/v1`–`/v3` responder policies. |
+| `PreviewCapture` | Value-free preview of address, policy, fixture label, credential references, retention and limits without binding. |
+| `StartCapture` | Starts a collector or the separately labelled SIU fixture only on explicit authorized action. |
+| `OpenCaptureJournal` | Read-only recovery of a `readmit-capture-journal/v1`; never sends, resends or resumes. |
+| `FinalizeCaptureImport` | Imports staged collected material into a new verified case and offers exploration. |
+
+Start only after preview. Cancel stops through the shared engine. Reopening a
+project never restarts a listener and never fabricates complete capture after a
+crash. On completion the panel offers opening the case and setting up an index
+on the existing import and explorer surfaces.
+
+See [source](source.md), [collect](collect.md) and [listen](listen.md).
+

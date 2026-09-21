@@ -106,6 +106,7 @@ import { TestAuthoring } from "./TestAuthoring";
 import { Badge, GRID_WINDOW, MessageGrid, Palette, Report, Separator, Status } from "./shell";
 import { Breadcrumbs, ProjectPanel } from "./ProjectPanel";
 import { ImportPanel } from "./ImportPanel";
+import { CapturePanel } from "./CapturePanel";
 
 /** The panes never collapse to nothing: either one keeps a usable share of the
  * window, whether it is dragged or moved with a keyboard. */
@@ -168,6 +169,7 @@ export default function App() {
   const [restored, setRestored] = useState<RecoveryResult | null>(null);
   const [watchedRun, setWatchedRun] = useState("");
   const [drafts, setDrafts] = useState<EditorDraft[] | null>(null);
+  const [capturing, setCapturing] = useState(false);
   const [importing, setImporting] = useState(false);
 
   // Refusals of navigation the window has not committed: the workspace and
@@ -1409,10 +1411,27 @@ export default function App() {
           project={overview?.title ?? null}
           selectedCase={verified?.name ?? null}
           importing={importing}
+          capturing={capturing}
           onWorkspace={backToWorkspace}
           onProject={backToProject}
         />
-        {importing && root ? (
+        {capturing && root ? (
+          <CapturePanel
+            workspace={root}
+            project={investigation?.overview?.root ?? null}
+            busy={busy}
+            indicators={indicators}
+            onOpenCase={(name) => {
+              setCapturing(false);
+              void verifyCase(root, name);
+            }}
+            onSetupIndex={(name) => {
+              setCapturing(false);
+              void verifyCase(root, name);
+            }}
+            onClose={() => setCapturing(false)}
+          />
+        ) : importing && root ? (
           <ImportPanel
             workspace={root}
             project={investigation?.overview?.root ?? null}
@@ -1455,6 +1474,7 @@ export default function App() {
                 if (root) void verifyCase(root, name);
               }}
               onStartImport={() => setImporting(true)}
+              onStartCapture={() => setCapturing(true)}
             />
           </>
         )}

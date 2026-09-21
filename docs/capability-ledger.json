@@ -88,7 +88,7 @@
       "screen": "a collection screen",
       "action": "collect downstream HL7 under a declared acknowledgement policy",
       "test": "desktop collection journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.corpus.generate",
@@ -462,7 +462,7 @@
       "screen": "a fixture-receiver screen",
       "action": "run a controlled SIU fixture and export its ledger",
       "test": "desktop listener journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.normalize",
@@ -1100,7 +1100,7 @@
       "screen": "a source screen",
       "action": "diagnose and collect from an approved customer-controlled source",
       "test": "desktop source journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.source.diagnose",
@@ -1111,7 +1111,7 @@
       "screen": "a source screen",
       "action": "diagnose and collect from an approved customer-controlled source",
       "test": "desktop source journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.suite.approve-promotion",
@@ -2736,6 +2736,127 @@
       "action": "release an execution lease",
       "test": "hub service integration tests; the graphical surface is owned by the hub UX ticket and is not claimed",
       "implemented": false
+    },
+    {
+      "id": "desktop.ChooseCapturePath",
+      "source": "desktop.App.ChooseCapturePath",
+      "kind": "desktop",
+      "capability": "choose native paths for source roots, transfer programs, certificates and policies",
+      "owner": "bharm16/readmit#250",
+      "screen": "a capture screen",
+      "action": "choose files and folders that fill structured capture controls",
+      "test": "desktop capture journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.CollectSource",
+      "source": "desktop.App.CollectSource",
+      "kind": "desktop",
+      "capability": "collect from an approved customer-controlled source",
+      "owner": "bharm16/readmit#250",
+      "screen": "a source screen",
+      "action": "stage collected evidence with a receipt",
+      "test": "desktop source journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.DiagnoseSource",
+      "source": "desktop.App.DiagnoseSource",
+      "kind": "desktop",
+      "capability": "diagnose access to an approved customer-controlled source",
+      "owner": "bharm16/readmit#250",
+      "screen": "a source screen",
+      "action": "diagnose access without collecting",
+      "test": "desktop source journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.FinalizeCaptureImport",
+      "source": "desktop.App.FinalizeCaptureImport",
+      "kind": "desktop",
+      "capability": "import collected material into a verified case and offer exploration",
+      "owner": "bharm16/readmit#250",
+      "screen": "a capture screen",
+      "action": "finalize collected material into a case and open exploration",
+      "test": "desktop capture journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.OpenCaptureJournal",
+      "source": "desktop.App.OpenCaptureJournal",
+      "kind": "desktop",
+      "capability": "reopen a capture journal read-only without resume",
+      "owner": "bharm16/readmit#250",
+      "screen": "a collection screen",
+      "action": "recover interrupted capture state without resending",
+      "test": "desktop collection journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.PreviewCapture",
+      "source": "desktop.App.PreviewCapture",
+      "kind": "desktop",
+      "capability": "preview listener or collector configuration without binding",
+      "owner": "bharm16/readmit#250",
+      "screen": "a capture screen",
+      "action": "preview address, policy, credentials and limits before start",
+      "test": "desktop capture journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ReadReceiverPolicy",
+      "source": "desktop.App.ReadReceiverPolicy",
+      "kind": "desktop",
+      "capability": "read a declarative MLLP responder policy",
+      "owner": "bharm16/readmit#250",
+      "screen": "a collection screen",
+      "action": "reopen a declared responder policy",
+      "test": "desktop collection journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ReadSourceRegistration",
+      "source": "desktop.App.ReadSourceRegistration",
+      "kind": "desktop",
+      "capability": "read a validated evidence-source registration",
+      "owner": "bharm16/readmit#250",
+      "screen": "a source screen",
+      "action": "reopen a declared source registration",
+      "test": "desktop source journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveReceiverPolicy",
+      "source": "desktop.App.SaveReceiverPolicy",
+      "kind": "desktop",
+      "capability": "save a declarative MLLP responder policy",
+      "owner": "bharm16/readmit#250",
+      "screen": "a collection screen",
+      "action": "configure acknowledgement, enhanced, fault and bound policies",
+      "test": "desktop collection journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveSourceRegistration",
+      "source": "desktop.App.SaveSourceRegistration",
+      "kind": "desktop",
+      "capability": "save a validated evidence-source registration",
+      "owner": "bharm16/readmit#250",
+      "screen": "a source screen",
+      "action": "create and validate supported source registrations with structured controls",
+      "test": "desktop source journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.StartCapture",
+      "source": "desktop.App.StartCapture",
+      "kind": "desktop",
+      "capability": "start an authorized MLLP collector or SIU fixture listener",
+      "owner": "bharm16/readmit#250",
+      "screen": "a capture screen",
+      "action": "start only on explicit authorized action and show capture states",
+      "test": "desktop capture journey test and shared-operation parity",
+      "implemented": true
     }
   ]
 }
