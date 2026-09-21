@@ -198,6 +198,10 @@ where the new evidence came from:
 A project names a revision by **one directory entry of the project**, so the
 derived case is copied there first, exactly as a redacted one is:
 
+The desktop Reproducer panel places the derived case and registers lineage
+through the same operation after a build. On the command line the same two
+steps look like:
+
 ```sh
 cp -R incident-reproducer/case scheduling-investigation/incident-4821-reproducer
 readmit project revise scheduling-investigation incident-4821-reproducer \

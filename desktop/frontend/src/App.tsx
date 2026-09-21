@@ -7,6 +7,7 @@ import { NoteDraft } from "./NoteDraft";
 import { Recovery, RetainedDrafts } from "./Recovery";
 import { RunPanel } from "./RunPanel";
 import { EnvironmentPanel } from "./EnvironmentPanel";
+import { Reduction, type ReductionForm } from "./Reduction";
 import { onRetentionResult, savedId } from "./drafting";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
@@ -64,14 +65,21 @@ import {
   type SequenceResult,
   openReview,
   previewTransformation,
+  saveTransformPlan,
+  previewReduction,
+  startReduction,
   type ReviewResult,
   type TransformResult,
+  type TransformPlanResult,
+  type TransformStep,
+  type ReductionResult,
   inspectOccurrence,
   type InspectionResult,
   openProjectOverview,
   createProject,
   updateProjectSettings,
   registerCase,
+  registerRevision,
   updateRegisteredCase,
   openWorkspace,
   buildIndex,
@@ -150,6 +158,8 @@ type Running =
   | "practice"
   | "sequence"
   | "transformation"
+  | "transform-plan"
+  | "reduction"
   | "review"
   | "diagnosis"
   | "finding-review"
@@ -179,6 +189,8 @@ export default function App() {
   const [practiceResult, setPracticeResult] = useState<PracticeResult | null>(null);
   const [sequenceResult, setSequenceResult] = useState<SequenceResult | null>(null);
   const [transformResult, setTransformResult] = useState<TransformResult | null>(null);
+  const [planResult, setPlanResult] = useState<TransformPlanResult | null>(null);
+  const [reductionResult, setReductionResult] = useState<ReductionResult | null>(null);
   const [reviewResult, setReviewResult] = useState<ReviewResult | null>(null);
   const [diagnosisResult, setDiagnosisResult] = useState<DiagnosisResult | null>(null);
   const [diagnosisGroupsResult, setDiagnosisGroupsResult] = useState<DiagnosisGroupsResult | null>(null);
@@ -952,6 +964,107 @@ export default function App() {
     },
     [evidence, operate, root],
   );
+
+  const savePlan = useCallback(
+    async (rules: string, profile: string, steps: TransformStep[], output: string) => {
+      const open = evidence?.case;
+      if (!root || !open) return;
+      await operate("transform-plan", async () => {
+        setPlanResult(null);
+        const result = await saveTransformPlan({
+          workspace: root,
+          case: open.name,
+          identity: open.identity,
+          rules,
+          profile,
+          steps,
+          output,
+        });
+        setPlanResult(result);
+        if (result.plan) {
+          const refreshed = await openWorkspace(root);
+          setWorkspace(refreshed);
+        }
+      });
+    },
+    [evidence, operate, root],
+  );
+
+  const runReductionPreview = useCallback(
+    async (config: ReductionForm) => {
+      const open = evidence?.case;
+      if (!root || !open) return;
+      await operate("reduction", async () => {
+        setReductionResult(null);
+        setReductionResult(
+          await previewReduction({
+            workspace: root,
+            case: open.name,
+            identity: open.identity,
+            spec: config.spec,
+            rules: config.rules,
+            grouping: config.grouping,
+            assertions: config.assertions,
+            trials: config.trials,
+            confirmations: config.confirmations,
+            reset_plan: config.resetPlan,
+            target: config.target,
+            policy: config.policy,
+            confirmed: config.confirmed,
+            work: config.work,
+          }),
+        );
+      });
+    },
+    [evidence, operate, root],
+  );
+
+  const runReduction = useCallback(
+    async (config: ReductionForm) => {
+      const open = evidence?.case;
+      if (!root || !open) return;
+      await operate("reduction", async () => {
+        setReductionResult(null);
+        setReductionResult(
+          await startReduction({
+            workspace: root,
+            case: open.name,
+            identity: open.identity,
+            spec: config.spec,
+            rules: config.rules,
+            grouping: config.grouping,
+            assertions: config.assertions,
+            trials: config.trials,
+            confirmations: config.confirmations,
+            reset_plan: config.resetPlan,
+            target: config.target,
+            policy: config.policy,
+            confirmed: config.confirmed,
+            work: config.work,
+          }),
+        );
+      });
+    },
+    [evidence, operate, root],
+  );
+
+  const registerBuiltRevision = useCallback(
+    async (source: string, name: string, parent: string) => {
+      if (!root) return;
+      await operate("project", async () => {
+        const result = await registerRevision({
+          workspace: root,
+          source,
+          name,
+          parent,
+        });
+        setInvestigation(result);
+        setWorkspace(await openWorkspace(root));
+      });
+    },
+    [operate, root],
+  );
+
 
   // An export review is read again on every call, including for the next window
   // of its inventory, so the identity an approval names is always the one the
@@ -1895,6 +2008,7 @@ export default function App() {
                 }),
               )
             }
+            parentCase={gridResult.grid.case}
             onBuild={(output: string) =>
               void reproduce((plan, open) =>
                 buildReproducer({
@@ -1906,6 +2020,16 @@ export default function App() {
                 }),
               )
             }
+            onRegister={(source, name, parent) => void registerBuiltRevision(source, name, parent)}
+            onOpenRevision={(name) => {
+              if (root) void verifyCase(root, name);
+            }}
+            onCompareRevision={(built, registered) => void compareRevisions(built, registered, "", "")}
+            onCreateTest={(name) => {
+              // Open the revision as its own case. An existing test draft stays
+              // bound to the original case identity and is not retargeted.
+              if (root) void verifyCase(root, name);
+            }}
           />
         ) : null}
         {root ? <CanonicalTestEditor key={"editor-" + root} workspace={root} drafts={drafts} busy={busy} /> : null}
@@ -2098,23 +2222,45 @@ export default function App() {
           />
         ) : null}
         {opened ? (
+          <>
           <Review
             ruleEntries={(opened.artifacts ?? []).filter((artifact) => artifact.kind === "rules").map((artifact) => artifact.name)}
             planEntries={(opened.artifacts ?? []).filter((artifact) => artifact.kind === "plan").map((artifact) => artifact.name)}
             packEntries={(opened.artifacts ?? []).filter((artifact) => artifact.kind === "pack").map((artifact) => artifact.name)}
             reviewEntries={(opened.artifacts ?? []).filter((artifact) => artifact.kind === "review").map((artifact) => artifact.name)}
             transformResult={transformResult}
+            planResult={planResult}
             reviewResult={reviewResult}
             caseOpen={verified !== null}
             busy={busy}
             transformProgress={
               running === "transformation" ? "Previewing this transformation." : null
             }
+            planProgress={running === "transform-plan" ? "Saving this transformation plan." : null}
             reviewProgress={running === "review" ? "Reading this export review." : null}
             indicators={indicators}
             onPreview={(rules, plan, profile) => void previewPlan(rules, plan, profile)}
+            onSavePlan={(rules, profile, steps, output) => void savePlan(rules, profile, steps, output)}
             onReview={(review, approve, offset) => void readReview(review, approve, offset)}
           />
+          {verified ? (
+            <Reduction
+              ruleEntries={(opened.artifacts ?? []).filter((artifact) => artifact.kind === "rules").map((artifact) => artifact.name)}
+              specEntries={(opened.artifacts ?? []).filter((artifact) => artifact.kind === "spec").map((artifact) => artifact.name)}
+              targetEntries={(opened.artifacts ?? []).filter((artifact) => artifact.kind === "target").map((artifact) => artifact.name)}
+              resetEntries={(opened.artifacts ?? []).filter((artifact) => artifact.kind === "reset").map((artifact) => artifact.name)}
+              policyEntries={(opened.artifacts ?? []).filter((artifact) => artifact.kind === "policy").map((artifact) => artifact.name)}
+              result={reductionResult}
+              busy={busy}
+              progress={running === "reduction" ? "Running or previewing this reduction." : null}
+              indicators={indicators}
+              caseOpen={verified !== null}
+              onPreview={(config) => void runReductionPreview(config)}
+              onStart={(config) => void runReduction(config)}
+              onCancel={() => cancel()}
+            />
+          ) : null}
+          </>
         ) : null}
         {opened ? (
           <EnvironmentPanel

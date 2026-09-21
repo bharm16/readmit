@@ -656,3 +656,28 @@ func TestNamingNoRequiredOccurrenceIsSafe(t *testing.T) {
 		t.Fatal("the unpinned group was tried and kept, which is what makes omitting Required safe")
 	}
 }
+
+func TestPreviewPlanReportsPartitionWithoutAskingTheOracle(t *testing.T) {
+	casePath, identity := fourMessages(t)
+	preview, err := reduce.PreviewPlan(reduce.Request{
+		Case:     casePath,
+		Plan:     plan(identity, 8, 1),
+		Messages: sequence,
+		Required: []string{sequence[1]},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Scope == "" || len(preview.Groups) == 0 {
+		t.Fatalf("preview missing partition: %+v", preview)
+	}
+	pinned := false
+	for _, group := range preview.Groups {
+		if group.Required {
+			pinned = true
+		}
+	}
+	if !pinned {
+		t.Fatal("signature-required occurrences were not pinned in the preview")
+	}
+}

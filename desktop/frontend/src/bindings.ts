@@ -586,6 +586,7 @@ export interface Facade {
   CreateProject(name: string, title: string, owner: string, versions: string[]): Promise<ProjectOverviewResult>;
   UpdateProjectSettings(path: string, change: SettingsChange): Promise<ProjectOverviewResult>;
   RegisterCase(path: string, name: string, registration: CaseRegistration): Promise<ProjectOverviewResult>;
+  RegisterRevision(request: RevisionRegistration): Promise<ProjectOverviewResult>;
   UpdateRegisteredCase(path: string, name: string, change: CaseChange): Promise<ProjectOverviewResult>;
   OpenRevisions(path: string): Promise<RevisionsResult>;
   OpenWorkspace(path: string): Promise<WorkspaceResult>;
@@ -615,6 +616,10 @@ export interface Facade {
   RunPractice(request: PracticeRequest): Promise<PracticeResult>;
   OpenSequence(request: SequenceRequest): Promise<SequenceResult>;
   PreviewTransformation(request: TransformRequest): Promise<TransformResult>;
+  SaveTransformPlan(request: TransformPlanRequest): Promise<TransformPlanResult>;
+  OpenTransformPlan(workspace: string, entry: string): Promise<TransformPlanResult>;
+  PreviewReduction(request: ReductionRequest): Promise<ReductionResult>;
+  StartReduction(request: ReductionRequest): Promise<ReductionResult>;
   OpenReview(request: ReviewRequest): Promise<ReviewResult>;
   ChooseHubConfig(): Promise<HubResult>;
   SelectHubConfig(path: string): Promise<HubResult>;
@@ -782,6 +787,20 @@ export function updateProjectSettings(path: string, change: SettingsChange): Pro
  * project maintains. The answer is the project re-read from disk. */
 export function registerCase(path: string, name: string, registration: CaseRegistration): Promise<ProjectOverviewResult> {
   return guard(() => facade().RegisterCase(path, name, registration), { state: "failed" });
+}
+
+/** Registers derived evidence as a revision of a registered case or revision.
+ * When source names a built reproducer folder, its derived case is copied into
+ * name first; the build folder is left intact for comparison. */
+export interface RevisionRegistration {
+  workspace: string;
+  name: string;
+  parent: string;
+  source?: string;
+}
+
+export function registerRevision(request: RevisionRegistration): Promise<ProjectOverviewResult> {
+  return guard(() => facade().RegisterRevision(request), { state: "failed" });
 }
 
 /** Updating a registered case changes only the members the form filled; the
@@ -2167,6 +2186,165 @@ export interface TransformRequest {
   rules: string;
   plan: string;
   profile?: string;
+}
+
+/** Authors one transformation plan over the verified case: correlation rules,
+ * optional profile pin, and the typed steps the engine already supports. */
+export interface TransformPlanRequest {
+  workspace: string;
+  case: string;
+  identity: string;
+  rules: string;
+  profile?: string;
+  steps: TransformStep[];
+  output: string;
+}
+
+export interface AuthoredTransformPlan {
+  output: string;
+  rules: string;
+  digest: string;
+  plan: TransformPlan;
+  boundary: string;
+}
+
+export interface TransformPlanResult {
+  state: State;
+  reason?: string;
+  plan?: AuthoredTransformPlan;
+}
+
+export function saveTransformPlan(request: TransformPlanRequest): Promise<TransformPlanResult> {
+  return guard(() => facade().SaveTransformPlan(request), { state: "failed" });
+}
+
+export function openTransformPlan(workspace: string, entry: string): Promise<TransformPlanResult> {
+  return guard(() => facade().OpenTransformPlan(workspace, entry), { state: "failed" });
+}
+
+/** Controlled reduction over a verified case. Confirmed names the reset
+ * actions the operator has authorised; work is new trial material, never evidence. */
+export interface ReductionRequest {
+  workspace: string;
+  case: string;
+  identity: string;
+  spec: string;
+  rules?: string;
+  grouping: string;
+  assertions: string[];
+  trials: number;
+  confirmations: number;
+  reset_plan: string;
+  target: string;
+  policy?: string;
+  confirmed: string[];
+  work: string;
+}
+
+export interface ReductionSignature {
+  state: string;
+  assertions: string[];
+}
+
+export interface ReductionPlan {
+  schema: string;
+  case: string;
+  grouping: string;
+  rules?: string;
+  signature: ReductionSignature;
+  trials: number;
+  confirmations: number;
+}
+
+export interface ReductionArtifact {
+  schema: string;
+  identity: string;
+}
+
+export interface ReductionGroup {
+  id: string;
+  occurrences: string[];
+  rules?: string[];
+  required?: boolean;
+}
+
+export interface ReductionUnsupported {
+  code: string;
+  group?: string;
+  rule?: string;
+  detail: string;
+}
+
+export interface ReductionPreview {
+  case: ReductionArtifact;
+  plan: ReductionPlan;
+  messages: string[];
+  required: string[];
+  groups: ReductionGroup[];
+  unsupported: ReductionUnsupported[];
+  scope: string;
+}
+
+export interface ReductionTrial {
+  index: number;
+  purpose: string;
+  candidate: string[];
+  removed?: string;
+  reset: string;
+  reset_reason: string;
+  state?: string;
+  failed: string[];
+  verdict: string;
+  reason?: string;
+}
+
+export interface ReductionSummary {
+  groups: number;
+  trials: number;
+  budget: number;
+  retained: number;
+  removed: number;
+  unsupported: number;
+}
+
+export interface ReductionReport {
+  schema: string;
+  case: ReductionArtifact;
+  plan: ReductionPlan;
+  groups: ReductionGroup[];
+  trials: ReductionTrial[];
+  outcome: string;
+  reason: string;
+  minimality: string;
+  retained: string[];
+  removed: string[];
+  summary: ReductionSummary;
+  unsupported: ReductionUnsupported[];
+  scope: string;
+}
+
+export interface ReductionView {
+  case: string;
+  spec: string;
+  work?: string;
+  preview?: ReductionPreview;
+  report?: ReductionReport;
+  boundary: string;
+  observation: string;
+}
+
+export interface ReductionResult {
+  state: State;
+  reason?: string;
+  reduction?: ReductionView;
+}
+
+export function previewReduction(request: ReductionRequest): Promise<ReductionResult> {
+  return guard(() => facade().PreviewReduction(request), { state: "failed" });
+}
+
+export function startReduction(request: ReductionRequest): Promise<ReductionResult> {
+  return guard(() => facade().StartReduction(request), { state: "failed" });
 }
 
 export interface TransformResult {

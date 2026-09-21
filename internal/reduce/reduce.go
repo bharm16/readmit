@@ -532,3 +532,49 @@ func without(candidate []string, id string) []string {
 	}
 	return remaining
 }
+
+// Preview is what a reduction would spend before any trial runs: how the
+// sequence is taken apart, which groups the signature pins, and the same
+// boundary statement a finished report carries. It opens and verifies the
+// case, writes nothing, and asks the oracle nothing.
+type Preview struct {
+	Case        Artifact      `json:"case"`
+	Plan        Plan          `json:"plan"`
+	Messages    []string      `json:"messages"`
+	Required    []string      `json:"required"`
+	Groups      []Group       `json:"groups"`
+	Unsupported []Unsupported `json:"unsupported"`
+	Scope       string        `json:"scope"`
+}
+
+// PreviewPlan reports how one plan would take a sequence apart. It is the
+// side-effect preview a person reads before authorising execution: no reset,
+// no send, and no derived case.
+func PreviewPlan(request Request) (Preview, error) {
+	if err := validatePlan(request.Plan); err != nil {
+		return Preview{}, err
+	}
+	source, err := bundle.Open(request.Case)
+	if err != nil {
+		return Preview{}, errors.New("the case could not be verified as complete, unmodified evidence")
+	}
+	if source.Identity != request.Plan.Case {
+		return Preview{}, errors.New("this plan was authored against different evidence than the case it was applied to")
+	}
+	if err := validateCandidates(source, request); err != nil {
+		return Preview{}, err
+	}
+	groups, notes, err := partition(request)
+	if err != nil {
+		return Preview{}, err
+	}
+	return Preview{
+		Case:        Artifact{Schema: source.Manifest.Schema, Identity: source.Identity},
+		Plan:        request.Plan,
+		Messages:    slices.Clone(request.Messages),
+		Required:    slices.Clone(request.Required),
+		Groups:      groups,
+		Unsupported: notes,
+		Scope:       boundaryStatement,
+	}, nil
+}
