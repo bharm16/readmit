@@ -29,6 +29,12 @@ export type Kind =
   | "secret"
   | "policy"
   | "reset"
+  | "diagnosis"
+  | "finding-review"
+  | "correlation-review"
+  | "normalization-policy"
+  | "diagnose-config"
+  | "finding-decisions"
   | "unsupported";
 
 /** The status of one registered case, maintained by a person. */
@@ -664,6 +670,22 @@ export interface Facade {
   StagePastedContent(request: PastedSourceRequest): Promise<PastedSourceResult>;
   PreviewImport(request: ImportRequest): Promise<ImportPreviewResult>;
   CommitImport(request: ImportCommitRequest): Promise<ImportCommitResult>;
+  RunDiagnosis(request: DiagnosisRequest): Promise<DiagnosisResult>;
+  OpenDiagnosisReport(workspace: string, entry: string, offset: number): Promise<DiagnosisResult>;
+  GroupDiagnoses(request: GroupDiagnosesRequest): Promise<DiagnosisGroupsResult>;
+  ReviewFindings(request: FindingReviewRequest): Promise<FindingReviewResult>;
+  DecideFindings(request: FindingReviewRequest): Promise<FindingReviewResult>;
+  NormalizeCompare(request: NormalizeRequest): Promise<NormalizeResult>;
+  OpenCorrelationRules(workspace: string, entry: string): Promise<CorrelationRulesResult>;
+  SaveCorrelationRules(request: RuleDocumentSaveRequest): Promise<CorrelationRulesResult>;
+  OpenSequenceAnalysis(workspace: string, entry: string): Promise<SequenceAnalysisResult>;
+  SaveSequenceAnalysis(request: RuleDocumentSaveRequest): Promise<SequenceAnalysisResult>;
+  OpenNormalizationPolicy(workspace: string, entry: string): Promise<NormalizationPolicyResult>;
+  SaveNormalizationPolicy(request: RuleDocumentSaveRequest): Promise<NormalizationPolicyResult>;
+  OpenDiagnoseConfig(workspace: string, entry: string): Promise<DiagnoseConfigResult>;
+  SaveDiagnoseConfig(request: RuleDocumentSaveRequest): Promise<DiagnoseConfigResult>;
+  OpenFindingDecisions(workspace: string, entry: string): Promise<FindingDecisionsResult>;
+  SaveFindingDecisions(request: RuleDocumentSaveRequest): Promise<FindingDecisionsResult>;
 }
 
 declare global {
@@ -4048,4 +4070,552 @@ export function importScenarioLibrary(request: ScenarioLibraryRequest): Promise<
 
 export function generateSynth(request: SynthGenerateRequest): Promise<SynthGenerateResult> {
   return guard(() => facade().GenerateSynth(request), { state: "failed" });
+}
+
+/** The verified case, the configuration a diagnosis runs under, and the new
+ * directory entry the report is written into. `config` names a workspace entry
+ * declaring readmit-diagnose-config/v1; `builtin` selects one of the three
+ * built-in configurations ("siu", "lifecycle", "order") when `config` is
+ * empty. Nothing is chosen implicitly. */
+export interface DiagnosisRequest {
+  workspace: string;
+  case: string;
+  identity: string;
+  config?: string;
+  builtin?: string;
+  output?: string;
+  offset: number;
+}
+
+export interface DiagnosisSourceWindow {
+  source_id: string;
+  first_occurrence: string;
+  last_occurrence: string;
+}
+
+/** The observed case window: what the capture recorded, never a complete
+ * lifecycle. The description is the engine's own sentence and is rendered
+ * rather than summarized. */
+export interface DiagnosisWindow {
+  description: string;
+  occurrences: number;
+  observed_start: string | null;
+  observed_end: string | null;
+  unknown_observed_times: number;
+  sources: DiagnosisSourceWindow[];
+}
+
+/** One evidence reference of one finding: the occurrence, the canonical field
+ * selector and the decoded state. No value is here; reading the bytes is the
+ * inspector, exactly as it is for a comparison. */
+export interface DiagnosisEvidence {
+  occurrence: string;
+  field: string;
+  state: FieldState;
+  offset: number | null;
+  length: number | null;
+}
+
+export interface DiagnosisFinding {
+  id: string;
+  rule_id: string;
+  classification: string;
+  profile: string;
+  ruleset: string;
+  summary: string;
+  window?: string;
+  evidence: DiagnosisEvidence[];
+}
+
+export interface DiagnosisUnsupported {
+  code: string;
+  occurrence?: string;
+  field?: string;
+  detail: string;
+}
+
+/** One diagnosis report windowed for the panes. Every count is the engine's
+ * own, and `report_sha256` is the identity a finding review must name. */
+export interface Diagnosis {
+  case: string;
+  config?: string;
+  report_sha256: string;
+  schema: string;
+  profile: string;
+  ruleset: string;
+  rules: string[];
+  window: DiagnosisWindow;
+  scope: string;
+  no_findings?: string;
+  offset: number;
+  total: number;
+  findings: DiagnosisFinding[];
+  unsupported: DiagnosisUnsupported[];
+}
+
+export interface DiagnosisResult {
+  state: State;
+  reason?: string;
+  output?: string;
+  diagnosis?: Diagnosis;
+}
+
+/** One complete retained diagnosis, exactly as readmit-diagnosis/v1 declares
+ * it. A grouping carries every member unchanged. */
+export interface DiagnosisReport {
+  schema: string;
+  config_sha256: string;
+  case_identity: string;
+  profile: string;
+  ruleset: string;
+  rules: string[];
+  window: DiagnosisWindow;
+  findings: DiagnosisFinding[];
+  unsupported: DiagnosisUnsupported[];
+  scope: string;
+  no_findings?: string;
+}
+
+export interface GroupDiagnosesRequest {
+  workspace: string;
+  cases: string[];
+  config?: string;
+  builtin?: string;
+  offset: number;
+}
+
+export interface DiagnosisFindingReference {
+  case_identity: string;
+  finding_id: string;
+}
+
+export interface DiagnosisOccurrenceReference {
+  case_identity: string;
+  occurrence: string;
+}
+
+export interface DiagnosisFindingGroup {
+  signature: string;
+  rule_id: string;
+  members: DiagnosisFindingReference[];
+  representatives: DiagnosisFindingReference[];
+  occurrences: DiagnosisOccurrenceReference[];
+}
+
+/** Findings of several cases grouped by signature. Equal signatures mean the
+ * same diagnostic shape, never the same root cause, and every finding stays in
+ * `cases`; the scope sentence is rendered rather than summarized. */
+export interface DiagnosisGroups {
+  schema: string;
+  scope: string;
+  cases: DiagnosisReport[];
+  groups: DiagnosisFindingGroup[];
+}
+
+export interface DiagnosisGroupsResult {
+  state: State;
+  reason?: string;
+  offset: number;
+  total: number;
+  groups?: DiagnosisGroups;
+}
+
+/** One person's judgment about one finding. The rationale is required for
+ * every verdict; a scope belongs to a suppression alone. */
+export interface FindingDecision {
+  finding: string;
+  verdict: string;
+  scope?: string;
+  rationale: string;
+}
+
+/** The report the decisions were read against, bound by identity, and the
+ * analyst's typed decisions. `output` and `decisions_output` are read by
+ * DecideFindings alone. */
+export interface FindingReviewRequest {
+  workspace: string;
+  case: string;
+  identity: string;
+  report: string;
+  report_sha256: string;
+  decisions: FindingDecision[];
+  offset: number;
+  output?: string;
+  decisions_output?: string;
+}
+
+/** What one confirmed finding promotes to: the draft assertions a regression
+ * test would hold, derived from the verified case, never asserted from the
+ * report alone. */
+export interface FindingPromotion {
+  messages: string[];
+  expectations: TestExpectation[];
+  unsupported: DiagnosisUnsupported[];
+}
+
+export interface FindingReviewProvenance {
+  schema: string;
+  report_sha256: string;
+  case_identity: string;
+  config_sha256: string;
+  profile: string;
+  ruleset: string;
+}
+
+/** One finding as the review leaves it: what the machine found, what a person
+ * decided, how it came by that verdict, and what it promotes to. */
+export interface FindingStatus {
+  finding: string;
+  rule_id: string;
+  classification: string;
+  verdict: string;
+  basis: string;
+  scope?: string;
+  suppressed_by?: string;
+  rationale?: string;
+  next_evidence: string;
+  promotion?: FindingPromotion;
+}
+
+/** The review: the machine's findings and one person's judgment of them,
+ * joined but still distinguishable, bound to the exact documents both were
+ * read from. The statement is rendered rather than summarized. */
+export interface FindingReviewRecord {
+  schema: string;
+  engine: string;
+  diagnosis: FindingReviewProvenance;
+  decisions_sha256: string;
+  boundary: string;
+  findings: FindingStatus[];
+  statement: string;
+}
+
+export interface FindingReview {
+  record: FindingReviewRecord;
+  offset: number;
+  total: number;
+}
+
+export interface FindingReviewResult {
+  state: State;
+  reason?: string;
+  output?: string;
+  decisions_output?: string;
+  review?: FindingReview;
+}
+
+/** The two collections, the declared policy, and the alignment, exactly as
+ * CompareRequest names them — plus the policy entry. */
+export interface NormalizeRequest {
+  workspace: string;
+  left: string;
+  identity: string;
+  right: string;
+  policy: string;
+  keys: string[];
+  fields: string[];
+  offset: number;
+  limit: number;
+}
+
+/** One authored normalization rule: one typed operator scoped to exactly one
+ * canonical selector. */
+export interface NormalizationRule {
+  id: string;
+  selector: string;
+  operator: string;
+  precision?: string;
+  tolerance?: string;
+}
+
+export interface NormalizationPolicy {
+  schema: string;
+  rules: NormalizationRule[];
+}
+
+/** One authored rule as it was applied. Every rule appears, including one that
+ * addressed nothing, because a policy whose effect a reader cannot see is
+ * worse than no policy at all. */
+export interface NormalizationRuleReport {
+  id: string;
+  selector: string;
+  operator: string;
+  precision?: string;
+  tolerance?: string;
+  compared: number;
+  suppressed: number;
+  retained: number;
+  undecided: number;
+}
+
+/** One field the comparison reported and what the policy did about it —
+ * suppressed, retained, undecided or unaddressed. No member could hold a
+ * value, in any mode, by construction. */
+export interface NormalizationDifference {
+  left_occurrence: string;
+  right_occurrence: string;
+  selector: string;
+  name?: string;
+  status: string;
+  left_state: FieldState;
+  right_state: FieldState;
+  outcome: string;
+  rule?: string;
+  reason?: string;
+}
+
+export interface NormalizationSummary {
+  paired: number;
+  differences: number;
+  uncompared: number;
+  suppressed: number;
+  retained: number;
+  undecided: number;
+  unaddressed: number;
+  inserted: number;
+  missing: number;
+  ambiguous: number;
+  unaligned: number;
+}
+
+/** One policy-scoped reading of one comparison, windowed. The raw comparison
+ * remains readmit-diff/v1, unchanged by anything here, and `policy_sha256` is
+ * the exact policy revision this reading ran under. */
+export interface Normalization {
+  left: string;
+  right: string;
+  policy: string;
+  policy_sha256: string;
+  report: string;
+  policy_schema: string;
+  scope: string;
+  boundary: ComparisonBoundary;
+  left_summary: ComparedCollection;
+  right_summary: ComparedCollection;
+  alignment: string;
+  keys: string[];
+  fields: string[];
+  rules: NormalizationRuleReport[];
+  summary: NormalizationSummary;
+  offset: number;
+  limit: number;
+  total: number;
+  differences: NormalizationDifference[];
+  unsupported: ComparisonGap[];
+}
+
+export interface NormalizeResult {
+  state: State;
+  reason?: string;
+  normalization?: Normalization;
+}
+
+/** Saves one canonical authored document into one new entry of the open
+ * workspace. `document` is the JSON text the editor holds. */
+export interface RuleDocumentSaveRequest {
+  workspace: string;
+  document: string;
+  output: string;
+}
+
+export interface CorrelationAuthority {
+  key: string;
+  namespace: string;
+  universal_id: string;
+  universal_id_type: string;
+}
+
+export interface CorrelationRuleDeclaration {
+  id: string;
+  operator: CorrelationOperator;
+  scope: CorrelationScope;
+  sources?: string[];
+  value?: string;
+  authority?: string[];
+}
+
+export interface CorrelationRulesDocument {
+  schema: string;
+  authorities?: CorrelationAuthority[];
+  rules: CorrelationRuleDeclaration[];
+}
+
+/** One authored correlation-rules document. `sha256` is the digest of the
+ * exact bytes the entry holds, which is what a sequence or a correlation
+ * review binds a derived view to. */
+export interface CorrelationRulesResult {
+  state: State;
+  reason?: string;
+  document?: string;
+  output?: string;
+  sha256?: string;
+  rules?: CorrelationRulesDocument;
+}
+
+export interface AnalysisWindowDeclaration {
+  source: string;
+  start: string;
+  end: string;
+  coverage: string;
+}
+
+export interface AnalysisRetryDeclaration {
+  first: string;
+  retry: string;
+  basis: string;
+}
+
+export interface AnalysisDownstreamDeclaration {
+  occurrence: string;
+  source: string;
+  rule: string;
+}
+
+/** One authored sequence-analysis declaration, exactly as the sequence itself
+ * reads it. */
+export interface SequenceAnalysisDeclaration {
+  rules_sha256: string;
+  schema: string;
+  case_identity: string;
+  clock_tolerance_seconds: number;
+  windows: AnalysisWindowDeclaration[];
+  retries: AnalysisRetryDeclaration[];
+  downstream: AnalysisDownstreamDeclaration[];
+}
+
+export interface SequenceAnalysisResult {
+  state: State;
+  reason?: string;
+  document?: string;
+  output?: string;
+  declaration?: SequenceAnalysisDeclaration;
+}
+
+export interface NormalizationPolicyResult {
+  state: State;
+  reason?: string;
+  document?: string;
+  output?: string;
+  sha256?: string;
+  policy?: NormalizationPolicy;
+}
+
+export interface DiagnoseConfigNamespace {
+  key: string;
+  namespace: string;
+  universal_id: string;
+  universal_id_type: string;
+}
+
+export interface DiagnoseConfig {
+  schema: string;
+  profile: string;
+  ruleset: string;
+  rules: string[];
+  namespaces: DiagnoseConfigNamespace[];
+}
+
+export interface DiagnoseConfigResult {
+  state: State;
+  reason?: string;
+  document?: string;
+  output?: string;
+  config?: DiagnoseConfig;
+}
+
+export interface FindingDecisionsDocument {
+  schema: string;
+  report_sha256: string;
+  decisions: FindingDecision[];
+}
+
+export interface FindingDecisionsResult {
+  state: State;
+  reason?: string;
+  document?: string;
+  output?: string;
+  sha256?: string;
+  decisions?: FindingDecisionsDocument;
+}
+
+/** Runs one supported diagnosis over the verified case and writes report.json
+ * and report.md into one new directory entry, exactly as `readmit diagnose`
+ * writes them. Never overwrites a retained report. */
+export function runDiagnosis(request: DiagnosisRequest): Promise<DiagnosisResult> {
+  return guard(() => facade().RunDiagnosis(request), { state: "failed" });
+}
+
+/** Reads one retained diagnosis report directory with the same strict reader a
+ * review uses, and reports the identity a review must name. */
+export function openDiagnosisReport(
+  workspace: string,
+  entry: string,
+  offset: number,
+): Promise<DiagnosisResult> {
+  return guard(() => facade().OpenDiagnosisReport(workspace, entry, offset), { state: "failed" });
+}
+
+/** Re-evaluates the selected cases under one configuration and groups equal
+ * finding signatures, exactly as `readmit diagnose groups` does. */
+export function groupDiagnoses(request: GroupDiagnosesRequest): Promise<DiagnosisGroupsResult> {
+  return guard(() => facade().GroupDiagnoses(request), { state: "failed", offset: 0, total: 0 });
+}
+
+/** Joins the diagnosis and the analyst's decisions and reports every verdict,
+ * basis, suppression scope and promotion — writing nothing. */
+export function reviewFindings(request: FindingReviewRequest): Promise<FindingReviewResult> {
+  return guard(() => facade().ReviewFindings(request), { state: "failed" });
+}
+
+/** Re-verifies all inputs and persists the decisions document and the review
+ * directory, exactly as `readmit diagnose review` writes them. */
+export function decideFindings(request: FindingReviewRequest): Promise<FindingReviewResult> {
+  return guard(() => facade().DecideFindings(request), { state: "failed" });
+}
+
+/** Reads two collections under a declared policy and reports every difference
+ * beside what the policy did about it. It never edits the raw comparison and
+ * never changes a source byte. */
+export function normalizeCompare(request: NormalizeRequest): Promise<NormalizeResult> {
+  return guard(() => facade().NormalizeCompare(request), { state: "failed" });
+}
+
+export function openCorrelationRules(workspace: string, entry: string): Promise<CorrelationRulesResult> {
+  return guard(() => facade().OpenCorrelationRules(workspace, entry), { state: "failed" });
+}
+
+export function saveCorrelationRules(request: RuleDocumentSaveRequest): Promise<CorrelationRulesResult> {
+  return guard(() => facade().SaveCorrelationRules(request), { state: "failed" });
+}
+
+export function openSequenceAnalysis(workspace: string, entry: string): Promise<SequenceAnalysisResult> {
+  return guard(() => facade().OpenSequenceAnalysis(workspace, entry), { state: "failed" });
+}
+
+export function saveSequenceAnalysis(request: RuleDocumentSaveRequest): Promise<SequenceAnalysisResult> {
+  return guard(() => facade().SaveSequenceAnalysis(request), { state: "failed" });
+}
+
+export function openNormalizationPolicy(workspace: string, entry: string): Promise<NormalizationPolicyResult> {
+  return guard(() => facade().OpenNormalizationPolicy(workspace, entry), { state: "failed" });
+}
+
+export function saveNormalizationPolicy(request: RuleDocumentSaveRequest): Promise<NormalizationPolicyResult> {
+  return guard(() => facade().SaveNormalizationPolicy(request), { state: "failed" });
+}
+
+export function openDiagnoseConfig(workspace: string, entry: string): Promise<DiagnoseConfigResult> {
+  return guard(() => facade().OpenDiagnoseConfig(workspace, entry), { state: "failed" });
+}
+
+export function saveDiagnoseConfig(request: RuleDocumentSaveRequest): Promise<DiagnoseConfigResult> {
+  return guard(() => facade().SaveDiagnoseConfig(request), { state: "failed" });
+}
+
+export function openFindingDecisions(workspace: string, entry: string): Promise<FindingDecisionsResult> {
+  return guard(() => facade().OpenFindingDecisions(workspace, entry), { state: "failed" });
+}
+
+export function saveFindingDecisions(request: RuleDocumentSaveRequest): Promise<FindingDecisionsResult> {
+  return guard(() => facade().SaveFindingDecisions(request), { state: "failed" });
 }

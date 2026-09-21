@@ -40,6 +40,18 @@ const STAGES: TestStage[] = [
 
 const STATES: FieldState[] = ["present", "empty", "null", "omitted"];
 
+/** Where a promoted draft came from: the finding, the exact diagnosis report
+ * it was found in, the review that recorded the confirmation, and the typed
+ * rationale. It rides the editor-draft envelope, never the saved spec: a
+ * readmit-test/v1 document carries no provenance member, so the durable
+ * record is the review directory retained beside the spec. */
+export type PromotionProvenance = {
+  finding: string;
+  report_sha256: string;
+  review: string;
+  decision_rationale: string;
+};
+
 /** What a reviewer has said about one proposal so far. `approved` is undefined
  * until they say something: the default is not acceptance, and a proposal
  * nobody decided is recorded nowhere. */
@@ -67,6 +79,7 @@ export function TestAuthoring({
   progress,
   indicators,
   restoredDraft,
+  provenance,
   onDiscardDraft,
   onAnswer,
   onSave,
@@ -80,6 +93,10 @@ export function TestAuthoring({
   progress: string | null;
   indicators: Indicators;
   restoredDraft?: boolean;
+  /** Set when this draft was promoted from an explicitly confirmed diagnosis
+   * finding, so the analyst sees where it came from. Read-only: it changes
+   * nothing about what the draft holds or what a save writes. */
+  provenance?: PromotionProvenance | null;
   onDiscardDraft?: () => void;
   onAnswer: (answer: TestAnswer) => void;
   onSave: (output: string) => void;
@@ -147,6 +164,18 @@ export function TestAuthoring({
         engine writes the spec and the command line runs the same file.
       </p>
       <Report indicators={indicators} progress={progress} result={result} />
+      {provenance ? (
+        <div role="status" className="promoted-draft">
+          <p>
+            Drafted from finding {provenance.finding} of diagnosis {provenance.report_sha256}
+            {provenance.review ? `, recorded in ${provenance.review}` : ""}
+            {provenance.decision_rationale ? ` — rationale: ${provenance.decision_rationale}` : ""}.
+            Promotion expresses only acknowledgement-field expectations at the ack-contract
+            boundary; the saved spec carries no provenance member, and the review directory beside
+            it is the durable record.
+          </p>
+        </div>
+      ) : null}
       {restoredDraft ? (
         <div role="status" className="restored-draft">
           <p>

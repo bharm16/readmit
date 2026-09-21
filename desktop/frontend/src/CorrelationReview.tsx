@@ -3,12 +3,25 @@ import type { CorrelationDecision, CorrelationReviewRequest, CorrelationReviewRe
 
 const emptyDecision: CorrelationDecision = { action: "add", link: "", from: "", to: "", actor: "", reason: "" };
 
+/** One occurrence ID as it is drawn: a button that selects the original
+ * occurrence in the inspector where the host offers that, and plain text where
+ * it does not. Navigation reads evidence; it decides nothing. */
+function Occurrence({ id, busy, onSelect }: {
+  id: string; busy: boolean; onSelect?: ((occurrence: string) => void) | undefined;
+}) {
+  if (!onSelect) return <>{id}</>;
+  return <button type="button" className="occurrence-link" disabled={busy} onClick={() => onSelect(id)}>{id}</button>;
+}
+
 /** An explicitly selected local history, never an implicit latest mapping.
  * All interpretation, validation and persistence are Go operations. */
-export function CorrelationReview({ busy, reviews, context, onReview }: {
+export function CorrelationReview({ busy, reviews, context, onReview, onSelect }: {
   busy: boolean; reviews: string[];
   context: Pick<CorrelationReviewRequest, "workspace" | "case" | "identity" | "rules" | "rules_sha256">;
   onReview: (request: CorrelationReviewRequest, write: boolean) => Promise<CorrelationReviewResult>;
+  /** Selects one occurrence in the inspector, so a link or a collision can be
+   * read at its original bytes. */
+  onSelect?: (occurrence: string) => void;
 }) {
   const [previous, setPrevious] = useState("");
   const [result, setResult] = useState<CorrelationReviewResult | null>(null);
@@ -50,7 +63,7 @@ export function CorrelationReview({ busy, reviews, context, onReview }: {
         <thead><tr><th>Link</th><th>Origin</th><th>Occurrences</th><th>Decision</th><th>Review</th></tr></thead>
         <tbody>{view.links.map(link => <tr key={link.id}>
           <th>{link.id}</th><td>{link.linkage}{link.rule ? ` · ${link.rule}` : ""}</td>
-          <td>{link.occurrences.map(ref => ref.occurrence).join(", ")} ({link.total_occurrences} total)</td>
+          <td>{link.occurrences.map((ref, index) => <span key={`${ref.occurrence}:${index}`}>{index > 0 ? ", " : ""}<Occurrence id={ref.occurrence} busy={busy} onSelect={onSelect} /></span>)} ({link.total_occurrences} total)</td>
           <td>{link.status}</td><td>
             <button type="button" disabled={busy || link.status === "accepted"} onClick={() => setDecision({ ...decision, action: "accept", link: link.id, from: "", to: "" })}>Accept</button>
             <button type="button" disabled={busy || link.status === "rejected"} onClick={() => setDecision({ ...decision, action: "reject", link: link.id, from: "", to: "" })}>Reject</button>
@@ -58,8 +71,8 @@ export function CorrelationReview({ busy, reviews, context, onReview }: {
       </table>
       <h5>Original ambiguities (never overwritten by decisions)</h5>
       <ul>{view.collisions.map((entry, index) => <li key={index}>
-        {entry.finding.rule} · {entry.finding.reason} · declaring {entry.finding.declaring?.occurrence ?? "none"}
-        <br />Candidates: {entry.finding.occurrences.map(ref => ref.occurrence).join(", ")} ({entry.total_occurrences} total)
+        {entry.finding.rule} · {entry.finding.reason} · declaring {entry.finding.declaring?.occurrence ? <Occurrence id={entry.finding.declaring.occurrence} busy={busy} onSelect={onSelect} /> : "none"}
+        <br />Candidates: {entry.finding.occurrences.map((ref, index) => <span key={`${ref.occurrence}:${index}`}>{index > 0 ? ", " : ""}<Occurrence id={ref.occurrence} busy={busy} onSelect={onSelect} /></span>)} ({entry.total_occurrences} total)
       </li>)}</ul>
       <form onSubmit={event => { event.preventDefault(); void run(true); }}>
         <h5>{decision.action === "add" ? "Add an analyst link" : `${decision.action} ${decision.link}`}</h5>

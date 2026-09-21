@@ -5,6 +5,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/bharm16/readmit/internal/diagnose"
+	"github.com/bharm16/readmit/internal/findingreview"
 )
 
 // maxSchemaSniffBytes bounds how far into a regular file the listing looks for
@@ -27,6 +30,8 @@ var schemaMarkerFiles = []struct {
 	{"engine.json", JobArtifact},
 	{"result.json", ResultArtifact},
 	{"review.json", ReviewArtifact},
+	{"report.json", DiagnosisArtifact},
+	{"machine.json", CorrelationReviewArtifact},
 }
 
 // declaredSchemas are the contracts a regular file can declare that this
@@ -50,6 +55,10 @@ var declaredSchemas = map[string]Kind{
 	"readmit-send-policy/v1":       PolicyArtifact,
 	"readmit-reset-plan/v1":        ResetArtifact,
 	"readmit-reset-outcome/v1":     ResetArtifact,
+
+	"readmit-normalization-policy/v1": NormalizationArtifact,
+	"readmit-diagnose-config/v1":      DiagnoseConfigArtifact,
+	"readmit-finding-decisions/v1":    DecisionsArtifact,
 }
 
 // classify reports what one workspace entry declares, beyond what the case
@@ -64,7 +73,7 @@ func classify(root, name string, isDir bool) (Kind, bool) {
 	if isDir {
 		for _, marker := range schemaMarkerFiles {
 			if info, err := os.Lstat(filepath.Join(path, marker.name)); err == nil && info.Mode().IsRegular() {
-				return marker.kind, true
+				return refinedMarker(filepath.Join(path, marker.name), marker.kind)
 			}
 		}
 		return UnsupportedArtifact, false
@@ -75,6 +84,32 @@ func classify(root, name string, isDir bool) (Kind, bool) {
 	}
 	kind, known := declaredSchemas[schema]
 	return kind, known
+}
+
+// refinedMarker lets a marker file's own declared contract refine what the
+// directory is called, exactly as a flat file's declared contract already
+// does. Two names carry more than one contract: review.json is an export
+// review unless it declares the finding-review contract, so a finding review
+// never lists as the export review it is not; and report.json names a
+// diagnosis only when it declares a diagnosis contract, so a directory
+// holding some other report.json stays unsupported here, exactly as before
+// this release read any report.json at all. Every other marker keeps its one
+// kind, and nothing here verifies the directory — opening it still does.
+func refinedMarker(path string, kind Kind) (Kind, bool) {
+	switch kind {
+	case ReviewArtifact:
+		if schema, ok := sniffSchema(path); ok && schema == findingreview.Schema {
+			return FindingReviewArtifact, true
+		}
+		return ReviewArtifact, true
+	case DiagnosisArtifact:
+		schema, ok := sniffSchema(path)
+		if !ok || (schema != diagnose.Schema && schema != diagnose.GroupsSchema) {
+			return UnsupportedArtifact, false
+		}
+		return DiagnosisArtifact, true
+	}
+	return kind, true
 }
 
 // sniffSchema reads a bounded window of a regular file and reports the

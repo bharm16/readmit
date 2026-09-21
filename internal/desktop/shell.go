@@ -117,6 +117,12 @@ var indicators = []Indicator{
 	{Status: string(SecretArtifact), Symbol: "⚿", Label: "Credential references"},
 	{Status: string(PolicyArtifact), Symbol: "◖", Label: "Send policy"},
 	{Status: string(ResetArtifact), Symbol: "↺", Label: "Fixture reset"},
+	{Status: string(DiagnosisArtifact), Symbol: "⊞", Label: "Diagnosis report"},
+	{Status: string(FindingReviewArtifact), Symbol: "⊟", Label: "Finding review"},
+	{Status: string(CorrelationReviewArtifact), Symbol: "⊠", Label: "Correlation review"},
+	{Status: string(NormalizationArtifact), Symbol: "⊡", Label: "Normalization policy"},
+	{Status: string(DiagnoseConfigArtifact), Symbol: "⌬", Label: "Diagnose configuration"},
+	{Status: string(DecisionsArtifact), Symbol: "⊦", Label: "Finding decisions"},
 	{Status: string(UnsupportedArtifact), Symbol: "?", Label: "Unsupported here"},
 
 	{Status: string(project.StatusOpen), Symbol: "◇", Label: "Open"},

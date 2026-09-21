@@ -132,7 +132,7 @@
       "screen": "a diagnosis screen",
       "action": "write evidence-bound diagnosis and record analyst decisions",
       "test": "desktop diagnosis journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.diagnose.review",
@@ -143,7 +143,7 @@
       "screen": "a diagnosis screen",
       "action": "write evidence-bound diagnosis and record analyst decisions",
       "test": "desktop diagnosis journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.diff",
@@ -473,7 +473,7 @@
       "screen": "a comparison screen",
       "action": "compare fields under a declared normalization policy",
       "test": "desktop normalize journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.observe.collect",
@@ -2999,6 +2999,182 @@
       "screen": "a capture screen",
       "action": "start only on explicit authorized action and show capture states",
       "test": "desktop capture journey test and shared-operation parity",
+      "implemented": true
+    },
+    {
+      "id": "desktop.DecideFindings",
+      "source": "desktop.App.DecideFindings",
+      "kind": "desktop",
+      "capability": "decideFindings application operation",
+      "owner": "bharm16/readmit#253",
+      "screen": "the diagnosis panel over a verified case",
+      "action": "persist the decisions document and the review directory exactly as readmit diagnose review writes them",
+      "test": "desktop finding-review behavior tests plus internal/desktop finding_review tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.GroupDiagnoses",
+      "source": "desktop.App.GroupDiagnoses",
+      "kind": "desktop",
+      "capability": "groupDiagnoses application operation",
+      "owner": "bharm16/readmit#253",
+      "screen": "the diagnosis panel over a verified case",
+      "action": "group findings from selected cases by signature without hiding any finding",
+      "test": "desktop diagnosis behavior tests plus internal/desktop diagnosis tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.NormalizeCompare",
+      "source": "desktop.App.NormalizeCompare",
+      "kind": "desktop",
+      "capability": "normalizeCompare application operation",
+      "owner": "bharm16/readmit#253",
+      "screen": "the comparison panel's normalization section",
+      "action": "compare two collections under a declared policy and list every suppressed, retained, undecided and unaddressed difference",
+      "test": "desktop normalize behavior tests plus internal/desktop normalize tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.OpenCorrelationRules",
+      "source": "desktop.App.OpenCorrelationRules",
+      "kind": "desktop",
+      "capability": "openCorrelationRules application operation",
+      "owner": "bharm16/readmit#253",
+      "screen": "the Sequence panel's rules editor",
+      "action": "open one correlation-rules document from the open workspace",
+      "test": "desktop rules-editor behavior tests plus internal/desktop ruledocs tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.OpenDiagnoseConfig",
+      "source": "desktop.App.OpenDiagnoseConfig",
+      "kind": "desktop",
+      "capability": "openDiagnoseConfig application operation",
+      "owner": "bharm16/readmit#253",
+      "screen": "the diagnosis panel over a verified case",
+      "action": "open one diagnose-config document from the open workspace",
+      "test": "desktop rules-editor behavior tests plus internal/desktop ruledocs tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.OpenDiagnosisReport",
+      "source": "desktop.App.OpenDiagnosisReport",
+      "kind": "desktop",
+      "capability": "openDiagnosisReport application operation",
+      "owner": "bharm16/readmit#253",
+      "screen": "the diagnosis panel over a verified case",
+      "action": "open one retained diagnosis report directory and report the identity a review must name",
+      "test": "desktop diagnosis behavior tests plus internal/desktop diagnosis tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.OpenFindingDecisions",
+      "source": "desktop.App.OpenFindingDecisions",
+      "kind": "desktop",
+      "capability": "openFindingDecisions application operation",
+      "owner": "bharm16/readmit#253",
+      "screen": "the diagnosis panel over a verified case",
+      "action": "open one finding-decisions document from the open workspace",
+      "test": "desktop rules-editor behavior tests plus internal/desktop ruledocs tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.OpenNormalizationPolicy",
+      "source": "desktop.App.OpenNormalizationPolicy",
+      "kind": "desktop",
+      "capability": "openNormalizationPolicy application operation",
+      "owner": "bharm16/readmit#253",
+      "screen": "the comparison panel's normalization section",
+      "action": "open one normalization-policy document from the open workspace",
+      "test": "desktop rules-editor behavior tests plus internal/desktop ruledocs tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.OpenSequenceAnalysis",
+      "source": "desktop.App.OpenSequenceAnalysis",
+      "kind": "desktop",
+      "capability": "openSequenceAnalysis application operation",
+      "owner": "bharm16/readmit#253",
+      "screen": "the Sequence panel's rules editor",
+      "action": "open one sequence-analysis declaration from the open workspace",
+      "test": "desktop rules-editor behavior tests plus internal/desktop ruledocs tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ReviewFindings",
+      "source": "desktop.App.ReviewFindings",
+      "kind": "desktop",
+      "capability": "reviewFindings application operation",
+      "owner": "bharm16/readmit#253",
+      "screen": "the diagnosis panel over a verified case",
+      "action": "join a diagnosis with analyst decisions and report every verdict, basis, scope and promotion without writing",
+      "test": "desktop finding-review behavior tests plus internal/desktop finding_review tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.RunDiagnosis",
+      "source": "desktop.App.RunDiagnosis",
+      "kind": "desktop",
+      "capability": "runDiagnosis application operation",
+      "owner": "bharm16/readmit#253",
+      "screen": "the diagnosis panel over a verified case",
+      "action": "run one supported diagnosis and write report.json and report.md into one new directory entry",
+      "test": "desktop diagnosis behavior tests plus internal/desktop diagnosis tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveCorrelationRules",
+      "source": "desktop.App.SaveCorrelationRules",
+      "kind": "desktop",
+      "capability": "saveCorrelationRules application operation",
+      "owner": "bharm16/readmit#253",
+      "screen": "the Sequence panel's rules editor",
+      "action": "save one canonical correlation-rules document into one new workspace entry",
+      "test": "desktop rules-editor behavior tests plus internal/desktop ruledocs tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveDiagnoseConfig",
+      "source": "desktop.App.SaveDiagnoseConfig",
+      "kind": "desktop",
+      "capability": "saveDiagnoseConfig application operation",
+      "owner": "bharm16/readmit#253",
+      "screen": "the diagnosis panel over a verified case",
+      "action": "save one canonical diagnose-config document into one new workspace entry",
+      "test": "desktop rules-editor behavior tests plus internal/desktop ruledocs tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveFindingDecisions",
+      "source": "desktop.App.SaveFindingDecisions",
+      "kind": "desktop",
+      "capability": "saveFindingDecisions application operation",
+      "owner": "bharm16/readmit#253",
+      "screen": "the diagnosis panel over a verified case",
+      "action": "save one canonical finding-decisions document into one new workspace entry",
+      "test": "desktop rules-editor behavior tests plus internal/desktop ruledocs tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveNormalizationPolicy",
+      "source": "desktop.App.SaveNormalizationPolicy",
+      "kind": "desktop",
+      "capability": "saveNormalizationPolicy application operation",
+      "owner": "bharm16/readmit#253",
+      "screen": "the comparison panel's normalization section",
+      "action": "save one canonical normalization-policy document into one new workspace entry",
+      "test": "desktop rules-editor behavior tests plus internal/desktop ruledocs tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveSequenceAnalysis",
+      "source": "desktop.App.SaveSequenceAnalysis",
+      "kind": "desktop",
+      "capability": "saveSequenceAnalysis application operation",
+      "owner": "bharm16/readmit#253",
+      "screen": "the Sequence panel's rules editor",
+      "action": "save one canonical sequence-analysis declaration into one new workspace entry",
+      "test": "desktop rules-editor behavior tests plus internal/desktop ruledocs tests",
       "implemented": true
     }
   ]

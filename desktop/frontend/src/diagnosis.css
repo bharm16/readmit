@@ -1,0 +1,59 @@
+.diagnosis {
+  border-top: 1px solid currentColor;
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+.diagnosis form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.diagnosis .scope {
+  color: var(--muted);
+  margin: 0.25rem 0 0.5rem;
+}
+
+.diagnosis-window {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.35rem 0;
+}
+
+.diagnosis .findings,
+.diagnosis .evidence {
+  list-style: none;
+  margin: 0.25rem 0;
+  padding: 0;
+}
+
+.diagnosis .findings > li {
+  border-bottom: 1px solid var(--line);
+  padding: 0.35rem 0;
+}
+
+.diagnosis .findings .occurrence {
+  font-weight: 600;
+  margin-inline-end: 0.5rem;
+}
+
+.diagnosis .findings .reason {
+  color: var(--muted);
+  display: block;
+}
+
+.diagnosis .evidence li {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.finding-group h4 {
+  margin-bottom: 0.25rem;
+}

@@ -304,6 +304,34 @@ func TestListingDistinguishesWhatWorkspaceEntriesDeclare(t *testing.T) {
 	}
 	writeDocument(t, root, filepath.Join("review-out", "review.json"), `{"schema":"readmit-review/v1"}`)
 	writeDocument(t, root, "notes.txt", "not evidence")
+	// The diagnosis, finding-review and correlation-review directories and the
+	// three authored documents this release adds pickers for — each named for
+	// what its own record declares. A review.json declaring the finding-review
+	// contract is a finding review, and the export review above stays an
+	// export review; a report.json declaring anything but a diagnosis contract
+	// stays unsupported here.
+	writeDocument(t, root, "compare.policy.json", `{"schema":"readmit-normalization-policy/v1","rules":[]}`)
+	writeDocument(t, root, "diagnose.config.json", `{"schema":"readmit-diagnose-config/v1"}`)
+	writeDocument(t, root, "verdicts.json", `{"schema":"readmit-finding-decisions/v1","report_sha256":"x","decisions":[]}`)
+	for directory, marker := range map[string]string{
+		"diagnosis-out":      `{"schema":"readmit-diagnosis/v1"}`,
+		"groups-out":         `{"schema":"readmit-diagnosis-groups/v1"}`,
+		"finding-review-out": `{"schema":"readmit-finding-review/v1"}`,
+		"other-report":       `{"schema":"readmit-other-report/v1"}`,
+	} {
+		if err := os.MkdirAll(filepath.Join(root, directory), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		name := "report.json"
+		if directory == "finding-review-out" {
+			name = "review.json"
+		}
+		writeDocument(t, root, filepath.Join(directory, name), marker)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "correlation-review-out"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeDocument(t, root, filepath.Join("correlation-review-out", "machine.json"), `{"schema":"readmit-correlation/v1"}`)
 
 	result := app.OpenWorkspace(root)
 	if result.State != desktop.Completed || result.Workspace == nil {
@@ -314,13 +342,21 @@ func TestListingDistinguishesWhatWorkspaceEntriesDeclare(t *testing.T) {
 		kinds[artifact.Name] = artifact.Kind
 	}
 	for name, want := range map[string]desktop.Kind{
-		"regression.index.json": desktop.IndexArtifact,
-		"practice-target.json":  desktop.TargetArtifact,
-		"correlate.rules.json":  desktop.RulesArtifact,
-		"redact.plan.json":      desktop.PlanArtifact,
-		"saved-test.json":       desktop.SpecArtifact,
-		"baseline-run":          desktop.JobArtifact,
-		"review-out":            desktop.ReviewArtifact,
+		"regression.index.json":  desktop.IndexArtifact,
+		"practice-target.json":   desktop.TargetArtifact,
+		"correlate.rules.json":   desktop.RulesArtifact,
+		"redact.plan.json":       desktop.PlanArtifact,
+		"saved-test.json":        desktop.SpecArtifact,
+		"baseline-run":           desktop.JobArtifact,
+		"review-out":             desktop.ReviewArtifact,
+		"compare.policy.json":    desktop.NormalizationArtifact,
+		"diagnose.config.json":   desktop.DiagnoseConfigArtifact,
+		"verdicts.json":          desktop.DecisionsArtifact,
+		"diagnosis-out":          desktop.DiagnosisArtifact,
+		"groups-out":             desktop.DiagnosisArtifact,
+		"finding-review-out":     desktop.FindingReviewArtifact,
+		"correlation-review-out": desktop.CorrelationReviewArtifact,
+		"other-report":           desktop.UnsupportedArtifact,
 	} {
 		if kinds[name] != want {
 			t.Errorf("%s was listed as %q, not %q", name, kinds[name], want)

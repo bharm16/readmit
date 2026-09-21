@@ -46,6 +46,20 @@ import {
   openSequence,
   openCorrelationReview,
   decideCorrelation,
+  runDiagnosis,
+  openDiagnosisReport,
+  groupDiagnoses,
+  reviewFindings,
+  decideFindings,
+  normalizeCompare,
+  type DiagnosisRequest,
+  type DiagnosisResult,
+  type DiagnosisGroupsResult,
+  type FindingReviewRequest,
+  type FindingReviewResult,
+  type FindingStatus,
+  type GroupDiagnosesRequest,
+  type NormalizeResult,
   type CorrelationReviewResult,
   type SequenceResult,
   openReview,
@@ -103,7 +117,8 @@ import { RevisionComparison } from "./RevisionComparison";
 import { CanonicalTestEditor } from "./CanonicalTestEditor";
 import { ProfileEditor } from "./ProfileEditor";
 import { ScenarioPanel } from "./ScenarioPanel";
-import { TestAuthoring } from "./TestAuthoring";
+import { TestAuthoring, type PromotionProvenance } from "./TestAuthoring";
+import { Diagnosis } from "./Diagnosis";
 import { Badge, GRID_WINDOW, MessageGrid, Palette, Report, Separator, Status } from "./shell";
 import { Breadcrumbs, ProjectPanel } from "./ProjectPanel";
 import { ImportPanel } from "./ImportPanel";
@@ -133,7 +148,10 @@ type Running =
   | "practice"
   | "sequence"
   | "transformation"
-  | "review";
+  | "review"
+  | "diagnosis"
+  | "finding-review"
+  | "normalize";
 
 export default function App() {
   const [described, setDescribed] = useState<Shell | null>(null);
@@ -160,6 +178,11 @@ export default function App() {
   const [sequenceResult, setSequenceResult] = useState<SequenceResult | null>(null);
   const [transformResult, setTransformResult] = useState<TransformResult | null>(null);
   const [reviewResult, setReviewResult] = useState<ReviewResult | null>(null);
+  const [diagnosisResult, setDiagnosisResult] = useState<DiagnosisResult | null>(null);
+  const [diagnosisGroupsResult, setDiagnosisGroupsResult] = useState<DiagnosisGroupsResult | null>(null);
+  const [findingReviewResult, setFindingReviewResult] = useState<FindingReviewResult | null>(null);
+  const [normalizeResult, setNormalizeResult] = useState<NormalizeResult | null>(null);
+  const [promotionProvenance, setPromotionProvenance] = useState<PromotionProvenance | null>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [environmentArtifact, setEnvironmentArtifact] = useState<{
@@ -403,6 +426,11 @@ export default function App() {
     setRevisionResult(null);
     setTransformResult(null);
     setReviewResult(null);
+    setDiagnosisResult(null);
+    setDiagnosisGroupsResult(null);
+    setFindingReviewResult(null);
+    setNormalizeResult(null);
+    setPromotionProvenance(null);
     setSelectedOccurrence(null);
   }, []);
 
@@ -735,6 +763,113 @@ export default function App() {
     [evidence, operate, root],
   );
 
+  // A save that wrote a new workspace entry changes what the folder lists, so
+  // the listing is read again and the pickers offer the new revision. The open
+  // case and everything derived from it stay exactly as they are.
+  const refreshListing = useCallback(async () => {
+    if (!root) return;
+    const result = await openWorkspace(root);
+    if (result.workspace) {
+      setWorkspace(result);
+    }
+  }, [root]);
+
+  // A diagnosis is bound to the identity the window verified for the open
+  // case, and it writes one new report directory, exactly as `readmit
+  // diagnose` writes it, so the listing is read again once it lands.
+  const diagnose = useCallback(
+    async (request: DiagnosisRequest) => {
+      const open = evidence?.case;
+      if (!root || !open) return;
+      await operate("diagnosis", async () => {
+        setDiagnosisResult(null);
+        setFindingReviewResult(null);
+        setDiagnosisResult(
+          await runDiagnosis({ ...request, workspace: root, case: open.name, identity: open.identity }),
+        );
+      });
+      await refreshListing();
+    },
+    [evidence, operate, refreshListing, root],
+  );
+
+  // A retained report is read again on every call, including for the next
+  // window of its findings, with the same strict reader a review uses.
+  const openReport = useCallback(
+    async (entry: string, offset: number) => {
+      if (!root) return;
+      await operate("diagnosis", async () => {
+        setDiagnosisResult(null);
+        setFindingReviewResult(null);
+        setDiagnosisResult(await openDiagnosisReport(root, entry, offset));
+      });
+    },
+    [operate, root],
+  );
+
+  const groupCases = useCallback(
+    async (request: GroupDiagnosesRequest) => {
+      if (!root) return;
+      await operate("diagnosis", async () => {
+        setDiagnosisGroupsResult(null);
+        setDiagnosisGroupsResult(await groupDiagnoses({ ...request, workspace: root }));
+      });
+    },
+    [operate, root],
+  );
+
+  // A finding review joins the displayed diagnosis and the analyst's typed
+  // decisions. Previewing writes nothing; deciding persists the decisions
+  // document and the review directory and the listing is read again.
+  const reviewDiagnosisFindings = useCallback(
+    async (request: FindingReviewRequest, write: boolean) => {
+      const open = evidence?.case;
+      if (!root || !open) return;
+      await operate("finding-review", async () => {
+        setFindingReviewResult(null);
+        setFindingReviewResult(
+          await (write ? decideFindings : reviewFindings)({
+            ...request,
+            workspace: root,
+            case: open.name,
+            identity: open.identity,
+          }),
+        );
+      });
+      if (write) {
+        await refreshListing();
+      }
+    },
+    [evidence, operate, refreshListing, root],
+  );
+
+  // A policy-scoped reading of the same comparison. It never edits the raw
+  // comparison, which stays displayed above it, and never changes a source
+  // byte; the policy is read again on every call.
+  const normalizeCollections = useCallback(
+    async (right: string, policy: string, keys: string[], fields: string[], offset: number) => {
+      const open = evidence?.case;
+      if (!root || !open) return;
+      await operate("normalize", async () => {
+        setNormalizeResult(null);
+        setNormalizeResult(
+          await normalizeCompare({
+            workspace: root,
+            left: open.name,
+            identity: open.identity,
+            right,
+            policy,
+            keys,
+            fields,
+            offset,
+            limit: COMPARISON_WINDOW,
+          }),
+        );
+      });
+    },
+    [evidence, operate, root],
+  );
+
   // A sequence is bound to the identity the window verified for the open case,
   // so one is never drawn beside counts from evidence that has changed. Asking
   // for the next window is another sequence: the case is verified and the rules
@@ -839,6 +974,7 @@ export default function App() {
   // the real manifest beside the evidence and drops the draft.
   const reproducerDraftId = useRef("");
   const testDraftId = useRef("");
+  const promotedDraftId = useRef("");
 
   const keepReproducerDraft = useCallback(
     async (plan: ReproducerPlan, open: { case: string; identity: string }) => {
@@ -928,6 +1064,11 @@ export default function App() {
               await discardEditorDraft(testDraftId.current);
             }
             testDraftId.current = "";
+            if (promotedDraftId.current !== "") {
+              await discardEditorDraft(promotedDraftId.current);
+            }
+            promotedDraftId.current = "";
+            setPromotionProvenance(null);
           } else {
             const retained = await saveEditorDraft({
               id: testDraftId.current,
@@ -951,6 +1092,87 @@ export default function App() {
       });
     },
     [gridResult, operate, refreshGuide, root, testResult],
+  );
+
+  // Promoting one explicitly confirmed finding answers the existing authoring
+  // flow with exactly what the review engine derived from the verified case:
+  // the fixed acknowledgement boundary, the messages and the expectations. The
+  // engine re-validates every answer, so re-answering them cannot silently
+  // weaken anything, and where it came from rides beside the draft as
+  // provenance — in the editor-draft envelope, never inside the spec.
+  const promoteFinding = useCallback(
+    async (status: FindingStatus, reviewEntry: string, reportSHA256: string) => {
+      const promotion = status.promotion;
+      const open = evidence?.case;
+      if (!promotion || !root || !open) return;
+      await operate("authoring", async () => {
+        const base = { workspace: root, case: open.name, identity: open.identity };
+        const emptyDraft: TestDraftDocument = {
+          schema: "",
+          case: { entry: "", identity: "" },
+          name: "",
+          messages: [],
+          target: "",
+          boundary: "",
+          observation: "",
+          reset: "",
+          expectations: [],
+        };
+        // A diagnosis promotion is drafted at the ack-contract boundary only;
+        // the review states that boundary and the authoring flow accepts no other.
+        let result = await authorTest({
+          ...base,
+          draft: emptyDraft,
+          answer: { stage: "boundary", boundary: "ack-contract" },
+        });
+        if (result.state !== "completed" || !result.test) {
+          setTestResult(result);
+          return;
+        }
+        result = await authorTest({
+          ...base,
+          draft: result.test.draft,
+          answer: { stage: "messages", messages: promotion.messages },
+        });
+        if (result.state !== "completed" || !result.test) {
+          setTestResult(result);
+          return;
+        }
+        result = await authorTest({
+          ...base,
+          draft: result.test.draft,
+          answer: { stage: "expectations", expectations: promotion.expectations },
+        });
+        setTestResult(result);
+        if (result.state !== "completed" || !result.test) {
+          return;
+        }
+        const provenance: PromotionProvenance = {
+          finding: status.finding,
+          report_sha256: reportSHA256,
+          review: reviewEntry,
+          decision_rationale: status.rationale ?? "",
+        };
+        setPromotionProvenance(provenance);
+        const retained = await saveEditorDraft({
+          id: promotedDraftId.current,
+          kind: "promoted-test-draft",
+          workspace: root,
+          case: open.name,
+          identity: open.identity,
+          content_schema: "readmit-promoted-test-draft/v1",
+          content: { schema: "readmit-promoted-test-draft/v1", draft: result.test.draft, provenance },
+        });
+        if (
+          (retained.state === "completed" || retained.state === "empty") &&
+          promotedDraftId.current === ""
+        ) {
+          promotedDraftId.current = savedId(retained, "promoted-test-draft", root);
+        }
+      });
+      focusRegion("inspector");
+    },
+    [evidence, findingReviewResult, focusRegion, operate, root],
   );
 
   // A test draft this viewer had not stored comes back only when it names the
@@ -1002,6 +1224,29 @@ export default function App() {
     });
   }, [drafts, gridResult, reproducerResult, root]);
 
+  // A promoted test draft comes back the same way, provenance and all, so a
+  // draft that came from a confirmed finding never loses where it came from.
+  useEffect(() => {
+    const grid = gridResult?.grid;
+    if (!grid || !root || testResult !== null) {
+      return;
+    }
+    const held = drafts?.find(
+      (entry) =>
+        entry.kind === "promoted-test-draft" &&
+        entry.workspace === root &&
+        entry.case === grid.case &&
+        entry.identity === grid.identity,
+    );
+    if (!held) {
+      return;
+    }
+    promotedDraftId.current = held.id;
+    const content = held.content as { draft: TestDraftDocument; provenance: PromotionProvenance };
+    setTestResult({ state: "completed", test: { draft: content.draft } });
+    setPromotionProvenance(content.provenance);
+  }, [drafts, gridResult, root, testResult]);
+
   // Drops one retained editor draft and takes it out of the local list at the
   // same moment, so a panel cannot offer the same draft back again while the
   // facade's answer is still in flight.
@@ -1015,6 +1260,11 @@ export default function App() {
       dropDraft(testDraftId.current);
     }
     testDraftId.current = "";
+    if (promotedDraftId.current !== "") {
+      dropDraft(promotedDraftId.current);
+    }
+    promotedDraftId.current = "";
+    setPromotionProvenance(null);
     setTestResult(null);
   }, [dropDraft]);
 
@@ -1634,6 +1884,7 @@ export default function App() {
             rows={gridResult.grid.rows}
             result={testResult}
             restoredDraft={Boolean(testResult?.test && !testResult.test.resolution)}
+            provenance={promotionProvenance}
             onDiscardDraft={discardTestDraft}
             inspected={
               selectedOccurrence && inspectionResult?.inspection
@@ -1696,6 +1947,8 @@ export default function App() {
         {verified ? (
           <Sequence
             workspace={root ?? ""}
+            caseIdentity={verified.identity}
+            onSaved={() => void refreshListing()}
             onReview={async (request, write) => {
               let result: CorrelationReviewResult = { state: "failed", reason: "The review did not run." };
               await operate("sequence", async () => {
@@ -1710,7 +1963,7 @@ export default function App() {
               .filter((artifact) => artifact.kind === "analysis")
               .map((artifact) => artifact.name)}
             reviews={(opened?.artifacts ?? [])
-              .filter((artifact) => artifact.kind === "review")
+              .filter((artifact) => artifact.kind === "correlation-review")
               .map((artifact) => artifact.name)}
             result={sequenceResult}
             busy={busy}
@@ -1721,17 +1974,70 @@ export default function App() {
           />
         ) : null}
         {verified ? (
+          <Diagnosis
+            workspace={root ?? ""}
+            caseName={verified.name}
+            identity={verified.identity}
+            configEntries={(opened?.artifacts ?? [])
+              .filter((artifact) => artifact.kind === "diagnose-config")
+              .map((artifact) => artifact.name)}
+            reportEntries={(opened?.artifacts ?? [])
+              .filter((artifact) => artifact.kind === "diagnosis")
+              .map((artifact) => artifact.name)}
+            caseEntries={(opened?.artifacts ?? [])
+              .filter((artifact) => artifact.kind === "case")
+              .map((artifact) => artifact.name)}
+            result={diagnosisResult}
+            groupsResult={diagnosisGroupsResult}
+            reviewResult={findingReviewResult}
+            busy={busy}
+            progress={
+              running === "diagnosis"
+                ? "Running this diagnosis."
+                : running === "finding-review"
+                  ? "Reviewing these findings."
+                  : null
+            }
+            indicators={indicators}
+            onRun={(request) => void diagnose(request)}
+            onOpen={(entry, offset) => void openReport(entry, offset)}
+            onGroup={(request) => void groupCases(request)}
+            onReview={(request, write) => void reviewDiagnosisFindings(request, write)}
+            onSelect={(occurrence) => void inspect(occurrence, "", 0, -1)}
+            onPromote={(status, reviewEntry, reportSHA256) =>
+              void promoteFinding(status, reviewEntry, reportSHA256)
+            }
+            onManageProfiles={() => focusRegion("inspector")}
+            onSaved={() => void refreshListing()}
+          />
+        ) : null}
+        {verified ? (
           <Comparison
             entries={(opened?.artifacts ?? [])
               .filter((artifact) => artifact.kind === "case")
               .map((artifact) => artifact.name)}
             result={comparisonResult}
             busy={busy}
-            progress={running === "comparison" ? "Comparing these collections." : null}
+            progress={
+              running === "comparison"
+                ? "Comparing these collections."
+                : running === "normalize"
+                  ? "Reading this comparison under the declared policy."
+                  : null
+            }
             indicators={indicators}
             onCompare={(right, keys, fields, offset) =>
               void compareCollections(right, keys, fields, offset)
             }
+            workspace={root ?? ""}
+            policyEntries={(opened?.artifacts ?? [])
+              .filter((artifact) => artifact.kind === "normalization-policy")
+              .map((artifact) => artifact.name)}
+            normalizeResult={normalizeResult}
+            onNormalize={(right, policy, keys, fields, offset) =>
+              void normalizeCollections(right, policy, keys, fields, offset)
+            }
+            onSaved={() => void refreshListing()}
           />
         ) : null}
         {verified ? (

@@ -63,25 +63,37 @@ const (
 type Kind string
 
 const (
-	CaseArtifact        Kind = "case"
-	ProjectArtifact     Kind = "project"
-	RevisionsArtifact   Kind = "revisions"
-	ResultArtifact      Kind = "result"
-	JobArtifact         Kind = "job"
-	ReviewArtifact      Kind = "review"
-	IndexArtifact       Kind = "index"
-	TargetArtifact      Kind = "target"
-	RulesArtifact       Kind = "rules"
-	PlanArtifact        Kind = "plan"
-	SpecArtifact        Kind = "spec"
-	PackArtifact        Kind = "pack"
-	ProfileArtifact     Kind = "profile"
-	PackageArtifact     Kind = "package"
-	AnalysisArtifact    Kind = "analysis"
-	SecretArtifact      Kind = "secret"
-	PolicyArtifact      Kind = "policy"
-	ResetArtifact       Kind = "reset"
-	UnsupportedArtifact Kind = "unsupported"
+	CaseArtifact      Kind = "case"
+	ProjectArtifact   Kind = "project"
+	RevisionsArtifact Kind = "revisions"
+	ResultArtifact    Kind = "result"
+	JobArtifact       Kind = "job"
+	ReviewArtifact    Kind = "review"
+	IndexArtifact     Kind = "index"
+	TargetArtifact    Kind = "target"
+	RulesArtifact     Kind = "rules"
+	PlanArtifact      Kind = "plan"
+	SpecArtifact      Kind = "spec"
+	PackArtifact      Kind = "pack"
+	ProfileArtifact   Kind = "profile"
+	PackageArtifact   Kind = "package"
+	AnalysisArtifact  Kind = "analysis"
+	SecretArtifact    Kind = "secret"
+	PolicyArtifact    Kind = "policy"
+	ResetArtifact     Kind = "reset"
+	// A diagnosis report directory holds report.json beside report.md; a
+	// finding review directory holds review.json declaring the finding-review
+	// contract; a correlation review directory holds the machine mapping
+	// beside the decisions that were made over it. The three flat documents
+	// are the authored configurations the diagnosis and comparison panels
+	// offer pickers for.
+	DiagnosisArtifact         Kind = "diagnosis"
+	FindingReviewArtifact     Kind = "finding-review"
+	CorrelationReviewArtifact Kind = "correlation-review"
+	NormalizationArtifact     Kind = "normalization-policy"
+	DiagnoseConfigArtifact    Kind = "diagnose-config"
+	DecisionsArtifact         Kind = "finding-decisions"
+	UnsupportedArtifact       Kind = "unsupported"
 )
 
 // Artifact is one entry of a workspace folder. Schema and Provenance are what

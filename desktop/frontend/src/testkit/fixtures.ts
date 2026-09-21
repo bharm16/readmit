@@ -57,6 +57,20 @@ import type {
   SendPolicyEvalResult,
   ResetPlanResult,
   TargetResetResult,
+  Diagnosis,
+  DiagnosisEvidence,
+  DiagnosisFinding,
+  DiagnosisFindingGroup,
+  DiagnosisGroupsResult,
+  DiagnosisResult,
+  FindingPromotion,
+  FindingReviewRecord,
+  FindingReviewResult,
+  FindingStatus,
+  Normalization,
+  NormalizationDifference,
+  NormalizationRuleReport,
+  NormalizeResult,
 } from "../bindings";
 
 /** The synthetic workspace root the fixtures name. It is not a path on any
@@ -1163,5 +1177,253 @@ export function scenarioPreviewFixture(options: { reveal?: boolean } = {}) {
         to: "booked",
       },
     ],
+  };
+}
+
+/** The synthetic diagnosis report entry the diagnosis journeys write, and the
+ * fixed identity token a finding review names. */
+export const REPORT_ENTRY = "diagnosis-report";
+export const REPORT_SHA256 = "report-sha256-fixed-for-tests";
+
+/** One evidence reference of one finding: a position and a state, no value. */
+export function diagnosisEvidence(
+  occurrence: string = GRID_OCCURRENCE,
+  field = "MSH-10",
+): DiagnosisEvidence {
+  return { occurrence, field, state: "present", offset: null, length: null };
+}
+
+/** One finding of a diagnosis: rule, classification and evidence positions. */
+export function diagnosisFinding(
+  id: string,
+  ruleId = "ack.msa-outcome",
+  overrides: Partial<DiagnosisFinding> = {},
+): DiagnosisFinding {
+  return {
+    id,
+    rule_id: ruleId,
+    classification: "protocol",
+    profile: "readmit-siu-v1",
+    ruleset: "readmit-siu-diagnosis/v1",
+    summary: "The acknowledgement outcome is not what the ruleset expects.",
+    evidence: [diagnosisEvidence()],
+    ...overrides,
+  };
+}
+
+/** One diagnosis report windowed for the panes: counts, rules and evidence
+ * positions, never a message byte or a field value. */
+export function diagnosisResult(
+  findings: DiagnosisFinding[],
+  overrides: Partial<Diagnosis> = {},
+): DiagnosisResult {
+  return {
+    state: "completed",
+    output: REPORT_ENTRY,
+    diagnosis: {
+      case: CASE_ENTRY,
+      report_sha256: REPORT_SHA256,
+      schema: "readmit-diagnosis/v1",
+      profile: "readmit-siu-v1",
+      ruleset: "readmit-siu-diagnosis/v1",
+      rules: ["message.duplicate-control-id", "ack.msa-outcome"],
+      window: {
+        description: "The observed window is what the capture recorded, never a complete lifecycle.",
+        occurrences: 2,
+        observed_start: "2026-01-01T12:00:00Z",
+        observed_end: "2026-01-01T12:01:00Z",
+        unknown_observed_times: 0,
+        sources: [
+          { source_id: "s0001", first_occurrence: GRID_OCCURRENCE, last_occurrence: NEXT_OCCURRENCE },
+        ],
+      },
+      scope: "A diagnosis describes the capture window, never a complete lifecycle.",
+      offset: 0,
+      total: findings.length,
+      findings,
+      unsupported: [],
+      ...overrides,
+    },
+  };
+}
+
+/** Findings of several cases grouped by equal signature. */
+export function diagnosisGroupsResult(groups: DiagnosisFindingGroup[]): DiagnosisGroupsResult {
+  return {
+    state: "completed",
+    offset: 0,
+    total: groups.length,
+    groups: {
+      schema: "readmit-diagnosis-groups/v1",
+      scope: "Equal signatures mean the same diagnostic shape, never the same root cause.",
+      cases: [],
+      groups,
+    },
+  };
+}
+
+/** What one confirmed finding promotes to. The expected text is a synthetic
+ * literal, never a value read out of evidence. */
+export function findingPromotion(messages: string[] = [GRID_OCCURRENCE]): FindingPromotion {
+  return {
+    messages,
+    expectations: [
+      {
+        id: "promoted-expectation",
+        operator: "ack_field_equals",
+        message: messages[0] ?? "",
+        selector: "MSA-1",
+        field: { state: "present", text: "expected-token" },
+      },
+    ],
+    unsupported: [],
+  };
+}
+
+/** One finding as a review leaves it: verdict, basis and what it promotes to. */
+export function findingStatus(
+  finding: string,
+  verdict: string,
+  overrides: Partial<FindingStatus> = {},
+): FindingStatus {
+  return {
+    finding,
+    rule_id: "ack.msa-outcome",
+    classification: "protocol",
+    verdict,
+    basis: verdict === "not_reviewed" ? "unreviewed" : "decision",
+    next_evidence: "Capture the acknowledgement the case does not hold.",
+    ...overrides,
+  };
+}
+
+/** One finding review joined to its diagnosis, bound by fixed identity tokens. */
+export function findingReviewResult(
+  statuses: FindingStatus[],
+  overrides: Partial<FindingReviewRecord> = {},
+  result: Partial<FindingReviewResult> = {},
+): FindingReviewResult {
+  return {
+    state: "completed",
+    review: {
+      record: {
+        schema: "readmit-finding-review/v1",
+        engine: "readmit",
+        diagnosis: {
+          schema: "readmit-diagnosis/v1",
+          report_sha256: REPORT_SHA256,
+          case_identity: CASE_IDENTITY,
+          config_sha256: "config-sha256-fixed-for-tests",
+          profile: "readmit-siu-v1",
+          ruleset: "readmit-siu-diagnosis/v1",
+        },
+        decisions_sha256: "decisions-sha256-fixed-for-tests",
+        boundary: "ack-contract",
+        findings: statuses,
+        statement:
+          "The machine's findings and one person's judgment of them, joined but distinguishable.",
+        ...overrides,
+      },
+      offset: 0,
+      total: statuses.length,
+    },
+    ...result,
+  };
+}
+
+/** One authored normalization rule as it was applied: counts only. */
+export function normalizationRuleReport(
+  id: string,
+  selector: string,
+  overrides: Partial<NormalizationRuleReport> = {},
+): NormalizationRuleReport {
+  return {
+    id,
+    selector,
+    operator: "ignore",
+    compared: 1,
+    suppressed: 1,
+    retained: 0,
+    undecided: 0,
+    ...overrides,
+  };
+}
+
+/** One field the comparison reported and what the policy did about it. */
+export function normalizationDifference(
+  selector: string,
+  outcome: string,
+  overrides: Partial<NormalizationDifference> = {},
+): NormalizationDifference {
+  return {
+    left_occurrence: GRID_OCCURRENCE,
+    right_occurrence: "occ-000001",
+    selector,
+    status: "changed",
+    left_state: "present",
+    right_state: "present",
+    outcome,
+    ...overrides,
+  };
+}
+
+/** One policy-scoped reading of one comparison, windowed: outcomes and counts,
+ * never a value. The raw comparison stays its own unchanged report. */
+export function normalizeResult(
+  differences: NormalizationDifference[],
+  rules: NormalizationRuleReport[] = [],
+  overrides: Partial<Normalization> = {},
+): NormalizeResult {
+  const outcomes = (wanted: string) =>
+    differences.filter((entry) => entry.outcome === wanted).length;
+  return {
+    state: "completed",
+    normalization: {
+      left: CASE_ENTRY,
+      right: OTHER_CASE_ENTRY,
+      policy: "normalization-policy.json",
+      policy_sha256: "policy-sha256-fixed-for-tests",
+      report: "readmit-normalization/v1",
+      policy_schema: "readmit-normalization-policy/v1",
+      scope: "A policy-scoped reading of one comparison; the raw comparison is unchanged.",
+      boundary: "messages",
+      left_summary: {
+        kind: "case",
+        identity: CASE_IDENTITY,
+        payloads: "2",
+        occurrences: 2,
+        excluded: 0,
+      },
+      right_summary: {
+        kind: "case",
+        identity: "other-case-identity-fixed-for-tests",
+        payloads: "2",
+        occurrences: 2,
+        excluded: 0,
+      },
+      alignment: "by declared key",
+      keys: [],
+      fields: [],
+      rules,
+      summary: {
+        paired: differences.length,
+        differences: differences.length,
+        uncompared: 0,
+        suppressed: outcomes("suppressed"),
+        retained: outcomes("retained"),
+        undecided: outcomes("undecided"),
+        unaddressed: outcomes("unaddressed"),
+        inserted: 0,
+        missing: 0,
+        ambiguous: 0,
+        unaligned: 0,
+      },
+      offset: 0,
+      limit: 200,
+      total: differences.length,
+      differences,
+      unsupported: [],
+      ...overrides,
+    },
   };
 }
