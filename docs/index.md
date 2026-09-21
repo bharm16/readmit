@@ -29,6 +29,11 @@ readmit index search incident-4821 incident-4821.index.json \
 | `index show CASE INDEX` | Reports what an index retains, of which case, and until when |
 | `index search CASE INDEX` | Answers one query from what the index retained |
 
+The [desktop shell](desktop.md#building-and-rebuilding-case-indexes-in-the-shell) exposes
+the same operations without requiring a terminal: opening a case selects an applicable
+index or presents in-app building, stale/expired/damaged indexes offer guided rebuild,
+and workspace search routes content hits directly to the occurrence and field in the inspector.
+
 Every subcommand that reads an index also opens the case it names, through the
 same reader `timeline` uses, and refuses the pair the moment they disagree. An
 index is never trusted on its own: everything it restates about the case — the

@@ -609,3 +609,179 @@ func TestNavigationReverifiesReplacedPayloads(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildIndexSuccessAndRebuild(t *testing.T) {
+	root := t.TempDir()
+	app := workspaceApp(t)
+
+	incident := writeCase(t, root, "incident", framed(gridBooking)+framed(gridAccepted))
+
+	// 1. Build new index with values retention
+	req := desktop.BuildIndexRequest{
+		Workspace:   root,
+		Case:        "incident",
+		Identity:    incident.Identity,
+		Output:      "incident.index.json",
+		Fields:      []string{patientField, grid.AckCodeSelector},
+		Retention:   "values",
+		RetainUntil: "indefinite",
+	}
+	built := app.BuildIndex(req)
+	if built.State != desktop.Completed || built.Index == nil {
+		t.Fatalf("build index failed: %+v", built)
+	}
+	if built.Index.IndexName != "incident.index.json" || !built.Index.Applicable {
+		t.Fatalf("built index mismatch: %+v", built.Index)
+	}
+	if built.Index.Retention != "values" || built.Index.RetentionState != "active" {
+		t.Fatalf("built index retention mismatch: %+v", built.Index)
+	}
+
+	// 2. Describe index
+	desc := app.DescribeIndex(root, "incident", "")
+	if desc.State != desktop.Completed || desc.Index == nil || !desc.Index.Applicable {
+		t.Fatalf("describe index auto-select failed: %+v", desc)
+	}
+	if desc.Index.IndexName != "incident.index.json" {
+		t.Fatalf("expected incident.index.json, got %q", desc.Index.IndexName)
+	}
+
+	// 3. Rebuild without replace returns failure
+	dupe := app.BuildIndex(req)
+	if dupe.State != desktop.Failed || !strings.Contains(dupe.Reason, "already exists") {
+		t.Fatalf("expected already exists refusal, got %+v", dupe)
+	}
+
+	// 4. Rebuild with replace succeeds
+	req.Replace = true
+	req.Retention = "states"
+	rebuilt := app.BuildIndex(req)
+	if rebuilt.State != desktop.Completed || rebuilt.Index == nil || rebuilt.Index.Retention != "states" {
+		t.Fatalf("rebuild index with replace failed: %+v", rebuilt)
+	}
+
+	// 5. Open grid with the rebuilt index
+	g := app.OpenGrid(root, "incident", "incident.index.json", 0, 10)
+	if g.State != desktop.Completed || g.Grid == nil {
+		t.Fatalf("open grid with rebuilt index failed: %+v", g)
+	}
+}
+
+func TestBuildIndexValidationAndNegativePaths(t *testing.T) {
+	root := t.TempDir()
+	app := workspaceApp(t)
+
+	writeCase(t, root, "incident", framed(gridBooking))
+
+	// No fields
+	if res := app.BuildIndex(desktop.BuildIndexRequest{Workspace: root, Case: "incident", Output: "test.index.json", Retention: "states"}); res.State != desktop.Failed {
+		t.Errorf("expected failure for empty fields: %+v", res)
+	}
+
+	// Invalid selector
+	if res := app.BuildIndex(desktop.BuildIndexRequest{Workspace: root, Case: "incident", Output: "test.index.json", Fields: []string{"NOT A SELECTOR"}, Retention: "states"}); res.State != desktop.Failed {
+		t.Errorf("expected failure for invalid selector: %+v", res)
+	}
+
+	// Missing retention
+	if res := app.BuildIndex(desktop.BuildIndexRequest{Workspace: root, Case: "incident", Output: "test.index.json", Fields: []string{patientField}}); res.State != desktop.Failed {
+		t.Errorf("expected failure for missing retention: %+v", res)
+	}
+
+	// Invalid expiry
+	if res := app.BuildIndex(desktop.BuildIndexRequest{Workspace: root, Case: "incident", Output: "test.index.json", Fields: []string{patientField}, Retention: "states", RetainUntil: "not-a-date"}); res.State != desktop.Failed {
+		t.Errorf("expected failure for invalid expiry: %+v", res)
+	}
+
+	// Output inside evidence
+	if res := app.BuildIndex(desktop.BuildIndexRequest{Workspace: root, Case: "incident", Output: "incident/leak.index.json", Fields: []string{patientField}, Retention: "states"}); res.State != desktop.Failed {
+		t.Errorf("expected failure for destination inside case: %+v", res)
+	}
+
+	// Case does not exist
+	if res := app.BuildIndex(desktop.BuildIndexRequest{Workspace: root, Case: "nonexistent", Output: "test.index.json", Fields: []string{patientField}, Retention: "states"}); res.State != desktop.Failed {
+		t.Errorf("expected failure for nonexistent case: %+v", res)
+	}
+}
+
+func TestDescribeIndexStaleExpiredDamagedUnsupported(t *testing.T) {
+	root := t.TempDir()
+	state := t.TempDir()
+	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"))
+
+	incident := writeCase(t, root, "incident", framed(gridBooking))
+	other := writeCase(t, root, "other", framed(gridRebooked))
+
+	// Missing index
+	if res := app.DescribeIndex(root, "incident", ""); res.State != desktop.Empty {
+		t.Errorf("expected Empty for missing index, got %+v", res)
+	}
+
+	// Stale index (built for other case)
+	writeIndex(t, root, "other.index.json", other, nil)
+	if res := app.DescribeIndex(root, "incident", "other.index.json"); res.State != desktop.Failed || res.Index == nil || !res.Index.Stale {
+		t.Errorf("expected Stale refusal, got %+v", res)
+	}
+
+	// Expired index
+	past := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	writeIndex(t, root, "expired.index.json", incident, &past)
+	if res := app.DescribeIndex(root, "incident", "expired.index.json"); res.State != desktop.Failed || res.Index == nil || !res.Index.Expired {
+		t.Errorf("expected Expired refusal, got %+v", res)
+	}
+
+	// Damaged index
+	writeIndex(t, root, "damaged.index.json", incident, nil)
+	damagedPath := filepath.Join(root, "damaged.index.json")
+	data, err := os.ReadFile(damagedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(damagedPath, []byte(strings.Replace(string(data), `"sequence":1`, `"sequence":2`, 1)), 0600)
+	if res := app.DescribeIndex(root, "incident", "damaged.index.json"); res.State != desktop.Failed || res.Index == nil || !res.Index.Damaged {
+		t.Errorf("expected Damaged refusal, got %+v", res)
+	}
+
+	// Unsupported version
+	unsupportedPath := filepath.Join(root, "unsupported.index.json")
+	_ = os.WriteFile(unsupportedPath, []byte(`{"schema":"readmit-index/v999"}`), 0600)
+	if res := app.DescribeIndex(root, "incident", "unsupported.index.json"); res.State != desktop.Failed || res.Index == nil || !res.Index.Unsupported {
+		t.Errorf("expected Unsupported refusal, got %+v", res)
+	}
+}
+
+func TestRefusedQueryClarity(t *testing.T) {
+	root := t.TempDir()
+	state := t.TempDir()
+	filters := filepath.Join(state, "filters.json")
+	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filters, filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"))
+
+	incident := writeCase(t, root, "incident", framed(gridBooking))
+
+	// Build a states index
+	policy := index.Policy{
+		Fields:    []string{patientField},
+		Retention: index.RetainStates,
+	}
+	doc, err := index.Build(context.Background(), incident, policy, indexedAt())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := index.Write(filepath.Join(root, "incident.index.json"), doc); err != nil {
+		t.Fatal(err)
+	}
+
+	// Save filter with equals on values
+	saveFilter(t, app, grid.Filter{
+		Name: "patient-filter",
+		Fields: []grid.FieldPredicate{
+			{Selector: patientField, Match: "equals", Term: "MRN-1"},
+		},
+	})
+
+	// Open grid with states index and value filter should refuse with specific clarity
+	got := app.OpenGrid(root, "incident", "incident.index.json", 0, 10)
+	if got.State != desktop.Failed || !strings.Contains(got.Reason, "this index retains no values") {
+		t.Fatalf("expected 'this index retains no values' clarity, got %+v", got)
+	}
+}

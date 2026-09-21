@@ -184,6 +184,31 @@ func TestSearchCarriesNoMessageContent(t *testing.T) {
 	}
 }
 
+func TestSearchIndexedContentHitsRouteToInspector(t *testing.T) {
+	app, root, _ := gridWorkspace(t)
+	// In gridWorkspace, "incident" case has "incident.index.json" retaining values for PID[1]-3[1] and MSA[1]-1[1].
+	result := app.Search(root, "MRN-1")
+	if result.State != desktop.Completed {
+		t.Fatalf("search for indexed content failed: %+v", result)
+	}
+	var contentHit *desktop.Match
+	for _, match := range result.Matches {
+		if match.Kind == desktop.ContentMatch && match.Name == "incident" {
+			contentHit = &match
+			break
+		}
+	}
+	if contentHit == nil {
+		t.Fatalf("expected content match in incident, got matches: %+v", result.Matches)
+	}
+	if contentHit.Region != "inspector" {
+		t.Errorf("expected Region inspector, got %q", contentHit.Region)
+	}
+	if contentHit.Occurrence == "" || contentHit.Selector != "PID[1]-3[1]" {
+		t.Errorf("expected occurrence and PID[1]-3[1] selector, got %+v", contentHit)
+	}
+}
+
 // Search takes a person's typing. Any bytes at all must produce one of the
 // declared states and name only entries the folder actually holds.
 func FuzzSearchQuery(f *testing.F) {

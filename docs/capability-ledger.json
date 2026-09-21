@@ -242,7 +242,7 @@
       "screen": "the message grid's index picker and the guided sample",
       "action": "build, search and read a declared index of one case",
       "test": "desktop behavior tests plus internal/index tests",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.index.search",
@@ -264,7 +264,7 @@
       "screen": "the message grid's index picker and the guided sample",
       "action": "build, search and read a declared index of one case",
       "test": "desktop behavior tests plus internal/index tests",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.inspect",
@@ -1551,6 +1551,28 @@
       "screen": "the workspace listing and project overview",
       "action": "verify one entry through the shared reader and report counts",
       "test": "desktop behavior tests plus internal/operation tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.BuildIndex",
+      "source": "desktop.App.BuildIndex",
+      "kind": "desktop",
+      "capability": "buildIndex application operation",
+      "owner": "bharm16/readmit#248",
+      "screen": "the message grid's index builder",
+      "action": "build or rebuild a declared index of one case",
+      "test": "desktop behavior tests plus internal/index tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.DescribeIndex",
+      "source": "desktop.App.DescribeIndex",
+      "kind": "desktop",
+      "capability": "describeIndex application operation",
+      "owner": "bharm16/readmit#248",
+      "screen": "the message grid's index picker and details",
+      "action": "report what an index retains, of which case, and until when",
+      "test": "desktop behavior tests plus internal/index tests",
       "implemented": true
     },
     {

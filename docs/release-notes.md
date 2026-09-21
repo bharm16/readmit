@@ -1,5 +1,18 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The desktop shell gained in-app case index building, guided rebuild, and
+  content search (#248). Opening a case bundle auto-selects an applicable
+  verified index or displays an unindexed view showing available inspection
+  capabilities without implying the case is empty. Stale, expired, damaged, or
+  unsupported indexes provide guided rebuilds through the existing Go index
+  builder into new derived artifacts without terminal commands. The in-app
+  builder supports structured field selection (up to 16 canonical selectors)
+  and explicit retention choices (`values`, `digests`, `states`, with instant
+  expiry or deliberate indefinite retention) without silent PHI retention
+  defaults. Workspace search distinguishes metadata matches from indexed
+  content hits, routing content hits directly to the exact case, occurrence,
+  and field in the inspector without requiring an already opened grid.
+
 - The desktop shell gained a connected project workspace (#245). Creating and
   opening projects, editing settings and declared interface versions,
   registering a workspace case, and changing a registered case's title, owner,

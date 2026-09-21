@@ -59,6 +59,10 @@ import {
   registerCase,
   updateRegisteredCase,
   openWorkspace,
+  buildIndex,
+  describeIndex,
+  type BuildIndexRequest,
+  type IndexResult,
   recentWorkspaces,
   recordView,
   recoverSession,
@@ -141,6 +145,7 @@ export default function App() {
   const [inspectionResult, setInspectionResult] = useState<InspectionResult | null>(null);
   const [selectedOccurrence, setSelectedOccurrence] = useState<string | null>(null);
   const [gridResult, setGridResult] = useState<GridResult | null>(null);
+  const [indexResult, setIndexResult] = useState<IndexResult | null>(null);
   const [reproducerResult, setReproducerResult] = useState<ReproducerResult | null>(null);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [comparisonResult, setComparisonResult] = useState<CompareResult | null>(null);
@@ -378,6 +383,7 @@ export default function App() {
   const clearCase = useCallback(() => {
     setEvidence(null);
     setGridResult(null);
+    setIndexResult(null);
     setInspectionResult(null);
     setReproducerResult(null);
     setTestResult(null);
@@ -423,26 +429,134 @@ export default function App() {
     [clearWorkspace, focusRegion, operate, refreshGuide, refreshRecent],
   );
 
+  // Reads whose answer can be older than the question: only the response to
+  // the latest request commits, so a late answer to an earlier one is dropped
+  // instead of overwriting what the viewer asked for last.
+  const readTickets = useRef(new Map<string, number>());
+  const currentTicket = useCallback((kind: string) => {
+    const ticket = (readTickets.current.get(kind) ?? 0) + 1;
+    readTickets.current.set(kind, ticket);
+    return ticket;
+  }, []);
+  const isCurrent = useCallback(
+    (kind: string, ticket: number) => readTickets.current.get(kind) === ticket,
+    [],
+  );
+
+  // One window of the grid at a time. Asking for the next one re-reads the case
+  // and its index, so a window is never served from an index the evidence no
+  // longer supports.
+  const showGrid = useCallback(
+    async (folder: string, name: string, indexName: string, offset: number) => {
+      const ticket = currentTicket("grid");
+      await operate("grid", async () => {
+        setGridResult(null);
+        setInspectionResult(null);
+        setSelectedOccurrence(null);
+        const result = await openGrid(folder, name, indexName, offset, GRID_WINDOW);
+        if (isCurrent("grid", ticket)) {
+          setGridResult(result);
+        }
+      });
+    },
+    [currentTicket, isCurrent, operate],
+  );
+
+  const handleBuildIndex = useCallback(
+    async (request: BuildIndexRequest) => {
+      if (!root) return;
+      let builtIndexName: string | null = null;
+      await operate("grid", async () => {
+        request.workspace = root;
+        const res = await buildIndex(request);
+        setIndexResult(res);
+        if (res.state === "completed" && res.index) {
+          builtIndexName = res.index.index_name;
+          await openWorkspace(root);
+        }
+      });
+      if (builtIndexName) {
+        void showGrid(root, request.case, builtIndexName, 0);
+      }
+    },
+    [operate, root, showGrid],
+  );
+
   // Verifying a case is the same kind of committed navigation. The case and
   // everything derived from it stay while the new one is read — the progress
   // line says that a read is running — and they stay, marked stale by the
   // refusal beside them, when the new one is refused.
   const verifyCase = useCallback(
-    async (folder: string, name: string) => {
+    async (folder: string, name: string, options?: { skipAutoGrid?: boolean }): Promise<CaseResult | null> => {
       setCaseNotice(null);
+      let autoIndex: string | null = null;
+      let outcome: CaseResult | null = null;
       await operate("case", async () => {
         const result = await openCase(folder, name);
         if (result.case) {
           clearCase();
           setSelected(name);
           setEvidence(result);
+          outcome = result;
+          const desc = await describeIndex(folder, name, "");
+          setIndexResult(desc);
+          if (desc.state === "completed" && desc.index?.applicable) {
+            autoIndex = desc.index.index_name;
+          }
         } else {
           setCaseNotice(result);
         }
       });
+      if (autoIndex && !options?.skipAutoGrid) {
+        void showGrid(folder, name, autoIndex, 0);
+      }
       focusRegion("inspector");
+      return outcome;
     },
-    [clearCase, focusRegion, operate],
+    [clearCase, focusRegion, operate, showGrid],
+  );
+
+  // An occurrence is selected from the grid or from the sequence, and both name
+  // the same verified case: the grid's own case when there is one, and the case
+  // the window verified otherwise. Either way the inspector is bound to the
+  // identity that was displayed, so a value is never read out of evidence that
+  // has changed since.
+  const inspect = useCallback(
+    async (
+      occurrence: string,
+      path: string,
+      nodeOffset: number,
+      byteOffset: number,
+      targetCase?: { case: string; identity: string },
+    ) => {
+      const grid = gridResult?.grid;
+      const open =
+        targetCase ??
+        (grid
+          ? { case: grid.case, identity: grid.identity }
+          : evidence?.case
+            ? { case: evidence.case.name, identity: evidence.case.identity }
+            : null);
+      if (!root || !open) return;
+      const ticket = currentTicket("inspect");
+      await operate("inspect", async () => {
+        setSelectedOccurrence(occurrence);
+        setInspectionResult(null);
+        const result = await inspectOccurrence({
+          workspace: root,
+          case: open.case,
+          identity: open.identity,
+          occurrence,
+          path,
+          node_offset: nodeOffset,
+          byte_offset: byteOffset,
+        });
+        if (isCurrent("inspect", ticket)) {
+          setInspectionResult(result);
+        }
+      });
+    },
+    [currentTicket, evidence, gridResult, isCurrent, operate, root],
   );
 
   // One practice run of the guided sample. It is the one operation in this
@@ -519,10 +633,25 @@ export default function App() {
   // A search result opens the thing it found, the way the window already
   // opens it: a registered case or a case entry is verified and opened, the
   // project documents open the project. A result that names an entry this
-  // window does not open still takes the person to its region.
+  // window does not open still takes the person to its region. For indexed
+  // content matches, it verifies the case, inspects the occurrence, and focuses
+  // the inspector without requiring an already opened grid.
   const openMatch = useCallback(
     (match: Match) => {
       if (!root || busy) return;
+      if (match.kind === "content") {
+        void (async () => {
+          const verified = await verifyCase(root, match.name, { skipAutoGrid: true });
+          if (match.occurrence && verified?.case) {
+            await inspect(match.occurrence, match.selector ?? "", 0, -1, {
+              case: verified.case.name,
+              identity: verified.case.identity,
+            });
+          }
+          focusRegion("inspector");
+        })();
+        return;
+      }
       if (match.kind === "registered_case") {
         void verifyCase(root, match.name);
         return;
@@ -538,7 +667,7 @@ export default function App() {
       }
       focusRegion(match.region);
     },
-    [busy, focusRegion, opened, readProject, root, verifyCase],
+    [busy, focusRegion, inspect, opened, readProject, root, verifyCase],
   );
 
   // Breadcrumb back navigation: out of the case to the project, and out of
@@ -564,71 +693,6 @@ export default function App() {
       });
     },
     [operate],
-  );
-
-  // Reads whose answer can be older than the question: only the response to
-  // the latest request commits, so a late answer to an earlier one is dropped
-  // instead of overwriting what the viewer asked for last.
-  const readTickets = useRef(new Map<string, number>());
-  const currentTicket = useCallback((kind: string) => {
-    const ticket = (readTickets.current.get(kind) ?? 0) + 1;
-    readTickets.current.set(kind, ticket);
-    return ticket;
-  }, []);
-  const isCurrent = useCallback((kind: string, ticket: number) => readTickets.current.get(kind) === ticket, []);
-
-  // One window of the grid at a time. Asking for the next one re-reads the case
-  // and its index, so a window is never served from an index the evidence no
-  // longer supports.
-  const showGrid = useCallback(
-    async (folder: string, name: string, indexName: string, offset: number) => {
-      const ticket = currentTicket("grid");
-      await operate("grid", async () => {
-        setGridResult(null);
-        setInspectionResult(null);
-        setSelectedOccurrence(null);
-        const result = await openGrid(folder, name, indexName, offset, GRID_WINDOW);
-        if (isCurrent("grid", ticket)) {
-          setGridResult(result);
-        }
-      });
-    },
-    [currentTicket, isCurrent, operate],
-  );
-
-  // An occurrence is selected from the grid or from the sequence, and both name
-  // the same verified case: the grid's own case when there is one, and the case
-  // the window verified otherwise. Either way the inspector is bound to the
-  // identity that was displayed, so a value is never read out of evidence that
-  // has changed since.
-  const inspect = useCallback(
-    async (occurrence: string, path: string, nodeOffset: number, byteOffset: number) => {
-      const grid = gridResult?.grid;
-      const open = grid
-        ? { case: grid.case, identity: grid.identity }
-        : evidence?.case
-          ? { case: evidence.case.name, identity: evidence.case.identity }
-          : null;
-      if (!root || !open) return;
-      const ticket = currentTicket("inspect");
-      await operate("inspect", async () => {
-        setSelectedOccurrence(occurrence);
-        setInspectionResult(null);
-        const result = await inspectOccurrence({
-          workspace: root,
-          case: open.case,
-          identity: open.identity,
-          occurrence,
-          path,
-          node_offset: nodeOffset,
-          byte_offset: byteOffset,
-        });
-        if (isCurrent("inspect", ticket)) {
-          setInspectionResult(result);
-        }
-      });
-    },
-    [currentTicket, evidence, gridResult, isCurrent, operate, root],
   );
 
   // A comparison is bound to the identity the window verified for the open
@@ -1184,7 +1248,7 @@ export default function App() {
         {found && found.matches.length > 0 ? (
           <ul className="matches" aria-label="Search results">
             {found.matches.map((match) => (
-              <li key={`${match.kind}:${match.name}:${match.field}`}>
+              <li key={`${match.kind}:${match.name}:${match.field}:${match.occurrence ?? ""}`}>
                 <button
                   type="button"
                   disabled={busy}
@@ -1194,6 +1258,9 @@ export default function App() {
                   }}
                 >
                   <span className="name">{match.label}</span>
+                  <span className={`match-badge ${match.kind === "content" ? "content-badge" : "metadata-badge"}`}>
+                    {match.kind === "content" ? "[content]" : "[metadata]"}
+                  </span>
                   <span className="reason">matched its {match.field}</span>
                 </button>
               </li>
@@ -1355,16 +1422,23 @@ export default function App() {
             busy={busy}
             onOpen={(indexName, offset) => {
               if (root) {
-                void showGrid(root, verified.name, indexName, offset);
+                void (async () => {
+                  const desc = await describeIndex(root, verified.name, indexName);
+                  setIndexResult(desc);
+                  void showGrid(root, verified.name, indexName, offset);
+                })();
               }
             }}
             onSelect={(name) => void changeFilters(() => selectFilter(name))}
             onSave={(filter) => void changeFilters(() => saveFilter(filter))}
             selectedOccurrence={selectedOccurrence}
             onInspect={(occurrence) => void inspect(occurrence, "", 0, -1)}
+            caseEvidence={evidence?.case}
+            indexDetails={indexResult?.index}
+            onBuildIndex={handleBuildIndex}
           />
         ) : null}
-        {gridResult?.grid ? (
+        {verified ? (
           <Inspector
             result={inspectionResult}
             busy={busy}
