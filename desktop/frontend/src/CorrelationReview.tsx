@@ -5,8 +5,8 @@ const emptyDecision: CorrelationDecision = { action: "add", link: "", from: "", 
 
 /** An explicitly selected local history, never an implicit latest mapping.
  * All interpretation, validation and persistence are Go operations. */
-export function CorrelationReview({ busy, entries, context, onReview }: {
-  busy: boolean; entries: string[];
+export function CorrelationReview({ busy, reviews, context, onReview }: {
+  busy: boolean; reviews: string[];
   context: Pick<CorrelationReviewRequest, "workspace" | "case" | "identity" | "rules" | "rules_sha256">;
   onReview: (request: CorrelationReviewRequest, write: boolean) => Promise<CorrelationReviewResult>;
 }) {
@@ -35,7 +35,7 @@ export function CorrelationReview({ busy, entries, context, onReview }: {
       <label htmlFor="correlation-previous">Retained review directory (blank starts from machine findings)</label>
       <input id="correlation-previous" list="correlation-reviews" value={previous} disabled={busy}
         onChange={event => { setPrevious(event.target.value); setResult(null); setDecision(emptyDecision); }} />
-      <datalist id="correlation-reviews">{entries.map(entry => <option key={entry} value={entry} />)}</datalist>
+      <datalist id="correlation-reviews">{reviews.map(entry => <option key={entry} value={entry} />)}</datalist>
       <button disabled={busy}>Open selected mapping</button>
     </form>
     <p role="status">{result?.reason ?? (result?.state === "completed" ? "Mapping verified locally." : "")}</p>

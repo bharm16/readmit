@@ -836,3 +836,36 @@ func field(t *testing.T, out, label string) string {
 	value, _, _ := strings.Cut(rest, "\n")
 	return value
 }
+
+// An application-created project is an ordinary project: the command line
+// shows it, registers evidence into it, and what the command line registered
+// is what the shell's overview then reports verified.
+func TestApplicationCreatedProjectReadsThroughTheCommandLine(t *testing.T) {
+	parent := t.TempDir()
+	app := desktopApp(t, parent)
+	created := app.CreateProject("investigation", "Epic scheduling interface", "integration-team", []string{"siu-2.5.1-v1"})
+	if created.State != desktop.Empty && created.State != desktop.Completed {
+		t.Fatalf("the shell could not create the project: %+v", created)
+	}
+	root := created.Overview.Root
+
+	stdout, stderr, err := run(t, "project", "show", root)
+	if err != nil || stderr != "" {
+		t.Fatalf("project show: %v %s", err, stderr)
+	}
+	for _, want := range []string{"Project: Epic scheduling interface", "Document: readmit-project/v1", "Interface versions: siu-2.5.1-v1", "Default owner: integration-team", "Cases: 0"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("project show omitted %q of the application-created project:\n%s", want, stdout)
+		}
+	}
+
+	registerFrozenCase(t, root, "regression")
+	overview := app.OpenProjectOverview(root)
+	if overview.State != desktop.Completed || overview.Overview == nil || len(overview.Overview.Cases) != 1 {
+		t.Fatalf("the shell did not re-read what the command line registered: %+v", overview)
+	}
+	registered := overview.Overview.Cases[0]
+	if registered.Name != "regression" || registered.Identity != frozenRegressionIdentity || registered.Evidence != "verified" {
+		t.Fatalf("the registered case is not the evidence the command line verified: %+v", registered)
+	}
+}

@@ -375,13 +375,22 @@ entry as a `revisions` artifact, each with the contract it declares.
 editable one: the same settings, the same interface versions, the same case and
 revision identities, and the same notes the command line wrote.
 
-`SaveNote` is the only thing the shell writes into a project. It replaces one
-note in the editable document, so a UI edit reaches working text and nothing
-else: it cannot register a case or a revision, and it cannot overwrite an
-import, a finalized run, or any other retained artifact. Everything else the
-shell does with a project is a read. A draft the shell retains before that write
-goes into its own local working session, never here. See
-[the desktop shell](desktop.md).
+`SaveNote` is the only thing the shell writes into the editable document. It
+replaces one note, so a UI edit reaches working text and nothing else: it
+cannot overwrite an import, a finalized run, or any other retained artifact.
+A draft the shell retains before that write goes into its own local working
+session, never here.
+
+The shell also reaches the recorded document through the same shared
+operations the commands above run: it can create a project (native folder
+choice, then the same writer `project init` uses), change its settings and
+declare further interface versions, verify a case bundle of the project and
+register what that reader accepted, and change a registered case's title,
+owner, status, interface version, tags or linked incidents. Every successful
+write is returned re-read from disk, and every refusal is the project's own.
+Registering a revision stays a command-line operation, because it is a
+statement about verified lineage rather than an edit. See
+[the desktop shell](desktop.md) for the overview that carries these.
 
 ## Privacy
 

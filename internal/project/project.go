@@ -550,6 +550,25 @@ func (p *Project) Save(document Document) error {
 	return nil
 }
 
+// WriteDocument replaces the document of an already-resolved project directory
+// atomically, exactly as Save does, for a caller that composed the new document
+// itself rather than through an opened project. It writes only this document;
+// no evidence is opened, moved, or rewritten.
+func WriteDocument(root string, document Document) error {
+	data, err := Encode(document)
+	if err != nil {
+		return err
+	}
+	return install(root, DocumentName, data)
+}
+
+// Declares reports whether one interface version is declared. Every case names
+// exactly one declared version, so a setting or a registration can only ever
+// name one of these.
+func (d Document) Declares(version string) bool {
+	return slices.Contains(d.InterfaceVersions, version)
+}
+
 // install writes one canonical document beside the one already there and
 // renames it into place. The incomplete file is the writer's own path policy
 // check: it must not exist, so an interrupted write is reported rather than

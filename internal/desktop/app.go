@@ -65,6 +65,16 @@ const (
 	CaseArtifact        Kind = "case"
 	ProjectArtifact     Kind = "project"
 	RevisionsArtifact   Kind = "revisions"
+	ResultArtifact      Kind = "result"
+	JobArtifact         Kind = "job"
+	ReviewArtifact      Kind = "review"
+	IndexArtifact       Kind = "index"
+	TargetArtifact      Kind = "target"
+	RulesArtifact       Kind = "rules"
+	PlanArtifact        Kind = "plan"
+	SpecArtifact        Kind = "spec"
+	PackArtifact        Kind = "pack"
+	AnalysisArtifact    Kind = "analysis"
 	UnsupportedArtifact Kind = "unsupported"
 )
 
@@ -631,18 +641,30 @@ func describe(root string, entry fs.DirEntry) Artifact {
 		return Artifact{Name: name, Kind: RevisionsArtifact, Schema: revisions.Schema}
 	}
 	path, err := artifactpath.Child(root, name)
-	if err != nil {
-		reason := "not a case bundle directory"
-		if entry.Type()&fs.ModeSymlink != 0 {
-			reason = "symbolic links are not opened as evidence"
+	if err == nil {
+		manifest, err := bundle.Describe(path)
+		if err == nil {
+			return Artifact{Name: name, Kind: CaseArtifact, Schema: manifest.Schema, Provenance: string(manifest.Provenance.Mode)}
 		}
-		return Artifact{Name: name, Kind: UnsupportedArtifact, Reason: reason}
 	}
-	manifest, err := bundle.Describe(path)
-	if err != nil {
-		return Artifact{Name: name, Kind: UnsupportedArtifact, Reason: "not a case bundle this release supports"}
+	// Beyond the cases and the two project documents, the listing names what a
+	// retained artifact declares: a directory holding a fixed-name record, or
+	// a regular file declaring a contract this window offers a picker for.
+	// Classifying verifies nothing — opening the entry is still the
+	// verification step — so an entry named here is a claim the listing makes,
+	// never an admission.
+	if entry.Type().IsRegular() || entry.IsDir() {
+		if kind, known := classify(root, name, entry.IsDir()); known {
+			return Artifact{Name: name, Kind: kind}
+		}
 	}
-	return Artifact{Name: name, Kind: CaseArtifact, Schema: manifest.Schema, Provenance: string(manifest.Provenance.Mode)}
+	reason := "not a case bundle this release supports"
+	if entry.Type()&fs.ModeSymlink != 0 {
+		reason = "symbolic links are not opened as evidence"
+	} else if err != nil {
+		reason = "not a case bundle directory"
+	}
+	return Artifact{Name: name, Kind: UnsupportedArtifact, Reason: reason}
 }
 
 // probeReadFailure separates a folder or document this account cannot read from

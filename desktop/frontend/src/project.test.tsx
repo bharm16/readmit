@@ -1,0 +1,285 @@
+// The project journey, driven as a person drives it: create a project,
+// register an existing case of the workspace, choose the artifacts the
+// actions apply to, and continue from what was retained — every step a real
+// user event over the real components, with only the typed facade stubbed.
+// What a project can hold and what a registration means is decided on the Go
+// side; these tests prove the window reaches the shared operations and draws
+// every outcome they can return.
+import { expect, test } from "vitest";
+import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import {
+  CASE_ENTRY,
+  CASE_IDENTITY,
+  OTHER_CASE_ENTRY,
+  WORKSPACE_ROOT,
+  caseResult,
+  dialogDismissed,
+  folderChosen,
+  projectOverviewResult,
+  refused,
+  registeredCase,
+} from "./testkit/fixtures";
+import { renderApp } from "./testkit/app";
+
+async function openPlainWorkspace(
+  user: ReturnType<typeof userEvent.setup>,
+  withProject = false,
+) {
+  const { facade } = await renderApp({
+    SelectWorkspace: () =>
+      folderChosen(WORKSPACE_ROOT, [
+        { name: CASE_ENTRY, kind: "case", schema: "readmit-case/v3", provenance: "generated" },
+        ...(withProject ? [{ name: "project.json", kind: "project" as const, schema: "readmit-project/v1" }] : []),
+      ]),
+  });
+  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await screen.findByText(WORKSPACE_ROOT);
+  return { facade };
+}
+
+test("a project is created, a case is registered from the listing, and the investigation continues from it", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openPlainWorkspace(user);
+
+  // Start: no project is open, and the window says what to do next.
+  const evidence = screen.getByRole("region", { name: "Evidence" });
+  expect(
+    within(evidence).getByText(/Open its project, or create one/),
+  ).toBeTruthy();
+
+  // Create the project: the form asks for what the project document holds,
+  // and the folder that holds it is chosen in the host's own dialog.
+  facade.reply({
+    CreateProject: (name, title, owner, versions) => {
+      expect(name).toBe("scheduling-investigation");
+      expect(versions).toEqual(["siu-2.5.1-v1"]);
+      expect(title).toBe("Epic scheduling interface");
+      expect(owner).toBe("");
+      return projectOverviewResult([]);
+    },
+  });
+  await user.click(within(evidence).getByRole("button", { name: "Create a project…" }));
+  await user.type(within(evidence).getByLabelText("Folder name for the new project"), "scheduling-investigation");
+  await user.type(within(evidence).getByLabelText("Title", { selector: "#project-title" }), "Epic scheduling interface");
+  await user.type(within(evidence).getByLabelText("Interface versions, comma-separated"), "siu-2.5.1-v1");
+  await user.click(within(evidence).getByRole("button", { name: "Create the project…" }));
+  expect(facade.oneCall("CreateProject")).toBeTruthy();
+  expect(
+    await within(evidence).findByText(/Nothing is registered yet/),
+  ).toBeTruthy();
+
+  // Register an existing case: the picker offers the case bundles the
+  // workspace lists, and the registration carries what the person records.
+  facade.reply({
+    RegisterCase: (root, name, registration) => {
+      expect(root).toBe(WORKSPACE_ROOT);
+      expect(name).toBe(CASE_ENTRY);
+      expect(registration.title).toBe("Duplicate appointment");
+      expect(registration.tags).toEqual(["scheduling"]);
+      return projectOverviewResult([registeredCase()]);
+    },
+  });
+  await user.selectOptions(within(evidence).getByLabelText("Case bundle in this workspace"), CASE_ENTRY);
+  await user.type(within(evidence).getByLabelText("Title", { selector: "#register-title" }), "Duplicate appointment");
+  await user.type(within(evidence).getByLabelText("Tags, comma-separated", { selector: "#register-tags" }), "scheduling");
+  await user.click(within(evidence).getByRole("button", { name: "Register this case" }));
+  expect(
+    await within(evidence).findByText("Duplicate appointment after reschedule"),
+  ).toBeTruthy();
+  expect(within(evidence).getByText("verified")).toBeTruthy();
+
+  // Continue: opening the registered case verifies it and names the next
+  // action the investigation continues from.
+  facade.reply({ OpenCase: () => caseResult() });
+  await user.click(within(evidence).getByRole("button", { name: "Open this case" }));
+  expect(facade.oneCall("OpenCase")).toEqual([WORKSPACE_ROOT, CASE_ENTRY]);
+  expect(await screen.findByText(CASE_IDENTITY)).toBeTruthy();
+  expect(
+    within(evidence).getByText(/is open in the inspector/),
+  ).toBeTruthy();
+  // The breadcrumb trail names where the investigation is, and the way out.
+  const trail = within(evidence).getByRole("navigation", { name: "Where you are" });
+  expect(within(trail).getByText("Workspace")).toBeTruthy();
+  expect(within(trail).getByText("Scheduling investigation")).toBeTruthy();
+  expect(within(trail).getByText(CASE_ENTRY)).toBeTruthy();
+});
+
+test("a dismissed folder dialog is a cancelled create that opened nothing", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openPlainWorkspace(user);
+  facade.reply({ CreateProject: () => dialogDismissed });
+  const evidence = screen.getByRole("region", { name: "Evidence" });
+  await user.click(within(evidence).getByRole("button", { name: "Create a project…" }));
+  await user.type(within(evidence).getByLabelText("Folder name for the new project"), "scheduling-investigation");
+  await user.type(within(evidence).getByLabelText("Interface versions, comma-separated"), "siu-2.5.1-v1");
+  await user.click(within(evidence).getByRole("button", { name: "Create the project…" }));
+  expect(await within(evidence).findByText("cancelled")).toBeTruthy();
+  expect(facade.callsTo("OpenCase")).toHaveLength(0);
+});
+
+test("a folder this account cannot create in is reported as denied, in words and shape", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openPlainWorkspace(user);
+  facade.reply({
+    CreateProject: () => ({ state: "permission_denied" as const, reason: "this account cannot create a folder in the chosen folder" }),
+  });
+  const evidence = screen.getByRole("region", { name: "Evidence" });
+  await user.click(within(evidence).getByRole("button", { name: "Create a project…" }));
+  await user.type(within(evidence).getByLabelText("Folder name for the new project"), "scheduling-investigation");
+  await user.type(within(evidence).getByLabelText("Interface versions, comma-separated"), "siu-2.5.1-v1");
+  await user.click(within(evidence).getByRole("button", { name: "Create the project…" }));
+  expect(await within(evidence).findByText("permission_denied")).toBeTruthy();
+  expect(
+    within(evidence).getByText("this account cannot create a folder in the chosen folder"),
+  ).toBeTruthy();
+});
+
+test("a project document this release cannot read is reported and changes nothing", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openPlainWorkspace(user, true);
+  facade.reply({
+    OpenProjectOverview: () =>
+      refused("the project document was written by a version this release cannot read"),
+  });
+  const evidence = screen.getByRole("region", { name: "Evidence" });
+  await user.click(screen.getByRole("button", { name: "Read the project" }));
+  expect(
+    await within(evidence).findByText(
+      "the project document was written by a version this release cannot read",
+    ),
+  ).toBeTruthy();
+  expect(facade.callsTo("RegisterCase")).toHaveLength(0);
+  expect(facade.callsTo("UpdateProjectSettings")).toHaveLength(0);
+});
+
+test("a registration the project refuses reports the refusal and registers nothing else", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openPlainWorkspace(user, true);
+  facade.reply({
+    OpenProjectOverview: () => projectOverviewResult([]),
+    RegisterCase: () => refused("that name is already registered in this project"),
+  });
+  const evidence = screen.getByRole("region", { name: "Evidence" });
+  await user.click(screen.getByRole("button", { name: "Read the project" }));
+  await user.selectOptions(
+    await within(evidence).findByLabelText("Case bundle in this workspace"),
+    CASE_ENTRY,
+  );
+  await user.type(within(evidence).getByLabelText("Title", { selector: "#register-title" }), "Duplicate appointment");
+  await user.click(within(evidence).getByRole("button", { name: "Register this case" }));
+  expect(
+    await within(evidence).findByText("that name is already registered in this project"),
+  ).toBeTruthy();
+  expect(facade.callsTo("RegisterCase")).toHaveLength(1);
+});
+
+test("search results open the artifact they matched, not only its name", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    SelectWorkspace: () =>
+      folderChosen(WORKSPACE_ROOT, [
+        { name: CASE_ENTRY, kind: "case", schema: "readmit-case/v3", provenance: "generated" },
+        { name: OTHER_CASE_ENTRY, kind: "case", schema: "readmit-case/v3", provenance: "imported" },
+      ]),
+    Search: () => ({
+      state: "completed" as const,
+      matches: [
+        { kind: "artifact" as const, name: OTHER_CASE_ENTRY, label: OTHER_CASE_ENTRY, field: "name", region: "navigation" as const },
+      ],
+    }),
+    OpenCase: () => caseResult(OTHER_CASE_ENTRY),
+  });
+  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await screen.findByText(WORKSPACE_ROOT);
+  await user.type(screen.getByLabelText("Search this workspace"), "other");
+  await user.click(screen.getByRole("button", { name: "Search" }));
+  await user.click(await screen.findByRole("button", { name: /other-case/ }));
+  // Opening the result verified and opened the matched case, carrying its
+  // counts into the inspector.
+  expect(facade.oneCall("OpenCase")).toEqual([WORKSPACE_ROOT, OTHER_CASE_ENTRY]);
+  expect(await screen.findByText(CASE_IDENTITY)).toBeTruthy();
+});
+
+test("a second navigation started while one runs starts nothing else, so no stale result can land under another case", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    SelectWorkspace: () =>
+      folderChosen(WORKSPACE_ROOT, [
+        { name: CASE_ENTRY, kind: "case", schema: "readmit-case/v3", provenance: "generated" },
+        { name: OTHER_CASE_ENTRY, kind: "case", schema: "readmit-case/v3", provenance: "imported" },
+      ]),
+    Search: () => ({
+      state: "completed" as const,
+      matches: [
+        { kind: "artifact" as const, name: CASE_ENTRY, label: CASE_ENTRY, field: "name", region: "navigation" as const },
+        { kind: "artifact" as const, name: OTHER_CASE_ENTRY, label: OTHER_CASE_ENTRY, field: "name", region: "navigation" as const },
+      ],
+    }),
+  });
+  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await screen.findByText(WORKSPACE_ROOT);
+  await user.type(screen.getByLabelText("Search this workspace"), "case");
+  await user.click(screen.getByRole("button", { name: "Search" }));
+  const results = await screen.findAllByRole("button", { name: /matched its name/ });
+  // The first open parks mid-verification; the second result is offered but
+  // the window starts nothing else while an operation runs.
+  const parked = facade.park("OpenCase");
+  await user.click(results[0]!);
+  await user.click(results[1]!);
+  expect(facade.callsTo("OpenCase")).toHaveLength(1);
+  parked.resolve(caseResult(CASE_ENTRY));
+  expect(await screen.findByText(CASE_IDENTITY)).toBeTruthy();
+  // The one case that ran is the one that renders.
+  expect(facade.callsTo("OpenCase")[0]?.args[1]).toBe(CASE_ENTRY);
+});
+
+test("case details edited in the project reach the shared operation and only the changed members", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openPlainWorkspace(user, true);
+  facade.reply({
+    OpenProjectOverview: () => projectOverviewResult([registeredCase()]),
+    UpdateRegisteredCase: (root, name, change) => {
+      expect(root).toBe(WORKSPACE_ROOT);
+      expect(name).toBe(CASE_ENTRY);
+      expect(change.status).toBe("investigating");
+      expect(change.title).toBeUndefined();
+      expect(change.tags).toBeUndefined();
+      return projectOverviewResult([{ ...registeredCase(), status: "investigating" }]);
+    },
+  });
+  const evidence = screen.getByRole("region", { name: "Evidence" });
+  await user.click(screen.getByRole("button", { name: "Read the project" }));
+  await user.click(
+    await within(evidence).findByRole("button", { name: "Edit details" }),
+  );
+  await user.selectOptions(
+    within(evidence).getByLabelText("Status", { selector: "#case-status-sample-case" }),
+    "investigating",
+  );
+  await user.click(within(evidence).getByRole("button", { name: "Store these details" }));
+  // The refreshed overview is what renders, so the edit shows in the status
+  // badge the project now reports.
+  expect(
+    await within(evidence).findAllByText("investigating"),
+  ).not.toHaveLength(0);
+  expect(facade.oneCall("UpdateRegisteredCase")).toBeTruthy();
+});
+
+test("the project forms are reachable and operable with the keyboard alone", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openPlainWorkspace(user);
+  facade.reply({ CreateProject: (name) => {
+    expect(name).toBe("project-from-keys");
+    return projectOverviewResult([]);
+  } });
+  const evidence = screen.getByRole("region", { name: "Evidence" });
+  await user.click(within(evidence).getByRole("button", { name: "Create a project…" }));
+  const name = within(evidence).getByLabelText("Folder name for the new project");
+  name.focus();
+  await user.keyboard("project-from-keys");
+  await user.type(within(evidence).getByLabelText("Interface versions, comma-separated"), "siu-2.5.1-v1");
+  await user.keyboard("{Enter}");
+  expect(facade.oneCall("CreateProject")).toBeTruthy();
+  expect(await within(evidence).findByText(/Nothing is registered yet/)).toBeTruthy();
+});

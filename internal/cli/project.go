@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/project"
 	"github.com/spf13/cobra"
@@ -83,26 +82,19 @@ func projectSettings() *cobra.Command {
 		Short:       "Change project-level settings and declare interface versions",
 		Args:        projectOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opened, err := project.Open(args[0])
-			if err != nil {
-				return err
-			}
-			document := opened.Document
+			var change operation.SettingsChange
 			if cmd.Flags().Changed("title") {
-				document.Settings.Title = title
+				change.Title = &title
 			}
 			if cmd.Flags().Changed("owner") {
-				document.Settings.DefaultOwner = owner
+				change.DefaultOwner = &owner
 			}
-			for _, version := range versions {
-				if !slices.Contains(document.InterfaceVersions, version) {
-					document.InterfaceVersions = append(slices.Clip(slices.Clone(document.InterfaceVersions)), version)
-				}
-			}
+			change.DeclareVersions = versions
 			if cmd.Flags().Changed("default-interface-version") {
-				document.Settings.DefaultInterfaceVersion = defaultVersion
+				change.DefaultInterfaceVersion = &defaultVersion
 			}
-			if err := opened.Save(document); err != nil {
+			document, err := operation.UpdateProjectSettings(args[0], change)
+			if err != nil {
 				return err
 			}
 			return writeProject(cmd.OutOrStdout(), "Project settings updated: "+document.Settings.Title, document)
@@ -124,34 +116,28 @@ func projectAdd() *cobra.Command {
 		Short:       "Register a verified case bundle of the project directory",
 		Args:        projectTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opened, err := project.Open(args[0])
-			if err != nil {
-				return err
+			entry := project.Case{
+				Title:            title,
+				InterfaceVersion: version,
+				Owner:            owner,
+				Status:           project.Status(status),
 			}
-			revisions, err := project.ReadRevisions(opened.Root)
-			if err != nil {
-				return err
-			}
-			facts, _, err := verifiedEvidence(opened.Root, args[1])
-			if err != nil {
-				return err
-			}
-			entry := project.Case{Name: facts.name, Identity: facts.identity, Schema: facts.schema, Provenance: facts.provenance}
-			entry.Title = title
-			entry.InterfaceVersion = version
-			entry.Owner = owner
-			entry.Status = project.Status(status)
+			var err error
 			if entry.Tags, err = declaredValues(tags); err != nil {
 				return err
 			}
 			if entry.Incidents, err = declaredValues(incidents); err != nil {
 				return err
 			}
-			document, stored, err := project.AddCase(opened.Document, revisions, entry)
+			stored, err := operation.RegisterCase(args[0], args[1], operation.CaseRegistration{
+				Title:            entry.Title,
+				Owner:            entry.Owner,
+				Status:           entry.Status,
+				InterfaceVersion: entry.InterfaceVersion,
+				Tags:             entry.Tags,
+				Incidents:        entry.Incidents,
+			})
 			if err != nil {
-				return err
-			}
-			if err := opened.Save(document); err != nil {
 				return err
 			}
 			return writeCase(cmd.OutOrStdout(), "Case registered: "+stored.Name, stored)
@@ -175,7 +161,7 @@ func projectUpdate() *cobra.Command {
 		Short:       "Change the title, tags, ownership, status, or linked incidents of a registered case",
 		Args:        projectTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var change project.Change
+			var change operation.CaseChange
 			if cmd.Flags().Changed("title") {
 				change.Title = &title
 			}
@@ -206,15 +192,8 @@ func projectUpdate() *cobra.Command {
 			if change.Empty() {
 				return usage("project update requires at least one change")
 			}
-			opened, err := project.Open(args[0])
+			stored, err := operation.UpdateRegisteredCase(args[0], args[1], change)
 			if err != nil {
-				return err
-			}
-			document, stored, err := project.UpdateCase(opened.Document, args[1], change)
-			if err != nil {
-				return err
-			}
-			if err := opened.Save(document); err != nil {
 				return err
 			}
 			return writeCase(cmd.OutOrStdout(), "Case updated: "+stored.Name, stored)
@@ -240,42 +219,8 @@ func projectRevise() *cobra.Command {
 			if parent == "" {
 				return usage("project revise requires --parent naming the case or revision it was derived from")
 			}
-			opened, err := project.Open(args[0])
+			stored, err := operation.RegisterRevision(args[0], args[1], parent)
 			if err != nil {
-				return err
-			}
-			revisions, err := project.ReadRevisions(opened.Root)
-			if err != nil {
-				return err
-			}
-			// Both the revision and its parent are re-verified through the
-			// shared reader before any lineage is recorded, so a parent whose
-			// evidence no longer matches what the project recorded is reported
-			// rather than quietly re-identified under a new revision.
-			facts, derivation, err := verifiedEvidence(opened.Root, args[1])
-			if err != nil {
-				return err
-			}
-			ancestor, _, err := verifiedEvidence(opened.Root, parent)
-			if err != nil {
-				return err
-			}
-			entry := project.Revision{
-				Name:       facts.name,
-				Identity:   facts.identity,
-				Schema:     facts.schema,
-				Provenance: facts.provenance,
-				Operation: project.Operation{
-					Name:           derivation,
-					Parent:         ancestor.name,
-					ParentIdentity: ancestor.identity,
-				},
-			}
-			updated, stored, err := project.AddRevision(opened.Document, revisions, entry)
-			if err != nil {
-				return err
-			}
-			if err := project.WriteRevisions(opened.Root, updated); err != nil {
 				return err
 			}
 			return writeRevision(cmd.OutOrStdout(), "Revision registered: "+stored.Name, stored)
@@ -365,49 +310,27 @@ type evidence struct {
 	name, identity, schema, provenance string
 }
 
-// verifiedEvidence reads those facts from the bundle itself, and the derivation
-// its manifest declares when the evidence is the output of a transformation.
-// The provenance mode and the derivation are the ones the verified manifest
-// carries, so neither is ever inferred from the directory name or supplied on
-// the command line.
+// verifiedEvidence reads the facts a project records about evidence from the
+// bundle itself, through the shared operation every adapter uses.
 func verifiedEvidence(root, name string) (evidence, string, error) {
-	path, err := artifactpath.Child(root, name)
-	if err != nil {
-		return evidence{}, "", errors.New("a case must be named by one directory entry of the project")
-	}
-	opened, err := operation.OpenCase(path)
+	facts, derivation, err := operation.VerifiedCase(root, name)
 	if err != nil {
 		return evidence{}, "", err
 	}
-	return evidence{
-		name:       name,
-		identity:   opened.Identity,
-		schema:     opened.Manifest.Schema,
-		provenance: string(opened.Manifest.Provenance.Mode),
-	}, opened.Manifest.Provenance.Derivation, nil
+	return evidence{name: facts.Name, identity: facts.Identity, schema: facts.Schema, provenance: facts.Provenance}, derivation, nil
 }
 
-// evidenceFor re-verifies one registered case or revision through the same
-// reader that accepted it, and compares every evidence fact the project
-// recorded with what the reader reported. A document that claims a provenance
-// mode or a contract version the evidence does not carry is never reported as
-// verified, so an edited document cannot make imported evidence look synthetic. What the
+// evidenceFor re-verifies one registered case or revision through the shared
+// operation, which compares every evidence fact the project recorded with what
+// the reader reported. A document that claims a provenance mode or a contract
+// version the evidence does not carry is never reported as verified, so an
+// edited document cannot make imported evidence look synthetic. What the
 // project recorded is reported exactly as recorded whatever this finds: `show`
 // reports, and never rewrites what a project recorded.
 func evidenceFor(root string, recorded evidence) evidenceState {
-	path, err := artifactpath.Child(root, recorded.name)
-	if err != nil {
-		return evidenceMissing
-	}
-	opened, err := operation.OpenCase(path)
-	if err != nil {
-		return evidenceUnreadable
-	}
-	if opened.Identity != recorded.identity || opened.Manifest.Schema != recorded.schema ||
-		string(opened.Manifest.Provenance.Mode) != recorded.provenance {
-		return evidenceChanged
-	}
-	return evidenceVerified
+	return evidenceState(operation.EvidenceState(root, operation.Facts{
+		Name: recorded.name, Identity: recorded.identity, Schema: recorded.schema, Provenance: recorded.provenance,
+	}))
 }
 
 // declaredValues reads one explicitly empty value as the empty set, which is
