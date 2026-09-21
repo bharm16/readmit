@@ -38,24 +38,9 @@ const (
 	patientField = "PID[1]-3[1]"
 )
 
-func framed(message string) string { return "\x0b" + message + "\x1c\r" }
+// framed, writeCase and the other generic fixture verbs live in harness_test.go.
 
 func indexedAt() time.Time { return time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC) }
-
-// writeCase writes one case bundle into an open workspace and returns it.
-func writeCase(t *testing.T, root, name, wire string) *bundle.Bundle {
-	t.Helper()
-	imported := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-	written, err := bundle.Write(filepath.Join(root, name), []bundle.Input{{
-		Path:    "fixture",
-		Data:    []byte(wire),
-		Options: hl7.Options{Format: hl7.MLLP, Terminator: hl7.CR},
-	}}, bundle.Provenance{Mode: bundle.Imported, ImportedAt: &imported})
-	if err != nil {
-		t.Fatalf("case bundle: %v", err)
-	}
-	return written
-}
 
 // writeIndex builds and writes one index beside the case it describes. It goes
 // through the same writer the command line uses, so artifactpath decides where

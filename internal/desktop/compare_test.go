@@ -50,8 +50,7 @@ const (
 func comparisonWorkspace(t *testing.T) (*desktop.App, string, string) {
 	t.Helper()
 	root := t.TempDir()
-	state := t.TempDir()
-	app := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
+	app := workspaceApp(t)
 	before := writeCase(t, root, "before", framed(cmpBookedBefore)+framed(cmpMovedBefore))
 	writeCase(t, root, "after", framed(cmpBookedAfter)+framed(cmpInsertedAfter)+framed(cmpMovedAfter))
 	return app, root, before.Identity

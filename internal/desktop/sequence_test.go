@@ -58,9 +58,8 @@ func seqTime(second int) *time.Time {
 func sequenceWorkspace(t *testing.T) (*desktop.App, string, string) {
 	t.Helper()
 	root := t.TempDir()
-	state := t.TempDir()
-	app := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
-	written := writeSequenceCase(t, root, "incident", []bundle.Input{
+	app := workspaceApp(t)
+	written := writeInputs(t, root, "incident", []bundle.Input{
 		{
 			Path:    "sender-capture-path",
 			Data:    []byte(framed(seqBooking) + framed(seqBookingACK) + framed(seqUntimed) + framed(seqStrayACK)),
@@ -85,16 +84,6 @@ func sequenceWorkspace(t *testing.T) (*desktop.App, string, string) {
 		t.Fatal(err)
 	}
 	return app, root, written.Identity
-}
-
-func writeSequenceCase(t *testing.T, root, name string, inputs []bundle.Input) *bundle.Bundle {
-	t.Helper()
-	imported := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-	written, err := bundle.Write(filepath.Join(root, name), inputs, bundle.Provenance{Mode: bundle.Imported, ImportedAt: &imported})
-	if err != nil {
-		t.Fatalf("case bundle: %v", err)
-	}
-	return written
 }
 
 func sequenceRequest(root, identity, rules string) desktop.SequenceRequest {
@@ -226,7 +215,7 @@ func TestEveryDeclaredSourceIsALaneIncludingOneThatObservedNothing(t *testing.T)
 
 	// A case with a source that recorded no time at all still has that lane,
 	// with no span rather than a fabricated one.
-	written := writeSequenceCase(t, root, "silent", []bundle.Input{
+	written := writeInputs(t, root, "silent", []bundle.Input{
 		{Path: "quiet", Data: []byte(framed(seqBooking)), Options: hl7.Options{Format: hl7.MLLP, Terminator: hl7.CR}},
 	})
 	silent := laidOut(t, app, desktop.SequenceRequest{
@@ -557,7 +546,7 @@ func TestLayingOutASequenceChangesNoEvidence(t *testing.T) {
 // out of the picture. A sequence over it says so instead of looking complete.
 func TestACaptureThatRecordedNothingStaysVisibleAsMissingEvidence(t *testing.T) {
 	app, root, _ := sequenceWorkspace(t)
-	written := writeSequenceCase(t, root, "nothing", []bundle.Input{
+	written := writeInputs(t, root, "nothing", []bundle.Input{
 		{Path: "silent-capture-path", Options: hl7.Options{Format: hl7.MLLP, Terminator: hl7.CR}},
 	})
 
