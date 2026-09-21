@@ -122,7 +122,9 @@ var stageRules = []stageRule{
 			if d.Boundary != testrunner.LedgerBoundary {
 				return true
 			}
-			return slices.ContainsFunc(d.Expectations, func(e Expectation) bool { return e.Operator == LedgerCount })
+			return slices.ContainsFunc(d.Expectations, func(e Expectation) bool {
+				return e.Operator == LedgerCount || e.Operator == LedgerEquals
+			})
 		},
 		"this test expects nothing of the run yet"},
 }
@@ -132,6 +134,10 @@ var stageRules = []stageRule{
 const (
 	// LedgerCount expects the observed ledger to hold exactly N records.
 	LedgerCount = "ledger_count"
+
+	// LedgerEquals expects the observed ledger to hold exactly these records
+	// in order, including identifiers and appointment start.
+	LedgerEquals = "ledger_equals"
 
 	// ACKFieldEquals expects one MSA or ERR position of the acknowledgement
 	// correlated to one sent message to hold exactly one value.
@@ -173,6 +179,7 @@ type Expectation struct {
 	ID       string                 `json:"id"`
 	Operator string                 `json:"operator"`
 	Count    *int                   `json:"count,omitzero"`
+	Records  *[]observation.Record  `json:"records,omitzero"`
 	Message  string                 `json:"message,omitzero"`
 	Selector string                 `json:"selector,omitzero"`
 	Field    *testrunner.FieldValue `json:"field,omitzero"`
@@ -423,7 +430,7 @@ func checkExpectation(draft Draft, expectation Expectation, sent map[string]bool
 	invalid := errors.New("an expectation carries only the members its own operator declares")
 	switch expectation.Operator {
 	case LedgerCount:
-		if expectation.Message != "" || expectation.Selector != "" || expectation.Field != nil {
+		if expectation.Message != "" || expectation.Selector != "" || expectation.Field != nil || expectation.Records != nil {
 			return invalid
 		}
 		if draft.Boundary != testrunner.LedgerBoundary {
@@ -432,8 +439,26 @@ func checkExpectation(draft Draft, expectation Expectation, sent map[string]bool
 		if expectation.Count == nil || *expectation.Count < 0 || *expectation.Count > MaxCount {
 			return errors.New("an expected record count is a whole number this observation contract can hold")
 		}
+	case LedgerEquals:
+		if expectation.Message != "" || expectation.Selector != "" || expectation.Field != nil || expectation.Count != nil {
+			return invalid
+		}
+		if draft.Boundary != testrunner.LedgerBoundary {
+			return errors.New("an exact ledger is an expectation of the appointment-ledger boundary; the ack-contract boundary makes no ledger claim")
+		}
+		if expectation.Records == nil {
+			return errors.New("an exact ledger expectation declares the records the observation should hold")
+		}
+		snapshot := observation.Snapshot{
+			Schema: observation.Schema, Profile: observation.Profile,
+			SessionID: strings.Repeat("0", 32), Mode: observation.Fixed, Consistent: true,
+			Processed: []observation.Occurrence{}, Records: *expectation.Records,
+		}
+		if snapshot.Validate() != nil {
+			return errors.New("an exact ledger expectation holds records this observation contract accepts")
+		}
 	case ACKFieldEquals:
-		if expectation.Count != nil {
+		if expectation.Count != nil || expectation.Records != nil {
 			return invalid
 		}
 		if !sent[expectation.Message] {

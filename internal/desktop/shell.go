@@ -144,6 +144,7 @@ var commands = []Command{
 	{ID: "manage-scenarios", Title: "Design synthetic scenarios…", Keys: "Ctrl+Shift+S", Region: InspectorRegion},
 	{ID: "maintain-workspace", Title: "Maintain this workspace…", Region: EvidenceRegion},
 	{ID: "check-staged-upgrade", Title: "Check a staged upgrade…", Region: EvidenceRegion},
+	{ID: "manage-assertions", Title: "Author assertion sets…", Keys: "Ctrl+Shift+A", Region: InspectorRegion},
 	{ID: "cancel-operation", Title: "Cancel the running operation", Keys: "Escape"},
 	{ID: "next-region", Title: "Go to the next region", Keys: "F6"},
 	{ID: "previous-region", Title: "Go to the previous region", Keys: "Shift+F6"},
@@ -188,7 +189,7 @@ var privacyStatus = Privacy{
 		"the folders you have opened, as paths only, in readmit-desktop-recent/v1",
 		"the filters you have saved, including any value you typed to filter by, in readmit-filters/v1",
 		"the notes you had not stored yet and where you were, in readmit-desktop-session/v1",
-		"the editor work you had not stored yet — notes you were writing, test drafts, canonical edits and reproducer plans — in readmit-desktop-drafts/v1",
+		"the editor work you had not stored yet — notes you were writing, test drafts, assertion-set drafts, canonical edits and reproducer plans — in readmit-desktop-drafts/v1",
 	},
 }
 

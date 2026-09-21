@@ -8,6 +8,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
@@ -93,8 +94,9 @@ type Link struct {
 // becomes an expectation only when a person approves it.
 //
 // A supported suggestion carries exactly the members the expectation it
-// proposes would carry and nothing else — a record count, or one value at one
-// acknowledgement position. An unsupported one carries neither, and says why.
+// proposes would carry and nothing else — a record count, an exact ledger, or
+// one value at one acknowledgement position. An unsupported one carries none
+// of those members, and says why.
 type Suggestion struct {
 	ID       string                 `json:"id"`
 	Operator string                 `json:"operator"`
@@ -103,6 +105,7 @@ type Suggestion struct {
 	Message  string                 `json:"message,omitzero"`
 	Selector string                 `json:"selector,omitzero"`
 	Count    *int                   `json:"count,omitzero"`
+	Records  *[]observation.Record  `json:"records,omitzero"`
 	Field    *testrunner.FieldValue `json:"field,omitzero"`
 	Evidence Link                   `json:"evidence"`
 }
@@ -118,14 +121,15 @@ type Suggestions struct {
 }
 
 // SuggestionRequest is what a person asked to have proposed: the reviewed run,
-// whether the ledger it settled on should be proposed as a record count, and
-// the acknowledgement positions to propose a value for. Every position is
-// proposed for every message the draft sends, in the order the case records
-// them.
+// whether the ledger it settled on should be proposed as a record count and/or
+// an exact ledger, and the acknowledgement positions to propose a value for.
+// Every position is proposed for every message the draft sends, in the order
+// the case records them.
 type SuggestionRequest struct {
-	Result    string   `json:"result"`
-	Ledger    bool     `json:"ledger"`
-	Positions []string `json:"positions,omitzero"`
+	Result      string   `json:"result"`
+	Ledger      bool     `json:"ledger"`
+	ExactLedger bool     `json:"exact_ledger,omitzero"`
+	Positions   []string `json:"positions,omitzero"`
 }
 
 // Decision is one reviewer's act on one suggestion, naming it by the identifier
@@ -133,14 +137,16 @@ type SuggestionRequest struct {
 // draft, and it is never the default: a suggestion no decision names is not
 // approved.
 //
-// ID, Count and Field are the edits a reviewer may make while approving. Each
-// is a member the suggestion's own operator declares, so an edit corrects what
-// a run produced without turning one expectation into another.
+// ID, Count, Records and Field are the edits a reviewer may make while
+// approving. Each is a member the suggestion's own operator declares, so an
+// edit corrects what a run produced without turning one expectation into
+// another.
 type Decision struct {
 	Suggestion string                 `json:"suggestion"`
 	Approved   bool                   `json:"approved"`
 	ID         string                 `json:"id,omitzero"`
 	Count      *int                   `json:"count,omitzero"`
+	Records    *[]observation.Record  `json:"records,omitzero"`
 	Field      *testrunner.FieldValue `json:"field,omitzero"`
 }
 
@@ -215,7 +221,7 @@ func Cover(draft Draft) Coverage {
 	addressed := make(map[string][]string, len(draft.Messages))
 	for _, expectation := range draft.Expectations {
 		switch expectation.Operator {
-		case LedgerCount:
+		case LedgerCount, LedgerEquals:
 			if !coverage.Ledger.Covered {
 				coverage.Ledger.Covered, coverage.Ledger.Expectation = true, expectation.ID
 			}
@@ -252,7 +258,7 @@ func Suggest(root string, draft Draft, request SuggestionRequest) (Suggestions, 
 	if draft.Boundary == "" {
 		return Suggestions{}, errors.New("the outcome boundary decides which expectations a test can make; answer it before them")
 	}
-	if request.Ledger && draft.Boundary != testrunner.LedgerBoundary {
+	if (request.Ledger || request.ExactLedger) && draft.Boundary != testrunner.LedgerBoundary {
 		return Suggestions{}, errors.New("a record count is an expectation of the appointment-ledger boundary; the ack-contract boundary makes no ledger claim")
 	}
 	positions, err := checkPositions(request.Positions)
@@ -264,6 +270,9 @@ func Suggest(root string, draft Draft, request SuggestionRequest) (Suggestions, 
 	}
 	proposed := len(positions) * len(draft.Messages)
 	if request.Ledger {
+		proposed++
+	}
+	if request.ExactLedger {
 		proposed++
 	}
 	if proposed == 0 {
@@ -286,6 +295,9 @@ func Suggest(root string, draft Draft, request SuggestionRequest) (Suggestions, 
 	set := Suggestions{Origin: origin, Suggestions: make([]Suggestion, 0, proposed)}
 	if request.Ledger {
 		set.Suggestions = append(set.Suggestions, ledgerSuggestion(artifact, origin, taken))
+	}
+	if request.ExactLedger {
+		set.Suggestions = append(set.Suggestions, exactLedgerSuggestion(artifact, origin, taken))
 	}
 	sent := acknowledged(artifact.Run)
 	for _, id := range draft.Messages {
@@ -407,6 +419,27 @@ func ledgerSuggestion(artifact *testrunner.Artifact, origin Origin, taken map[st
 	return suggestion
 }
 
+// exactLedgerSuggestion proposes the exact ordered records the reviewed run
+// settled on. The records are a copy of what the observation retained, so an
+// approval unedited is what that same run would decide again.
+func exactLedgerSuggestion(artifact *testrunner.Artifact, origin Origin, taken map[string]bool) Suggestion {
+	suggestion := Suggestion{
+		ID:       identifier("exact-ledger", taken),
+		Operator: LedgerEquals,
+		Evidence: Link{Artifact: origin.Result},
+	}
+	if artifact.Result.FinalObservation != nil {
+		suggestion.Evidence.Payload = artifact.Result.FinalObservation.Path
+		suggestion.Evidence.Digest = artifact.Result.FinalObservation.SHA256
+	}
+	if artifact.FinalObservation == nil {
+		return unsupported(suggestion, "that run retained no final observation of the ledger")
+	}
+	records := slices.Clone(artifact.FinalObservation.Records)
+	suggestion.Outcome, suggestion.Records = Supported, &records
+	return suggestion
+}
+
 // ackSuggestion proposes the value one acknowledgement held at one position. It
 // reads what the evaluator reads: the received payload the run retained,
 // decoded as one message, at the position asked for. Anything it cannot read
@@ -458,7 +491,7 @@ func ackSuggestion(run *replay.Run, event *replay.Event, origin Origin, taken ma
 // never be read as a value somebody might approve.
 func unsupported(suggestion Suggestion, reason string) Suggestion {
 	suggestion.Outcome, suggestion.Reason = Unsupported, reason
-	suggestion.Count, suggestion.Field = nil, nil
+	suggestion.Count, suggestion.Records, suggestion.Field = nil, nil, nil
 	return suggestion
 }
 
@@ -595,6 +628,7 @@ func expected(suggestion Suggestion, decision Decision) (Expectation, error) {
 		Message:  suggestion.Message,
 		Selector: suggestion.Selector,
 		Count:    suggestion.Count,
+		Records:  suggestion.Records,
 		Field:    suggestion.Field,
 	}
 	if decision.ID != "" {
@@ -603,15 +637,23 @@ func expected(suggestion Suggestion, decision Decision) (Expectation, error) {
 	edited := errors.New("an approval edits only a member the suggestion's own operator declares")
 	switch suggestion.Operator {
 	case LedgerCount:
-		if decision.Field != nil {
+		if decision.Field != nil || decision.Records != nil {
 			return Expectation{}, edited
 		}
 		if decision.Count != nil {
 			records := *decision.Count
 			expectation.Count = &records
 		}
+	case LedgerEquals:
+		if decision.Field != nil || decision.Count != nil {
+			return Expectation{}, edited
+		}
+		if decision.Records != nil {
+			records := slices.Clone(*decision.Records)
+			expectation.Records = &records
+		}
 	case ACKFieldEquals:
-		if decision.Count != nil {
+		if decision.Count != nil || decision.Records != nil {
 			return Expectation{}, edited
 		}
 		if decision.Field != nil {

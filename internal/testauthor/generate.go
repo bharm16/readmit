@@ -245,6 +245,9 @@ func Generate(draft Draft) ([]byte, error) {
 		case LedgerCount:
 			count := *expectation.Count
 			assertion.Expected = testrunner.Value{Count: &count}
+		case LedgerEquals:
+			records := slices.Clone(*expectation.Records)
+			assertion.Expected = testrunner.Value{Records: &records}
 		case ACKFieldEquals:
 			field := *expectation.Field
 			assertion.Expected = testrunner.Value{Field: &field}
@@ -277,7 +280,7 @@ func Generate(draft Draft) ([]byte, error) {
 // unanswered for two different reasons, so it says which one.
 func unanswered(draft Draft, stage string) error {
 	if stage == StageExpectations && len(draft.Expectations) > 0 {
-		return errors.New("a test at the appointment-ledger boundary states what the ledger should hold; add an expected record count")
+		return errors.New("a test at the appointment-ledger boundary states what the ledger should hold; add an expected record count or an exact ledger")
 	}
 	for _, rule := range stageRules {
 		if rule.name == stage {

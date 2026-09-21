@@ -2,10 +2,13 @@ import { useState } from "react";
 import type {
   FieldState,
   GridRow,
+  ObservationIdentifier,
+  ObservationRecord,
   TestAnswer,
   TestBoundary,
   TestDecision,
   TestExpectation,
+  TestExpectationOperator,
   TestResult,
   TestReview,
   TestStage,
@@ -59,9 +62,25 @@ type Edit = {
   approved?: boolean;
   id?: string;
   count?: string;
+  records?: ObservationRecord[];
   state?: FieldState;
   text?: string;
 };
+
+const emptyIdentifier = (): ObservationIdentifier => ({
+  value: "",
+  namespace: "",
+  universal_id: "",
+  universal_id_type: "",
+});
+
+const blankRecord = (index: number): ObservationRecord => ({
+  record_id: `r${String(index).padStart(6, "0")}`,
+  patient_id: emptyIdentifier(),
+  placer_id: emptyIdentifier(),
+  filler_id: emptyIdentifier(),
+  appointment_start: "",
+});
 
 /** The guided test authoring panel. It answers one stage at a time over the
  * case the grid verified, and writes the result as a readmit-test/v1 spec.
@@ -108,6 +127,10 @@ export function TestAuthoring({
   const [reset, setReset] = useState("");
   const [count, setCount] = useState("1");
   const [expectationId, setExpectationId] = useState("");
+  const [ledgerOperator, setLedgerOperator] = useState<
+    Extract<TestExpectationOperator, "ledger_count" | "ledger_equals">
+  >("ledger_count");
+  const [records, setRecords] = useState<ObservationRecord[]>([]);
   const [message, setMessage] = useState("");
   const [selector, setSelector] = useState("MSA-1");
   const [state, setState] = useState<FieldState>("present");
@@ -115,6 +138,7 @@ export function TestAuthoring({
   const [output, setOutput] = useState("");
   const [runEntry, setRunEntry] = useState("");
   const [ledger, setLedger] = useState(true);
+  const [exactLedger, setExactLedger] = useState(false);
   const [position, setPosition] = useState("MSA-1");
   const [positions, setPositions] = useState<string[]>(["MSA-1"]);
   const [edits, setEdits] = useState<Record<string, Edit>>({});
@@ -133,7 +157,12 @@ export function TestAuthoring({
   const coverage = resolution?.coverage;
   const suggestions = view?.suggestions;
   const approval = view?.approval;
-  const request: TestSuggestionRequest = { result: runEntry, ledger, positions };
+  const request: TestSuggestionRequest = {
+    result: runEntry,
+    ledger,
+    exact_ledger: exactLedger,
+    positions,
+  };
   const edit = (id: string, change: Edit) =>
     setEdits((current) => ({ ...current, [id]: { ...current[id], ...change } }));
 
@@ -149,6 +178,9 @@ export function TestAuthoring({
       if (made.id) decision.id = made.id;
       if (suggestion.operator === "ledger_count" && made.count !== undefined && made.count !== "") {
         decision.count = Number(made.count);
+      }
+      if (suggestion.operator === "ledger_equals" && made.records !== undefined) {
+        decision.records = made.records;
       }
       if (suggestion.operator === "ack_field_equals" && made.state) {
         decision.field = made.state === "present" ? { state: made.state, text: made.text ?? "" } : { state: made.state };
@@ -345,6 +377,9 @@ export function TestAuthoring({
             <span className="reason">
               {expectation.operator}
               {expectation.operator === "ledger_count" ? ` · ${expectation.count} records` : ""}
+              {expectation.operator === "ledger_equals"
+                ? ` · ${expectation.records?.length ?? 0} exact records`
+                : ""}
               {expectation.message ? ` · ${expectation.message} · ${expectation.selector}` : ""}
               {expectation.field ? ` · ${expectation.field.state}` : ""}
             </span>
@@ -363,10 +398,11 @@ export function TestAuthoring({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          replaceExpectations([
-            ...expectations,
-            { id: expectationId, operator: "ledger_count", count: Number(count) },
-          ]);
+          const next: TestExpectation =
+            ledgerOperator === "ledger_count"
+              ? { id: expectationId, operator: "ledger_count", count: Number(count) }
+              : { id: expectationId, operator: "ledger_equals", records: records };
+          replaceExpectations([...expectations, next]);
         }}
       >
         <label htmlFor="authoring-count-id">Expectation name</label>
@@ -375,15 +411,88 @@ export function TestAuthoring({
           value={expectationId}
           onChange={(event) => setExpectationId(event.target.value)}
         />
-        <label htmlFor="authoring-count">Records the ledger should hold</label>
-        <input
-          id="authoring-count"
-          inputMode="numeric"
-          value={count}
-          onChange={(event) => setCount(event.target.value)}
-        />
+        <label htmlFor="authoring-ledger-operator">Ledger operator</label>
+        <select
+          id="authoring-ledger-operator"
+          value={ledgerOperator}
+          onChange={(event) =>
+            setLedgerOperator(
+              event.target.value as Extract<TestExpectationOperator, "ledger_count" | "ledger_equals">,
+            )
+          }
+        >
+          <option value="ledger_count">ledger_count</option>
+          <option value="ledger_equals">ledger_equals</option>
+        </select>
+        {ledgerOperator === "ledger_count" ? (
+          <>
+            <label htmlFor="authoring-count">Records the ledger should hold</label>
+            <input
+              id="authoring-count"
+              inputMode="numeric"
+              value={count}
+              onChange={(event) => setCount(event.target.value)}
+            />
+          </>
+        ) : (
+          <>
+            <p className="hint">
+              Exact ledger expectations declare the ordered records the observation
+              should hold. An empty ledger is a deliberate claim, not an omission.
+            </p>
+            <button type="button" disabled={busy} onClick={() => setRecords([])}>
+              Expect an empty ledger
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setRecords([...records, blankRecord(records.length + 1)])}
+            >
+              Add a ledger record
+            </button>
+            <ul className="selection">
+              {records.map((record, index) => (
+                <li key={`${record.record_id}-${index}`}>
+                  <span className="occurrence">{record.record_id}</span>
+                  <label htmlFor={`authoring-record-patient-${index}`}>Patient value</label>
+                  <input
+                    id={`authoring-record-patient-${index}`}
+                    value={record.patient_id.value}
+                    onChange={(event) => {
+                      const next = [...records];
+                      next[index] = {
+                        ...record,
+                        patient_id: { ...record.patient_id, value: event.target.value },
+                      };
+                      setRecords(next);
+                    }}
+                  />
+                  <label htmlFor={`authoring-record-start-${index}`}>Appointment start</label>
+                  <input
+                    id={`authoring-record-start-${index}`}
+                    value={record.appointment_start}
+                    onChange={(event) => {
+                      const next = [...records];
+                      next[index] = { ...record, appointment_start: event.target.value };
+                      setRecords(next);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setRecords(records.filter((_, other) => other !== index))}
+                  >
+                    Remove {record.record_id}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
         <button type="submit" disabled={busy || draft?.boundary !== "appointment-ledger"}>
-          Expect this record count
+          {ledgerOperator === "ledger_count"
+            ? "Expect this record count"
+            : "Expect this exact ledger"}
         </button>
       </form>
       <form
@@ -517,6 +626,15 @@ export function TestAuthoring({
           />
           Propose the record count that run settled on
         </label>
+        <label htmlFor="authoring-exact-ledger">
+          <input
+            id="authoring-exact-ledger"
+            type="checkbox"
+            checked={exactLedger}
+            onChange={(event) => setExactLedger(event.target.checked)}
+          />
+          Propose the exact ledger that run settled on
+        </label>
         <label htmlFor="authoring-position">Acknowledgement position to propose a value for</label>
         <input
           id="authoring-position"
@@ -585,6 +703,9 @@ export function TestAuthoring({
                     {suggestion.operator === "ledger_count" && suggestion.count !== undefined
                       ? ` · ${suggestion.count} records`
                       : ""}
+                    {suggestion.operator === "ledger_equals"
+                      ? ` · ${suggestion.records?.length ?? 0} exact records`
+                      : ""}
                     {suggestion.field ? ` · ${suggestion.field.state}` : ""}
                     {suggestion.field?.text !== undefined ? ` · ${suggestion.field.text}` : ""}
                     {" · "}
@@ -614,6 +735,20 @@ export function TestAuthoring({
                             value={made.count ?? ""}
                             onChange={(event) => edit(suggestion.id, { count: event.target.value })}
                           />
+                        </>
+                      ) : suggestion.operator === "ledger_equals" ? (
+                        <>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => edit(suggestion.id, { records: [] })}
+                          >
+                            Approve as an empty ledger
+                          </button>
+                          <p className="hint">
+                            {(made.records ?? suggestion.records)?.length ?? 0} exact records
+                            proposed; approving without an edit keeps what the run settled on.
+                          </p>
                         </>
                       ) : (
                         <>

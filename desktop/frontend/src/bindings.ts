@@ -59,6 +59,7 @@ export type CommandId =
   | "manage-scenarios"
   | "maintain-workspace"
   | "check-staged-upgrade"
+  | "manage-assertions"
   | "cancel-operation"
   | "next-region"
   | "previous-region"
@@ -622,6 +623,11 @@ export interface Facade {
   SaveTest(request: TestRequest): Promise<TestResult>;
   SuggestExpectations(request: TestRequest): Promise<TestResult>;
   ApproveExpectations(request: TestRequest): Promise<TestResult>;
+  AuthorAssertionSet(request: AssertionSetRequest): Promise<AssertionSetResult>;
+  SaveAssertionSet(request: AssertionSetRequest): Promise<AssertionSetResult>;
+  ImportAssertionSet(workspace: string, entry: string): Promise<AssertionSetResult>;
+  ValidateAssertionSet(document: string): Promise<CanonicalAssertionResult>;
+  ExportAssertionSet(request: CanonicalAssertionRequest): Promise<CanonicalAssertionResult>;
   OpenBaseline(request: BaselineRequest): Promise<BaselineResult>;
   ReviewBaseline(request: BaselineRequest): Promise<BaselineResult>;
   ApproveBaseline(request: BaselineRequest): Promise<BaselineResult>;
@@ -1557,7 +1563,25 @@ export type TestBoundary = "appointment-ledger" | "ack-contract";
 
 /** The typed expectations this flow authors. They are readmit-test/v1's own
  * operators, because a test this flow saves is a test `readmit test` runs. */
-export type TestExpectationOperator = "ledger_count" | "ack_field_equals";
+export type TestExpectationOperator = "ledger_count" | "ledger_equals" | "ack_field_equals";
+
+/** One assigning authority for an observation ledger identifier. Equal values
+ * in different namespaces are distinct. */
+export interface ObservationIdentifier {
+  value: string;
+  namespace: string;
+  universal_id: string;
+  universal_id_type: string;
+}
+
+/** One observation ledger record, matching readmit-observation/v1 JSON. */
+export interface ObservationRecord {
+  record_id: string;
+  patient_id: ObservationIdentifier;
+  placer_id: ObservationIdentifier;
+  filler_id: ObservationIdentifier;
+  appointment_start: string;
+}
 
 /** One expected value. Only a present value carries text; absent, empty and
  * explicit HL7 null stay three separate expectations. */
@@ -1572,6 +1596,7 @@ export interface TestExpectation {
   id: string;
   operator: TestExpectationOperator;
   count?: number;
+  records?: ObservationRecord[];
   message?: string;
   selector?: string;
   field?: ExpectedFieldValue;
@@ -1708,6 +1733,7 @@ export interface TestSuggestion {
   message?: string;
   selector?: string;
   count?: number;
+  records?: ObservationRecord[];
   field?: ExpectedFieldValue;
   evidence: TestEvidenceLink;
 }
@@ -1723,22 +1749,24 @@ export interface TestSuggestions {
 }
 
 /** What a person asked to have proposed: the reviewed run, whether the ledger
- * it settled on should be proposed as a record count, and the acknowledgement
- * positions to propose a value for. */
+ * it settled on should be proposed as a record count and/or an exact ledger,
+ * and the acknowledgement positions to propose a value for. */
 export interface TestSuggestionRequest {
   result: string;
   ledger: boolean;
+  exact_ledger?: boolean;
   positions?: string[];
 }
 
 /** One reviewer's act on one proposal. Approving is the only thing that puts an
- * expectation in a draft, and it is never the default. `id`, `count` and
- * `field` are the edits a reviewer may make while approving. */
+ * expectation in a draft, and it is never the default. `id`, `count`, `records`
+ * and `field` are the edits a reviewer may make while approving. */
 export interface TestDecision {
   suggestion: string;
   approved: boolean;
   id?: string;
   count?: number;
+  records?: ObservationRecord[];
   field?: ExpectedFieldValue;
 }
 
@@ -1825,6 +1853,152 @@ export function suggestExpectations(request: TestRequest): Promise<TestResult> {
  * here, so no suggested value crosses this boundary towards the draft. */
 export function approveExpectations(request: TestRequest): Promise<TestResult> {
   return guard(() => facade().ApproveExpectations(request), { state: "failed" });
+}
+
+/** The sixteen operators readmit-assertion-set/v1 evaluates. A new question is
+ * a new typed operator in Go; the UI never invents one. */
+export type AssertionOperator =
+  | "field_equals"
+  | "field_not_equals"
+  | "field_state"
+  | "text_matches"
+  | "numeric_range"
+  | "numeric_tolerance"
+  | "date_window"
+  | "values_equal"
+  | "record_count"
+  | "records_unique"
+  | "records_contain"
+  | "records_ordered"
+  | "record_multiplicity"
+  | "records_absent"
+  | "record_key_matches"
+  | "records_changed";
+
+export type AssertionMessageScope = "observed" | "input";
+export type AssertionRecordScope = "before" | "after";
+export type AssertionQuantifier = "every" | "any" | "none";
+
+/** One field address: which side of the run, which message, and which field. */
+export interface AssertionFieldRef {
+  scope: AssertionMessageScope;
+  message: string;
+  selector: string;
+}
+
+/** Closed typed subject union. Exactly one member is present per clause. */
+export interface AssertionSubject {
+  field?: AssertionFieldRef;
+  pair?: { left: AssertionFieldRef; right: AssertionFieldRef };
+  collection?: { scope: AssertionRecordScope };
+  each?: { scope: AssertionRecordScope; quantifier: AssertionQuantifier };
+  transition?: { from: AssertionRecordScope; to: AssertionRecordScope };
+}
+
+/** Optional condition: evaluate only when the named field holds exactly this. */
+export interface AssertionCondition {
+  field: AssertionFieldRef;
+  equals: ExpectedFieldValue;
+}
+
+/** Closed typed expected union. Exactly the member the operator declares. */
+export interface AssertionExpected {
+  field?: ExpectedFieldValue;
+  state?: FieldState;
+  pattern?: string;
+  range?: { min: string; max: string };
+  tolerance?: { value: string; tolerance: string };
+  window?: { from: string; to: string };
+  holds?: boolean;
+  count?: number;
+  keys?: string[];
+  multiplicity?: { key: string; count: number };
+  change?: { added: number; removed: number };
+}
+
+/** One typed assertion as a person authored it. */
+export interface AssertionClause {
+  id: string;
+  operator: AssertionOperator;
+  subject: AssertionSubject;
+  when: AssertionCondition | null;
+  expected: AssertionExpected;
+}
+
+/** The draft document: what has been answered so far for an assertion set. */
+export interface AssertionSetDraftDocument {
+  schema: string;
+  name: string;
+  assertions: AssertionClause[];
+}
+
+/** The draft and, after a save, the entry and identity of the bytes on disk. */
+export interface AssertionSetDraft {
+  draft: AssertionSetDraftDocument;
+  output?: string;
+  identity?: string;
+}
+
+/** One structured edit or save of an assertion-set draft over the workspace. */
+export interface AssertionSetRequest {
+  workspace: string;
+  draft: AssertionSetDraftDocument;
+  name?: string;
+  assertions?: AssertionClause[];
+  output?: string;
+}
+
+/** One state for structured assertion-set authoring. */
+export interface AssertionSetResult {
+  state: State;
+  reason?: string;
+  set?: AssertionSetDraft;
+}
+
+/** Complete assertion-set document bytes for the advanced JSON path. */
+export interface CanonicalAssertionRequest {
+  workspace: string;
+  document: string;
+  output: string;
+}
+
+/** Mirrors CanonicalTestResult for assertion sets. */
+export interface CanonicalAssertionResult {
+  state: State;
+  reason?: string;
+  document?: string;
+  output?: string;
+  identity?: string;
+}
+
+/** Answers one structured edit of an assertion-set draft. */
+export function authorAssertionSet(request: AssertionSetRequest): Promise<AssertionSetResult> {
+  return guard(() => facade().AuthorAssertionSet(request), { state: "failed" });
+}
+
+/** Writes the generated set into one new workspace entry. */
+export function saveAssertionSet(request: AssertionSetRequest): Promise<AssertionSetResult> {
+  return guard(() => facade().SaveAssertionSet(request), { state: "failed" });
+}
+
+/** Opens an existing complete set into the structured draft. */
+export function importAssertionSet(
+  workspace: string,
+  entry: string,
+): Promise<AssertionSetResult> {
+  return guard(() => facade().ImportAssertionSet(workspace, entry), { state: "failed" });
+}
+
+/** Validates assertion-set bytes with the same strict reader explain uses. */
+export function validateAssertionSet(document: string): Promise<CanonicalAssertionResult> {
+  return guard(() => facade().ValidateAssertionSet(document), { state: "failed" });
+}
+
+/** Writes exact reviewed assertion-set bytes to a new workspace entry. */
+export function exportAssertionSet(
+  request: CanonicalAssertionRequest,
+): Promise<CanonicalAssertionResult> {
+  return guard(() => facade().ExportAssertionSet(request), { state: "failed" });
 }
 
 /** Which collection one side of a comparison read, and how much of it was in

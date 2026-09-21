@@ -304,12 +304,12 @@ never a value, a path or a selector:
 
 ## Not in this release
 
-- **Authoring a set is separate work.** [`readmit explain`](explain.md) reads
-  one and re-decides it against a run's retained evidence;
-  `readmit-assertion-set/v1` remains the shared contract the visual authoring,
-  review and round-trip deliveries of the R14 area consume, and none of those
-  ships here. A collection is reachable only from a downstream capture; a file
-  export and an HTTP API observation are refused by name.
+- **Structured visual authoring ships in the desktop shell (#256).** The
+  assertion-set authoring panel answers every operator through typed controls
+  and saves bytes `assertion.Decode` accepts; [`readmit explain`](explain.md)
+  still re-decides a saved set against retained evidence. A collection is
+  reachable only from a downstream capture; a file export and an HTTP API
+  observation are refused by name.
 - **`readmit-test/v1` is unchanged.** It gains no member, changes no byte and
   keeps its own three operators and its two observation boundaries; see
   [the test spec](test-spec.md) and [the test runner](test-runner.md). An

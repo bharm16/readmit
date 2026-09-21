@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cancel, openDurableRun, startDurableRun, type DurableRunResult } from "./bindings";
 import { EnvironmentBanner } from "./EnvironmentPanel";
 
@@ -10,13 +10,32 @@ import { EnvironmentBanner } from "./EnvironmentPanel";
  * actions watch that folder, and a folder a failed action never created stays
  * named rather than being cleared: recovery reports it as unverifiable, which
  * is the honest answer, where forgetting it would silently drop the one path
- * that leads to whatever was retained. */
-export function RunPanel({ onWatch }: { onWatch: (folder: string) => Promise<void> }) {
-  const [spec, setSpec] = useState("");
+ * that leads to whatever was retained.
+ *
+ * initialSpec / specPath optionally seed the spec field after a save returns
+ * identity to the run workflow without sending. Saving and sending stay
+ * separate actions. */
+export function RunPanel({
+  onWatch,
+  initialSpec,
+  specPath,
+}: {
+  onWatch: (folder: string) => Promise<void>;
+  initialSpec?: string;
+  specPath?: string;
+}) {
+  const seeded = initialSpec ?? specPath ?? "";
+  const [spec, setSpec] = useState(seeded);
   const [output, setOutput] = useState("");
   const [operation, setOperation] = useState<"executing" | "recovering" | null>(null);
   const busy = operation !== null;
   const [result, setResult] = useState<DurableRunResult | null>(null);
+
+  useEffect(() => {
+    const next = initialSpec ?? specPath;
+    if (next) setSpec(next);
+  }, [initialSpec, specPath]);
+
   async function execute(send: boolean) {
     // Awaited before either action, so a crash during a send finds the session
     // already naming the folder that holds the evidence.

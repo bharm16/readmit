@@ -122,6 +122,7 @@ import { Sequence, SEQUENCE_WINDOW } from "./Sequence";
 import { Inspector } from "./Inspector";
 import { Reproducer } from "./Reproducer";
 import { RevisionComparison } from "./RevisionComparison";
+import { AssertionSetAuthoring } from "./AssertionSetAuthoring";
 import { CanonicalTestEditor } from "./CanonicalTestEditor";
 import { ProfileEditor } from "./ProfileEditor";
 import { ScenarioPanel } from "./ScenarioPanel";
@@ -184,6 +185,7 @@ export default function App() {
   const [indexResult, setIndexResult] = useState<IndexResult | null>(null);
   const [reproducerResult, setReproducerResult] = useState<ReproducerResult | null>(null);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
+  const [runSpecPath, setRunSpecPath] = useState<string | undefined>(undefined);
   const [comparisonResult, setComparisonResult] = useState<CompareResult | null>(null);
   const [revisionResult, setRevisionResult] = useState<ReproducerComparisonResult | null>(null);
   const [guideResult, setGuideResult] = useState<GuideResult | null>(null);
@@ -1215,6 +1217,7 @@ export default function App() {
         // A saved spec is a step of the guided sample, so what that folder now
         // holds is read again rather than inferred from this call succeeding.
         if (result.test?.output) {
+          setRunSpecPath(result.test.output);
           await refreshGuide(root);
         }
       });
@@ -1511,6 +1514,9 @@ export default function App() {
     "manage-scenarios": () => {
       focusRegion("inspector");
     },
+    "manage-assertions": () => {
+      focusRegion("inspector");
+    },
     "cancel-operation": cancel,
     "next-region": () => step(1),
     "previous-region": () => step(-1),
@@ -1564,6 +1570,8 @@ export default function App() {
             return "smaller-text";
           case "s":
             return event.shiftKey ? "manage-scenarios" : null;
+          case "a":
+            return event.shiftKey ? "manage-assertions" : null;
           default:
             return null;
         }
@@ -1904,7 +1912,7 @@ export default function App() {
             />
             <RetainedDrafts drafts={drafts} onDiscardDraft={dropDraft} />
             <NoteDraft project={workspaceRoot} drafts={drafts} restored={restored} onChanged={() => void restore()} />
-            <RunPanel onWatch={watch} />
+            <RunPanel onWatch={watch} {...(runSpecPath ? { initialSpec: runSpecPath, specPath: runSpecPath } : {})} />
             <ProjectPanel
               root={root}
               result={investigation}
@@ -2074,6 +2082,22 @@ export default function App() {
           />
         ) : null}
         {root ? <CanonicalTestEditor key={"editor-" + root} workspace={root} drafts={drafts} busy={busy} /> : null}
+        {root ? (
+          <AssertionSetAuthoring
+            key={"assertions-" + root}
+            workspace={root}
+            drafts={drafts}
+            busy={busy}
+            inspected={
+              selectedOccurrence && inspectionResult?.inspection
+                ? {
+                    occurrence: selectedOccurrence,
+                    path: inspectionResult.inspection.selected.path,
+                  }
+                : null
+            }
+          />
+        ) : null}
         {root ? <ProfileEditor key={`profile-${root}`} workspace={root} drafts={drafts} busy={busy} /> : null}
         {root ? (
           <ScenarioPanel
