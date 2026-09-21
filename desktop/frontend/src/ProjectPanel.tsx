@@ -30,12 +30,14 @@ export function Breadcrumbs({
   project,
   selectedCase,
   importing,
+  capturing,
   onWorkspace,
   onProject,
 }: {
   project: string | null;
   selectedCase: string | null;
   importing?: boolean;
+  capturing?: boolean;
   onWorkspace: () => void;
   onProject: () => void;
 }) {
@@ -48,7 +50,15 @@ export function Breadcrumbs({
         Workspace
       </button>
       <span aria-hidden="true">›</span>
-      {importing ? (
+      {capturing ? (
+        <>
+          <button type="button" onClick={onProject}>
+            {project}
+          </button>
+          <span aria-hidden="true">›</span>
+          <span aria-current="page">Capture and collect</span>
+        </>
+      ) : importing ? (
         <>
           <button type="button" onClick={onProject}>
             {project}
@@ -521,6 +531,7 @@ export function ProjectPanel({
   onUpdateCase,
   onOpenCase,
   onStartImport,
+  onStartCapture,
 }: {
   root: string | null;
   result: ProjectOverviewResult | null;
@@ -535,6 +546,7 @@ export function ProjectPanel({
   onUpdateCase: (name: string, change: CaseChange) => void;
   onOpenCase: (name: string) => void;
   onStartImport?: () => void;
+  onStartCapture?: () => void;
 }) {
   const [creating, setCreating] = useState(false);
   const [editingSettings, setEditingSettings] = useState(false);
@@ -563,6 +575,11 @@ export function ProjectPanel({
         {onStartImport ? (
           <button type="button" disabled={busy} onClick={onStartImport} style={{ marginLeft: "0.5rem" }}>
             Import evidence…
+          </button>
+        ) : null}
+        {onStartCapture ? (
+          <button type="button" disabled={busy} onClick={onStartCapture} style={{ marginLeft: "0.5rem" }}>
+            Capture or collect evidence…
           </button>
         ) : null}
         {creating ? <CreateForm busy={busy} onCreate={onCreate} /> : null}
@@ -618,17 +635,23 @@ export function ProjectPanel({
             onRegister={onRegister}
           />
 
-          {onStartImport ? (
-            <div style={{ marginTop: "1rem" }}>
+          <div style={{ marginTop: "1rem" }}>
+            {onStartCapture ? (
+              <button type="button" disabled={busy} onClick={onStartCapture}>
+                Capture or collect evidence…
+              </button>
+            ) : null}
+            {onStartImport ? (
               <button
                 type="button"
                 disabled={busy}
                 onClick={onStartImport}
+                style={{ marginLeft: onStartCapture ? "0.5rem" : undefined }}
               >
                 Import evidence into this project…
               </button>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
 
           <h4>Revisions</h4>
           {overview.revisions.length === 0 ? (

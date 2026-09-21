@@ -1,0 +1,64 @@
+.capture-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.capture-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.capture-modes {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.capture-modes button[aria-selected="true"] {
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.capture-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.capture-section label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.capture-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+.capture-row label {
+  flex: 1;
+}
+
+.capture-preview {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+}
+
+.fixture-label {
+  font-style: italic;
+}
+
+.capture-phase {
+  margin: 0;
+}
+
+.capture-complete {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}

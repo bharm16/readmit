@@ -1,5 +1,19 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The desktop shell gained evidence capture, approved source collection and
+  test responders (#250). Operators register directory and transfer sources with
+  structured controls and native file/program selection, diagnose access, and
+  stage collections with receipts through the same Go operations the command
+  line uses. An MLLP collector and the separately labelled built-in SIU fixture
+  are previewed value-free (address, policy, credential references, retention
+  and limits) and start only on explicit authorized action; listening,
+  collecting, stopping, stopped and failed states plus captured counts are
+  shown without leaking values. Stop/cancel uses the shared engine; capture
+  journals reopen read-only and never invent completion or restart a listener
+  merely because a project reopens. Finalizing collected material imports a
+  verified case, links receipt and provenance, and offers exploration and
+  observation binding on the existing import and explorer surfaces.
+
 - The desktop shell gained in-app case index building, guided rebuild, and
   content search (#248). Opening a case bundle auto-selects an applicable
   verified index or displays an unindexed view showing available inspection
