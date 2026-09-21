@@ -29,8 +29,10 @@ jobs:
   desktop-shell:
     # macOS supplies a webview without extra system packages, so this job
     # exercises the real native build rather than a stub. The built window needs
-    # a display, so it is not executed here; the behaviour behind it is
-    # internal/desktop, covered by the release module's race-enabled suite.
+    # a display, so it is not executed here; the behaviour behind it is covered
+    # on both sides of the facade: internal/desktop by the release module's
+    # race-enabled suite, and the frontend by the Vitest behavior tests that
+    # drive the components against the typed boundary below.
     runs-on: macos-15
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -50,6 +52,22 @@ jobs:
         run: |
           npm ci
           npm run build
+      # The behavior tests execute the real components against the typed facade
+      # boundary, so they run here — not merely compile: a failing component
+      # test fails this job and the desktop aggregate with it. The verbose
+      # output is published beside the build output.
+      - name: Run the frontend behavior tests against the typed facade boundary
+        working-directory: desktop/frontend
+        run: |
+          set -o pipefail
+          npm test -- --reporter=verbose 2>&1 | tee vitest-output.txt
+      - name: Publish the frontend test output beside the build output
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: desktop-frontend-test-output
+          path: desktop/frontend/vitest-output.txt
+          if-no-files-found: error
       - name: Build the desktop shell against the platform webview
         working-directory: desktop
         env:

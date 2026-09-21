@@ -379,7 +379,10 @@ export interface InspectionResult {
   inspection?: Inspection;
 }
 
-interface Facade {
+/** Exported for the behavior tests in src/testkit: a test installs a stub of
+ * exactly this interface at window.go.desktop.App, so a test can mock only the
+ * calls the real facade publishes and nothing else. */
+export interface Facade {
  OpenCorrelationReview(request: CorrelationReviewRequest): Promise<CorrelationReviewResult>;
  DecideCorrelation(request: CorrelationReviewRequest): Promise<CorrelationReviewResult>;
   ChooseOperationPolicy(): Promise<OperationResult>;

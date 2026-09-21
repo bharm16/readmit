@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Badge, Report } from "./shell";
+import { Badge, Report, Status } from "./shell";
 import type { Indicators } from "./shell";
 import { cancel } from "./bindings";
 import type { GuideResult, GuideTrialId, PracticeResult } from "./bindings";
@@ -57,6 +57,16 @@ export function GuidedSample({
         watch the same test pass once that defect is corrected.
       </p>
       <Report indicators={indicators} progress={progress} result={result} />
+      {/* A run that did not complete — dismissed, denied, failed or stopped —
+          is reported as the state it reached, never as a verdict and never as
+          silence: the folder holds whatever the run wrote before it stopped. */}
+      {practice && !practice.practice ? (
+        <Status
+          indicator={indicators.get(practice.state)}
+          state={practice.state}
+          reason={practice.reason}
+        />
+      ) : null}
       {guide === null ? (
         <p className="hint">
           Open a workspace folder to see where you are in it, or create the sample workspace to

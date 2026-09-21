@@ -35,6 +35,29 @@ part of the release archives and is unsigned.
 On Linux the platform webview is WebKitGTK 4.1, so the build needs
 `-tags production,webkit2_41` and the `libgtk-3-dev` and `libwebkit2gtk-4.1-dev` packages.
 
+## Testing the interface
+
+The interface has behavior tests: `npm test` in `desktop/frontend` executes the
+components with Vitest and React Testing Library in a jsdom window, against a
+stub installed at the same `window.go.desktop.App` surface the bindings read.
+The stub implements the bindings' exported `Facade` interface, so a test can
+answer only what the real facade publishes and must answer it with the real
+types, and an unanswered call rejects instead of succeeding quietly. Helpers in
+`src/testkit` arrange the folder-dialog outcomes and the six operation states
+and reset the window and the stub between tests. The fixtures hold positions,
+states and counts — never a field value, a credential, a machine path or a
+network address.
+
+These tests prove routing and user actions: which typed call a selection, a
+save or a keyboard shortcut produces, and what the panel draws when the engine
+refuses an answer or the boundary cannot give one. What an answer means for the
+evidence is decided and proved on the Go side, where the desktop facade and the
+command line call the same packages, so shared-operation parity is never
+claimed from a frontend fixture. A failing test fails the desktop workflow's
+shell job and, with it, the `desktop` check. The tests drive a jsdom window,
+not the native webview: packaged native journeys are separate acceptance, not
+something a component test claims.
+
 ## Native packages
 
 The shell is distributed as the platform's own package rather than as an archive
