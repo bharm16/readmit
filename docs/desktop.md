@@ -337,6 +337,8 @@ pickers offer applicable entries instead of every entry labelled unsupported:
 | `spec` | A `readmit-test/v1` specification |
 | `pack` | A `readmit-profile-pack/v1` document |
 | `analysis` | A `readmit-sequence-analysis/v1` document |
+| `profile` | A `readmit-local-profile/v1` document |
+| `package` | A `readmit-profile-package/v1` portable package |
 | `unsupported` | Nothing this release reads, with the reason |
 
 Locating a document by a fixed name or a declared contract is how the listing
@@ -1278,7 +1280,7 @@ here.
 
 ### Status without colour
 
-Every status the window shows — the six operation states, the three artifact
+Every status the window shows — the six operation states, the five artifact
 kinds, and the four registered case statuses — has its own word and its own
 shape, and no two of them share either. Colour is added on top of both and is
 never the difference between two statuses. The word carries the meaning on its
@@ -1806,5 +1808,55 @@ Users can list and transfer authorized project artifacts:
 - Expired sessions, certificate mismatch, denied roles, changed grants, or unavailable hub endpoints are surfaced visibly in the hub panel.
 - Logging out clears the in-memory session and active client credentials immediately.
 - Re-authenticating never automatically replays pending transfers or writes; any operation interrupted by session loss must be re-initiated deliberately by the user.
+
+## Interface profile management
+
+The interface profile management panel in the inspector region (`manage-profiles`
+command, `Ctrl+Shift+P` / `⌘+Shift+P`) enables viewing, structured authoring,
+validating, versioning, comparing, and exchanging local interface profiles
+([`readmit-local-profile/v1`](local-profiles.md)) and profile packages
+([`readmit-profile-package/v1`](profile-packages.md)) directly within the app.
+
+The panel provides five functional tabs:
+
+1. **Profile Packs & Library**:
+   - Inspect installed profile packs ([`readmit-profile-pack/v1`](profile-packs.md))
+     and open a pack directory.
+   - Distinctly displays provenance (author, location, digest, license, rights review)
+     and support levels across four orthogonal dimensions: lossless parsing,
+     dictionary labels, structure validation, and workflow evaluation.
+2. **Constraint Editor**:
+   - Create and edit constraints supported by the local-profile model using
+     structured segment and field selectors (`SEG-pos`, e.g. `SCH-1`, `ZPD-2`).
+   - Typed controls for usages (`R`, `RE`, `O`, `C`, `X`), conditional requirements
+     (operators `present`, `absent`, `value_in`), cardinalities (`min`, `max`),
+     HL7 datatypes, site-defined Z-segments, local terminology sets, assigning
+     authorities, and date/timezone rules.
+   - Integrated with the app draft store ([`readmit-desktop-drafts/v1`](drafts.md),
+     kind `local-profile`), preserving in-progress edits across view switching and
+     unexpected interruptions.
+   - Validates live through Go, displaying resolved rule origins (`profile`,
+     `overridden`, `local`, `undeclared`) and conformance findings.
+   - Computes canonical profile version seals ([`readmit-profile-version/v1`](profile-versions.md))
+     and enforces immutability: saving an approved profile revision requires
+     bumping the version; approved profiles are never mutated or overwritten in place.
+3. **Version Compare & Test Pins**:
+   - Compares two profile revisions side-by-side and reports differences
+     categorized by kind (`added`, `removed`, `modified`, `tightened`, `loosened`).
+   - Evaluates impact against saved regression test suites via the reference index
+     ([`readmit-profile-references/v1`](profile-versions.md)), distinguishing
+     affected from unaffected tests.
+   - Provides explicit, single-test pin upgrading (`UpgradeProfilePin`). Approved
+     profiles and historical test pins are never silently mutated in bulk.
+4. **Package Exchange**:
+   - Offline contract export: exports verified local profiles, pinned packs,
+     canonical version seals, and reviewed origins into portable packages.
+     Requires explicit confirmation that human review has occurred (`--reviewed`),
+     and verifies that no patient evidence is included.
+   - Package inspection and import: inspects integrity, provenance, rights status,
+     dependencies, and potential filename conflicts before unpacking into the workspace.
+5. **Raw Schema JSON**:
+   - Direct inspection of the canonical JSON representation according to ADR-0003
+     and the JSON schema.
 
 Contextual offline help and recovery codes, with ADT/SIU/ORM/ORU recipes: [workflow help](workflow-help.md).

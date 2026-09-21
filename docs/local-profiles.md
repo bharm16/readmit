@@ -249,14 +249,16 @@ of the consumer's own contract.
   message.
 - **A composite type's components are not modelled.** A field declares one data
   type; the components inside it are not separately constrained.
-- **No window in the desktop shell edits a profile yet.** The typed editor and
-  the resolved view above are the surface such an
-  editor binds to; the shell's regions, commands and privacy status are
-  unchanged by this release.
+- **Desktop application editing**: The desktop app provides an interactive,
+  typed constraint editor in the inspector region (`manage-profiles` command),
+  with draft-store persistence, canonical Go validation, version comparison,
+  impact assessment against saved test reference indexes, single-test pin
+  upgrading, and package export/import ([`desktop.md`](desktop.md)).
 - **No profile is bundled**, and nothing reads the bundled v2.5.1 dictionary
   through this contract.
-- **Versioning, change impact and import/export are not delivered** here.
-  Sealing a profile at a version, comparing two versions and reporting which
-  saved tests a change reaches are the separate contracts on
-  [profile versions](profile-versions.md); #48 owns importing and exporting
-  reusable contracts through [profile packages](profile-packages.md).
+- **Versioning, change impact and import/export** are integrated in the desktop
+  application and backend packages: sealing a profile at a version, comparing two
+  versions and reporting which saved tests a change reaches are handled by
+  [profile versions](profile-versions.md) and `internal/profileversion`;
+  importing and exporting reusable contracts are handled by
+  [profile packages](profile-packages.md) and `internal/profilepackage`.

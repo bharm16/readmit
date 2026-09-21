@@ -198,6 +198,7 @@ func TestEveryStatusIsDistinguishableWithoutColour(t *testing.T) {
 		desktop.ResultArtifact, desktop.JobArtifact, desktop.ReviewArtifact,
 		desktop.IndexArtifact, desktop.TargetArtifact, desktop.RulesArtifact,
 		desktop.PlanArtifact, desktop.SpecArtifact, desktop.PackArtifact,
+		desktop.ProfileArtifact, desktop.PackageArtifact,
 		desktop.AnalysisArtifact, desktop.UnsupportedArtifact,
 	} {
 		if _, declared := indicators[string(kind)]; !declared {

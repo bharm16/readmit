@@ -43,6 +43,8 @@ var declaredSchemas = map[string]Kind{
 	"readmit-transform-plan/v1":    PlanArtifact,
 	"readmit-test/v1":              SpecArtifact,
 	"readmit-profile-pack/v1":      PackArtifact,
+	"readmit-local-profile/v1":     ProfileArtifact,
+	"readmit-profile-package/v1":   PackageArtifact,
 	"readmit-sequence-analysis/v1": AnalysisArtifact,
 }
 

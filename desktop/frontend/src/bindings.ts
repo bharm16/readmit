@@ -23,6 +23,8 @@ export type Kind =
   | "plan"
   | "spec"
   | "pack"
+  | "profile"
+  | "package"
   | "analysis"
   | "unsupported";
 
@@ -44,6 +46,7 @@ export type CommandId =
   | "open-workspace"
   | "create-sample-workspace"
   | "open-project"
+  | "manage-profiles"
   | "cancel-operation"
   | "next-region"
   | "previous-region"
@@ -526,8 +529,18 @@ export interface InspectionResult {
  * exactly this interface at window.go.desktop.App, so a test can mock only the
  * calls the real facade publishes and nothing else. */
 export interface Facade {
- OpenCorrelationReview(request: CorrelationReviewRequest): Promise<CorrelationReviewResult>;
- DecideCorrelation(request: CorrelationReviewRequest): Promise<CorrelationReviewResult>;
+  InspectProfilePack(workspace: string, entry: string): Promise<ProfilePackResult>;
+  OpenProfileLibrary(workspace: string, directory: string): Promise<ProfileLibraryResult>;
+  OpenProfile(workspace: string, entry: string, packEntry: string): Promise<LocalProfileResult>;
+  ValidateProfile(request: ProfileValidateRequest): Promise<LocalProfileResult>;
+  SaveProfile(request: ProfileSaveRequest): Promise<LocalProfileResult>;
+  CompareProfiles(request: ProfileCompareRequest): Promise<ProfileCompareResult>;
+  UpgradeProfilePin(request: ProfileUpgradePinRequest): Promise<ProfileUpgradePinResult>;
+  ExportProfilePackage(request: ProfilePackageExportRequest): Promise<ProfilePackageResult>;
+  ImportProfilePackage(request: ProfilePackageImportRequest): Promise<ProfilePackageResult>;
+  InspectProfilePackage(workspace: string, entry: string): Promise<ProfilePackageResult>;
+  OpenCorrelationReview(request: CorrelationReviewRequest): Promise<CorrelationReviewResult>;
+  DecideCorrelation(request: CorrelationReviewRequest): Promise<CorrelationReviewResult>;
   ChooseOperationPolicy(): Promise<OperationResult>;
   SelectOperationPolicy(path: string): Promise<OperationResult>;
   OperationStatus(): Promise<OperationResult>;
@@ -2449,4 +2462,401 @@ export function downloadHubArtifact(request: HubDownloadRequest): Promise<HubTra
 
 export function uploadHubArtifact(request: HubUploadRequest): Promise<HubTransferResult> {
   return guard(() => facade().UploadHubArtifact(request), { state: "failed" });
+}
+
+// --- Interface Profile Management (readmit-local-profile/v1, readmit-profile-pack/v1, etc.) ---
+
+export interface ProfilePackIdentity {
+  id: string;
+  version: string;
+}
+
+export interface ProfilePackSource {
+  name: string;
+  location: string;
+  revision: string;
+}
+
+export interface ProfilePackExtraction {
+  method: string;
+  content_digest: string;
+}
+
+export interface ProfilePackLicense {
+  spdx: string;
+  notice: string;
+}
+
+export interface ProfilePackRightsReview {
+  status: string;
+  reference: string;
+}
+
+export interface ProfilePackProvenance {
+  source: ProfilePackSource;
+  extraction: ProfilePackExtraction;
+  license: ProfilePackLicense;
+  rights_review: ProfilePackRightsReview;
+}
+
+export interface ProfilePackCoverage {
+  hl7_version: string;
+  family: string;
+  parse: string;
+  labels: string;
+  structural: string;
+  workflow: string;
+}
+
+export interface ProfilePackResult {
+  state: State;
+  reason?: string;
+  pack?: ProfilePackIdentity;
+  provenance?: ProfilePackProvenance;
+  coverage?: ProfilePackCoverage[];
+  bundleable: boolean;
+}
+
+export interface ProfileLibraryEntry {
+  pack: ProfilePackIdentity;
+  provenance: ProfilePackProvenance;
+}
+
+export interface ProfileLibraryRow {
+  hl7_version: string;
+  family: string;
+  parse: string;
+  labels: string;
+  structural: string;
+  workflow: string;
+  pack: ProfilePackIdentity;
+}
+
+export interface ProfileLibraryResult {
+  state: State;
+  reason?: string;
+  entries?: ProfileLibraryEntry[];
+  matrix?: ProfileLibraryRow[];
+  bundleable: boolean;
+}
+
+export interface ProfileValidateRequest {
+  workspace: string;
+  document: string;
+  pack?: string;
+}
+
+export interface ProfileSaveRequest {
+  workspace: string;
+  document: string;
+  output: string;
+  seal_output?: string;
+}
+
+export interface LocalProfileIdentity {
+  id: string;
+  version: string;
+}
+
+export interface LocalProfileBase {
+  pack: ProfilePackIdentity;
+  hl7_version: string;
+  family: string;
+}
+
+export interface TerminologyCode {
+  code: string;
+  display?: string;
+}
+
+export interface TerminologySet {
+  id: string;
+  description?: string;
+  binding: string;
+  codes: TerminologyCode[];
+}
+
+export interface Authority {
+  id: string;
+  description?: string;
+  namespace?: string;
+  universal_id?: string;
+  universal_id_type?: string;
+}
+
+export interface DateHandling {
+  id: string;
+  description?: string;
+  precision: string;
+  timezone: string;
+}
+
+export interface Cardinality {
+  min: number;
+  max: string;
+}
+
+export interface Condition {
+  segment: string;
+  position: number;
+  operator: string;
+  values?: string[];
+}
+
+export interface Field {
+  position: number;
+  name?: string;
+  usage: string;
+  condition?: Condition;
+  cardinality?: Cardinality;
+  type?: string;
+  terminology?: string;
+  authority?: string;
+  date?: string;
+}
+
+export interface Segment {
+  id: string;
+  description?: string;
+  cardinality?: Cardinality;
+  fields: Field[];
+}
+
+export interface LocalProfile {
+  schema: string;
+  profile: LocalProfileIdentity;
+  base: LocalProfileBase;
+  terminology?: TerminologySet[];
+  authorities?: Authority[];
+  dates?: DateHandling[];
+  segments: Segment[];
+}
+
+export interface LocalProfileSupport {
+  parse: string;
+  labels: string;
+  structural: string;
+  workflow: string;
+}
+
+export interface ResolvedField {
+  position: number;
+  name?: string;
+  pack_name?: string;
+  name_origin: string;
+  usage: string;
+  usage_origin: string;
+  condition?: Condition;
+  condition_origin: string;
+  cardinality?: Cardinality;
+  cardinality_origin: string;
+  type?: string;
+  type_origin: string;
+  terminology?: TerminologySet;
+  terminology_origin: string;
+  authority?: Authority;
+  authority_origin: string;
+  date?: DateHandling;
+  date_origin: string;
+}
+
+export interface ResolvedSegment {
+  id: string;
+  description?: string;
+  site_defined: boolean;
+  cardinality?: Cardinality;
+  cardinality_origin: string;
+  fields: ResolvedField[];
+}
+
+export interface LocalProfileFinding {
+  kind: string;
+  subject?: string;
+  detail: string;
+}
+
+export interface LocalProfileResolution {
+  profile: LocalProfileIdentity;
+  base: LocalProfileBase;
+  pinned: boolean;
+  support: LocalProfileSupport;
+  segments: ResolvedSegment[];
+  findings: LocalProfileFinding[];
+}
+
+export interface ProfileVersionContent {
+  bytes: number;
+  sha256: string;
+}
+
+export interface ProfileVersion {
+  schema: string;
+  profile: LocalProfileIdentity;
+  content: ProfileVersionContent;
+}
+
+export interface LocalProfileResult {
+  state: State;
+  reason?: string;
+  document?: string;
+  output?: string;
+  seal_output?: string;
+  profile?: LocalProfile;
+  resolution?: LocalProfileResolution;
+  seal?: ProfileVersion;
+}
+
+export interface ProfileCompareRequest {
+  workspace: string;
+  from: string;
+  to: string;
+  references?: string;
+}
+
+export interface ProfileChange {
+  part: string;
+  kind: string;
+  subject?: string;
+  detail: string;
+}
+
+export interface ProfileComparison {
+  profile: string;
+  from: string;
+  to: string;
+  changes: ProfileChange[];
+}
+
+export interface ProfilePin {
+  id: string;
+  version: string;
+  sha256: string;
+}
+
+export interface AssessedTest {
+  test: string;
+  case: string;
+  pinned: ProfilePin;
+  impact: string;
+}
+
+export interface ProfileAssessment {
+  comparison: ProfileComparison;
+  tests: AssessedTest[];
+}
+
+export interface ProfileCompareResult {
+  state: State;
+  reason?: string;
+  comparison?: ProfileComparison;
+  assessment?: ProfileAssessment;
+}
+
+export interface ProfileReference {
+  test: string;
+  case: string;
+  sha256: string;
+  pinned: ProfilePin;
+}
+
+export interface ProfileReferences {
+  schema: string;
+  tests: ProfileReference[];
+}
+
+export interface ProfileUpgradePinRequest {
+  workspace: string;
+  references: string;
+  test: string;
+  was_pin: ProfilePin;
+  now_pin: ProfilePin;
+  output: string;
+}
+
+export interface ProfileUpgradePinResult {
+  state: State;
+  reason?: string;
+  output?: string;
+  references?: ProfileReferences;
+}
+
+export interface ProfilePackageExportRequest {
+  workspace: string;
+  profile: string;
+  pack: string;
+  version: string;
+  origin: string;
+  output: string;
+  reviewed: boolean;
+}
+
+export interface ProfilePackageImportRequest {
+  workspace: string;
+  package: string;
+  output: string;
+}
+
+export interface ProfilePackageOrigin {
+  schema: string;
+  source_format: string;
+  source: string;
+  revision: string;
+  license: string;
+  notice: string;
+  mapping_limitations: string;
+  review_reference: string;
+}
+
+export interface ProfilePackageResult {
+  state: State;
+  reason?: string;
+  output?: string;
+  origin?: ProfilePackageOrigin;
+  pack?: ProfilePackIdentity;
+  profile?: LocalProfileIdentity;
+  version?: LocalProfileIdentity;
+  sha256?: string;
+  conflict?: string;
+  dependency?: string;
+  rights?: string;
+}
+
+export function inspectProfilePack(workspace: string, entry: string): Promise<ProfilePackResult> {
+  return guard(() => facade().InspectProfilePack(workspace, entry), { state: "failed", bundleable: false });
+}
+
+export function openProfileLibrary(workspace: string, directory: string): Promise<ProfileLibraryResult> {
+  return guard(() => facade().OpenProfileLibrary(workspace, directory), { state: "failed", bundleable: false });
+}
+
+export function openProfile(workspace: string, entry: string, packEntry: string): Promise<LocalProfileResult> {
+  return guard(() => facade().OpenProfile(workspace, entry, packEntry), { state: "failed" });
+}
+
+export function validateProfile(request: ProfileValidateRequest): Promise<LocalProfileResult> {
+  return guard(() => facade().ValidateProfile(request), { state: "failed" });
+}
+
+export function saveProfile(request: ProfileSaveRequest): Promise<LocalProfileResult> {
+  return guard(() => facade().SaveProfile(request), { state: "failed" });
+}
+
+export function compareProfiles(request: ProfileCompareRequest): Promise<ProfileCompareResult> {
+  return guard(() => facade().CompareProfiles(request), { state: "failed" });
+}
+
+export function upgradeProfilePin(request: ProfileUpgradePinRequest): Promise<ProfileUpgradePinResult> {
+  return guard(() => facade().UpgradeProfilePin(request), { state: "failed" });
+}
+
+export function exportProfilePackage(request: ProfilePackageExportRequest): Promise<ProfilePackageResult> {
+  return guard(() => facade().ExportProfilePackage(request), { state: "failed" });
+}
+
+export function importProfilePackage(request: ProfilePackageImportRequest): Promise<ProfilePackageResult> {
+  return guard(() => facade().ImportProfilePackage(request), { state: "failed" });
+}
+
+export function inspectProfilePackage(workspace: string, entry: string): Promise<ProfilePackageResult> {
+  return guard(() => facade().InspectProfilePackage(workspace, entry), { state: "failed" });
 }
