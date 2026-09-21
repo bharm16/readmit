@@ -9,6 +9,8 @@ import { StateHelp } from "./ContextHelp";
 // is the facade's decision, and it reports it.
 import { useEffect, useRef, useState } from "react";
 import type {
+  BuildIndexRequest,
+  CaseEvidence,
   Command,
   CommandId,
   FieldMatch,
@@ -16,6 +18,8 @@ import type {
   Filter,
   FiltersResult,
   GridResult,
+  IndexDetails,
+  IndexRetention,
   Indicator,
   OccurrenceKind,
   State,
@@ -268,6 +272,16 @@ export function visibleRows(total: number, scrolled: number) {
  * filtered view that hides records without saying how many would read as though
  * the case held nothing else. Nothing read out of a message is here — a row
  * carries where an occurrence is and what it is. */
+export const COMMON_INDEX_FIELDS = [
+  { selector: "PID-3", label: "Patient Identifier (PID-3)" },
+  { selector: "MSH-10", label: "Message Control ID (MSH-10)" },
+  { selector: "MSA[1]-1[1]", label: "ACK Code (MSA-1)" },
+  { selector: "PV1-19", label: "Visit Number (PV1-19)" },
+  { selector: "MSH-9.1", label: "Message Code (MSH-9.1)" },
+  { selector: "MSH-9.2", label: "Trigger Event (MSH-9.2)" },
+  { selector: "EVN-2", label: "Recorded Date/Time (EVN-2)" },
+];
+
 export function MessageGrid({
   indicators,
   progress,
@@ -280,6 +294,9 @@ export function MessageGrid({
   onSave,
   selectedOccurrence,
   onInspect,
+  caseEvidence,
+  indexDetails,
+  onBuildIndex,
 }: {
   indicators: Indicators;
   progress: string | null;
@@ -295,14 +312,32 @@ export function MessageGrid({
   onSave: (filter: Filter) => void;
   selectedOccurrence: string | null;
   onInspect: (occurrence: string) => void;
+  caseEvidence?: CaseEvidence | null | undefined;
+  indexDetails?: IndexDetails | null | undefined;
+  onBuildIndex?: ((request: BuildIndexRequest) => void) | undefined;
 }) {
   const [indexName, setIndexName] = useState("");
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [invalid, setInvalid] = useState<string | null>(null);
   const [scrolled, setScrolled] = useState(0);
+  const [showBuildForm, setShowBuildForm] = useState(false);
+  const [buildFields, setBuildFields] = useState<string[]>(["PID-3", "MSH-10"]);
+  const [customField, setCustomField] = useState("");
+  const [retention, setRetention] = useState<IndexRetention>("states");
+  const [retainUntil, setRetainUntil] = useState("");
+  const [isIndefinite, setIsIndefinite] = useState(true);
+  const [outputName, setOutputName] = useState("");
+  const [replaceExisting, setReplaceExisting] = useState(false);
+
   const viewport = useRef<HTMLDivElement | null>(null);
   const body = useRef<HTMLTableSectionElement | null>(null);
   const grid = result?.grid ?? null;
+
+  useEffect(() => {
+    if (caseEvidence && !outputName) {
+      setOutputName(`${caseEvidence.name}.index.json`);
+    }
+  }, [caseEvidence, outputName]);
 
   // A new window is a new list, so it starts at its own first row rather than
   // wherever the previous one had been scrolled to.
@@ -314,6 +349,22 @@ export function MessageGrid({
   }, [grid?.index, grid?.offset, grid?.filter]);
   const rows = grid?.rows ?? [];
   const { first, last } = visibleRows(rows.length, scrolled);
+
+  const openRebuild = () => {
+    if (indexDetails?.fields && indexDetails.fields.length > 0) {
+      setBuildFields(indexDetails.fields);
+    }
+    if (indexDetails?.retention) {
+      setRetention((indexDetails.retention as IndexRetention) || "states");
+    }
+    if (indexDetails?.index_name) {
+      setOutputName(indexDetails.index_name);
+    } else if (caseEvidence) {
+      setOutputName(`${caseEvidence.name}.index.json`);
+    }
+    setReplaceExisting(true);
+    setShowBuildForm(true);
+  };
 
   return (
     <section className="grid" aria-label="Message grid">
@@ -336,7 +387,296 @@ export function MessageGrid({
         <button type="button" disabled={busy || indexName === ""} onClick={() => onOpen(indexName, 0)}>
           Open the grid
         </button>
+        {onBuildIndex && (
+          <button
+            type="button"
+            className="action-open-build"
+            disabled={busy}
+            onClick={() => {
+              if (indexDetails && !indexDetails.applicable) {
+                openRebuild();
+              } else {
+                setShowBuildForm((prev) => !prev);
+              }
+            }}
+          >
+            {showBuildForm
+              ? "Close build form"
+              : "Build index"}
+          </button>
+        )}
       </div>
+
+      {indexDetails && !indexDetails.applicable ? (
+        <div className="index-rebuild-banner" role="alert" aria-label="Index rebuild notice">
+          <span className="warning-badge">[Index rebuild required]</span>
+          <p className="rebuild-reason">
+            {indexDetails.stale && "The index was built from different evidence or is stale for this case."}
+            {indexDetails.expired && "The retention period declared for this index has ended."}
+            {indexDetails.damaged && "This index file does not match what was written for it."}
+            {indexDetails.unsupported && "This index was written under an unsupported version."}
+            {" "}The case evidence is unchanged. Rebuild the index from this case to explore records.
+          </p>
+          {!showBuildForm && onBuildIndex ? (
+            <button
+              type="button"
+              className="action-rebuild-index"
+              disabled={busy}
+              onClick={openRebuild}
+            >
+              Rebuild index
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!grid && !indexDetails && caseEvidence ? (
+        <div className="unindexed-case" aria-label="Unindexed case">
+          <h4>Case is unindexed</h4>
+          <p className="hint">
+            This case contains <strong>{caseEvidence.occurrences}</strong> occurrences ({caseEvidence.messages} messages, {caseEvidence.acknowledgements} ACKs, {caseEvidence.unparsed} unparsed) across <strong>{caseEvidence.sources}</strong> source{caseEvidence.sources === 1 ? "" : "s"}.
+          </p>
+          <p className="notice">
+            The case is not empty. Wire bytes, headers, and decoded segments can be inspected directly in the Inspector below without an index. Build an index to enable search, filter matching, and paged row navigation.
+          </p>
+          {!showBuildForm && onBuildIndex ? (
+            <button
+              type="button"
+              className="action-build-index"
+              disabled={busy}
+              onClick={() => {
+                setOutputName(`${caseEvidence.name}.index.json`);
+                setShowBuildForm(true);
+              }}
+            >
+              Build case index
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {indexDetails && indexDetails.applicable ? (
+        <div className="active-index-details" aria-label="Active index details">
+          <div className="index-meta">
+            <span className="index-chip">Index: {indexDetails.index_name}</span>
+            <span className="retention-chip">Retention: {indexDetails.retention} ({indexDetails.retention_state})</span>
+            <span className="expiry-chip">Retain until: {indexDetails.retain_until || "indefinite"}</span>
+            <span className="records-chip">
+              {indexDetails.records} records ({indexDetails.decoded} decoded, {indexDetails.undecodable} undecodable)
+            </span>
+          </div>
+          <p className="index-fields">
+            Indexed fields: <code>{indexDetails.fields.join(", ")}</code>
+          </p>
+          <p className="permitted-searches">
+            {indexDetails.retention === "values" && "Permitted searches: full substring search, equality, presence, and absence"}
+            {indexDetails.retention === "digests" && "Permitted searches: exact digest match, presence, and absence"}
+            {indexDetails.retention === "states" && "Permitted searches: presence and absence checks only"}
+          </p>
+        </div>
+      ) : null}
+
+      {showBuildForm && onBuildIndex ? (
+        <form
+          className="build-index-form"
+          aria-label="Build index form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!caseEvidence || buildFields.length === 0 || !outputName.trim()) return;
+            onBuildIndex({
+              workspace: "",
+              case: caseEvidence.name,
+              identity: caseEvidence.identity,
+              output: outputName.trim(),
+              fields: buildFields,
+              retention,
+              retain_until: isIndefinite
+                ? "indefinite"
+                : retainUntil
+                  ? new Date(retainUntil).toISOString()
+                  : "indefinite",
+              replace: replaceExisting,
+            });
+            setShowBuildForm(false);
+          }}
+        >
+          <h4>{indexDetails && !indexDetails.applicable ? "Rebuild case index" : "Build case index"}</h4>
+
+          <fieldset className="field-selection">
+            <legend>Indexed fields ({buildFields.length} of 16 selected)</legend>
+            <div className="common-fields">
+              {COMMON_INDEX_FIELDS.map(({ selector, label }) => {
+                const checked = buildFields.includes(selector);
+                return (
+                  <label key={selector} className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={busy || (!checked && buildFields.length >= 16)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          if (buildFields.length < 16) setBuildFields([...buildFields, selector]);
+                        } else {
+                          setBuildFields(buildFields.filter((f) => f !== selector));
+                        }
+                      }}
+                    />
+                    {label}
+                  </label>
+                );
+              })}
+            </div>
+            <div className="custom-field">
+              <input
+                type="text"
+                placeholder="Custom selector (e.g. OBX[1]-3)"
+                aria-label="Custom field selector"
+                value={customField}
+                disabled={busy || buildFields.length >= 16}
+                onChange={(e) => setCustomField(e.target.value)}
+              />
+              <button
+                type="button"
+                disabled={
+                  busy ||
+                  !customField.trim() ||
+                  buildFields.includes(customField.trim()) ||
+                  buildFields.length >= 16
+                }
+                onClick={() => {
+                  const trimmed = customField.trim();
+                  if (trimmed && !buildFields.includes(trimmed) && buildFields.length < 16) {
+                    setBuildFields([...buildFields, trimmed]);
+                    setCustomField("");
+                  }
+                }}
+              >
+                Add field
+              </button>
+            </div>
+            <div className="selected-fields-list">
+              {buildFields.map((field) => (
+                <span key={field} className="field-tag">
+                  <code>{field}</code>
+                  <button
+                    type="button"
+                    aria-label={`Remove field ${field}`}
+                    disabled={busy}
+                    onClick={() => setBuildFields(buildFields.filter((f) => f !== field))}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          </fieldset>
+
+          <fieldset className="retention-selection">
+            <legend>Retention form</legend>
+            <label className="radio-label">
+              <input
+                type="radio"
+                name="retention"
+                value="states"
+                checked={retention === "states"}
+                disabled={busy}
+                onChange={() => setRetention("states")}
+              />
+              <span>
+                <strong>States only (Least privilege)</strong> — Records presence, absence, and byte spans. Zero clinical values or digests stored. Permitted queries: presence/absence checks.
+              </span>
+            </label>
+            <label className="radio-label">
+              <input
+                type="radio"
+                name="retention"
+                value="digests"
+                checked={retention === "digests"}
+                disabled={busy}
+                onChange={() => setRetention("digests")}
+              />
+              <span>
+                <strong>Cryptographic digests</strong> — Records SHA-256 hashes. Enables exact-match equality queries without storing plaintext. Substring queries not permitted.
+              </span>
+            </label>
+            <label className="radio-label">
+              <input
+                type="radio"
+                name="retention"
+                value="values"
+                checked={retention === "values"}
+                disabled={busy}
+                onChange={() => setRetention("values")}
+              />
+              <span>
+                <strong>Plaintext values</strong> — Stores decoded string values (up to 4096 bytes). Enables full substring and text searches. Carries PHI exposure risk.
+              </span>
+            </label>
+          </fieldset>
+
+          <fieldset className="expiry-selection">
+            <legend>Retention duration</legend>
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={isIndefinite}
+                disabled={busy}
+                onChange={(e) => setIsIndefinite(e.target.checked)}
+              />
+              Deliberate indefinite retention
+            </label>
+            {!isIndefinite ? (
+              <div className="expiry-picker">
+                <label htmlFor="retain-until-input">Retain until (UTC)</label>
+                <input
+                  id="retain-until-input"
+                  type="datetime-local"
+                  value={retainUntil}
+                  disabled={busy}
+                  onChange={(e) => setRetainUntil(e.target.value)}
+                />
+              </div>
+            ) : null}
+          </fieldset>
+
+          <div className="output-selection">
+            <label htmlFor="index-output-file">Output index file</label>
+            <input
+              id="index-output-file"
+              type="text"
+              value={outputName}
+              disabled={busy}
+              onChange={(e) => setOutputName(e.target.value)}
+            />
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={replaceExisting}
+                disabled={busy}
+                onChange={(e) => setReplaceExisting(e.target.checked)}
+              />
+              Replace existing file if present
+            </label>
+          </div>
+
+          <div className="form-actions">
+            <button
+              type="submit"
+              disabled={
+                busy ||
+                buildFields.length === 0 ||
+                !outputName.trim() ||
+                (!isIndefinite && !retainUntil)
+              }
+            >
+              {indexDetails && !indexDetails.applicable ? "Rebuild index" : "Build index"}
+            </button>
+            <button type="button" disabled={busy} onClick={() => setShowBuildForm(false)}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      ) : null}
 
       <div className="grid-filter">
         <label htmlFor="grid-filter">Saved filter</label>

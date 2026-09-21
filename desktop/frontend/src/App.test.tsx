@@ -21,6 +21,9 @@ import {
   dialogDismissed,
   folderDenied,
   folderWithCase,
+  buildIndexResultFixture,
+  indexDetailsFixture,
+  indexResultFixture,
   gridResult,
   gridRow,
   guideResult,
@@ -734,3 +737,103 @@ test("closing asks before dropping text the store refused to retain, and not aft
     window.removeEventListener("beforeunload", guard);
   }
 });
+
+test("verifying a case auto-selects and opens an applicable index", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    SelectWorkspace: () => folderWithCase(),
+    OpenCase: () => caseResult(),
+    DescribeIndex: () => indexResultFixture(indexDetailsFixture({ applicable: true })),
+    OpenGrid: () => gridResult([gridRow(GRID_OCCURRENCE)]),
+  });
+
+  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await screen.findByText(WORKSPACE_ROOT);
+  await user.click(screen.getByRole("button", { name: "Verify and open" }));
+  await screen.findByText(CASE_IDENTITY);
+
+  expect(await screen.findByText(`Inspect ${GRID_OCCURRENCE}`)).toBeTruthy();
+  expect(facade.callsTo("OpenGrid")).toHaveLength(1);
+});
+
+test("verifying an unindexed case shows unindexed view and keeps inspector available", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    SelectWorkspace: () => folderWithCase(),
+    OpenCase: () => caseResult(),
+    DescribeIndex: () => ({ state: "empty" }),
+    InspectOccurrence: () => inspectionResult(),
+  });
+
+  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await screen.findByText(WORKSPACE_ROOT);
+  await user.click(screen.getByRole("button", { name: "Verify and open" }));
+  await screen.findByText(CASE_IDENTITY);
+
+  expect(await screen.findByText("Case is unindexed")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Build case index" })).toBeTruthy();
+  expect(screen.getByRole("region", { name: "Inspector" })).toBeTruthy();
+  expect(facade.callsTo("OpenGrid")).toHaveLength(0);
+});
+
+test("searching workspace with content hit badges match and navigates to inspector", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    SelectWorkspace: () => folderWithCase(),
+    Search: () => ({
+      state: "completed",
+      matches: [
+        {
+          kind: "content",
+          name: CASE_ENTRY,
+          label: "MRN-1001",
+          field: "PID-3",
+          region: "inspector",
+          occurrence: GRID_OCCURRENCE,
+          selector: "PID-3",
+        },
+      ],
+    }),
+    OpenCase: () => caseResult(),
+    InspectOccurrence: () => inspectionResult(GRID_OCCURRENCE),
+  });
+
+  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await screen.findByText(WORKSPACE_ROOT);
+
+  const searchInput = screen.getByLabelText("Search this workspace");
+  await user.type(searchInput, "MRN-1001");
+  await user.click(screen.getByRole("button", { name: "Search" }));
+
+  expect(await screen.findByText("MRN-1001")).toBeTruthy();
+  expect(screen.getByText("[content]")).toBeTruthy();
+
+  await user.click(screen.getByText("MRN-1001"));
+  await waitFor(() => expect(facade.callsTo("OpenCase")).toHaveLength(1));
+  await waitFor(() => expect(facade.callsTo("InspectOccurrence")).toHaveLength(1));
+});
+
+test("building an index from the unindexed case view calls BuildIndex and opens grid", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    SelectWorkspace: () => folderWithCase(),
+    OpenCase: () => caseResult(),
+    DescribeIndex: () => ({ state: "empty" }),
+    BuildIndex: () => buildIndexResultFixture(indexDetailsFixture({ applicable: true })),
+    OpenWorkspace: () => folderWithCase(),
+    OpenGrid: () => gridResult([gridRow(GRID_OCCURRENCE)]),
+  });
+
+  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await screen.findByText(WORKSPACE_ROOT);
+  await user.click(screen.getByRole("button", { name: "Verify and open" }));
+  await screen.findByText("Case is unindexed");
+
+  await user.click(screen.getByRole("button", { name: "Build case index" }));
+  await user.click(screen.getByRole("button", { name: "Build index" }));
+
+  await waitFor(() => expect(facade.callsTo("BuildIndex")).toHaveLength(1));
+  await waitFor(() => expect(facade.callsTo("OpenGrid")).toHaveLength(1));
+  expect(await screen.findByText(`Inspect ${GRID_OCCURRENCE}`)).toBeTruthy();
+});
+

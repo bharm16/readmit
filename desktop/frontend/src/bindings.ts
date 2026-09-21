@@ -101,16 +101,19 @@ export interface ShellResult {
   shell?: Shell;
 }
 
-export type MatchKind = "artifact" | "registered_case";
+export type MatchKind = "artifact" | "registered_case" | "content";
 
 /** One thing found and the region that reveals it. `field` names the declared
- * field that matched — never the value that matched. */
+ * field that matched — never the value that matched. For indexed content matches,
+ * `occurrence` and `selector` identify the message and field. */
 export interface Match {
   kind: MatchKind;
   name: string;
   label: string;
   field: string;
   region: RegionId;
+  occurrence?: string;
+  selector?: string;
 }
 
 export interface SearchResult {
@@ -418,6 +421,50 @@ export interface GridResult {
   grid?: Grid;
 }
 
+export type IndexRetention = "values" | "digests" | "states";
+
+export interface BuildIndexRequest {
+  workspace: string;
+  case: string;
+  identity: string;
+  output: string;
+  fields: string[];
+  retention: string;
+  retain_until?: string;
+  replace?: boolean;
+}
+
+export interface IndexDetails {
+  index_name: string;
+  case_name: string;
+  identity: string;
+  retention: string;
+  retain_until?: string;
+  retention_state: string;
+  fields: string[];
+  records: number;
+  decoded: number;
+  undecodable: number;
+  built_at: string;
+  applicable: boolean;
+  stale?: boolean;
+  damaged?: boolean;
+  expired?: boolean;
+  unsupported?: boolean;
+}
+
+export interface BuildIndexResult {
+  state: State;
+  reason?: string;
+  index?: IndexDetails;
+}
+
+export interface IndexResult {
+  state: State;
+  reason?: string;
+  index?: IndexDetails;
+}
+
 export interface InspectRequest {
   workspace: string;
   case: string;
@@ -509,6 +556,8 @@ export interface Facade {
     offset: number,
     limit: number,
   ): Promise<GridResult>;
+  BuildIndex(request: BuildIndexRequest): Promise<BuildIndexResult>;
+  DescribeIndex(workspace: string, caseName: string, indexName: string): Promise<IndexResult>;
   OpenProject(path: string): Promise<ProjectResult>;
   OpenProjectOverview(path: string): Promise<ProjectOverviewResult>;
   CreateProject(name: string, title: string, owner: string, versions: string[]): Promise<ProjectOverviewResult>;
@@ -676,6 +725,20 @@ export function openGrid(
   return guard(() => facade().OpenGrid(workspace, name, indexName, offset, limit), {
     state: "failed",
   });
+}
+
+/** Builds or rebuilds one index for a case with the declared retention and fields. */
+export function buildIndex(request: BuildIndexRequest): Promise<BuildIndexResult> {
+  return guard(() => facade().BuildIndex(request), { state: "failed" });
+}
+
+/** Inspects the applicable index for a case or one named index artifact. */
+export function describeIndex(
+  workspace: string,
+  caseName: string,
+  indexName: string = "",
+): Promise<IndexResult> {
+  return guard(() => facade().DescribeIndex(workspace, caseName, indexName), { state: "failed" });
 }
 
 /** Stores one named filter and selects it. */

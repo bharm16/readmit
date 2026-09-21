@@ -413,3 +413,203 @@ dd {
 .grid-save h4 {
   font-size: 0.95rem;
 }
+
+/* Unindexed case notice and active index metadata */
+.unindexed-case {
+  border: 1px solid var(--line);
+  padding: 0.75rem 1rem;
+  margin: 0.75rem 0;
+  border-radius: 4px;
+}
+
+.unindexed-case h4 {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+}
+
+.unindexed-case .notice {
+  font-size: 0.9rem;
+  color: var(--muted);
+  margin: 0.35rem 0 0.5rem;
+}
+
+.index-rebuild-banner {
+  border: 1px solid var(--line);
+  padding: 0.75rem 1rem;
+  margin: 0.75rem 0;
+  border-radius: 4px;
+  background: color-mix(in srgb, CanvasText 4%, Canvas);
+}
+
+.warning-badge {
+  font-weight: 700;
+  font-size: 0.85rem;
+  display: inline-block;
+  margin-bottom: 0.25rem;
+}
+
+.rebuild-reason {
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.9rem;
+}
+
+.active-index-details {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  margin: 0.5rem 0;
+}
+
+.index-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.index-chip,
+.retention-chip,
+.expiry-chip,
+.records-chip {
+  display: inline-flex;
+  align-items: center;
+}
+
+.index-fields,
+.permitted-searches {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0.35rem 0 0;
+}
+
+/* In-app index builder/rebuilder form */
+.build-index-form {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1rem;
+  margin: 0.75rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.build-index-form h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.field-selection,
+.retention-selection,
+.expiry-selection {
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.field-selection legend,
+.retention-selection legend,
+.expiry-selection legend {
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0 0.25rem;
+}
+
+.common-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+
+.custom-field {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.selected-fields-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.field-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-size: 0.85rem;
+  background: color-mix(in srgb, CanvasText 6%, Canvas);
+}
+
+.field-tag button {
+  padding: 0 0.25rem;
+  font-size: 0.85rem;
+  line-height: 1;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.radio-label,
+.checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.radio-label input,
+.checkbox-label input {
+  margin-top: 0.2rem;
+}
+
+.expiry-picker {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.output-selection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.output-selection input[type="text"] {
+  max-width: 320px;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+/* Search match badges */
+.match-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin: 0 0.35rem;
+  padding: 0.1rem 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+
+.content-badge {
+  background: color-mix(in srgb, CanvasText 8%, Canvas);
+}
+
+.metadata-badge {
+  color: var(--muted);
+}
+

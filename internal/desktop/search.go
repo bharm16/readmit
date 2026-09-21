@@ -2,19 +2,26 @@ package desktop
 
 import (
 	"context"
+	"fmt"
+	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/index"
 	"github.com/bharm16/readmit/internal/project"
 )
 
 // MatchKind says what one search result names: an entry the open folder
-// declares, or a case the project document in that folder registers. The same
-// bundle can be both, and is named once as each.
+// declares, a case the project document in that folder registers, or
+// an occurrence whose indexed content matched.
 type MatchKind string
 
 const (
 	ArtifactMatch   MatchKind = "artifact"
 	RegisteredMatch MatchKind = "registered_case"
+	ContentMatch    MatchKind = "content"
 )
 
 // Match is one thing found and where to go to see it.
@@ -23,14 +30,16 @@ const (
 // the listing shows, and for a registered case the title the project recorded.
 // Field is the fixed name of the declared field that matched — "name", "title",
 // "owner" and the rest — so a result says why it is here rather than echoing
-// the text that matched. Nothing read out of a case bundle is here: no message
-// bytes, no field values, and no original source path.
+// the text that matched. Occurrence and Selector are present when the match
+// is inside an indexed case occurrence, routing directly to the inspector.
 type Match struct {
-	Kind   MatchKind `json:"kind"`
-	Name   string    `json:"name"`
-	Label  string    `json:"label"`
-	Field  string    `json:"field"`
-	Region string    `json:"region"`
+	Kind       MatchKind `json:"kind"`
+	Name       string    `json:"name"`
+	Label      string    `json:"label"`
+	Field      string    `json:"field"`
+	Region     string    `json:"region"`
+	Occurrence string    `json:"occurrence,omitzero"`
+	Selector   string    `json:"selector,omitzero"`
 }
 
 // SearchResult carries one state. Matches is always present, empty when the
@@ -102,6 +111,82 @@ func (a *App) Search(path, query string) SearchResult {
 			}
 		}
 	}
+
+	at := time.Now().UTC()
+	rawTerm := strings.TrimSpace(query)
+	for _, artifact := range artifacts {
+		if artifact.Kind != IndexArtifact {
+			continue
+		}
+		indexPath := filepath.Join(root, artifact.Name)
+		doc, err := index.Open(indexPath)
+		if err != nil || doc.Usable(at) != nil {
+			continue
+		}
+		caseName := ""
+		if strings.HasSuffix(artifact.Name, ".index.json") {
+			candidate := strings.TrimSuffix(artifact.Name, ".index.json")
+			for _, art := range artifacts {
+				if art.Name == candidate && art.Kind == CaseArtifact {
+					caseName = candidate
+					break
+				}
+			}
+		}
+		if caseName == "" {
+			for _, art := range artifacts {
+				if art.Kind == CaseArtifact {
+					if opened, err := bundle.Open(filepath.Join(root, art.Name)); err == nil {
+						if doc.Describes(opened) == nil {
+							caseName = art.Name
+							break
+						}
+					}
+				}
+			}
+		}
+		if caseName == "" {
+			continue
+		}
+
+		var searchResult index.Result
+		var searchErr error
+		switch doc.Policy.Retention {
+		case index.RetainValues:
+			searchResult, searchErr = doc.Search(at, index.Query{Match: index.Contains, Term: []byte(rawTerm)})
+		case index.RetainDigests:
+			searchResult, searchErr = doc.Search(at, index.Query{Match: index.Equals, Term: []byte(rawTerm)})
+		case index.RetainStates:
+			switch wanted {
+			case "present":
+				searchResult, searchErr = doc.Search(at, index.Query{Match: index.State, State: hl7.Present})
+			case "empty":
+				searchResult, searchErr = doc.Search(at, index.Query{Match: index.State, State: hl7.Empty})
+			case "null":
+				searchResult, searchErr = doc.Search(at, index.Query{Match: index.State, State: hl7.Null})
+			case "omitted":
+				searchResult, searchErr = doc.Search(at, index.Query{Match: index.State, State: hl7.Omitted})
+			}
+		}
+		if searchErr == nil && len(searchResult.Hits) > 0 {
+			for _, hit := range searchResult.Hits {
+				if len(matches) >= 64 {
+					break
+				}
+				label := fmt.Sprintf("%s · %s · %s", caseName, hit.Record.ID, hit.Value.Selector)
+				matches = append(matches, Match{
+					Kind:       ContentMatch,
+					Name:       caseName,
+					Label:      label,
+					Field:      hit.Value.Selector,
+					Region:     InspectorRegion,
+					Occurrence: hit.Record.ID,
+					Selector:   hit.Value.Selector,
+				})
+			}
+		}
+	}
+
 	if len(matches) == 0 {
 		return SearchResult{State: Empty, Reason: "nothing in this workspace matches", Matches: matches}
 	}

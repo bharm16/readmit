@@ -10,7 +10,9 @@ import { GRID_WINDOW, MessageGrid } from "./shell";
 import {
   GRID_OCCURRENCE,
   INDEX_ENTRY,
+  caseResult,
   indicatorTable,
+  indexDetailsFixture,
   inspectionResult,
   filtersResult,
   gridResult,
@@ -250,3 +252,136 @@ test("a refused inspection is reported inside the inspector", () => {
     screen.getByText("The occurrence is larger than this release displays."),
   ).toBeTruthy();
 });
+
+test("an unindexed case reports case metadata and offers to build an index", async () => {
+  const user = userEvent.setup();
+  render(
+    <MessageGrid
+      indicators={indicatorTable()}
+      progress={null}
+      result={null}
+      filters={filtersResult()}
+      entries={[]}
+      busy={false}
+      onOpen={() => undefined}
+      onSelect={() => undefined}
+      onSave={() => undefined}
+      selectedOccurrence={null}
+      onInspect={() => undefined}
+      caseEvidence={caseResult().case}
+      indexDetails={null}
+      onBuildIndex={() => undefined}
+    />
+  );
+
+  expect(screen.getByText("Case is unindexed")).toBeTruthy();
+  expect(screen.getByText(/The case is not empty/)).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Build case index" })).toBeTruthy();
+
+  await user.click(screen.getByRole("button", { name: "Build case index" }));
+  expect(screen.getByRole("form", { name: "Build index form" })).toBeTruthy();
+});
+
+test("a stale, expired, damaged, or unsupported index shows a rebuild banner", async () => {
+  const user = userEvent.setup();
+  render(
+    <MessageGrid
+      indicators={indicatorTable()}
+      progress={null}
+      result={null}
+      filters={filtersResult()}
+      entries={[INDEX_ENTRY]}
+      busy={false}
+      onOpen={() => undefined}
+      onSelect={() => undefined}
+      onSave={() => undefined}
+      selectedOccurrence={null}
+      onInspect={() => undefined}
+      caseEvidence={caseResult().case}
+      indexDetails={indexDetailsFixture({ applicable: false, stale: true })}
+      onBuildIndex={() => undefined}
+    />,
+  );
+
+  expect(screen.getByRole("alert", { name: "Index rebuild notice" })).toBeTruthy();
+  expect(screen.getByText("[Index rebuild required]")).toBeTruthy();
+  expect(screen.getByText(/The index was built from different evidence or is stale for this case/)).toBeTruthy();
+
+  await user.click(screen.getByRole("button", { name: "Rebuild index" }));
+  expect(screen.getByRole("form", { name: "Build index form" })).toBeTruthy();
+});
+
+test("an active index displays its retention form and permitted searches", () => {
+  render(
+    <MessageGrid
+      indicators={indicatorTable()}
+      progress={null}
+      result={gridResult([gridRow(GRID_OCCURRENCE)])}
+      filters={filtersResult()}
+      entries={[INDEX_ENTRY]}
+      busy={false}
+      onOpen={() => undefined}
+      onSelect={() => undefined}
+      onSave={() => undefined}
+      selectedOccurrence={null}
+      onInspect={() => undefined}
+      caseEvidence={caseResult().case}
+      indexDetails={indexDetailsFixture({
+        applicable: true,
+        retention: "values",
+        fields: ["PID-3", "PV1-19"],
+      })}
+    />,
+  );
+
+  expect(screen.getByText(`Index: ${INDEX_ENTRY}`)).toBeTruthy();
+  expect(screen.getByText("Retention: values (active)")).toBeTruthy();
+  expect(
+    screen.getByText("Permitted searches: full substring search, equality, presence, and absence"),
+  ).toBeTruthy();
+});
+
+test("building an index composes the typed request with retention and structured fields", async () => {
+  const user = userEvent.setup();
+  const built: unknown[] = [];
+  render(
+    <MessageGrid
+      indicators={indicatorTable()}
+      progress={null}
+      result={null}
+      filters={filtersResult()}
+      entries={[]}
+      busy={false}
+      onOpen={() => undefined}
+      onSelect={() => undefined}
+      onSave={() => undefined}
+      selectedOccurrence={null}
+      onInspect={() => undefined}
+      caseEvidence={caseResult().case}
+      indexDetails={null}
+      onBuildIndex={(req) => built.push(req)}
+    />,
+  );
+
+  await user.click(screen.getByRole("button", { name: "Build case index" }));
+  const customInput = screen.getByLabelText("Custom field selector");
+  fireEvent.change(customInput, { target: { value: "OBX[1]-3" } });
+  await user.click(screen.getByRole("button", { name: "Add field" }));
+
+  await user.click(screen.getByLabelText(/Plaintext values/));
+  await user.click(screen.getByRole("button", { name: "Build index" }));
+
+  expect(built).toEqual([
+    {
+      workspace: "",
+      case: "sample-case",
+      identity: "case-identity-fixed-for-tests",
+      output: "sample-case.index.json",
+      fields: ["PID-3", "MSH-10", "OBX[1]-3"],
+      retention: "values",
+      retain_until: "indefinite",
+      replace: false,
+    },
+  ]);
+});
+

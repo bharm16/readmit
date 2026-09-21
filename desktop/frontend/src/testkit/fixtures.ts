@@ -45,6 +45,9 @@ import type {
   HubResult,
   HubDiagnosisResult,
   HubArtifactsResult,
+  BuildIndexResult,
+  IndexDetails,
+  IndexResult,
 } from "../bindings";
 
 /** The synthetic workspace root the fixtures name. It is not a path on any
@@ -752,3 +755,50 @@ export function defaultArtifactsResult(overrides: Partial<HubArtifactsResult> = 
   };
 }
 
+/** Synthetic index details describing one index of a case. */
+export function indexDetailsFixture(overrides: Partial<IndexDetails> = {}): IndexDetails {
+  return {
+    index_name: INDEX_ENTRY,
+    case_name: CASE_ENTRY,
+    identity: CASE_IDENTITY,
+    retention: "states",
+    retention_state: "active",
+    fields: ["PID-3", "MSH-10"],
+    records: 100,
+    decoded: 98,
+    undecodable: 2,
+    built_at: "2026-09-21T00:00:00Z",
+    applicable: true,
+    ...overrides,
+  };
+}
+
+/** Synthetic IndexResult reporting the index status of a case. */
+export function indexResultFixture(
+  details?: IndexDetails | null,
+  overrides: Partial<IndexResult> = {},
+): IndexResult {
+  if (details === null) {
+    return {
+      state: "empty",
+      ...overrides,
+    };
+  }
+  return {
+    state: "completed",
+    index: details ?? indexDetailsFixture(),
+    ...overrides,
+  };
+}
+
+/** Synthetic BuildIndexResult reporting index build completion. */
+export function buildIndexResultFixture(
+  details?: IndexDetails,
+  overrides: Partial<BuildIndexResult> = {},
+): BuildIndexResult {
+  return {
+    state: "completed",
+    index: details ?? indexDetailsFixture(),
+    ...overrides,
+  };
+}

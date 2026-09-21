@@ -253,6 +253,8 @@ artifacts are never reported as completed.
 | `Search` | Finds what one open workspace declares and what its project registers. |
 | `InspectOccurrence` | Verifies the grid identity again and reveals one selected occurrence, its navigable tree, escaped raw/decoded values and bounded hex bytes. |
 | `OpenGrid` | Renders one bounded window of one case through one index of it. |
+| `BuildIndex` | Builds an index of declared fields and retention choices for a verified case bundle into a new derived artifact, re-reads the workspace and returns the outcome. |
+| `DescribeIndex` | Inspects the index status of a case, reporting whether an index is applicable, stale, expired, damaged, or unsupported. |
 | `Filters` | Lists the filters this viewer saved and the one selected now. |
 | `SaveFilter` | Stores one named filter and selects it. |
 | `SelectFilter` | Records which saved filter the grid applies. |
@@ -478,13 +480,18 @@ paging to the next window stays what it was: another call that verifies the case
 and re-checks the index against it.
 
 It names two entries of the open workspace: the case, and one `readmit-index/v1`
-file built from that case — by `readmit index build`, or, for the sample case
-alone, by the sample creation described in
-[the guided sample](guided-sample.md) — see [searching a case](index.md). The
-index is the one search path over a case. The grid reads no message again, keeps
-no second index of its own, and asks every question about a value or a decoded
-state through the index, so the retention an operator declared is enforced by
-the index itself.
+file built from that case — built in the desktop shell via the in-app builder,
+by `readmit index build` on the command line, or, for the sample case alone, by
+the sample creation described in [the guided sample](guided-sample.md) — see
+[searching a case](index.md). Opening a case auto-selects an applicable verified
+index or presents an unindexed case view. Unindexed cases display their verified
+evidence counts (occurrences, messages, ACKs, unparsed segments) and keep the
+occurrence sequence and inspector fully functional, never implying the case is
+empty. Stale, expired, damaged, or unsupported indexes show a guided rebuild banner
+with direct access to the builder. The index is the one search path over a case.
+The grid reads no message again, keeps no second index of its own, and asks every
+question about a value or a decoded state through the index, so the retention an
+operator declared is enforced by the index itself.
 
 Both are checked before one row is reported, and checked again for every window:
 
@@ -502,6 +509,28 @@ nobody looked at again, which is exactly what
 [ADR-0008](adr/0008-the-case-index-is-a-derived-disposable-readmit-owned-file.md)
 refuses. A refused index changes nothing and blocks nothing: the case stays
 readable, and the remedy is always to build the index again.
+
+### Building and rebuilding case indexes in the shell
+
+The shell provides an in-app index builder with structured field selection and
+explicit retention choices:
+- Fields: Up to 16 canonical HL7 selectors, chosen from common fields (e.g. `PID-3`,
+  `MSH-10`, `MSA[1]-1[1]`, `PV1-19`) or custom selectors.
+- Retention forms: `values` (first 128 bytes of present values, enabling equals/contains),
+  `digests` (SHA-256 digests of present values, enabling exact match without resting raw text),
+  or `states` (presence/empty/null/omitted states only). The form clarifies permitted searches
+  without silently expanding retained fields or defaulting to PHI values.
+- Retention duration: An explicit RFC 3339 timestamp or deliberate indefinite retention.
+- Workspace registration: Built into a new derived `readmit-index/v1` artifact outside the
+  case evidence, registered in the workspace, and immediately opened in the grid.
+
+### Content search vs metadata search
+
+Workspace search distinguishes metadata matches from indexed content hits. When a
+search query matches indexed content across cases, the result is badged `[content]`
+and names the matching field. Selecting a content hit verifies the case bundle and
+navigates directly to the exact occurrence and field in the inspector, without
+requiring a grid to be already opened.
 
 ### What a row carries
 
@@ -1483,14 +1512,10 @@ checked to hold no network call and no browser storage at all.
   any history of what a plan said before a step was undone. A comparison reads
   two reproducers that were built, so it is produced again from disk rather than
   held anywhere.
-- Building an index of any case but the sample one. The grid reads an index that
-  `readmit index build` wrote, so which fields are retained, in what form and
-  until when stay three declarations an operator made explicitly. The one
-  exception is the sample workspace, which ships a states-only index of its
-  `regression` case with those three declarations fixed and stated in
-  [the guided sample](guided-sample.md); without it the guided path would stop
-  at a terminal. Nothing in the window builds an index of anything else,
-  rebuilds one, or changes a declaration.
+- Modifying an existing index in place. An index is disposable and derived; modifying
+  or updating an index builds a new derived artifact and preserves existing ones.
+  The in-app builder supports up to 16 canonical selectors and explicit retention choices,
+  leaving the original evidence and user-selected policy authoritative.
 - Character-set transcoding, local/formatting HL7 escapes, and semantic dictionary definitions beyond the bundled field labels.
   The inspector reports these limits explicitly and keeps original bytes accessible.
 - Removing a saved filter and sharing one between viewers.
