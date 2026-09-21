@@ -1,0 +1,132 @@
+.hub-panel {
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+  margin-top: 1.5rem;
+}
+
+.hub-context-status {
+  background: color-mix(in srgb, var(--surface) 90%, CanvasText 10%);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  margin: 0.75rem 0;
+}
+
+.hub-mode-badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 3px;
+  font-weight: bold;
+}
+
+.hub-mode-badge.connected {
+  background: #1b5e20;
+  color: #ffffff;
+}
+
+.hub-mode-badge.offline {
+  background: #424242;
+  color: #ffffff;
+}
+
+.hub-custody-warning {
+  background: color-mix(in srgb, #fff3e0 20%, var(--surface));
+  border-left: 4px solid #f57c00;
+  padding: 0.75rem 1rem;
+  margin: 0.75rem 0;
+}
+
+.hub-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.hub-diagnosis-results,
+.hub-auth-section,
+.hub-identity-section,
+.hub-projects-section,
+.hub-artifacts-section {
+  background: color-mix(in srgb, var(--surface) 95%, CanvasText 5%);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+.hub-checks-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.hub-checks-list li {
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.check-indicator {
+  display: inline-block;
+  font-weight: bold;
+  font-size: 0.85rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 2px;
+  margin-right: 0.5rem;
+}
+
+.check-passed .check-indicator {
+  background: #2e7d32;
+  color: #ffffff;
+}
+
+.check-failed .check-indicator {
+  background: #c62828;
+  color: #ffffff;
+}
+
+.hub-projects-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.hub-project-card {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.hub-project-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.capability-badge {
+  font-family: monospace;
+  font-size: 0.85rem;
+  margin-right: 0.4rem;
+  color: var(--muted);
+}
+
+.hub-artifacts-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.75rem;
+}
+
+.hub-artifacts-table th,
+.hub-artifacts-table td {
+  border: 1px solid var(--line);
+  padding: 0.5rem;
+  text-align: left;
+}
+
+.hub-transfer-controls,
+.hub-upload-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}

@@ -1,5 +1,6 @@
 import { ContextHelp } from "./ContextHelp";
 import { OperationAccess } from "./OperationAccess";
+import { HubPanel } from "./HubPanel";
 import { RunComparison } from "./RunComparison";
 import { Baseline } from "./Baseline";
 import { NoteDraft } from "./NoteDraft";
@@ -1571,6 +1572,7 @@ export default function App() {
     privacy: (
       <>
         <OperationAccess />
+        <HubPanel />
         <p className="statement">{described?.privacy.statement}</p>
         <ul className="absent">
           {(described?.privacy.absent ?? []).map((claim) => (

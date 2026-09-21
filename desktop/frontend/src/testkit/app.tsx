@@ -26,6 +26,7 @@ export async function renderApp(handlers: FacadeHandlers = {}) {
     RecoverSession: () => ({ state: "empty" }),
     EditorDrafts: () => ({ state: "empty" }),
     OperationStatus: () => ({ state: "empty", selected: false }),
+    HubStatus: () => ({ state: "empty", connected: false, authenticated: false }),
     // Retaining where the viewer is and dropping a stored draft answer
     // quietly unless a test is about them.
     RecordView: () => sessionStored,

@@ -1972,6 +1972,127 @@
       "implemented": true
     },
     {
+      "id": "desktop.ChooseHubConfig",
+      "source": "desktop.App.ChooseHubConfig",
+      "kind": "desktop",
+      "capability": "chooseHubConfig application operation",
+      "owner": "bharm16/readmit#261",
+      "screen": "the customer-hub panel of the application",
+      "action": "choose customer hub configuration through native dialog",
+      "test": "desktop hub tests plus internal/desktop hub tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SelectHubConfig",
+      "source": "desktop.App.SelectHubConfig",
+      "kind": "desktop",
+      "capability": "selectHubConfig application operation",
+      "owner": "bharm16/readmit#261",
+      "screen": "the customer-hub panel of the application",
+      "action": "select an absolute customer hub configuration path explicitly",
+      "test": "desktop hub tests plus internal/desktop hub tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.DiagnoseHub",
+      "source": "desktop.App.DiagnoseHub",
+      "kind": "desktop",
+      "capability": "diagnoseHub application operation",
+      "owner": "bharm16/readmit#261",
+      "screen": "the customer-hub panel of the application",
+      "action": "run actionable prerequisite diagnostics against the configured customer hub",
+      "test": "desktop hub tests plus internal/hubclient tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ConnectHub",
+      "source": "desktop.App.ConnectHub",
+      "kind": "desktop",
+      "capability": "connectHub application operation",
+      "owner": "bharm16/readmit#261",
+      "screen": "the customer-hub panel of the application",
+      "action": "establish mutual TLS connection to the customer hub and verify health probes",
+      "test": "desktop hub tests plus internal/hubclient tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.DisconnectHub",
+      "source": "desktop.App.DisconnectHub",
+      "kind": "desktop",
+      "capability": "disconnectHub application operation",
+      "owner": "bharm16/readmit#261",
+      "screen": "the customer-hub panel of the application",
+      "action": "disconnect from the hub, clear in-memory credentials, and present the custody notice",
+      "test": "desktop hub tests plus internal/hubclient tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.StartHubAuth",
+      "source": "desktop.App.StartHubAuth",
+      "kind": "desktop",
+      "capability": "startHubAuth application operation",
+      "owner": "bharm16/readmit#261",
+      "screen": "the customer-hub panel of the application",
+      "action": "start system-browser PKCE authentication flow on local loopback listener",
+      "test": "desktop hub tests plus internal/hubclient tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.CompleteHubAuth",
+      "source": "desktop.App.CompleteHubAuth",
+      "kind": "desktop",
+      "capability": "completeHubAuth application operation",
+      "owner": "bharm16/readmit#261",
+      "screen": "the customer-hub panel of the application",
+      "action": "complete code exchange for RFC 9068 access token and discover authorized projects",
+      "test": "desktop hub tests plus internal/hubclient tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.HubStatus",
+      "source": "desktop.App.HubStatus",
+      "kind": "desktop",
+      "capability": "hubStatus application operation",
+      "owner": "bharm16/readmit#261",
+      "screen": "the customer-hub panel of the application",
+      "action": "report current connection, authentication, and authorized project states",
+      "test": "desktop hub tests plus internal/desktop hub tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ListHubProjectArtifacts",
+      "source": "desktop.App.ListHubProjectArtifacts",
+      "kind": "desktop",
+      "capability": "listHubProjectArtifacts application operation",
+      "owner": "bharm16/readmit#261",
+      "screen": "the customer-hub panel of the application",
+      "action": "retrieve artifacts and lifecycle metadata for an authorized project",
+      "test": "desktop hub tests plus internal/hubclient tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.DownloadHubArtifact",
+      "source": "desktop.App.DownloadHubArtifact",
+      "kind": "desktop",
+      "capability": "downloadHubArtifact application operation",
+      "owner": "bharm16/readmit#261",
+      "screen": "the customer-hub panel of the application",
+      "action": "download artifact from project with integrity verification and custody notice",
+      "test": "desktop hub tests plus internal/hubclient tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.UploadHubArtifact",
+      "source": "desktop.App.UploadHubArtifact",
+      "kind": "desktop",
+      "capability": "uploadHubArtifact application operation",
+      "owner": "bharm16/readmit#261",
+      "screen": "the customer-hub panel of the application",
+      "action": "publish artifact to customer hub project with author admission",
+      "test": "desktop hub tests plus internal/hubclient tests",
+      "implemented": true
+    },
+    {
       "id": "hub.operator.GET./health/live",
       "source": "hub GET /health/live",
       "kind": "hub",
