@@ -23,6 +23,7 @@ import (
 	"encoding/json/v2"
 	"encoding/pem"
 	"errors"
+	"github.com/bharm16/readmit/internal/testlicense"
 	"io"
 	"math/big"
 	"net"
@@ -33,6 +34,13 @@ import (
 	"testing"
 	"time"
 )
+
+// testCommand exercises the release binary with explicit ephemeral signed admission.
+func testCommand(ctx context.Context, t *testing.T, args ...string) *exec.Cmd {
+	t.Helper()
+	args = append([]string{"--operation-policy", testlicense.New(t)}, args...)
+	return exec.CommandContext(ctx, binary, args...)
+}
 
 func run(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()

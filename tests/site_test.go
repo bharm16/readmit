@@ -148,9 +148,11 @@ var cobraBuiltins = map[string]bool{"help": true, "completion": true}
 
 // workflowListed answers whether a published command is named by a backticked
 // span that starts with it, so `backup create/verify/restore` answers for
-// `backup` while `license runner init` does not answer for `runner`.
+// `backup` while `license runner init` does not answer for `runner`. A command
+// name continues through letters, digits and dashes, so `replay-target`
+// cannot masquerade as `replay`.
 func workflowListed(text, name string) bool {
-	return regexp.MustCompile("`" + regexp.QuoteMeta(name) + "(`|[^A-Za-z0-9])").MatchString(text)
+	return regexp.MustCompile("`" + regexp.QuoteMeta(name) + "(`|[^A-Za-z0-9-])").MatchString(text)
 }
 
 // rootWorkflows lists the top-level commands the executable itself publishes,
@@ -253,6 +255,9 @@ func TestPublishedVersionLiteralsAgreeWithTheSupportMatrix(t *testing.T) {
 	if row == "" {
 		t.Fatal("support matrix states no latest published archive")
 	}
+	// Published archives are prereleases today, so the tag shape this sweep
+	// recognizes is the prerelease shape; the first stable tag is a deliberate
+	// act that widens this expression beside the release row it changes.
 	prereleaseTag := regexp.MustCompile(`v?(\d+\.\d+\.\d+-alpha\.\d+)\b`)
 	published := prereleaseTag.FindStringSubmatch(row)
 	if published == nil {

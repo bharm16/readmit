@@ -2,10 +2,8 @@ package tests
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"fmt"
-	"github.com/bharm16/readmit/internal/testlicense"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -162,11 +160,4 @@ func TestDictionaryNamesKnownFieldsAndKeepsUnknownPositions(t *testing.T) {
 			t.Errorf("missing field label %q", want)
 		}
 	}
-}
-
-// testCommand exercises the release binary with explicit ephemeral signed admission.
-func testCommand(ctx context.Context, t *testing.T, args ...string) *exec.Cmd {
-	t.Helper()
-	args = append([]string{"--operation-policy", testlicense.New(t)}, args...)
-	return exec.CommandContext(ctx, binary, args...)
 }
