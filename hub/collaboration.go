@@ -167,8 +167,48 @@ func sendReview(w http.ResponseWriter, status int, v any) {
 	w.WriteHeader(status)
 	_, _ = w.Write(data)
 }
-func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access, project, route string) {
-	v2 := strings.HasPrefix(r.URL.Path, "/v2/")
+
+// humanReviewer is the identity rule the review route family declares: a
+// review is written by a human the policy identifies, never a machine
+// principal, and an issuer the backup bound cannot retain is refused here
+// rather than mid-commit.
+func humanReviewer(route string) identityRule {
+	return func(p Principal) (bool, string) {
+		if route == "reviews" && (p.Kind != "oidc" || p.Role == "runner" || len(p.Issuer) > 2048) {
+			return false, "human identity required"
+		}
+		return true, ""
+	}
+}
+
+// reviewAdmission is the review route family's one declaration of how a
+// request maps into action vocabulary. History and notifications read; a
+// review writes; and the command kinds escalate — a support policy needs
+// admin, an approval needs approval, and a comment rides the commenter's
+// approval scope when the policy grants one. The comment escalation asks the
+// policy alone: removal is enforced on the final action inside the write
+// sequence, so a removed principal is refused either way.
+func reviewAdmission(route string, c ReviewCommand, a *Access, r *http.Request, project string) teamAdmission {
+	action := "evidence.read"
+	if route == "reviews" {
+		action = "evidence.write"
+		if c.Kind == "support-policy" {
+			action = "admin"
+		}
+		if c.Kind == "approval" || supportApproval(c) {
+			action = "approval"
+		}
+		// Reviewers can comment with their existing approval scope, but cannot assign.
+		if c.Kind == "comment" {
+			if _, e := a.Authorize(r, project, "approval"); e == nil {
+				action = "approval"
+			}
+		}
+	}
+	return teamAdmission{action: action, writes: r.Method != "GET", accept: humanReviewer(route)}
+}
+
+func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access, project, route string, v2 bool) {
 	supportRecorded := false
 	if v2 && route == "reviews" {
 		defer func() {
@@ -180,10 +220,6 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 		}()
 	}
 
-	action := "evidence.read"
-	if route == "reviews" {
-		action = "evidence.write"
-	}
 	var c ReviewCommand
 	if route == "reviews" {
 		if r.Method != "POST" {
@@ -204,31 +240,14 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 			http.Error(w, "review version unavailable", 400)
 			return
 		}
-		if c.Kind == "support-policy" {
-			action = "admin"
-		}
-		if c.Kind == "approval" || supportApproval(c) {
-			action = "approval"
-		}
-		// Reviewers can comment with their existing approval scope, but cannot assign.
-		if c.Kind == "comment" {
-			if _, e := s.authorize(a, r, project, "approval"); e == nil {
-				action = "approval"
-			}
-		}
 	} else if r.Method != "GET" && r.Method != "POST" {
 		http.Error(w, "method refused", 405)
 		return
 	}
+	adm := reviewAdmission(route, c, a, r, project)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	principal, release, ok := s.authorizeWrite(a, r, w, project, action, r.Method != "GET",
-		func(p Principal) (bool, string) {
-			if route == "reviews" && (p.Kind != "oidc" || p.Role == "runner" || len(p.Issuer) > 2048) {
-				return false, "human identity required"
-			}
-			return true, ""
-		})
+	principal, release, ok := s.authorizeWrite(a, r, w, project, adm)
 	if !ok {
 		return
 	}

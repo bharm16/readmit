@@ -168,12 +168,47 @@ func validateLifecycle(c LifecycleCommand, events []LifecycleEvent, load func(st
 	}
 	return nil
 }
+
+// lifecycleAdmission is the lifecycle route's one declaration of how a
+// request maps into action vocabulary: a read reports history, a revision or
+// resolve writes, every other command is administrative, and an audit-export
+// additionally holds the export grant its content stands for. An audit-export
+// is an export of record rather than new authored work, so it never admits
+// an operation.
+func lifecycleAdmission(method, kind string) teamAdmission {
+	adm := teamAdmission{action: "evidence.read"}
+	if method != "POST" {
+		return adm
+	}
+	adm.writes = kind != "audit-export"
+	if kind == "revision" || kind == "resolve" {
+		adm.action = "evidence.write"
+	} else {
+		adm.action = "admin"
+	}
+	if kind == "audit-export" {
+		adm.further = []furtherGrant{{action: "export", refusal: "export refused"}}
+	}
+	return adm
+}
+
+// lifecycleIdentity is the identity rule the lifecycle route declares: a
+// command is issued by a human the policy identifies, whose issuer the
+// backup bound can retain.
+func lifecycleIdentity(method string) identityRule {
+	return func(p Principal) (bool, string) {
+		if method == "POST" && (p.Kind != "oidc" || p.Role == "runner" || !reviewText(p.Issuer, 2048)) {
+			return false, "access refused"
+		}
+		return true, ""
+	}
+}
+
 func (s *Store) lifecycleRequest(w http.ResponseWriter, r *http.Request, a *Access, project string) {
 	if r.Method != "GET" && r.Method != "POST" {
 		http.Error(w, "method refused", 405)
 		return
 	}
-	action := "evidence.read"
 	var c LifecycleCommand
 	if r.Method == "POST" {
 		data, e := io.ReadAll(io.LimitReader(r.Body, 8193))
@@ -186,21 +221,12 @@ func (s *Store) lifecycleRequest(w http.ResponseWriter, r *http.Request, a *Acce
 			http.Error(w, "invalid command", 400)
 			return
 		}
-		action = "evidence.write"
-		if c.Kind != "revision" && c.Kind != "resolve" {
-			action = "admin"
-		}
 	}
+	adm := lifecycleAdmission(r.Method, c.Kind)
+	adm.accept = lifecycleIdentity(r.Method)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	p, release, ok := s.authorizeWrite(a, r, w, project, action,
-		r.Method == "POST" && c.Kind != "audit-export",
-		func(p Principal) (bool, string) {
-			if r.Method == "POST" && (p.Kind != "oidc" || p.Role == "runner" || !reviewText(p.Issuer, 2048)) {
-				return false, "access refused"
-			}
-			return true, ""
-		})
+	p, release, ok := s.authorizeWrite(a, r, w, project, adm)
 	if !ok {
 		return
 	}
@@ -221,12 +247,6 @@ func (s *Store) lifecycleRequest(w http.ResponseWriter, r *http.Request, a *Acce
 			Warning string              `json:"warning"`
 		}{"readmit-hub-lifecycle-history/v1", len(events), events, revisionTips(events), "Downloaded copies remain under local custody and cannot be revoked."})
 		return
-	}
-	if c.Kind == "audit-export" {
-		if _, e := s.authorize(a, r, project, "export"); e != nil {
-			http.Error(w, "export refused", 403)
-			return
-		}
 	}
 	total, e := lifecycleLog.total(r.Context(), s.db)
 	if e != nil {

@@ -89,42 +89,54 @@ func (s *Store) admitAuthor(r *http.Request, p Principal) (func() error, error) 
 	return nil, errAccess
 }
 
-// authorizeWrite runs the sequence every hub write route runs: authorize,
-// refuse any principal the route's own identity rule declines, admit the
-// operation behind the store's one slot when this request writes, and
-// authorize again, so a write that queued behind another operation cannot
-// retain a grant that was revoked while it waited. accept carries the
-// route's identity rule and its own refusal sentence — a nil accept admits
-// any authorized principal, and a nil sentence means "access refused". False
-// means the response is already written, and a caller that defers the
-// returned release writes inside both answers.
-func (s *Store) authorizeWrite(a *Access, r *http.Request, w http.ResponseWriter, project, action string, writes bool, accept func(Principal) (bool, string)) (Principal, func() error, bool) {
-	principal, e := s.authorize(a, r, project, action)
+// authorizeWrite runs the sequence every hub write route runs against one
+// route's admission declaration: authorize the declared action, refuse any
+// principal the route's identity rule declines, admit the operation behind
+// the store's one slot when the declaration says the request writes,
+// authorize again, and require any further grant the route declared the same
+// request must hold — so a write that queued behind another operation cannot
+// retain a grant that was revoked while it waited. False means the response
+// is already written, and a caller that defers the returned release writes
+// inside both answers.
+func (s *Store) authorizeWrite(a *Access, r *http.Request, w http.ResponseWriter, project string, adm teamAdmission) (Principal, func() error, bool) {
+	principal, e := s.authorize(a, r, project, adm.action)
 	if e != nil {
 		http.Error(w, "access refused", 403)
 		return Principal{}, nil, false
 	}
-	if accept != nil {
-		if admitted, sentence := accept(principal); !admitted {
+	if adm.accept != nil {
+		if admitted, sentence := adm.accept(principal); !admitted {
+			if sentence == "" {
+				sentence = "access refused"
+			}
 			http.Error(w, sentence, 403)
 			return Principal{}, nil, false
 		}
 	}
 	var release func() error
-	if writes {
+	if adm.writes {
 		release, e = s.admitAuthor(r, principal)
 		if e != nil {
 			http.Error(w, "operation admission refused", 403)
 			return Principal{}, nil, false
 		}
 	}
-	principal, e = s.authorize(a, r, project, action)
+	principal, e = s.authorize(a, r, project, adm.action)
 	if e != nil {
 		if release != nil {
 			release()
 		}
 		http.Error(w, "access refused", 403)
 		return Principal{}, nil, false
+	}
+	for _, grant := range adm.further {
+		if _, e := s.authorize(a, r, project, grant.action); e != nil {
+			if release != nil {
+				release()
+			}
+			http.Error(w, grant.refusal, 403)
+			return Principal{}, nil, false
+		}
 	}
 	return principal, release, true
 }

@@ -14,6 +14,32 @@ func (s *Store) TeamHandler(access *Access) http.Handler {
 	}), 30*time.Second)
 }
 
+// identityRule declines principals a route will not serve even though the
+// access policy granted the action, and carries its own refusal sentence.
+type identityRule func(Principal) (bool, string)
+
+// furtherGrant is one action a route's request must additionally hold beyond
+// its own action, with the refusal sentence the route answers its absence
+// with — audit-export is reached through the admin action and additionally
+// requires the export grant its content stands for.
+type furtherGrant struct {
+	action  string
+	refusal string
+}
+
+// teamAdmission declares one team route's admission decisions in one place:
+// the action the request maps to, whether it writes, the identity rule its
+// principals must pass beyond the access policy, and any further grants the
+// same request must also hold. URL-version detection and action escalation
+// are properties of the declaration; a handler keeps only the route's own
+// work, and authorizeWrite applies the whole sequence to every route alike.
+type teamAdmission struct {
+	action  string
+	writes  bool
+	accept  identityRule // nil admits any authorized principal
+	further []furtherGrant
+}
+
 func (s *Store) teamRequest(w http.ResponseWriter, r *http.Request, access *Access) {
 	ctx := r.Context()
 	if access == nil {
@@ -25,12 +51,14 @@ func (s *Store) teamRequest(w http.ResponseWriter, r *http.Request, access *Acce
 		http.NotFound(w, r)
 		return
 	}
-	project := parts[2]
+	// The version is parsed once here; handlers take it as a fact they never
+	// re-derive from the path again.
+	v2, project := parts[0] == "v2", parts[2]
 	if len(parts) == 4 && parts[3] == "lifecycle" {
 		s.lifecycleRequest(w, r, access, project)
 		return
 	}
-	if parts[0] == "v2" {
+	if v2 {
 		if len(parts) == 5 && parts[3] == "exports" && validDigest(parts[4]) && r.Method == "GET" {
 			s.supportExport(w, r, access, project, parts[4])
 			return
@@ -41,7 +69,7 @@ func (s *Store) teamRequest(w http.ResponseWriter, r *http.Request, access *Acce
 		}
 	}
 	if len(parts) == 4 && (parts[3] == "reviews" || parts[3] == "history" || parts[3] == "notifications") {
-		s.reviewRequest(w, r, access, project, parts[3])
+		s.reviewRequest(w, r, access, project, parts[3], v2)
 		return
 	}
 	var action string
@@ -85,7 +113,18 @@ func (s *Store) teamRequest(w http.ResponseWriter, r *http.Request, access *Acce
 		http.Error(w, "method refused", 405)
 		return
 	}
-	principal, release, ok := s.authorizeWrite(access, r, w, project, action, action == "evidence.write", nil)
+	adm := teamAdmission{action: action, writes: action == "evidence.write"}
+	if action == "enrollment" {
+		// Enrollment is the operator's explicit project/subject/certificate/token
+		// registration. This handshake proves all four agree; it grants no new role.
+		adm.accept = func(p Principal) (bool, string) {
+			if p.Kind != "runner" {
+				return false, "scoped runner required"
+			}
+			return true, ""
+		}
+	}
+	_, release, ok := s.authorizeWrite(access, r, w, project, adm)
 	if !ok {
 		return
 	}
@@ -101,12 +140,6 @@ func (s *Store) teamRequest(w http.ResponseWriter, r *http.Request, access *Acce
 		return
 	}
 	if action == "enrollment" {
-		// Enrollment is the operator's explicit project/subject/certificate/token
-		// registration. This handshake proves all four agree; it grants no new role.
-		if principal.Kind != "runner" {
-			http.Error(w, "scoped runner required", 403)
-			return
-		}
 		w.WriteHeader(204)
 		return
 	}
@@ -136,9 +169,6 @@ func (s *Store) teamRequest(w http.ResponseWriter, r *http.Request, access *Acce
 	}
 	if r.Method == "GET" {
 		w.Header().Set("Readmit-Custody-Warning", "Downloaded copies remain under local custody and cannot be revoked.")
-	}
-	if action == "export" {
-		w.Header().Set("Content-Disposition", `attachment; filename="artifact.bin"`)
 	}
 	s.artifactRequest(w, r, ctx, d, project)
 }
