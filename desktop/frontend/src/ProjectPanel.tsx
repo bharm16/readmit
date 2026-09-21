@@ -31,6 +31,7 @@ export function Breadcrumbs({
   selectedCase,
   importing,
   capturing,
+  observing,
   onWorkspace,
   onProject,
 }: {
@@ -38,6 +39,7 @@ export function Breadcrumbs({
   selectedCase: string | null;
   importing?: boolean;
   capturing?: boolean;
+  observing?: boolean;
   onWorkspace: () => void;
   onProject: () => void;
 }) {
@@ -65,6 +67,14 @@ export function Breadcrumbs({
           </button>
           <span aria-hidden="true">›</span>
           <span aria-current="page">Import evidence</span>
+        </>
+      ) : observing ? (
+        <>
+          <button type="button" onClick={onProject}>
+            {project}
+          </button>
+          <span aria-hidden="true">›</span>
+          <span aria-current="page">Observation setup</span>
         </>
       ) : selectedCase ? (
         <>
@@ -532,6 +542,7 @@ export function ProjectPanel({
   onOpenCase,
   onStartImport,
   onStartCapture,
+  onStartObservation,
 }: {
   root: string | null;
   result: ProjectOverviewResult | null;
@@ -547,6 +558,7 @@ export function ProjectPanel({
   onOpenCase: (name: string) => void;
   onStartImport?: () => void;
   onStartCapture?: () => void;
+  onStartObservation?: () => void;
 }) {
   const [creating, setCreating] = useState(false);
   const [editingSettings, setEditingSettings] = useState(false);
@@ -580,6 +592,11 @@ export function ProjectPanel({
         {onStartCapture ? (
           <button type="button" disabled={busy} onClick={onStartCapture} style={{ marginLeft: "0.5rem" }}>
             Capture or collect evidence…
+          </button>
+        ) : null}
+        {onStartObservation ? (
+          <button type="button" disabled={busy} onClick={onStartObservation} style={{ marginLeft: "0.5rem" }}>
+            Set up observation…
           </button>
         ) : null}
         {creating ? <CreateForm busy={busy} onCreate={onCreate} /> : null}
@@ -649,6 +666,16 @@ export function ProjectPanel({
                 style={{ marginLeft: onStartCapture ? "0.5rem" : undefined }}
               >
                 Import evidence into this project…
+              </button>
+            ) : null}
+            {onStartObservation ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onStartObservation}
+                style={{ marginLeft: "0.5rem" }}
+              >
+                Set up observation…
               </button>
             ) : null}
           </div>

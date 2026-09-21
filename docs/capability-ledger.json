@@ -481,10 +481,10 @@
       "kind": "cli",
       "capability": "Observe a declared file export, HTTP API, downstream capture or database view for one observation window",
       "owner": "bharm16/readmit#251",
-      "screen": "an observation screen",
-      "action": "read declared observation windows and retained completions",
+      "screen": "the Observation setup panel of the evidence region",
+      "action": "author observation sources and windows, validate locally, and collect or explain with explicit authorization",
       "test": "desktop observation journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.observe.explain",
@@ -492,10 +492,10 @@
       "kind": "cli",
       "capability": "Report whether a retained window completed and what it can support",
       "owner": "bharm16/readmit#251",
-      "screen": "an observation screen",
-      "action": "read declared observation windows and retained completions",
+      "screen": "the Observation setup panel of the evidence region",
+      "action": "author observation sources and windows, validate locally, and collect or explain with explicit authorization",
       "test": "desktop observation journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.observe.validate",
@@ -503,10 +503,10 @@
       "kind": "cli",
       "capability": "Validate a declared observation window without observing anything",
       "owner": "bharm16/readmit#251",
-      "screen": "an observation screen",
-      "action": "read declared observation windows and retained completions",
+      "screen": "the Observation setup panel of the evidence region",
+      "action": "author observation sources and windows, validate locally, and collect or explain with explicit authorization",
       "test": "desktop observation journey test and shared-operation parity",
-      "implemented": false
+      "implemented": true
     },
     {
       "id": "cli.profile.export",

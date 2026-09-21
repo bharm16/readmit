@@ -123,6 +123,8 @@ import { Badge, GRID_WINDOW, MessageGrid, Palette, Report, Separator, Status } f
 import { Breadcrumbs, ProjectPanel } from "./ProjectPanel";
 import { ImportPanel } from "./ImportPanel";
 import { CapturePanel } from "./CapturePanel";
+import { ObservationPanel } from "./ObservationPanel";
+import type { CaptureObservationBinding } from "./bindings";
 
 /** The panes never collapse to nothing: either one keeps a usable share of the
  * window, whether it is dragged or moved with a keyboard. */
@@ -195,6 +197,8 @@ export default function App() {
   const [drafts, setDrafts] = useState<EditorDraft[] | null>(null);
   const [capturing, setCapturing] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [observing, setObserving] = useState(false);
+  const [captureBinding, setCaptureBinding] = useState<CaptureObservationBinding | null>(null);
 
   // Refusals of navigation the window has not committed: the workspace and
   // case a person had stay on screen beside the reason, instead of the old
@@ -714,12 +718,18 @@ export default function App() {
   // the way in.
   const backToProject = useCallback(() => {
     setImporting(false);
+    setCapturing(false);
+    setObserving(false);
+    setCaptureBinding(null);
     clearCase();
     focusRegion("evidence");
   }, [clearCase, focusRegion]);
 
   const backToWorkspace = useCallback(() => {
     setImporting(false);
+    setCapturing(false);
+    setObserving(false);
+    setCaptureBinding(null);
     clearWorkspace();
     setSelected(null);
     setInvestigation(null);
@@ -1668,10 +1678,36 @@ export default function App() {
           selectedCase={verified?.name ?? null}
           importing={importing}
           capturing={capturing}
+          observing={observing}
           onWorkspace={backToWorkspace}
           onProject={backToProject}
         />
-        {capturing && root ? (
+        {observing && root ? (
+          <ObservationPanel
+            workspace={root}
+            busy={busy}
+            indicators={indicators}
+            drafts={drafts ?? []}
+            captureBinding={captureBinding}
+            onBindToTest={(observationFile) => {
+              setObserving(false);
+              setCaptureBinding(null);
+              void author((draft, open) =>
+                authorTest({
+                  workspace: root ?? "",
+                  case: open.case,
+                  identity: open.identity,
+                  draft,
+                  answer: { stage: "observation", observation: observationFile },
+                }),
+              );
+            }}
+            onClose={() => {
+              setObserving(false);
+              setCaptureBinding(null);
+            }}
+          />
+        ) : capturing && root ? (
           <CapturePanel
             workspace={root}
             project={investigation?.overview?.root ?? null}
@@ -1684,6 +1720,11 @@ export default function App() {
             onSetupIndex={(name) => {
               setCapturing(false);
               void verifyCase(root, name);
+            }}
+            onBindObservation={(binding) => {
+              setCapturing(false);
+              setCaptureBinding(binding);
+              setObserving(true);
             }}
             onClose={() => setCapturing(false)}
           />
@@ -1731,6 +1772,10 @@ export default function App() {
               }}
               onStartImport={() => setImporting(true)}
               onStartCapture={() => setCapturing(true)}
+              onStartObservation={() => {
+                setCaptureBinding(null);
+                setObserving(true);
+              }}
             />
           </>
         )}

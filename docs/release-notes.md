@@ -1,5 +1,13 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The desktop shell gained visual authoring for observation sources and
+  completion windows (#251). Supported file-export, HTTPS API, downstream-capture
+  and database configurations use structured controls; database adapters remain
+  unqualified pending #75. Local validation never queries an endpoint; collection
+  requires explicit authorization. Saved documents use the shared Go readers and
+  writers, reopen CLI configurations without dropping fields, and bind verified
+  window references into guided test authoring. Capture completion offers
+  observation binding through BindCaptureObservation into that setup panel.
 - The desktop shell gained evidence capture, approved source collection and
   test responders (#250). Operators register directory and transfer sources with
   structured controls and native file/program selection, diagnose access, and
