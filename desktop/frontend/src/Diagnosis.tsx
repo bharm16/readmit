@@ -462,8 +462,8 @@ export function Diagnosis({
           <p className="hint">
             A decision is one person's typed judgment: a verdict and a rationale, and for a
             suppression its scope. Previewing joins them to this exact report and writes nothing;
-            recording persists the decisions document and the review directory, exactly as{" "}
-            <code>readmit diagnose review</code> writes them.
+            recording below persists the decisions document and the review directory, exactly as
+            the command line's own review writes them.
           </p>
           <button type="button" disabled={busy} onClick={() => review(false)}>
             Preview the review (writes nothing)

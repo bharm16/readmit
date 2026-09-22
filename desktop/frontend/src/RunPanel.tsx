@@ -37,6 +37,8 @@ export function RunPanel({
   onRefresh,
   onOpenCase,
   initialSpec,
+  onConfigureEnvironment,
+  onOpenLicense,
 }: {
   workspace: string | null;
   entries: Artifact[];
@@ -44,6 +46,11 @@ export function RunPanel({
   onRefresh: () => void;
   onOpenCase: (name: string) => void;
   initialSpec?: string;
+  /** Where the repair actions lead: a preflight refusal is about the
+   * environment's targets or the operation admission, so its next action
+   * opens the real configuration screen instead of restating the reason. */
+  onConfigureEnvironment?: () => void;
+  onOpenLicense?: () => void;
 }) {
   const specs = entries.filter((artifact) => artifact.kind === "spec").map((artifact) => artifact.name);
   const suites = entries.filter((artifact) => artifact.kind === "suite").map((artifact) => artifact.name);
@@ -222,7 +229,23 @@ export function RunPanel({
     </div>
     <div role="status" aria-live="polite">
       {operation === "executing" ? <p>Running. Cancellation stops future sends; a delivery already in flight may remain uncertain.</p> : null}
-      {preflight?.reason ? <p>{preflight.reason}</p> : null}
+      {preflight?.reason ? (
+        <>
+          <p>{preflight.reason}</p>
+          <p className="recovery-actions">
+            {onConfigureEnvironment ? (
+              <button type="button" disabled={busy} onClick={onConfigureEnvironment}>
+                Configure environments and targets…
+              </button>
+            ) : null}
+            {onOpenLicense ? (
+              <button type="button" disabled={busy} onClick={onOpenLicense}>
+                Open license and activation…
+              </button>
+            ) : null}
+          </p>
+        </>
+      ) : null}
       {plan ? <div className="preflight">
         <h4>Preflight — {plan.name} ({plan.kind})</h4>
         <p>Input: <strong>{plan.spec}</strong> · identity {plan.identity.slice(0, 12)}… · contract {plan.schema}</p>

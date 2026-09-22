@@ -1,5 +1,34 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The desktop shell connects the entry experience to the real application
+  surfaces and states the privacy status per operation (#266). The window's
+  first run presents its two actual beginnings as clear choices — a real
+  project over your own evidence in a folder you choose, or the free guided
+  sample with its deterministic evidence and genuinely failing and passing
+  saved tests — with the sample named as practice rather than as a substitute
+  for own-evidence onboarding, and the license state shown as the activation
+  store holds it, with activation reachable where it lives. A refused
+  workspace open, a refused case verification and a run-preflight refusal
+  each offer the action that repairs them — the folder dialog again, the
+  folder listing, the environment and activation screens — instead of advice,
+  and the two remaining CLI-directed hints name the in-app action. The
+  blanket "no network request of any kind" claim is replaced by a
+  per-operation disclosure of every deliberately configurable activity —
+  durable execution, runner execution, capture and collection, observation
+  windows, the customer hub and the commercial portal — naming its
+  destination, the data it carries, the authorization it requires and, read
+  from the window's own state without contacting anything, whether it is
+  idle, active, configured, offline or connected right now. Feature and
+  support guidance is derived from the checked capability ledger and the
+  verified qualification state: the connector and database refusals #35 and
+  #75 own, the de-identification and external-equivalence declines and the
+  unsigned preview status are stated, and every ledger row still open is
+  named as still without a checked screen, kept in agreement with the ledger
+  by a check that fails in both directions. The download page separates the
+  published prerelease candidate from CI's installation-tested previews and
+  from a published complete product, and states the desktop packages,
+  prerequisites and signature truth as the packaging tests prove it.
+
 - The desktop shell completed the privacy journey through the existing
   disclosure, protection and sharing operations (#260). The privacy panel
   derives a fail-closed export review from actual workspace entries — the case,

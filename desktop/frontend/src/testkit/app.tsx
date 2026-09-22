@@ -9,6 +9,7 @@ import App from "../App";
 import { installFacade } from "./wails";
 import type { FacadeHandlers } from "./wails";
 import {
+  disclosureStatusResult,
   filtersResult,
   guideResult,
   recentResult,
@@ -28,6 +29,7 @@ export async function renderApp(handlers: FacadeHandlers = {}) {
     OperationStatus: () => ({ state: "empty", selected: false }),
     CommercialStatus: () => ({ state: "empty" }),
     HubStatus: () => ({ state: "empty", connected: false, authenticated: false }),
+    DisclosureStatus: () => disclosureStatusResult(),
     // Retaining where the viewer is and dropping a stored draft answer
     // quietly unless a test is about them.
     RecordView: () => sessionStored,

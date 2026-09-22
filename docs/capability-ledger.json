@@ -2057,6 +2057,17 @@
       "implemented": true
     },
     {
+      "id": "desktop.DisclosureStatus",
+      "source": "desktop.App.DisclosureStatus",
+      "kind": "desktop",
+      "capability": "report the current connected/offline/configured/idle state of every deliberately configurable network activity, without contacting anything",
+      "owner": "bharm16/readmit#266",
+      "screen": "the privacy status region's per-operation disclosure table",
+      "action": "state the destination, data category, authorization and live connection state of every activity that can reach outside the window",
+      "test": "internal/desktop disclosure tests and the privacy disclosure behavior test",
+      "implemented": true
+    },
+    {
       "id": "desktop.OpenGrid",
       "source": "desktop.App.OpenGrid",
       "kind": "desktop",

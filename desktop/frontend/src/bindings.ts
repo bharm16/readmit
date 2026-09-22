@@ -102,11 +102,30 @@ export interface Command {
 }
 
 /** What the window tells a person about their data. `absent` is what this
- * product does not do at all; `kept` is everything written outside evidence. */
+ * product does not do at all; `kept` is everything written outside evidence;
+ * `operations` is every deliberately configurable activity that can reach a
+ * destination, with where it reaches, what it carries and what it takes. */
+export interface OperationDisclosure {
+  id: string;
+  activity: string;
+  destination: string;
+  data: string;
+  authorization: string;
+}
+
 export interface Privacy {
   statement: string;
   absent: string[];
   kept: string[];
+  operations: OperationDisclosure[];
+}
+
+/** The support guidance: the qualification and certification refusals the
+ * verified state actually holds, and the ledger rows still open, named rather
+ * than silently promised. */
+export interface Support {
+  notes: string[];
+  unavailable: string[];
 }
 
 /** The window's description of itself. It is rendered as given: the interface
@@ -118,6 +137,7 @@ export interface Shell {
   themes: Theme[];
   text_scales: number[];
   privacy: Privacy;
+  support: Support;
 }
 
 export interface ShellResult {
@@ -640,6 +660,7 @@ export interface Facade {
   Search(path: string, query: string): Promise<SearchResult>;
   SelectFilter(name: string): Promise<FiltersResult>;
   SelectWorkspace(): Promise<WorkspaceResult>;
+  DisclosureStatus(): Promise<DisclosureStatusResult>;
   Shell(): Promise<ShellResult>;
   EditReproducer(request: ReproducerRequest): Promise<ReproducerResult>;
   UndoReproducer(request: ReproducerRequest): Promise<ReproducerResult>;
@@ -1224,6 +1245,31 @@ export function selectWorkspace(): Promise<WorkspaceResult> {
  * is still starting; the window says so rather than drawing itself empty. */
 export function shell(): Promise<ShellResult> {
   return guard(() => facade().Shell(), { state: "failed" });
+}
+
+/** One disclosed activity's live state. The closed vocabulary is the facade's:
+ * `idle` — not happening, nothing connected; `active` — happening now;
+ * `not-configured` — never set up; `offline` — set up, not connected;
+ * `connected` — connected now; `configured` — selected, and the activity
+ * belongs to the browser rather than this window. */
+export interface DisclosureState {
+  id: string;
+  state: "idle" | "active" | "not-configured" | "offline" | "connected" | "configured";
+  detail: string;
+}
+
+export interface DisclosureStatusResult {
+  state: State;
+  reason?: string;
+  states?: DisclosureState[];
+}
+
+/** How each disclosed activity stands right now. It answers through the
+ * operation slot like every other read, so it refuses busy rather than
+ * describing a state from halfway through one, and it contacts nothing:
+ * the answer is read from the window's own connection objects. */
+export function disclosureStatus(): Promise<DisclosureStatusResult> {
+  return guard(() => facade().DisclosureStatus(), { state: "failed" });
 }
 
 export type RunState = "ready" | "running" | "passed" | "assertion_failed" | "execution_error" | "cancelled" | "timed_out" | "interrupted" | "delivery_uncertain";
