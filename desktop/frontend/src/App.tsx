@@ -1,6 +1,7 @@
 import { ContextHelp } from "./ContextHelp";
 import { OperationAccess } from "./OperationAccess";
 import { HubPanel } from "./HubPanel";
+import { RunnerPanel } from "./RunnerPanel";
 import { RunComparison } from "./RunComparison";
 import { Baseline } from "./Baseline";
 import { NoteDraft } from "./NoteDraft";
@@ -2385,6 +2386,7 @@ export default function App() {
       <>
         <OperationAccess />
         <HubPanel workspace={root} entries={opened?.artifacts ?? []} />
+        <RunnerPanel />
         {root ? (
           <PrivacyPanel
             workspace={root}

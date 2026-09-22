@@ -95,6 +95,11 @@ privately; recovery never sends. Preserve interrupted directories and their
 journals through agent replacement. A runner lease expiry is not proof that
 repeating a send is safe.
 
+The desktop application generates these workflow files from structured inputs
+and inspects retained `ci.json`, `gate.json` and gate-policy identities in-app;
+it never commits to a repository, authorizes a third-party service or uploads
+anything. See [the desktop shell](desktop.md#customer-runners-recurring-schedules-and-ci-handoffs).
+
 ## Generic CI (POSIX shell)
 
 The customer provisions these six non-secret path/selection variables on the

@@ -2213,6 +2213,99 @@ The privacy screens' local approval inputs stay deliberate acts over local
 identities: a team approval never fills them, and a local approval never stands
 in for the team's.
 
+## Customer runners, recurring schedules and CI handoffs
+
+The **Runners, schedules and CI** panel sits in the privacy pane beside the
+artifact hub. It carries the application-facing half of the customer-runner
+workflow (#263): the documents a hub-enrolled runner and its schedules read are
+generated and validated in the window, a configured runner's state is displayed,
+and one explicitly pinned job is executed through the same admission the command
+line takes. Local use needs no hub and no runner; the panel stays inert until a
+configuration is selected, and it says so rather than offering a fake flow.
+
+### Generated documents, never hand-authored JSON
+
+- **Runner configuration** (`readmit-runner/v1`): the structured form requires
+  every member the contract requires — the HTTPS hub origin, project,
+  environment, runner root, CA and client certificate paths, both credential
+  references (the absolute program that reads each value back and the arguments
+  that select it; never a value), the standard-base64 Ed25519 deployment key and
+  the approved update engine. The canonical document is previewed before it is
+  written to one new private (0600) file; an existing destination is never
+  replaced. A configuration the administrator wrote on the runner host reads
+  back without the root being present, and the display says when health and
+  retained jobs live on another machine.
+- **Hub runner grant** (`readmit-runner-policy/v1`): one grant is added to, or
+  replaced in, the operator's policy and the whole revision is validated through
+  the admission protocol's own strict reader. An empty engine names the running
+  build's pin; installation on the hub stays the administrator's action.
+- **Job documents** (`readmit-runner-job/v1`): the job id and absolute spec path
+  are validated before anything is written. A retained job id is never reused,
+  and the panel never generates a new attempt automatically.
+- **Schedule revisions** (`readmit-hub-schedules/v1`): entries are authored
+  through structured controls and validated by the schedule contract's own
+  reader — the same code the hub service runs. The preview shows the policy
+  identity the hub binds its journal to, each entry's next occurrences computed
+  by the backend's own occurrence function (a nonexistent spring-forward minute
+  is marked `dst-gap`, never shifted; an occurrence older than its window is
+  marked `missed`), the serial `serial-skip-missed` discipline, and the exact
+  fixed notification body an approved route may emit. A pin that the readable
+  spec's prepared inputs disagree with refuses to save. Removing an entry is how
+  a schedule stops; installing a revision and restarting the hub — which fails
+  closed on a changed policy rather than retaining authority — remain the
+  customer administrator's actions.
+- **CI handoffs**: the panel generates the documented workflow for the three
+  supported integrations (POSIX shell, GitHub Actions, Azure DevOps) with the
+  six non-secret path/selection variables validated. The generated file's
+  checklist lines are comments; the workflow itself is env-var driven and
+  discloses nothing customer-specific. The application never commits to a
+  repository, authorizes a third-party service or uploads anything; a trusted
+  customer-owned self-hosted agent and installation remain the customer's.
+- **Installation handoffs**: the shipped native service unit
+  (`runner/readmit-runner.service`) and container image definition
+  (`runner/Dockerfile`) consume the configuration the panel writes; provisioning
+  credentials, volumes, quotas and the operation policy on the runner host stay
+  the customer administrator's explicit, never silent, actions.
+
+### Enrollment, execution and recovery
+
+When the window holds a signed-in customer-hub session, runner lifecycle
+operations consult that session's real authority before they run: the granted
+scopes must include the action (enrollment or execution — the access policy's
+roles decide who holds them), and the project's administration log must not
+record the signed-in identity's removal. A session that cannot establish the
+administration state refuses new runner work rather than assuming a pass. This
+gate is additional, never a substitute: the hub re-checks the same roles and
+the same removal log at every admission, and without a window session the
+runner's own certificate-bound credential path applies unchanged.
+
+Inspecting a configuration reads the current state before any new deliberate
+action is offered: the configured hub, project and environment, this build's
+engine pin, and — when the runner root is on this machine — the runner health
+snapshot (`idle`, `lease_current` or `recovery_required`), the retained jobs
+with their durable states, and any uncertain deliveries. **Enrollment** is the
+same certificate-bound probe `readmit runner enroll` performs: it reserves the
+environment for at most ten seconds and displays the lease, the granted
+capacity, or the hub's own reasoned refusal (a version or environment
+disagreement, a leased environment, exhausted capacity). **Execution** asks the
+existing explicit operation approval and then runs through the runner's own
+lease, quota, state-isolation and duplicate-admission rules, which the panel
+does not widen; a preflighted input identity is bound to the execution, so a
+changed spec is refused before admission. Cancellation names its own operation
+and retains uncertain delivery exactly as `run start` does; the result display
+offers no resend. **Recovery** is a read: acknowledged, uncertain and
+not-attempted deliveries, never a resume, a reset or a send.
+
+### Retained CI results and gate policies
+
+The panel inspects a retained CI output directory's `readmit-suite-ci/v1`
+aggregate and, when present, the `readmit-ci-gate/v1` change-gate summary,
+through their strict readers; a missing summary is reported, never a pass. A
+reviewed `readmit-ci-gate-policy/v1` file is read for its canonical identity —
+the identity the customer pins independently in protected configuration — and
+reading a policy approves nothing. GUI-prepared suites and CI artifacts execute
+through the unchanged command-line contracts with equivalent verdicts, which the
+differential tests prove against a real hub and the actual CLI executable.
 
 ## Interface profile management
 

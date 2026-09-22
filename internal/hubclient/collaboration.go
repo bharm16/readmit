@@ -112,6 +112,21 @@ type LifecycleWriteResult struct {
 	Replay bool            `json:"replay,omitzero"`
 }
 
+// Removed reports whether the project's administration log records a
+// remove-user command for this issuer and subject. It is the same one rule
+// the hub applies to recipients and runners at every admission
+// (hub: deriveLifecycle().isRemoved); the application consults it before
+// offering a runner lifecycle action, and the hub remains the authority that
+// enforces it again when admission is asked.
+func (h LifecycleHistory) Removed(issuer, subject string) bool {
+	for _, event := range h.Events {
+		if event.Command.Kind == "remove-user" && event.Issuer == issuer && event.Command.Subject == subject {
+			return true
+		}
+	}
+	return false
+}
+
 // ListHistory reads the collaboration review history for a project.
 func (c *Client) ListHistory(ctx context.Context, project string) (ReviewHistory, error) {
 	return c.readReviewRoute(ctx, project, "history", nil)

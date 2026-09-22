@@ -22,6 +22,11 @@ register a certificate-bound `rh_` token with kind/role `runner` and both
 private key in the customer's credential store. Removing the token, grant or
 runner policy refuses the next renewal. Evidence read authorization is separate.
 
+The desktop application's runner panel generates these configuration and
+policy documents from structured forms and validates them through the same
+strict readers; installation on the runner host and the hub remains the
+administrator's action. See [the desktop shell](desktop.md#customer-runners-recurring-schedules-and-ci-handoffs).
+
 The private strict `readmit-runner-policy/v1` file contains:
 
 ```json

@@ -42,9 +42,30 @@ type Config struct {
 }
 
 func ReadConfig(path string) (Config, error) {
-	var c Config
 	raw, err := privateRead(path, 16384)
-	if err != nil || runnerprotocol.Exact(raw, "schema", "hub", "project", "environment", "root", "ca", "certificate", "key", "token", "update_key", "update_engine") != nil || json.Unmarshal(raw, &c, json.RejectUnknownMembers(true)) != nil {
+	if err != nil {
+		return Config{}, ErrRefused
+	}
+	c, err := DecodeConfig(raw)
+	if err != nil {
+		return c, err
+	}
+	// The runner host adds the volume rule: the private jobs root must already
+	// exist as a private directory on this machine.
+	info, err := os.Lstat(c.Root)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || !privateMode(info.Mode()) {
+		return c, ErrRefused
+	}
+	return c, nil
+}
+
+// DecodeConfig applies the document's exact member set and every structural
+// rule without requiring the runner root to exist: the application reads and
+// displays a configuration the administrator installed on the runner host,
+// while enrollment and execution on that host still pass ReadConfig.
+func DecodeConfig(raw []byte) (Config, error) {
+	var c Config
+	if runnerprotocol.Exact(raw, "schema", "hub", "project", "environment", "root", "ca", "certificate", "key", "token", "update_key", "update_engine") != nil || json.Unmarshal(raw, &c, json.RejectUnknownMembers(true)) != nil {
 		return c, ErrRefused
 	}
 	var nested struct {
@@ -54,9 +75,12 @@ func ReadConfig(path string) (Config, error) {
 	if json.Unmarshal(raw, &nested) != nil || runnerprotocol.Exact(nested.Key, "command", "arguments") != nil || runnerprotocol.Exact(nested.Token, "command", "arguments") != nil {
 		return c, ErrRefused
 	}
-	return c, c.validate()
+	return c, c.validateStructure()
 }
-func (c Config) validate() error {
+
+// validateStructure is every rule of validate that is a fact about the bytes
+// rather than about the runner host's volumes.
+func (c Config) validateStructure() error {
 	u, err := url.Parse(c.Hub)
 	key, e := base64.StdEncoding.Strict().DecodeString(c.UpdateKey)
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || c.UpdateEngine == "" || len(c.UpdateEngine) > 64 || c.Schema != "readmit-runner/v1" || !runnerprotocol.ID(c.Project) || !runnerprotocol.ID(c.Environment) || e != nil || len(key) != 32 || c.Key.locator().Validate() != nil || c.Token.locator().Validate() != nil {
@@ -66,6 +90,12 @@ func (c Config) validate() error {
 		if !filepath.IsAbs(p) || filepath.Clean(p) != p {
 			return ErrRefused
 		}
+	}
+	return nil
+}
+func (c Config) validate() error {
+	if c.validateStructure() != nil {
+		return ErrRefused
 	}
 	info, err := os.Lstat(c.Root)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || !privateMode(info.Mode()) {

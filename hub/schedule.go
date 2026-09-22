@@ -8,7 +8,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"io"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -21,75 +20,24 @@ import (
 
 var ErrSchedule = errors.New("schedule refused; inspect private configuration and retained state")
 
-// SchedulePolicy is operator-installed authority. It contains only references;
-// identifiers and paths remain private and never become notification content.
-type SchedulePolicy struct {
-	Schema      string     `json:"schema"`
-	Concurrency string     `json:"concurrency"`
-	Schedules   []Schedule `json:"schedules"`
-}
-type Schedule struct {
-	ID            string `json:"id"`
-	Zone          string `json:"zone"`
-	At            string `json:"at"`
-	WindowSeconds int    `json:"window_seconds"`
-	Runner        string `json:"runner_config"`
-	Spec          string `json:"spec"`
-	Input         string `json:"input_sha256"`
-	Route         string `json:"route"`
-	Approved      bool   `json:"approved"`
-}
+// The schedule contract is the shared strict protocol both the hub service and
+// the application that prepares a revision of it read. The hub keeps its own
+// names so its callers and tests are unchanged; there is one implementation.
+type (
+	SchedulePolicy  = runnerprotocol.SchedulePolicy
+	Schedule        = runnerprotocol.Schedule
+	ScheduleRecord  = runnerprotocol.ScheduleRecord
+	ScheduleHistory = runnerprotocol.ScheduleHistory
+)
 
 func DecodeSchedules(data []byte) (SchedulePolicy, error) {
-	var p SchedulePolicy
-	if len(data) > 1<<20 || requireExactMembers(data, "schema", "concurrency", "schedules") != nil || json.Unmarshal(data, &p, json.RejectUnknownMembers(true)) != nil || p.Schema != "readmit-hub-schedules/v1" || p.Concurrency != "serial-skip-missed" || len(p.Schedules) == 0 || len(p.Schedules) > 64 {
-		return p, ErrSchedule
-	}
-	var raw struct {
-		Schedules []jsontext.Value `json:"schedules"`
-	}
-	if json.Unmarshal(data, &raw) != nil {
-		return p, ErrSchedule
-	}
-	seen := map[string]bool{}
-	for i, s := range p.Schedules {
-		_, zoneErr := time.LoadLocation(s.Zone)
-		clock, clockErr := time.Parse("15:04", s.At)
-		if requireExactMembers(raw.Schedules[i], "id", "zone", "at", "window_seconds", "runner_config", "spec", "input_sha256", "route", "approved") != nil || !runnerprotocol.ID(s.ID) || seen[s.ID] || zoneErr != nil || s.Zone == "Local" || s.Zone == "" || clockErr != nil || clock.Format("15:04") != s.At || s.WindowSeconds < 1 || s.WindowSeconds > 3600 || !filepath.IsAbs(s.Runner) || !filepath.IsAbs(s.Spec) || !validDigest(s.Input) {
-			return p, ErrSchedule
-		}
-		if s.Route != "" {
-			u, e := url.Parse(s.Route)
-			if e != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Path != "/" || u.RawPath != "" {
-				return p, ErrSchedule
-			}
-		}
-		if s.Approved && s.Route == "" {
-			return p, ErrSchedule
-		}
-		seen[s.ID] = true
-	}
-	return p, nil
+	return runnerprotocol.DecodeSchedules(data)
 }
 
 // DailyOccurrence selects the first UTC instant in a folded local minute.
 // A nonexistent spring-forward minute is explicitly absent, never shifted.
 func DailyOccurrence(day, clock, zone string) (time.Time, bool) {
-	loc, err := time.LoadLocation(zone)
-	if err != nil {
-		return time.Time{}, false
-	}
-	d, err := time.ParseInLocation("2006-01-02", day, loc)
-	if err != nil {
-		return time.Time{}, false
-	}
-	for t := d.Add(-3 * time.Hour); t.Before(d.Add(30 * time.Hour)); t = t.Add(time.Minute) {
-		local := t.In(loc)
-		if local.Format("2006-01-02") == day && local.Format("15:04") == clock {
-			return t.UTC(), true
-		}
-	}
-	return time.Time{}, false
+	return runnerprotocol.DailyOccurrence(day, clock, zone)
 }
 
 // nextLocalDay starts from a UTC date anchor and scans actual instants. Local
@@ -107,21 +55,6 @@ func nextLocalDay(day string, loc *time.Location) (time.Time, bool) {
 		}
 	}
 	return time.Time{}, false
-}
-
-type ScheduleRecord struct {
-	ID           string    `json:"id"`
-	Schedule     string    `json:"schedule"`
-	Day          string    `json:"day"`
-	Due          time.Time `json:"due"`
-	State        string    `json:"state"`
-	Notification string    `json:"notification"`
-}
-type ScheduleHistory struct {
-	Schema  string           `json:"schema"`
-	Policy  string           `json:"policy_sha256"`
-	Through time.Time        `json:"through"`
-	Records []ScheduleRecord `json:"records"`
 }
 
 // ScheduleExecutor executes a single typed local job with ordinary runner
@@ -142,11 +75,7 @@ type Scheduler struct {
 	authority func() error
 }
 
-func policyHash(p SchedulePolicy) string {
-	b, _ := json.Marshal(p, json.Deterministic(true))
-	h := sha256.Sum256(b)
-	return hex.EncodeToString(h[:])
-}
+func policyHash(p SchedulePolicy) string { return runnerprotocol.SchedulePolicyIdentity(p) }
 
 // InitializeSchedules is an explicit one-time operation. Missing state during
 // service startup is never interpreted as permission to repeat old work.
@@ -163,7 +92,7 @@ func InitializeSchedules(directory string, p SchedulePolicy, now time.Time) erro
 		return ErrSchedule
 	}
 	defer root.Close()
-	h := ScheduleHistory{"readmit-hub-schedule-history/v1", policyHash(p), now.UTC(), []ScheduleRecord{}}
+	h := ScheduleHistory{Schema: "readmit-hub-schedule-history/v1", Policy: policyHash(p), Through: now.UTC(), Records: []ScheduleRecord{}}
 	if e = writeScheduleHistory(root, h); e != nil {
 		return e
 	}
@@ -271,20 +200,8 @@ func (s *Scheduler) save() error {
 	}
 	return nil
 }
-func scheduleState(v string) bool {
-	switch v {
-	case "claimed", "passed", "failed", "error", "cancelled", "uncertain", "missed", "dst-gap":
-		return true
-	}
-	return false
-}
-func notificationState(v string) bool {
-	switch v {
-	case "pending", "disabled", "sending", "sent", "uncertain":
-		return true
-	}
-	return false
-}
+func scheduleState(v string) bool     { return runnerprotocol.ValidScheduleState(v) }
+func notificationState(v string) bool { return runnerprotocol.ValidNotificationState(v) }
 func readScheduleFile(root *os.Root, name string, limit int64) ([]byte, error) {
 	return readPrivatePolicyRoot(root, name, limit)
 }
@@ -368,7 +285,7 @@ func (s *Scheduler) Tick(ctx context.Context, now time.Time) error {
 				if spec.Approved {
 					notification = "pending"
 				}
-				s.history.Records = append(s.history.Records, ScheduleRecord{"s-" + hex.EncodeToString(hash[:24]), spec.ID, day, due, state, notification})
+				s.history.Records = append(s.history.Records, ScheduleRecord{ID: "s-" + hex.EncodeToString(hash[:24]), Schedule: spec.ID, Day: day, Due: due, State: state, Notification: notification})
 			}
 			d, _ := time.Parse("2006-01-02", day)
 			day = d.AddDate(0, 0, 1).Format("2006-01-02")
@@ -430,13 +347,10 @@ func (s *Scheduler) Tick(ctx context.Context, now time.Time) error {
 		if !spec.Approved || s.notify == nil {
 			continue
 		}
-		// This finite template cannot acquire names, paths, values, errors, digests,
-		// destinations or credential values from execution or retained evidence.
-		data, _ := json.Marshal(struct {
-			Schema   string `json:"schema"`
-			State    string `json:"state"`
-			Coverage string `json:"coverage"`
-		}{"readmit-hub-alert/v1", r.State, "not-assessed"})
+		// The shared finite template cannot acquire names, paths, values, errors,
+		// digests, destinations or credential values from execution or retained
+		// evidence; the application previews exactly these bytes.
+		data := runnerprotocol.ScheduleAlert(r.State)
 		if s.authority != nil && s.authority() != nil {
 			return ErrSchedule
 		}
