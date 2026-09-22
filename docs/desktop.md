@@ -1372,6 +1372,15 @@ The command palette lists everything the window can be asked to do, with the
 shortcut for the ones that have one. `Ctrl+K` opens it and `Ctrl+F` moves to the
 search field; the platform command key is accepted wherever `Ctrl` is shown.
 
+While no workspace is open, the commands region presents the two real ways to
+begin as one choice: a real project over your own evidence — choose a folder
+this account can write to, and the project, import and capture screens follow —
+or the free guided sample, whose deterministic evidence and genuinely failing
+and passing saved tests are practice for the workflow and never a substitute
+for importing your own evidence. Beside the choices the window states the
+license state the activation store actually holds — free work, an active term,
+or a released activation — with its own action opening the activation pane.
+
 `Search` navigates one open workspace. It is not the grid: it finds the things a
 workspace and its project declare, and the grid finds the occurrences inside one
 case. It reads exactly what the listing reads —
@@ -1505,6 +1514,20 @@ evidence, which is the recent folder list, the filters a person saved and the
 working session they have not stored. A saved filter and a retained draft are
 named there rather than left to be discovered, because one holds whatever was
 typed to filter by and the other a note whose subject is the evidence beside it.
+
+Because durable execution, source collection, observation windows, the customer
+hub and the runner all genuinely reach configured destinations, a blanket
+no-network claim would be false, so the privacy region discloses each such
+activity separately: its destination, the data it carries, the authorization it
+requires, and — answered by the facade from the window's own connection state,
+contacting nothing — whether it is idle, active, configured, offline or
+connected right now. Nothing on that list is contacted by startup or by any
+local operation, and each activity's next action opens the screen where it is
+configured or run. The same region states the support guidance the facade
+derives from the checked capability ledger and the verified qualification
+state: the connector and database refusals #35 and #75 own, the
+de-identification and external-equivalence declines, the unsigned preview
+status, and every ledger row still open, named as open rather than promised.
 That status is part
 of the facade, so it is the same fact the rest of the product is built on rather
 than a sentence the interface maintains separately, and the frontend sources are

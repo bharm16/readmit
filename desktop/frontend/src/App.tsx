@@ -1,5 +1,7 @@
 import { ContextHelp } from "./ContextHelp";
 import { OperationAccess } from "./OperationAccess";
+import { FirstRun } from "./FirstRun";
+import { PrivacyDisclosure, SupportGuidance } from "./PrivacyDisclosure";
 import { HubPanel } from "./HubPanel";
 import { RunnerPanel } from "./RunnerPanel";
 import { RunComparison } from "./RunComparison";
@@ -1618,6 +1620,14 @@ export default function App() {
   const content: Record<RegionId, ReactElement> = {
     commands: (
       <>
+        {root ? null : (
+          <FirstRun
+            busy={busy}
+            onOpenWorkspace={actions["open-workspace"]}
+            onExploreSample={actions["create-sample-workspace"]}
+            onLicense={() => focusRegion("privacy")}
+          />
+        )}
         <div className="actions">
           <button type="button" disabled={busy} onClick={actions["open-workspace"]}>
             Open a workspace folder…
@@ -1729,7 +1739,19 @@ export default function App() {
           result={workspace}
         />
         {openNotice ? (
-          <Report indicators={indicators} progress={null} result={openNotice} />
+          <>
+            <Report indicators={indicators} progress={null} result={openNotice} />
+            <p className="recovery-actions">
+              <button
+                type="button"
+                className="action-retry-folder"
+                disabled={busy}
+                onClick={actions["open-workspace"]}
+              >
+                Choose a different folder…
+              </button>
+            </p>
+          </>
         ) : null}
         {opened ? <p className="root">{opened.root}</p> : null}
         {opened && opened.artifacts.length > 0 ? (
@@ -1937,6 +1959,8 @@ export default function App() {
               onOpenCase={(name: string) => {
                 if (root) void verifyCase(root, name);
               }}
+              onConfigureEnvironment={() => focusRegion("inspector")}
+              onOpenLicense={() => focusRegion("privacy")}
               {...(runSpecPath ? { initialSpec: runSpecPath } : {})}
             />
             <PacketPanel
@@ -1994,7 +2018,18 @@ export default function App() {
           result={evidence}
         />
         {caseNotice ? (
-          <Report indicators={indicators} progress={null} result={caseNotice} />
+          <>
+            <Report indicators={indicators} progress={null} result={caseNotice} />
+            <p className="recovery-actions">
+              <button
+                type="button"
+                className="action-back-to-listing"
+                onClick={() => focusRegion("navigation")}
+              >
+                Back to the folder listing
+              </button>
+            </p>
+          </>
         ) : null}
         {evidence?.case ? (
           <dl className="evidence">
@@ -2407,12 +2442,29 @@ export default function App() {
             <li key={claim}>{claim}</li>
           ))}
         </ul>
+        {described ? (
+          <PrivacyDisclosure
+            operations={described.privacy.operations}
+            workspaceOpen={root !== null}
+            onOpenRunPanel={() => focusRegion("evidence")}
+            onStartCapture={() => {
+              setCapturing(true);
+              focusRegion("evidence");
+            }}
+            onStartObservation={() => {
+              setCaptureBinding(null);
+              setObserving(true);
+              focusRegion("evidence");
+            }}
+          />
+        ) : null}
         <h3>Kept on this machine</h3>
         <ul className="kept">
           {(described?.privacy.kept ?? []).map((item) => (
             <li key={item}>{item}</li>
           ))}
         </ul>
+        {described ? <SupportGuidance support={described.support} /> : null}
       </>
     ),
   };

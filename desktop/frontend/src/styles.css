@@ -622,3 +622,74 @@ dd {
   color: var(--muted);
 }
 
+
+/* First-run choices */
+.first-run {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.first-run-choices {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.first-run-choice {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.5rem;
+}
+
+.first-run-choice p,
+.first-run-license p {
+  margin: 0.25rem 0 0.5rem;
+}
+
+.first-run-choice button {
+  margin-right: 0.5rem;
+}
+
+.first-run-license {
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.5rem;
+}
+
+/* Contextual recovery actions beside a refusal */
+.recovery-actions {
+  margin: 0.25rem 0 0.5rem;
+}
+
+.recovery-actions button {
+  margin-right: 0.5rem;
+}
+
+/* Per-operation privacy disclosure */
+.disclosure-state {
+  display: block;
+  font-weight: 600;
+}
+
+.disclosure-state .reason,
+td .reason {
+  display: block;
+  color: var(--muted);
+}
+
+/* Support guidance */
+.support-notes,
+.support-unavailable {
+  margin: 0.25rem 0 0.75rem;
+  padding-left: 1.25rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

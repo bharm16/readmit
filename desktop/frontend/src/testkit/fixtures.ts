@@ -35,6 +35,7 @@ import type {
   SessionResult,
   Shell,
   ShellResult,
+  DisclosureStatusResult,
   StatusValue,
   PacketPreviewResult,
   PacketResult,
@@ -175,9 +176,75 @@ export function shellResult(): ShellResult {
       kept: [
         "Recent folders, saved filters and the working session, in this user's own configuration.",
       ],
+      operations: [
+        {
+          id: "run",
+          activity: "Durable test execution",
+          destination: "The fixture's test target, under an approved send policy.",
+          data: "The messages the executed test declares.",
+          authorization: "An activated license, an approved policy and an explicit execute.",
+        },
+        {
+          id: "runner",
+          activity: "Hub-enrolled runner execution",
+          destination: "The hub the runner enrollment names.",
+          data: "The run records and artifacts the enrolled schedule covers.",
+          authorization: "A runner enrollment and the schedule you enabled.",
+        },
+        {
+          id: "capture",
+          activity: "Capture and source collection",
+          destination: "The declared source, or the local port the listener serves.",
+          data: "The bytes the source delivers, into a new local case bundle.",
+          authorization: "A saved registration and policy, and an explicit start.",
+        },
+        {
+          id: "observe",
+          activity: "Observation windows",
+          destination: "The validated export file or approved HTTPS API.",
+          data: "The records the window reads within its declared scope.",
+          authorization: "A validated source and window pair, and an explicit start.",
+        },
+        {
+          id: "hub",
+          activity: "Customer artifact hub",
+          destination: "The hub the selected configuration names.",
+          data: "The artifacts a person uploads or downloads deliberately.",
+          authorization: "A selected configuration and a per-session sign-in.",
+        },
+        {
+          id: "portal",
+          activity: "Commercial portal",
+          destination: "The portal address the destinations file names, in your browser.",
+          data: "Nothing from this window.",
+          authorization: "Your deliberate choice to open the link.",
+        },
+      ],
+    },
+    support: {
+      notes: [
+        "Connector support is declared, not qualified.",
+        "Database observation is selected and unqualified.",
+      ],
+      unavailable: ["generate and stream a declared performance corpus"],
     },
   };
   return { state: "completed", shell };
+}
+
+/** The live half of the privacy disclosure: how each disclosed activity
+ * stands right now, as the facade answers it without contacting anything. */
+export function disclosureStatusResult(
+  states: DisclosureStatusResult["states"] = [
+    { id: "run", state: "idle", detail: "No run is in progress." },
+    { id: "runner", state: "idle", detail: "No recurring execution is in progress." },
+    { id: "capture", state: "idle", detail: "No capture or collection is in progress." },
+    { id: "observe", state: "idle", detail: "No observation window is open." },
+    { id: "hub", state: "not-configured", detail: "No hub configuration is selected." },
+    { id: "portal", state: "not-configured", detail: "No destinations file is selected." },
+  ],
+): DisclosureStatusResult {
+  return { state: "completed", states };
 }
 
 export function recentResult(roots: string[]): RecentResult {

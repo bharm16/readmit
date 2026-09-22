@@ -705,9 +705,9 @@ export function ProjectPanel({
           <h4>Revisions</h4>
           {overview.revisions.length === 0 ? (
             <p className="hint">
-              No revisions registered. A reproducer you build can be registered as
-              a revision of its case with <code>readmit project revise</code>, and
-              it is navigable here once it is.
+              No revisions registered. A reproducer you build can be registered
+              as a revision of its case from the reproducer panel beside the
+              verified case, and it is navigable here once it is.
             </p>
           ) : (
             <ul className="revisions">

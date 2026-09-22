@@ -244,9 +244,12 @@ func (a *App) ValidateObservationPair(request ObservationValidateRequest) Observ
 	})
 }
 
-// CollectObservation runs one explicitly authorized collection.
+// CollectObservation runs one explicitly authorized collection. It names its
+// operation, so the privacy status can tell a window in the middle of a
+// collection from an idle one, and the window's own cancel command still stops
+// it exactly as before.
 func (a *App) CollectObservation(request ObservationCollectFacadeRequest) ObservationCompletionResult {
-	return run(a, true, true, func(ctx context.Context) ObservationCompletionResult {
+	return runNamed[ObservationCompletionResult, *ObservationCompletionResult](a, "observation", true, true, func(ctx context.Context) ObservationCompletionResult {
 		sourcePath, ref := resolveWorkspacePath(request.Workspace, request.SourceFile)
 		if sourcePath == "" {
 			return ObservationCompletionResult{State: ref.state, Reason: ref.reason}
