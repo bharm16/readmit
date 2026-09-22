@@ -29,10 +29,21 @@ type Job struct {
 func ReadJob(path string) (Job, error) {
 	var job Job
 	raw, err := privateRead(path, 16384)
-	if err != nil || runnerprotocol.Exact(raw, "schema", "id", "spec") != nil || json.Unmarshal(raw, &job, json.RejectUnknownMembers(true)) != nil || job.Schema != "readmit-runner-job/v1" || !runnerprotocol.ID(job.ID) || !filepath.IsAbs(job.Spec) {
+	if err != nil || json.Unmarshal(raw, &job, json.RejectUnknownMembers(true)) != nil {
 		return job, ErrRefused
 	}
-	return job, nil
+	return job, ValidateJob(job)
+}
+
+// ValidateJob is the document's exact rule set: the contract name, a job id
+// the admission protocol accepts, and one absolute spec path. ReadJob applies
+// it to file bytes (whose member set was already checked exactly); the
+// application applies it to generated documents before anything is written.
+func ValidateJob(job Job) error {
+	if job.Schema != "readmit-runner-job/v1" || !runnerprotocol.ID(job.ID) || !filepath.IsAbs(job.Spec) {
+		return ErrRefused
+	}
+	return nil
 }
 
 // Status is a read-only local snapshot. A lease is not evidence the process is
@@ -147,7 +158,7 @@ func run(ctx context.Context, c Config, job Job, inputIdentity string) (summary 
 	if c.validate() != nil {
 		return zero, ErrRefused
 	}
-	if job.Schema != "readmit-runner-job/v1" || !runnerprotocol.ID(job.ID) || !filepath.IsAbs(job.Spec) {
+	if ValidateJob(job) != nil {
 		return zero, ErrRefused
 	}
 	active, err := artifactpath.Destination(filepath.Join(c.Root, ".active"))

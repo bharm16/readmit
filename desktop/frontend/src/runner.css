@@ -1,0 +1,119 @@
+/* The runner panel: generated documents, enrollment, schedules and CI
+ * handoffs. Styling follows the hub panel's quiet vocabulary. */
+
+.runner-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  border-top: 1px solid var(--border, #ddd);
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+}
+
+.runner-tabs {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.runner-tabs button[aria-selected="true"] {
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.runner-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.runner-section h4 {
+  margin: 0.5rem 0 0;
+}
+
+.runner-note {
+  color: var(--muted, #666);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.runner-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.5rem;
+}
+
+.runner-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.85rem;
+}
+
+.runner-field input,
+.runner-field textarea,
+.runner-field select {
+  font: inherit;
+  padding: 0.2rem 0.35rem;
+}
+
+.runner-field textarea {
+  min-height: 2.2rem;
+  resize: vertical;
+}
+
+.runner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.runner-ok {
+  color: var(--ok, #1a7f37);
+  margin: 0;
+}
+
+.runner-refused {
+  color: var(--refused, #b42318);
+  margin: 0;
+}
+
+.runner-document {
+  background: var(--surface, #f6f6f6);
+  border: 1px solid var(--border, #ddd);
+  font-size: 0.78rem;
+  overflow-x: auto;
+  padding: 0.5rem;
+  white-space: pre-wrap;
+}
+
+.runner-inspect {
+  border-left: 3px solid var(--border, #ddd);
+  padding-left: 0.6rem;
+}
+
+.runner-table {
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  width: 100%;
+}
+
+.runner-table th,
+.runner-table td {
+  border-bottom: 1px solid var(--border, #ddd);
+  padding: 0.2rem 0.4rem;
+  text-align: left;
+}
+
+.runner-schedule-row {
+  border: 1px solid var(--border, #ddd);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.5rem;
+}
+
+.runner-occurrences {
+  font-size: 0.85rem;
+  margin: 0.2rem 0;
+  padding-left: 1.2rem;
+}

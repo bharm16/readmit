@@ -1031,10 +1031,10 @@
       "kind": "cli",
       "capability": "Manage runner work",
       "owner": "bharm16/readmit#263",
-      "screen": "a runner screen",
-      "action": "operate a hub-enrolled local runner",
-      "test": "desktop runner journey test and shared-operation parity",
-      "implemented": false
+      "screen": "the runner, schedules and CI panel of the privacy region",
+      "action": "enroll a hub-enrolled local runner from the application with a reasoned refusal display",
+      "test": "desktop runner journeys plus internal/customerrunner tests and the hub runner-screen differential",
+      "implemented": true
     },
     {
       "id": "cli.runner.execute",
@@ -1042,10 +1042,10 @@
       "kind": "cli",
       "capability": "Manage runner work",
       "owner": "bharm16/readmit#263",
-      "screen": "a runner screen",
-      "action": "operate a hub-enrolled local runner",
-      "test": "desktop runner journey test and shared-operation parity",
-      "implemented": false
+      "screen": "the runner, schedules and CI panel of the privacy region",
+      "action": "execute one pinned runner job through the unchanged admission path with explicit approval",
+      "test": "desktop runner journeys plus internal/customerrunner tests and the hub runner-screen differential",
+      "implemented": true
     },
     {
       "id": "cli.runner.serve",
@@ -1053,10 +1053,7 @@
       "kind": "cli",
       "capability": "Manage runner work",
       "owner": "bharm16/readmit#263",
-      "screen": "a runner screen",
-      "action": "operate a hub-enrolled local runner",
-      "test": "desktop runner journey test and shared-operation parity",
-      "implemented": false
+      "disposition": "the inbox service is a runner-host daemon the application never runs; the window prepares its configuration, job documents and installation handoffs"
     },
     {
       "id": "cli.runner.status",
@@ -1064,10 +1061,10 @@
       "kind": "cli",
       "capability": "Manage runner work",
       "owner": "bharm16/readmit#263",
-      "screen": "a runner screen",
-      "action": "operate a hub-enrolled local runner",
-      "test": "desktop runner journey test and shared-operation parity",
-      "implemented": false
+      "screen": "the runner, schedules and CI panel of the privacy region",
+      "action": "display a configured runner's health, retained jobs and queued work from the application",
+      "test": "desktop runner journeys plus internal/customerrunner tests and the hub runner-screen differential",
+      "implemented": true
     },
     {
       "id": "cli.runner.verify-update",
@@ -1075,10 +1072,10 @@
       "kind": "cli",
       "capability": "Manage runner work",
       "owner": "bharm16/readmit#263",
-      "screen": "a runner screen",
-      "action": "operate a hub-enrolled local runner",
-      "test": "desktop runner journey test and shared-operation parity",
-      "implemented": false
+      "screen": "the runner, schedules and CI panel of the privacy region",
+      "action": "verify a staged update candidate against the pinned customer deployment key without executing it",
+      "test": "desktop runner journeys plus internal/customerrunner update tests",
+      "implemented": true
     },
     {
       "id": "cli.sample.capture",
@@ -3472,6 +3469,182 @@
       "action": "release an execution lease",
       "test": "hub service integration tests; the graphical surface is owned by the hub UX ticket and is not claimed",
       "implemented": false
+    },
+    {
+      "id": "desktop.PreviewRunnerConfig",
+      "source": "desktop.App.PreviewRunnerConfig",
+      "kind": "desktop",
+      "capability": "previewRunnerConfig application operation",
+      "owner": "bharm16/readmit#263",
+      "screen": "the runner, schedules and CI panel of the privacy region",
+      "action": "validate the structured runner configuration and show its canonical document without writing",
+      "test": "RunnerPanel.test.tsx journeys plus internal/desktop runner tests; shared-operation parity on the Go side through internal/customerrunner and the hub runner-screen differential",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveRunnerConfig",
+      "source": "desktop.App.SaveRunnerConfig",
+      "kind": "desktop",
+      "capability": "saveRunnerConfig application operation",
+      "owner": "bharm16/readmit#263",
+      "screen": "the runner, schedules and CI panel of the privacy region",
+      "action": "write one validated readmit-runner/v1 document as a new private file",
+      "test": "RunnerPanel.test.tsx journeys plus internal/desktop runner tests; shared-operation parity on the Go side through internal/customerrunner and the hub runner-screen differential",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveRunnerGrant",
+      "source": "desktop.App.SaveRunnerGrant",
+      "kind": "desktop",
+      "capability": "saveRunnerGrant application operation",
+      "owner": "bharm16/readmit#263",
+      "screen": "the runner, schedules and CI panel of the privacy region",
+      "action": "write one validated readmit-runner-policy/v1 revision adding or replacing this runner's grant",
+      "test": "RunnerPanel.test.tsx journeys plus internal/desktop runner tests; shared-operation parity on the Go side through internal/customerrunner and the hub runner-screen differential",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveRunnerJob",
+      "source": "desktop.App.SaveRunnerJob",
+      "kind": "desktop",
+      "capability": "saveRunnerJob application operation",
+      "owner": "bharm16/readmit#263",
+      "screen": "the runner, schedules and CI panel of the privacy region",
+      "action": "write one validated readmit-runner-job/v1 document for an explicitly chosen job id",
+      "test": "RunnerPanel.test.tsx journeys plus internal/desktop runner tests; shared-operation parity on the Go side through internal/customerrunner and the hub runner-screen differential",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ReadRunnerConfig",
+      "source": "desktop.App.ReadRunnerConfig",
+      "kind": "desktop",
+      "capability": "readRunnerConfig application operation",
+      "owner": "bharm16/readmit#263",
+      "screen": "the runner, schedules and CI panel of the privacy region",
+      "action": "read an installed runner configuration, this build's pin, and the runner root's health and retained work as this machine sees it",
+      "test": "RunnerPanel.test.tsx journeys plus internal/desktop runner tests; shared-operation parity on the Go side through internal/customerrunner and the hub runner-screen differential",
+      "implemented": true
+    },
+    {
+      "id": "desktop.EnrollRunner",
+      "source": "desktop.App.EnrollRunner",
+      "kind": "desktop",
+      "capability": "enrollRunner application operation",
+      "owner": "bharm16/readmit#263",
+      "screen": "the runner, schedules and CI panel of the privacy region",
+      "action": "prove current certificate-bound admission with one probe and display the lease, capacity and any reasoned hub refusal, gated by the signed-in session's granted scopes and the project administration log",
+      "test": "RunnerPanel.test.tsx journeys plus internal/desktop runner tests; shared-operation parity on the Go side through internal/customerrunner and the hub runner-screen differential; removed-principal and scope denials in internal/desktop runner gate tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.InspectRunnerJob",
+      "source": "desktop.App.InspectRunnerJob",
+      "kind": "desktop",
+      "capability": "inspectRunnerJob application operation",
+      "owner": "bharm16/readmit#263",
+      "screen": "the runner, schedules and CI panel of the privacy region",
+      "action": "prepare one job document's spec and report its input identity and environment binding without sending",
+      "test": "RunnerPanel.test.tsx journeys plus internal/desktop runner tests; shared-operation parity on the Go side through internal/customerrunner and the hub runner-screen differential",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ExecuteRunnerJob",
+      "source": "desktop.App.ExecuteRunnerJob",
+      "kind": "desktop",
+      "capability": "executeRunnerJob application operation",
+      "owner": "bharm16/readmit#263",
+      "screen": "the runner, schedules and CI panel of the privacy region",
+      "action": "execute one explicitly pinned job through the runner's own admission, leases and duplicate-admission rules, gated by the signed-in session's granted scopes and the project administration log",
+      "test": "RunnerPanel.test.tsx journeys plus internal/desktop runner tests; shared-operation parity on the Go side through internal/customerrunner and the hub runner-screen differential; removed-principal and scope denials in internal/desktop runner gate tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ReadRunnerRecovery",
+      "source": "desktop.App.ReadRunnerRecovery",
+      "kind": "desktop",
+      "capability": "readRunnerRecovery application operation",
+      "owner": "bharm16/readmit#263",
+      "screen": "the runner, schedules and CI panel of the privacy region",
+      "action": "read one retained job's durable recovery vocabulary without sending, resuming or resetting",
+      "test": "RunnerPanel.test.tsx journeys plus internal/desktop runner tests; shared-operation parity on the Go side through internal/customerrunner and the hub runner-screen differential",
+      "implemented": true
+    },
+    {
+      "id": "desktop.VerifyRunnerUpdate",
+      "source": "desktop.App.VerifyRunnerUpdate",
+      "kind": "desktop",
+      "capability": "verifyRunnerUpdate application operation",
+      "owner": "bharm16/readmit#263",
+      "screen": "the runner, schedules and CI panel of the privacy region",
+      "action": "verify one staged update candidate against the configuration's pinned customer deployment key without executing it",
+      "test": "RunnerPanel.test.tsx journeys plus internal/desktop runner tests; shared-operation parity on the Go side through internal/customerrunner and the hub runner-screen differential",
+      "implemented": true
+    },
+    {
+      "id": "desktop.OpenSchedulePolicy",
+      "source": "desktop.App.OpenSchedulePolicy",
+      "kind": "desktop",
+      "capability": "openSchedulePolicy application operation",
+      "owner": "bharm16/readmit#263",
+      "screen": "the runner, schedules and CI panel of the privacy region",
+      "action": "read an installed readmit-hub-schedules/v1 policy and report its entries and the hub's policy identity",
+      "test": "RunnerPanel.test.tsx journeys plus internal/desktop runner tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.PreviewSchedulePolicy",
+      "source": "desktop.App.PreviewSchedulePolicy",
+      "kind": "desktop",
+      "capability": "previewSchedulePolicy application operation",
+      "owner": "bharm16/readmit#263",
+      "screen": "the runner, schedules and CI panel of the privacy region",
+      "action": "validate a schedule revision and show effective zone timing, missed and DST behavior, pins and the fixed alert body",
+      "test": "RunnerPanel.test.tsx journeys plus internal/desktop runner tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveSchedulePolicy",
+      "source": "desktop.App.SaveSchedulePolicy",
+      "kind": "desktop",
+      "capability": "saveSchedulePolicy application operation",
+      "owner": "bharm16/readmit#263",
+      "screen": "the runner, schedules and CI panel of the privacy region",
+      "action": "write one validated schedule policy revision, refusing a pin the readable spec's prepared inputs disagree with",
+      "test": "RunnerPanel.test.tsx journeys plus internal/desktop runner tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveCIHandoff",
+      "source": "desktop.App.SaveCIHandoff",
+      "kind": "desktop",
+      "capability": "saveCIHandoff application operation",
+      "owner": "bharm16/readmit#263",
+      "screen": "the runner, schedules and CI panel of the privacy region",
+      "action": "generate the documented CI workflow for one supported integration with the six provisioned variables validated",
+      "test": "RunnerPanel.test.tsx journeys plus internal/desktop runner tests; the differential executes the generated handoff through the unchanged CLI",
+      "implemented": true
+    },
+    {
+      "id": "desktop.InspectCIResults",
+      "source": "desktop.App.InspectCIResults",
+      "kind": "desktop",
+      "capability": "inspectCIResults application operation",
+      "owner": "bharm16/readmit#263",
+      "screen": "the runner, schedules and CI panel of the privacy region",
+      "action": "read a retained CI directory's suite gate and change gate summaries through their strict readers",
+      "test": "RunnerPanel.test.tsx journeys plus internal/desktop runner tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.InspectGatePolicy",
+      "source": "desktop.App.InspectGatePolicy",
+      "kind": "desktop",
+      "capability": "inspectGatePolicy application operation",
+      "owner": "bharm16/readmit#263",
+      "screen": "the runner, schedules and CI panel of the privacy region",
+      "action": "read one reviewed CI gate policy and report its canonical identity for independent pinning",
+      "test": "RunnerPanel.test.tsx journeys plus internal/desktop runner tests",
+      "implemented": true
     },
     {
       "id": "desktop.ChooseCapturePath",

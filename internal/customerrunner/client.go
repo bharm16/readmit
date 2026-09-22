@@ -6,6 +6,8 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/json/v2"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -22,6 +24,12 @@ import (
 func Enroll(ctx context.Context, c Config) (runnerprotocol.Lease, error) {
 	return enroll(ctx, c, strings.ToLower(rand.Text()), "enrollment")
 }
+
+// ErrHubRefused names the refusal the hub itself answered with, as distinct
+// from a local configuration or admission failure, so a caller can show the
+// hub's reasoned answer without matching prose.
+var ErrHubRefused = errors.New("hub refused admission")
+
 func enroll(ctx context.Context, c Config, instance, job string) (runnerprotocol.Lease, error) {
 	return admission(ctx, c, instance, job, "POST")
 }
@@ -82,7 +90,7 @@ func admission(ctx context.Context, c Config, instance, job, method string) (run
 		return zero, nil
 	}
 	if response.StatusCode != 200 {
-		return zero, ErrRefused
+		return zero, fmt.Errorf("%w: %w (%s): %s", ErrRefused, ErrHubRefused, http.StatusText(response.StatusCode), refusalReason(response.Body))
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, 4097))
 	if err != nil {
@@ -94,4 +102,22 @@ func admission(ctx context.Context, c Config, instance, job, method string) (run
 		return zero, ErrRefused
 	}
 	return lease, nil
+}
+
+// refusalReason carries the hub's own fixed refusal phrase, so the
+// application can show why admission was denied instead of a bare refusal.
+// The phrase is bounded server text; it is diagnostic, never command output.
+func refusalReason(body io.Reader) string {
+	reason, _ := io.ReadAll(io.LimitReader(body, 256))
+	reason = []byte(strings.TrimSpace(string(reason)))
+	for i, r := range string(reason) {
+		if r < 0x20 || r == 0x7f {
+			reason = reason[:i]
+			break
+		}
+	}
+	if len(reason) == 0 {
+		return "no reason given"
+	}
+	return string(reason)
 }

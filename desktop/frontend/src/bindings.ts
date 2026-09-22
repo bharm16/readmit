@@ -721,6 +721,22 @@ export interface Facade {
   SaveHubOfflineDraft(request: HubOfflineDraftRequest): Promise<EditorDraftsResult>;
   ReconcileHubOfflineDraft(request: HubLifecycleCommandRequest): Promise<HubLifecycleResult>;
   ExplainHubCustody(): Promise<HubResult>;
+  PreviewRunnerConfig(request: RunnerConfigRequest): Promise<RunnerDocumentResult>;
+  SaveRunnerConfig(request: RunnerConfigRequest): Promise<RunnerDocumentResult>;
+  SaveRunnerGrant(request: RunnerGrantRequest): Promise<RunnerDocumentResult>;
+  SaveRunnerJob(request: RunnerJobRequest): Promise<RunnerDocumentResult>;
+  ReadRunnerConfig(configPath: string): Promise<RunnerInspectResult>;
+  EnrollRunner(configPath: string): Promise<RunnerEnrollmentResult>;
+  InspectRunnerJob(configPath: string, jobPath: string): Promise<RunnerJobPreviewResult>;
+  ExecuteRunnerJob(request: RunnerExecuteRequest): Promise<RunnerExecutionResult>;
+  ReadRunnerRecovery(configPath: string, jobId: string): Promise<RunnerRecoveryResult>;
+  VerifyRunnerUpdate(configPath: string, manifest: string, binary: string): Promise<RunnerUpdateResult>;
+  OpenSchedulePolicy(path: string): Promise<SchedulePreviewResult>;
+  PreviewSchedulePolicy(request: SchedulePolicyRequest): Promise<SchedulePreviewResult>;
+  SaveSchedulePolicy(request: SchedulePolicyRequest): Promise<SchedulePreviewResult>;
+  SaveCIHandoff(request: CIHandoffRequest): Promise<CIHandoffResult>;
+  InspectCIResults(directory: string): Promise<CIInspectResult>;
+  InspectGatePolicy(path: string): Promise<GatePolicyResult>;
   SaveTarget(request: TargetSaveRequest): Promise<TargetResult>;
   ReadTarget(workspace: string, targetFile: string): Promise<TargetResult>;
   CheckTarget(request: TargetCheckRequest): Promise<TargetCheckResult>;
@@ -832,7 +848,9 @@ async function guard<T extends { state: State; reason?: string }>(
  * cancel command uses. */
 export function cancel(operation: string = ""): void {
   try {
-    void facade().Cancel(operation);
+    facade().Cancel(operation).catch(() => {
+      // A cancel that cannot reach the application has nothing to stop.
+    });
   } catch {
     // Nothing is running if the facade is not bound yet.
   }
@@ -4634,6 +4652,318 @@ export function reconcileHubOfflineDraft(request: HubLifecycleCommandRequest): P
 
 export function explainHubCustody(): Promise<HubResult> {
   return guard(() => facade().ExplainHubCustody(), { state: "failed", connected: false, authenticated: false });
+}
+
+// --- Customer runners, recurring schedules and CI handoffs (readmit-runner/v1,
+// readmit-runner-policy/v1, readmit-runner-job/v1, readmit-hub-schedules/v1,
+// readmit-suite-ci/v1, readmit-ci-gate-policy/v1). Every document is generated
+// and validated through the shared strict readers; credential members are the
+// references ADR-0006 registers and never a value. --*/
+
+/** One credential reference: the absolute program that reads the value back
+ * and the arguments that select it. The value itself is never an input. */
+export interface RunnerReferenceInput {
+  command: string;
+  arguments: string[];
+}
+
+/** The complete structured form of a readmit-runner/v1 document. Every member
+ * is required; there are no defaults to invent. */
+export interface RunnerConfigRequest {
+  hub: string;
+  project: string;
+  environment: string;
+  root: string;
+  ca: string;
+  certificate: string;
+  key: RunnerReferenceInput;
+  token: RunnerReferenceInput;
+  update_key: string;
+  update_engine: string;
+  output: string;
+}
+
+export interface RunnerDocumentResult {
+  state: State;
+  reason?: string;
+  document?: string;
+  output?: string;
+  sha256?: string;
+}
+
+/** One grant of a readmit-runner-policy/v1 revision: the hub authority that
+ * admits this runner's project and environment for one subject at one exact
+ * engine. An empty engine names the running build's pin. */
+export interface RunnerGrantRequest {
+  policy: string;
+  project: string;
+  subject: string;
+  environment: string;
+  engine: string;
+  spec: string;
+  profile: string;
+  max_seconds: number;
+  max_jobs: number;
+  output: string;
+}
+
+export interface RunnerJobRequest {
+  id: string;
+  spec: string;
+  output: string;
+}
+
+export interface RunnerConfigView {
+  hub: string;
+  project: string;
+  environment: string;
+  root: string;
+  update_engine: string;
+  key: RunnerReferenceInput;
+  token: RunnerReferenceInput;
+}
+
+export interface RunnerHealthView {
+  schema: string;
+  state: string;
+  jobs: number;
+}
+
+export interface RunnerJobState {
+  id: string;
+  state?: string;
+  stop_reason?: string;
+  delivery_uncertain: boolean;
+  journal_incomplete: boolean;
+  reason?: string;
+}
+
+/** One read of a configured runner as it stands now. Reading reconnects to
+ * the current state and offers no action by itself. */
+export interface RunnerInspectResult {
+  state: State;
+  reason?: string;
+  config?: RunnerConfigView;
+  engine?: string;
+  health?: RunnerHealthView;
+  health_note?: string;
+  jobs?: RunnerJobState[];
+  queued?: string[];
+}
+
+/** One enrollment probe: the lease the hub issued and the capacity it grants.
+ * A refusal names the hub's own reason. */
+export interface RunnerEnrollmentResult {
+  state: State;
+  reason?: string;
+  project?: string;
+  environment?: string;
+  engine?: string;
+  expires_at?: string;
+  max_seconds?: number;
+  max_jobs?: number;
+}
+
+/** The pin an execution would bind to, established without sending anything. */
+export interface RunnerJobPreviewResult {
+  state: State;
+  reason?: string;
+  job_id?: string;
+  spec?: string;
+  input_identity?: string;
+  environment?: string;
+}
+
+/** One deliberate execution. Delivery that stayed uncertain is reported as
+ * uncertain and nothing here offers to resend it. */
+export interface RunnerExecuteRequest {
+  config_path: string;
+  job_path: string;
+  expected_identity: string;
+}
+
+export interface RunnerExecutionResult {
+  state: State;
+  reason?: string;
+  job_id?: string;
+  output?: string;
+  summary?: DurableRunSummary;
+}
+
+/** The recovery read of one retained job: the durable vocabulary, never a
+ * resend. */
+export interface RunnerRecoveryResult {
+  state: State;
+  reason?: string;
+  job_id?: string;
+  acknowledged: number;
+  uncertain: number;
+  not_attempted: number;
+  summary?: DurableRunSummary;
+}
+
+export interface RunnerUpdateResult {
+  state: State;
+  reason?: string;
+}
+
+/** One entry of a readmit-hub-schedules/v1 revision as the structured form
+ * holds it. */
+export interface ScheduleEntryInput {
+  id: string;
+  zone: string;
+  at: string;
+  window_seconds: number;
+  runner_config: string;
+  spec: string;
+  input_sha256: string;
+  route: string;
+  approved: boolean;
+}
+
+export interface SchedulePolicyRequest {
+  output: string;
+  /** Display-only anchor day (2006-01-02 form); defaults to today. */
+  anchor: string;
+  entries: ScheduleEntryInput[];
+}
+
+export interface ScheduleOccurrence {
+  day: string;
+  utc?: string;
+  state: string;
+}
+
+export interface ScheduleEntryView {
+  entry: ScheduleEntryInput;
+  identity?: string;
+  occurrences?: ScheduleOccurrence[];
+  pin_state: string;
+  notification?: string;
+}
+
+/** One validated schedule revision as it would take effect: the policy
+ * identity the hub binds its journal to, each entry's occurrences, the
+ * missed-run and overlap behavior the backend applies, and the exact
+ * notification body an approved schedule may emit. */
+export interface SchedulePreviewResult {
+  state: State;
+  reason?: string;
+  identity?: string;
+  concurrency?: string;
+  entries?: ScheduleEntryView[];
+  alert?: string;
+  alert_states?: string[];
+}
+
+export interface CIHandoffRequest {
+  integration: string;
+  binary: string;
+  operation_policy: string;
+  suite_file: string;
+  environment: string;
+  run_directory: string;
+  coverage_file: string;
+  output: string;
+}
+
+export interface CIHandoffResult {
+  state: State;
+  reason?: string;
+  document?: string;
+  output?: string;
+}
+
+export interface CIResultsView {
+  schema: string;
+  state: string;
+  exit_code: number;
+}
+
+export interface CIInspectResult {
+  state: State;
+  reason?: string;
+  ci?: CIResultsView;
+  gate?: CIResultsView;
+  warning?: string;
+}
+
+export interface GatePolicyResult {
+  state: State;
+  reason?: string;
+  identity?: string;
+  environment?: string;
+  revision?: string;
+  engine?: string;
+  promotion_identity?: string;
+  specifications?: number;
+  retain_until?: string;
+  approver?: string;
+  rationale?: string;
+}
+
+export function previewRunnerConfig(request: RunnerConfigRequest): Promise<RunnerDocumentResult> {
+  return guard(() => facade().PreviewRunnerConfig(request), { state: "failed" });
+}
+
+export function saveRunnerConfig(request: RunnerConfigRequest): Promise<RunnerDocumentResult> {
+  return guard(() => facade().SaveRunnerConfig(request), { state: "failed" });
+}
+
+export function saveRunnerGrant(request: RunnerGrantRequest): Promise<RunnerDocumentResult> {
+  return guard(() => facade().SaveRunnerGrant(request), { state: "failed" });
+}
+
+export function saveRunnerJob(request: RunnerJobRequest): Promise<RunnerDocumentResult> {
+  return guard(() => facade().SaveRunnerJob(request), { state: "failed" });
+}
+
+export function readRunnerConfig(configPath: string): Promise<RunnerInspectResult> {
+  return guard(() => facade().ReadRunnerConfig(configPath), { state: "failed" });
+}
+
+export function enrollRunner(configPath: string): Promise<RunnerEnrollmentResult> {
+  return guard(() => facade().EnrollRunner(configPath), { state: "failed" });
+}
+
+export function inspectRunnerJob(configPath: string, jobPath: string): Promise<RunnerJobPreviewResult> {
+  return guard(() => facade().InspectRunnerJob(configPath, jobPath), { state: "failed" });
+}
+
+export function executeRunnerJob(request: RunnerExecuteRequest): Promise<RunnerExecutionResult> {
+  return guard(() => facade().ExecuteRunnerJob(request), { state: "failed" });
+}
+
+export function readRunnerRecovery(configPath: string, jobId: string): Promise<RunnerRecoveryResult> {
+  return guard(() => facade().ReadRunnerRecovery(configPath, jobId), { state: "failed", acknowledged: 0, uncertain: 0, not_attempted: 0 });
+}
+
+export function verifyRunnerUpdate(configPath: string, manifest: string, binary: string): Promise<RunnerUpdateResult> {
+  return guard(() => facade().VerifyRunnerUpdate(configPath, manifest, binary), { state: "failed" });
+}
+
+export function openSchedulePolicy(path: string): Promise<SchedulePreviewResult> {
+  return guard(() => facade().OpenSchedulePolicy(path), { state: "failed" });
+}
+
+export function previewSchedulePolicy(request: SchedulePolicyRequest): Promise<SchedulePreviewResult> {
+  return guard(() => facade().PreviewSchedulePolicy(request), { state: "failed" });
+}
+
+export function saveSchedulePolicy(request: SchedulePolicyRequest): Promise<SchedulePreviewResult> {
+  return guard(() => facade().SaveSchedulePolicy(request), { state: "failed" });
+}
+
+export function saveCIHandoff(request: CIHandoffRequest): Promise<CIHandoffResult> {
+  return guard(() => facade().SaveCIHandoff(request), { state: "failed" });
+}
+
+export function inspectCIResults(directory: string): Promise<CIInspectResult> {
+  return guard(() => facade().InspectCIResults(directory), { state: "failed" });
+}
+
+export function inspectGatePolicy(path: string): Promise<GatePolicyResult> {
+  return guard(() => facade().InspectGatePolicy(path), { state: "failed" });
 }
 
 // --- Interface Profile Management (readmit-local-profile/v1, readmit-profile-pack/v1, etc.) ---

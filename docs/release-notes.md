@@ -47,6 +47,30 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   review as a separate deliberate step; nothing is uploaded or shared by
   assembling or exporting. The synthetic report capability keeps its existing
   honest label and behavior on the command line.
+- The desktop privacy pane configures customer runners, recurring regression
+  and CI handoffs through the application (#263). The runner configuration
+  (`readmit-runner/v1`), the hub's runner-policy grants
+  (`readmit-runner-policy/v1`), job documents (`readmit-runner-job/v1`) and
+  schedule revisions (`readmit-hub-schedules/v1`) are generated and validated
+  through the shared strict readers rather than hand-authored JSON; credential
+  members are references into the customer's own store and never values. The
+  panel displays a configured runner's health, engine pin and retained work,
+  enrolls with a probe that reports the hub's reasoned refusals, executes one
+  explicitly pinned job through the runner's own admission with its leases,
+  quotas and duplicate-admission rules unchanged, and reads recovery as a read
+  that never resends uncertain delivery. Schedule previews compute effective
+  zone timing, missed windows and DST gaps with the backend's own functions and
+  preview the exact fixed notification body an approved route may emit. CI
+  handoffs for the documented POSIX, GitHub Actions and Azure DevOps workflows
+  are generated in-app with the six provisioned variables validated, and
+  retained CI and change-gate summaries plus a gate policy's canonical identity
+  are inspected in-app. GUI-prepared suites, runner jobs and CI handoffs
+  execute through the unchanged CLI/runner contracts with equivalent verdicts,
+  proven by differential tests against a real hub and the actual CLI
+  executable. Installing services, provisioning external credentials,
+  restarting the hub with a new schedule policy and authorizing third-party CI
+  services remain explicit customer-administrator actions; the application
+  commits nothing to any repository and uploads nothing.
 - The desktop privacy pane completed the license and commercial journey (#265).
   A received entitlement and trust document verify through native dialogs with
   the shared v1/v2 readers; a verified v2 document configures the local
