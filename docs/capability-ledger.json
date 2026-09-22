@@ -910,10 +910,10 @@
       "kind": "cli",
       "capability": "Assemble customer-local evidence from actual retained runs without sending",
       "owner": "bharm16/readmit#259",
-      "screen": "a packet screen",
+      "screen": "the investigation-packet panels of the evidence region",
       "action": "assemble, export, review and verify sealed packets",
-      "test": "desktop packet journey test and shared-operation parity",
-      "implemented": false
+      "test": "PacketPanel.test.tsx journeys plus internal/desktop packet tests and internal/report parity",
+      "implemented": true
     },
     {
       "id": "cli.report.export",
@@ -921,10 +921,10 @@
       "kind": "cli",
       "capability": "Export retained evidence and inert offline reports into a sealed private review",
       "owner": "bharm16/readmit#259",
-      "screen": "a packet screen",
+      "screen": "the investigation-packet panels of the evidence region",
       "action": "assemble, export, review and verify sealed packets",
-      "test": "desktop packet journey test and shared-operation parity",
-      "implemented": false
+      "test": "PacketPanel.test.tsx journeys plus internal/desktop packet tests and internal/report parity",
+      "implemented": true
     },
     {
       "id": "cli.report.prepare",
@@ -943,10 +943,10 @@
       "kind": "cli",
       "capability": "Verify a portable review offline in read-only mode",
       "owner": "bharm16/readmit#259",
-      "screen": "a packet screen",
+      "screen": "the investigation-packet panels of the evidence region",
       "action": "assemble, export, review and verify sealed packets",
-      "test": "desktop packet journey test and shared-operation parity",
-      "implemented": false
+      "test": "PacketPanel.test.tsx journeys plus internal/desktop packet tests and internal/report parity",
+      "implemented": true
     },
     {
       "id": "cli.report.verify",
@@ -965,10 +965,10 @@
       "kind": "cli",
       "capability": "Verify actual retained evidence offline without transmitting",
       "owner": "bharm16/readmit#259",
-      "screen": "a packet screen",
+      "screen": "the investigation-packet panels of the evidence region",
       "action": "assemble, export, review and verify sealed packets",
-      "test": "desktop packet journey test and shared-operation parity",
-      "implemented": false
+      "test": "PacketPanel.test.tsx journeys plus internal/desktop packet tests and internal/report parity",
+      "implemented": true
     },
     {
       "id": "cli.run.clean",
@@ -3813,6 +3813,72 @@
       "screen": "the Suites and releases panel of the inspector region",
       "action": "report what a successor release changes for a saved suite",
       "test": "SuitePanel.test.tsx journeys plus internal/desktop suite and parity tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.PreviewPacket",
+      "source": "desktop.App.PreviewPacket",
+      "kind": "desktop",
+      "capability": "previewPacket application operation",
+      "owner": "bharm16/readmit#259",
+      "screen": "the investigation-packet panels of the evidence region",
+      "action": "verify the exact actual inputs one packet assembly would copy and show missing, mismatched and bounded ones before anything is written",
+      "test": "desktop packet behavior tests plus internal/report retained tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.AssemblePacket",
+      "source": "desktop.App.AssemblePacket",
+      "kind": "desktop",
+      "capability": "assemblePacket application operation",
+      "owner": "bharm16/readmit#259",
+      "screen": "the investigation-packet panels of the evidence region",
+      "action": "assemble customer-local evidence from actual retained runs into one new protected destination and read the sealed identity back",
+      "test": "desktop packet behavior tests plus internal/report retained tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.OpenPacket",
+      "source": "desktop.App.OpenPacket",
+      "kind": "desktop",
+      "capability": "openPacket application operation",
+      "owner": "bharm16/readmit#259",
+      "screen": "the investigation-packet panels of the evidence region",
+      "action": "verify one sealed retained packet offline and read-only through the shared reader the command line verifies one with",
+      "test": "desktop packet behavior tests plus internal/report retained tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ChoosePacketExportPath",
+      "source": "desktop.App.ChoosePacketExportPath",
+      "kind": "desktop",
+      "capability": "choosePacketExportPath application operation",
+      "owner": "bharm16/readmit#259",
+      "screen": "the investigation-packet panels of the evidence region",
+      "action": "present the host's native folder dialog for the new folder a portable review is sealed into",
+      "test": "PacketPanel.test.tsx journeys plus internal/desktop packet tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ExportPacketReview",
+      "source": "desktop.App.ExportPacketReview",
+      "kind": "desktop",
+      "capability": "exportPacketReview application operation",
+      "owner": "bharm16/readmit#259",
+      "screen": "the investigation-packet panels of the evidence region",
+      "action": "seal the packet byte for byte beside the five inert offline renderings through the existing export operation",
+      "test": "desktop packet behavior tests plus internal/report review tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.OpenPacketReview",
+      "source": "desktop.App.OpenPacketReview",
+      "kind": "desktop",
+      "capability": "openPacketReview application operation",
+      "owner": "bharm16/readmit#259",
+      "screen": "the investigation-packet panels of the evidence region",
+      "action": "verify one portable review offline in read-only mode with the report text revealed only deliberately and no acquired authority",
+      "test": "desktop packet behavior tests plus internal/report review tests",
       "implemented": true
     }
   ]

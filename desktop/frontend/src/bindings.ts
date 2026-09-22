@@ -37,6 +37,8 @@ export type Kind =
   | "finding-decisions"
   | "suite"
   | "suite-releases"
+  | "packet"
+  | "portable-review"
   | "unsupported";
 
 /** The status of one registered case, maintained by a person. */
@@ -579,6 +581,12 @@ export interface Facade {
   StartSuiteRun(request: SuiteRunRequest): Promise<SuiteRunResult>;
   DurableRunProgress(workspace: string, entry: string): Promise<RunProgressResult>;
   OpenRunEvidence(request: RunEvidenceRequest): Promise<RunEvidenceResult>;
+  PreviewPacket(request: PacketRequest): Promise<PacketPreviewResult>;
+  AssemblePacket(request: PacketRequest): Promise<PacketResult>;
+  OpenPacket(workspace: string, entry: string): Promise<PacketResult>;
+  ChoosePacketExportPath(): Promise<PacketPathResult>;
+  ExportPacketReview(request: PacketExportRequest): Promise<PacketExportResult>;
+  OpenPacketReview(request: PacketReviewRequest): Promise<PacketReviewResult>;
   RecoverSession(): Promise<RecoveryResult>;
   RecordView(view: View): Promise<SessionResult>;
   SaveDraft(draft: Draft): Promise<SessionResult>;
@@ -1424,6 +1432,185 @@ export interface RunEvidenceResult {
 }
 export function openRunEvidence(request: RunEvidenceRequest): Promise<RunEvidenceResult> {
   return guard(() => facade().OpenRunEvidence(request), { state: "failed" });
+}
+
+/** The investigation-packet panels. A packet assembles actual retained
+ * evidence — the verified case, the exact historical specification the current
+ * result retained, the retained current execution and, never invented, an
+ * optional retained baseline — through the existing report operations. Every
+ * member is one entry of the open workspace. */
+export interface PacketRequest {
+  workspace: string;
+  case: string;
+  spec: string;
+  current: string;
+  baseline?: string;
+  baseline_case?: string;
+  output?: string;
+}
+/** One named input as the preview verified it. A `spec_match` or `case_match`
+ * of false names mismatched evidence before assembly; nothing is ever
+ * substituted to make a mismatch go away. */
+export interface PacketInputView {
+  entry: string;
+  found: boolean;
+  identity?: string;
+  provenance?: string;
+  status?: string;
+  error_class?: string;
+  boundary?: string;
+  run_state?: string;
+  durable?: boolean;
+  journal_incomplete?: boolean;
+  delivery_uncertain?: boolean;
+  result_identity?: string;
+  spec_identity?: string;
+  case_identity?: string;
+  target_identity?: string;
+  spec_match?: boolean;
+  case_match?: boolean;
+  problems: string[];
+}
+/** What assembly would do, read from the inputs themselves. Limitations carry
+ * the packet's own statements — absent baseline, observation boundary, and the
+ * separation of integrity from authenticity, disclosure approval and
+ * regression equivalence — shown before assembly, not after. */
+export interface PacketPreview {
+  case?: PacketInputView;
+  spec?: PacketInputView;
+  current?: PacketInputView;
+  baseline?: PacketInputView;
+  baseline_case?: PacketInputView;
+  baseline_supplied: boolean;
+  destination: RunDestination;
+  export_policy: string;
+  contains_source_values: boolean;
+  problems: string[];
+  limitations: string[];
+  /** The sections the packet will hold, named with the counts the verified
+   * evidence itself reports; the assembled manifest is the complete index. */
+  inventory: string[];
+}
+export interface PacketPreviewResult {
+  state: State;
+  reason?: string;
+  preview?: PacketPreview;
+}
+export function previewPacket(request: PacketRequest): Promise<PacketPreviewResult> {
+  return guard(() => facade().PreviewPacket(request), { state: "failed" });
+}
+
+/** One retained execution of a verified packet. Status is the result's verdict
+ * where one was finalized; the run state and journal flags are the durable
+ * lifecycle's separate facts. A retained execution error stays an error. */
+export interface PacketRunView {
+  status: string;
+  error_class?: string;
+  boundary: string;
+  case_identity?: string;
+  case_provenance?: string;
+  run_state?: string;
+  journal_incomplete: boolean;
+  delivery_uncertain: boolean;
+  result_identity?: string;
+  spec_identity?: string;
+  target_identity?: string;
+}
+export interface PacketFile {
+  path: string;
+  size: number;
+  sha256: string;
+}
+/** A verified retained packet: the identity the seal records, both runs'
+ * separate facts, the complete file index and the packet's own limitations. */
+export interface PacketView {
+  entry: string;
+  identity: string;
+  schema: string;
+  state: string;
+  export_policy: string;
+  contains_source_values: boolean;
+  current: PacketRunView;
+  baseline?: PacketRunView;
+  files: PacketFile[];
+  limitations: string[];
+}
+export interface PacketResult {
+  state: State;
+  reason?: string;
+  packet?: PacketView;
+}
+export function assemblePacket(request: PacketRequest): Promise<PacketResult> {
+  return guard(() => facade().AssemblePacket(request), { state: "failed" });
+}
+/** Verifies one sealed packet read-only: no historical path, no endpoint, no
+ * execution, and no admission of any kind. */
+export function openPacket(workspace: string, entry: string): Promise<PacketResult> {
+  return guard(() => facade().OpenPacket(workspace, entry), { state: "failed" });
+}
+
+/** The native destination choice for a portable review. The choice is a
+ * destination only; choosing it exports nothing. */
+export interface PacketPathResult {
+  state: State;
+  reason?: string;
+  path?: string;
+}
+export function choosePacketExportPath(): Promise<PacketPathResult> {
+  return guard(() => facade().ChoosePacketExportPath(), { state: "failed" });
+}
+export interface PacketExportRequest {
+  workspace: string;
+  packet: string;
+  destination: string;
+}
+/** Seals the packet, byte for byte, beside the five inert offline renderings.
+ * Sealing it grants no disclosure approval and performs no upload. */
+export interface PacketExportResult {
+  state: State;
+  reason?: string;
+  review?: string;
+  identity?: string;
+  packet_identity?: string;
+  formats?: string[];
+  export_policy?: string;
+  contains_source_values?: boolean;
+}
+export function exportPacketReview(request: PacketExportRequest): Promise<PacketExportResult> {
+  return guard(() => facade().ExportPacketReview(request), { state: "failed" });
+}
+
+/** Opens one portable review read-only. The canonical report text carries the
+ * actual expected and observed content and is present only under the
+ * deliberate reveal. Opening a review acquires no send or mutation authority. */
+export interface PacketReviewRequest {
+  workspace: string;
+  entry: string;
+  reveal: boolean;
+}
+export interface PacketReviewView {
+  entry: string;
+  identity: string;
+  schema: string;
+  state: string;
+  packet_identity: string;
+  export_policy: string;
+  contains_source_values: boolean;
+  renderings: PacketFile[];
+  files: number;
+  current: string;
+  baseline?: string;
+  version_requirements: string[];
+  lines: string[];
+  revealed: boolean;
+}
+export interface PacketReviewResult {
+  state: State;
+  reason?: string;
+  review?: PacketReviewView;
+}
+export function openPacketReview(request: PacketReviewRequest): Promise<PacketReviewResult> {
+  return guard(() => facade().OpenPacketReview(request), { state: "failed" });
 }
 
 /** Deliberately reveals one occurrence, with values escaped by the Go engine. */

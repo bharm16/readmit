@@ -101,7 +101,13 @@ const (
 	// workflow's own artifacts beside them; the suite panel offers them all.
 	SuiteArtifact         Kind = "suite"
 	SuiteReleasesArtifact Kind = "suite-releases"
-	UnsupportedArtifact   Kind = "unsupported"
+	// A sealed investigation packet is a directory whose manifest declares the
+	// retained-packet contract the report panels verify and export; a portable
+	// review is the sealed directory of offline renderings exported from one.
+	// Both are claims the listing makes, and opening either one verifies it.
+	PacketArtifact         Kind = "packet"
+	PortableReviewArtifact Kind = "portable-review"
+	UnsupportedArtifact    Kind = "unsupported"
 )
 
 // Artifact is one entry of a workspace folder. Schema and Provenance are what
