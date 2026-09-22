@@ -6,6 +6,7 @@ import { Baseline } from "./Baseline";
 import { NoteDraft } from "./NoteDraft";
 import { Recovery, RetainedDrafts } from "./Recovery";
 import { RunPanel } from "./RunPanel";
+import { PacketPanel } from "./PacketPanel";
 import { SuitePanel } from "./SuitePanel";
 import { EnvironmentPanel } from "./EnvironmentPanel";
 import { Reduction, type ReductionForm } from "./Reduction";
@@ -1934,6 +1935,11 @@ export default function App() {
                 if (root) void verifyCase(root, name);
               }}
               {...(runSpecPath ? { initialSpec: runSpecPath } : {})}
+            />
+            <PacketPanel
+              workspace={root}
+              entries={opened?.artifacts ?? []}
+              onRefresh={() => void refreshListing()}
             />
             <ProjectPanel
               root={root}

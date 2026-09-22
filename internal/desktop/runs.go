@@ -302,7 +302,7 @@ func (a *App) preflightTest(ctx context.Context, root string, request RunPreflig
 	if err != nil {
 		return RunPreflightResult{State: Failed, Reason: "the saved test could not be read back"}
 	}
-	destination, refused := destinationFor(root, request.Output)
+	destination, refused := destinationFor(root, request.Output, "job")
 	if refused.state != "" {
 		return RunPreflightResult{State: refused.state, Reason: refused.reason}
 	}
@@ -347,7 +347,7 @@ func (a *App) preflightSuite(ctx context.Context, root string, request RunPrefli
 	if request.Environment != "" && selected == nil {
 		return RunPreflightResult{State: Failed, Reason: "the suite does not declare the selected environment"}
 	}
-	destination, refused := destinationFor(root, request.Output)
+	destination, refused := destinationFor(root, request.Output, "job")
 	if refused.state != "" {
 		return RunPreflightResult{State: refused.state, Reason: refused.reason}
 	}
@@ -922,11 +922,14 @@ func declaredEntryKind(root, name string) Kind {
 }
 
 // destinationFor validates the fresh output entry an execution requires,
-// proposing the next free generated name when none was given.
-func destinationFor(root, requested string) (RunDestination, refusal) {
+// proposing the next free generated name when none was given. The prefix is
+// the generating flow's own vocabulary: durable runs propose job names, and
+// the packet panels propose packet names, so a generated name says what
+// created it.
+func destinationFor(root, requested, prefix string) (RunDestination, refusal) {
 	if requested == "" {
 		for i := 1; i <= 999; i++ {
-			candidate := fmt.Sprintf("job-%03d", i)
+			candidate := fmt.Sprintf("%s-%03d", prefix, i)
 			if _, err := os.Lstat(filepath.Join(root, candidate)); os.IsNotExist(err) {
 				return RunDestination{Name: candidate, Generated: true, Fresh: true}, refusal{}
 			}

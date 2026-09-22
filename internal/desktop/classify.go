@@ -8,6 +8,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/findingreview"
+	"github.com/bharm16/readmit/internal/report"
 )
 
 // maxSchemaSniffBytes bounds how far into a regular file the listing looks for
@@ -35,6 +36,10 @@ var schemaMarkerFiles = []struct {
 	// A prepared suite directory retains the suite it compiled beside its
 	// queue and generated specifications.
 	{"suite.json", SuiteArtifact},
+	// A sealed investigation packet and a portable review both carry their
+	// manifest under one canonical name; the manifest's own contract refines
+	// which of the two the directory is called.
+	{"manifest.json", PacketArtifact},
 }
 
 // declaredSchemas are the contracts a regular file can declare that this
@@ -87,7 +92,13 @@ func classify(root, name string, isDir bool) (Kind, bool) {
 	if isDir {
 		for _, marker := range schemaMarkerFiles {
 			if info, err := os.Lstat(filepath.Join(path, marker.name)); err == nil && info.Mode().IsRegular() {
-				return refinedMarker(filepath.Join(path, marker.name), marker.kind)
+				// A marker whose own contract declines the directory does not
+				// decide it: a portable review holds a report.json rendering
+				// and a manifest.json manifest, and the manifest is what names
+				// it. The first marker that accepts the directory wins.
+				if kind, known := refinedMarker(filepath.Join(path, marker.name), marker.kind); known {
+					return kind, true
+				}
 			}
 		}
 		return UnsupportedArtifact, false
@@ -104,10 +115,13 @@ func classify(root, name string, isDir bool) (Kind, bool) {
 // directory is called, exactly as a flat file's declared contract already
 // does. Two names carry more than one contract: review.json is an export
 // review unless it declares the finding-review contract, so a finding review
-// never lists as the export review it is not; and report.json names a
+// never lists as the export review it is not; report.json names a
 // diagnosis only when it declares a diagnosis contract, so a directory
 // holding some other report.json stays unsupported here, exactly as before
-// this release read any report.json at all. Every other marker keeps its one
+// this release read any report.json at all; and manifest.json names a sealed
+// investigation packet or a portable review by the contract it declares, so a
+// synthetic packet or any other manifest this release's packet panels do not
+// open stays unsupported. Every other marker keeps its one
 // kind, and nothing here verifies the directory — opening it still does.
 func refinedMarker(path string, kind Kind) (Kind, bool) {
 	switch kind {
@@ -122,6 +136,14 @@ func refinedMarker(path string, kind Kind) (Kind, bool) {
 			return UnsupportedArtifact, false
 		}
 		return DiagnosisArtifact, true
+	case PacketArtifact:
+		switch schema, ok := sniffSchema(path); {
+		case ok && schema == report.RetainedSchema:
+			return PacketArtifact, true
+		case ok && schema == report.ReviewSchema:
+			return PortableReviewArtifact, true
+		}
+		return UnsupportedArtifact, false
 	}
 	return kind, true
 }

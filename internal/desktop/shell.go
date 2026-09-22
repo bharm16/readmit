@@ -124,6 +124,8 @@ var indicators = []Indicator{
 	{Status: string(DiagnoseConfigArtifact), Symbol: "⌬", Label: "Diagnose configuration"},
 	{Status: string(DecisionsArtifact), Symbol: "⊦", Label: "Finding decisions"},
 	{Status: string(SuiteArtifact), Symbol: "◫", Label: "Suite management"},
+	{Status: string(PacketArtifact), Symbol: "◍", Label: "Investigation packet"},
+	{Status: string(PortableReviewArtifact), Symbol: "◕", Label: "Portable review"},
 	{Status: string(UnsupportedArtifact), Symbol: "?", Label: "Unsupported here"},
 
 	{Status: string(project.StatusOpen), Symbol: "◇", Label: "Open"},

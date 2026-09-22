@@ -198,6 +198,12 @@ manifest is canonical strict JSON with required fields; its completion hash is
 written last. On cancellation/failure any partial output remains incomplete;
 retry with a new destination. No overwrite or automatic send recovery exists.
 
+In the desktop shell the same operations are the investigation-packet panels:
+the window previews the exact inputs, assembles into a new protected
+destination, exports the portable review through the host's native destination
+controls, and opens packets and reviews read-only. See
+[the desktop shell](desktop.md#investigation-packets-and-portable-reports).
+
 This is **customer-local original evidence**, including sensitive source values,
 historical paths, assertion values and endpoint configuration. It is not a
 redacted extract, disclosure approval or externally equivalent reproducer. Unix

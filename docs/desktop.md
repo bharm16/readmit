@@ -295,6 +295,12 @@ artifacts are never reported as completed.
 | `DurableRunProgress` | Reads one run folder's recovery counts read-only while it executes, without claiming the operation slot. |
 | `OpenRunEvidence` | Reopens one retained execution read-only through the result, recovery and engine-pin readers, with per-assertion evidence links and values present only under a deliberate reveal. |
 | `ChooseRunSpec` | Presents the host's native file dialog for a saved test or suite, kept to one entry of the open workspace. |
+| `PreviewPacket` | Verifies the exact actual inputs one packet assembly would copy — case, historical specification, current result, optional baseline — and reports each one's state, the observation boundaries, the proposed fresh destination and the packet's limitations before anything is written. |
+| `AssemblePacket` | Assembles customer-local evidence from actual retained runs into one new protected destination through the existing retained-packet operation, and reads the sealed identity back from disk. |
+| `OpenPacket` | Verifies one sealed retained packet of the workspace offline and read-only, exactly as `readmit report verify-retained` does. |
+| `ChoosePacketExportPath` | Presents the host's native folder dialog for the new folder a portable review is sealed into. |
+| `ExportPacketReview` | Seals the packet, byte for byte, beside the five inert offline renderings — offline HTML, PDF, Markdown, strict JSON and JUnit — through the existing export operation. |
+| `OpenPacketReview` | Verifies one portable review offline in read-only mode; the canonical report text is present only under the deliberate reveal, and opening acquires no send or mutation authority. |
 | `Cancel` | Stops the operation that is running now, when it can be interrupted. The caller names the operation it means to cancel, so one panel's cancel control can never stop another panel's work; the window's own cancel command names none and cancels whatever is running. |
 
 Exactly one operation runs at a time. A second request reports `busy` rather
@@ -360,6 +366,8 @@ pickers offer applicable entries instead of every entry labelled unsupported:
 | `reset` | A `readmit-reset-plan/v1` plan or a `readmit-reset-outcome/v1` outcome |
 | `suite` | A `readmit-suite/v1` document |
 | `suite-releases` | A `readmit-suite-releases/v1` released-expectation pin set |
+| `packet` | A sealed `readmit-retained-packet/v1` investigation packet |
+| `portable-review` | A sealed `readmit-portable-review/v1` directory of offline renderings |
 | `unsupported` | Nothing this release reads, with the reason |
 
 Locating a document by a fixed name or a declared contract is how the listing
@@ -1759,6 +1767,67 @@ and a delivery-uncertain run stay exactly what the journal says: no view here
 resumes, resets or resends anything, and executing again is always a fresh
 preflight and a fresh destination. See
 [durable local runs](durable-runs.md) for the retained contracts.
+
+## Investigation packets and portable reports
+
+The **Investigation packets** panel is where an investigation's actual
+evidence leaves the machine honestly: it assembles a sealed packet from what
+the workspace really retained, exports the portable offline reports, and opens
+either artifact read-only. It is the existing `report assemble`, `report
+verify-retained`, `report export` and `report review` operations — the packet
+panels decide nothing the report package does not already own, and the command
+line verifies the same packets and reviews byte for byte.
+
+**Assembly** selects four entries of the open workspace: the verified case,
+the exact historical specification, the retained current execution — a run
+folder or one job inside a suite execution's runs — and, never invented, an
+optional retained baseline with its own case when that differs. **Preview
+assembly** verifies each input through the same readers assembly verifies them
+with and shows what it found before anything is written: which inputs are
+missing, whether the specification is the exact one the current result
+retained (a rewritten one is named, never silently substituted), whether the
+baseline is a distinct retained execution, both runs' observation boundaries
+and lifecycle facts, the fresh destination, and the packet's own limitations —
+including the statement an absent baseline always earns. Nothing here
+manufactures evidence: a missing baseline stays a single-run report that
+proves no before/after improvement, and no editable current test ever stands
+in for a historical specification.
+
+**Assemble packet** runs the existing retained-packet operation into the new
+protected destination (a fresh workspace entry written owner-only where the
+platform has file modes) and reads
+the sealed identity back from disk, so what the panel shows is what verified.
+The packet registers in the workspace listing as a `packet` entry, and the
+panel states the handoff it does not perform: the verified packet is ready for
+privacy review, and protection, transformation and disclosure approval are
+separate deliberate steps — nothing is uploaded and nothing is shared by
+assembling. A refusal or a cancellation leaves any partial destination
+explicitly incomplete; it never verifies, and recovery is a new destination,
+never an overwrite.
+
+**Portable review** exports the packet through the existing export operation
+into a new folder chosen with the host's native dialog. The review is the
+complete packet copied byte for byte beside the five locally rendered offline
+reports — offline HTML, PDF, Markdown, strict JSON and JUnit — with no
+external rendering service, no active content and no network. Sealing a review
+inherits the packet's sensitivity and grants no disclosure approval.
+
+Opening a packet or a review is a **read-only mode**. `OpenPacket` and
+`OpenPacketReview` verify through the same verifiers the command line uses —
+re-deriving every claim and rendering from the sealed bytes, so altered or
+invented content is refused even when hashes are recomputed — and acquire no
+admission at all: a viewer with no operation policy can verify and read,
+because reading never grants authority, and no operation exists behind these
+results that could execute, send, reset or modify anything. The review view
+shows the verification metadata, the five renderings, both runs' retained
+statuses as the labels they are, and the version requirements the evidence
+records; the canonical report text carries the actual expected and observed
+content and appears only under the deliberate reveal. Integrity is shown
+separately from what it is not: not source authenticity, not disclosure
+approval, not a regression-equivalence claim, and a successfully rendered
+report is not a passing run. See
+[sealed packets and portable reports](report.md) for both contracts' bounds,
+refusals and reader rules.
 
 ## Comparing retained executions
 

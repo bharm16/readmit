@@ -1,5 +1,27 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The desktop shell assembles actual investigation packets and opens portable
+  reports entirely in the application (#259). The investigation-packet panels
+  select verified case evidence, the exact historical specification, the
+  retained current result and an optional actual baseline from what the
+  workspace really holds; the preview verifies every input through the same
+  readers assembly uses and shows missing and mismatched inputs, observation
+  boundaries, lifecycle facts and the packet's limitations before anything is
+  written — a missing baseline is stated as absent and a rewritten
+  specification is named, never silently substituted. Assembly runs the
+  existing retained-packet operation into a fresh protected destination and
+  reads the sealed identity back, registering the packet in the workspace
+  navigation; export seals the packet byte for byte beside the five inert
+  offline renderings (offline HTML, PDF, Markdown, strict JSON, JUnit) into a
+  natively chosen new folder with no external rendering service; and packets
+  and portable reviews open read-only through the same verifiers the command
+  line uses, with the report text revealed only deliberately. Opening a packet
+  or a review acquires no send or mutation authority, and integrity is shown
+  separately from source authenticity, disclosure approval and
+  regression-equivalence claims. A verified packet is handed to privacy
+  review as a separate deliberate step; nothing is uploaded or shared by
+  assembling or exporting. The synthetic report capability keeps its existing
+  honest label and behavior on the command line.
 - The desktop privacy pane completed the license and commercial journey (#265).
   A received entitlement and trust document verify through native dialogs with
   the shared v1/v2 readers; a verified v2 document configures the local

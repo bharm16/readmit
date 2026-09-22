@@ -36,6 +36,10 @@ import type {
   Shell,
   ShellResult,
   StatusValue,
+  PacketPreviewResult,
+  PacketResult,
+  PacketExportResult,
+  PacketReviewResult,
   ReproducerPlan,
   ReproducerResolution,
   ReproducerResult,
@@ -1804,6 +1808,107 @@ export function suiteImpactResult(): SuiteImpactResult {
       to: "successor-identity-fixed-for-tests",
       comparison: { schema: "readmit-test/v1", identity: SUITE_IDENTITY, revision: 2, parent: SUITE_RELEASE_IDENTITY, values_shown: false, changes: [{ part: "assertion[ack].expected", kind: "changed" }] },
       tests: [{ test: "booking", rows: 1, pinned: SUITE_RELEASE_IDENTITY, state: "affected" }],
+    },
+  };
+}
+
+export const PACKET_IDENTITY = "1122334455667788112233445566778811223344556677881122334455667788";
+
+/** One assembly preview over actual retained evidence: everything found, the
+ * historical specification matching what the run retained, and a fresh
+ * generated destination. */
+export function packetPreviewResult(overrides: Partial<NonNullable<PacketPreviewResult["preview"]>> = {}): PacketPreviewResult {
+  return {
+    state: "completed",
+    preview: {
+      case: { entry: "regression", found: true, identity: PACKET_IDENTITY, provenance: "imported", case_match: true, problems: [] },
+      spec: { entry: "reschedule-test.json", found: true, spec_match: true, problems: [] },
+      current: { entry: "job-001", found: true, status: "pass", boundary: "ack-contract", run_state: "passed", durable: true, delivery_uncertain: false, journal_incomplete: false, problems: [] },
+      baseline_supplied: false,
+      destination: { name: "packet-001", generated: true, fresh: true },
+      export_policy: "customer-local-only",
+      contains_source_values: true,
+      problems: [],
+      limitations: [
+        "No observed baseline was supplied. This single-run report proves no before/after improvement or regression.",
+        "Hashes establish integrity, not source authenticity, disclosure approval or a regression-equivalence claim.",
+      ],
+      inventory: [
+        "case/ — the verified case bundle, copied byte for byte",
+        "spec.json — the exact historical specification bytes",
+        "current/ — the retained execution, byte for byte (pass, boundary ack-contract)",
+        "SUMMARY.md and RERUN.md — regenerated outcomes, limitations and rerun instructions",
+      ],
+      ...overrides,
+    },
+  };
+}
+
+/** One verified packet read back from disk. */
+export function packetResult(overrides: Partial<NonNullable<PacketResult["packet"]>> = {}): PacketResult {
+  return {
+    state: "completed",
+    packet: {
+      entry: "packet-001",
+      identity: PACKET_IDENTITY,
+      schema: "readmit-retained-packet/v1",
+      state: "complete",
+      export_policy: "customer-local-only",
+      contains_source_values: true,
+      current: { status: "pass", boundary: "ack-contract", case_provenance: "imported", journal_incomplete: false, delivery_uncertain: false },
+      files: [{ path: "spec.json", size: 426, sha256: "aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11" }],
+      limitations: [
+        "No observed baseline was supplied. This single-run report proves no before/after improvement or regression.",
+      ],
+      ...overrides,
+    },
+  };
+}
+
+/** One sealed portable review with all five offline renderings. */
+export function packetExportResult(overrides: Partial<PacketExportResult> = {}): PacketExportResult {
+  return {
+    state: "completed",
+    review: "review",
+    identity: "eeddffeeddffeeddffeeddffeeddffeeddffeeddffeeddffeeddffeeddffeedd",
+    packet_identity: PACKET_IDENTITY,
+    formats: ["offline HTML", "PDF", "Markdown", "strict JSON", "JUnit"],
+    export_policy: "customer-local-only",
+    contains_source_values: true,
+    ...overrides,
+  };
+}
+
+/** One portable review opened read-only; the report text is present only when
+ * the fixture says it was revealed. */
+export function packetReviewResult(revealed: boolean, overrides: Partial<NonNullable<PacketReviewResult["review"]>> = {}): PacketReviewResult {
+  return {
+    state: "completed",
+    review: {
+      entry: "review",
+      identity: "eeddffeeddffeeddffeeddffeeddffeeddffeeddffeeddffeeddffeeddffeedd",
+      schema: "readmit-portable-review/v1",
+      state: "complete",
+      packet_identity: PACKET_IDENTITY,
+      export_policy: "customer-local-only",
+      contains_source_values: true,
+      renderings: [
+        { path: "report.html", size: 128, sha256: "bb00" },
+        { path: "report.pdf", size: 256, sha256: "bb01" },
+        { path: "report.md", size: 96, sha256: "bb02" },
+        { path: "report.json", size: 192, sha256: "bb03" },
+        { path: "junit.xml", size: 64, sha256: "bb04" },
+      ],
+      files: 61,
+      current: "passed",
+      version_requirements: [
+        "readmit-portable-review/v1 (review manifest)",
+        "readmit-portable-report/v1 (strict JSON report)",
+        "readmit-retained-packet/v1 (sealed packet)",
+      ],
+      lines: revealed ? ["READMIT - RETAINED INVESTIGATION REVIEW", "Run: current", "REVEALED-REPORT-LINE"] : [],
+      revealed,
+      ...overrides,
     },
   };
 }
