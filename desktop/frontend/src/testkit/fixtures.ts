@@ -40,6 +40,14 @@ import type {
   PacketResult,
   PacketExportResult,
   PacketReviewResult,
+  PrivacyReviewResult,
+  PrivacyExportResult,
+  SupportPolicyResult,
+  SupportPreviewResult,
+  ProtectionResult,
+  ProtectionDocument,
+  ProtectionPackageResult,
+  ProtectionDiscardResult,
   ReproducerPlan,
   ReproducerResolution,
   ReproducerResult,
@@ -1910,5 +1918,145 @@ export function packetReviewResult(revealed: boolean, overrides: Partial<NonNull
       revealed,
       ...overrides,
     },
+  };
+}
+
+/** The privacy screens' fixtures. Every value here is synthetic — entry names,
+ * fixed identity tokens, counts and states the engine could have reported.
+ * The planted sensitive values the journey refuses to carry stay on the Go
+ * side of the seam, where `internal/desktop` proves none of them ever reaches
+ * a result; these fixtures carry none by construction. */
+export const PRIVACY_REVIEW_IDENTITY = "aabb0011aabb0011aabb0011aabb0011aabb0011aabb0011aabb0011aabb0011";
+export const PRIVACY_SUMMARY_IDENTITY = "ccdd2244ccdd2244ccdd2244ccdd2244ccdd2244ccdd2244ccdd2244ccdd2244";
+
+export function privacyReviewResult(overrides: Partial<NonNullable<PrivacyReviewResult["outcome"]>> = {}): PrivacyReviewResult {
+  return {
+    state: "completed",
+    outcome: {
+      review: "review",
+      private: "review-private",
+      state: "ready-for-approval",
+      identity: PRIVACY_REVIEW_IDENTITY,
+      findings: 42,
+      unresolved: 0,
+      establishes: "disclosure-reviewed-extract",
+      limitations: [
+        "A derived review is disclosure review of one prepared extract; it is never a regression-equivalent packet.",
+      ],
+      ...overrides,
+    },
+  };
+}
+
+export function privacyExportResult(overrides: Partial<NonNullable<PrivacyExportResult["outcome"]>> = {}): PrivacyExportResult {
+  return {
+    state: "completed",
+    outcome: {
+      packet: "export-001",
+      identity: PRIVACY_REVIEW_IDENTITY,
+      approved_review: PRIVACY_REVIEW_IDENTITY,
+      files: 34,
+      proof_baseline: "assertion_failure",
+      proof_postfix: "pass",
+      failed_assertions: [1, 2],
+      establishes: "disclosure-reviewed-extract",
+      external_equivalence: "declined",
+      limitations: ["Exporting a file writes it beside the evidence; it is not an upload."],
+      ...overrides,
+    },
+  };
+}
+
+export function supportPolicyResult(overrides: Partial<NonNullable<SupportPolicyResult["policy"]>> = {}): SupportPolicyResult {
+  return {
+    state: "completed",
+    policy: {
+      entry: "sharing.json",
+      schema: "readmit-sharing-policy/v1",
+      support: true,
+      destinations: ["local-file"],
+      max_bytes: 4096,
+      ...overrides,
+    },
+  };
+}
+
+export function supportPreviewResult(overrides: Partial<NonNullable<SupportPreviewResult["summary"]>> = {}): SupportPreviewResult {
+  return {
+    state: "completed",
+    summary: {
+      source_kind: "derived-review",
+      source_identity: PRIVACY_REVIEW_IDENTITY,
+      input_commitment: "eeff3355eeff3355eeff3355eeff3355eeff3355eeff3355eeff3355eeff3355",
+      spec_identity: "9988776699887766998877669988776699887766998877669988776699887766",
+      policy_identity: "1122334455667788112233445566778811223344556677881122334455667788",
+      outcome: "reviewed-extract-only",
+      external_equivalence: "declined",
+      scope: "Diagnostic metadata only; no evidence payload.",
+      identity: PRIVACY_SUMMARY_IDENTITY,
+      max_bytes: 4096,
+      within_policy: true,
+      ...overrides,
+    },
+  };
+}
+
+export function protectionResult(overrides: Partial<ProtectionDocument> = {}): ProtectionResult {
+  return {
+    state: "completed",
+    entry: "protection.json",
+    document: {
+      entry: "protection.json",
+      schema: "readmit-protection/v1",
+      controls: [
+        {
+          name: "lab-evidence",
+          storage: "os-volume-encryption",
+          state: "active",
+          generation: 1,
+          rotated_at: "2026-09-18T09:00:00Z",
+          rotation: "current",
+          max_age: "720h",
+          retain: "2160h",
+          command: "/absolute/key-store-program",
+          locator_arguments: 4,
+          key: "********",
+        },
+      ],
+      limitations: ["Keys resolve only through the customer-managed references a control registers."],
+      ...overrides,
+    },
+  };
+}
+
+export function protectionPackageResult(overrides: Partial<NonNullable<ProtectionPackageResult["package"]>> = {}): ProtectionPackageResult {
+  return {
+    state: "completed",
+    package: {
+      entry: "protected-001",
+      schema: "readmit-transfer/v1",
+      package: "6f1c0ab29d4e7358a0b5c6d7e8f90123",
+      control: "lab-evidence",
+      generation: 1,
+      created_at: "2026-09-18T12:00:00Z",
+      entries: 3,
+      retention: "within-retention",
+      retain_until: "2026-12-17T12:00:00Z",
+      cipher: "aes-256-gcm",
+      derivation: "hkdf-sha256",
+      ...overrides,
+    },
+    limitations: ["Retirement is not revocation and deletion is not erasure."],
+  };
+}
+
+export function protectionDiscardResult(overrides: Partial<ProtectionDiscardResult> = {}): ProtectionDiscardResult {
+  return {
+    state: "completed",
+    removed: 3,
+    retention: "past-retention",
+    overridden: false,
+    limitations: ["Discarding unlinks the files this package declares; it does not overwrite the bytes."],
+    ...overrides,
   };
 }

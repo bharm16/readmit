@@ -191,8 +191,12 @@ this packet. Those flags do not independently approve a result for sharing.
 The [desktop shell](desktop.md#reading-an-export-review) reads a review through
 `redact.OpenReview`, groups its located findings by where each one is and
 what kind of content it is, in this command's own words, and states whether an approval names the exact identity the bytes on disk
-have now. It records no approval, exports nothing, and never reads the private
-directory. Deriving a review and exporting a packet remain these commands.
+have now. It records no approval and never reads the private
+directory. The same shell's [privacy panel](desktop.md#privacy-review-protected-export-and-support-sharing)
+derives a review and exports a packet through `Create` and `Export` — these
+operations, with the same fail-closed gates and the same refusals, driven by a
+review identity a person types in fresh; the panel retains no approval, authors
+no policy, and performs no re-execution while preparing an export.
 
 `redact.OpenReview` and `redact.OpenExport` are verified offline Go readers.
 `OpenExport` applies the same review contract to embedded reviews, binds each

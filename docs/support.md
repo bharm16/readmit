@@ -34,6 +34,14 @@ readmit share RETAINED_PACKET --kind retained-packet --policy sharing.json --app
 readmit share verify NEW_SUPPORT
 ```
 
+The [desktop shell](desktop.md#privacy-review-protected-export-and-support-sharing)
+prepares the same summaries from its privacy panel: the policy is authored
+through structured controls, the preview shows every summary byte before
+anything is written, publication requires the exact preview identity over the
+current sources, and the bundle is written into a new local directory. It is
+the same share operation, with the same refusals and the same no-upload
+boundary.
+
 `portable-review` and `derived-review` inputs follow the same
 [sharing boundary](redact.md#reviewed-support-diagnostics-and-sharing-policy);
 a derived review additionally needs its private `--local-state` linkage, which
