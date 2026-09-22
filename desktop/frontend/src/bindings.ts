@@ -39,6 +39,11 @@ export type Kind =
   | "suite-releases"
   | "packet"
   | "portable-review"
+  | "derived-export"
+  | "support"
+  | "transfer-package"
+  | "protection"
+  | "sharing-policy"
   | "unsupported";
 
 /** The status of one registered case, maintained by a person. */
@@ -676,6 +681,22 @@ export interface Facade {
   PreviewReduction(request: ReductionRequest): Promise<ReductionResult>;
   StartReduction(request: ReductionRequest): Promise<ReductionResult>;
   OpenReview(request: ReviewRequest): Promise<ReviewResult>;
+  DeriveExportReview(request: PrivacyReviewRequest): Promise<PrivacyReviewResult>;
+  ExportDerivedPacket(request: PrivacyExportRequest): Promise<PrivacyExportResult>;
+  SaveSharingPolicy(request: SupportPolicyRequest): Promise<SupportPolicyResult>;
+  ReadSharingPolicy(workspace: string, entry: string): Promise<SupportPolicyResult>;
+  PreviewSupportSummary(request: SupportRequest): Promise<SupportPreviewResult>;
+  PublishSupportSummary(request: SupportPublishRequest): Promise<SupportPublishResult>;
+  ChooseSupportExportPath(): Promise<PacketPathResult>;
+  VerifySupportBundle(workspace: string, entry: string): Promise<SupportPreviewResult>;
+  ReadProtection(workspace: string, entry: string): Promise<ProtectionResult>;
+  SaveProtectionControl(request: ProtectionControlRequest): Promise<ProtectionResult>;
+  RotateProtectionControl(workspace: string, entry: string, name: string): Promise<ProtectionResult>;
+  RetireProtectionControl(workspace: string, entry: string, name: string): Promise<ProtectionResult>;
+  PackProtectedPackage(request: ProtectionPackRequest): Promise<ProtectionPackageResult>;
+  InspectProtectedPackage(workspace: string, entry: string): Promise<ProtectionPackageResult>;
+  OpenProtectedPackage(request: ProtectionOpenRequest): Promise<ProtectionPackageResult>;
+  DiscardProtectedPackage(request: ProtectionDiscardRequest): Promise<ProtectionDiscardResult>;
   ChooseHubConfig(): Promise<HubResult>;
   SelectHubConfig(path: string): Promise<HubResult>;
   DiagnoseHub(): Promise<HubDiagnosisResult>;
@@ -3340,6 +3361,407 @@ export interface ReviewResult {
  * exported, and the private state directory is never read. */
 export function openReview(request: ReviewRequest): Promise<ReviewResult> {
   return guard(() => facade().OpenReview(request), { state: "failed" });
+}
+
+/** The privacy screens. A derived review is the existing redaction operation's
+ * fail-closed output written from actual workspace entries; an exported packet
+ * is the existing export operation's freshly generated one under an approval
+ * that names the exact materialized identity; and a support summary is the
+ * existing share operation's value-free preview published only under that
+ * identity. Nothing here is uploaded, no private linkage is read, and an
+ * approval is a fresh explicit act nothing can restore. */
+
+/** One derivation request: the four inputs `readmit redact` reads — each one
+ * entry of the open workspace — plus the fresh review and private local-state
+ * entries it writes. Empty names propose the next free generated name. */
+export interface PrivacyReviewRequest {
+  workspace: string;
+  case: string;
+  spec: string;
+  policy: string;
+  inventory: string;
+  output?: string;
+  local_state?: string;
+}
+
+/** What one derivation produced. `state` is the review's own word: blocked
+ * while any surface is left unresolved — the normal first answer, and the
+ * explicit blocker list a reviewer works down — and ready-for-approval once
+ * the derived case and specification verified. */
+export interface PrivacyReviewOutcome {
+  review: string;
+  private: string;
+  state: string;
+  identity?: string;
+  findings: number;
+  unresolved: number;
+  establishes?: string;
+  limitations: string[];
+}
+
+export interface PrivacyReviewResult {
+  state: State;
+  reason?: string;
+  outcome?: PrivacyReviewOutcome;
+}
+
+/** Runs the existing redaction operation over the selected entries and writes
+ * the review and its separate private local-state directory as two new
+ * workspace entries. It contacts nothing; the original proof it runs privately
+ * speaks only to fresh built-in fixture receivers on the loopback. */
+export function deriveExportReview(request: PrivacyReviewRequest): Promise<PrivacyReviewResult> {
+  return guard(() => facade().DeriveExportReview(request), { state: "failed" });
+}
+
+/** One export request: the review, the private local-state entry its
+ * derivation wrote, the exact review identity the reviewer is approving, and
+ * the fresh packet entry the export generates. The approval is checked against
+ * the identity the bytes on disk have now and is never recorded anywhere. */
+export interface PrivacyExportRequest {
+  workspace: string;
+  review: string;
+  local_state: string;
+  approval: string;
+  output?: string;
+}
+
+/** One generated packet: the fresh fixture proof the export ran, the
+ * disclosure-reviewed extract the packet establishes, and this release's
+ * explicit decline of any external regression-equivalence claim. */
+export interface PrivacyExportOutcome {
+  packet: string;
+  identity: string;
+  approved_review: string;
+  files: number;
+  proof_baseline: string;
+  proof_postfix: string;
+  failed_assertions: number[];
+  establishes: string;
+  external_equivalence: string;
+  limitations: string[];
+}
+
+export interface PrivacyExportResult {
+  state: State;
+  reason?: string;
+  outcome?: PrivacyExportOutcome;
+}
+
+/** Runs the existing export operation: it re-verifies the review, re-checks
+ * the private binding, reruns the derived specification against fresh built-in
+ * fixtures, and writes the freshly generated packet only after every gate
+ * passes. Nothing is transmitted; the only addresses it ever speaks to are the
+ * loopback fixture receivers it starts itself. */
+export function exportDerivedPacket(request: PrivacyExportRequest): Promise<PrivacyExportResult> {
+  return guard(() => facade().ExportDerivedPacket(request), { state: "failed" });
+}
+
+/** One sharing policy to author. The closed destination vocabulary, the support
+ * switch and the byte bound are the sharing contract's own members; a policy
+ * the operation would refuse is never written. */
+export interface SupportPolicyRequest {
+  workspace: string;
+  output: string;
+  support: boolean;
+  destinations: string[];
+  max_bytes: number;
+}
+
+/** One sharing policy as stored. A policy that denies support denies
+ * preparation: the preview is the refusal. */
+export interface SupportPolicy {
+  entry: string;
+  schema: string;
+  support: boolean;
+  destinations: string[];
+  max_bytes: number;
+}
+
+export interface SupportPolicyResult {
+  state: State;
+  reason?: string;
+  policy?: SupportPolicy;
+}
+
+/** Writes one sharing policy through the sharing contract's own decoder. */
+export function saveSharingPolicy(request: SupportPolicyRequest): Promise<SupportPolicyResult> {
+  return guard(() => facade().SaveSharingPolicy(request), { state: "failed" });
+}
+
+/** Reads one sharing policy of the open workspace through the sharing
+ * contract's own decoder. It writes nothing. */
+export function readSharingPolicy(workspace: string, entry: string): Promise<SupportPolicyResult> {
+  return guard(() => facade().ReadSharingPolicy(workspace, entry), { state: "failed" });
+}
+
+/** One value-free support summary to prepare: the source packet, portable
+ * review or complete derived review, the sharing policy, and — for a derived
+ * review — the private local-state entry its derivation wrote, which the
+ * operation binds and never copies. */
+export interface SupportRequest {
+  workspace: string;
+  source: string;
+  kind: string;
+  private?: string;
+  policy: string;
+}
+
+/** The prepared summary itself. Every member is a commitment, a closed outcome
+ * or fixed scope text: no free-form name, error, path, credential or message
+ * field exists to fill, so the preview is every byte the bundle will hold. */
+export interface SupportSummary {
+  source_kind: string;
+  source_identity: string;
+  input_commitment: string;
+  spec_identity: string;
+  policy_identity: string;
+  outcome: string;
+  external_equivalence: string;
+  scope: string;
+  identity: string;
+  max_bytes: number;
+  within_policy: boolean;
+}
+
+export interface SupportPreviewResult {
+  state: State;
+  reason?: string;
+  summary?: SupportSummary;
+}
+
+/** Prepares the value-free support summary through the existing share
+ * operation and shows every byte it would publish, without writing anything. */
+export function previewSupportSummary(request: SupportRequest): Promise<SupportPreviewResult> {
+  return guard(() => facade().PreviewSupportSummary(request), { state: "failed" });
+}
+
+/** Publishing adds the two members it needs: the exact preview identity the
+ * reviewer is approving and the fresh local directory the bundle is written
+ * into. A stale approval is a refusal, never a warning. */
+export interface SupportPublishRequest {
+  workspace: string;
+  source: string;
+  kind: string;
+  private?: string;
+  policy: string;
+  approval: string;
+  output?: string;
+}
+
+/** One published local bundle: the directory, the summary identity inside it,
+ * the closed file set, and the statements about what the bundle never carried
+ * and what publishing never did. */
+export interface SupportPublishOutcome {
+  bundle: string;
+  identity: string;
+  files: string[];
+  exclusions: string[];
+  no_upload: string;
+  limitations: string[];
+}
+
+export interface SupportPublishResult {
+  state: State;
+  reason?: string;
+  outcome?: SupportPublishOutcome;
+}
+
+/** Regenerates the summary from the current sources and policy through the
+ * existing share operation and writes the reviewed bundle only under an
+ * approval naming the exact identity the regeneration produced. The local
+ * directory is the only thing written; there is no automatic upload path. */
+export function publishSupportSummary(request: SupportPublishRequest): Promise<SupportPublishResult> {
+  return guard(() => facade().PublishSupportSummary(request), { state: "failed" });
+}
+
+/** The native destination choice for a support bundle. The choice is a
+ * destination only; choosing it publishes nothing and contacts nothing. */
+export function chooseSupportExportPath(): Promise<PacketPathResult> {
+  return guard(() => facade().ChooseSupportExportPath(), { state: "failed" });
+}
+
+/** Verifies one support bundle of the open workspace offline, through the same
+ * reader `readmit share verify` runs, independently of its source. */
+export function verifySupportBundle(workspace: string, entry: string): Promise<SupportPreviewResult> {
+  return guard(() => facade().VerifySupportBundle(workspace, entry), { state: "failed" });
+}
+
+/** One registered protection control as the view shows it. `key` is always the
+ * mask — the key itself was never read to produce this view — and the locator
+ * is shown as the program's absolute path and a count instead of the
+ * arguments, because an argument is the one place key material could hide. */
+export interface ProtectionControl {
+  name: string;
+  storage: string;
+  state: string;
+  generation: number;
+  rotated_at: string;
+  rotation: string;
+  max_age?: string;
+  retain?: string;
+  command: string;
+  locator_arguments: number;
+  key: string;
+}
+
+/** One protection document of the open workspace, as `protect show` reports
+ * it: every registered control, masked, with the document's own limits. */
+export interface ProtectionDocument {
+  entry: string;
+  schema: string;
+  controls: ProtectionControl[];
+  limitations: string[];
+}
+
+export interface ProtectionResult {
+  state: State;
+  reason?: string;
+  entry?: string;
+  document?: ProtectionDocument;
+}
+
+/** Reads one protection document and shows every registered control with the
+ * key masked. It runs no program, resolves no key and contacts nothing. */
+export function readProtection(workspace: string, entry: string): Promise<ProtectionResult> {
+  return guard(() => facade().ReadProtection(workspace, entry), { state: "failed" });
+}
+
+/** Registers one control into the document entry named here, creating that
+ * document when it does not exist yet. The key is never read to register a
+ * control: a control is a reference, and registering one proves nothing about
+ * the store behind it. */
+export function saveProtectionControl(request: ProtectionControlRequest): Promise<ProtectionResult> {
+  return guard(() => facade().SaveProtectionControl(request), { state: "failed" });
+}
+
+/** One control registration: a name, the declared at-rest storage control, the
+ * reference to the key — the absolute path of the program that prints it and
+ * the locator arguments that select it — plus the rotation interval and the
+ * retention period packages written under it declare. */
+export interface ProtectionControlRequest {
+  workspace: string;
+  entry: string;
+  name: string;
+  storage: string;
+  command: string;
+  arguments: string[];
+  max_age?: string;
+  retain?: string;
+}
+
+/** Records that the key behind a control was replaced in its own store. The
+ * declared store must answer before anything is recorded, and the material it
+ * printed is discarded, never written, logged or shown. */
+export function rotateProtectionControl(workspace: string, entry: string, name: string): Promise<ProtectionResult> {
+  return guard(() => facade().RotateProtectionControl(workspace, entry, name), { state: "failed" });
+}
+
+/** Stops a control writing new packages. Retirement is not revocation, and the
+ * result states what that does not establish. */
+export function retireProtectionControl(workspace: string, entry: string, name: string): Promise<ProtectionResult> {
+  return guard(() => facade().RetireProtectionControl(workspace, entry, name), { state: "failed" });
+}
+
+/** Packs the named workspace entries into one new encrypted transfer package
+ * written under the named control of the protection document. */
+export interface ProtectionPackRequest {
+  workspace: string;
+  entry: string;
+  control: string;
+  sources: string[];
+  output?: string;
+}
+
+/** One transfer package as its own descriptor declares it, without a key. The
+ * packed names and sizes are encrypted inside the package, so the only content
+ * fact this view can carry is the count the descriptor records. */
+export interface ProtectionPackage {
+  entry: string;
+  schema: string;
+  package: string;
+  control: string;
+  generation: number;
+  created_at: string;
+  entries: number;
+  not_read?: number;
+  retention: string;
+  retain_until?: string;
+  cipher: string;
+  derivation: string;
+}
+
+export interface ProtectionPackageResult {
+  state: State;
+  reason?: string;
+  package?: ProtectionPackage;
+  limitations: string[];
+}
+
+/** Writes one encrypted transfer package through the existing pack operation.
+ * The key is read from its declared store for the duration of the operation
+ * alone; the sources are read, never modified; and a package that cannot be
+ * completed is removed rather than left looking like one. */
+export function packProtectedPackage(request: ProtectionPackRequest): Promise<ProtectionPackageResult> {
+  return guard(() => facade().PackProtectedPackage(request), {
+    state: "failed",
+    limitations: [],
+  });
+}
+
+/** Reports what one transfer package declares about itself, without a key: the
+ * `protect inspect` of the window. */
+export function inspectProtectedPackage(workspace: string, entry: string): Promise<ProtectionPackageResult> {
+  return guard(() => facade().InspectProtectedPackage(workspace, entry), {
+    state: "failed",
+    limitations: [],
+  });
+}
+
+/** Opens one transfer package into a fresh workspace entry under the named
+ * control of the protection document. The package's own control is used when
+ * none is named. */
+export interface ProtectionOpenRequest {
+  workspace: string;
+  entry: string;
+  control?: string;
+  package: string;
+  output?: string;
+}
+
+/** Decrypts one package through the existing open operation. A wrong key, a
+ * rotated-away key and a tampered package are each refused rather than
+ * decrypted, and the result states that opening ends the protection the
+ * package carried. */
+export function openProtectedPackage(request: ProtectionOpenRequest): Promise<ProtectionPackageResult> {
+  return guard(() => facade().OpenProtectedPackage(request), {
+    state: "failed",
+    limitations: [],
+  });
+}
+
+/** Discards one transfer package. A package still within its declared
+ * retention period is refused unless the override is explicit, and the result
+ * states what removal does not establish. */
+export interface ProtectionDiscardRequest {
+  workspace: string;
+  package: string;
+  override?: boolean;
+}
+
+export interface ProtectionDiscardResult {
+  state: State;
+  reason?: string;
+  removed?: number;
+  retention?: string;
+  overridden?: boolean;
+  limitations?: string[];
+}
+
+/** Unlinks exactly the files a package declares through the existing discard
+ * operation, which refuses a directory holding anything the descriptor does
+ * not declare before removing anything. */
+export function discardProtectedPackage(request: ProtectionDiscardRequest): Promise<ProtectionDiscardResult> {
+  return guard(() => facade().DiscardProtectedPackage(request), { state: "failed" });
 }
 
 export interface BaselineRequest {

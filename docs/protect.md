@@ -42,6 +42,16 @@ readmit protect discard transfer-2026-09-18
 | `protect inspect PACKAGE` | Reports what a package declares about itself, without a key |
 | `protect discard PACKAGE [--override-retention]` | Unlinks the files a package declares and states what that does not establish |
 
+The [desktop shell](desktop.md#privacy-review-protected-export-and-support-sharing)
+reaches these operations from its protection panel: a control is registered as
+a structured form, the document is shown with the key masked and the locator
+arguments counted, and packages are packed, inspected, opened and discarded
+under the control a person selects. The window never renders key material, a
+rotation is recorded only when the declared store answers, and every refusal —
+a missing key, a retired control, a retained package — is this command's own.
+Packing a package writes it beside the evidence; moving it anywhere remains a
+separate deliberate act.
+
 ## The protection document
 
 ```json

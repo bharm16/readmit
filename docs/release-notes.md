@@ -1,5 +1,30 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The desktop shell completed the privacy journey through the existing
+  disclosure, protection and sharing operations (#260). The privacy panel
+  derives a fail-closed export review from actual workspace entries — the case,
+  the original specification, the disclosure policy and the complete
+  inventory — into a fresh review entry and a separate private local-state
+  entry; a blocked review lists every unresolved export surface as the explicit
+  blocker it is, and nothing is left unresolved quietly. The reviewed packet is
+  exported only under an approval naming the exact materialized review
+  identity, typed fresh and never retained, so any edit, changed source or
+  stale approval is the refusal the command line gives rather than a warning.
+  Every result states what it establishes — a disclosure-reviewed extract — and
+  declines external regression equivalence by name; no re-execution happens
+  while preparing an export and no synthetic result substitutes for external
+  proof. The protection panel registers a control as a structured reference to
+  a key readmit never holds (the key masked, locator arguments counted), and
+  packs, inspects, opens and discards encrypted transfer packages under it,
+  showing recipient, generation and retention facts beside what encryption does
+  not establish. The support panel authors the sharing policy through
+  structured controls, previews the value-free summary — the preview is every
+  byte the bundle will hold — and publishes into a natively chosen local directory
+  (or a fresh workspace entry) only under the exact preview identity, with a
+  no-auto-upload path and the exclusions stated; a team transfer remains the customer hub's separate
+  authenticated workflow. Nothing here is uploaded, no private linkage is read
+  by the window, and no secret value crosses into the renderer.
+
 - The desktop shell assembles actual investigation packets and opens portable
   reports entirely in the application (#259). The investigation-packet panels
   select verified case evidence, the exact historical specification, the

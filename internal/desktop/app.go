@@ -107,7 +107,18 @@ const (
 	// Both are claims the listing makes, and opening either one verifies it.
 	PacketArtifact         Kind = "packet"
 	PortableReviewArtifact Kind = "portable-review"
-	UnsupportedArtifact    Kind = "unsupported"
+	// The privacy and protection screens' artifacts: a completed derived export
+	// packet, a verified local support bundle, an encrypted transfer package,
+	// a protection document registering key references readmit never holds, and
+	// the sharing policy a support summary is prepared under. All five are
+	// claims the listing makes, and opening the entry is still the verification
+	// step.
+	DerivedExportArtifact   Kind = "derived-export"
+	SupportArtifact         Kind = "support"
+	TransferPackageArtifact Kind = "transfer-package"
+	ProtectionArtifact      Kind = "protection"
+	SharingPolicyArtifact   Kind = "sharing-policy"
+	UnsupportedArtifact     Kind = "unsupported"
 )
 
 // Artifact is one entry of a workspace folder. Schema and Provenance are what

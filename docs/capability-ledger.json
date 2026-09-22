@@ -791,8 +791,8 @@
       "owner": "bharm16/readmit#260",
       "screen": "a protection screen",
       "action": "encrypt evidence into transfer packages with an external key",
-      "test": "desktop protection journey test and shared-operation parity",
-      "implemented": false
+      "test": "internal/desktop protection journey tests plus internal/protect package parity and tests/privacy_desktop_parity_test.go",
+      "implemented": true
     },
     {
       "id": "cli.protect.inspect",
@@ -802,8 +802,8 @@
       "owner": "bharm16/readmit#260",
       "screen": "a protection screen",
       "action": "encrypt evidence into transfer packages with an external key",
-      "test": "desktop protection journey test and shared-operation parity",
-      "implemented": false
+      "test": "internal/desktop protection journey tests plus internal/protect package parity and tests/privacy_desktop_parity_test.go",
+      "implemented": true
     },
     {
       "id": "cli.protect.open",
@@ -813,8 +813,8 @@
       "owner": "bharm16/readmit#260",
       "screen": "a protection screen",
       "action": "encrypt evidence into transfer packages with an external key",
-      "test": "desktop protection journey test and shared-operation parity",
-      "implemented": false
+      "test": "internal/desktop protection journey tests plus internal/protect package parity and tests/privacy_desktop_parity_test.go",
+      "implemented": true
     },
     {
       "id": "cli.protect.pack",
@@ -824,8 +824,8 @@
       "owner": "bharm16/readmit#260",
       "screen": "a protection screen",
       "action": "encrypt evidence into transfer packages with an external key",
-      "test": "desktop protection journey test and shared-operation parity",
-      "implemented": false
+      "test": "internal/desktop protection journey tests plus internal/protect package parity and tests/privacy_desktop_parity_test.go",
+      "implemented": true
     },
     {
       "id": "cli.protect.register",
@@ -835,8 +835,8 @@
       "owner": "bharm16/readmit#260",
       "screen": "a protection screen",
       "action": "encrypt evidence into transfer packages with an external key",
-      "test": "desktop protection journey test and shared-operation parity",
-      "implemented": false
+      "test": "internal/desktop protection journey tests plus internal/protect package parity and tests/privacy_desktop_parity_test.go",
+      "implemented": true
     },
     {
       "id": "cli.protect.retire",
@@ -846,8 +846,8 @@
       "owner": "bharm16/readmit#260",
       "screen": "a protection screen",
       "action": "encrypt evidence into transfer packages with an external key",
-      "test": "desktop protection journey test and shared-operation parity",
-      "implemented": false
+      "test": "internal/desktop protection journey tests plus internal/protect package parity and tests/privacy_desktop_parity_test.go",
+      "implemented": true
     },
     {
       "id": "cli.protect.rotate",
@@ -857,8 +857,8 @@
       "owner": "bharm16/readmit#260",
       "screen": "a protection screen",
       "action": "encrypt evidence into transfer packages with an external key",
-      "test": "desktop protection journey test and shared-operation parity",
-      "implemented": false
+      "test": "internal/desktop protection journey tests plus internal/protect package parity and tests/privacy_desktop_parity_test.go",
+      "implemented": true
     },
     {
       "id": "cli.protect.show",
@@ -868,8 +868,8 @@
       "owner": "bharm16/readmit#260",
       "screen": "a protection screen",
       "action": "encrypt evidence into transfer packages with an external key",
-      "test": "desktop protection journey test and shared-operation parity",
-      "implemented": false
+      "test": "internal/desktop protection journey tests plus internal/protect package parity and tests/privacy_desktop_parity_test.go",
+      "implemented": true
     },
     {
       "id": "cli.redact.export",
@@ -879,8 +879,8 @@
       "owner": "bharm16/readmit#260",
       "screen": "a privacy-review screen",
       "action": "derive testing evidence and a fail-closed export review",
-      "test": "desktop redaction journey test and shared-operation parity",
-      "implemented": false
+      "test": "internal/desktop privacy journey tests plus internal/redact package parity and tests/privacy_desktop_parity_test.go",
+      "implemented": true
     },
     {
       "id": "cli.redact.reexecute",
@@ -888,9 +888,9 @@
       "kind": "cli",
       "capability": "Reexecute reviewed transformed evidence against an explicitly selected authorized target",
       "owner": "bharm16/readmit#260",
-      "screen": "a privacy-review screen",
+      "screen": "the command line; the privacy-review screen states external_equivalence: declined",
       "action": "derive testing evidence and a fail-closed export review",
-      "test": "desktop redaction journey test and shared-operation parity",
+      "test": "internal/redact reexecute tests; the desktop screen asserts the decline rather than driving execution",
       "implemented": false
     },
     {
@@ -1209,8 +1209,8 @@
       "owner": "bharm16/readmit#260",
       "screen": "a support-review screen",
       "action": "verify value-free support diagnostics offline",
-      "test": "desktop share journey test and shared-operation parity",
-      "implemented": false
+      "test": "internal/desktop support journey tests plus internal/sharing package parity and tests/privacy_desktop_parity_test.go",
+      "implemented": true
     },
     {
       "id": "cli.source.collect",
@@ -3879,6 +3879,182 @@
       "screen": "the investigation-packet panels of the evidence region",
       "action": "verify one portable review offline in read-only mode with the report text revealed only deliberately and no acquired authority",
       "test": "desktop packet behavior tests plus internal/report review tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.DeriveExportReview",
+      "source": "desktop.App.DeriveExportReview",
+      "kind": "desktop",
+      "capability": "Derive a fail-closed export review and its private local state from actual workspace entries",
+      "owner": "bharm16/readmit#260",
+      "screen": "the privacy panel of the privacy region",
+      "action": "prepare, review, approve and export derived testing evidence",
+      "test": "internal/desktop privacy journey tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ExportDerivedPacket",
+      "source": "desktop.App.ExportDerivedPacket",
+      "kind": "desktop",
+      "capability": "Export the reviewed packet under an approval naming the exact review identity",
+      "owner": "bharm16/readmit#260",
+      "screen": "the privacy panel of the privacy region",
+      "action": "prepare, review, approve and export derived testing evidence",
+      "test": "internal/desktop privacy journey tests plus tests/privacy_desktop_parity_test.go",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveSharingPolicy",
+      "source": "desktop.App.SaveSharingPolicy",
+      "kind": "desktop",
+      "capability": "Author a readmit-sharing-policy/v1 document through structured controls",
+      "owner": "bharm16/readmit#260",
+      "screen": "the privacy panel of the privacy region",
+      "action": "prepare and publish value-free support diagnostics",
+      "test": "internal/desktop support journey tests and PrivacyPanel.test.tsx",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ReadSharingPolicy",
+      "source": "desktop.App.ReadSharingPolicy",
+      "kind": "desktop",
+      "capability": "Read a sharing policy through the sharing contract's own decoder",
+      "owner": "bharm16/readmit#260",
+      "screen": "the privacy panel of the privacy region",
+      "action": "prepare and publish value-free support diagnostics",
+      "test": "internal/desktop support journey tests and PrivacyPanel.test.tsx",
+      "implemented": true
+    },
+    {
+      "id": "desktop.PreviewSupportSummary",
+      "source": "desktop.App.PreviewSupportSummary",
+      "kind": "desktop",
+      "capability": "Prepare the value-free support summary and show every byte it would publish",
+      "owner": "bharm16/readmit#260",
+      "screen": "the privacy panel of the privacy region",
+      "action": "prepare and publish value-free support diagnostics",
+      "test": "internal/desktop support journey tests plus tests/privacy_desktop_parity_test.go",
+      "implemented": true
+    },
+    {
+      "id": "desktop.PublishSupportSummary",
+      "source": "desktop.App.PublishSupportSummary",
+      "kind": "desktop",
+      "capability": "Publish the reviewed support bundle into a new local directory under the exact preview identity",
+      "owner": "bharm16/readmit#260",
+      "screen": "the privacy panel of the privacy region",
+      "action": "prepare and publish value-free support diagnostics",
+      "test": "internal/desktop support journey tests plus tests/privacy_desktop_parity_test.go",
+      "implemented": true
+    },
+    {
+      "id": "desktop.VerifySupportBundle",
+      "source": "desktop.App.VerifySupportBundle",
+      "kind": "desktop",
+      "capability": "Verify a local support bundle offline, independently of its source",
+      "owner": "bharm16/readmit#260",
+      "screen": "the privacy panel of the privacy region",
+      "action": "verify value-free support diagnostics offline",
+      "test": "internal/desktop support journey tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ReadProtection",
+      "source": "desktop.App.ReadProtection",
+      "kind": "desktop",
+      "capability": "Show every registered protection control with the key masked",
+      "owner": "bharm16/readmit#260",
+      "screen": "the protection panel of the privacy region",
+      "action": "encrypt evidence into transfer packages with an external key",
+      "test": "internal/desktop protection journey tests and ProtectionPanel.test.tsx",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveProtectionControl",
+      "source": "desktop.App.SaveProtectionControl",
+      "kind": "desktop",
+      "capability": "Register a protection control as a structured reference to a key readmit never holds",
+      "owner": "bharm16/readmit#260",
+      "screen": "the protection panel of the privacy region",
+      "action": "encrypt evidence into transfer packages with an external key",
+      "test": "internal/desktop protection journey tests and ProtectionPanel.test.tsx",
+      "implemented": true
+    },
+    {
+      "id": "desktop.RotateProtectionControl",
+      "source": "desktop.App.RotateProtectionControl",
+      "kind": "desktop",
+      "capability": "Record a key rotation only after the declared store answers",
+      "owner": "bharm16/readmit#260",
+      "screen": "the protection panel of the privacy region",
+      "action": "encrypt evidence into transfer packages with an external key",
+      "test": "internal/desktop protection journey tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.RetireProtectionControl",
+      "source": "desktop.App.RetireProtectionControl",
+      "kind": "desktop",
+      "capability": "Stop a control writing new packages while it still opens what it wrote",
+      "owner": "bharm16/readmit#260",
+      "screen": "the protection panel of the privacy region",
+      "action": "encrypt evidence into transfer packages with an external key",
+      "test": "internal/desktop protection journey tests and ProtectionPanel.test.tsx",
+      "implemented": true
+    },
+    {
+      "id": "desktop.PackProtectedPackage",
+      "source": "desktop.App.PackProtectedPackage",
+      "kind": "desktop",
+      "capability": "Write an encrypted transfer package from workspace entries under an active control",
+      "owner": "bharm16/readmit#260",
+      "screen": "the protection panel of the privacy region",
+      "action": "encrypt evidence into transfer packages with an external key",
+      "test": "internal/desktop protection journey tests plus tests/privacy_desktop_parity_test.go",
+      "implemented": true
+    },
+    {
+      "id": "desktop.InspectProtectedPackage",
+      "source": "desktop.App.InspectProtectedPackage",
+      "kind": "desktop",
+      "capability": "Report what a transfer package declares about itself, without a key",
+      "owner": "bharm16/readmit#260",
+      "screen": "the protection panel of the privacy region",
+      "action": "encrypt evidence into transfer packages with an external key",
+      "test": "internal/desktop protection journey tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.OpenProtectedPackage",
+      "source": "desktop.App.OpenProtectedPackage",
+      "kind": "desktop",
+      "capability": "Decrypt a transfer package into a new directory under the control whose key opens it",
+      "owner": "bharm16/readmit#260",
+      "screen": "the protection panel of the privacy region",
+      "action": "encrypt evidence into transfer packages with an external key",
+      "test": "internal/desktop protection journey tests plus tests/privacy_desktop_parity_test.go",
+      "implemented": true
+    },
+    {
+      "id": "desktop.DiscardProtectedPackage",
+      "source": "desktop.App.DiscardProtectedPackage",
+      "kind": "desktop",
+      "capability": "Unlink the files a package declares behind the declared retention gate and an explicit override",
+      "owner": "bharm16/readmit#260",
+      "screen": "the protection panel of the privacy region",
+      "action": "encrypt evidence into transfer packages with an external key",
+      "test": "internal/desktop protection journey tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ChooseSupportExportPath",
+      "source": "desktop.App.ChooseSupportExportPath",
+      "kind": "desktop",
+      "capability": "Choose the native local folder a reviewed support bundle is published into",
+      "owner": "bharm16/readmit#260",
+      "screen": "the privacy panel of the privacy region",
+      "action": "prepare and publish value-free support diagnostics",
+      "test": "internal/desktop support journey tests",
       "implemented": true
     }
   ]

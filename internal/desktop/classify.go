@@ -8,7 +8,10 @@ import (
 
 	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/findingreview"
+	"github.com/bharm16/readmit/internal/protect"
+	"github.com/bharm16/readmit/internal/redact"
 	"github.com/bharm16/readmit/internal/report"
+	"github.com/bharm16/readmit/internal/sharing"
 )
 
 // maxSchemaSniffBytes bounds how far into a regular file the listing looks for
@@ -38,8 +41,13 @@ var schemaMarkerFiles = []struct {
 	{"suite.json", SuiteArtifact},
 	// A sealed investigation packet and a portable review both carry their
 	// manifest under one canonical name; the manifest's own contract refines
-	// which of the two the directory is called.
+	// which of the two the directory is called. A completed derived export, a
+	// local support bundle and an encrypted transfer package each carry their
+	// own canonical record the same way.
 	{"manifest.json", PacketArtifact},
+	{"export-review.json", DerivedExportArtifact},
+	{"support.json", SupportArtifact},
+	{"transfer.json", TransferPackageArtifact},
 }
 
 // declaredSchemas are the contracts a regular file can declare that this
@@ -78,6 +86,13 @@ var declaredSchemas = map[string]Kind{
 	"readmit-test-release/v1":    SuiteArtifact,
 	"readmit-suite-coverage/v1":  SuiteArtifact,
 	"readmit-suite-promotion/v1": SuiteArtifact,
+
+	// A protection document registers references to keys readmit never holds,
+	// and a sharing policy declares what a support summary may be prepared
+	// for; the protection and support panels offer each through its own strict
+	// reader.
+	"readmit-protection/v1":     ProtectionArtifact,
+	"readmit-sharing-policy/v1": SharingPolicyArtifact,
 }
 
 // classify reports what one workspace entry declares, beyond what the case
@@ -142,6 +157,21 @@ func refinedMarker(path string, kind Kind) (Kind, bool) {
 			return PacketArtifact, true
 		case ok && schema == report.ReviewSchema:
 			return PortableReviewArtifact, true
+		}
+		return UnsupportedArtifact, false
+	case DerivedExportArtifact:
+		if schema, ok := sniffSchema(path); ok && schema == redact.ExportSchema {
+			return DerivedExportArtifact, true
+		}
+		return UnsupportedArtifact, false
+	case SupportArtifact:
+		if schema, ok := sniffSchema(path); ok && schema == sharing.Schema {
+			return SupportArtifact, true
+		}
+		return UnsupportedArtifact, false
+	case TransferPackageArtifact:
+		if schema, ok := sniffSchema(path); ok && schema == protect.TransferSchema {
+			return TransferPackageArtifact, true
 		}
 		return UnsupportedArtifact, false
 	}

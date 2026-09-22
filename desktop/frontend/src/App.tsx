@@ -7,6 +7,8 @@ import { NoteDraft } from "./NoteDraft";
 import { Recovery, RetainedDrafts } from "./Recovery";
 import { RunPanel } from "./RunPanel";
 import { PacketPanel } from "./PacketPanel";
+import { PrivacyPanel } from "./PrivacyPanel";
+import { ProtectionPanel } from "./ProtectionPanel";
 import { SuitePanel } from "./SuitePanel";
 import { EnvironmentPanel } from "./EnvironmentPanel";
 import { Reduction, type ReductionForm } from "./Reduction";
@@ -2383,6 +2385,20 @@ export default function App() {
       <>
         <OperationAccess />
         <HubPanel />
+        {root ? (
+          <PrivacyPanel
+            workspace={root}
+            entries={opened?.artifacts ?? []}
+            onRefresh={() => void refreshListing()}
+          />
+        ) : null}
+        {root ? (
+          <ProtectionPanel
+            workspace={root}
+            entries={opened?.artifacts ?? []}
+            onRefresh={() => void refreshListing()}
+          />
+        ) : null}
         <p className="statement">{described?.privacy.statement}</p>
         <ul className="absent">
           {(described?.privacy.absent ?? []).map((claim) => (

@@ -1125,7 +1125,9 @@ changing the input, the policy, the specification or the output changes it.
 that were just read, not a document, so there is no stored approval to go stale
 quietly and nothing here that another artifact can be approved against later.
 Exporting a packet is `readmit redact export`, which requires the same identity
-and re-verifies everything itself. An interrupted review is refused rather than
+and re-verifies everything itself; the [privacy panel](#privacy-review-protected-export-and-support-sharing)
+drives that operation with the identity typed in fresh, and derives reviews
+through `readmit redact` itself. An interrupted review is refused rather than
 read as a complete one, because the completion marker is written last.
 
 ### What a review is, and what it is not
@@ -1630,12 +1632,14 @@ collaboration UI and are not duplicated here.
 - Authoring a correlation rules document or a redaction policy in the window
   (rules authoring is owned by the sequence panel). A transformation plan is
   authored in Review and transform through the same typed operators
-  `readmit transform` previews; a redaction policy still reaches the window as
-  a document somebody wrote beside the evidence.
-- Creating an export review, exporting a packet, and retaining an approval.
-  `readmit redact` derives a review and `readmit redact export` gates on the
-  same identity this panel reports; the window reads one and states a decision
-  about the bytes it just read, and writes nothing.
+  `readmit transform` previews; a redaction policy and an original-artifact
+  inventory still reach the window as documents somebody wrote beside the
+  evidence.
+- Retaining an approval, and approving an incomplete review. The privacy
+  screen derives an export review and exports the reviewed packet through the
+  same gates the command line uses, but the window records no approval: an
+  approval is typed fresh against the identity the bytes have now, and a
+  blocked review cannot be approved whatever identity is named.
 - Reading the private state of a review. Source linkage, surrogate mappings,
   date offsets and known residual values are never named, opened or read here.
 - Retaining a preview or a review across an interruption. The working session is
@@ -1828,6 +1832,72 @@ approval, not a regression-equivalence claim, and a successfully rendered
 report is not a passing run. See
 [sealed packets and portable reports](report.md) for both contracts' bounds,
 refusals and reader rules.
+
+## Privacy review, protected export and support sharing
+
+The **privacy** panels are where an investigation's material actually becomes
+shareable, honestly or not at all: they derive a disclosure review from what
+the workspace really holds, read it through the same verified reader the
+export gate uses, export the reviewed packet under an approval naming the
+exact identity, protect a packet in an encrypted transfer package, and prepare
+the value-free support summary. All four are the existing `redact`, `redact
+export`, `protect` and `share` operations; the panels decide nothing the
+reporting engine does not already own, and the command line reaches the same
+verified decisions and the same disclosure refusals over the same bytes.
+
+**Preparation** selects four entries of the open workspace — the case, the
+original specification, the disclosure policy and the complete
+original-artifact inventory — and runs the existing redaction operation into a
+fresh review entry and a separate private local-state entry. A policy or an
+inventory is a document somebody authored beside the evidence; the window
+authors none. A blocked review is the normal first answer, and its blockers
+are the whole inventory: every surface the export could include — the named
+fields, the free text and embedded payloads, the unknown segments, the source
+filenames and metadata, the specification literals, the retained runs and
+their replay values, the original diagnosis — stays listed with what handled
+it, and nothing is left unresolved quietly. The private entry is named so the
+journey can continue, and is never opened by this window: source linkage,
+surrogate mappings, date offsets and residual values stay exactly where the
+operation put them. Deliberate original-versus-derived inspection is the
+inspector over each case, exactly as everywhere else.
+
+**Approval and export** take the ready review, its private entry, and the
+exact review identity typed in fresh. The approval is the command line's own
+byte-level gate: it is checked against the identity the bytes on disk have
+now, so any edit, changed source or stale approval is refused rather than
+warned about, and it is never recorded by the window — there is no stored
+approval for a draft, a restored session or anyone else to reuse. The export
+reruns the derived specification against fresh built-in loopback fixtures and
+writes the freshly generated packet only after every gate passes, registering
+it in the workspace navigation as a `derived-export` entry. It establishes a
+disclosure-reviewed extract, and it declines the other thing by name: no
+external regression-equivalence claim exists in this release, no
+re-execution happens while preparing an export, and no synthetic result
+substitutes for unavailable external proof.
+
+**Protection** registers a control as a structured reference — the declared
+at-rest storage, the absolute path of the program that prints the key, and
+locator arguments that are counted rather than echoed — and packs, inspects,
+opens and discards transfer packages under it. Key material is never in the
+window: the views show the one mask, a rotation is recorded only after the
+declared store answers, and a missing key, a wrong key, a rotated-away key and
+a tampered package are each the operation's own refusal. The package view
+shows the recipient and authority facts the descriptor declares — the control,
+the generation, the retention period — beside what encryption does not
+establish: not source authentication, not revocation, deletion is not erasure,
+and opening a package ends the protection it carried. Packing writes a local
+directory; moving it anywhere is somebody's separate deliberate act.
+
+**Support** authors the sharing policy through structured controls, previews
+the value-free summary — the preview is every byte the bundle will hold, and
+no free-form field exists in it to hide anything — and publishes the bundle
+into a natively chosen new folder, or one fresh workspace entry, only under an
+approval naming the exact preview identity, which the publish regenerates and
+re-checks. A stale approval is a
+refusal. The bundle verifies offline, independently of its source, and the
+panel states the exclusions: no evidence payload, no recursive collection, no
+upload — a team transfer is the customer hub's separate authenticated
+workflow, and a local typed approver label is not authenticated team approval.
 
 ## Comparing retained executions
 
