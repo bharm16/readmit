@@ -24,6 +24,7 @@ import {
   suitePromotionReview,
   suiteReleasesResult,
 } from "./testkit/fixtures";
+import type { HubReleaseReviewRequest } from "./bindings";
 
 const entries = suiteArtifacts();
 
@@ -367,6 +368,85 @@ test("release references are authored and impact reports affected tests", async 
   await user.click(screen.getByRole("button", { name: "Report impact" }));
   expect(await screen.findByText("affected")).toBeTruthy();
   expect(screen.getByText("booking")).toBeTruthy();
+  uninstallFacade();
+});
+
+// The team review journey from the release surface: the successor release the
+// To entry names is requested and approved on the hub against the digest of
+// those exact bytes, under the signed-in identity the hub records — with the
+// refusal surfaced while no request names the release yet.
+test("the successor release is requested and approved for team review by content", async () => {
+  const user = userEvent.setup();
+  let requested = false;
+  const releaseEvent = (kind: string, recipient: string) => ({
+    schema: "readmit-hub-review-event/v1",
+    project: "cardio-study",
+    sequence: 7,
+    issuer: "https://idp.example",
+    actor: "author@hospital.org",
+    at: "2026-09-21T12:00:00Z",
+    kind,
+    evidence: "e".repeat(64),
+    parent: kind === "approval" ? "rel-request-1" : "",
+    recipient,
+    text: "Review the exact released expectations",
+    release: "d".repeat(64),
+    command_id: "rel-request-1",
+  });
+  const facade = suiteFacade({
+    PostHubReleaseReview: (request: HubReleaseReviewRequest) => {
+      if (request.kind === "approval" && !requested) {
+        return {
+          state: "failed",
+          project: request.project,
+          reason: "no review request names this exact release content; ask the author to request review, then approve the new request",
+        };
+      }
+      requested = true;
+      return {
+        state: "completed",
+        project: request.project,
+        head: 7,
+        events: [releaseEvent(request.kind, request.recipient)],
+      };
+    },
+  });
+  render(<SuitePanel workspace={WORKSPACE_ROOT} busy={false} entries={entries} drafts={[]} />);
+  await user.click(screen.getByRole("button", { name: "Releases and impact" }));
+  await user.type(screen.getByLabelText("To"), "booking-2.json");
+  await user.type(screen.getByLabelText("Hub project"), "cardio-study");
+  await user.type(screen.getByLabelText("Request recipient"), "reviewer@hospital.org");
+  await user.type(screen.getByLabelText("Command id"), "rel-request-1");
+  await user.type(screen.getByLabelText("Rationale"), "Review the exact released expectations");
+
+  // Approving while no request names the release is refused and surfaced.
+  await user.click(screen.getByRole("button", { name: "Approve this release" }));
+  expect(await screen.findByText(/no review request names this exact release content/i)).toBeTruthy();
+  const refused = facade.callsTo("PostHubReleaseReview")[0]?.args[0] as { kind: string; recipient: string };
+  expect(refused.kind).toBe("approval");
+  expect(refused.recipient).toBe("");
+
+  // The request carries the entry the panel named and the subject it asks.
+  await user.click(screen.getByRole("button", { name: "Request team review" }));
+  expect(await screen.findByText(/Recorded: review-request by author@hospital.org@https:\/\/idp\.example/)).toBeTruthy();
+  const asked = facade.callsTo("PostHubReleaseReview")[1]?.args[0] as {
+    kind: string;
+    recipient: string;
+    entry: string;
+    workspace: string;
+    project: string;
+  };
+  expect(asked.kind).toBe("review-request");
+  expect(asked.recipient).toBe("reviewer@hospital.org");
+  expect(asked.entry).toBe("booking-2.json");
+  expect(asked.workspace).toBe(WORKSPACE_ROOT);
+  expect(asked.project).toBe("cardio-study");
+
+  await user.click(screen.getByRole("button", { name: "Approve this release" }));
+  expect(await screen.findByText(/Recorded: approval by author@hospital.org/)).toBeTruthy();
+  const approved = facade.callsTo("PostHubReleaseReview")[2]?.args[0] as { kind: string; recipient: string };
+  expect(approved.kind).toBe("approval");
+  expect(approved.recipient).toBe("");
   uninstallFacade();
 });
 

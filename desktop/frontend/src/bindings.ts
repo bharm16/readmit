@@ -708,6 +708,19 @@ export interface Facade {
   ListHubProjectArtifacts(project: string): Promise<HubArtifactsResult>;
   DownloadHubArtifact(request: HubDownloadRequest): Promise<HubTransferResult>;
   UploadHubArtifact(request: HubUploadRequest): Promise<HubTransferResult>;
+  ListHubReviews(project: string): Promise<HubReviewsResult>;
+  SearchHubReviews(request: HubReviewQueryRequest): Promise<HubReviewsResult>;
+  ListHubNotifications(project: string): Promise<HubReviewsResult>;
+  SearchHubNotifications(request: HubReviewQueryRequest): Promise<HubReviewsResult>;
+  PostHubReview(request: HubReviewCommandRequest): Promise<HubReviewsResult>;
+  PostHubReleaseReview(request: HubReleaseReviewRequest): Promise<HubReviewsResult>;
+  PostHubSupportReview(request: HubSupportReviewRequest): Promise<HubReviewsResult>;
+  ListHubLifecycle(project: string): Promise<HubLifecycleResult>;
+  PostHubLifecycle(request: HubLifecycleCommandRequest): Promise<HubLifecycleResult>;
+  DownloadHubExport(request: HubDownloadRequest): Promise<HubTransferResult>;
+  SaveHubOfflineDraft(request: HubOfflineDraftRequest): Promise<EditorDraftsResult>;
+  ReconcileHubOfflineDraft(request: HubLifecycleCommandRequest): Promise<HubLifecycleResult>;
+  ExplainHubCustody(): Promise<HubResult>;
   SaveTarget(request: TargetSaveRequest): Promise<TargetResult>;
   ReadTarget(workspace: string, targetFile: string): Promise<TargetResult>;
   CheckTarget(request: TargetCheckRequest): Promise<TargetCheckResult>;
@@ -4441,6 +4454,186 @@ export function downloadHubArtifact(request: HubDownloadRequest): Promise<HubTra
 
 export function uploadHubArtifact(request: HubUploadRequest): Promise<HubTransferResult> {
   return guard(() => facade().UploadHubArtifact(request), { state: "failed" });
+}
+
+export interface HubReviewEventView {
+  schema: string;
+  project: string;
+  sequence: number;
+  issuer: string;
+  actor: string;
+  at: string;
+  kind: string;
+  evidence: string;
+  parent?: string;
+  recipient?: string;
+  text: string;
+  release?: string;
+  command_id: string;
+}
+
+export interface HubReviewsResult {
+  state: State;
+  reason?: string;
+  project?: string;
+  head?: number;
+  events?: HubReviewEventView[];
+  replay?: boolean;
+  warning?: string;
+}
+
+export interface HubReviewCommandRequest {
+  project: string;
+  id: string;
+  expected: number;
+  kind: string;
+  evidence: string;
+  parent: string;
+  recipient: string;
+  text: string;
+  release: string;
+}
+
+export interface HubReleaseReviewRequest {
+  project: string;
+  workspace: string;
+  entry: string;
+  kind: string;
+  id: string;
+  recipient: string;
+  text: string;
+}
+
+export interface HubSupportReviewRequest {
+  project: string;
+  workspace: string;
+  entry: string;
+  kind: string;
+  id: string;
+  recipient: string;
+}
+
+export interface HubReviewQueryRequest {
+  project: string;
+  after: number;
+  text: string;
+  evidence: string;
+}
+
+export interface HubLifecycleEventView {
+  schema: string;
+  project: string;
+  sequence: number;
+  issuer: string;
+  actor: string;
+  at: string;
+  review_head?: number;
+  kind: string;
+  resource?: string;
+  artifact?: string;
+  parents?: string[];
+  subject?: string;
+  until?: string;
+  reason: string;
+  command_id: string;
+}
+
+export interface HubAuditExportView {
+  schema: string;
+  project: string;
+  lifecycle: HubLifecycleEventView[];
+  review_head: number;
+  reviews: HubReviewEventView[];
+  warning: string;
+}
+
+export interface HubLifecycleResult {
+  state: State;
+  reason?: string;
+  project?: string;
+  head?: number;
+  events?: HubLifecycleEventView[];
+  tips?: Record<string, string[]>;
+  event?: HubLifecycleEventView;
+  audit?: HubAuditExportView;
+  replay?: boolean;
+  warning?: string;
+}
+
+export interface HubLifecycleCommandRequest {
+  project: string;
+  id: string;
+  expected: number;
+  kind: string;
+  resource: string;
+  artifact: string;
+  parents: string[];
+  subject: string;
+  until: string;
+  reason: string;
+}
+
+export interface HubOfflineDraftRequest {
+  workspace: string;
+  draft_id?: string;
+  project: string;
+  resource: string;
+  parent_tips: string[];
+  local_path: string;
+  expected_head: number;
+  note: string;
+}
+
+export function listHubReviews(project: string): Promise<HubReviewsResult> {
+  return guard(() => facade().ListHubReviews(project), { state: "failed" });
+}
+
+export function searchHubReviews(request: HubReviewQueryRequest): Promise<HubReviewsResult> {
+  return guard(() => facade().SearchHubReviews(request), { state: "failed" });
+}
+
+export function listHubNotifications(project: string): Promise<HubReviewsResult> {
+  return guard(() => facade().ListHubNotifications(project), { state: "failed" });
+}
+
+export function searchHubNotifications(request: HubReviewQueryRequest): Promise<HubReviewsResult> {
+  return guard(() => facade().SearchHubNotifications(request), { state: "failed" });
+}
+
+export function postHubReview(request: HubReviewCommandRequest): Promise<HubReviewsResult> {
+  return guard(() => facade().PostHubReview(request), { state: "failed" });
+}
+
+export function postHubReleaseReview(request: HubReleaseReviewRequest): Promise<HubReviewsResult> {
+  return guard(() => facade().PostHubReleaseReview(request), { state: "failed" });
+}
+
+export function postHubSupportReview(request: HubSupportReviewRequest): Promise<HubReviewsResult> {
+  return guard(() => facade().PostHubSupportReview(request), { state: "failed" });
+}
+
+export function listHubLifecycle(project: string): Promise<HubLifecycleResult> {
+  return guard(() => facade().ListHubLifecycle(project), { state: "failed" });
+}
+
+export function postHubLifecycle(request: HubLifecycleCommandRequest): Promise<HubLifecycleResult> {
+  return guard(() => facade().PostHubLifecycle(request), { state: "failed" });
+}
+
+export function downloadHubExport(request: HubDownloadRequest): Promise<HubTransferResult> {
+  return guard(() => facade().DownloadHubExport(request), { state: "failed" });
+}
+
+export function saveHubOfflineDraft(request: HubOfflineDraftRequest): Promise<EditorDraftsResult> {
+  return guard(() => facade().SaveHubOfflineDraft(request), { state: "failed" });
+}
+
+export function reconcileHubOfflineDraft(request: HubLifecycleCommandRequest): Promise<HubLifecycleResult> {
+  return guard(() => facade().ReconcileHubOfflineDraft(request), { state: "failed" });
+}
+
+export function explainHubCustody(): Promise<HubResult> {
+  return guard(() => facade().ExplainHubCustody(), { state: "failed", connected: false, authenticated: false });
 }
 
 // --- Interface Profile Management (readmit-local-profile/v1, readmit-profile-pack/v1, etc.) ---

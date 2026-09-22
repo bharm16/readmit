@@ -437,7 +437,7 @@ reviews or approvals. The operator must protect backup provenance: a manifest
 is not a cryptographic audit signature. Access policy is still restored separately
 and current policy controls who can read restored histories. Synthetic isolated
 PostgreSQL tests do not establish a live customer IdP or deployment acceptance.
-The API is available now; desktop collaboration UI remains unimplemented.
+The API is available now; the desktop customer-hub panel exposes collaboration through authenticated facade methods.
 
 ## Offline revisions and lifecycle administration
 
@@ -445,7 +445,7 @@ The API is available now; desktop collaboration UI remains unimplemented.
 `readmit-hub-lifecycle-history/v1`: `schema`, `head`, `events`, `tips`, and a
 local-custody `warning`. `tips` maps each resource identifier to its sorted
 unresolved revision IDs. The separate lifecycle head is independent of review
-history. This is an API workflow; desktop synchronization UI is not implemented.
+history. The desktop customer-hub panel exposes lifecycle tips, explicit resolve and offline-draft reconcile through authenticated facade methods.
 
 To work offline, download an authorized artifact and retain its lifecycle revision
 ID with your private working copy. Edit the copy without changing the original.

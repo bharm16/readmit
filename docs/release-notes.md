@@ -92,6 +92,22 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   operations the command line uses. Promotion grants no send authority;
   execution hands the suite entry to the durable-run panels' own preflight and
   explicit send decision, with no path copied by hand.
+- The desktop shell gained authenticated team collaboration, conflict resolution
+  and project administration (#262). Assignments, evidence-linked comments,
+  review requests and approvals bind hub OIDC identity; shared documents use
+  explicit revision tips with compare/keep-both/resolve; offline draft branches
+  reconcile after reconnect with expected-head semantics; admin remove-user,
+  retention, retire and audit-export reuse reviewed lifecycle commands; custody
+  limits for already-downloaded copies are explained. From the suite panel's
+  release comparison, a released expectation is requested and approved for team
+  review against the digest of the exact reviewed bytes under the signed-in
+  identity, and the hub panel above the privacy screens announces a sharing
+  policy, requests and records team approval of a published support summary by
+  its exact bytes, then downloads the approved summary through the hub's
+  approval-gated export route; the promotion tab's local approver label and the
+  privacy screens' local approval inputs stay deliberate local acts, never
+  filled from the team journeys.
+
 - The desktop shell authors every supported test and assertion operator through
   structured visual controls (#256). Guided test authoring covers
   `ledger_count`, `ledger_equals` and `ack_field_equals` with inspected-field

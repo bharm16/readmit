@@ -2753,6 +2753,149 @@
       "implemented": true
     },
     {
+      "id": "desktop.ListHubReviews",
+      "source": "desktop.App.ListHubReviews",
+      "kind": "desktop",
+      "capability": "read team collaboration review history",
+      "owner": "bharm16/readmit#262",
+      "screen": "the customer-hub team collaboration panel of the application",
+      "action": "read team collaboration review history",
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SearchHubReviews",
+      "source": "desktop.App.SearchHubReviews",
+      "kind": "desktop",
+      "capability": "search team collaboration review history",
+      "owner": "bharm16/readmit#262",
+      "screen": "the customer-hub team collaboration panel of the application",
+      "action": "search team collaboration review history",
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ListHubNotifications",
+      "source": "desktop.App.ListHubNotifications",
+      "kind": "desktop",
+      "capability": "read team collaboration notifications",
+      "owner": "bharm16/readmit#262",
+      "screen": "the customer-hub team collaboration panel of the application",
+      "action": "read team collaboration notifications",
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SearchHubNotifications",
+      "source": "desktop.App.SearchHubNotifications",
+      "kind": "desktop",
+      "capability": "search team collaboration notifications",
+      "owner": "bharm16/readmit#262",
+      "screen": "the customer-hub team collaboration panel of the application",
+      "action": "search team collaboration notifications",
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.PostHubReview",
+      "source": "desktop.App.PostHubReview",
+      "kind": "desktop",
+      "capability": "record an authenticated collaboration decision",
+      "owner": "bharm16/readmit#262",
+      "screen": "the customer-hub team collaboration panel of the application",
+      "action": "record an authenticated collaboration decision",
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.PostHubReleaseReview",
+      "source": "desktop.App.PostHubReleaseReview",
+      "kind": "desktop",
+      "capability": "request or approve review of one released expectation by its exact content",
+      "owner": "bharm16/readmit#262",
+      "screen": "the suite panel's release surface of the application",
+      "action": "post the hub review-request or approval naming the digest of the reviewed release bytes",
+      "test": "desktop SuitePanel tests plus internal/desktop hub release journey tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.PostHubSupportReview",
+      "source": "desktop.App.PostHubSupportReview",
+      "kind": "desktop",
+      "capability": "announce a sharing policy and request or approve team approval of one published support summary",
+      "owner": "bharm16/readmit#262",
+      "screen": "the customer-hub team collaboration panel above the privacy screens of the application",
+      "action": "post the hub support-policy, support-request or support-approval naming the digests of the exact policy and summary bytes",
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub sharing journey tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ListHubLifecycle",
+      "source": "desktop.App.ListHubLifecycle",
+      "kind": "desktop",
+      "capability": "read project lifecycle tips and history",
+      "owner": "bharm16/readmit#262",
+      "screen": "the customer-hub team collaboration panel of the application",
+      "action": "read project lifecycle tips and history",
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.PostHubLifecycle",
+      "source": "desktop.App.PostHubLifecycle",
+      "kind": "desktop",
+      "capability": "record lifecycle revision, resolve or admin command",
+      "owner": "bharm16/readmit#262",
+      "screen": "the customer-hub team collaboration panel of the application",
+      "action": "record lifecycle revision, resolve or admin command",
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.DownloadHubExport",
+      "source": "desktop.App.DownloadHubExport",
+      "kind": "desktop",
+      "capability": "download an authorized support export with custody notice",
+      "owner": "bharm16/readmit#262",
+      "screen": "the customer-hub team collaboration panel of the application",
+      "action": "download an authorized support export with custody notice",
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveHubOfflineDraft",
+      "source": "desktop.App.SaveHubOfflineDraft",
+      "kind": "desktop",
+      "capability": "retain an offline hub revision draft locally",
+      "owner": "bharm16/readmit#262",
+      "screen": "the customer-hub team collaboration panel of the application",
+      "action": "retain an offline hub revision draft locally",
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ReconcileHubOfflineDraft",
+      "source": "desktop.App.ReconcileHubOfflineDraft",
+      "kind": "desktop",
+      "capability": "reconcile an offline draft through explicit lifecycle revision",
+      "owner": "bharm16/readmit#262",
+      "screen": "the customer-hub team collaboration panel of the application",
+      "action": "reconcile an offline draft through explicit lifecycle revision",
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
+    },
+    {
+      "id": "desktop.ExplainHubCustody",
+      "source": "desktop.App.ExplainHubCustody",
+      "kind": "desktop",
+      "capability": "explain limits of revoking already-downloaded copies",
+      "owner": "bharm16/readmit#262",
+      "screen": "the customer-hub team collaboration panel of the application",
+      "action": "explain limits of revoking already-downloaded copies",
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
+    },
+    {
       "id": "desktop.InspectProfilePack",
       "source": "desktop.App.InspectProfilePack",
       "kind": "desktop",
@@ -3084,10 +3227,10 @@
       "kind": "hub",
       "capability": "download project evidence",
       "owner": "bharm16/readmit#262",
-      "screen": "the customer hub surfaces (planned); today the customer-operated hub service and its operator tooling",
+      "screen": "the customer-hub team collaboration panel of the application",
       "action": "download project evidence",
-      "test": "hub service integration tests; the graphical surface is owned by the hub UX ticket and is not claimed",
-      "implemented": false
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
     },
     {
       "id": "hub.team.PUT./v1/projects/{project}/artifacts/{digest}",
@@ -3095,10 +3238,10 @@
       "kind": "hub",
       "capability": "publish project evidence",
       "owner": "bharm16/readmit#262",
-      "screen": "the customer hub surfaces (planned); today the customer-operated hub service and its operator tooling",
+      "screen": "the customer-hub team collaboration panel of the application",
       "action": "publish project evidence",
-      "test": "hub service integration tests; the graphical surface is owned by the hub UX ticket and is not claimed",
-      "implemented": false
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
     },
     {
       "id": "hub.team.GET./v1/projects/{project}/exports/{digest}",
@@ -3106,10 +3249,10 @@
       "kind": "hub",
       "capability": "download a shared export",
       "owner": "bharm16/readmit#262",
-      "screen": "the customer hub surfaces (planned); today the customer-operated hub service and its operator tooling",
+      "screen": "the customer-hub team collaboration panel of the application",
       "action": "download a shared export",
-      "test": "hub service integration tests; the graphical surface is owned by the hub UX ticket and is not claimed",
-      "implemented": false
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
     },
     {
       "id": "hub.team.POST./v1/projects/{project}/execution",
@@ -3117,10 +3260,8 @@
       "kind": "hub",
       "capability": "execute a hub-authorized job",
       "owner": "bharm16/readmit#262",
-      "screen": "the customer hub surfaces (planned); today the customer-operated hub service and its operator tooling",
-      "action": "execute a hub-authorized job",
-      "test": "hub service integration tests; the graphical surface is owned by the hub UX ticket and is not claimed",
-      "implemented": false
+      "implemented": false,
+      "disposition": "hub returns not implemented for execution; customer runner surfaces are owned by bharm16/readmit#263"
     },
     {
       "id": "hub.team.POST./v1/projects/{project}/approvals",
@@ -3128,10 +3269,8 @@
       "kind": "hub",
       "capability": "record an approval",
       "owner": "bharm16/readmit#262",
-      "screen": "the customer hub surfaces (planned); today the customer-operated hub service and its operator tooling",
-      "action": "record an approval",
-      "test": "hub service integration tests; the graphical surface is owned by the hub UX ticket and is not claimed",
-      "implemented": false
+      "implemented": false,
+      "disposition": "hub returns not implemented for machine approvals; human review approvals use collaboration review routes"
     },
     {
       "id": "hub.team.POST./v1/projects/{project}/enrollment",
@@ -3139,10 +3278,8 @@
       "kind": "hub",
       "capability": "register a project member",
       "owner": "bharm16/readmit#262",
-      "screen": "the customer hub surfaces (planned); today the customer-operated hub service and its operator tooling",
-      "action": "register a project member",
-      "test": "hub service integration tests; the graphical surface is owned by the hub UX ticket and is not claimed",
-      "implemented": false
+      "implemented": false,
+      "disposition": "runner certificate enrollment handshake; owned by customer-runner surfaces (bharm16/readmit#263)"
     },
     {
       "id": "hub.team.GET./v1/projects/{project}/reviews",
@@ -3150,10 +3287,10 @@
       "kind": "hub",
       "capability": "read the collaboration review",
       "owner": "bharm16/readmit#262",
-      "screen": "the customer hub surfaces (planned); today the customer-operated hub service and its operator tooling",
+      "screen": "the customer-hub team collaboration panel of the application",
       "action": "read the collaboration review",
-      "test": "hub service integration tests; the graphical surface is owned by the hub UX ticket and is not claimed",
-      "implemented": false
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
     },
     {
       "id": "hub.team.POST./v1/projects/{project}/reviews",
@@ -3161,10 +3298,10 @@
       "kind": "hub",
       "capability": "record a collaboration decision",
       "owner": "bharm16/readmit#262",
-      "screen": "the customer hub surfaces (planned); today the customer-operated hub service and its operator tooling",
+      "screen": "the customer-hub team collaboration panel of the application",
       "action": "record a collaboration decision",
-      "test": "hub service integration tests; the graphical surface is owned by the hub UX ticket and is not claimed",
-      "implemented": false
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
     },
     {
       "id": "hub.team.GET./v2/projects/{project}/artifacts/{digest}",
@@ -3172,10 +3309,10 @@
       "kind": "hub",
       "capability": "download project evidence",
       "owner": "bharm16/readmit#262",
-      "screen": "the customer hub surfaces (planned); today the customer-operated hub service and its operator tooling",
+      "screen": "the customer-hub team collaboration panel of the application",
       "action": "download project evidence",
-      "test": "hub service integration tests; the graphical surface is owned by the hub UX ticket and is not claimed",
-      "implemented": false
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
     },
     {
       "id": "hub.team.PUT./v2/projects/{project}/artifacts/{digest}",
@@ -3183,10 +3320,10 @@
       "kind": "hub",
       "capability": "publish project evidence",
       "owner": "bharm16/readmit#262",
-      "screen": "the customer hub surfaces (planned); today the customer-operated hub service and its operator tooling",
+      "screen": "the customer-hub team collaboration panel of the application",
       "action": "publish project evidence",
-      "test": "hub service integration tests; the graphical surface is owned by the hub UX ticket and is not claimed",
-      "implemented": false
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
     },
     {
       "id": "hub.team.GET./v2/projects/{project}/exports/{digest}",
@@ -3194,10 +3331,10 @@
       "kind": "hub",
       "capability": "download a support export",
       "owner": "bharm16/readmit#262",
-      "screen": "the customer hub surfaces (planned); today the customer-operated hub service and its operator tooling",
+      "screen": "the customer-hub team collaboration panel of the application",
       "action": "download a support export",
-      "test": "hub service integration tests; the graphical surface is owned by the hub UX ticket and is not claimed",
-      "implemented": false
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
     },
     {
       "id": "hub.team.POST./v2/projects/{project}/execution",
@@ -3205,10 +3342,8 @@
       "kind": "hub",
       "capability": "execute a hub-authorized job",
       "owner": "bharm16/readmit#262",
-      "screen": "the customer hub surfaces (planned); today the customer-operated hub service and its operator tooling",
-      "action": "execute a hub-authorized job",
-      "test": "hub service integration tests; the graphical surface is owned by the hub UX ticket and is not claimed",
-      "implemented": false
+      "implemented": false,
+      "disposition": "hub returns not implemented for execution; customer runner surfaces are owned by bharm16/readmit#263"
     },
     {
       "id": "hub.team.POST./v2/projects/{project}/approvals",
@@ -3216,10 +3351,8 @@
       "kind": "hub",
       "capability": "record an approval",
       "owner": "bharm16/readmit#262",
-      "screen": "the customer hub surfaces (planned); today the customer-operated hub service and its operator tooling",
-      "action": "record an approval",
-      "test": "hub service integration tests; the graphical surface is owned by the hub UX ticket and is not claimed",
-      "implemented": false
+      "implemented": false,
+      "disposition": "hub returns not implemented for machine approvals; human review approvals use collaboration review routes"
     },
     {
       "id": "hub.team.POST./v2/projects/{project}/enrollment",
@@ -3227,10 +3360,8 @@
       "kind": "hub",
       "capability": "register a project member",
       "owner": "bharm16/readmit#262",
-      "screen": "the customer hub surfaces (planned); today the customer-operated hub service and its operator tooling",
-      "action": "register a project member",
-      "test": "hub service integration tests; the graphical surface is owned by the hub UX ticket and is not claimed",
-      "implemented": false
+      "implemented": false,
+      "disposition": "runner certificate enrollment handshake; owned by customer-runner surfaces (bharm16/readmit#263)"
     },
     {
       "id": "hub.team.GET./v2/projects/{project}/reviews",
@@ -3238,10 +3369,10 @@
       "kind": "hub",
       "capability": "read the collaboration review",
       "owner": "bharm16/readmit#262",
-      "screen": "the customer hub surfaces (planned); today the customer-operated hub service and its operator tooling",
+      "screen": "the customer-hub team collaboration panel of the application",
       "action": "read the collaboration review",
-      "test": "hub service integration tests; the graphical surface is owned by the hub UX ticket and is not claimed",
-      "implemented": false
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
     },
     {
       "id": "hub.team.POST./v2/projects/{project}/reviews",
@@ -3249,10 +3380,10 @@
       "kind": "hub",
       "capability": "record a collaboration decision",
       "owner": "bharm16/readmit#262",
-      "screen": "the customer hub surfaces (planned); today the customer-operated hub service and its operator tooling",
+      "screen": "the customer-hub team collaboration panel of the application",
       "action": "record a collaboration decision",
-      "test": "hub service integration tests; the graphical surface is owned by the hub UX ticket and is not claimed",
-      "implemented": false
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
     },
     {
       "id": "hub.team.GET./v2/projects/{project}/history",
@@ -3260,10 +3391,10 @@
       "kind": "hub",
       "capability": "read the review history",
       "owner": "bharm16/readmit#262",
-      "screen": "the customer hub surfaces (planned); today the customer-operated hub service and its operator tooling",
+      "screen": "the customer-hub team collaboration panel of the application",
       "action": "read the review history",
-      "test": "hub service integration tests; the graphical surface is owned by the hub UX ticket and is not claimed",
-      "implemented": false
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
     },
     {
       "id": "hub.team.POST./v2/projects/{project}/history",
@@ -3271,10 +3402,10 @@
       "kind": "hub",
       "capability": "record a history event",
       "owner": "bharm16/readmit#262",
-      "screen": "the customer hub surfaces (planned); today the customer-operated hub service and its operator tooling",
+      "screen": "the customer-hub team collaboration panel of the application",
       "action": "record a history event",
-      "test": "hub service integration tests; the graphical surface is owned by the hub UX ticket and is not claimed",
-      "implemented": false
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
     },
     {
       "id": "hub.team.GET./v2/projects/{project}/notifications",
@@ -3282,10 +3413,10 @@
       "kind": "hub",
       "capability": "read notifications",
       "owner": "bharm16/readmit#262",
-      "screen": "the customer hub surfaces (planned); today the customer-operated hub service and its operator tooling",
+      "screen": "the customer-hub team collaboration panel of the application",
       "action": "read notifications",
-      "test": "hub service integration tests; the graphical surface is owned by the hub UX ticket and is not claimed",
-      "implemented": false
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
     },
     {
       "id": "hub.team.POST./v2/projects/{project}/notifications",
@@ -3293,10 +3424,10 @@
       "kind": "hub",
       "capability": "record a notification",
       "owner": "bharm16/readmit#262",
-      "screen": "the customer hub surfaces (planned); today the customer-operated hub service and its operator tooling",
+      "screen": "the customer-hub team collaboration panel of the application",
       "action": "record a notification",
-      "test": "hub service integration tests; the graphical surface is owned by the hub UX ticket and is not claimed",
-      "implemented": false
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
     },
     {
       "id": "hub.team.GET./v2/projects/{project}/lifecycle",
@@ -3304,10 +3435,10 @@
       "kind": "hub",
       "capability": "read the project lifecycle log",
       "owner": "bharm16/readmit#262",
-      "screen": "the customer hub surfaces (planned); today the customer-operated hub service and its operator tooling",
+      "screen": "the customer-hub team collaboration panel of the application",
       "action": "read the project lifecycle log",
-      "test": "hub service integration tests; the graphical surface is owned by the hub UX ticket and is not claimed",
-      "implemented": false
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
     },
     {
       "id": "hub.team.POST./v2/projects/{project}/lifecycle",
@@ -3315,10 +3446,10 @@
       "kind": "hub",
       "capability": "record a lifecycle command",
       "owner": "bharm16/readmit#262",
-      "screen": "the customer hub surfaces (planned); today the customer-operated hub service and its operator tooling",
+      "screen": "the customer-hub team collaboration panel of the application",
       "action": "record a lifecycle command",
-      "test": "hub service integration tests; the graphical surface is owned by the hub UX ticket and is not claimed",
-      "implemented": false
+      "test": "desktop TeamCollaboration tests plus internal/desktop hub collaboration tests",
+      "implemented": true
     },
     {
       "id": "hub.runner.POST./v1/projects/{project}/runner",

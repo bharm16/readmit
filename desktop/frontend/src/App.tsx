@@ -2384,7 +2384,7 @@ export default function App() {
     privacy: (
       <>
         <OperationAccess />
-        <HubPanel />
+        <HubPanel workspace={root} entries={opened?.artifacts ?? []} />
         {root ? (
           <PrivacyPanel
             workspace={root}
