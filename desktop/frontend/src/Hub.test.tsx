@@ -250,3 +250,84 @@ test("HubPanel displays project artifacts, handles download with custody notice,
 
   uninstallFacade();
 });
+
+/** Connected to the hub the fixtures name, and not signed in. */
+const signedOutStatus: HubResult = {
+  state: "completed",
+  connected: true,
+  authenticated: false,
+  config_path: "/etc/readmit/hub-client.json",
+  hub_url: "https://hub.customer.example:8443",
+};
+
+// A sign-in that does not complete (#326) is a recoverable error: the panel
+// keeps the connection the person made, says why, and offers the next action,
+// which reaches the application instead of being refused as busy. While the
+// sign-in waits for the browser it holds the application's one operation
+// slot, so the panel offers only its cancel.
+test("HubPanel shows a failed sign-in as a recoverable error and the next action goes through", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade({
+    HubStatus: async () => signedOutStatus,
+    StartHubAuth: async () => ({ state: "completed", auth_url: "https://idp.customer.example/authorize", port: 1 }),
+  });
+  const signIn = facade.park("CompleteHubAuth");
+
+  render(<HubPanel />);
+  await user.click(await screen.findByRole("button", { name: /Sign in with Customer IdP/i }));
+  expect(await screen.findByRole("button", { name: "Cancel sign-in" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: /Sign in with Customer IdP/i }).hasAttribute("disabled")).toBe(true);
+  expect(screen.getByRole("button", { name: /Refresh status/i }).hasAttribute("disabled")).toBe(true);
+
+  signIn.resolve({
+    state: "failed",
+    connected: false,
+    authenticated: false,
+    reason: "authentication callback failed: IdP returned error: access_denied",
+  });
+  expect(await screen.findByText(/IdP returned error: access_denied/)).toBeTruthy();
+  expect(screen.getByText(/Connected \(https:\/\/hub\.customer\.example:8443\)/)).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Cancel sign-in" })).toBeNull();
+  // Nothing was retried or refreshed on the person's behalf.
+  expect(facade.callsTo("StartHubAuth").length).toBe(1);
+  expect(facade.callsTo("CompleteHubAuth").length).toBe(1);
+  expect(facade.callsTo("HubStatus").length).toBe(1);
+
+  // The next action is the person's own, and it reaches the application.
+  await user.click(screen.getByRole("button", { name: /Sign in with Customer IdP/i }));
+  expect(facade.callsTo("StartHubAuth").length).toBe(2);
+  await screen.findByRole("button", { name: "Cancel sign-in" });
+  signIn.resolve(defaultHubResult());
+  expect(await screen.findByText(/analyst@customer\.example/)).toBeTruthy();
+  expect(screen.queryByText(/access_denied/)).toBeNull();
+
+  uninstallFacade();
+});
+
+// Closing the browser leaves nothing to return to the loopback listener, so
+// the person cancels the sign-in from the panel. The cancel names the sign-in
+// and nothing else, and the panel is ready to sign in again.
+test("HubPanel cancels a sign-in whose browser never returns", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade({
+    HubStatus: async () => signedOutStatus,
+    StartHubAuth: async () => ({ state: "completed", auth_url: "https://idp.customer.example/authorize", port: 1 }),
+    Cancel: async () => undefined,
+  });
+  const signIn = facade.park("CompleteHubAuth");
+
+  render(<HubPanel />);
+  await user.click(await screen.findByRole("button", { name: /Sign in with Customer IdP/i }));
+  await user.click(await screen.findByRole("button", { name: "Cancel sign-in" }));
+  expect(facade.oneCall("Cancel")).toEqual(["hub-sign-in"]);
+
+  signIn.resolve({ state: "cancelled", connected: false, authenticated: false, reason: "sign-in was cancelled" });
+  expect(await screen.findByText("sign-in was cancelled")).toBeTruthy();
+  expect(screen.getByText(/Connected \(https:\/\/hub\.customer\.example:8443\)/)).toBeTruthy();
+  expect(screen.getByRole("button", { name: /Sign in with Customer IdP/i }).hasAttribute("disabled")).toBe(false);
+  expect(facade.callsTo("StartHubAuth").length).toBe(1);
+  expect(facade.callsTo("CompleteHubAuth").length).toBe(1);
+  expect(facade.callsTo("HubStatus").length).toBe(1);
+
+  uninstallFacade();
+});

@@ -242,7 +242,9 @@ func (f *AuthFlow) WaitForCallback(ctx context.Context) (code string, err error)
 	}
 }
 
-// Close shuts down the loopback listener.
+// Close shuts down the loopback listener. The listener is closed here as well
+// as through the server, because a server that has not begun serving yet
+// would otherwise close it only once it does.
 func (f *AuthFlow) Close() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -251,6 +253,7 @@ func (f *AuthFlow) Close() {
 		if f.server != nil {
 			f.server.Close()
 		}
+		f.listener.Close()
 	}
 }
 

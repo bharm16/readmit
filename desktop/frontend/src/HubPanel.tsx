@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import "./hub.css";
 import {
+  cancel,
   chooseHubConfig,
   connectHub,
   disconnectHub,
@@ -100,17 +101,23 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
     setMessage(null);
     try {
       const res = await startHubAuth();
-      if (res.state === "completed" && res.auth_url) {
-        setAuthUrl(res.auth_url);
-        // Wait for browser callback loopback
-        void completeHubAuth("", "").then((authRes) => {
-          setStatus(authRes);
-          setAuthUrl(null);
-        });
-      } else {
+      if (res.state !== "completed" || !res.auth_url) {
         setMessage(res.reason ?? "Failed to start identity provider authentication.");
+        return;
+      }
+      setAuthUrl(res.auth_url);
+      // The sign-in holds the application's one operation slot while it
+      // waits for the browser, so the panel stays busy and offers only its
+      // cancel. A sign-in that does not complete keeps the connection as it
+      // was and says why; nothing is retried.
+      const authRes = await completeHubAuth("", "");
+      if (authRes.state === "completed") {
+        setStatus(authRes);
+      } else {
+        setMessage(authRes.reason ?? "Sign-in did not complete.");
       }
     } finally {
+      setAuthUrl(null);
       setBusy(false);
     }
   }
@@ -269,7 +276,10 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
               Waiting for browser callback…{" "}
               <a href={authUrl} target="_blank" rel="noreferrer">
                 Open login window
-              </a>
+              </a>{" "}
+              <button type="button" onClick={() => cancel("hub-sign-in")}>
+                Cancel sign-in
+              </button>
             </p>
           ) : null}
         </div>

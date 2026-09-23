@@ -16,6 +16,14 @@ import (
 const (
 	hubSelectionSchema = "readmit-desktop-hub-selection/v1"
 	custodyNotice      = "Downloaded copies remain under local custody and cannot be revoked."
+
+	// hubSignInWait bounds how long a sign-in waits for the browser to return
+	// to the loopback listener.
+	hubSignInWait = 3 * time.Minute
+
+	// hubSignInOperation names the sign-in's wait the way the hub panel's
+	// cancel does, so that cancel stops the sign-in and nothing else.
+	hubSignInOperation = "hub-sign-in"
 )
 
 type hubSelection struct {
@@ -363,12 +371,24 @@ func (a *App) StartHubAuth() HubAuthUrlResult {
 }
 
 // CompleteHubAuth exchanges an authorization code for an RFC 9068 access token.
-// When code is empty, it waits for the browser redirect on the loopback listener.
+// When code is empty, it waits for the browser redirect on the loopback
+// listener, holding the operation slot as the sign-in the hub panel's cancel
+// names. The completion takes the attempt StartHubAuth opened, so however it
+// ends — refused, forged, cancelled, timed out or answered — the listener is
+// closed before anything else happens, and no late browser or later call can
+// complete the attempt; nothing is retried. A completion refused because
+// another operation holds the slot ends the pending attempt the same way.
 func (a *App) CompleteHubAuth(code, state string) HubResult {
-	return run(a, true, false, func(ctx context.Context) HubResult {
+	return a.completeHubAuth(code, state, hubSignInWait)
+}
+
+func (a *App) completeHubAuth(code, state string, wait time.Duration) HubResult {
+	result := runNamed[HubResult, *HubResult](a, hubSignInOperation, true, false, func(ctx context.Context) HubResult {
+		cancelled := HubResult{State: Cancelled, Reason: "sign-in was cancelled"}
 		a.hubMu.Lock()
 		cfg := a.hubConfig
 		flow := a.hubAuthFlow
+		a.hubAuthFlow = nil
 		a.hubMu.Unlock()
 
 		if cfg == nil {
@@ -378,44 +398,68 @@ func (a *App) CompleteHubAuth(code, state string) HubResult {
 			return HubResult{State: Failed, Reason: "no authentication flow in progress; start sign-in first"}
 		}
 
-		authCode := code
-		authState := state
-
+		authCode, authState := code, state
+		var err error
 		if authCode == "" {
-			waitCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
-			defer cancel()
-			receivedCode, err := flow.WaitForCallback(waitCtx)
-			if err != nil {
-				return HubResult{State: Failed, Reason: "authentication callback failed: " + err.Error()}
-			}
-			authCode = receivedCode
+			waitCtx, cancel := context.WithTimeout(ctx, wait)
+			authCode, err = flow.WaitForCallback(waitCtx)
+			cancel()
 			authState = flow.State
 		}
-
-		if authState != flow.State {
+		flow.Close()
+		switch {
+		case ctx.Err() != nil:
+			return cancelled
+		case errors.Is(err, context.DeadlineExceeded):
+			return HubResult{State: Failed, Reason: "sign-in timed out: the browser did not return; sign in again"}
+		case err != nil:
+			return HubResult{State: Failed, Reason: "authentication callback failed: " + err.Error()}
+		case authState != flow.State:
 			return HubResult{State: Failed, Reason: "state mismatch in authentication response"}
 		}
 
 		session, err := hubclient.ExchangeCode(ctx, *cfg, authCode, flow.Verifier, flow.RedirectURI)
 		if err != nil {
+			if ctx.Err() != nil {
+				return cancelled
+			}
 			return HubResult{State: Failed, Reason: "token exchange failed: " + err.Error()}
 		}
 
-		flow.Close()
-
 		a.hubMu.Lock()
-		a.hubAuthFlow = nil
-		a.hubSession = session
+		client := a.hubClient
+		a.hubMu.Unlock()
 		// Re-initialize client with new session if connected
-		if a.hubClient != nil {
+		if client != nil {
 			if updatedClient, err := hubclient.New(ctx, *cfg, session); err == nil {
-				a.hubClient = updatedClient
+				client = updatedClient
 			}
 		}
+		// A cancel that arrives before the session is kept keeps nothing.
+		if ctx.Err() != nil {
+			return cancelled
+		}
+		a.hubMu.Lock()
+		a.hubSession = session
+		a.hubClient = client
 		a.hubMu.Unlock()
 
 		return a.hubStatus(ctx)
 	})
+	// Refused by another operation before it could take the attempt, the
+	// completion leaves nothing that could complete it now, so the attempt
+	// ends here rather than listening until the next sign-in. A duplicate
+	// completion refused by a sign-in that is waiting ends nothing: that
+	// sign-in holds its attempt.
+	if result.State == Busy && !a.operating(hubSignInOperation) {
+		a.hubMu.Lock()
+		if a.hubAuthFlow != nil {
+			a.hubAuthFlow.Close()
+			a.hubAuthFlow = nil
+		}
+		a.hubMu.Unlock()
+	}
+	return result
 }
 
 // HubStatus reports the current connection, authentication, and authorized project states.
