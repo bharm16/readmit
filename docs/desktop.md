@@ -2289,8 +2289,20 @@ selected via native file dialog. The configuration file specifies:
 - `authorized_projects`: List of declared project identifiers expected to be available to the client.
 
 The application remembers the selected configuration file path in local desktop
-state across sessions as `readmit-desktop-hub-selection/v1`. The configuration
-file itself is never copied into application state or modified by the shell.
+state across sessions as `readmit-desktop-hub-selection/v1`, retained beside the
+operation selection. The configuration file itself is never copied into
+application state or modified by the shell.
+
+Reopening the window restores that selection by reading two local files, the
+selection and the configuration it names, and nothing else: it connects to no
+hub, resolves no client key, starts no sign-in and renews no session, so the
+hub panel shows the remembered configuration offline and connecting stays a
+deliberate action. A remembered selection that can no longer be restored is
+never silently dropped. When the configuration it names has vanished or no
+longer validates, the panel shows that configuration and why, and neither
+diagnoses nor connects to it; when the selection itself cannot be read, the
+panel says so. Choosing a configuration again recovers, and it is what the next
+window restores.
 
 ### Prerequisite diagnostics
 

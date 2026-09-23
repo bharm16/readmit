@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HubPanel } from "./HubPanel";
 import { installFacade, uninstallFacade } from "./testkit/wails";
@@ -328,6 +328,52 @@ test("HubPanel cancels a sign-in whose browser never returns", async () => {
   expect(facade.callsTo("StartHubAuth").length).toBe(1);
   expect(facade.callsTo("CompleteHubAuth").length).toBe(1);
   expect(facade.callsTo("HubStatus").length).toBe(1);
+
+  uninstallFacade();
+});
+
+// A remembered configuration that no longer validates (#335) is shown when the
+// panel opens: which configuration it was and why it cannot be used, with
+// choosing one again as the way back. It is neither diagnosed nor connected
+// to, and the panel asks nothing of the hub on the person's behalf.
+test("HubPanel shows a remembered configuration that no longer validates and recovers when one is chosen again", async () => {
+  const user = userEvent.setup();
+  const remembered: HubResult = {
+    state: "failed",
+    connected: false,
+    authenticated: false,
+    config_path: "/etc/readmit/hub-client.json",
+    reason:
+      "the remembered hub configuration no longer validates (hub endpoint must be a valid https URL with host and optional port); choose a hub configuration again",
+  };
+  const chosen: HubResult = {
+    state: "completed",
+    connected: false,
+    authenticated: false,
+    config_path: "/etc/readmit/hub-client.json",
+    hub_url: "https://hub.customer.example:8443",
+  };
+  const facade = installFacade({
+    HubStatus: async () => remembered,
+    ChooseHubConfig: async () => chosen,
+  });
+
+  render(<HubPanel />);
+  expect(await screen.findByText(/^the remembered hub configuration no longer validates \(hub endpoint must be/)).toBeTruthy();
+  expect(screen.getByText("Configuration: /etc/readmit/hub-client.json")).toBeTruthy();
+  expect(screen.getByText(/Offline \/ Local Mode/)).toBeTruthy();
+  expect(screen.getByRole("button", { name: /Diagnose prerequisites/i }).hasAttribute("disabled")).toBe(true);
+  expect(screen.getByRole("button", { name: /Connect to hub/i }).hasAttribute("disabled")).toBe(true);
+  expect(screen.getByRole("button", { name: /Choose hub configuration…/i }).hasAttribute("disabled")).toBe(false);
+
+  await user.click(screen.getByRole("button", { name: /Choose hub configuration…/i }));
+  expect(facade.callsTo("ChooseHubConfig").length).toBe(1);
+  await waitFor(() => expect(screen.queryByText(/no longer validates/)).toBeNull());
+  expect(screen.getByText("Configuration: /etc/readmit/hub-client.json")).toBeTruthy();
+  expect(screen.getByRole("button", { name: /Diagnose prerequisites/i }).hasAttribute("disabled")).toBe(false);
+  expect(screen.getByRole("button", { name: /Connect to hub/i }).hasAttribute("disabled")).toBe(false);
+  // Only the person's own choice was acted on.
+  expect(facade.calls.map((call) => call.method).filter((method) => method !== "HubStatus")).toEqual(["ChooseHubConfig"]);
 
   uninstallFacade();
 });

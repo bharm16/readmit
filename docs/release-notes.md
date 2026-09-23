@@ -1,5 +1,20 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- A reopened window now restores the customer hub configuration chosen in an
+  earlier session (#335). The window never retained the selection, so it
+  neither wrote `readmit-desktop-hub-selection/v1` nor read it back, and every
+  reopen started with no hub configured. The selection is now kept beside the
+  operation selection and restored by reading it and the configuration it
+  names, and nothing else: the restored configuration is offline, and no hub,
+  client key, sign-in or session is touched until the person acts. A
+  remembered selection that can no longer be restored is shown rather than
+  dropped: the hub panel names the configuration and says it is gone or why it
+  no longer validates, or says the selection cannot be read, and offers neither
+  diagnosis nor connection until a configuration is chosen again. The
+  selection's bytes and meaning are unchanged, the privacy status now names it
+  among what the shell keeps, and no contract, facade method or `readmit`
+  command changes.
+
 - A case is now reported written only once the directory entries naming its
   files are synced as well as the files (#336). The writer synced each file and
   the case directory but never `payloads/` or the folder holding the case, so

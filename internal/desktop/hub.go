@@ -5,6 +5,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -153,23 +154,37 @@ func DefaultHubSelectionPath() (string, error) {
 	return filepath.Join(root, "readmit", "hub.json"), nil
 }
 
+// restoreHubSelection retains the configuration an earlier session selected.
+// Restoring reads the selection and the configuration it names, two local
+// files, and nothing else: it connects to no hub, starts no sign-in and renews
+// no session, so a restored configuration is selected and offline. A
+// remembered selection that can no longer be restored is not dropped: why is
+// kept for the hub status to show, beside the configuration it names, until a
+// configuration is selected again. Nothing remembered is nothing to show.
 func (a *App) restoreHubSelection(selectionPath string) {
 	a.hubMu.Lock()
 	defer a.hubMu.Unlock()
 	a.hubSelectionPath = selectionPath
-	data, err := readOperationFile(selectionPath)
-	if err != nil {
+	if _, err := os.Lstat(selectionPath); errors.Is(err, fs.ErrNotExist) {
 		return
 	}
+	data, err := readOperationFile(selectionPath)
 	var sel hubSelection
-	if json.Unmarshal(data, &sel, json.RejectUnknownMembers(true)) != nil || sel.Schema != hubSelectionSchema || !filepath.IsAbs(sel.Config) {
+	if err != nil || json.Unmarshal(data, &sel, json.RejectUnknownMembers(true)) != nil || sel.Schema != hubSelectionSchema || !filepath.IsAbs(sel.Config) {
+		a.hubRestoreRefusal = "the remembered hub selection cannot be read; choose a hub configuration again"
+		return
+	}
+	a.hubConfigPath = sel.Config
+	if _, err := os.Stat(sel.Config); errors.Is(err, fs.ErrNotExist) {
+		a.hubRestoreRefusal = "the remembered hub configuration is no longer there; choose a hub configuration again"
 		return
 	}
 	cfg, err := hubclient.ReadConfig(sel.Config)
-	if err == nil {
-		a.hubConfigPath = sel.Config
-		a.hubConfig = &cfg
+	if err != nil {
+		a.hubRestoreRefusal = "the remembered hub configuration no longer validates (" + err.Error() + "); choose a hub configuration again"
+		return
 	}
+	a.hubConfig = &cfg
 }
 
 // ChooseHubConfig presents a dialog to select the customer hub configuration file.
@@ -250,6 +265,7 @@ func (a *App) selectHubConfig(path string) HubResult {
 	a.hubSession = nil
 	a.hubConfigPath = path
 	a.hubConfig = &cfg
+	a.hubRestoreRefusal = ""
 
 	return HubResult{
 		State:         Completed,
@@ -484,8 +500,12 @@ func (a *App) hubStatus(ctx context.Context) HubResult {
 	client := a.hubClient
 	session := a.hubSession
 	configPath := a.hubConfigPath
+	refusal := a.hubRestoreRefusal
 	a.hubMu.Unlock()
 
+	if cfg == nil && refusal != "" {
+		return HubResult{State: Failed, Reason: refusal, ConfigPath: configPath}
+	}
 	if cfg == nil {
 		return HubResult{
 			State:     Empty,

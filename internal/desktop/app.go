@@ -262,6 +262,9 @@ type App struct {
 	hubClient        *hubclient.Client
 	hubSession       *hubclient.Session
 	hubAuthFlow      *hubclient.AuthFlow
+	// hubRestoreRefusal says why the selection an earlier session remembered
+	// could not be restored, until a configuration is selected again.
+	hubRestoreRefusal string
 
 	// commercialMu guards the retained commercial destinations selection: a
 	// local path the operator chose, read again for each status. It is never
