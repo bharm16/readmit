@@ -223,23 +223,14 @@ func TestRunnerScreenPreparesConfiguresAndExecutesThroughExistingContracts(t *te
 	}
 
 	// Enrollment is refused while the fresh handler waits out a predecessor's
-	// grants, and its refusal is reasoned; after the cooldown the same probe
-	// reports the lease and the capacity it grants.
+	// grants; once the cooldown ends the pinned job is admitted. Each execution
+	// below releases its lease when it completes, so no step waits for one to
+	// lapse; that wait is proven once, against the shipped hub, by
+	// TestPublicRunnerAndHubProcessesExecuteAndRefuseReuse.
 	if result := screen.EnrollRunner(configPath); result.State == desktop.Completed {
 		t.Fatal("enrollment bypassed the restart cooldown")
 	}
 	clock.advance(runnerHold)
-	enrollment := screen.EnrollRunner(configPath)
-	if enrollment.State != desktop.Completed || enrollment.MaxSeconds != 30 || enrollment.MaxJobs != 2 || enrollment.ExpiresAt == "" {
-		t.Fatalf("enrollment: %+v", enrollment)
-	}
-	// The probe's own lease holds the environment; a different instance is
-	// refused with the hub's reasoned answer until it expires. This is the
-	// duplicate-admission rule the panel displays rather than hides.
-	if blocked := screen.ExecuteRunnerJob(desktop.RunnerExecuteRequest{ConfigPath: configPath, JobPath: jobPath}); blocked.State != desktop.Failed || !strings.Contains(blocked.Reason, "environment leased or recovering") {
-		t.Fatalf("probe lease not enforced: %+v", blocked)
-	}
-	time.Sleep(10 * time.Second)
 
 	execution := screen.ExecuteRunnerJob(desktop.RunnerExecuteRequest{ConfigPath: configPath, JobPath: jobPath, Expected: preview.InputIdentity})
 	if execution.State != desktop.Completed || execution.Summary == nil || execution.Summary.State != "passed" {
@@ -263,37 +254,6 @@ func TestRunnerScreenPreparesConfiguresAndExecutesThroughExistingContracts(t *te
 	if recovery.State != desktop.Completed || recovery.Acknowledged != 1 || recovery.Uncertain != 0 {
 		t.Fatalf("recovery: %+v", recovery)
 	}
-	// A grant for a different engine is the hub's version refusal, shown with
-	// its own reason; restoring the generated grant re-admits.
-	revised := filepath.Join(dir, "runners.revised.json")
-	if result := screen.SaveRunnerGrant(desktop.RunnerGrantRequest{
-		Policy: grantPath, Project: "alpha", Subject: "runner", Environment: "lab",
-		Engine: "other-approved-build", MaxSeconds: 30, MaxJobs: 2, Output: revised,
-	}); result.State != desktop.Completed {
-		t.Fatalf("revised grant: %+v", result)
-	}
-	if err := os.Rename(revised, grantPath); err != nil {
-		t.Fatal(err)
-	}
-	if mismatch := screen.EnrollRunner(configPath); mismatch.State != desktop.PermissionDenied || !strings.Contains(mismatch.Reason, "version or environment refused") {
-		t.Fatalf("version mismatch: %+v", mismatch)
-	}
-	original := filepath.Join(dir, "runners.original.json")
-	if result := screen.SaveRunnerGrant(desktop.RunnerGrantRequest{
-		Project: "alpha", Subject: "runner", Environment: "lab",
-		Engine: engine.Version(), MaxSeconds: 30, MaxJobs: 2, Output: original,
-	}); result.State != desktop.Completed {
-		t.Fatalf("restored grant: %+v", result)
-	}
-	if err := os.Rename(original, grantPath); err != nil {
-		t.Fatal(err)
-	}
-	if recovered := screen.EnrollRunner(configPath); recovered.State != desktop.Completed {
-		t.Fatalf("enrollment after restore: %+v", recovered)
-	}
-	// The probe's lease again holds the environment until it expires.
-	time.Sleep(10 * time.Second)
-
 	// A configuration bound to another environment is refused on its face: the
 	// prepared inputs bind one environment and the runner is configured for
 	// another, before the hub is ever asked.
@@ -336,6 +296,50 @@ func TestRunnerScreenPreparesConfiguresAndExecutesThroughExistingContracts(t *te
 		t.Fatalf("retained jobs: %v", retained)
 	}
 
+	// A grant for a different engine is the hub's version refusal, shown with
+	// its own reason; restoring the generated grant re-admits.
+	revised := filepath.Join(dir, "runners.revised.json")
+	if result := screen.SaveRunnerGrant(desktop.RunnerGrantRequest{
+		Policy: grantPath, Project: "alpha", Subject: "runner", Environment: "lab",
+		Engine: "other-approved-build", MaxSeconds: 30, MaxJobs: 2, Output: revised,
+	}); result.State != desktop.Completed {
+		t.Fatalf("revised grant: %+v", result)
+	}
+	if err := os.Rename(revised, grantPath); err != nil {
+		t.Fatal(err)
+	}
+	if mismatch := screen.EnrollRunner(configPath); mismatch.State != desktop.PermissionDenied || !strings.Contains(mismatch.Reason, "version or environment refused") {
+		t.Fatalf("version mismatch: %+v", mismatch)
+	}
+	original := filepath.Join(dir, "runners.original.json")
+	if result := screen.SaveRunnerGrant(desktop.RunnerGrantRequest{
+		Project: "alpha", Subject: "runner", Environment: "lab",
+		Engine: engine.Version(), MaxSeconds: 30, MaxJobs: 2, Output: original,
+	}); result.State != desktop.Completed {
+		t.Fatalf("restored grant: %+v", result)
+	}
+	if err := os.Rename(original, grantPath); err != nil {
+		t.Fatal(err)
+	}
+	enrollment := screen.EnrollRunner(configPath)
+	if enrollment.State != desktop.Completed || enrollment.MaxSeconds != 30 || enrollment.MaxJobs != 2 || enrollment.ExpiresAt == "" {
+		t.Fatalf("enrollment after restore: %+v", enrollment)
+	}
+	// The probe's own lease holds the environment; a different instance is
+	// refused with the hub's reasoned answer while it is current, and claims
+	// nothing. This is the duplicate-admission rule the panel displays rather
+	// than hides.
+	heldJob := filepath.Join(dir, "held-job.json")
+	if result := screen.SaveRunnerJob(desktop.RunnerJobRequest{ID: "screen-002", Spec: spec, Output: heldJob}); result.State != desktop.Completed {
+		t.Fatalf("held job: %+v", result)
+	}
+	if blocked := screen.ExecuteRunnerJob(desktop.RunnerExecuteRequest{ConfigPath: configPath, JobPath: heldJob}); blocked.State != desktop.Failed || !strings.Contains(blocked.Reason, "environment leased or recovering") {
+		t.Fatalf("probe lease not enforced: %+v", blocked)
+	}
+	if _, err := os.Stat(filepath.Join(root, "screen-002")); !os.IsNotExist(err) {
+		t.Fatal("job refused by a current lease claimed work", err)
+	}
+
 	// The project administration authority (#262's lifecycle log) is the
 	// enforcement behind every admission: recording a remove-user command for
 	// the runner's own subject — through the same server, by an authorized
@@ -365,6 +369,8 @@ func TestRunnerScreenPreparesConfiguresAndExecutesThroughExistingContracts(t *te
 	if removalResponse.StatusCode != http.StatusCreated {
 		t.Fatalf("remove-user command: %d %s", removalResponse.StatusCode, removalBody)
 	}
+	// The probe's lease may still be current; the hub decides access before
+	// any lease, so the refusal is the removal's, not the lease's.
 	if denied := screen.EnrollRunner(configPath); denied.State != desktop.PermissionDenied || !strings.Contains(denied.Reason, "access refused") {
 		t.Fatalf("removed runner admission: %+v", denied)
 	}

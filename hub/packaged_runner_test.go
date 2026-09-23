@@ -82,7 +82,7 @@ func TestPublicRunnerAndHubProcessesExecuteAndRefuseReuse(t *testing.T) {
 	listener.Close()
 	c.Schema = "readmit-hub-config/v1"
 	config := write("hub.json", c)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	if output, err := exec.CommandContext(ctx, service, "-config", config, "migrate").CombinedOutput(); err != nil {
 		t.Fatalf("migrate: %v %s", err, output)
@@ -173,7 +173,32 @@ func TestPublicRunnerAndHubProcessesExecuteAndRefuseReuse(t *testing.T) {
 	command := func(args ...string) ([]byte, error) {
 		return exec.CommandContext(ctx, cli, append([]string{"--operation-policy", operationPolicy}, args...)...).CombinedOutput()
 	}
-	output, err := command("runner", "execute", job, "--config", runnerConfig, "--send")
+	// The one hub test that waits for a lease to lapse, so that expiry is proven
+	// end to end with the shipped hub's production durations: an enrollment
+	// probe's lease holds the environment for the documented ten seconds, the
+	// job is refused while it is current and claims nothing, and the same job
+	// is admitted once it expires.
+	enrolling := time.Now()
+	output, err := command("runner", "enroll", "--config", runnerConfig)
+	if err != nil {
+		t.Fatalf("enroll: %v %s", err, output)
+	}
+	enrolled := time.Now()
+	probe, err := runnerprotocol.DecodeLease(bytes.TrimSpace(output))
+	if err != nil {
+		t.Fatalf("enrollment lease: %v %s", err, output)
+	}
+	if probe.Expires.Before(enrolling.Add(10*time.Second)) || probe.Expires.After(enrolled.Add(10*time.Second)) {
+		t.Fatalf("probe lease expires %v, want ten seconds after its grant between %v and %v", probe.Expires, enrolling.UTC(), enrolled.UTC())
+	}
+	if output, err = command("runner", "execute", job, "--config", runnerConfig, "--send"); err == nil || !strings.Contains(string(output), "environment leased or recovering") {
+		t.Fatalf("job admitted while the probe's lease was current: %v %s", err, output)
+	}
+	if _, err = os.Stat(filepath.Join(root, "accepted")); !os.IsNotExist(err) {
+		t.Fatal("job refused by a current lease claimed work", err)
+	}
+	time.Sleep(time.Until(probe.Expires))
+	output, err = command("runner", "execute", job, "--config", runnerConfig, "--send")
 	if err != nil {
 		t.Fatalf("runner: %v %s", err, output)
 	}
