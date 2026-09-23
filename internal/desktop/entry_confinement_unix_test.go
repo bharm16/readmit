@@ -710,7 +710,7 @@ func accessedAt(t *testing.T, path string) time.Time {
 			return time.Unix(spec.Unix())
 		}
 	}
-	t.Skip("this platform does not report when a file was last read")
+	t.Fatal("this platform does not report when a file was last read, so no read can be ruled out here")
 	return time.Time{}
 }
 
@@ -720,7 +720,9 @@ var unreadSince = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
 // ageReads sets each path's access time before its modification time, so that
 // any later read of it moves the access time, even where reads are recorded
 // lazily. On a filesystem that records no read at all nothing could show one,
-// so the test is skipped there.
+// and a proof that did not run is no proof: the test fails there, naming why,
+// rather than skipping, which the #111 launcher would count as a problem
+// anyway. Run it where the temporary folder records reads.
 func ageReads(t *testing.T, paths ...string) {
 	t.Helper()
 	directory := t.TempDir()
@@ -735,7 +737,7 @@ func ageReads(t *testing.T, paths ...string) {
 		t.Fatal(err)
 	}
 	if !readSince(t, probe) {
-		t.Skip("this filesystem does not record when a file is read")
+		t.Fatal("this filesystem does not record when a file is read, so no read through a link can be ruled out here")
 	}
 }
 

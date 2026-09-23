@@ -191,6 +191,12 @@ func (a *App) CreateProject(name, title, owner string, versions []string) Projec
 		if strings.TrimSpace(name) == "" {
 			return ProjectOverviewResult{State: Failed, Reason: "the new project needs a folder name"}
 		}
+		// The project is one new folder of the chosen folder, so a name that
+		// would place it beside that folder, inside one of its folders or
+		// through a linked folder is refused before the dialog is offered.
+		if artifactpath.EntryName(name) != nil {
+			return ProjectOverviewResult{State: Failed, Reason: "the new project needs one folder name, never a path"}
+		}
 		if len(versions) == 0 {
 			return ProjectOverviewResult{State: Failed, Reason: "a new project declares at least one interface version"}
 		}

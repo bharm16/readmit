@@ -1,5 +1,22 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The window's remaining write-side confinement gaps found after #348 are
+  closed (#368). Pasted content followed a symbolic link planted at the
+  workspace's `staged-sources` folder and was staged wherever it pointed; that
+  folder must now be one real folder of the workspace, created when absent. A
+  new project's name was joined to the chosen folder as given, so a `..`
+  escape or a nested name created the project beside that folder or inside one
+  of its folders; it must now be one name, refused before the dialog opens. A
+  collection, a capture, a finalized collection and an import wrote into the
+  workspace or project the request named without resolving it, so a symbolic
+  link there sent their evidence outside; each now refuses it, as every other
+  operation does, before anything is read or written. Every entry the window's
+  facade itself refuses as a link, such as the case every panel reads, now has
+  a test that requires the refusal's own sentence, and the tests that prove a
+  link is never read through by its target's access time fail rather than skip
+  where the filesystem records no read. No contract, facade method or
+  `readmit` command changes.
+
 - `readmit report --scenario` no longer flushes the workspace it throws away
   (#346). Its trials ran in a temporary execution workspace written through the
   same durable writers other commands keep, so 94 of the command's 147 file
