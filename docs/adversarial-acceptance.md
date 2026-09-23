@@ -60,9 +60,9 @@ packaging, desktop and five native archive smoke checks.
 
 The application surfaces of #244 (#245–#266) are held to the same matrix
 through the typed facade every screen calls, not through the controls that
-would have offered an action: a disabled control is not the boundary. No
-test here drives the real interface; that is the next section's remaining
-work.
+would have offered an action: a disabled control is not the boundary. The
+facade tests below call it directly; the journeys after the table drive the
+real interface.
 
 | Surface | Exercised through the facade the window calls |
 | --- | --- |
@@ -77,6 +77,35 @@ work.
 | Two authenticated hub users | The real team handler over mutual TLS with disposable PostgreSQL, identities signed by a provider the hub trusts, and four windows. The hub refuses a viewer's writes, each asked once; a stale head is a conflict; one person cannot reuse another's command id; recorded actors come from tokens. A support export needs the exact approval chain and an exporting role, and a newer policy withdraws the approval. A removed grant or an administrator's removal refuses the next request, sent once and never retried. An expired session is refused by the window with nothing sent to the hub or the identity provider. Offline work retained before a removal comes back with a restarted window; reconciling it needs an explicit connection and then a new sign-in, and the hub still refuses it, asked once. |
 | Window import archives | Traversal, absolute, backslash and duplicate entries are refused by preview and commit, nothing is written, and no refusal repeats the planted entry name. |
 | Existing surface tests | Named so their removal fails acceptance: exact-version approvals (baseline, promotion, privacy export, preflight identity), production and credential refusal before any send, packet operations acquiring no send or mutation authority, license management never gating evidence, hub operations refusing without a session, crash recovery never resending, private drafts and session, planted values absent from privacy results, no name lookups in the privacy journey, portable reviews escaping hostile evidence, and the declared keyboard, focus, non-colour and text-scaling semantics. Declared semantics are not screen-reader evidence. |
+
+## Real-interface journeys
+
+Three journeys in `desktop/frontend/src/journeys` drive the production window
+with real keyboard and pointer events against the real facade over real files,
+through #109's shared harness, and run with `npm run test:journeys` in the
+desktop check:
+
+- `keyboard.journey.tsx`: a keyboard-only person dismisses and misdirects the
+  folder dialog opened with Ctrl+O and recovers, reaches and presses every
+  control with Tab and Enter to create the sample and verify and inspect a
+  case, walks the regions with F6 and Shift+F6 in the declared order, resizes
+  the panes within their bounds and scales text up and back; every status reads
+  as a word.
+- `hostile-content.journey.tsx`: markup in a patient name, an observation, a
+  note, a file name and a search is shown as escaped text through listing,
+  verification, indexing and inspection; no element is created from it and no
+  planted script runs.
+- `stale-authority.journey.tsx`: a note written under an activation and left
+  unstored comes back exactly after a reopen; once the activation is released
+  the restored note is refused, stays retained, and neither a reopen nor a
+  second press stores it. This journey found that typing faster than the draft
+  store answered minted one draft per early keystroke, so a reopen could offer
+  back a truncated note; the editor now retains under one identity.
+
+These run in jsdom. They establish operation by keyboard events, the window's
+semantics and backend enforcement behind real input, not spoken output: jsdom
+does not make the page inert behind a modal dialog, so focus containment is
+not claimed, and the host's native dialogs are answered by the harness.
 
 ## Browser exercise and retained local result
 
@@ -211,11 +240,11 @@ const fs = require('node:fs');
 
 ## Still required for full acceptance
 
-- Drive the keyboard, focus, rendering, cancellation and recoverable-error
-  journeys of the application surfaces through the real interface, with the
-  shared real-UI interaction harness #109 owns once it is on `main`. Facade
-  tests and jsdom role queries establish neither operation by keyboard nor
-  spoken output.
+- Extend the real-interface journeys to the remaining surfaces — the
+  privacy and support export with planted values, capture, observation,
+  runner and hub screens — and exercise focus containment, zoom and high
+  contrast in the native webview. jsdom journeys and role queries are not
+  spoken-output evidence.
 - Exercise complete installed journeys on the declared Windows, macOS and Ubuntu
   matrix with native keyboard navigation and actual screen readers, including
   native dialogs, errors, cancellations, focus recovery, zoom and high contrast.
