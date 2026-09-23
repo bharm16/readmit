@@ -20,6 +20,16 @@ process, and the packet keeps every copy of it in a synced write, so a slow
 local disk cannot turn the five-second message timeout each retained target
 records into a failed report. `listen` still syncs its ledger before every ACK.
 
+The trials run in an execution workspace in the system temporary folder, which
+the command removes before it answers: the generated case family, each trial's
+case, spec and target, its receiver's case and ledger, and the result, run and
+send-policy decision its sender records. Nothing there is flushed to the disk,
+since the packet keeps only copies it writes itself. Every packet file is
+synced as it is written. Once its completion record is, every packet directory,
+the packet and the entry naming it in its parent are synced before the command
+reports success, so a parent the command cannot open is refused before anything
+runs. Windows flushes every packet file; Go exposes no directory flush there.
+
 The case uses readmit-synth-v1, readmit-siu-v1, seed 0, and base time
 2026-01-01T12:00:00Z. Its identity is the independently calculated frozen
 [regression reference vector](synth-v1-vector.md). The exact committed spec is

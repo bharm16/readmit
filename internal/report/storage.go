@@ -38,13 +38,65 @@ func reserve(output string) (string, error) {
 	return output, nil
 }
 
+// reserveSynced is reserve for an output whose directory entries are synced
+// before it is reported complete, the folder holding it among them. That folder
+// is opened first, so one this command cannot open is refused before anything
+// is created, and the output is made inside the folder that will be synced.
+func reserveSynced(output string) (*os.Root, string, error) {
+	output, err := artifactpath.Destination(output)
+	if err != nil {
+		return nil, "", err
+	}
+	parent, err := os.OpenRoot(filepath.Dir(output))
+	if err != nil {
+		return nil, "", errors.New("cannot create report output; destination must be new and parent readable and writable")
+	}
+	if parent.Mkdir(filepath.Base(output), 0700) != nil {
+		parent.Close()
+		return nil, "", errors.New("cannot create report output; destination must be new")
+	}
+	return parent, output, nil
+}
+
+// syncEntries syncs every directory naming one of files below dir, dir itself
+// and parent, the folder holding it, once dir's completion record is written.
+func syncEntries(parent *os.Root, dir string, files map[string][]byte) error {
+	failed := errors.New("cannot sync report output; incomplete output retained")
+	root, err := parent.OpenRoot(filepath.Base(dir))
+	if err != nil {
+		return failed
+	}
+	defer root.Close()
+	directories := make(map[string]bool)
+	for name := range files {
+		for directory := path.Dir(name); directory != "."; directory = path.Dir(directory) {
+			directories[directory] = true
+		}
+	}
+	names := make([]string, 0, len(directories))
+	for name := range directories {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	if artifactdir.SyncEntries(root, parent, names) != nil {
+		return failed
+	}
+	return nil
+}
+
 func writeFile(dir, name string, data []byte) error {
+	return writeFileWithDurability(dir, name, data, artifactdir.Durable)
+}
+
+// writeFileWithDurability is writeFile with the durability the caller chose.
+// Scratch is only for the execution workspace Create removes before it answers.
+func writeFileWithDurability(dir, name string, data []byte, durability artifactdir.Durability) error {
 	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return errors.New("cannot create report evidence; incomplete output retained")
 	}
 	defer root.Close()
-	err = artifactdir.WriteFile(root, filepath.ToSlash(name), data)
+	err = durability.WriteFile(root, filepath.ToSlash(name), data)
 	if errors.Is(err, artifactdir.ErrCreateFile) {
 		return errors.New("cannot create report evidence; incomplete output retained")
 	}
@@ -147,6 +199,12 @@ func index(files map[string][]byte) []bundle.Payload {
 }
 
 func copyFiles(files map[string][]byte, prefix, output string) error {
+	return copyFilesWithDurability(files, prefix, output, artifactdir.Durable)
+}
+
+// copyFilesWithDurability is copyFiles with the durability the caller chose, as
+// writeFileWithDurability is writeFile.
+func copyFilesWithDurability(files map[string][]byte, prefix, output string, durability artifactdir.Durability) error {
 	for name, data := range files {
 		if !strings.HasPrefix(name, prefix) {
 			continue
@@ -158,7 +216,7 @@ func copyFiles(files map[string][]byte, prefix, output string) error {
 		if os.MkdirAll(filepath.Join(output, filepath.Dir(filepath.FromSlash(name))), 0700) != nil {
 			return errors.New("cannot create report evidence directory")
 		}
-		if err := writeFile(output, name, data); err != nil {
+		if err := writeFileWithDurability(output, name, data, durability); err != nil {
 			return err
 		}
 	}

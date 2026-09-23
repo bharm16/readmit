@@ -7,6 +7,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/engineexport"
 	"github.com/bharm16/readmit/internal/hl7"
 )
@@ -36,7 +37,7 @@ func WriteEngineExport(ctx context.Context, path, source string, data []byte, pl
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return writeBundle(ctx, path, b)
+	return writeBundle(ctx, path, b, artifactdir.Durable)
 }
 func attachEngineExport(b *Bundle, plan engineexport.Plan, data []byte) error {
 	records, err := engineexport.Extract(plan, data)

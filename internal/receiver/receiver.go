@@ -13,6 +13,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/mllp"
@@ -45,11 +46,18 @@ type Config struct {
 	// first, so the ACK does not wait on the disk. A session another process
 	// reads, such as listen's, always flushes.
 	InProcess bool
+	// Durability is Durable unless the session's case and first snapshot are
+	// Scratch: written inside a throwaway workspace, as a report trial's are,
+	// whose owner removes it before answering and keeps no copy except
+	// through its own synced write. Neither is then flushed; whether each
+	// later snapshot is flushed before its ACK remains InProcess's choice.
+	Durability artifactdir.Durability
 }
 
 // syncLedger flushes each snapshot of a ledger that another process reads,
-// before the rename that makes the snapshot visible.
-var syncLedger = (*os.File).Sync
+// before the rename that makes the snapshot visible. It is the shared durable
+// sync, so a test observing artifactdir's syncs sees these too.
+var syncLedger = artifactdir.Durable.Sync
 
 type Receiver struct {
 	recorder
@@ -100,7 +108,7 @@ func New(config Config) (*Receiver, error) {
 		r.flush = nil
 	}
 	r.snapshot = observation.Snapshot{Schema: observation.Schema, Profile: profile.Name, SessionID: hex.EncodeToString(entropy[:]), Mode: config.Mode, Consistent: true, Processed: []observation.Occurrence{}, Records: []observation.Record{}}
-	if err := observation.Create(config.ObservationPath, r.snapshot); err != nil {
+	if err := observation.CreateWithFlush(config.ObservationPath, r.snapshot, config.Durability.Sync); err != nil {
 		return nil, err
 	}
 	// Case-insensitive filesystems can alias distinct resolved leaf spellings.
@@ -129,7 +137,7 @@ func (r *Receiver) Serve(ctx context.Context, listener net.Listener) (*bundle.Bu
 	// The fixture is deliberately one connection at a time. Concurrent capture
 	// is the generic collector's contract, not this bounded SIU fixture's.
 	err := r.sessions(ctx, listener, r.connection, limits{maxFrameBytes: r.config.MaxFrameBytes, maxMessages: r.config.MaxMessages, maxConnections: 1})
-	b, writeErr := bundle.WriteRecorded(r.config.OutputPath, r.sources(), r.startedAt, r.snapshot)
+	b, writeErr := bundle.WriteRecordedWithDurability(r.config.OutputPath, r.sources(), r.startedAt, r.snapshot, r.config.Durability)
 	if writeErr != nil {
 		return nil, errors.Join(err, writeErr)
 	}

@@ -365,3 +365,82 @@ func TestACaseIsRefusedBeforeWritingIntoAFolderItCannotSync(t *testing.T) {
 		t.Fatalf("a refused write left something behind: %v", err)
 	}
 }
+
+// A Scratch write makes exactly the artifact a Durable write makes, through the
+// same exclusive creates, and syncs no file and no directory; the Durable write
+// beside it syncs every file and every directory naming one.
+func TestAScratchWriteMakesTheSameArtifactAndSyncsNothing(t *testing.T) {
+	var files, directories []string
+	t.Cleanup(artifactdir.ObserveFileSyncsForTest(func(path string) error {
+		files = append(files, path)
+		return nil
+	}))
+	t.Cleanup(artifactdir.ObserveDirectorySyncsForTest(func(directory string) error {
+		directories = append(directories, directory)
+		return nil
+	}))
+	contents := map[string][]byte{"manifest.json": []byte("{}\n"), "payloads/one.bin": []byte("one")}
+	layout := artifactdir.Layout{AllowedDirectories: []string{"payloads"}, AllowFile: func(string) bool { return true }, MaxFiles: 8, MaxFileBytes: 128, MaxBytes: 512}
+	options := artifactdir.WriteOptions{Domain: "readmit-example/v1", Directories: []string{"payloads"}}
+	durablePath := filepath.Join(caseFolder(t), "durable")
+	durable, err := artifactdir.Write(durablePath, options, contents)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 3 || len(directories) != 3 {
+		t.Fatalf("a durable write synced %d files and %d directories, want its 3 files and payloads/, itself and its folder", len(files), len(directories))
+	}
+
+	files, directories = nil, nil
+	options.Durability = artifactdir.Scratch
+	scratchPath := filepath.Join(caseFolder(t), "scratch")
+	scratch, err := artifactdir.Write(scratchPath, options, contents)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 0 || len(directories) != 0 {
+		t.Fatalf("a scratch write synced %q and %q", files, directories)
+	}
+	wrote, err := artifactdir.Read(scratchPath, layout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept, err := artifactdir.Read(durablePath, layout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scratch != durable || len(wrote) != len(kept) {
+		t.Fatalf("a scratch write made %s with %d files, a durable one %s with %d", scratch, len(wrote), durable, len(kept))
+	}
+	for name, data := range kept {
+		if string(wrote[name]) != string(data) {
+			t.Errorf("a scratch write changed %s", name)
+		}
+	}
+
+	root, err := os.OpenRoot(scratchPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	if err := artifactdir.Scratch.WriteFile(root, "manifest.json", []byte("changed")); !errors.Is(err, artifactdir.ErrCreateFile) {
+		t.Fatalf("a scratch write replaced an existing file: %v", err)
+	}
+	if err := artifactdir.Scratch.Publish(root, ".record.incomplete", "record.json", []byte("{}\n")); err != nil {
+		t.Fatal(err)
+	}
+	if published, err := root.ReadFile("record.json"); err != nil || string(published) != "{}\n" {
+		t.Fatalf("a scratch publish left record.json = %q, %v", published, err)
+	}
+	log, err := root.OpenFile("events.jsonl", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer log.Close()
+	if err := artifactdir.Scratch.Sync(log); err != nil || len(files) != 0 || len(directories) != 0 {
+		t.Fatalf("scratch syncs reached the device: %q %q %v", files, directories, err)
+	}
+	if err := artifactdir.Durable.Sync(log); err != nil || len(files) != 1 {
+		t.Fatalf("a durable sync of a log was not made: %q %v", files, err)
+	}
+}

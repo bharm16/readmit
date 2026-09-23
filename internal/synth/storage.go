@@ -1,6 +1,7 @@
 package synth
 
 import (
+	"context"
 	"encoding/json/v2"
 	"errors"
 	"os"
@@ -32,6 +33,13 @@ type Case struct {
 // only after every case is complete. A failed write retains incomplete output
 // without that completion record; an existing directory is never overwritten.
 func Write(path string, inputs bundle.GeneratorInputs) (*Manifest, error) {
+	return WriteWithDurability(path, inputs, artifactdir.Durable)
+}
+
+// WriteWithDurability is Write with the durability its caller chose: Scratch
+// only for a family in a throwaway workspace its owner removes before it
+// answers. The family's bytes and case identities do not depend on it.
+func WriteWithDurability(path string, inputs bundle.GeneratorInputs, durability artifactdir.Durability) (*Manifest, error) {
 	path, err := artifactpath.Destination(path)
 	if err != nil {
 		return nil, err
@@ -51,9 +59,9 @@ func Write(path string, inputs bundle.GeneratorInputs) (*Manifest, error) {
 	defer root.Close()
 	manifest := &Manifest{Schema: "readmit-synth/v1", State: "complete", Generator: inputs}
 	for _, variant := range variants {
-		b, err := bundle.Write(filepath.Join(path, variant.name), []bundle.Input{{
+		b, err := bundle.WriteWithDurability(context.Background(), filepath.Join(path, variant.name), []bundle.Input{{
 			Data: variant.data, Options: hl7.Options{Format: hl7.MLLP, Terminator: hl7.CR},
-		}}, bundle.Provenance{Mode: bundle.Generated, Generator: &inputs})
+		}}, bundle.Provenance{Mode: bundle.Generated, Generator: &inputs}, durability)
 		if err != nil {
 			return nil, errors.New("cannot complete synthetic case bundle; incomplete family retained")
 		}
@@ -63,7 +71,7 @@ func Write(path string, inputs bundle.GeneratorInputs) (*Manifest, error) {
 	if err != nil {
 		return nil, errors.New("cannot encode synthetic family; incomplete output retained")
 	}
-	if err := artifactdir.Publish(root, ".family.json.incomplete", "family.json", append(data, '\n')); err != nil {
+	if err := durability.Publish(root, ".family.json.incomplete", "family.json", append(data, '\n')); err != nil {
 		return nil, errors.New("cannot write synthetic family completion record; incomplete output retained")
 	}
 	return manifest, nil

@@ -20,8 +20,9 @@ import (
 )
 
 type runWriter struct {
-	root   *os.Root
-	events *os.File
+	root       *os.Root
+	events     *os.File
+	durability artifactdir.Durability
 }
 
 func (w *runWriter) Close() {
@@ -68,7 +69,7 @@ func begin(plan *Plan, path string) (*Run, *runWriter, error) {
 	if err != nil {
 		return nil, nil, errors.New("cannot open new run directory")
 	}
-	w := &runWriter{root: root}
+	w := &runWriter{root: root, durability: plan.options.Durability}
 	ok := false
 	defer func() {
 		if !ok {
@@ -79,12 +80,12 @@ func begin(plan *Plan, path string) (*Run, *runWriter, error) {
 		return nil, nil, errors.New("cannot create run payload directory")
 	}
 	initial, _ := json.Marshal(r.Manifest, json.Deterministic(true))
-	if err := writeFile(root, "manifest.json", append(initial, '\n')); err != nil {
+	if err := w.writeFile("manifest.json", append(initial, '\n')); err != nil {
 		return nil, nil, err
 	}
 	for _, e := range r.Events {
 		for _, payload := range []bundle.Payload{e.Source, e.Intended} {
-			if err := writeFile(root, payload.Path, r.payloads[payload.Path]); err != nil {
+			if err := w.writeFile(payload.Path, r.payloads[payload.Path]); err != nil {
 				return nil, nil, err
 			}
 		}
@@ -126,7 +127,7 @@ func (w *runWriter) record(r *Run, index int, sent, received []byte) error {
 	e.Sent = r.addPayload(e.OutboundOccurrence, "sent", sent)
 	e.Received = r.addPayload(e.OutboundOccurrence, "received", received)
 	for _, payload := range []bundle.Payload{e.Sent, e.Received} {
-		if err := writeFile(w.root, payload.Path, r.payloads[payload.Path]); err != nil {
+		if err := w.writeFile(payload.Path, r.payloads[payload.Path]); err != nil {
 			return err
 		}
 	}
@@ -135,7 +136,7 @@ func (w *runWriter) record(r *Run, index int, sent, received []byte) error {
 		return errors.New("cannot encode run event")
 	}
 	if _, err = w.events.Write(append(data, '\n')); err == nil {
-		err = w.events.Sync()
+		err = w.durability.Sync(w.events)
 	}
 	if err != nil {
 		return errors.New("cannot write run event; incomplete evidence retained")
@@ -154,7 +155,7 @@ func (w *runWriter) finish(r *Run) error {
 		return errors.New("cannot encode run manifest")
 	}
 	manifest = append(manifest, '\n')
-	if err := writeFile(w.root, "manifest.pending", manifest); err != nil {
+	if err := w.writeFile("manifest.pending", manifest); err != nil {
 		return err
 	}
 	if err := w.root.Rename("manifest.pending", "manifest.json"); err != nil {
@@ -169,11 +170,11 @@ func (w *runWriter) finish(r *Run) error {
 		files[path] = raw
 	}
 	r.Identity = identityFor(files)
-	return writeFile(w.root, "identity.sha256", []byte(r.Identity+"\n"))
+	return w.writeFile("identity.sha256", []byte(r.Identity+"\n"))
 }
 
-func writeFile(root *os.Root, path string, data []byte) error {
-	err := artifactdir.WriteFile(root, path, data)
+func (w *runWriter) writeFile(path string, data []byte) error {
+	err := w.durability.WriteFile(w.root, path, data)
 	if errors.Is(err, artifactdir.ErrCreateFile) {
 		return errors.New("cannot create run file; incomplete evidence retained")
 	}

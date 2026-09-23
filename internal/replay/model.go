@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
 )
@@ -128,6 +129,11 @@ type Transformation struct {
 type Options struct {
 	Occurrences     []string
 	Transformations []Transformation
+	// Durability is Durable unless the run is Scratch: written inside a
+	// throwaway workspace its owner removes before it answers. A Scratch run
+	// syncs neither its files nor its event log; its bytes and identity are
+	// unchanged.
+	Durability artifactdir.Durability
 }
 
 type Change struct {

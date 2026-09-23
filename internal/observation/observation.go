@@ -178,6 +178,14 @@ func Create(path string, snapshot Snapshot) error {
 	return install(path, snapshot, true, (*os.File).Sync)
 }
 
+// CreateWithFlush is Create, calling flush rather than a plain sync on the
+// complete temporary file before linking it; a nil flush makes no call, as for
+// Install. Only a first snapshot in a throwaway workspace its owner removes
+// before it answers may go unflushed.
+func CreateWithFlush(path string, snapshot Snapshot, flush func(*os.File) error) error {
+	return install(path, snapshot, true, flush)
+}
+
 // Write replaces a snapshot by same-directory rename. Readers see either the
 // previous complete JSON document or this one; the live file is never truncated.
 func Write(path string, snapshot Snapshot) error { return Install(path, snapshot, (*os.File).Sync) }

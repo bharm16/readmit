@@ -71,7 +71,7 @@ func Prepare(sourcePath string, target Target, options Options) (*Plan, error) {
 		}
 		selected[id] = true
 	}
-	p := &Plan{sourcePath: resolved, sourceInfo: info, sourceIdentity: source.Identity, target: target, ca: ca, options: Options{Transformations: slices.Clone(options.Transformations)}, changes: []Change{}}
+	p := &Plan{sourcePath: resolved, sourceInfo: info, sourceIdentity: source.Identity, target: target, ca: ca, options: Options{Transformations: slices.Clone(options.Transformations), Durability: options.Durability}, changes: []Change{}}
 	rebases := make(map[string][]byte)
 	total := 0
 	for _, event := range source.Events {

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/receiver"
@@ -33,17 +34,23 @@ func Create(ctx context.Context, scenario, output string) (*Packet, error) {
 	if _, err := testrunner.DecodeSpec(scenarioSpec); err != nil {
 		return nil, errors.New("invalid embedded report scenario")
 	}
-	dir, err := reserve(output)
+	parent, dir, err := reserveSynced(output)
 	if err != nil {
 		return nil, err
 	}
+	defer parent.Close()
+	// Everything the execution workspace holds is scratch: the generated
+	// family, each trial's inputs, its fixture's case and ledger and the result
+	// its sender records. The workspace is removed before Create answers and
+	// the packet keeps its copies through its own synced writes, so nothing
+	// written there is flushed.
 	work, err := os.MkdirTemp("", "readmit-report-")
 	if err != nil {
 		return nil, errors.New("cannot create report execution workspace")
 	}
 	defer os.RemoveAll(work)
 	family := filepath.Join(work, "family")
-	if _, err := synth.Write(family, generatorInputs()); err != nil {
+	if _, err := synth.WriteWithDurability(family, generatorInputs(), artifactdir.Scratch); err != nil {
 		return nil, err
 	}
 	caseFiles, err := readTree(filepath.Join(family, "regression"))
@@ -64,10 +71,10 @@ func Create(ctx context.Context, scenario, output string) (*Packet, error) {
 		if os.Mkdir(trialDir, 0700) != nil {
 			return nil, errors.New("cannot create report trial workspace")
 		}
-		if err := copyFiles(caseFiles, "", filepath.Join(trialDir, "reproducer")); err != nil {
+		if err := copyFilesWithDurability(caseFiles, "", filepath.Join(trialDir, "reproducer"), artifactdir.Scratch); err != nil {
 			return nil, err
 		}
-		if err := writeFile(trialDir, "spec.json", scenarioSpec); err != nil {
+		if err := writeFileWithDurability(trialDir, "spec.json", scenarioSpec, artifactdir.Scratch); err != nil {
 			return nil, err
 		}
 		if err := executeFixture(ctx, trialDir, trial.mode); err != nil {
@@ -114,6 +121,9 @@ func Create(ctx context.Context, scenario, output string) (*Packet, error) {
 	if err := writeFile(dir, "identity.sha256", []byte(digest(raw)+"\n")); err != nil {
 		return nil, err
 	}
+	if err := syncEntries(parent, dir, files); err != nil {
+		return nil, err
+	}
 	return Open(dir)
 }
 
@@ -124,9 +134,11 @@ func Create(ctx context.Context, scenario, output string) (*Packet, error) {
 const fixtureBudget = 20 * time.Second
 
 // sendTrial sends one trial's spec to its fixture. It is the ordinary test
-// runner; it is the one seam this package's tests take, to stand in a sender
-// whose own storage stalls.
-var sendTrial = testrunner.Run
+// runner, writing its result as scratch; it is the one seam this package's
+// tests take, to stand in a sender whose own storage stalls.
+var sendTrial = func(ctx context.Context, specPath, output string) (*testrunner.Artifact, error) {
+	return testrunner.RunWithDurability(ctx, specPath, output, artifactdir.Scratch)
+}
 
 func executeFixture(ctx context.Context, dir string, mode observation.Mode) error {
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
@@ -138,15 +150,15 @@ func executeFixture(ctx context.Context, dir string, mode observation.Mode) erro
 	if err != nil {
 		return err
 	}
-	if err := writeFile(dir, "target.json", config); err != nil {
+	if err := writeFileWithDurability(dir, "target.json", config, artifactdir.Scratch); err != nil {
 		return err
 	}
 	// The fixture's live ledger is read back only by this process, inside the
 	// execution workspace Create removes, and the packet keeps its copies in
 	// synced writes. So it is installed in process: flushing it before each ACK
 	// put the disk's latency inside the target's message timeout, which every
-	// packet records and Open checks.
-	fixture, err := receiver.New(receiver.Config{Mode: mode, OutputPath: filepath.Join(dir, "receiver"), ObservationPath: filepath.Join(dir, "observation.json"), MaxMessages: 2, MaxFrameBytes: 1 << 20, IdleTimeout: fixtureBudget, InProcess: true})
+	// packet records and Open checks. Its case is scratch too.
+	fixture, err := receiver.New(receiver.Config{Mode: mode, OutputPath: filepath.Join(dir, "receiver"), ObservationPath: filepath.Join(dir, "observation.json"), MaxMessages: 2, MaxFrameBytes: 1 << 20, IdleTimeout: fixtureBudget, InProcess: true, Durability: artifactdir.Scratch})
 	if err != nil {
 		return err
 	}
