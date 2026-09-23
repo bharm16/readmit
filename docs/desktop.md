@@ -2220,6 +2220,19 @@ User authentication uses standard authorization code flow with PKCE (RFC 7636, S
    - Claims must include valid `iss`, `aud`, `client_id`, `sub`, `exp`, `iat`, and `scope`.
    - Token must be cryptographically signed by the IdP and not expired.
 
+While the sign-in waits for the browser it holds the application's one
+operation slot, so the hub panel offers only **Cancel sign-in** beside the
+login link; the window's own cancel command stops it as well, and the wait
+ends on its own after three minutes. However a sign-in ends without a session —
+the IdP refuses it, the browser returns a state the flow did not issue, the
+person cancels because the browser was closed, the wait times out, the IdP
+refuses the code, or another operation held the slot when the window asked to
+wait — the loopback listener is closed at once, the attempt is forgotten and
+the slot is free for the next action. The panel keeps the connection as it was
+and shows why the sign-in did not complete. Nothing is retried and nothing is
+sent to the hub; signing in again starts a new flow with a new listener,
+verifier and state.
+
 Access tokens and session state are held strictly **in memory** within the Go
 engine (`internal/hubclient.Session`). No token, secret, or session cookie is ever
 written to disk, saved in browser storage (localStorage, sessionStorage, IndexedDB),

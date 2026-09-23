@@ -1,5 +1,16 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- A hub sign-in that does not complete no longer leaves its loopback listener
+  open or holds the window's operation slot (#326). A refused or forged
+  browser return, a timeout, a refused code and a wait refused as busy now
+  close the listener and forget the attempt at once, and a cancelled sign-in
+  keeps no session. The hub panel offers **Cancel sign-in** for a browser that
+  was closed, which releases the slot immediately instead of after three
+  minutes. The panel keeps the connection it had and shows why the sign-in
+  did not complete, and the next action goes through; nothing is retried and
+  nothing is sent to the hub. No hub contract, token or stored session format
+  changes.
+
 - The window's own interruption and measurement paths run through the shared
   interaction harness (#110). The capture panel's Cancel stops the collector it
   started; reopening the window after a kill during collection calls nothing

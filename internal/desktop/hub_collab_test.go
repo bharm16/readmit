@@ -26,10 +26,12 @@ import (
 )
 
 // hubAuthFixture is one signed-in desktop session against a running TLS hub
-// stub: the configured application and the directory holding its state files.
+// stub: the configured application, the directory holding its state files and
+// the host dialog it answers through.
 type hubAuthFixture struct {
-	app *desktop.App
-	dir string
+	app    *desktop.App
+	dir    string
+	dialog *chooser
 }
 
 // newAuthenticatedHubApp starts mux behind a mutual-TLS server, writes a
@@ -38,6 +40,50 @@ type hubAuthFixture struct {
 // shares this bootstrap so a session change cannot fix one test and stale
 // another.
 func newAuthenticatedHubApp(t *testing.T, mux *http.ServeMux, subject string, scopes []string) hubAuthFixture {
+	t.Helper()
+	tok := signedHubAccessToken(t, subject, scopes)
+	fixture := newConnectedHubApp(t, mux, subject, scopes, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.MarshalWrite(w, map[string]any{"access_token": tok, "token_type": "Bearer", "expires_in": 1800})
+	})
+	app := fixture.app
+	auth := app.StartHubAuth()
+	if auth.State != desktop.Completed || auth.AuthURL == "" {
+		t.Fatalf("StartHubAuth: %+v", auth)
+	}
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		var stateVal string
+		for _, part := range strings.Split(auth.AuthURL, "&") {
+			if strings.HasPrefix(part, "state=") {
+				stateVal = strings.TrimPrefix(part, "state=")
+			}
+		}
+		_, _ = http.Get(fmt.Sprintf("http://127.0.0.1:%d/callback?code=auth-code-collab&state=%s", auth.Port, stateVal))
+	}()
+	if res := app.CompleteHubAuth("", ""); res.State != desktop.Completed || !res.Authenticated {
+		t.Fatalf("CompleteHubAuth: %+v", res)
+	}
+	return fixture
+}
+
+// signedHubAccessToken is the RFC 9068 access token the test IdP issues for
+// subject, valid for half an hour.
+func signedHubAccessToken(t *testing.T, subject string, scopes []string) string {
+	t.Helper()
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	return issueDesktopTestToken(t, rsaKey, "key-1", "https://idp.hospital.org", subject, "hub-aud", "desktop-app",
+		scopes, now.Unix(), now.Unix()+1800)
+}
+
+// newConnectedHubApp is that bootstrap up to the sign-in: the application is
+// connected to mux over mutual TLS and signed in to nothing, and its
+// configured IdP token endpoint is answered by token.
+func newConnectedHubApp(t *testing.T, mux *http.ServeMux, subject string, scopes []string, token http.HandlerFunc) hubAuthFixture {
 	t.Helper()
 	ca := newHubTestAuthority(t, "customer-hub-ca")
 	serverCert, serverKey := ca.issue(t, "localhost", true)
@@ -59,18 +105,8 @@ func newAuthenticatedHubApp(t *testing.T, mux *http.ServeMux, subject string, sc
 	server.StartTLS()
 	t.Cleanup(server.Close)
 
-	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatal(err)
-	}
-	now := time.Now()
-	tok := issueDesktopTestToken(t, rsaKey, "key-1", "https://idp.hospital.org", subject, "hub-aud", "desktop-app",
-		scopes, now.Unix(), now.Unix()+1800)
 	idpMux := http.NewServeMux()
-	idpMux.HandleFunc("/oauth/token", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.MarshalWrite(w, map[string]any{"access_token": tok, "token_type": "Bearer", "expires_in": 1800})
-	})
+	idpMux.HandleFunc("/oauth/token", token)
 	idpServer := httptest.NewServer(idpMux)
 	t.Cleanup(idpServer.Close)
 
@@ -100,7 +136,8 @@ func newAuthenticatedHubApp(t *testing.T, mux *http.ServeMux, subject string, sc
 	}`, server.URL, caPath, certPath, keyProvider, idpServer.URL+"/oauth/token", scopesJSON)
 	_ = os.WriteFile(cfgPath, []byte(cfgJSON), 0600)
 
-	app := desktop.New(&chooser{folder: dir}, filepath.Join(dir, "recent.json"), filepath.Join(dir, "filters.json"),
+	dialog := &chooser{folder: dir}
+	app := desktop.New(dialog, filepath.Join(dir, "recent.json"), filepath.Join(dir, "filters.json"),
 		filepath.Join(dir, "session.json"), filepath.Join(dir, "drafts.json"))
 	if res := app.SelectOperationPolicy(testlicense.New(t)); res.State != desktop.Completed {
 		t.Fatalf("SelectOperationPolicy: %+v", res)
@@ -111,24 +148,7 @@ func newAuthenticatedHubApp(t *testing.T, mux *http.ServeMux, subject string, sc
 	if res := app.ConnectHub(); res.State != desktop.Completed || !res.Connected {
 		t.Fatalf("ConnectHub: %+v", res)
 	}
-	auth := app.StartHubAuth()
-	if auth.State != desktop.Completed || auth.AuthURL == "" {
-		t.Fatalf("StartHubAuth: %+v", auth)
-	}
-	go func() {
-		time.Sleep(50 * time.Millisecond)
-		var stateVal string
-		for _, part := range strings.Split(auth.AuthURL, "&") {
-			if strings.HasPrefix(part, "state=") {
-				stateVal = strings.TrimPrefix(part, "state=")
-			}
-		}
-		_, _ = http.Get(fmt.Sprintf("http://127.0.0.1:%d/callback?code=auth-code-collab&state=%s", auth.Port, stateVal))
-	}()
-	if res := app.CompleteHubAuth("", ""); res.State != desktop.Completed || !res.Authenticated {
-		t.Fatalf("CompleteHubAuth: %+v", res)
-	}
-	return hubAuthFixture{app: app, dir: dir}
+	return hubAuthFixture{app: app, dir: dir, dialog: dialog}
 }
 
 func TestDesktopHubCollaborationConflictAndAdmin(t *testing.T) {
