@@ -418,7 +418,12 @@ func (r *RunSpecChoiceResult) refuse(state State, reason string) { r.State, r.Re
 // ChooseRunSpec is the native advanced file selection of a saved test or
 // suite: the host's file dialog over JSON documents. The chosen file must be
 // one entry of the open workspace, which is what execution names; a dismissed
-// dialog is a cancellation.
+// dialog is a cancellation. The host spells the dialog's answer however it
+// spells paths — on macOS a workspace under /tmp or /var comes back through
+// the link to /private — so the folder it names is resolved as the filesystem
+// traverses it, before any `..` could be cleaned away as text, and must be the
+// workspace itself. The entry, exactly as the listing offers one, is a regular
+// file and never a symbolic link.
 func (a *App) ChooseRunSpec(workspace string) RunSpecChoiceResult {
 	return run(a, true, false, func(ctx context.Context) RunSpecChoiceResult {
 		root, declined := resolveFolder(workspace)
@@ -429,11 +434,15 @@ func (a *App) ChooseRunSpec(workspace string) RunSpecChoiceResult {
 		if len(files) == 0 {
 			return RunSpecChoiceResult{State: declined.state, Reason: declined.reason}
 		}
-		relative, err := filepath.Rel(root, files[0])
-		if err != nil || artifactpath.EntryName(relative) != nil {
+		folder, name := filepath.Split(files[0])
+		folder, err := artifactpath.Resolve(folder)
+		if err != nil || folder != root || artifactpath.EntryName(name) != nil {
 			return RunSpecChoiceResult{State: Failed, Reason: "a saved test or suite is one entry of the open workspace; advanced selection cannot reach outside it"}
 		}
-		return RunSpecChoiceResult{State: Completed, Entry: relative}
+		if info, err := os.Lstat(filepath.Join(root, name)); err != nil || !info.Mode().IsRegular() {
+			return RunSpecChoiceResult{State: Failed, Reason: "a saved test or suite is an existing regular file of the open workspace, never a symbolic link"}
+		}
+		return RunSpecChoiceResult{State: Completed, Entry: name}
 	})
 }
 

@@ -11,6 +11,16 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   nothing is sent to the hub. No hub contract, token or stored session format
   changes.
 
+- Choosing a saved test or suite through the durable-run panel's file dialog
+  no longer refuses a file of the open workspace because the dialog spelled
+  its path through a symbolic link, as it does for a workspace under `/tmp` or
+  `/var` on macOS (#327). The folder the answer names is now compared with the
+  workspace as the filesystem resolves it rather than as text, and the entry
+  must be a regular file as the listing requires. That also refuses what the
+  textual comparison let through: a symbolic link inside the workspace, which
+  could lead to a file outside it, and a `..` taken after a link inside the
+  workspace to a folder outside it. No run contract changes.
+
 - The window's own interruption and measurement paths run through the shared
   interaction harness (#110). The capture panel's Cancel stops the collector it
   started; reopening the window after a kill during collection calls nothing
