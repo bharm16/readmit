@@ -160,6 +160,10 @@ The desktop module builds and scans separately, and `desktop` is that workflow's
 equivalent stable aggregate: it requires the macOS shell build and the five
 `desktop-package` jobs plus the five `desktop-install` jobs, which download,
 install, check and remove the exact unsigned artifacts on fresh native runners.
+An install check never runs on the runner that built its package: that runner
+carries the Go, Node and WiX build setup, the build tree and the frontend's
+modules, which a person's machine does not, so a package that works only
+beside its build would pass there.
 The macOS shell job also executes the frontend behavior tests and the
 interaction journeys and publishes their output as an artifact, so a failing
 component test or journey fails the `desktop` aggregate rather than only a
@@ -206,15 +210,25 @@ compiler, platform, dependency checksums and commit; a prefix restores the prior
 generation before the current one is saved. This keeps compiled tests and fuzz
 corpora from being overwritten by the faster packaging job. A first cold run
 still needs compilation; assess steady-state savings on later commits as well.
-A pull request's first run restores main's newest generation. A push to main
-that skipped its jobs saves none; every complete push to main and the daily run
-of each workflow save a new one. The repository's cache storage holds only a
-few runs' caches and evicts the least recently used first, so anything that
-must survive, such as the fuzz corpus, is kept as an artifact instead.
+Only runs on main save a Go cache: every complete push to main, and each
+workflow's daily run and a run dispatched on main, save a new generation, and a
+push to main that skipped its jobs saves none. Every other run, each run of a
+pull request, a run dispatched on another branch and a tag's run, restores
+main's newest generation and saves nothing: what it saved could be restored
+only by the same pull request, branch or tag, and each such generation evicted
+main's caches that every pull request restores. A pull request that changes a
+module checksum or the compiler pin therefore compiles cold on every run until
+it merges. The repository's cache storage holds only a few generations of
+main's caches and evicts the least recently used first, so anything that must
+survive, such as the fuzz corpus, is kept as an artifact instead.
 
 To measure a change to CI, give `python3 tools/ci_timing.py` the CI and desktop
 run ids of one push (`gh run list` shows them). It prints each job's start,
 duration, end and wait for a runner in seconds from its run's start, the
 critical path through the jobs' `needs`, and, with `--caches`, the Go cache
-each job restored or missed. Compare the same kind of push, a pull request's or
-a merge's, before and after the change, and again once it has reached main.
+each job restored or missed and whether it saved one. With `--budget` it prints
+the repository's Actions cache in use and every entry grouped by key prefix and
+by the scope that saved it (main, a pull request, another branch or a tag),
+with how many were restored after they were saved. Compare the same kind of
+push, a pull request's or a merge's, before and after the change, and again
+once it has reached main.

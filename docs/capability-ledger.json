@@ -6750,7 +6750,7 @@
       "id": "tooling.tools.ci_timing",
       "source": "tools/ci_timing.py",
       "kind": "tooling",
-      "capability": "Report when each job of a CI run started, ran and ended, its critical path and its Go cache restores",
+      "capability": "Report when each job of a CI run started, ran and ended, its critical path, the Go cache each job restored and saved, and the repository's Actions cache by key prefix and scope",
       "owner": "bharm16/readmit#322",
       "inputs": [],
       "outputs": [],

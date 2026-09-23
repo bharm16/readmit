@@ -11,6 +11,7 @@ import unittest
 
 
 TOOL = Path(__file__).with_name("ci_timing.py")
+SETUP_GO = TOOL.parent.parent / ".github" / "actions" / "setup-go" / "action.yml"
 REPOSITORY = "example/readmit"
 WORKFLOW = """name: Example
 
@@ -37,6 +38,11 @@ def job(number, name, start, end, conclusion="success"):
     at = lambda seconds: None if seconds is None else f"2026-09-22T10:{seconds // 60:02d}:{seconds % 60:02d}Z"
     return {"id": number, "name": name, "status": "completed", "conclusion": conclusion,
             "started_at": at(start), "completed_at": at(end)}
+
+
+def cache(key, ref, megabytes, created, accessed):
+    return {"id": abs(hash(key)), "ref": ref, "key": key, "size_in_bytes": megabytes * 1_000_000,
+            "created_at": f"2026-09-22T{created}.123456Z", "last_accessed_at": f"2026-09-22T{accessed}.123456Z"}
 
 
 class CITiming(unittest.TestCase):
@@ -149,7 +155,74 @@ sys.stdout.write(answer if isinstance(answer, str) else json.dumps(answer))
                         result.stdout)
         self.assertTrue(any(line.startswith("  slow") and line.endswith("go miss") for line in lines),
                         result.stdout)
-        self.assertIn("Go cache restores: 1 of 2 found", result.stdout)
+        self.assertIn("Go cache restores: 1 of 2 found; 0 Go caches saved", result.stdout)
+
+    def test_a_job_that_saved_a_go_cache_says_so(self):
+        self.add_run(1, [job(11, "fast", 2, 10), job(12, "slow", 3, 50)])
+        self.answers[f"repos/{REPOSITORY}/actions/jobs/11/logs"] = (
+            "2026-09-22T10:00:03.2Z Cache restored from key: go-v1-Linux-X64-fast-1.27.1-abc-" + "e" * 40 + "\n"
+            "2026-09-22T10:00:09.0Z Cache saved with key: go-v1-Linux-X64-fast-1.27.1-abc-" + "a" * 40 + "\n")
+        # Another cache's save, such as npm's, is not a Go cache.
+        self.answers[f"repos/{REPOSITORY}/actions/jobs/12/logs"] = (
+            "2026-09-22T10:00:04.0Z Cache restored from key: go-v1-Linux-X64-slow-1.27.1-abc-" + "e" * 40 + "\n"
+            "2026-09-22T10:00:49.0Z Cache saved with key: node-cache-Linux-x64-npm-123\n")
+        result = self.report("--caches", "1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = result.stdout.splitlines()
+        self.assertTrue(any(line.startswith("  fast") and line.endswith("go restored eeeeeee  go saved")
+                            for line in lines), result.stdout)
+        self.assertTrue(any(line.startswith("  slow") and line.endswith("go restored eeeeeee")
+                            for line in lines), result.stdout)
+        self.assertIn("Go cache restores: 2 of 2 found; 1 Go cache saved", result.stdout)
+
+    def add_caches(self, *pages, usage=(0, 0)):
+        total = sum(len(page) for page in pages)
+        for number, page in enumerate(pages, start=1):
+            self.answers[f"repos/{REPOSITORY}/actions/caches?per_page=100&page={number}"] = {
+                "total_count": total, "actions_caches": page}
+        self.answers[f"repos/{REPOSITORY}/actions/cache/usage"] = {
+            "full_name": REPOSITORY, "active_caches_size_in_bytes": usage[0], "active_caches_count": usage[1]}
+
+    def test_the_budget_groups_every_cache_by_key_prefix_and_scope(self):
+        go = "go-v1-Linux-X64-{}-1.27.1-" + "5" * 64 + "-{}"
+        self.add_caches(
+            [cache(go.format("tests", "a" * 40), "refs/heads/main", 300, "10:00:00", "10:40:00"),
+             cache(go.format("tests", "b" * 40), "refs/pull/7/merge", 320, "10:30:00", "10:30:00"),
+             cache(go.format("tests", "c" * 40), "refs/pull/8/merge", 330, "10:35:00", "10:50:00")],
+            # The second page is fetched too; a fuzz shard's number stays in its prefix.
+            [cache(go.format("fuzz-1", "a" * 40), "refs/heads/main", 180, "09:00:00", "09:00:00"),
+             cache("node-cache-Linux-x64-npm-" + "9" * 64, "refs/heads/main", 35, "08:00:00", "10:31:00"),
+             cache(go.format("tests", "d" * 40), "refs/heads/issue-9", 310, "10:36:00", "10:36:00")],
+            usage=(1_475_000_000, 6))
+        result = self.report("--budget")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Actions cache in use: 1475 MB in 6 entries", result.stdout)
+        # scope and key prefix: entries, MB, and how many were restored after they were saved
+        rows = re.findall(r"^  (main|pull request|branch|tag)\s+(\S+)\s+(\d+)\s+(\d+)\s+(\d+)$",
+                          result.stdout, re.MULTILINE)
+        self.assertEqual(rows, [
+            ("pull request", "go-v1-Linux-X64-tests", "2", "650", "1"),
+            ("branch", "go-v1-Linux-X64-tests", "1", "310", "0"),
+            ("main", "go-v1-Linux-X64-tests", "1", "300", "1"),
+            ("main", "go-v1-Linux-X64-fuzz-1", "1", "180", "0"),
+            ("main", "node-cache-Linux-x64-npm", "1", "35", "1"),
+        ], result.stdout)
+        self.assertIn("listed: 6 entries, 1475 MB, 3 restored after they were saved", result.stdout)
+
+    def test_the_budget_refuses_a_listing_shorter_than_its_count(self):
+        self.add_caches([cache("go-v1-Linux-X64-tests-1.27.1-abc-" + "a" * 40, "refs/heads/main", 1,
+                               "10:00:00", "10:00:00")])
+        self.answers[f"repos/{REPOSITORY}/actions/caches?per_page=100&page=1"]["total_count"] = 2
+        self.answers[f"repos/{REPOSITORY}/actions/caches?per_page=100&page=2"] = {
+            "total_count": 2, "actions_caches": []}
+        result = self.report("--budget")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("listed 1 of 2 caches", result.stderr)
+
+    def test_a_report_needs_runs_or_the_budget(self):
+        result = self.report()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("give run ids, --budget or both", result.stderr)
 
     def test_a_failed_request_fails_the_report(self):
         result = self.report("3")
@@ -161,6 +234,24 @@ sys.stdout.write(answer if isinstance(answer, str) else json.dumps(answer))
         result = self.report("1")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("more jobs than one page", result.stderr)
+
+
+class CachePolicy(unittest.TestCase):
+    """The policy the report measures: only runs on main save a Go cache."""
+
+    def test_only_main_saves_and_every_other_run_restores_what_main_saved(self):
+        steps = re.split(r"\n    - ", SETUP_GO.read_text())
+        saving = [step for step in steps if "uses: actions/cache@" in step]
+        restoring = [step for step in steps if "uses: actions/cache/restore@" in step]
+        self.assertEqual((len(saving), len(restoring)), (1, 1), steps)
+        self.assertTrue(saving[0].startswith("if: github.ref == 'refs/heads/main'\n"), saving[0])
+        self.assertTrue(restoring[0].startswith("if: github.ref != 'refs/heads/main'\n"), restoring[0])
+        # Another cache release, path or key would make every restore miss
+        # the generation main saved.
+        pin = lambda step: re.search(r"actions/cache(?:/restore)?@([0-9a-f]{40})", step).group(1)
+        self.assertEqual(pin(saving[0]), pin(restoring[0]))
+        inputs = lambda step: step[step.index("\n      with:"):]
+        self.assertEqual(inputs(saving[0]), inputs(restoring[0]))
 
 
 if __name__ == "__main__":
