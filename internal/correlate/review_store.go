@@ -86,7 +86,7 @@ func SaveReview(path string, opened *bundle.Bundle, report Report, r ReviewRevis
 	files := map[string][]byte{"machine.json": machine, "decisions.json": reviewBytes(r)}
 	_, err := artifactdir.Write(path, artifactdir.WriteOptions{Completion: []byte(r.Identity() + "\n")}, files)
 	if errors.Is(err, artifactdir.ErrCreateDirectory) {
-		return errors.New("correlation review destination must be new and writable")
+		return errors.New("correlation review destination must be new and its parent readable and writable")
 	}
 	if err != nil {
 		return errors.New("cannot complete correlation review; incomplete directory retained")

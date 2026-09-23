@@ -49,7 +49,9 @@ type WriteOptions struct {
 
 // Write creates one immutable directory artifact. Files are written in bytewise
 // path order and synced; identity.sha256 is derived and written last as the
-// completion marker. An interrupted write is deliberately retained incomplete.
+// completion marker. It answers only once every directory naming one of them,
+// or the artifact itself, is synced too. An interrupted write is deliberately
+// retained incomplete.
 func Write(path string, options WriteOptions, files map[string][]byte) (string, error) {
 	return WriteContext(context.Background(), path, options, files)
 }
@@ -70,10 +72,19 @@ func WriteContext(ctx context.Context, path string, options WriteOptions, files 
 	if err != nil {
 		return "", err
 	}
-	if err := os.Mkdir(path, 0700); err != nil {
+	// The folder that holds the artifact is synced last, so it must be one this
+	// write can open; finding out that it is not creates nothing. The artifact
+	// is made inside that same opened folder, so the folder synced is the one
+	// naming it.
+	parent, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		return "", fmt.Errorf("%w; destination must be new and parent readable and writable", ErrCreateDirectory)
+	}
+	defer parent.Close()
+	if err := parent.Mkdir(filepath.Base(path), 0700); err != nil {
 		return "", fmt.Errorf("%w; destination must be new and parent writable", ErrCreateDirectory)
 	}
-	root, err := os.OpenRoot(path)
+	root, err := parent.OpenRoot(filepath.Base(path))
 	if err != nil {
 		return "", errors.New("cannot open new artifact directory")
 	}
@@ -108,10 +119,30 @@ func WriteContext(ctx context.Context, path string, options WriteOptions, files 
 	if err := WriteFile(root, "identity.sha256", completion); err != nil {
 		return "", err
 	}
-	if err := SyncDirectory(root, "."); err != nil {
+	if err := syncEntries(root, parent, options.Directories); err != nil {
 		return "", errors.New("cannot sync artifact directory; incomplete artifact retained")
 	}
 	return identity, nil
+}
+
+// syncDirectory is the directory sync every write makes. It is the seam
+// package tests take to see which directories a write syncs, and when.
+var syncDirectory = SyncDirectory
+
+// syncEntries syncs every directory holding a name the artifact is found
+// through: each member directory, the artifact directory and the folder that
+// holds it. A write reports success only after all of them, so no name it made
+// is lost to a power loss after it answered.
+func syncEntries(root, parent *os.Root, directories []string) error {
+	for _, name := range directories {
+		if err := syncDirectory(root, filepath.ToSlash(name)); err != nil {
+			return err
+		}
+	}
+	if err := syncDirectory(root, "."); err != nil {
+		return err
+	}
+	return syncDirectory(parent, ".")
 }
 
 // DurableFile is what one durable write needs from the file it writes: a full
