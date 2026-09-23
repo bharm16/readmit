@@ -5,6 +5,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -627,7 +628,7 @@ func (a *App) ImportScenarioLibrary(request ScenarioLibraryRequest) ScenarioLibr
 		if root == "" {
 			return ScenarioLibraryResult{State: declined.state, Reason: declined.reason}
 		}
-		data, err := os.ReadFile(request.Library)
+		data, err := readChosenFile(request.Library, scenariolibrary.MaxBytes)
 		if err != nil {
 			if errors.Is(err, fs.ErrPermission) {
 				return ScenarioLibraryResult{State: PermissionDenied, Reason: "this account cannot read the selected library file"}
@@ -717,7 +718,9 @@ func (a *App) resolveScenarioDocument(workspace, fileOrDoc string) ([]byte, erro
 		return []byte(trimmed), nil
 	}
 	if filepath.IsAbs(trimmed) {
-		data, err := os.ReadFile(trimmed)
+		// A chosen file may be a library as well as a scenario, so it is held
+		// to the larger of the two bounds; each reader applies its own.
+		data, err := readChosenFile(trimmed, scenariolibrary.MaxBytes)
 		if err != nil {
 			if errors.Is(err, fs.ErrPermission) {
 				return nil, errors.New("this account cannot read the scenario document")
@@ -735,6 +738,31 @@ func (a *App) resolveScenarioDocument(workspace, fileOrDoc string) ([]byte, erro
 		return nil, errors.New(refused.reason)
 	}
 	return data, nil
+}
+
+// readChosenFile reads one file a person chose by path under the bound its
+// contract is held to. It must be a regular file once any link is followed,
+// so a FIFO, a device or an oversized file is refused rather than opened and
+// read to its end.
+func readChosenFile(path string, limit int64) ([]byte, error) {
+	outside := errors.New("not a regular file within the bound")
+	info, err := os.Stat(path)
+	switch {
+	case err != nil:
+		return nil, err
+	case !info.Mode().IsRegular() || info.Size() > limit:
+		return nil, outside
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, limit+1))
+	if err == nil && int64(len(data)) > limit {
+		return nil, outside
+	}
+	return data, err
 }
 
 func presentTimeline(timeline scenario.Timeline, reveal bool) ScenarioPreviewResult {

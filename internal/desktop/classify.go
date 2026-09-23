@@ -182,8 +182,13 @@ func refinedMarker(path string, kind Kind) (Kind, bool) {
 // contract a `schema` member declares within it. It is a claim about the
 // bytes, not an acceptance of them: the readers that open each contract
 // decide what a file really is, and this only decides what the listing calls
-// it.
+// it. Only what is a regular file once any link is followed is opened, so a
+// FIFO or a link to one named as an entry is unsupported rather than a read
+// that never returns.
 func sniffSchema(path string) (string, bool) {
+	if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
+		return "", false
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return "", false

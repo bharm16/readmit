@@ -938,7 +938,8 @@ own statement of that rather than a summary of it.
 **Diagnosis** runs a supported fixture profile (`readmit-siu-v1`,
 `readmit-lifecycle-v1` or `readmit-order-v1`, or an authored
 `readmit-diagnose-config/v1`) over the verified case and writes a new report
-directory exactly as [`readmit diagnose`](diagnose.md) does. Findings are
+directory exactly as [`readmit diagnose`](diagnose.md) does, and like that
+command it needs no license term. Findings are
 grouped by signature without hiding individuals. Every fact, violation,
 hypothesis and unsupported item links to its evidence occurrence so the
 inspector can open the original bytes.
@@ -1531,8 +1532,8 @@ and opening workspaces still works while it stays unreadable.
 
 ## Privacy
 
-Nothing leaves the machine. There is no telemetry, crash reporting, update
-check, or analytics, and the interface never sends evidence to an external
+Nothing leaves the machine on its own. There is no telemetry, crash reporting,
+update check, or analytics, and the interface never sends evidence to an external
 rendering service. Everything the window renders is bundled into the executable;
 nothing is fetched at run time. Browser storage holds nothing at all. Diagnostics
 are fixed sentences that never repeat a path, a file name, an argument, or a
@@ -1542,14 +1543,16 @@ never sent anywhere, and is never kept in browser storage.
 
 The window states this rather than leaving it to be assumed. The privacy region
 names what this product does not do and everything the shell writes outside
-evidence, which is the recent folder list, the filters a person saved and the
-working session they have not stored. A saved filter and a retained draft are
+evidence, which is the recent folder list, the filters a person saved, the
+working session and editor drafts they have not stored, and the commercial
+destinations file they selected. A saved filter and a retained draft are
 named there rather than left to be discovered, because one holds whatever was
 typed to filter by and the other a note whose subject is the evidence beside it.
 
-Because durable execution, source collection, observation windows, the customer
-hub and the runner all genuinely reach configured destinations, a blanket
-no-network claim would be false, so the privacy region discloses each such
+Because durable execution, source collection, environment connectivity checks
+and fixture resets, observation windows, the customer hub and the runner all
+genuinely reach configured destinations, a blanket no-network claim would be
+false, so the privacy region discloses each such
 activity separately: its destination, the data it carries, the authorization it
 requires, and — answered by the facade from the window's own connection state,
 contacting nothing — whether it is idle, active, configured, offline or
@@ -1572,7 +1575,11 @@ The **project maintenance** screen is the graphical path for the same operations
 and `readmit upgrade` already own. Native folder pickers choose backup sources and
 destinations, restore destinations, recovery archives and staged package folders.
 The typed facade calls the shared Go packages; the interface never reimplements
-backup, retirement or upgrade semantics and never holds secret values.
+backup, retirement or upgrade semantics and never holds secret values. As on the
+command line, preserving what already exists needs no license term: backup,
+verification, restore, document recovery, archive, delete and an upgrade's
+rollback point stay available after a license expires. Setting a quota is a
+change and is admitted like other authoring.
 
 What a backup holds is shown in separate inventories: canonical registered
 evidence, mutable project documents, declared index exclusions, credential
@@ -2369,6 +2376,8 @@ command, `Ctrl+Shift+P` / `⌘+Shift+P`) enables viewing, structured authoring,
 validating, versioning, comparing, and exchanging local interface profiles
 ([`readmit-local-profile/v1`](local-profiles.md)) and profile packages
 ([`readmit-profile-package/v1`](profile-packages.md)) directly within the app.
+Exporting and importing a package need no license term, as with `readmit
+profile export` and `import`.
 
 The panel provides five functional tabs:
 
@@ -2458,7 +2467,7 @@ prominently rendered:
 
 Users can inspect, author, save, and diagnose named target configurations:
 - Structured controls configure destination address, transport (`plain` unencrypted TCP/MLLP or `tls` verified TLS), server name (SNI), CA certificate paths, client certificate paths, and credential reference bindings.
-- Target reachability diagnostics (`environment.Diagnose`) run strictly on deliberate action without transmitting any HL7 payloads or test messages.
+- Target reachability diagnostics (`environment.Diagnose`) run strictly on deliberate action without transmitting any HL7 payloads or test messages. Like `readmit target check`, a diagnostic reserves a runner instance, so an unactivated or expired term, or one with no runner authority, refuses it before the address is reached.
 - Reports full transport outcome (`reachable`, `refused`), connection phase, TLS version, cipher suite, and unsolicited bytes received.
 
 ### Credential references (`readmit-secrets/v1`) and provisioning handoff
@@ -2475,14 +2484,14 @@ Readmit does not store credentials in application state, configuration files, lo
 
 All message transmission requires explicit approved-destination policy rules:
 - Users can visually author and save approved CIDR prefix lists (e.g. `127.0.0.1/32`, `10.1.0.0/16`).
-- Local destination evaluation checks address approval and classification rules entirely offline without initiating a network connection.
+- Local destination evaluation checks address approval and classification rules without opening a connection; a host name the policy is asked about is resolved to the addresses it names, which the privacy status discloses.
 - Refusal rules strictly enforce that unclassified destinations and production targets reject all sends.
 
 ### Fixture reset plans (`readmit-reset-plan/v1`) and deliberate execution
 
 Fixture reset plans return nonproduction test fixtures to a declared starting state:
 - Step authoring defines operator (`operator_confirms`, `observation_empty`, `endpoint_quiet`), authority (`none`, `read_declared_file`, `connect_approved_target`), and instructions.
-- Reset execution requires explicit human confirmation checkboxes (`--confirm`) for operator confirmation steps. Resets without required human confirmations are stopped and reported as `unconfirmed`.
+- Reset execution requires explicit human confirmation checkboxes (`--confirm`) for operator confirmation steps. Resets without required human confirmations are stopped and reported as `unconfirmed`. Like `readmit target reset`, a reset reserves a runner instance as well as admitting the author.
 - Arbitrary shell hooks are prohibited.
 - Retained outcomes are written to `readmit-reset-outcome/v1` documents recording per-action statuses and SHA-256 plan digests.
 
@@ -2522,7 +2531,9 @@ same Go readers and writers the CLI uses. Opening Observation setup never querie
 a database or HTTPS endpoint. Local validation checks configuration identity and
 source/window agreement only. Collection and connectivity preview require an
 explicit authorize action and retain completions through
-`internal/observesource` and `internal/observewindow`.
+`internal/observesource` and `internal/observewindow`. Like `readmit observe
+collect`, a collection reserves a runner instance as well as admitting the
+author, and is refused without one before a source is read.
 
 Adapter support and qualification state are listed in the panel. Database
 drivers remain unqualified production claims until #75. Downstream-capture

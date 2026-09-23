@@ -44,7 +44,7 @@ func OpenOrNewTarget(path string) (replay.Target, error) {
 	var declared struct {
 		Schema string `json:"schema"`
 	}
-	data, err := os.ReadFile(path)
+	data, err := readBoundedFile(path, replay.MaxTargetBytes)
 	if err == nil && json.Unmarshal(data, &declared) == nil {
 		if declared.Schema != "" && declared.Schema != replay.TargetSchemaV3 {
 			return replay.Target{}, errors.New("that file declares " + declared.Schema + " and target editing records " + replay.TargetSchemaV3 + "; record the named environment in a new file and leave this one as it is")
@@ -65,7 +65,7 @@ func SaveTarget(path string, target replay.Target) (replay.Target, error) {
 		var declared struct {
 			Schema string `json:"schema"`
 		}
-		data, readErr := os.ReadFile(path)
+		data, readErr := readBoundedFile(path, replay.MaxTargetBytes)
 		if readErr == nil && json.Unmarshal(data, &declared) == nil {
 			if declared.Schema != "" && declared.Schema != replay.TargetSchemaV3 {
 				return replay.Target{}, errors.New("that file declares " + declared.Schema + " and target editing records " + replay.TargetSchemaV3 + "; record the named environment in a new file and leave this one as it is")

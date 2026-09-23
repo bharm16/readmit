@@ -205,7 +205,9 @@ func reviewAdmission(route string, c ReviewCommand, a *Access, r *http.Request, 
 			}
 		}
 	}
-	return teamAdmission{action: action, writes: r.Method != "GET", accept: humanReviewer(route)}
+	// Searching history or notifications posts a query and reads; only a
+	// review command writes, so only it is admitted as authoring.
+	return teamAdmission{action: action, writes: route == "reviews" && r.Method != "GET", accept: humanReviewer(route)}
 }
 
 func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access, project, route string, v2 bool) {

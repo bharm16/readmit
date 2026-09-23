@@ -27,6 +27,11 @@ CASES = (
         'TestBackupRestoresAProjectElsewhereAndRebuildsItsIndex',
         'TestBackupRefusesAnInterruptedBackup',
         'TestBackupRefusesADamagedBackup',
+        'TestAnExpiredTermGatesTheSameOperationsInTheWindowAsOnTheCommandLine',
+        'TestSignedTrialRunsLocallyAndExpiryKeepsEvidenceReadableExportable',
+        'TestTheWindowsImportRefusesUnsafeArchivesAndWritesNothing',
+        'TestTheWindowRefusesAResetCredentialOnTheObservationReadPath',
+        'TestDesktopImportMatchesCLIOnMixedValidMalformedAndDuplicateEvidence',
     )),
     ('.', './internal/sharing', (
         'TestReportSupportAndPublicCLIRefuseUnsafePathsAndEgress',
@@ -38,7 +43,42 @@ CASES = (
         'TestSavedFiltersSeparatePermissionFromAnUnreadableDocument',
         'TestWorkspaceListingRefusesToFollowSymbolicLinks',
         'TestPrivacyStatusNamesWhatIsAbsentAndWhatIsKept',
+        # Application surfaces (#244): backend enforcement behind every window
+        # action, restoration, local egress and declared keyboard semantics.
+        'TestEveryPathOperationRefusesHostileEntriesPromptlyAndBoundedly',
+        'TestStartupRestorationAndInspectionReachNoConfiguredDestination',
+        'TestEveryDestinationReachingOperationIsADisclosedActivity',
+        'TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice',
+        'TestPlantedPatientValuesAndCredentialsStayOutOfResultsAndShellState',
+        'TestStagingPastedContentCreatesNothingInEvidenceOrAnywhereNew',
+        'TestWorkThatReachesADestinationIsAdmittedAsExecution',
+        'TestExportingAnEditedTestOrAssertionSetIsAdmittedAsAuthoring',
+        'TestEveryDesktopLedgerRowDeclaresTheAdmissionItsMethodTakes',
+        'TestPrivacyDisclosureNamesDestinationDataAndAuthorizationPerOperation',
+        'TestDisclosureStatusReportsConnectionStatesWithoutContactingAnything',
+        'TestTheInterfaceReachesNoNetworkAndNoBrowserStorage',
+        'TestProductionAndCredentialRefusalsHappenBeforeAnySend',
+        'TestAChangedSpecAfterPreflightIsRefusedByTheSend',
+        'TestDesktopBaselineReviewStaleApprovalAndRecovery',
+        'TestPromotionReviewAndApprovalInvalidateOnChangedConfiguration',
+        'TestExportApprovalIsExactAndInvalidatedByAnyChange',
+        'TestPacketOperationsAcquireNoSendOrMutationAuthority',
+        'TestLicenseManagementNeverGatesEvidenceOrRequiresActivation',
+        'TestDesktopHubCollaborationRefusesWithoutSession',
+        'TestControlledCrashRestoresUnstoredWorkAndKeepsTheSendUncertain',
+        'TestRecoveringAnUnverifiableRunReportsItWithoutResuming',
+        'TestEditorDraftsAreWrittenCompletelyAndPrivately',
+        'TestSessionIsWrittenCompletelyAndPrivately',
+        'TestPrivacyResultsNeverCarryAPlantedValue',
+        'TestThePrivacyJourneyMakesNoNameLookupsAndRecordsLoopbackOnly',
+        'TestFocusOrderFollowsTheInvestigationJourney',
+        'TestEveryRegionIsReachableFromTheCommandPalette',
+        'TestEveryStatusIsDistinguishableWithoutColour',
+        'TestTextScalesAndThemesAreOfferedAsChoices',
+        'TestThePaneSeparatorIsOperableWithAKeyboard',
     )),
+    ('.', './internal/operation', ('TestEditingATargetRefusesAFIFOALinkAndAnOversizedFileWithoutReadingThem',)),
+    ('.', './internal/report', ('TestReviewEscapesHostileEvidenceAndRejectsResealedReports',)),
     ('.', './internal/observesource', (
         'TestADownstreamCaptureCompletesTheWindowAndBindsWhatTheRunProduced',
         'TestACaptureRecordedBeforeTheWatermarkIsStaleRatherThanQuiet',
@@ -60,6 +100,11 @@ CASES = (
         'TestPostgresTeamBackupRefusalsLeaveNoReadableArtifacts',
         'TestPostgresReviewedSupportIdentityPolicyAndRecovery',
         'TestPostgresLifecycleBackupRetirementRecovery',
+        'TestPostgresTwoDesktopUsersEnforceRolesConflictsRevocationAndExpiry',
+        'TestPostgresConcurrentReviewConflictAndProjectIsolation',
+        'TestPostgresApprovedReleaseHistoryAndRecovery',
+        'TestPostgresOfflineRevisionConflictResolution',
+        'TestPostgresLifecycleAdministration',
     )),
 )
 
@@ -133,7 +178,7 @@ def main():
         if final_revision != revision or dirty:
             failed = True
             summary.write('FAIL source changed during acceptance; rerun on a clean fixed candidate\n')
-        summary.write('Not covered: native screen readers, installed platform matrix, independent assessment, customer controls.\n')
+        summary.write('Not covered: native screen readers, real-UI keyboard/focus journeys, installed platform matrix, independent assessment, customer controls.\n')
         summary.write('Local matrix: ' + ('FAIL' if failed else 'PASS') + '; full #111 acceptance: NOT ESTABLISHED\n')
     return 1 if failed else 0
 

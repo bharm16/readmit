@@ -103,6 +103,12 @@ var slotActivities = []slotActivity{
 		idle:   "No capture or collection is in progress. Nothing listens and no source is read until you start one.",
 	},
 	{
+		id:     "environment",
+		ops:    []string{"reduction"},
+		active: "A controlled reduction is in progress now; the fixture resets it performs reach the recorded environment its target names.",
+		idle:   "No connectivity check, fixture reset or reduction is in progress. Recording a named environment, a send policy or a reset plan reads and writes local files only.",
+	},
+	{
 		id:     "observe",
 		ops:    []string{"observation"},
 		active: "An observation window is open now, reading the source and scope its validated pair declares.",

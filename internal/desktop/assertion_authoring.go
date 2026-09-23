@@ -170,9 +170,10 @@ func (a *App) ValidateAssertionSet(document string) CanonicalAssertionResult {
 	})
 }
 
-// ExportAssertionSet writes exact reviewed bytes to a new workspace entry.
+// ExportAssertionSet writes exact reviewed bytes to a new workspace entry. A
+// new assertion set is authoring, admitted exactly as saving one is.
 func (a *App) ExportAssertionSet(request CanonicalAssertionRequest) CanonicalAssertionResult {
-	return run(a, false, false, func(context.Context) CanonicalAssertionResult {
+	return run(a, false, true, func(context.Context) CanonicalAssertionResult {
 		root, declined := resolveFolder(request.Workspace)
 		if root == "" {
 			return CanonicalAssertionResult{State: declined.state, Reason: declined.reason}

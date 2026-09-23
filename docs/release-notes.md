@@ -1,5 +1,32 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Local adversarial acceptance covers the application surfaces (#111). Every
+  window operation is handed a FIFO, a link, a sparse gigabyte-long document, a
+  directory and an entry leaving the workspace, and must answer promptly within
+  a memory bound; opening a named environment, choosing or importing a scenario
+  file by path and classifying the entry a preflight names no longer block on
+  or read such an entry to its end, and pasted content is staged only into a
+  folder the window opened, never creating one or an empty folder inside a
+  sealed case. Startup, restoration and inspection are shown to reach no
+  configured destination and resolve no name. The privacy status now also
+  discloses connectivity checks, fixture resets and send-policy name
+  resolution, and names the kept commercial selection. Under an expired
+  license the window, like the command line, still diagnoses, exports and
+  imports profile packages, backs up, verifies, restores, recovers, archives,
+  deletes and takes an upgrade's rollback point, while a connectivity check, a
+  fixture reset and an observation collection now reserve a runner instance
+  as their commands do and exporting an edited test or assertion set admits
+  the author; every desktop ledger row is checked against the admission its
+  method takes. The hub no longer admits a history or notification search as
+  authoring, so a read-only viewer can search. Choosing a hub configuration
+  through its dialog is no longer refused as busy. Planted patient values and a
+  planted credential stay out of results and shell state, a reset credential is
+  refused on the observation read path, and a real customer hub over mutual
+  TLS and PostgreSQL is exercised by several signed-in windows for roles,
+  conflicts, stale support approvals, revocation, session expiry and restored
+  offline work. The launcher now requires 75 named tests; real-UI keyboard and
+  screen-reader journeys remain open.
+
 - The capability ledger #244 is tracked against is now a checked
   `readmit-capability-ledger/v2` document. Every row names its shared backend
   operation, the canonical documents it reads and writes and its

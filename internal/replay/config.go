@@ -39,7 +39,7 @@ func readDeclared(path string) (Target, string, error) {
 	if err != nil {
 		return Target{}, "", errors.New("cannot resolve target configuration")
 	}
-	data, err := readLocal(resolved, 64<<10)
+	data, err := readLocal(resolved, MaxTargetBytes)
 	if err != nil {
 		return Target{}, "", errors.New("cannot read target configuration")
 	}
