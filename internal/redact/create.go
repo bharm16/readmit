@@ -61,6 +61,7 @@ func Create(ctx context.Context, request Request) (*Review, error) {
 		proofDir := filepath.Join(private, "original-proof")
 		proof, err := runProof(ctx, spec, request.CasePath, proofDir, t.policy.RequiredFailures)
 		if err != nil {
+			review.OriginalProofFailure = err.Error()
 			if err := t.finding("proof/original-assertions", "other-unique-identifiers", "original-fixture-proof-failed", "", false); err != nil {
 				return nil, err
 			}

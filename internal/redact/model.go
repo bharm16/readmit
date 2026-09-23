@@ -102,6 +102,11 @@ type Review struct {
 	OriginalFailedAssertions []int                   `json:"original_failed_assertions"`
 	Scope                    string                  `json:"scope"`
 	Identity                 string                  `json:"-"`
+	// OriginalProofFailure says, to the process that ran Create, which step of
+	// a failed original fixture proof failed and why. Its finding stays the
+	// fixed located one; this explanation names fixtures, messages, statuses
+	// and durations only, and it is never encoded into any artifact.
+	OriginalProofFailure string `json:"-"`
 }
 
 type Request struct {

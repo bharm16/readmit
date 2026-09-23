@@ -17,6 +17,7 @@ import (
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/collection"
 	"github.com/bharm16/readmit/internal/diagnose"
+	"github.com/bharm16/readmit/internal/exportreview"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/redact"
 	"github.com/bharm16/readmit/internal/replay"
@@ -332,8 +333,11 @@ func TestRedactRejectsStaleApprovalAndChangedInputs(t *testing.T) {
 		t.Run(change, func(t *testing.T) {
 			request := redactFixture(t)
 			review, err := redact.Create(context.Background(), request)
-			if err != nil || review.State != "ready-for-approval" {
-				t.Fatalf("setup: %+v %v", review, err)
+			if err != nil {
+				t.Fatalf("setup: %v", err)
+			}
+			if review.State != "ready-for-approval" {
+				t.Fatalf("setup: review %s; original proof: %q; %+v", review.State, review.OriginalProofFailure, review)
 			}
 			approval := review.Identity
 			path := ""
@@ -379,6 +383,33 @@ func TestRedactOriginalProofRejectsWrongAgreedFailureSet(t *testing.T) {
 	}
 	if review.State != "blocked" || len(review.OriginalFailedAssertions) != 0 {
 		t.Fatal("unrelated or additional original failures were accepted")
+	}
+	// The located finding stays the fixed one; the cause is said to the caller
+	// only, naming the step and the actual verdicts but no path or value.
+	unresolved := []exportreview.Finding{}
+	for _, finding := range review.Findings {
+		if !finding.Resolved {
+			unresolved = append(unresolved, finding)
+		}
+	}
+	if !reflect.DeepEqual(unresolved, []exportreview.Finding{{Location: "proof/original-assertions", Class: "other-unique-identifiers", Reason: "original-fixture-proof-failed", Resolved: false}}) {
+		t.Fatalf("proof failure changed its finding: %+v", unresolved)
+	}
+	cause := "fixture proof did not preserve the exact agreed failures [1] and full fixed pass: baseline assertion_failure with failed assertions [1 2]; postfix pass"
+	if review.OriginalProofFailure != cause || strings.ContainsAny(review.OriginalProofFailure, `/\`) {
+		t.Fatalf("proof failure does not say why: %q", review.OriginalProofFailure)
+	}
+	for _, name := range []string{filepath.Join(request.Output, "review.json"), filepath.Join(request.LocalState, "state.json")} {
+		raw, err := os.ReadFile(name)
+		if err != nil || bytes.Contains(raw, []byte("did not preserve")) {
+			t.Fatalf("proof failure cause entered %s: %v", filepath.Base(name), err)
+		}
+	}
+	command := redactFixture(t)
+	redactJSON(t, command.PolicyPath, policy)
+	stdout, stderr, err := run(t, "redact", command.CasePath, "--spec", command.SpecPath, "--policy", command.PolicyPath, "--inventory", command.InventoryPath, "--local-state", command.LocalState, "--output", command.Output)
+	if err == nil || !strings.Contains(stderr, "Original fixture proof failed: "+cause+"\n") || strings.Contains(stdout+stderr, filepath.Dir(command.CasePath)) {
+		t.Fatalf("command did not report the failed proof step privately: %v %s %s", err, stdout, stderr)
 	}
 }
 
@@ -484,8 +515,15 @@ func TestRedactLateProofAndResidualFailuresRemainLocatedAndPrivate(t *testing.T)
 				t.Fatalf("initial review: %+v %v", review, err)
 			}
 			packet := filepath.Join(filepath.Dir(request.Output), "packet")
-			if _, err := redact.Export(context.Background(), redact.ExportRequest{ReviewPath: request.Output, LocalState: request.LocalState, Approval: review.Identity, Output: packet}); err == nil {
+			_, exported := redact.Export(context.Background(), redact.ExportRequest{ReviewPath: request.Output, LocalState: request.LocalState, Approval: review.Identity, Output: packet})
+			if exported == nil {
 				t.Fatal("late failure exported")
+			}
+			// A failed derived proof says which step failed, naming no path.
+			cause := "; derived fixture proof: fixture proof did not preserve the exact agreed failures [1 2] and full fixed pass: baseline "
+			_, explanation, explained := strings.Cut(exported.Error(), "; derived fixture proof: ")
+			if failure == "proof" && (!strings.Contains(exported.Error(), cause) || !explained || strings.ContainsAny(explanation, `/\`) || strings.Contains(exported.Error(), filepath.Dir(request.CasePath))) {
+				t.Fatalf("derived proof failure did not name its step privately: %v", exported)
 			}
 			if _, err := os.Stat(packet); !os.IsNotExist(err) {
 				t.Fatal("failed proof or residual scan produced an export")
@@ -495,8 +533,8 @@ func TestRedactLateProofAndResidualFailuresRemainLocatedAndPrivate(t *testing.T)
 				t.Fatal("late refusal lost its located review")
 			}
 			raw, err := os.ReadFile(attempts[0])
-			if err != nil || !bytes.Contains(raw, []byte(`"state":"blocked"`)) || !bytes.Contains(raw, []byte(`"resolved":false`)) {
-				t.Fatal("attempt review concealed unresolved findings")
+			if err != nil || !bytes.Contains(raw, []byte(`"state":"blocked"`)) || !bytes.Contains(raw, []byte(`"resolved":false`)) || bytes.Contains(raw, []byte("did not preserve")) {
+				t.Fatal("attempt review concealed unresolved findings or recorded the proof's explanation")
 			}
 		})
 	}

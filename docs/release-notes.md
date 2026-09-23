@@ -1,5 +1,18 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Redaction's fixture proofs no longer fail because the local disk is slow
+  (#331). On a loaded Windows runner the fixture's synced ledger writes could
+  outlast the fixture target's three-second message timeout, and the sender's
+  synced recording the fixture's five-second wait for the next message, so a
+  correct case was blocked with `original-fixture-proof-failed`. In both the
+  original and the export's derived proof the fixture now answers once its
+  ledger is installed rather than flushed, since the proof reads it back in the
+  same process and every retained copy is synced, and it waits for its own
+  sender for the proof's 30-second budget. Target, review, state and packet
+  bytes are unchanged, as are the findings for a proof that really fails; the
+  command, and the export refusal on the command line and in the window, now
+  also say which fixture and step failed, without paths or values.
+
 - The window's operations no longer follow a symbolic link that a caller names
   directly (#339). Before this, a link inside the workspace to a saved test
   outside it was preflighted and executed, with one delivery, although the
