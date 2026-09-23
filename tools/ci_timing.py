@@ -6,8 +6,12 @@ moment it could start, the end of the last job it needs, so a long wait is
 runner contention rather than work. The critical path follows, from the job
 that ended last, the needed job that ended last, reading `needs` from the
 workflow file in this checkout. `--caches` also reads each job's log for the
-Go cache it restored. The report reads through the GitHub CLI and changes
-nothing.
+Go cache it restored and whether it saved one. `--budget` reports the
+repository's Actions cache: every entry grouped by its key without the
+generation's version, checksum and commit, and by the scope that saved it
+(main, a pull request, another branch or a tag), with how many entries were
+restored after they were saved. The report reads through the GitHub CLI and
+changes nothing.
 """
 
 import argparse
@@ -67,6 +71,57 @@ def cache_restores(log):
     return restores
 
 
+def cache_saves(log):
+    """Return the number of Go caches a job log says the job saved."""
+    return sum(1 for line in log.splitlines() if re.search(r"Cache saved with key: go-v1-", line))
+
+
+def key_prefix(key):
+    """A cache key without the version, checksum and commit segments that change between generations."""
+    while True:
+        shorter = re.sub(r"-(?:[0-9a-f]{7,}|\d+(?:\.\d+)+)$", "", key)
+        if shorter == key:
+            return key
+        key = shorter
+
+
+def scope(ref):
+    if ref == "refs/heads/main":
+        return "main"
+    if ref.startswith("refs/pull/"):
+        return "pull request"
+    return "tag" if ref.startswith("refs/tags/") else "branch"
+
+
+def budget(repository):
+    usage = api(f"repos/{repository}/actions/cache/usage")
+    caches, page, total = [], 1, None
+    while total is None or len(caches) < total:
+        listing = api(f"repos/{repository}/actions/caches?per_page=100&page={page}")
+        total = listing["total_count"]
+        if not listing["actions_caches"]:
+            break
+        caches.extend(listing["actions_caches"])
+        page += 1
+    if len(caches) != total:
+        raise RuntimeError(f"listed {len(caches)} of {total} caches")
+    print(f"Actions cache in use: {usage['active_caches_size_in_bytes'] / 1e6:.0f} MB"
+          f" in {usage['active_caches_count']} entries")
+    # (scope, key prefix) -> (entries, bytes, entries restored after they were saved)
+    groups = {}
+    for entry in caches:
+        group = (scope(entry["ref"]), key_prefix(entry["key"]))
+        count, size, restored = groups.get(group, (0, 0, 0))
+        # Saving sets the last access to the moment of creation; only a restore moves it later.
+        reused = moment(entry["last_accessed_at"]) > moment(entry["created_at"])
+        groups[group] = (count + 1, size + entry["size_in_bytes"], restored + reused)
+    print(f"  {'scope':<13} {'key prefix':<52} {'entries':>7} {'MB':>6} {'restored':>8}")
+    for (where, prefix), (count, size, restored) in sorted(groups.items(), key=lambda item: -item[1][1]):
+        print(f"  {where:<13} {prefix:<52} {count:>7} {size / 1e6:>6.0f} {restored:>8}")
+    print(f"listed: {len(caches)} entries, {sum(entry['size_in_bytes'] for entry in caches) / 1e6:.0f} MB,"
+          f" {sum(restored for _, _, restored in groups.values())} restored after they were saved")
+
+
 def report(repository, run_number, workflows, caches):
     run = api(f"repos/{repository}/actions/runs/{run_number}")
     listing = api(f"repos/{repository}/actions/runs/{run_number}/jobs?per_page=100")
@@ -94,7 +149,7 @@ def report(repository, run_number, workflows, caches):
     print(f"{run['name']}  {run['event']}  {run['head_branch']}  {run['head_sha'][:7]}  {run['conclusion']}"
           f"  run {run['id']}")
     print(f"  {'job':<48} {'start':>6} {'ran':>6} {'end':>6} {'waited':>6}  result")
-    found = attempted = 0
+    found = attempted = saved = 0
     for job in sorted(jobs, key=lambda job: (job["end"] is None, job["end"] or 0)):
         if job["start"] is None:
             row = f"  {job['name']:<48} {'-':>6} {'-':>6} {'-':>6} {'-':>6}  {job['conclusion']}"
@@ -102,11 +157,14 @@ def report(repository, run_number, workflows, caches):
             row = (f"  {job['name']:<48} {job['start']:>6.0f} {job['end'] - job['start']:>6.0f} {job['end']:>6.0f}"
                    f" {waited(job):>6.0f}  {job['conclusion']}")
         if caches and job["start"] is not None:
-            restores = cache_restores(api(f"repos/{repository}/actions/jobs/{job['id']}/logs", text=True))
+            log = api(f"repos/{repository}/actions/jobs/{job['id']}/logs", text=True)
+            restores, saves = cache_restores(log), cache_saves(log)
             attempted += len(restores)
             found += sum(1 for outcome, _ in restores if outcome == "restored")
+            saved += saves
             row += "".join(f"  go {outcome}" + (f" {key.rsplit('-', 1)[-1][:7]}" if outcome == "restored" else "")
                            for outcome, key in restores)
+            row += "  go saved" * saves
         print(row)
     if timed:
         path = [max(timed, key=lambda job: job["end"])]
@@ -115,22 +173,27 @@ def report(repository, run_number, workflows, caches):
         hops = " -> ".join(f"{job['name']} (waited {waited(job):.0f} s, ran {job['end'] - job['start']:.0f} s)"
                            for job in reversed(path))
         print(f"  critical path, {path[0]['end']:.0f} s: {hops}")
-    return run, origin, timed, found, attempted
+    return run, origin, timed, found, attempted, saved
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("runs", nargs="+", help="workflow run ids, such as the CI and desktop runs of one push")
+    parser.add_argument("runs", nargs="*", help="workflow run ids, such as the CI and desktop runs of one push")
     parser.add_argument("--repository", default="bharm16/readmit")
     parser.add_argument("--workflows", type=Path, default=ROOT / ".github" / "workflows",
                         help="where the workflow files that declare each job's needs are")
-    parser.add_argument("--caches", action="store_true", help="also read each job's log for its Go cache restore")
+    parser.add_argument("--caches", action="store_true",
+                        help="also read each job's log for the Go cache it restored and saved")
+    parser.add_argument("--budget", action="store_true",
+                        help="report the repository's Actions cache by key prefix and scope")
     arguments = parser.parse_args()
-    last, found, attempted, first = None, 0, 0, None
+    if not arguments.runs and not arguments.budget:
+        parser.error("give run ids, --budget or both")
+    last, found, attempted, saved, first = None, 0, 0, 0, None
     for number in arguments.runs:
-        run, origin, timed, run_found, run_attempted = report(
+        run, origin, timed, run_found, run_attempted, run_saved = report(
             arguments.repository, number, arguments.workflows, arguments.caches)
-        found, attempted = found + run_found, attempted + run_attempted
+        found, attempted, saved = found + run_found, attempted + run_attempted, saved + run_saved
         first = origin if first is None else min(first, origin)
         for job in timed:
             ended = origin.timestamp() + job["end"]
@@ -138,8 +201,10 @@ def main():
                 last = (ended, f"{run['name']} {run['id']}: {job['name']}")
     if len(arguments.runs) > 1 and last:
         print(f"all runs: the last job ended {last[0] - first.timestamp():.0f} s after the first run started ({last[1]})")
-    if arguments.caches:
-        print(f"Go cache restores: {found} of {attempted} found")
+    if arguments.caches and arguments.runs:
+        print(f"Go cache restores: {found} of {attempted} found; {saved} Go cache{'' if saved == 1 else 's'} saved")
+    if arguments.budget:
+        budget(arguments.repository)
     return 0
 
 
