@@ -34,27 +34,28 @@ func Routes() []Route {
 
 		// The team service: project evidence and collaboration under identity
 		// and role. v1 and v2 differ in the routes they carry, not the
-		// admission rule a route applies.
+		// admission rule a route applies; an address the dispatcher refuses
+		// before any handler (404, or 405 for a method the route never takes)
+		// is not served and is not listed here.
 		{Service: "team", Method: "GET", Path: "/v1/projects/{project}/artifacts/{digest}", Purpose: "download project evidence"},
 		{Service: "team", Method: "PUT", Path: "/v1/projects/{project}/artifacts/{digest}", Purpose: "publish project evidence"},
-		{Service: "team", Method: "GET", Path: "/v1/projects/{project}/exports/{digest}", Purpose: "download a shared export"},
-		{Service: "team", Method: "POST", Path: "/v1/projects/{project}/execution", Purpose: "execute a hub-authorized job"},
-		{Service: "team", Method: "POST", Path: "/v1/projects/{project}/approvals", Purpose: "record an approval"},
-		{Service: "team", Method: "POST", Path: "/v1/projects/{project}/enrollment", Purpose: "register a project member"},
-		{Service: "team", Method: "GET", Path: "/v1/projects/{project}/reviews", Purpose: "read the collaboration review"},
+		{Service: "team", Method: "GET", Path: "/v1/projects/{project}/exports/{digest}", Purpose: "refuse a shared export: reviewed support exports are v2 only"},
+		{Service: "team", Method: "POST", Path: "/v1/projects/{project}/execution", Purpose: "refuse a hub-authorized job: not implemented"},
+		{Service: "team", Method: "POST", Path: "/v1/projects/{project}/approvals", Purpose: "refuse a machine approval: not implemented"},
+		{Service: "team", Method: "POST", Path: "/v1/projects/{project}/enrollment", Purpose: "confirm a runner's certificate-bound enrollment"},
 		{Service: "team", Method: "POST", Path: "/v1/projects/{project}/reviews", Purpose: "record a collaboration decision"},
-		{Service: "team", Method: "GET", Path: "/v2/projects/{project}/artifacts/{digest}", Purpose: "download project evidence"},
-		{Service: "team", Method: "PUT", Path: "/v2/projects/{project}/artifacts/{digest}", Purpose: "publish project evidence"},
+		{Service: "team", Method: "GET", Path: "/v1/projects/{project}/history", Purpose: "read the review history"},
+		{Service: "team", Method: "POST", Path: "/v1/projects/{project}/history", Purpose: "search the review history"},
+		{Service: "team", Method: "GET", Path: "/v1/projects/{project}/notifications", Purpose: "read notifications"},
+		{Service: "team", Method: "POST", Path: "/v1/projects/{project}/notifications", Purpose: "search notifications"},
+		{Service: "team", Method: "GET", Path: "/v1/projects/{project}/lifecycle", Purpose: "read the project lifecycle log"},
+		{Service: "team", Method: "POST", Path: "/v1/projects/{project}/lifecycle", Purpose: "record a lifecycle command"},
 		{Service: "team", Method: "GET", Path: "/v2/projects/{project}/exports/{digest}", Purpose: "download a support export"},
-		{Service: "team", Method: "POST", Path: "/v2/projects/{project}/execution", Purpose: "execute a hub-authorized job"},
-		{Service: "team", Method: "POST", Path: "/v2/projects/{project}/approvals", Purpose: "record an approval"},
-		{Service: "team", Method: "POST", Path: "/v2/projects/{project}/enrollment", Purpose: "register a project member"},
-		{Service: "team", Method: "GET", Path: "/v2/projects/{project}/reviews", Purpose: "read the collaboration review"},
 		{Service: "team", Method: "POST", Path: "/v2/projects/{project}/reviews", Purpose: "record a collaboration decision"},
 		{Service: "team", Method: "GET", Path: "/v2/projects/{project}/history", Purpose: "read the review history"},
-		{Service: "team", Method: "POST", Path: "/v2/projects/{project}/history", Purpose: "record a history event"},
+		{Service: "team", Method: "POST", Path: "/v2/projects/{project}/history", Purpose: "search the review history"},
 		{Service: "team", Method: "GET", Path: "/v2/projects/{project}/notifications", Purpose: "read notifications"},
-		{Service: "team", Method: "POST", Path: "/v2/projects/{project}/notifications", Purpose: "record a notification"},
+		{Service: "team", Method: "POST", Path: "/v2/projects/{project}/notifications", Purpose: "search notifications"},
 		{Service: "team", Method: "GET", Path: "/v2/projects/{project}/lifecycle", Purpose: "read the project lifecycle log"},
 		{Service: "team", Method: "POST", Path: "/v2/projects/{project}/lifecycle", Purpose: "record a lifecycle command"},
 

@@ -66,6 +66,26 @@ stand in for a step a person takes, and state each expected outcome from the
 scenario's own facts rather than from what the engine answered. Use synthetic
 evidence only; the processes see an empty PATH and a home inside the root.
 
+A new command, bound facade method, hub route, hub binary operation, vendor
+portal operation, Makefile target or `tools/` script needs a row in
+`docs/capability-ledger.json` (`readmit-capability-ledger/v2`, read by
+`internal/capability`). A row names its `backend` operation
+(`{"package": "internal/x", "name": "Func"}` or `"Type.Method"`), the
+canonical `inputs` and `outputs` it reads and writes (`readmit-*/vN`
+contracts, or `hl7` for raw message bytes), and its `prerequisites` from the
+closed set in `internal/capability`; a command's activation prerequisite must
+match its declared operation-guard admission. Once it is `implemented` it
+names the `gui_test` that drives it — a component test
+(`desktop/frontend/src/X.test.tsx`) or a journey
+(`desktop/frontend/src/journeys/X.journey.tsx`), by its exact title — and the
+`parity_test` (`{"package": "internal/desktop", "name": "TestX"}`) that proves
+it reaches the shared engine; an open row names no test and its owner is the
+open issue that will add its screen. A row that is not customer work carries a
+typed `disposition` instead; a Makefile target or tools script is a `tooling`
+row disposed as `developer-tooling`, with no backend.
+`go test ./internal/capability` resolves every reference against the tree, so
+rename a test, an operation or a contract together with its row.
+
 ## Before pushing
 
 Batch related review fixes, resolve integration changes against current main,

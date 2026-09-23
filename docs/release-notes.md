@@ -1,5 +1,26 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The capability ledger #244 is tracked against is now a checked
+  `readmit-capability-ledger/v2` document. Every row names its shared backend
+  operation, the canonical documents it reads and writes and its
+  prerequisites, and an implemented row names the frontend interaction test
+  and the Go parity test that prove it, as references `internal/capability`
+  resolves against the source tree instead of prose; a command's stated
+  activation is checked against the admission it declares. A row that is not
+  customer work carries a typed disposition — developer tooling, vendor
+  issuance, machine interface, not served, or superseded by a named
+  implemented row. The ledger now also covers the commercial portal (its
+  account events, the vendor issuers and the vendor's signing), the
+  `readmit-hub` binary's operator commands, the command-line parents that run
+  work of their own, and the repository's Makefile targets and tools scripts
+  as recorded developer tooling; the hub's route inventory now lists what its
+  dispatcher actually serves. Every row was re-verified against the code:
+  rows whose screen is unreachable or whose interaction or parity evidence is
+  missing are open, owned by new issues #290–#317, and named in the window's
+  support guidance. A `readmit-capability-ledger/v1` document still reads
+  under v1's rules, which now also refuse two rows sharing an id, as v1 always
+  stated. No command, facade method, route or customer contract changes.
+
 - Two interaction journeys now drive the desktop window against the real
   application rather than stubbed answers (#109). A journey harness mounts the
   production window in a test window and drives it with real keyboard and
