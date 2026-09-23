@@ -21,6 +21,9 @@ func redactCommand() *cobra.Command {
 		}
 		if review.State != "ready-for-approval" {
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Redaction review blocked: %d located findings. Inspect the local review; no share approval exists.\n", len(review.Findings))
+			if err == nil && review.OriginalProofFailure != "" {
+				_, err = fmt.Fprintf(cmd.ErrOrStderr(), "Original fixture proof failed: %s\n", review.OriginalProofFailure)
+			}
 			if err != nil {
 				return err
 			}

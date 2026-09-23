@@ -307,6 +307,46 @@ func TestObservationWriteFailureDoesNotSendAA(t *testing.T) {
 	}
 }
 
+// A redaction proof sends to this fixture under a message timeout of three
+// seconds that export packets record (#331). A durable session flushes its
+// ledger twice per message before the ACK, so stalled flushes alone run out
+// that window; an in-process session installs the same ledger before the same
+// ACK without flushing it.
+func TestInProcessLedgerAnswersWithoutWaitingForTheDisk(t *testing.T) {
+	const window = 3 * time.Second
+	restore := receiver.DelayLedgerSyncForTest(2 * time.Second)
+	defer restore()
+	for _, inProcess := range []bool{false, true} {
+		t.Run(fmt.Sprintf("in-process=%t", inProcess), func(t *testing.T) {
+			h := startReceiver(t, observation.Fixed, 1, 1<<20, 10*time.Second, func(config receiver.Config) (*receiver.Receiver, error) {
+				config.InProcess = inProcess
+				return receiver.New(config)
+			})
+			conn := h.connect(t)
+			send(t, conn, mllp.Frame(fixture(t, "listen-s12.hl7")))
+			if err := conn.SetReadDeadline(time.Now().Add(window)); err != nil {
+				t.Fatal(err)
+			}
+			reader, _ := mllp.NewReader(conn, 1<<20)
+			if !inProcess {
+				if _, err := reader.ReadFrame(); err == nil {
+					t.Fatal("a durable ACK did not wait for its stalled flushes")
+				}
+				return
+			}
+			ack(t, reader, "AA", "LISTEN-BOOK")
+			observed, err := observation.Read(h.config.ObservationPath)
+			if err != nil || !observed.Consistent || len(observed.Processed) != 1 || len(observed.Records) != 1 {
+				t.Fatalf("ACK preceded the installed ledger: %+v %v", observed, err)
+			}
+			h.await(t)
+			if h.err != nil || h.result.Observation == nil || !reflect.DeepEqual(*h.result.Observation, observed) {
+				t.Fatalf("in-process case disagrees with its ledger: %v", h.err)
+			}
+		})
+	}
+}
+
 func TestRescheduleUsesNamespacedNonUniqueFillerLookup(t *testing.T) {
 	for _, tc := range []struct {
 		name          string

@@ -82,7 +82,9 @@ func Export(ctx context.Context, request ExportRequest) (*ExportManifest, error)
 	}
 	proof, err := runProof(ctx, spec, casePath, filepath.Join(stage, "proof"), review.OriginalFailedAssertions)
 	if err != nil {
-		return nil, blockedAttempt(stage, review, proofFindings(filepath.Join(stage, "proof"), review.OriginalFailedAssertions), exportreview.Scan{Status: "not-run", Locations: []string{}, Limitations: "Proof failed before final residual review."})
+		// The located attempt stays the record; the proof's own explanation,
+		// which names steps and verdicts but no path or value, is said here only.
+		return nil, fmt.Errorf("%w; derived fixture proof: %v", blockedAttempt(stage, review, proofFindings(filepath.Join(stage, "proof"), review.OriginalFailedAssertions), exportreview.Scan{Status: "not-run", Locations: []string{}, Limitations: "Proof failed before final residual review."}), err)
 	}
 	// Send decisions are local execution records, not part of the approved
 	// export contract. Keep them beside the private staging directory before

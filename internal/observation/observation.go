@@ -174,13 +174,24 @@ func Read(path string) (Snapshot, error) {
 // Create installs a complete first snapshot exclusively. Linking a synced
 // temporary file avoids both overwriting a stale observation and exposing an
 // empty/partial destination during startup. Temp and destination share a volume.
-func Create(path string, snapshot Snapshot) error { return write(path, snapshot, true) }
+func Create(path string, snapshot Snapshot) error {
+	return install(path, snapshot, true, (*os.File).Sync)
+}
 
 // Write replaces a snapshot by same-directory rename. Readers see either the
 // previous complete JSON document or this one; the live file is never truncated.
-func Write(path string, snapshot Snapshot) error { return write(path, snapshot, false) }
+func Write(path string, snapshot Snapshot) error { return Install(path, snapshot, (*os.File).Sync) }
 
-func write(path string, snapshot Snapshot, create bool) error {
+// Install replaces a snapshot by the same rename as Write, first calling flush
+// on the complete temporary file unless flush is nil. A nil flush is for a live
+// observation read back only by the process writing it, which keeps any copy it
+// retains through its own synced write; such a file is not claimed to survive a
+// system crash.
+func Install(path string, snapshot Snapshot, flush func(*os.File) error) error {
+	return install(path, snapshot, false, flush)
+}
+
+func install(path string, snapshot Snapshot, create bool, flush func(*os.File) error) error {
 	path, err := artifactpath.Destination(path)
 	if err != nil {
 		return err
@@ -195,8 +206,8 @@ func write(path string, snapshot Snapshot, create bool) error {
 	}
 	defer os.Remove(file.Name())
 	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
+	if writeErr == nil && flush != nil {
+		writeErr = flush(file)
 	}
 	closeErr := file.Close()
 	if writeErr != nil || closeErr != nil {

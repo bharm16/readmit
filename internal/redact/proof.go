@@ -3,6 +3,7 @@ package redact
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -44,14 +45,14 @@ func runProof(ctx context.Context, spec testrunner.Spec, casePath, dir string, r
 	caseReference = filepath.ToSlash(filepath.Join("..", caseReference))
 	baseline, err := runFixture(ctx, spec, caseReference, filepath.Join(dir, "baseline"), observation.Defective)
 	if err != nil {
-		return Proof{}, err
+		return Proof{}, fmt.Errorf("baseline fixture: %w", err)
 	}
 	postfix, err := runFixture(ctx, spec, caseReference, filepath.Join(dir, "postfix"), observation.Fixed)
 	if err != nil {
-		return Proof{}, err
+		return Proof{}, fmt.Errorf("postfix fixture: %w", err)
 	}
 	if baseline.Result.Status != testrunner.AssertionFailure || postfix.Result.Status != testrunner.Pass || !slices.Equal(failedAssertions(baseline), required) || baseline.Result.InputBundleIdentity != source.Identity || postfix.Result.InputBundleIdentity != source.Identity || !sameAssertionContract(baseline.Spec, postfix.Spec) {
-		return Proof{}, errors.New("fixture proof did not preserve the exact agreed failures and full fixed pass")
+		return Proof{}, fmt.Errorf("fixture proof did not preserve the exact agreed failures %v and full fixed pass: baseline %s; postfix %s", required, outcome(baseline), outcome(postfix))
 	}
 	for _, artifact := range []*testrunner.Artifact{baseline, postfix} {
 		if err := verifyFixtureProof(source, artifact); err != nil {
@@ -74,6 +75,27 @@ func fixtureTarget(address string) replay.Target {
 	return replay.Target{Schema: replay.TargetSchema, TestEndpoint: true, Address: address, Transport: "plain", ConnectTimeout: "2s", MessageTimeout: "3s", MaxACKBytes: 16384}
 }
 
+// fixtureBudget bounds one fixture execution. The fixture receiver waits as
+// long for this proof's own sender, which syncs the run evidence it has just
+// recorded before sending the next message: a shorter idle limit let that
+// sender's storage, rather than the fixture, end the session.
+const fixtureBudget = 30 * time.Second
+
+// fixtureReceiver configures the fresh built-in fixture one proof execution
+// sends to. Its live ledger is read back only by this process, and every copy
+// retained from it (the result's observations, the receiver case, an export
+// packet) is written synced, so it is installed in process: flushing it before
+// each ACK put the disk's latency inside the fixture target's message timeout,
+// which export packets record and cannot change.
+func fixtureReceiver(mode observation.Mode, dir string, messages int) receiver.Config {
+	return receiver.Config{Mode: mode, OutputPath: filepath.Join(dir, "receiver.case"), ObservationPath: filepath.Join(dir, "observation.json"), MaxFrameBytes: 1 << 20, IdleTimeout: fixtureBudget, MaxMessages: messages, InProcess: true}
+}
+
+// executeFixture sends one fixture spec to its receiver. It is the ordinary
+// test runner; it is the one seam this package's proof tests take, to stand
+// in a sender whose own storage stalls.
+var executeFixture = testrunner.Run
+
 func runFixture(ctx context.Context, spec testrunner.Spec, caseReference, dir string, mode observation.Mode) (*testrunner.Artifact, error) {
 	if err := os.Mkdir(dir, 0700); err != nil {
 		return nil, errors.New("cannot reserve fixture proof session")
@@ -83,11 +105,11 @@ func runFixture(ctx context.Context, spec testrunner.Spec, caseReference, dir st
 		return nil, errors.New("cannot bind local proof receiver")
 	}
 	defer listener.Close()
-	r, err := receiver.New(receiver.Config{Mode: mode, OutputPath: filepath.Join(dir, "receiver.case"), ObservationPath: filepath.Join(dir, "observation.json"), MaxFrameBytes: 1 << 20, IdleTimeout: 5 * time.Second, MaxMessages: len(spec.Input.Messages)})
+	r, err := receiver.New(fixtureReceiver(mode, dir, len(spec.Input.Messages)))
 	if err != nil {
 		return nil, err
 	}
-	proofCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	proofCtx, cancel := context.WithTimeout(ctx, fixtureBudget)
 	done := make(chan error, 1)
 	go func() { _, err := r.Serve(proofCtx, listener); done <- err }()
 	waited := false
@@ -114,20 +136,51 @@ func runFixture(ctx context.Context, spec testrunner.Spec, caseReference, dir st
 	if err := writeFile(dir, "spec.json", specBytes); err != nil {
 		return nil, err
 	}
-	_, err = testrunner.Run(proofCtx, filepath.Join(dir, "spec.json"), filepath.Join(dir, "result"))
+	executed, err := executeFixture(proofCtx, filepath.Join(dir, "spec.json"), filepath.Join(dir, "result"))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("fixture test did not complete: %w", err)
 	}
 	cancel()
 	serveErr := <-done
 	waited = true
 	if serveErr != nil {
-		return nil, errors.New("fixture receiver could not finalize proof evidence")
+		return nil, fmt.Errorf("fixture receiver could not finalize proof evidence (%w); sender %s", serveErr, outcome(executed))
 	}
 	if _, err := bundle.Open(filepath.Join(dir, "receiver.case")); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("fixture receiver case: %w", err)
 	}
-	return testrunner.Open(filepath.Join(dir, "result"))
+	artifact, err := testrunner.Open(filepath.Join(dir, "result"))
+	if err != nil {
+		return nil, fmt.Errorf("fixture result: %w", err)
+	}
+	return artifact, nil
+}
+
+// outcome states what one fixture execution retained, in the words of its
+// result and run: the status, its error class, the failed assertion positions
+// and the first message whose delivery failed, with the transport phase and
+// the time that message took. It names no path and carries no evidence value,
+// so a proof failure can be reported wherever the proof ran.
+func outcome(artifact *testrunner.Artifact) string {
+	if artifact == nil {
+		return "retained no result"
+	}
+	text := string(artifact.Result.Status)
+	if artifact.Result.ErrorClass != "" {
+		text += " (" + artifact.Result.ErrorClass + ")"
+	}
+	if failed := failedAssertions(artifact); len(failed) > 0 {
+		text += fmt.Sprintf(" with failed assertions %v", failed)
+	}
+	if artifact.Run != nil {
+		for i, event := range artifact.Run.Events {
+			if event.TransportError != nil {
+				text += fmt.Sprintf(" at message %d: %s during %s after %s", i+1, event.TransportError.Class, event.TransportError.Phase, time.Duration(event.ElapsedNS).Round(time.Millisecond))
+				break
+			}
+		}
+	}
+	return text
 }
 
 // verifyFixtureProof owns the successful fixture contract used both after fresh

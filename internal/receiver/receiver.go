@@ -37,7 +37,18 @@ type Config struct {
 	MaxFrameBytes   int
 	IdleTimeout     time.Duration
 	MaxMessages     int // zero means run until cancellation or a session limit
+	// InProcess marks a session whose live observation is read back only by
+	// the process serving it, which retains every copy it keeps through its
+	// own synced write, as redaction's fixture proofs do. Each snapshot is
+	// still installed whole, by rename, before its ACK, but it is not flushed
+	// to the device first, so the ACK does not wait on the disk. A session
+	// another process reads, such as listen's, always flushes.
+	InProcess bool
 }
+
+// syncLedger flushes each snapshot of a ledger that another process reads,
+// before the rename that makes the snapshot visible.
+var syncLedger = (*os.File).Sync
 
 type Receiver struct {
 	recorder
@@ -47,6 +58,7 @@ type Receiver struct {
 	snapshot         observation.Snapshot
 	served           bool
 	observationLimit int
+	flush            func(*os.File) error
 }
 
 func New(config Config) (*Receiver, error) {
@@ -82,7 +94,10 @@ func New(config Config) (*Receiver, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := &Receiver{config: config, profile: profile, startedAt: time.Now().UTC(), observationLimit: observation.MaxBytes}
+	r := &Receiver{config: config, profile: profile, startedAt: time.Now().UTC(), observationLimit: observation.MaxBytes, flush: syncLedger}
+	if config.InProcess {
+		r.flush = nil
+	}
 	r.snapshot = observation.Snapshot{Schema: observation.Schema, Profile: profile.Name, SessionID: hex.EncodeToString(entropy[:]), Mode: config.Mode, Consistent: true, Processed: []observation.Occurrence{}, Records: []observation.Record{}}
 	if err := observation.Create(config.ObservationPath, r.snapshot); err != nil {
 		return nil, err
@@ -177,7 +192,7 @@ func (r *Receiver) connection(ctx context.Context, connection net.Conn, state *s
 		id := r.retain(state, raw, bundle.Inbound)
 		ordinal := r.nextFrame()
 		r.snapshot.Consistent = false
-		if err := observation.Write(r.config.ObservationPath, r.snapshot); err != nil {
+		if err := observation.Install(r.config.ObservationPath, r.snapshot, r.flush); err != nil {
 			return false, err
 		}
 		request, processErr := r.parseRequest(raw)
@@ -196,14 +211,14 @@ func (r *Receiver) connection(ctx context.Context, connection net.Conn, state *s
 		encoded, encodeErr := observation.Encode(candidate)
 		if encodeErr != nil || len(encoded) > r.observationLimit {
 			r.snapshot.Consistent = true
-			if restoreErr := observation.Write(r.config.ObservationPath, r.snapshot); restoreErr != nil {
+			if restoreErr := observation.Install(r.config.ObservationPath, r.snapshot, r.flush); restoreErr != nil {
 				r.snapshot.Consistent = false
 				return false, errors.Join(encodeErr, restoreErr)
 			}
 			return false, errors.New("receiver session reached observation limit; prior ledger retained")
 		}
 		candidate.Consistent = true
-		if err := observation.Write(r.config.ObservationPath, candidate); err != nil {
+		if err := observation.Install(r.config.ObservationPath, candidate, r.flush); err != nil {
 			return false, err
 		}
 		r.snapshot = candidate

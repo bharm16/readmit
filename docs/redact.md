@@ -52,6 +52,19 @@ actual original failure set must equal the declared `required_failures` list;
 the fixed receiver must pass every assertion. In this example assertions 1 and 2
 fail because rescheduling leaves two ledger records, while ACK assertions 3 and 4
 pass. An execution error or a different failure set cannot establish this proof.
+When it fails, the review keeps the single located `proof/original-assertions`
+finding, and the command also writes to stderr which fixture and step failed and
+the verdicts it saw, such as a message's transport timeout. A failed derived
+proof during export is explained the same way in its refusal, beside the located
+`attempt-review.json`. That explanation names no path or evidence value and is
+written to no review, state, attempt or packet.
+
+In both proofs each fixture receiver answers a message once its ledger snapshot
+is installed, without first flushing it to the disk, and waits for the proof's
+own sender for up to the proof's 30-second budget. The proof reads that ledger
+back in the same process and keeps every copy it retains in a synced write, so a
+slow local disk cannot turn the recorded three-second fixture message timeout
+into a failed proof. `listen` still syncs its ledger before every ACK.
 
 Inspect `review/review.json`, `review/case`, and `review/spec.json`. Copy the
 64-character identity printed by the command or stored in `review/identity.sha256`:

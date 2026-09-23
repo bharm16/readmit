@@ -125,7 +125,9 @@ including when empty. Unknown JSON members and unsupported schemas are errors.
 
 Before processing a message the receiver writes `consistent:false`, then
 updates the ledger and occurrence list, then writes `consistent:true`. Only
-after that complete snapshot is synced and installed does it send the ACK. An
+after that complete snapshot is synced and installed does it send the ACK.
+Redaction's private proofs run this fixture inside their own process and
+install the snapshot without the sync; see [redact](redact.md). An
 observation write failure prevents AA and fails the session. Every rewrite uses
 a same-directory temporary file and rename; the live file is never truncated.
 Startup uses a hard link from the synced temporary file to create the first

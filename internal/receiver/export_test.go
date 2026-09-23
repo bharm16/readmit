@@ -2,6 +2,8 @@ package receiver
 
 import (
 	"errors"
+	"os"
+	"time"
 
 	"github.com/bharm16/readmit/internal/observation"
 )
@@ -19,4 +21,16 @@ func NewWithObservationLimitForTest(config Config, limit int) (*Receiver, error)
 	}
 	r.observationLimit = limit
 	return r, nil
+}
+
+// DelayLedgerSyncForTest makes each ledger flush of receivers created
+// afterwards take delay longer, standing in for a device whose flushes stall.
+// The returned function restores the real flush.
+func DelayLedgerSyncForTest(delay time.Duration) (restore func()) {
+	original := syncLedger
+	syncLedger = func(file *os.File) error {
+		time.Sleep(delay)
+		return original(file)
+	}
+	return func() { syncLedger = original }
 }
