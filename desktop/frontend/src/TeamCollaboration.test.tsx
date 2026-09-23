@@ -69,7 +69,9 @@ test("TeamCollaboration loads history, posts a comment with service identity, an
 
   let captured: HubReviewCommandRequest | undefined;
   const facade = installFacade({
-    ListHubReviews: async () => history,
+    // Once the decision is recorded, the hub's history holds both events.
+    ListHubReviews: async () =>
+      captured ? { ...history, head: 2, events: [...(history.events ?? []), ...(posted.events ?? [])] } : history,
     PostHubReview: async (req) => {
       captured = req;
       return posted;
@@ -93,10 +95,50 @@ test("TeamCollaboration loads history, posts a comment with service identity, an
   expect(captured?.expected).toBe(1);
   expect(await screen.findByText(/Posted team comment/i)).toBeTruthy();
   expect(screen.getByText(/Review history \(head 2\)/i)).toBeTruthy();
+  // The history shown after the decision is the hub's whole history, read
+  // again, not only the one event the post answered with.
+  expect(facade.callsTo("ListHubReviews").length).toBe(2);
+  expect(screen.getByText(/Assigned for review/i)).toBeTruthy();
 
   await user.click(screen.getByRole("button", { name: /Explain downloaded-copy limits/i }));
   expect(facade.callsTo("ExplainHubCustody").length).toBe(1);
   expect(await screen.findByText(/already-downloaded files/i)).toBeTruthy();
+
+  uninstallFacade();
+});
+
+test("TeamCollaboration shows a recorded decision, never a refusal, when the history cannot be read again", async () => {
+  const user = userEvent.setup();
+  const event = {
+    schema: "readmit-hub-review-event/v1",
+    project: "cardio-study",
+    issuer: "https://idp.example",
+    actor: "doctor@hospital.org",
+    at: "2026-09-21T12:01:00Z",
+    kind: "comment",
+    evidence,
+  };
+  let posted = false;
+  installFacade({
+    ListHubReviews: async () =>
+      posted
+        ? { state: "failed", project: "cardio-study", reason: "hub unreachable; retry the read" }
+        : { state: "completed", project: "cardio-study", head: 0, events: [] },
+    PostHubReview: async () => {
+      posted = true;
+      return { state: "completed", project: "cardio-study", head: 1, events: [{ ...event, sequence: 1, text: "Recorded once", command_id: "review-cmd-1" }] };
+    },
+  });
+
+  render(<TeamCollaboration project="cardio-study" />);
+  await user.click(screen.getByRole("button", { name: /Load review history/i }));
+  expect(await screen.findByText(/Review history \(head 0\)/i)).toBeTruthy();
+  await user.type(screen.getByLabelText(/Evidence digest/i), evidence);
+  await user.click(screen.getByRole("button", { name: /Submit review decision/i }));
+
+  expect(await screen.findByText(/Recorded once/i)).toBeTruthy();
+  expect(screen.getByText(/Review history \(head 1\)/i)).toBeTruthy();
+  expect(screen.queryByText(/hub unreachable/i)).toBeNull();
 
   uninstallFacade();
 });

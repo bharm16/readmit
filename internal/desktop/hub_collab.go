@@ -717,8 +717,6 @@ func mapReviewError(project string, err error) HubReviewsResult {
 	switch {
 	case errors.Is(err, hubclient.ErrAccessDenied), errors.Is(err, hubclient.ErrExpired):
 		return HubReviewsResult{State: PermissionDenied, Project: project, Reason: err.Error(), Warning: custodyNotice}
-	case errors.Is(err, hubclient.ErrConflict):
-		return HubReviewsResult{State: Failed, Project: project, Reason: err.Error() + "; fetch current head and renew the action", Warning: custodyNotice}
 	default:
 		return HubReviewsResult{State: Failed, Project: project, Reason: err.Error(), Warning: custodyNotice}
 	}
@@ -738,8 +736,6 @@ func mapLifecycleError(project string, err error) HubLifecycleResult {
 	switch {
 	case errors.Is(err, hubclient.ErrAccessDenied), errors.Is(err, hubclient.ErrExpired):
 		return HubLifecycleResult{State: PermissionDenied, Project: project, Reason: err.Error(), Warning: custodyNotice}
-	case errors.Is(err, hubclient.ErrConflict):
-		return HubLifecycleResult{State: Failed, Project: project, Reason: err.Error() + "; fetch current tips and renew the action", Warning: custodyNotice}
 	default:
 		return HubLifecycleResult{State: Failed, Project: project, Reason: err.Error(), Warning: custodyNotice}
 	}

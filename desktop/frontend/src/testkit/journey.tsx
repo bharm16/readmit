@@ -25,11 +25,14 @@ import { inject } from "vitest";
 import App from "../App";
 import type { Facade } from "../bindings";
 import { startDownstream } from "./downstream.js";
+import { startHub } from "./hub.js";
+import type { Hub, HubGrant } from "./hub.js";
 import type { Downstream, DownstreamMode } from "./downstream.js";
 import {
   backdateInRoot,
   copyFixtureInRoot,
   createRoot,
+  digestInRoot,
   makeFolderInRoot,
   pathInRoot,
   provisionInRoot,
@@ -51,6 +54,10 @@ declare module "vitest" {
     journeyCommandLine: string;
     /** The checkout's shipped synthetic fixtures folder. */
     journeyFixtures: string;
+    /** The readmit-hub the global setup built, or empty without PostgreSQL. */
+    journeyHub: string;
+    /** The PostgreSQL installation's bin folder, or empty. */
+    journeyPostgres: string;
   }
 }
 
@@ -66,6 +73,12 @@ export interface JourneyCall {
   /** What the facade answered, once it answered. */
   result?: unknown;
   rejected?: string;
+}
+
+/** Another person's window, driven through its facade with the facade's own
+ * types. */
+export interface Colleague {
+  call<M extends keyof Facade>(method: M, ...args: Parameters<Facade[M]>): Promise<Awaited<ReturnType<Facade[M]>>>;
 }
 
 /** The two host dialogs the facade opens. */
@@ -130,6 +143,8 @@ export class Journey {
   readonly calls: JourneyCall[] = [];
   private bridge: BridgeProcess | null = null;
   private readonly downstreams: Downstream[] = [];
+  private readonly hubs: Hub[] = [];
+  private readonly colleagues: BridgeProcess[] = [];
   private readonly problems: string[] = [];
   private readonly binary: string;
   /** How many calls an earlier close has already checked. */
@@ -203,6 +218,12 @@ export class Journey {
       for (const downstream of this.downstreams.splice(0)) {
         await downstream.close();
       }
+      for (const colleague of this.colleagues.splice(0)) {
+        await colleague.kill();
+      }
+      for (const hub of this.hubs.splice(0)) {
+        await hub.stop();
+      }
       removeRoot(this.root);
     }
   }
@@ -235,6 +256,12 @@ export class Journey {
     return copyFixtureInRoot(inject("journeyFixtures"), fixture, this.root, relative);
   }
 
+  /** The SHA-256 of a file on this person's machine, as the hub and every
+   * release name exact bytes. */
+  digest(relative: string): string {
+    return digestInRoot(this.root, relative);
+  }
+
   /** Reads a text file on this person's machine, such as one the application
    * or the command line wrote. */
   readFile(relative: string): string {
@@ -245,6 +272,12 @@ export class Journey {
    * will choose to keep a new project in. */
   makeFolder(relative: string): string {
     return makeFolderInRoot(this.root, relative);
+  }
+
+  /** Creates an empty folder only this account can open, such as the private
+   * root an administrator gives a runner. */
+  makePrivateFolder(relative: string): string {
+    return makeFolderInRoot(this.root, relative, 0o700);
   }
 
   /** Provisions the activation folder a vendor delivers — a newly signed test
@@ -269,6 +302,50 @@ export class Journey {
     const downstream = await startDownstream({ exportPath: pathInRoot(this.root, exportFile), ...(mode ? { mode } : {}) });
     this.downstreams.push(downstream);
     return downstream;
+  }
+
+  /** Whether this run can start a real hub: the global setup found a
+   * PostgreSQL installation (READMIT_POSTGRES_BIN) and built the hub. */
+  static get hubAvailable(): boolean {
+    return inject("journeyHub") !== "";
+  }
+
+  /** Starts a real customer hub for the project, as its operator runs it:
+   * the checkout's readmit-hub over mutual TLS on loopback, its store in a
+   * disposable PostgreSQL cluster inside the root, its own license, and a
+   * customer identity provider for the people it grants roles. It stops
+   * when the journey ends. */
+  async startHub(project: string, grants: HubGrant[]): Promise<Hub> {
+    const licensePolicy = `${this.provisionLicense("hub-operator/license")}/operation-policy.json`;
+    const hub = await startHub({
+      hubBinary: inject("journeyHub"),
+      bridgeBinary: this.binary,
+      postgresBin: inject("journeyPostgres"),
+      root: this.root,
+      folder: "hub-operator",
+      project,
+      grants,
+      licensePolicy,
+    });
+    this.hubs.push(hub);
+    return hub;
+  }
+
+  /** A colleague's own window on their own machine: the same application
+   * over a separate folder inside the root, with its own local state. The
+   * journey drives it through the facade, standing in for another person
+   * whose actions the window under test must meet — never for a step the
+   * person under test takes. */
+  colleague(name: string): Colleague {
+    const bridge = startBridge(this.binary, makeFolderInRoot(this.root, `colleagues/${name}`));
+    this.colleagues.push(bridge);
+    return {
+      async call(method, ...args) {
+        const reply = await bridge.send({ op: "call", name: ["desktop", "App", method].join("."), args });
+        if (reply.error) throw new Error(`${method}: ${String(reply.error)}`);
+        return reply.result as never;
+      },
+    };
   }
 
   /** Makes a file on this person's machine look as though nothing rewrote it

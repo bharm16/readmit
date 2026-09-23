@@ -3772,7 +3772,9 @@
       "inputs": ["readmit-hub-client/v1"],
       "outputs": ["readmit-desktop-hub-selection/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/hub.journey.tsx", "name": "two people review the same evidence on a real hub: the decision made against a stale history is refused as a conflict and recorded once renewed"},
+      "parity_test": {"package": "internal/desktop", "name": "TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice"},
+      "implemented": true
     },
     {
       "id": "desktop.SelectHubConfig",
@@ -3928,7 +3930,9 @@
       "inputs": [],
       "outputs": [],
       "prerequisites": ["author", "hub:evidence.write"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/hub.journey.tsx", "name": "two people review the same evidence on a real hub: the decision made against a stale history is refused as a conflict and recorded once renewed"},
+      "parity_test": {"package": "hub", "name": "TestPostgresTwoDesktopUsersEnforceRolesConflictsRevocationAndExpiry"},
+      "implemented": true
     },
     {
       "id": "desktop.ListHubReviews",
@@ -4623,7 +4627,9 @@
       "inputs": [],
       "outputs": [],
       "prerequisites": ["hub:evidence.write", "author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/hub.journey.tsx", "name": "two people review the same evidence on a real hub: the decision made against a stale history is refused as a conflict and recorded once renewed"},
+      "parity_test": {"package": "hub", "name": "TestPostgresTeamIsolationRevocationAndBackup"},
+      "implemented": true
     },
     {
       "id": "hub.team.GET./v1/projects/{project}/exports/{digest}",
@@ -5063,7 +5069,9 @@
       "inputs": [],
       "outputs": ["readmit-runner/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/runner.journey.tsx", "name": "an enrolled runner executes the saved test once against the downstream system through the real hub, to the verdict the window's own run and the command line's runner reach"},
+      "parity_test": {"package": "hub", "name": "TestRunnerScreenPreparesConfiguresAndExecutesThroughExistingContracts"},
+      "implemented": true
     },
     {
       "id": "desktop.SaveRunnerGrant",
@@ -5077,7 +5085,9 @@
       "inputs": ["readmit-runner-policy/v1"],
       "outputs": ["readmit-runner-policy/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/runner.journey.tsx", "name": "an enrolled runner executes the saved test once against the downstream system through the real hub, to the verdict the window's own run and the command line's runner reach"},
+      "parity_test": {"package": "hub", "name": "TestRunnerScreenPreparesConfiguresAndExecutesThroughExistingContracts"},
+      "implemented": true
     },
     {
       "id": "desktop.SaveRunnerJob",
@@ -5091,7 +5101,9 @@
       "inputs": [],
       "outputs": ["readmit-runner-job/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/runner.journey.tsx", "name": "an enrolled runner executes the saved test once against the downstream system through the real hub, to the verdict the window's own run and the command line's runner reach"},
+      "parity_test": {"package": "hub", "name": "TestRunnerScreenPreparesConfiguresAndExecutesThroughExistingContracts"},
+      "implemented": true
     },
     {
       "id": "desktop.ReadRunnerConfig",
@@ -5137,7 +5149,9 @@
       "inputs": ["readmit-runner/v1", "readmit-runner-job/v1", "readmit-test/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/runner.journey.tsx", "name": "an enrolled runner executes the saved test once against the downstream system through the real hub, to the verdict the window's own run and the command line's runner reach"},
+      "parity_test": {"package": "hub", "name": "TestRunnerScreenPreparesConfiguresAndExecutesThroughExistingContracts"},
+      "implemented": true
     },
     {
       "id": "desktop.ExecuteRunnerJob",
@@ -5197,7 +5211,9 @@
       "inputs": ["readmit-hub-schedules/v1", "readmit-test/v1"],
       "outputs": ["readmit-hub-alert/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/runner.journey.tsx", "name": "an enrolled runner executes the saved test once against the downstream system through the real hub, to the verdict the window's own run and the command line's runner reach"},
+      "parity_test": {"package": "internal/desktop", "name": "TestSaveSchedulePolicyWritesRevisionAndRefusesStalePin"},
+      "implemented": true
     },
     {
       "id": "desktop.PreviewSchedulePolicy",

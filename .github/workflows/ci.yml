@@ -207,9 +207,49 @@ jobs:
           path: hub/build/readmit-hub-linux-amd64.tar.gz
           if-no-files-found: error
 
+  # The hub journeys drive the production window against this checkout's
+  # readmit-hub over mutual TLS on loopback. Their global setup builds the
+  # hub, the journey bridge and the command line; each journey creates a
+  # disposable PostgreSQL cluster from these binaries inside its own temporary
+  # root and stops it when it ends. The job runs beside `hub`, not after it,
+  # so it stays off the critical path. The desktop workflow's journeys skip
+  # them, having no PostgreSQL installation.
+  hub-journeys:
+    needs: proof
+    if: ${{ !cancelled() && needs.proof.outputs.proven != 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-go
+        with:
+          cache-scope: hub-journeys
+          cache-dependency-path: '**/go.sum'
+      - name: PostgreSQL 16 binaries for the journeys' disposable clusters
+        run: |
+          if [ ! -x /usr/lib/postgresql/16/bin/initdb ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y postgresql-16
+          fi
+          /usr/lib/postgresql/16/bin/initdb --version
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+      - name: Hub journeys through the window against the real hub
+        working-directory: desktop/frontend
+        env:
+          READMIT_POSTGRES_BIN: /usr/lib/postgresql/16/bin
+        run: |
+          npm ci
+          npx vitest run --config vitest.journeys.config.ts --reporter=verbose src/journeys/hub.journey.tsx src/journeys/runner.journey.tsx
+
   quality:
     if: always()
-    needs: [proof, go-tests, tooling, fuzz, security, hub]
+    needs: [proof, go-tests, tooling, fuzz, security, hub, hub-journeys]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -225,12 +265,14 @@ jobs:
           FUZZ_RESULT: ${{ needs.fuzz.result }}
           SECURITY_RESULT: ${{ needs.security.result }}
           HUB_RESULT: ${{ needs.hub.result }}
+          HUB_JOURNEYS_RESULT: ${{ needs.hub-journeys.result }}
         run: |
           if [ "$PROVEN" = true ]; then expected=skipped; else expected=success; fi
           test "$GO_RESULT" = "$expected"
           test "$TOOLING_RESULT" = "$expected"
           test "$SECURITY_RESULT" = "$expected"
           test "$HUB_RESULT" = "$expected"
+          test "$HUB_JOURNEYS_RESULT" = "$expected"
           if [ "$TIMED_FUZZ" = true ]; then test "$FUZZ_RESULT" = success; else test "$FUZZ_RESULT" = skipped; fi
       # The record a later push to main looks for. Failing to write it only
       # means that push runs in full, so it never fails this check.

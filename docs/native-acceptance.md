@@ -267,6 +267,38 @@ journey fails the `desktop` check. They cover:
   term in its grace period still admitting new work; the commercial destination
   stated as missing, an invalid file refused, and the operator's destination
   shown as a link the window never requests, kept across a restart;
+- team work on a real customer hub — the checkout's `readmit-hub` over mutual
+  TLS on loopback, its store in a disposable PostgreSQL cluster, and a customer
+  identity provider: a person selects the operator's client configuration,
+  connects, cancels a sign-in and signs in again through the identity provider,
+  and publishes evidence under the digest the hub stores it by; a colleague,
+  in their own window, posts a review of the same evidence first, so the
+  person's decision against the history they loaded is refused as a conflict
+  and recorded once they load the current history and renew it, and both
+  windows read one history under the identities the hub authenticated. A
+  released test version is put to the team: the request names the exact
+  released bytes, the hub refuses the requester's own approval and that of a
+  reviewer the request did not name, and the requested reviewer's approval,
+  from their own window, is chained to it;
+- an enrolled customer runner on the same hub: the window writes the runner's
+  configuration, the hub-side grant and a job pinned to the saved test's
+  prepared inputs, preflighted offline; the operator issues a runner token and
+  restarts the hub with the grant; the runner is inspected offline, refused
+  while the restarted hub holds new leases, then admitted; the job is refused
+  while the probe's own lease holds the environment, then runs once and fails
+  on the downstream defect, with recovery read offline and a second run of the
+  same job refused without a send. The window's own durable run and
+  `readmit runner execute` of a job the window prepared reach the same verdict,
+  read back by `readmit run status`, and once the system is fixed the next job
+  passes. A recurring schedule for the job is authored with its pin: a
+  mismatched pin is refused, the spring-forward night is marked rather than
+  shifted, the operator's `readmit-hub schedule-pin` computes the same pin, the
+  revision is initialized and served, and it reopens in the window under the
+  identity the hub binds. A schedule firing at its time is covered only by the
+  hub's Go tests, whose clock is injected; the journeys wait out the binary's
+  real ten-second hold instead. The people and the runner present one
+  synthetic client certificate, which the hub binds each author to, so the
+  journeys do not show a certificate per machine;
 - the harness's own refusals: an unanswered or wrongly answered dialog, an
   unused answer, a call Wails would reject and a window closed while a call
   still runs each fail a journey; no journey can write outside its root; a
@@ -331,6 +363,21 @@ the journey that exposes it:
    registration the license no longer admits, replaced the project with the
    bare refusal, taking the project and its controls off the screen; the
    window now keeps the project it last read beside the refusal.
+
+The fourth round found and fixed three more, each with a component or Go test
+beside the journey that exposes it:
+
+1. A published artifact's digest was never shown, and the project's artifact
+   list is drawn from lifecycle events a publication does not record, so a
+   person could not name what they had just published in a review. The
+   transfer result now shows the digest.
+2. After a review decision was recorded, the history showed only the one
+   event the hub answered with, under a heading naming the whole history's
+   head; the history is now read again whole, and a recorded decision is
+   still shown as recorded if that read fails.
+3. A review or lifecycle decision refused on a stale head stated its remedy
+   twice, the hub client's and a second one the facade appended; the refusal
+   now states the hub client's once.
 
 They run in jsdom, not the native webview, against the Go facade the packaged
 shell binds rather than the packaged executable itself. They do not replace

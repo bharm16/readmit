@@ -1,5 +1,26 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The interaction journeys now reach a real customer hub (#109): the checkout's
+  readmit-hub over mutual TLS on loopback, its store in a disposable PostgreSQL
+  cluster each journey creates and removes, and a customer identity provider.
+  Through the window a person connects, cancels a sign-in and signs in again,
+  publishes evidence, and meets a colleague's concurrent review of it as a
+  conflict their renewed decision then resolves; a released test version is
+  requested for team review, refused as the requester's own approval and as an
+  unrequested reviewer's, and approved by the requested reviewer from their own
+  window. An enrolled runner configured and granted from the window's forms is
+  refused while the restarted hub holds leases, then runs the saved test once
+  against the downstream system to the verdict the window's own run and
+  `readmit runner execute` reach, never runs the same job twice, and passes once
+  the system is fixed; a recurring schedule for it refuses a mismatched pin,
+  marks the spring-forward night, and is initialized and served by the hub's
+  operator. The journeys found and fixed three defects: a published artifact's
+  digest was never shown, so a person could not name it in a review; after a
+  recorded decision the history showed only that one event; and a refused review
+  or lifecycle decision on a stale head stated its remedy twice. The hub
+  journeys run in CI's hub-journeys job; they are not installed-package
+  acceptance.
+
 - A reopened window now restores the customer hub configuration chosen in an
   earlier session (#335). The window never retained the selection, so it
   neither wrote `readmit-desktop-hub-selection/v1` nor read it back, and every

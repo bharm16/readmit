@@ -31,13 +31,21 @@ package main
 
 import (
 	"bufio"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/json/jsontext"
 	jsonv2 "encoding/json/v2"
+	"encoding/pem"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"math/big"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -84,7 +92,15 @@ func main() {
 	license := flag.String("license", "", "provision a signed activation folder at this path inside root, then exit")
 	var issues issueFlags
 	flag.Var(&issues, "issue", "provision an activation folder inside root for one term, as FOLDER,SEQUENCE,EXPIRES,GRACE_DAYS; repeated issues share one signing key; then exit")
+	certificates := flag.String("hub-certificates", "", "write a synthetic certificate authority and a loopback hub's server and client certificates into this folder inside root, then exit")
 	flag.Parse()
+	if *certificates != "" {
+		if err := hubCertificates(*root, *certificates); err != nil {
+			fmt.Fprintln(os.Stderr, "journeybridge:", err)
+			os.Exit(2)
+		}
+		return
+	}
 	if *license != "" && len(issues) > 0 {
 		fmt.Fprintln(os.Stderr, "journeybridge: -license and -issue provision different things; give one")
 		os.Exit(2)
@@ -149,6 +165,59 @@ func provisionIssues(root string, issues []testlicense.Issue) ([]string, error) 
 		resolved[index] = testlicense.Issue{Dir: folder, Term: issue.Term}
 	}
 	return testlicense.CreateIssues(resolved)
+}
+
+// hubCertificates writes what a customer's hub operator provisions for a
+// loopback hub: a synthetic certificate authority, the hub's server identity
+// for 127.0.0.1, and one client identity the people's windows and the runner
+// present, each as PEM in a folder inside root. Every key is newly generated
+// and synthetic; nothing here is trusted outside the journey.
+func hubCertificates(root, folder string) error {
+	folder, err := activationFolder(root, folder)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	authorityKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return err
+	}
+	authority := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "readmit journey synthetic hub CA"}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(24 * time.Hour), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
+	authorityDER, err := x509.CreateCertificate(rand.Reader, authority, authority, &authorityKey.PublicKey, authorityKey)
+	if err != nil {
+		return err
+	}
+	files := map[string][]byte{"ca.pem": pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: authorityDER})}
+	leaf := func(serial int64, name string, usage x509.ExtKeyUsage) error {
+		key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			return err
+		}
+		template := &x509.Certificate{SerialNumber: big.NewInt(serial), Subject: pkix.Name{CommonName: "readmit journey synthetic " + name}, NotBefore: authority.NotBefore, NotAfter: authority.NotAfter, KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{usage}, IPAddresses: []net.IP{net.ParseIP("127.0.0.1")}}
+		der, err := x509.CreateCertificate(rand.Reader, template, authority, &key.PublicKey, authorityKey)
+		if err != nil {
+			return err
+		}
+		private, err := x509.MarshalPKCS8PrivateKey(key)
+		if err != nil {
+			return err
+		}
+		files[name+".pem"] = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+		files[name+"-key.pem"] = pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: private})
+		return nil
+	}
+	if err := leaf(2, "server", x509.ExtKeyUsageServerAuth); err != nil {
+		return err
+	}
+	if err := leaf(3, "client", x509.ExtKeyUsageClientAuth); err != nil {
+		return err
+	}
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(folder, name), data, 0o600); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // activationFolder resolves an activation folder inside root and creates it,

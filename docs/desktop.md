@@ -99,11 +99,16 @@ support summary, and a planted example goes through privacy review and export;
 the project is backed up, held to a quota, archived, deleted and restored; and
 a delivered license is installed, activated and released, an expired term is
 renewed and a term in grace still admits work, beside the commercial portal's
-destination. They run in jsdom, not the native webview, so they are evidence
-about the application over real files rather than about installed packages.
-The desktop workflow's shell job runs them after the component tests, and a
-failing journey fails the `desktop` check. See [validation](agents/testing.md)
-for writing one.
+destination. On a real customer hub over a disposable PostgreSQL cluster, two
+people review the same evidence and meet a conflict, a released test version
+is requested and approved by the team, and an enrolled runner executes the
+saved test and a recurring schedule for it is installed. They run in jsdom,
+not the native webview, so they are evidence about the application over real
+files rather than about installed packages. The desktop workflow's shell job
+runs them after the component tests, and a failing journey fails the `desktop`
+check; the hub journeys, which need PostgreSQL, run in the CI workflow's
+`hub-journeys` job and fail `quality`. See [validation](agents/testing.md) for
+writing one.
 
 ## Native packages
 

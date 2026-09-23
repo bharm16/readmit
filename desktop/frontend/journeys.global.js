@@ -19,6 +19,20 @@ export default function setup({ provide }) {
     stdio: "inherit",
     env: { ...process.env, CGO_ENABLED: "0" },
   });
+  // A hub journey needs a PostgreSQL installation to create its disposable
+  // cluster from; without one the hub is not built and those journeys skip.
+  const postgres = process.env.READMIT_POSTGRES_BIN ?? "";
+  let hub = "";
+  if (postgres !== "") {
+    hub = join(directory, "readmit-hub");
+    execFileSync("go", ["build", "-trimpath", "-o", hub, "./cmd/readmit-hub"], {
+      cwd: resolve(desktop, "..", "hub"),
+      stdio: "inherit",
+      env: { ...process.env, CGO_ENABLED: "0" },
+    });
+  }
+  provide("journeyHub", hub);
+  provide("journeyPostgres", postgres);
   provide("journeyBridge", bridge);
   provide("journeyCommandLine", commandLine);
   provide("journeyFixtures", resolve(desktop, "..", "testdata", "fixtures"));
