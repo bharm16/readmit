@@ -1825,8 +1825,15 @@ authoring panels saved, it selects, validates, executes once and reopens as
 evidence. Selection reads the workspace's own listing — every `spec` entry a
 saved test declared and every `suite` entry a suite document — or the host's
 native file dialog through `ChooseRunSpec`, which stays inside the open
-workspace. No path is typed by hand and no internal path is copied: a fresh
-output folder is generated and validated by the application itself.
+workspace. The folder the dialog's answer names is compared with the workspace
+as the filesystem resolves both, not as they are spelled, so a workspace reached
+through a symbolic link, as `/tmp` and `/var` reach `/private` on macOS, is
+accepted however the dialog spells it. The chosen entry itself must be a regular
+file, never a symbolic link, exactly as the listing offers entries. A file
+outside the workspace, a file in one of its folders, a link inside it wherever
+the link points, and a path that leaves through `..` are refused.
+No path is typed by hand and no internal path is copied: a fresh output folder
+is generated and validated by the application itself.
 
 **Validate and preflight** is local validation with no network connection, no
 send and no result verdict. It reads the exact plan a send would execute and
