@@ -52,6 +52,8 @@ function retainedBodies(facade: FacadeStub): string[] {
  * parked, one at a time — the chain behind a parked write drains as each
  * earlier write is answered. */
 async function drain(facade: FacadeStub, parked: Parked, newestBody: string): Promise<void> {
+  // An answer to an earlier retention changes nothing on screen while a newer
+  // one is queued, so this polls rather than waiting for the page to change.
   await waitFor(() => {
     while (parked.size > 0) {
       parked.resolve(retained());
@@ -61,7 +63,7 @@ async function drain(facade: FacadeStub, parked: Parked, newestBody: string): Pr
     const last = calls.at(-1)?.args[0] as { content: { body: string } } | undefined;
     expect(last?.content.body).toBe(newestBody);
     expect(screen.getByText("Retained. It will come back if this window stops.")).toBeTruthy();
-  });
+  }, { interval: 5 });
 }
 
 test("typing retains the edit from the first letter, with no name and no title yet", async () => {
@@ -110,6 +112,43 @@ test("one retention is in flight at a time, and each carries the newest text", a
       later === earlier || (later.startsWith(earlier) && later.length > earlier.length),
     ).toBe(true);
   }
+});
+
+test("the window says retained only once the newest edit is, never while a later keystroke is still in flight", async () => {
+  const user = userEvent.setup();
+  const facade = renderEditor();
+  const parked = facade.park("SaveEditorDraft");
+  await user.type(screen.getByLabelText("Body"), "ab");
+  // The first keystroke's retention is in flight; the second is chained.
+  expect(parked.size).toBe(1);
+  parked.resolve(retained());
+  // The first answer arrived, but "ab" is on screen and its retention is
+  // only now in flight: nothing typed since is claimed as kept.
+  await waitFor(() => expect(parked.size).toBe(1));
+  expect(retainedBodies(facade).at(-1)).toBe("ab");
+  expect(screen.queryByText("Retained. It will come back if this window stops.")).toBeNull();
+  expect(screen.getByText("Retaining this draft…")).toBeTruthy();
+  parked.resolve(retained());
+  expect(await screen.findByText("Retained. It will come back if this window stops.")).toBeTruthy();
+});
+
+test("keystrokes typed while the first retention is in flight continue the draft it minted, never a second one", async () => {
+  const user = userEvent.setup();
+  const facade = renderEditor();
+  const parked = facade.park("SaveEditorDraft");
+  await user.type(screen.getByLabelText("Body"), "ab");
+  expect(parked.size).toBe(1);
+  const first = facade.oneCall("SaveEditorDraft")[0] as EditorDraft;
+  expect(first.id).toBe("");
+  parked.resolve(retained({ drafts: [noteDraft("minted-1", { name: "", subject: "", title: "", body: "a" })] }));
+  await waitFor(() => expect(parked.size).toBe(1));
+  // "b" was typed before the store had minted anything, but its retention is
+  // sent after, so it replaces the draft "a" is held under.
+  const second = facade.callsTo("SaveEditorDraft").at(-1)?.args[0] as EditorDraft;
+  expect(second.id).toBe("minted-1");
+  expect((second.content as { body: string }).body).toBe("ab");
+  parked.resolve(retained({ drafts: [noteDraft("minted-1", { name: "", subject: "", title: "", body: "ab" })] }));
+  expect(await screen.findByText("Retained. It will come back if this window stops.")).toBeTruthy();
 });
 
 test("a renamed note replaces its one draft instead of leaving another behind", async () => {

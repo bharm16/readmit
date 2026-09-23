@@ -64,6 +64,10 @@ export function useRetainer(): {
   const [retention, setRetention] = useState<Retention>({ state: "idle" });
   const chainRef = useRef<Promise<void>>(Promise.resolve());
   const knownId = useRef("");
+  // The kind and workspace the known identity was minted for, or null when an
+  // editor adopted it from a draft it restored. One retainer can serve more
+  // than one kind of draft, and an edit of one never continues another's.
+  const mintedFor = useRef<string | null>(null);
   const seenIds = useRef(new Set<string>());
   const last = useRef<EditorDraft | null>(null);
   // Once the store has said the identity this editor was writing under is
@@ -71,6 +75,10 @@ export function useRetainer(): {
   // conflicted only updates the text that "keep as new" would write, so no
   // save races that decision or overwrites it with a lesser refusal.
   const conflicted = useRef(false);
+  // Retentions sent or queued and not yet answered. An answer to an earlier
+  // one says nothing about the text typed since, so "saved" waits for the
+  // newest to be answered.
+  const pending = useRef(0);
 
   const apply = useCallback((saved: EditorDraft, result: EditorDraftsResult) => {
     notify(result, "save");
@@ -90,6 +98,11 @@ export function useRetainer(): {
       }
       if (mine) {
         knownId.current = mine.id;
+        mintedFor.current = scope(saved);
+      }
+      if (pending.current > 1) {
+        // A newer edit is still in flight; what is on screen is not kept yet.
+        return;
       }
       setRetention({ state: "saved" });
       return;
@@ -103,6 +116,11 @@ export function useRetainer(): {
       setRetention(
         result.reason ? { state: "conflict", reason: result.reason } : { state: "conflict" },
       );
+      return;
+    }
+    if (pending.current > 1) {
+      // A newer edit is still in flight and carries all of this one's text;
+      // its answer is the one that says what is kept.
       return;
     }
     setRetention(
@@ -121,13 +139,30 @@ export function useRetainer(): {
       return;
     }
     setRetention({ state: "saving" });
+    pending.current += 1;
     chainRef.current = chainRef.current.then(async () => {
-      const sent = { ...saved, id: id ?? knownId.current };
-      last.current = sent;
       try {
-        apply(sent, await saveEditorDraft(sent));
-      } catch {
-        setRetention({ state: "not-retained", reason: "the application did not answer" });
+        if (conflicted.current) {
+          // An earlier retention found the identity gone while this one was
+          // queued; the person decides before anything more is written.
+          last.current = { ...saved, id: id ?? knownId.current };
+          return;
+        }
+        // The identity held when the write is sent continues this editor's
+        // draft only for a draft of the same kind and workspace: one retainer
+        // can serve several, and one never continues another's.
+        const continued = mintedFor.current === null || mintedFor.current === scope(saved) ? knownId.current : "";
+        const sent = { ...saved, id: id ?? continued };
+        last.current = sent;
+        try {
+          apply(sent, await saveEditorDraft(sent));
+        } catch {
+          if (pending.current <= 1) {
+            setRetention({ state: "not-retained", reason: "the application did not answer" });
+          }
+        }
+      } finally {
+        pending.current -= 1;
       }
     });
   }, [apply]);
@@ -181,6 +216,7 @@ export function useRetainer(): {
 
   const clear = useCallback(() => {
     knownId.current = "";
+    mintedFor.current = null;
     last.current = null;
     conflicted.current = false;
     setRetention({ state: "idle" });
@@ -194,6 +230,7 @@ export function useRetainer(): {
   // store, so its first edit replaces that draft instead of minting a second.
   const keepId = useCallback((id: string) => {
     knownId.current = id;
+    mintedFor.current = null;
     seenIds.current.add(id);
   }, []);
 
@@ -205,6 +242,11 @@ export function useRetainer(): {
   }, []);
 
   return { retention, save, drop, retry, keepAsNew, clear, currentId, keepId, chain };
+}
+
+/** The kind and workspace a draft belongs to: the scope one identity serves. */
+function scope(draft: EditorDraft): string {
+  return `${draft.kind}\u0000${draft.workspace}`;
 }
 
 const WORDS: Record<Retention["state"], string> = {

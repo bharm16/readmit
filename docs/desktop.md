@@ -1341,13 +1341,22 @@ back, nor a power loss on storage that honours a sync; an edit whose retention
 had not been acknowledged when the process died comes back whole or not at all,
 never torn and never older than one that was acknowledged.
 
-A retention the facade refused is never shown as kept: every editor says
-whether its last retention is in flight, retained, refused — with a retry, an
-explicit discard, or, when the identity it was writing under is no longer
-held, an explicit decision to keep the text as a new draft — so text that was
-never durably acknowledged is never claimed as saved. Closing the window needs
-no warning while every edit is retained; after a refused retention there is
-text that was typed and never acknowledged, so closing asks first.
+A retention the facade refused is never shown as kept: every editor says whether
+its last retention is in flight, retained, refused — with a retry, an explicit
+discard, or, when the identity it was writing under is no longer held, an
+explicit decision to keep the text as a new draft — so text that was never
+durably acknowledged is never claimed as saved. An editor says retained only
+once the retention of its newest text is answered: an answer to an earlier
+keystroke, while a later one is still queued, leaves it saying the draft is
+being retained. Keystrokes typed before the store has minted a new draft's
+identity are sent after it has, so they continue that one draft rather than
+minting others that recovery could offer back in its place — but only a draft of
+the same kind in the same workspace, so an editor with several tabs never writes
+one tab's text over another's. Once a retention finds the draft it continues
+gone, the edits queued behind it are not written until the person decides.
+Closing the window needs no warning while every edit is retained; after a
+refused retention there is text that was typed and never acknowledged, so
+closing asks first.
 
 Navigation is committed, not attempted. Opening another folder or verifying
 another case changes what the window shows only once the facade has accepted
