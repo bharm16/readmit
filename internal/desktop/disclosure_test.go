@@ -225,10 +225,11 @@ func TestDisclosureStatusReportsTheOperationHoldingTheSlotWithoutTakingIt(t *tes
 	}
 }
 
-// An operation that holds the slot without a name cannot be attributed to any
-// one activity — a connectivity check and a fixture reset are among them — so
-// while one does, the answer is busy rather than an idle state the window
-// cannot vouch for. Choosing a folder is such an operation.
+// An operation that holds the slot without a name is local work no activity
+// can be attributed to — every operation that can reach a destination is named
+// (TestEveryOperationThatCanReachADestinationRunsUnderADisclosedName) — so
+// while one does, the answer is busy rather than an idle state the status did
+// not establish. Choosing a folder is such an operation.
 func TestDisclosureStatusIsBusyWhileAnUnnamedOperationHoldsTheSlot(t *testing.T) {
 	dialog := &chooser{folder: t.TempDir()}
 	app := newApp(t, dialog)

@@ -72,7 +72,7 @@ type declaration struct {
 // It runs to completion under the listing's own bounds once it starts, so it
 // holds the operation slot but is not interruptible.
 func (a *App) Search(path, query string) SearchResult {
-	release, claimed := a.claim()
+	release, claimed := a.claim("")
 	if !claimed {
 		return busyRefusal.search()
 	}

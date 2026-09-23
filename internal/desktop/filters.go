@@ -63,7 +63,7 @@ func (a *App) Filters() FiltersResult {
 // It writes one small local file and runs to completion once it starts, so it
 // holds the operation slot but is not interruptible.
 func (a *App) SaveFilter(filter grid.Filter) FiltersResult {
-	release, claimed := a.claim()
+	release, claimed := a.claim("")
 	if !claimed {
 		return a.filtersFailure(busyRefusal)
 	}
@@ -96,7 +96,7 @@ func (a *App) SaveFilter(filter grid.Filter) FiltersResult {
 // completion once it starts, so it holds the operation slot but is not
 // interruptible.
 func (a *App) SelectFilter(name string) FiltersResult {
-	release, claimed := a.claim()
+	release, claimed := a.claim("")
 	if !claimed {
 		return a.filtersFailure(busyRefusal)
 	}

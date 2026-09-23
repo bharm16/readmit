@@ -162,7 +162,7 @@ type HubOfflineDraftRequest struct {
 // ListHubReviews reads collaboration history for a project. Actor identity is
 // whatever the hub recorded from the authenticated session.
 func (a *App) ListHubReviews(project string) HubReviewsResult {
-	return run(a, false, false, func(ctx context.Context) HubReviewsResult {
+	return runNamed[HubReviewsResult, *HubReviewsResult](a, hubRequestOperation, false, false, func(ctx context.Context) HubReviewsResult {
 		client, errRes := a.requireHubSession()
 		if errRes != nil {
 			return *errRes
@@ -174,7 +174,7 @@ func (a *App) ListHubReviews(project string) HubReviewsResult {
 
 // SearchHubReviews searches collaboration history with an explicit query.
 func (a *App) SearchHubReviews(request HubReviewQueryRequest) HubReviewsResult {
-	return run(a, false, false, func(ctx context.Context) HubReviewsResult {
+	return runNamed[HubReviewsResult, *HubReviewsResult](a, hubRequestOperation, false, false, func(ctx context.Context) HubReviewsResult {
 		client, errRes := a.requireHubSession()
 		if errRes != nil {
 			return *errRes
@@ -188,7 +188,7 @@ func (a *App) SearchHubReviews(request HubReviewQueryRequest) HubReviewsResult {
 
 // ListHubNotifications reads collaboration events addressed to the signed-in subject.
 func (a *App) ListHubNotifications(project string) HubReviewsResult {
-	return run(a, false, false, func(ctx context.Context) HubReviewsResult {
+	return runNamed[HubReviewsResult, *HubReviewsResult](a, hubRequestOperation, false, false, func(ctx context.Context) HubReviewsResult {
 		client, errRes := a.requireHubSession()
 		if errRes != nil {
 			return *errRes
@@ -200,7 +200,7 @@ func (a *App) ListHubNotifications(project string) HubReviewsResult {
 
 // SearchHubNotifications searches the subject's notifications.
 func (a *App) SearchHubNotifications(request HubReviewQueryRequest) HubReviewsResult {
-	return run(a, false, false, func(ctx context.Context) HubReviewsResult {
+	return runNamed[HubReviewsResult, *HubReviewsResult](a, hubRequestOperation, false, false, func(ctx context.Context) HubReviewsResult {
 		client, errRes := a.requireHubSession()
 		if errRes != nil {
 			return *errRes
@@ -230,7 +230,7 @@ var hubReviewCommandSchemas = map[string]string{
 // PostHubReview records a collaboration decision. Identity comes from the
 // authenticated hub session; a local reviewer text field cannot substitute.
 func (a *App) PostHubReview(request HubReviewCommandRequest) HubReviewsResult {
-	return run(a, false, true, func(ctx context.Context) HubReviewsResult {
+	return runNamed[HubReviewsResult, *HubReviewsResult](a, hubRequestOperation, false, true, func(ctx context.Context) HubReviewsResult {
 		schema, supported := hubReviewCommandSchemas[request.Kind]
 		if !supported {
 			return HubReviewsResult{
@@ -280,7 +280,7 @@ type HubReleaseReviewRequest struct {
 // hub stays the authority: it re-reads the release and enforces the request
 // and approval chain, so a stale head or changed grant fails there.
 func (a *App) PostHubReleaseReview(request HubReleaseReviewRequest) HubReviewsResult {
-	return run(a, false, true, func(ctx context.Context) HubReviewsResult {
+	return runNamed[HubReviewsResult, *HubReviewsResult](a, hubRequestOperation, false, true, func(ctx context.Context) HubReviewsResult {
 		if request.Kind != "review-request" && request.Kind != "approval" {
 			return HubReviewsResult{State: Failed, Project: request.Project,
 				Reason: "a release review posts review-request or approval"}
@@ -398,7 +398,7 @@ type HubSupportReviewRequest struct {
 // project recorded; identity is the signed-in session's and the hub stays
 // the authority for roles, chains and the policy-in-force checks.
 func (a *App) PostHubSupportReview(request HubSupportReviewRequest) HubReviewsResult {
-	return run(a, false, true, func(ctx context.Context) HubReviewsResult {
+	return runNamed[HubReviewsResult, *HubReviewsResult](a, hubRequestOperation, false, true, func(ctx context.Context) HubReviewsResult {
 		switch request.Kind {
 		case "support-policy", "support-request", "support-approval":
 		default:
@@ -561,7 +561,7 @@ func workspaceSummary(root, entry string) ([]byte, refusal) {
 
 // ListHubLifecycle reads lifecycle history, unresolved tips and the custody warning.
 func (a *App) ListHubLifecycle(project string) HubLifecycleResult {
-	return run(a, false, false, func(ctx context.Context) HubLifecycleResult {
+	return runNamed[HubLifecycleResult, *HubLifecycleResult](a, hubRequestOperation, false, false, func(ctx context.Context) HubLifecycleResult {
 		client, errRes := a.requireHubSession()
 		if errRes != nil {
 			return HubLifecycleResult{State: errRes.State, Reason: errRes.Reason}
@@ -585,7 +585,7 @@ func (a *App) ListHubLifecycle(project string) HubLifecycleResult {
 // or audit-export command. Retried writes reuse the same id; a stale head fails.
 func (a *App) PostHubLifecycle(request HubLifecycleCommandRequest) HubLifecycleResult {
 	writes := request.Kind != "audit-export"
-	return run(a, false, writes, func(ctx context.Context) HubLifecycleResult {
+	return runNamed[HubLifecycleResult, *HubLifecycleResult](a, hubRequestOperation, false, writes, func(ctx context.Context) HubLifecycleResult {
 		client, errRes := a.requireHubSession()
 		if errRes != nil {
 			return HubLifecycleResult{State: errRes.State, Reason: errRes.Reason}
@@ -630,7 +630,7 @@ func (a *App) PostHubLifecycle(request HubLifecycleCommandRequest) HubLifecycleR
 
 // DownloadHubExport downloads an authorized support export with custody notice.
 func (a *App) DownloadHubExport(request HubDownloadRequest) HubTransferResult {
-	return run(a, false, false, func(ctx context.Context) HubTransferResult {
+	return runNamed[HubTransferResult, *HubTransferResult](a, hubRequestOperation, false, false, func(ctx context.Context) HubTransferResult {
 		client, errRes := a.requireHubSession()
 		if errRes != nil {
 			return HubTransferResult{State: errRes.State, Reason: errRes.Reason}

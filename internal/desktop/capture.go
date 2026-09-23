@@ -215,7 +215,7 @@ func (r *SourceCollectionResult) refuse(state State, reason string) {
 
 // DiagnoseSource reports what access was available without collecting.
 func (a *App) DiagnoseSource(request SourceWorkRequest) SourceAccessResult {
-	return run(a, true, false, func(ctx context.Context) (out SourceAccessResult) {
+	return runNamed[SourceAccessResult, *SourceAccessResult](a, "source-diagnosis", true, false, func(ctx context.Context) (out SourceAccessResult) {
 		guard, _ := a.selectedOperation()
 		settle, admissionErr := guard.AdmitContext(ctx, "execute")
 		if admissionErr != nil {

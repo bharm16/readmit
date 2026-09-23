@@ -15,6 +15,15 @@ import (
 	"github.com/bharm16/readmit/internal/sendpolicy"
 )
 
+// The names the environment operations that reach the recorded environment
+// run under, so the privacy status reports its environment row active while
+// one of them holds the slot.
+const (
+	targetCheckOperation = "target-check"
+	targetResetOperation = "target-reset"
+	sendPolicyOperation  = "send-policy-evaluation"
+)
+
 // TargetSaveRequest saves one target configuration in the open workspace or at an absolute path.
 type TargetSaveRequest struct {
 	Workspace  string        `json:"workspace"`
@@ -237,7 +246,7 @@ func (a *App) ReadTarget(workspace, targetFile string) TargetResult {
 // `readmit target check` is: an unactivated or expired term, or an activation
 // with no runner authority, refuses it before anything is reached.
 func (a *App) CheckTarget(request TargetCheckRequest) TargetCheckResult {
-	return run(a, true, false, func(ctx context.Context) (out TargetCheckResult) {
+	return runNamed[TargetCheckResult, *TargetCheckResult](a, targetCheckOperation, true, false, func(ctx context.Context) (out TargetCheckResult) {
 		settle, admitted := a.admitExecution(ctx)
 		if admitted != nil {
 			return TargetCheckResult{State: PermissionDenied, Reason: admitted.Error()}
@@ -288,7 +297,7 @@ func (a *App) CheckTarget(request TargetCheckRequest) TargetCheckResult {
 // ResetTarget executes a reviewed fixture reset plan against a target environment.
 // Like `readmit target reset`, it is admitted as execution as well as authoring.
 func (a *App) ResetTarget(request TargetResetRequest) TargetResetResult {
-	return run(a, true, true, func(ctx context.Context) (out TargetResetResult) {
+	return runNamed[TargetResetResult, *TargetResetResult](a, targetResetOperation, true, true, func(ctx context.Context) (out TargetResetResult) {
 		settle, admitted := a.admitExecution(ctx)
 		if admitted != nil {
 			return TargetResetResult{State: PermissionDenied, Reason: admitted.Error()}
@@ -504,8 +513,10 @@ func (a *App) SaveSendPolicy(request SendPolicySaveRequest) SendPolicyResult {
 }
 
 // EvaluateSendPolicy checks whether an address and classification is approved without connecting.
+// A host name it is asked about is resolved through the system's resolver, so it
+// runs under a name the privacy status reports.
 func (a *App) EvaluateSendPolicy(request SendPolicyEvalRequest) SendPolicyEvalResult {
-	return run(a, false, false, func(ctx context.Context) SendPolicyEvalResult {
+	return runNamed[SendPolicyEvalResult, *SendPolicyEvalResult](a, sendPolicyOperation, false, false, func(ctx context.Context) SendPolicyEvalResult {
 		var policy *sendpolicy.Policy
 		if request.PolicyFile != "" {
 			path, ref := resolveWorkspacePath(request.Workspace, request.PolicyFile)

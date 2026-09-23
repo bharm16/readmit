@@ -380,7 +380,7 @@ func (r *RunnerEnrollmentResult) refuse(state State, reason string) {
 // does: one certificate-bound probe that reserves the environment for at most
 // ten seconds and saves no credential or registration state.
 func (a *App) EnrollRunner(configPath string) RunnerEnrollmentResult {
-	return run(a, false, true, func(ctx context.Context) RunnerEnrollmentResult {
+	return runNamed[RunnerEnrollmentResult, *RunnerEnrollmentResult](a, "runner-enrollment", false, true, func(ctx context.Context) RunnerEnrollmentResult {
 		config, declined := readRunnerConfig(configPath)
 		if declined.reason != "" {
 			return RunnerEnrollmentResult{State: declined.state, Reason: declined.reason}

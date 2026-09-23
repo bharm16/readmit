@@ -404,6 +404,29 @@ replacement is built, so a cancelled or refused rebuild leaves the index the
 grid was reading in place; a write that fails after that leaves no index, which
 is built again from the unchanged case.
 
+An operation holds the slot under a name or under none, and the name does two
+things while it holds it: a panel's cancel control stops exactly the
+interruptible operation it started and nothing else, and the privacy status
+reports the activity the name belongs to as active. So every operation that can
+reach a network destination or change a target runs under a name, whether or not
+it can be interrupted: a durable or suite run (`durable-run`), a practice run
+(`practice`) and a disclosure review or derived export whose proof sends to its
+own loopback fixtures (`privacy`) under run; runner enrollment
+(`runner-enrollment`) and execution (`runner`) under runner; a source diagnosis
+(`source-diagnosis`), a source collection (`collect`) and a capture (`capture`)
+under capture; a connectivity check (`target-check`), a fixture reset
+(`target-reset`), a send-policy evaluation that resolves a host name
+(`send-policy-evaluation`) and a controlled reduction (`reduction`) under the
+environment; an observation (`observation`) under observe; and every hub request
+(`hub`), the start of a sign-in (`hub-sign-in-start`) and the sign-in itself
+(`hub-sign-in`) under the hub. Only local work may run unnamed. The facade's
+tests enumerate the bound operations that can reach a destination from the
+facade's own source — those that take execution admission, hand the system
+resolver to a call, or call the hub's clients — and hold them to the reviewed
+inventory of operations that reach a destination; every operation in that
+inventory fails them if it holds the slot unnamed or under a name the status
+does not report as its own activity.
+
 ## Workspaces and artifacts
 
 A workspace is a folder. Opening it lists each immediate entry with the contract
@@ -1646,13 +1669,20 @@ false, so the privacy region discloses each such
 activity separately: its destination, the data it carries, the authorization it
 requires, and — answered by the facade from the window's own connection state,
 contacting nothing — whether it is idle, active, configured, offline or
-connected right now. That answer does not claim the operation slot: an
-activity is active while its named operation holds the slot, so the status
-reads which operation holds it, once, and is answered while that operation
-runs without starting or changing anything. An operation that holds the slot
-without a name, such as a connectivity check or a fixture reset, cannot be
-attributed to one activity, so while one runs the answer is `busy`, never an
-idle state. Nothing on that list is contacted by startup or by any local
+connected right now. That answer does not claim the operation slot: every
+operation that can reach a destination or change a target runs under a name,
+and the activity that name belongs to is active while it holds the slot, so the
+status reads which operation holds it, once, and is answered while that
+operation runs without starting or changing anything. Each active activity says
+which of its operations is running — a connectivity check, a fixture reset, a
+send-policy evaluation or a reduction for the environment, for example. The hub
+reads active while a hub request or the sign-in runs, and otherwise connected,
+offline or not configured from its own connection objects; with no hub
+configuration selected it is not configured even then, because a hub operation
+refuses before it reaches anything. The portal never reads active: this window
+makes no request to it. An operation that holds the slot without a name is local
+work no activity can be attributed to, so while one runs the answer is `busy`,
+never an idle state. Nothing on that list is contacted by startup or by any local
 operation, and each activity's next action opens the screen where it is
 configured or run. The same region states the support guidance the facade
 derives from the checked capability ledger and the verified qualification
