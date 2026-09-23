@@ -18,9 +18,15 @@ import (
 	"slices"
 	"syscall"
 	"testing"
+	"time"
 
+	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/collection"
 	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/evidencesource"
 	"github.com/bharm16/readmit/internal/guide"
+	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/importer"
 )
 
 // plantHostile puts a folder and a FIFO in the workspace, and for each named
@@ -498,5 +504,270 @@ func TestAPracticeRunRefusesASpecThatIsNotOneRegularFileOfTheWorkspace(t *testin
 	// The spec itself, named properly, still runs.
 	if result := app.RunPractice(desktop.PracticeRequest{Workspace: root, Spec: spec, Trial: guide.StepBaseline, Output: "baseline-run"}); result.State != desktop.Completed {
 		t.Fatalf("the saved spec no longer runs: %+v", result)
+	}
+}
+
+// besideWorkspace makes an empty workspace and an empty folder beside it,
+// each named as the shell records a workspace.
+func besideWorkspace(t *testing.T) (root, outside string) {
+	t.Helper()
+	parent := t.TempDir()
+	for _, folder := range []string{"workspace", "outside"} {
+		if err := os.Mkdir(filepath.Join(parent, folder), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return resolved(t, filepath.Join(parent, "workspace")), resolved(t, filepath.Join(parent, "outside"))
+}
+
+// A profile library is a folder of pack documents the library reader lists and
+// reads, so the folder is an entry like any other: the workspace itself, or
+// one real folder of it, never a folder reached through a link, a `..` or an
+// absolute path. The folder beside the workspace holds the same pack, so only
+// the rule can refuse it.
+func TestOpeningAProfileLibraryRefusesAFolderThatIsNotOneOfTheWorkspace(t *testing.T) {
+	app := workspaceApp(t)
+	root, outside := besideWorkspace(t)
+	for _, folder := range []string{root, outside} {
+		if err := os.Mkdir(filepath.Join(folder, "library"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		writeDocument(t, filepath.Join(folder, "library"), "pack.json", fixture(t, "profile-pack.json"))
+	}
+	if opened := app.OpenProfileLibrary(outside, "library"); opened.State != desktop.Completed || len(opened.Entries) != 1 {
+		t.Fatalf("the library outside does not open, so it cannot show a refusal: %+v", opened)
+	}
+	writeDocument(t, root, "evidence.txt", "synthetic bytes where a library is expected")
+	plantHostile(t, root, outside, "library")
+	refusesEveryEntry(t, []confinedMember{
+		{"OpenProfileLibrary", []string{"a profile library must be the open workspace or one folder of it, never a symbolic link"}, map[string]string{
+			"a symbolic link out of the workspace":         "link-library",
+			"a symbolic link to a folder of the workspace": "alias-library",
+			"a `..` escape": filepath.Join("..", "outside", "library"),
+			"an absolute path to the workspace's folder": filepath.Join(root, "library"),
+			"an absolute path outside the workspace":     filepath.Join(outside, "library"),
+			"a FIFO":                                     "fifo.json",
+			"a regular file":                             "evidence.txt",
+		}, func(entry string) refused {
+			result := app.OpenProfileLibrary(root, entry)
+			return refused{result.State, result.Reason}
+		}},
+	})
+	if opened := app.OpenProfileLibrary(root, "library"); opened.State != desktop.Completed || len(opened.Entries) != 1 {
+		t.Fatalf("the workspace's own library no longer opens: %+v", opened)
+	}
+}
+
+// A generated family, a collection's staging folder and receipt, a capture's
+// case and observation, and the case a staged collection is finalized into
+// are new entries of the workspace. Their creation is exclusive, but a name
+// that is not one entry would still place them somewhere else: beside the
+// workspace, inside one of its folders, or through a linked folder out of it.
+// Each request below is complete: the generation, synthesis, collection and
+// finalization write under fresh names at the end, and a capture handed a name
+// the rule missed would start listening.
+func TestEveryGeneratedCollectedOrCapturedOutputIsOneNewEntryOfTheWorkspace(t *testing.T) {
+	app := workspaceApp(t)
+	root, outside := besideWorkspace(t)
+	writeDocument(t, root, "plan.json", fixture(t, "scenario-generator.json"))
+	payload := "MSH|^~\\&|SEND|FAC|RECV|FAC|20260101120000||ADT^A01|MSG001|P|2.5.1\rPID|||1||DOE^JOHN\r"
+	for _, folder := range []string{"export", "staged", "folder"} {
+		if err := os.Mkdir(filepath.Join(root, folder), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, folder := range []string{"export", "staged"} {
+		writeDocument(t, filepath.Join(root, folder), "one.hl7", payload)
+	}
+	source := evidencesource.Source{
+		Schema: evidencesource.Schema, Name: "exports", Kind: evidencesource.Directory,
+		Scope: "appointments", Root: filepath.Join(root, "export"),
+		Quota: evidencesource.Quota{MaxEntries: 8, MaxEntryBytes: 1 << 20, MaxTotalBytes: 8 << 20},
+		Retry: evidencesource.Retry{Attempts: 1, Backoff: "1ms"},
+	}
+	if saved := app.SaveSourceRegistration(desktop.SourceRegistrationRequest{Workspace: root, SourceFile: "source.json", Source: source}); saved.State != desktop.Completed {
+		t.Fatalf("source registration: %+v", saved)
+	}
+	policy, err := collection.DecodePolicy([]byte(facadeAnyPolicy))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved := app.SaveReceiverPolicy(desktop.ReceiverPolicyRequest{Workspace: root, PolicyFile: "policy.json", Policy: policy}); saved.State != desktop.Completed {
+		t.Fatalf("receiver policy: %+v", saved)
+	}
+	importPlan := importer.Plan{Schema: importer.PlanSchema, Framing: importer.RawFraming, Terminator: hl7.CR,
+		Encoding: importer.UTF8, Direction: bundle.Inbound, Members: []string{".hl7"}}
+	if err := os.Symlink(outside, filepath.Join(root, "link-folder")); err != nil {
+		t.Fatal(err)
+	}
+	listed, before := entriesOf(t, root), bytesUnder(t, outside)
+
+	generate := func(output, caseName string) desktop.ScenarioGenerateRequest {
+		return desktop.ScenarioGenerateRequest{Workspace: root, Document: "plan.json", OutputName: output, CaseName: caseName}
+	}
+	synthesize := func(output string) desktop.SynthGenerateRequest {
+		return desktop.SynthGenerateRequest{Workspace: root, OutputName: output, Seed: 0, BaseTime: "2026-01-01T12:00:00Z",
+			GeneratorVersion: "readmit-synth-v1", ProfileVersion: "readmit-siu-v1"}
+	}
+	collect := func(output, receipt string) desktop.SourceWorkRequest {
+		return desktop.SourceWorkRequest{Workspace: root, SourceFile: "source.json", Plan: &importPlan, OutputName: output, ReceiptName: receipt}
+	}
+	// A capture that were started would listen until its idle timeout, so a
+	// name the rule missed answers late and with the capture's own outcome.
+	capture := func(kind, output, observation string) desktop.CaptureRequest {
+		return desktop.CaptureRequest{Workspace: root, Kind: kind, Address: "127.0.0.1:0", PolicyFile: "policy.json",
+			FixtureMode: "fixed", OutputName: output, ObservationName: observation, MaxMessages: 1, IdleTimeout: "1s"}
+	}
+	finalize := func(output, receipt string) desktop.FinalizeCaptureRequest {
+		return desktop.FinalizeCaptureRequest{Workspace: root, Folder: "staged", OutputName: output, ReceiptName: receipt}
+	}
+	names := map[string]string{
+		"a `..` escape":                                       filepath.Join("..", "outside", "fresh"),
+		"an absolute path outside the workspace":              filepath.Join(outside, "fresh"),
+		"an absolute path inside the workspace":               filepath.Join(root, "fresh"),
+		"a name inside a folder of the workspace":             filepath.Join("folder", "fresh"),
+		"a name through a symbolic link out of the workspace": filepath.Join("link-folder", "fresh"),
+	}
+	caseDestination := []string{"the case destination must be one valid directory entry name"}
+	refusesEveryEntry(t, []confinedMember{
+		{"GenerateScenario(OutputName)", []string{"generation destination must be a new directory entry of the open workspace"}, names, func(name string) refused {
+			result := app.GenerateScenario(generate(name, "fresh-case"))
+			return refused{result.State, result.Reason}
+		}},
+		{"GenerateScenario(CaseName)", []string{"case destination must be a new directory entry of the open workspace"}, names, func(name string) refused {
+			result := app.GenerateScenario(generate("fresh-family", name))
+			return refused{result.State, result.Reason}
+		}},
+		{"GenerateSynth(OutputName)", []string{"synth destination must be a new directory entry of the open workspace"}, names, func(name string) refused {
+			result := app.GenerateSynth(synthesize(name))
+			return refused{result.State, result.Reason}
+		}},
+		{"CollectSource(OutputName)", []string{"the staging folder must be one new entry of the open workspace"}, names, func(name string) refused {
+			result := app.CollectSource(collect(name, "fresh-receipt.json"))
+			return refused{result.State, result.Reason}
+		}},
+		{"CollectSource(ReceiptName)", []string{"the collection receipt must be one new entry of the open workspace"}, names, func(name string) refused {
+			result := app.CollectSource(collect("fresh-staged", name))
+			return refused{result.State, result.Reason}
+		}},
+		{"StartCapture(OutputName) collecting", []string{"the captured case must be one new entry of the open workspace"}, names, func(name string) refused {
+			result := app.StartCapture(capture("collect", name, ""))
+			return refused{result.State, result.Reason}
+		}},
+		{"StartCapture(OutputName) listening", []string{"the captured case must be one new entry of the open workspace"}, names, func(name string) refused {
+			result := app.StartCapture(capture("listen", name, "fresh-observation.json"))
+			return refused{result.State, result.Reason}
+		}},
+		{"StartCapture(ObservationName)", []string{"the observation record must be one new entry of the open workspace"}, names, func(name string) refused {
+			result := app.StartCapture(capture("listen", "fresh-capture", name))
+			return refused{result.State, result.Reason}
+		}},
+		{"FinalizeCaptureImport(OutputName)", caseDestination, names, func(name string) refused {
+			result := app.FinalizeCaptureImport(finalize(name, "fresh-import.json"))
+			return refused{result.State, result.Reason}
+		}},
+		{"FinalizeCaptureImport(ReceiptName)", []string{"the receipt destination must be one valid file entry name"}, names, func(name string) refused {
+			result := app.FinalizeCaptureImport(finalize("fresh-import", name))
+			return refused{result.State, result.Reason}
+		}},
+	})
+	if after := entriesOf(t, root); !reflect.DeepEqual(listed, after) {
+		t.Fatalf("a refused output created an entry in the workspace: %v, was %v", after, listed)
+	}
+	if inside := entriesOf(t, filepath.Join(root, "folder")); len(inside) != 0 {
+		t.Fatalf("a refused output was written inside a folder of the workspace: %v", inside)
+	}
+	if after := bytesUnder(t, outside); !reflect.DeepEqual(before, after) {
+		t.Fatal("a refused output was written outside the workspace")
+	}
+
+	// The same requests, each naming fresh entries of the workspace, write.
+	if result := app.GenerateScenario(generate("fresh-family", "fresh-case")); result.State != desktop.Completed {
+		t.Fatalf("a generation into fresh entries: %+v", result)
+	}
+	if result := app.GenerateSynth(synthesize("fresh-synth")); result.State != desktop.Completed {
+		t.Fatalf("a synthetic family into a fresh entry: %+v", result)
+	}
+	if result := app.CollectSource(collect("fresh-staged", "fresh-receipt.json")); result.State != desktop.Completed {
+		t.Fatalf("a collection into fresh entries: %+v", result)
+	}
+	if result := app.FinalizeCaptureImport(finalize("fresh-import", "fresh-import.json")); result.State != desktop.Completed {
+		t.Fatalf("finalizing into fresh entries: %+v", result)
+	}
+}
+
+// accessedAt reports when path was last read.
+func accessedAt(t *testing.T, path string) time.Time {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stat := reflect.ValueOf(info.Sys()).Elem()
+	for _, name := range []string{"Atim", "Atimespec"} {
+		if field := stat.FieldByName(name); field.IsValid() {
+			spec := field.Interface().(syscall.Timespec)
+			return time.Unix(spec.Unix())
+		}
+	}
+	t.Skip("this platform does not report when a file was last read")
+	return time.Time{}
+}
+
+// unreadSince is the access time ageReads gives a file.
+var unreadSince = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
+
+// ageReads sets each path's access time before its modification time, so that
+// any later read of it moves the access time, even where reads are recorded
+// lazily. On a filesystem that records no read at all nothing could show one,
+// so the test is skipped there.
+func ageReads(t *testing.T, paths ...string) {
+	t.Helper()
+	directory := t.TempDir()
+	writeDocument(t, directory, "probe", "probe")
+	probe := filepath.Join(directory, "probe")
+	for _, path := range append([]string{probe}, paths...) {
+		if err := os.Chtimes(path, unreadSince, unreadSince.Add(time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := os.ReadFile(probe); err != nil {
+		t.Fatal(err)
+	}
+	if !readSince(t, probe) {
+		t.Skip("this filesystem does not record when a file is read")
+	}
+}
+
+// readSince reports whether path was read after ageReads aged it.
+func readSince(t *testing.T, path string) bool {
+	t.Helper()
+	return !accessedAt(t, path).Equal(unreadSince)
+}
+
+// Finding an applicable index when none is named scans the workspace's
+// entries. An entry that is a symbolic link is never an index of the
+// workspace, so the scan passes over it without reading through it, even to
+// see what it declares. The link leads to a real index of the same case, so
+// only the rule keeps the scan out of it.
+func TestFindingAnIndexNeverReadsThroughALink(t *testing.T) {
+	app := workspaceApp(t)
+	root, outside := besideWorkspace(t)
+	writeCase(t, root, "incident", framed(gridBooking))
+	incident := writeCase(t, outside, "incident", framed(gridBooking))
+	writeIndex(t, outside, "incident.index.json", incident, nil)
+	if found := app.DescribeIndex(outside, "incident", ""); found.State != desktop.Completed || found.Index == nil || !found.Index.Applicable {
+		t.Fatalf("the index outside is not found beside its own case, so it cannot show a refusal: %+v", found)
+	}
+	target := filepath.Join(outside, "incident.index.json")
+	if err := os.Symlink(target, filepath.Join(root, "linked.index.json")); err != nil {
+		t.Fatal(err)
+	}
+	ageReads(t, target)
+	if found := app.DescribeIndex(root, "incident", ""); found.State != desktop.Empty || found.Index != nil {
+		t.Fatalf("an index reached through a link was offered: %+v", found)
+	}
+	if readSince(t, target) {
+		t.Fatal("finding an index read through a symbolic link out of the workspace")
 	}
 }

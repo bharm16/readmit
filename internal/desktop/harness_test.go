@@ -9,8 +9,10 @@ package desktop_test
 // topic belongs here, not in whichever file happened to need it first.
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -117,6 +119,52 @@ func writeDocument(t *testing.T, root, name, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// fixture is one shipped synthetic fixture's bytes.
+func fixture(t *testing.T, name string) string {
+	t.Helper()
+	return string(mustRead(t, filepath.Join("..", "..", "testdata", "fixtures", name)))
+}
+
+// copyEntry copies one document, or one folder and everything in it, keeping
+// every mode.
+func copyEntry(t *testing.T, from, to string) {
+	t.Helper()
+	type folder struct {
+		path string
+		mode fs.FileMode
+	}
+	var folders []folder
+	err := filepath.WalkDir(from, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		target := to + strings.TrimPrefix(path, from)
+		info, err := entry.Info()
+		switch {
+		case err != nil:
+			return err
+		case entry.IsDir():
+			folders = append(folders, folder{target, info.Mode().Perm()})
+			return os.Mkdir(target, 0o700)
+		case !entry.Type().IsRegular():
+			return fs.ErrInvalid
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, info.Mode().Perm())
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := len(folders) - 1; i >= 0; i-- {
+		if err := os.Chmod(folders[i].path, folders[i].mode); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

@@ -54,6 +54,22 @@ CASES = (
         'TestOverwritingAWorkspaceEntryReplacesItAndNeverWritesThroughIt',
         'TestEverySaveThatReplacesADocumentLeavesTheFileALinkLedToUnchanged',
         'TestTheShellsOwnDocumentsReplaceALinkAtTheirFile',
+        # The remaining gaps (#348): a library folder, new outputs, an index
+        # found by scanning, and every entry its own reader refuses as a link.
+        'TestOpeningAProfileLibraryRefusesAFolderThatIsNotOneOfTheWorkspace',
+        'TestEveryGeneratedCollectedOrCapturedOutputIsOneNewEntryOfTheWorkspace',
+        'TestFindingAnIndexNeverReadsThroughALink',
+        'TestSequenceAndCorrelationReadersRefuseALinkToADocumentOfTheirKind',
+        'TestTransformationReadersRefuseALinkToADocumentOfTheirKind',
+        'TestDiagnosisAndNormalizationReadersRefuseALinkToADocumentOfTheirKind',
+        'TestIndexReadersRefuseALinkToAnIndexOfTheCase',
+        'TestAReductionRefusesALinkToItsCorrelationRules',
+        'TestProfileAndScenarioReadersRefuseALinkToADocumentOfTheirKind',
+        'TestSuiteBaselineAndImportReadersRefuseALinkToAnEntryOfTheirKind',
+        'TestEvidenceFolderReadersRefuseALinkToAFolderOfTheirKind',
+        'TestPrivacyAndSupportReadersRefuseALinkToAnEntryOfTheirKind',
+        'TestAuthoringAndComparisonReadersRefuseALinkToAnEntryOfTheirKind',
+        'TestProjectRegistrationRefusesALinkToACaseOfTheProject',
         # Application surfaces (#244): backend enforcement behind every window
         # action, restoration, local egress and declared keyboard semantics.
         'TestEveryPathOperationRefusesHostileEntriesPromptlyAndBoundedly',

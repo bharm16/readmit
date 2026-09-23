@@ -952,7 +952,7 @@ export function ProfileEditor({
               <span>Library Directory Path:</span>
               <input
                 type="text"
-                placeholder="Relative to workspace or absolute directory"
+                placeholder="One folder of the workspace, or empty for the workspace itself"
                 value={libraryDir}
                 disabled={disabled}
                 onChange={(e) => setLibraryDir(e.target.value)}

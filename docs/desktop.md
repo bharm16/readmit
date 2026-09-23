@@ -448,20 +448,66 @@ link, a folder with no readable manifest or record — is listed as `unsupported
 with the reason, never hidden and never counted as evidence.
 
 The operations hold an entry to the listing's rule whichever control named it,
-because a caller can name any entry directly. An entry an operation reads by
-name — a saved test or suite and the released references a suite run is pinned
+because a caller can name any entry directly. Every document and folder an
+operation reads by name is an entry of the open workspace unless it is one of
+the inputs listed below as accepting an outside path. The workspace entries
+include a saved test or suite and the released references a suite run is pinned
 to, a retained execution and the folders a suite job is reached through, the
-specification and executions an investigation packet is assembled from, the
-test, environment, reset plan and policy a controlled reduction reads, the test
-a practice run executes, the protection document and the entries packed under
-it, the private local state an export or a support summary is bound to, and the
-built reproducer a revision is copied from — must be one regular file or one
-real folder of the open workspace. A symbolic link is refused wherever it
-points, and so are `..`, an absolute path and an entry of the wrong kind such as
-a FIFO, before anything is read through them or sent. References inside a
-document, such as the case and target a saved test names, resolve as they do on
-the command line. The environment, credential, observation and capture screens
-also accept a document by absolute path, so the workspace is not their boundary.
+case, specification and executions an investigation packet is assembled from,
+the test, environment, reset plan, policy and correlation rules a controlled
+reduction reads, the test a practice run executes, the protection document, the
+entries packed under it and the package inspected, opened or discarded with it,
+the private local state and the source an export or a support summary is bound
+to, a support bundle being verified or posted, the built reproducer a revision
+is copied from and the cases and revisions a project registers, a profile
+library folder and every pack, local profile, version seal, origin, package and
+references document the profile panel reads, the scenario documents and
+libraries the scenario panel names, the rules, plans, policies, configurations,
+decisions and analyses the authored-document editors and the sequence open, a
+suite, its release references, a prepared suite and its coverage document, a
+baseline or release and the specification and profiles it is reviewed from, an
+index, the target a test is authored against, and a test or assertion set
+imported into an editor. Each must be one regular file or one real folder of the
+open workspace. A symbolic link is refused wherever it points, and so are `..`,
+an absolute path and an entry of the wrong kind such as a FIFO, before anything
+is read through them or sent. Some of these refusals come from the operation and
+some from the reader that opens the entry, and each is a fixed sentence that
+names no path. A few inputs fall back instead of refusing, and never read
+through a link either: the pack a profile is resolved against is treated as not
+named, and a profile or references document compared by name, the scenario
+document a generation names and the plan a library entry names are read as the
+inline document the name spells. Where the window looks for an entry itself, as
+when it finds a case's index with none named, it passes over a symbolic link
+without reading through it. References inside a document, such as the case and
+target a saved test names, resolve as they do on the command line.
+
+A new entry an operation creates in the workspace is named the same way: one
+name, never a path. A run folder, a generated scenario family and its case, a
+synthetic family, a source collection's staging folder and receipt, a capture's
+case and observation record, the case and receipt a staged collection is
+finalized into, and a document an editor saves are refused before anything is
+written when the name is `..`, absolute, nested, or reached through a linked
+folder, so none of them lands beside the workspace, inside one of its folders or
+outside it. The generated, collected and captured outputs are refused before
+anything is read as well.
+
+The environment, credential, observation and capture screens accept an outside
+path, because their documents may live outside the workspace: the target, the
+send policy and reset plan, a connectivity check's decision and a reset's
+outcome, the credential reference store and the files a credential scan reads,
+the observation window, source, completion record, policy, collected output and
+snapshot folder, the source registration and the policy it is collected under,
+the responder policy, a capture's policy, TLS certificate, client CA, credential
+reference store and journal, and the staged folder a collection is finalized
+from. Each takes an absolute path, or a path relative to the workspace that does
+not leave it through `..`, and a symbolic link along that path is followed; that
+reaches nothing an absolute path could not already name. Paths chosen on the
+machine rather than in the workspace are not workspace entries either: what an
+import reads, a scenario document or library named by absolute path, a file
+uploaded to a hub, the operation policy, license, hub, runner and maintenance
+documents and folders, and the destination of an exported review, of a published
+support bundle named by absolute path, of a hub download, of a backup and of a
+staged upgrade.
 
 A save that may overwrite its output — upgrading one saved test's profile pin,
 and saving a scenario library entry back into the library it was read from —
@@ -2556,7 +2602,7 @@ The panel provides five functional tabs:
 
 1. **Profile Packs & Library**:
    - Inspect installed profile packs ([`readmit-profile-pack/v1`](profile-packs.md))
-     and open a pack directory.
+     and open a pack directory: the open workspace itself, or one folder of it.
    - Distinctly displays provenance (author, location, digest, license, rights review)
      and support levels across four orthogonal dimensions: lossless parsing,
      dictionary labels, structure validation, and workflow evaluation.

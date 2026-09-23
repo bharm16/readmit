@@ -337,6 +337,16 @@ func (a *App) GenerateScenario(request ScenarioGenerateRequest) ScenarioGenerate
 		if request.OutputName == "" {
 			return ScenarioGenerateResult{State: Failed, Reason: "generation requires a new output directory name"}
 		}
+		if artifactpath.EntryName(request.OutputName) != nil {
+			return ScenarioGenerateResult{State: Failed, Reason: "generation destination must be a new directory entry of the open workspace"}
+		}
+		caseName := request.CaseName
+		if caseName == "" {
+			caseName = request.OutputName + "-case"
+		}
+		if artifactpath.EntryName(caseName) != nil {
+			return ScenarioGenerateResult{State: Failed, Reason: "case destination must be a new directory entry of the open workspace"}
+		}
 		data, err := a.resolveScenarioDocument(root, request.Document)
 		if err != nil {
 			data = []byte(request.Document)
@@ -383,10 +393,6 @@ func (a *App) GenerateScenario(request ScenarioGenerateRequest) ScenarioGenerate
 			streams = append(streams, filepath.Join(outputPath, entry.Name()))
 		}
 		result.StreamCount = len(streams)
-		caseName := request.CaseName
-		if caseName == "" {
-			caseName = request.OutputName + "-case"
-		}
 		casePath, err := artifactpath.Destination(filepath.Join(root, caseName))
 		if err != nil {
 			return ScenarioGenerateResult{State: Failed, Reason: "case destination must be a new directory entry of the open workspace"}
@@ -666,6 +672,9 @@ func (a *App) GenerateSynth(request SynthGenerateRequest) SynthGenerateResult {
 		}
 		if request.OutputName == "" {
 			return SynthGenerateResult{State: Failed, Reason: "synth requires a new output directory name"}
+		}
+		if artifactpath.EntryName(request.OutputName) != nil {
+			return SynthGenerateResult{State: Failed, Reason: "synth destination must be a new directory entry of the open workspace"}
 		}
 		outputPath, err := artifactpath.Destination(filepath.Join(root, request.OutputName))
 		if err != nil {

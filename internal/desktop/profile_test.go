@@ -66,7 +66,10 @@ func TestInspectProfilePack(t *testing.T) {
 func TestOpenProfileLibrary(t *testing.T) {
 	app := workspaceApp(t)
 	root := t.TempDir()
-	libraryDir := t.TempDir()
+	libraryDir := filepath.Join(root, "library")
+	if err := os.Mkdir(libraryDir, 0700); err != nil {
+		t.Fatal(err)
+	}
 
 	packFixture, err := os.ReadFile(filepath.Join("..", "..", "testdata", "fixtures", "profile-pack.json"))
 	if err != nil {
@@ -76,7 +79,7 @@ func TestOpenProfileLibrary(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result := app.OpenProfileLibrary(root, libraryDir)
+	result := app.OpenProfileLibrary(root, "library")
 	if result.State != desktop.Completed {
 		t.Fatalf("expected library scan to succeed: %+v", result)
 	}
@@ -85,7 +88,7 @@ func TestOpenProfileLibrary(t *testing.T) {
 	}
 
 	// Non-existent directory should return Failed
-	missingResult := app.OpenProfileLibrary(root, filepath.Join(root, "non-existent"))
+	missingResult := app.OpenProfileLibrary(root, "non-existent")
 	if missingResult.State != desktop.Failed {
 		t.Fatalf("expected missing library dir to fail: %+v", missingResult)
 	}
