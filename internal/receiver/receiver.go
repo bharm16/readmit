@@ -39,10 +39,11 @@ type Config struct {
 	MaxMessages     int // zero means run until cancellation or a session limit
 	// InProcess marks a session whose live observation is read back only by
 	// the process serving it, which retains every copy it keeps through its
-	// own synced write, as redaction's fixture proofs do. Each snapshot is
-	// still installed whole, by rename, before its ACK, but it is not flushed
-	// to the device first, so the ACK does not wait on the disk. A session
-	// another process reads, such as listen's, always flushes.
+	// own synced write, as redaction's fixture proofs, report trials and the
+	// guided sample's practice runs do. Each snapshot is still installed
+	// whole, by rename, before its ACK, but it is not flushed to the device
+	// first, so the ACK does not wait on the disk. A session another process
+	// reads, such as listen's, always flushes.
 	InProcess bool
 }
 

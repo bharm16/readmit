@@ -1,5 +1,20 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- `readmit report` and the guided sample's practice runs no longer fail because
+  the local disk is slow (#350). Both send to the built-in fixture in their own
+  process, and as in redaction's proofs before #331, the fixture flushed its
+  ledger twice before each ACK inside the target's five-second message timeout,
+  and the sender's synced recording had to fit inside the fixture's five-second
+  wait for the next message. On a loaded disk either window could expire, which
+  failed the report or left a practice run without its verdict. Both fixtures
+  now answer once the ledger is installed rather than flushed, since it is read
+  back in the same process, and wait for their own sender for the whole
+  operation: a report trial's 20 seconds, a practice run's 30. A packet still
+  keeps every copy of the ledger in a synced write, and a practice run flushes
+  the `observation.json` it keeps once its session is over. Target, result,
+  packet and case bytes are unchanged, and `listen` still syncs before every
+  ACK.
+
 - The interaction journeys now reach a real customer hub (#109): the checkout's
   readmit-hub over mutual TLS on loopback, its store in a disposable PostgreSQL
   cluster each journey creates and removes, and a customer identity provider.

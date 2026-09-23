@@ -1,7 +1,9 @@
 package guide_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"path/filepath"
@@ -14,6 +16,7 @@ import (
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/guide"
 	"github.com/bharm16/readmit/internal/index"
+	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/synth"
 	"github.com/bharm16/readmit/internal/testauthor"
 	"github.com/bharm16/readmit/internal/testrunner"
@@ -268,6 +271,107 @@ func TestAStepIsCompletedOnlyByTheOutcomeItNames(t *testing.T) {
 	}
 	if again := read(t, root); again.Spec != spec || step(t, again, guide.StepBaseline).Done {
 		t.Fatalf("a run of another test completed the step: %+v", again)
+	}
+}
+
+// senderStorage stands in for a sender's own evidence storage, reporting each
+// message's event once it has been recorded.
+type senderStorage struct{ recorded func(replay.Event) error }
+
+func (senderStorage) BeforeSend(string) error             { return nil }
+func (senderStorage) Sent(string, []byte) error           { return nil }
+func (s senderStorage) Recorded(event replay.Event) error { return s.recorded(event) }
+
+// A practice run sends to its receiver in this process, and between messages
+// its own sender syncs the evidence it has just recorded (#350). The receiver
+// waits for that sender as long as the run may take, so a sender stalled one
+// second past the five-second idle limit the receiver used to have still gets
+// the verdict an unstalled disk gives, and the step reads it back.
+func TestAPracticeRunOutlastsItsSendersStorage(t *testing.T) {
+	root := sampleWorkspace(t)
+	spec := saveTest(t, root, "reschedule-test.json", 1)
+	stalled := false
+	t.Cleanup(guide.ObserveSenderForTest(senderStorage{recorded: func(event replay.Event) error {
+		if !stalled && event.SourceOccurrence == "s0001-e000001" {
+			stalled = true
+			time.Sleep(6 * time.Second)
+		}
+		return nil
+	}}))
+	baseline, err := guide.Run(t.Context(), root, spec, "baseline-run", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stalled {
+		t.Fatal("the stalled sender recorded no first message")
+	}
+	if baseline.Result.Status != testrunner.AssertionFailure {
+		t.Fatalf("a stalled sender changed the verdict to %s", baseline.Result.Status)
+	}
+	if recorded := step(t, read(t, root), guide.StepBaseline); recorded.Entry != "baseline-run" || recorded.Status != string(testrunner.AssertionFailure) {
+		t.Fatalf("the run did not complete its step: %+v", recorded)
+	}
+}
+
+// The practice receiver installs its ledger without flushing it, because this
+// process reads it back, but the run keeps that ledger beside its result
+// (#350). So it is flushed once the session is over and before the run
+// answers, holding the final snapshot the result retained, and what the run
+// retains is otherwise exactly what it was: the result reopens as written and
+// the endpoint keeps the practice target's bytes. A kept ledger that cannot be
+// flushed is not a finished run.
+func TestAPracticeRunKeepsItsLedgerSynced(t *testing.T) {
+	root := sampleWorkspace(t)
+	spec := saveTest(t, root, "reschedule-test.json", 1)
+	flushed := map[string][]byte{}
+	t.Cleanup(guide.ObserveLedgerSyncForTest(func(path string) error {
+		// The session is over once the receiver has written its case.
+		if _, err := bundle.Open(filepath.Join(filepath.Dir(path), "receiver")); err != nil {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		flushed[filepath.Join(filepath.Base(filepath.Dir(path)), filepath.Base(path))] = data
+		return err
+	}))
+	baseline, err := guide.Run(t.Context(), root, spec, "baseline-run", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := filepath.Join(root, "baseline-run")
+	kept, err := os.ReadFile(filepath.Join(run, "observation.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	retained, err := os.ReadFile(filepath.Join(run, "result", "observation.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if synced, ok := flushed[filepath.Join("baseline-run", "observation.json")]; len(flushed) != 1 || !ok || !bytes.Equal(synced, retained) || !bytes.Equal(kept, retained) {
+		t.Fatalf("the kept ledger was not flushed once, after its session, holding the final snapshot: %d flushes", len(flushed))
+	}
+	if reopened, err := testrunner.Open(filepath.Join(run, "result")); err != nil || reopened.Identity != baseline.Identity || reopened.Result.Status != testrunner.AssertionFailure {
+		t.Fatalf("the retained result did not reopen as written: %v", err)
+	}
+	declared, err := replay.ReadDeclaredTarget(filepath.Join(run, "target.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := guide.Target()
+	want.Address = declared.Address
+	encoded, err := json.Marshal(want, json.Deterministic(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if endpoint, err := os.ReadFile(filepath.Join(run, "target.json")); err != nil || !bytes.Equal(endpoint, append(encoded, '\n')) {
+		t.Fatalf("the retained endpoint is not the practice target: %v", err)
+	}
+
+	t.Cleanup(guide.ObserveLedgerSyncForTest(func(string) error { return errors.New("injected ledger flush failure") }))
+	if _, err := guide.Run(t.Context(), root, spec, "unsynced-run", false); err == nil {
+		t.Fatal("a run whose kept ledger could not be flushed reported a verdict")
+	}
+	if _, err := testrunner.Open(filepath.Join(root, "unsynced-run", "result")); err != nil {
+		t.Fatalf("what the unfinished run retained is not kept: %v", err)
 	}
 }
 

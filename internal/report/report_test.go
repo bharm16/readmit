@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
@@ -57,6 +58,52 @@ func TestCreateSealsCanonicalSyntheticFailureAndPass(t *testing.T) {
 		if !bytes.Equal(spec, retained) {
 			t.Fatal("historical spec bytes differ")
 		}
+	}
+}
+
+// senderStorage stands in for a sender's own evidence storage, reporting each
+// message's event once it has been recorded.
+type senderStorage struct{ recorded func(replay.Event) error }
+
+func (senderStorage) BeforeSend(string) error             { return nil }
+func (senderStorage) Sent(string, []byte) error           { return nil }
+func (s senderStorage) Recorded(event replay.Event) error { return s.recorded(event) }
+
+// A report sends each trial to its fixture in this process, and between
+// messages its own sender syncs the evidence it has just recorded (#350). The
+// fixture waits for that sender as long as the trial may take, so a sender
+// stalled one second past the five-second idle limit the fixture used to have
+// still seals the packet an unstalled disk gives.
+func TestTrialsOutlastTheirSendersStorage(t *testing.T) {
+	stalled := false
+	t.Cleanup(report.ObserveSenderForTest(senderStorage{recorded: func(event replay.Event) error {
+		if !stalled && event.SourceOccurrence == "s0001-e000001" {
+			stalled = true
+			time.Sleep(6 * time.Second)
+		}
+		return nil
+	}}))
+	dir := filepath.Join(t.TempDir(), "packet")
+	packet, err := report.Create(context.Background(), report.Scenario, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stalled {
+		t.Fatal("the stalled sender recorded no first message")
+	}
+	if opened, err := report.Open(dir); err != nil || opened.Identity != packet.Identity {
+		t.Fatalf("the packet did not reopen as written: %v", err)
+	}
+	baseline, err := testrunner.Open(filepath.Join(dir, "baseline"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixed, err := testrunner.Open(filepath.Join(dir, "post-fix"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if baseline.Result.Status != testrunner.AssertionFailure || len(baseline.FinalObservation.Records) != 2 || fixed.Result.Status != testrunner.Pass || len(fixed.FinalObservation.Records) != 1 {
+		t.Fatalf("a stalled sender changed the report's verdicts: %s, %s", baseline.Result.Status, fixed.Result.Status)
 	}
 }
 

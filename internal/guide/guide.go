@@ -82,9 +82,10 @@ const (
 	// product does. A folder past the bound is refused rather than read in part.
 	maxEntries = 1024
 
-	// practiceTimeout bounds one practice run end to end. Two synthetic
-	// messages over loopback take milliseconds; this is the wall a run that is
-	// going nowhere meets.
+	// practiceTimeout bounds one practice run end to end, and the practice
+	// receiver waits as long for the run's own sender. Two synthetic messages
+	// over loopback take milliseconds; this is the wall a run that is going
+	// nowhere meets.
 	practiceTimeout = 30 * time.Second
 )
 
@@ -467,10 +468,17 @@ func execute(ctx context.Context, dir string, spec testrunner.Spec, mode observa
 		return nil, errors.New("cannot bind the practice receiver on this machine")
 	}
 	defer listener.Close()
+	// The receiver waits as long as the run may take for this run's own sender,
+	// which syncs the evidence it has just recorded before sending the next
+	// message. Its ledger is read back only by this process, so each snapshot is
+	// installed without being flushed first; flushing it before each ACK put the
+	// disk's latency inside the practice target's message timeout. The run keeps
+	// that ledger, so flushKeptLedger flushes it once the session is over.
 	fixture, err := receiver.New(receiver.Config{
 		Mode: mode, OutputPath: filepath.Join(dir, "receiver"),
 		ObservationPath: filepath.Join(dir, "observation.json"),
-		MaxMessages:     len(spec.Input.Messages), MaxFrameBytes: 1 << 20, IdleTimeout: 5 * time.Second,
+		MaxMessages:     len(spec.Input.Messages), MaxFrameBytes: 1 << 20, IdleTimeout: practiceTimeout,
+		InProcess: true,
 	})
 	if err != nil {
 		return nil, errors.New("cannot prepare the practice receiver")
@@ -498,16 +506,41 @@ func execute(ctx context.Context, dir string, spec testrunner.Spec, mode observa
 	served := make(chan error, 1)
 	go func() { _, err := fixture.Serve(runCtx, listener); served <- err }()
 	// New has installed the empty observation before the runner can connect.
-	artifact, runErr := testrunner.Run(runCtx, filepath.Join(dir, "spec.json"), filepath.Join(dir, "result"))
+	artifact, runErr := sendPractice(runCtx, filepath.Join(dir, "spec.json"), filepath.Join(dir, "result"))
 	cancel()
 	serveErr := <-served
+	ledgerErr := flushKeptLedger(filepath.Join(dir, "observation.json"))
 	if ctx.Err() != nil {
 		return nil, ErrCancelled
 	}
-	if runErr != nil || serveErr != nil || artifact == nil {
+	if runErr != nil || serveErr != nil || ledgerErr != nil || artifact == nil {
 		return nil, errors.New("the practice run did not finish; whatever it retained is kept")
 	}
 	return artifact, nil
+}
+
+// sendPractice sends the executed spec to the practice receiver. It is the
+// ordinary test runner, which this package's tests replace to stand in a
+// sender whose own storage stalls.
+var sendPractice = testrunner.Run
+
+// syncLedger flushes the ledger a practice run keeps. It is the seam this
+// package's tests take to see that the kept ledger is flushed, and when.
+var syncLedger = (*os.File).Sync
+
+// flushKeptLedger flushes the practice receiver's ledger once its session is
+// over, so the copy the run keeps beside its result is synced like everything
+// else it retains. No send or receive waits on the disk here.
+func flushKeptLedger(path string) error {
+	file, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		return err
+	}
+	err = syncLedger(file)
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
+	}
+	return err
 }
 
 func write(dir, name string, value any) error {

@@ -120,6 +120,13 @@ records, and in `fixed` mode it updates the original and the ledger holds one.
 A test expecting one appointment therefore fails the first and passes the second,
 which is the demonstration the whole sample exists for.
 
+The practice receiver answers each message once its ledger snapshot is
+installed, without first flushing it to the disk, and waits for the run's own
+sender for up to the run's 30-second budget. The run reads that ledger back in
+the same process and flushes `observation.json` once the receiver's session is
+over, so a slow local disk cannot turn the practice endpoint's five-second
+message timeout into a failed run, and everything the run keeps is still synced.
+
 Three members of the saved spec are rebound onto the run's own directory, and
 the window states all three rather than leaving them to be discovered:
 
