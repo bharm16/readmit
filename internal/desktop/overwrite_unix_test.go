@@ -557,17 +557,18 @@ func replacesALinkedDocument(t *testing.T, saves []replacingSave) {
 }
 
 // The shell's own documents are written over the same way: the saved
-// filters, the working session, the editor drafts and the operation and
-// commercial selections through the replacement a workspace save uses, and
-// the recent workspaces through their own rename. A link at each file, to the
-// same document another shell wrote outside, is replaced, and the document it
-// led to keeps its bytes.
+// filters, the working session, the editor drafts and the operation,
+// commercial and hub selections through the replacement a workspace save
+// uses, and the recent workspaces through their own rename. A link at each
+// file, to the same document another shell wrote outside, is replaced, and the
+// document it led to keeps its bytes.
 func TestTheShellsOwnDocumentsReplaceALinkAtTheirFile(t *testing.T) {
 	workspace, outside, ownState := t.TempDir(), t.TempDir(), t.TempDir()
-	documents := []string{"recent.json", "filters.json", "session.json", "drafts.json", "selection.json", "commercial.json"}
+	documents := []string{"recent.json", "filters.json", "session.json", "drafts.json", "selection.json", "commercial.json", "hub.json"}
 	configuration := t.TempDir()
 	writeDocument(t, configuration, "destinations.json",
 		`{"schema":"readmit-commercial-destinations/v1","environment":"sandbox","portal":"https://portal.example.test"}`)
+	hubConfig := writeHubClientConfig(t, configuration, "https://hub.example.test")
 	completes := func(call string, got desktop.State, reason string) {
 		t.Helper()
 		// An empty workspace is opened, and remembered, as empty.
@@ -597,6 +598,8 @@ func TestTheShellsOwnDocumentsReplaceALinkAtTheirFile(t *testing.T) {
 		completes("OpenWorkspace", opened.State, opened.Reason)
 		chosen := app.ChooseCommercialDestinations()
 		completes("ChooseCommercialDestinations", chosen.State, chosen.Reason)
+		hub := app.SelectHubConfig(hubConfig)
+		completes("SelectHubConfig", hub.State, hub.Reason)
 	}
 	retain(shell(outside), "outside")
 	for _, name := range documents {

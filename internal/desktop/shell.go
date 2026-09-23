@@ -229,6 +229,7 @@ var privacyStatus = Privacy{
 		"the notes you had not stored yet and where you were, in readmit-desktop-session/v1",
 		"the editor work you had not stored yet — notes you were writing, test drafts, assertion-set drafts, canonical edits, suite drafts and reproducer plans — in readmit-desktop-drafts/v1",
 		"the commercial destinations file you selected, as a path only, in readmit-desktop-commercial-selection/v1",
+		"the customer hub configuration file you selected, as a path only, in readmit-desktop-hub-selection/v1",
 	},
 	Operations: []OperationDisclosure{
 		{

@@ -187,6 +187,9 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
 
   const isConnected = status?.connected ?? false;
   const isAuthenticated = status?.authenticated ?? false;
+  // A remembered configuration that no longer validates is shown with its
+  // reason; it is neither diagnosed nor connected to until one is chosen again.
+  const isConfigured = status?.state === "completed" && Boolean(status.config_path);
 
   return (
     <section className="hub-panel" aria-labelledby="hub-panel-title">
@@ -225,7 +228,7 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
         </button>
         <button
           type="button"
-          disabled={busy || !status?.config_path}
+          disabled={busy || !isConfigured}
           onClick={() => void handleDiagnose()}
         >
           Diagnose prerequisites
@@ -233,7 +236,7 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
         {!isConnected ? (
           <button
             type="button"
-            disabled={busy || !status?.config_path}
+            disabled={busy || !isConfigured}
             onClick={() => void handleConnect()}
           >
             Connect to hub

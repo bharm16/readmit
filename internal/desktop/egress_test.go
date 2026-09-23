@@ -155,7 +155,7 @@ func TestStartupRestorationAndInspectionReachNoConfiguredDestination(t *testing.
 	}
 
 	// Everything the window keeps outside evidence — the recent folders, the
-	// session, the drafts and both selections — is readable by its owner only.
+	// session, the drafts and its selections — is readable by its owner only.
 	ownerOnly(t, state)
 
 	// The second window is a new process over the same retained state. What
@@ -185,15 +185,17 @@ func TestStartupRestorationAndInspectionReachNoConfiguredDestination(t *testing.
 	if status := second.CommercialStatus(); status.State != desktop.Completed || !strings.Contains(status.Portal, portal.address) {
 		t.Fatalf("the portal destination is not disclosed after a restart: %+v", status)
 	}
-	if status := second.HubStatus(); status.State != desktop.Empty || status.Connected {
-		t.Fatalf("a restarted window restored a hub connection: %+v", status)
+	// The hub configuration is restored as selected and offline: the
+	// selection is read back, and nothing is connected or signed in.
+	if status := second.HubStatus(); status.State != desktop.Completed || status.ConfigPath != hubConfig || status.Connected || status.Authenticated {
+		t.Fatalf("a restarted window did not restore the hub selection offline: %+v", status)
 	}
 	disclosed := map[string]string{}
 	disclosure := second.DisclosureStatus()
 	for _, state := range disclosure.States {
 		disclosed[state.ID] = state.State
 	}
-	for id, want := range map[string]string{"run": "idle", "runner": "idle", "capture": "idle", "environment": "idle", "observe": "idle", "hub": "not-configured", "portal": "configured"} {
+	for id, want := range map[string]string{"run": "idle", "runner": "idle", "capture": "idle", "environment": "idle", "observe": "idle", "hub": "offline", "portal": "configured"} {
 		if disclosed[id] != want {
 			t.Errorf("after a restart %s is %q, want %q: %+v", id, disclosed[id], want, disclosure)
 		}
@@ -254,7 +256,7 @@ func TestStartupRestorationAndInspectionReachNoConfiguredDestination(t *testing.
 }
 
 // ownerOnly requires the shell's state folder and every document in it to be
-// private to the account that runs the window, and all five documents it
+// private to the account that runs the window, and all six documents it
 // writes on the way here to exist.
 func ownerOnly(t *testing.T, state string) {
 	t.Helper()
@@ -262,7 +264,7 @@ func ownerOnly(t *testing.T, state string) {
 	if err != nil || info.Mode().Perm()&0o077 != 0 {
 		t.Fatalf("the shell state folder is not private: %v %v", info.Mode(), err)
 	}
-	for _, name := range []string{"recent.json", "session.json", "drafts.json", "operations.json", "commercial.json"} {
+	for _, name := range []string{"recent.json", "session.json", "drafts.json", "operations.json", "commercial.json", "hub.json"} {
 		info, err := os.Lstat(filepath.Join(state, name))
 		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
 			t.Errorf("%s is not a private regular file: %v %v", name, info, err)
