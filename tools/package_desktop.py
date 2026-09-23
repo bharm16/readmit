@@ -26,6 +26,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import xml.etree.ElementTree as ET
 
 
@@ -51,6 +52,15 @@ FORMATS = ("deb", "dmg", "pkg", "msi")
 # Microsoft Installer databases are OLE compound files; every other format this
 # tool writes is verified by reading its own members.
 COMPOUND_FILE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+# hdiutil(1) documents EBUSY, "Resource busy", as the error it reports when a
+# volume cannot be unmounted. `create -srcfolder` mounts the volume it fills
+# where the rest of the system can open it, so a file some other process still
+# holds there fails the whole create at the last step. That hold is released,
+# so this one failure is tried again a bounded number of times; every other
+# failure is the result.
+BUSY_CREATE = "hdiutil: create failed - Resource busy"
+CREATE_ATTEMPTS = 3
+CREATE_RETRY_SECONDS = 5
 
 
 class Refused(RuntimeError):
@@ -317,6 +327,44 @@ def application_bundle(declaration, binary, version, output):
     return bundle
 
 
+def create_disk_image(declaration, staged, image):
+    """Write the .dmg from the staged payload, or refuse in hdiutil's own words.
+
+    The staging folder is the one path outside the build that hdiutil is given,
+    a temporary directory on the build machine, so what hdiutil wrote is carried
+    with that folder named `<payload>`.
+    """
+    def hdiutil_wrote(stderr, stdout):
+        streams = []
+        for name, text in (("stderr", stderr), ("stdout", stdout)):
+            text = text.decode(errors="replace") if isinstance(text, bytes) else text or ""
+            # The resolved spelling first: on macOS it is /private + the other one.
+            for spelling in sorted({str(staged.resolve()), str(staged)}, key=len, reverse=True):
+                text = text.replace(spelling, "<payload>")
+            streams.append(f"{name} {text.strip()!r}")
+        return ", ".join(streams)
+
+    command = ["hdiutil", "create", "-volname", declaration["display_name"],
+               "-srcfolder", str(staged), "-ov", "-format", "UDZO", str(image)]
+    for attempt in range(1, CREATE_ATTEMPTS + 1):
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=600)
+        except subprocess.TimeoutExpired as hung:
+            # Its own text is the command line, staging path and all.
+            raise Refused(f"{image.name} was not created: hdiutil did not finish in {hung.timeout} "
+                          f"seconds, {hdiutil_wrote(hung.stderr, hung.stdout)}") from None
+        if result.returncode == 0:
+            return
+        failure = f"hdiutil exited {result.returncode}, {hdiutil_wrote(result.stderr, result.stdout)}"
+        if BUSY_CREATE not in (line.strip() for line in result.stderr.splitlines()):
+            raise Refused(f"{image.name} was not created: {failure}")
+        if attempt == CREATE_ATTEMPTS:
+            raise Refused(f"{image.name} was not created in {attempt} attempts: {failure}")
+        print(f"{image.name} was not created (attempt {attempt} of {CREATE_ATTEMPTS}): {failure}; "
+              f"trying again in {CREATE_RETRY_SECONDS} seconds", file=sys.stderr)
+        time.sleep(CREATE_RETRY_SECONDS)
+
+
 def build_macos(declaration, binary, version, target, output):
     built, numeric = [], numeric_version(version)
     with tempfile.TemporaryDirectory(prefix="readmit-desktop-package-") as directory:
@@ -328,10 +376,7 @@ def build_macos(declaration, binary, version, target, output):
         application_bundle(declaration, binary, version, staged)
         if "dmg" in target["formats"]:
             name = package_name(declaration, version, target, "dmg")
-            subprocess.run([
-                "hdiutil", "create", "-volname", declaration["display_name"],
-                "-srcfolder", str(staged), "-ov", "-format", "UDZO", str(output / name),
-            ], check=True, capture_output=True, timeout=600)
+            create_disk_image(declaration, staged, output / name)
             built.append((name, "dmg"))
         if "pkg" in target["formats"]:
             name = package_name(declaration, version, target, "pkg")

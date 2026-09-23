@@ -146,6 +146,15 @@ python3 tools/package_desktop.py build --binary desktop/build/readmit-desktop \
 python3 tools/package_desktop.py verify --packages dist-desktop
 ```
 
+On macOS the disk image is written by `hdiutil create`, which mounts the volume
+it fills where other processes can open it. A process still holding a file there
+when hdiutil unmounts it fails the create with `create failed - Resource busy`,
+the error hdiutil documents for a volume that cannot be unmounted. The build
+tries that one failure again, at most three attempts five seconds apart; every
+other failure, and a create that does not finish in ten minutes, is refused the
+first time. A refusal carries what hdiutil wrote, with the temporary staging
+folder named `<payload>` rather than its path on the build machine.
+
 ### Prerequisites and offline handling
 
 Nothing in a package reaches a network, and no package downloads a prerequisite.

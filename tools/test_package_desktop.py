@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -282,6 +283,131 @@ class PackagingTests(unittest.TestCase):
         for expected in ("the stand-in tool did not run", "exited 3",
                          "why it refused", "what it had done"):
             self.assertIn(expected, message)
+
+    def build_macos_with(self, create, name="retry-packages"):
+        """Build the macOS packages with `create` standing in for `hdiutil create`.
+
+        It returns what was tried: every attempt's command line, every pause,
+        what the build said on stderr, and the refusal it ended with, if any."""
+        attempts, pauses, said, refused = [], [], io.StringIO(), None
+
+        def command(args, **kwargs):
+            if args[0] == "pkgbuild":
+                Path(args[-1]).write_bytes(b"an installer package")
+                return subprocess.CompletedProcess(args, 0, "", "")
+            self.assertEqual(args[:2], ["hdiutil", "create"])
+            self.assertEqual(kwargs["timeout"], 600, "a create that never finishes is still bounded")
+            attempts.append(list(args))
+            return create(args, len(attempts))
+
+        output = self.work / name
+        with patch.object(packaging.subprocess, "run", side_effect=command), \
+                patch.object(packaging.time, "sleep", side_effect=pauses.append), redirect_stderr(said):
+            try:
+                packaging.build(self.declaration, self.binary, "1.2.3", self.target(MACOS), output)
+            except packaging.Refused as error:
+                refused = error
+        return SimpleNamespace(output=output, attempts=attempts, pauses=pauses,
+                               said=said.getvalue(), refused=refused)
+
+    @staticmethod
+    def created(args):
+        Path(args[-1]).write_bytes(b"a disk image")
+        return subprocess.CompletedProcess(args, 0, f"created: {args[-1]}\n", "")
+
+    @staticmethod
+    def busy(args):
+        return subprocess.CompletedProcess(args, 1, "", "hdiutil: create failed - Resource busy\n")
+
+    def test_a_disk_image_whose_staging_volume_was_busy_is_created_again(self):
+        """`create -srcfolder` mounts the volume it fills where the system can
+        open it, and a file still open there when hdiutil unmounts it fails the
+        whole create with EBUSY. That is the one failure tried again."""
+        run = self.build_macos_with(lambda args, attempt: self.busy(args) if attempt == 1 else self.created(args))
+        self.assertIsNone(run.refused)
+        self.assertEqual(len(run.attempts), 2)
+        self.assertEqual(run.attempts[0], run.attempts[1], "a retry creates the same image the same way")
+        self.assertEqual(run.pauses, [packaging.CREATE_RETRY_SECONDS])
+        for expected in ("readmit-desktop_1.2.3_arm64.dmg was not created", "hdiutil exited 1",
+                         f"attempt 1 of {packaging.CREATE_ATTEMPTS}", "hdiutil: create failed - Resource busy"):
+            self.assertIn(expected, run.said)
+        manifest = json.loads((run.output / packaging.MANIFEST_NAME).read_bytes())
+        self.assertEqual(sorted(package["name"] for package in manifest["packages"]),
+                         ["readmit-desktop_1.2.3_arm64.dmg", "readmit-desktop_1.2.3_arm64.pkg"])
+
+    def test_a_disk_image_that_stays_busy_is_refused_after_a_bounded_number_of_attempts(self):
+        run = self.build_macos_with(lambda args, attempt: self.busy(args))
+        self.assertEqual(len(run.attempts), packaging.CREATE_ATTEMPTS)
+        self.assertEqual(run.pauses, [packaging.CREATE_RETRY_SECONDS] * (packaging.CREATE_ATTEMPTS - 1))
+        message = str(run.refused)
+        for expected in ("readmit-desktop_1.2.3_arm64.dmg", f"{packaging.CREATE_ATTEMPTS} attempts",
+                         "hdiutil exited 1", "hdiutil: create failed - Resource busy"):
+            self.assertIn(expected, message)
+
+    def test_any_other_create_failure_is_refused_at_once_in_hdiutil_s_own_words(self):
+        """Only the documented unmount failure is transient. A full disk, an
+        image another attach is holding, a refused permission or a hang is the
+        result, the first time, with what hdiutil said and without the
+        machine's staging path."""
+        for index, reason in enumerate(("No space left on device", "Resource temporarily unavailable",
+                                        "Operation not permitted", "timeout")):
+            with self.subTest(reason=reason):
+                def fail(args, attempt):
+                    staged = args[args.index("-srcfolder") + 1]
+                    stderr = (f"hdiutil: could not access {staged}/readmit-desktop.app"
+                              f" ({Path(staged).resolve()})\nhdiutil: create failed - {reason}\n")
+                    if reason == "timeout":
+                        # run() hands back what was captured so far as bytes.
+                        raise subprocess.TimeoutExpired(args, 600, b"Initializing\xe2\x80\xa6\n", stderr.encode())
+                    return subprocess.CompletedProcess(args, 1, "Initializing…\n", stderr)
+
+                run = self.build_macos_with(fail, name=f"refused-{index}")
+                self.assertEqual(len(run.attempts), 1, "no retry")
+                self.assertEqual(run.pauses, [])
+                self.assertIsNotNone(run.refused)
+                message = str(run.refused)
+                staged = run.attempts[0][run.attempts[0].index("-srcfolder") + 1]
+                outcome = "did not finish in 600 seconds" if reason == "timeout" else "hdiutil exited 1"
+                for expected in ("readmit-desktop_1.2.3_arm64.dmg was not created", outcome,
+                                 f"hdiutil: create failed - {reason}", "Initializing…",
+                                 "could not access <payload>/readmit-desktop.app (<payload>)"):
+                    self.assertIn(expected, message)
+                for private in (staged, str(Path(staged).resolve()), "readmit-desktop-package-"):
+                    self.assertNotIn(private, message)
+                if reason == "timeout":
+                    # The timeout's own text is the command line, staging path included.
+                    self.assertTrue(run.refused.__suppress_context__)
+
+    @unittest.skipIf(platform.system() != "Darwin", "hdiutil is a macOS tool")
+    def test_a_disk_image_created_again_holds_the_application_it_claims(self):
+        """The retried image is the image: the same name, format and content.
+
+        The first real create completes and is then reported busy at the
+        subprocess boundary, so the second overwrites a real image rather
+        than racing a real indexer for the staging volume."""
+        original_run, attempts = packaging.subprocess.run, []
+
+        def busy_once(args, **kwargs):
+            result = original_run(args, **kwargs)
+            if args[:2] == ["hdiutil", "create"]:
+                attempts.append(result.returncode)
+                if len(attempts) == 1 and result.returncode == 0:
+                    return self.busy(args)
+            return result
+
+        output = self.work / "retried-packages"
+        with patch.object(packaging.subprocess, "run", side_effect=busy_once), \
+                patch.object(packaging.time, "sleep"), redirect_stderr(io.StringIO()):
+            packaging.build(self.declaration, self.binary, "1.2.3", self.target(MACOS), output)
+        self.assertEqual(attempts, [0, 0])
+        document = packaging.verify(self.declaration, output)
+        self.assertEqual(sorted(entry.name for entry in output.iterdir()), [
+            packaging.MANIFEST_NAME, "readmit-desktop_1.2.3_arm64.dmg", "readmit-desktop_1.2.3_arm64.pkg"])
+        image = output / "readmit-desktop_1.2.3_arm64.dmg"
+        information = plistlib.loads(packaging.run_tool(
+            ["hdiutil", "imageinfo", "-plist", str(image)], "read the image format").stdout.encode())
+        self.assertEqual(information["Format"], "UDZO")
+        self.assertEqual({package["format"] for package in document["packages"]}, {"dmg", "pkg"})
 
     def test_failed_attach_cleans_its_new_device_and_preserves_the_refusal(self):
         image = self.work / "failure.dmg"

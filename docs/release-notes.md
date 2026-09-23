@@ -1,5 +1,12 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- A macOS disk image that `hdiutil create` does not write is now refused with
+  what hdiutil said, with the temporary staging folder named `<payload>` rather
+  than its path on the build machine (#334). The failure hdiutil documents for a
+  volume it cannot unmount, `create failed - Resource busy`, is tried again at
+  most three attempts five seconds apart; every other failure is refused the
+  first time. The disk image's name, format and contents are unchanged.
+
 - Redaction's fixture proofs no longer fail because the local disk is slow
   (#331). On a loaded Windows runner the fixture's synced ledger writes could
   outlast the fixture target's three-second message timeout, and the sender's
