@@ -49,6 +49,17 @@ function emptyFileSource(): ObservationSource {
   };
 }
 
+/** The source as its own contract declares it. The facade answers with every
+ * transport member, and readmit-observation-source/v1 never had the capture
+ * transport: sending that member back would be refused as a v1 document with
+ * a member v1 never had, so a v1 source is saved without it. */
+function declared(source: ObservationSource): ObservationSource {
+  if (source.schema !== "readmit-observation-source/v1") return source;
+  const v1 = { ...source };
+  delete v1.capture;
+  return v1;
+}
+
 function applyKind(source: ObservationSource, kind: (typeof KINDS)[number]): ObservationSource {
   const shared = {
     source: { ...source.source, kind },
@@ -591,14 +602,22 @@ export function ObservationPanel({
           disabled={busy}
           onClick={() => {
             void (async () => {
-              const savedSource = await saveObservationSource({ workspace, source_file: sourceFile, source });
+              const savedSource = await saveObservationSource({ workspace, source_file: sourceFile, source: declared(source) });
               const savedWindow = await saveObservationWindow({ workspace, window_file: windowFile, window: windowDoc });
-              report(savedSource.state === "completed" && savedWindow.state === "completed" ? "completed" : "failed", savedSource.reason || savedWindow.reason);
+              const saved = savedSource.state === "completed" && savedWindow.state === "completed";
+              report(saved ? "completed" : "failed", savedSource.reason || savedWindow.reason);
               if (savedSource.identity) setSourceIdentity(savedSource.identity);
               if (savedWindow.identity) setWindowIdentity(savedWindow.identity);
               if (savedSource.source) setSource(savedSource.source);
               if (savedWindow.window) setWindowDoc(savedWindow.window);
-              setNotice("Saved through shared Go writers. Identities pinned for test binding.");
+              // A collection reads the saved documents, so a save that did not
+              // land is said plainly: collecting now would read what was
+              // saved before, not what the editor shows.
+              setNotice(
+                saved
+                  ? "Saved through shared Go writers. Identities pinned for test binding."
+                  : `Not saved: ${savedSource.reason || savedWindow.reason || "the source and window were refused"}. A collection reads the documents saved before.`,
+              );
             })();
           }}
         >

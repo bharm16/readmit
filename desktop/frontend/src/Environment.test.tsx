@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EnvironmentPanel, EnvironmentBanner } from "./EnvironmentPanel";
 import { installFacade, uninstallFacade } from "./testkit/wails";
@@ -308,4 +308,63 @@ test("an overdue credential reference says so instead of claiming it is current"
   );
   expect(await screen.findByText("Overdue — rotate before use")).toBeTruthy();
   uninstallFacade();
+});
+
+test("the forms stay closed until every document read has answered, so a late read never replaces what was typed", async () => {
+  const facade = installFacade({
+    ReadSendPolicy: async () => defaultSendPolicyResult(),
+    ReadSecrets: async () => defaultSecretsResult(),
+    ReadResetPlan: async () => defaultResetPlanResult(),
+  });
+  // The target read is still in flight after the other three answered.
+  const reading = facade.park("ReadTarget");
+  render(
+    <EnvironmentPanel
+      workspace={WORKSPACE_ROOT}
+      targetFile="targets/default.json"
+      secretsFile="secrets.json"
+      policyFile="send-policy.json"
+      planFile="reset-plan.json"
+      initialTab="target"
+    />,
+  );
+  await waitFor(() => expect(facade.callsTo("ReadResetPlan").length).toBe(1));
+  await waitFor(() => expect(facade.callsTo("ReadSendPolicy").length).toBe(1));
+  const name = screen.getByLabelText("Environment Name") as HTMLInputElement;
+  // Nothing can be typed while the document it would replace is being read.
+  expect(name.disabled).toBe(true);
+  reading.resolve(defaultTargetResult());
+  expect(await screen.findByDisplayValue("staging-mllp")).toBeTruthy();
+  expect(name.disabled).toBe(false);
+});
+
+test("a target file name is typed in full while documents are read, and naming it re-reads only the target", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade({
+    ReadTarget: async () => defaultTargetResult(),
+    ReadSendPolicy: async () => defaultSendPolicyResult(),
+    ReadSecrets: async () => defaultSecretsResult(),
+    ReadResetPlan: async () => defaultResetPlanResult(),
+  });
+  render(
+    <EnvironmentPanel
+      workspace={WORKSPACE_ROOT}
+      targetFile="targets/default.json"
+      secretsFile="secrets.json"
+      policyFile="send-policy.json"
+      planFile="reset-plan.json"
+      initialTab="target"
+    />,
+  );
+  await screen.findByDisplayValue("staging-mllp");
+  const file = screen.getByLabelText("Target Config File");
+  await user.clear(file);
+  await user.type(file, "downstream-target.json");
+  // Every keystroke landed: the field is not closed by the read it starts.
+  expect((file as HTMLInputElement).value).toBe("downstream-target.json");
+  await waitFor(() => expect(facade.callsTo("ReadTarget").at(-1)?.args).toEqual([WORKSPACE_ROOT, "downstream-target.json"]));
+  // Naming a target does not read the other three documents again.
+  expect(facade.callsTo("ReadSecrets")).toHaveLength(1);
+  expect(facade.callsTo("ReadSendPolicy")).toHaveLength(1);
+  expect(facade.callsTo("ReadResetPlan")).toHaveLength(1);
 });

@@ -44,8 +44,20 @@ import {
   REPORT_SHA256,
   testResult,
   NO_STAGES_MISSING,
+  defaultResetPlanResult,
+  defaultSecretsResult,
+  defaultSendPolicyResult,
+  defaultTargetResult,
+  disclosureStatusResult,
+  durableRunResult,
+  folderChosen,
+  runEvidenceResult,
+  runPreflightResult,
+  runProgressResult,
+  scenarioCatalogFixture,
 } from "./testkit/fixtures";
 import { renderApp } from "./testkit/app";
+import type { CommercialStatusResult, HubResult, ScenarioCatalogResult } from "./bindings";
 
 test("the window draws every region the facade declares and its privacy disclosure as given", async () => {
   await renderApp();
@@ -358,6 +370,46 @@ test("saving the authored test hands the draft to the engine and reads the guide
   expect(await screen.findByText(/spec identity/)).toBeTruthy();
   // A saved spec is a step of the guided sample, so the folder is read again.
   expect(facade.callsTo("Guide").length).toBeGreaterThan(before);
+});
+
+test("a saved test is at once an entry the run panel offers, read back from the folder", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp();
+  await openWorkspaceWithVerifiedCase(facade, user);
+  const answered = {
+    schema: "readmit-test-draft/v1",
+    case: { entry: CASE_ENTRY, identity: CASE_IDENTITY },
+    name: "booking-regression",
+    messages: [GRID_OCCURRENCE],
+    target: "practice-target",
+    boundary: "ack-contract" as const,
+    observation: "",
+    reset: "per the target's reset plan",
+    expectations: [],
+  };
+  facade.reply({
+    AuthorTest: () => ({ state: "completed" as const, test: { draft: answered, resolution: { stage: "" as const, missing: [], messages: answered.messages, targets: [], coverage: { ledger: { applies: false, covered: false }, messages: [], uncovered: [] } } } }),
+    SaveTest: (request) => ({
+      state: "completed" as const,
+      test: { draft: request.draft, resolution: { stage: "" as const, missing: [], messages: [], targets: [], coverage: { ledger: { applies: false, covered: false }, messages: [], uncovered: [] } }, output: "reschedule-test.json", identity: "spec-identity-fixed-for-tests" },
+    }),
+    OpenWorkspace: () =>
+      folderChosen(WORKSPACE_ROOT, [
+        { name: CASE_ENTRY, kind: "case", schema: "readmit-case/v3", provenance: "generated" },
+        { name: INDEX_ENTRY, kind: "index" },
+        { name: "reschedule-test.json", kind: "spec" },
+      ]),
+  });
+  await user.type(screen.getByLabelText("What is this test called?"), "booking-regression");
+  await user.click(screen.getByRole("button", { name: "Name this test" }));
+  await screen.findByText("Chosen: ack-contract");
+  await user.type(screen.getByLabelText("New entry in this workspace"), "reschedule-test.json");
+  await user.click(screen.getByRole("button", { name: "Write the test spec" }));
+  // The folder is read again after the save, and the run panel offers what it
+  // now holds, selected for the run that comes next.
+  const saved = await screen.findByRole("option", { name: "reschedule-test.json (test)" });
+  expect((saved as HTMLOptionElement).selected).toBe(true);
+  expect(facade.callsTo("OpenWorkspace").map((call) => call.args)).toContainEqual([WORKSPACE_ROOT]);
 });
 
 test("a refused save reports the refusal and keeps the draft a person is working on", async () => {
@@ -757,6 +809,109 @@ test("a navigation read whose slot stays held is reported busy after a bounded n
   expect(await screen.findByText("another operation is running", {}, { timeout: 4000 })).toBeTruthy();
   expect(facade.callsTo("OpenCase")).toHaveLength(20);
   expect(screen.queryByText(CASE_IDENTITY)).toBeNull();
+});
+
+test("the panels' opening reads that meet a held slot are asked again and draw what the facade holds", async () => {
+  // The environment, scenario, hub, commercial and disclosure panels each read
+  // as they open, together, and the facade answers every read that arrives
+  // while another holds its one slot busy. Each of these answers busy twice —
+  // once for each mount StrictMode makes — before it answers.
+  const BUSY = "another operation holds the slot";
+  const busyFirst = <R,>(answer: () => R, busy: R) => {
+    let asked = 0;
+    return () => (++asked <= 2 ? busy : answer());
+  };
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    SelectWorkspace: () => folderWithCase(),
+    ReadTarget: busyFirst(() => defaultTargetResult(), { state: "busy", reason: BUSY }),
+    ReadSecrets: busyFirst(() => defaultSecretsResult(), { state: "busy", reason: BUSY }),
+    ReadSendPolicy: busyFirst(() => defaultSendPolicyResult(), { state: "busy", reason: BUSY }),
+    ReadResetPlan: busyFirst(() => defaultResetPlanResult(), { state: "busy", reason: BUSY }),
+    ScenarioCatalog: busyFirst<ScenarioCatalogResult>(() => scenarioCatalogFixture(), { state: "busy", reason: BUSY }),
+    HubStatus: busyFirst<HubResult>(() => ({ state: "empty", connected: false, authenticated: false }), {
+      state: "busy",
+      reason: BUSY,
+      connected: false,
+      authenticated: false,
+    }),
+    CommercialStatus: busyFirst<CommercialStatusResult>(
+      () => ({
+        state: "empty",
+        reason: "the commercial portal destination is not configured; choose the operator-supplied destinations file",
+      }),
+      { state: "busy", reason: BUSY },
+    ),
+    DisclosureStatus: busyFirst(() => disclosureStatusResult(), { state: "busy", reason: BUSY }),
+  });
+  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  // Each panel draws the facade's answer, not the busy refusal.
+  expect(await screen.findByDisplayValue("staging-mllp")).toBeTruthy();
+  expect(await screen.findByText(/Offline \/ Local Mode/i)).toBeTruthy();
+  expect(await screen.findByText(/the commercial portal destination is not configured/)).toBeTruthy();
+  const table = screen.getByRole("table", { name: /deliberately configured activities/i });
+  expect(await within(table).findAllByText(/Idle/i)).toBeTruthy();
+  for (const method of [
+    "ReadTarget",
+    "ReadSecrets",
+    "ReadSendPolicy",
+    "ReadResetPlan",
+    "ScenarioCatalog",
+    "HubStatus",
+    "CommercialStatus",
+    "DisclosureStatus",
+  ] as const) {
+    await waitFor(() => expect(facade.callsTo(method).length).toBeGreaterThan(2));
+  }
+  await waitFor(() => expect(screen.queryByText(BUSY)).toBeNull());
+});
+
+test("the run folder a send writes is retained in the session as the folder itself, before the send", async () => {
+  // The session is read after the window is gone, so it names the run's own
+  // folder — an absolute path the facade accepts — not the workspace entry the
+  // run panel chose it by.
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    SelectWorkspace: () => folderChosen(WORKSPACE_ROOT, [{ name: "reschedule-test.json", kind: "spec" }]),
+    PreflightRun: () => runPreflightResult(),
+    DurableRunProgress: () => runProgressResult(),
+    OpenRunEvidence: () => runEvidenceResult(),
+  });
+  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.selectOptions(await screen.findByLabelText("Saved test or suite"), "reschedule-test.json");
+  await user.click(screen.getByRole("button", { name: "Validate and preflight" }));
+  await screen.findByText(/Destination: job-001 \(generated\) · fresh/);
+  const sending = facade.park("StartDurableRun");
+  await user.click(screen.getByRole("button", { name: "Send and execute once" }));
+  await waitFor(() => expect(facade.callsTo("StartDurableRun")).toHaveLength(1));
+  const watched = facade.callsTo("RecordView").map((call) => (call.args[0] as { run: string }).run);
+  expect(watched).toContain(`${WORKSPACE_ROOT}/job-001`);
+  expect(watched).not.toContain("job-001");
+  // Recorded before the send, not after it.
+  const recordedAt = facade.calls.findIndex((call) => call.method === "RecordView" && (call.args[0] as { run: string }).run !== "");
+  expect(recordedAt).toBeLessThan(facade.calls.findIndex((call) => call.method === "StartDurableRun"));
+  sending.resolve(durableRunResult("passed"));
+  await screen.findByText(/Stop reason: passed/);
+});
+
+test("reopening a folder that meets a held slot asks again and opens it", async () => {
+  // Reopening where the viewer was opens a folder the window already knows
+  // while the panels' opening reads are still going out; a busy answer read
+  // nothing and is asked again rather than leaving the viewer nowhere.
+  const user = userEvent.setup();
+  let asked = 0;
+  const { facade } = await renderApp({
+    RecoverSession: () =>
+      recoveryResult({
+        schema: "readmit-desktop-session/v1",
+        view: { workspace: WORKSPACE_ROOT, region: "navigation", case: "", run: "" },
+        drafts: [],
+      }),
+    OpenWorkspace: () => (++asked === 1 ? { state: "busy" as const, reason: "another operation is running" } : folderWithCase()),
+  });
+  await user.click(await screen.findByRole("button", { name: "Reopen where you were" }));
+  expect(await screen.findByText(WORKSPACE_ROOT)).toBeTruthy();
+  expect(facade.callsTo("OpenWorkspace")).toHaveLength(2);
 });
 
 test("an editor draft another panel offers back can be discarded by hand", async () => {

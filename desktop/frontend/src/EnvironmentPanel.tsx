@@ -228,7 +228,24 @@ export function EnvironmentPanel({
     [retainDraft],
   );
 
-  // Load initial data
+  // Load initial data. The four documents are read together, and every form
+  // stays disabled until the last read has answered: a read that landed after
+  // a person had started typing would replace what they typed.
+  const pendingReads = useRef(0);
+  const [loadingDocuments, setLoadingDocuments] = useState(false);
+  const beginLoad = useCallback(() => {
+    pendingReads.current += 1;
+    setLoadingDocuments(true);
+  }, []);
+  const endLoad = useCallback(() => {
+    pendingReads.current -= 1;
+    if (pendingReads.current === 0) setLoadingDocuments(false);
+  }, []);
+  // A form is closed while an action runs or a document it shows is being
+  // read. The file names stay open while documents are read, because naming
+  // another document is what starts a read: closing them would drop the
+  // keystrokes of the name being typed.
+  const blocked = busy || loadingDocuments;
   const targetLoad = useRef(0);
   const policyLoad = useRef(0);
   const planLoad = useRef(0);
@@ -237,7 +254,7 @@ export function EnvironmentPanel({
 
   const loadTarget = useCallback(async (file: string) => {
     const token = ++targetLoad.current;
-    setBusy(true);
+    beginLoad();
     try {
       const res = await readTarget(workspace, file);
       if (token !== targetLoad.current) return;
@@ -246,25 +263,25 @@ export function EnvironmentPanel({
         if (onTargetChange) onTargetChange(res.target);
       }
     } finally {
-      if (token === targetLoad.current) setBusy(false);
+      endLoad();
     }
-  }, [workspace, onTargetChange]);
+  }, [workspace, onTargetChange, beginLoad, endLoad]);
 
   const loadSecrets = useCallback(async (file: string) => {
-    setBusy(true);
+    beginLoad();
     try {
       const res = await readSecrets(workspace, file);
       if (res.state === "completed" && res.document) {
         setSecretsDoc(res.document);
       }
     } finally {
-      setBusy(false);
+      endLoad();
     }
-  }, [workspace]);
+  }, [workspace, beginLoad, endLoad]);
 
   const loadPolicy = useCallback(async (file: string) => {
     const token = ++policyLoad.current;
-    setBusy(true);
+    beginLoad();
     try {
       const res = await readSendPolicy(workspace, file);
       if (token !== policyLoad.current) return;
@@ -272,13 +289,13 @@ export function EnvironmentPanel({
         setPolicy(res.policy);
       }
     } finally {
-      if (token === policyLoad.current) setBusy(false);
+      endLoad();
     }
-  }, [workspace]);
+  }, [workspace, beginLoad, endLoad]);
 
   const loadPlan = useCallback(async (file: string) => {
     const token = ++planLoad.current;
-    setBusy(true);
+    beginLoad();
     try {
       const res = await readResetPlan(workspace, file);
       if (token !== planLoad.current) return;
@@ -286,9 +303,9 @@ export function EnvironmentPanel({
         setResetPlan(res.plan);
       }
     } finally {
-      if (token === planLoad.current) setBusy(false);
+      endLoad();
     }
-  }, [workspace]);
+  }, [workspace, beginLoad, endLoad]);
 
   useEffect(() => {
     if (adoptedDrafts.current || !drafts) return;
@@ -319,15 +336,23 @@ export function EnvironmentPanel({
     }
   }, [drafts, retainer, workspace]);
 
+  // Each document is read when its own file is named, so typing one name
+  // re-reads that document and leaves the other three as they are.
   useEffect(() => {
     if (holdInitialLoad.current.target) holdInitialLoad.current.target = false;
     else void loadTarget(currentTargetFile);
+  }, [currentTargetFile, loadTarget]);
+  useEffect(() => {
     void loadSecrets(currentSecretsFile);
+  }, [currentSecretsFile, loadSecrets]);
+  useEffect(() => {
     if (holdInitialLoad.current.policy) holdInitialLoad.current.policy = false;
     else void loadPolicy(currentPolicyFile);
+  }, [currentPolicyFile, loadPolicy]);
+  useEffect(() => {
     if (holdInitialLoad.current.plan) holdInitialLoad.current.plan = false;
     else void loadPlan(currentPlanFile);
-  }, [currentTargetFile, currentSecretsFile, currentPolicyFile, currentPlanFile, loadTarget, loadSecrets, loadPolicy, loadPlan]);
+  }, [currentPlanFile, loadPlan]);
 
   // Handle Target Save
   async function handleSaveTarget() {
@@ -724,7 +749,7 @@ export function EnvironmentPanel({
               <input
                 id="target-name"
                 value={target.name || ""}
-                disabled={busy}
+                disabled={blocked}
                 onChange={(e) => updateTarget({ name: e.target.value })}
               />
             </div>
@@ -734,7 +759,7 @@ export function EnvironmentPanel({
               <select
                 id="target-classification"
                 value={target.classification || "unclassified"}
-                disabled={busy}
+                disabled={blocked}
                 onChange={(e) => updateTarget({ classification: e.target.value as TargetClassification })}
               >
                 <option value="nonproduction">Nonproduction</option>
@@ -748,7 +773,7 @@ export function EnvironmentPanel({
               <input
                 id="target-address"
                 value={target.address}
-                disabled={busy}
+                disabled={blocked}
                 onChange={(e) => updateTarget({ address: e.target.value })}
               />
             </div>
@@ -758,7 +783,7 @@ export function EnvironmentPanel({
               <select
                 id="target-transport"
                 value={target.transport}
-                disabled={busy}
+                disabled={blocked}
                 onChange={(e) => updateTarget({ transport: e.target.value })}
               >
                 <option value="plain">plain (unencrypted TCP/MLLP)</option>
@@ -771,7 +796,7 @@ export function EnvironmentPanel({
               <input
                 id="target-server-name"
                 value={target.server_name || ""}
-                disabled={busy}
+                disabled={blocked}
                 onChange={(e) => updateTarget({ server_name: e.target.value })}
               />
             </div>
@@ -781,7 +806,7 @@ export function EnvironmentPanel({
               <input
                 id="target-ca-file"
                 value={target.ca_file || ""}
-                disabled={busy}
+                disabled={blocked}
                 onChange={(e) => updateTarget({ ca_file: e.target.value })}
               />
             </div>
@@ -791,7 +816,7 @@ export function EnvironmentPanel({
               <input
                 id="target-client-cert"
                 value={target.client_certificate || ""}
-                disabled={busy}
+                disabled={blocked}
                 onChange={(e) => updateTarget({ client_certificate: e.target.value })}
               />
             </div>
@@ -802,7 +827,7 @@ export function EnvironmentPanel({
               <input
                 id="target-connect-timeout"
                 value={target.connect_timeout}
-                disabled={busy}
+                disabled={blocked}
                 onChange={(e) => updateTarget({ connect_timeout: e.target.value })}
               />
             </div>
@@ -812,7 +837,7 @@ export function EnvironmentPanel({
               <input
                 id="target-message-timeout"
                 value={target.message_timeout}
-                disabled={busy}
+                disabled={blocked}
                 onChange={(e) => updateTarget({ message_timeout: e.target.value })}
               />
             </div>
@@ -824,7 +849,7 @@ export function EnvironmentPanel({
                 type="number"
                 min={1}
                 value={target.max_ack_bytes}
-                disabled={busy}
+                disabled={blocked}
                 onChange={(e) => updateTarget({ max_ack_bytes: Number(e.target.value) })}
               />
             </div>
@@ -835,7 +860,7 @@ export function EnvironmentPanel({
                   id="target-test-endpoint"
                   type="checkbox"
                   checked={target.test_endpoint}
-                  disabled={busy}
+                  disabled={blocked}
                   onChange={(e) => updateTarget({ test_endpoint: e.target.checked })}
                 />
                 Test endpoint
@@ -848,7 +873,7 @@ export function EnvironmentPanel({
                   id="target-approved-transport"
                   type="checkbox"
                   checked={target.approved_transport}
-                  disabled={busy}
+                  disabled={blocked}
                   onChange={(e) => updateTarget({ approved_transport: e.target.checked })}
                 />
                 Approved transport
@@ -861,7 +886,7 @@ export function EnvironmentPanel({
               <select
                 id="target-secret-ref"
                 value={target.credential?.reference || ""}
-                disabled={busy}
+                disabled={blocked}
                 onChange={(e) => {
                   const refName = e.target.value;
                   const updated: Target = { ...target };
@@ -885,10 +910,10 @@ export function EnvironmentPanel({
           </div>
 
           <div className="environment-actions">
-            <button type="button" disabled={busy} onClick={() => void handleSaveTarget()}>
+            <button type="button" disabled={blocked} onClick={() => void handleSaveTarget()}>
               Save Target Configuration
             </button>
-            <button type="button" disabled={busy} onClick={() => void handleCheckTarget()}>
+            <button type="button" disabled={blocked} onClick={() => void handleCheckTarget()}>
               Check Target Reachability & TLS
             </button>
           </div>
@@ -997,7 +1022,7 @@ export function EnvironmentPanel({
                       <div style={{ display: "flex", gap: "0.3rem" }}>
                         <button
                           type="button"
-                          disabled={busy}
+                          disabled={blocked}
                           onClick={() => void handleTestSecret(r.name)}
                           title="Verify resolution without capturing secret"
                         >
@@ -1005,14 +1030,14 @@ export function EnvironmentPanel({
                         </button>
                         <button
                           type="button"
-                          disabled={busy}
+                          disabled={blocked}
                           onClick={() => void handleRotateSecret(r.name)}
                         >
                           Rotate
                         </button>
                         <button
                           type="button"
-                          disabled={busy}
+                          disabled={blocked}
                           onClick={() => void handleRemoveSecret(r.name)}
                         >
                           Remove
@@ -1040,7 +1065,7 @@ export function EnvironmentPanel({
               <input
                 id="secret-name"
                 value={newSecretName}
-                disabled={busy}
+                disabled={blocked}
                 onChange={(e) => setNewSecretName(e.target.value)}
               />
             </div>
@@ -1049,7 +1074,7 @@ export function EnvironmentPanel({
               <select
                 id="secret-store"
                 value={newSecretStore}
-                disabled={busy}
+                disabled={blocked}
                 onChange={(e) => setNewSecretStore(e.target.value as SecretStore)}
               >
                 <option value="os-keychain">OS Keychain</option>
@@ -1061,7 +1086,7 @@ export function EnvironmentPanel({
               <select
                 id="secret-purpose"
                 value={newSecretPurpose}
-                disabled={busy}
+                disabled={blocked}
                 onChange={(e) => setNewSecretPurpose(e.target.value as SecretPurpose)}
               >
                 <option value="mllp-endpoint">MLLP Endpoint</option>
@@ -1074,7 +1099,7 @@ export function EnvironmentPanel({
                 id="secret-address"
                 value={newSecretAddress}
                 placeholder="host:port"
-                disabled={busy}
+                disabled={blocked}
                 onChange={(e) => setNewSecretAddress(e.target.value)}
               />
             </div>
@@ -1084,7 +1109,7 @@ export function EnvironmentPanel({
                 id="secret-command"
                 value={newSecretCommand}
                 placeholder="/usr/bin/security"
-                disabled={busy}
+                disabled={blocked}
                 onChange={(e) => setNewSecretCommand(e.target.value)}
               />
             </div>
@@ -1094,16 +1119,16 @@ export function EnvironmentPanel({
                 id="secret-args"
                 value={newSecretArgs}
                 placeholder="find-generic-password -s svc -w"
-                disabled={busy}
+                disabled={blocked}
                 onChange={(e) => setNewSecretArgs(e.target.value)}
               />
             </div>
           </div>
           <div className="environment-actions">
-            <button type="button" disabled={busy} onClick={() => void handleAddSecret()}>
+            <button type="button" disabled={blocked} onClick={() => void handleAddSecret()}>
               Register Secret Reference
             </button>
-            <button type="button" disabled={busy} onClick={() => void handleScanSecrets()}>
+            <button type="button" disabled={blocked} onClick={() => void handleScanSecrets()}>
               Scan Workspace for Residual Leaks
             </button>
           </div>
@@ -1157,7 +1182,7 @@ export function EnvironmentPanel({
                 <code>{dest}</code>
                 <button
                   type="button"
-                  disabled={busy || policy.approved_destinations.length <= 1}
+                  disabled={blocked || policy.approved_destinations.length <= 1}
                   onClick={() => handleRemoveDestination(dest)}
                 >
                   Remove
@@ -1170,16 +1195,16 @@ export function EnvironmentPanel({
             <input
               placeholder="network/prefix"
               value={newDestination}
-              disabled={busy}
+              disabled={blocked}
               onChange={(e) => setNewDestination(e.target.value)}
             />
-            <button type="button" disabled={busy || !newDestination} onClick={handleAddDestination}>
+            <button type="button" disabled={blocked || !newDestination} onClick={handleAddDestination}>
               Add CIDR Prefix
             </button>
           </div>
 
           <div className="environment-actions" style={{ marginTop: "1rem" }}>
-            <button type="button" disabled={busy} onClick={() => void handleSavePolicy()}>
+            <button type="button" disabled={blocked} onClick={() => void handleSavePolicy()}>
               Save Approved Send Policy
             </button>
           </div>
@@ -1193,7 +1218,7 @@ export function EnvironmentPanel({
               <input
                 id="eval-address"
                 value={evalAddress}
-                disabled={busy}
+                disabled={blocked}
                 onChange={(e) => setEvalAddress(e.target.value)}
               />
             </div>
@@ -1202,7 +1227,7 @@ export function EnvironmentPanel({
               <select
                 id="eval-class"
                 value={evalClassification}
-                disabled={busy}
+                disabled={blocked}
                 onChange={(e) => setEvalClassification(e.target.value as TargetClassification)}
               >
                 <option value="nonproduction">Nonproduction</option>
@@ -1216,13 +1241,13 @@ export function EnvironmentPanel({
               <input
                 type="checkbox"
                 checked={evalExplicit}
-                disabled={busy}
+                disabled={blocked}
                 onChange={(e) => setEvalExplicit(e.target.checked)}
               />
               Explicit send intention declared
             </label>
           </div>
-          <button type="button" disabled={busy} onClick={() => void handleEvaluatePolicy()}>
+          <button type="button" disabled={blocked} onClick={() => void handleEvaluatePolicy()}>
             Evaluate Destination Locally
           </button>
 
@@ -1263,7 +1288,7 @@ export function EnvironmentPanel({
               <input
                 id="plan-env-input"
                 value={resetPlan.environment}
-                disabled={busy}
+                disabled={blocked}
                 onChange={(e) => {
                   const updated = { ...resetPlan, environment: e.target.value };
                   setResetPlan(updated);
@@ -1286,7 +1311,7 @@ export function EnvironmentPanel({
                   <button
                     type="button"
                     style={{ marginLeft: "auto" }}
-                    disabled={busy}
+                    disabled={blocked}
                     onClick={() => handleRemoveResetAction(act.id)}
                   >
                     Remove
@@ -1301,7 +1326,7 @@ export function EnvironmentPanel({
                     <input
                       type="checkbox"
                       checked={confirmedActions.includes(act.id)}
-                      disabled={busy}
+                      disabled={blocked}
                       onChange={(e) => {
                         if (e.target.checked) {
                           setConfirmedActions((prev) => [...prev, act.id]);
@@ -1325,7 +1350,7 @@ export function EnvironmentPanel({
                 id="action-id"
                 value={newActionId}
                 placeholder="e.g. purge-inbox"
-                disabled={busy}
+                disabled={blocked}
                 onChange={(e) => setNewActionId(e.target.value)}
               />
             </div>
@@ -1334,7 +1359,7 @@ export function EnvironmentPanel({
               <select
                 id="action-operator"
                 value={newActionOperator}
-                disabled={busy}
+                disabled={blocked}
                 onChange={(e) => setNewActionOperator(e.target.value as ResetOperator)}
               >
                 <option value="operator_confirms">operator_confirms (Human confirmation required; authority: none)</option>
@@ -1349,7 +1374,7 @@ export function EnvironmentPanel({
                 rows={2}
                 value={newActionInstructions}
                 placeholder="Describe exact manual action or side effect for the operator..."
-                disabled={busy}
+                disabled={blocked}
                 onChange={(e) => setNewActionInstructions(e.target.value)}
               />
             </div>
@@ -1360,7 +1385,7 @@ export function EnvironmentPanel({
                   id="action-obs"
                   value={newActionObservation}
                   placeholder="observation.json"
-                  disabled={busy}
+                  disabled={blocked}
                   onChange={(e) => setNewActionObservation(e.target.value)}
                 />
               </div>
@@ -1368,15 +1393,15 @@ export function EnvironmentPanel({
           </div>
 
           <div className="environment-actions">
-            <button type="button" disabled={busy} onClick={handleAddResetAction}>
+            <button type="button" disabled={blocked} onClick={handleAddResetAction}>
               Add Action to Plan
             </button>
-            <button type="button" disabled={busy} onClick={() => void handleSavePlan()}>
+            <button type="button" disabled={blocked} onClick={() => void handleSavePlan()}>
               Save Reset Plan
             </button>
             <button
               type="button"
-              disabled={busy || resetPlan.actions.length === 0}
+              disabled={blocked || resetPlan.actions.length === 0}
               onClick={() => void handleExecuteReset()}
               style={{ fontWeight: "bold" }}
             >

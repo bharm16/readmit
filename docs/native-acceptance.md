@@ -190,6 +190,32 @@ journey fails the `desktop` check. They cover:
   exported bytes exactly, and after a close and reopen the project still
   records the verified case. `readmit project show` and `readmit index search`
   read the same files and agree;
+- an executed regression test of an independent downstream system: the system
+  is recorded as a named nonproduction target, its one destination approved,
+  and its reachability checked without sending anything, and `readmit target
+  show` and `readmit target check` read and check the same target; a test that
+  the reschedule is accepted is authored, preflighted and sent once, and fails
+  with `AE` observed where `AA` was expected on the system's real defect,
+  passes once the system is fixed, and fails again when the defect is
+  reintroduced, each run into a fresh folder with its assertion evidence
+  opened read-only, and the system's own ledger agreeing with each verdict;
+  after the fix, the system's export observed through a declared window holds
+  the one appointment its ledger holds. `readmit run status` reports the same
+  three states and exit codes;
+- the system's exported state observed through a declared window: an empty
+  export it just wrote is a complete, trustworthy observation of nothing,
+  while a path it never exported to, an export older than the freshness bound
+  and an export larger than the source may read are `missing`, `stale` and
+  `truncated`, none of them evidence of absence; `readmit observe explain`
+  reports the same status for each, exiting 0 for the first and 2 for the
+  other three;
+- a crash while a send waits on the system's acknowledgement: while it waits,
+  the privacy status reports the run active; the reopened window reports the
+  watched run interrupted with its delivery uncertain and resumes nothing, the
+  system still holds only the one message it received, and
+  `readmit run status --recovery` reports it uncertain and not safe to repeat;
+  and a test half authored when the application ended comes back for its case
+  and is finished and preflighted from where it was;
 - the harness's own refusals: an unanswered or wrongly answered dialog, an
   unused answer, a call Wails would reject and a window closed while a call
   still runs each fail a journey; no journey can write outside its root; a
@@ -205,6 +231,36 @@ guided sample or a project — could meet another read holding the facade's one
 operation slot and be answered busy, which dropped "Reopen where you were" or
 left a reopened case without its grid. Such reads are now asked again, a
 bounded number of times; a write refused busy is not.
+
+The second round of journeys found and fixed eight more, each with a test
+beside the journey that exposes it:
+
+1. The environment, scenario, hub, commercial and disclosure panels' opening
+   reads, and the reopening of a folder the window already knows, were answered
+   busy by the same contention and left showing it; they are now asked again the
+   same bounded way.
+2. A committed import's draft was dropped only after every queued keystroke
+   retention, so a window closed on the confirmation offered the import back
+   as unstored work; the retentions still queued are now abandoned, and the
+   draft is dropped before the confirmation is shown.
+3. The environment panel reopened its forms while a document read was still
+   in flight, so a read that landed replaced what was typed.
+4. A target, policy or plan file name could not be typed in full, because the
+   read each keystroke started closed the field, and every keystroke re-read
+   all four documents.
+5. A saved test was not offered by the run panel until the folder was
+   reopened.
+6. An observation source saved once could not be saved again, because the
+   facade's answer carries a capture member a v1 document never had, while
+   the panel said it was saved and a collection read the document saved
+   before.
+7. The run folder a send was about to write was recorded as a workspace entry
+   the session refuses, so a crash during a send reopened without the run it
+   was watching.
+8. The privacy status was answered busy whenever an operation held the slot,
+   so it could never say a run, capture or observation was active. It no
+   longer claims the slot: it reads which named operation holds it, and is
+   busy only while an operation it cannot attribute does.
 
 They run in jsdom, not the native webview, against the Go facade the packaged
 shell binds rather than the packaged executable itself. They do not replace

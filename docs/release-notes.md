@@ -1,5 +1,35 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The interaction journeys now carry a person's investigation through to an
+  executed regression test of a system readmit did not write (#109). The test
+  kit gains an independent downstream scheduling system — an MLLP receiver
+  written from the protocol description, sharing no readmit code, with a real
+  defect and its fix — and journeys drive, through the window alone, a named
+  nonproduction environment with its one approved destination and a reachability
+  check that sends nothing; an observation of the system's export through a
+  declared window, where a missing, stale or truncated export is an error and
+  never an empty result; a test authored, preflighted and sent once that fails
+  on the defect with the observed acknowledgement beside the expected one,
+  passes once the system is fixed and fails again when the defect returns; a
+  crash while a send waits on its acknowledgement, during which the privacy
+  status reports the run active, and which reopens to an interrupted,
+  delivery-uncertain run and never resends; and a crash while a test is half
+  authored, which reopens to the draft. The command line reads every target, run
+  and completion the window wrote and reports what the window showed. The
+  journeys found and fixed eight defects: the environment, scenario, hub,
+  commercial and disclosure panels' opening reads, and reopening a folder the
+  window knows, were answered busy and left showing it; the privacy status was
+  answered busy whenever an operation ran, so it could never say one was active,
+  and now reads which named operation holds the slot instead of claiming it; a
+  committed import's draft was dropped only after every queued keystroke
+  retention; the environment panel reopened its forms while a document read was
+  in flight, so a late read replaced what was typed; a file name there could not
+  be typed in full; a saved test was not offered to the run panel until the
+  folder was reopened; an observation source saved once could not be saved again
+  while the panel said it was saved; and the run folder a send was about to
+  write was recorded in a form the session refuses, so a crash during a send
+  reopened without the run. These journeys are not installed-package acceptance.
+
 - A hub sign-in that does not complete no longer leaves its loopback listener
   open or holds the window's operation slot (#326). A refused or forged
   browser return, a timeout, a refused code and a wait refused as busy now

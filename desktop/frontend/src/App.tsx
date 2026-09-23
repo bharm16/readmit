@@ -381,10 +381,14 @@ export default function App() {
   // the action it describes runs, so it is awaited rather than left to the
   // effect above: a crash during a send must find the session already naming
   // the folder that holds its evidence.
-  const watch = useCallback(async (folder: string) => {
+  // The run panel names its output as an entry of the open workspace; the
+  // session retains the folder itself, an absolute path, because that is the
+  // folder recovery reads after the window is gone.
+  const watch = useCallback(async (entry: string) => {
+    const folder = workspaceRoot === "" ? entry : `${workspaceRoot}/${entry}`;
     setWatchedRun(folder);
     await pushRecord(view(folder));
-  }, [pushRecord, view]);
+  }, [pushRecord, view, workspaceRoot]);
 
   // The chosen theme and text size are applied to the document and written
   // nowhere: both follow the system again the next time the window opens.
@@ -1259,15 +1263,17 @@ export default function App() {
             }
           }
         }
-        // A saved spec is a step of the guided sample, so what that folder now
-        // holds is read again rather than inferred from this call succeeding.
+        // A saved spec is a step of the guided sample, and an entry the run
+        // panel offers, so what the folder now holds is read again rather than
+        // inferred from this call succeeding.
         if (result.test?.output) {
           setRunSpecPath(result.test.output);
           await refreshGuide(root);
+          await refreshListing();
         }
       });
     },
-    [gridResult, operate, refreshGuide, root, testResult],
+    [gridResult, operate, refreshGuide, refreshListing, root, testResult],
   );
 
   // Promoting one explicitly confirmed finding answers the existing authoring

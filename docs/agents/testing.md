@@ -58,6 +58,24 @@ unanswered is rejected. The kit's verbs:
 - `calls` and `callsTo(method)` record every call the window made and what the
   facade answered; `commandLine(args)` runs the checkout's `readmit` over the
   same root, for parity with what the window wrote.
+- `enter(user, field, text)` replaces what a field holds once the window
+  offers it, and `byContent(pattern)` matches a line the window composes from
+  several elements, such as `Run: passed · Stop reason: passed`.
+- `startDownstream(exportFile, mode)` starts the independent downstream
+  scheduling system of `testkit/downstream.js` on a loopback port: an MLLP
+  receiver written from the protocol description, sharing no readmit code,
+  that keeps an appointment ledger, exports it as a CSV inside the root after
+  every message, and has a real defect (`defective`) and its fix (`fixed`). It
+  can reset its ledger, hold an acknowledgement, and report every message it
+  received — the independent witness to what a send did. `backdate(file, ms)`
+  ages a file, for a stale export.
+
+`src/journeys/steps.tsx` holds the steps several journeys take — activating the
+vendor's license, creating a project, importing an export, configuring the
+downstream target, authoring and running an acknowledgement test — each taken
+through the window and checked against what it then shows, and the way a
+timing is logged. Reuse them; a step only one journey takes stays in that
+journey.
 
 A journey fails at close for a dialog nobody answered, an answer nobody used, a
 call Wails would have rejected or a call that never finished, and no verb

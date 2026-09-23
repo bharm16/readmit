@@ -7,7 +7,7 @@
 // resent or restored on its own: the store happens only when the person asks
 // for it, and each time the project answers again.
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Journey, press, region, whenEnabled } from "../testkit/journey";
 
@@ -87,7 +87,12 @@ test("a note restored after a reopen cannot be stored once the activation is rel
   await press(user, access().getByRole("button", { name: "Refresh local status" }));
   expect(await access().findByText(/This activation is released\./)).toBeTruthy();
   await press(user, screen.getByRole("button", { name: "Store this note in the project" }));
-  expect((journey.callsTo("SaveNote").at(-1)?.result as { state: string }).state).toBe("permission_denied");
+  // The press returns before the facade answers; the answer is what is read.
+  await waitFor(() =>
+    expect((journey.callsTo("SaveNote").at(-1)?.result as { state: string } | undefined)?.state).toBe(
+      "permission_denied",
+    ),
+  );
 
   // The command line reads the project and finds no stored note either.
   const shown = await journey.commandLine(["project", "show", project]);

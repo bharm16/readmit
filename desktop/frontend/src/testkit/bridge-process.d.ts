@@ -33,6 +33,8 @@ export interface CommandLineRun {
 export function createRoot(): string;
 export function removeRoot(root: string): void;
 export function startBridge(binary: string, root: string): BridgeProcess;
+export function pathInRoot(root: string, path: string): string;
+export function backdateInRoot(root: string, path: string, milliseconds: number): string;
 export function writeInRoot(root: string, path: string, content: string | Uint8Array): string;
 export function makeFolderInRoot(root: string, path: string): string;
 export function provisionInRoot(binary: string, root: string, path: string): string;

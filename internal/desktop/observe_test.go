@@ -1,6 +1,10 @@
 package desktop_test
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -151,5 +155,44 @@ func TestObservationFacadeSavePinsIdentity(t *testing.T) {
 	again := app.ValidateObservationWindow(dir, "new-window.json")
 	if again.Identity != saved.Identity {
 		t.Fatalf("identity drifted: %q vs %q", again.Identity, saved.Identity)
+	}
+}
+
+// Saving a source through the facade writes, through the shared writer, the
+// document the shared reader reads back, pins the identity of exactly the
+// bytes written, and answers with what the reader read.
+func TestObservationFacadeSavesASourceTheSharedReaderReadsBack(t *testing.T) {
+	app := workspaceApp(t)
+	dir := t.TempDir()
+	// The source arrives the way the window sends it: a v1 document, decoded.
+	var edited observesource.Source
+	if err := json.Unmarshal([]byte(strings.Replace(facadeSourceDocument, "export.csv", "downstream/appointments.csv", 1)), &edited); err != nil {
+		t.Fatal(err)
+	}
+	saved := app.SaveObservationSource(desktop.ObservationSourceRequest{
+		Workspace: dir, SourceFile: "new-source.json", Source: &edited,
+	})
+	if saved.State != desktop.Completed || saved.Identity == "" || saved.Source == nil {
+		t.Fatalf("save: %+v", saved)
+	}
+	written, err := os.ReadFile(filepath.Join(dir, "new-source.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(bytes.TrimSuffix(written, []byte("\n")))
+	if hex.EncodeToString(sum[:]) != saved.Identity {
+		t.Fatalf("the save pinned %s, not the identity of the bytes it wrote", saved.Identity)
+	}
+	read, err := observesource.ReadSource(filepath.Join(dir, "new-source.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The reader anchors the declared export path to the document's folder.
+	if read.Schema != observesource.SchemaV1 || read.File == nil || !filepath.IsAbs(read.File.Path) ||
+		!strings.HasSuffix(read.File.Path, filepath.Join("downstream", "appointments.csv")) {
+		t.Fatalf("the shared reader read %+v", read)
+	}
+	if saved.Source.File == nil || saved.Source.File.Path != read.File.Path {
+		t.Fatalf("the facade answered %+v, not what the reader read", saved.Source)
 	}
 }
