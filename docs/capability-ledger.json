@@ -840,7 +840,9 @@
       "inputs": ["readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3"],
       "outputs": ["readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/execution.journey.tsx", "name": "the downstream's exported state is observed through a declared window, and missing, stale and incomplete exports are errors, never an empty result"},
+      "parity_test": {"package": "internal/desktop", "name": "TestObservationFacadeSavesASourceTheSharedReaderReadsBack"},
+      "implemented": true
     },
     {
       "id": "desktop.SaveObservationWindow",
@@ -854,7 +856,9 @@
       "inputs": ["readmit-observation-window/v1"],
       "outputs": ["readmit-observation-window/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/execution.journey.tsx", "name": "the downstream's exported state is observed through a declared window, and missing, stale and incomplete exports are errors, never an empty result"},
+      "parity_test": {"package": "internal/desktop", "name": "TestObservationFacadeSavePinsIdentity"},
+      "implemented": true
     },
     {
       "id": "desktop.ValidateObservationPair",
@@ -4445,7 +4449,9 @@
       "inputs": ["readmit-send-policy/v1"],
       "outputs": ["readmit-send-policy/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/execution.journey.tsx", "name": "a test of an independent downstream system fails on its defect, passes once it is fixed and fails again when the defect returns"},
+      "parity_test": {"package": "tests", "name": "TestEnvironmentDesktopAndCLIParity"},
+      "implemented": true
     },
     {
       "id": "desktop.SaveTarget",

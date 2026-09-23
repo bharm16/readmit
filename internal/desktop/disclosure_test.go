@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bharm16/readmit/internal/capability"
 	"github.com/bharm16/readmit/internal/desktop"
@@ -171,34 +172,73 @@ func TestDisclosureStatusDistinguishesConfiguredFromUnconfigured(t *testing.T) {
 	}
 }
 
-// The disclosure status answers through the operation slot like every other
-// read, so a window in the middle of an operation is never told a state from
-// halfway through it: it refuses busy instead of guessing.
-func TestDisclosureStatusRefusesWhileAnOperationHoldsTheSlot(t *testing.T) {
+// The disclosure status is a read of what is running, so it answers while an
+// operation holds the slot and reports that operation active: an observation
+// window collecting is disclosed as open, and idle again once it has stopped.
+// Answering takes nothing from the operation — the slot stays held, and a
+// second operation is still refused — and the collection it watched completes.
+func TestDisclosureStatusReportsTheOperationHoldingTheSlotWithoutTakingIt(t *testing.T) {
+	app := workspaceApp(t)
 	dir := t.TempDir()
-	workspace := filepath.Join(dir, "workspace")
-	if err := os.MkdirAll(workspace, 0700); err != nil {
-		t.Fatal(err)
+	// A window whose completion rule keeps the collection open for a while.
+	writeDocument(t, dir, "window.json", strings.Replace(strings.Replace(facadeWindowDocument,
+		`"quiet_period": "10ms"`, `"quiet_period": "1s"`, 1), `"stable_samples": 2`, `"stable_samples": 3`, 1))
+	writeDocument(t, dir, "source.json", facadeSourceDocument)
+	writeDocument(t, dir, "export.csv", "appointment,status\nA1,booked\n")
+	collected := make(chan desktop.ObservationCompletionResult, 1)
+	go func() {
+		collected <- app.CollectObservation(desktop.ObservationCollectFacadeRequest{
+			Workspace: dir, SourceFile: "source.json", WindowFile: "window.json",
+			OutputFile: "completion.json", SnapshotDir: "snapshot", Authorize: true,
+		})
+	}()
+	observe := func() desktop.DisclosureState {
+		result := app.DisclosureStatus()
+		if result.State != desktop.Completed {
+			t.Fatalf("disclosure status answered %+v while an operation ran", result)
+		}
+		for _, state := range result.States {
+			if state.ID == "observe" {
+				return state
+			}
+		}
+		t.Fatalf("disclosure status names no observation state: %+v", result.States)
+		return desktop.DisclosureState{}
 	}
-	held := make(chan struct{})
-	release := make(chan struct{})
-	c := &chooser{
-		folder: workspace,
-		before: func() {
-			close(held)
-			<-release
-		},
+	deadline := time.Now().Add(5 * time.Second)
+	for observe().State != "active" {
+		if time.Now().After(deadline) {
+			t.Fatal("the observation window never read as open while it collected")
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
-	app := desktop.New(c, filepath.Join(dir, "recent.json"), filepath.Join(dir, "filters.json"), filepath.Join(dir, "session.json"), filepath.Join(dir, "drafts.json"))
-	done := make(chan desktop.WorkspaceResult, 1)
-	go func() { done <- app.SelectWorkspace() }()
-	<-held
-	if result := app.DisclosureStatus(); result.State != desktop.Busy {
-		t.Errorf("disclosure status answered %v while an operation held the slot", result.State)
+	// The slot is still the collection's: another operation is refused.
+	if opened := app.OpenWorkspace(dir); opened.State != desktop.Busy {
+		t.Errorf("an operation started while the collection held the slot: %+v", opened)
 	}
-	close(release)
-	opened := <-done
-	if opened.Workspace == nil || (opened.State != desktop.Completed && opened.State != desktop.Empty) {
-		t.Fatalf("workspace open after the disclosure read: %+v", opened)
+	result := <-collected
+	if result.State != desktop.Completed || result.Summary == nil || result.Summary.Status != "complete" {
+		t.Fatalf("the collection the disclosure watched: %+v", result)
+	}
+	if state := observe(); state.State != "idle" {
+		t.Errorf("observation reads %q after the collection stopped: %+v", state.State, state)
+	}
+}
+
+// An operation that holds the slot without a name cannot be attributed to any
+// one activity — a connectivity check and a fixture reset are among them — so
+// while one does, the answer is busy rather than an idle state the window
+// cannot vouch for. Choosing a folder is such an operation.
+func TestDisclosureStatusIsBusyWhileAnUnnamedOperationHoldsTheSlot(t *testing.T) {
+	dialog := &chooser{folder: t.TempDir()}
+	app := newApp(t, dialog)
+	var during desktop.DisclosureStatusResult
+	dialog.before = func() { during = app.DisclosureStatus() }
+	app.SelectWorkspace()
+	if during.State != desktop.Busy || len(during.States) != 0 {
+		t.Fatalf("disclosure status while an unnamed operation held the slot: %+v", during)
+	}
+	if after := app.DisclosureStatus(); after.State != desktop.Completed {
+		t.Fatalf("disclosure status once the slot was released: %+v", after)
 	}
 }

@@ -6,7 +6,7 @@
 // This file is JavaScript so the typed frontend needs no Node type
 // declarations; bridge-process.d.ts states its interface.
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createInterface } from "node:readline";
@@ -38,6 +38,20 @@ export function writeInRoot(root, path, content) {
   const target = inside(root, path);
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, content, { mode: 0o600 });
+  return target;
+}
+
+/** Resolves a path inside root, refusing one outside it. */
+export function pathInRoot(root, path) {
+  return inside(root, path);
+}
+
+/** Moves a file's modification time into the past, the way a file nobody
+ * rewrote for that long looks. */
+export function backdateInRoot(root, path, milliseconds) {
+  const target = inside(root, path);
+  const when = new Date(statSync(target).mtimeMs - milliseconds);
+  utimesSync(target, when, when);
   return target;
 }
 

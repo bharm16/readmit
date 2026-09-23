@@ -486,3 +486,118 @@ test("dropping a message file and a zip declares both sources", async () => {
   expect(within(sources).getByText(/File:/)).toBeTruthy();
   expect(within(sources).getByText(/ZIP Archive:/)).toBeTruthy();
 });
+
+test("a committed import's draft is dropped before the window reports it stored, and the edits queued behind it are never written", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openWorkspaceWithProject(user);
+  // The first retention is still being written when the person commits.
+  const retaining = facade.park("SaveEditorDraft");
+  facade.reply({
+    DiscardEditorDraft: () => ({ state: "empty" as const, drafts: [] }),
+    ChooseImportSources: (): Promise<ImportSourcesResult> =>
+      Promise.resolve({ state: "completed", kind: "files", paths: ["scheduling-feed.hl7"] }),
+    PreviewImport: (): Promise<ImportPreviewResult> =>
+      Promise.resolve({
+        state: "completed",
+        mode: "plan",
+        plan_preview: {
+          schema: "readmit-import-preview/v1",
+          plan: { schema: "readmit-import-plan/v1", framing: "raw", terminator: "cr", encoding: "utf-8", direction: "inbound", members: [] },
+          containers: [],
+          totals: { containers: 1, members: 1, excluded: 0, sources: 1, occurrences: 1 },
+        },
+      }),
+    CommitImport: (): Promise<ImportCommitResult> =>
+      Promise.resolve({
+        state: "completed",
+        case: {
+          name: "imported-case-01",
+          identity: "sha256:committed",
+          schema: "readmit-case/v3",
+          provenance: "imported",
+          sources: 1,
+          occurrences: 1,
+          messages: 1,
+          acknowledgements: 0,
+          unparsed: 0,
+        },
+        case_path: "imported-case-01",
+        receipt_path: "imported-case-01-receipt.json",
+        registered: true,
+      }),
+  });
+  await user.click(screen.getByRole("button", { name: "Import evidence into this project…" }));
+  await user.click(screen.getByRole("button", { name: "Select Files…" }));
+  await screen.findByText("scheduling-feed.hl7");
+  await user.type(screen.getByLabelText("Case title"), "Reschedule duplicate");
+  await user.click(screen.getByRole("button", { name: "Preview extraction" }));
+  await user.click(await screen.findByRole("button", { name: "Commit import" }));
+  // One write is in flight; the rest of the typing waits behind it.
+  expect(facade.callsTo("SaveEditorDraft")).toHaveLength(1);
+  expect(retaining.size).toBe(1);
+  expect(screen.queryByText("Import Completed Successfully")).toBeNull();
+  // The write in flight mints the draft's identity; that identity is what the
+  // committed import drops, and only then does the window say it is stored.
+  retaining.resolve({
+    state: "completed",
+    drafts: [{ id: "minted-import", kind: "import", workspace: WORKSPACE_ROOT, case: "", identity: "", content_schema: "readmit-desktop-drafts/v1", content: {} }],
+  });
+  expect(await screen.findByText("Import Completed Successfully")).toBeTruthy();
+  expect(facade.oneCall("DiscardEditorDraft")).toEqual(["minted-import"]);
+  // The edits that waited held the stored work; none was written.
+  expect(facade.callsTo("SaveEditorDraft")).toHaveLength(1);
+});
+
+test("a committed import whose retention was refused leaves no retention reported in progress", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openWorkspaceWithProject(user);
+  // The first retention is still being written when the person commits.
+  const retaining = facade.park("SaveEditorDraft");
+  facade.reply({
+    DiscardEditorDraft: () => ({ state: "empty" as const, drafts: [] }),
+    ChooseImportSources: (): Promise<ImportSourcesResult> =>
+      Promise.resolve({ state: "completed", kind: "files", paths: ["scheduling-feed.hl7"] }),
+    PreviewImport: (): Promise<ImportPreviewResult> =>
+      Promise.resolve({
+        state: "completed",
+        mode: "plan",
+        plan_preview: {
+          schema: "readmit-import-preview/v1",
+          plan: { schema: "readmit-import-plan/v1", framing: "raw", terminator: "cr", encoding: "utf-8", direction: "inbound", members: [] },
+          containers: [],
+          totals: { containers: 1, members: 1, excluded: 0, sources: 1, occurrences: 1 },
+        },
+      }),
+    CommitImport: (): Promise<ImportCommitResult> =>
+      Promise.resolve({
+        state: "completed",
+        case: {
+          name: "imported-case-01",
+          identity: "sha256:committed",
+          schema: "readmit-case/v3",
+          provenance: "imported",
+          sources: 1,
+          occurrences: 1,
+          messages: 1,
+          acknowledgements: 0,
+          unparsed: 0,
+        },
+        case_path: "imported-case-01",
+        receipt_path: "imported-case-01-receipt.json",
+        registered: true,
+      }),
+  });
+  await user.click(screen.getByRole("button", { name: "Import evidence into this project…" }));
+  await user.click(screen.getByRole("button", { name: "Select Files…" }));
+  await screen.findByText("scheduling-feed.hl7");
+  await user.type(screen.getByLabelText("Case title"), "Reschedule duplicate");
+  await user.click(screen.getByRole("button", { name: "Preview extraction" }));
+  await user.click(await screen.findByRole("button", { name: "Commit import" }));
+  // The write in flight is refused and minted nothing: there is no draft to
+  // drop, and nothing queued behind it is written.
+  retaining.resolve({ state: "failed", reason: "the draft store is not writable", drafts: [] });
+  expect(await screen.findByText("Import Completed Successfully")).toBeTruthy();
+  expect(facade.callsTo("DiscardEditorDraft")).toHaveLength(0);
+  expect(facade.callsTo("SaveEditorDraft")).toHaveLength(1);
+  expect(screen.queryByText("Retaining this draft…")).toBeNull();
+});

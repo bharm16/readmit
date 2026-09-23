@@ -863,15 +863,18 @@ async function guard<T extends { state: State; reason?: string }>(
   }
 }
 
-/** A read the window's navigation depends on: opening a case, its index and
- * its grid, the guided sample and the project a folder holds, and the session
- * to restore. The facade runs one operation at a time and answers a call that
- * arrives while another holds the slot busy, having read nothing. The window
- * issues its own reads as panels open — each on its own, as Wails dispatches
- * them — so a navigation read can meet one. A read changes nothing, so a busy
- * answer is asked again, a bounded number of times, and is reported busy only
- * when the slot stays held. A write is never asked again: its busy answer is
- * the refusal a second click gets. */
+/** A read the window issues on its own. The navigation reads open a folder it
+ * already knows, a case, its index and its grid, the guided sample, the
+ * project a folder holds and the session to restore. The panels read as they
+ * open: the environment's target, credential references, send policy and
+ * reset plan, the scenario catalog, and the hub, commercial and disclosure
+ * states. The facade runs one operation at a time and answers a call that
+ * arrives while another holds the slot busy, having read nothing, and these
+ * reads go out together, each on its own as Wails dispatches them, so one can
+ * meet another. A read changes nothing, so a busy answer is asked again, a
+ * bounded number of times, and is reported busy only when the slot stays
+ * held. A write is never asked again: its busy answer is the refusal a second
+ * click gets. */
 async function retryingRead<T extends { state: State; reason?: string }>(
   call: () => Promise<T>,
   fallback: T,
@@ -884,7 +887,7 @@ async function retryingRead<T extends { state: State; reason?: string }>(
   return result;
 }
 
-/** How often, and how many times in all, a busy navigation read is asked:
+/** How often, and how many times in all, a busy read is asked:
  * for about a second, long enough for another short read to release the slot
  * and bounded so a long operation still reports busy. */
 const READ_ATTEMPTS = 20;
@@ -1252,7 +1255,7 @@ export function selectFilter(name: string): Promise<FiltersResult> {
 }
 
 export function openWorkspace(path: string): Promise<WorkspaceResult> {
-  return guard(() => facade().OpenWorkspace(path), { state: "failed" });
+  return retryingRead(() => facade().OpenWorkspace(path), { state: "failed" });
 }
 
 export function recentWorkspaces(): Promise<RecentResult> {
@@ -1291,12 +1294,13 @@ export interface DisclosureStatusResult {
   states?: DisclosureState[];
 }
 
-/** How each disclosed activity stands right now. It answers through the
- * operation slot like every other read, so it refuses busy rather than
- * describing a state from halfway through one, and it contacts nothing:
- * the answer is read from the window's own connection objects. */
+/** How each disclosed activity stands right now. It does not claim the
+ * operation slot: it reads which named operation holds it, so an activity
+ * running now reads active, and it refuses busy only while an operation it
+ * cannot attribute holds the slot. It contacts nothing: the answer is read
+ * from the window's own state. */
 export function disclosureStatus(): Promise<DisclosureStatusResult> {
-  return guard(() => facade().DisclosureStatus(), { state: "failed" });
+  return retryingRead(() => facade().DisclosureStatus(), { state: "failed" });
 }
 
 export type RunState = "ready" | "running" | "passed" | "assertion_failed" | "execution_error" | "cancelled" | "timed_out" | "interrupted" | "delivery_uncertain";
@@ -4416,7 +4420,7 @@ export interface RunnerSettleRequest { instance: string; reconcile: boolean; }
 export function settleRunnerAdmission(request: RunnerSettleRequest): Promise<RunnerStatusResult> {return guard(() => facade().SettleRunnerAdmission(request), {state:"failed"});}
 export interface CommercialStatusResult { state: State; reason?: string; environment?: string; portal?: string; config_path?: string; }
 export function chooseCommercialDestinations(): Promise<CommercialStatusResult> {return guard(() => facade().ChooseCommercialDestinations(), {state:"failed"});}
-export function commercialStatus(): Promise<CommercialStatusResult> {return guard(() => facade().CommercialStatus(), {state:"empty"});}
+export function commercialStatus(): Promise<CommercialStatusResult> {return retryingRead(() => facade().CommercialStatus(), {state:"empty"});}
 
 
 export interface HubProjectInfo {
@@ -4532,7 +4536,7 @@ export function completeHubAuth(code: string, state: string): Promise<HubResult>
 }
 
 export function hubStatus(): Promise<HubResult> {
-  return guard(() => facade().HubStatus(), { state: "failed", connected: false, authenticated: false });
+  return retryingRead(() => facade().HubStatus(), { state: "failed", connected: false, authenticated: false });
 }
 
 export function listHubProjectArtifacts(project: string): Promise<HubArtifactsResult> {
@@ -5682,7 +5686,7 @@ export function saveTarget(request: TargetSaveRequest): Promise<TargetResult> {
 }
 
 export function readTarget(workspace: string, targetFile: string): Promise<TargetResult> {
-  return guard(() => facade().ReadTarget(workspace, targetFile), { state: "failed" });
+  return retryingRead(() => facade().ReadTarget(workspace, targetFile), { state: "failed" });
 }
 
 export function checkTarget(request: TargetCheckRequest): Promise<TargetCheckResult> {
@@ -5694,7 +5698,7 @@ export function resetTarget(request: TargetResetRequest): Promise<TargetResetRes
 }
 
 export function readSecrets(workspace: string, secretsFile: string): Promise<SecretsResult> {
-  return guard(() => facade().ReadSecrets(workspace, secretsFile), { state: "failed" });
+  return retryingRead(() => facade().ReadSecrets(workspace, secretsFile), { state: "failed" });
 }
 
 export function saveSecretReference(request: SecretSaveRequest): Promise<SecretsResult> {
@@ -5730,7 +5734,7 @@ export function scanSecrets(request: SecretScanRequest): Promise<SecretScanResul
 }
 
 export function readSendPolicy(workspace: string, policyFile: string): Promise<SendPolicyResult> {
-  return guard(() => facade().ReadSendPolicy(workspace, policyFile), { state: "failed" });
+  return retryingRead(() => facade().ReadSendPolicy(workspace, policyFile), { state: "failed" });
 }
 
 export function saveSendPolicy(request: SendPolicySaveRequest): Promise<SendPolicyResult> {
@@ -5742,7 +5746,7 @@ export function evaluateSendPolicy(request: SendPolicyEvalRequest): Promise<Send
 }
 
 export function readResetPlan(workspace: string, planFile: string): Promise<ResetPlanResult> {
-  return guard(() => facade().ReadResetPlan(workspace, planFile), { state: "failed" });
+  return retryingRead(() => facade().ReadResetPlan(workspace, planFile), { state: "failed" });
 }
 
 export function saveResetPlan(request: ResetPlanSaveRequest): Promise<ResetPlanResult> {
@@ -6817,7 +6821,7 @@ export interface SynthGenerateResult {
 }
 
 export function scenarioCatalog(): Promise<ScenarioCatalogResult> {
-  return guard(() => facade().ScenarioCatalog(), { state: "failed" });
+  return retryingRead(() => facade().ScenarioCatalog(), { state: "failed" });
 }
 
 export function bindScenarioProfile(request: ScenarioProfileBindRequest): Promise<ScenarioProfileBindResult> {

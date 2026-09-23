@@ -15,7 +15,8 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Journey, press, region, whenEnabled } from "../testkit/journey";
+import { Journey, press, region } from "../testkit/journey";
+import { activateLicense, createProject, EXPORTED_BOOKING, EXPORTED_RESCHEDULE } from "./steps";
 
 let journey: Journey;
 
@@ -27,18 +28,6 @@ afterEach(async () => {
   await journey.dispose();
 });
 
-// Two synthetic SIU messages exported one after another into one file, the
-// way an interface engine writes a feed: CR-terminated segments, no framing.
-// Every value is synthetic; none identifies a person.
-const BOOKING =
-  "MSH|^~\\&|SCHEDULER|SYNTHETIC|RECEIVER|LAB|20260101120000+0000||SIU^S12|OWN-BOOK-1|P|2.5.1\r" +
-  "SCH|PLACER-101^READMIT|FILLER-101^READMIT||||CHECKUP|ROUTINE|NORMAL|30|min|^^^20260102100000+0000\r" +
-  "PID|1||SYNTH-101^^^READMIT||SYNTHETIC^ONLY\r";
-const RESCHEDULE =
-  "MSH|^~\\&|SCHEDULER|SYNTHETIC|RECEIVER|LAB|20260101120100+0000||SIU^S13|OWN-MOVE-1|P|2.5.1\r" +
-  "SCH|PLACER-101^READMIT|FILLER-101^READMIT||||CHECKUP|ROUTINE|NORMAL|30|min|^^^20260103110000+0000\r" +
-  "PID|1||SYNTH-101^^^READMIT||SYNTHETIC^ONLY\r";
-
 /** The inspector's escaped rendering of original bytes: a backslash, an
  * ampersand and a carriage return are shown as their byte values. */
 const escaped = (bytes: string) =>
@@ -46,38 +35,17 @@ const escaped = (bytes: string) =>
 
 test("a person's own export becomes a registered, indexed, searchable case in a new project and reopens where they left it", async () => {
   const user = userEvent.setup();
-  const license = journey.provisionLicense("vendor-delivered-license");
-  journey.writeFile("exports/scheduling-feed.hl7", BOOKING + RESCHEDULE);
-  journey.makeFolder("investigations");
+  journey.writeFile("exports/scheduling-feed.hl7", EXPORTED_BOOKING + EXPORTED_RESCHEDULE);
   await journey.launch();
 
   // Licensed work starts from the activation folder the vendor delivered,
-  // selected in the window; the sample stays free without it.
-  await press(user, screen.getByRole("button", { name: "License and activation…" }));
-  const access = within(region("License and trial activation"));
-  await journey.chooseFolder(license, "Choose the license activation folder");
-  await press(user, access.getByRole("button", { name: "Select a supplied activation folder…" }));
-  // Selecting is not activating; the selected policy is what activation acts on.
-  await whenEnabled(access.getByRole("button", { name: "Activate license" }));
-  await press(user, access.getByRole("button", { name: "Refresh local status" }));
-  expect(await access.findByText(/^License: active\. Organization: test-organization\./)).toBeTruthy();
-
-  // Choose a folder for a new project, then create the project in it.
-  await journey.chooseFolder(journey.path("investigations"), "Open a readmit workspace folder");
-  await press(user, screen.getByRole("button", { name: "Choose a folder for a new project…" }));
+  // selected in the window; the sample stays free without it. Then a folder
+  // for a new project, and the project created in it: the window moves into
+  // the project it created, so what follows reads and writes the project
+  // rather than the folder around it.
+  await activateLicense(user, journey);
+  const project = await createProject(user, journey, "investigations", "scheduling-investigation", "Scheduling interface");
   const evidence = within(region("Evidence"));
-  await press(user, await evidence.findByRole("button", { name: "Create a project…" }));
-  await user.type(evidence.getByLabelText("Folder name for the new project"), "scheduling-investigation");
-  await user.type(evidence.getByLabelText("Title", { selector: "#project-title" }), "Scheduling interface");
-  await user.type(evidence.getByLabelText("Interface versions, comma-separated"), "siu-2.5.1-v1");
-  await journey.chooseFolder(journey.path("investigations"), "Choose a folder for the new project");
-  await press(user, evidence.getByRole("button", { name: "Create the project…" }));
-
-  // The window moves into the project it created, so what follows reads and
-  // writes the project rather than the folder around it.
-  const project = journey.path("investigations", "scheduling-investigation");
-  expect(await within(region("Project navigation")).findByText(project, { selector: ".root" })).toBeTruthy();
-  expect(await evidence.findByText(/Nothing is registered yet/)).toBeTruthy();
 
   // Import the export: choose the file in the host's dialog, declare the
   // framing it really uses, and preview before anything is written.
@@ -94,7 +62,7 @@ test("a person's own export becomes a registered, indexed, searchable case in a 
   const member = await preview.findByText("scheduling-feed.hl7");
   const memberRow = member.closest("tr");
   expect(memberRow?.textContent).toContain("included");
-  expect(memberRow?.textContent).toContain(`${(BOOKING + RESCHEDULE).length} bytes`);
+  expect(memberRow?.textContent).toContain(`${(EXPORTED_BOOKING + EXPORTED_RESCHEDULE).length} bytes`);
   expect(preview.getByText("Occurrences").previousSibling?.textContent).toBe("2");
 
   // Commit: a new case bundle and its receipt, registered into the project.
@@ -107,6 +75,11 @@ test("a person's own export becomes a registered, indexed, searchable case in a 
   await user.type(commit.getByLabelText("Case title"), "Reschedule leaves a duplicate");
   await press(user, commit.getByRole("button", { name: "Commit import" }));
   expect(await commit.findByText("Import Completed Successfully")).toBeTruthy();
+  // The import is stored, so its draft was dropped before the window said so:
+  // closing on this confirmation offers nothing back as unstored work.
+  const dropped = journey.callsTo("DiscardEditorDraft");
+  expect(dropped).toHaveLength(1);
+  expect(dropped[0]?.settled).toBe(true);
   expect(commit.getByText("Registered into project.")).toBeTruthy();
   expect(commit.getByText(/^Case:/).parentElement?.textContent).toMatch(/Case: reschedule-feed \([0-9a-f]{64}\)/);
   await press(user, commit.getByRole("button", { name: "Open this case to build an index" }));
@@ -140,8 +113,8 @@ test("a person's own export becomes a registered, indexed, searchable case in a 
   await press(user, rows[1]!);
   const occurrence = within(inspector.getByRole("region", { name: "Selected occurrence inspector" }));
   const header = await occurrence.findByText(new RegExp(`^Occurrence ${moved} · `));
-  expect(header.textContent).toContain(`${RESCHEDULE.length} original bytes`);
-  expect(occurrence.getByText(escaped(RESCHEDULE))).toBeTruthy();
+  expect(header.textContent).toContain(`${EXPORTED_RESCHEDULE.length} original bytes`);
+  expect(occurrence.getByText(escaped(EXPORTED_RESCHEDULE))).toBeTruthy();
 
   // Search the workspace by the control identifier: the digest index answers
   // with the one message that carries it, and nothing else.
@@ -158,6 +131,7 @@ test("a person's own export becomes a registered, indexed, searchable case in a 
   await journey.close();
   await journey.launch();
   await press(user, await screen.findByRole("button", { name: "Reopen where you were" }));
+  expect(screen.queryByText("Unstored editor work this machine holds")).toBeNull();
   const reopened = within(region("Project navigation"));
   expect(await reopened.findByText(project, { selector: ".root" })).toBeTruthy();
   // Reopening verifies the case again and reopens its index; it is not a

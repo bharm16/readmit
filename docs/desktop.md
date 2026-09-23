@@ -84,7 +84,15 @@ The journeys run the complete guided sample (author, fail on the defect, pass
 once corrected, close and reopen) and the start of a real investigation over
 a person's own exported messages (activation, a new project, import with the
 framing the export uses, registration, a declared-retention index, search,
-the original bytes, close and reopen). They run in jsdom, not the native
+the original bytes, close and reopen). They carry that investigation on to an
+independent downstream system — a loopback MLLP receiver in the test kit that
+shares no readmit code and has a real defect: a named environment and its
+approved destination, an observation of the system's export through a
+declared window (and the missing, stale and truncated exports that are
+errors, not emptiness), a test preflighted and sent once that fails on the
+defect, passes once the system is fixed and fails when the defect returns,
+and crashes during a send and during authoring that reopen to uncertain
+delivery and to the draft, never to a resend. They run in jsdom, not the native
 webview, so they are evidence about the application over real files rather
 than about installed packages. The desktop workflow's shell job runs them
 after the component tests, and a failing journey fails the `desktop` check.
@@ -351,7 +359,9 @@ the state recovery needs most. They are serialized among themselves, so a
 reader never observes a partial document. `Shell` cannot
 fail in the facade; it still carries a state, because the binding itself is
 unavailable while the application is starting, and the window says so rather
-than drawing itself with no commands and no privacy status.
+than drawing itself with no commands and no privacy status. `DisclosureStatus`
+does not claim the slot either, because which operation holds it is what it
+reports; the privacy region below describes it.
 
 `Cancel` cannot retract bytes an operation has already written. Choosing a
 folder and listing it are interruptible; `OpenCase`, `OpenProject`,
@@ -1590,8 +1600,14 @@ false, so the privacy region discloses each such
 activity separately: its destination, the data it carries, the authorization it
 requires, and — answered by the facade from the window's own connection state,
 contacting nothing — whether it is idle, active, configured, offline or
-connected right now. Nothing on that list is contacted by startup or by any
-local operation, and each activity's next action opens the screen where it is
+connected right now. That answer does not claim the operation slot: an
+activity is active while its named operation holds the slot, so the status
+reads which operation holds it, once, and is answered while that operation
+runs without starting or changing anything. An operation that holds the slot
+without a name, such as a connectivity check or a fixture reset, cannot be
+attributed to one activity, so while one runs the answer is `busy`, never an
+idle state. Nothing on that list is contacted by startup or by any local
+operation, and each activity's next action opens the screen where it is
 configured or run. The same region states the support guidance the facade
 derives from the checked capability ledger and the verified qualification
 state: the connector and database refusals #35 and #75 own, the

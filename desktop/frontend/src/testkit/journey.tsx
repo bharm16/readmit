@@ -24,9 +24,13 @@ import type { UserEvent } from "@testing-library/user-event";
 import { inject } from "vitest";
 import App from "../App";
 import type { Facade } from "../bindings";
+import { startDownstream } from "./downstream.js";
+import type { Downstream, DownstreamMode } from "./downstream.js";
 import {
+  backdateInRoot,
   createRoot,
   makeFolderInRoot,
+  pathInRoot,
   provisionInRoot,
   removeRoot,
   runCommandLine,
@@ -90,6 +94,23 @@ export async function press(user: UserEvent, element: HTMLElement): Promise<void
   await user.click(await whenEnabled(element));
 }
 
+/** A text matcher for a line the window composes from several elements —
+ * "Run: " and its status, a label and its value: the innermost element whose
+ * whole text matches. */
+export function byContent(pattern: RegExp): (content: string, element: Element | null) => boolean {
+  return (_content, element) =>
+    element !== null &&
+    pattern.test(element.textContent ?? "") &&
+    !Array.from(element.children).some((child) => pattern.test(child.textContent ?? ""));
+}
+
+/** Replaces what a field holds with text, typed the way a person types it,
+ * once the window offers the field: a disabled field takes no keystrokes. */
+export async function enter(user: UserEvent, field: HTMLElement, text: string): Promise<void> {
+  await user.clear(await whenEnabled(field));
+  if (text !== "") await user.type(field, text);
+}
+
 /** How long a closing window waits for its calls to settle, and how long it
  * must then stay quiet: a person closes the window after it has answered. */
 const SETTLE_MS = 30_000;
@@ -101,6 +122,7 @@ export class Journey {
   /** Every call the window made, oldest first, across every launch. */
   readonly calls: JourneyCall[] = [];
   private bridge: BridgeProcess | null = null;
+  private readonly downstreams: Downstream[] = [];
   private readonly problems: string[] = [];
   private readonly binary: string;
   /** How many calls an earlier close has already checked. */
@@ -171,6 +193,9 @@ export class Journey {
       if (this.bridge) {
         await this.end((bridge) => bridge.kill());
       }
+      for (const downstream of this.downstreams.splice(0)) {
+        await downstream.close();
+      }
       removeRoot(this.root);
     }
   }
@@ -209,6 +234,21 @@ export class Journey {
    * window is still the person's step. */
   provisionLicense(relative: string): string {
     return provisionInRoot(this.binary, this.root, relative);
+  }
+
+  /** Starts the independent downstream scheduling system a person's
+   * interface feeds (testkit/downstream.js), on a loopback port, writing its
+   * ledger export to a file inside the root. It stops when the journey ends. */
+  async startDownstream(exportFile: string, mode?: DownstreamMode): Promise<Downstream> {
+    const downstream = await startDownstream({ exportPath: pathInRoot(this.root, exportFile), ...(mode ? { mode } : {}) });
+    this.downstreams.push(downstream);
+    return downstream;
+  }
+
+  /** Makes a file on this person's machine look as though nothing rewrote it
+   * for this long. */
+  backdate(relative: string, milliseconds: number): string {
+    return backdateInRoot(this.root, relative, milliseconds);
   }
 
   /** Runs the readmit command line over this journey's root, as a person

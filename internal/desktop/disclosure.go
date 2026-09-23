@@ -1,7 +1,6 @@
 package desktop
 
 import (
-	"context"
 	"time"
 )
 
@@ -49,20 +48,33 @@ func (r *DisclosureStatusResult) refuse(state State, reason string) {
 }
 
 // DisclosureStatus reports, for every operation the privacy status discloses,
-// whether it is connected or offline right now. It reads this window's own
-// state and nothing else, so a person can check what is and is not connected
-// without anything being probed, contacted or reconnected to find out. It
-// answers through the operation slot like every other read: halfway through an
-// operation it refuses busy rather than describing a state from inside it.
+// whether it is active, connected or offline right now. It reads this window's
+// own state and nothing else, so a person can check what is and is not
+// connected without anything being probed, contacted or reconnected to find
+// out.
+//
+// It does not claim the operation slot. A run, a capture, a collection, an
+// observation, a reduction or runner execution is active while its named
+// operation holds the slot, so a read that waited for the slot could never say
+// one is. The slot's holder is read once, under the slot's own lock, and the
+// hub and portal states are each read under the lock that guards them; the
+// read starts and changes nothing. An operation that holds the slot without a
+// name — a connectivity check or a fixture reset among them — cannot be
+// attributed to any one activity, so while one does the answer is busy rather
+// than an idle state it cannot vouch for.
 func (a *App) DisclosureStatus() DisclosureStatusResult {
-	return run(a, false, false, func(context.Context) DisclosureStatusResult {
-		states := make([]DisclosureState, 0, len(slotActivities)+2)
-		for _, activity := range slotActivities {
-			states = append(states, a.slotDisclosure(activity))
-		}
-		states = append(states, a.hubDisclosure(), a.portalDisclosure())
-		return DisclosureStatusResult{State: Completed, States: states}
-	})
+	holder, held := a.slotHolder()
+	if held && holder == "" {
+		var result DisclosureStatusResult
+		result.refuse(Busy, busyRefusal.reason)
+		return result
+	}
+	states := make([]DisclosureState, 0, len(slotActivities)+2)
+	for _, activity := range slotActivities {
+		states = append(states, slotDisclosure(activity, holder))
+	}
+	states = append(states, a.hubDisclosure(), a.portalDisclosure())
+	return DisclosureStatusResult{State: Completed, States: states}
 }
 
 // operating reports whether the operation slot is held by the named operation.
@@ -70,6 +82,14 @@ func (a *App) operating(name string) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.running && a.operation == name
+}
+
+// slotHolder names the operation holding the slot now, and reports whether the
+// slot is held at all: an operation can hold it without a name.
+func (a *App) slotHolder() (string, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.operation, a.running
 }
 
 // slotActivity is one disclosed activity whose network use happens only while
@@ -116,11 +136,11 @@ var slotActivities = []slotActivity{
 	},
 }
 
-// slotDisclosure answers one slot-held activity: active when any of the
-// operations it happens under holds the slot now, idle otherwise.
-func (a *App) slotDisclosure(activity slotActivity) DisclosureState {
+// slotDisclosure answers one slot-held activity: active when the slot's holder
+// is one of the operations it happens under, idle otherwise.
+func slotDisclosure(activity slotActivity, holder string) DisclosureState {
 	for _, op := range activity.ops {
-		if a.operating(op) {
+		if holder == op {
 			return DisclosureState{ID: activity.id, State: disclosureActive, Detail: activity.active}
 		}
 	}

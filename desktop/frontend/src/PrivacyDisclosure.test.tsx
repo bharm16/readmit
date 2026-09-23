@@ -50,11 +50,15 @@ test("the live states come from the facade and refresh deliberately", async () =
 });
 
 test("a refused state read is shown instead of a stale table answer", async () => {
-  await renderApp({
+  const { facade } = await renderApp({
     DisclosureStatus: () => ({ state: "busy", reason: "another operation holds the slot" }),
   });
   const privacy = privacyRegion();
-  expect((await privacy.findAllByText(/another operation holds the slot/i)).length).toBeGreaterThan(0);
+  // A busy read is asked again for about a second before busy is shown.
+  expect(
+    (await privacy.findAllByText(/another operation holds the slot/i, {}, { timeout: 4000 })).length,
+  ).toBeGreaterThan(0);
+  expect(facade.callsTo("DisclosureStatus").length).toBeGreaterThanOrEqual(20);
 });
 
 test("each activity's next action opens the screen where that activity lives", async () => {

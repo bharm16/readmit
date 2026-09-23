@@ -54,6 +54,7 @@ export function useRetainer(): {
   retention: Retention;
   save: (draft: EditorDraft) => void;
   drop: (id: string) => void;
+  dropCurrent: () => Promise<void>;
   retry: () => void;
   keepAsNew: () => void;
   clear: () => void;
@@ -79,6 +80,9 @@ export function useRetainer(): {
   // one says nothing about the text typed since, so "saved" waits for the
   // newest to be answered.
   const pending = useRef(0);
+  // Advanced when the editor's work is stored where it belongs: a retention
+  // queued before then holds that same work, and is not written.
+  const generation = useRef(0);
 
   const apply = useCallback((saved: EditorDraft, result: EditorDraftsResult) => {
     notify(result, "save");
@@ -140,8 +144,13 @@ export function useRetainer(): {
     }
     setRetention({ state: "saving" });
     pending.current += 1;
+    const queuedIn = generation.current;
     chainRef.current = chainRef.current.then(async () => {
       try {
+        if (queuedIn !== generation.current) {
+          // The work was stored and its draft dropped while this edit waited.
+          return;
+        }
         if (conflicted.current) {
           // An earlier retention found the identity gone while this one was
           // queued; the person decides before anything more is written.
@@ -171,29 +180,53 @@ export function useRetainer(): {
     enqueue(draft, draft.id === "" ? null : draft.id);
   }, [enqueue]);
 
+  const discard = useCallback(async (id: string) => {
+    try {
+      const result = await discardEditorDraft(id);
+      if (knownId.current === id) {
+        knownId.current = "";
+      }
+      seenIds.current.delete(id);
+      notify(result, "discard");
+      if (result.state === "completed" || result.state === "empty") {
+        setRetention({ state: "idle" });
+      } else {
+        setRetention(
+          result.reason
+            ? { state: "not-retained", reason: result.reason }
+            : { state: "not-retained" },
+        );
+      }
+    } catch {
+      setRetention({ state: "not-retained", reason: "the application did not answer" });
+    }
+  }, []);
+
   const drop = useCallback((id: string) => {
-    chainRef.current = chainRef.current.then(async () => {
-      try {
-        const result = await discardEditorDraft(id);
-        if (knownId.current === id) {
-          knownId.current = "";
-        }
-        seenIds.current.delete(id);
-        notify(result, "discard");
-        if (result.state === "completed" || result.state === "empty") {
-          setRetention({ state: "idle" });
-        } else {
-          setRetention(
-            result.reason
-              ? { state: "not-retained", reason: result.reason }
-              : { state: "not-retained" },
-          );
-        }
-      } catch {
-        setRetention({ state: "not-retained", reason: "the application did not answer" });
+    chainRef.current = chainRef.current.then(() => discard(id));
+  }, [discard]);
+
+  // The editor's work was stored where it belongs. Every retention still
+  // queued is abandoned — each holds that same work — and whatever identity
+  // this editor's draft is retained under once the write in flight has
+  // landed, including one that write is minting, is dropped. Nothing is left
+  // to keep as new or write again. Resolves when the store answered, so an
+  // editor can say the work is stored only once no draft offers it back.
+  const dropCurrent = useCallback((): Promise<void> => {
+    generation.current += 1;
+    const dropped = chainRef.current.then(async () => {
+      last.current = null;
+      conflicted.current = false;
+      const id = knownId.current;
+      if (id !== "") {
+        await discard(id);
+      } else {
+        setRetention({ state: "idle" });
       }
     });
-  }, []);
+    chainRef.current = dropped;
+    return dropped;
+  }, [discard]);
 
   // The person says the refused text is still theirs: write it again, under the
   // identity it was retained under.
@@ -241,7 +274,7 @@ export function useRetainer(): {
     chainRef.current = chainRef.current.then(work);
   }, []);
 
-  return { retention, save, drop, retry, keepAsNew, clear, currentId, keepId, chain };
+  return { retention, save, drop, dropCurrent, retry, keepAsNew, clear, currentId, keepId, chain };
 }
 
 /** The kind and workspace a draft belongs to: the scope one identity serves. */

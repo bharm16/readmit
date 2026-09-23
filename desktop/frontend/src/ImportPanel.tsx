@@ -662,13 +662,13 @@ export function ImportPanel({
 
     try {
       const res = await commitImport(req);
-      setCommitResult(res);
       if (res.state === "completed") {
-        const id = retainer.currentId();
-        if (id) {
-          retainer.drop(id);
-        }
+        // The import is stored: its draft is dropped before the window says
+        // so, so a window closed on the confirmation offers nothing back as
+        // unstored work.
+        await retainer.dropCurrent();
       }
+      setCommitResult(res);
     } finally {
       setCommitting(false);
     }

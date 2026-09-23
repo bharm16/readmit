@@ -76,11 +76,13 @@ test("closing a window whose call never finished fails the journey and names the
   hung.settled = true;
 });
 
-test("no journey can place a file or an activation folder outside its own root", () => {
+test("no journey can place, age or export a file or an activation folder outside its own root", async () => {
   for (const escape of ["../outside.hl7", "/tmp/outside.hl7", ".."]) {
     expect(() => journey.writeFile(escape, "MSH|")).toThrow("a journey file must be inside the journey root");
     expect(() => journey.makeFolder(escape)).toThrow("a journey file must be inside the journey root");
     expect(() => journey.provisionLicense(escape)).toThrow("a journey file must be inside the journey root");
+    expect(() => journey.backdate(escape, 1000)).toThrow("a journey file must be inside the journey root");
+    await expect(journey.startDownstream(escape)).rejects.toThrow("a journey file must be inside the journey root");
   }
 });
 
