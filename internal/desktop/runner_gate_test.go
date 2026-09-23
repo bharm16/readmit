@@ -36,6 +36,9 @@ type runnerGateFixture struct {
 	admissions    func() int64
 	setRemoved    func(subject string)
 	setUnreadable func()
+	// observe, once set, runs as each request reaches the hub, before the hub
+	// answers it.
+	observe atomic.Pointer[func()]
 }
 
 func newRunnerGateFixture(t *testing.T, subject string, scopes []string) *runnerGateFixture {
@@ -82,7 +85,12 @@ func newRunnerGateFixture(t *testing.T, subject string, scopes []string) *runner
 	}
 	caPool := x509.NewCertPool()
 	caPool.AppendCertsFromPEM(ca.pem)
-	server := httptest.NewUnstartedServer(mux)
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if observe := fixture.observe.Load(); observe != nil {
+			(*observe)()
+		}
+		mux.ServeHTTP(w, r)
+	}))
 	server.TLS = &tls.Config{
 		Certificates: []tls.Certificate{serverPair},
 		ClientCAs:    caPool,

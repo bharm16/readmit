@@ -53,15 +53,15 @@ func (r *DisclosureStatusResult) refuse(state State, reason string) {
 // connected without anything being probed, contacted or reconnected to find
 // out.
 //
-// It does not claim the operation slot. A run, a capture, a collection, an
-// observation, a reduction or runner execution is active while its named
-// operation holds the slot, so a read that waited for the slot could never say
-// one is. The slot's holder is read once, under the slot's own lock, and the
-// hub and portal states are each read under the lock that guards them; the
-// read starts and changes nothing. An operation that holds the slot without a
-// name — a connectivity check or a fixture reset among them — cannot be
-// attributed to any one activity, so while one does the answer is busy rather
-// than an idle state it cannot vouch for.
+// It does not claim the operation slot. Every operation that can reach a
+// network destination or change a target runs under a name (runNamed), and
+// the activity that name belongs to is active while it holds the slot, so a
+// read that waited for the slot could never say one is. The slot's holder is
+// read once, under the slot's own lock, and the hub and portal states are each
+// read under the lock that guards them; the read starts and changes nothing.
+// An operation that holds the slot without a name is local work that no
+// activity can be attributed to, so while one does the answer is busy rather
+// than an idle state the status did not establish.
 func (a *App) DisclosureStatus() DisclosureStatusResult {
 	holder, held := a.slotHolder()
 	if held && holder == "" {
@@ -73,7 +73,7 @@ func (a *App) DisclosureStatus() DisclosureStatusResult {
 	for _, activity := range slotActivities {
 		states = append(states, slotDisclosure(activity, holder))
 	}
-	states = append(states, a.hubDisclosure(), a.portalDisclosure())
+	states = append(states, a.hubDisclosure(holder), a.portalDisclosure())
 	return DisclosureStatusResult{State: Completed, States: states}
 }
 
@@ -93,73 +93,119 @@ func (a *App) slotHolder() (string, bool) {
 }
 
 // slotActivity is one disclosed activity whose network use happens only while
-// its operation holds the slot, under the names its operation is started with.
+// one of its operations holds the slot, under the names its operations are
+// started with.
 type slotActivity struct {
-	id     string
-	ops    []string
-	active string
-	idle   string
+	id   string
+	ops  []namedOperation
+	idle string
 }
 
-// slotActivities are those activities, each with the sentence for its active
-// and its idle state.
+// namedOperation is one operation name and the sentence that says what that
+// operation is doing while it holds the slot.
+type namedOperation struct {
+	name   string
+	active string
+}
+
+// slotActivities are those activities, each with the sentence for each of its
+// operations and for its idle state.
 var slotActivities = []slotActivity{
 	{
-		id:     "run",
-		ops:    []string{runOperation},
-		active: "A durable run is executing now; it sends only to the target its preflight named, and the run panel holds its progress.",
-		idle:   "No run is in progress. A run sends only while it executes; selecting, preflighting and reading history connect to nothing.",
+		id: "run",
+		ops: []namedOperation{
+			{runOperation, "A durable run is executing now; it sends only to the target its preflight named, and the run panel holds its progress."},
+			{"practice", "The guided sample's practice run is executing now; it sends only to the built-in fixture receiver it started on loopback in this process."},
+			{privacyOperation, "A disclosure review or derived export is in progress now; its proof sends synthetic fixture messages only to built-in receivers it starts on loopback in this process."},
+		},
+		idle: "No run is in progress. A run sends only while it executes; selecting, preflighting and reading history connect to nothing.",
 	},
 	{
-		id:     "runner",
-		ops:    []string{"runner"},
-		active: "Runner execution is in progress now; it reaches the hub to fetch scheduled work and report run records.",
-		idle:   "No recurring execution is in progress. An enrolled runner connects to the hub only while it fetches or reports work.",
+		id: "runner",
+		ops: []namedOperation{
+			{"runner", "Runner execution is in progress now; it reaches the hub to fetch scheduled work and report run records."},
+			{"runner-enrollment", "A runner enrollment is in progress now; it asks the hub the runner configuration names to admit this runner, and saves no credential."},
+		},
+		idle: "No recurring execution is in progress. An enrolled runner connects to the hub only while it fetches or reports work.",
 	},
 	{
-		id:     "capture",
-		ops:    []string{"capture", "collect"},
-		active: "A capture or collection is in progress now, on the sources and local port its registration and policy declare.",
-		idle:   "No capture or collection is in progress. Nothing listens and no source is read until you start one.",
+		id: "capture",
+		ops: []namedOperation{
+			{"capture", captureInProgress},
+			{"collect", captureInProgress},
+			{"source-diagnosis", "A source access check is in progress now; it reaches the source its registration declares and collects nothing."},
+		},
+		idle: "No capture or collection is in progress. Nothing listens and no source is read until you start one.",
 	},
 	{
-		id:     "environment",
-		ops:    []string{"reduction"},
-		active: "A controlled reduction is in progress now; the fixture resets it performs reach the recorded environment its target names.",
-		idle:   "No connectivity check, fixture reset or reduction is in progress. Recording a named environment, a send policy or a reset plan reads and writes local files only.",
+		id: "environment",
+		ops: []namedOperation{
+			{targetCheckOperation, "A connectivity check is in progress now; it opens one connection to the address the recorded environment names and sends no HL7 payload."},
+			{targetResetOperation, "A fixture reset is in progress now; it opens the one connection its reviewed plan needs to the recorded environment."},
+			{sendPolicyOperation, "A send-policy evaluation is in progress now; it resolves the host names it was asked about and opens no connection."},
+			{"reduction", "A controlled reduction is in progress now; the fixture resets it performs reach the recorded environment its target names."},
+		},
+		idle: "No connectivity check, fixture reset, send-policy evaluation or reduction is in progress. Recording a named environment, a send policy or a reset plan reads and writes local files only.",
 	},
 	{
-		id:     "observe",
-		ops:    []string{"observation"},
-		active: "An observation window is open now, reading the source and scope its validated pair declares.",
-		idle:   "No observation window is open. Authoring a source or window reads local files only.",
+		id: "observe",
+		ops: []namedOperation{
+			{"observation", "An observation window is open now, reading the source and scope its validated pair declares."},
+		},
+		idle: "No observation window is open. Authoring a source or window reads local files only.",
 	},
+}
+
+// captureInProgress is what a capture and a source collection say while one
+// runs: to a person they are the same activity.
+const captureInProgress = "A capture or collection is in progress now, on the sources and local port its registration and policy declare."
+
+// hubOperations are the names the hub's requests and its sign-in run under,
+// each with the sentence for the hub while it holds the slot.
+var hubOperations = []namedOperation{
+	{hubRequestOperation, "A hub action you started is in progress now, reaching the configured hub over mutual TLS."},
+	{hubSignInStartOperation, "A sign-in is starting now: this window opens the loopback listener your browser returns to from your identity provider."},
+	{hubSignInOperation, "A sign-in is in progress now: this window waits for your browser to return from your identity provider, then exchanges the code with it."},
+}
+
+// holding answers the sentence of the named operation that holds the slot, if
+// it is one of ops.
+func holding(ops []namedOperation, holder string) (string, bool) {
+	for _, op := range ops {
+		if op.name == holder {
+			return op.active, true
+		}
+	}
+	return "", false
 }
 
 // slotDisclosure answers one slot-held activity: active when the slot's holder
 // is one of the operations it happens under, idle otherwise.
 func slotDisclosure(activity slotActivity, holder string) DisclosureState {
-	for _, op := range activity.ops {
-		if holder == op {
-			return DisclosureState{ID: activity.id, State: disclosureActive, Detail: activity.active}
-		}
+	if active, ok := holding(activity.ops, holder); ok {
+		return DisclosureState{ID: activity.id, State: disclosureActive, Detail: active}
 	}
 	return DisclosureState{ID: activity.id, State: disclosureIdle, Detail: activity.idle}
 }
 
-// hubDisclosure answers for the customer artifact hub, from the hub's own
-// connection objects: no configuration, a configuration without a connection,
-// or a live connection with or without a current sign-in session.
-func (a *App) hubDisclosure() DisclosureState {
+// hubDisclosure answers for the customer artifact hub: active while one of its
+// operations holds the slot, and otherwise from the hub's own connection
+// objects — no configuration, a configuration without a connection, or a live
+// connection with or without a current sign-in session. With no configuration
+// a hub operation refuses before it reaches anything, so it is not active.
+func (a *App) hubDisclosure(holder string) DisclosureState {
 	a.hubMu.Lock()
 	cfg := a.hubConfig
 	client := a.hubClient
 	session := a.hubSession
 	a.hubMu.Unlock()
+	active, operating := holding(hubOperations, holder)
 	switch {
 	case cfg == nil:
 		return DisclosureState{ID: "hub", State: disclosureNotConfigured,
 			Detail: "No hub configuration is selected. Every hub operation is unavailable and nothing is connected."}
+	case operating:
+		return DisclosureState{ID: "hub", State: disclosureActive, Detail: active}
 	case client == nil:
 		return DisclosureState{ID: "hub", State: disclosureOffline,
 			Detail: "A hub configuration is selected; not connected. Connecting is a deliberate action."}

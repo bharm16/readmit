@@ -14,6 +14,7 @@ export interface Downstream {
   reset(): void;
   received(): string[];
   ledger(): Record<string, string>;
+  connected(): number;
   close(): Promise<void>;
 }
 

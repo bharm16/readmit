@@ -17,9 +17,10 @@ type refused interface {
 // a cancellation, and the work itself runs once. interruptible selects the
 // cancellable variant of the slot, the one Cancel can stop; writes selects
 // author admission, so an operation that changes nothing cannot be held to a
-// seat it does not use. An interruptible operation started this way is
-// unnamed: only the window's own cancel command can stop it, which is why a
-// panel with its own cancel control starts its operation through runNamed.
+// seat it does not use. An operation started this way is unnamed: only the
+// window's own cancel command can stop it, and the privacy status cannot
+// attribute it to any disclosed activity. It is for local work alone; see
+// runNamed for what must be named.
 func run[R any, PR interface {
 	*R
 	refused
@@ -27,9 +28,19 @@ func run[R any, PR interface {
 	return runNamed[R, PR](a, "", interruptible, writes, work)
 }
 
-// runNamed is run for an interruptible operation that names itself, so a panel
-// can cancel exactly the operation it started and nothing else. The name is
-// empty for work that is not interruptible or names no panel of its own.
+// runNamed is run for an operation that names itself. The name does two
+// things while the operation holds the slot: a panel can cancel exactly the
+// interruptible operation it started and nothing else, and DisclosureStatus
+// reports the disclosed activity the name belongs to as active.
+//
+// Every operation that can reach a network destination or change a target —
+// a connectivity check, a fixture reset, a send-policy evaluation that
+// resolves names, a source diagnosis or collection, a capture, a send, a
+// practice run, a disclosure review or derived export whose proof sends to
+// its own loopback receivers, an observation, a reduction, runner enrollment
+// and execution, and every hub request and step of a sign-in — starts here,
+// under a name disclosure.go maps to its row, whether or not it is
+// interruptible. Only local work may be unnamed.
 func runNamed[R any, PR interface {
 	*R
 	refused
@@ -40,7 +51,7 @@ func runNamed[R any, PR interface {
 	if interruptible {
 		ctx, release, claimed = a.begin(operation)
 	} else {
-		release, claimed = a.claim()
+		release, claimed = a.claim(operation)
 	}
 	if !claimed {
 		var refused R

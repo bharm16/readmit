@@ -298,8 +298,11 @@ func writeHubClientConfig(t *testing.T, dir, hub string) string {
 // lookup or a program that may itself connect — each with the disclosed
 // activity whose row states its destination, data and authorization. It is a
 // list, not an enumeration: an operation that starts reaching a destination
-// has to be added here. Each runs only on the explicit action that calls it,
-// which the test above holds for everything else.
+// has to be added here, and one the facade's own source shows reaching a
+// destination fails TestEveryOperationThatCanReachADestinationRunsUnderADisclosedName
+// until it is. Each runs only on the explicit action that calls it, which the
+// test above holds for everything else, and under a name the privacy status
+// reports as its activity.
 var destinationActivities = map[string]string{
 	"StartDurableRun": "run", "StartSuiteRun": "run", "RunPractice": "run",
 	"DeriveExportReview": "run", "ExportDerivedPacket": "run",

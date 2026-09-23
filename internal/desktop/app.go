@@ -272,10 +272,11 @@ type App struct {
 
 	mu sync.Mutex
 	// running, operation and runOutput are the identity of the one operation
-	// that holds the slot. operation names the interruptible operation the way
-	// the panel that started it does, so a cancel action can say which
-	// operation it is cancelling and cannot reach a different one; runOutput
-	// is the folder a durable run is being written into while it executes.
+	// that holds the slot. operation names the operation the way the panel
+	// that started it does, so a cancel action can say which operation it is
+	// cancelling and cannot reach a different one, and the privacy status can
+	// say which disclosed activity is happening; runOutput is the folder a
+	// durable run is being written into while it executes.
 	running   bool
 	operation string
 	runOutput string
@@ -325,14 +326,17 @@ func (a *App) Cancel(operation string) {
 }
 
 // claim reserves the single operation slot for work that runs to completion
-// once it starts. The returned release always frees the slot.
-func (a *App) claim() (func(), bool) {
+// once it starts. operation names the work, as it does for begin; an empty
+// name leaves it unnamed. The slot and the name are taken together, so the
+// operation is never observable as running under no name while it has one.
+// The returned release always frees the slot.
+func (a *App) claim(operation string) (func(), bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.running {
 		return nil, false
 	}
-	a.running = true
+	a.running, a.operation = true, operation
 	return a.release, true
 }
 

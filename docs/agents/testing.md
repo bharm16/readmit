@@ -66,9 +66,10 @@ unanswered is rejected. The kit's verbs:
   receiver written from the protocol description, sharing no readmit code,
   that keeps an appointment ledger, exports it as a CSV inside the root after
   every message, and has a real defect (`defective`) and its fix (`fixed`). It
-  can reset its ledger, hold an acknowledgement, and report every message it
-  received — the independent witness to what a send did. `backdate(file, ms)`
-  ages a file, for a stale export.
+  can reset its ledger, hold an acknowledgement, report every message it
+  received — the independent witness to what a send did — and count the
+  connections open to it now, which a connectivity check holds while it runs.
+  `backdate(file, ms)` ages a file, for a stale export.
 
 `src/journeys/steps.tsx` holds the steps several journeys take — activating the
 vendor's license, creating a project, importing an export, configuring the

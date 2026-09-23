@@ -10,3 +10,11 @@ import "time"
 func CompleteHubAuthWithinForTest(a *App, code, state string, wait time.Duration) HubResult {
 	return a.completeHubAuth(code, state, wait)
 }
+
+// HoldSlotForTest claims the operation slot under name, exactly as runNamed
+// claims it for an operation that is not interruptible, and returns its
+// release: a test reads what the privacy status reports for an operation of
+// that name without starting the operation's work.
+func HoldSlotForTest(a *App, name string) (func(), bool) {
+	return a.claim(name)
+}

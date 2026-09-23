@@ -111,6 +111,11 @@ export function startDownstream({ exportPath, mode = "defective" }) {
       ledger() {
         return Object.fromEntries(state.ledger);
       },
+      /** How many connections are open to it now: a sender or a
+       * connectivity check holding one is reaching it at this moment. */
+      connected() {
+        return state.connections.size;
+      },
       close() {
         for (const socket of state.connections) socket.destroy();
         return new Promise((resolve) => server.close(() => resolve()));

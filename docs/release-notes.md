@@ -1,5 +1,21 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The privacy status now shows every network-reaching operation as active
+  while it runs (#341). A connectivity check, a fixture reset, a send-policy
+  evaluation, a source access check, a runner enrollment, the start of a hub
+  sign-in and every hub request held the window's one operation slot without a
+  name, so while one of them reached its destination the status answered busy
+  and the environment row read active only during a reduction; a practice run,
+  a disclosure review or derived export (whose proofs send to loopback
+  fixtures) and the hub sign-in ran under names the status did not map. Each now runs under a name the status maps to its row: the run,
+  environment, capture and runner rows say which of their operations is
+  running, and the hub reads active during a hub request or a sign-in rather
+  than only connected. A name is recorded for work that cannot be interrupted
+  as well, and the facade's tests enumerate every operation that can reach a
+  destination from its own source and fail if one is unnamed. No network
+  access, authority, contract or `readmit` command changes; the status still
+  contacts nothing, and local work that holds the slot still answers busy.
+
 - A save that may overwrite its output no longer writes through a symbolic
   link at the output name (#347). Upgrading a saved test's profile pin, and
   saving a scenario library entry under a name that differs from the library's
