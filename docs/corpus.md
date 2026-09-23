@@ -374,14 +374,15 @@ runner row is the one exception, run by CI:
 
 These tests and the facade timings do not establish: input-to-paint, progress
 and cancellation responsiveness, and bounded rendering in the native webview, or
-a late answer arriving in the window after a newer request — those are measured
-through the shared real-UI harness (#109) once it is on `main`; facade timings
-of source and observation collection, durable test and suite execution, runner
-work, report and privacy inventory, and hub reconnection, and the cancellation
-latency of collection; a hub artifact transfer interrupted by a partition;
-import progress, since a commit reports none while it writes; a quiet
-reference-host run; physical power-cut, full-volume and routed-partition labs;
-and the 1M/5 GiB project path, still bounded by the case limits above.
+a late answer arriving in the window after a newer request — the window journeys
+below cover part of that through the shared real-UI harness (#109), and late
+answers remain untested; facade timings of source and observation collection,
+durable test and suite execution, runner work, report and privacy inventory, and
+hub reconnection, and the cancellation latency of collection; a hub artifact
+transfer interrupted by a partition; import progress, since a commit reports
+none while it writes; a quiet reference-host run; physical power-cut,
+full-volume and routed-partition labs; and the 1M/5 GiB project path, still
+bounded by the case limits above.
 
 ### Native UI, reference hardware and candidate protocol
 
@@ -771,3 +772,74 @@ beside each line, from 9.07 10.27 10.37 at the start to 6.80 6.76 8.44 after
 the last batch. #110's first two checklist items remain open. Still unmeasured
 are the native painted UI, the quiet reference host, the physical interruption
 labs and the full project-scale path.
+
+### Window journeys and window timings, September 23, 2026
+
+The window paths go through the shared interaction harness (#109): the
+production window, driven by real user events, calling the real facade over
+real files through `desktop/journeybridge`. The page is jsdom, so these are the
+window's own code and reads, but not layout, paint or a native webview; nothing
+here is an input-to-painted-frame measurement.
+
+`desktop/frontend/src/journeys/interruption.journey.tsx` runs with every
+`npm run test:journeys`, and so in CI's `desktop` check:
+
+| Journey | What it shows |
+| --- | --- |
+| Collector Cancel, then reopening after a kill during collection | The capture panel's own Cancel stops a listening collector, and its address is free again. The collector is started again and the application killed while it listens. The reopened window goes back to where the person was and is closed once every call has settled. From reopening to that close it called none of `StartCapture`, `StartDurableRun`, `StartSuiteRun`, `StartReduction`, `RunPractice`, `ExecuteRunnerJob`, `EnrollRunner`, `ResetTarget`, `DurableRunProgress`, `CollectSource`, `CollectObservation`, `DiagnoseSource`, `DiagnoseHub`, `ConnectHub`, `StartHubAuth`, `CompleteHubAuth`, `UploadHubArtifact`, `DownloadHubArtifact`, `DownloadHubExport`, `PostHubReview`, `PostHubReleaseReview`, `PostHubSupportReview`, `PostHubLifecycle` or `ReconcileHubOfflineDraft`, and the address stayed free. With the capture panel fix from the facade change reverted, the panel's Cancel stops nothing and this journey fails. |
+| Retained note text and unretained keystrokes | Text the window called retained comes back after a kill. Further keystrokes are typed, and the kill comes the moment one of their retentions is in flight, while the window says it is still retaining. The reopened window restores at least the newest text the facade had answered as retained, and nothing beyond a whole prefix of what was typed. With this change's status fix reverted it fails, because the window said retained while a later keystroke's retention was still in flight. Before #111 took a draft's identity when a write is sent, each queued keystroke also minted a draft of its own, and a reopened window restored one of them, as short as the first letter. |
+| Import cancelled while it writes | Cancel is pressed once the case's first payload exists, and the window shows the cancelled state. The case stops short of its last payload and has no completion marker, and the project registers nothing. |
+
+`desktop/frontend/src/journeys/measurement.journey.tsx` is opt-in:
+
+```sh
+cd desktop/frontend && READMIT_PERFORMANCE=1 npm run test:journeys -- src/journeys/measurement.journey.tsx --reporter=verbose --silent=false
+```
+
+It drives the window over the 10,000-occurrence case a bundle admits at most
+and logs every sample beside the host's load. Only behaviour is asserted: the
+counts drawn match the case, and the grid never draws more row elements than
+its viewport plus overscan (32). That holds while the page holds a
+200-occurrence window of 10,000.
+
+One run on September 23, 2026 on the development host described above (macOS
+27.0, darwin/arm64, Node 24.10.0). The host was **loaded**: the one-minute load
+average, sampled after each batch, was between 12.79 and 17.45, with other
+lanes' work running. The nearest-rank p95 of 20 samples after one excluded
+warm-up is shown unless stated.
+
+| Window path | p95 |
+| --- | --- |
+| Import preview of 10,000 occurrences, click to counts drawn | 123.3 ms |
+| Import commit of 10,000 occurrences, one sample | 50,448.7 ms |
+| Index build, click to first grid window drawn, one sample | 1,508.0 ms |
+| Grid next window of 200, click to range drawn | 1,492.4 ms |
+| Workspace search, click to answer drawn | 322.5 ms |
+| One keystroke to the note saying retained | 92.2 ms |
+
+Every one of the 21 next-window clicks made two facade reads, `DescribeIndex`
+and then `OpenGrid`. Each read verifies the whole case again, and the window
+waits for both. Like facade navigation, paging is far above the proposed
+200 ms before anything is painted. These are observations from a loaded host.
+They are not a reference measurement, and they meet no envelope target.
+
+All samples in milliseconds, in acquisition order:
+
+```text
+import preview: 121.0 121.5 123.3 123.4 121.4 117.8 122.1 119.4 119.2 119.7 118.4 120.0 117.6 117.5 117.4 119.2 121.1 119.0 120.5 116.4
+grid next window: 1263.4 1480.0 1492.4 1402.4 1333.6 1360.6 1327.5 1264.1 1588.0 1404.2 1379.5 1318.7 1207.9 1425.7 1351.2 1292.6 1301.7 1132.1 1132.8 1278.5
+workspace search: 148.8 147.8 149.9 147.5 322.5 151.6 150.4 149.2 149.1 148.0 316.6 148.9 150.1 150.2 150.4 146.0 333.4 150.2 148.3 148.6
+keystroke to retained: 52.8 59.7 49.9 221.3 92.2 50.3 47.8 44.8 44.9 48.7 45.1 42.5 45.6 48.2 47.6 47.3 43.9 58.2 57.4 52.4
+```
+
+The journeys and the window timings do not establish:
+
+- native painted-frame timings, or renderer memory;
+- progress while a commit writes (it reports none);
+- a late answer arriving after a newer request;
+- window timings of source and observation collection, test and suite
+  execution, runner work, report and privacy inventory, or hub reconnection;
+- a kill during an import or a send, a full disk, or a network partition driven
+  through the window;
+- reopening after anything but a kill during collection;
+- a quiet reference-host run.

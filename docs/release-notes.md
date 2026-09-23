@@ -1,5 +1,20 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The window's own interruption and measurement paths run through the shared
+  interaction harness (#110). The capture panel's Cancel stops the collector it
+  started; reopening the window after a kill during collection calls nothing
+  that listens, sends, collects, reaches a hub or runner, resets or polls; a
+  note the window called retained survives a kill; and an import cancelled while
+  it writes registers nothing. An editor no longer says a draft is retained
+  while a later keystroke's retention is still in flight. With a draft's
+  identity now taken when a write is sent, a queued edit continues only a draft
+  of its own kind and workspace, and nothing queued behind a retention that
+  found its draft gone is written until the person decides. An opt-in
+  measurement journey times import, indexing, grid paging, search and draft
+  retention in the window over the largest case a bundle admits, and checks the
+  grid draws a bounded number of rows; its published samples are from a loaded
+  host, are not native painted frames, and meet no envelope target.
+
 - Cancellation, interruption and recovery on the merged application surfaces are
   tested and hardened, and the opt-in facade measurement covers them (#110). A
   cancellation reaches an operation from the moment it holds the slot, and one
