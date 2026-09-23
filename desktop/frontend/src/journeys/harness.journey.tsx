@@ -3,9 +3,9 @@
 // not have allowed: a dialog nobody answered, an answer nobody used, or a call
 // Wails would have rejected. Each of those fails the journey at close, as does
 // closing a window whose call never finished, and no journey can place a file
-// outside its own root. The last two tests show a dismissed dialog is a real
-// cancellation, and a crash abandons what was running while the next launch
-// starts from what was on disk.
+// outside its own root or change one that is not already there. The last two
+// tests show a dismissed dialog is a real cancellation, and a crash abandons
+// what was running while the next launch starts from what was on disk.
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -76,14 +76,24 @@ test("closing a window whose call never finished fails the journey and names the
   hung.settled = true;
 });
 
-test("no journey can place, age or export a file or an activation folder outside its own root", async () => {
+test("no journey can place, change, age or export a file or an activation folder outside its own root", async () => {
   for (const escape of ["../outside.hl7", "/tmp/outside.hl7", ".."]) {
     expect(() => journey.writeFile(escape, "MSH|")).toThrow("a journey file must be inside the journey root");
+    expect(() => journey.changeFile(escape, "MSH|")).toThrow("a journey file must be inside the journey root");
     expect(() => journey.makeFolder(escape)).toThrow("a journey file must be inside the journey root");
     expect(() => journey.provisionLicense(escape)).toThrow("a journey file must be inside the journey root");
     expect(() => journey.backdate(escape, 1000)).toThrow("a journey file must be inside the journey root");
     await expect(journey.startDownstream(escape)).rejects.toThrow("a journey file must be inside the journey root");
   }
+});
+
+test("a journey changes only a file that is already on the machine, in place", () => {
+  expect(() => journey.changeFile("exports/absent.hl7", "MSH|")).toThrow("only an existing file can be changed");
+  journey.makeFolder("exports");
+  expect(() => journey.changeFile("exports", "MSH|")).toThrow("only an existing file can be changed");
+  journey.writeFile("exports/feed.hl7", "MSH|first");
+  journey.changeFile("exports/feed.hl7", "MSH|second");
+  expect(journey.readFile("exports/feed.hl7")).toBe("MSH|second");
 });
 
 test("a dismissed dialog is a cancellation that opens nothing", async () => {

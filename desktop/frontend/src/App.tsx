@@ -519,7 +519,9 @@ export default function App() {
 
   // One window of the grid at a time. Asking for the next one re-reads the case
   // and its index, so a window is never served from an index the evidence no
-  // longer supports.
+  // longer supports. What the grid says about its index comes from that same
+  // read, so a page verifies the case once and the index details beside it can
+  // never describe another reading of the case.
   const showGrid = useCallback(
     async (folder: string, name: string, indexName: string, offset: number) => {
       const ticket = currentTicket("grid");
@@ -530,6 +532,7 @@ export default function App() {
         const result = await openGrid(folder, name, indexName, offset, GRID_WINDOW);
         if (isCurrent("grid", ticket)) {
           setGridResult(result);
+          setIndexResult(result.index ? { state: result.state, index: result.index } : null);
         }
       });
     },
@@ -2110,13 +2113,7 @@ export default function App() {
               .map((artifact) => artifact.name)}
             busy={busy}
             onOpen={(indexName, offset) => {
-              if (root) {
-                void (async () => {
-                  const desc = await describeIndex(root, verified.name, indexName);
-                  setIndexResult(desc);
-                  void showGrid(root, verified.name, indexName, offset);
-                })();
-              }
+              if (root) void showGrid(root, verified.name, indexName, offset);
             }}
             onSelect={(name) => void changeFilters(() => selectFilter(name))}
             onSave={(filter) => void changeFilters(() => saveFilter(filter))}

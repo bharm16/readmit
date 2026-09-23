@@ -16,7 +16,7 @@ import userEvent from "@testing-library/user-event";
 import { GRID_OVERSCAN, GRID_VIEWPORT_ROWS, GRID_WINDOW } from "../shell";
 import { Journey, press, region } from "../testkit/journey";
 import { measuring } from "./probes.js";
-import { BOOKING, framed, licensedProject, logTiming } from "./steps";
+import { BOOKING, declareMllpImport, framed, licensedProject, logTiming } from "./steps";
 
 let journey: Journey;
 
@@ -47,14 +47,9 @@ test.skipIf(!measuring())(
     const user = userEvent.setup();
     journey.writeFile("exports/feed.mllp", framed(BOOKING).repeat(OCCURRENCES));
     await licensedProject(journey, user);
-    const evidence = within(region("Evidence"));
 
     // Import preview, repeated: the click to the preview's counts drawn again.
-    await press(user, await evidence.findByRole("button", { name: "Import evidence into this project…" }));
-    await journey.chooseFiles([journey.path("exports", "feed.mllp")], "Choose evidence files to import");
-    await press(user, await screen.findByRole("button", { name: "Select Files…" }));
-    await user.selectOptions(screen.getByLabelText("Framing"), "mllp");
-    await user.selectOptions(screen.getByLabelText("Terminator"), "cr");
+    await declareMllpImport(user, journey, "exports/feed.mllp");
     const previewButton = () => screen.getByRole("button", { name: /Preview extraction|Extracting preview…/ });
     const preview = within(screen.getByRole("region", { name: "Extraction preview" }));
     const previews: number[] = [];

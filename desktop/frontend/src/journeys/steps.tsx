@@ -7,6 +7,7 @@
 import { expect } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
+import { GRID_WINDOW } from "../shell";
 import { byContent, enter, press, region, whenEnabled } from "../testkit/journey";
 import type { Journey } from "../testkit/journey";
 import type { Downstream, DownstreamMode } from "../testkit/downstream.js";
@@ -118,6 +119,18 @@ export async function savedAckTest(user: UserEvent, journey: Journey, mode: Down
   return investigated;
 }
 
+/** Opens an import of an MLLP-framed export already on this person's machine
+ * into the open project and declares its framing, up to its preview: what a
+ * person has done before they preview, commit or cancel it. */
+export async function declareMllpImport(user: UserEvent, journey: Journey, file: string): Promise<void> {
+  const evidence = within(region("Evidence"));
+  await press(user, await evidence.findByRole("button", { name: "Import evidence into this project…" }));
+  await journey.chooseFiles([journey.path(file)], "Choose evidence files to import");
+  await press(user, await screen.findByRole("button", { name: "Select Files…" }));
+  await user.selectOptions(screen.getByLabelText("Framing"), "mllp");
+  await user.selectOptions(screen.getByLabelText("Terminator"), "cr");
+}
+
 /** Imports an export of back-to-back messages into the open project as a
  * registered case, then opens that case. */
 export async function importExport(user: UserEvent, journey: Journey, file: string, caseName: string, title: string): Promise<void> {
@@ -176,13 +189,15 @@ export async function configureTarget(user: UserEvent, address: string): Promise
   expect(value("Outcome:")).toBe("reachable");
 }
 
-/** Builds an index of the open case, so its grid offers occurrences. */
-export async function buildIndex(user: UserEvent): Promise<void> {
+/** Builds an index of the open case, so its grid offers occurrences: its
+ * first window of the case's occurrences, by default the two messages of the
+ * scheduling export the investigation imports. */
+export async function buildIndex(user: UserEvent, occurrences = 2): Promise<void> {
   const inspector = within(region("Inspector"));
   await press(user, await inspector.findByRole("button", { name: "Build case index" }));
   const form = within(await inspector.findByRole("form", { name: "Build index form" }));
   await press(user, form.getByRole("button", { name: "Build index" }));
-  expect(await inspector.findByText(/Showing 2 of 2 matching/)).toBeTruthy();
+  expect(await inspector.findByText(`Showing ${Math.min(occurrences, GRID_WINDOW)} of ${occurrences} matching`)).toBeTruthy();
 }
 
 /** The test authoring panel beside the open case. */

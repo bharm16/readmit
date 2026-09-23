@@ -10,6 +10,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -21,6 +22,7 @@ import (
 	"github.com/bharm16/readmit/internal/grid"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/index"
+	"github.com/bharm16/readmit/internal/operation"
 )
 
 // The workspace below holds two cases. The first carries a booking, its
@@ -607,6 +609,197 @@ func TestNavigationReverifiesReplacedPayloads(t *testing.T) {
 				t.Fatalf("navigation reused or followed replaced evidence: %+v", got)
 			}
 		})
+	}
+}
+
+// Why a window or a description refuses an index.
+const (
+	builtFromOtherEvidence = "the index was built from different evidence than this case; build it again from this case"
+	retentionEnded         = "the retention declared for this index has ended; build it again from this case, or delete it"
+	notAnIndex             = "that entry is not an index this release reads; build one from this case"
+	laterVersion           = "the index was written under a contract version this release cannot read; build it again from this case"
+	alteredIndex           = "the index no longer matches what was written for it; the evidence is unchanged, build the index again"
+)
+
+// reopened is the case of that name as the shared reader verifies it now.
+func reopened(t *testing.T, root, name string) *bundle.Bundle {
+	t.Helper()
+	opened, err := bundle.Open(filepath.Join(root, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return opened
+}
+
+// rewrite replaces one file's bytes as another program would, in place.
+func rewrite(t *testing.T, path string, change func(string) string) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := change(string(data))
+	if changed == string(data) {
+		t.Fatalf("the change left %s as it was", path)
+	}
+	if err := os.WriteFile(path, []byte(changed), 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// alteredAfterSealing is an index still well formed in every member whose
+// recorded build time is no longer the one its digest was taken over.
+func alteredAfterSealing(document string) string {
+	return strings.Replace(document, `"built_at":"2026-09-18T12:00:00Z"`, `"built_at":"2026-09-18T12:00:01Z"`, 1)
+}
+
+// A window and what it says about its index come from one read of the case:
+// the details a grid carries are exactly the details DescribeIndex reports of
+// the same index, in every state an index can be in, while the grid keeps its
+// own state and reason. The window shows those details beside the rows, so a
+// page needs no second verification of the case to show them.
+func TestAWindowDescribesTheIndexItsOwnReadChecked(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		index   func(t *testing.T, app *desktop.App, root, filters string) string
+		state   desktop.State
+		reason  string
+		details func(*desktop.IndexDetails) bool
+	}{
+		{"applicable", func(*testing.T, *desktop.App, string, string) string { return "incident.index.json" },
+			desktop.Completed, "", func(d *desktop.IndexDetails) bool { return d != nil && d.Applicable }},
+		{"built from other evidence", func(*testing.T, *desktop.App, string, string) string { return "followup.index.json" },
+			desktop.Failed, builtFromOtherEvidence, func(d *desktop.IndexDetails) bool { return d != nil && d.Stale && !d.Applicable }},
+		{"retention ended", func(t *testing.T, _ *desktop.App, root, _ string) string {
+			ended := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+			return writeIndex(t, root, "ended.index.json", reopened(t, root, "incident"), &ended)
+		}, desktop.Failed, retentionEnded, func(d *desktop.IndexDetails) bool { return d != nil && d.Expired && !d.Applicable }},
+		{"altered after it was written", func(t *testing.T, _ *desktop.App, root, _ string) string {
+			name := writeIndex(t, root, "altered.index.json", reopened(t, root, "incident"), nil)
+			rewrite(t, filepath.Join(root, name), alteredAfterSealing)
+			return name
+		}, desktop.Failed, alteredIndex, func(d *desktop.IndexDetails) bool { return d != nil && d.Damaged }},
+		{"declares the contract but is not one", func(t *testing.T, _ *desktop.App, root, _ string) string {
+			name := writeIndex(t, root, "extended.index.json", reopened(t, root, "incident"), nil)
+			rewrite(t, filepath.Join(root, name), func(s string) string { return strings.Replace(s, "{", `{"unexpected":true,`, 1) })
+			return name
+		}, desktop.Failed, alteredIndex, func(d *desktop.IndexDetails) bool { return d != nil && d.Damaged }},
+		{"a later contract version", func(t *testing.T, _ *desktop.App, root, _ string) string {
+			writeDocument(t, root, "later.index.json", `{"schema":"readmit-index/v999"}`)
+			return "later.index.json"
+		}, desktop.Failed, laterVersion, func(d *desktop.IndexDetails) bool { return d != nil && d.Unsupported }},
+		{"not an index", func(t *testing.T, _ *desktop.App, root, _ string) string {
+			writeDocument(t, root, "notes.txt", "not an index")
+			return "notes.txt"
+		}, desktop.Failed, notAnIndex, func(d *desktop.IndexDetails) bool { return d == nil }},
+		{"a filter it cannot answer", func(t *testing.T, app *desktop.App, root, _ string) string {
+			document, err := index.Build(context.Background(), reopened(t, root, "incident"),
+				index.Policy{Fields: []string{patientField}, Retention: index.RetainStates}, indexedAt())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := index.Write(filepath.Join(root, "states.index.json"), document); err != nil {
+				t.Fatal(err)
+			}
+			saveFilter(t, app, grid.Filter{Name: "one patient",
+				Fields: []grid.FieldPredicate{{Selector: patientField, Match: index.Equals, Term: "MRN-1"}}})
+			return "states.index.json"
+		}, desktop.Failed, "this index retains no values", func(d *desktop.IndexDetails) bool { return d != nil && d.Applicable }},
+		{"saved filters it cannot read", func(t *testing.T, _ *desktop.App, _, filters string) string {
+			if err := os.WriteFile(filters, []byte("{"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			return "incident.index.json"
+		}, desktop.Failed, "the saved filters cannot be read", func(d *desktop.IndexDetails) bool { return d != nil && d.Applicable }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app, root, filters := gridWorkspace(t)
+			name := tc.index(t, app, root, filters)
+			got := app.OpenGrid(root, "incident", name, 0, 10)
+			if got.State != tc.state || (got.Grid != nil) != (tc.state == desktop.Completed) ||
+				(tc.reason == "") != (got.Reason == "") || !strings.Contains(got.Reason, tc.reason) {
+				t.Fatalf("the grid answered %s %q, want %s %q", got.State, got.Reason, tc.state, tc.reason)
+			}
+			if !tc.details(got.Index) {
+				t.Fatalf("the grid described its index as %+v", got.Index)
+			}
+			if described := app.DescribeIndex(root, "incident", name); !reflect.DeepEqual(got.Index, described.Index) {
+				t.Fatalf("the grid described its index as %+v, DescribeIndex as %+v", got.Index, described.Index)
+			}
+		})
+	}
+}
+
+// Nothing one read is kept for the next. A case or an index changed between
+// two reads — two pages, or the description a verified case opens with and
+// the first page after it — is refused by the second, and what that read found
+// is what the window is told about the index.
+func TestNavigationRefusesACaseOrIndexChangedBetweenTwoPages(t *testing.T) {
+	firstReads := map[string]func(t *testing.T, app *desktop.App, root string) *desktop.IndexDetails{
+		"after a page": func(t *testing.T, app *desktop.App, root string) *desktop.IndexDetails {
+			if page := openGrid(t, app, root, "incident", 0, 2); page.State == desktop.Completed {
+				return page.Index
+			}
+			return nil
+		},
+		"after the description a case opens with": func(_ *testing.T, app *desktop.App, root string) *desktop.IndexDetails {
+			if described := app.DescribeIndex(root, "incident", ""); described.State == desktop.Completed {
+				return described.Index
+			}
+			return nil
+		},
+	}
+	for _, tc := range []struct {
+		name    string
+		change  func(t *testing.T, root string)
+		reason  string
+		details func(*desktop.IndexDetails) bool
+	}{
+		{"the case replaced by other evidence", func(t *testing.T, root string) {
+			if err := os.RemoveAll(filepath.Join(root, "incident")); err != nil {
+				t.Fatal(err)
+			}
+			writeCase(t, root, "incident", framed(gridBooking)+framed(gridAccepted))
+		}, builtFromOtherEvidence, func(d *desktop.IndexDetails) bool { return d != nil && d.Stale && !d.Applicable }},
+		{"the case's occurrence records rewritten", func(t *testing.T, root string) {
+			rewrite(t, filepath.Join(root, "incident", "events.jsonl"), func(s string) string { return s + "\n" })
+		}, operation.ErrCaseUnverified.Error(), func(d *desktop.IndexDetails) bool { return d == nil }},
+		{"the index altered", func(t *testing.T, root string) {
+			rewrite(t, filepath.Join(root, "incident.index.json"), alteredAfterSealing)
+		}, alteredIndex, func(d *desktop.IndexDetails) bool { return d != nil && d.Damaged }},
+		{"the index replaced by one of other evidence", func(t *testing.T, root string) {
+			other, err := os.ReadFile(filepath.Join(root, "followup.index.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(root, "incident.index.json"), other, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}, builtFromOtherEvidence, func(d *desktop.IndexDetails) bool { return d != nil && d.Stale && !d.Applicable }},
+		{"the index replaced by one whose retention has ended", func(t *testing.T, root string) {
+			if err := os.Remove(filepath.Join(root, "incident.index.json")); err != nil {
+				t.Fatal(err)
+			}
+			ended := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+			writeIndex(t, root, "incident.index.json", reopened(t, root, "incident"), &ended)
+		}, retentionEnded, func(d *desktop.IndexDetails) bool { return d != nil && d.Expired && !d.Applicable }},
+	} {
+		for first, read := range firstReads {
+			t.Run(tc.name+" "+first, func(t *testing.T) {
+				app, root, _ := gridWorkspace(t)
+				if details := read(t, app, root); details == nil || !details.Applicable {
+					t.Fatalf("the first read described the index as %+v", details)
+				}
+				tc.change(t, root)
+				second := openGrid(t, app, root, "incident", 2, 2)
+				if second.State != desktop.Failed || second.Grid != nil || second.Reason != tc.reason {
+					t.Fatalf("the second read answered %s %q with %+v, want the refusal %q", second.State, second.Reason, second.Grid, tc.reason)
+				}
+				if !tc.details(second.Index) {
+					t.Fatalf("the second read described its index as %+v", second.Index)
+				}
+			})
+		}
 	}
 }
 
