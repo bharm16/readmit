@@ -201,19 +201,20 @@ func (a *App) InspectProfilePack(workspace, entry string) ProfilePackResult {
 }
 
 // OpenProfileLibrary opens a directory of profile packs as a library and returns its support matrix.
+// The directory is the open workspace itself, or one real folder of it.
 func (a *App) OpenProfileLibrary(workspace, directory string) ProfileLibraryResult {
 	return run(a, false, false, func(context.Context) ProfileLibraryResult {
 		root, declined := resolveFolder(workspace)
 		if root == "" {
 			return ProfileLibraryResult{State: declined.state, Reason: declined.reason}
 		}
-		dirPath := directory
-		if !filepath.IsAbs(directory) {
-			if directory == "" || directory == "." {
-				dirPath = root
-			} else {
-				dirPath = filepath.Join(root, directory)
+		dirPath := root
+		if directory != "" && directory != "." {
+			folder, err := artifactpath.Child(root, directory)
+			if err != nil {
+				return ProfileLibraryResult{State: Failed, Reason: "a profile library must be the open workspace or one folder of it, never a symbolic link"}
 			}
+			dirPath = folder
 		}
 		lib, err := profilelibrary.Open(dirPath)
 		if err != nil {

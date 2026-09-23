@@ -350,7 +350,12 @@ func (a *App) describeIndex(workspace, caseName, indexName string) IndexResult {
 
 	var candidateResult *IndexResult
 	for _, entry := range entries {
-		if entry.IsDir() || entry.Name() == standardName {
+		if entry.Name() == standardName {
+			continue
+		}
+		// An index is one regular file of the workspace, so a symbolic link
+		// is passed over before anything is read through it.
+		if _, err := artifactpath.File(root, entry.Name()); err != nil {
 			continue
 		}
 		if kind, ok := classify(root, entry.Name(), false); ok && kind == IndexArtifact {

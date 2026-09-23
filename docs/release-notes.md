@@ -1,5 +1,24 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The window's remaining path-confinement gaps found after #339 are closed
+  (#348). Opening a profile library accepted an absolute path, `..` and a folder
+  reached through a symbolic link; it now opens only the workspace itself or one
+  real folder of it, and the panel's hint says so. A generated scenario family
+  and its case, a synthetic family, a source collection's staging folder and
+  receipt, a capture's case and observation record, and the case and receipt a
+  staged collection is finalized into were joined to the workspace as given, so
+  `..`, an absolute path, a nested name or a name through a linked folder placed
+  them beside the workspace, inside one of its folders or outside it. Each must
+  now be one new entry name, refused before anything is read or written. Finding
+  a case's index when none is named read the first bytes of whatever a symbolic
+  link in the workspace pointed at before passing over it; it now passes over
+  the link unread. Every entry the reader that opens it already refused as a
+  link now has a test that hands it a link to a real entry of its kind. The
+  environment, credential, observation and capture screens keep accepting a
+  document by absolute or nested path, as decided, and the desktop guide now
+  lists which inputs are workspace entries and which accept outside paths. No
+  contract, facade method or `readmit` command changes.
+
 - `readmit report` and the guided sample's practice runs no longer fail because
   the local disk is slow (#350). Both send to the built-in fixture in their own
   process, and as in redaction's proofs before #331, the fixture flushed its
@@ -50,6 +69,7 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   selection's bytes and meaning are unchanged, the privacy status now names it
   among what the shell keeps, and no contract, facade method or `readmit`
   command changes.
+
 
 - A case is now reported written only once the directory entries naming its
   files are synced as well as the files (#336). The writer synced each file and

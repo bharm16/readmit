@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/capturejournal"
 	"github.com/bharm16/readmit/internal/collection"
@@ -263,14 +264,6 @@ func (a *App) CollectSource(request SourceWorkRequest) SourceCollectionResult {
 				out.Reason = "runner settlement failed; reconcile the retained admission before new work"
 			}
 		}()
-		source, options, err := a.sourceWork(ctx, request)
-		if err != nil {
-			return SourceCollectionResult{State: Failed, Reason: err.Error()}
-		}
-		root := request.Workspace
-		if root == "" {
-			return SourceCollectionResult{State: Failed, Reason: "a workspace is required to stage collected evidence"}
-		}
 		outputName := request.OutputName
 		if outputName == "" {
 			outputName = "collected"
@@ -278,6 +271,20 @@ func (a *App) CollectSource(request SourceWorkRequest) SourceCollectionResult {
 		receiptName := request.ReceiptName
 		if receiptName == "" {
 			receiptName = "collection.json"
+		}
+		if artifactpath.EntryName(outputName) != nil {
+			return SourceCollectionResult{State: Failed, Reason: "the staging folder must be one new entry of the open workspace"}
+		}
+		if artifactpath.EntryName(receiptName) != nil {
+			return SourceCollectionResult{State: Failed, Reason: "the collection receipt must be one new entry of the open workspace"}
+		}
+		source, options, err := a.sourceWork(ctx, request)
+		if err != nil {
+			return SourceCollectionResult{State: Failed, Reason: err.Error()}
+		}
+		root := request.Workspace
+		if root == "" {
+			return SourceCollectionResult{State: Failed, Reason: "a workspace is required to stage collected evidence"}
 		}
 		output := filepath.Join(root, outputName)
 		receipt := filepath.Join(root, receiptName)
@@ -501,6 +508,12 @@ func (a *App) StartCapture(request CaptureRequest) CaptureSessionResult {
 				out.Reason = "runner settlement failed; reconcile the retained admission before new work"
 			}
 		}()
+		if artifactpath.EntryName(request.OutputName) != nil {
+			return CaptureSessionResult{State: Failed, Reason: "the captured case must be one new entry of the open workspace", Phase: CaptureFailed}
+		}
+		if request.Kind == "listen" && request.ObservationName != "" && artifactpath.EntryName(request.ObservationName) != nil {
+			return CaptureSessionResult{State: Failed, Reason: "the observation record must be one new entry of the open workspace", Phase: CaptureFailed}
+		}
 		bounded, cancel := context.WithTimeout(ctx, operationguard.MaxDuration)
 		defer cancel()
 
@@ -668,10 +681,16 @@ func (a *App) FinalizeCaptureImport(request FinalizeCaptureRequest) ImportCommit
 		if request.OutputName == "" {
 			return ImportCommitResult{State: Failed, Reason: "an output case name is required"}
 		}
+		if artifactpath.EntryName(request.OutputName) != nil {
+			return ImportCommitResult{State: Failed, Reason: "the case destination must be one valid directory entry name"}
+		}
 		casePath := filepath.Join(targetDir, request.OutputName)
 		receiptName := request.ReceiptName
 		if receiptName == "" {
 			receiptName = request.OutputName + "-import.json"
+		}
+		if artifactpath.EntryName(receiptName) != nil {
+			return ImportCommitResult{State: Failed, Reason: "the receipt destination must be one valid file entry name"}
 		}
 		receiptPath := filepath.Join(targetDir, receiptName)
 		b, _, err := operation.ImportPlanCommit(ctx, plan, nil, []string{folder}, nil, casePath, receiptPath)
