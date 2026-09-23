@@ -248,3 +248,35 @@ func awaitEntries[R any](t *testing.T, directory string, count int, answered cha
 		}
 	}
 }
+
+// answeredWithin runs one facade call with a deadline, so a call that blocked —
+// on a FIFO it should never have opened, say — fails as itself instead of
+// hanging the package.
+func answeredWithin[R any](t *testing.T, call string, operation func() R) R {
+	t.Helper()
+	done := make(chan R, 1)
+	go func() { done <- operation() }()
+	select {
+	case result := <-done:
+		return result
+	case <-time.After(10 * time.Second):
+		t.Fatalf("%s blocked instead of answering", call)
+		var none R
+		return none
+	}
+}
+
+// entriesOf lists the names directly in folder, so a refused operation can be
+// shown to have created nothing there.
+func entriesOf(t *testing.T, folder string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(folder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+	return names
+}

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/engine"
 	"github.com/bharm16/readmit/internal/protect"
 )
@@ -117,6 +118,13 @@ func protectionEntryPath(workspace, entry string) (string, string, refusal) {
 	path, err := runEntryPath(root, entry)
 	if err != nil {
 		return "", "", refusal{Failed, "the protection document must be one entry of the open workspace"}
+	}
+	// An absent entry is where the first document is written; one that exists
+	// is read, so it is held to the rule every read entry is.
+	if _, err := artifactpath.File(root, entry); err != nil {
+		if _, err := os.Lstat(path); !errors.Is(err, fs.ErrNotExist) {
+			return "", "", refusal{Failed, "the protection document must be one regular file of the open workspace, never a symbolic link"}
+		}
 	}
 	return root, path, refusal{}
 }
@@ -356,9 +364,12 @@ func (a *App) PackProtectedPackage(request ProtectionPackRequest) ProtectionPack
 		}
 		sources := make([]string, 0, len(request.Sources))
 		for _, name := range request.Sources {
-			path, err := runEntryPath(root, name)
+			path, err := artifactpath.File(root, name)
 			if err != nil {
-				return ProtectionPackageResult{State: Failed, Reason: "every entry to pack must be one entry of the open workspace"}
+				path, err = artifactpath.Child(root, name)
+			}
+			if err != nil {
+				return ProtectionPackageResult{State: Failed, Reason: "every entry to pack must be one regular file or folder of the open workspace, never a symbolic link"}
 			}
 			sources = append(sources, path)
 		}

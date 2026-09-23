@@ -441,10 +441,11 @@ func Run(ctx context.Context, root, spec, output string, corrected bool) (*testr
 // sample: it sends the sample case at the practice endpoint. A spec pointed
 // somewhere else is refused here rather than silently rebound onto a fixture.
 func readSaved(root, name string) (testrunner.Spec, error) {
-	if artifactpath.EntryName(name) != nil {
-		return testrunner.Spec{}, errors.New("a test spec is one entry of the open workspace")
+	path, err := artifactpath.File(root, name)
+	if err != nil {
+		return testrunner.Spec{}, errors.New("a test spec is one regular file of the open workspace, never a symbolic link")
 	}
-	spec, err := testrunner.ReadSpec(artifactpath.JoinReference(root, name))
+	spec, err := testrunner.ReadSpec(path)
 	if err != nil {
 		return testrunner.Spec{}, errors.New("that entry is not a test spec this release reads")
 	}

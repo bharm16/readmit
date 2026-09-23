@@ -81,7 +81,7 @@ func (a *App) StartDurableRun(request DurableRunRequest) DurableRunResult {
 		if root == "" {
 			return DurableRunResult{State: declined.state, Reason: declined.reason}
 		}
-		specPath, err := runEntryPath(root, request.Spec)
+		specPath, err := artifactpath.File(root, request.Spec)
 		if err != nil {
 			return DurableRunResult{State: Failed, Reason: "the saved test must be one regular entry of the open workspace"}
 		}
@@ -279,7 +279,7 @@ func (a *App) PreflightRun(request RunPreflightRequest) RunPreflightResult {
 		if root == "" {
 			return RunPreflightResult{State: declined.state, Reason: declined.reason}
 		}
-		path, err := runEntryPath(root, request.Spec)
+		path, err := artifactpath.File(root, request.Spec)
 		if err != nil {
 			return RunPreflightResult{State: Failed, Reason: "the saved test must be one regular entry of the open workspace"}
 		}
@@ -439,7 +439,7 @@ func (a *App) ChooseRunSpec(workspace string) RunSpecChoiceResult {
 		if err != nil || folder != root || artifactpath.EntryName(name) != nil {
 			return RunSpecChoiceResult{State: Failed, Reason: "a saved test or suite is one entry of the open workspace; advanced selection cannot reach outside it"}
 		}
-		if info, err := os.Lstat(filepath.Join(root, name)); err != nil || !info.Mode().IsRegular() {
+		if _, err := artifactpath.File(root, name); err != nil {
 			return RunSpecChoiceResult{State: Failed, Reason: "a saved test or suite is an existing regular file of the open workspace, never a symbolic link"}
 		}
 		return RunSpecChoiceResult{State: Completed, Entry: name}
@@ -530,7 +530,7 @@ func (a *App) StartSuiteRun(request SuiteRunRequest) SuiteRunResult {
 		if root == "" {
 			return SuiteRunResult{State: declined.state, Reason: declined.reason}
 		}
-		suitePath, err := runEntryPath(root, request.Suite)
+		suitePath, err := artifactpath.File(root, request.Suite)
 		if err != nil {
 			return SuiteRunResult{State: Failed, Reason: "the suite must be one regular entry of the open workspace"}
 		}
@@ -547,7 +547,7 @@ func (a *App) StartSuiteRun(request SuiteRunRequest) SuiteRunResult {
 		}
 		references := ""
 		if request.References != "" {
-			referencePath, err := runEntryPath(root, request.References)
+			referencePath, err := artifactpath.File(root, request.References)
 			if err != nil {
 				return SuiteRunResult{State: Failed, Reason: "released references must be one regular entry of the open workspace"}
 			}
@@ -881,7 +881,11 @@ func runEntryPath(root, name string) (string, error) {
 // runEvidencePath resolves a workspace entry naming a retained execution,
 // which is either one entry or one job inside a suite execution's retained
 // runs directory (`suite-output/runs/job`). Every component is validated as an
-// entry name; no arbitrary path is accepted.
+// entry name; no arbitrary path is accepted. The two folders a job is reached
+// through must be real folders, never symbolic links, so a nested name cannot
+// leave the workspace before the reader is handed it; the named execution
+// itself is the reader's to refuse as a link, as every retained-evidence
+// reader does.
 func runEvidencePath(root, name string) (string, error) {
 	parts := splitEntryPath(name)
 	switch len(parts) {
@@ -892,14 +896,14 @@ func runEvidencePath(root, name string) (string, error) {
 			return "", errors.New("not a retained execution entry")
 		}
 		path := root
-		for _, part := range parts {
-			resolved, err := runEntryPath(path, part)
+		for _, part := range parts[:2] {
+			resolved, err := artifactpath.Child(path, part)
 			if err != nil {
 				return "", err
 			}
 			path = resolved
 		}
-		return path, nil
+		return runEntryPath(path, parts[2])
 	default:
 		return "", errors.New("not a retained execution entry")
 	}

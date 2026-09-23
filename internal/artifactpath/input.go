@@ -57,6 +57,23 @@ func Child(directory, name string) (string, error) {
 	return path, nil
 }
 
+// File resolves one named document entry of an already-resolved artifact
+// directory. The name must satisfy EntryName, and the entry itself must be a
+// regular file, never a symbolic link wherever it points, a folder or a
+// device, so a name cannot be used to read anything but the one file the
+// directory holds under it. It is Child's rule for a document.
+func File(directory, name string) (string, error) {
+	if err := EntryName(name); err != nil {
+		return "", err
+	}
+	path := JoinReference(directory, name)
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", errors.New("artifact entry must be a regular file")
+	}
+	return path, nil
+}
+
 // JoinReference anchors a declared relative path without cleaning away raw
 // symlink/.. traversal. Resolve or access the result before any lexical joins.
 func JoinReference(directory, reference string) string {
