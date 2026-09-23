@@ -7,6 +7,7 @@ import {
   folderChosen,
   projectOverviewResult,
   caseResult,
+  registeredCase,
 } from "./testkit/fixtures";
 import { renderApp } from "./testkit/app";
 import type {
@@ -382,11 +383,19 @@ test("recipe mapping authoring, preview, commit to project, and navigation into 
   expect(screen.getByText("imported-case-01-receipt.json")).toBeTruthy();
   expect(screen.getByText("Registered into project.")).toBeTruthy();
 
-  // Click "Open this case in inspector"
+  // Click "Open this case in inspector". Leaving the import re-reads the
+  // project the case was registered into, so its overview lists the case.
+  const overviewReads = facade.callsTo("OpenProjectOverview").length;
+  facade.reply({
+    OpenProjectOverview: () =>
+      projectOverviewResult([{ ...registeredCase("imported-case-01"), title: "Imported feed" }]),
+  });
   await user.click(screen.getByRole("button", { name: "Open this case in inspector" }));
 
   // Inspector verifies and opens the case!
   expect(await screen.findByText("sha256:finalcase777")).toBeTruthy();
+  expect(facade.callsTo("OpenProjectOverview")).toHaveLength(overviewReads + 1);
+  expect(await screen.findByText("Imported feed")).toBeTruthy();
 });
 
 test("draft retention restores draft state and handles cancellation", async () => {

@@ -31,6 +31,41 @@ driving real user events; the shared-operation parity evidence for it stays
 on the Go side, where `internal/desktop` and the domain packages are tested
 against the same readers the command line uses.
 
+A journey that must cross the real facade — several screens, real files, a
+close and reopen, a behavior no stub can answer honestly — goes through
+`desktop/frontend/src/testkit/journey.tsx` instead, in
+`desktop/frontend/src/journeys/NAME.journey.tsx`, and runs with
+`npm run test:journeys` (it needs the Go toolchain: the global setup builds the
+`desktop/journeybridge` program and the command line once per run). There is
+no stub: every call reaches the real `internal/desktop` facade over real files,
+carried with Wails' call semantics, except that a call Wails would leave
+unanswered is rejected. The kit's verbs:
+
+- `Journey.create()` owns a new temporary root; `launch()` starts the
+  application over it and mounts the production window; `dispose()` in
+  `afterEach` ends it and removes the root.
+- `press(user, button)` presses a control once the window offers it. Pressing
+  a disabled control does nothing, so every step after real work uses it.
+- `chooseFolder(path, title)`, `chooseFiles(paths, title)` and
+  `dismissDialog(kind, title)` answer the next host dialog, before the action
+  that opens it. Name the dialog title the facade shows.
+- `writeFile`, `makeFolder` and `provisionLicense` prepare what a person or
+  their vendor put on the machine before the application saw it: exported
+  evidence, a folder for a project, a signed activation folder.
+- `close()` waits for the window to settle, then ends the process as closing
+  the window does; `crash()` ends it at once and abandons what was running;
+  `launch()` again reopens over the same files.
+- `calls` and `callsTo(method)` record every call the window made and what the
+  facade answered; `commandLine(args)` runs the checkout's `readmit` over the
+  same root, for parity with what the window wrote.
+
+A journey fails at close for a dialog nobody answered, an answer nobody used, a
+call Wails would have rejected or a call that never finished, and no verb
+places a file outside the journey's root. Never call the facade directly to
+stand in for a step a person takes, and state each expected outcome from the
+scenario's own facts rather than from what the engine answered. Use synthetic
+evidence only; the processes see an empty PATH and a home inside the root.
+
 ## Before pushing
 
 Batch related review fixes, resolve integration changes against current main,
@@ -65,9 +100,10 @@ The desktop module builds and scans separately, and `desktop` is that workflow's
 equivalent stable aggregate: it requires the macOS shell build and the five
 `desktop-package` jobs plus the five `desktop-install` jobs, which download,
 install, check and remove the exact unsigned artifacts on fresh native runners.
-The macOS shell job also executes the frontend behavior tests and publishes
-their output as an artifact, so a failing component test fails the `desktop`
-aggregate rather than only a developer's local run.
+The macOS shell job also executes the frontend behavior tests and the
+interaction journeys and publishes their output as an artifact, so a failing
+component test or journey fails the `desktop` aggregate rather than only a
+developer's local run.
 It fails the same way if any of them fails, is skipped or is cancelled. Release credentials remain exclusive to
 trusted tag runs; no signing credential reaches any workflow.
 

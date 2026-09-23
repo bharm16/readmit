@@ -5,7 +5,8 @@
   "scripts": {
     "build": "tsc --noEmit && vite build",
     "dev": "vite",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:journeys": "vitest run --config vitest.journeys.config.ts"
   },
   "dependencies": {
     "react": "19.3.0",

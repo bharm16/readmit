@@ -6,7 +6,7 @@
 // side; these tests prove the window reaches the shared operations and draws
 // every outcome they can return.
 import { expect, test } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   CASE_ENTRY,
@@ -103,6 +103,57 @@ test("a project is created, a case is registered from the listing, and the inves
   expect(within(trail).getByText("Workspace")).toBeTruthy();
   expect(within(trail).getByText("Scheduling investigation")).toBeTruthy();
   expect(within(trail).getByText(CASE_ENTRY)).toBeTruthy();
+});
+
+/** The new project's own folder inside the open workspace, the way the
+ * facade creates it, and its overview read from there. */
+const CREATED = `${WORKSPACE_ROOT}/scheduling-investigation`;
+function createdOverview() {
+  const result = projectOverviewResult([]);
+  return { ...result, overview: { ...result.overview!, root: CREATED } };
+}
+
+test("a project created in a folder inside the workspace becomes the open workspace", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openPlainWorkspace(user);
+  facade.reply({
+    CreateProject: () => createdOverview(),
+    OpenWorkspace: () =>
+      folderChosen(CREATED, [{ name: "project.json", kind: "project", schema: "readmit-project/v1" }]),
+    OpenProjectOverview: () => createdOverview(),
+  });
+  const evidence = within(screen.getByRole("region", { name: "Evidence" }));
+  await user.click(evidence.getByRole("button", { name: "Create a project…" }));
+  await user.type(evidence.getByLabelText("Folder name for the new project"), "scheduling-investigation");
+  await user.type(evidence.getByLabelText("Interface versions, comma-separated"), "siu-2.5.1-v1");
+  await user.click(evidence.getByRole("button", { name: "Create the project…" }));
+  // The window opens the new project's own folder and reads the project there,
+  // so registering and importing act on it rather than the folder around it.
+  expect(await screen.findByText(CREATED)).toBeTruthy();
+  expect(facade.oneCall("OpenWorkspace")).toEqual([CREATED]);
+  await waitFor(() =>
+    expect(facade.callsTo("OpenProjectOverview").at(-1)).toEqual({ method: "OpenProjectOverview", args: [CREATED] }),
+  );
+  expect(await evidence.findByText(/Nothing is registered yet/)).toBeTruthy();
+});
+
+test("a new project folder that cannot be opened leaves no project open over the folder around it", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openPlainWorkspace(user);
+  facade.reply({
+    CreateProject: () => createdOverview(),
+    OpenWorkspace: () => refused("this account cannot read that folder"),
+  });
+  const evidence = within(screen.getByRole("region", { name: "Evidence" }));
+  await user.click(evidence.getByRole("button", { name: "Create a project…" }));
+  await user.type(evidence.getByLabelText("Folder name for the new project"), "scheduling-investigation");
+  await user.type(evidence.getByLabelText("Interface versions, comma-separated"), "siu-2.5.1-v1");
+  await user.click(evidence.getByRole("button", { name: "Create the project…" }));
+  expect(await screen.findByText("this account cannot read that folder")).toBeTruthy();
+  // The workspace that was open stays open, and no project is shown over it.
+  expect(screen.getByText(WORKSPACE_ROOT)).toBeTruthy();
+  expect(evidence.queryByRole("button", { name: "Register this case" })).toBeNull();
+  expect(facade.callsTo("OpenProjectOverview")).toHaveLength(0);
 });
 
 test("a dismissed folder dialog is a cancelled create that opened nothing", async () => {

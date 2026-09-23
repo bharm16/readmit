@@ -164,6 +164,52 @@ observation must refuse. A later automated read of this fixture is not a fresh
 native UI run. Candidate archives remain local acceptance artifacts; these
 hashes and the fixture are not a published/signed release or provenance signature.
 
+## Interaction journeys over the real facade
+
+`npm run test:journeys` in `desktop/frontend` drives the production window with
+real user events against the real `internal/desktop` facade over real files in
+a temporary root, with no stubbed answer; see
+[the desktop shell](desktop.md#interaction-journeys-against-the-real-facade)
+and [validation](agents/testing.md) for how. The macOS shell job of the desktop
+workflow runs them on every pull request and every push to main, and a failing
+journey fails the `desktop` check. They cover:
+
+- the interactive journey above, automated through the window in jsdom: the
+  sample is created and `regression` verified with its index open, every
+  authoring stage is answered and a new test saved, the defective fixture
+  yields `assertion_failure` with the record-count expectation failed, the
+  corrected fixture yields `pass` for the same test, and after the window
+  closes and reopens both verdicts are read back from disk. `readmit diff`
+  over the two retained results then reports the same two statuses over two
+  unchanged paired messages;
+- the start of an investigation over a person's own export: the vendor's
+  activation folder is selected and reported active, a new project is created
+  and the window moves into it, the export is imported with the batch framing
+  it uses and registered, an index is built under declared digest retention,
+  a control identifier is found by search, the inspected message is the
+  exported bytes exactly, and after a close and reopen the project still
+  records the verified case. `readmit project show` and `readmit index search`
+  read the same files and agree;
+- the harness's own refusals: an unanswered or wrongly answered dialog, an
+  unused answer, a call Wails would reject and a window closed while a call
+  still runs each fail a journey; no journey can write outside its root; a
+  dismissed dialog is a cancellation; and a crash abandons the window while
+  the next launch restores where the viewer was from disk.
+
+These journeys found three integration defects the stubbed component tests
+could not, fixed alongside them: a project created in a subfolder left the
+window on the folder around it, so an imported case could not be opened; an
+import that registered a case left the project overview listing none; and a
+navigation read — the session to restore, a case, its index or grid, the
+guided sample or a project — could meet another read holding the facade's one
+operation slot and be answered busy, which dropped "Reopen where you were" or
+left a reopened case without its grid. Such reads are now asked again, a
+bounded number of times; a write refused busy is not.
+
+They run in jsdom, not the native webview, against the Go facade the packaged
+shell binds rather than the packaged executable itself. They do not replace
+the installed-package journey above.
+
 ## Unaccepted scope
 
 Keep #109 open until actual packaged journeys cover the finite Windows, Linux,
@@ -172,6 +218,8 @@ machines, real signing/notarization, independent connector/observation targets,
 real IdP collaboration and revocation, and approved Paddle sandbox billing and
 entitlement failure scenarios. Re-run against the precise release candidate.
 The full guided journey is locally evidenced on one unsigned macOS candidate;
-other platforms have startup checks and existing component tests. No owner
+other platforms have startup checks and existing component tests. The
+interaction journeys over the real facade run on the macOS shell job only and
+drive no installed package. No owner
 choice about a permanent frontend test runner (#183) is made here. No result
 supplants #110 performance or #111 security/privacy/accessibility acceptance.

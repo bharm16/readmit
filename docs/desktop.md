@@ -58,6 +58,38 @@ shell job and, with it, the `desktop` check. The tests drive a jsdom window,
 not the native webview: packaged native journeys are separate acceptance, not
 something a component test claims.
 
+### Interaction journeys against the real facade
+
+`npm run test:journeys` in `desktop/frontend` mounts the same production `App`
+tree `main.tsx` mounts and drives it with real keyboard and pointer events, but
+no call is answered by a stub. Each call crosses to `journeybridge`
+(`desktop/journeybridge`), a test program that builds the real
+`internal/desktop` facade with the shell's own constructor over its five local
+state documents in a temporary root, and carries the call the way Wails does:
+the arguments serialized as the webview serializes them, decoded with
+`encoding/json` into the Go method's own parameter types, the argument count
+checked, each call on its own goroutine, and the result or error returned in
+Wails' callback shape. A call Wails would never answer — a name nothing is
+bound under, or a method that panics — is rejected instead, so a journey
+fails rather than hangs. The host's folder and file dialogs are what a journey
+answers, before the action that opens them, the way a person picks a folder.
+A dialog nobody answered, an answer nobody used and a call Wails would have
+rejected each fail the journey rather than passing it quietly. Closing the
+window ends the process and reopening starts another over the same files, so
+what a journey finds after a reopen was on disk; the command line built from
+the same checkout — the same engine through its own entry point — then reads
+what the window wrote and must agree.
+
+The journeys run the complete guided sample (author, fail on the defect, pass
+once corrected, close and reopen) and the start of a real investigation over
+a person's own exported messages (activation, a new project, import with the
+framing the export uses, registration, a declared-retention index, search,
+the original bytes, close and reopen). They run in jsdom, not the native
+webview, so they are evidence about the application over real files rather
+than about installed packages. The desktop workflow's shell job runs them
+after the component tests, and a failing journey fails the `desktop` check.
+See [validation](agents/testing.md) for writing one.
+
 ## Native packages
 
 The shell is distributed as the platform's own package rather than as an archive
