@@ -1,6 +1,7 @@
 package hub_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/x509"
@@ -10,11 +11,13 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -63,6 +66,96 @@ func TestRunnerProcess(t *testing.T) {
 		}
 	}
 }
+
+// runnerHold is the documented ten seconds a new hub handler refuses every
+// lease for.
+const runnerHold = 10 * time.Second
+
+// hubClock is the hub's clock in a test that drives a real runner client: the
+// host's clock plus an offset the test moves. The client refuses a lease that
+// grants more than ten seconds by the host's clock, so the hub's clock must not
+// run ahead of the host's. It starts one hold behind, so a handler built on it
+// starts inside its hold; advancing it by the hold ends the hold without
+// waiting and leaves the hub on the host's clock for every lease after.
+type hubClock struct{ offset atomic.Int64 }
+
+func newHubClock() *hubClock {
+	c := &hubClock{}
+	c.offset.Store(int64(-runnerHold))
+	return c
+}
+func (c *hubClock) now() time.Time          { return time.Now().Add(time.Duration(c.offset.Load())) }
+func (c *hubClock) advance(d time.Duration) { c.offset.Add(int64(d)) }
+
+// TestRunnerHoldIssuesNoLeaseBeforeItEnds proves on the hub's own clock, to
+// the nanosecond and without waiting, the ordering the hold exists for: a new
+// handler issues no lease until ten seconds after it starts, then issues one;
+// and a handler restarted at the instant its predecessor issued a lease, which
+// it never saw, refuses every other runner until that lease has expired.
+func TestRunnerHoldIssuesNoLeaseBeforeItEnds(t *testing.T) {
+	c := integrationConfig(t)
+	db := testDatabase(t, c)
+	reset(t, db)
+	store := open(t, c)
+	if e := store.Migrate(context.Background()); e != nil {
+		t.Fatal(e)
+	}
+	a, policy, _, accessPath := accessFixture(t)
+	token := "rh_" + base64.RawURLEncoding.EncodeToString([]byte(strings.Repeat("h", 32)))
+	policy.Tokens = []hub.ScopedToken{{Hash: fmt.Sprintf("%x", sha256.Sum256([]byte(token))), Subject: "runner", Project: "alpha", Actions: []string{"enrollment", "execution"}, Expires: time.Now().Add(time.Hour).UTC().Format(time.RFC3339), Certificate: fmt.Sprintf("%x", sha256.Sum256([]byte("synthetic-client-cert"))), Kind: "runner"}}
+	writePolicy(t, accessPath, policy)
+	dir := t.TempDir()
+	os.Chmod(dir, 0700)
+	grants := filepath.Join(dir, "runners.json")
+	raw, _ := json.Marshal(runnerprotocol.Policy{Schema: "readmit-runner-policy/v1", Runners: []runnerprotocol.Grant{{Project: "alpha", Subject: "runner", Environment: "lab", Engine: "dev", Spec: "readmit-test/v1", Profile: "readmit-siu-v1", MaxSeconds: 300, MaxJobs: 2}}})
+	if e := os.WriteFile(grants, raw, 0600); e != nil {
+		t.Fatal(e)
+	}
+	// Each request is answered in this goroutine, so the clock needs no lock.
+	started := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	now := started
+	clock := func() time.Time { return now }
+	lease := func(handler http.Handler, instance string) (int, runnerprotocol.Lease) {
+		t.Helper()
+		body, _ := json.Marshal(runnerprotocol.Request{Schema: "readmit-runner-request/v1", Environment: "lab", Instance: instance, Job: "job", Engine: "dev", Spec: "readmit-test/v1", Profile: "readmit-siu-v1"})
+		r := request(token)
+		r.Method = "POST"
+		r.URL.Path = "/v1/projects/alpha/runner"
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		if w.Code != http.StatusOK {
+			return w.Code, runnerprotocol.Lease{}
+		}
+		granted, e := runnerprotocol.DecodeLease(w.Body.Bytes())
+		if e != nil {
+			t.Fatal(e)
+		}
+		return w.Code, granted
+	}
+	first := store.RunnerHandlerWithClockForTest(a, grants, clock)
+	for _, at := range []time.Time{started, started.Add(runnerHold - time.Nanosecond)} {
+		now = at
+		if code, _ := lease(first, "first"); code != http.StatusConflict {
+			t.Fatalf("lease %v after the handler started: status %d, want %d", at.Sub(started), code, http.StatusConflict)
+		}
+	}
+	now = started.Add(runnerHold)
+	code, granted := lease(first, "first")
+	if code != http.StatusOK || !granted.Expires.Equal(now.Add(10*time.Second)) {
+		t.Fatalf("lease as the hold ends: status %d, %+v", code, granted)
+	}
+	restarted := store.RunnerHandlerWithClockForTest(a, grants, clock)
+	now = granted.Expires.Add(-time.Nanosecond)
+	if code, _ := lease(restarted, "second"); code != http.StatusConflict {
+		t.Fatalf("restarted hub leased while its predecessor's lease was current: status %d", code)
+	}
+	now = granted.Expires
+	if code, _ := lease(restarted, "second"); code != http.StatusOK {
+		t.Fatalf("restarted hub once the predecessor's lease expired: status %d", code)
+	}
+}
+
 func TestCustomerRunnerActualTLSExecutionRevocationAndRecovery(t *testing.T) {
 	var hc hub.Config
 	cert := certificates(t, &hc)
@@ -83,7 +176,8 @@ func TestCustomerRunnerActualTLSExecutionRevocationAndRecovery(t *testing.T) {
 	if e := store.Migrate(context.Background()); e != nil {
 		t.Fatal(e)
 	}
-	server := httptest.NewUnstartedServer(store.RunnerHandler(a, runnerPolicy))
+	clock := newHubClock()
+	server := httptest.NewUnstartedServer(store.RunnerHandlerWithClockForTest(a, runnerPolicy, clock.now))
 	server.TLS, _ = hc.TLS()
 	server.StartTLS()
 	defer server.Close()
@@ -110,7 +204,7 @@ func TestCustomerRunnerActualTLSExecutionRevocationAndRecovery(t *testing.T) {
 	if _, err := customerrunner.Enroll(context.Background(), c); err == nil {
 		t.Fatal("restart cooldown not enforced")
 	}
-	time.Sleep(10 * time.Second)
+	clock.advance(runnerHold)
 	// A wrong approved-environment binding refuses before any local job exists.
 	wrong := c
 	wrong.Environment = "other"

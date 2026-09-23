@@ -71,6 +71,12 @@ func ExecuteScheduledRun(ctx context.Context, spec Schedule, id string) string {
 // ServeSchedules requires the Store's exclusive database lease. Its journal is
 // tied to this artifact root; an absent or changed policy fails closed.
 func (s *Store) ServeSchedules(ctx context.Context, access *Access, runnerPath, policyPath string) error {
+	return s.serveSchedules(ctx, access, runnerPath, policyPath, time.Now)
+}
+
+// serveSchedules waits out the runner hold on clock. Application builds pass
+// time.Now; only tests pass another clock.
+func (s *Store) serveSchedules(ctx context.Context, access *Access, runnerPath, policyPath string, clock func() time.Time) error {
 	if access == nil || runnerPath == "" {
 		return ErrSchedule
 	}
@@ -95,7 +101,7 @@ func (s *Store) ServeSchedules(ctx context.Context, access *Access, runnerPath, 
 	defer scheduler.Close()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	handler, readyAt, e := s.runnerService(ctx, access, runnerPath)
+	handler, readyAt, e := s.runnerService(ctx, access, runnerPath, clock)
 	if e != nil {
 		return e
 	}
@@ -110,7 +116,7 @@ loop:
 		case <-ctx.Done():
 			break loop
 		case <-ticker.C:
-			if time.Now().Before(readyAt) {
+			if clock().Before(readyAt) {
 				continue
 			}
 			// Changes require stop/review; removing the file stops admission, rather than

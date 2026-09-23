@@ -55,7 +55,7 @@ func (s *Store) ServeTeam(ctx context.Context, access *Access) error {
 
 // ServeRunners enables explicit runner admission alongside team access.
 func (s *Store) ServeRunners(ctx context.Context, access *Access, runnerPolicy string) error {
-	handler, _, err := s.runnerService(ctx, access, runnerPolicy)
+	handler, _, err := s.runnerService(ctx, access, runnerPolicy, time.Now)
 	if err != nil {
 		return err
 	}
@@ -64,7 +64,8 @@ func (s *Store) ServeRunners(ctx context.Context, access *Access, runnerPolicy s
 
 // runnerService returns the same instant enforced by the handler, so the
 // scheduler cannot consume an occurrence during predecessor-lease recovery.
-func (s *Store) runnerService(ctx context.Context, access *Access, runnerPolicy string) (http.Handler, time.Time, error) {
+// With a runner policy, that instant and every lease decision read clock.
+func (s *Store) runnerService(ctx context.Context, access *Access, runnerPolicy string, clock func() time.Time) (http.Handler, time.Time, error) {
 	if access == nil {
 		return nil, time.Time{}, errAccess
 	}
@@ -74,12 +75,12 @@ func (s *Store) runnerService(ctx context.Context, access *Access, runnerPolicy 
 	if err := setTeamEnabled(ctx, s.db, true); err != nil {
 		return nil, time.Time{}, errAccess
 	}
-	ready := time.Now().Add(10 * time.Second)
+	ready := clock().Add(runnerHold)
 	if runnerPolicy != "" {
 		if _, err := readRunnerPolicy(runnerPolicy); err != nil {
 			return nil, time.Time{}, err
 		}
-		return s.runnerHandler(access, runnerPolicy, ready), ready, nil
+		return s.runnerHandler(access, runnerPolicy, clock, ready), ready, nil
 	}
 	return s.TeamHandler(access), time.Now(), nil
 }

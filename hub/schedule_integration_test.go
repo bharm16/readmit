@@ -42,7 +42,8 @@ func TestScheduleServiceWaitsForAdmissionCooldownAndStops(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- store.ServeSchedules(ctx, access, runnerPath, policyPath) }()
+	clock := newHubClock()
+	go func() { done <- store.ServeSchedulesWithClockForTest(ctx, access, runnerPath, policyPath, clock.now) }()
 	history := func() hub.ScheduleHistory {
 		t.Helper()
 		b, e := os.ReadFile(filepath.Join(c.Root, "scheduler", "history.json"))
@@ -63,7 +64,10 @@ func TestScheduleServiceWaitsForAdmissionCooldownAndStops(t *testing.T) {
 	if len(history().Records) != 0 {
 		t.Fatal("restart cooldown consumed occurrence")
 	}
-	deadline := time.Now().Add(12 * time.Second)
+	// Advancing the hub's clock ends the hold: the next ticks, well before the
+	// host's clock would have ended it, process the occurrence.
+	clock.advance(runnerHold)
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		current := history()
 		if len(current.Records) == 1 && current.Records[0].State == "error" {

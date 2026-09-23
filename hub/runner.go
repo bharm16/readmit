@@ -11,12 +11,18 @@ import (
 	"github.com/bharm16/readmit/internal/runnerprotocol"
 )
 
+// runnerHold is how long a new handler refuses every lease after it starts.
+const runnerHold = 10 * time.Second
+
 // RunnerHandler adds short-lived admission for customer-local execution. Each
 // renewal reloads both policies; loss of either authority fails closed.
 func (s *Store) RunnerHandler(access *Access, policyPath string) http.Handler {
-	return s.runnerHandler(access, policyPath, time.Now().Add(10*time.Second))
+	return s.runnerHandler(access, policyPath, time.Now, time.Now().Add(runnerHold))
 }
-func (s *Store) runnerHandler(access *Access, policyPath string, readyAt time.Time) http.Handler {
+
+// runnerHandler reads clock for every lease decision. Application builds pass
+// time.Now; only tests pass another clock.
+func (s *Store) runnerHandler(access *Access, policyPath string, clock func() time.Time, readyAt time.Time) http.Handler {
 	team := s.TeamHandler(access)
 	var mu sync.Mutex
 	type held struct {
@@ -67,7 +73,7 @@ func (s *Store) runnerHandler(access *Access, policyPath string, readyAt time.Ti
 		for _, g := range policy.Runners {
 			if g.Project == parts[2] && g.Subject == p.Subject && g.Environment == req.Environment && g.Engine == req.Engine && g.Spec == req.Spec && g.Profile == req.Profile {
 				mu.Lock()
-				now := time.Now()
+				now := clock()
 				key := g.Project + "/" + g.Environment
 				old := leases[key]
 				if r.Method == "DELETE" {

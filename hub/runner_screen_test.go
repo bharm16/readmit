@@ -176,7 +176,8 @@ func TestRunnerScreenPreparesConfiguresAndExecutesThroughExistingContracts(t *te
 	if err := store.SetOperationPolicy(authorPolicyPath); err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewUnstartedServer(store.RunnerHandler(a, grantPath))
+	clock := newHubClock()
+	server := httptest.NewUnstartedServer(store.RunnerHandlerWithClockForTest(a, grantPath, clock.now))
 	server.TLS, _ = c.TLS()
 	server.StartTLS()
 	defer server.Close()
@@ -227,7 +228,7 @@ func TestRunnerScreenPreparesConfiguresAndExecutesThroughExistingContracts(t *te
 	if result := screen.EnrollRunner(configPath); result.State == desktop.Completed {
 		t.Fatal("enrollment bypassed the restart cooldown")
 	}
-	time.Sleep(10 * time.Second)
+	clock.advance(runnerHold)
 	enrollment := screen.EnrollRunner(configPath)
 	if enrollment.State != desktop.Completed || enrollment.MaxSeconds != 30 || enrollment.MaxJobs != 2 || enrollment.ExpiresAt == "" {
 		t.Fatalf("enrollment: %+v", enrollment)
