@@ -428,6 +428,27 @@ document, such as the case and target a saved test names, resolve as they do on
 the command line. The environment, credential, observation and capture screens
 also accept a document by absolute path, so the workspace is not their boundary.
 
+A save that may overwrite its output — upgrading one saved test's profile pin,
+and saving a scenario library entry back into the library it was read from —
+replaces the entry at the output name and never writes into what is there. The
+new document is written in full to an owner-only file beside it, synced, and
+renamed onto the name, and the folder is synced, so a symbolic link at the name
+is replaced wherever it points and the file it led to keeps its bytes; so are a
+hard link and a FIFO. A folder at the name is refused, and so is anything
+already at the name the replacement is first written to (`NAME.incomplete`),
+which an interrupted save leaves behind. A regular file at the name is replaced
+by the same bytes as before, as a new owner-only file: writing over it needs
+write access to the folder rather than to the file, and another hard link to
+the previous file keeps the previous bytes. A save that cannot write its
+replacement leaves the previous document as it was. Every other save that
+writes over a document — the environment, credential, observation and capture
+documents, the project's own documents, an index rebuild, a hub download or
+export, and the shell's saved filters, session, drafts, selections and recent
+workspaces — already replaced the entry, or refused a link at it, rather than
+writing into it, so none of them writes through a link either; the shell's
+filters, session, drafts and selections are written by the same replacement as
+the two saves above.
+
 The listing distinguishes what entries declare, so navigation and the
 pickers offer applicable entries instead of every entry labelled unsupported:
 

@@ -22,6 +22,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -241,6 +242,22 @@ func TestDesktopHubJourney(t *testing.T) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	})
 
+	// A support export is served the same way, so downloading one can be
+	// driven through a planted link below.
+	hubMux.HandleFunc("/v2/projects/cardio-study/exports/", func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if r.Method != "GET" || strings.TrimPrefix(r.URL.Path, "/v2/projects/cardio-study/exports/") != artifactDigest {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.WriteHeader(http.StatusOK)
+		w.Write(artifactPayload)
+	})
+
 	server := httptest.NewUnstartedServer(hubMux)
 	server.TLS = tlsConfig
 	server.StartTLS()
@@ -391,6 +408,35 @@ func TestDesktopHubJourney(t *testing.T) {
 	content, err := os.ReadFile(downloadDest)
 	if err != nil || string(content) != string(artifactPayload) {
 		t.Fatalf("downloaded content mismatch")
+	}
+	// A download of an artifact or of a support export writes over its
+	// destination by renaming a new file onto it, so a symbolic link planted
+	// there is replaced and the file it led to keeps its bytes (#347).
+	// Windows may not let this account make one.
+	outsideFile := filepath.Join(t.TempDir(), "outside.bin")
+	if err := os.WriteFile(outsideFile, []byte("synthetic file outside the destination"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for name, download := range map[string]func(desktop.HubDownloadRequest) desktop.HubTransferResult{
+		"DownloadHubArtifact": app.DownloadHubArtifact,
+		"DownloadHubExport":   app.DownloadHubExport,
+	} {
+		linkedDest := filepath.Join(dir, name+"-linked.bin")
+		if err := os.Symlink(outsideFile, linkedDest); err != nil {
+			if runtime.GOOS == "windows" {
+				break
+			}
+			t.Fatal(err)
+		}
+		if linked := download(desktop.HubDownloadRequest{Project: "cardio-study", Digest: artifactDigest, DestinationPath: linkedDest}); linked.State != desktop.Completed {
+			t.Fatalf("%s over a link: %+v", name, linked)
+		}
+		if outside, err := os.ReadFile(outsideFile); err != nil || string(outside) != "synthetic file outside the destination" {
+			t.Fatalf("%s through a link changed the file it led to", name)
+		}
+		if entry, err := os.Lstat(linkedDest); err != nil || !entry.Mode().IsRegular() || string(mustRead(t, linkedDest)) != string(artifactPayload) {
+			t.Fatalf("%s left %v at its destination, want what it downloaded", name, entry)
+		}
 	}
 
 	// 8. Upload artifact (admit author requirement)

@@ -1,5 +1,22 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- A save that may overwrite its output no longer writes through a symbolic
+  link at the output name (#347). Upgrading a saved test's profile pin, and
+  saving a scenario library entry under a name that differs from the library's
+  only by surrounding spaces, opened the output with truncation, so a link
+  planted there, as in a shared or synced workspace, emptied and rewrote the
+  file outside the workspace it pointed at. Both now write the new document
+  beside the entry and rename it onto the name, syncing the file and the
+  folder, so a link, a hard link or a FIFO at the name is itself replaced and
+  what it led to keeps its bytes, and a save that cannot write its replacement
+  leaves the previous document in place instead of removing it. A folder at
+  the name, or anything at the name the replacement is first written to, is
+  refused. A regular file at the name is replaced by the same bytes as before,
+  now as a new owner-only file like every other document the window writes
+  over: the folder, not the file, must be writable, and another hard link to
+  the previous file keeps the previous bytes. No contract, facade method or
+  `readmit` command changes.
+
 - A macOS disk image that `hdiutil create` does not write is now refused with
   what hdiutil said, with the temporary staging folder named `<payload>` rather
   than its path on the build machine (#334). The failure hdiutil documents for a
