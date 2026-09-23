@@ -5,6 +5,11 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+  # Timed fuzz campaigns run here rather than on pull requests: daily, on
+  # demand, and for every release tag. These runs also refresh main's caches.
+  schedule:
+    - cron: '41 7 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -21,7 +26,33 @@ env:
   READMIT_RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
 
 jobs:
+  # A push to main repeats a pull request's work only when the pull request's
+  # run already tested this exact tree and succeeded. The check fails closed:
+  # anything short of that proof, an API error included, runs every job.
+  proof:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    outputs:
+      proven: ${{ steps.proof.outputs.proven }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Look for a successful pull-request run of this exact tree
+        id: proof
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/proven_tree.py --artifact proven-tree-ci
+
   go-tests:
+    needs: proof
+    if: ${{ !cancelled() && needs.proof.outputs.proven != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -37,6 +68,8 @@ jobs:
         run: make test
 
   tooling:
+    needs: proof
+    if: ${{ !cancelled() && needs.proof.outputs.proven != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -53,9 +86,17 @@ jobs:
       - name: Mutation checks
         run: make mutate
 
+  # Timed campaigns never run on a pull request or a push; go-tests runs every
+  # target's seed corpus there. Keep this condition identical to TIMED_FUZZ in
+  # quality. Each shard starts from the corpus the latest campaigns on main
+  # retained, and retains its own, so no cache eviction loses it.
   fuzz:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -67,10 +108,48 @@ jobs:
       - uses: ./.github/actions/setup-go
         with:
           cache-scope: fuzz-${{ matrix.shard }}
+      - name: Restore the corpus the latest campaigns on main retained
+        id: corpus
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          corpus="$(go env GOCACHE)/fuzz"
+          mkdir -p "$corpus"
+          echo "path=$corpus" >> "$GITHUB_OUTPUT"
+          for shard in 1 2 3; do
+            id=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=fuzz-corpus-$shard&per_page=100" \
+              --jq '[.artifacts[] | select(.expired == false and .workflow_run.head_branch == "main" and .workflow_run.head_repository_id == .workflow_run.repository_id)] | sort_by(.created_at) | last | .id // empty') || id=
+            if [ -z "$id" ]; then
+              echo "::warning::no retained corpus for fuzz shard $shard; its targets start from their seeds"
+              continue
+            fi
+            if ! { gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > "$RUNNER_TEMP/corpus-$shard.zip" &&
+                   unzip -o -q "$RUNNER_TEMP/corpus-$shard.zip" -d "$corpus"; }; then
+              echo "::warning::the retained corpus of fuzz shard $shard could not be restored"
+            fi
+          done
+          echo "restored $(find "$corpus" -type f | wc -l) corpus entries"
       - name: Discover and fuzz this shard
         run: python3 tools/fuzz.py --shard ${{ matrix.shard }} --shards 3
+      - name: Retain the corpus for the next campaign
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: fuzz-corpus-${{ matrix.shard }}
+          path: ${{ steps.corpus.outputs.path }}
+          if-no-files-found: warn
+          overwrite: true
+      - name: Retain the input that failed
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: fuzz-failure-${{ matrix.shard }}
+          path: internal/**/testdata/fuzz/
+          overwrite: true
 
   security:
+    needs: proof
+    if: ${{ !cancelled() && needs.proof.outputs.proven != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -88,6 +167,8 @@ jobs:
   # Keep one stable required context. A skipped, cancelled or failed prerequisite
   # must fail this check as well as block release publication.
   hub:
+    needs: proof
+    if: ${{ !cancelled() && needs.proof.outputs.proven != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -128,25 +209,54 @@ jobs:
 
   quality:
     if: always()
-    needs: [go-tests, tooling, fuzz, security, hub]
+    needs: [proof, go-tests, tooling, fuzz, security, hub]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Require every quality job to succeed
+      # Only a push to main whose tree a pull-request run proved skips its jobs,
+      # and then every one of them must have been skipped. Otherwise each must
+      # succeed, and timed fuzzing must run exactly on the events it runs for.
+      - name: Require every quality job this event runs to succeed
         env:
+          PROVEN: ${{ needs.proof.result == 'success' && needs.proof.outputs.proven == 'true' }}
+          TIMED_FUZZ: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
           GO_RESULT: ${{ needs.go-tests.result }}
           TOOLING_RESULT: ${{ needs.tooling.result }}
           FUZZ_RESULT: ${{ needs.fuzz.result }}
           SECURITY_RESULT: ${{ needs.security.result }}
           HUB_RESULT: ${{ needs.hub.result }}
         run: |
-          test "$GO_RESULT" = success
-          test "$TOOLING_RESULT" = success
-          test "$FUZZ_RESULT" = success
-          test "$SECURITY_RESULT" = success
-          test "$HUB_RESULT" = success
+          if [ "$PROVEN" = true ]; then expected=skipped; else expected=success; fi
+          test "$GO_RESULT" = "$expected"
+          test "$TOOLING_RESULT" = "$expected"
+          test "$SECURITY_RESULT" = "$expected"
+          test "$HUB_RESULT" = "$expected"
+          if [ "$TIMED_FUZZ" = true ]; then test "$FUZZ_RESULT" = success; else test "$FUZZ_RESULT" = skipped; fi
+      # The record a later push to main looks for. Failing to write it only
+      # means that push runs in full, so it never fails this check.
+      - name: Record the tree this pull-request run tested
+        id: tested
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tree=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$GITHUB_SHA" --jq .tree.sha)
+          test -n "$tree"
+          printf '%s\n' "$GITHUB_SHA" > tested-commit.txt
+          echo "tree=$tree" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: github.event_name == 'pull_request' && steps.tested.outputs.tree != ''
+        continue-on-error: true
+        with:
+          name: proven-tree-ci-${{ steps.tested.outputs.tree }}
+          path: tested-commit.txt
+          if-no-files-found: error
+          overwrite: true
 
   package:
+    needs: proof
+    if: ${{ !cancelled() && needs.proof.outputs.proven != 'true' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -172,9 +282,13 @@ jobs:
             dist/*.zip
             dist/checksums.txt
 
+  # This job and the two below it name their prerequisites' results rather
+  # than rely on the implicit success(), which also fails for the proof job
+  # that every event except a push to main skips.
   native-smoke:
     timeout-minutes: 20
     needs: package
+    if: ${{ !cancelled() && needs.package.result == 'success' }}
     strategy:
       fail-fast: false
       matrix:
@@ -226,7 +340,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: ${{ !cancelled() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.quality.result == 'success' && needs.native-smoke.result == 'success' }}
     needs: [quality, native-smoke]
     runs-on: ubuntu-24.04
     permissions:
@@ -256,7 +370,7 @@ jobs:
             --notes-file docs/release-notes.md
 
   download-smoke:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: ${{ !cancelled() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.publish.result == 'success' }}
     needs: publish
     runs-on: ubuntu-24.04
     steps:

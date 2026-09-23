@@ -6717,6 +6717,18 @@
       "disposition": {"kind": "developer-tooling", "reason": "repository build, test and release tooling that developers and CI run against readmit (docs/agents/testing.md); it is not shipped to customers and no customer workflow depends on it"}
     },
     {
+      "id": "tooling.tools.ci_timing",
+      "source": "tools/ci_timing.py",
+      "kind": "tooling",
+      "capability": "Report when each job of a CI run started, ran and ended, its critical path and its Go cache restores",
+      "owner": "bharm16/readmit#322",
+      "inputs": [],
+      "outputs": [],
+      "prerequisites": [],
+      "implemented": false,
+      "disposition": {"kind": "developer-tooling", "reason": "repository build, test and release tooling that developers and CI run against readmit (docs/agents/testing.md); it is not shipped to customers and no customer workflow depends on it"}
+    },
+    {
       "id": "tooling.tools.fuzz",
       "source": "tools/fuzz.py",
       "kind": "tooling",
@@ -6782,6 +6794,18 @@
       "kind": "tooling",
       "capability": "Measure the local synthetic CLI envelope and print it, never a pass verdict",
       "owner": "bharm16/readmit#244",
+      "inputs": [],
+      "outputs": [],
+      "prerequisites": [],
+      "implemented": false,
+      "disposition": {"kind": "developer-tooling", "reason": "repository build, test and release tooling that developers and CI run against readmit (docs/agents/testing.md); it is not shipped to customers and no customer workflow depends on it"}
+    },
+    {
+      "id": "tooling.tools.proven_tree",
+      "source": "tools/proven_tree.py",
+      "kind": "tooling",
+      "capability": "Decide whether a push to main repeats a tree a successful pull-request run already tested",
+      "owner": "bharm16/readmit#322",
       "inputs": [],
       "outputs": [],
       "prerequisites": [],

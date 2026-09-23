@@ -186,8 +186,11 @@ def apply_mutation(mutation, destination):
 
 def build(directory):
     binary = directory / ("readmit.exe" if os.name == "nt" else "readmit")
+    # Built as `make verify` builds the binary it checks. -trimpath also keeps
+    # the throwaway copy's directory out of the build cache key, so unchanged
+    # packages are reused instead of compiled and cached again per mutation.
     completed = subprocess.run(
-        ["go", "build", "-o", str(binary), "./cmd/readmit"],
+        ["go", "build", "-trimpath", "-o", str(binary), "./cmd/readmit"],
         cwd=directory, env=dict(os.environ, GOTOOLCHAIN="local"),
         capture_output=True, check=False, timeout=900,
     )

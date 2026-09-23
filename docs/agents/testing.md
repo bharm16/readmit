@@ -96,10 +96,13 @@ production boundary assert the same retained-prefix and refused-ACK behavior.
 `make test-boundary` addresses the latter directly when that contract changes.
 
 Timed fuzz campaigns belong in CI unless a fuzz failure or target change needs
-local investigation. Normal Go tests still exercise seed corpora. For a focused
-campaign use `python3 tools/fuzz.py --package ./internal/hl7`; `--list` shows the
-selected targets. CI discovers every target and partitions it across three
-shards; adding a fuzz function does not require editing a workflow list.
+local investigation. They do not run on pull requests; normal Go tests, and so
+`go-tests` on every pull request, still exercise every target's seed corpus.
+For a focused campaign use `python3 tools/fuzz.py --package ./internal/hl7`;
+`--list` shows the selected targets. CI discovers every target and partitions
+it across three shards; adding a fuzz function does not require editing a
+workflow list. To fuzz a changed target in CI before the next daily campaign,
+dispatch one on the branch with `gh workflow run ci.yml --ref BRANCH`.
 
 Run `make test-tools`, `make verify`, or `make mutate` locally when changing those
 tools or their checked contracts. The verifier and mutation runner also support
@@ -113,9 +116,11 @@ flake or establish that a failing revision is correct.
 ## CI and merge
 
 The `quality` check aggregates Go tests, tooling/independent verification and
-mutations, all fuzz shards, and the vulnerability scan. It fails if any of those
-jobs fails, is skipped, or is cancelled. Packaging and the five native smoke
-tests run concurrently, and test the exact archives later used for publication.
+mutations, the vulnerability scan, the hub, and the three timed fuzz shards on
+the events that run them. It fails if any job its event runs fails, is skipped,
+or is cancelled, and if the fuzz shards ran on any other event. Packaging and
+the five native smoke tests run concurrently, and test the exact archives later
+used for publication.
 The desktop module builds and scans separately, and `desktop` is that workflow's
 equivalent stable aggregate: it requires the macOS shell build and the five
 `desktop-package` jobs plus the five `desktop-install` jobs, which download,
@@ -133,10 +138,48 @@ packaging jobs, because they sit behind `desktop`. Require those stable contexts
 in the repository's main-branch protection. After splitting jobs, keep `quality`
 and `desktop` as the stable aggregates of their workflows so another worktree
 never has to guess which new job names are mandatory. Each PR cancels only its
-own superseded workflow runs; main and tag runs keep independent groups.
+own superseded workflow runs; main, tag, daily and dispatched runs keep
+independent groups.
+
+Timed fuzz campaigns run in the CI workflow daily at 07:41 UTC, when dispatched,
+and for every release tag, whose `publish` still requires them through
+`quality`; they never run on a pull request or a push to main. Each shard first
+restores the corpus the latest campaigns on main retained as the
+`fuzz-corpus-1` to `fuzz-corpus-3` artifacts, all three of them, so a target
+keeps its corpus when a new target moves it to another shard and no cache
+eviction loses it; afterwards it retains its own. A failing campaign fails its
+run and that run's `quality` check, shown on main's head commit, and uploads
+the failing input as `fuzz-failure-N`: put it under the package's
+`testdata/fuzz/FuzzName/` and rerun the `go test -run` line the log prints.
+
+Every pull-request run's aggregate records the tree the run tested as an
+artifact, `proven-tree-ci-TREE` or `proven-tree-desktop-TREE`. A push to main
+first runs `proof` (`tools/proven_tree.py`). When the pushed commit is the
+merge of exactly one pull request into main, and a successful pull-request run
+of the same workflow for that pull request's final head, from this repository,
+recorded exactly the pushed tree, every other job of the workflow is skipped
+and its aggregate passes only because every one of them was skipped. That is
+the case when the pull request's last run was made against the main commit it
+merged onto. Every other push to main runs the whole workflow as the integration
+check: a merge on a stale base, a direct push, a record from a run that failed,
+is unfinished or has expired, and any error while looking. Tag, daily and
+dispatched runs are always complete. A pull request may merge on a stale base,
+so the main run after it is the check that proves that merge.
 
 Each job has its own Go cache scope, including each fuzz shard. Keys include the
 compiler, platform, dependency checksums and commit; a prefix restores the prior
 generation before the current one is saved. This keeps compiled tests and fuzz
 corpora from being overwritten by the faster packaging job. A first cold run
 still needs compilation; assess steady-state savings on later commits as well.
+A pull request's first run restores main's newest generation. A push to main
+that skipped its jobs saves none; every complete push to main and the daily run
+of each workflow save a new one. The repository's cache storage holds only a
+few runs' caches and evicts the least recently used first, so anything that
+must survive, such as the fuzz corpus, is kept as an artifact instead.
+
+To measure a change to CI, give `python3 tools/ci_timing.py` the CI and desktop
+run ids of one push (`gh run list` shows them). It prints each job's start,
+duration, end and wait for a runner in seconds from its run's start, the
+critical path through the jobs' `needs`, and, with `--caches`, the Go cache
+each job restored or missed. Compare the same kind of push, a pull request's or
+a merge's, before and after the change, and again once it has reached main.
