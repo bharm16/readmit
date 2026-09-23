@@ -759,7 +759,7 @@
       "backend": {"package": "internal/observesource", "name": "Collect"},
       "inputs": ["readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3", "readmit-observation-window/v1", "readmit-send-policy/v1"],
       "outputs": ["readmit-observation-completion/v1", "readmit-observation-evidence/v1"],
-      "prerequisites": ["author"],
+      "prerequisites": ["author", "execute"],
       "gui_test": {"file": "desktop/frontend/src/observation.test.tsx", "name": "local validation and unauthorized collect stay separate"},
       "parity_test": {"package": "internal/desktop", "name": "TestObservationFacadeCollectsAndExplains"},
       "implemented": true
@@ -2102,7 +2102,7 @@
       "backend": {"package": "internal/lifecycle", "name": "Archive"},
       "inputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-project-quota/v1", "readmit-index/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5"],
       "outputs": ["readmit-backup/v1"],
-      "prerequisites": ["author"],
+      "prerequisites": [],
       "implemented": false
     },
     {
@@ -2218,7 +2218,7 @@
       "backend": {"package": "internal/backup", "name": "Create"},
       "inputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-index/v1"],
       "outputs": ["readmit-backup/v1"],
-      "prerequisites": ["author"],
+      "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/MaintenancePanel.test.tsx", "name": "backup verify restore reopen journey separates inventory classes"},
       "parity_test": {"package": "internal/desktop", "name": "TestBackupVerifyRestoreReopenThroughTheFacade"},
       "implemented": true
@@ -2336,7 +2336,7 @@
       "backend": {"package": "internal/lifecycle", "name": "Archive"},
       "inputs": ["readmit-desktop-package/v1", "readmit-project/v1", "readmit-revisions/v1", "readmit-project-quota/v1", "readmit-index/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5"],
       "outputs": ["readmit-upgrade-plan/v1", "readmit-backup/v1"],
-      "prerequisites": ["author"],
+      "prerequisites": [],
       "implemented": false
     },
     {
@@ -2396,7 +2396,7 @@
       "backend": {"package": "internal/project", "name": "Recover"},
       "inputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-project-quota/v1"],
       "outputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-project-quota/v1"],
-      "prerequisites": ["author"],
+      "prerequisites": [],
       "implemented": false
     },
     {
@@ -2410,7 +2410,7 @@
       "backend": {"package": "internal/backup", "name": "Restore"},
       "inputs": ["readmit-backup/v1"],
       "outputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-index/v1"],
-      "prerequisites": ["author"],
+      "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/MaintenancePanel.test.tsx", "name": "backup verify restore reopen journey separates inventory classes"},
       "parity_test": {"package": "internal/desktop", "name": "TestBackupVerifyRestoreReopenThroughTheFacade"},
       "implemented": true
@@ -3431,7 +3431,7 @@
       "backend": {"package": "internal/testauthor", "name": "Export"},
       "inputs": ["readmit-test/v1"],
       "outputs": ["readmit-test/v1"],
-      "prerequisites": [],
+      "prerequisites": ["author"],
       "gui_test": {"file": "desktop/frontend/src/panels.test.tsx", "name": "the canonical editor shows expected values on import and exports exact bytes"},
       "parity_test": {"package": "internal/desktop", "name": "TestCanonicalExportExecutesWithDesktopCLIParity"},
       "implemented": true
@@ -3569,7 +3569,7 @@
       "backend": {"package": "internal/assertionauthor", "name": "Export"},
       "inputs": ["readmit-assertion-set/v1"],
       "outputs": ["readmit-assertion-set/v1"],
-      "prerequisites": [],
+      "prerequisites": ["author"],
       "implemented": false
     },
     {
@@ -4226,7 +4226,7 @@
       "backend": {"package": "internal/profilepackage", "name": "Export"},
       "inputs": ["readmit-local-profile/v1", "readmit-profile-pack/v1", "readmit-profile-version/v1", "readmit-profile-origin/v1"],
       "outputs": ["readmit-profile-package/v1"],
-      "prerequisites": ["author"],
+      "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/ProfileEditor.test.tsx", "name": "handles package exchange with reviewed disclosure confirmation and conflict inspection"},
       "parity_test": {"package": "internal/desktop", "name": "TestProfilePackageExportImportInspect"},
       "implemented": true
@@ -4242,7 +4242,7 @@
       "backend": {"package": "internal/profilepackage", "name": "Import"},
       "inputs": ["readmit-profile-package/v1"],
       "outputs": ["readmit-profile-package/v1", "readmit-local-profile/v1", "readmit-profile-pack/v1", "readmit-profile-version/v1", "readmit-profile-origin/v1"],
-      "prerequisites": ["author"],
+      "prerequisites": [],
       "implemented": false
     },
     {
@@ -4272,7 +4272,7 @@
       "backend": {"package": "internal/operation", "name": "DiagnoseTarget"},
       "inputs": ["readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-send-policy/v1"],
       "outputs": ["readmit-send-decision/v1"],
-      "prerequisites": [],
+      "prerequisites": ["execute"],
       "gui_test": {"file": "desktop/frontend/src/Environment.test.tsx", "name": "EnvironmentPanel displays target configuration and runs deliberate diagnostics"},
       "parity_test": {"package": "tests", "name": "TestEnvironmentDesktopAndCLIParity"},
       "implemented": true
@@ -4384,7 +4384,7 @@
       "backend": {"package": "internal/operation", "name": "ResetEnvironment"},
       "inputs": ["readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-reset-plan/v1", "readmit-send-policy/v1"],
       "outputs": ["readmit-reset-outcome/v1"],
-      "prerequisites": ["author"],
+      "prerequisites": ["author", "execute"],
       "gui_test": {"file": "desktop/frontend/src/Environment.test.tsx", "name": "EnvironmentPanel authors fixture reset plan and executes with deliberate confirmation"},
       "parity_test": {"package": "tests", "name": "TestEnvironmentDesktopAndCLIParity"},
       "implemented": true
@@ -4690,7 +4690,7 @@
       "backend": {"package": "hub", "name": "Store.reviewRequest"},
       "inputs": ["readmit-hub-review-query/v1", "readmit-hub-review-event/v1"],
       "outputs": ["readmit-hub-review-history/v1"],
-      "prerequisites": ["hub:evidence.read", "author"],
+      "prerequisites": ["hub:evidence.read"],
       "implemented": false
     },
     {
@@ -4718,7 +4718,7 @@
       "backend": {"package": "hub", "name": "Store.reviewRequest"},
       "inputs": ["readmit-hub-review-query/v1", "readmit-hub-review-event/v1"],
       "outputs": ["readmit-hub-review-history/v1"],
-      "prerequisites": ["hub:evidence.read", "author"],
+      "prerequisites": ["hub:evidence.read"],
       "implemented": false
     },
     {
@@ -4807,7 +4807,7 @@
       "backend": {"package": "hub", "name": "Store.reviewRequest"},
       "inputs": ["readmit-hub-review-query/v1", "readmit-hub-review-event/v1", "readmit-hub-review-event/v2"],
       "outputs": ["readmit-hub-review-history/v2"],
-      "prerequisites": ["hub:evidence.read", "author"],
+      "prerequisites": ["hub:evidence.read"],
       "implemented": false
     },
     {
@@ -4835,7 +4835,7 @@
       "backend": {"package": "hub", "name": "Store.reviewRequest"},
       "inputs": ["readmit-hub-review-query/v1", "readmit-hub-review-event/v1", "readmit-hub-review-event/v2"],
       "outputs": ["readmit-hub-review-history/v2"],
-      "prerequisites": ["hub:evidence.read", "author"],
+      "prerequisites": ["hub:evidence.read"],
       "implemented": false
     },
     {
@@ -5644,7 +5644,7 @@
       "backend": {"package": "internal/diagnose", "name": "Run"},
       "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-diagnose-config/v1"],
       "outputs": ["readmit-diagnosis/v1"],
-      "prerequisites": ["author"],
+      "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/App.test.tsx", "name": "case through rules, diagnosis, inspection, review and draft handoff"},
       "parity_test": {"package": "tests", "name": "TestDesktopDiagnosisAndReviewWriteTheCommandLineBytes"},
       "implemented": true

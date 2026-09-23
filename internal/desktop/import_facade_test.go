@@ -3,6 +3,7 @@ package desktop_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/bharm16/readmit/internal/bundle"
@@ -133,6 +134,43 @@ func TestStagePastedContent(t *testing.T) {
 	resTraversal := app.StagePastedContent(reqTraversal)
 	if resTraversal.State != desktop.Failed {
 		t.Fatalf("expected traversal failure, got: %+v", resTraversal)
+	}
+}
+
+// Pasted content is staged only into a folder the window opened, and never
+// into retained evidence: a paste aimed at a sealed case or at a folder that
+// does not exist is refused before anything is created, so the case keeps
+// exactly the entries it was sealed with and still verifies.
+func TestStagingPastedContentCreatesNothingInEvidenceOrAnywhereNew(t *testing.T) {
+	app := workspaceApp(t)
+	root := t.TempDir()
+	writeCase(t, root, "case", framed(string(listenFrame(t))))
+	sealed := func() []string {
+		entries, err := os.ReadDir(filepath.Join(root, "case"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		names := make([]string, 0, len(entries))
+		for _, entry := range entries {
+			names = append(names, entry.Name())
+		}
+		return names
+	}
+	before := sealed()
+	for _, target := range []string{filepath.Join(root, "case"), filepath.Join(root, "absent", "project")} {
+		result := app.StagePastedContent(desktop.PastedSourceRequest{Workspace: root, Project: target, Name: "pasted.hl7", Content: sampleImportHL7})
+		if result.State == desktop.Completed {
+			t.Fatalf("pasted content was staged into %s: %+v", target, result)
+		}
+	}
+	if after := sealed(); strings.Join(after, ",") != strings.Join(before, ",") {
+		t.Fatalf("a refused paste changed the sealed case: %v, was %v", after, before)
+	}
+	if _, err := os.Lstat(filepath.Join(root, "absent")); !os.IsNotExist(err) {
+		t.Fatal("a refused paste created the folder it was aimed at")
+	}
+	if opened := app.OpenCase(root, "case"); opened.State != desktop.Completed {
+		t.Fatalf("the case no longer verifies after a refused paste: %+v", opened)
 	}
 }
 

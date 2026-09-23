@@ -228,6 +228,7 @@ var privacyStatus = Privacy{
 		"the filters you have saved, including any value you typed to filter by, in readmit-filters/v1",
 		"the notes you had not stored yet and where you were, in readmit-desktop-session/v1",
 		"the editor work you had not stored yet — notes you were writing, test drafts, assertion-set drafts, canonical edits, suite drafts and reproducer plans — in readmit-desktop-drafts/v1",
+		"the commercial destinations file you selected, as a path only, in readmit-desktop-commercial-selection/v1",
 	},
 	Operations: []OperationDisclosure{
 		{
@@ -257,6 +258,13 @@ var privacyStatus = Privacy{
 			Destination:   "the observation source you validated — a local file export, or an approved HTTPS API whose non-loopback address the source names explicitly",
 			Data:          "the records the window reads within its declared scope, watermarks and byte bounds",
 			Authorization: "a validated observation source and window pair, and your explicit start",
+		},
+		{
+			ID:            "environment",
+			Activity:      "Environment checks and fixture resets",
+			Destination:   "the address your recorded named environment names: a connectivity check opens one connection there, with the TLS handshake the target declares, even where a send policy would refuse a send; a fixture reset, including one a controlled reduction performs, opens the one connection its plan needs; evaluating a send policy resolves the host names it approves",
+			Data:          "no HL7 payload for a connectivity check; the typed reset operations your reviewed reset plan declares; the names a send-policy evaluation looks up",
+			Authorization: "a recorded target and your explicit Check, Evaluate or Reset action; a reset also needs an activated license and an admitted send decision for its one connection",
 		},
 		{
 			ID:            "hub",

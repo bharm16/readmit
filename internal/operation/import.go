@@ -183,6 +183,11 @@ func StagePastedContent(dir, name string, data []byte) (string, error) {
 	if err := artifactpath.EntryName(name); err != nil {
 		return "", ErrPastedNameInvalid
 	}
+	// The staging folder is refused inside retained evidence before it is
+	// created, so a refused paste leaves a sealed case exactly as it was.
+	if _, err := artifactpath.Destination(dir); err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", err
 	}

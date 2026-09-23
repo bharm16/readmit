@@ -56,9 +56,36 @@ from source, not an independent implementation or tests of signed packages.
 Existing CI still owns full race, independent protocol, fuzz, vulnerability,
 packaging, desktop and five native archive smoke checks.
 
+## Application surfaces
+
+The application surfaces of #244 (#245–#266) are held to the same matrix
+through the typed facade every screen calls, not through the controls that
+would have offered an action: a disabled control is not the boundary. No
+test here drives the real interface; that is the next section's remaining
+work.
+
+| Surface | Exercised through the facade the window calls |
+| --- | --- |
+| Hostile entries and bounded reads | Every bound operation is enumerated, not listed. An operation taking only strings is handed a FIFO, a link to it, a sparse 1 GiB document, a directory and a relative entry leaving the workspace in each argument position, and must refuse; an operation taking a request is handed the same in each string member with the workspace open. Every call answers within ten seconds, allocates under 256 MiB and carries nothing read outside the workspace, and nothing outside the workspace or relative to the process changes. This found four unbounded or blocking readers — opening a named environment for editing (shared with `readmit target`), a scenario or scenario library chosen by path, importing a scenario library by path, and classifying the entry a preflight names — and a paste staged into any folder it named, relative or new, all fixed. A paste aimed at a sealed case is refused before it creates anything there. |
+| Startup, inspection and restoration | A second window is started over retained state with the production constructor. Every configured destination — test target, hub, runner hub, portal — is a counting loopback listener, and name resolution refuses and counts. Startup reads, session and draft restoration, reopening, environment-screen reads, preflight and runner/hub inspection make no connection and no lookup; the target, runner hub and portal are disclosed without being reached. Shell state is owner-only. |
+| Destination disclosure | Each operation of the reviewed inventory of operations that can reach a destination belongs to a disclosed activity, and every disclosed activity is reached. The inventory is a list, so an operation added later must be added to it. The #266 repair still omitted connectivity checks, fixture resets and send-policy name resolution, and the kept commercial selection; all are now disclosed. |
+| Expiry and admission | The window and the command line share one expired, activated term. Indexing, a connectivity check and a quota change are refused by both; reads succeed in both; diagnosis, profile package export and import, backup, verification, restore, document recovery, archive, delete and an upgrade's rollback point succeed in both. The window had required a license for eight of those, contrary to [ADR-0007](adr/0007-offline-entitlements-are-signed-documents-verified-locally.md), [ADR-0010](adr/0010-vendor-billing-issues-offline-entitlements-without-evidence.md), [named authors and active runners](license-v2.md) and the command line; it no longer does. A connectivity check, a fixture reset and an observation collection now reserve a runner instance as `readmit target check`, `target reset` and `observe collect` do, and are refused without one before anything is reached; exporting an edited test or assertion set admits the author. Every desktop row of the capability ledger is checked against the admission its method takes, read from the facade's source, in both directions. |
+| Hub read-only search | The hub admitted searching history and notifications as authoring although a search only reads; a free read-only viewer with no author binding now searches both. |
+| Planted values | A case holds a patient name and identifier nobody typed, and a credential resolves only through its reference's program. After opening, indexing and inspecting the evidence, retaining the view and a draft, registering, testing, rotating and scanning the reference and preparing a runner configuration naming it, the credential appears in no result and no file the window wrote, and the patient values appear in no shell state, no result other than the evidence views, and no reason. |
+| Reset credentials | A database observation source presenting a reset credential is refused by the window's open, validate and collect operations with the command line's reason, and nothing is retained. |
+| Native dialog seam | Sixteen dialog operations: a dismissed dialog is a cancellation with its reason, an unavailable one a recoverable failure, and a choice is answered with the operation slot released. Choosing a hub configuration through its dialog was always refused as busy; fixed. |
+| Two authenticated hub users | The real team handler over mutual TLS with disposable PostgreSQL, identities signed by a provider the hub trusts, and four windows. The hub refuses a viewer's writes, each asked once; a stale head is a conflict; one person cannot reuse another's command id; recorded actors come from tokens. A support export needs the exact approval chain and an exporting role, and a newer policy withdraws the approval. A removed grant or an administrator's removal refuses the next request, sent once and never retried. An expired session is refused by the window with nothing sent to the hub or the identity provider. Offline work retained before a removal comes back with a restarted window; reconciling it needs an explicit connection and then a new sign-in, and the hub still refuses it, asked once. |
+| Window import archives | Traversal, absolute, backslash and duplicate entries are refused by preview and commit, nothing is written, and no refusal repeats the planted entry name. |
+| Existing surface tests | Named so their removal fails acceptance: exact-version approvals (baseline, promotion, privacy export, preflight identity), production and credential refusal before any send, packet operations acquiring no send or mutation authority, license management never gating evidence, hub operations refusing without a session, crash recovery never resending, private drafts and session, planted values absent from privacy results, no name lookups in the privacy journey, portable reviews escaping hostile evidence, and the declared keyboard, focus, non-colour and text-scaling semantics. Declared semantics are not screen-reader evidence. |
+
 ## Browser exercise and retained local result
 
-On September 19, 2026, the 32 named local tests above passed on macOS arm64
+On September 23, 2026, the 75 named local tests, including the application
+surfaces above, passed on macOS arm64 with Go 1.27.1 against a new disposable
+PostgreSQL 14 cluster listening on a Unix socket only, with identical clean
+start and end revisions.
+
+On September 19, 2026, the then 32 named local tests passed on macOS arm64
 with Go 1.27.1 and an isolated PostgreSQL 14 cluster. PostgreSQL 14 is a local
 hub test environment here, not proof of the advertised external database
 connector matrix. The new hostile-input test first refused the embedded control
@@ -184,6 +211,11 @@ const fs = require('node:fs');
 
 ## Still required for full acceptance
 
+- Drive the keyboard, focus, rendering, cancellation and recoverable-error
+  journeys of the application surfaces through the real interface, with the
+  shared real-UI interaction harness #109 owns once it is on `main`. Facade
+  tests and jsdom role queries establish neither operation by keyboard nor
+  spoken output.
 - Exercise complete installed journeys on the declared Windows, macOS and Ubuntu
   matrix with native keyboard navigation and actual screen readers, including
   native dialogs, errors, cancellations, focus recovery, zoom and high contrast.

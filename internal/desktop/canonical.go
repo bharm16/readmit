@@ -58,8 +58,10 @@ func (a *App) ValidateTest(document string) CanonicalTestResult {
 	})
 }
 
+// ExportTest writes the edited canonical document as a new test spec, which is
+// authoring, admitted exactly as saving an authored test is.
 func (a *App) ExportTest(request CanonicalTestRequest) CanonicalTestResult {
-	return run(a, false, false, func(context.Context) CanonicalTestResult {
+	return run(a, false, true, func(context.Context) CanonicalTestResult {
 		return a.exportTest(request)
 	})
 }

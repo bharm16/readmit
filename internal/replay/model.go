@@ -22,6 +22,9 @@ const (
 	TargetSchemaV2 = "readmit-target/v2"
 	TargetSchemaV3 = "readmit-target/v3"
 	MaxMessages    = 4000
+	// MaxTargetBytes bounds one target configuration document, whichever
+	// reader opens it.
+	MaxTargetBytes = 64 << 10
 	maxRunBytes    = 96 << 20
 	maxFileBytes   = 16 << 20
 )

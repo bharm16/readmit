@@ -444,8 +444,11 @@ func (a *App) UpgradeProfilePin(request ProfileUpgradePinRequest) ProfileUpgrade
 }
 
 // ExportProfilePackage packages an existing profile, pack, version and origin.
+// Exporting and importing a package copy reviewed documents without
+// activating anything, and like `readmit profile export` and `import` they
+// need no license term.
 func (a *App) ExportProfilePackage(request ProfilePackageExportRequest) ProfilePackageResult {
-	return run(a, false, true, func(context.Context) ProfilePackageResult {
+	return run(a, false, false, func(context.Context) ProfilePackageResult {
 		if !request.Reviewed {
 			return ProfilePackageResult{
 				State:  Failed,
@@ -513,7 +516,7 @@ func (a *App) ExportProfilePackage(request ProfilePackageExportRequest) ProfileP
 
 // ImportProfilePackage unpacks a verified package into a new private directory.
 func (a *App) ImportProfilePackage(request ProfilePackageImportRequest) ProfilePackageResult {
-	return run(a, true, true, func(ctx context.Context) ProfilePackageResult {
+	return run(a, true, false, func(ctx context.Context) ProfilePackageResult {
 		root, declined := resolveFolder(request.Workspace)
 		if root == "" {
 			return ProfilePackageResult{State: declined.state, Reason: declined.reason}

@@ -101,8 +101,10 @@ func diagnosisConfig(root, entry, builtin string) (diagnose.Config, refusal) {
 // report.json and report.md into one new directory entry, exactly as
 // `readmit diagnose` writes them. The report is bound to the case identity the
 // window displayed, and an existing destination is refused, never overwritten.
+// Like `readmit diagnose`, it reads existing evidence and needs no license
+// term, so an expired license never gates it.
 func (a *App) RunDiagnosis(request DiagnosisRequest) DiagnosisResult {
-	return run(a, false, true, func(context.Context) DiagnosisResult {
+	return run(a, false, false, func(context.Context) DiagnosisResult {
 		failure := func(reason string) DiagnosisResult {
 			return DiagnosisResult{State: Failed, Reason: reason}
 		}

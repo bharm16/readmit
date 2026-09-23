@@ -82,6 +82,18 @@ func (a *App) admitAuthor() error {
 	return err
 }
 
+// settlementFailed is the one reason an execution whose admission could not
+// be settled gives, whatever it did before.
+const settlementFailed = "runner settlement failed; reconcile the retained admission before new work"
+
+// admitExecution reserves one signed runner instance for work that reaches a
+// destination, the way the command line admits `execute`; settle releases it
+// once the work has finished.
+func (a *App) admitExecution(ctx context.Context) (func() error, error) {
+	g, _ := a.selectedOperation()
+	return g.AdmitContext(ctx, "execute")
+}
+
 // ChooseOperationPolicy uses the native folder chooser for the operator's
 // supplied operation-policy.json. Selection is not activation or trial issuance.
 func (a *App) ChooseOperationPolicy() OperationResult {

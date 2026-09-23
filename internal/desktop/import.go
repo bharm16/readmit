@@ -141,7 +141,13 @@ func (a *App) StagePastedContent(request PastedSourceRequest) PastedSourceResult
 		if targetDir == "" {
 			return PastedSourceResult{State: Failed, Reason: "no target workspace or project provided"}
 		}
-		stagedDir := filepath.Join(targetDir, "staged-sources")
+		// The target is an existing folder the window opened, never a path it
+		// creates, so pasted content is staged nowhere a workspace is not.
+		root, declined := resolveFolder(targetDir)
+		if root == "" {
+			return PastedSourceResult{State: declined.state, Reason: declined.reason}
+		}
+		stagedDir := filepath.Join(root, "staged-sources")
 		name := request.Name
 		if name == "" {
 			name = "pasted-source.hl7"

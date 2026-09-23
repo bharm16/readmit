@@ -169,7 +169,7 @@ func (a *App) ChooseHubConfig() HubResult {
 			if file == "" {
 				return HubResult{State: Cancelled, Reason: "no configuration file was chosen"}
 			}
-			return a.SelectHubConfig(file)
+			return a.selectHubConfig(file)
 		}
 
 		folder, declined := a.chooseFolder(ctx, "Choose customer hub configuration folder")
@@ -185,9 +185,12 @@ func (a *App) ChooseHubConfig() HubResult {
 			candidates = append([]string{folder}, candidates...)
 		}
 
+		// The dialog already holds the operation slot, so the chosen file is
+		// selected inside it rather than through SelectHubConfig, which would
+		// claim the slot again and refuse the person's own choice as busy.
 		for _, candidate := range candidates {
 			if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() {
-				return a.SelectHubConfig(candidate)
+				return a.selectHubConfig(candidate)
 			}
 		}
 		return HubResult{State: Failed, Reason: "the chosen folder does not contain hub-client.json"}
@@ -196,44 +199,48 @@ func (a *App) ChooseHubConfig() HubResult {
 
 // SelectHubConfig validates and stores the explicit path to a customer hub client configuration.
 func (a *App) SelectHubConfig(path string) HubResult {
-	return run(a, false, false, func(ctx context.Context) HubResult {
-		if !filepath.IsAbs(path) || filepath.Clean(path) != path {
-			return HubResult{State: Failed, Reason: "select a cleaned absolute configuration file path"}
-		}
-		cfg, err := hubclient.ReadConfig(path)
-		if err != nil {
-			return HubResult{State: Failed, Reason: err.Error()}
-		}
+	return run(a, false, false, func(context.Context) HubResult { return a.selectHubConfig(path) })
+}
 
-		a.hubMu.Lock()
-		defer a.hubMu.Unlock()
+// selectHubConfig is the selection itself, for a caller that already holds
+// the operation slot.
+func (a *App) selectHubConfig(path string) HubResult {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return HubResult{State: Failed, Reason: "select a cleaned absolute configuration file path"}
+	}
+	cfg, err := hubclient.ReadConfig(path)
+	if err != nil {
+		return HubResult{State: Failed, Reason: err.Error()}
+	}
 
-		// Persist selection
-		if a.hubSelectionPath != "" {
-			encoded, err := json.Marshal(hubSelection{Schema: hubSelectionSchema, Config: path})
-			if err == nil {
-				writeShellDocument(a.hubSelectionPath, append(encoded, '\n'))
-			}
-		}
+	a.hubMu.Lock()
+	defer a.hubMu.Unlock()
 
-		// Disconnect previous connection and reset credentials
-		if a.hubAuthFlow != nil {
-			a.hubAuthFlow.Close()
-			a.hubAuthFlow = nil
+	// Persist selection
+	if a.hubSelectionPath != "" {
+		encoded, err := json.Marshal(hubSelection{Schema: hubSelectionSchema, Config: path})
+		if err == nil {
+			writeShellDocument(a.hubSelectionPath, append(encoded, '\n'))
 		}
-		a.hubClient = nil
-		a.hubSession = nil
-		a.hubConfigPath = path
-		a.hubConfig = &cfg
+	}
 
-		return HubResult{
-			State:         Completed,
-			Connected:     false,
-			Authenticated: false,
-			ConfigPath:    path,
-			HubURL:        cfg.Hub,
-		}
-	})
+	// Disconnect previous connection and reset credentials
+	if a.hubAuthFlow != nil {
+		a.hubAuthFlow.Close()
+		a.hubAuthFlow = nil
+	}
+	a.hubClient = nil
+	a.hubSession = nil
+	a.hubConfigPath = path
+	a.hubConfig = &cfg
+
+	return HubResult{
+		State:         Completed,
+		Connected:     false,
+		Authenticated: false,
+		ConfigPath:    path,
+		HubURL:        cfg.Hub,
+	}
 }
 
 // DiagnoseHub runs actionable prerequisite diagnostics against the configured customer hub.

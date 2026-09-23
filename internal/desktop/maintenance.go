@@ -252,8 +252,14 @@ func (a *App) ChooseMaintenancePath(kind string) MaintenancePathResult {
 }
 
 // CreateProjectBackup copies a project into a new verified backup directory.
+//
+// Preserving evidence that already exists is not new work. This operation,
+// restoring, recovering a document, archiving and taking an upgrade's
+// rollback point are admitted the way their `readmit backup`, `readmit
+// project` and `readmit upgrade` commands are — without a term — so an
+// expired license never gates them (ADR-0007, ADR-0010).
 func (a *App) CreateProjectBackup(request BackupCreateRequest) BackupResult {
-	return run(a, true, true, func(ctx context.Context) BackupResult {
+	return run(a, true, false, func(ctx context.Context) BackupResult {
 		root, declined := resolveProjectPath(request.Project)
 		if root == "" {
 			return BackupResult{State: declined.state, Reason: declined.reason}
@@ -297,7 +303,7 @@ func (a *App) VerifyProjectBackup(path string) BackupResult {
 
 // RestoreProjectBackup writes a backup into a new project directory and rebuilds indexes.
 func (a *App) RestoreProjectBackup(request BackupRestoreRequest) BackupResult {
-	return run(a, true, true, func(ctx context.Context) BackupResult {
+	return run(a, true, false, func(ctx context.Context) BackupResult {
 		if strings.TrimSpace(request.Backup) == "" || strings.TrimSpace(request.Destination) == "" {
 			return BackupResult{State: Failed, Reason: "restore requires a backup folder and a new destination"}
 		}
@@ -418,7 +424,7 @@ func (a *App) PreviewProjectRetirement(path string) RetirementPreviewResult {
 
 // ArchiveOrDeleteProject creates a verified recovery archive, optionally deleting the source.
 func (a *App) ArchiveOrDeleteProject(request ProjectArchiveRequest) BackupResult {
-	return run(a, true, true, func(ctx context.Context) BackupResult {
+	return run(a, true, false, func(ctx context.Context) BackupResult {
 		root, declined := resolveProjectPath(request.Project)
 		if root == "" {
 			return BackupResult{State: declined.state, Reason: declined.reason}
@@ -471,7 +477,7 @@ func (a *App) ArchiveOrDeleteProject(request ProjectArchiveRequest) BackupResult
 
 // RecoverProjectDocument restores one selected recovery copy and retains the current bytes.
 func (a *App) RecoverProjectDocument(request ProjectRecoverRequest) ProjectRecoverResult {
-	return run(a, false, true, func(context.Context) ProjectRecoverResult {
+	return run(a, false, false, func(context.Context) ProjectRecoverResult {
 		root, declined := resolveProjectPath(request.Project)
 		if root == "" {
 			return ProjectRecoverResult{State: declined.state, Reason: declined.reason}
@@ -520,7 +526,7 @@ func (a *App) CheckStagedUpgrade(request UpgradeCheckRequest) UpgradeResult {
 
 // PrepareStagedUpgrade takes the verified recovery archive an upgrade rolls back to.
 func (a *App) PrepareStagedUpgrade(request UpgradePrepareRequest) UpgradeResult {
-	return run(a, true, true, func(ctx context.Context) UpgradeResult {
+	return run(a, true, false, func(ctx context.Context) UpgradeResult {
 		root, declined := resolveProjectPath(request.Project)
 		if root == "" {
 			return UpgradeResult{State: declined.state, Reason: declined.reason}

@@ -71,13 +71,17 @@ func newDelayedAckingPeer(t *testing.T, code string, delay time.Duration) *ackin
 				if _, err := reader.ReadFrame(); err != nil {
 					return
 				}
+				// A frame is counted when it arrives, before the exchange is
+				// held open, so a test that sees the delivery acts while the
+				// sender is still waiting for its acknowledgement.
+				peer.mu.Lock()
+				peer.frames++
+				frame := peer.frames
+				peer.mu.Unlock()
 				if delay > 0 {
 					time.Sleep(delay)
 				}
-				peer.mu.Lock()
-				peer.frames++
-				peer.mu.Unlock()
-				_, _ = fmt.Fprintf(conn, "\x0bMSH|^~\\&|FIXTURE|LAB|READMIT|TEST|20260101120000||ACK|ACK-%d|P|2.5.1\rMSA|%s|LISTEN-BOOK\r\x1c\r", peer.frames, code)
+				_, _ = fmt.Fprintf(conn, "\x0bMSH|^~\\&|FIXTURE|LAB|READMIT|TEST|20260101120000||ACK|ACK-%d|P|2.5.1\rMSA|%s|LISTEN-BOOK\r\x1c\r", frame, code)
 			}()
 		}
 	}()
@@ -502,7 +506,6 @@ func TestDuplicateClicksCannotStartTwoRuns(t *testing.T) {
 	if second.State != desktop.Busy || second.Run != nil {
 		t.Fatalf("a duplicate click was not refused busy: %+v", second)
 	}
-	app.Cancel("durable-run")
 	first := <-done
 	if first.State != desktop.Completed {
 		t.Fatalf("the first run did not finish: %+v", first)

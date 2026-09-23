@@ -86,7 +86,10 @@ func durablePeer(t *testing.T, code string) string {
 func TestRunExecutableDeadlineStopsTheRunAndReportsTheDeliveryUncertain(t *testing.T) {
 	spec, dir := durableSpec(t, durablePeer(t, ""))
 	job := filepath.Join(dir, "job")
-	stdout, stderr, err := run(t, "run", "start", spec, "--send", "--output", job, "--deadline", "500ms", "--json")
+	// The deadline has to leave the run time to reach its send on a slow
+	// runner; the peer never answers, so whatever remains of it expires with
+	// the delivery in flight.
+	stdout, stderr, err := run(t, "run", "start", spec, "--send", "--output", job, "--deadline", "3s", "--json")
 	if exitCode(t, err) != exitRefused || stderr != "" {
 		t.Fatalf("%v %s %s", err, stdout, stderr)
 	}
