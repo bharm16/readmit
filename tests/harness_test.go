@@ -374,3 +374,10 @@ func loadPair(t *testing.T, certificateFile, keyFile string) tls.Certificate {
 	}
 	return pair
 }
+
+// sha256Hex is the identity readmit names exact bytes by: their SHA-256, in
+// lowercase hexadecimal.
+func sha256Hex(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}

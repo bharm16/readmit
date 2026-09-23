@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"slices"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/environment"
@@ -113,22 +114,43 @@ type TargetResetResult struct {
 
 func (r *TargetResetResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
-// SecretsResult carries one secret reference document.
+// SecretsResult carries one secret reference document. Identity is present
+// only after a registration or an edit: the SHA-256 of the exact bytes the
+// save wrote.
 type SecretsResult struct {
 	State       State            `json:"state"`
 	Reason      string           `json:"reason,omitzero"`
 	Document    *secret.Document `json:"document,omitzero"`
 	SecretsFile string           `json:"secrets_file,omitzero"`
+	Identity    string           `json:"identity,omitzero"`
 }
 
 func (r *SecretsResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
-// SecretSaveRequest adds or updates one reference in a secret store.
+// SecretSaveRequest adds or updates one reference in a secret store. An update
+// names the registered reference by Reference.Name and replaces only what
+// Change names; no other member of Reference is read for an update, so the
+// recorded purpose, generation and rotation time stay exactly as they are.
 type SecretSaveRequest struct {
 	Workspace   string           `json:"workspace"`
 	SecretsFile string           `json:"secrets_file"`
 	Reference   secret.Reference `json:"reference"`
 	IsUpdate    bool             `json:"is_update,omitzero"`
+	Change      *SecretChange    `json:"change,omitzero"`
+}
+
+// SecretChange is what one update replaces, as `readmit secret update`
+// replaces what its flags name: a member left out is kept exactly as recorded,
+// so a member someone else changed since the window read the document is not
+// written back, and an empty argument list clears the locator arguments. The
+// name and purpose are not here: they are what the stored credential is for,
+// and a credential for another purpose is a different reference.
+type SecretChange struct {
+	Store     *secret.Store `json:"store,omitzero"`
+	Address   *string       `json:"address,omitzero"`
+	Command   *string       `json:"command,omitzero"`
+	Arguments *[]string     `json:"arguments,omitzero"`
+	MaxAge    *string       `json:"max_age,omitzero"`
 }
 
 // SecretTestResult reports whether a reference locator resolves without storing the credential.
@@ -159,12 +181,14 @@ type SecretScanResult struct {
 
 func (r *SecretScanResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
-// SendPolicyResult carries one send policy document.
+// SendPolicyResult carries one send policy document. Identity is present only
+// after a save: the SHA-256 of the exact bytes the save wrote.
 type SendPolicyResult struct {
 	State      State              `json:"state"`
 	Reason     string             `json:"reason,omitzero"`
 	Policy     *sendpolicy.Policy `json:"policy,omitzero"`
 	PolicyFile string             `json:"policy_file,omitzero"`
+	Identity   string             `json:"identity,omitzero"`
 }
 
 func (r *SendPolicyResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
@@ -194,12 +218,15 @@ type SendPolicyEvalResult struct {
 
 func (r *SendPolicyEvalResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
-// ResetPlanResult carries one fixture reset plan document.
+// ResetPlanResult carries one fixture reset plan document. Identity is present
+// only after a save: the SHA-256 of the exact bytes the save wrote, the
+// plan_sha256 a reset of this plan retains.
 type ResetPlanResult struct {
 	State    State              `json:"state"`
 	Reason   string             `json:"reason,omitzero"`
 	Plan     *fixturereset.Plan `json:"plan,omitzero"`
 	PlanFile string             `json:"plan_file,omitzero"`
+	Identity string             `json:"identity,omitzero"`
 }
 
 func (r *ResetPlanResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
@@ -376,7 +403,10 @@ func (a *App) ReadSecrets(workspace, secretsFile string) SecretsResult {
 	})
 }
 
-// SaveSecretReference adds or updates one reference in a secret store.
+// SaveSecretReference adds or updates one reference in a secret store. An
+// update reaches the shared update `readmit secret update` uses with the
+// change the request names, so it is refused for what the command refuses, an
+// update that names no change included.
 func (a *App) SaveSecretReference(request SecretSaveRequest) SecretsResult {
 	return run(a, false, true, func(context.Context) SecretsResult {
 		path, ref := resolveWorkspacePath(request.Workspace, request.SecretsFile)
@@ -385,27 +415,45 @@ func (a *App) SaveSecretReference(request SecretSaveRequest) SecretsResult {
 		}
 		var doc secret.Document
 		var err error
-		if request.IsUpdate {
-			store := request.Reference.Store
-			addr := request.Reference.Address
-			cmd := request.Reference.Command
-			args := request.Reference.Arguments
-			maxAge := request.Reference.MaxAge
-			doc, _, err = operation.UpdateSecretReference(path, request.Reference.Name, secret.Change{
-				Store:     &store,
-				Address:   &addr,
-				Command:   &cmd,
-				Arguments: &args,
-				MaxAge:    &maxAge,
-			})
-		} else {
+		switch {
+		case request.IsUpdate:
+			var change secret.Change
+			change, err = secretChange(request.Change)
+			if err == nil {
+				doc, _, err = operation.UpdateSecretReference(path, request.Reference.Name, change)
+			}
+		case request.Change != nil:
+			err = errors.New("a change applies only to an update of a registered reference")
+		default:
 			doc, _, err = operation.AddSecretReference(path, request.Reference)
 		}
 		if err != nil {
 			return SecretsResult{State: Failed, Reason: err.Error()}
 		}
-		return SecretsResult{State: Completed, Document: &doc, SecretsFile: request.SecretsFile}
+		identity, err := operation.SecretsIdentity(doc)
+		if err != nil {
+			return SecretsResult{State: Failed, Reason: err.Error()}
+		}
+		return SecretsResult{State: Completed, Document: &doc, SecretsFile: request.SecretsFile, Identity: identity}
 	})
+}
+
+// secretChange is the change one update asks for, refused where
+// `readmit secret update` refuses it: a change naming nothing, and a locator
+// argument that is empty, which the command accepts only alone, to clear them.
+func secretChange(requested *SecretChange) (secret.Change, error) {
+	var change secret.Change
+	if requested != nil {
+		// The same members as the shared change, so the compiler keeps the two in step.
+		change = secret.Change(*requested)
+	}
+	if change.Empty() {
+		return secret.Change{}, errors.New("an update requires at least one change")
+	}
+	if change.Arguments != nil && slices.Contains(*change.Arguments, "") {
+		return secret.Change{}, errors.New("a locator argument is never empty; an empty list clears them")
+	}
+	return change, nil
 }
 
 // RemoveSecretReference removes one registered reference by name.
@@ -504,11 +552,11 @@ func (a *App) SaveSendPolicy(request SendPolicySaveRequest) SendPolicyResult {
 		if path == "" {
 			return SendPolicyResult{State: ref.state, Reason: ref.reason}
 		}
-		saved, err := operation.SaveSendPolicy(path, request.Policy)
+		saved, identity, err := operation.SaveSendPolicy(path, request.Policy)
 		if err != nil {
 			return SendPolicyResult{State: Failed, Reason: err.Error()}
 		}
-		return SendPolicyResult{State: Completed, Policy: &saved, PolicyFile: request.PolicyFile}
+		return SendPolicyResult{State: Completed, Policy: &saved, PolicyFile: request.PolicyFile, Identity: identity}
 	})
 }
 
@@ -556,11 +604,11 @@ func (a *App) SaveResetPlan(request ResetPlanSaveRequest) ResetPlanResult {
 		if path == "" {
 			return ResetPlanResult{State: ref.state, Reason: ref.reason}
 		}
-		saved, err := operation.SaveResetPlan(path, request.Plan)
+		saved, identity, err := operation.SaveResetPlan(path, request.Plan)
 		if err != nil {
 			return ResetPlanResult{State: Failed, Reason: err.Error()}
 		}
-		return ResetPlanResult{State: Completed, Plan: &saved, PlanFile: request.PlanFile}
+		return ResetPlanResult{State: Completed, Plan: &saved, PlanFile: request.PlanFile, Identity: identity}
 	})
 }
 

@@ -2,6 +2,8 @@ package operation
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
 	"io"
@@ -193,6 +195,18 @@ func AddSecretReference(path string, entry secret.Reference) (secret.Document, s
 	return updated, stored, nil
 }
 
+// SecretsIdentity is the identity of the secret reference document a save of
+// document wrote: the SHA-256 of its exact bytes. secret.WriteStore writes
+// secret.Encode's deterministic encoding and nothing else, so encoding the
+// document a save returned yields those bytes without reading the file again.
+func SecretsIdentity(document secret.Document) (string, error) {
+	data, err := secret.Encode(document)
+	if err != nil {
+		return "", err
+	}
+	return documentIdentity(data), nil
+}
+
 // UpdateSecretReference modifies configuration of one existing reference and saves the store.
 func UpdateSecretReference(path string, name string, change secret.Change) (secret.Document, secret.Reference, error) {
 	doc, err := ReadSecrets(path)
@@ -299,26 +313,32 @@ func ReadSendPolicy(path string) (sendpolicy.Policy, error) {
 	return sendpolicy.DecodePolicy(data)
 }
 
-// SaveSendPolicy writes an approved-destination policy atomically and reads it back to verify.
-func SaveSendPolicy(path string, policy sendpolicy.Policy) (sendpolicy.Policy, error) {
+// SaveSendPolicy writes an approved-destination policy atomically and reads it
+// back to verify. It returns the policy it wrote and the identity of the exact
+// bytes it wrote: their SHA-256.
+func SaveSendPolicy(path string, policy sendpolicy.Policy) (sendpolicy.Policy, string, error) {
 	if path == "" {
-		return sendpolicy.Policy{}, errors.New("policy path must not be empty")
+		return sendpolicy.Policy{}, "", errors.New("policy path must not be empty")
 	}
 	if policy.Schema == "" {
 		policy.Schema = sendpolicy.PolicySchema
 	}
 	data, err := json.Marshal(policy, json.Deterministic(true))
 	if err != nil {
-		return sendpolicy.Policy{}, errors.New("cannot encode send policy")
+		return sendpolicy.Policy{}, "", errors.New("cannot encode send policy")
 	}
 	data = append(data, '\n')
-	if _, err := sendpolicy.DecodePolicy(data); err != nil {
-		return sendpolicy.Policy{}, err
+	saved, err := sendpolicy.DecodePolicy(data)
+	if err != nil {
+		return sendpolicy.Policy{}, "", err
 	}
 	if err := atomicWrite(path, data); err != nil {
-		return sendpolicy.Policy{}, err
+		return sendpolicy.Policy{}, "", err
 	}
-	return ReadSendPolicy(path)
+	if _, err := ReadSendPolicy(path); err != nil {
+		return sendpolicy.Policy{}, "", err
+	}
+	return saved, documentIdentity(data), nil
 }
 
 // EvaluateSendPolicy evaluates whether an address and classification is approved under the given policy.
@@ -345,26 +365,40 @@ func ReadResetPlan(path string) (fixturereset.Plan, error) {
 	return fixturereset.DecodePlan(data)
 }
 
-// SaveResetPlan writes a fixture reset plan atomically and reads it back to verify.
-func SaveResetPlan(path string, plan fixturereset.Plan) (fixturereset.Plan, error) {
+// SaveResetPlan writes a fixture reset plan atomically and reads it back to
+// verify. It returns the plan it wrote and the identity of the exact bytes it
+// wrote: their SHA-256, the plan_sha256 a reset of this plan retains in its
+// outcome.
+func SaveResetPlan(path string, plan fixturereset.Plan) (fixturereset.Plan, string, error) {
 	if path == "" {
-		return fixturereset.Plan{}, errors.New("plan path must not be empty")
+		return fixturereset.Plan{}, "", errors.New("plan path must not be empty")
 	}
 	if plan.Schema == "" {
 		plan.Schema = fixturereset.PlanSchema
 	}
 	data, err := json.Marshal(plan, json.Deterministic(true))
 	if err != nil {
-		return fixturereset.Plan{}, errors.New("cannot encode reset plan")
+		return fixturereset.Plan{}, "", errors.New("cannot encode reset plan")
 	}
 	data = append(data, '\n')
-	if _, err := fixturereset.DecodePlan(data); err != nil {
-		return fixturereset.Plan{}, err
+	saved, err := fixturereset.DecodePlan(data)
+	if err != nil {
+		return fixturereset.Plan{}, "", err
 	}
 	if err := atomicWrite(path, data); err != nil {
-		return fixturereset.Plan{}, err
+		return fixturereset.Plan{}, "", err
 	}
-	return ReadResetPlan(path)
+	if _, err := ReadResetPlan(path); err != nil {
+		return fixturereset.Plan{}, "", err
+	}
+	return saved, documentIdentity(data), nil
+}
+
+// documentIdentity is the identity a saved document is named by: the SHA-256
+// of its exact bytes, in lowercase hexadecimal.
+func documentIdentity(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 func readBoundedFile(path string, limit int) ([]byte, error) {

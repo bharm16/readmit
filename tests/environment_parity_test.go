@@ -1,8 +1,11 @@
 package tests
 
 import (
+	"bytes"
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -328,5 +331,246 @@ func TestEnvironmentDesktopAndCLIParity(t *testing.T) {
 	})
 	if prodReset.Result == nil || prodReset.Result.Outcome != fixturereset.Refused {
 		t.Fatalf("expected reset on production environment to be refused, got %+v", prodReset)
+	}
+}
+
+// TestCredentialReferencesEditedInTheWindowMatchTheCommandLine shows the
+// window's registration and edit reach the shared operations `readmit secret
+// add` and `readmit secret update` use: each opens what the other wrote, both
+// refuse the same edits without changing a byte, in the same words wherever
+// the shared operation is what refuses, and the same edit made by each writes
+// the same bytes.
+func TestCredentialReferencesEditedInTheWindowMatchTheCommandLine(t *testing.T) {
+	t.Setenv(providerSwitch, "emit")
+	workspace := t.TempDir()
+	app := desktopApp(t, workspace)
+	store := filepath.Join(workspace, "secrets.json")
+
+	// The command line registers; the window opens exactly that document.
+	_, stderr, err := run(t, "secret", "add", "--secrets", store, "--name", "lab-mllp", "--store", "os-keychain",
+		"--address", testOnlyEndpoint, "--command", providerCommand(t), "--argument", testOnlyMaterial(t), "--max-age", "720h")
+	if err != nil || stderr != "" {
+		t.Fatalf("secret add: %v %s", err, stderr)
+	}
+	opened := app.ReadSecrets(workspace, "secrets.json")
+	onDisk, err := secret.ReadStore(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opened.State != desktop.Completed || opened.Document == nil || !reflect.DeepEqual(*opened.Document, onDisk) {
+		t.Fatalf("the window opened %+v, the command line wrote %+v", opened, onDisk)
+	}
+	registered := onDisk.References[0]
+	before := mustRead(t, store)
+
+	// The window registers under its own name; the command line shows it.
+	windowed := registered
+	windowed.Name = "lab-window"
+	added := app.SaveSecretReference(desktop.SecretSaveRequest{Workspace: workspace, SecretsFile: "secrets.json", Reference: windowed})
+	if added.State != desktop.Completed || added.Identity != sha256Hex(mustRead(t, store)) {
+		t.Fatalf("the window's registration: %+v", added)
+	}
+	shown, stderr, err := run(t, "secret", "show", "--secrets", store)
+	if err != nil || stderr != "" || !strings.Contains(shown, "References: 2") ||
+		!strings.Contains(shown, "  lab-window store=os-keychain purpose=mllp-endpoint address="+testOnlyEndpoint+" generation=1\n") {
+		t.Fatalf("secret show after the window registered: %v %s\n%s", err, stderr, shown)
+	}
+	requireMasked(t, "secret show after the window registered", shown)
+	if removed := app.RemoveSecretReference(workspace, "secrets.json", "lab-window"); removed.State != desktop.Completed {
+		t.Fatalf("RemoveSecretReference: %+v", removed)
+	}
+	if !bytes.Equal(mustRead(t, store), before) {
+		t.Fatal("registering and removing a reference did not restore the document byte for byte")
+	}
+
+	// A duplicate registration and every refused edit: the same words from
+	// both entry points, and no byte changed by either.
+	duplicate := app.SaveSecretReference(desktop.SecretSaveRequest{Workspace: workspace, SecretsFile: "secrets.json", Reference: registered})
+	_, cliDuplicate, err := run(t, "secret", "add", "--secrets", store, "--name", "lab-mllp", "--store", "os-keychain",
+		"--address", testOnlyEndpoint, "--command", providerCommand(t))
+	if duplicate.State != desktop.Failed || err == nil || duplicate.Reason == "" || !strings.Contains(cliDuplicate, duplicate.Reason) {
+		t.Fatalf("a duplicate: the window said %+v, the command line said %q", duplicate, cliDuplicate)
+	}
+	text := func(value string) *string { return &value }
+	browser := secret.Store("browser")
+	for _, refused := range []struct {
+		name   string
+		target string
+		flags  []string
+		change desktop.SecretChange
+	}{
+		{"an address without a port", "lab-mllp", []string{"--address", "127.0.0.1"}, desktop.SecretChange{Address: text("127.0.0.1")}},
+		{"a program found through PATH", "lab-mllp", []string{"--command", "security"}, desktop.SecretChange{Command: text("security")}},
+		{"an unreadable maximum age", "lab-mllp", []string{"--max-age", "a-month"}, desktop.SecretChange{MaxAge: text("a-month")}},
+		{"an unknown store", "lab-mllp", []string{"--store", "browser"}, desktop.SecretChange{Store: &browser}},
+		{"an unknown name", "lab-other", []string{"--address", "127.0.0.1:2576"}, desktop.SecretChange{Address: text("127.0.0.1:2576")}},
+	} {
+		named := registered
+		named.Name = refused.target
+		result := app.SaveSecretReference(desktop.SecretSaveRequest{Workspace: workspace, SecretsFile: "secrets.json", Reference: named, IsUpdate: true, Change: &refused.change})
+		args := append([]string{"secret", "update", "--secrets", store, "--name", refused.target}, refused.flags...)
+		_, cliRefusal, err := run(t, args...)
+		if result.State != desktop.Failed || err == nil || result.Reason == "" || !strings.Contains(cliRefusal, result.Reason) {
+			t.Errorf("%s: the window said %+v, the command line said %q", refused.name, result, cliRefusal)
+		}
+		if !bytes.Equal(mustRead(t, store), before) {
+			t.Fatalf("%s changed the document", refused.name)
+		}
+	}
+
+	// An edit that names no change, and one naming an empty locator argument
+	// among others, are refused by both before the operation is reached: the
+	// command line as usage, the window in its own words.
+	for _, refused := range []struct {
+		name   string
+		flags  []string
+		change *desktop.SecretChange
+	}{
+		{"no change", nil, nil},
+		{"an empty argument among others", []string{"--argument", "kv", "--argument", ""}, &desktop.SecretChange{Arguments: &[]string{"kv", ""}}},
+	} {
+		result := app.SaveSecretReference(desktop.SecretSaveRequest{Workspace: workspace, SecretsFile: "secrets.json", Reference: registered, IsUpdate: true, Change: refused.change})
+		_, _, err := run(t, append([]string{"secret", "update", "--secrets", store, "--name", "lab-mllp"}, refused.flags...)...)
+		if result.State != desktop.Failed || err == nil {
+			t.Errorf("%s: the window said %+v, the command line exited %v", refused.name, result, err)
+		}
+		if !bytes.Equal(mustRead(t, store), before) {
+			t.Fatalf("%s changed the document", refused.name)
+		}
+	}
+
+	// The same edit, made by the command line on a copy and by the window on
+	// the original, writes the same bytes, and the rotation stays as recorded.
+	copied := filepath.Join(workspace, "copy.json")
+	if err := os.WriteFile(copied, before, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, stderr, err = run(t, "secret", "update", "--secrets", copied, "--name", "lab-mllp", "--store", "customer-managed",
+		"--address", "127.0.0.1:2576", "--argument", testOnlyMaterial(t), "--max-age", "2160h")
+	if err != nil || stderr != "" {
+		t.Fatalf("secret update: %v %s", err, stderr)
+	}
+	customer := secret.CustomerManaged
+	updated := app.SaveSecretReference(desktop.SecretSaveRequest{Workspace: workspace, SecretsFile: "secrets.json", Reference: registered, IsUpdate: true,
+		Change: &desktop.SecretChange{
+			Store:     &customer,
+			Address:   text("127.0.0.1:2576"),
+			Arguments: &[]string{readStrictDocument[secret.Document](t, copied).References[0].Arguments[0]},
+			MaxAge:    text("2160h"),
+		}})
+	if updated.State != desktop.Completed || updated.Document == nil {
+		t.Fatalf("the window's edit: %+v", updated)
+	}
+	if !bytes.Equal(mustRead(t, store), mustRead(t, copied)) {
+		t.Fatalf("the window and the command line wrote different bytes for one edit:\n%s\n%s", mustRead(t, store), mustRead(t, copied))
+	}
+	if updated.Identity != sha256Hex(mustRead(t, store)) {
+		t.Fatalf("the edit's identity %q is not the document's", updated.Identity)
+	}
+	if got := updated.Document.References[0]; got.Generation != registered.Generation || !got.RotatedAt.Equal(registered.RotatedAt) {
+		t.Fatalf("an edit recorded a rotation: %+v", got)
+	}
+
+	// The command line edits after the window read the document, and the
+	// window's next edit keeps that change: it writes only what it names.
+	_, stderr, err = run(t, "secret", "update", "--secrets", store, "--name", "lab-mllp", "--address", "127.0.0.1:2577")
+	if err != nil || stderr != "" {
+		t.Fatalf("secret update after the window: %v %s", err, stderr)
+	}
+	later := app.SaveSecretReference(desktop.SecretSaveRequest{Workspace: workspace, SecretsFile: "secrets.json", Reference: registered, IsUpdate: true,
+		Change: &desktop.SecretChange{MaxAge: text("720h")}})
+	if later.State != desktop.Completed || later.Document == nil {
+		t.Fatalf("the window's later edit: %+v", later)
+	}
+	if got := later.Document.References[0]; got.Address != "127.0.0.1:2577" || got.MaxAge != "720h" {
+		t.Fatalf("the window's edit wrote back what the command line had changed: %+v", got)
+	}
+	if reread := app.ReadSecrets(workspace, "secrets.json"); reread.Document == nil || reread.Document.References[0].Address != "127.0.0.1:2577" {
+		t.Fatalf("the window did not read the command line's edit: %+v", reread)
+	}
+
+	// A reference registered for another purpose is refused where an MLLP
+	// target names it, in the same words by the window and the command line.
+	source := registered
+	source.Name = "lab-source"
+	source.Purpose = secret.SourceEndpoint
+	if result := app.SaveSecretReference(desktop.SecretSaveRequest{Workspace: workspace, SecretsFile: "secrets.json", Reference: source}); result.State != desktop.Completed {
+		t.Fatalf("registering a source reference: %+v", result)
+	}
+	bound := app.SaveTarget(desktop.TargetSaveRequest{Workspace: workspace, TargetFile: "lab-target.json", Target: replay.Target{
+		Schema: replay.TargetSchemaV3, Name: "lab-siu", Classification: replay.Nonproduction, Address: testOnlyEndpoint,
+		Transport: "plain", TestEndpoint: true, ConnectTimeout: "2s", MessageTimeout: "5s", MaxACKBytes: 65536,
+		Credential: replay.Credential{SecretsFile: "secrets.json", Reference: "lab-source"},
+	}})
+	_, cliBound, err := run(t, "target", "set", "--target", filepath.Join(workspace, "cli-target.json"), "--name", "lab-siu",
+		"--classification", "nonproduction", "--address", testOnlyEndpoint, "--secrets", "secrets.json", "--credential", "lab-source")
+	if bound.State != desktop.Failed || err == nil || bound.Reason == "" || !strings.Contains(cliBound, bound.Reason) {
+		t.Fatalf("a purpose mismatch: the window said %+v, the command line said %q", bound, cliBound)
+	}
+}
+
+// TestSavedPolicyAndPlanAreReadUnchangedByTheCommandLine shows a send policy
+// and a reset plan saved by the window are named by the identity of the bytes
+// written, and are what `readmit target check` and `readmit target reset`
+// read: the check reports the approved destinations the window saved, and the
+// reset runs the plan by the identity the window reported.
+func TestSavedPolicyAndPlanAreReadUnchangedByTheCommandLine(t *testing.T) {
+	workspace := t.TempDir()
+	app := desktopApp(t, workspace)
+	endpoint, received := quietEndpoint(t, nil)
+	target := app.SaveTarget(desktop.TargetSaveRequest{Workspace: workspace, TargetFile: "lab-target.json", Target: replay.Target{
+		Schema: replay.TargetSchemaV3, Name: "lab-siu", Classification: replay.Nonproduction, Address: endpoint,
+		Transport: "plain", TestEndpoint: true, ConnectTimeout: "2s", MessageTimeout: "500ms", MaxACKBytes: 65536,
+	}})
+	if target.State != desktop.Completed {
+		t.Fatalf("SaveTarget: %+v", target)
+	}
+
+	policy := app.SaveSendPolicy(desktop.SendPolicySaveRequest{Workspace: workspace, PolicyFile: "send-policy.json", Policy: sendpolicy.Policy{
+		Schema: sendpolicy.PolicySchema, ApprovedDestinations: []string{"127.0.0.0/8"},
+	}})
+	if policy.State != desktop.Completed || policy.Identity != sha256Hex(mustRead(t, filepath.Join(workspace, "send-policy.json"))) {
+		t.Fatalf("SaveSendPolicy: %+v", policy)
+	}
+	checked, stderr, err := run(t, "target", "check", "--target", filepath.Join(workspace, "lab-target.json"), "--policy", filepath.Join(workspace, "send-policy.json"))
+	if err != nil || stderr != "" {
+		t.Fatalf("target check: %v %s", err, stderr)
+	}
+	windowCheck := app.CheckTarget(desktop.TargetCheckRequest{Workspace: workspace, TargetFile: "lab-target.json", PolicyFile: "send-policy.json"})
+	if windowCheck.Decision == nil {
+		t.Fatalf("CheckTarget: %+v", windowCheck)
+	}
+	for _, want := range []string{"Approved destinations: 127.0.0.0/8\n", "Send policy: denied (" + string(windowCheck.Decision.Reason) + ")\n"} {
+		if !strings.Contains(checked, want) {
+			t.Errorf("target check of the window's policy omitted %q:\n%s", want, checked)
+		}
+	}
+	if received.Load() != 0 {
+		t.Fatal("a check sent a payload")
+	}
+
+	plan := app.SaveResetPlan(desktop.ResetPlanSaveRequest{Workspace: workspace, PlanFile: "reset-plan.json", Plan: fixturereset.Plan{
+		Schema: fixturereset.PlanSchema, Environment: "lab-siu",
+		Actions: []fixturereset.Action{{ID: "stop-listener", Operator: fixturereset.OperatorConfirms, Authority: fixturereset.NoAuthority, Instructions: "Stop the prior listen session."}},
+	}})
+	if plan.State != desktop.Completed || plan.Identity != sha256Hex(mustRead(t, filepath.Join(workspace, "reset-plan.json"))) {
+		t.Fatalf("SaveResetPlan: %+v", plan)
+	}
+	outcome := filepath.Join(workspace, "reset-1.json")
+	reset, stderr, err := run(t, "target", "reset", "--target", filepath.Join(workspace, "lab-target.json"),
+		"--plan", filepath.Join(workspace, "reset-plan.json"), "--outcome", outcome, "--confirm", "stop-listener")
+	if err != nil || stderr != "" || !strings.Contains(reset, "Reset plan: "+plan.Identity+" ("+fixturereset.PlanSchema+")\n") {
+		t.Fatalf("target reset of the window's plan: %v %s\n%s", err, stderr, reset)
+	}
+	var retained struct {
+		PlanSHA256 string `json:"plan_sha256"`
+	}
+	if err := json.Unmarshal(mustRead(t, outcome), &retained); err != nil || retained.PlanSHA256 != plan.Identity {
+		t.Fatalf("the retained outcome names plan %q, the window saved %q (%v)", retained.PlanSHA256, plan.Identity, err)
+	}
+	windowReset := app.ResetTarget(desktop.TargetResetRequest{Workspace: workspace, TargetFile: "lab-target.json", PlanFile: "reset-plan.json",
+		OutcomeFile: "reset-2.json", Confirmed: []string{"stop-listener"}})
+	if windowReset.Result == nil || windowReset.Result.PlanSHA256 != plan.Identity || windowReset.Result.Outcome != fixturereset.Confirmed {
+		t.Fatalf("the window's reset of its own plan: %+v", windowReset)
 	}
 }

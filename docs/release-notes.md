@@ -1,5 +1,30 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The window can now edit a registered credential reference, and each
+  environment document it saves names itself (#292). The credential reference
+  panel always registered and never updated, so `readmit secret update` had no
+  path through the window. Each reference now has an Edit action for its store,
+  address, locator program, locator arguments and maximum rotation age, through
+  the shared update the command uses. The window sends only the members the
+  person changed, as the command changes only what its flags name, so a change
+  the command line made while the edit was open is kept; an edit is refused
+  for what the command refuses, one that changes nothing included. Escape
+  cancels an edit and writes nothing. Locator arguments are typed one per line,
+  so one may hold a space, and are counted rather than shown, as
+  `readmit secret show` counts them; registering can now declare a maximum
+  rotation age. A registered or edited reference store, a send policy and a
+  reset plan each show `Written to FILE · identity SHA256` once saved, the
+  SHA-256 of the exact bytes written, which for a plan is the `plan_sha256` a
+  reset of it retains; a refused save claims none. A secrets document that
+  cannot be read says why instead of showing the one read before it, and focus
+  returns to the control that started an action once it answers. Interaction
+  journeys drive registration, a duplicate and refused reference, a purpose
+  mismatch, an invalid destination prefix, cancellation and the keyboard over
+  the real facade, and the command line reads every document the window wrote
+  unchanged. No `readmit-*` document or `readmit` command changes; the window's
+  secrets, send-policy and reset-plan save results gain the identity, and its
+  secret save request gains the change an edit names.
+
 - Every installed desktop package is now driven through its platform's
   accessibility API (#109): the Accessibility API on macOS, UI Automation on
   Windows and AT-SPI on Linux, on all five targets in the desktop workflow's

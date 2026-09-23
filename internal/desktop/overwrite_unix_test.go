@@ -275,15 +275,15 @@ func TestEverySaveThatReplacesADocumentLeavesTheFileALinkLedToUnchanged(t *testi
 		Name: "vault-key", Store: secret.OSKeychain, Purpose: secret.MLLPEndpoint,
 		Address: "127.0.0.1:2575", Command: "/bin/echo", Arguments: []string{"test-only-credential"}, MaxAge: "720h",
 	}
-	saveSecret := func(app *desktop.App, folder, file string, change func(*secret.Reference), update bool) saved {
+	saveSecret := func(app *desktop.App, folder, file string, change func(*secret.Reference)) saved {
 		declared := reference
 		if change != nil {
 			change(&declared)
 		}
-		result := app.SaveSecretReference(desktop.SecretSaveRequest{Workspace: folder, SecretsFile: file, Reference: declared, IsUpdate: update})
+		result := app.SaveSecretReference(desktop.SecretSaveRequest{Workspace: folder, SecretsFile: file, Reference: declared})
 		return saved{result.State, result.Reason, result.Document}
 	}
-	createSecrets := func(app *desktop.App, folder, file string) saved { return saveSecret(app, folder, file, nil, false) }
+	createSecrets := func(app *desktop.App, folder, file string) saved { return saveSecret(app, folder, file, nil) }
 	saveTarget := func(app *desktop.App, folder, file, name string) saved {
 		opened := app.ReadTarget(folder, "absent-target.json")
 		if opened.State != desktop.Completed {
@@ -416,11 +416,14 @@ func TestEverySaveThatReplacesADocumentLeavesTheFileALinkLedToUnchanged(t *testi
 			}},
 		{name: "SaveSecretReference(add)", file: "secrets.json", create: createSecrets,
 			replace: func(app *desktop.App, folder, file string) saved {
-				return saveSecret(app, folder, file, func(r *secret.Reference) { r.Name = "second-key" }, false)
+				return saveSecret(app, folder, file, func(r *secret.Reference) { r.Name = "second-key" })
 			}},
 		{name: "SaveSecretReference(update)", file: "secrets.json", create: createSecrets,
 			replace: func(app *desktop.App, folder, file string) saved {
-				return saveSecret(app, folder, file, func(r *secret.Reference) { r.Address = "127.0.0.1:2576" }, true)
+				address := "127.0.0.1:2576"
+				result := app.SaveSecretReference(desktop.SecretSaveRequest{Workspace: folder, SecretsFile: file, Reference: reference,
+					IsUpdate: true, Change: &desktop.SecretChange{Address: &address}})
+				return saved{result.State, result.Reason, result.Document}
 			}},
 		{name: "RotateSecretReference", file: "secrets.json", create: createSecrets,
 			replace: func(app *desktop.App, folder, file string) saved {
