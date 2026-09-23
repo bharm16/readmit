@@ -31,6 +31,9 @@ type BaselineResult struct {
 	PreviousApprover  string               `json:"previous_approver,omitzero"`
 	PreviousRationale string               `json:"previous_rationale,omitzero"`
 	Output            string               `json:"output,omitzero"`
+	// ReleaseID is the stable test identity of an inspected retained release,
+	// the id `readmit expectation show` prints beside the release identity.
+	ReleaseID string `json:"release_id,omitzero"`
 }
 
 func (r *BaselineResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }

@@ -5,6 +5,7 @@ import {
   approveSuitePromotion,
   cancel,
   expectationImpact,
+  openBaseline,
   openSuite,
   prepareSuite,
   previewSuite,
@@ -14,6 +15,7 @@ import {
   saveSuiteReleases,
   validateSuite,
   postHubReleaseReview,
+  type BaselineResult,
   type EditorDraft,
   type HubReviewsResult,
   type SuiteDocument,
@@ -77,6 +79,7 @@ export function SuitePanel({
   const [sourceEntry, setSourceEntry] = useState("");
   const [canonical, setCanonical] = useState("");
   const [opened, setOpened] = useState<SuiteDocumentResult | null>(null);
+  const [imported, setImported] = useState<SuiteDocumentResult | null>(null);
   const [saved, setSaved] = useState<SuiteDocumentResult | null>(null);
   const [output, setOutput] = useState("");
   const [environment, setEnvironment] = useState("");
@@ -110,6 +113,7 @@ export function SuitePanel({
     (next: SuiteDocument | null, entry = sourceEntry) => {
       setDocument(next);
       setOpened(null);
+      setImported(null);
       setSaved(null);
       setPreview(null);
       retain(next, entry);
@@ -158,6 +162,7 @@ export function SuitePanel({
       await perform(async () => {
         const result = await openSuite(workspace, entry);
         setOpened(result);
+        setImported(null);
         if (result.suite) {
           setDocument(result.suite);
           setSourceEntry(entry);
@@ -175,9 +180,13 @@ export function SuitePanel({
     [perform, retain, workspace],
   );
 
+  // The pasted text is read by the suite reader alone; a refusal leaves the
+  // editor holding what it held.
   const importCanonical = useCallback(async () => {
     await perform(async () => {
+      setImported(null);
       const result = await validateSuite(canonical);
+      setImported(result);
       if (result.suite) {
         setDocument(result.suite);
         setCanonical(result.document ?? "");
@@ -267,6 +276,10 @@ export function SuitePanel({
   const [sidecarRows, setSidecarRows] = useState<{ test: string; release: string; identity: string }[]>([{ test: "", release: "", identity: "" }]);
   const [sidecarOutput, setSidecarOutput] = useState("");
   const [sidecar, setSidecar] = useState<SuiteReleasesResult | null>(null);
+  // What each reference's release entry holds, read by the release reader
+  // `readmit expectation show` applies, so the full identity a reference pins
+  // is taken from the retained release rather than typed.
+  const [releaseReads, setReleaseReads] = useState<Record<number, BaselineResult | undefined>>({});
   const [impactSuite, setImpactSuite] = useState("");
   const [impactSidecar, setImpactSidecar] = useState("");
   const [impactFrom, setImpactFrom] = useState("");
@@ -288,6 +301,38 @@ export function SuitePanel({
       if (result.state === "completed") onSaved?.();
     });
   }, [onSaved, perform, sidecarOutput, sidecarRows, workspace]);
+
+  const readReleaseIdentity = useCallback(
+    async (index: number) => {
+      const entry = sidecarRows[index]?.release ?? "";
+      const earlier = releaseReads[index]?.comparison?.identity;
+      await perform(async () => {
+        const result = await openBaseline({
+          workspace,
+          release: true,
+          release_id: "",
+          profiles: [],
+          spec: "",
+          previous: entry,
+          show_values: false,
+          review: "",
+          approver: "",
+          rationale: "",
+          output: "",
+        });
+        setReleaseReads((reads) => ({ ...reads, [index]: result }));
+        // A refused read leaves no identity an earlier read of this entry
+        // filled in; one the person typed stays.
+        const identity = result.state === "completed" ? result.comparison?.identity : undefined;
+        setSidecarRows((rows) =>
+          rows.map((held, at) =>
+            at !== index ? held : identity ? { ...held, identity } : earlier !== undefined && held.identity === earlier ? { ...held, identity: "" } : held,
+          ),
+        );
+      });
+    },
+    [perform, releaseReads, sidecarRows, workspace],
+  );
 
   const runImpact = useCallback(async () => {
     await perform(async () => {
@@ -558,11 +603,16 @@ export function SuitePanel({
             <textarea
               aria-label="Canonical suite JSON"
               value={canonical}
-              onChange={(event) => setCanonical(event.target.value)}
+              onChange={(event) => {
+                setCanonical(event.target.value);
+                setImported(null);
+              }}
             />
             <button type="button" disabled={!canonical.trim()} onClick={() => void importCanonical()}>
               Validate and load
             </button>
+            {imported && imported.state !== "completed" ? <p role="alert">{imported.reason}</p> : null}
+            {imported?.state === "completed" ? <p role="status">Validated and loaded into the editor; nothing was saved.</p> : null}
           </details>
         </fieldset>
       ) : null}
@@ -576,6 +626,7 @@ export function SuitePanel({
                 <th>Test</th>
                 <th>Release entry</th>
                 <th>Release identity</th>
+                <th>Retained release</th>
               </tr>
             </thead>
             <tbody>
@@ -594,9 +645,19 @@ export function SuitePanel({
                     <input
                       aria-label={`Release entry ${index + 1}`}
                       value={row.release}
-                      onChange={(event) =>
-                        setSidecarRows((rows) => rows.map((held, at) => (at === index ? { ...held, release: event.target.value } : held)))
-                      }
+                      onChange={(event) => {
+                        // An identity read from the entry this row named
+                        // before no longer belongs to it.
+                        const read = releaseReads[index]?.comparison?.identity;
+                        setSidecarRows((rows) =>
+                          rows.map((held, at) =>
+                            at === index
+                              ? { ...held, release: event.target.value, identity: read !== undefined && held.identity === read ? "" : held.identity }
+                              : held,
+                          ),
+                        );
+                        setReleaseReads((reads) => ({ ...reads, [index]: undefined }));
+                      }}
                     />
                   </td>
                   <td>
@@ -607,6 +668,17 @@ export function SuitePanel({
                         setSidecarRows((rows) => rows.map((held, at) => (at === index ? { ...held, identity: event.target.value } : held)))
                       }
                     />
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      aria-label={`Read identity of release entry ${index + 1}`}
+                      disabled={!row.release.trim()}
+                      onClick={() => void readReleaseIdentity(index)}
+                    >
+                      Read identity
+                    </button>
+                    <ReleaseRead result={releaseReads[index]} />
                   </td>
                 </tr>
               ))}
@@ -1125,6 +1197,23 @@ export function SuitePanel({
         </fieldset>
       ) : null}
     </section>
+  );
+}
+
+/** What one release reference's entry holds, as the release reader read it:
+ * the release's own test identity, revision and local approver, or the
+ * reader's refusal. */
+function ReleaseRead({ result }: { result: BaselineResult | undefined }) {
+  if (!result) {
+    return null;
+  }
+  if (result.state !== "completed") {
+    return <p role="alert">{result.reason}</p>;
+  }
+  return (
+    <p role="status">
+      Test {result.release_id}, revision {result.comparison?.revision}, local approver {result.previous_approver}.
+    </p>
   );
 }
 

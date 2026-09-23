@@ -6,3 +6,4 @@
 .baseline-panel pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .baseline-panel p { overflow-wrap: anywhere; }
 .baseline-panel button { margin: .3rem; }
+.baseline-panel .baseline-identity { user-select: all; overflow-wrap: anywhere; }

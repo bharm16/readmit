@@ -42,7 +42,7 @@ func (a *App) applyExpectation(request BaselineRequest, approve, inspect bool) B
 		if e != nil {
 			return failure(e.Error())
 		}
-		return BaselineResult{State: Completed, Comparison: &report, PreviousApprover: previous.Baseline.Approver, PreviousRationale: previous.Baseline.Rationale}
+		return BaselineResult{State: Completed, Comparison: &report, PreviousApprover: previous.Baseline.Approver, PreviousRationale: previous.Baseline.Rationale, ReleaseID: previous.ID}
 	}
 	if artifactpath.EntryName(request.Spec) != nil {
 		return failure("specification must be one regular workspace entry")

@@ -3,17 +3,20 @@ package desktop_test
 // The suite operations are the same operations `readmit suite` runs, not a
 // second implementation. These tests hold the window to byte-for-byte
 // equality with the command-line path on the same inputs: a prepared
-// directory, a promotion review identity and a coverage assessment.
+// directory, a promotion review identity, a coverage assessment and pasted
+// suite text.
 
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/suite"
+	"github.com/bharm16/readmit/internal/testlicense"
 )
 
 // The private configuration the window retains is the configuration the
@@ -126,6 +129,63 @@ func TestCoverageAssessmentCancellationNamesItself(t *testing.T) {
 	app.Cancel("another-panel-operation")
 	if result := app.AssessSuiteCoverage(desktop.SuiteCoverageAssessRequest{Workspace: root, Prepared: "prepared", Requirements: "coverage.json"}); result.State != desktop.Completed {
 		t.Fatalf("a cancel naming another operation stopped this assessment: %+v", result)
+	}
+}
+
+// Pasting suite JSON into the window is reading it with the reader the
+// command line applies: the typed document is the one `readmit suite` reads
+// from the same bytes, the canonical form and identity are what a save of the
+// same text writes, and every text the reader refuses is refused with the
+// reader's own reason — the reason `readmit suite prepare` reports for the
+// same bytes. Validating writes nothing.
+func TestValidateSuiteReadsPastedTextWithTheSuiteReader(t *testing.T) {
+	app, root := suiteApp(t)
+	before, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refused := map[string]string{
+		"malformed":            suiteFixture[:len(suiteFixture)-1],
+		"unknown member":       replaceOnce(t, suiteFixture, `"owner":"interop",`, `"owner":"interop","disabled":true,`),
+		"unsupported version":  replaceOnce(t, suiteFixture, `"readmit-suite/v1"`, `"readmit-suite/v2"`),
+		"invalid declarations": replaceOnce(t, suiteFixture, `"parallelism":2`, `"parallelism":0`),
+	}
+	validated := app.ValidateSuite(suiteFixture)
+	engine, err := suite.Decode([]byte(suiteFixture))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if validated.State != desktop.Completed || validated.Suite == nil || string(marshal(t, *validated.Suite)) != string(marshal(t, engine)) {
+		t.Fatalf("the window read %+v, the suite reader %+v", validated, engine)
+	}
+	reasons := map[string]string{}
+	for name, text := range refused {
+		result := app.ValidateSuite(text)
+		_, decodeErr := suite.Decode([]byte(text))
+		if decodeErr == nil || result.State != desktop.Failed || result.Suite != nil || result.Document != "" || result.Reason != decodeErr.Error() {
+			t.Fatalf("%s: the window answered %+v, the suite reader %v", name, result, decodeErr)
+		}
+		reasons[name] = result.Reason
+	}
+	after, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != len(before) {
+		t.Fatal("validating pasted text wrote into the workspace")
+	}
+	saved := app.SaveSuite(desktop.RuleDocumentSaveRequest{Workspace: root, Document: suiteFixture, Output: "pasted.json"})
+	if saved.State != desktop.Completed || saved.Document != validated.Document || saved.SHA256 != validated.SHA256 {
+		t.Fatalf("a save of the pasted text wrote %+v, validation showed %+v", saved, validated)
+	}
+	policy := testlicense.New(t)
+	for name, text := range refused {
+		entry := strings.ReplaceAll(name, " ", "-") + ".json"
+		writeDocument(t, root, entry, text)
+		_, stderr, err := commandLine(t, "--operation-policy", policy, "suite", "prepare", filepath.Join(root, entry), "--environment", "east", "--output", filepath.Join(root, "prepared-"+entry))
+		if err == nil || stderr != "readmit: "+reasons[name]+"\n" {
+			t.Fatalf("%s: the command line refused with %q, the window with %q", name, stderr, reasons[name])
+		}
 	}
 }
 

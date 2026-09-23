@@ -3889,6 +3889,8 @@ export interface BaselineComparison {
 export interface BaselineResult {
   state: State; reason?: string; comparison?: BaselineComparison;
   previous_approver?: string; previous_rationale?: string; output?: string;
+  /** The stable test identity of an inspected retained release. */
+  release_id?: string;
 }
 export function reviewBaseline(request: BaselineRequest): Promise<BaselineResult> {
   return guard(() => facade().ReviewBaseline(request), { state: "failed" });

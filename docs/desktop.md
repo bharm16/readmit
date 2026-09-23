@@ -1931,6 +1931,18 @@ inspectable without their original spec file. The same `internal/baseline`
 engine backs the CLI; passing runs never automatically approve themselves.
 See [baseline review](baseline.md) for privacy, cancellation and identity limits.
 
+**Inspect retained baseline**, and **Inspect retained test version** once
+**Release a test version with profile pins** is selected, read one retained
+entry with the reader and inspection `readmit baseline show` and
+`readmit expectation show` use. The window shows the revision and its parent,
+the approved review identity or, for a release, the stable test identity and
+the full release identity a suite's release references pin, in full and
+selectable, the local approver and rationale, and every retained expectation
+and profile pin, values hidden until revealed. A revision that was never
+approved, a document of a version this release cannot read and a changed
+commitment are refused with the reason the command line gives for the same
+file, and no earlier view stays beside the refusal. Inspection writes nothing.
+
 ## Suite management
 
 The inspector's **Suites and releases** panel manages
@@ -1943,8 +1955,10 @@ dependencies and exact send order. The facade operations call the same
 command line wrote opens with no clause dropped and no member invented, and a
 version this release cannot read is refused rather than migrated. Versioning a
 suite is saving a new entry: canonical bytes, SHA-256 identity, no in-place
-rewrite. Pasting canonical JSON remains the expert import path and every save
-displays the canonical text it wrote.
+rewrite. Pasting canonical JSON remains the expert import path: the suite
+reader reads the pasted text before it reaches the editor, a text it refuses
+is refused with its reason while the editor keeps what it held, and nothing is
+saved until a new version is. Every save displays the canonical text it wrote.
 
 **Preview the exact expansion** expands the suite against one declared
 environment exactly as preparation would, without writing anything: every
@@ -1957,7 +1971,10 @@ parallelized; the selected input order is never changed. A preview the engine
 refuses is shown as its refusal, never as an empty expansion.
 
 The panel also connects the workflow the CLI owns: the **release sidecar**
-editor authors `readmit-suite-releases/v1` with exact release identities;
+editor authors `readmit-suite-releases/v1` with exact release identities, and
+each reference's **Read identity** reads its release entry with the release
+reader and fills the full identity that release declares, so a reference is
+pinned without the terminal;
 **expectation impact** reports what one released template's successor changes
 for a saved suite without moving a pin; **prepare** compiles a saved suite into
 a new private workspace directory exactly as `readmit suite prepare` writes it,

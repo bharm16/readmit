@@ -253,10 +253,14 @@ func TestSchedulePreviewShowsZoneOccurrenceAndAlertSemantics(t *testing.T) {
 		t.Fatalf("approved without route: %+v", result)
 	}
 	// An occurrence older than the entry's window is the contract's missed.
+	// The entry fell due an hour ago, so the occurrence is past its window and
+	// the next day's is ahead whatever time of day the test runs; an entry
+	// due at midnight was still inside its window just after midnight UTC.
+	due := time.Now().UTC().Add(-time.Hour)
 	past := scheduleEntry(pin, false)
 	past.Zone = "UTC"
-	past.At = "00:00"
-	pastPreview := app.PreviewSchedulePolicy(desktop.SchedulePolicyRequest{Anchor: time.Now().UTC().AddDate(0, 0, -1).Format("2006-01-02"), Entries: []desktop.ScheduleEntryInput{past}})
+	past.At = due.Format("15:04")
+	pastPreview := app.PreviewSchedulePolicy(desktop.SchedulePolicyRequest{Anchor: due.AddDate(0, 0, -1).Format("2006-01-02"), Entries: []desktop.ScheduleEntryInput{past}})
 	if pastPreview.State != desktop.Completed || pastPreview.Entries[0].Occurrences[1].State != "missed" || pastPreview.Entries[0].Occurrences[2].State != "scheduled" {
 		t.Fatalf("missed marking: %+v", pastPreview.Entries[0].Occurrences)
 	}

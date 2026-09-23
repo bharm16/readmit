@@ -1,5 +1,24 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The window inspects retained baselines and released test versions as the
+  command line does, and pins a suite to a release and promotes it without the
+  terminal (#306). **Inspect retained test version** showed a retained
+  release's revision but never its full release identity, the identity a
+  `readmit-suite-releases/v1` reference pins, so writing one needed
+  `readmit expectation show`. The Regression baseline panel's inspection now
+  shows a baseline's approved review identity, or a release's stable test
+  identity and full release identity, in full and selectable, beside the local
+  approver and rationale; the facade's inspection result gains the release's
+  test identity. Each release reference in the Suites and releases panel has
+  **Read identity**, which reads the named release with the same reader and
+  fills the identity it declares. Pasted suite JSON the suite reader refuses
+  is now refused with its reason rather than ignored, and the editor keeps what
+  it held. New journeys over the real facade show a baseline and a release as
+  `readmit baseline show` and `readmit expectation show` print them, refuse a
+  missing and an unsupported one with the command's reason, and review and
+  approve a promotion the command line reproduces byte for byte. No `readmit-*`
+  document, command or machine output changes.
+
 - The window's remaining write-side confinement gaps found after #348 are
   closed (#368). Pasted content followed a symbolic link planted at the
   workspace's `staged-sources` folder and was staged wherever it pointed; that

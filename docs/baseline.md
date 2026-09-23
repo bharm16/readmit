@@ -52,7 +52,10 @@ candidate, previous selection or privacy option clears the review. The engine
 also re-reads both files on approval and refuses a stale commitment.
 
 **Inspect retained baseline** reads the historical specification and approval
-without needing the original candidate file. **Cancel review** discards the
+without needing the original candidate file, and shows the approved review
+identity, approver, rationale and retained expectations as `readmit baseline
+show` prints them. A missing revision or one of a version this release cannot
+read is refused with the reason the command gives. **Cancel review** discards the
 pending decision and writes nothing. State is held only in the mounted panel;
 it is never stored in browser storage or the restored working session. Backend
 operations are bounded, hold the shared operation slot, and finish once admitted;

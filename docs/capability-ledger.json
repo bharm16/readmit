@@ -94,7 +94,9 @@
       "inputs": ["readmit-baseline/v1"],
       "outputs": ["readmit-baseline-inspection/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/suites.journey.tsx", "name": "a retained baseline and a released test version show what the command line shows, and a missing or unsupported one is refused alike"},
+      "parity_test": {"package": "internal/desktop", "name": "TestOpenBaselineShowsWhatBaselineShowPrints"},
+      "implemented": true
     },
     {
       "id": "cli.capture",
@@ -322,7 +324,9 @@
       "inputs": ["readmit-test-release/v1"],
       "outputs": ["readmit-expectation-inspection/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/suites.journey.tsx", "name": "a retained baseline and a released test version show what the command line shows, and a missing or unsupported one is refused alike"},
+      "parity_test": {"package": "internal/desktop", "name": "TestOpenReleaseShowsWhatExpectationShowPrints"},
+      "implemented": true
     },
     {
       "id": "cli.explain",
@@ -3606,7 +3610,9 @@
       "inputs": ["readmit-baseline/v1", "readmit-test-release/v1"],
       "outputs": ["readmit-baseline-review/v1", "readmit-expectation-inspection/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/panels.test.tsx", "name": "inspecting a retained baseline shows its local approval and refuses a missing or unsupported revision"},
+      "parity_test": {"package": "internal/desktop", "name": "TestOpenBaselineShowsWhatBaselineShowPrints"},
+      "implemented": true
     },
     {
       "id": "desktop.ReviewBaseline",
@@ -5811,7 +5817,9 @@
       "inputs": ["readmit-suite/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/SuitePanel.test.tsx", "name": "pasted canonical suite JSON is validated before it loads, and an invalid suite leaves the editor as it was"},
+      "parity_test": {"package": "internal/desktop", "name": "TestValidateSuiteReadsPastedTextWithTheSuiteReader"},
+      "implemented": true
     },
     {
       "id": "desktop.SaveSuite",

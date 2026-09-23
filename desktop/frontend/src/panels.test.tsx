@@ -574,3 +574,184 @@ test("releasing a test version pins profiles and saves one immutable revision", 
   expect(await screen.findByText("Approved and saved booking-3.json.")).toBeTruthy();
   expect(screen.getByText(/not authenticated team identities/i)).toBeTruthy();
 });
+
+// Inspecting a retained revision reads the historical file and its local
+// approval; it offers no approval and writes nothing. A revision never
+// approved, or one of a version this release cannot read, is refused with the
+// engine's reason, and no earlier retained view is left standing beside it.
+test("inspecting a retained baseline shows its local approval and refuses a missing or unsupported revision", async () => {
+  const user = userEvent.setup();
+  const identity = "retained-baseline-review-identity-fixed-for-tests";
+  const facade = installFacade({
+    OpenBaseline: (request) =>
+      request.previous === "baseline-1.json"
+        ? {
+            state: "completed" as const,
+            comparison: {
+              schema: "readmit-baseline-review/v1",
+              identity,
+              revision: 1,
+              parent: "",
+              values_shown: request.show_values,
+              changes: [{ part: "assertion ack", kind: "added", ...(request.show_values ? { after: '{"id":"ack"}' } : {}) }],
+            },
+            previous_approver: "sam",
+            previous_rationale: "matches the reviewed run",
+          }
+        : request.previous === "baseline-2.json"
+          ? { state: "failed" as const, reason: "invalid baseline revision or changed approval commitment" }
+          : { state: "failed" as const, reason: "baseline input must be a readable regular file, not a symlink" },
+  });
+  render(<Baseline workspace={WORKSPACE_ROOT} busy={false} />);
+  const inspect = () => screen.getByRole("button", { name: "Inspect retained baseline" }) as HTMLButtonElement;
+  const previous = screen.getByLabelText("Previous baseline (empty for first revision)");
+  // Nothing is inspected until a retained revision is named.
+  expect(inspect().disabled).toBe(true);
+  await user.type(previous, "baseline-1.json");
+  // From the field, past the reveal option, to the inspect control: Enter.
+  await user.tab();
+  await user.tab();
+  expect(document.activeElement).toBe(inspect());
+  await user.keyboard("{Enter}");
+  expect(await screen.findByText("Retained revision 1. First baseline; every expectation is new.")).toBeTruthy();
+  expect(facade.oneCall("OpenBaseline")[0]).toMatchObject({
+    workspace: WORKSPACE_ROOT,
+    previous: "baseline-1.json",
+    release: false,
+    show_values: false,
+  });
+  expect(screen.getByText(identity).closest("p")?.textContent).toBe(`Approved review identity: ${identity}`);
+  expect(screen.getByText("Local approver: sam. Rationale: matches the reviewed run")).toBeTruthy();
+  expect(screen.getByRole("table", { name: "Retained expectations and configuration" })).toBeTruthy();
+  expect(screen.getAllByText("Hidden").length).toBeGreaterThanOrEqual(1);
+  // An inspection is not a review: nothing here approves or writes.
+  expect(screen.queryByRole("button", { name: "Approve this exact baseline revision" })).toBeNull();
+
+  // Revealing values is a new, deliberate read; the hidden view does not stay.
+  await user.click(screen.getByLabelText(/Reveal exact expected values/));
+  expect(screen.queryByText(/Retained revision/)).toBeNull();
+  const reading = facade.park("OpenBaseline");
+  await user.click(inspect());
+  expect(await screen.findByText("Reading baseline files…")).toBeTruthy();
+  expect(inspect().matches(":disabled")).toBe(true);
+  reading.resolve({
+    state: "completed",
+    comparison: {
+      schema: "readmit-baseline-review/v1",
+      identity,
+      revision: 1,
+      parent: "",
+      values_shown: true,
+      changes: [{ part: "assertion ack", kind: "added", after: '{"id":"ack"}' }],
+    },
+    previous_approver: "sam",
+    previous_rationale: "matches the reviewed run",
+  });
+  expect(await screen.findByText('{"id":"ack"}')).toBeTruthy();
+  expect(facade.callsTo("OpenBaseline").at(-1)?.args[0]).toMatchObject({ show_values: true });
+
+  // A revision never approved, and one this release cannot read, are refused.
+  facade.reply({
+    OpenBaseline: (request) =>
+      request.previous === "baseline-2.json"
+        ? { state: "failed" as const, reason: "invalid baseline revision or changed approval commitment" }
+        : { state: "failed" as const, reason: "baseline input must be a readable regular file, not a symlink" },
+  });
+  await user.clear(previous);
+  await user.type(previous, "baseline-9.json");
+  await user.click(inspect());
+  expect(await screen.findByText("baseline input must be a readable regular file, not a symlink")).toBeTruthy();
+  expect(screen.queryByRole("table")).toBeNull();
+  await user.clear(previous);
+  await user.type(previous, "baseline-2.json");
+  await user.click(inspect());
+  expect(await screen.findByText("invalid baseline revision or changed approval commitment")).toBeTruthy();
+  expect(screen.queryByText(identity)).toBeNull();
+  // A workspace this account cannot open is denied, and nothing is shown.
+  facade.reply({ OpenBaseline: () => ({ state: "permission_denied" as const, reason: "this account cannot open the chosen folder" }) });
+  await user.click(inspect());
+  expect(await screen.findByText("this account cannot open the chosen folder")).toBeTruthy();
+  expect(screen.queryByRole("table")).toBeNull();
+});
+
+// A retained test version shows its full release identity — the identity a
+// suite's release references pin — with its stable test identity and profile
+// pins. Reviewing a successor and cancelling discards the decision before any
+// write.
+test("inspecting a retained test version shows its full release identity and a cancelled review writes nothing", async () => {
+  const user = userEvent.setup();
+  const releaseIdentity = "retained-release-identity-fixed-for-tests";
+  const facade = installFacade({
+    OpenBaseline: (request) =>
+      request.previous === "booking-1.json"
+        ? {
+            state: "completed" as const,
+            comparison: {
+              schema: "readmit-expectation-inspection/v1",
+              identity: releaseIdentity,
+              revision: 1,
+              parent: "",
+              values_shown: false,
+              changes: [
+                { part: "assertion ack", kind: "added" },
+                { part: "profile:siu-rules", kind: "pinned" },
+              ],
+            },
+            previous_approver: "sam",
+            previous_rationale: "reviewed profile pin",
+            release_id: "booking",
+          }
+        : { state: "failed" as const, reason: "invalid release schema or test identity" },
+    ReviewBaseline: () => ({
+      state: "completed" as const,
+      comparison: {
+        schema: "readmit-test-release/v1",
+        identity: "release-review-identity-fixed-for-tests",
+        revision: 2,
+        parent: releaseIdentity,
+        values_shown: false,
+        changes: [],
+      },
+      previous_approver: "sam",
+      previous_rationale: "reviewed profile pin",
+    }),
+  });
+  render(<Baseline workspace={WORKSPACE_ROOT} busy={false} />);
+  await user.click(screen.getByLabelText("Release a test version with profile pins"));
+  const previous = screen.getByLabelText("Previous released test (empty for first revision)");
+  const inspect = () => screen.getByRole("button", { name: "Inspect retained test version" });
+  await user.type(previous, "booking-1.json");
+  // From the field, past the reveal option, to the inspect control: Enter.
+  await user.tab();
+  await user.tab();
+  expect(document.activeElement).toBe(inspect());
+  await user.keyboard("{Enter}");
+  expect((await screen.findByText(releaseIdentity)).closest("p")?.textContent).toBe(
+    `Test booking. Release identity: ${releaseIdentity}`,
+  );
+  expect(facade.oneCall("OpenBaseline")[0]).toMatchObject({ release: true, previous: "booking-1.json", show_values: false });
+  expect(screen.getByText("Local approver: sam. Rationale: reviewed profile pin")).toBeTruthy();
+  expect(screen.getByText("profile:siu-rules").closest("tr")?.textContent).toContain("pinned");
+
+  // A release of a version this release cannot read is refused, and the
+  // identity shown before is not left beside the refusal.
+  await user.clear(previous);
+  await user.type(previous, "booking-v2.json");
+  await user.click(inspect());
+  expect(await screen.findByText("invalid release schema or test identity")).toBeTruthy();
+  expect(screen.queryByText(releaseIdentity)).toBeNull();
+
+  // Reviewing the successor names the retained release as its parent;
+  // cancelling discards the decision and nothing is written.
+  await user.clear(previous);
+  await user.type(previous, "booking-1.json");
+  await user.type(screen.getByLabelText("Stable test identity"), "booking");
+  await user.type(screen.getByLabelText("Candidate specification in this workspace"), "booking.json");
+  await user.click(screen.getByRole("button", { name: "Review test and profile changes" }));
+  expect(await screen.findByText(`Proposed revision 2. Parent identity: ${releaseIdentity}`)).toBeTruthy();
+  await user.type(screen.getByLabelText("Local approver"), "sam");
+  await user.click(screen.getByRole("button", { name: "Cancel review" }));
+  expect(screen.queryByRole("button", { name: "Release this exact test version" })).toBeNull();
+  expect(screen.queryByText(/Proposed revision/)).toBeNull();
+  expect(facade.callsTo("ApproveBaseline")).toHaveLength(0);
+});

@@ -47,7 +47,10 @@ export function Baseline({ workspace, busy }: { workspace: string; busy: boolean
     <p role="status">{working ? "Reading baseline files…" : result?.reason ?? (result?.output ? `Approved and saved ${result.output}.` : "")}</p>
     {review ? <>
       <p>{inspecting ? "Retained revision" : "Proposed revision"} {review.revision}. {review.parent ? `Parent identity: ${review.parent}` : "First baseline; every expectation is new."}</p>
-      {result?.previous_approver ? <p>Previous local approver: {result.previous_approver}. Rationale: {result.previous_rationale}</p> : null}
+      {/* The retained file's own identity, in full and selectable: a release's
+        * is the identity a suite's release references pin. */}
+      {inspecting ? <p>{result?.release_id ? `Test ${result.release_id}. Release identity: ` : "Approved review identity: "}<code className="baseline-identity">{review.identity}</code></p> : null}
+      {result?.previous_approver ? <p>{inspecting ? "Local approver" : "Previous local approver"}: {result.previous_approver}. Rationale: {result.previous_rationale}</p> : null}
       {!review.values_shown ? <p>Values are hidden. Reveal them and review again to inspect exact changes.</p> : null}
       <table><caption>{inspecting ? "Retained expectations and configuration" : "All expectation and configuration changes"}</caption><thead><tr><th>Part</th><th>Change</th><th>Before</th><th>After</th></tr></thead>
         <tbody>{review.changes.map(change => <tr key={change.part}><th>{change.part}</th><td>{change.kind}</td><td><pre>{change.before ?? (show ? "Absent" : "Hidden")}</pre></td><td><pre>{change.after ?? (show ? "Absent" : "Hidden")}</pre></td></tr>)}</tbody>
