@@ -147,7 +147,16 @@ func (a *App) StagePastedContent(request PastedSourceRequest) PastedSourceResult
 		if root == "" {
 			return PastedSourceResult{State: declined.state, Reason: declined.reason}
 		}
-		stagedDir := filepath.Join(root, "staged-sources")
+		// The staging folder is created when it is absent; anything already at
+		// its name must be one real folder of the target, so pasted content is
+		// never written through a symbolic link planted there.
+		const staging = "staged-sources"
+		stagedDir := filepath.Join(root, staging)
+		if _, err := os.Lstat(stagedDir); err == nil {
+			if _, err := artifactpath.Child(root, staging); err != nil {
+				return PastedSourceResult{State: Failed, Reason: "the staged-sources folder must be one real folder of the workspace, never a symbolic link"}
+			}
+		}
 		name := request.Name
 		if name == "" {
 			name = "pasted-source.hl7"
@@ -250,7 +259,11 @@ func (a *App) CommitImport(request ImportCommitRequest) ImportCommitResult {
 		if targetDir == "" {
 			return ImportCommitResult{State: Failed, Reason: "no target workspace or project provided"}
 		}
-		casePath := filepath.Join(targetDir, request.OutputName)
+		root, declined := resolveFolder(targetDir)
+		if root == "" {
+			return ImportCommitResult{State: declined.state, Reason: declined.reason}
+		}
+		casePath := filepath.Join(root, request.OutputName)
 
 		receiptName := request.ReceiptName
 		if receiptName == "" {
@@ -259,7 +272,7 @@ func (a *App) CommitImport(request ImportCommitRequest) ImportCommitResult {
 		if err := artifactpath.EntryName(receiptName); err != nil {
 			return ImportCommitResult{State: Failed, Reason: "the receipt destination must be one valid file entry name"}
 		}
-		receiptPath := filepath.Join(targetDir, receiptName)
+		receiptPath := filepath.Join(root, receiptName)
 
 		var b *bundle.Bundle
 		var err error

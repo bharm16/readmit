@@ -70,6 +70,21 @@ CASES = (
         'TestPrivacyAndSupportReadersRefuseALinkToAnEntryOfTheirKind',
         'TestAuthoringAndComparisonReadersRefuseALinkToAnEntryOfTheirKind',
         'TestProjectRegistrationRefusesALinkToACaseOfTheProject',
+        # The write-side gaps (#368): a linked staging folder, workspace or
+        # project, a project name that is a path, and every entry the facade
+        # itself refuses as a link, each refused with its own sentence.
+        'TestPastedContentIsStagedOnlyInARealStagingFolderOfTheWorkspace',
+        'TestANewProjectIsOneNewFolderOfTheChosenFolder',
+        'TestEveryNewEntryIsWrittenIntoAWorkspaceOrProjectThatIsNotALink',
+        'TestCaseReadersRefuseALinkToACaseTheyAccept',
+        'TestSequenceAndCorrelationRefuseALinkToACaseOrReviewTheyAccept',
+        'TestDiagnosisAndFindingReviewRefuseALinkToACaseOrReportTheyAccept',
+        'TestTransformationRefusesALinkToACaseItAccepts',
+        'TestReproducerRefusesALinkToACaseOrRevisionItAccepts',
+        'TestAnExportReviewRefusesALinkToAReviewItAccepts',
+        'TestAuthoringAndRunComparisonRefuseALinkToACaseOrResultTheyAccept',
+        'TestAReductionRefusesALinkToACaseItAccepts',
+        'TestChooseRunSpecRefusesEveryPathThatLeavesTheOpenWorkspace',
         # Application surfaces (#244): backend enforcement behind every window
         # action, restoration, local egress and declared keyboard semantics.
         'TestEveryPathOperationRefusesHostileEntriesPromptlyAndBoundedly',

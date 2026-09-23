@@ -159,4 +159,13 @@ func TestChooseRunSpecRefusesEveryPathThatLeavesTheOpenWorkspace(t *testing.T) {
 			}
 		}
 	}
+	// A link chosen as the entry itself, out of the workspace or to one of its
+	// own entries, is refused by the entry rule, with its own sentence.
+	for _, entry := range []string{"link.json", "alias.json"} {
+		choice := newApp(t, &chooser{files: []string{root + "/" + entry}}).ChooseRunSpec(root)
+		if choice.State != desktop.Failed || choice.Entry != "" ||
+			choice.Reason != "a saved test or suite is an existing regular file of the open workspace, never a symbolic link" {
+			t.Errorf("%s chosen: %+v, want the entry rule's refusal", entry, choice)
+		}
+	}
 }

@@ -304,7 +304,7 @@ artifacts are never reported as completed.
 | `OpenCase` | Verifies one listed entry as case evidence. |
 | `OpenProject` | Reads the project document of a folder. |
 | `OpenProjectOverview` | Re-reads the project and re-verifies every registered case and revision, as `readmit project show` does: the settings, each registered entry with its evidence state, and every note. |
-| `CreateProject` | Asks the host for the parent folder, then writes a new project through the shared operation `readmit project init` runs. Returns the new project re-read from disk. |
+| `CreateProject` | Asks the host for the parent folder, then writes a new project, named by one folder name, through the shared operation `readmit project init` runs. Returns the new project re-read from disk. |
 | `UpdateProjectSettings` | Changes the title, defaults and declared interface versions through the shared operation `readmit project settings` runs. Returns the project re-read from disk. |
 | `RegisterCase` | Verifies one case bundle of the project through the shared reader and registers it through the shared operation `readmit project add` runs, inheriting the project defaults the registration leaves unset. Returns the project re-read from disk. |
 | `UpdateRegisteredCase` | Changes the title, owner, status, interface version, tags or linked incidents of one registered case through the shared operation `readmit project update` runs; the recorded evidence facts are out of reach. Returns the project re-read from disk. |
@@ -451,8 +451,12 @@ The operations hold an entry to the listing's rule whichever control named it,
 because a caller can name any entry directly. Every document and folder an
 operation reads by name is an entry of the open workspace unless it is one of
 the inputs listed below as accepting an outside path. The workspace entries
-include a saved test or suite and the released references a suite run is pinned
-to, a retained execution and the folders a suite job is reached through, the
+include the case every panel reads, the second collection a comparison reads, a
+retained diagnosis report and the cases a grouping diagnoses, a retained
+correlation review and export review, the revisions a reproducer comparison
+reads and the runs a run comparison reads, a saved test or suite and the
+released references a suite run is pinned to, a retained execution and the
+folders a suite job is reached through, the
 case, specification and executions an investigation packet is assembled from,
 the test, environment, reset plan, policy and correlation rules a controlled
 reduction reads, the test a practice run executes, the protection document, the
@@ -485,11 +489,23 @@ A new entry an operation creates in the workspace is named the same way: one
 name, never a path. A run folder, a generated scenario family and its case, a
 synthetic family, a source collection's staging folder and receipt, a capture's
 case and observation record, the case and receipt a staged collection is
-finalized into, and a document an editor saves are refused before anything is
-written when the name is `..`, absolute, nested, or reached through a linked
+finalized into or an import writes, pasted content, and a document an editor
+saves are refused before anything is written when the name is `..`, absolute,
+nested, or reached through a linked
 folder, so none of them lands beside the workspace, inside one of its folders or
 outside it. The generated, collected and captured outputs are refused before
-anything is read as well.
+anything is read as well. A new project is one new folder of the folder the
+dialog chose, and a project name that is not one name is refused the same way,
+before the dialog opens.
+
+The folder those entries are written into is resolved first, as every
+operation resolves the open workspace. The workspace or project that a
+collection, a capture, a finalized collection, an import and pasted content
+are written into must be an existing folder that is not a symbolic link;
+anything else is refused before anything is read or written. Pasted content is
+staged in that folder's fixed `staged-sources` folder, which is created when
+nothing is at its name; a symbolic link there, wherever it points, a file or a
+FIFO is refused before anything is written.
 
 The environment, credential, observation and capture screens accept an outside
 path, because their documents may live outside the workspace: the target, the

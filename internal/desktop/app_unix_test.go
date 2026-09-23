@@ -89,7 +89,8 @@ func TestWorkspaceListingRefusesToFollowSymbolicLinks(t *testing.T) {
 	if linked.Kind != desktop.UnsupportedArtifact || linked.Schema != "" {
 		t.Fatalf("a symbolic link was listed as evidence: %+v", linked)
 	}
-	if opened := app.OpenCase(root, "alias"); opened.State != desktop.Failed || opened.Case != nil {
+	if opened := app.OpenCase(root, "alias"); opened.State != desktop.Failed || opened.Case != nil ||
+		opened.Reason != caseEntry[0] {
 		t.Fatalf("a symbolic link was opened as a case: %+v", opened)
 	}
 	// The workspace root itself is still refused when it is reached by a link.
@@ -97,7 +98,8 @@ func TestWorkspaceListingRefusesToFollowSymbolicLinks(t *testing.T) {
 	if err := os.Symlink(root, workspaceAlias); err != nil {
 		t.Fatal(err)
 	}
-	if result := app.OpenWorkspace(workspaceAlias); result.State != desktop.Failed {
+	if result := app.OpenWorkspace(workspaceAlias); result.State != desktop.Failed || result.Workspace != nil ||
+		result.Reason != notAWorkspace[0] {
 		t.Fatalf("a symbolic link was opened as a workspace: %+v", result)
 	}
 }
