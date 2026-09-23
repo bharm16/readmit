@@ -343,17 +343,36 @@ func TestCustomerRunnerActualTLSExecutionRevocationAndRecovery(t *testing.T) {
 		t.Fatal("revoked/repeated job accepted")
 	}
 	// Killing a real runner process leaves its durable claim and never replays it.
+	// The revoked runner could not release its lease on lab, and a killed one
+	// cannot release its own, so the crash and the outage each lease an
+	// environment of their own rather than wait for an earlier lease to lapse.
 	policy.Tokens = enrolledTokens
 	writePolicy(t, accessPath, policy)
 	grants.Runners[0].MaxJobs = 4
+	specs := map[string]string{}
+	for _, environment := range []string{"crash", "outage"} {
+		grant := grants.Runners[0]
+		grant.Environment = environment
+		grants.Runners = append(grants.Runners, grant)
+		specDir := filepath.Join(dir, environment)
+		if e := os.Mkdir(specDir, 0700); e != nil {
+			t.Fatal(e)
+		}
+		specs[environment] = environmentSpec(t, specDir, listener.Addr().String(), environment)
+	}
 	raw, _ = json.Marshal(grants)
 	os.WriteFile(runnerPolicy, raw, 0600)
-	time.Sleep(10 * time.Second)
+	crash := c
+	crash.Environment = "crash"
+	crashPath := filepath.Join(dir, "runner-crash.json")
+	raw, _ = json.Marshal(crash)
+	os.WriteFile(crashPath, raw, 0600)
 	job.ID = "crashed"
+	job.Spec = specs["crash"]
 	jobPath := filepath.Join(dir, "crash-job.json")
 	raw, _ = json.Marshal(job)
 	os.WriteFile(jobPath, raw, 0600)
-	child := exec.Command(executable, "-test.run=^TestRunnerProcess$", "--", "--runner-process", configPath, jobPath)
+	child := exec.Command(executable, "-test.run=^TestRunnerProcess$", "--", "--runner-process", crashPath, jobPath)
 	if err := child.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -375,17 +394,19 @@ func TestCustomerRunnerActualTLSExecutionRevocationAndRecovery(t *testing.T) {
 	if e != nil || retained.SafeToRepeat || !retained.Run.DeliveryUncertain {
 		t.Fatalf("crash recovery %+v %v", retained, e)
 	}
-	if _, e := customerrunner.Run(customerrunner.WithOperationGuard(context.Background(), operationguard.New(testlicense.New(t))), c, job); e == nil {
+	if _, e := customerrunner.Run(customerrunner.WithOperationGuard(context.Background(), operationguard.New(testlicense.New(t))), crash, job); e == nil {
 		t.Fatal("crash auto replay")
 	}
 	// Simulate the documented operator action only after the child is confirmed dead.
 	os.Remove(filepath.Join(root, ".active", "lease.json"))
 	os.Remove(filepath.Join(root, ".active", "lease.next"))
 	os.Remove(filepath.Join(root, ".active"))
-	time.Sleep(10 * time.Second)
+	outage := c
+	outage.Environment = "outage"
 	job.ID = "outage"
+	job.Spec = specs["outage"]
 	go func() {
-		summary, e := customerrunner.Run(customerrunner.WithOperationGuard(context.Background(), operationguard.New(testlicense.New(t))), c, job)
+		summary, e := customerrunner.Run(customerrunner.WithOperationGuard(context.Background(), operationguard.New(testlicense.New(t))), outage, job)
 		result <- summary
 		errs <- e
 	}()
@@ -423,6 +444,13 @@ func TestCustomerRunnerActualTLSExecutionRevocationAndRecovery(t *testing.T) {
 }
 func runnerSpec(t *testing.T, dir, address string) string {
 	t.Helper()
+	return environmentSpec(t, dir, address, "lab")
+}
+
+// environmentSpec is runnerSpec with its target named for environment, so a
+// job can bind an environment other than lab.
+func environmentSpec(t *testing.T, dir, address, environment string) string {
+	t.Helper()
 	raw, err := os.ReadFile("../testdata/fixtures/listen-s12.hl7")
 	if err != nil {
 		t.Fatal(err)
@@ -431,7 +459,7 @@ func runnerSpec(t *testing.T, dir, address string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	target := replay.Target{Schema: replay.TargetSchemaV3, TestEndpoint: true, Address: address, Transport: "plain", ConnectTimeout: "1s", MessageTimeout: "30s", MaxACKBytes: 4096, Name: "lab", Classification: replay.Nonproduction}
+	target := replay.Target{Schema: replay.TargetSchemaV3, TestEndpoint: true, Address: address, Transport: "plain", ConnectTimeout: "1s", MessageTimeout: "30s", MaxACKBytes: 4096, Name: environment, Classification: replay.Nonproduction}
 	val := "AA"
 	spec := testrunner.Spec{Schema: testrunner.SpecSchema, Name: "ACK", Input: testrunner.Input{Case: "case", Messages: []string{"s0001-e000001"}}, Target: "target.json", Setup: testrunner.Setup{InitialState: "operator-declared", ResetInstructions: "reset fixture"}, Observation: testrunner.Observation{Boundary: testrunner.ACKBoundary}, Assertions: []testrunner.Assertion{{ID: "accepted", Operator: "ack_field_equals", Message: "s0001-e000001", Selector: "MSA-1", Expected: testrunner.Value{Field: &testrunner.FieldValue{State: hl7.Present, Text: &val}}}}}
 	for name, v := range map[string]any{"target.json": target, "spec.json": spec} {

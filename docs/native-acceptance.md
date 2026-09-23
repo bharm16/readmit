@@ -58,9 +58,12 @@ run. Retain the original candidate archive beside it.
 against a separately launched `readmit-hub serve`, real PostgreSQL metadata,
 TLS 1.3/mTLS and certificate-bound token admission. A small independently framed
 TCP peer checks exact sent bytes and supplies a fixed ACK; it imports no Readmit
-MLLP parser or receiver. Duplicate jobs and revoked credentials must fail before
-another target connection or new revoked job claim. The retained durable result
-must report `passed` through `readmit run status`.
+MLLP parser or receiver. Before the first job runs, a `readmit runner enroll`
+probe's lease must hold the environment for the documented ten seconds: the job
+must be refused without a claim while that lease is current, and admitted once
+it expires. Duplicate jobs and revoked credentials must fail before another
+target connection or new revoked job claim. The retained durable result must
+report `passed` through `readmit run status`.
 
 Provision a new isolated cluster/database named `readmit_hub_test`, then export
 `READMIT_HUB_TEST_SOCKET`, `READMIT_HUB_TEST_PORT` and `READMIT_HUB_TEST_USER`.
