@@ -42,6 +42,18 @@ export function writeInRoot(root, path, content) {
   return target;
 }
 
+/** Rewrites a file that already exists inside root, in place, the way
+ * another program changes a file the application may already have read. A
+ * path that is not an existing file is refused. */
+export function changeInRoot(root, path, content) {
+  const target = inside(root, path);
+  if (!statSync(target, { throwIfNoEntry: false })?.isFile()) {
+    throw new Error(`only an existing file can be changed: ${path}`);
+  }
+  writeFileSync(target, content);
+  return target;
+}
+
 /** Copies one of the shipped synthetic fixtures in folder — documented
  * examples in which every value is invented — byte for byte to a path inside
  * root. Only a plain file name of that folder is accepted. */

@@ -313,7 +313,7 @@ artifacts are never reported as completed.
 | `RecentWorkspaces` | Lists previously opened folders, most recent first. |
 | `Search` | Finds what one open workspace declares and what its project registers. |
 | `InspectOccurrence` | Verifies the grid identity again and reveals one selected occurrence, its navigable tree, escaped raw/decoded values and bounded hex bytes. |
-| `OpenGrid` | Renders one bounded window of one case through one index of it. |
+| `OpenGrid` | Renders one bounded window of one case through one index of it, and describes that index as `DescribeIndex` does, from the same read. |
 | `BuildIndex` | Builds an index of declared fields and retention choices for a verified case bundle into a new derived artifact, re-reads the workspace and returns the outcome. |
 | `DescribeIndex` | Inspects the index status of a case, reporting whether an index is applicable, stale, expired, damaged, or unsupported. |
 | `ChooseMaintenancePath` | Presents a native folder picker for backup, restore, archive or staged-upgrade destinations. |
@@ -729,6 +729,16 @@ nobody looked at again, which is exactly what
 [ADR-0008](adr/0008-the-case-index-is-a-derived-disposable-readmit-owned-file.md)
 refuses. A refused index changes nothing and blocks nothing: the case stays
 readable, and the remedy is always to build the index again.
+
+Checking once per window is also enough. A window carries what the grid found
+of its index, exactly as `DescribeIndex` reports it — what the index retains,
+of which case and until when, and whether it is applicable, stale, expired,
+damaged or unsupported — from the same reading of the case as its rows, and a
+refused window carries it too whenever the index was read. The window shows
+those details beside the rows, so opening a grid or paging it is one call and
+one verification of the case, and the details beside a window never describe
+a different reading of the evidence than the window itself. `DescribeIndex`
+remains the call that finds an applicable index when a case is opened.
 
 ### Building and rebuilding case indexes in the shell
 

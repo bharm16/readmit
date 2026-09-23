@@ -2980,7 +2980,7 @@
       "capability": "openGrid application operation",
       "owner": "bharm16/readmit#248",
       "screen": "the message grid",
-      "action": "render one bounded window of one case through one index",
+      "action": "render one bounded window of one case through one index, and describe that index from the same read",
       "backend": {"package": "internal/grid", "name": "Select"},
       "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-index/v1", "readmit-filters/v1"],
       "outputs": [],

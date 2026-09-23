@@ -843,3 +843,206 @@ The journeys and the window timings do not establish:
   through the window;
 - reopening after anything but a kill during collection;
 - a quiet reference-host run.
+
+### One read per grid page, September 23, 2026
+
+Before #337, each Next or Previous click, and opening an index in the grid,
+asked the facade for two reads: `DescribeIndex` for the index details the grid
+shows beside its rows, then `OpenGrid` for the window. Each verified the whole
+case, so every page opened and hashed every payload twice. `OpenGrid` now
+returns the index details it checked, exactly as `DescribeIndex` reports them
+and from the same read — a refused window included, whenever the index was
+read — and the window shows those, so a page is one call. No check moved or was
+dropped: every page still verifies the case and checks the index against it.
+`TestNavigationReverifiesReplacedPayloads` (changed, replaced, missing or extra
+payloads) and `TestNavigationRefusesACaseOrIndexChangedBetweenTwoPages` (a
+replaced case, rewritten occurrence records, and an altered index, one of other
+evidence, or one whose retention has ended, each changed after a page or after
+the description a verified case opens with) refuse the next read through the
+facade; `TestAWindowDescribesTheIndexItsOwnReadChecked` holds the details a
+window carries to what `DescribeIndex` reports, in every state an index can be
+in. `desktop/frontend/src/journeys/grid-paging.journey.tsx` runs with every
+`npm run test:journeys`: it pages a 250-occurrence case through the window,
+checks each page makes the one `OpenGrid` call, then changes one payload on
+disk and checks the next page is refused with no row drawn.
+
+A CPU profile of the baseline — a program making 20 `OpenGrid` calls over the
+10,000-occurrence fixture under `runtime/pprof`, read with
+`go tool pprof -top -cum` — put 91% of the samples inside the call in the case
+reader (`bundle.Open`), 65% in opening the payload files alone, and 8% in
+reading the index. The cost of a page is the verification itself, which is why
+a second one nearly doubled it.
+
+Both measurements below compare baseline
+`b5977cca071b0c5681335ab4650c1136eafa7254` with this change on top of it, on
+the development host described above (macOS 27.0, darwin/arm64, 10 logical
+CPUs, Go 1.27.1, Node 24.10.0). The host was **loaded**, with other lanes'
+work running beside these; they are not reference measurements. A page is
+still above the proposed 200 ms before anything is painted, so this meets no
+envelope target.
+
+**Facade.** The facade page measurement source below — the standalone
+public-facade source above with `desktop.New`'s current five arguments —
+measured two batches in each process over the same prepared fixture (case
+identity `765e969cd7cbda76d9b64922921f2b1528ea1e511bd18bdd3f770041a3ef16e1`),
+each one excluded warm-up and 20 samples: the page as the window asked for it
+before this change — `DescribeIndex(root, "scale", "scale.index.json")`,
+checked completed, applicable and describing 10,000 records, then the
+`OpenGrid` call above — and `OpenGrid` alone, which is the whole page after
+it. Both executables were built with `CGO_ENABLED=0 go build -trimpath` and run
+back to back in baseline, changed, changed, baseline order.
+
+| Process | `DescribeIndex` then `OpenGrid`, median / p95 | `OpenGrid` alone, median / p95 | One-minute load, first batch start → last batch end |
+| --- | --- | --- | --- |
+| A1 baseline | 705.8 / 755.1 ms | 352.2 / 431.6 ms | 2.72 → 2.35 |
+| B1 changed | 702.4 / 809.0 ms | 351.4 / 443.1 ms | 2.35 → 3.12 |
+| B2 changed | 705.0 / 775.5 ms | 355.3 / 472.2 ms | 3.12 → 3.15 |
+| A2 baseline | 703.3 / 781.0 ms | 349.9 / 359.9 ms | 3.15 → 2.61 |
+
+Returning the details costs nothing measurable: `OpenGrid` alone takes the same
+in both builds. What one page asks of the facade went from the first column to
+the second, from about 700–705 ms to about 350–355 ms at the median.
+
+**Window.** `measurement.journey.tsx` as above, run back to back over a
+baseline checkout and this change in baseline, changed, baseline, changed
+order. Every next-window click of a baseline run called `DescribeIndex` and
+then `OpenGrid`; every click of a changed run called `OpenGrid` alone.
+
+| Run | Next window of 200, median / p95 | One-minute load at run start → after the batch |
+| --- | --- | --- |
+| A1 baseline | 949.0 / 1,090.4 ms | 2.61 → 3.76 |
+| B1 changed | 495.8 / 503.7 ms | 3.70 → 9.60 |
+| A2 baseline | 1,066.4 / 1,473.6 ms | 9.39 → 12.64 |
+| B2 changed | 602.8 / 630.9 ms | 11.36 → 4.59 |
+
+The window's page fell by about the facade read it no longer makes, in the
+second pair, run under heavier load, as in the first. The remaining 140–250 ms
+at the median
+above the one facade read is the window's own work across the bridge and in
+jsdom, and was not attributed here.
+
+The facade measurement source has SHA-256
+`9bb74860236128b7ebd554c4358072cd98205591f34e3cacfc9d0db4742d9b3f`, the
+baseline executable
+`a5a5b6f17cc916be6e741b17fba64b395d5a6a14d439cc4dc22ecc61abf65731` and the
+changed executable
+`93ab2167d035b60c39536bc3f45a15f3de30ef03246ae9c6ec05ac57d6b6949b`. All grid
+page samples in milliseconds, rounded to 0.1 ms, in acquisition order:
+
+```text
+facade A1 DescribeIndex then OpenGrid: 708.8 701.6 708.4 701.7 697.9 705.1 706.4 755.1 704.0 702.9 725.3 704.4 703.6 703.4 700.3 827.6 717.9 743.3 732.0 707.4
+facade A1 OpenGrid alone: 353.0 469.0 431.6 355.7 352.2 364.0 349.2 351.3 349.1 356.5 349.8 348.6 359.5 356.8 349.0 349.2 356.5 350.6 352.2 351.5
+facade B1 DescribeIndex then OpenGrid: 703.8 695.5 698.5 754.8 869.6 702.3 696.0 702.9 714.3 736.0 809.0 738.5 800.6 702.5 699.8 697.3 702.3 697.2 699.8 701.6
+facade B1 OpenGrid alone: 349.7 349.4 353.4 351.0 354.4 351.7 351.1 350.6 347.8 358.1 420.5 665.5 443.2 378.1 349.4 354.9 351.0 349.3 347.9 352.5
+facade B2 DescribeIndex then OpenGrid: 699.4 723.7 705.2 701.3 801.0 769.7 707.7 707.7 775.5 704.5 717.6 706.7 696.7 703.5 700.5 697.7 693.6 704.9 699.1 734.0
+facade B2 OpenGrid alone: 356.0 349.6 354.5 354.0 356.7 350.8 351.4 350.8 347.9 371.9 367.4 373.6 428.7 359.4 352.2 349.7 349.8 362.9 531.2 472.2
+facade A2 DescribeIndex then OpenGrid: 699.5 707.8 702.6 721.9 700.8 706.5 695.6 696.7 713.7 704.0 701.6 705.3 706.2 895.5 717.3 696.1 697.8 702.1 781.0 698.5
+facade A2 OpenGrid alone: 354.5 375.5 355.4 348.4 346.8 353.7 349.9 347.5 357.7 348.2 359.9 355.2 349.4 349.6 347.0 347.9 349.9 353.8 346.8 352.3
+window A1 next window: 894.6 892.6 897.4 895.4 903.7 891.5 885.5 883.9 1030.7 1525.4 1089.4 893.1 1037.5 972.5 993.0 1090.4 995.7 931.8 966.2 997.3
+window B1 next window: 506.2 498.0 503.7 497.2 499.4 497.6 484.4 498.9 493.5 500.2 496.0 492.5 498.7 493.9 495.5 494.4 494.8 492.9 492.0 494.1
+window A2 next window: 899.1 902.7 905.2 911.4 1302.9 996.1 1225.9 1122.6 909.8 903.9 889.8 1215.9 1473.6 1010.2 905.4 1449.8 2177.4 1351.7 1371.7 1276.5
+window B2 next window: 610.9 628.7 604.6 572.8 606.4 577.8 581.0 620.8 623.0 601.6 599.7 632.5 606.6 603.6 630.9 597.9 599.1 597.1 585.2 602.0
+```
+
+These do not establish a quiet reference-host page time or a painted frame,
+and nothing about the 200 ms target beyond that a page still exceeds it.
+
+<details>
+<summary>Facade page measurement source</summary>
+
+Built and run like the standalone source above: `BINARY NEW_DIRECTORY prepare`
+once, then each executable with that directory as its only argument.
+
+```go
+package main
+
+// Standalone public-facade measurement of one grid page, after the method in
+// docs/corpus.md ("Standalone public-facade measurement source"): one excluded
+// warm-up and 20 samples per batch over the 10,000-occurrence fixture, the last
+// 200-row window, every call checked. "page as the window asked before #337"
+// is DescribeIndex then OpenGrid for the same index, the two reads each Next
+// click made; "OpenGrid alone" is the one read a click makes after it.
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/grid"
+	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/index"
+)
+
+func load() string {
+	raw, err := exec.Command("/usr/sbin/sysctl", "-n", "vm.loadavg").Output()
+	if err != nil {
+		return "unavailable"
+	}
+	return strings.Trim(strings.TrimSpace(string(raw)), "{} ")
+}
+
+func main() {
+	root := os.Args[1]
+	at := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	if len(os.Args) > 2 && os.Args[2] == "prepare" {
+		if err := os.Mkdir(root, 0700); err != nil {
+			panic(err)
+		}
+		wire := strings.Repeat("\x0bMSH|^~\\&|READMIT|TEST|RECV|LAB|20260101120000||SIU^S12|CTL-1|P|2.5.1\rPID|1||MRN-1^^^READMIT^MR||DOE^JANE\r\x1c\r", 10000)
+		b, err := bundle.Write(filepath.Join(root, "scale"), []bundle.Input{{Path: "fixture", Data: []byte(wire), Options: hl7.Options{Format: hl7.MLLP, Terminator: hl7.CR}}}, bundle.Provenance{Mode: bundle.Imported, ImportedAt: &at})
+		if err != nil {
+			panic(err)
+		}
+		d, err := index.Build(context.Background(), b, index.Policy{Fields: []string{"PID[1]-3[1]", grid.AckCodeSelector}, Retention: index.RetainValues}, time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC))
+		if err != nil {
+			panic(err)
+		}
+		if _, err = index.Write(filepath.Join(root, "scale.index.json"), d); err != nil {
+			panic(err)
+		}
+		fmt.Println("prepared", b.Identity)
+		return
+	}
+	app := desktop.New(nil, "", "", "", "")
+	fmt.Printf("os=%s arch=%s cpus=%d gomaxprocs=%d go=%s\n", runtime.GOOS, runtime.GOARCH, runtime.NumCPU(), runtime.GOMAXPROCS(0), runtime.Version())
+	openGrid := func() {
+		r := app.OpenGrid(root, "scale", "scale.index.json", 9800, 200)
+		if r.State != desktop.Completed || r.Grid == nil || len(r.Grid.Rows) != 200 || r.Grid.Total != 10000 || r.Grid.Rows[0].ID != "s0001-e009801" || r.Grid.Rows[199].ID != "s0001-e010000" {
+			panic("unexpected grid")
+		}
+	}
+	describe := func() {
+		r := app.DescribeIndex(root, "scale", "scale.index.json")
+		if r.State != desktop.Completed || r.Index == nil || !r.Index.Applicable || r.Index.Records != 10000 {
+			panic("unexpected index description")
+		}
+	}
+	batch := func(label string, page func()) {
+		before := load()
+		samples := []float64{}
+		for i := 0; i < 21; i++ {
+			start := time.Now()
+			page()
+			ms := float64(time.Since(start).Nanoseconds()) / 1e6
+			if i > 0 {
+				samples = append(samples, ms)
+			}
+		}
+		ordered := append([]float64(nil), samples...)
+		sort.Float64s(ordered)
+		fmt.Printf("%s samples_ms=%v p95_ms=%.3f load_before=[%s] load_after=[%s]\n", label, samples, ordered[18], before, load())
+	}
+	batch("page as the window asked before #337 (DescribeIndex then OpenGrid)", func() { describe(); openGrid() })
+	batch("OpenGrid alone", openGrid)
+}
+```
+
+</details>

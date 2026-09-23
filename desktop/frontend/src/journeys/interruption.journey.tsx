@@ -15,7 +15,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Journey, press, region } from "../testkit/journey";
 import { accepts, entries, exists, freeLoopbackAddress } from "./probes.js";
-import { BOOKING, framed, licensedProject, logTiming } from "./steps";
+import { BOOKING, declareMllpImport, framed, licensedProject, logTiming } from "./steps";
 
 let journey: Journey;
 
@@ -163,13 +163,8 @@ test("cancelling an import while it writes its case stops it there, registers no
   const occurrences = 1500;
   journey.writeFile("exports/feed.mllp", framed(BOOKING).repeat(occurrences));
   const project = await licensedProject(journey, user);
-  const evidence = within(region("Evidence"));
 
-  await press(user, await evidence.findByRole("button", { name: "Import evidence into this project…" }));
-  await journey.chooseFiles([journey.path("exports", "feed.mllp")], "Choose evidence files to import");
-  await press(user, await screen.findByRole("button", { name: "Select Files…" }));
-  await user.selectOptions(screen.getByLabelText("Framing"), "mllp");
-  await user.selectOptions(screen.getByLabelText("Terminator"), "cr");
+  await declareMllpImport(user, journey, "exports/feed.mllp");
   await press(user, screen.getByRole("button", { name: "Preview extraction" }));
   const preview = within(screen.getByRole("region", { name: "Extraction preview" }));
   await waitFor(() => {

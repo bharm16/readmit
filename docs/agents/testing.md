@@ -84,6 +84,9 @@ unanswered is rejected. The kit's verbs:
   received — the independent witness to what a send did — and count the
   connections open to it now, which a connectivity check holds while it runs.
   `backdate(file, ms)` ages a file, for a stale export.
+- `changeFile(file, content)` rewrites a file already inside the root in
+  place, as another program does after the window may have read it — evidence
+  changed on disk between two reads — and refuses a file that does not exist.
 - `readFile(file)` reads a file the window or the command line wrote, and
   `placeFixture(name, file)` copies one of the checkout's shipped synthetic
   fixtures (`testdata/fixtures`) into the root byte for byte, as a documented

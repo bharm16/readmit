@@ -460,10 +460,14 @@ export interface Grid {
   rows: GridRow[];
 }
 
+/** `index` describes the index as DescribeIndex would, from the same read of
+ * the case the window was checked against, whenever that read reached the
+ * index — a refused window included. */
 export interface GridResult {
   state: State;
   reason?: string;
   grid?: Grid;
+  index?: IndexDetails;
 }
 
 export type IndexRetention = "values" | "digests" | "states";

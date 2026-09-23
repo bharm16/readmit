@@ -67,16 +67,25 @@ type Grid struct {
 
 // GridResult carries one state. Grid is present whenever the case and its index
 // were accepted, including when the window holds no row, because the counts are
-// the answer in that case.
+// the answer in that case. Index is present whenever the index was read, refused
+// or not, and describes it exactly as DescribeIndex would, from the same reading
+// of the case the window was checked against.
 type GridResult struct {
-	State  State  `json:"state"`
-	Reason string `json:"reason,omitzero"`
-	Grid   *Grid  `json:"grid,omitzero"`
+	State  State         `json:"state"`
+	Reason string        `json:"reason,omitzero"`
+	Grid   *Grid         `json:"grid,omitzero"`
+	Index  *IndexDetails `json:"index,omitzero"`
 }
 
 func (r *GridResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
 func (r refusal) grid() GridResult { return GridResult{State: r.state, Reason: r.reason} }
+
+// gridOf is a refused window that still carries what its read found of the
+// index.
+func (r refusal) gridOf(details *IndexDetails) GridResult {
+	return GridResult{State: r.state, Reason: r.reason, Index: details}
+}
 
 // IndexDetails describes what one index retains of one case, and its health.
 type IndexDetails struct {
@@ -112,6 +121,12 @@ func (r *IndexResult) refuse(state State, reason string) { r.State, r.Reason = s
 
 func (r refusal) indexResult() IndexResult { return IndexResult{State: r.state, Reason: r.reason} }
 
+// indexResultOf is a refused description that still carries what its read
+// found of the index.
+func (r refusal) indexResultOf(details *IndexDetails) IndexResult {
+	return IndexResult{State: r.state, Reason: r.reason, Index: details}
+}
+
 // BuildIndexRequest declares what one new index of a case retains.
 type BuildIndexRequest struct {
 	Workspace   string   `json:"workspace"`
@@ -144,7 +159,9 @@ func (r refusal) buildIndex() BuildIndexResult {
 // against that verified evidence and against its own declared retention before
 // a single row is reported: a grid never rests on an index the evidence no
 // longer supports, and never serves a view from one whose retention has ended.
-// Every window re-reads and re-checks both for exactly that reason.
+// Every window re-reads and re-checks both for exactly that reason. What the
+// result says about the index comes from that same reading, so a window asks
+// for no second verification of the case to show it.
 //
 // The filter applied is whichever one SelectFilter selected, so moving from one
 // case to another keeps the view a person set up. It runs to completion under
@@ -180,20 +197,23 @@ func (a *App) openGrid(workspace, name, indexName string, offset, limit int) Gri
 	if err != nil {
 		return GridResult{State: Failed, Reason: err.Error()}
 	}
-	document, declined := openIndex(indexPath, opened)
+	at := time.Now().UTC()
+	document, details, declined := openIndex(indexPath, indexName, opened, at)
 	if declined.state != "" {
-		return declined.grid()
+		return declined.gridOf(details)
 	}
 	saved, declined := a.savedFilters()
 	if declined.state != "" {
-		return declined.grid()
+		return declined.gridOf(details)
 	}
 	selected := saved.Find(saved.Selected)
-	page, err := grid.Select(*document, time.Now().UTC(), selected, grid.Window{Offset: offset, Limit: limit})
+	page, err := grid.Select(*document, at, selected, grid.Window{Offset: offset, Limit: limit})
 	if err != nil {
-		return GridResult{State: Failed, Reason: refusedQuery(err)}
+		return GridResult{State: Failed, Reason: refusedQuery(err), Index: details}
 	}
-	return described(name, indexName, opened.Identity, saved.Selected, page)
+	result := described(name, indexName, opened.Identity, saved.Selected, page)
+	result.Index = details
+	return result
 }
 
 // BuildIndex builds a new index or rebuilds an existing disposable index of one case.
@@ -390,65 +410,18 @@ func describeSpecificIndex(root, indexName string, opened *bundle.Bundle, at tim
 		return IndexResult{State: Failed, Reason: "an index must be one regular file of the open workspace"}
 	}
 
-	document, err := index.Open(indexPath)
-	switch {
-	case errors.Is(err, index.ErrUnsupportedVersion):
-		return IndexResult{
-			State:  Failed,
-			Reason: "the index was written under a contract version this release cannot read; build it again from this case",
-			Index:  &IndexDetails{IndexName: indexName, Unsupported: true},
-		}
-	case errors.Is(err, index.ErrDamaged):
-		return IndexResult{
-			State:  Failed,
-			Reason: "the index no longer matches what was written for it; the evidence is unchanged, build the index again",
-			Index:  &IndexDetails{IndexName: indexName, Damaged: true},
-		}
-	case err != nil:
-		if data, readErr := os.ReadFile(indexPath); readErr == nil {
-			var decl struct {
-				Schema string `json:"schema"`
-			}
-			_ = json.Unmarshal(data, &decl)
-			if decl.Schema == index.Schema {
-				return IndexResult{
-					State:  Failed,
-					Reason: "the index no longer matches what was written for it; the evidence is unchanged, build the index again",
-					Index:  &IndexDetails{IndexName: indexName, Damaged: true},
-				}
-			}
-		}
-		return IndexResult{
-			State:  Failed,
-			Reason: "that entry is not an index this release reads; build one from this case",
-		}
+	_, details, declined := openIndex(indexPath, indexName, opened, at)
+	if declined.state != "" {
+		return declined.indexResultOf(details)
 	}
-
-	details := indexDetails(indexName, document, opened, at)
-	if err := document.Describes(opened); err != nil {
-		details.Applicable = false
-		details.Stale = true
-		return IndexResult{
-			State:  Failed,
-			Reason: "the index was built from different evidence than this case; build it again from this case",
-			Index:  &details,
-		}
-	}
-	if err := document.Usable(at); err != nil {
-		details.Applicable = false
-		details.Expired = true
+	if details.Expired {
 		return IndexResult{
 			State:  Failed,
 			Reason: "the retention declared for this index has ended; build it again from this case, or delete it",
-			Index:  &details,
+			Index:  details,
 		}
 	}
-
-	details.Applicable = true
-	return IndexResult{
-		State: Completed,
-		Index: &details,
-	}
+	return IndexResult{State: Completed, Index: details}
 }
 
 func indexDetails(name string, doc index.Document, opened *bundle.Bundle, at time.Time) IndexDetails {
@@ -493,23 +466,48 @@ func indexDetails(name string, doc index.Document, opened *bundle.Bundle, at tim
 	}
 }
 
+// declaresIndex reports whether an entry this release could not read as an
+// index still declares the index contract, so what was written for it no
+// longer matches rather than it being some other file.
+func declaresIndex(path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	var decl struct {
+		Schema string `json:"schema"`
+	}
+	_ = json.Unmarshal(data, &decl)
+	return decl.Schema == index.Schema
+}
+
 // openIndex reads one index and refuses it the moment it disagrees with the
 // verified case. A refused index never changes or blocks the evidence: every
 // remedy below is to build the index again from the case it describes.
-func openIndex(path string, opened *bundle.Bundle) (*index.Document, refusal) {
+//
+// It is the one reading of an index both DescribeIndex and OpenGrid make. The
+// details it returns come from this reading, checked against the same verified
+// case at the same instant, so a window and what it says about its index can
+// never come from two different readings of the evidence. It leaves the
+// retention an index declared to its caller: a description reports that it
+// has ended, and a window is refused by the query that would read past it.
+func openIndex(path, name string, opened *bundle.Bundle, at time.Time) (*index.Document, *IndexDetails, refusal) {
 	document, err := index.Open(path)
 	switch {
 	case errors.Is(err, index.ErrUnsupportedVersion):
-		return nil, refusal{Failed, "the index was written under a contract version this release cannot read; build it again from this case"}
-	case errors.Is(err, index.ErrDamaged):
-		return nil, refusal{Failed, "the index no longer matches what was written for it; the evidence is unchanged, build the index again"}
+		return nil, &IndexDetails{IndexName: name, Unsupported: true}, refusal{Failed, "the index was written under a contract version this release cannot read; build it again from this case"}
+	case errors.Is(err, index.ErrDamaged) || (err != nil && declaresIndex(path)):
+		return nil, &IndexDetails{IndexName: name, Damaged: true}, refusal{Failed, "the index no longer matches what was written for it; the evidence is unchanged, build the index again"}
 	case err != nil:
-		return nil, refusal{Failed, "that entry is not an index this release reads; build one from this case"}
+		return nil, nil, refusal{Failed, "that entry is not an index this release reads; build one from this case"}
 	}
-	if err := document.Describes(opened); err != nil {
-		return nil, refusal{Failed, "the index was built from different evidence than this case; build it again from this case"}
+	// Everything the index restates about the case is compared against the
+	// verified bundle here, once: indexDetails reports what Describes found.
+	details := indexDetails(name, document, opened, at)
+	if details.Stale {
+		return nil, &details, refusal{Failed, "the index was built from different evidence than this case; build it again from this case"}
 	}
-	return &document, refusal{}
+	return &document, &details, refusal{}
 }
 
 // refusedQuery separates the one refusal with a remedy a person can act on from

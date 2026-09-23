@@ -30,6 +30,7 @@ import type { Hub, HubGrant } from "./hub.js";
 import type { Downstream, DownstreamMode } from "./downstream.js";
 import {
   backdateInRoot,
+  changeInRoot,
   copyFixtureInRoot,
   createRoot,
   digestInRoot,
@@ -248,6 +249,14 @@ export class Journey {
    * their own evidence, exported from somewhere the application never saw. */
   writeFile(relative: string, content: string | Uint8Array): string {
     return writeInRoot(this.root, relative, content);
+  }
+
+  /** Something outside the application rewrites a file already on this
+   * person's machine, in place — another program, a copy or sync tool, their
+   * editor — after the application may have read it. Only an existing file
+   * can be changed. */
+  changeFile(relative: string, content: string | Uint8Array): string {
+    return changeInRoot(this.root, relative, content);
   }
 
   /** Places one of the checkout's shipped synthetic fixtures on this

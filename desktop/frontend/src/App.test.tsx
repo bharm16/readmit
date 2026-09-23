@@ -58,6 +58,7 @@ import {
   scenarioCatalogFixture,
 } from "./testkit/fixtures";
 import { renderApp } from "./testkit/app";
+import { GRID_WINDOW } from "./shell";
 import type { CommercialStatusResult, HubResult, ScenarioCatalogResult } from "./bindings";
 
 test("the window draws every region the facade declares and its privacy disclosure as given", async () => {
@@ -1014,6 +1015,46 @@ test("verifying a case auto-selects and opens an applicable index", async () => 
 
   expect(await screen.findByText(`Inspect ${GRID_OCCURRENCE}`)).toBeTruthy();
   expect(facade.callsTo("OpenGrid")).toHaveLength(1);
+});
+
+test("a page of the grid is one read, and the index details beside it are that read's", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    SelectWorkspace: () => folderWithCase(),
+    OpenCase: () => caseResult(),
+  });
+  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await screen.findByText(WORKSPACE_ROOT);
+  await user.click(screen.getByRole("button", { name: "Verify and open" }));
+  await screen.findByText(CASE_IDENTITY);
+  const described = facade.callsTo("DescribeIndex").length;
+
+  facade.reply({
+    OpenGrid: () => ({
+      ...gridResult([gridRow(GRID_OCCURRENCE)], { total: 2 * GRID_WINDOW, matched: 2 * GRID_WINDOW }),
+      index: indexDetailsFixture({ applicable: true }),
+    }),
+  });
+  await user.selectOptions(screen.getByLabelText("Index file in this folder"), INDEX_ENTRY);
+  await user.click(screen.getByRole("button", { name: "Open the grid" }));
+  expect(await screen.findByLabelText("Active index details")).toBeTruthy();
+
+  // The evidence changed between the two page reads: the next one is refused,
+  // and what that same read found of the index is what the window now shows.
+  facade.reply({
+    OpenGrid: () => ({
+      ...refused("the index was built from different evidence than this case; build it again from this case"),
+      index: indexDetailsFixture({ applicable: false, stale: true }),
+    }),
+  });
+  await user.click(screen.getByRole("button", { name: `Next ${GRID_WINDOW}` }));
+  expect(await screen.findByRole("alert", { name: "Index rebuild notice" })).toBeTruthy();
+  expect(screen.getByText(/built from different evidence than this case/)).toBeTruthy();
+  expect(screen.queryByLabelText("Active index details")).toBeNull();
+  expect(screen.queryByRole("button", { name: `Inspect ${GRID_OCCURRENCE}` })).toBeNull();
+
+  expect(facade.callsTo("OpenGrid").map((call) => call.args[3])).toEqual([0, GRID_WINDOW]);
+  expect(facade.callsTo("DescribeIndex")).toHaveLength(described);
 });
 
 test("verifying an unindexed case shows unindexed view and keeps inspector available", async () => {

@@ -1,5 +1,24 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Each page of the message grid now verifies the case once instead of twice
+  (#337). A Next or Previous click, and opening an index in the grid, asked the
+  facade to describe the index and then to open the window, and each call read
+  and hashed every payload of the case again. `OpenGrid` now also returns the
+  index details it checked, exactly as `DescribeIndex` reports them and from the
+  same read, refused windows included, and the window shows those, so a page is
+  one call. Every check still runs on every page: a case or an index changed
+  between two page reads is refused on the second as before, and the details
+  beside a window can no longer come from a different reading of the evidence
+  than its rows. `DescribeIndex` and `OpenGrid` now read an index through one
+  shared path, so an entry that declares the index contract but cannot be read
+  as one is refused by the grid as altered since it was written, as its
+  description already said, rather than as not an index. On a loaded macOS
+  development host the facade work for a page fell from about 700 ms to about
+  350 ms at the median over the largest case a bundle admits, and the window's
+  next page from a p95 of 1,090–1,474 ms to 504–631 ms; a page is still above
+  the proposed 200 ms target. No `readmit-*` document changes; only the
+  window's grid result gains the index details.
+
 - The window's remaining path-confinement gaps found after #339 are closed
   (#348). Opening a profile library accepted an absolute path, `..` and a folder
   reached through a symbolic link; it now opens only the workspace itself or one
