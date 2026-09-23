@@ -401,13 +401,14 @@ func (a *App) RegisterRevision(request RevisionRegistration) ProjectOverviewResu
 // placeDerivedCase copies the derived case out of a built reproducer folder
 // into one new entry of the project. The build folder itself stays where it is.
 func placeDerivedCase(root, source, destination string) error {
-	if err := artifactpath.EntryName(source); err != nil {
+	built, err := artifactpath.Child(root, source)
+	if err != nil {
 		return errors.New("a built reproducer must be named by one directory entry of the open workspace")
 	}
 	if err := artifactpath.EntryName(destination); err != nil {
 		return errors.New("a revision must be named by one directory entry of the project")
 	}
-	from := filepath.Join(artifactpath.JoinReference(root, source), reproducer.CaseName)
+	from := filepath.Join(built, reproducer.CaseName)
 	if _, err := bundle.Open(from); err != nil {
 		return errors.New("the built reproducer's derived case could not be verified as complete, unmodified evidence")
 	}

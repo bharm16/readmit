@@ -43,6 +43,12 @@ CASES = (
         'TestSavedFiltersSeparatePermissionFromAnUnreadableDocument',
         'TestWorkspaceListingRefusesToFollowSymbolicLinks',
         'TestPrivacyStatusNamesWhatIsAbsentAndWhatIsKept',
+        # Entries named directly (#339): a link, `..`, an absolute path, a FIFO
+        # and a wrong kind are refused before any read or send.
+        'TestRunOperationsRefuseEveryEntryThatIsNotOneRegularFileOfTheWorkspace',
+        'TestRunEvidenceReadsRefuseEveryEntryThatLeavesTheWorkspace',
+        'TestEveryOtherEntryReadByNameRefusesALinkAndEveryEscape',
+        'TestAPracticeRunRefusesASpecThatIsNotOneRegularFileOfTheWorkspace',
         # Application surfaces (#244): backend enforcement behind every window
         # action, restoration, local egress and declared keyboard semantics.
         'TestEveryPathOperationRefusesHostileEntriesPromptlyAndBoundedly',
@@ -78,6 +84,7 @@ CASES = (
         'TestThePaneSeparatorIsOperableWithAKeyboard',
     )),
     ('.', './internal/operation', ('TestEditingATargetRefusesAFIFOALinkAndAnOversizedFileWithoutReadingThem',)),
+    ('.', './internal/artifactpath', ('TestFileRefusesNamesAndEntriesThatAreNotOneRegularFile',)),
     ('.', './internal/report', ('TestReviewEscapesHostileEvidenceAndRejectsResealedReports',)),
     ('.', './internal/observesource', (
         'TestADownstreamCaptureCompletesTheWindowAndBindsWhatTheRunProduced',

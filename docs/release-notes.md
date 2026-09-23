@@ -1,5 +1,20 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The window's operations no longer follow a symbolic link that a caller names
+  directly (#339). Before this, a link inside the workspace to a saved test
+  outside it was preflighted and executed, with one delivery, although the
+  listing and the file dialog never offered it. Preflight, durable execution,
+  a suite run and its released references, run-history and packet reads of a
+  suite job, a packet's specification, a controlled reduction's test,
+  environment, reset plan and policy, a practice run's test, the protection
+  document and the entries packed under it, the private local state an export
+  or a support summary is bound to, and the built reproducer a revision is
+  copied from now accept only one regular file or one real folder of the open
+  workspace, as the listing and `ChooseRunSpec` already did. A link out of the
+  workspace, a link to another of its entries, `..`, an absolute path, a FIFO
+  and an entry of the wrong kind are refused before anything is read through
+  them or sent. No run contract, retained result or `readmit` command changes.
+
 - The interaction journeys now carry a person's investigation through to an
   executed regression test of a system readmit did not write (#109). The test
   kit gains an independent downstream scheduling system — an MLLP receiver

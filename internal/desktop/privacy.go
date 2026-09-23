@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/engine"
 	"github.com/bharm16/readmit/internal/redact"
 	"github.com/bharm16/readmit/internal/sharing"
@@ -269,9 +270,9 @@ func (a *App) ExportDerivedPacket(request PrivacyExportRequest) PrivacyExportRes
 		if err != nil {
 			return PrivacyExportResult{State: Failed, Reason: "the export review must be one entry of the open workspace"}
 		}
-		privatePath, err := runEntryPath(root, request.LocalState)
+		privatePath, err := artifactpath.Child(root, request.LocalState)
 		if err != nil {
-			return PrivacyExportResult{State: Failed, Reason: "the private local state must be one entry of the open workspace"}
+			return PrivacyExportResult{State: Failed, Reason: "the private local state must be one folder of the open workspace, never a symbolic link"}
 		}
 		if request.Approval == "" {
 			return PrivacyExportResult{State: Failed, Reason: "approve the exact review identity to export it; an unapproved review exports nothing"}
@@ -527,8 +528,8 @@ func (a *App) supportCandidate(root string, request SupportRequest, ctx context.
 	}
 	privatePath := ""
 	if request.Private != "" {
-		if privatePath, err = runEntryPath(root, request.Private); err != nil {
-			return nil, zero, "the private local state must be one entry of the open workspace", false
+		if privatePath, err = artifactpath.Child(root, request.Private); err != nil {
+			return nil, zero, "the private local state must be one folder of the open workspace, never a symbolic link", false
 		}
 	}
 	policyData, declined := workspaceDocument(root, request.Policy, sharingPolicyLimit, "the sharing policy")

@@ -403,6 +403,22 @@ nothing this release reads — a file with no recognizable contract, a symbolic
 link, a folder with no readable manifest or record — is listed as `unsupported`
 with the reason, never hidden and never counted as evidence.
 
+The operations hold an entry to the listing's rule whichever control named it,
+because a caller can name any entry directly. An entry an operation reads by
+name — a saved test or suite and the released references a suite run is pinned
+to, a retained execution and the folders a suite job is reached through, the
+specification and executions an investigation packet is assembled from, the
+test, environment, reset plan and policy a controlled reduction reads, the test
+a practice run executes, the protection document and the entries packed under
+it, the private local state an export or a support summary is bound to, and the
+built reproducer a revision is copied from — must be one regular file or one
+real folder of the open workspace. A symbolic link is refused wherever it
+points, and so are `..`, an absolute path and an entry of the wrong kind such as
+a FIFO, before anything is read through them or sent. References inside a
+document, such as the case and target a saved test names, resolve as they do on
+the command line. The environment, credential, observation and capture screens
+also accept a document by absolute path, so the workspace is not their boundary.
+
 The listing distinguishes what entries declare, so navigation and the
 pickers offer applicable entries instead of every entry labelled unsupported:
 
@@ -1847,7 +1863,10 @@ through a symbolic link, as `/tmp` and `/var` reach `/private` on macOS, is
 accepted however the dialog spells it. The chosen entry itself must be a regular
 file, never a symbolic link, exactly as the listing offers entries. A file
 outside the workspace, a file in one of its folders, a link inside it wherever
-the link points, and a path that leaves through `..` are refused.
+the link points, and a path that leaves through `..` are refused. Preflight,
+execution, a suite run and the run-history reads apply the same rule to the
+entry they are handed, so naming an entry directly reaches nothing the dialog
+refuses; see [workspaces and artifacts](#workspaces-and-artifacts).
 No path is typed by hand and no internal path is copied: a fresh output folder
 is generated and validated by the application itself.
 

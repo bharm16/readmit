@@ -54,6 +54,40 @@ func TestChildRefusesNamesAndEntriesThatLeaveTheDirectory(t *testing.T) {
 	}
 }
 
+func TestFileRefusesNamesAndEntriesThatAreNotOneRegularFile(t *testing.T) {
+	parent := t.TempDir()
+	directory := filepath.Join(parent, "workspace")
+	if err := os.Mkdir(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{filepath.Join(parent, "outside.json"), filepath.Join(directory, "spec.json")} {
+		if err := os.WriteFile(name, []byte("{}"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(directory, "folder.json"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for link, target := range map[string]string{
+		"link.json":  filepath.Join(parent, "outside.json"),
+		"alias.json": filepath.Join(directory, "spec.json"),
+	} {
+		if err := os.Symlink(target, filepath.Join(directory, link)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path, err := artifactpath.File(directory, "spec.json")
+	if err != nil || path != filepath.Join(directory, "spec.json") {
+		t.Fatalf("a regular file entry = %q, %v", path, err)
+	}
+	for _, name := range []string{"link.json", "alias.json", "folder.json", "missing.json", "../outside.json",
+		filepath.Join(parent, "outside.json"), filepath.Join(directory, "spec.json"), "", "."} {
+		if path, err := artifactpath.File(directory, name); err == nil {
+			t.Errorf("File(%q) accepted as %q", name, path)
+		}
+	}
+}
+
 func TestDestinationRefusesNamesInsideRetainedEvidence(t *testing.T) {
 	base := t.TempDir()
 	retained := filepath.Join(base, "retained")

@@ -141,21 +141,24 @@ func (a *App) prepareReduction(request ReductionRequest, createWork bool) (prepa
 	if root == "" {
 		return preparedReduction{}, declined
 	}
-	specPath, declined := resolveWorkspacePath(request.Workspace, request.Spec)
-	if specPath == "" {
-		return preparedReduction{}, declined
+	// Every document a reduction reads is one the panel offered from the
+	// workspace listing, so each is held to the listing's rule here, before it
+	// is read: one regular file of the open workspace, never a symbolic link.
+	specPath, err := artifactpath.File(root, request.Spec)
+	if err != nil {
+		return preparedReduction{}, refusal{Failed, "the regression test must be one regular file of the open workspace, never a symbolic link"}
 	}
-	targetPath, declined := resolveWorkspacePath(request.Workspace, request.Target)
-	if targetPath == "" {
-		return preparedReduction{}, declined
+	targetPath, err := artifactpath.File(root, request.Target)
+	if err != nil {
+		return preparedReduction{}, refusal{Failed, "the approved environment must be one regular file of the open workspace, never a symbolic link"}
 	}
 	target, err := operation.ReadTarget(targetPath)
 	if err != nil {
 		return preparedReduction{}, refusal{Failed, err.Error()}
 	}
-	planPath, declined := resolveWorkspacePath(request.Workspace, request.ResetPlan)
-	if planPath == "" {
-		return preparedReduction{}, declined
+	planPath, err := artifactpath.File(root, request.ResetPlan)
+	if err != nil {
+		return preparedReduction{}, refusal{Failed, "the reviewed reset plan must be one regular file of the open workspace, never a symbolic link"}
 	}
 	resolvedPlan, err := artifactpath.Resolve(planPath)
 	if err != nil {
@@ -167,9 +170,9 @@ func (a *App) prepareReduction(request ReductionRequest, createWork bool) (prepa
 	}
 	var policy *sendpolicy.Policy
 	if request.Policy != "" {
-		polPath, declined := resolveWorkspacePath(request.Workspace, request.Policy)
-		if polPath == "" {
-			return preparedReduction{}, declined
+		polPath, err := artifactpath.File(root, request.Policy)
+		if err != nil {
+			return preparedReduction{}, refusal{Failed, "the approved-destination policy must be one regular file of the open workspace, never a symbolic link"}
 		}
 		p, err := operation.ReadSendPolicy(polPath)
 		if err != nil {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/engine"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/report"
@@ -134,7 +135,7 @@ func resolvePacketInputs(root string, request PacketRequest) (packetInputs, stri
 	if inputs.casePath, err = runEntryPath(root, request.Case); err != nil {
 		return invalid("the case must be one entry of the open workspace")
 	}
-	if inputs.specPath, err = runEntryPath(root, request.Spec); err != nil {
+	if inputs.specPath, err = artifactpath.File(root, request.Spec); err != nil {
 		return invalid("the specification must be one entry of the open workspace")
 	}
 	if inputs.currentPath, err = runEvidencePath(root, request.Current); err != nil {
