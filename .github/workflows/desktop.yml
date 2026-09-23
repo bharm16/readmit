@@ -11,6 +11,11 @@ on:
   pull_request:
   push:
     branches: [main]
+  # A daily run keeps main's desktop caches fresh for pull requests even when
+  # every push to main repeated a tree its pull request already tested.
+  schedule:
+    - cron: '41 7 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -26,6 +31,30 @@ env:
   GOTELEMETRY: 'off'
 
 jobs:
+  # A push to main repeats a pull request's work only when the pull request's
+  # run already tested this exact tree and succeeded. The check fails closed:
+  # anything short of that proof, an API error included, runs every job.
+  proof:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    outputs:
+      proven: ${{ steps.proof.outputs.proven }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Look for a successful pull-request run of this exact tree
+        id: proof
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/proven_tree.py --artifact proven-tree-desktop
+
   desktop-shell:
     # macOS supplies a webview without extra system packages, so this job
     # exercises the real native build rather than a stub. The built window needs
@@ -35,6 +64,8 @@ jobs:
     # drive the components against the typed boundary below, and by the
     # interaction journeys that drive the production window against the real
     # facade across that boundary.
+    needs: proof
+    if: ${{ !cancelled() && needs.proof.outputs.proven != 'true' }}
     runs-on: macos-15
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -106,6 +137,8 @@ jobs:
   # identities and protected credentials are release inputs this workflow never
   # sees, and nothing here publishes a package.
   desktop-package:
+    needs: proof
+    if: ${{ !cancelled() && needs.proof.outputs.proven != 'true' }}
     permissions:
       contents: read
       id-token: write
@@ -211,6 +244,9 @@ jobs:
   # bounded headless check, not clean managed-machine or interactive acceptance.
   desktop-install:
     needs: desktop-package
+    # Named rather than the implicit success(), which also fails for the proof
+    # job that every event except a push to main skips.
+    if: ${{ !cancelled() && needs.desktop-package.result == 'success' }}
     strategy:
       fail-fast: false
       matrix:
@@ -342,16 +378,41 @@ jobs:
   # so no other worktree has to guess which desktop job names are mandatory.
   desktop:
     if: always()
-    needs: [desktop-shell, desktop-package, desktop-install]
+    needs: [proof, desktop-shell, desktop-package, desktop-install]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Require the shell build and every native package to succeed
+      # Only a push to main whose tree a pull-request run proved skips its jobs,
+      # and then every one of them must have been skipped.
+      - name: Require the shell build and every native package this event runs to succeed
         env:
+          PROVEN: ${{ needs.proof.result == 'success' && needs.proof.outputs.proven == 'true' }}
           SHELL_RESULT: ${{ needs.desktop-shell.result }}
           PACKAGE_RESULT: ${{ needs.desktop-package.result }}
           INSTALL_RESULT: ${{ needs.desktop-install.result }}
         run: |
-          test "$SHELL_RESULT" = success
-          test "$PACKAGE_RESULT" = success
-          test "$INSTALL_RESULT" = success
+          if [ "$PROVEN" = true ]; then expected=skipped; else expected=success; fi
+          test "$SHELL_RESULT" = "$expected"
+          test "$PACKAGE_RESULT" = "$expected"
+          test "$INSTALL_RESULT" = "$expected"
+      # The record a later push to main looks for. Failing to write it only
+      # means that push runs in full, so it never fails this check.
+      - name: Record the tree this pull-request run tested
+        id: tested
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tree=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$GITHUB_SHA" --jq .tree.sha)
+          test -n "$tree"
+          printf '%s\n' "$GITHUB_SHA" > tested-commit.txt
+          echo "tree=$tree" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: github.event_name == 'pull_request' && steps.tested.outputs.tree != ''
+        continue-on-error: true
+        with:
+          name: proven-tree-desktop-${{ steps.tested.outputs.tree }}
+          path: tested-commit.txt
+          if-no-files-found: error
+          overwrite: true
