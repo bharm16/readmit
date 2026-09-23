@@ -30,6 +30,13 @@ func Write(path string, inputs []Input, provenance Provenance) (*Bundle, error) 
 // observed between them; a cancelled write is retained incomplete and refused
 // by every reader, the same as any other interrupted write.
 func WriteContext(ctx context.Context, path string, inputs []Input, provenance Provenance) (*Bundle, error) {
+	return WriteWithDurability(ctx, path, inputs, provenance, artifactdir.Durable)
+}
+
+// WriteWithDurability is WriteContext with the durability its caller chose:
+// Scratch only for a case in a throwaway workspace its owner removes before it
+// answers. The case's bytes and identity do not depend on it.
+func WriteWithDurability(ctx context.Context, path string, inputs []Input, provenance Provenance, durability artifactdir.Durability) (*Bundle, error) {
 	if provenance.Mode == Recorded {
 		return nil, errors.New("recorded sessions require WriteRecorded and an observation")
 	}
@@ -40,12 +47,18 @@ func WriteContext(ctx context.Context, path string, inputs []Input, provenance P
 	if err != nil {
 		return nil, err
 	}
-	return writeBundle(ctx, path, b)
+	return writeBundle(ctx, path, b, durability)
 }
 
 // WriteRecorded preserves a receiver session and its final observation in v2.
 // Default Write remains a v1 writer for imported and generated evidence.
 func WriteRecorded(path string, inputs []Input, startedAt time.Time, snapshot observation.Snapshot) (*Bundle, error) {
+	return WriteRecordedWithDurability(path, inputs, startedAt, snapshot, artifactdir.Durable)
+}
+
+// WriteRecordedWithDurability is WriteRecorded with the durability its caller
+// chose, as WriteWithDurability is WriteContext.
+func WriteRecordedWithDurability(path string, inputs []Input, startedAt time.Time, snapshot observation.Snapshot, durability artifactdir.Durability) (*Bundle, error) {
 	b, err := build(inputs, Provenance{Mode: Recorded, StartedAt: &startedAt, SessionID: snapshot.SessionID})
 	if err != nil {
 		return nil, err
@@ -53,7 +66,7 @@ func WriteRecorded(path string, inputs []Input, startedAt time.Time, snapshot ob
 	if err := attachObservation(b, snapshot); err != nil {
 		return nil, err
 	}
-	return writeBundle(context.Background(), path, b)
+	return writeBundle(context.Background(), path, b, durability)
 }
 
 // WriteCollected preserves a generic receiver session and the record of what it
@@ -66,15 +79,15 @@ func WriteCollected(path string, inputs []Input, startedAt time.Time, record col
 	if err := attachCollection(b, record); err != nil {
 		return nil, err
 	}
-	return writeBundle(context.Background(), path, b)
+	return writeBundle(context.Background(), path, b, artifactdir.Durable)
 }
 
-func writeBundle(ctx context.Context, path string, b *Bundle) (*Bundle, error) {
+func writeBundle(ctx context.Context, path string, b *Bundle, durability artifactdir.Durability) (*Bundle, error) {
 	files, err := encode(b)
 	if err != nil {
 		return nil, err
 	}
-	b.Identity, err = artifactdir.WriteContext(ctx, path, artifactdir.WriteOptions{Domain: b.Manifest.Schema, Directories: []string{"payloads"}}, files)
+	b.Identity, err = artifactdir.WriteContext(ctx, path, artifactdir.WriteOptions{Domain: b.Manifest.Schema, Directories: []string{"payloads"}, Durability: durability}, files)
 	if errors.Is(err, artifactdir.ErrCreateDirectory) {
 		return nil, errors.New("cannot create bundle; destination must be new and parent readable and writable")
 	}

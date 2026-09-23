@@ -60,13 +60,13 @@ func reserve(output string, source os.FileInfo) (string, error) {
 	return output, nil
 }
 
-func retain(dir, path string, raw []byte) (*bundle.Payload, error) {
+func retain(dir, path string, raw []byte, durability artifactdir.Durability) (*bundle.Payload, error) {
 	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return nil, errors.New("cannot create test evidence")
 	}
 	defer root.Close()
-	err = artifactdir.WriteFile(root, path, raw)
+	err = durability.WriteFile(root, path, raw)
 	if errors.Is(err, artifactdir.ErrCreateFile) {
 		return nil, errors.New("cannot create test evidence")
 	}
@@ -76,12 +76,12 @@ func retain(dir, path string, raw []byte) (*bundle.Payload, error) {
 	return &bundle.Payload{Path: path, Size: len(raw), SHA256: digest(raw)}, nil
 }
 
-func finish(dir string, result Result) (*Artifact, error) {
+func finish(dir string, result Result, durability artifactdir.Durability) (*Artifact, error) {
 	data, err := encode(result)
 	if err != nil || len(data) > maxResultBytes {
 		return nil, errors.New("test result exceeds size limit")
 	}
-	if _, err := retain(dir, "result.json", data); err != nil {
+	if _, err := retain(dir, "result.json", data, durability); err != nil {
 		return nil, err
 	}
 	files, err := readDirectory(dir)
@@ -89,7 +89,7 @@ func finish(dir string, result Result) (*Artifact, error) {
 		return nil, err
 	}
 	identity := directoryIdentity(files)
-	if _, err := retain(dir, "identity.sha256", []byte(identity+"\n")); err != nil {
+	if _, err := retain(dir, "identity.sha256", []byte(identity+"\n"), durability); err != nil {
 		return nil, err
 	}
 	return Open(dir)

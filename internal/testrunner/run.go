@@ -6,6 +6,7 @@ import (
 	"errors"
 	"path/filepath"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/replay"
@@ -16,7 +17,15 @@ import (
 // preparation fails. It cannot produce an artifact if storage is unavailable or
 // the output would modify existing evidence. It never executes reset prose.
 func Run(ctx context.Context, specPath, output string) (*Artifact, error) {
-	plan, err := Prepare(specPath)
+	return RunWithDurability(ctx, specPath, output, artifactdir.Durable)
+}
+
+// RunWithDurability is Run with the durability its caller chose for the result
+// and run it writes: Scratch only for a result in a throwaway workspace its
+// owner removes before it answers, keeping any copy through its own synced
+// write. The result's bytes, identity and verdict do not depend on it.
+func RunWithDurability(ctx context.Context, specPath, output string, durability artifactdir.Durability) (*Artifact, error) {
+	plan, err := PrepareWithDurability(specPath, durability)
 	if err == nil {
 		return Execute(ctx, plan, output)
 	}
@@ -27,7 +36,7 @@ func Run(ctx context.Context, specPath, output string) (*Artifact, error) {
 	result := emptyResult()
 	result.ErrorClass = "configuration"
 	if raw, err := readLocal(specPath, MaxSpecBytes); err == nil {
-		ref, err := retain(dir, "spec.json", raw)
+		ref, err := retain(dir, "spec.json", raw, durability)
 		if err != nil {
 			return nil, err
 		}
@@ -38,7 +47,7 @@ func Run(ctx context.Context, specPath, output string) (*Artifact, error) {
 			result.Assertions = pending(spec)
 		}
 	}
-	return finish(dir, result)
+	return finish(dir, result, durability)
 }
 
 // Execute opens a network connection only after reserving new local evidence
@@ -58,7 +67,7 @@ func ExecuteObserved(ctx context.Context, plan *Plan, output string, observer re
 		return nil, err
 	}
 	result := emptyResult()
-	result.Spec, err = retain(dir, "spec.json", plan.raw)
+	result.Spec, err = retain(dir, "spec.json", plan.raw, plan.durability)
 	if err != nil {
 		return nil, err
 	}
@@ -72,21 +81,21 @@ func ExecuteObserved(ctx context.Context, plan *Plan, output string, observer re
 	currentSpec, err := readLocal(plan.specPath, MaxSpecBytes)
 	if err != nil || !bytes.Equal(currentSpec, plan.raw) {
 		result.ErrorClass = "configuration_changed"
-		return plan.named(finish(dir, result))
+		return plan.named(finish(dir, result, plan.durability))
 	}
 	var initial, final *observation.Snapshot
 	if plan.Boundary() == LedgerBoundary {
-		result.InitialObservation, initial, err = collectObservation(dir, "initial-observation.json", plan.observationPath)
+		result.InitialObservation, initial, err = collectObservation(dir, "initial-observation.json", plan.observationPath, plan.durability)
 		if err != nil {
 			return nil, err
 		}
 		if !initialState(initial) {
 			result.ErrorClass = "initial_observation"
-			return plan.named(finish(dir, result))
+			return plan.named(finish(dir, result, plan.durability))
 		}
 	}
 	run, err := replay.ExecuteObserved(ctx, plan.replay, filepath.Join(dir, "run"), nil, func(decision sendpolicy.Decision) error {
-		return sendpolicy.WriteDecision(dir+".decision.json", decision)
+		return sendpolicy.WriteDecisionWithDurability(dir+".decision.json", decision, plan.durability)
 	}, observer)
 	if err != nil {
 		// A storage failure may leave an incomplete run. Do not certify that
@@ -95,7 +104,7 @@ func ExecuteObserved(ctx context.Context, plan *Plan, output string, observer re
 	}
 	result.Run = &RunReference{Path: "run", Identity: run.Identity}
 	if plan.Boundary() == LedgerBoundary {
-		result.FinalObservation, final, err = collectObservation(dir, "observation.json", plan.observationPath)
+		result.FinalObservation, final, err = collectObservation(dir, "observation.json", plan.observationPath, plan.durability)
 		if err != nil {
 			return nil, err
 		}
@@ -104,7 +113,7 @@ func ExecuteObserved(ctx context.Context, plan *Plan, output string, observer re
 	if result.Status != ExecutionError && final != nil {
 		result.ReceiverSessionID, result.ReceiverMode = final.SessionID, final.Mode
 	}
-	return plan.named(finish(dir, result))
+	return plan.named(finish(dir, result, plan.durability))
 }
 
 // named records the environment an execution was pointed at on the artifact it
@@ -125,12 +134,12 @@ func emptyResult() Result {
 
 // A bounded partial/invalid snapshot is retained as diagnostic evidence. Missing
 // and oversized files have no descriptor. Either case evaluates to an error.
-func collectObservation(dir, name, path string) (*bundle.Payload, *observation.Snapshot, error) {
+func collectObservation(dir, name, path string, durability artifactdir.Durability) (*bundle.Payload, *observation.Snapshot, error) {
 	raw, err := readLocal(path, observation.MaxBytes)
 	if err != nil {
 		return nil, nil, nil
 	}
-	ref, err := retain(dir, name, raw)
+	ref, err := retain(dir, name, raw, durability)
 	if err != nil {
 		return nil, nil, err
 	}

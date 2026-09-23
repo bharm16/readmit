@@ -9,6 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/observation"
@@ -124,6 +125,12 @@ func text(value string, limit int) bool {
 // Prepare reads locally only. Paths resolve relative to the real spec file,
 // after resolving its symlinks; target CA paths follow replay's own contract.
 func Prepare(specPath string) (*Plan, error) {
+	return PrepareWithDurability(specPath, artifactdir.Durable)
+}
+
+// PrepareWithDurability is Prepare for a plan that executes with the durability
+// its caller chose, as RunWithDurability does.
+func PrepareWithDurability(specPath string, durability artifactdir.Durability) (*Plan, error) {
 	resolved, err := filepath.EvalSymlinks(specPath)
 	if err != nil {
 		return nil, errors.New("cannot resolve test spec")
@@ -145,7 +152,7 @@ func Prepare(specPath string) (*Plan, error) {
 	if err != nil {
 		return nil, err
 	}
-	prepared, err := replay.Prepare(source, target, replay.Options{Occurrences: spec.Input.Messages})
+	prepared, err := replay.Prepare(source, target, replay.Options{Occurrences: spec.Input.Messages, Durability: durability})
 	if err != nil {
 		return nil, err
 	}
@@ -157,5 +164,5 @@ func Prepare(specPath string) (*Plan, error) {
 	if spec.Observation.Boundary == LedgerBoundary {
 		path = artifactpath.JoinReference(filepath.Dir(resolved), spec.Observation.Path)
 	}
-	return &Plan{spec: spec, raw: raw, specPath: resolved, sourcePath: source, sourceInfo: sourceInfo, observationPath: path, replay: prepared}, nil
+	return &Plan{spec: spec, raw: raw, specPath: resolved, sourcePath: source, sourceInfo: sourceInfo, observationPath: path, replay: prepared, durability: durability}, nil
 }

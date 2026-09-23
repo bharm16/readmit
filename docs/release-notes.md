@@ -1,5 +1,22 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- `readmit report --scenario` no longer flushes the workspace it throws away
+  (#346). Its trials ran in a temporary execution workspace written through the
+  same durable writers other commands keep, so 94 of the command's 147 file
+  flushes went to files it deleted before it answered. On a Windows OS
+  disk, where one flush takes several milliseconds and can stall for over half
+  a second, that made the command take seconds. The generated family, each
+  trial's inputs, its fixture's case and ledger and its sender's result, run
+  and send-policy decision are now written as scratch, an explicit choice those
+  writers take for this workspace only, and are not flushed; every other caller
+  keeps them durable. The packet stays fully durable: each of its 53 files is
+  synced as before, and its directories and the entry naming it in its parent
+  are now synced too before the command reports success, so a parent the
+  command cannot open is refused before anything runs. On three Windows
+  runners' OS disks the median run fell from 1.11-1.48 s to 0.56-0.73 s, and
+  on a macOS workstation from 0.78 s to 0.31 s. No contract changes, and a
+  packet's bytes and identities are the same as before.
+
 - Each page of the message grid now verifies the case once instead of twice
   (#337). A Next or Previous click, and opening an index in the grid, asked the
   facade to describe the index and then to open the window, and each call read

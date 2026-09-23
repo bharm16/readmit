@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"os"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
@@ -169,6 +170,7 @@ type Plan struct {
 	sourceInfo      os.FileInfo
 	observationPath string
 	replay          *replay.Plan
+	durability      artifactdir.Durability
 }
 
 func (p *Plan) Count() int                      { return p.replay.Count() }

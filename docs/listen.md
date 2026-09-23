@@ -133,7 +133,9 @@ their own process and install the snapshot without the sync; see
 session. Every rewrite uses a same-directory temporary file and rename; the live
 file is never truncated.
 Startup uses a hard link from the synced temporary file to create the first
-snapshot exclusively. The filesystem must support local hard links and rename.
+snapshot exclusively; a report trial, whose workspace the report removes before
+it answers, links it without the sync. The filesystem must support local hard
+links and rename.
 Unix files are `0600`; Windows inherits the directory's access controls.
 
 A test runner must read the startup session ID and accept only a consistent

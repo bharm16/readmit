@@ -45,7 +45,27 @@ type WriteOptions struct {
 	// Completion supplies an established domain-specific identity marker.
 	// When nil, Write computes the ADR-0002 directory identity from Domain.
 	Completion []byte
+	// Durability is Durable unless the caller states that the artifact is
+	// Scratch.
+	Durability Durability
 }
+
+// Durability is the explicit choice a writer makes about flushing what it
+// creates to the device. The zero value is Durable, so a writer that states
+// nothing keeps the shared discipline.
+type Durability uint8
+
+const (
+	// Durable syncs every file before its handle closes and, through Write,
+	// every directory naming one before the write answers.
+	Durable Durability = iota
+	// Scratch creates the same bytes through the same exclusive creates and
+	// renames, and syncs nothing. It is only for a throwaway workspace that
+	// its owner removes before it answers and keeps nothing from except
+	// through a Durable write, so a power loss can cost only work that was
+	// never going to be kept.
+	Scratch
+)
 
 // Write creates one immutable directory artifact. Files are written in bytewise
 // path order and synced; identity.sha256 is derived and written last as the
@@ -106,7 +126,7 @@ func WriteContext(ctx context.Context, path string, options WriteOptions, files 
 		if ctx.Err() != nil {
 			return "", ErrCancelled
 		}
-		if err := WriteFile(root, name, files[name]); err != nil {
+		if err := options.Durability.WriteFile(root, name, files[name]); err != nil {
 			return "", err
 		}
 	}
@@ -116,10 +136,13 @@ func WriteContext(ctx context.Context, path string, options WriteOptions, files 
 		identity = Identity(options.Domain, files)
 		completion = []byte(identity + "\n")
 	}
-	if err := WriteFile(root, "identity.sha256", completion); err != nil {
+	if err := options.Durability.WriteFile(root, "identity.sha256", completion); err != nil {
 		return "", err
 	}
-	if err := syncEntries(root, parent, options.Directories); err != nil {
+	if options.Durability == Scratch {
+		return identity, nil
+	}
+	if err := SyncEntries(root, parent, options.Directories); err != nil {
 		return "", errors.New("cannot sync artifact directory; incomplete artifact retained")
 	}
 	return identity, nil
@@ -129,11 +152,13 @@ func WriteContext(ctx context.Context, path string, options WriteOptions, files 
 // package tests take to see which directories a write syncs, and when.
 var syncDirectory = SyncDirectory
 
-// syncEntries syncs every directory holding a name the artifact is found
+// SyncEntries syncs every directory holding a name the artifact is found
 // through: each member directory, the artifact directory and the folder that
 // holds it. A write reports success only after all of them, so no name it made
-// is lost to a power loss after it answered.
-func syncEntries(root, parent *os.Root, directories []string) error {
+// is lost to a power loss after it answered. Write makes this sync itself; a
+// writer that builds an artifact file by file, with root opened inside parent,
+// makes it once its completion record is written.
+func SyncEntries(root, parent *os.Root, directories []string) error {
 	for _, name := range directories {
 		if err := syncDirectory(root, filepath.ToSlash(name)); err != nil {
 			return err
@@ -176,7 +201,13 @@ func WriteFileSync(file DurableFile, data []byte) error {
 // the incomplete file; a caller whose policy is to remove it removes it
 // itself.
 func Publish(root *os.Root, incompleteName, finalName string, data []byte) error {
-	if err := WriteFile(root, incompleteName, data); err != nil {
+	return Durable.Publish(root, incompleteName, finalName, data)
+}
+
+// Publish is the package Publish, syncing the incomplete file unless d is
+// Scratch.
+func (d Durability) Publish(root *os.Root, incompleteName, finalName string, data []byte) error {
+	if err := d.WriteFile(root, incompleteName, data); err != nil {
 		return err
 	}
 	return root.Rename(incompleteName, finalName)
@@ -186,11 +217,17 @@ func Publish(root *os.Root, incompleteName, finalName string, data []byte) error
 // replaces an existing member and returns no successfully written partial as
 // complete.
 func WriteFile(root *os.Root, name string, data []byte) error {
+	return Durable.WriteFile(root, name, data)
+}
+
+// WriteFile is the package WriteFile, syncing the file unless d is Scratch.
+// A Scratch file is still created exclusively and checked for a short write.
+func (d Durability) WriteFile(root *os.Root, name string, data []byte) error {
 	file, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return ErrCreateFile
 	}
-	if err := WriteFileSync(seamedFile{file}, data); err != nil {
+	if err := WriteFileSync(seamedFile{file, d}, data); err != nil {
 		file.Close()
 		return ErrSyncFile
 	}
@@ -200,14 +237,28 @@ func WriteFile(root *os.Root, name string, data []byte) error {
 	return nil
 }
 
-// syncFile is the file sync every WriteFile makes. It is the seam tests take
-// to see which files a writer built on WriteFile syncs, and with what bytes.
+// Sync flushes a file its writer made unless d is Scratch. It is the same sync
+// WriteFile makes, for a writer that holds its own file open, such as an
+// append-only log.
+func (d Durability) Sync(file *os.File) error {
+	if d == Scratch {
+		return nil
+	}
+	return syncFile(file)
+}
+
+// syncFile is the file sync every Durable WriteFile and Sync makes. It is the
+// seam tests take to see which files a writer built on them syncs, and with
+// what bytes.
 var syncFile = (*os.File).Sync
 
-// seamedFile is a file WriteFile is writing, synced through syncFile.
-type seamedFile struct{ *os.File }
+// seamedFile is a file WriteFile is writing, synced as its durability says.
+type seamedFile struct {
+	*os.File
+	durability Durability
+}
 
-func (f seamedFile) Sync() error { return syncFile(f.File) }
+func (f seamedFile) Sync() error { return f.durability.Sync(f.File) }
 
 // Read returns every accepted file from one artifact directory. Directories
 // and files must be explicitly admitted; symbolic links and special files are
