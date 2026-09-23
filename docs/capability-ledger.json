@@ -6819,6 +6819,18 @@
       "disposition": {"kind": "developer-tooling", "reason": "repository build, test and release tooling that developers and CI run against readmit (docs/agents/testing.md); it is not shipped to customers and no customer workflow depends on it"}
     },
     {
+      "id": "tooling.tools.native_journey",
+      "source": "tools/native_journey.py",
+      "kind": "tooling",
+      "capability": "Drive an installed desktop package through its platform's accessibility API and retain the tree a screen reader was given",
+      "owner": "bharm16/readmit#109",
+      "inputs": [],
+      "outputs": [],
+      "prerequisites": [],
+      "implemented": false,
+      "disposition": {"kind": "developer-tooling", "reason": "repository build, test and release tooling that developers and CI run against readmit (docs/agents/testing.md); it is not shipped to customers and no customer workflow depends on it"}
+    },
+    {
       "id": "tooling.tools.operation_fixture",
       "source": "tools/operation_fixture.py",
       "kind": "tooling",

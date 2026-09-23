@@ -1,5 +1,26 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Every installed desktop package is now driven through its platform's
+  accessibility API (#109): the Accessibility API on macOS, UI Automation on
+  Windows and AT-SPI on Linux, on all five targets in the desktop workflow's
+  daily and dispatched runs and on linux/amd64 in every pull request's. The
+  guided sample is created in a folder chosen through the host's own dialog,
+  authored into a saved test, fails on the fixture's defect, passes once it is
+  corrected and reads both verdicts back after the window is closed and
+  reopened; a licensed project checks the staged upgrade the same run built,
+  which the window and `readmit upgrade check` refuse as the build already
+  installed and a development preview, and `readmit upgrade prepare` takes a
+  rollback archive that verifies. The accessibility tree the window gave a
+  screen reader at each step is kept with each run. Driving the packages found
+  that the Windows packages folder carried WiX's debug database beside the
+  installer, so its real candidate could not be checked as a staged upgrade;
+  the build keeps it out and packaging now refuses a folder holding anything
+  its manifest does not record. It also found that no destination the window
+  asks for as a new folder can be chosen through a host folder dialog, which
+  only returns folders that exist, and that on Windows the application can
+  end as a host folder dialog opens, when WebView2 refuses the focus the
+  window hands it; neither is fixed here.
+
 - Run bundles, test results, durable runs and the outputs `synth`,
   `reproducer`, `redact`, `report prepare`, `report assemble` and `report
   export` write are now reported written only once the directory entries they
