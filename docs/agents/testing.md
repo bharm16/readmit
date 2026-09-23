@@ -31,6 +31,13 @@ driving real user events; the shared-operation parity evidence for it stays
 on the Go side, where `internal/desktop` and the domain packages are tested
 against the same readers the command line uses.
 
+The setup file also holds React's development owner-stack budget spent
+(`src/testkit/owner-stacks.ts`). Otherwise React records a stack for more of
+the elements a test creates the longer the test runs, so on a loaded machine
+the same test does about twice the work and can exceed its time limit only
+under load. The setup fails if React stops keeping that budget where the kit
+reads it.
+
 A journey that must cross the real facade — several screens, real files, a
 close and reopen, a behavior no stub can answer honestly — goes through
 `desktop/frontend/src/testkit/journey.tsx` instead, in

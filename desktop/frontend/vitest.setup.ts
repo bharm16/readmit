@@ -3,6 +3,8 @@
 // one test arranged is visible to another.
 import { afterEach } from "vitest";
 import { cleanup } from "@testing-library/react";
+import * as React from "react";
+import { holdOwnerStackBudgetSpent } from "./src/testkit/owner-stacks";
 import { uninstallFacade } from "./src/testkit/wails";
 
 afterEach(() => {
@@ -29,3 +31,7 @@ if (
     }
   };
 }
+
+// A test does the same work on a loaded machine as on an idle one; see
+// src/testkit/owner-stacks.ts.
+holdOwnerStackBudgetSpent(React);
