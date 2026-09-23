@@ -3,6 +3,7 @@ package hub_test
 import (
 	"os"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/bharm16/readmit/hub"
@@ -27,11 +28,13 @@ func TestServiceRoutesAndTheLedgerAgree(t *testing.T) {
 	for _, route := range hub.Routes() {
 		source := "hub " + route.Method + " " + route.Path
 		if !ledger.Covered(capability.KindHub, source) {
-			t.Errorf("route %s has no capability ledger row; add one to docs/capability-ledger.json naming its owner and screen, action and test, or its disposition", source)
+			t.Errorf("route %s has no capability ledger row; add one to docs/capability-ledger.json naming its owner and backend, and its screen, action and checked tests or its disposition", source)
 		}
 	}
 	for _, row := range ledger.Rows {
-		if row.Kind != capability.KindHub {
+		// The hub binary's own commands are hub rows too; the check beside
+		// that binary holds them to its command set.
+		if row.Kind != capability.KindHub || strings.HasPrefix(row.Source, "readmit-hub ") {
 			continue
 		}
 		known := slices.ContainsFunc(hub.Routes(), func(route hub.Route) bool {

@@ -34,7 +34,12 @@ func TestEveryRunnableCommandHasALedgerRow(t *testing.T) {
 				continue
 			}
 			joined := path + " " + sub.Name()
-			if len(sub.Commands()) == 0 {
+			// A leaf is the runnable capability. A parent that declares
+			// flags of its own also runs work of its own (redact, share,
+			// diagnose, import, collect, report) and is owed a row beside
+			// its subcommands'; a parent that declares none can only
+			// report that it needs a subcommand.
+			if len(sub.Commands()) == 0 || (sub.Runnable() && sub.LocalFlags().HasFlags()) {
 				runnable = append(runnable, joined)
 			}
 			walk(sub, joined)
@@ -45,11 +50,9 @@ func TestEveryRunnableCommandHasALedgerRow(t *testing.T) {
 		t.Fatalf("the walked tree is implausibly small; the check is broken: %d commands", len(runnable))
 	}
 
-	// Commands with subcommands print usage; the runnable capability is the
-	// leaf, so only leaves are owed a row.
 	for _, command := range runnable {
 		if !ledger.Covered(capability.KindCLI, command) {
-			t.Errorf("command %q has no capability ledger row; add one to docs/capability-ledger.json naming its owner, screen, action and test", command)
+			t.Errorf("command %q has no capability ledger row; add one to docs/capability-ledger.json naming its owner, backend, screen, action and checked tests", command)
 		}
 	}
 }
@@ -85,5 +88,58 @@ func TestEveryCLILedgerRowNamesARealCommand(t *testing.T) {
 		if !slices.ContainsFunc(paths, func(p string) bool { return strings.TrimSpace(p) == row.Source }) {
 			t.Errorf("cli row %q names %q, which the command tree does not hold", row.ID, row.Source)
 		}
+	}
+}
+
+// A command's ledger row states the activation it needs, and the command
+// declares the same admission to the operation guard: a row cannot call a
+// command free that the guard holds to an author or execution seat, or the
+// other way round.
+func TestCLILedgerPrerequisitesMatchDeclaredAdmission(t *testing.T) {
+	data, err := os.ReadFile("../../docs/capability-ledger.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledger, err := capability.Decode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, _ := rootCommand("test")
+	commands := map[string]*cobra.Command{}
+	var walk func(cmd *cobra.Command, path string)
+	walk = func(cmd *cobra.Command, path string) {
+		for _, sub := range cmd.Commands() {
+			commands[path+" "+sub.Name()] = sub
+			walk(sub, path+" "+sub.Name())
+		}
+	}
+	walk(root, "readmit")
+	admissions := []string{capabilityAuthor, capabilityExecute, capabilityExecuteIfSend, capabilityAuthorIfQuotaChange}
+	checked := 0
+	for _, row := range ledger.Rows {
+		if row.Kind != capability.KindCLI {
+			continue
+		}
+		command, ok := commands[row.Source]
+		if !ok {
+			continue // the stale-row check reports it
+		}
+		var declared []string
+		if admission := command.Annotations[capabilityAnnotation]; admission != capabilityFree {
+			declared = []string{admission}
+		}
+		var stated []string
+		for _, prerequisite := range row.Prerequisites {
+			if slices.Contains(admissions, prerequisite) {
+				stated = append(stated, prerequisite)
+			}
+		}
+		if !slices.Equal(declared, stated) {
+			t.Errorf("cli row %q states admission %v, but %q declares %v", row.ID, stated, row.Source, declared)
+		}
+		checked++
+	}
+	if checked < 100 {
+		t.Fatalf("implausibly few command rows were compared: %d", checked)
 	}
 }

@@ -70,7 +70,7 @@ func TestSupportGuidanceMatchesTheCheckedCapabilityLedger(t *testing.T) {
 	}
 	var open []string
 	for _, row := range ledger.Rows {
-		if row.Disposition != "" || row.Implemented {
+		if row.Disposed() || row.Implemented {
 			continue
 		}
 		if row.Kind != capability.KindCLI && row.Kind != capability.KindDesktop {

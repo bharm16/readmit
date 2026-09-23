@@ -29,7 +29,7 @@ func TestEveryBoundMethodHasALedgerRow(t *testing.T) {
 	for i := range facade.NumMethod() {
 		source := "desktop.App." + facade.Method(i).Name
 		if !ledger.Covered(capability.KindDesktop, source) {
-			t.Errorf("bound method %s has no capability ledger row; add one to docs/capability-ledger.json naming its owner, screen, action and test", source)
+			t.Errorf("bound method %s has no capability ledger row; add one to docs/capability-ledger.json naming its owner, backend, screen, action and checked tests", source)
 		}
 	}
 }
