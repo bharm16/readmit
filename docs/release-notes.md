@@ -1,5 +1,21 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- A case is now reported written only once the directory entries naming its
+  files are synced as well as the files (#336). The writer synced each file and
+  the case directory but never `payloads/` or the folder holding the case, so
+  after a power loss a case already reported written could be missing payload
+  entries, which the reader refuses, or be missing altogether. Every case
+  writer now syncs `payloads/`, the case directory and the folder that holds
+  it before it answers; a saved correlation review, which shares the writer,
+  now also syncs the folder that holds it. A folder the writer can create in
+  but not open is refused before anything is written, where before the case
+  was written into it. Windows keeps flushing every file and no directory,
+  since Go does not expose a directory flush there. Case bytes, identities and
+  every `readmit-case/*` contract are unchanged. The two added syncs are a
+  fixed cost per case, not per occurrence: on a loaded macOS development host
+  each took a median under 0.1 ms and at most 6.5 ms, beside about 4.4 ms for
+  each file the case already synced.
+
 - The interaction journeys now follow an investigation past its first executed
   test (#109). The saved test becomes a suite, built through the structured
   editor, prepared without sending and sent once against the independent

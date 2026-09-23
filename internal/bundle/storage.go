@@ -76,7 +76,7 @@ func writeBundle(ctx context.Context, path string, b *Bundle) (*Bundle, error) {
 	}
 	b.Identity, err = artifactdir.WriteContext(ctx, path, artifactdir.WriteOptions{Domain: b.Manifest.Schema, Directories: []string{"payloads"}}, files)
 	if errors.Is(err, artifactdir.ErrCreateDirectory) {
-		return nil, errors.New("cannot create bundle; destination must be new and parent writable")
+		return nil, errors.New("cannot create bundle; destination must be new and parent readable and writable")
 	}
 	if errors.Is(err, artifactdir.ErrCancelled) {
 		return nil, errors.New("bundle write cancelled; any incomplete bundle is retained and refused")

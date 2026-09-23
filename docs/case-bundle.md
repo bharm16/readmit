@@ -54,11 +54,19 @@ They never pass through a JSON string or character-set conversion. Standard
 tools such as `cat`, `jq`, `xxd`, and `sha256sum` can inspect this directory.
 
 The writer exclusively creates a new directory, writes and syncs the evidence,
-then writes `identity.sha256` last. A partial directory without a complete,
-matching identity file is incomplete and the reader refuses it. An I/O failure
-can leave an incomplete directory; use a new destination on retry. Finalized
-bundles are immutable to readmit; derivation commands create new bundles, and a
-[project](project.md) records the lineage of each one beside the evidence.
+then writes `identity.sha256` last. It reports the case written only once the
+directory entries naming its files are synced too: those in `payloads/`, those
+in the case directory, and the case directory's own entry in the folder that
+holds it. Windows is the exception: Go does not expose a directory flush
+through `os.Root` there, so every file is flushed but no directory is, and a
+case written just before a power loss can be missing an entry, which the reader
+refuses, or be missing altogether. The folder that holds the case must be one
+readmit can open; one it cannot is refused before anything is written. A
+partial directory without a complete, matching identity file is incomplete and
+the reader refuses it. An I/O failure can leave an incomplete directory; use a
+new destination on retry. Finalized bundles are immutable to readmit;
+derivation commands create new bundles, and a [project](project.md) records
+the lineage of each one beside the evidence.
 Unix directory/file permissions are `0700`/`0600`; Windows inherits the parent
 directory's access controls.
 
