@@ -65,10 +65,18 @@ in-progress manifest before dialing. Source and intended bytes are written befor
 delivery; each completed attempt then persists actual sent/received bytes and an
 event line. Normal transport failures finalize the run, including the remaining
 unattempted events. The complete manifest is installed and `identity.sha256` is
-written last. Missing completion evidence, abrupt termination, and write failures
-leave an incomplete artifact, which is retained for inspection and refused by the
-verified reader. No existing output directory is overwritten. New directories and
-files request permissions 0700 and 0600 respectively.
+written last. The run is reported written only once the directory entries naming
+its files are synced too: those in `payloads/`, those in the run directory and
+the run's own entry in the folder that holds it. That folder must be one readmit
+can open; one it cannot is refused before anything is written or sent. Windows
+flushes every file and no directory, since Go does not expose a directory flush
+through `os.Root` there. Missing completion evidence, abrupt termination, and
+write failures leave an incomplete artifact, which is retained for inspection
+and refused by the verified reader. A failed directory sync comes after
+`identity.sha256`, so it is reported as a run written in full that a power loss
+could still lose, and that run opens. No existing output directory is
+overwritten. New directories and files request permissions 0700 and 0600
+respectively.
 
 The identity is SHA-256 of `readmit-run/v1\n` followed by every relative path and
 file content, excluding only `identity.sha256`, in bytewise path order. Each path

@@ -157,7 +157,10 @@ further sends: no later intent is accepted, the journal records how the run
 stopped, and the command reports the storage failure beside the summary and
 exits 2. A failed or short journal write is sticky in the same way, and nothing
 after it is recorded, so recovery reads a torn or shortened journal as
-`interrupted` and `delivery_uncertain`. Reaching the 32 MiB journal limit
+`interrupted` and `delivery_uncertain`. A result that cannot be written, or
+whose directories cannot be synced, is reported like a failed sent prefix
+unless the run was stopped: `finished` names no result, and the command reports
+why beside the summary. Reaching the 32 MiB journal limit
 refuses the next record before any byte of it is written, so a send whose
 intent it refused was never attempted. In every case the readable prefix, the
 retained intended bytes and any partial sent prefix stay where they are.
@@ -401,7 +404,10 @@ stops execution before the next record is written, retaining the readable
 prefix and possible-delivery state; no oversized completed job is produced.
 
 File writes are flushed at each boundary. POSIX directory entries are also
-synced before sends and journal acknowledgements. Windows uses file
+synced before sends and journal acknowledgements: `intended/`, the job and its
+entry in the folder holding it before `running`, and the result, its run and
+the result's entry in the job before `finished` names that result. A folder
+readmit cannot open is refused before anything is created. Windows uses file
 `FlushFileBuffers`; Go does not expose a directory flush through `os.Root`, so
 this contract does not claim recovery from every power-loss/filesystem failure
 on Windows. Disk failure may prevent the terminal record from being persisted;

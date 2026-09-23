@@ -112,7 +112,9 @@ func TestAReportSyncsEveryEntryOfItsPacketAndNothingInItsWorkspace(t *testing.T)
 
 // A packet whose ledger copy, or any directory entry it is found through,
 // cannot be synced is never reported created; one missing its ledger copy is
-// not a packet at all.
+// not a packet at all. A directory is synced only once the completion record
+// is, so a packet whose directory cannot be synced is said to be written in
+// full, not incomplete.
 func TestAReportWhosePacketCannotBeSyncedIsNeverCreated(t *testing.T) {
 	isolateWorkspace(t)
 	unsynced := filepath.Join(caseFolder(t), "packet")
@@ -148,8 +150,8 @@ func TestAReportWhosePacketCannotBeSyncedIsNeverCreated(t *testing.T) {
 				return nil
 			}))
 			created, err := report.Create(t.Context(), report.Scenario, filepath.Join(folder, "packet"))
-			if err == nil || !strings.Contains(err.Error(), "incomplete output retained") {
-				t.Fatalf("a report whose %s entries were not synced was not refused as incomplete: %v", failing.name, err)
+			if err == nil || !strings.Contains(err.Error(), "written in full but a power loss could still lose it") {
+				t.Fatalf("a report whose %s entries were not synced was not refused as written but unsynced: %v", failing.name, err)
 			}
 			if created != nil {
 				t.Fatalf("a report whose %s entries were not synced was reported created as %s", failing.name, created.Identity)

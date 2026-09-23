@@ -14,6 +14,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -25,7 +26,12 @@ var (
 	ErrCreateDirectory = errors.New("cannot create artifact directory")
 	ErrCreateFile      = errors.New("cannot create artifact file")
 	ErrSyncFile        = errors.New("cannot sync artifact file; incomplete artifact retained")
-	ErrCancelled       = errors.New("artifact write cancelled; any incomplete artifact is retained")
+	// ErrSyncDirectory is a directory sync that failed once the completion
+	// record was written. Every file, that record among them, is written and
+	// synced, so the artifact may already open; what is not confirmed is that
+	// every name it is found through survives a power loss.
+	ErrSyncDirectory = errors.New("cannot sync artifact directory; the artifact was written in full but a power loss could still lose it")
+	ErrCancelled     = errors.New("artifact write cancelled; any incomplete artifact is retained")
 )
 
 // Layout states the finite filesystem shape a domain reader accepts.
@@ -71,7 +77,8 @@ const (
 // path order and synced; identity.sha256 is derived and written last as the
 // completion marker. It answers only once every directory naming one of them,
 // or the artifact itself, is synced too. An interrupted write is deliberately
-// retained incomplete.
+// retained incomplete; one whose directories cannot be synced after the marker
+// answers ErrSyncDirectory, since what it retained is complete.
 func Write(path string, options WriteOptions, files map[string][]byte) (string, error) {
 	return WriteContext(context.Background(), path, options, files)
 }
@@ -92,22 +99,11 @@ func WriteContext(ctx context.Context, path string, options WriteOptions, files 
 	if err != nil {
 		return "", err
 	}
-	// The folder that holds the artifact is synced last, so it must be one this
-	// write can open; finding out that it is not creates nothing. The artifact
-	// is made inside that same opened folder, so the folder synced is the one
-	// naming it.
-	parent, err := os.OpenRoot(filepath.Dir(path))
+	parent, root, err := Reserve(path)
 	if err != nil {
-		return "", fmt.Errorf("%w; destination must be new and parent readable and writable", ErrCreateDirectory)
+		return "", err
 	}
 	defer parent.Close()
-	if err := parent.Mkdir(filepath.Base(path), 0700); err != nil {
-		return "", fmt.Errorf("%w; destination must be new and parent writable", ErrCreateDirectory)
-	}
-	root, err := parent.OpenRoot(filepath.Base(path))
-	if err != nil {
-		return "", errors.New("cannot open new artifact directory")
-	}
 	defer root.Close()
 	for _, name := range options.Directories {
 		if name == "" || name == "." || filepath.IsAbs(name) {
@@ -139,26 +135,81 @@ func WriteContext(ctx context.Context, path string, options WriteOptions, files 
 	if err := options.Durability.WriteFile(root, "identity.sha256", completion); err != nil {
 		return "", err
 	}
-	if options.Durability == Scratch {
-		return identity, nil
-	}
-	if err := SyncEntries(root, parent, options.Directories); err != nil {
-		return "", errors.New("cannot sync artifact directory; incomplete artifact retained")
+	if err := options.Durability.SyncEntries(root, parent, options.Directories); err != nil {
+		return "", ErrSyncDirectory
 	}
 	return identity, nil
 }
 
-// syncDirectory is the directory sync every write makes. It is the seam
+// Reserve creates the new directory at path, already resolved by
+// artifactpath, for an artifact its writer builds, and opens it. The folder
+// that holds it is opened first and returned open, because SyncEntries syncs
+// it last: a folder the writer cannot open is refused before anything is
+// created, and the directory is made inside that opened folder, so the folder
+// synced is the one naming it. The caller closes both.
+func Reserve(path string) (parent, root *os.Root, err error) {
+	parent, err = os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w; destination must be new and parent readable and writable", ErrCreateDirectory)
+	}
+	if err := parent.Mkdir(filepath.Base(path), 0700); err != nil {
+		parent.Close()
+		return nil, nil, fmt.Errorf("%w; destination must be new and parent writable", ErrCreateDirectory)
+	}
+	root, err = parent.OpenRoot(filepath.Base(path))
+	if err != nil {
+		parent.Close()
+		return nil, nil, errors.New("cannot open new artifact directory")
+	}
+	return parent, root, nil
+}
+
+// SyncDirectory syncs the directory name below root, so the names it holds
+// survive a power loss. Every directory sync a writer makes goes through it,
+// so the platform rule is stated once: on Windows it syncs nothing.
+func SyncDirectory(root *os.Root, name string) error {
+	return syncDirectory(root, name)
+}
+
+// syncDirectory is the directory sync every writer makes. It is the seam
 // package tests take to see which directories a write syncs, and when.
-var syncDirectory = SyncDirectory
+var syncDirectory = flushDirectory
+
+// Directories lists, in bytewise order, every directory below an artifact that
+// holds one of files: the member directories SyncEntries syncs for an artifact
+// written file by file.
+func Directories(files map[string][]byte) []string {
+	seen := make(map[string]bool)
+	for name := range files {
+		for directory := path.Dir(name); directory != "."; directory = path.Dir(directory) {
+			seen[directory] = true
+		}
+	}
+	directories := make([]string, 0, len(seen))
+	for directory := range seen {
+		directories = append(directories, directory)
+	}
+	slices.Sort(directories)
+	return directories
+}
 
 // SyncEntries syncs every directory holding a name the artifact is found
 // through: each member directory, the artifact directory and the folder that
 // holds it. A write reports success only after all of them, so no name it made
 // is lost to a power loss after it answered. Write makes this sync itself; a
-// writer that builds an artifact file by file, with root opened inside parent,
-// makes it once its completion record is written.
+// writer that builds an artifact file by file, with root and parent from
+// Reserve, makes it once its completion record is written, and reports a
+// failure as ErrSyncDirectory does.
 func SyncEntries(root, parent *os.Root, directories []string) error {
+	return Durable.SyncEntries(root, parent, directories)
+}
+
+// SyncEntries is the package SyncEntries unless d is Scratch, which syncs
+// nothing.
+func (d Durability) SyncEntries(root, parent *os.Root, directories []string) error {
+	if d == Scratch {
+		return nil
+	}
 	for _, name := range directories {
 		if err := syncDirectory(root, filepath.ToSlash(name)); err != nil {
 			return err

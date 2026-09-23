@@ -220,8 +220,17 @@ and receipt; matching copies cannot approve extra segments, free text or metadat
 It also checks the embedded result contracts and regenerated diagnosis.
 It can verify retained scan claims and hashes; it cannot repeat a private residual
 scan without the local state. Finalization writes the completion marker last.
-Interrupted writes remain incomplete and are refused. Existing destinations and
-destinations inside immutable inputs are rejected, including symlinked parents.
+A review is reported only once the directories it and its private state are
+found through are synced too: `original-proof/`, the private directory, the
+review directory and each one's entry in the folder that holds it, every case,
+result and run having synced its own. An export packet syncs each of its
+directories, itself and its entry in its folder before it is reported. A folder
+readmit cannot open is refused before anything is written into it, and Windows
+flushes files but no directory. A failed directory sync comes after the
+completion marker, so it is reported as output written in full that a power
+loss could still lose. Interrupted writes remain incomplete and are refused.
+Existing destinations and destinations inside immutable inputs are rejected,
+including symlinked parents.
 Directories/files request 0700/0600; Windows inherits parent access controls.
 
 Limits include 64 input sources, 256 occurrences, the case reader's source/byte

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
@@ -17,7 +18,7 @@ import (
 // destination could not be created at all. Everything else a build refuses is a
 // statement about the plan or the evidence and has the same remedy whoever is
 // asking; this one may mean the account cannot write where it was pointed.
-var ErrCannotWrite = errors.New("cannot create reproducer; destination must be new and parent writable")
+var ErrCannotWrite = errors.New("cannot create reproducer; destination must be new and parent readable and writable")
 
 // Create writes one reproducer: a new derived case holding the occurrences the
 // plan retained, and the transformation manifest beside it.
@@ -50,9 +51,12 @@ func Create(source *bundle.Bundle, casePath string, plan Plan, output string) (*
 	if err != nil {
 		return nil, err
 	}
-	if err := os.Mkdir(destination, 0700); err != nil {
+	parent, root, err := artifactdir.Reserve(destination)
+	if err != nil {
 		return nil, ErrCannotWrite
 	}
+	defer parent.Close()
+	defer root.Close()
 	derived, err := bundle.Write(filepath.Join(destination, CaseName), inputs, bundle.Provenance{Mode: bundle.Derived, Derivation: Derivation})
 	if err != nil {
 		return nil, err
@@ -83,6 +87,13 @@ func Create(source *bundle.Bundle, casePath string, plan Plan, output string) (*
 	}
 	if err := writeDocument(filepath.Join(destination, ManifestName), document); err != nil {
 		return nil, err
+	}
+	// The case synced its own entry here. The manifest's entry and the
+	// reproducer's own entry in the folder holding it are synced before it is
+	// reported; every file is by then, so a failure leaves a reproducer that
+	// may open and says so.
+	if artifactdir.SyncEntries(root, parent, nil) != nil {
+		return nil, errors.New("cannot sync reproducer directory; the reproducer was written in full but a power loss could still lose it")
 	}
 	// The reproducer is reported from what was actually written, so a manifest
 	// this release cannot read back is a failed build rather than a result.

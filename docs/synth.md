@@ -36,11 +36,16 @@ No ACKs or observed transport times are invented.
 
 The `readmit-synth/v1` family completion record lists the four inputs, each
 variant's relative directory and bundle identity, and the known defect. It is
-installed only after all three child bundles are complete. A failed write can
-leave incomplete output for inspection; a family without `family.json` is
-incomplete and should not be used as a completed family. Existing directories
-are never overwritten. Each child uses the ordinary `readmit-case/v1` format
-with provenance mode `generated`.
+installed only after all three child bundles are complete. The family is
+reported written only once the entry naming `family.json` and the family's own
+entry in the folder that holds it are synced too, each case having synced its
+own; a folder readmit cannot open is refused before anything is written, and
+Windows flushes files but no directory. A failed write can leave incomplete
+output for inspection; a family without `family.json` is incomplete and should
+not be used as a completed family. A failed directory sync comes after
+`family.json`, so it is reported as a family written in full that a power loss
+could still lose. Existing directories are never overwritten. Each child uses
+the ordinary `readmit-case/v1` format with provenance mode `generated`.
 
 ## Reproducibility and versions
 

@@ -64,7 +64,10 @@ refuses, or be missing altogether. The folder that holds the case must be one
 readmit can open; one it cannot is refused before anything is written. A
 partial directory without a complete, matching identity file is incomplete and
 the reader refuses it. An I/O failure can leave an incomplete directory; use a
-new destination on retry. Finalized bundles are immutable to readmit;
+new destination on retry. A failed directory sync is the exception: it comes
+after `identity.sha256`, so the write says the case was written in full but a
+power loss could still lose it, rather than calling it incomplete, and that
+case opens. Finalized bundles are immutable to readmit;
 derivation commands create new bundles, and a [project](project.md) records
 the lineage of each one beside the evidence.
 Unix directory/file permissions are `0700`/`0600`; Windows inherits the parent

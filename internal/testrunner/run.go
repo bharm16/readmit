@@ -29,10 +29,11 @@ func RunWithDurability(ctx context.Context, specPath, output string, durability 
 	if err == nil {
 		return Execute(ctx, plan, output)
 	}
-	dir, err := reserve(output, nil)
+	parent, dir, err := reserve(output, nil)
 	if err != nil {
 		return nil, err
 	}
+	defer parent.Close()
 	result := emptyResult()
 	result.ErrorClass = "configuration"
 	if raw, err := readLocal(specPath, MaxSpecBytes); err == nil {
@@ -47,7 +48,7 @@ func RunWithDurability(ctx context.Context, specPath, output string, durability 
 			result.Assertions = pending(spec)
 		}
 	}
-	return finish(dir, result, durability)
+	return finish(parent, dir, result, durability)
 }
 
 // Execute opens a network connection only after reserving new local evidence
@@ -62,10 +63,11 @@ func ExecuteObserved(ctx context.Context, plan *Plan, output string, observer re
 	if plan == nil || plan.replay == nil {
 		return nil, errors.New("test requires a prepared plan")
 	}
-	dir, err := reserve(output, plan.sourceInfo)
+	parent, dir, err := reserve(output, plan.sourceInfo)
 	if err != nil {
 		return nil, err
 	}
+	defer parent.Close()
 	result := emptyResult()
 	result.Spec, err = retain(dir, "spec.json", plan.raw, plan.durability)
 	if err != nil {
@@ -81,7 +83,7 @@ func ExecuteObserved(ctx context.Context, plan *Plan, output string, observer re
 	currentSpec, err := readLocal(plan.specPath, MaxSpecBytes)
 	if err != nil || !bytes.Equal(currentSpec, plan.raw) {
 		result.ErrorClass = "configuration_changed"
-		return plan.named(finish(dir, result, plan.durability))
+		return plan.named(finish(parent, dir, result, plan.durability))
 	}
 	var initial, final *observation.Snapshot
 	if plan.Boundary() == LedgerBoundary {
@@ -91,7 +93,7 @@ func ExecuteObserved(ctx context.Context, plan *Plan, output string, observer re
 		}
 		if !initialState(initial) {
 			result.ErrorClass = "initial_observation"
-			return plan.named(finish(dir, result, plan.durability))
+			return plan.named(finish(parent, dir, result, plan.durability))
 		}
 	}
 	run, err := replay.ExecuteObserved(ctx, plan.replay, filepath.Join(dir, "run"), nil, func(decision sendpolicy.Decision) error {
@@ -113,7 +115,7 @@ func ExecuteObserved(ctx context.Context, plan *Plan, output string, observer re
 	if result.Status != ExecutionError && final != nil {
 		result.ReceiverSessionID, result.ReceiverMode = final.SessionID, final.Mode
 	}
-	return plan.named(finish(dir, result, plan.durability))
+	return plan.named(finish(parent, dir, result, plan.durability))
 }
 
 // named records the environment an execution was pointed at on the artifact it

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/durablelog"
 	"github.com/bharm16/readmit/internal/engine"
 	"github.com/bharm16/readmit/internal/replay"
@@ -287,13 +288,13 @@ func start(ctx context.Context, plan *testrunner.Plan, output string) (summary S
 	if err != nil {
 		return Summary{}, err
 	}
-	if err = os.Mkdir(output, 0700); err != nil {
-		return Summary{}, errors.New("cannot create durable run; destination must be new")
-	}
-	root, err := os.OpenRoot(output)
+	// The folder holding the job is synced before the first send, so one this
+	// run cannot open is refused here, before anything is created.
+	parent, root, err := artifactdir.Reserve(output)
 	if err != nil {
-		return Summary{}, errors.New("cannot open durable run")
+		return Summary{}, errors.New("cannot create durable run; destination must be new and parent readable and writable")
 	}
+	defer parent.Close()
 	defer root.Close()
 	doc := planDocument{Schema: Schema, CreatedAt: time.Now().UTC(), Inputs: plan.PinnedInputs(), Payloads: []payload{}}
 	if err = root.Mkdir("intended", 0700); err != nil {
@@ -352,28 +353,25 @@ func start(ctx context.Context, plan *testrunner.Plan, output string) (summary S
 	if err = w.appendReady(); err != nil {
 		return w.summary, err
 	}
-	// Directory entries must reach stable storage too, before any network effect.
-	if err = SyncDirectory(root, "intended"); err != nil {
-		return w.summary, err
-	}
-	if err = SyncDirectory(root, "."); err != nil {
-		return w.summary, err
-	}
-	parent, err := os.OpenRoot(filepath.Dir(output))
-	if err != nil {
-		return w.summary, errors.New("cannot sync durable run parent")
-	}
-	err = SyncDirectory(parent, ".")
-	parent.Close()
-	if err != nil {
-		return w.summary, err
+	// Directory entries must reach stable storage too, before any network
+	// effect: intended/, the job and its entry in the folder holding it.
+	if artifactdir.SyncEntries(root, parent, []string{"intended"}) != nil {
+		return w.summary, errors.New("cannot sync durable evidence directory")
 	}
 	w.summary.State = Running
 	w.summary.StopReason = Running
 	if err = w.appendRunning(); err != nil {
 		return w.summary, err
 	}
-	artifact, _ := testrunner.ExecuteObserved(ctx, plan, filepath.Join(output, "result"), w)
+	// A result is returned only once it has synced its own entries, its run's
+	// and its entry here, so the finished record below never names a result
+	// a power loss could still lose. Unless the run was stopped, a result that
+	// could not be written or synced is a failed evidence write like any
+	// other: the finished record names no result, and the caller is told why.
+	artifact, resultErr := testrunner.ExecuteObserved(ctx, plan, filepath.Join(output, "result"), w)
+	if artifact == nil && w.halted == nil && ctx.Err() == nil {
+		w.halted = resultErr
+	}
 	stop := ExecutionError
 	if artifact != nil {
 		switch artifact.Result.Status {
@@ -381,15 +379,6 @@ func start(ctx context.Context, plan *testrunner.Plan, output string) (summary S
 			stop = Passed
 		case testrunner.AssertionFailure:
 			stop = AssertionFailed
-		}
-		for _, name := range []string{"result/run", "result", "."} {
-			// Configuration refusal can produce a result without a replay directory.
-			if name == "result/run" && artifact.Run == nil {
-				continue
-			}
-			if err := SyncDirectory(root, name); err != nil {
-				return w.summary, err
-			}
 		}
 		w.summary.ResultIdentity = artifact.Identity
 		if artifact.Run != nil {

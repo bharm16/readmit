@@ -162,7 +162,12 @@ already exists, one inside any retained case, run, result, review or report, and
 one reached through a symbolic link are each refused by the same output policy
 the command line uses — see [audit hardening](audit-hardening.md). The manifest
 is written last, so a directory an interrupted write left behind has none and is
-refused rather than read as a finished reproducer.
+refused rather than read as a finished reproducer. The reproducer is reported
+only once the entry naming the manifest and the reproducer's own entry in the
+folder that holds it are synced too, the case having synced its own; a folder
+readmit cannot open is refused before anything is written, and Windows flushes
+files but no directory. A failed directory sync comes after the manifest, so it
+is reported as a reproducer written in full that a power loss could still lose.
 
 The derived case is ordinary [derived testing evidence](case-bundle.md#derived-testing-evidence-readmit-casev3):
 one source per contributing source of the original, in the order the case
