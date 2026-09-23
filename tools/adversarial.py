@@ -49,6 +49,11 @@ CASES = (
         'TestRunEvidenceReadsRefuseEveryEntryThatLeavesTheWorkspace',
         'TestEveryOtherEntryReadByNameRefusesALinkAndEveryEscape',
         'TestAPracticeRunRefusesASpecThatIsNotOneRegularFileOfTheWorkspace',
+        # Outputs a save may overwrite (#347): a link, a hard link or a FIFO at
+        # the name is replaced, never written through.
+        'TestOverwritingAWorkspaceEntryReplacesItAndNeverWritesThroughIt',
+        'TestEverySaveThatReplacesADocumentLeavesTheFileALinkLedToUnchanged',
+        'TestTheShellsOwnDocumentsReplaceALinkAtTheirFile',
         # Application surfaces (#244): backend enforcement behind every window
         # action, restoration, local egress and declared keyboard semantics.
         'TestEveryPathOperationRefusesHostileEntriesPromptlyAndBoundedly',

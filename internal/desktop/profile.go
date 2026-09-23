@@ -677,6 +677,10 @@ func (a *App) resolveReferencesData(root, fileOrDoc string) ([]byte, error) {
 	return []byte(fileOrDoc), nil
 }
 
+// writeWorkspaceEntry writes data as the workspace entry name. The entry must
+// be new unless allowOverwrite is set; an overwrite replaces the entry through
+// replaceDocument and never opens what is there, so a symbolic link, a hard
+// link or a FIFO planted at the name is replaced rather than written through.
 func writeWorkspaceEntry(root, name string, data []byte, allowOverwrite ...bool) error {
 	if err := artifactpath.EntryName(name); err != nil {
 		return errors.New("destination must be one regular entry of the open workspace")
@@ -685,14 +689,19 @@ func writeWorkspaceEntry(root, name string, data []byte, allowOverwrite ...bool)
 	if err != nil {
 		return err
 	}
-	flags := os.O_WRONLY | os.O_CREATE
-	overwrite := len(allowOverwrite) > 0 && allowOverwrite[0]
-	if !overwrite {
-		flags |= os.O_EXCL
-	} else {
-		flags |= os.O_TRUNC
+	if len(allowOverwrite) > 0 && allowOverwrite[0] {
+		err = replaceDocument(dest, data)
+		switch {
+		case err == nil:
+			return nil
+		case errors.Is(err, fs.ErrPermission):
+			return fs.ErrPermission
+		case errors.Is(err, fs.ErrExist):
+			return errors.New("cannot replace destination file; an interrupted write is retained beside it")
+		}
+		return errors.New("cannot write destination file")
 	}
-	file, err := os.OpenFile(dest, flags, 0600)
+	file, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		if os.IsExist(err) {
 			return errors.New("cannot create destination; file already exists in workspace")
