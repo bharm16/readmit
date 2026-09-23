@@ -18,3 +18,17 @@ func ObserveDirectorySyncsForTest(observe func(directory string) error) (restore
 	}
 	return func() { syncDirectory = original }
 }
+
+// ObserveFileSyncsForTest calls observe with the path of each file a WriteFile
+// started afterwards syncs, just before it syncs it. An error from observe
+// stands in for a failed sync. The returned function restores the real sync.
+func ObserveFileSyncsForTest(observe func(path string) error) (restore func()) {
+	original := syncFile
+	syncFile = func(file *os.File) error {
+		if err := observe(file.Name()); err != nil {
+			return err
+		}
+		return original(file)
+	}
+	return func() { syncFile = original }
+}

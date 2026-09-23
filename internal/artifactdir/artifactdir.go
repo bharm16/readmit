@@ -190,7 +190,7 @@ func WriteFile(root *os.Root, name string, data []byte) error {
 	if err != nil {
 		return ErrCreateFile
 	}
-	if err := WriteFileSync(file, data); err != nil {
+	if err := WriteFileSync(seamedFile{file}, data); err != nil {
 		file.Close()
 		return ErrSyncFile
 	}
@@ -199,6 +199,15 @@ func WriteFile(root *os.Root, name string, data []byte) error {
 	}
 	return nil
 }
+
+// syncFile is the file sync every WriteFile makes. It is the seam tests take
+// to see which files a writer built on WriteFile syncs, and with what bytes.
+var syncFile = (*os.File).Sync
+
+// seamedFile is a file WriteFile is writing, synced through syncFile.
+type seamedFile struct{ *os.File }
+
+func (f seamedFile) Sync() error { return syncFile(f.File) }
 
 // Read returns every accepted file from one artifact directory. Directories
 // and files must be explicitly admitted; symbolic links and special files are

@@ -117,6 +117,17 @@ func Create(ctx context.Context, scenario, output string) (*Packet, error) {
 	return Open(dir)
 }
 
+// fixtureBudget bounds one trial. The fixture receiver waits as long for this
+// package's own sender, which syncs the run evidence it has just recorded
+// before sending the next message: a shorter idle limit let that sender's
+// storage, rather than the fixture, end the trial.
+const fixtureBudget = 20 * time.Second
+
+// sendTrial sends one trial's spec to its fixture. It is the ordinary test
+// runner; it is the one seam this package's tests take, to stand in a sender
+// whose own storage stalls.
+var sendTrial = testrunner.Run
+
 func executeFixture(ctx context.Context, dir string, mode observation.Mode) error {
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -130,16 +141,21 @@ func executeFixture(ctx context.Context, dir string, mode observation.Mode) erro
 	if err := writeFile(dir, "target.json", config); err != nil {
 		return err
 	}
-	fixture, err := receiver.New(receiver.Config{Mode: mode, OutputPath: filepath.Join(dir, "receiver"), ObservationPath: filepath.Join(dir, "observation.json"), MaxMessages: 2, MaxFrameBytes: 1 << 20, IdleTimeout: 5 * time.Second})
+	// The fixture's live ledger is read back only by this process, inside the
+	// execution workspace Create removes, and the packet keeps its copies in
+	// synced writes. So it is installed in process: flushing it before each ACK
+	// put the disk's latency inside the target's message timeout, which every
+	// packet records and Open checks.
+	fixture, err := receiver.New(receiver.Config{Mode: mode, OutputPath: filepath.Join(dir, "receiver"), ObservationPath: filepath.Join(dir, "observation.json"), MaxMessages: 2, MaxFrameBytes: 1 << 20, IdleTimeout: fixtureBudget, InProcess: true})
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, fixtureBudget)
 	defer cancel()
 	done := make(chan error, 1)
 	go func() { _, err := fixture.Serve(ctx, listener); done <- err }()
 	// New has installed the empty observation before Execute can connect.
-	artifact, runErr := testrunner.Run(ctx, filepath.Join(dir, "spec.json"), filepath.Join(dir, "result"))
+	artifact, runErr := sendTrial(ctx, filepath.Join(dir, "spec.json"), filepath.Join(dir, "result"))
 	cancel()
 	serveErr := <-done
 	if runErr != nil || serveErr != nil || artifact == nil || artifact.Result.Status == testrunner.ExecutionError {

@@ -13,6 +13,13 @@ available loopback ports itself. It accepts no arbitrary target, input case,
 imported artifact, customer-derived mode, or synthetic provenance override.
 An explicit scenario is required; --synthetic alone is not a trust boundary.
 
+Each receiver answers a message once its ledger snapshot is installed, without
+first flushing it to the disk, and waits for the report's own sender for up to
+a trial's 20-second budget. The report reads that ledger back in the same
+process, and the packet keeps every copy of it in a synced write, so a slow
+local disk cannot turn the five-second message timeout each retained target
+records into a failed report. `listen` still syncs its ledger before every ACK.
+
 The case uses readmit-synth-v1, readmit-siu-v1, seed 0, and base time
 2026-01-01T12:00:00Z. Its identity is the independently calculated frozen
 [regression reference vector](synth-v1-vector.md). The exact committed spec is
