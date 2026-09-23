@@ -57,7 +57,8 @@ test("a note restored after a reopen cannot be stored once the activation is rel
   await journey.launch();
   await press(user, await screen.findByRole("button", { name: "Reopen where you were" }));
   expect(await within(region("Project navigation")).findByText(project, { selector: ".root" })).toBeTruthy();
-  expect(((await screen.findByLabelText("Note name")) as HTMLInputElement).value).toBe("handover-note");
+  // The field is drawn before the retained draft is read back into it.
+  await waitFor(() => expect((screen.getByLabelText("Note name") as HTMLInputElement).value).toBe("handover-note"));
   expect((screen.getByLabelText("Body") as HTMLTextAreaElement).value).toBe("Check the filler identifier before the next run.");
   // Typing kept one draft of the note, not one per keystroke that raced the
   // first retention.
@@ -82,7 +83,7 @@ test("a note restored after a reopen cannot be stored once the activation is rel
   await journey.close();
   await journey.launch();
   await press(user, await screen.findByRole("button", { name: "Reopen where you were" }));
-  expect(((await screen.findByLabelText("Note name")) as HTMLInputElement).value).toBe("handover-note");
+  await waitFor(() => expect((screen.getByLabelText("Note name") as HTMLInputElement).value).toBe("handover-note"));
   expect(journey.callsTo("SaveNote")).toHaveLength(refusedBefore + 1);
   await press(user, access().getByRole("button", { name: "Refresh local status" }));
   expect(await access().findByText(/This activation is released\./)).toBeTruthy();

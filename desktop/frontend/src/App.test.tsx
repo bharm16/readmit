@@ -21,6 +21,7 @@ import {
   dialogDismissed,
   folderDenied,
   folderWithCase,
+  suiteDocumentResult,
   buildIndexResultFixture,
   indexDetailsFixture,
   indexResultFixture,
@@ -409,6 +410,37 @@ test("a saved test is at once an entry the run panel offers, read back from the 
   // now holds, selected for the run that comes next.
   const saved = await screen.findByRole("option", { name: "reschedule-test.json (test)" });
   expect((saved as HTMLOptionElement).selected).toBe(true);
+  expect(facade.callsTo("OpenWorkspace").map((call) => call.args)).toContainEqual([WORKSPACE_ROOT]);
+});
+
+test("a saved suite is at once an entry the run panel offers, and a refused save reads nothing again", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({ SelectWorkspace: () => folderWithCase() });
+  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await screen.findByText(WORKSPACE_ROOT);
+  const suites = within(screen.getByRole("region", { name: "Suites and releases" }));
+  await user.click(suites.getByRole("button", { name: "New suite" }));
+  await user.type(suites.getByLabelText("New revision entry"), "nightly.json");
+
+  // Refused: nothing was written, so the folder is not read again.
+  facade.reply({ SaveSuite: () => ({ state: "failed" as const, reason: "the suite is not valid" }) });
+  const before = facade.callsTo("OpenWorkspace").length;
+  await user.click(suites.getByRole("button", { name: "Save new version" }));
+  expect(await suites.findByText(/the suite is not valid/)).toBeTruthy();
+  expect(facade.callsTo("OpenWorkspace")).toHaveLength(before);
+
+  // Saved: the folder is read again, and the run panel offers the new entry.
+  facade.reply({
+    SaveSuite: () => ({ ...suiteDocumentResult(), output: "nightly.json" }),
+    OpenWorkspace: () =>
+      folderChosen(WORKSPACE_ROOT, [
+        { name: CASE_ENTRY, kind: "case", schema: "readmit-case/v3", provenance: "generated" },
+        { name: "nightly.json", kind: "suite" },
+      ]),
+  });
+  await user.click(suites.getByRole("button", { name: "Save new version" }));
+  const runPanel = within(screen.getByRole("region", { name: "Durable test runs" }));
+  expect(await runPanel.findByRole("option", { name: "nightly.json (suite)" })).toBeTruthy();
   expect(facade.callsTo("OpenWorkspace").map((call) => call.args)).toContainEqual([WORKSPACE_ROOT]);
 });
 

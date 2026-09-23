@@ -216,6 +216,57 @@ journey fails the `desktop` check. They cover:
   `readmit run status --recovery` reports it uncertain and not safe to repeat;
   and a test half authored when the application ended comes back for its case
   and is finished and preflighted from where it was;
+- the saved test carried into a suite and handed to CI: the suite is built
+  through the structured editor over the imported case and the downstream
+  target, its exact expansion previewed, saved and prepared without sending,
+  preflighted against the environment it declares and sent once; its one job
+  fails on the defect and passes once the system is fixed, and
+  `readmit suite run` over the same downstream records the same queue report.
+  With a coverage declaration authored in the window, the documented POSIX
+  handoff the window writes is run by an automation agent as installed: its
+  gate is an error with exit 2 on the defect and passes with exit 0 once
+  fixed, `readmit suite ci` run by hand records the same aggregate, the window
+  reads the same gate back and refuses to report one for a directory the suite
+  was only prepared into, and neither the aggregate nor the JUnit report
+  carries a value from the evidence;
+- what an investigation hands on: the failing and fixed runs are assembled
+  into a sealed packet after a preview that names every input and states its
+  limitations, verified read-only as `readmit report verify-retained` verifies
+  it, exported with its five offline renderings as a portable review that
+  reopens read-only with its report text revealed only on purpose and reads
+  the same through `readmit report review`, and summarized into a value-free
+  support bundle, authored under a sharing policy made in the window and
+  published into a folder chosen natively only under the exact identity its
+  preview showed, which `readmit share verify` verifies; the shipped planted
+  example's privacy review — its captures imported through the window, and its
+  specification, two disclosure policies and inventory placed as the
+  documents the privacy panel selects but does not author — is blocked while
+  its policy leaves findings unresolved and cannot be exported even under its
+  exact identity, the handled review is exported only under its own identity
+  with its proof rerun, and `readmit redact` derives the same states and the
+  same located findings from the same documents;
+- looking after a project: a dismissed folder dialog that chooses nothing
+  and backs nothing up; a verified backup into a new folder, verified again
+  as `readmit backup verify` verifies it; a quota below what the project
+  holds refused and one it fits within set; the index rebuilt from the case;
+  migration and retirement previewed; an archive that keeps the source; a
+  delete refused because the project changed after its preview; a confirmed
+  delete that unlinks the source and keeps the recovery archive; and that
+  archive restored into a new folder the window reopens, where
+  `readmit project show` and `readmit run status` find the case and the run;
+- licensing and the commercial portal offline: a delivered license verified
+  from its two received documents, installed into a new private folder and
+  activated without hand-written configuration; licensed work admitted; the
+  same issue refused as a renewal; the installed document exported byte for
+  byte; a settings change that retitles the project and declares a further
+  interface version; once released, a settings change refused in the window
+  and on the command line with the same reason while reading and backing up
+  continue, and the released activation not activated again; an expired term
+  shown as expired and refusing new work in the window and on the command line
+  until the later issue the vendor signed is installed as its renewal, and a
+  term in its grace period still admitting new work; the commercial destination
+  stated as missing, an invalid file refused, and the operator's destination
+  shown as a link the window never requests, kept across a restart;
 - the harness's own refusals: an unanswered or wrongly answered dialog, an
   unused answer, a call Wails would reject and a window closed while a call
   still runs each fail a journey; no journey can write outside its root; a
@@ -261,6 +312,25 @@ beside the journey that exposes it:
    so it could never say a run, capture or observation was active. It no
    longer claims the slot: it reads which named operation holds it, and is
    busy only while an operation it cannot attribute does.
+
+The third round found and fixed five more, each with a component test beside
+the journey that exposes it:
+
+1. A suite, a release-reference sidecar, a prepared suite, a coverage
+   declaration or a promotion approval saved in the suites panel was not
+   offered by any picker, the execution center's included, until the folder
+   was reopened.
+2. Leaving the import panel re-read the project but not the folder, so the
+   imported case and its receipt were not offered by the packet, privacy and
+   suite panels until something else re-read it.
+3. The extraction preview keyed each member's row by its place within its
+   source, so two sources' members collided and a row could be dropped or
+   repeated.
+4. A received license with no grace period read "grace  days".
+5. A refused project write, such as a settings change or a case
+   registration the license no longer admits, replaced the project with the
+   bare refusal, taking the project and its controls off the screen; the
+   window now keeps the project it last read beside the refusal.
 
 They run in jsdom, not the native webview, against the Go facade the packaged
 shell binds rather than the packaged executable itself. They do not replace

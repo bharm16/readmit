@@ -6,9 +6,9 @@
 // This file is JavaScript so the typed frontend needs no Node type
 // declarations; bridge-process.d.ts states its interface.
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createInterface } from "node:readline";
 
 /** A new, empty temporary root owned by one journey, named by its resolved
@@ -41,6 +41,21 @@ export function writeInRoot(root, path, content) {
   return target;
 }
 
+/** Copies one of the shipped synthetic fixtures in folder — documented
+ * examples in which every value is invented — byte for byte to a path inside
+ * root. Only a plain file name of that folder is accepted. */
+export function copyFixtureInRoot(folder, fixture, root, path) {
+  if (fixture !== basename(fixture)) {
+    throw new Error(`${fixture} is not a file name of the shipped fixtures`);
+  }
+  return writeInRoot(root, path, readFileSync(join(folder, fixture)));
+}
+
+/** Reads a text file inside root, refusing one outside it. */
+export function readInRoot(root, path) {
+  return readFileSync(inside(root, path), "utf8");
+}
+
 /** Resolves a path inside root, refusing one outside it. */
 export function pathInRoot(root, path) {
   return inside(root, path);
@@ -70,6 +85,21 @@ export function provisionInRoot(binary, root, path) {
   return target;
 }
 
+/** Provisions activation folders inside root, one per issue — each a term
+ * the vendor signed, from an expired one to its renewal — all signed with one
+ * newly generated key, and returns each folder. */
+export function provisionIssuesInRoot(binary, root, issues) {
+  const args = ["--root", root];
+  const folders = [];
+  for (const issue of issues) {
+    const target = inside(root, issue.folder);
+    folders.push(target);
+    args.push("--issue", `${target},${issue.sequence},${issue.expires},${issue.graceDays}`);
+  }
+  execFileSync(binary, args, { env: isolated(root), stdio: ["ignore", "pipe", "pipe"] });
+  return folders;
+}
+
 /** The environment every process a journey starts sees: a home and a
  * temporary folder inside root and an empty PATH, so nothing from the
  * developer's own account or tools can answer for the application. */
@@ -89,8 +119,12 @@ function isolated(root) {
 /** Runs the command line built from this checkout once, in root, and
  * resolves with its exit status and both output streams. */
 export function runCommandLine(binary, root, args) {
+  return finished(spawn(binary, args, { cwd: root, stdio: ["ignore", "pipe", "pipe"], env: isolated(root) }));
+}
+
+/** Resolves with a child's exit status and both its output streams. */
+function finished(child) {
   return new Promise((resolve, reject) => {
-    const child = spawn(binary, args, { cwd: root, stdio: ["ignore", "pipe", "pipe"], env: isolated(root) });
     let stdout = "";
     let stderr = "";
     child.stdout.setEncoding("utf8");
@@ -104,6 +138,20 @@ export function runCommandLine(binary, root, args) {
     child.on("error", reject);
     child.on("close", (code) => resolve({ code, stdout, stderr }));
   });
+}
+
+/** Runs one POSIX shell script inside root, in root, the way a customer's
+ * automation agent runs a workflow it was handed: the variables it was
+ * provisioned with, inside the isolated environment, which they never
+ * replace. */
+export function runScriptInRoot(root, script, variables) {
+  return finished(
+    spawn("/bin/sh", [inside(root, script)], {
+      cwd: root,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...variables, ...isolated(root) },
+    }),
+  );
 }
 
 /** Starts the bridge over root, in the isolated environment. */

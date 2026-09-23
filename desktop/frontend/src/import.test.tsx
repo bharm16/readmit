@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
@@ -12,6 +12,7 @@ import {
 import { renderApp } from "./testkit/app";
 import type {
   ImportCommitResult,
+  ImportContainer,
   ImportPreviewResult,
   ImportSourcesResult,
   PastedSourceResult,
@@ -385,10 +386,20 @@ test("recipe mapping authoring, preview, commit to project, and navigation into 
 
   // Click "Open this case in inspector". Leaving the import re-reads the
   // project the case was registered into, so its overview lists the case.
+  // It re-reads the folder as well, so every panel that offers the folder's
+  // entries — the packet and privacy panels among them — offers the new case.
   const overviewReads = facade.callsTo("OpenProjectOverview").length;
+  const listings = facade.callsTo("OpenWorkspace").length;
   facade.reply({
     OpenProjectOverview: () =>
       projectOverviewResult([{ ...registeredCase("imported-case-01"), title: "Imported feed" }]),
+    OpenWorkspace: () =>
+      folderChosen(WORKSPACE_ROOT, [
+        { name: "project.json", kind: "project", schema: "readmit-project/v1" },
+        { name: CASE_ENTRY, kind: "case", schema: "readmit-case/v3", provenance: "generated" },
+        { name: "imported-case-01", kind: "case", schema: "readmit-case/v3", provenance: "imported" },
+        { name: "imported-case-01-receipt.json", kind: "unsupported" },
+      ]),
   });
   await user.click(screen.getByRole("button", { name: "Open this case in inspector" }));
 
@@ -396,6 +407,51 @@ test("recipe mapping authoring, preview, commit to project, and navigation into 
   expect(await screen.findByText("sha256:finalcase777")).toBeTruthy();
   expect(facade.callsTo("OpenProjectOverview")).toHaveLength(overviewReads + 1);
   expect(await screen.findByText("Imported feed")).toBeTruthy();
+  expect(facade.callsTo("OpenWorkspace")).toHaveLength(listings + 1);
+  const privacy = within(screen.getByRole("region", { name: "Privacy review and protected export" }));
+  expect(await privacy.findByRole("option", { name: "imported-case-01" })).toBeTruthy();
+});
+
+test("every member of every declared source has its own row in the extraction preview", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openWorkspaceWithProject(user);
+  await user.click(screen.getByRole("button", { name: "Import evidence into this project…" }));
+  facade.reply({
+    ChooseImportSources: () => Promise.resolve({ state: "completed", kind: "files", paths: ["booking.mllp", "reschedule.mllp"] }),
+  });
+  await user.click(screen.getByRole("button", { name: "Select Files…" }));
+  await screen.findByText(/reschedule\.mllp/);
+  const container = (path: string, size: number): ImportContainer => ({
+    kind: "unsupported",
+    path,
+    size,
+    sha256: "",
+    members: [{ name: path, size, sha256: "", state: "completed", records: [] }],
+  });
+  facade.reply({
+    PreviewImport: (): Promise<ImportPreviewResult> =>
+      Promise.resolve({
+        state: "completed",
+        mode: "plan",
+        plan_preview: {
+          schema: "readmit-import-preview/v1",
+          plan: { schema: "readmit-import-plan/v1", framing: "mllp", terminator: "cr", encoding: "utf-8", direction: "inbound", members: [] },
+          containers: [container("booking.mllp", 101), container("reschedule.mllp", 202)],
+          totals: { containers: 2, members: 2, excluded: 0, sources: 2, occurrences: 2 },
+        },
+      }),
+  });
+  const reported = vi.spyOn(console, "error");
+  try {
+    await user.click(screen.getByRole("button", { name: "Preview extraction" }));
+    // Two sources each holding one member: two rows, neither standing in for
+    // the other, and no two rows sharing an identity React would conflate.
+    expect(await screen.findByRole("cell", { name: "101 bytes" })).toBeTruthy();
+    expect(screen.getByRole("cell", { name: "202 bytes" })).toBeTruthy();
+    expect(reported.mock.calls.filter((args) => String(args[0]).includes("same key"))).toEqual([]);
+  } finally {
+    reported.mockRestore();
+  }
 });
 
 test("draft retention restores draft state and handles cancellation", async () => {

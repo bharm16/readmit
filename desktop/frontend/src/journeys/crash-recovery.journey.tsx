@@ -7,22 +7,8 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { UserEvent } from "@testing-library/user-event";
 import { byContent, Journey, press, region } from "../testkit/journey";
-import {
-  activateLicense,
-  authoring,
-  beginAckTest,
-  buildIndex,
-  configureTarget,
-  createProject,
-  EXPORTED_BOOKING,
-  EXPORTED_RESCHEDULE,
-  finishAckTest,
-  importExport,
-  preflight,
-  runs,
-} from "./steps";
+import { authoring, beginAckTest, EXPORTED_BOOKING, finishAckTest, investigation, preflight, runs, savedAckTest } from "./steps";
 
 let journey: Journey;
 
@@ -34,25 +20,9 @@ afterEach(async () => {
   await journey.dispose();
 });
 
-/** A licensed project over the person's own export, the downstream system
- * configured as its environment, and the case open with its grid. */
-async function investigation(user: UserEvent) {
-  journey.writeFile("exports/scheduling-feed.hl7", EXPORTED_BOOKING + EXPORTED_RESCHEDULE);
-  const downstream = await journey.startDownstream("downstream/appointments.csv", "fixed");
-  await journey.launch();
-  await activateLicense(user, journey);
-  const project = await createProject(user, journey, "investigations", "scheduling-investigation", "Scheduling interface");
-  await importExport(user, journey, "exports/scheduling-feed.hl7", "reschedule-feed", "Reschedule is refused");
-  await configureTarget(user, downstream.address);
-  await buildIndex(user);
-  return { downstream, project };
-}
-
 test("a crash while a send waits on its acknowledgement leaves the delivery uncertain, and reopening never sends it again", async () => {
   const user = userEvent.setup();
-  const { downstream, project } = await investigation(user);
-  await beginAckTest(user, "reschedule-acknowledged");
-  await finishAckTest(user, "reschedule-ack-test.json");
+  const { downstream, project } = await savedAckTest(user, journey, "fixed");
   await preflight(user, "reschedule-ack-test.json", "run-interrupted", downstream.address);
 
   // Before the send, the privacy status says no run is executing.
@@ -122,7 +92,7 @@ test("a crash while a send waits on its acknowledgement leaves the delivery unce
 
 test("a test half authored when the application ended comes back for its case and is finished from where it was", async () => {
   const user = userEvent.setup();
-  const { downstream } = await investigation(user);
+  const { downstream } = await investigation(user, journey, "fixed");
   await beginAckTest(user, "reschedule-acknowledged");
   // Every answer so far was retained as it was given.
   await waitFor(() =>

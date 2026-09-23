@@ -44,6 +44,7 @@ export function SuitePanel({
   entries,
   drafts,
   onExecute,
+  onSaved,
 }: {
   workspace: string;
   busy: boolean;
@@ -52,6 +53,10 @@ export function SuitePanel({
   /** Hands one suite entry to the execution center, which owns preflight and
    * the explicit send decision; nothing is executed from this panel. */
   onExecute?: (entry: string) => void;
+  /** Called once a write added an entry to the workspace, so every panel that
+   * offers entries — this one's pickers and the execution center's — offers
+   * it too. */
+  onSaved?: () => void;
 }) {
   const [tab, setTab] = useState<"suite" | "releases" | "prepare" | "coverage" | "promotion">("suite");
   const [working, setWorking] = useState(false);
@@ -246,6 +251,7 @@ export function SuitePanel({
       const result = await saveSuite({ workspace, document: JSON.stringify(composed), output });
       setSaved(result);
       if (result.state === "completed") {
+        onSaved?.();
         setDocument(result.suite ?? composed);
         // The work is stored as a real workspace entry now, so the unstored
         // draft is dropped; a later edit retains a fresh one.
@@ -255,7 +261,7 @@ export function SuitePanel({
         }
       }
     });
-  }, [expectedError, output, parsedExpected, perform, retainer, workspace]);
+  }, [expectedError, onSaved, output, parsedExpected, perform, retainer, workspace]);
 
   // --------------------------------------------------------------- releases
   const [sidecarRows, setSidecarRows] = useState<{ test: string; release: string; identity: string }[]>([{ test: "", release: "", identity: "" }]);
@@ -270,18 +276,18 @@ export function SuitePanel({
 
   const writeSidecar = useCallback(async () => {
     await perform(async () => {
-      setSidecar(
-        await saveSuiteReleases({
-          workspace,
-          document: JSON.stringify({
-            schema: "readmit-suite-releases/v1",
-            tests: sidecarRows.filter((row) => row.test && row.release && row.identity),
-          }),
-          output: sidecarOutput,
+      const result = await saveSuiteReleases({
+        workspace,
+        document: JSON.stringify({
+          schema: "readmit-suite-releases/v1",
+          tests: sidecarRows.filter((row) => row.test && row.release && row.identity),
         }),
-      );
+        output: sidecarOutput,
+      });
+      setSidecar(result);
+      if (result.state === "completed") onSaved?.();
     });
-  }, [perform, sidecarOutput, sidecarRows, workspace]);
+  }, [onSaved, perform, sidecarOutput, sidecarRows, workspace]);
 
   const runImpact = useCallback(async () => {
     await perform(async () => {
@@ -340,17 +346,17 @@ export function SuitePanel({
   const runPrepare = useCallback(async () => {
     await perform(async () => {
       setPrepared(null);
-      setPrepared(
-        await prepareSuite({
-          workspace,
-          entry: prepareEntry,
-          environment: prepareEnvironment,
-          releases: prepareReleases,
-          output: prepareOutput,
-        }),
-      );
+      const result = await prepareSuite({
+        workspace,
+        entry: prepareEntry,
+        environment: prepareEnvironment,
+        releases: prepareReleases,
+        output: prepareOutput,
+      });
+      setPrepared(result);
+      if (result.state === "completed") onSaved?.();
     });
-  }, [perform, prepareEntry, prepareEnvironment, prepareOutput, prepareReleases, workspace]);
+  }, [onSaved, perform, prepareEntry, prepareEnvironment, prepareOutput, prepareReleases, workspace]);
 
   // ---------------------------------------------------------------- coverage
   const [coveragePrepared, setCoveragePrepared] = useState("");
@@ -366,19 +372,19 @@ export function SuitePanel({
   const writeCoverage = useCallback(async () => {
     await perform(async () => {
       setAuthored(null);
-      setAuthored(
-        await saveSuiteCoverage({
-          workspace,
-          prepared: coveragePrepared,
-          requirements: requirementRows
-            .filter((row) => row.id)
-            .map((row) => ({ id: row.id, jobs: row.jobs.split(/[\s,]+/).filter(Boolean) })),
-          exclusions: exclusionRows.filter((row) => row.job && row.state && row.reason && row.expires),
-          output: coverageOutput,
-        }),
-      );
+      const result = await saveSuiteCoverage({
+        workspace,
+        prepared: coveragePrepared,
+        requirements: requirementRows
+          .filter((row) => row.id)
+          .map((row) => ({ id: row.id, jobs: row.jobs.split(/[\s,]+/).filter(Boolean) })),
+        exclusions: exclusionRows.filter((row) => row.job && row.state && row.reason && row.expires),
+        output: coverageOutput,
+      });
+      setAuthored(result);
+      if (result.state === "completed") onSaved?.();
     });
-  }, [coverageOutput, coveragePrepared, exclusionRows, perform, requirementRows, workspace]);
+  }, [coverageOutput, coveragePrepared, exclusionRows, onSaved, perform, requirementRows, workspace]);
 
   const runAssessment = useCallback(async () => {
     await perform(async () => {
@@ -425,21 +431,21 @@ export function SuitePanel({
   const runApproval = useCallback(async () => {
     await perform(async () => {
       setApproval(null);
-      setApproval(
-        await approveSuitePromotion({
-          workspace,
-          entry: promotionEntry,
-          environment: promotionEnvironment,
-          releases: promotionReleases,
-          revision,
-          reviewed: review?.review?.identity ?? "",
-          approver,
-          rationale,
-          output: promotionOutput,
-        }),
-      );
+      const result = await approveSuitePromotion({
+        workspace,
+        entry: promotionEntry,
+        environment: promotionEnvironment,
+        releases: promotionReleases,
+        revision,
+        reviewed: review?.review?.identity ?? "",
+        approver,
+        rationale,
+        output: promotionOutput,
+      });
+      setApproval(result);
+      if (result.state === "completed") onSaved?.();
     });
-  }, [approver, perform, promotionEntry, promotionEnvironment, promotionOutput, promotionReleases, rationale, review, revision, workspace]);
+  }, [approver, onSaved, perform, promotionEntry, promotionEnvironment, promotionOutput, promotionReleases, rationale, review, revision, workspace]);
 
   return (
     <section className="suite-panel" aria-labelledby="suite-title">

@@ -52,6 +52,10 @@ unanswered is rejected. The kit's verbs:
 - `writeFile`, `makeFolder` and `provisionLicense` prepare what a person or
   their vendor put on the machine before the application saw it: exported
   evidence, a folder for a project, a signed activation folder.
+  `provisionLicenseIssues(issues)` provisions several activation folders, each
+  with its own term (sequence, expiry relative to now such as `-48h`, grace
+  days) and all signed with one fresh key, so a later issue installs as the
+  renewal of an expired one.
 - `close()` waits for the window to settle, then ends the process as closing
   the window does; `crash()` ends it at once and abandons what was running;
   `launch()` again reopens over the same files.
@@ -70,13 +74,25 @@ unanswered is rejected. The kit's verbs:
   received — the independent witness to what a send did — and count the
   connections open to it now, which a connectivity check holds while it runs.
   `backdate(file, ms)` ages a file, for a stale export.
+- `readFile(file)` reads a file the window or the command line wrote, and
+  `placeFixture(name, file)` copies one of the checkout's shipped synthetic
+  fixtures (`testdata/fixtures`) into the root byte for byte, as a documented
+  example is copied.
+- `automationAgent(script, variables)` runs a POSIX shell script inside the
+  root as a customer's automation agent runs the workflow it was handed: with
+  the variables it was provisioned with, which never replace the isolated
+  environment. `commandLineExecutable` is the path of the checkout's
+  `readmit`, the installed executable such a workflow names.
 
 `src/journeys/steps.tsx` holds the steps several journeys take — activating the
-vendor's license, creating a project, importing an export, configuring the
-downstream target, authoring and running an acknowledgement test — each taken
+vendor's license, creating a project, importing an export, the whole
+investigation up to a configured downstream target, authoring an
+acknowledgement test, and preflighting and sending it once — each taken
 through the window and checked against what it then shows, and the way a
 timing is logged. Reuse them; a step only one journey takes stays in that
-journey.
+journey. A control that lists the folder's entries is filled once the window
+has read the folder again after a write, so wait for the option before
+selecting it.
 
 A journey fails at close for a dialog nobody answered, an answer nobody used, a
 call Wails would have rejected or a call that never finished, and no verb

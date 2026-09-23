@@ -28,16 +28,20 @@ import { startDownstream } from "./downstream.js";
 import type { Downstream, DownstreamMode } from "./downstream.js";
 import {
   backdateInRoot,
+  copyFixtureInRoot,
   createRoot,
   makeFolderInRoot,
   pathInRoot,
   provisionInRoot,
+  provisionIssuesInRoot,
+  readInRoot,
   removeRoot,
   runCommandLine,
+  runScriptInRoot,
   startBridge,
   writeInRoot,
 } from "./bridge-process.js";
-import type { BridgeExit, BridgeProcess, CommandLineRun } from "./bridge-process.js";
+import type { BridgeExit, BridgeProcess, CommandLineRun, LicenseIssue } from "./bridge-process.js";
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -45,6 +49,8 @@ declare module "vitest" {
     journeyBridge: string;
     /** The readmit command line the global setup built for this run. */
     journeyCommandLine: string;
+    /** The checkout's shipped synthetic fixtures folder. */
+    journeyFixtures: string;
   }
 }
 
@@ -79,10 +85,11 @@ export function region(name: string): HTMLElement {
 /** Waits until a control the window disabled while it worked is enabled
  * again, and returns it. A person cannot press a disabled button, and neither
  * can a journey: user events on one do nothing, so a step that follows real
- * work waits for the window to offer it. */
+ * work waits for the window to offer it. A control inside a disabled
+ * fieldset is disabled too, though its own property does not say so. */
 export async function whenEnabled<E extends HTMLElement>(element: E): Promise<E> {
   await waitFor(() => {
-    if ((element as unknown as { disabled?: boolean }).disabled) {
+    if ((element as unknown as { disabled?: boolean }).disabled || element.matches(":disabled")) {
       throw new Error("the control is still disabled");
     }
   });
@@ -222,6 +229,18 @@ export class Journey {
     return writeInRoot(this.root, relative, content);
   }
 
+  /** Places one of the checkout's shipped synthetic fixtures on this
+   * person's machine, byte for byte, as a documented example is copied. */
+  placeFixture(fixture: string, relative: string): string {
+    return copyFixtureInRoot(inject("journeyFixtures"), fixture, this.root, relative);
+  }
+
+  /** Reads a text file on this person's machine, such as one the application
+   * or the command line wrote. */
+  readFile(relative: string): string {
+    return readInRoot(this.root, relative);
+  }
+
   /** Creates an empty folder on this person's machine, such as the one they
    * will choose to keep a new project in. */
   makeFolder(relative: string): string {
@@ -234,6 +253,13 @@ export class Journey {
    * window is still the person's step. */
   provisionLicense(relative: string): string {
     return provisionInRoot(this.binary, this.root, relative);
+  }
+
+  /** Provisions the terms a vendor signs over time, each as its own
+   * activation folder and all under one key, so a later issue renews an
+   * earlier one: an expired term, one in its grace period, its renewal. */
+  provisionLicenseIssues(issues: LicenseIssue[]): string[] {
+    return provisionIssuesInRoot(this.binary, this.root, issues);
   }
 
   /** Starts the independent downstream scheduling system a person's
@@ -256,6 +282,19 @@ export class Journey {
    * files, read by the command line's own entry point. */
   commandLine(args: string[]): Promise<CommandLineRun> {
     return runCommandLine(inject("journeyCommandLine"), this.root, args);
+  }
+
+  /** Where the command line built from this checkout is installed: what an
+   * administrator names as the installed executable. */
+  get commandLineExecutable(): string {
+    return inject("journeyCommandLine");
+  }
+
+  /** Runs a POSIX shell script inside the root, as a customer's automation
+   * agent runs the workflow it was handed: with the variables it was
+   * provisioned with and nothing else from this machine. */
+  automationAgent(script: string, variables: Record<string, string>): Promise<CommandLineRun> {
+    return runScriptInRoot(this.root, script, variables);
   }
 
   /** The calls of one facade method, oldest first. */

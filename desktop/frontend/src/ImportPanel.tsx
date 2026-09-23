@@ -1724,9 +1724,9 @@ export function ImportPanel({
                     </tr>
                   </thead>
                   <tbody>
-                    {preview.plan_preview.containers.flatMap((c) =>
+                    {preview.plan_preview.containers.flatMap((c, container) =>
                       c.members.map((m, idx) => (
-                        <tr key={`plan-m-${idx}`}>
+                        <tr key={`plan-m-${container}-${idx}`}>
                           <td>{m.name}</td>
                           <td>{m.state}</td>
                           <td>{m.records.length}</td>

@@ -195,3 +195,47 @@ func TestProvisioningStaysInsideTheRoot(t *testing.T) {
 		t.Error("a bridge started over a root that is a file")
 	}
 }
+
+// Issues provisioned together share one key: each folder holds its own term,
+// and every folder trusts the same key, so a later issue renews an earlier
+// one. A malformed issue is refused, and none is written outside the root.
+func TestIssuesShareOneKeyAndStayInsideTheRoot(t *testing.T) {
+	root := t.TempDir()
+	var issues issueFlags
+	for _, value := range []string{"expired,1,-48h,1", "renewed,2,24h,0"} {
+		if err := issues.Set(value); err != nil {
+			t.Fatalf("%s: %v", value, err)
+		}
+	}
+	policies, err := provisionIssues(root, issues)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(policies) != 2 || policies[0] != filepath.Join(root, "expired", "operation-policy.json") || policies[1] != filepath.Join(root, "renewed", "operation-policy.json") {
+		t.Fatalf("policies written at %v", policies)
+	}
+	first, err := os.ReadFile(filepath.Join(root, "expired", "trust.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := os.ReadFile(filepath.Join(root, "renewed", "trust.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(first) != string(second) {
+		t.Error("the two issues trust different keys")
+	}
+	for _, value := range []string{"folder", "folder,0,24h,0", "folder,1,soon,0", "folder,1,24h,-1", ",1,24h,0"} {
+		var refused issueFlags
+		if err := refused.Set(value); err == nil {
+			t.Errorf("accepted the malformed issue %q", value)
+		}
+	}
+	var outside issueFlags
+	if err := outside.Set("../escaped,1,24h,0"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provisionIssues(root, outside); err == nil {
+		t.Error("provisioned an issue outside the root")
+	}
+}

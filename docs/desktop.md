@@ -81,22 +81,29 @@ the same checkout — the same engine through its own entry point — then reads
 what the window wrote and must agree.
 
 The journeys run the complete guided sample (author, fail on the defect, pass
-once corrected, close and reopen) and the start of a real investigation over
-a person's own exported messages (activation, a new project, import with the
-framing the export uses, registration, a declared-retention index, search,
-the original bytes, close and reopen). They carry that investigation on to an
+once corrected, close and reopen) and the start of a real investigation over a
+person's own exported messages (activation, a new project, import with the
+framing the export uses, registration, a declared-retention index, search, the
+original bytes, close and reopen). They carry that investigation on to an
 independent downstream system — a loopback MLLP receiver in the test kit that
 shares no readmit code and has a real defect: a named environment and its
-approved destination, an observation of the system's export through a
-declared window (and the missing, stale and truncated exports that are
-errors, not emptiness), a test preflighted and sent once that fails on the
-defect, passes once the system is fixed and fails when the defect returns,
-and crashes during a send and during authoring that reopen to uncertain
-delivery and to the draft, never to a resend. They run in jsdom, not the native
-webview, so they are evidence about the application over real files rather
-than about installed packages. The desktop workflow's shell job runs them
-after the component tests, and a failing journey fails the `desktop` check.
-See [validation](agents/testing.md) for writing one.
+approved destination, an observation of the system's export through a declared
+window (and the missing, stale and truncated exports that are errors, not
+emptiness), a test preflighted and sent once that fails on the defect, passes
+once the system is fixed and fails when the defect returns, and crashes during
+a send and during authoring that reopen to uncertain delivery and to the
+draft, never to a resend. From there the test becomes a suite that fails and
+then passes the same way and is handed to CI as the workflow the window
+writes; the runs become a sealed packet, a portable review and a reviewed
+support summary, and a planted example goes through privacy review and export;
+the project is backed up, held to a quota, archived, deleted and restored; and
+a delivered license is installed, activated and released, an expired term is
+renewed and a term in grace still admits work, beside the commercial portal's
+destination. They run in jsdom, not the native webview, so they are evidence
+about the application over real files rather than about installed packages.
+The desktop workflow's shell job runs them after the component tests, and a
+failing journey fails the `desktop` check. See [validation](agents/testing.md)
+for writing one.
 
 ## Native packages
 

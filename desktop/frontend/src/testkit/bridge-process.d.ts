@@ -36,6 +36,18 @@ export function startBridge(binary: string, root: string): BridgeProcess;
 export function pathInRoot(root: string, path: string): string;
 export function backdateInRoot(root: string, path: string, milliseconds: number): string;
 export function writeInRoot(root: string, path: string, content: string | Uint8Array): string;
+export function readInRoot(root: string, path: string): string;
+export function copyFixtureInRoot(folder: string, fixture: string, root: string, path: string): string;
 export function makeFolderInRoot(root: string, path: string): string;
 export function provisionInRoot(binary: string, root: string, path: string): string;
+/** One term of the test entitlement: its issue sequence, when it expires
+ * relative to now as a Go duration ("24h", "-48h") and its grace in days. */
+export interface LicenseIssue {
+  folder: string;
+  sequence: number;
+  expires: string;
+  graceDays: number;
+}
+export function provisionIssuesInRoot(binary: string, root: string, issues: LicenseIssue[]): string[];
 export function runCommandLine(binary: string, root: string, args: string[]): Promise<CommandLineRun>;
+export function runScriptInRoot(root: string, script: string, variables: Record<string, string>): Promise<CommandLineRun>;
