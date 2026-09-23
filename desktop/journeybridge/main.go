@@ -24,7 +24,9 @@
 // process exits and the next bridge over the same root is the reopened
 // application. Run with -license instead, it provisions the signed activation
 // folder a vendor would have delivered, inside that root, and exits: that is
-// never the running application's doing.
+// never the running application's doing. Run with one or more -issue flags,
+// it provisions one such folder per term instead, all signed with one key, so
+// a later issue renews an earlier one.
 package main
 
 import (
@@ -39,8 +41,10 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/testlicense"
@@ -78,14 +82,30 @@ type bridge struct {
 func main() {
 	root := flag.String("root", "", "absolute temporary root the journey owns")
 	license := flag.String("license", "", "provision a signed activation folder at this path inside root, then exit")
+	var issues issueFlags
+	flag.Var(&issues, "issue", "provision an activation folder inside root for one term, as FOLDER,SEQUENCE,EXPIRES,GRACE_DAYS; repeated issues share one signing key; then exit")
 	flag.Parse()
-	if *license != "" {
-		policy, err := provision(*root, *license)
+	if *license != "" && len(issues) > 0 {
+		fmt.Fprintln(os.Stderr, "journeybridge: -license and -issue provision different things; give one")
+		os.Exit(2)
+	}
+	if *license != "" || len(issues) > 0 {
+		var policies []string
+		var err error
+		if *license != "" {
+			var policy string
+			policy, err = provision(*root, *license)
+			policies = []string{policy}
+		} else {
+			policies, err = provisionIssues(*root, issues)
+		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "journeybridge:", err)
 			os.Exit(2)
 		}
-		fmt.Println(policy)
+		for _, policy := range policies {
+			fmt.Println(policy)
+		}
 		return
 	}
 	// Protocol lines are the only thing written to standard output. Anything
@@ -108,6 +128,32 @@ func main() {
 // into a folder inside root, as its own process: the running application never
 // provisions anything. It returns the operation policy's path.
 func provision(root, folder string) (string, error) {
+	folder, err := activationFolder(root, folder)
+	if err != nil {
+		return "", err
+	}
+	return testlicense.Create(folder)
+}
+
+// provisionIssues writes one activation folder per issue, each signed with
+// the term the journey names and all with one key, so a later issue is a
+// renewal of an earlier one — what a vendor delivers over time, from an
+// expired term to its renewal. It returns each operation policy's path.
+func provisionIssues(root string, issues []testlicense.Issue) ([]string, error) {
+	resolved := make([]testlicense.Issue, len(issues))
+	for index, issue := range issues {
+		folder, err := activationFolder(root, issue.Dir)
+		if err != nil {
+			return nil, err
+		}
+		resolved[index] = testlicense.Issue{Dir: folder, Term: issue.Term}
+	}
+	return testlicense.CreateIssues(resolved)
+}
+
+// activationFolder resolves an activation folder inside root and creates it,
+// refusing one outside the journey's root.
+func activationFolder(root, folder string) (string, error) {
 	if err := checkRoot(root); err != nil {
 		return "", err
 	}
@@ -121,7 +167,36 @@ func provision(root, folder string) (string, error) {
 	if err := os.MkdirAll(folder, 0o700); err != nil {
 		return "", err
 	}
-	return testlicense.Create(folder)
+	return folder, nil
+}
+
+// issueFlags collects repeated -issue flags, each FOLDER,SEQUENCE,EXPIRES,
+// GRACE_DAYS: the folder inside root, the issue sequence, when the term
+// expires relative to now as a Go duration (negative for a term that is
+// over), and the grace period in days.
+type issueFlags []testlicense.Issue
+
+func (f *issueFlags) String() string { return fmt.Sprint(len(*f)) }
+
+func (f *issueFlags) Set(value string) error {
+	parts := strings.Split(value, ",")
+	if len(parts) != 4 || parts[0] == "" {
+		return errors.New("an issue is FOLDER,SEQUENCE,EXPIRES,GRACE_DAYS")
+	}
+	sequence, err := strconv.Atoi(parts[1])
+	if err != nil || sequence < 1 {
+		return errors.New("an issue's sequence is a positive whole number")
+	}
+	expires, err := time.ParseDuration(parts[2])
+	if err != nil {
+		return errors.New("an issue's expiry is a duration from now, such as 24h or -48h")
+	}
+	grace, err := strconv.Atoi(parts[3])
+	if err != nil || grace < 0 {
+		return errors.New("an issue's grace period is a whole number of days")
+	}
+	*f = append(*f, testlicense.Issue{Dir: parts[0], Term: testlicense.Term{Sequence: sequence, Expires: expires, GraceDays: grace}})
+	return nil
 }
 
 func checkRoot(root string) error {

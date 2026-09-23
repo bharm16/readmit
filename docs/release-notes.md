@@ -1,5 +1,38 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The interaction journeys now follow an investigation past its first executed
+  test (#109). The saved test becomes a suite, built through the structured
+  editor, prepared without sending and sent once against the independent
+  downstream system: it fails on the defect and passes once the system is fixed,
+  as `readmit suite run` does over the same downstream. Handed to CI as the
+  POSIX workflow the window writes, run by an automation agent as installed, its
+  gate follows the same defect and fix with the exit codes `readmit suite ci`
+  gives, the window refuses to report a gate for a directory that holds none,
+  and nothing the gate records carries an evidence value. The runs become a
+  sealed packet verified read-only, a portable review that reopens read-only and
+  reads the same on the command line, and a value-free support bundle published
+  only under the exact identity its preview showed. The shipped planted
+  example's privacy review is blocked while its policy leaves findings and is
+  exported only under the exact identity once handled, with the same located
+  findings `readmit redact` derives. A project is backed up, held to a quota,
+  reindexed, archived, refused a delete because it changed after the delete was
+  previewed, deleted after confirmation and restored from the recovery archive.
+  A delivered license is verified, installed and activated without hand-written
+  configuration, refuses the same issue as a renewal, exports byte for byte, and
+  once released admits no new work in the window or on the command line while
+  reading and backing up continue; an expired term refuses new work until its
+  renewal is installed, a term in grace still admits it, and the commercial
+  portal's destination is stated as missing, refused when invalid and shown as a
+  link the window never requests. The test kit's license fixture signs several
+  terms under one fresh key for this, as test-only code. The journeys found and
+  fixed five defects: a suite or other entry saved in the suites panel was
+  offered by no picker until the folder was reopened; leaving an import did not
+  re-read the folder, so the imported case was not offered to the packet,
+  privacy and suite panels; two imported sources' members collided in the
+  extraction preview; a license with no grace period read "grace  days"; and a
+  refused project write took the project and its controls off the screen. These
+  journeys are not installed-package acceptance.
+
 - The privacy status now shows every network-reaching operation as active
   while it runs (#341). A connectivity check, a fixture reset, a send-policy
   evaluation, a source access check, a runner enrollment, the start of a hub

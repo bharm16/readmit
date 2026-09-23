@@ -262,3 +262,18 @@ test("the configured portal destination is shown exactly and navigation is delib
   expect(screen.getByText(/This application makes no request to it/)).toBeTruthy();
   expect(screen.getByText(/a revoked document is learned only when files arrive|Offline limit:/, { exact: false })).toBeTruthy();
 });
+
+// A document with no grace period is answered without the member, as the
+// facade omits a zero; the term still says the grace is zero days rather than
+// leaving the number out.
+test("a received license with no grace period says zero days", async () => {
+  const user = userEvent.setup();
+  const license = receivedLicense();
+  const { grace_days: _omitted, ...document } = license.document;
+  installFacade(quiet({ VerifyLicenseDocument: () => ({ ...license, document: { ...document, grace_ends: document.expires } }) }));
+  render(<OperationAccess />);
+  await user.click(screen.getByRole("button", { name: "Verify a received license…" }));
+  expect(
+    await screen.findByText("2026-09-18T00:00:00Z to 2026-10-18T00:00:00Z; grace 0 days (ends 2026-10-18T00:00:00Z); state active"),
+  ).toBeTruthy();
+});

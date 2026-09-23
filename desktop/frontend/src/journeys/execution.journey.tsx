@@ -17,7 +17,6 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UserEvent } from "@testing-library/user-event";
 import { byContent, enter, Journey, press, region } from "../testkit/journey";
-import type { Downstream } from "../testkit/downstream.js";
 import {
   activateLicense,
   beginAckTest,
@@ -28,7 +27,7 @@ import {
   EXPORTED_RESCHEDULE,
   finishAckTest,
   importExport,
-  preflight,
+  runOnce,
   runs,
 } from "./steps";
 
@@ -45,22 +44,6 @@ afterEach(async () => {
 const BOOKED = "20260102100000+0000";
 const MOVED = "20260103110000+0000";
 const PROJECT = "investigations/scheduling-investigation";
-
-/** Sends and executes once, as preflighted, and returns the run's state. */
-async function execute(user: UserEvent): Promise<string> {
-  const panel = runs();
-  await press(user, panel.getByRole("button", { name: "Send and execute once" }));
-  const line = await panel.findByText(byContent(/^Run: \w+ · Stop reason: \w+$/));
-  return (line.textContent ?? "").replace(/^Run: (\w+) · .*$/, "$1");
-}
-
-/** One run as a person makes it: the operator's reset of the downstream, a
- * preflight into a fresh folder, one send. Returns the run's state. */
-async function runOnce(user: UserEvent, downstream: Downstream, output: string): Promise<string> {
-  downstream.reset();
-  await preflight(user, "reschedule-ack-test.json", output, downstream.address);
-  return execute(user);
-}
 
 /** Opens a retained run read-only with its values revealed, and returns its
  * one assertion's outcome, expected and observed values. */

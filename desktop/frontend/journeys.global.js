@@ -21,5 +21,6 @@ export default function setup({ provide }) {
   });
   provide("journeyBridge", bridge);
   provide("journeyCommandLine", commandLine);
+  provide("journeyFixtures", resolve(desktop, "..", "testdata", "fixtures"));
   return () => rmSync(directory, { recursive: true, force: true });
 }

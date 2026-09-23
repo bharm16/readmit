@@ -978,7 +978,9 @@
       "inputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-project-quota/v1", "readmit-index/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5"],
       "outputs": ["readmit-backup/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/maintenance.journey.tsx", "name": "a project is backed up, held to a quota, reindexed, archived, refused a stale delete, deleted and restored through the window"},
+      "parity_test": {"package": "internal/desktop", "name": "TestCancelledMaintenancePathAndStaleDelete"},
+      "implemented": true
     },
     {
       "id": "cli.project.delete",
@@ -992,7 +994,9 @@
       "inputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-project-quota/v1", "readmit-index/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5"],
       "outputs": ["readmit-backup/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/maintenance.journey.tsx", "name": "a project is backed up, held to a quota, reindexed, archived, refused a stale delete, deleted and restored through the window"},
+      "parity_test": {"package": "tests", "name": "TestProjectLifecyclePublicWorkflow"},
+      "implemented": true
     },
     {
       "id": "cli.project.init",
@@ -1022,7 +1026,9 @@
       "inputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-project-quota/v1", "readmit-index/v1"],
       "outputs": ["readmit-project-migration-preview/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/maintenance.journey.tsx", "name": "a project is backed up, held to a quota, reindexed, archived, refused a stale delete, deleted and restored through the window"},
+      "parity_test": {"package": "tests", "name": "TestProjectLifecyclePublicWorkflow"},
+      "implemented": true
     },
     {
       "id": "cli.project.note",
@@ -1096,7 +1102,9 @@
       "inputs": ["readmit-project/v1"],
       "outputs": ["readmit-project/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/entitlement.journey.tsx", "name": "a delivered license is verified, installed and activated without hand-written configuration, and once released admits no new work"},
+      "parity_test": {"package": "tests", "name": "TestProjectSettingsSupplyDefaultsAndDeclareInterfaceVersions"},
+      "implemented": true
     },
     {
       "id": "cli.project.show",
@@ -1769,7 +1777,9 @@
       "inputs": ["readmit-support-summary/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/packets.journey.tsx", "name": "the failing and fixed runs become a sealed packet, a portable review that reopens read-only, and a reviewed support summary"},
+      "parity_test": {"package": "tests", "name": "TestDesktopAndCommandLinePrepareAndPublishTheSameSupportSummary"},
+      "implemented": true
     },
     {
       "id": "cli.source.collect",
@@ -2107,7 +2117,9 @@
       "inputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-project-quota/v1", "readmit-index/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5"],
       "outputs": ["readmit-backup/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/maintenance.journey.tsx", "name": "a project is backed up, held to a quota, reindexed, archived, refused a stale delete, deleted and restored through the window"},
+      "parity_test": {"package": "internal/desktop", "name": "TestCancelledMaintenancePathAndStaleDelete"},
+      "implemented": true
     },
     {
       "id": "desktop.BindScenarioProfile",
@@ -2355,7 +2367,9 @@
       "inputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-project-quota/v1", "readmit-index/v1"],
       "outputs": ["readmit-project-migration-preview/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/maintenance.journey.tsx", "name": "a project is backed up, held to a quota, reindexed, archived, refused a stale delete, deleted and restored through the window"},
+      "parity_test": {"package": "internal/desktop", "name": "TestQuotaMigrationAndUpgradeHandoff"},
+      "implemented": true
     },
     {
       "id": "desktop.PreviewProjectRetirement",
@@ -2707,7 +2721,9 @@
       "inputs": ["readmit-project/v1", "readmit-project-quota/v1"],
       "outputs": ["readmit-project-quota/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/maintenance.journey.tsx", "name": "a project is backed up, held to a quota, reindexed, archived, refused a stale delete, deleted and restored through the window"},
+      "parity_test": {"package": "internal/desktop", "name": "TestQuotaMigrationAndUpgradeHandoff"},
+      "implemented": true
     },
     {
       "id": "desktop.StartDurableRun",
@@ -3030,7 +3046,9 @@
       "inputs": ["readmit-project/v1"],
       "outputs": ["readmit-project/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/entitlement.journey.tsx", "name": "a delivered license is verified, installed and activated without hand-written configuration, and once released admits no new work"},
+      "parity_test": {"package": "internal/desktop", "name": "TestUpdateProjectSettingsDeclaresAndApplies"},
+      "implemented": true
     },
     {
       "id": "desktop.RegisterCase",
@@ -6079,7 +6097,9 @@
       "inputs": ["readmit-sharing-policy/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/packets.journey.tsx", "name": "the failing and fixed runs become a sealed packet, a portable review that reopens read-only, and a reviewed support summary"},
+      "parity_test": {"package": "internal/desktop", "name": "TestASavedSharingPolicyReopensAsTheSharedDecoderReadsIt"},
+      "implemented": true
     },
     {
       "id": "desktop.PreviewSupportSummary",
@@ -6125,7 +6145,9 @@
       "inputs": ["readmit-support-summary/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/packets.journey.tsx", "name": "the failing and fixed runs become a sealed packet, a portable review that reopens read-only, and a reviewed support summary"},
+      "parity_test": {"package": "internal/desktop", "name": "TestTheSupportJourneyPreviewsPublishesAndVerifies"},
+      "implemented": true
     },
     {
       "id": "desktop.ReadProtection",
@@ -6265,7 +6287,9 @@
       "inputs": [],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/packets.journey.tsx", "name": "the failing and fixed runs become a sealed packet, a portable review that reopens read-only, and a reviewed support summary"},
+      "parity_test": {"package": "internal/desktop", "name": "TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice"},
+      "implemented": true
     },
     {
       "id": "portal.event.payment.completed",

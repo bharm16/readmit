@@ -701,42 +701,42 @@ export default function App() {
     [openFolder, operate, readProject, root],
   );
 
-  // An import can register the case it wrote into the open project. Leaving
-  // the import panel re-reads that project, so the overview never lists fewer
-  // cases than the project now records.
-  const leaveImport = useCallback(async () => {
-    const project = investigation?.overview?.root;
-    if (project) await readProject(project);
-  }, [investigation, readProject]);
+  // A refused project write — a license that no longer admits it, a change
+  // the project cannot take — answers with its reason and no overview. The
+  // window keeps the project as it last read it beside that refusal, so a
+  // refusal never takes the project and its controls off the screen.
+  const settleProject = useCallback((answer: ProjectOverviewResult) => {
+    setInvestigation((held) => (answer.overview || !held?.overview ? answer : { ...answer, overview: held.overview }));
+  }, []);
 
   const editSettings = useCallback(
     async (change: SettingsChange) => {
       if (!root) return;
       await operate("project", async () => {
-        setInvestigation(await updateProjectSettings(root, change));
+        settleProject(await updateProjectSettings(root, change));
       });
     },
-    [operate, root],
+    [operate, root, settleProject],
   );
 
   const register = useCallback(
     async (name: string, registration: CaseRegistration) => {
       if (!root) return;
       await operate("project", async () => {
-        setInvestigation(await registerCase(root, name, registration));
+        settleProject(await registerCase(root, name, registration));
       });
     },
-    [operate, root],
+    [operate, root, settleProject],
   );
 
   const updateCase = useCallback(
     async (name: string, change: CaseChange) => {
       if (!root) return;
       await operate("project", async () => {
-        setInvestigation(await updateRegisteredCase(root, name, change));
+        settleProject(await updateRegisteredCase(root, name, change));
       });
     },
-    [operate, root],
+    [operate, root, settleProject],
   );
 
   // A search result opens the thing it found, the way the window already
@@ -851,6 +851,16 @@ export default function App() {
       setWorkspace(result);
     }
   }, [root]);
+
+  // An import can register the case it wrote into the open project, and it
+  // writes the case and its receipt as new entries of the open folder.
+  // Leaving the import panel re-reads both, so neither the overview nor any
+  // panel that offers the folder's entries lists less than is now there.
+  const leaveImport = useCallback(async () => {
+    const project = investigation?.overview?.root;
+    if (project) await readProject(project);
+    await refreshListing();
+  }, [investigation, readProject, refreshListing]);
 
   // A diagnosis is bound to the identity the window verified for the open
   // case, and it writes one new report directory, exactly as `readmit
@@ -1114,11 +1124,11 @@ export default function App() {
           name,
           parent,
         });
-        setInvestigation(result);
+        settleProject(result);
         setWorkspace(await openWorkspace(root));
       });
     },
-    [operate, root],
+    [operate, root, settleProject],
   );
 
 
@@ -2045,6 +2055,7 @@ export default function App() {
             entries={opened?.artifacts ?? []}
             drafts={drafts}
             onExecute={handoff}
+            onSaved={() => void refreshListing()}
           />
         ) : null}
         <Report

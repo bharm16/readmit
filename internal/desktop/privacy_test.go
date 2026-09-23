@@ -26,6 +26,7 @@ import (
 	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/replay"
+	"github.com/bharm16/readmit/internal/sharing"
 )
 
 // privacyFixture copies the planted-identifier corpus into one workspace: the
@@ -608,5 +609,43 @@ func TestThePrivacyJourneyMakesNoNameLookupsAndRecordsLoopbackOnly(t *testing.T)
 		if json.Unmarshal(raw, &target) != nil || !strings.HasPrefix(target.Address, "127.0.0.1:") {
 			t.Fatalf("the %s proof target is not a loopback fixture receiver: %s", mode, target.Address)
 		}
+	}
+}
+
+// A saved sharing policy reopens as exactly what the sharing contract's own
+// decoder reads from the bytes on disk — the command line's `share` reads the
+// same document the same way — and an entry that is not one is refused.
+func TestASavedSharingPolicyReopensAsTheSharedDecoderReadsIt(t *testing.T) {
+	app := workspaceApp(t)
+	root := t.TempDir()
+	saved := app.SaveSharingPolicy(desktop.SupportPolicyRequest{
+		Workspace: root, Output: "sharing.json", Support: true,
+		Destinations: []string{"local-file", "customer-hub-download"}, MaxBytes: 2048,
+	})
+	if saved.State != desktop.Completed {
+		t.Fatalf("the sharing policy was not authored: %+v", saved)
+	}
+	data, err := os.ReadFile(filepath.Join(root, "sharing.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := sharing.DecodePolicy(data)
+	if err != nil {
+		t.Fatalf("the saved policy is not one the shared decoder reads: %v", err)
+	}
+	read := app.ReadSharingPolicy(root, "sharing.json")
+	if read.State != desktop.Completed || read.Policy == nil {
+		t.Fatalf("the saved policy did not reopen: %+v", read)
+	}
+	want := desktop.SupportPolicy{Entry: "sharing.json", Schema: decoded.Schema, Support: decoded.Support, Destinations: decoded.Destinations, MaxBytes: decoded.MaxBytes}
+	if got := *read.Policy; got.Entry != want.Entry || got.Schema != want.Schema || got.Support != want.Support ||
+		strings.Join(got.Destinations, ",") != strings.Join(want.Destinations, ",") || got.MaxBytes != want.MaxBytes || got.MaxBytes != 2048 {
+		t.Fatalf("reopened %+v, the shared decoder read %+v", got, want)
+	}
+	if err := os.WriteFile(filepath.Join(root, "other.json"), []byte(`{"schema":"readmit-something-else/v1"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if refused := app.ReadSharingPolicy(root, "other.json"); refused.State != desktop.Failed || refused.Policy != nil {
+		t.Fatalf("an entry that is not a sharing policy was read as one: %+v", refused)
 	}
 }

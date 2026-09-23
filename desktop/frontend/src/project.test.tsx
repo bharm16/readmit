@@ -223,6 +223,30 @@ test("a registration the project refuses reports the refusal and registers nothi
     await within(evidence).findByText("that name is already registered in this project"),
   ).toBeTruthy();
   expect(facade.callsTo("RegisterCase")).toHaveLength(1);
+  // The refusal carries no overview; the project stays on the screen beside it.
+  expect(within(evidence).getByRole("heading", { name: "Scheduling investigation" })).toBeTruthy();
+});
+
+test("a refused settings change keeps the project and its controls on screen beside the refusal", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openPlainWorkspace(user, true);
+  facade.reply({
+    OpenProjectOverview: () => projectOverviewResult([]),
+    UpdateProjectSettings: () => ({ state: "permission_denied" as const, reason: "this device released its entitlement activation" }),
+  });
+  const evidence = within(screen.getByRole("region", { name: "Evidence" }));
+  await user.click(screen.getByRole("button", { name: "Read the project" }));
+  expect(await evidence.findByRole("heading", { name: "Scheduling investigation" })).toBeTruthy();
+  await user.click(evidence.getByRole("button", { name: "Edit settings…" }));
+  await user.clear(evidence.getByLabelText("Title", { selector: "#settings-title" }));
+  await user.type(evidence.getByLabelText("Title", { selector: "#settings-title" }), "Renamed");
+  await user.click(evidence.getByRole("button", { name: "Store these settings" }));
+  expect(await evidence.findByText("this device released its entitlement activation")).toBeTruthy();
+  // The refusal carries no overview; the project the window last read stays,
+  // with the controls that act on it.
+  expect(evidence.getByRole("heading", { name: "Scheduling investigation" })).toBeTruthy();
+  expect(evidence.getByRole("button", { name: "Maintain this workspace…" })).toBeTruthy();
+  expect(facade.callsTo("UpdateProjectSettings")).toHaveLength(1);
 });
 
 test("search results open the artifact they matched, not only its name", async () => {

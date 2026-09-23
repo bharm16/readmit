@@ -5,10 +5,11 @@
 // then shows; nothing here answers a facade call. A step that only one journey
 // takes stays in that journey.
 import { expect } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
 import { byContent, enter, press, region, whenEnabled } from "../testkit/journey";
 import type { Journey } from "../testkit/journey";
+import type { Downstream, DownstreamMode } from "../testkit/downstream.js";
 import { hostLoad } from "./probes.js";
 
 /** Synthetic MLLP-framed booking; every value is synthetic. */
@@ -70,16 +71,51 @@ export async function createProject(user: UserEvent, journey: Journey, parent: s
   await press(user, screen.getByRole("button", { name: "Choose a folder for a new project…" }));
   const evidence = within(region("Evidence"));
   await press(user, await evidence.findByRole("button", { name: "Create a project…" }));
-  await user.type(evidence.getByLabelText("Folder name for the new project"), name);
-  await user.type(evidence.getByLabelText("Title", { selector: "#project-title" }), title);
-  await user.type(evidence.getByLabelText("Interface versions, comma-separated"), "siu-2.5.1-v1");
-  await journey.chooseFolder(journey.path(parent), "Choose a folder for the new project");
-  await press(user, evidence.getByRole("button", { name: "Create the project…" }));
+  await submitProject(user, journey, parent, name, title, true);
   const project = journey.path(parent, name);
   expect(await within(region("Project navigation")).findByText(project, { selector: ".root" })).toBeTruthy();
   // The project overview has drawn, so its controls are the ones a person sees.
   expect(await evidence.findByText(/Nothing is registered yet/)).toBeTruthy();
   return project;
+}
+
+/** Fills in the open new-project form for a project in parent and submits
+ * it. Work the license admits asks for the new project's folder; work it
+ * refuses is refused before any dialog opens. Returns the facade's answer. */
+export async function submitProject(user: UserEvent, journey: Journey, parent: string, name: string, title: string, admitted: boolean) {
+  const evidence = within(region("Evidence"));
+  await enter(user, evidence.getByLabelText("Folder name for the new project"), name);
+  await enter(user, evidence.getByLabelText("Title", { selector: "#project-title" }), title);
+  await enter(user, evidence.getByLabelText("Interface versions, comma-separated"), "siu-2.5.1-v1");
+  if (admitted) await journey.chooseFolder(journey.path(parent), "Choose a folder for the new project");
+  const asked = journey.callsTo("CreateProject").length;
+  await press(user, evidence.getByRole("button", { name: "Create the project…" }));
+  await waitFor(() => expect(journey.callsTo("CreateProject")[asked]?.settled).toBe(true));
+  return journey.callsTo("CreateProject")[asked]?.result as { state: string; reason?: string };
+}
+
+/** A licensed project over the person's own export, with the downstream
+ * system started in the given mode and configured as the project's
+ * environment, and the imported case open with its index built. */
+export async function investigation(user: UserEvent, journey: Journey, mode: DownstreamMode) {
+  journey.writeFile("exports/scheduling-feed.hl7", EXPORTED_BOOKING + EXPORTED_RESCHEDULE);
+  const downstream = await journey.startDownstream("downstream/appointments.csv", mode);
+  await journey.launch();
+  await activateLicense(user, journey);
+  const project = await createProject(user, journey, "investigations", "scheduling-investigation", "Scheduling interface");
+  await importExport(user, journey, "exports/scheduling-feed.hl7", "reschedule-feed", "Reschedule is refused");
+  await configureTarget(user, downstream.address);
+  await buildIndex(user);
+  return { downstream, project };
+}
+
+/** The investigation above with the acknowledgement test saved: the saved
+ * test every later step — a suite, a packet, a backup — starts from. */
+export async function savedAckTest(user: UserEvent, journey: Journey, mode: DownstreamMode) {
+  const investigated = await investigation(user, journey, mode);
+  await beginAckTest(user, "reschedule-acknowledged");
+  await finishAckTest(user, "reschedule-ack-test.json");
+  return investigated;
 }
 
 /** Imports an export of back-to-back messages into the open project as a
@@ -102,7 +138,7 @@ export async function importExport(user: UserEvent, journey: Journey, file: stri
   await press(user, commit.getByRole("button", { name: "Commit import" }));
   expect(await commit.findByText("Import Completed Successfully")).toBeTruthy();
   await press(user, commit.getByRole("button", { name: "Open this case in inspector" }));
-  expect(await within(region("Inspector")).findByText(caseName)).toBeTruthy();
+  expect(await within(region("Inspector")).findByText(caseName, { selector: "dd" })).toBeTruthy();
 }
 
 /** The panel a heading names, such as the environment or durable-run panel
@@ -206,4 +242,21 @@ export async function preflight(user: UserEvent, spec: string, output: string, a
   expect(panel.getByText(byContent(new RegExp(`^Destination: ${output} · fresh$`)))).toBeTruthy();
   expect(panel.getByText(byContent(/^Admission: admitted$/))).toBeTruthy();
   expect(panel.getByText("This is local validation. No message was sent, nothing was reset, and no result exists yet.")).toBeTruthy();
+}
+
+/** Sends and executes once, as preflighted, and returns the run's state. */
+async function execute(user: UserEvent): Promise<string> {
+  const panel = runs();
+  await press(user, panel.getByRole("button", { name: "Send and execute once" }));
+  const line = await panel.findByText(byContent(/^Run: \w+ · Stop reason: \w+$/));
+  return (line.textContent ?? "").replace(/^Run: (\w+) · .*$/, "$1");
+}
+
+/** One run of the saved acknowledgement test as a person makes it: the
+ * operator's reset of the downstream, a preflight into a fresh folder, one
+ * send. Returns the run's state. */
+export async function runOnce(user: UserEvent, downstream: Downstream, output: string): Promise<string> {
+  downstream.reset();
+  await preflight(user, "reschedule-ack-test.json", output, downstream.address);
+  return execute(user);
 }

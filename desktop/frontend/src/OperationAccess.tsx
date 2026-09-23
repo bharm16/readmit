@@ -93,7 +93,7 @@ export function OperationAccess() {
             <dt>Document</dt><dd>{document.id} ({document.version})</dd>
             <dt>Organization</dt><dd>{document.organization}</dd>
             <dt>Plan</dt><dd>{document.plan}</dd>
-            <dt>Term</dt><dd>{document.not_before} to {document.expires}; grace {document.grace_days} days (ends {document.grace_ends}); state {document.state}</dd>
+            <dt>Term</dt><dd>{document.not_before} to {document.expires}; grace {document.grace_days ?? 0} days (ends {document.grace_ends}); state {document.state}</dd>
             <dt>Scope</dt><dd>{document.seats} author seats{document.devices_per_seat ? `, ${document.devices_per_seat} devices each` : ""}; {document.runner_instances} runner instances</dd>
             <dt>Capabilities</dt><dd>{document.capabilities?.join(", ")}</dd>
             <dt>Signed by</dt><dd>{document.key_id} ({document.key_status})</dd>
