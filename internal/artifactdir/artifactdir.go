@@ -5,6 +5,7 @@
 package artifactdir
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -24,6 +25,7 @@ var (
 	ErrCreateDirectory = errors.New("cannot create artifact directory")
 	ErrCreateFile      = errors.New("cannot create artifact file")
 	ErrSyncFile        = errors.New("cannot sync artifact file; incomplete artifact retained")
+	ErrCancelled       = errors.New("artifact write cancelled; any incomplete artifact is retained")
 )
 
 // Layout states the finite filesystem shape a domain reader accepts.
@@ -49,8 +51,20 @@ type WriteOptions struct {
 // path order and synced; identity.sha256 is derived and written last as the
 // completion marker. An interrupted write is deliberately retained incomplete.
 func Write(path string, options WriteOptions, files map[string][]byte) (string, error) {
+	return WriteContext(context.Background(), path, options, files)
+}
+
+// WriteContext is Write for work a person can cancel. A write is one synced
+// file after another, so the cancellation is observed between files: one
+// arriving before the destination exists creates nothing, and one arriving
+// later stops the write with what it wrote retained incomplete, exactly like
+// any other interrupted write. Neither ever writes the completion marker.
+func WriteContext(ctx context.Context, path string, options WriteOptions, files map[string][]byte) (string, error) {
 	if _, exists := files["identity.sha256"]; exists {
 		return "", errors.New("artifact files cannot supply their own completion marker")
+	}
+	if ctx.Err() != nil {
+		return "", ErrCancelled
 	}
 	path, err := artifactpath.Destination(path)
 	if err != nil {
@@ -78,6 +92,9 @@ func Write(path string, options WriteOptions, files map[string][]byte) (string, 
 	}
 	slices.Sort(names)
 	for _, name := range names {
+		if ctx.Err() != nil {
+			return "", ErrCancelled
+		}
 		if err := WriteFile(root, name, files[name]); err != nil {
 			return "", err
 		}

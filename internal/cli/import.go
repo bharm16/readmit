@@ -156,7 +156,7 @@ func importCommand() *cobra.Command {
 			if len(extraction.Inputs) == 0 {
 				return errors.New("the declared containers hold no member to import; --preview reports why each entry was excluded")
 			}
-			b, err := bundle.Write(output, extraction.Inputs, bundle.Provenance{Mode: bundle.Imported, ImportedAt: &importedAt})
+			b, err := bundle.WriteContext(ctx, output, extraction.Inputs, bundle.Provenance{Mode: bundle.Imported, ImportedAt: &importedAt})
 			if err != nil {
 				return err
 			}

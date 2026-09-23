@@ -1,5 +1,21 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Cancellation, interruption and recovery on the merged application surfaces are
+  tested and hardened, and the opt-in facade measurement covers them (#110). A
+  cancellation reaches an operation from the moment it holds the slot, and one
+  that arrives while admission waits answers `cancelled` rather than
+  `permission_denied`. An import stops between synced payload writes instead of
+  after the last one, leaving an incomplete case every reader refuses, no
+  receipt and nothing registered. A source collection stopped part way answers
+  `cancelled`, a cancelled index rebuild keeps the index it was replacing, and
+  the collector's Cancel control now names the operation it stops. Every local
+  shell document is acknowledged only once the directory entry naming it is
+  synced too. Process-kill, file-size-limit and cancellation tests cover import,
+  drafts, collection, rebuild and reopening, which starts no listener, send or
+  background work. The published samples are from a loaded development host and
+  meet no envelope target; UI-path measurement through the shared real-UI
+  harness is separate work.
+
 - Three interaction journeys extend security and accessibility acceptance to
   the real window (#111): keyboard-only operation from dialogs to inspection
   with region navigation, pane resizing and text scaling; hostile markup in

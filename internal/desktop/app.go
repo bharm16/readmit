@@ -333,34 +333,38 @@ func (a *App) claim() (func(), bool) {
 		return nil, false
 	}
 	a.running = true
-	return func() {
-		a.mu.Lock()
-		defer a.mu.Unlock()
-		if a.cancel != nil {
-			a.cancel()
-			a.cancel = nil
-		}
-		a.running = false
-		a.operation = ""
-		a.runOutput = ""
-	}, true
+	return a.release, true
+}
+
+// release frees the slot and cancels whatever the operation that held it
+// started, so nothing it began outlives it.
+func (a *App) release() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.cancel != nil {
+		a.cancel()
+		a.cancel = nil
+	}
+	a.running = false
+	a.operation = ""
+	a.runOutput = ""
 }
 
 // begin claims the slot for work Cancel can interrupt. operation names the
 // work the way its own panel does, so a cancel action can name what it is
 // cancelling; an empty name leaves the operation unnamed, cancellable only by
-// the window's own cancel command.
+// the window's own cancel command. The slot, the name and the cancellation are
+// taken together: an operation is never observable as running — busy to
+// another caller — while a cancellation of it would still do nothing.
 func (a *App) begin(operation string) (context.Context, func(), bool) {
-	release, claimed := a.claim()
-	if !claimed {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.running {
 		return nil, nil, false
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	a.mu.Lock()
-	a.cancel = cancel
-	a.operation = operation
-	a.mu.Unlock()
-	return ctx, release, true
+	a.running, a.cancel, a.operation = true, cancel, operation
+	return ctx, a.release, true
 }
 
 // SelectWorkspace asks the host for a folder and opens it as a workspace.

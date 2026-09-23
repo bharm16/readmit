@@ -667,6 +667,40 @@ func TestBuildIndexSuccessAndRebuild(t *testing.T) {
 	}
 }
 
+// A person who starts rebuilding an index and cancels has changed their mind,
+// not asked to lose the index the grid was reading. The index being replaced is
+// removed only once its replacement is built, so a cancelled rebuild leaves it
+// byte for byte, and the grid still opens through it.
+func TestCancellingAReplacingRebuildKeepsTheIndexItReplaces(t *testing.T) {
+	root := t.TempDir()
+	app := workspaceApp(t)
+	// Enough occurrences that the rebuild is still verifying and building
+	// when a cancellation that follows the busy answer arrives.
+	opened := writeCase(t, root, "incident", strings.Repeat(framed(gridBooking), 500))
+	name := writeIndex(t, root, "incident.index.json", opened, nil)
+	before, err := os.ReadFile(filepath.Join(root, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rebuild := desktop.BuildIndexRequest{Workspace: root, Case: "incident", Output: name,
+		Fields: []string{patientField}, Retention: "states", RetainUntil: "indefinite", Replace: true}
+	answered, holding := startHolding(t, app, root, bareState, func() desktop.State { return app.BuildIndex(rebuild).State })
+	if !holding {
+		t.Fatalf("the rebuild answered %s before it could be cancelled", <-answered)
+	}
+	app.Cancel("")
+	if state := <-answered; state != desktop.Cancelled {
+		t.Fatalf("a cancelled rebuild answered %s", state)
+	}
+	after, err := os.ReadFile(filepath.Join(root, name))
+	if err != nil || string(after) != string(before) {
+		t.Fatalf("a cancelled rebuild did not leave the index it was replacing: %v", err)
+	}
+	if got := app.OpenGrid(root, "incident", name, 0, 10); got.State != desktop.Completed {
+		t.Fatalf("the grid no longer opens after a cancelled rebuild: %+v", got)
+	}
+}
+
 func TestBuildIndexValidationAndNegativePaths(t *testing.T) {
 	root := t.TempDir()
 	app := workspaceApp(t)

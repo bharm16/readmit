@@ -4,8 +4,10 @@ import (
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/testlicense"
+	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestUnactivatedDesktopRetainsSampleReadsButRefusesAuthoring(t *testing.T) {
@@ -69,5 +71,59 @@ func TestCorrelationWritesRequireActivationButSequenceReadsDoNot(t *testing.T) {
 	}
 	if got := app.OpenSequence(desktop.SequenceRequest{}); got.State == desktop.PermissionDenied {
 		t.Fatal("sequence analysis gated", got)
+	}
+}
+
+// Admission is the first thing a sending, listening, collecting or writing
+// operation does, and it can wait: it retries while another update of the
+// operation clock is retained. A cancellation that arrives while it waits is
+// the person's cancellation, not a refused license, so it answers cancelled —
+// never permission denied — without waiting for admission to give up, which
+// takes about a second of retries, and nothing was admitted to be settled.
+func TestACancellationDuringExecutionAdmissionIsCancelledNotDenied(t *testing.T) {
+	state := t.TempDir()
+	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"))
+	policy := testlicense.New(t)
+	if result := app.SelectOperationPolicy(policy); result.State != desktop.Completed {
+		t.Fatal(result)
+	}
+	// A retained clock update keeps admission retrying rather than deciding.
+	retained := filepath.Join(filepath.Dir(policy), "clock.json.incomplete")
+	if err := os.WriteFile(retained, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	for _, operation := range []struct {
+		name  string
+		start func() desktop.State
+	}{
+		{"", func() desktop.State { return app.DiagnoseSource(desktop.SourceWorkRequest{Workspace: root}).State }},
+		{"collect", func() desktop.State { return app.CollectSource(desktop.SourceWorkRequest{Workspace: root}).State }},
+		{"capture", func() desktop.State { return app.StartCapture(desktop.CaptureRequest{Workspace: root}).State }},
+		{"durable-run", func() desktop.State { return app.StartDurableRun(desktop.DurableRunRequest{Workspace: root}).State }},
+		{"durable-run", func() desktop.State { return app.StartSuiteRun(desktop.SuiteRunRequest{Workspace: root}).State }},
+		{"reduction", func() desktop.State { return app.StartReduction(desktop.ReductionRequest{Workspace: root}).State }},
+		{"import", func() desktop.State { return app.CommitImport(desktop.ImportCommitRequest{Workspace: root}).State }},
+		{"", func() desktop.State { return app.BuildIndex(desktop.BuildIndexRequest{Workspace: root}).State }},
+	} {
+		answered, holding := startHolding(t, app, root, bareState, operation.start)
+		if !holding {
+			t.Fatalf("%q answered %s before it could be cancelled", operation.name, <-answered)
+		}
+		requested := time.Now()
+		app.Cancel(operation.name)
+		if state := <-answered; state != desktop.Cancelled {
+			t.Errorf("cancelling %q while its admission waited answered %s", operation.name, state)
+		}
+		if waited := time.Since(requested); waited > 500*time.Millisecond {
+			t.Errorf("cancelling %q waited %s for admission to give up", operation.name, waited)
+		}
+	}
+	// Once the retained update is resolved, admission decides again.
+	if err := os.Remove(retained); err != nil {
+		t.Fatal(err)
+	}
+	if result := app.DiagnoseSource(desktop.SourceWorkRequest{Workspace: root}); result.State == desktop.PermissionDenied || result.State == desktop.Cancelled {
+		t.Fatalf("admission did not decide once the retained update was gone: %+v", result)
 	}
 }

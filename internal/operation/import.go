@@ -64,7 +64,7 @@ func ImportPlanCommit(ctx context.Context, plan importer.Plan, files, folders, a
 	if len(extraction.Inputs) == 0 {
 		return nil, importer.Receipt{}, ErrImportNoMembers
 	}
-	b, err := bundle.Write(outputDir, extraction.Inputs, bundle.Provenance{Mode: bundle.Imported, ImportedAt: &importedAt})
+	b, err := bundle.WriteContext(ctx, outputDir, extraction.Inputs, bundle.Provenance{Mode: bundle.Imported, ImportedAt: &importedAt})
 	if err != nil {
 		return nil, importer.Receipt{}, err
 	}
@@ -115,7 +115,7 @@ func ImportRecipeCommit(ctx context.Context, recipe importer.Recipe, files, fold
 	if len(extraction.Inputs) == 0 {
 		return nil, importer.MappingReceipt{}, ErrImportNoMembers
 	}
-	b, err := bundle.Write(outputDir, extraction.Inputs, bundle.Provenance{Mode: bundle.Imported, ImportedAt: &importedAt})
+	b, err := bundle.WriteContext(ctx, outputDir, extraction.Inputs, bundle.Provenance{Mode: bundle.Imported, ImportedAt: &importedAt})
 	if err != nil {
 		return nil, importer.MappingReceipt{}, err
 	}

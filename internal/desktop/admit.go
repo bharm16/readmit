@@ -49,11 +49,24 @@ func runNamed[R any, PR interface {
 	}
 	defer release()
 	if writes {
-		if err := a.admitAuthor(); err != nil {
+		if err := a.admitAuthorContext(ctx); err != nil {
+			declined := admissionRefusal(ctx, err)
 			var denied R
-			PR(&denied).refuse(PermissionDenied, err.Error())
+			PR(&denied).refuse(declined.state, declined.reason)
 			return denied
 		}
 	}
 	return work(ctx)
+}
+
+// admissionRefusal is how an operation answers when author or execution
+// admission did not admit it. Admission can wait — it retries while another
+// update of the operation clock is retained — and a cancellation that arrives
+// meanwhile is the person's cancellation: nothing was refused, so it never
+// reads as a denied license.
+func admissionRefusal(ctx context.Context, err error) refusal {
+	if ctx.Err() != nil {
+		return cancelledRefusal
+	}
+	return refusal{PermissionDenied, err.Error()}
 }

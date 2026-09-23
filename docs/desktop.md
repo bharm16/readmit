@@ -365,6 +365,26 @@ while an interruptible operation runs; `Escape` reaches the same operation
 whenever the palette is not open, and cancelling when nothing is running does
 nothing.
 
+A cancellation reaches an interruptible operation from the moment it holds the
+slot: the slot, the operation's name and its cancellation are taken together, so
+an operation another request already finds `busy` is never one a cancellation
+would miss. Authoring, sending, listening and collecting are admitted first, and
+admission can wait while an update of the operation clock is retained; a
+cancellation that arrives meanwhile answers `cancelled` without waiting for
+admission to give up, never `permission_denied`, because nothing was refused. A
+source collection stopped part way answers `cancelled`, as its receipt records
+it, rather than `failed`. `CommitImport` and `FinalizeCaptureImport` are
+cancellable while they write the case, which is an import's longest step — one
+synced file per occurrence — between one payload and the next: the case is
+retained incomplete, every reader refuses it, no receipt claims it and the
+project registers nothing, and importing again needs a new destination. Reading
+one declared container, dividing one member, and building the case in memory
+before its first file is written each run to completion once started, bounded by
+the import limits. `BuildIndex` removes the index it replaces only once the
+replacement is built, so a cancelled or refused rebuild leaves the index the
+grid was reading in place; a write that fails after that leaves no index, which
+is built again from the unchanged case.
+
 ## Workspaces and artifacts
 
 A workspace is a folder. Opening it lists each immediate entry with the contract
@@ -1314,7 +1334,12 @@ errors. There is no migration and no repair. A document this release cannot read
 is reported and left exactly as written: retaining into it is refused rather
 than replacing it, and the rest of the window keeps working. It is replaced
 atomically, so a reader never observes a partial session, and an interrupted
-write retained beside it is reported rather than reused.
+write retained beside it is reported rather than reused. A retention is
+acknowledged only once the new document and the directory entry naming it are
+both synced, so an acknowledged edit is one a killed process does not take
+back, nor a power loss on storage that honours a sync; an edit whose retention
+had not been acknowledged when the process died comes back whole or not at all,
+never torn and never older than one that was acknowledged.
 
 A retention the facade refused is never shown as kept: every editor says
 whether its last retention is in flight, retained, refused — with a retry, an
@@ -2516,10 +2541,15 @@ current bounded authority; there is no arbitrary command console.
 | `OpenCaptureJournal` | Read-only recovery of a `readmit-capture-journal/v1`; never sends, resends or resumes. |
 | `FinalizeCaptureImport` | Imports staged collected material into a new verified case and offers exploration. |
 
-Start only after preview. Cancel stops through the shared engine. Reopening a
-project never restarts a listener and never fabricates complete capture after a
-crash. On completion the panel offers opening the case, setting up an index, and
-binding the retained case into Observation setup through `BindCaptureObservation`.
+Start only after preview. Cancel stops through the shared engine. A collector
+and the fixture receiver both run under the `capture` operation name, which is
+the name their Cancel controls send; source collection is a separate operation
+named `collect`, and a cancellation naming one never reaches the other. Stopping
+a collector is its controlled stop, so it answers with the case it sealed.
+Reopening a project never restarts a listener and never fabricates complete
+capture after a crash. On completion the panel offers opening the case, setting
+up an index, and binding the retained case into Observation setup through
+`BindCaptureObservation`.
 
 See [source](source.md), [collect](collect.md) and [listen](listen.md).
 

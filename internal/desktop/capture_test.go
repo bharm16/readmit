@@ -1,9 +1,11 @@
 package desktop_test
 
 import (
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -76,6 +78,59 @@ func TestDiagnoseAndCollectSourceThroughFacade(t *testing.T) {
 	})
 	if collected.State != desktop.Completed || collected.Collection == nil || collected.Collection.Collected != 1 {
 		t.Fatalf("collect: %+v", collected)
+	}
+}
+
+// A collection a person cancels part way through is a cancellation, the way
+// its own receipt records it: not a failure of the source, and never a
+// complete collection. What it staged stays staged, and the receipt accounts
+// for every entry it never reached.
+func TestCancellingACollectionPartWayIsCancelledNotFailed(t *testing.T) {
+	app := workspaceApp(t)
+	root := t.TempDir()
+	export := filepath.Join(root, "export")
+	if err := os.Mkdir(export, 0700); err != nil {
+		t.Fatal(err)
+	}
+	const entries = 200
+	payload := []byte("MSH|^~\\&|SEND|FAC|RECV|FAC|20260101120000||ADT^A01|MSG001|P|2.5.1\rPID|||1||DOE^JOHN\r")
+	for i := range entries {
+		// Distinct bytes, so no entry is recorded as a duplicate of another.
+		if err := os.WriteFile(filepath.Join(export, fmt.Sprintf("%04d.hl7", i)), append(payload, fmt.Sprintf("NTE|%d\r", i)...), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	source := evidencesource.Source{
+		Schema: evidencesource.Schema, Name: "exports", Kind: evidencesource.Directory,
+		Scope: "appointments", Root: export,
+		Quota: evidencesource.Quota{MaxEntries: entries, MaxEntryBytes: 1 << 20, MaxTotalBytes: 8 << 20},
+		Retry: evidencesource.Retry{Attempts: 1, Backoff: "1ms"},
+	}
+	if saved := app.SaveSourceRegistration(desktop.SourceRegistrationRequest{Workspace: root, SourceFile: "source.json", Source: source}); saved.State != desktop.Completed {
+		t.Fatalf("save: %+v", saved)
+	}
+	plan := importer.Plan{Schema: importer.PlanSchema, Framing: importer.RawFraming, Terminator: hl7.CR,
+		Encoding: importer.UTF8, Direction: bundle.Inbound, Members: []string{".hl7"}}
+
+	answered := make(chan desktop.SourceCollectionResult, 1)
+	go func() {
+		answered <- app.CollectSource(desktop.SourceWorkRequest{Workspace: root, SourceFile: "source.json", Plan: &plan,
+			OutputName: "staged", ReceiptName: "receipt.json"})
+	}()
+	// Cancel only once entries are being staged, so the collector is inside
+	// its loop over the source rather than still being admitted.
+	awaitEntries(t, filepath.Join(root, "staged"), 2, answered)
+	app.Cancel("collect")
+	result := <-answered
+	if result.State != desktop.Cancelled || result.Collection == nil || result.Collection.Status != string(observewindow.Cancelled) {
+		t.Fatalf("a collection cancelled part way answered %+v", result)
+	}
+	if result.Collection.Collected == 0 || result.Collection.Collected >= entries || result.Collection.Collected+result.Collection.Unreadable != entries {
+		t.Fatalf("the cancelled collection did not account for every entry: %+v", result.Collection)
+	}
+	receipt, err := os.ReadFile(filepath.Join(root, "receipt.json"))
+	if err != nil || !strings.Contains(string(receipt), `"status":"cancelled"`) {
+		t.Fatalf("the receipt does not record the cancellation: %v", err)
 	}
 }
 
@@ -190,6 +245,68 @@ func TestStartCaptureBusyAndCancel(t *testing.T) {
 	session := <-done
 	if session.State != desktop.Cancelled && session.State != desktop.Completed {
 		t.Fatalf("cancel session: %+v", session)
+	}
+}
+
+// A collector and a fixture listener are both started by StartCapture, so both
+// run under the capture name, and that is the name that stops a collector.
+// Approved source collection is a different operation with its own name, and a
+// cancellation naming it must not reach a listening collector: a panel's cancel
+// control that names the wrong operation stops nothing. Stopping a collector is
+// its controlled stop, so it answers with the case it sealed, not a failure.
+func TestACollectorIsCancelledByTheCaptureNameAndNotByCollection(t *testing.T) {
+	app := workspaceApp(t)
+	root := t.TempDir()
+	policy, err := collection.DecodePolicy([]byte(facadeAnyPolicy))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res := app.SaveReceiverPolicy(desktop.ReceiverPolicyRequest{Workspace: root, PolicyFile: "policy.json", Policy: policy}); res.State != desktop.Completed {
+		t.Fatalf("save: %+v", res)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := listener.Addr().String()
+	listener.Close()
+
+	answered, holding := startHolding(t, app, root, func(r desktop.CaptureSessionResult) desktop.State { return r.State }, func() desktop.CaptureSessionResult {
+		return app.StartCapture(desktop.CaptureRequest{Workspace: root, Kind: "collect", Address: addr,
+			PolicyFile: "policy.json", OutputName: "case", MaxMessages: 0, IdleTimeout: "1m"})
+	})
+	if !holding {
+		t.Fatalf("the collector answered before it was listening: %+v", <-answered)
+	}
+	listening := func() bool {
+		conn, err := net.DialTimeout("tcp", addr, time.Second)
+		if err == nil {
+			conn.Close()
+		}
+		return err == nil
+	}
+	for deadline := time.Now().Add(10 * time.Second); !listening(); time.Sleep(5 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the collector never listened")
+		}
+	}
+	// After a cancellation naming source collection, the collector is still
+	// the one holding the slot and still accepts a connection.
+	app.Cancel("collect")
+	if !listening() {
+		t.Fatal("a cancellation naming source collection stopped the collector")
+	}
+	if app.Search(root, "").State != desktop.Busy {
+		t.Fatal("a cancellation naming source collection released the collector's slot")
+	}
+	app.Cancel("capture")
+	select {
+	case result := <-answered:
+		if result.State != desktop.Completed && result.State != desktop.Cancelled || result.Phase != desktop.CaptureStopped {
+			t.Fatalf("a stopped collector answered %+v", result)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("cancelling the collector by its own name did not stop it")
 	}
 }
 

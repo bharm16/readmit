@@ -3,8 +3,10 @@ package desktop_test
 import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -39,6 +41,20 @@ func editorDraft(kind, contentSchema, content string) desktop.EditorDraft {
 		ContentSchema: contentSchema,
 		Content:       jsontext.Value(content),
 	}
+}
+
+// revisionBody is the unstored text of one edit of a note, as noteRevision
+// writes it. Its length changes with every revision, so a document torn
+// between two replacements cannot parse as any single one of them.
+var revisionBody = regexp.MustCompile(`^revision ([0-9]{6}) (x*)$`)
+
+func noteRevision(revision int) string {
+	body := fmt.Sprintf("revision %06d %s", revision, strings.Repeat("x", revision%512))
+	encoded, err := json.Marshal(desktop.NoteDraft{Schema: desktop.NoteDraftSchema, Body: body})
+	if err != nil {
+		panic(err)
+	}
+	return string(encoded)
 }
 
 const unfinishedNote = `{"schema":"readmit-note-draft/v1","name":"","subject":"","title":"","body":"still writing this"}`
