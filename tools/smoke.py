@@ -110,14 +110,29 @@ def check_build_info(archives):
     print(f"PASS: {len(archives)} archived compiler versions match {expected}")
 
 
+def work_root(target_os):
+    """Return where the smoke works on this runner, or None for the system default.
+
+    The commands smoked here sync each artifact file they write. A hosted
+    Windows runner keeps %TEMP% on its OS disk, where syncs measured a median
+    of 4 to 7 ms and stalled for up to 0.6 s, and RUNNER_TEMP on its temporary
+    disk, where they measured 0.1 to 0.3 ms and never more than 5 ms.
+    """
+    return (os.environ.get("RUNNER_TEMP") or None) if target_os == "windows" else None
+
+
 def smoke(archive, target_os, release_tag=None):
-    with tempfile.TemporaryDirectory(prefix="readmit-smoke-") as directory:
+    root = work_root(target_os)
+    with tempfile.TemporaryDirectory(prefix="readmit-smoke-", dir=root) as directory:
         work = Path(directory)
         name = "readmit.exe" if target_os == "windows" else "readmit"
         binary = work / name
         binary.write_bytes(member_bytes(archive, name))
         binary.chmod(0o755)
         environment = dict(os.environ, PATH="")
+        if root:
+            # The executable's own scratch, such as report's, follows TMP and TEMP.
+            environment.update(TMP=directory, TEMP=directory)
         operation = activate(binary, work, environment)
 
         def run(*arguments, success=True):

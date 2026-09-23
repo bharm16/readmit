@@ -10,6 +10,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 
 
@@ -108,6 +109,21 @@ class ArchiveTests(unittest.TestCase):
                     self.assertNotEqual(rejected.returncode, 0)
                     self.assertIn("Missing distribution members", rejected.stderr)
                     self.assertIn(missing, rejected.stderr)
+
+
+class WorkRootTests(unittest.TestCase):
+    def test_only_windows_moves_to_runner_temp(self):
+        from smoke import work_root
+        with patch.dict(os.environ, {"RUNNER_TEMP": "runner-temp"}):
+            self.assertEqual(work_root("windows"), "runner-temp")
+            for target_os in ("linux", "darwin"):
+                with self.subTest(target_os=target_os):
+                    self.assertIsNone(work_root(target_os))
+        with patch.dict(os.environ, {"RUNNER_TEMP": ""}):
+            self.assertIsNone(work_root("windows"))
+        with patch.dict(os.environ):
+            os.environ.pop("RUNNER_TEMP", None)
+            self.assertIsNone(work_root("windows"))
 
 
 if __name__ == "__main__":
