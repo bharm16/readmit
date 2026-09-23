@@ -1,5 +1,27 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Two interaction journeys now drive the desktop window against the real
+  application rather than stubbed answers (#109). A journey harness mounts the
+  production window in a test window and drives it with real keyboard and
+  pointer events, while every call reaches the real desktop facade over real
+  files through a test-only bridge that carries it the way the native shell
+  does, except that a call the shell would never answer fails the journey; the
+  host's dialogs are answered as a person answers them, and closing the window
+  ends the process so a reopen reads only what is on disk. The guided sample
+  runs end to end — authored, failing on the defect, passing once corrected,
+  and reopened with both verdicts — and so does the start of an investigation
+  over a person's own export: activation, a new project, import with the
+  export's own framing, registration, a declared-retention index, search, the
+  original bytes, and a reopen; the command line reads what the window wrote
+  and must agree. Every pull request and every push to main runs them, and a
+  failing journey fails the desktop check. They found and fixed three defects
+  the stubbed tests could not: a project created in a subfolder left the
+  window on the folder around it, an import that registered a case left the
+  project overview empty, and a navigation read that met another read holding
+  the facade's one operation slot was answered busy, which could drop "Reopen
+  where you were" or leave a reopened case without its grid. These journeys
+  are not installed-package acceptance.
+
 - The desktop shell connects the entry experience to the real application
   surfaces and states the privacy status per operation (#266). The window's
   first run presents its two actual beginnings as clear choices — a real

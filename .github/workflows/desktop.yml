@@ -32,7 +32,9 @@ jobs:
     # a display, so it is not executed here; the behaviour behind it is covered
     # on both sides of the facade: internal/desktop by the release module's
     # race-enabled suite, and the frontend by the Vitest behavior tests that
-    # drive the components against the typed boundary below.
+    # drive the components against the typed boundary below, and by the
+    # interaction journeys that drive the production window against the real
+    # facade across that boundary.
     runs-on: macos-15
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -61,12 +63,26 @@ jobs:
         run: |
           set -o pipefail
           npm test -- --reporter=verbose 2>&1 | tee vitest-output.txt
+      # The interaction journeys drive the production window with real user
+      # events against the real internal/desktop facade over real files, with
+      # no stubbed answer: the journeybridge and the command line are built
+      # here from this checkout, and a failing journey fails this job and the
+      # desktop aggregate. It runs even when a component test failed, so both
+      # outputs are published together.
+      - name: Run the interaction journeys against the real facade
+        if: success() || failure()
+        working-directory: desktop/frontend
+        run: |
+          set -o pipefail
+          npm run test:journeys -- --reporter=verbose 2>&1 | tee journeys-output.txt
       - name: Publish the frontend test output beside the build output
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: desktop-frontend-test-output
-          path: desktop/frontend/vitest-output.txt
+          path: |
+            desktop/frontend/vitest-output.txt
+            desktop/frontend/journeys-output.txt
           if-no-files-found: error
       - name: Build the desktop shell against the platform webview
         working-directory: desktop

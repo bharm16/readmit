@@ -863,6 +863,33 @@ async function guard<T extends { state: State; reason?: string }>(
   }
 }
 
+/** A read the window's navigation depends on: opening a case, its index and
+ * its grid, the guided sample and the project a folder holds, and the session
+ * to restore. The facade runs one operation at a time and answers a call that
+ * arrives while another holds the slot busy, having read nothing. The window
+ * issues its own reads as panels open — each on its own, as Wails dispatches
+ * them — so a navigation read can meet one. A read changes nothing, so a busy
+ * answer is asked again, a bounded number of times, and is reported busy only
+ * when the slot stays held. A write is never asked again: its busy answer is
+ * the refusal a second click gets. */
+async function retryingRead<T extends { state: State; reason?: string }>(
+  call: () => Promise<T>,
+  fallback: T,
+): Promise<T> {
+  let result = await guard(call, fallback);
+  for (let attempt = 1; result.state === "busy" && attempt < READ_ATTEMPTS; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, READ_RETRY_MS));
+    result = await guard(call, fallback);
+  }
+  return result;
+}
+
+/** How often, and how many times in all, a busy navigation read is asked:
+ * for about a second, long enough for another short read to release the slot
+ * and bounded so a long operation still reports busy. */
+const READ_ATTEMPTS = 20;
+const READ_RETRY_MS = 50;
+
 /** Cancels the named operation. A cancel that names a different operation
  * does nothing, so one panel's cancel control can never stop another panel's
  * work; an empty name cancels whatever is running and is what the window's own
@@ -882,7 +909,7 @@ export function createSampleWorkspace(): Promise<WorkspaceResult> {
 }
 
 export function openCase(workspace: string, name: string): Promise<CaseResult> {
-  return guard(() => facade().OpenCase(workspace, name), { state: "failed" });
+  return retryingRead(() => facade().OpenCase(workspace, name), { state: "failed" });
 }
 
 export function openProject(path: string): Promise<ProjectResult> {
@@ -1122,7 +1149,7 @@ export function prepareStagedUpgrade(request: UpgradePrepareRequest): Promise<Up
 }
 
 export function openProjectOverview(path: string): Promise<ProjectOverviewResult> {
-  return guard(() => facade().OpenProjectOverview(path), { state: "failed" });
+  return retryingRead(() => facade().OpenProjectOverview(path), { state: "failed" });
 }
 
 /** Creating a project asks the host for its folder, then writes the same
@@ -1195,7 +1222,7 @@ export function openGrid(
   offset: number,
   limit: number,
 ): Promise<GridResult> {
-  return guard(() => facade().OpenGrid(workspace, name, indexName, offset, limit), {
+  return retryingRead(() => facade().OpenGrid(workspace, name, indexName, offset, limit), {
     state: "failed",
   });
 }
@@ -1211,7 +1238,7 @@ export function describeIndex(
   caseName: string,
   indexName: string = "",
 ): Promise<IndexResult> {
-  return guard(() => facade().DescribeIndex(workspace, caseName, indexName), { state: "failed" });
+  return retryingRead(() => facade().DescribeIndex(workspace, caseName, indexName), { state: "failed" });
 }
 
 /** Stores one named filter and selects it. */
@@ -1765,7 +1792,7 @@ export interface RecoveryResult {
 /** Restores the retained session and reports the state of the run it was
  * watching. Recovery only reads: it never resumes, restarts or resends. */
 export function recoverSession(): Promise<RecoveryResult> {
-  return guard(() => facade().RecoverSession(), { state: "failed" });
+  return retryingRead(() => facade().RecoverSession(), { state: "failed" });
 }
 
 /** Retains where this viewer is, so an interruption does not also lose it. */
@@ -2783,7 +2810,7 @@ export interface PracticeResult {
 /** Reports the guided sample over the open workspace: the steps, what the folder
  * shows about each, and the step to perform next. It reads and writes nothing. */
 export function guide(workspace: string): Promise<GuideResult> {
-  return guard(() => facade().Guide(workspace), { state: "failed" });
+  return retryingRead(() => facade().Guide(workspace), { state: "failed" });
 }
 
 /** Executes a saved regression test against the built-in practice receiver and

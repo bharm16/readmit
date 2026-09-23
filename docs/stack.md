@@ -34,7 +34,7 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
 
 ## Desktop application
 
-- [Wails 2](https://wails.io) renders a React and TypeScript interface in the platform webview. It is the only direct third-party dependency of the `desktop` module. Vite builds the interface, which is embedded in the executable; nothing is fetched at run time. Vitest drives the interface's behavior tests against the typed facade boundary; those dependencies are development-only and are never part of any built application.
+- [Wails 2](https://wails.io) renders a React and TypeScript interface in the platform webview. It is the only direct third-party dependency of the `desktop` module. Vite builds the interface, which is embedded in the executable; nothing is fetched at run time. Vitest drives the interface's behavior tests against the typed facade boundary, and its interaction journeys against the real facade through `desktop/journeybridge`, a test program in the desktop module that carries each call with Wails' call semantics (rejecting, rather than never answering, a call Wails would leave unanswered) and adds no dependency; those dependencies are development-only and are never part of any built application.
 - `internal/desktop` is the typed Go facade. Desktop operations return typed results with one explicit state each. The interface never parses command output and never reimplements HL7 or case bundle semantics. See [the desktop contract](desktop.md).
 - The desktop build needs cgo and a platform webview and has its own workflow. It never applies `CGO_ENABLED=0`, never changes the command-line build, and is not in the release archives.
 - The window's one write of evidence into a workspace is a reproducer: the occurrences a

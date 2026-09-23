@@ -695,6 +695,70 @@ test("reopening where you were is an explicit act that reopens and re-verifies",
   expect(facade.callsTo("StartDurableRun")).toHaveLength(0);
 });
 
+test("a recovery that arrives while another opening read holds the slot is asked again, not dropped", async () => {
+  // The window's opening reads each claim the facade's one operation slot and
+  // run concurrently, so the recovery can be answered busy. Busy means "not
+  // now", never "nothing was retained".
+  let asked = 0;
+  const { facade } = await renderApp({
+    RecoverSession: () => {
+      asked += 1;
+      return asked <= 3
+        ? { state: "busy" as const, reason: "another operation is running" }
+        : recoveryResult({
+            schema: "readmit-desktop-session/v1",
+            view: { workspace: WORKSPACE_ROOT, region: "evidence", case: CASE_ENTRY, run: "" },
+            drafts: [],
+          });
+    },
+  });
+  expect(await screen.findByRole("button", { name: "Reopen where you were" })).toBeTruthy();
+  expect(facade.callsTo("RecoverSession").length).toBeGreaterThan(3);
+  // Asking again reads; nothing was reopened or resumed on the viewer's behalf.
+  expect(facade.callsTo("OpenWorkspace")).toHaveLength(0);
+  expect(facade.callsTo("StartDurableRun")).toHaveLength(0);
+});
+
+test("a navigation read that meets a held slot is asked again, and a write refused busy is not", async () => {
+  const user = userEvent.setup();
+  let verifications = 0;
+  const { facade } = await renderApp({
+    SelectWorkspace: () => folderWithCase(),
+    OpenCase: () => {
+      verifications += 1;
+      return verifications === 1
+        ? { state: "busy" as const, reason: "another operation is running" }
+        : caseResult();
+    },
+  });
+  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(await screen.findByRole("button", { name: "Verify and open" }));
+  // Verifying reads; the busy answer read nothing, so it was asked again.
+  expect(await screen.findByText(CASE_IDENTITY)).toBeTruthy();
+  expect(facade.callsTo("OpenCase")).toHaveLength(2);
+  // Creating the sample writes: its busy answer is the refusal, asked once.
+  facade.reply({ CreateSampleWorkspace: () => ({ state: "busy" as const, reason: "another operation is running" }) });
+  const commands = within(screen.getByRole("region", { name: "Commands" }));
+  await user.click(commands.getByRole("button", { name: "Create the sample workspace…" }));
+  expect(await screen.findByText("another operation is running")).toBeTruthy();
+  expect(facade.callsTo("CreateSampleWorkspace")).toHaveLength(1);
+});
+
+test("a navigation read whose slot stays held is reported busy after a bounded number of asks", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    SelectWorkspace: () => folderWithCase(),
+    OpenCase: () => ({ state: "busy" as const, reason: "another operation is running" }),
+  });
+  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(await screen.findByRole("button", { name: "Verify and open" }));
+  // Busy is reported once the asks run out — never a verified case, and never
+  // an endless wait.
+  expect(await screen.findByText("another operation is running", {}, { timeout: 4000 })).toBeTruthy();
+  expect(facade.callsTo("OpenCase")).toHaveLength(20);
+  expect(screen.queryByText(CASE_IDENTITY)).toBeNull();
+});
+
 test("an editor draft another panel offers back can be discarded by hand", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp({

@@ -16,5 +16,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src", "vite.config.ts", "vitest.config.ts", "vitest.setup.ts"]
+  "include": ["src", "vite.config.ts", "vitest.config.ts", "vitest.journeys.config.ts", "vitest.setup.ts"]
 }

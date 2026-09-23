@@ -478,6 +478,7 @@ export default function App() {
   const openFolder = useCallback(
     async (operation: () => Promise<WorkspaceResult>) => {
       setOpenNotice(null);
+      let opened = false;
       await operate("workspace", async () => {
         const result = await operation();
         if (result.workspace) {
@@ -485,6 +486,7 @@ export default function App() {
           setSelected(null);
           setWorkspace(result);
           setPracticeResult(null);
+          opened = true;
           await refreshGuide(result.workspace.root);
         } else {
           setOpenNotice(result);
@@ -492,6 +494,7 @@ export default function App() {
       });
       await refreshRecent();
       focusRegion("navigation");
+      return opened;
     },
     [clearWorkspace, focusRegion, operate, refreshGuide, refreshRecent],
   );
@@ -669,15 +672,38 @@ export default function App() {
     [focusRegion, operate],
   );
 
+  // A new project is a new folder inside the one chosen for it. The window
+  // moves into that folder, as opening it would, so every later project
+  // action — registering a case, importing evidence, opening what was
+  // imported — reads and writes the project just created rather than the
+  // folder around it; what was open in the folder it leaves is closed. If the
+  // new folder cannot be opened, its refusal is shown and no project stays
+  // open over the wrong folder.
   const startProject = useCallback(
     async (name: string, title: string, owner: string, versions: string[]) => {
+      let created = "";
       await operate("project", async () => {
         const result = await createProject(name, title, owner, versions);
         setInvestigation(result);
+        if (result.overview) created = result.overview.root;
       });
+      if (created === "" || created === root) return;
+      if (await openFolder(() => openWorkspace(created))) {
+        await readProject(created);
+      } else {
+        setInvestigation(null);
+      }
     },
-    [operate],
+    [openFolder, operate, readProject, root],
   );
+
+  // An import can register the case it wrote into the open project. Leaving
+  // the import panel re-reads that project, so the overview never lists fewer
+  // cases than the project now records.
+  const leaveImport = useCallback(async () => {
+    const project = investigation?.overview?.root;
+    if (project) await readProject(project);
+  }, [investigation, readProject]);
 
   const editSettings = useCallback(
     async (change: SettingsChange) => {
@@ -1934,13 +1960,16 @@ export default function App() {
             indicators={indicators}
             onOpenCase={(name) => {
               setImporting(false);
-              void verifyCase(root, name);
+              void leaveImport().then(() => verifyCase(root, name));
             }}
             onSetupIndex={(name) => {
               setImporting(false);
-              void verifyCase(root, name);
+              void leaveImport().then(() => verifyCase(root, name));
             }}
-            onClose={() => setImporting(false)}
+            onClose={() => {
+              setImporting(false);
+              void leaveImport();
+            }}
           />
         ) : (
           <>
