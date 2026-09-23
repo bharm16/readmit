@@ -1,6 +1,7 @@
 package artifactdir_test
 
 import (
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -91,6 +92,58 @@ func TestWriteCreatesIdentityLastArtifact(t *testing.T) {
 	}
 	if _, err := artifactdir.Write(path, artifactdir.WriteOptions{Domain: "readmit-example/v1"}, files); err == nil {
 		t.Fatal("existing artifact overwritten")
+	}
+}
+
+// countdown is a context that is cancelled after a fixed number of checks, so
+// a test can stop a write between two files without racing it. A write asks
+// Err between files and never waits on Done, so Err is all this answers.
+type countdown struct {
+	context.Context
+	checks int
+}
+
+func (c *countdown) Err() error {
+	if c.checks == 0 {
+		return context.Canceled
+	}
+	c.checks--
+	return nil
+}
+
+// A write is a long sequence of synced files, so a cancellation is observed
+// between them rather than only once all of them are written. What was written
+// stays exactly as written and carries no completion marker, so every reader
+// refuses it; a cancellation that arrives before anything is created creates
+// nothing.
+func TestWriteContextStopsBetweenFilesAndRetainsNoCompletionMarker(t *testing.T) {
+	files := map[string][]byte{"manifest.json": []byte("{}\n"), "payloads/a.bin": []byte("a"), "payloads/b.bin": []byte("b"), "payloads/c.bin": []byte("c")}
+	options := artifactdir.WriteOptions{Domain: "readmit-example/v1", Directories: []string{"payloads"}}
+
+	before := filepath.Join(t.TempDir(), "before")
+	if _, err := artifactdir.WriteContext(&countdown{Context: context.Background()}, before, options, files); !errors.Is(err, artifactdir.ErrCancelled) {
+		t.Fatalf("a write cancelled before it began answered %v", err)
+	}
+	if _, err := os.Lstat(before); !os.IsNotExist(err) {
+		t.Fatalf("a write cancelled before it began created its destination: %v", err)
+	}
+
+	partway := filepath.Join(t.TempDir(), "partway")
+	if _, err := artifactdir.WriteContext(&countdown{Context: context.Background(), checks: 3}, partway, options, files); !errors.Is(err, artifactdir.ErrCancelled) {
+		t.Fatalf("a write cancelled part way answered %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(partway, "identity.sha256")); !os.IsNotExist(err) {
+		t.Fatalf("a write cancelled part way wrote its completion marker: %v", err)
+	}
+	written, err := os.ReadFile(filepath.Join(partway, "manifest.json"))
+	if err != nil || string(written) != "{}\n" {
+		t.Fatalf("what a cancelled write had written is not retained as written: %q %v", written, err)
+	}
+	if _, err := os.Lstat(filepath.Join(partway, "payloads", "c.bin")); !os.IsNotExist(err) {
+		t.Fatalf("a write kept writing after it was cancelled: %v", err)
+	}
+	if _, err := artifactdir.Write(partway, options, files); err == nil {
+		t.Fatal("an incomplete artifact was overwritten")
 	}
 }
 

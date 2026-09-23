@@ -101,7 +101,8 @@ func (a *App) StartReduction(request ReductionRequest) ReductionResult {
 		guard, _ := a.selectedOperation()
 		settle, admissionErr := guard.AdmitContext(ctx, "execute")
 		if admissionErr != nil {
-			return ReductionResult{State: PermissionDenied, Reason: admissionErr.Error()}
+			declined := admissionRefusal(ctx, admissionErr)
+			return ReductionResult{State: declined.state, Reason: declined.reason}
 		}
 		defer func() {
 			if err := settle(); err != nil {

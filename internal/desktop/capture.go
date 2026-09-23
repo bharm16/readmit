@@ -13,6 +13,7 @@ import (
 	"github.com/bharm16/readmit/internal/evidencesource"
 	"github.com/bharm16/readmit/internal/importer"
 	"github.com/bharm16/readmit/internal/observation"
+	"github.com/bharm16/readmit/internal/observewindow"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/operationguard"
 	"github.com/bharm16/readmit/internal/project"
@@ -218,7 +219,8 @@ func (a *App) DiagnoseSource(request SourceWorkRequest) SourceAccessResult {
 		guard, _ := a.selectedOperation()
 		settle, admissionErr := guard.AdmitContext(ctx, "execute")
 		if admissionErr != nil {
-			return SourceAccessResult{State: PermissionDenied, Reason: admissionErr.Error()}
+			declined := admissionRefusal(ctx, admissionErr)
+			return SourceAccessResult{State: declined.state, Reason: declined.reason}
 		}
 		defer func() {
 			if err := settle(); err != nil {
@@ -252,7 +254,8 @@ func (a *App) CollectSource(request SourceWorkRequest) SourceCollectionResult {
 		guard, _ := a.selectedOperation()
 		settle, admissionErr := guard.AdmitContext(ctx, "execute")
 		if admissionErr != nil {
-			return SourceCollectionResult{State: PermissionDenied, Reason: admissionErr.Error()}
+			declined := admissionRefusal(ctx, admissionErr)
+			return SourceCollectionResult{State: declined.state, Reason: declined.reason}
 		}
 		defer func() {
 			if err := settle(); err != nil {
@@ -291,7 +294,12 @@ func (a *App) CollectSource(request SourceWorkRequest) SourceCollectionResult {
 		state := Completed
 		reason := ""
 		if err != nil {
+			// The receipt already says why the collection stopped; a person's
+			// cancellation is answered as one, never as a failed source.
 			state = Failed
+			if collection.Status == observewindow.Cancelled {
+				state = Cancelled
+			}
 			reason = collection.Reason
 			if reason == "" {
 				reason = "the collection did not complete"
@@ -481,7 +489,11 @@ func (a *App) StartCapture(request CaptureRequest) CaptureSessionResult {
 		guard, _ := a.selectedOperation()
 		settle, admissionErr := guard.AdmitContext(ctx, "execute")
 		if admissionErr != nil {
-			return CaptureSessionResult{State: PermissionDenied, Reason: admissionErr.Error(), Phase: CaptureFailed}
+			declined, phase := admissionRefusal(ctx, admissionErr), CaptureFailed
+			if declined.state == Cancelled {
+				phase = CaptureStopped
+			}
+			return CaptureSessionResult{State: declined.state, Reason: declined.reason, Phase: phase}
 		}
 		defer func() {
 			if err := settle(); err != nil {

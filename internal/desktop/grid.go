@@ -265,6 +265,7 @@ func (a *App) buildIndex(ctx context.Context, request BuildIndexRequest) BuildIn
 		return fail(Failed, "case identity has changed since it was displayed")
 	}
 
+	replacing := false
 	if fi, err := os.Lstat(destination); err == nil {
 		if !request.Replace {
 			return fail(Failed, "an index at that destination already exists; choose another name or confirm replacement")
@@ -272,9 +273,7 @@ func (a *App) buildIndex(ctx context.Context, request BuildIndexRequest) BuildIn
 		if !fi.Mode().IsRegular() {
 			return fail(Failed, "an index destination must be a regular file")
 		}
-		if err := os.Remove(destination); err != nil {
-			return fail(Failed, "cannot remove existing index for replacement")
-		}
+		replacing = true
 	}
 
 	at := time.Now().UTC()
@@ -284,6 +283,15 @@ func (a *App) buildIndex(ctx context.Context, request BuildIndexRequest) BuildIn
 	}
 	if err != nil {
 		return fail(Failed, err.Error())
+	}
+
+	// The index being replaced is removed only once its replacement is built,
+	// so a cancelled or refused rebuild leaves the grid the index it was
+	// reading. Writing is exclusive, so it is still removed before the write.
+	if replacing {
+		if err := os.Remove(destination); err != nil {
+			return fail(Failed, "cannot remove existing index for replacement")
+		}
 	}
 
 	if _, err := index.Write(destination, document); err != nil {

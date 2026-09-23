@@ -76,9 +76,13 @@ func (a *App) selectedOperation() (*operationguard.Guard, string) {
 	defer a.operationMu.Unlock()
 	return a.operationGuard, a.operationPolicy
 }
-func (a *App) admitAuthor() error {
+func (a *App) admitAuthor() error { return a.admitAuthorContext(context.Background()) }
+
+// admitAuthorContext admits an author for work a cancellation can reach, so
+// admission that is still waiting stops when the operation is cancelled.
+func (a *App) admitAuthorContext(ctx context.Context) error {
 	g, _ := a.selectedOperation()
-	_, err := g.Admit("author")
+	_, err := g.AdmitContext(ctx, "author")
 	return err
 }
 

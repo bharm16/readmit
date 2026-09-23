@@ -68,7 +68,8 @@ func (a *App) StartDurableRun(request DurableRunRequest) DurableRunResult {
 		guard, _ := a.selectedOperation()
 		settle, admissionErr := guard.AdmitContext(ctx, "execute")
 		if admissionErr != nil {
-			return DurableRunResult{State: PermissionDenied, Reason: admissionErr.Error()}
+			declined := admissionRefusal(ctx, admissionErr)
+			return DurableRunResult{State: declined.state, Reason: declined.reason}
 		}
 		defer func() {
 			if err := settle(); err != nil {
@@ -507,7 +508,8 @@ func (a *App) StartSuiteRun(request SuiteRunRequest) SuiteRunResult {
 		guard, _ := a.selectedOperation()
 		settle, admissionErr := guard.AdmitContext(ctx, "execute")
 		if admissionErr != nil {
-			return SuiteRunResult{State: PermissionDenied, Reason: admissionErr.Error()}
+			declined := admissionRefusal(ctx, admissionErr)
+			return SuiteRunResult{State: declined.state, Reason: declined.reason}
 		}
 		defer func() {
 			if err := settle(); err != nil {

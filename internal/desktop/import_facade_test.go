@@ -1,10 +1,13 @@
 package desktop_test
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/desktop"
@@ -25,6 +28,44 @@ func validDesktopPlan() importer.Plan {
 		Direction:  bundle.Inbound,
 		Members:    []string{".hl7"},
 	}
+}
+
+// mllpPlan is validDesktopPlan declaring MLLP-framed US-ASCII .mllp members,
+// the way the larger imports below are written.
+func mllpPlan() importer.Plan {
+	plan := validDesktopPlan()
+	plan.Framing, plan.Encoding, plan.Members = importer.MLLPFraming, importer.USASCII, []string{".mllp"}
+	return plan
+}
+
+// mllpSource writes one MLLP source of repeated bookings. Importing it writes
+// one synced payload file per occurrence, so its size sets how long the case
+// write an interruption test lands in takes.
+func mllpSource(t *testing.T, occurrences int) string {
+	t.Helper()
+	source := filepath.Join(t.TempDir(), "interface.mllp")
+	if err := os.WriteFile(source, []byte(strings.Repeat(framed(gridBooking), occurrences)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return source
+}
+
+// importProject is a project folder that registers no case yet.
+func importProject(t *testing.T) string {
+	t.Helper()
+	folder := writeProject(t, t.TempDir(), "")
+	if err := project.WriteRevisions(folder, project.Revisions{Schema: project.RevisionsSchema, Revisions: []project.Revision{}, Notes: []project.Note{}}); err != nil {
+		t.Fatal(err)
+	}
+	return folder
+}
+
+// registeredImport imports one MLLP source into a new case of a project and
+// registers it there.
+func registeredImport(folder, name, source string) desktop.ImportCommitRequest {
+	plan := mllpPlan()
+	return desktop.ImportCommitRequest{Workspace: folder, Project: folder, Mode: "plan", OutputName: name,
+		Files: []string{source}, Plan: &plan, RegisterInProject: true, CaseTitle: "Interface capture", CaseVersion: "siu-2.5.1-v1"}
 }
 
 func validDesktopRecipe() importer.Recipe {
@@ -348,5 +389,142 @@ func TestCommitImportHonorsBusySlot(t *testing.T) {
 
 	if busyRes.State != desktop.Busy {
 		t.Fatalf("expected busy state while another operation runs, got: %+v", busyRes)
+	}
+}
+
+// Writing an imported case is one synced payload file after another, and it is
+// the longest step of an import. A person who cancels while it runs is answered
+// at once, not when the last payload is written: the write stops between
+// payloads and the case is retained incomplete, where every reader refuses it.
+// Nothing incomplete is registered in the project, no receipt claims it, the
+// destination is never reused, and importing again into a new destination
+// completes.
+func TestCancellingAnImportWhileItWritesRetainsARefusedIncompleteCase(t *testing.T) {
+	folder := importProject(t)
+	source := mllpSource(t, 300)
+	app := workspaceApp(t)
+
+	answered := make(chan desktop.ImportCommitResult, 1)
+	go func() { answered <- app.CommitImport(registeredImport(folder, "interrupted", source)) }()
+	awaitEntries(t, filepath.Join(folder, "interrupted", "payloads"), 1, answered)
+	app.Cancel("import")
+	cancelled := <-answered
+	if cancelled.State != desktop.Cancelled || cancelled.Case != nil || cancelled.Registered {
+		t.Fatalf("an import cancelled while it wrote answered %+v", cancelled)
+	}
+	if _, err := os.Lstat(filepath.Join(folder, "interrupted", "identity.sha256")); !os.IsNotExist(err) {
+		t.Fatalf("a cancelled import wrote its completion marker: %v", err)
+	}
+	if opened := app.OpenCase(folder, "interrupted"); opened.State == desktop.Completed {
+		t.Fatalf("the reader accepted an import that was cancelled while it wrote: %+v", opened)
+	}
+	if _, err := os.Lstat(filepath.Join(folder, "interrupted-receipt.json")); !os.IsNotExist(err) {
+		t.Fatalf("a receipt claims a cancelled import: %v", err)
+	}
+	if opened := app.OpenProject(folder); opened.State != desktop.Empty || opened.Project == nil || len(opened.Project.Cases) != 0 {
+		t.Fatalf("the project registered a cancelled import: %+v", opened)
+	}
+	if reused := app.CommitImport(registeredImport(folder, "interrupted", source)); reused.State != desktop.Failed {
+		t.Fatalf("a cancelled import's destination was reused: %+v", reused)
+	}
+	again := app.CommitImport(registeredImport(folder, "imported", mllpSource(t, 3)))
+	if again.State != desktop.Completed || !again.Registered || again.Case == nil || again.Case.Occurrences != 3 {
+		t.Fatalf("importing again into a new destination did not complete: %+v", again)
+	}
+}
+
+// The environment the killed import child reads.
+const (
+	importCrashChild   = "READMIT_DESKTOP_IMPORT_CRASH_CHILD"
+	importCrashState   = "READMIT_DESKTOP_IMPORT_CRASH_STATE"
+	importCrashProject = "READMIT_DESKTOP_IMPORT_CRASH_PROJECT"
+	importCrashSource  = "READMIT_DESKTOP_IMPORT_CRASH_SOURCE"
+)
+
+// The process is killed while it is importing into a project, one import after
+// another, so the kill lands inside a case write or a registration. What the
+// reopened shell finds is only ever evidence and a project it can trust: the
+// project document reads whole, every case it registers verifies as the case it
+// registered — so a case whose write was cut short is registered nowhere — and
+// importing again into a new destination completes.
+func TestAKilledImportLeavesNoRegisteredOrAcceptedPartialCase(t *testing.T) {
+	if os.Getenv(importCrashChild) == "1" {
+		importCrashLoop(t)
+		return
+	}
+	folder := importProject(t)
+	source := mllpSource(t, 300)
+	state := t.TempDir()
+	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
+	child.Env = append(os.Environ(), importCrashChild+"=1", importCrashState+"="+state, importCrashProject+"="+folder, importCrashSource+"="+source)
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { child.Process.Kill() })
+	// Killed once one import has finished and the next is writing its case.
+	deadline := time.Now().Add(60 * time.Second)
+	for {
+		if written, _ := os.ReadDir(filepath.Join(folder, "import-2", "payloads")); len(written) > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the child never began a second import")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := child.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	child.Wait()
+
+	app := workspaceApp(t)
+	opened := app.OpenProject(folder)
+	if (opened.State != desktop.Completed && opened.State != desktop.Empty) || opened.Project == nil {
+		t.Fatalf("a kill during an import left a project that does not read: %+v", opened)
+	}
+	registered := map[string]bool{}
+	for _, entry := range opened.Project.Cases {
+		registered[entry.Name] = true
+		if verified := app.OpenCase(folder, entry.Name); verified.State != desktop.Completed || verified.Case.Identity != entry.Identity {
+			t.Fatalf("the project registers %s, which does not verify as registered: %+v", entry.Name, verified)
+		}
+	}
+	if !registered["import-1"] {
+		t.Fatalf("the import that finished before the kill is not registered: %+v", opened.Project.Cases)
+	}
+	// The case the kill cut short carries no completion marker, and nothing
+	// accepts it; one the write outran is simply complete.
+	if _, err := os.Lstat(filepath.Join(folder, "import-2", "identity.sha256")); os.IsNotExist(err) {
+		if verified := app.OpenCase(folder, "import-2"); verified.State == desktop.Completed || registered["import-2"] {
+			t.Fatalf("a case the kill cut short was accepted: %+v", verified)
+		}
+	}
+
+	again := app.CommitImport(registeredImport(folder, "after-the-kill", mllpSource(t, 3)))
+	if again.State != desktop.Completed || again.Case == nil {
+		t.Fatalf("importing again after the kill did not complete: %+v", again)
+	}
+	// A kill during registration retains the interrupted project write, which
+	// the next registration reports rather than reuses; otherwise it registers.
+	if _, err := os.Stat(filepath.Join(folder, "project.json.incomplete")); err == nil {
+		if again.Registered {
+			t.Fatalf("a registration reused an interrupted project write: %+v", again)
+		}
+	} else if !again.Registered {
+		t.Fatalf("importing again after the kill did not register: %+v", again)
+	}
+}
+
+// importCrashLoop imports the same source into one new case after another,
+// registering each, until it is killed.
+func importCrashLoop(t *testing.T) {
+	state := os.Getenv(importCrashState)
+	app := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
+	folder := os.Getenv(importCrashProject)
+	for i := 1; ; i++ {
+		result := app.CommitImport(registeredImport(folder, fmt.Sprintf("import-%d", i), os.Getenv(importCrashSource)))
+		if result.State != desktop.Completed || !result.Registered {
+			t.Fatalf("child import %d: %+v", i, result)
+		}
 	}
 }

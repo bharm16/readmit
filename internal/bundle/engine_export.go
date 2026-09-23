@@ -36,7 +36,7 @@ func WriteEngineExport(ctx context.Context, path, source string, data []byte, pl
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return writeBundle(path, b)
+	return writeBundle(ctx, path, b)
 }
 func attachEngineExport(b *Bundle, plan engineexport.Plan, data []byte) error {
 	records, err := engineexport.Extract(plan, data)

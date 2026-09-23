@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -393,4 +394,121 @@ func TestRecoveringACancelledRunKeepsItsStopReasonAndUncertainty(t *testing.T) {
 	if accepted, frames := peer.counts(); accepted != 1 || frames != 1 {
 		t.Fatalf("recovering a cancelled run resent: %d frames over %d connections", frames, accepted)
 	}
+}
+
+// reopenAddress is the loopback address the killed child's collector listens
+// on, so the parent can tell whether reopening started it again.
+const reopenAddress = "READMIT_DESKTOP_REOPEN_ADDRESS"
+
+// Reopening after an interruption is a read. The process is killed while its
+// collector is listening, and the window opens the same folder again: it
+// recovers the session, reopens the workspace, verifies the case, reads the
+// project and the collector's retained journal, and states what is connected.
+// None of that listens, sends or starts anything that keeps running: the
+// collector's address stays free, the test endpoint the workspace's target
+// names is never contacted, every disclosed activity is idle or unconfigured,
+// and no goroutine outlives the reads.
+func TestReopeningAfterAKillStartsNoListenerSendOrBackgroundWork(t *testing.T) {
+	if os.Getenv(crashChild) == "3" {
+		reopenChildRun(t)
+		return
+	}
+	peer := newSilentPeer(t)
+	workspace, _, _ := crashFixture(t, peer.address)
+	writeProject(t, workspace, "")
+	writeDocument(t, workspace, "policy.json", facadeAnyPolicy)
+	state := t.TempDir()
+	session := filepath.Join(state, "session.json")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := listener.Addr().String()
+	listener.Close()
+
+	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
+	child.Env = append(os.Environ(), crashChild+"=3", crashSession+"="+session, crashWorkspace+"="+workspace, reopenAddress+"="+address)
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { child.Process.Kill() })
+	// Killed once the collector is listening and its journal is running, so
+	// what is retained is a capture that was open for frames.
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		running, _ := os.ReadFile(filepath.Join(workspace, "journal", "journal.jsonl"))
+		if bytes.Contains(running, []byte(`"kind":"running"`)) {
+			if conn, err := net.DialTimeout("tcp", address, 100*time.Millisecond); err == nil {
+				conn.Close()
+				break
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the child's collector never listened")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if err := child.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	child.Wait()
+
+	before := runtime.NumGoroutine()
+	restarted := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), session)
+	if restored := restarted.RecoverSession(); restored.State != desktop.Completed || restored.Session == nil || restored.Session.View.Workspace != workspace {
+		t.Fatalf("the session was not recovered: %+v", restored)
+	}
+	if opened := restarted.OpenWorkspace(workspace); opened.State != desktop.Completed {
+		t.Fatalf("the workspace did not reopen: %+v", opened)
+	}
+	if opened := restarted.OpenCase(workspace, "case"); opened.State != desktop.Completed {
+		t.Fatalf("the case did not verify: %+v", opened)
+	}
+	if opened := restarted.OpenProject(workspace); opened.State != desktop.Empty && opened.State != desktop.Completed {
+		t.Fatalf("the project did not reopen: %+v", opened)
+	}
+	// The capture the kill interrupted is reported interrupted, never finished.
+	if journal := restarted.OpenCaptureJournal(workspace, "journal"); journal.State != desktop.Completed || journal.Journal == nil ||
+		journal.Journal.State != durablerun.Interrupted || !journal.Journal.Recovered {
+		t.Fatalf("the collector's retained journal was not read as interrupted: %+v", journal)
+	}
+	status := restarted.DisclosureStatus()
+	if status.State != desktop.Completed {
+		t.Fatalf("disclosure status: %+v", status)
+	}
+	for _, activity := range status.States {
+		if activity.State != "idle" && activity.State != "not-configured" {
+			t.Errorf("reopening left %s %s", activity.ID, activity.State)
+		}
+	}
+
+	// The collector's address is free: nothing in this process listens on it.
+	again, err := net.Listen("tcp", address)
+	if err != nil {
+		t.Fatalf("reopening listened on the collector's address again: %v", err)
+	}
+	again.Close()
+	if accepted, frames := peer.counts(); accepted != 0 || frames != 0 {
+		t.Fatalf("reopening contacted the test endpoint: %d frames over %d connections", frames, accepted)
+	}
+	// Reads leave nothing running behind them.
+	for deadline := time.Now().Add(2 * time.Second); runtime.NumGoroutine() > before; {
+		if time.Now().After(deadline) {
+			t.Fatalf("reopening left %d goroutines running beyond the %d before it", runtime.NumGoroutine(), before)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// reopenChildRun records where it is and starts a collector with a journal,
+// then waits in it until it is killed.
+func reopenChildRun(t *testing.T) {
+	state := filepath.Dir(os.Getenv(crashSession))
+	app := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), os.Getenv(crashSession))
+	workspace := os.Getenv(crashWorkspace)
+	if recorded := app.RecordView(desktop.View{Workspace: workspace, Region: "evidence", Case: "case"}); recorded.State != desktop.Completed {
+		t.Fatalf("child could not record its view: %+v", recorded)
+	}
+	app.StartCapture(desktop.CaptureRequest{Workspace: workspace, Kind: "collect", Address: os.Getenv(reopenAddress),
+		PolicyFile: "policy.json", OutputName: "collected", JournalName: "journal", MaxMessages: 0, IdleTimeout: "1m"})
 }

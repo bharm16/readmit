@@ -2,6 +2,7 @@ package bundle
 
 import (
 	"bytes"
+	"context"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -21,6 +22,14 @@ import (
 // Write creates a new bundle exclusively. The identity file is written last:
 // interrupted writes lack a valid completion marker and cannot be opened.
 func Write(path string, inputs []Input, provenance Provenance) (*Bundle, error) {
+	return WriteContext(context.Background(), path, inputs, provenance)
+}
+
+// WriteContext is Write for an import a person can cancel. Writing one payload
+// file after another is the longest step of an import, so the cancellation is
+// observed between them; a cancelled write is retained incomplete and refused
+// by every reader, the same as any other interrupted write.
+func WriteContext(ctx context.Context, path string, inputs []Input, provenance Provenance) (*Bundle, error) {
 	if provenance.Mode == Recorded {
 		return nil, errors.New("recorded sessions require WriteRecorded and an observation")
 	}
@@ -31,7 +40,7 @@ func Write(path string, inputs []Input, provenance Provenance) (*Bundle, error) 
 	if err != nil {
 		return nil, err
 	}
-	return writeBundle(path, b)
+	return writeBundle(ctx, path, b)
 }
 
 // WriteRecorded preserves a receiver session and its final observation in v2.
@@ -44,7 +53,7 @@ func WriteRecorded(path string, inputs []Input, startedAt time.Time, snapshot ob
 	if err := attachObservation(b, snapshot); err != nil {
 		return nil, err
 	}
-	return writeBundle(path, b)
+	return writeBundle(context.Background(), path, b)
 }
 
 // WriteCollected preserves a generic receiver session and the record of what it
@@ -57,17 +66,20 @@ func WriteCollected(path string, inputs []Input, startedAt time.Time, record col
 	if err := attachCollection(b, record); err != nil {
 		return nil, err
 	}
-	return writeBundle(path, b)
+	return writeBundle(context.Background(), path, b)
 }
 
-func writeBundle(path string, b *Bundle) (*Bundle, error) {
+func writeBundle(ctx context.Context, path string, b *Bundle) (*Bundle, error) {
 	files, err := encode(b)
 	if err != nil {
 		return nil, err
 	}
-	b.Identity, err = artifactdir.Write(path, artifactdir.WriteOptions{Domain: b.Manifest.Schema, Directories: []string{"payloads"}}, files)
+	b.Identity, err = artifactdir.WriteContext(ctx, path, artifactdir.WriteOptions{Domain: b.Manifest.Schema, Directories: []string{"payloads"}}, files)
 	if errors.Is(err, artifactdir.ErrCreateDirectory) {
 		return nil, errors.New("cannot create bundle; destination must be new and parent writable")
+	}
+	if errors.Is(err, artifactdir.ErrCancelled) {
+		return nil, errors.New("bundle write cancelled; any incomplete bundle is retained and refused")
 	}
 	if err != nil {
 		return nil, errors.New("cannot write bundle; incomplete bundle retained")

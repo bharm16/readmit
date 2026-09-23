@@ -627,7 +627,7 @@ export function CapturePanel({
             <button type="button" disabled={locked || preview?.state !== "completed"} onClick={() => void runStart()}>
               Start collecting
             </button>
-            <button type="button" disabled={operation !== "collecting"} onClick={() => cancel("collect")}>
+            <button type="button" disabled={operation !== "collecting"} onClick={() => cancel("capture")}>
               Cancel
             </button>
             <button type="button" disabled={locked} onClick={() => void runJournal()}>

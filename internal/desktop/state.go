@@ -63,7 +63,22 @@ func writeShellDocument(path string, data []byte) error {
 		os.Remove(incomplete)
 		return errors.New("cannot replace local shell state")
 	}
+	// The rename installs the document, and it survives a power loss only
+	// once the directory entry naming it is synced too. Every caller reports a
+	// document as retained only when this returns, so it syncs before then.
+	if err := syncParent(destination); err != nil {
+		return errors.New("cannot confirm local shell state was retained durably")
+	}
 	return nil
+}
+
+func syncParent(path string) error {
+	root, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	return artifactdir.SyncDirectory(root, ".")
 }
 
 // printable accepts bounded text a person typed or a path they opened. It is

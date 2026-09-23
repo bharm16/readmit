@@ -193,3 +193,58 @@ func bytesUnder(t *testing.T, dir string) map[string][]byte {
 	}
 	return files
 }
+
+// startHolding starts an operation and returns its answer once the facade
+// reports that the operation holds the slot, which it states by refusing a
+// read as busy. The busy probe is itself an operation, so the one being started
+// can lose the slot to it and answer busy; it is then started again. holding is
+// false when the operation answered anything else before the probe saw it
+// hold the slot, and its answer is waiting on the channel.
+func startHolding[R any](t testing.TB, app *desktop.App, root string, state func(R) desktop.State, start func() R) (answered chan R, holding bool) {
+	t.Helper()
+attempts:
+	for range 50 {
+		answered = make(chan R, 1)
+		go func() { answered <- start() }()
+		for {
+			select {
+			case result := <-answered:
+				if state(result) == desktop.Busy {
+					continue attempts
+				}
+				answered <- result
+				return answered, false
+			default:
+			}
+			if app.Search(root, "").State == desktop.Busy {
+				return answered, true
+			}
+		}
+	}
+	t.Fatal("the operation lost the slot to the busy probe fifty times")
+	return nil, false
+}
+
+// bareState is the state of an operation that answers with its state alone.
+func bareState(state desktop.State) desktop.State { return state }
+
+// awaitEntries waits until directory holds at least count entries, which is
+// how a test knows an operation has begun writing there, and fails the test if
+// the operation answers first.
+func awaitEntries[R any](t *testing.T, directory string, count int, answered chan R) {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		if entries, _ := os.ReadDir(directory); len(entries) >= count {
+			return
+		}
+		select {
+		case result := <-answered:
+			t.Fatalf("the operation answered before it began writing: %+v", result)
+		case <-time.After(time.Millisecond):
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the operation never began writing")
+		}
+	}
+}

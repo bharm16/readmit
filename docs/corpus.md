@@ -328,6 +328,20 @@ warm-up, using a declared 10,000-occurrence case, 200-row window and retained-va
 index. Exact indexed search checks all 10,000 hits. Grid navigation verifies
 returned row counts and total. Nearest-rank p95 is sample 19 of 20, or the maximum
 of five; these small samples are observations, not a statistical guarantee.
+The same facade test also measures the application paths the desktop window
+drives — own-evidence import preview (of that case's wire bytes and of one file
+at both case bounds, 10,000 occurrences in 16 MiB), import commit (five samples,
+because it writes one synced file per occurrence), index build and durable draft
+acknowledgement — and the time from a cancellation request to the facade's
+answer for import preview, import commit while it writes its case, and index
+build. A cancellation is requested only once the operation is under way: once it
+holds the operation slot, which the facade states by refusing a second read as
+busy, or, for the commit, once its first payload file exists. An attempt that
+finished first is retried and counted, never recorded as a cancellation. Every
+batch logs the host's load averages before and after it, and each operation
+batch, though not a cancellation batch, also logs the live Go heap after a
+collection. Run the retained test executable under `/usr/bin/time -l` (macOS) or
+`/usr/bin/time -v` (Linux) for its process peak RSS.
 
 `make test-performance` also repeats these public behavior tests with the race
 instrumentation enabled separately from latency measurements:
@@ -340,6 +354,34 @@ instrumentation enabled separately from latency measurements:
 | Process crash | `TestSuiteProcessCrashRetainsUncertainJobWithoutStartingDependent`: actual child process killed after send, dependent never starts, recovery does not repeat | Process crash, not power loss or storage-controller failure |
 | Disk-full | `TestDiskFullDuringPayloadWriteHaltsSendsAndRecordsHowTheRunStopped` and `TestDiskFullDuringJournalWriteStopsBeforeTheSend`: bounded partial writes/ENOSPC at payload and journal boundaries | Injected write failure; not filling the user's filesystem |
 | Safe recovery | `TestTornTrailingRecordIsNeitherTerminalNorRepeatable` and `TestCleanupRemovesOnlyAStaleLease`, plus the interruption tests above | Conservative read/repeat/cleanup behavior, no automatic resend |
+
+It then runs the application-surface interruption tests, through the public
+facade the window calls or, for the command line, the built executable; the
+runner row is the one exception, run by CI:
+
+| Dimension | Executed proof | Scope limitation |
+| --- | --- | --- |
+| Acknowledged drafts and unretained keystrokes | `TestAcknowledgedEditorDraftsSurviveAKillAndUnacknowledgedOnesAreNeverTorn`: a child retains a stream of edits and is killed after at least 64 acknowledgements; the newest edit it acknowledged, or a later whole one, comes back and nothing is torn. `TestEditorDraftsAreWrittenCompletelyAndPrivately` retains an interrupted write deliberately and shows it reported rather than reused | Process kill; the directory sync that makes an acknowledgement survive power loss is by construction, not a power-cut lab |
+| Import cancellation | `TestCancellingAnImportWhileItWritesRetainsARefusedIncompleteCase`, `TestWriteContextStopsBetweenFilesAndRetainsNoCompletionMarker` and, for the command line, `TestInterruptingAnImportWhileItWritesStopsBeforeTheLastPayload`: cancelled while the case is written, the import stops short of its last payload, the case has no completion marker and is refused, no receipt exists, nothing is registered, and a new destination imports | Observed before each container is read, before each member is divided and between payload files; reading one container, dividing one member and building the case in memory before its first file is written run to completion |
+| Process termination during import | `TestAKilledImportLeavesNoRegisteredOrAcceptedPartialCase`: a child importing and registering one case after another is killed mid-write; the project reads whole, every registered case verifies, and a new import completes | Process kill, not power loss |
+| Disk-full during import | `TestADiskRefusalDuringAnImportRegistersNothingAndAcceptsNoPartialCase`: the account's file size limit refuses the case write; the import fails, the partial case is refused, nothing is registered, and a later import completes | Unix file size limit in a child process; not a full volume |
+| Index rebuild cancellation | `TestCancellingAReplacingRebuildKeepsTheIndexItReplaces`: the replaced index stays byte for byte and the grid still opens through it | A write failure after the replacement was removed leaves no index; it is rebuilt from the case |
+| Cancellation while admission waits | `TestACancellationDuringExecutionAdmissionIsCancelledNotDenied`: with a retained clock update, eight operations cancelled during admission answer cancelled without waiting for admission to give up, never permission denied | Admission contention simulated by the retained update file |
+| Source collection cancellation | `TestCancellingACollectionPartWayIsCancelledNotFailed`: a directory collection cancelled after staging starts answers cancelled, accounts for every entry and records the cancellation in its receipt | Local directory source |
+| Collector cancellation | `TestACollectorIsCancelledByTheCaptureNameAndNotByCollection`: the collector stops under the name its panel now sends, and source collection's name does not reach it | Loopback collector |
+| Reopening after a kill | `TestReopeningAfterAKillStartsNoListenerSendOrBackgroundWork` and `TestControlledCrashRestoresUnstoredWorkAndKeepsTheSendUncertain`: the collector's address stays free, its journal reads interrupted, the test endpoint sees nothing, no goroutine outlives the reads, and an interrupted send stays uncertain | Facade reads only. Reopening starts offline: no hub connection or session is restored and connecting is a deliberate action ([desktop](desktop.md#offline-and-local-mode-vs-deliberate-connection)); what the window itself starts when it mounts — progress polls, hub status, any reset — is the real-UI harness's to drive |
+| Concurrent authorized runner work and hub outage | `TestCustomerRunnerActualTLSExecutionRevocationAndRecovery` in `hub/`, run by the required `hub` job against an isolated PostgreSQL 16: a second job on one runner root and a second runner leasing the same environment are refused, revocation leaves an active delivery uncertain, a killed runner process keeps its claim and never replays it, and a hub outage mid-job stops execution | Skipped without PostgreSQL, so CI runs it rather than `make test-performance`; loopback TLS, not a routed partition |
+
+These tests and the facade timings do not establish: input-to-paint, progress
+and cancellation responsiveness, and bounded rendering in the native webview, or
+a late answer arriving in the window after a newer request — those are measured
+through the shared real-UI harness (#109) once it is on `main`; facade timings
+of source and observation collection, durable test and suite execution, runner
+work, report and privacy inventory, and hub reconnection, and the cancellation
+latency of collection; a hub artifact transfer interrupted by a partition;
+import progress, since a commit reports none while it writes; a quiet
+reference-host run; physical power-cut, full-volume and routed-partition labs;
+and the 1M/5 GiB project path, still bounded by the case limits above.
 
 ### Native UI, reference hardware and candidate protocol
 
@@ -614,3 +656,118 @@ func main() {
 ```
 
 </details>
+
+### Application-surface development run, September 22, 2026
+
+This run measured the change that adds the application-surface timings above,
+on `main` at `13d02373f2f92ae699785217f8346a6104a86f9d`. The desktop-facade test
+executable was built with `go test -c ./internal/desktop` (Go 1.27.1, no race
+detector) and run once with `READMIT_PERFORMANCE=1` and
+`-test.run '^TestPerformanceEnvelope$'` under `/usr/bin/time -l`. Its SHA-256 was
+`5c108dad9df704d31d63c124231d7cb243391e515b35a2b3ef4e667ddc1cbe46`. The host was
+macOS 27.0 on darwin/arm64 with 10 logical CPUs; the round's operator declared
+16 GiB of RAM and an internal SSD, and that declaration is recorded as made.
+The host was **loaded**: the one-minute load average, sampled at batch
+boundaries, was between 5.95 and 9.07, while other development lanes' tests
+and operating-system indexing ran beside it. These are **not quiet
+reference-workstation measurements**, and they meet no envelope target.
+
+The 10,000-occurrence fixture is the one described above (SHA-256
+`3703482330bae90db46acac89e96b39f1ef1c7754a2cbacf167cb148bb548b90`). The
+16 MiB preview reads one file with 10,000 occurrences padded to the per-source
+bound. Peak RSS for the whole test process, fixture creation included, was
+124,436,480 bytes.
+
+| Operation through the facade | Samples | Nearest-rank p95 |
+| --- | --- | --- |
+| Warm indexed exact search (10,000 hits) | 20 | 3.050 ms |
+| Grid navigation, last 200 rows (not native paint) | 20 | 675.755 ms |
+| Workspace search | 20 | 51.616 ms |
+| Own-evidence import preview | 20 | 2.554 ms |
+| Import preview of one 16 MiB file | 20 | 26.456 ms |
+| Own-evidence import commit, 10,000 occurrences | 5 | 77,793.881 ms |
+| Index build | 20 | 507.693 ms |
+| Durable draft acknowledgement | 20 | 16.028 ms |
+| Cancel import preview | 20 cancelled | 1.056 ms |
+| Cancel import commit while it writes its case | 20 cancelled | 13.041 ms |
+| Cancel index build | 20 cancelled | 468.769 ms |
+
+Every operation returned the expected state and counts. No cancellation
+attempt finished before the cancellation reached it, and none had to be
+retried. The live Go heap after a collection, logged after each of the eight
+operation batches in order, was 1.37, 5.71, 5.71, 1.40, 1.40, 1.42, 4.87 and
+1.44 MB.
+
+What these samples show:
+
+- An import commit writes one synced file per occurrence, so at this case
+  bound it took 50–78 seconds on this host, far longer than anything else
+  measured here; an earlier trial of the same operation on this host took
+  46–49 seconds. Before this change a cancellation was not observed until
+  the last payload was written. It is now observed between payloads and
+  acknowledged within 13 ms at p95, leaving an incomplete case that readers
+  refuse.
+- Reading and dividing one 16 MiB file, which cannot be interrupted part way,
+  takes 26 ms. A folder or archive container is read whole before its members
+  are divided, and the case is built in memory before its first file is
+  written; neither stretch was timed separately.
+- Cancelling an index build waits for the case verification that precedes it,
+  which cannot be interrupted, so it is acknowledged within 470 ms rather than
+  at once.
+- Grid navigation is still above the proposed 200 ms before the webview paints
+  anything, as recorded above.
+- A draft acknowledgement includes syncing both the document and its directory
+  entry.
+
+All samples in milliseconds, in acquisition order:
+
+```text
+warm indexed exact search:
+3.999292 2.591375 3.049584 2.563125 2.355125 2.816292 2.494042 2.755958 2.659167 2.386208
+2.550333 2.402875 2.787083 2.412583 2.560334 2.532042 2.535625 2.087417 1.630125 2.388917
+
+facade grid navigation, last 200 rows (not native UI paint):
+492.786375 452.521417 675.755417 405.576708 426.3015 393.347625 380.224375 425.287792 397.601083 677.827916
+499.763875 514.358833 415.801833 488.213791 385.182 521.082125 517.478625 494.508958 504.145666 520.101958
+
+facade workspace search:
+50.2605 50.142125 49.669292 49.722625 51.615625 51.320041 50.230042 51.613125 50.795584 49.724083
+50.000875 50.036125 49.300917 51.043625 49.735542 50.269209 53.5185 51.41725 51.435458 51.344792
+
+facade own-evidence import preview:
+2.55375 2.723333 2.391833 2.09425 2.15675 2.24775 2.079 2.280042 2.298916 2.171208
+2.283334 2.319 2.137375 2.335125 2.288167 2.30925 2.172292 2.173416 2.233041 2.335041
+
+facade import preview, one 16 MiB file:
+25.642042 27.759959 24.787 26.455625 24.197375 25.735 23.872917 25.006583 24.450959 24.622584
+24.518125 25.89575 24.188292 24.085209 24.787208 24.527625 25.431666 24.52475 25.165333 24.348625
+
+facade own-evidence import commit (five samples; p95 is the slowest):
+49645.200125 73311.985042 74313.998667 72440.174708 77793.880917
+
+facade index build:
+488.94725 487.077667 488.052834 489.031792 552.943167 500.934125 485.091959 480.93575 488.99925 490.082959
+489.921125 486.020958 414.999167 449.984916 494.000417 491.084041 401.012375 507.693 411.213083 499.052208
+
+facade durable draft acknowledgement:
+13.902375 12.9855 12.98225 13.110458 13.904 12.01425 14.020834 24.034916 12.040291 14.8755
+13.081291 12.969375 14.990625 13.98175 14.005292 14.0195 16.027917 13.033542 10.937042 14.001541
+
+cancel own-evidence import preview:
+0.86325 0.035375 0.741125 0.944208 0.947041 0.818083 0.953959 1.016 0.957542 0.987875
+0.947166 0.981708 1.056125 1.020625 0.979875 0.98825 1.175417 0.965667 0.906083 0.951125
+
+cancel own-evidence import commit while it writes its case:
+5.229875 5.074291 6.722666 6.380583 6.178458 4.572292 6.091875 5.624458 5.508459 4.733625
+5.853042 6.728 5.48625 6.531959 5.192916 5.813125 6.861333 13.040708 14.167417 10.665
+
+cancel index build:
+462.121625 385.638667 354.626667 353.680167 354.932584 435.561667 369.107042 329.752542 330.65425 329.375792
+390.171583 362.399375 325.390833 324.986083 339.498958 441.165042 426.951208 578.380708 468.768625 461.758333
+```
+
+Per-batch load averages (one, five and fifteen minutes) are in the test log
+beside each line, from 9.07 10.27 10.37 at the start to 6.80 6.76 8.44 after
+the last batch. #110's first two checklist items remain open. Still unmeasured
+are the native painted UI, the quiet reference host, the physical interruption
+labs and the full project-scale path.

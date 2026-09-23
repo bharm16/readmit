@@ -313,6 +313,20 @@ one file through a 64 KiB window in bounded parsing batches, holds at most one
 16 MiB record at a time, and **names** the case bundle bounds a stream is
 already past rather than widening them. It writes no evidence.
 
+## Interrupting an import
+
+An interrupt is observed before each declared container is read, before each
+member is divided and, while the case is written, between one synced payload
+file and the next. Writing is the longest step of an import — one synced file
+per occurrence — so an interrupt there stops it rather than waiting for the
+last payload. One arriving before the case directory exists creates nothing;
+one arriving later leaves the case incomplete, with no completion marker, so
+every reader refuses it, and no receipt is written. Retry into a new
+destination: an incomplete case is never overwritten or reused. Reading one
+container, dividing one member, and building the case in memory before its
+first file is written each run to completion once started, bounded by the
+limits above.
+
 ## Explicitly not supported
 
 - **No detection.** There is no automatic framing, terminator, or encoding.
