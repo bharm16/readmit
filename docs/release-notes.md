@@ -1,5 +1,14 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Three interaction journeys extend security and accessibility acceptance to
+  the real window (#111): keyboard-only operation from dialogs to inspection
+  with region navigation, pane resizing and text scaling; hostile markup in
+  evidence, file names and searches shown as escaped text; and a note restored
+  after a reopen that a released activation still refuses to store. The last
+  found that typing faster than the draft store answered kept one draft per
+  early keystroke, so a reopen could offer back a truncated note; an editor
+  now retains its work under one identity.
+
 - Local adversarial acceptance covers the application surfaces (#111). Every
   window operation is handed a FIFO, a link, a sparse gigabyte-long document, a
   directory and an entry leaving the workspace, and must answer promptly within

@@ -110,15 +110,19 @@ export function useRetainer(): {
     );
   }, []);
 
-  const enqueue = useCallback((saved: EditorDraft, id: string) => {
+  // id null means "the identity this editor holds when the write is sent":
+  // keystrokes arrive faster than a retention answers, and an identity read
+  // when a keystroke is queued would still be empty for every keystroke typed
+  // before the first answer, each minting a draft of its own.
+  const enqueue = useCallback((saved: EditorDraft, id: string | null) => {
     if (conflicted.current) {
       // The newest text is what a decision will keep; nothing is sent.
-      last.current = { ...saved, id };
+      last.current = { ...saved, id: id ?? knownId.current };
       return;
     }
     setRetention({ state: "saving" });
     chainRef.current = chainRef.current.then(async () => {
-      const sent = { ...saved, id };
+      const sent = { ...saved, id: id ?? knownId.current };
       last.current = sent;
       try {
         apply(sent, await saveEditorDraft(sent));
@@ -129,7 +133,7 @@ export function useRetainer(): {
   }, [apply]);
 
   const save = useCallback((draft: EditorDraft) => {
-    enqueue(draft, draft.id === "" ? knownId.current : draft.id);
+    enqueue(draft, draft.id === "" ? null : draft.id);
   }, [enqueue]);
 
   const drop = useCallback((id: string) => {
