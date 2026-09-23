@@ -62,7 +62,10 @@ unanswered is rejected. The kit's verbs:
   `provisionLicenseIssues(issues)` provisions several activation folders, each
   with its own term (sequence, expiry relative to now such as `-48h`, grace
   days) and all signed with one fresh key, so a later issue installs as the
-  renewal of an expired one.
+  renewal of an expired one. `makePrivateFolder` creates a folder only this
+  account can open, such as a runner's root. `digest(path)` is the SHA-256 of
+  a file's bytes, the identity a hub or a release names those bytes by, so a
+  journey states it from the file rather than from what the window answered.
 - `close()` waits for the window to settle, then ends the process as closing
   the window does; `crash()` ends it at once and abandons what was running;
   `launch()` again reopens over the same files.
@@ -90,6 +93,26 @@ unanswered is rejected. The kit's verbs:
   the variables it was provisioned with, which never replace the isolated
   environment. `commandLineExecutable` is the path of the checkout's
   `readmit`, the installed executable such a workflow names.
+- `startHub(project, grants)` starts a real customer hub for the project, as
+  its operator runs it: the checkout's `readmit-hub` over mutual TLS on
+  loopback, its store in a disposable PostgreSQL cluster created inside the
+  root and stopped when the journey ends, its own license, and a customer
+  identity provider for the people it grants roles. The hub names the client
+  configuration folder a window selects, completes a sign-in the window started
+  as the person's browser does (`signIn(authorizationURL, subject)`), issues a
+  runner token (`runnerToken(subject)`), runs the binary's operator operations
+  with the service stopped (`operate`) and restarts it with further policies
+  (`restart`). It needs `READMIT_POSTGRES_BIN` naming a PostgreSQL
+  installation's `bin` folder; without one the hub is not built,
+  `Journey.hubAvailable` is false and a hub journey calls `context.skip()`.
+  CI's `hub-journeys` job runs the hub journeys with PostgreSQL 16, beside
+  the `hub` job rather than after it; the desktop workflow's journeys skip
+  them.
+- `colleague(name)` is another person's window on their own machine: the same
+  application over its own folder inside the root, driven through its facade
+  (`call(method, ...args)`). It stands in for the person whose actions the
+  window under test must meet — a concurrent reviewer, the approver of a
+  request — and never for a step the person under test takes.
 
 `src/journeys/steps.tsx` holds the steps several journeys take — activating the
 vendor's license, creating a project, importing an export, the whole
@@ -104,7 +127,8 @@ selecting it.
 A journey fails at close for a dialog nobody answered, an answer nobody used, a
 call Wails would have rejected or a call that never finished, and no verb
 places a file outside the journey's root. Never call the facade directly to
-stand in for a step a person takes, and state each expected outcome from the
+stand in for a step the person under test takes (a `colleague` is another
+person's window, never that person's), and state each expected outcome from the
 scenario's own facts rather than from what the engine answered. Use synthetic
 evidence only; the processes see an empty PATH and a home inside the root.
 
@@ -158,8 +182,8 @@ flake or establish that a failing revision is correct.
 ## CI and merge
 
 The `quality` check aggregates Go tests, tooling/independent verification and
-mutations, the vulnerability scan, the hub, and the three timed fuzz shards on
-the events that run them. It fails if any job its event runs fails, is skipped,
+mutations, the vulnerability scan, the hub, the hub journeys, and the three
+timed fuzz shards on the events that run them. It fails if any job its event runs fails, is skipped,
 or is cancelled, and if the fuzz shards ran on any other event. Packaging and
 the five native smoke tests run concurrently, and test the exact archives later
 used for publication.

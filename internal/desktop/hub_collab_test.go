@@ -289,7 +289,10 @@ func TestDesktopHubCollaborationConflictAndAdmin(t *testing.T) {
 		Project: "cardio-study", ID: "comment-2", Expected: 0, Kind: "comment",
 		Evidence: evidence, Recipient: "reviewer@hospital.org", Text: "stale head",
 	})
-	if stale.State != desktop.Failed || !strings.Contains(stale.Reason, "conflict") {
+	// The hub client's refusal already names its remedy; the window states it
+	// once.
+	const conflict = "hub head or revision conflict; fetch current state and renew the action"
+	if stale.State != desktop.Failed || stale.Reason != conflict {
 		t.Fatalf("stale review head should fail: %+v", stale)
 	}
 
@@ -327,6 +330,13 @@ func TestDesktopHubCollaborationConflictAndAdmin(t *testing.T) {
 	})
 	if rev.State != desktop.Completed || rev.Event == nil || rev.Event.Actor != "doctor@hospital.org" {
 		t.Fatalf("PostHubLifecycle revision: %+v", rev)
+	}
+	staleLife := app.PostHubLifecycle(desktop.HubLifecycleCommandRequest{
+		Project: "cardio-study", ID: "edit-two", Expected: 0, Kind: "revision",
+		Resource: "case-one", Artifact: evidence, Parents: []string{}, Reason: "stale lifecycle head",
+	})
+	if staleLife.State != desktop.Failed || staleLife.Reason != conflict {
+		t.Fatalf("stale lifecycle head should fail: %+v", staleLife)
 	}
 	life = app.ListHubLifecycle("cardio-study")
 	if life.State != desktop.Completed || len(life.Tips["case-one"]) != 1 {

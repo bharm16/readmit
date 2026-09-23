@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"io"
 	"os"
@@ -237,5 +239,54 @@ func TestIssuesShareOneKeyAndStayInsideTheRoot(t *testing.T) {
 	}
 	if _, err := provisionIssues(root, outside); err == nil {
 		t.Error("provisioned an issue outside the root")
+	}
+}
+
+// A hub's certificates are written inside the root: a synthetic authority, a
+// server identity for 127.0.0.1 and a client identity, each chaining to that
+// authority for its own use and for nothing else. A folder outside the root
+// is refused.
+func TestHubCertificatesChainForLoopbackAndStayInsideTheRoot(t *testing.T) {
+	root := t.TempDir()
+	if err := hubCertificates(root, "hub"); err != nil {
+		t.Fatal(err)
+	}
+	read := func(name string) *x509.Certificate {
+		t.Helper()
+		data, err := os.ReadFile(filepath.Join(root, "hub", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		block, _ := pem.Decode(data)
+		if block == nil {
+			t.Fatalf("%s holds no PEM block", name)
+		}
+		certificate, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return certificate
+	}
+	pool := x509.NewCertPool()
+	pool.AddCert(read("ca.pem"))
+	server := read("server.pem")
+	if _, err := server.Verify(x509.VerifyOptions{Roots: pool, DNSName: "127.0.0.1", KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}); err != nil {
+		t.Fatalf("the server identity does not serve 127.0.0.1: %v", err)
+	}
+	client := read("client.pem")
+	if _, err := client.Verify(x509.VerifyOptions{Roots: pool, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}); err != nil {
+		t.Fatalf("the client identity does not authenticate a client: %v", err)
+	}
+	if _, err := client.Verify(x509.VerifyOptions{Roots: pool, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}); err == nil {
+		t.Error("the client identity also serves")
+	}
+	for _, name := range []string{"server-key.pem", "client-key.pem"} {
+		info, err := os.Stat(filepath.Join(root, "hub", name))
+		if err != nil || info.Mode().Perm()&0o077 != 0 {
+			t.Errorf("%s is not private: %v %v", name, info.Mode(), err)
+		}
+	}
+	if err := hubCertificates(root, "../escaped"); err == nil {
+		t.Error("wrote certificates outside the root")
 	}
 }

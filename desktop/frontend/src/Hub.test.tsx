@@ -247,6 +247,9 @@ test("HubPanel displays project artifacts, handles download with custody notice,
   await user.click(uploadBtn);
 
   expect(facade.callsTo("UploadHubArtifact").length).toBe(1);
+  // The published artifact's digest is shown whole: it is what a review of
+  // that evidence names.
+  expect(await screen.findByText(uploadResult.digest!)).toBeTruthy();
 
   uninstallFacade();
 });

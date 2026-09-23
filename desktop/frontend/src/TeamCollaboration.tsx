@@ -196,8 +196,8 @@ export function TeamCollaboration({ project, workspace = "", entries = [], capab
           disabled={busy || !evidence}
           onClick={() =>
             void run(
-              () =>
-                postHubReview({
+              async () => {
+                const posted = await postHubReview({
                   project,
                   id: commandId,
                   expected: reviews?.head ?? 0,
@@ -207,7 +207,15 @@ export function TeamCollaboration({ project, workspace = "", entries = [], capab
                   recipient,
                   text: commentText,
                   release,
-                }),
+                });
+                // The hub answers a recorded decision with that one event;
+                // the history shown is read again whole, so it never lists
+                // less than the hub holds. A decision already recorded is
+                // never shown as refused because that read failed.
+                if (posted.state !== "completed") return posted;
+                const current = await listHubReviews(project);
+                return current.state === "completed" ? current : posted;
+              },
               (res) => {
                 setReviews(res);
                 if (res.state !== "completed") setMessage(res.reason ?? "review refused");

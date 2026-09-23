@@ -6,6 +6,7 @@
 // This file is JavaScript so the typed frontend needs no Node type
 // declarations; bridge-process.d.ts states its interface.
 import { execFileSync, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -51,6 +52,11 @@ export function copyFixtureInRoot(folder, fixture, root, path) {
   return writeInRoot(root, path, readFileSync(join(folder, fixture)));
 }
 
+/** The SHA-256 of a file inside root, as lowercase hex. */
+export function digestInRoot(root, path) {
+  return createHash("sha256").update(readFileSync(inside(root, path))).digest("hex");
+}
+
 /** Reads a text file inside root, refusing one outside it. */
 export function readInRoot(root, path) {
   return readFileSync(inside(root, path), "utf8");
@@ -71,9 +77,9 @@ export function backdateInRoot(root, path, milliseconds) {
 }
 
 /** Creates an empty folder inside root. */
-export function makeFolderInRoot(root, path) {
+export function makeFolderInRoot(root, path, mode = 0o777) {
   const target = inside(root, path);
-  mkdirSync(target, { recursive: true });
+  mkdirSync(target, { recursive: true, mode });
   return target;
 }
 
@@ -103,7 +109,7 @@ export function provisionIssuesInRoot(binary, root, issues) {
 /** The environment every process a journey starts sees: a home and a
  * temporary folder inside root and an empty PATH, so nothing from the
  * developer's own account or tools can answer for the application. */
-function isolated(root) {
+export function isolated(root) {
   const home = join(root, "home");
   const temporary = join(root, "tmp");
   mkdirSync(home, { recursive: true });

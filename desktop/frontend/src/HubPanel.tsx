@@ -383,6 +383,11 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
                 Transfer state: <strong>{transfer.transfer_state || transfer.state}</strong>
                 {transfer.size ? ` (${transfer.size} bytes)` : ""}
               </p>
+              {transfer.digest ? (
+                <p>
+                  Artifact digest: <code>{transfer.digest}</code>
+                </p>
+              ) : null}
               {transfer.reason ? <p className="error">{transfer.reason}</p> : null}
               {transfer.warning ? <p className="warning">{transfer.warning}</p> : null}
             </div>

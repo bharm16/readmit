@@ -37,8 +37,10 @@ export function pathInRoot(root: string, path: string): string;
 export function backdateInRoot(root: string, path: string, milliseconds: number): string;
 export function writeInRoot(root: string, path: string, content: string | Uint8Array): string;
 export function readInRoot(root: string, path: string): string;
+export function digestInRoot(root: string, path: string): string;
+export function isolated(root: string): Record<string, string>;
 export function copyFixtureInRoot(folder: string, fixture: string, root: string, path: string): string;
-export function makeFolderInRoot(root: string, path: string): string;
+export function makeFolderInRoot(root: string, path: string, mode?: number): string;
 export function provisionInRoot(binary: string, root: string, path: string): string;
 /** One term of the test entitlement: its issue sequence, when it expires
  * relative to now as a Go duration ("24h", "-48h") and its grace in days. */
