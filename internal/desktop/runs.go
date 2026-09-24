@@ -46,6 +46,122 @@ type DurableRunResult struct {
 
 func (r *DurableRunResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
+// ResumeRunRequest names a retained job, the unchanged saved test and a fresh
+// output entry. The retained job is read through the same recovery reader as
+// the command line; no part of its evidence is rewritten.
+type ResumeRunRequest struct {
+	Workspace string `json:"workspace"`
+	Job       string `json:"job"`
+	Spec      string `json:"spec"`
+	Output    string `json:"output"`
+}
+
+type ResumeRunResult struct {
+	State  State                  `json:"state"`
+	Reason string                 `json:"reason,omitzero"`
+	Resume *durablerun.Resumption `json:"resume,omitzero"`
+}
+
+func (r *ResumeRunResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
+// ResumeDurableRun is an explicit new execution. The engine decides whether
+// any occurrence may repeat; a synced send, uncertain delivery, incomplete
+// completion or changed plan is refused before a new folder is written.
+func (a *App) ResumeDurableRun(request ResumeRunRequest) ResumeRunResult {
+	return runNamed[ResumeRunResult, *ResumeRunResult](a, runOperation, true, false, func(ctx context.Context) (out ResumeRunResult) {
+		guard, _ := a.selectedOperation()
+		settle, err := guard.AdmitContext(ctx, "execute")
+		if err != nil {
+			declined := admissionRefusal(ctx, err)
+			return ResumeRunResult{State: declined.state, Reason: declined.reason}
+		}
+		defer func() {
+			if err := settle(); err != nil {
+				out.State = Failed
+				out.Reason = "runner settlement failed; reconcile the retained admission before new work"
+			}
+		}()
+		root, declined := resolveFolder(request.Workspace)
+		if root == "" {
+			return ResumeRunResult{State: declined.state, Reason: declined.reason}
+		}
+		job, err := runEvidencePath(root, request.Job)
+		if err != nil {
+			return ResumeRunResult{State: Failed, Reason: "the retained run must be one execution of the open workspace"}
+		}
+		spec, err := artifactpath.File(root, request.Spec)
+		if err != nil {
+			return ResumeRunResult{State: Failed, Reason: "the saved test must be one regular entry of the open workspace"}
+		}
+		output, err := runEntryPath(root, request.Output)
+		if err != nil {
+			return ResumeRunResult{State: Failed, Reason: "the new run folder must be one entry of the open workspace"}
+		}
+		a.setRunOutput(output)
+		defer a.setRunOutput("")
+		bounded, cancel := context.WithTimeout(ctx, operationguard.MaxDuration)
+		defer cancel()
+		resumed, err := durablerun.Resume(bounded, job, spec, output)
+		if err != nil {
+			if resumed.Schema != "" {
+				return ResumeRunResult{State: Failed, Reason: "the resumed run could not finish; recover its new output before any further execution", Resume: &resumed}
+			}
+			if errors.Is(err, engine.ErrUnsupportedVersion) {
+				return ResumeRunResult{State: Failed, Reason: "the retained run was evaluated by a version this release cannot read; its evidence has not been changed"}
+			}
+			// The durable package has no typed refusal errors. Pass through only
+			// its fixed public resume refusal; all other errors may include a
+			// local path and stay out of renderer state.
+			if strings.HasPrefix(err.Error(), "resume refused: ") {
+				return ResumeRunResult{State: Failed, Reason: err.Error()}
+			}
+			return ResumeRunResult{State: Failed, Reason: "resume refused; verify the retained run and saved test before any new execution"}
+		}
+		return ResumeRunResult{State: Completed, Resume: &resumed}
+	})
+}
+
+type CleanRunResult struct {
+	State   State               `json:"state"`
+	Reason  string              `json:"reason,omitzero"`
+	Cleanup *durablerun.Cleanup `json:"cleanup,omitzero"`
+}
+
+func (r *CleanRunResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
+// CleanDurableRun verifies a retained job before removing only its stale
+// lease. A live or incomplete job and any foreign entry remain untouched.
+func (a *App) CleanDurableRun(workspace, entry string) CleanRunResult {
+	return run[CleanRunResult, *CleanRunResult](a, false, false, func(context.Context) CleanRunResult {
+		root, declined := resolveFolder(workspace)
+		if root == "" {
+			return CleanRunResult{State: declined.state, Reason: declined.reason}
+		}
+		path, err := runEvidencePath(root, entry)
+		if err != nil {
+			return CleanRunResult{State: Failed, Reason: "the retained run must be one execution of the open workspace"}
+		}
+		cleanup, err := durablerun.Clean(path)
+		if err != nil {
+			if errors.Is(err, engine.ErrUnsupportedVersion) {
+				return CleanRunResult{State: Failed, Reason: "the retained run was evaluated by a version this release cannot read; its evidence has not been changed"}
+			}
+			// Keep only the package's fixed refusal sentences; arbitrary read
+			// errors may contain local paths that the renderer must not receive.
+			switch err.Error() {
+			case "completion was not recorded; the writer may still hold its lease and nothing was removed",
+				"durable run holds an entry this release did not write; nothing was removed",
+				"cannot remove the stale durable lease; evidence is unchanged",
+				"cannot list durable run; nothing was removed":
+				return CleanRunResult{State: Failed, Reason: err.Error()}
+			default:
+				return CleanRunResult{State: Failed, Reason: "the retained run could not be verified; nothing was removed"}
+			}
+		}
+		return CleanRunResult{State: Completed, Cleanup: &cleanup}
+	})
+}
+
 // DurableRunRequest is one deliberate execution: the open workspace, the saved
 // spec entry, the fresh output entry it is written into, and the spec identity
 // the preflight fixed. A spec whose bytes no longer hash to Expected is

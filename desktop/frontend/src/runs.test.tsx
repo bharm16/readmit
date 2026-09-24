@@ -47,7 +47,7 @@ function renderPanel(
     },
     ...handlers,
   });
-  render(
+  const mounted = render(
     <RunPanel
       workspace={WORKSPACE_ROOT}
       entries={entries}
@@ -59,7 +59,7 @@ function renderPanel(
       {...(initialSpec ? { initialSpec } : {})}
     />,
   );
-  return { facade, events };
+  return { facade, events, ...mounted };
 }
 
 test("a saved test is selected from the workspace, preflighted locally, and the preflight names what would run", async () => {
@@ -336,6 +336,128 @@ test("the native file dialog can still select a saved test, kept inside the work
   // The advanced path hands the same entry to the same preflight.
   await user.click(screen.getByRole("button", { name: "Validate and preflight" }));
   expect(facade.oneCall("PreflightRun")[0]).toMatchObject({ spec: SPEC_ENTRY });
+});
+
+test("resume repeats a retained never-attempted run only after explicit keyboard action into a fresh folder", async () => {
+  const user = userEvent.setup();
+  const order: string[] = [];
+  const { facade, events } = renderPanel({
+    OpenRunEvidence: () => runEvidenceResult({ acknowledged: 0, not_attempted: 1, run_state: "timed_out", stop_reason: "timed_out" }),
+    DurableRunProgress: () => runProgressResult(),
+    ResumeDurableRun: () => { order.push("resume"); return { state: "completed", resume: {
+      schema: "readmit-run-resume/v1", resumed_from: "timed_out", repeated: 1,
+      run: durableRunResult("passed").run!,
+    } }; },
+  });
+  await user.selectOptions(screen.getByLabelText("Saved test or suite"), SPEC_ENTRY);
+  await user.selectOptions(screen.getByLabelText("Retained executions of this workspace"), RUN_ENTRY);
+  await user.click(screen.getByRole("button", { name: "Open evidence read-only" }));
+  await screen.findByText(/Run: timed_out/);
+  await user.type(screen.getByLabelText("Fresh folder for resumed run"), "job-002");
+  screen.getByRole("button", { name: "Resume never-attempted work" }).focus();
+  await user.keyboard("{Enter}");
+  await screen.findByText(/Resumed 1 never-attempted occurrence/);
+  expect(facade.oneCall("ResumeDurableRun")).toEqual([{ workspace: WORKSPACE_ROOT, job: RUN_ENTRY, spec: SPEC_ENTRY, output: "job-002" }]);
+  expect(events).toContain("watch:job-002");
+  expect(order).toEqual(["resume"]);
+});
+
+test("resume shows a delivery-uncertain refusal without creating an output", async () => {
+  const user = userEvent.setup();
+  const { facade, events } = renderPanel({
+    OpenRunEvidence: () => runEvidenceResult({ run_state: "delivery_uncertain", delivery_uncertain: true, uncertain: 1, acknowledged: 0 }),
+    DurableRunProgress: () => runProgressResult(),
+    ResumeDurableRun: () => ({ state: "failed", reason: "resume refused: an intent was synced without an acknowledged outcome; that send is never repeated" }),
+  });
+  await user.selectOptions(screen.getByLabelText("Saved test or suite"), SPEC_ENTRY);
+  await user.selectOptions(screen.getByLabelText("Retained executions of this workspace"), RUN_ENTRY);
+  await user.click(screen.getByRole("button", { name: "Open evidence read-only" }));
+  await user.type(screen.getByLabelText("Fresh folder for resumed run"), "job-002");
+  await user.click(screen.getByRole("button", { name: "Resume never-attempted work" }));
+  await screen.findByText(/resume refused: an intent was synced without an acknowledged outcome/);
+  expect(facade.callsTo("ResumeDurableRun")).toHaveLength(1);
+  expect(events).toContain("watch:job-001");
+});
+
+test("an invalid resume output is refused without recording an outside folder in the session", async () => {
+  const user = userEvent.setup();
+  const { facade, events } = renderPanel({
+    OpenRunEvidence: () => runEvidenceResult({ acknowledged: 0, not_attempted: 1 }),
+    DurableRunProgress: () => runProgressResult(),
+    ResumeDurableRun: () => ({ state: "failed", reason: "the new run folder must be one entry of the open workspace" }),
+  });
+  await user.selectOptions(screen.getByLabelText("Saved test or suite"), SPEC_ENTRY);
+  await user.selectOptions(screen.getByLabelText("Retained executions of this workspace"), RUN_ENTRY);
+  await user.click(screen.getByRole("button", { name: "Open evidence read-only" }));
+  await user.type(screen.getByLabelText("Fresh folder for resumed run"), "../outside");
+  await user.click(screen.getByRole("button", { name: "Resume never-attempted work" }));
+  await screen.findByText(/new run folder must be one entry/);
+  expect(facade.callsTo("ResumeDurableRun")).toHaveLength(1);
+  expect(events).not.toContain("watch:../outside");
+});
+
+test("cancelling a resumed run retains its new folder and later recovery only reads it", async () => {
+  const user = userEvent.setup();
+  const mounted = renderPanel({
+    OpenRunEvidence: () => runEvidenceResult({ acknowledged: 0, not_attempted: 1, run_state: "timed_out" }),
+    DurableRunProgress: () => runProgressResult(),
+  });
+  await user.selectOptions(screen.getByLabelText("Saved test or suite"), SPEC_ENTRY);
+  await user.selectOptions(screen.getByLabelText("Retained executions of this workspace"), RUN_ENTRY);
+  await user.click(screen.getByRole("button", { name: "Open evidence read-only" }));
+  await user.type(screen.getByLabelText("Fresh folder for resumed run"), "job-002");
+  const pending = mounted.facade.park("ResumeDurableRun");
+  await user.click(screen.getByRole("button", { name: "Resume never-attempted work" }));
+  await waitFor(() => expect(mounted.facade.callsTo("ResumeDurableRun")).toHaveLength(1));
+  await user.click(screen.getByRole("button", { name: "Cancel run" }));
+  expect(mounted.facade.oneCall("Cancel")).toEqual(["durable-run"]);
+  pending.resolve({ state: "completed", resume: {
+    schema: "readmit-run-resume/v1", resumed_from: "timed_out", repeated: 1,
+    run: durableRunResult("cancelled").run!,
+  } });
+  await screen.findByText(/Resumed 1 never-attempted occurrence\(s\) into job-002. Run: cancelled/);
+  expect(mounted.events).toContain("watch:job-002");
+  expect(mounted.facade.callsTo("DurableRunProgress").some((call) => call.args[1] === "job-002")).toBe(true);
+  mounted.unmount();
+
+  const reopened = renderPanel({
+    OpenRunEvidence: () => runEvidenceResult({ entry: "job-002", run_state: "cancelled", stop_reason: "cancelled", acknowledged: 0, not_attempted: 1 }),
+    DurableRunProgress: () => runProgressResult({ phase: "cancelled", acknowledged: 0, not_attempted: 1 }),
+  }, [...ENTRIES, { name: "job-002", kind: "job" }]);
+  await user.selectOptions(screen.getByLabelText("Retained executions of this workspace"), "job-002");
+  await user.click(screen.getByRole("button", { name: "Open evidence read-only" }));
+  await screen.findByText(/Run: cancelled · stopped cancelled/);
+  expect(reopened.facade.callsTo("ResumeDurableRun")).toHaveLength(0);
+  expect(reopened.facade.callsTo("OpenRunEvidence")).toHaveLength(1);
+});
+
+test("cleanup is offered after completion, refuses a changed live run, then removes only its stale lease", async () => {
+  const user = userEvent.setup();
+  let listedTerminal = false;
+  let actuallyTerminal = false;
+  const { facade } = renderPanel({
+    OpenRunEvidence: () => runEvidenceResult({ terminal: listedTerminal, lease: listedTerminal ? "stale" : "held" }),
+    DurableRunProgress: () => runProgressResult(),
+    CleanDurableRun: () => actuallyTerminal
+      ? { state: "completed", cleanup: { schema: "readmit-run-cleanup/v1", run: durableRunResult("passed").run!, removed: ["lease.json"], retained: ["journal.jsonl"] } }
+      : { state: "failed", reason: "completion was not recorded; the writer may still hold its lease and nothing was removed" },
+  });
+  await user.selectOptions(screen.getByLabelText("Retained executions of this workspace"), RUN_ENTRY);
+  await user.click(screen.getByRole("button", { name: "Open evidence read-only" }));
+  expect(screen.queryByRole("button", { name: "Remove stale lease" })).toBeNull();
+  listedTerminal = true;
+  await user.click(screen.getByRole("button", { name: "Open evidence read-only" }));
+  await user.click(screen.getByRole("button", { name: "Remove stale lease" }));
+  await screen.findByText(/Cleanup refused: completion was not recorded/);
+  actuallyTerminal = true;
+  await user.click(screen.getByRole("button", { name: "Open evidence read-only" }));
+  screen.getByRole("button", { name: "Remove stale lease" }).focus();
+  await user.keyboard("{Enter}");
+  await screen.findByText(/Cleanup removed lease.json; retained 1 evidence entries/);
+  expect(facade.callsTo("CleanDurableRun")).toHaveLength(2);
+  expect(facade.callsTo("CleanDurableRun").map((call) => call.args)).toEqual([
+    [WORKSPACE_ROOT, RUN_ENTRY], [WORKSPACE_ROOT, RUN_ENTRY],
+  ]);
 });
 
 test("an empty workspace offers nothing to select and explains the empty history", () => {

@@ -612,6 +612,8 @@ export interface Facade {
   ExportInstalledLicense(): Promise<LicenseExportResult>;
   CompareRuns(request: RunComparisonRequest): Promise<RunComparisonResult>;
   StartDurableRun(request: DurableRunRequest): Promise<DurableRunResult>;
+  ResumeDurableRun(request: ResumeRunRequest): Promise<ResumeRunResult>;
+  CleanDurableRun(workspace: string, entry: string): Promise<CleanRunResult>;
   OpenDurableRun(path: string): Promise<DurableRunResult>;
   PreflightRun(request: RunPreflightRequest): Promise<RunPreflightResult>;
   ChooseRunSpec(workspace: string): Promise<RunSpecChoiceResult>;
@@ -1395,6 +1397,28 @@ export interface DurableRunRequest {
 }
 export function startDurableRun(request: DurableRunRequest): Promise<DurableRunResult> {
  return guard(() => facade().StartDurableRun(request), { state: "failed", reason: "The desktop connection was interrupted. Recover the output directory to inspect evidence; do not resend automatically." });
+}
+export interface ResumeRunRequest {
+  workspace: string;
+  job: string;
+  spec: string;
+  output: string;
+}
+export interface ResumeRunResult {
+  state: State;
+  reason?: string;
+  resume?: { schema: string; resumed_from: RunState; repeated: number; run: DurableRunSummary };
+}
+export function resumeDurableRun(request: ResumeRunRequest): Promise<ResumeRunResult> {
+  return guard(() => facade().ResumeDurableRun(request), { state: "failed", reason: "The desktop connection was interrupted. Recover the new output folder before any further execution." });
+}
+export interface CleanRunResult {
+  state: State;
+  reason?: string;
+  cleanup?: { schema: string; run: DurableRunSummary; removed: string[]; retained: string[] };
+}
+export function cleanDurableRun(workspace: string, entry: string): Promise<CleanRunResult> {
+  return guard(() => facade().CleanDurableRun(workspace, entry), { state: "failed" });
 }
 export function openDurableRun(path: string): Promise<DurableRunResult> {
  return guard(() => facade().OpenDurableRun(path), { state: "failed" });

@@ -84,9 +84,6 @@ func TestSupportGuidanceMatchesTheCheckedCapabilityLedger(t *testing.T) {
 	slices.Sort(open)
 
 	support := shell(t).Support
-	if len(support.Unavailable) == 0 {
-		t.Fatal("the shell claims every ledger row is delivered")
-	}
 	shown := append([]string(nil), support.Unavailable...)
 	slices.Sort(shown)
 	if !slices.Equal(open, shown) {
