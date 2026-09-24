@@ -740,6 +740,8 @@ export interface Facade {
   PublishSupportSummary(request: SupportPublishRequest): Promise<SupportPublishResult>;
   ChooseSupportExportPath(): Promise<PacketPathResult>;
   VerifySupportBundle(workspace: string, entry: string): Promise<SupportPreviewResult>;
+  PreviewReexecution(request: ReexecutionRequest): Promise<ReexecutionPreviewResult>;
+  ReexecuteReviewedEvidence(request: ReexecutionSendRequest): Promise<ReexecutionResult>;
   ReadProtection(workspace: string, entry: string): Promise<ProtectionResult>;
   SaveProtectionControl(request: ProtectionControlRequest): Promise<ProtectionResult>;
   RotateProtectionControl(workspace: string, entry: string, name: string): Promise<ProtectionResult>;
@@ -4075,6 +4077,106 @@ export function chooseSupportExportPath(): Promise<PacketPathResult> {
  * reader `readmit share verify` runs, independently of its source. */
 export function verifySupportBundle(workspace: string, entry: string): Promise<SupportPreviewResult> {
   return guard(() => facade().VerifySupportBundle(workspace, entry), { state: "failed" });
+}
+
+/** What `readmit redact reexecute` reads, each one entry of the open
+ * workspace: the approved review, the private local state its derivation
+ * wrote, the retained packet whose current run is the actual original phase,
+ * the rebound execution specification, the phase, and the exact review
+ * identity typed now. `output` names the new job folder; empty proposes one. */
+export interface ReexecutionRequest {
+  workspace: string;
+  review: string;
+  local_state: string;
+  original_packet: string;
+  spec: string;
+  phase: string;
+  approval: string;
+  output?: string;
+}
+
+/** The operation's own `readmit-reexecution-assessment/v1`, as the command
+ * line prints it. `criteria` is `not-executed`, `matched`, `changed` or
+ * `unavailable-or-unstable`; `external_equivalence` is always `declined`. */
+export interface ReexecutionAssessment {
+  schema: string;
+  review_identity: string;
+  original_packet_identity: string;
+  original_result_identity: string;
+  derived_case_identity: string;
+  execution_spec_identity: string;
+  phase: string;
+  result_identity: string;
+  criteria: string;
+  external_equivalence: string;
+  disclosure: string;
+  reason: string;
+}
+
+/** What one send would do, read out of the command's own preparation: the
+ * assessment it would record, the target, the occurrences of the approved
+ * derived case it would send, the fresh job folder and whether execution
+ * would be admitted. `identity` pins all of it; a send is refused unless the
+ * inputs still prepare to exactly this preview. */
+export interface ReexecutionPreview {
+  identity: string;
+  assessment: ReexecutionAssessment;
+  target: RunTargetView;
+  selected: RunSelected[];
+  initial_state: string;
+  reset?: string;
+  destination: RunDestination;
+  admission: RunAdmission;
+  limitations: string[];
+}
+
+export interface ReexecutionPreviewResult {
+  state: State;
+  reason?: string;
+  preview?: ReexecutionPreview;
+}
+
+/** Prepares one reexecution exactly as `readmit redact reexecute` does
+ * without --send. It opens no connection, sends, resets and writes nothing. */
+export function previewReexecution(request: ReexecutionRequest): Promise<ReexecutionPreviewResult> {
+  return guard(() => facade().PreviewReexecution(request), { state: "failed" });
+}
+
+/** One deliberate send: what the preview named, the preview identity the
+ * person reviewed, the new job folder, and `authorize`, the explicit
+ * authorization of this single send that `--send` is on the command line. */
+export interface ReexecutionSendRequest extends ReexecutionRequest {
+  output: string;
+  expected_identity: string;
+  authorize: boolean;
+}
+
+/** One send as the operation assessed it: the job folder it retained, the
+ * assessment, and what a read-only recovery of the job establishes now. */
+export interface ReexecutionOutcome {
+  job: string;
+  assessment: ReexecutionAssessment;
+  retained?: RunProgress;
+  limitations: string[];
+}
+
+/** Completed only for a result assessed as matched; a changed phase, and a
+ * cancelled, timed-out, interrupted or delivery-uncertain send, is failed or
+ * cancelled and still carries what it retained. */
+export interface ReexecutionResult {
+  state: State;
+  reason?: string;
+  outcome?: ReexecutionOutcome;
+}
+
+/** Sends once, exactly as `readmit redact reexecute --send --output` does,
+ * only under an explicit authorization and only while the inputs still
+ * prepare to the reviewed preview. Nothing is ever resent. */
+export function reexecuteReviewedEvidence(request: ReexecutionSendRequest): Promise<ReexecutionResult> {
+  return guard(() => facade().ReexecuteReviewedEvidence(request), {
+    state: "failed",
+    reason: "The desktop connection was interrupted. Read the retained job to see what was sent; nothing is resent automatically.",
+  });
 }
 
 /** One registered protection control as the view shows it. `key` is always the

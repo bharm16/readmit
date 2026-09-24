@@ -306,6 +306,14 @@ any possible delivery at the target before a separately authorized new attempt;
 never reuse a job directory. A preparation error creates no job. An interruption
 or storage failure may retain an incomplete job, never passing proof.
 
+The desktop shell's [privacy panel](desktop.md#privacy-review-protected-export-and-support-sharing)
+runs this operation too: its preview is `PrepareReexecution` and shows the
+recorded target and the derived messages a send would deliver, and its send is
+`Execute`, offered only after an explicit authorization of that single send and
+refused unless the inputs still prepare to the preview the person reviewed.
+Its refusals, assessment and retained job are this command's, and it neither
+resets, retries nor resumes.
+
 The output-only `readmit-reexecution-assessment/v1` JSON binds the exact review,
 original packet/result, derived case, rebound execution spec and new result
 identities. `criteria` is `not-executed`, `matched`, `changed`, or

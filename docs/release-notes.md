@@ -1,5 +1,31 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The privacy panel reexecutes an approved review against the target its
+  actual original run recorded, as `readmit redact reexecute` does (#310).
+  Until now the privacy review stated `external_equivalence: declined` but
+  offered no reexecution, and the command had no screen. A new **Reexecute
+  against the authorized target** step takes the review, its private entry,
+  the retained packet whose current run is the original phase, the rebound
+  specification, the phase and the exact review identity. Its preview is the
+  command's own preparation and sends nothing: it shows the target, the
+  derived messages a send would deliver, the identities the assessment will
+  bind, the job folder and whether execution is admitted. **Send once** is
+  offered only after the person authorizes that single send, and the backend
+  admits it as execution and refuses it unless the inputs still prepare to the
+  reviewed preview. An unapproved or blocked review, another derivation's
+  private state, a phase the original run does not meet, a target it did not
+  record, an unapproved host name and a production-classified target are
+  refused in the command's own sentences. Only a matched phase completes; a
+  changed or unavailable one is refused with the assessment's reason, as the
+  command refuses it. A cancelled or delivery-uncertain send is retained,
+  reported as such and never resent; each attempt spends its preview and
+  authorization. An interaction journey sends through the real
+  facade to a ledger receiver on loopback and the command line recovers the
+  job it retained; Go parity tests hold the window's preview, assessment,
+  refusals, cancellation and unlicensed refusal to the command's. No
+  `readmit-*` document, command, exit status or machine output changes; two
+  bound methods are added.
+
 - A replay screen previews and explicitly sends selected messages of the open
   case (#304). `readmit replay` had no screen. **Replay selected messages**
   chooses messages from the case index, a target configuration, an optional

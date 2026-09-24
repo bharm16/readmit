@@ -12,13 +12,18 @@
 // A planted example goes through privacy review: a policy that leaves
 // findings unresolved blocks the review, and the handled policy's review is
 // exported only under its exact identity. The command line verifies every
-// artifact the window wrote.
+// artifact the window wrote. An approved review is then reexecuted against
+// the target its actual original failing run recorded — a ledger receiver the
+// journey starts on loopback — sending only after a preview and an explicit
+// authorization, refused under a wrong identity exactly as `readmit redact
+// reexecute` refuses it, and retaining a job the command line recovers.
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UserEvent } from "@testing-library/user-event";
 import { byContent, enter, Journey, press, region } from "../testkit/journey";
-import { activateLicense, createProject, runOnce, savedAckTest } from "./steps";
+import { freeLoopbackAddress } from "./probes.js";
+import { activateLicense, createProject, runOnce, runs, savedAckTest, tabTo } from "./steps";
 
 let journey: Journey;
 
@@ -395,4 +400,159 @@ test("a planted example's privacy review is blocked while its policy leaves find
     const text = journey.readFile(`${project}/export-001/${file}`);
     for (const value of planted) expect(text).not.toContain(value);
   }
+});
+
+/** The command line under the vendor-delivered activation the window uses. */
+function licensed(args: string[]) {
+  return journey.commandLine(["--operation-policy", journey.path("vendor-delivered-license", "operation-policy.json"), ...args]);
+}
+
+/** Starts the built-in appointment-ledger receiver on the recorded target's
+ * address for the two messages a phase sends, writing the observation the
+ * specification names, once that observation exists. `finished` settles when
+ * the receiver has taken both messages and exited. */
+async function ledgerReceiver(address: string, observation: string, output: string) {
+  const finished = licensed(["listen", "--address", address, "--mode", "defective", "--output", output, "--observation", observation, "--max-messages", "2"]);
+  await waitFor(() => expect(() => journey.readFile(observation)).not.toThrow(), { timeout: 30_000 });
+  return { finished };
+}
+
+test("an approved review is reexecuted against the target its original failing run recorded, only after a preview and an explicit authorization", async () => {
+  const user = userEvent.setup();
+  await journey.launch();
+  await activateLicense(user, journey);
+  await createProject(user, journey, "reviews", "reexecution", "Reviewed reexecution");
+  const project = "reviews/reexecution";
+  placePlantedExample(project);
+  // The target the original run was sent to, recorded by the person before
+  // its receiver started: the loopback address its ledger receiver takes.
+  const address = await freeLoopbackAddress();
+  journey.writeFile(
+    `${project}/original-target.json`,
+    JSON.stringify({ schema: "readmit-target/v1", test_endpoint: true, address, transport: "plain", approved_transport: false, connect_timeout: "10s", message_timeout: "30s", max_ack_bytes: 65536 }),
+  );
+  journey.makeFolder("receiver");
+  await importCaptures(user, "original.case");
+
+  // The actual original phase: the planted test run once through the window
+  // against the defective ledger, failing as reviewed.
+  const original = (await ledgerReceiver(address, `${project}/test-observation.json`, "receiver/original")).finished;
+  const running = runs();
+  await running.findByRole("option", { name: "spec.json (test)" });
+  await user.selectOptions(running.getByLabelText("Saved test or suite"), "spec.json");
+  await enter(user, running.getByLabelText("Fresh output folder"), "run-original");
+  await press(user, running.getByRole("button", { name: "Validate and preflight" }));
+  expect(await running.findByText(byContent(/^Admission: admitted$/))).toBeTruthy();
+  await press(user, running.getByRole("button", { name: "Send and execute once" }));
+  expect((await running.findByText(byContent(/^Run: \w+ · Stop reason: \w+$/))).textContent).toBe("Run: assertion_failed · Stop reason: assertion_failed");
+  expect((await original).code).toBe(0);
+
+  // The review, then the specification the person rebinds by hand to the
+  // approved derived case, the same target and a new observation, exactly as
+  // the reexecution guide describes: nothing else in it changes.
+  const handled = await derive(user, "policy.json");
+  expect(handled.review).toMatch(/^Review review-001 · ready-for-approval · /);
+  const rebound = JSON.parse(journey.readFile(`${project}/review-001/spec.json`)) as {
+    input: { case: string };
+    target: string;
+    observation: { path: string };
+  };
+  rebound.input.case = "review-001/case";
+  rebound.target = "original-target.json";
+  rebound.observation.path = "reexecution-observation.json";
+  journey.writeFile(`${project}/rebound.json`, JSON.stringify(rebound));
+
+  // The original run becomes the current run of a retained packet.
+  const packet = packets();
+  await packet.findAllByRole("option", { name: "run-original" });
+  await user.selectOptions(packet.getByLabelText("Case"), "original.case");
+  await user.selectOptions(packet.getByLabelText("Historical specification"), "spec.json");
+  await user.selectOptions(packet.getByLabelText("Current result"), "run-original");
+  await press(user, packet.getByRole("button", { name: "Preview assembly" }));
+  expect(await line(packet, /^Current result: /)).toBe("Current result: run-original — found · assertion_failure · assertion_failed · boundary appointment-ledger");
+  await press(user, await packet.findByRole("button", { name: "Assemble packet" }));
+  expect(await line(packet, /^Packet packet-001 sealed: /)).toBeTruthy();
+
+  const step = within(privacy().getByRole("group", { name: "Reexecute against the authorized target" }));
+  await step.findByRole("option", { name: "rebound.json" });
+  await user.selectOptions(step.getByLabelText("Approved review"), "review-001");
+  await enter(user, step.getByLabelText("Private local state its derivation wrote"), "review-private-001");
+  await user.selectOptions(step.getByLabelText(/^Original packet/), "packet-001");
+  await user.selectOptions(step.getByLabelText("Rebound execution specification"), "rebound.json");
+  await user.selectOptions(step.getByLabelText("Phase"), "failure");
+  const approving = step.getByLabelText("Exact review identity approving this reexecution");
+  const reexecute = (approval: string, ...send: string[]) =>
+    licensed(["redact", "reexecute", `${project}/review-001`, "--local-state", `${project}/review-private-001`, "--approve", approval,
+      "--original-packet", `${project}/packet-001`, "--spec", `${project}/rebound.json`, "--phase", "failure", ...send]);
+
+  // An identity that is not the review's is refused by the window and the
+  // command line in the same sentence, and nothing is offered to send.
+  const unapproved = "reexecution requires the exact complete disclosure review; changed artifacts require review again";
+  await enter(user, approving, "0".repeat(64));
+  await press(user, step.getByRole("button", { name: "Preview reexecution" }));
+  expect(await step.findByText(unapproved)).toBeTruthy();
+  expect((step.getByRole("button", { name: "Send once" }) as HTMLButtonElement).disabled).toBe(true);
+  const refused = await reexecute("0".repeat(64));
+  expect(refused.code).not.toBe(0);
+  expect(refused.stderr).toBe(`readmit: ${unapproved}\n`);
+
+  // The review's own identity previews what a send would do, and the command
+  // line previews the same; the preview sends nothing: the receiver waits for
+  // both messages until the person authorizes the one send.
+  await enter(user, approving, handled.identity);
+  const receiving = (await ledgerReceiver(address, `${project}/reexecution-observation.json`, "receiver/reexecuted")).finished;
+  let received = false;
+  void receiving.then(() => (received = true));
+  await press(user, step.getByRole("button", { name: "Preview reexecution" }));
+  expect(await line(step, /^Target: /)).toBe(`Target: (unnamed) · unclassified · plain · ${address}`);
+  expect(await line(step, /^Sends /)).toBe("Sends 2 messages of the approved derived case:");
+  expect(step.getByText("s0001-e000001 → o000001")).toBeTruthy();
+  expect(step.getByText("s0002-e000001 → o000002")).toBeTruthy();
+  expect(await line(step, /^Destination: /)).toBe("Destination: reexecution-001 (generated) · fresh");
+  expect(await line(step, /^Admission: /)).toBe("Admission: admitted");
+  expect(await line(step, /^Criteria: /)).toBe("Criteria: not-executed · external equivalence declined · disclosure customer-local-only-new-review-required");
+  const specIdentity = journey.digest(`${project}/rebound.json`);
+  expect(step.getByText(handled.identity, { selector: "dd" })).toBeTruthy();
+  expect(step.getByText(specIdentity, { selector: "dd" })).toBeTruthy();
+  const previewed = await reexecute(handled.identity);
+  expect(previewed.code).toBe(0);
+  const cliPreview = JSON.parse(previewed.stdout) as Record<string, string>;
+  expect(cliPreview).toMatchObject({
+    review_identity: handled.identity,
+    execution_spec_identity: specIdentity,
+    criteria: "not-executed",
+    external_equivalence: "declined",
+  });
+  const packetIdentity = journey.digest(`${project}/packet-001/manifest.json`);
+  expect(cliPreview.original_packet_identity).toBe(packetIdentity);
+  expect(step.getByText(packetIdentity, { selector: "dd" })).toBeTruthy();
+  expect(received).toBe(false);
+
+  // Authorized from the keyboard, it sends once and is assessed as the
+  // command assesses it: the reviewed failure set matched, and external
+  // equivalence declined.
+  const authorize = step.getByLabelText(/^I authorize this single nonproduction send/) as HTMLInputElement;
+  await tabTo(user, authorize);
+  await user.keyboard(" ");
+  await tabTo(user, step.getByRole("button", { name: "Send once" }));
+  await user.keyboard("{Enter}");
+  expect(await line(step, /^Criteria: matched/)).toBe("Criteria: matched · external equivalence declined");
+  expect(await line(step, /^Job /)).toBe("Job reexecution-001 · run assertion_failed · stop reason assertion_failed");
+  expect(await line(step, /^Deliveries: /)).toBe("Deliveries: acknowledged 2 · uncertain 0 · not attempted 0");
+  expect((await receiving).code).toBe(0);
+  expect(journey.callsTo("ReexecuteReviewedEvidence")).toHaveLength(1);
+  // The attempt spent the preview and the authorization: nothing is offered
+  // to send again.
+  expect(authorize.checked).toBe(false);
+  expect((step.getByRole("button", { name: "Send once" }) as HTMLButtonElement).disabled).toBe(true);
+
+  // The command line recovers the job the window retained, to the result the
+  // window assessed.
+  const resultLine = await line(step, /^Result identity: /);
+  const recovered = await journey.commandLine(["run", "status", `${project}/reexecution-001`, "--recovery", "--json"]);
+  expect(recovered.code).toBe(1);
+  const recovery = JSON.parse(recovered.stdout) as { terminal: boolean; uncertain: number; run: { result_identity: string } };
+  expect(recovery.terminal).toBe(true);
+  expect(recovery.uncertain).toBe(0);
+  expect(`Result identity: ${recovery.run.result_identity}`).toBe(resultLine);
 });
