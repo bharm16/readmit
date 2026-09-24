@@ -28,9 +28,18 @@ func replayCase(t *testing.T) string {
 	return path
 }
 
+const replayMessageTimeout = "5s"
+
 func replayTarget(t *testing.T, address string) string {
 	t.Helper()
-	data, err := json.Marshal(replay.Target{Schema: replay.TargetSchema, TestEndpoint: true, Address: address, Transport: "plain", ConnectTimeout: "1s", MessageTimeout: "200ms", MaxACKBytes: 4096}, json.Deterministic(true))
+	// The fixture receiver syncs two ledger snapshots before acknowledging.
+	// A 200 ms bound raced those writes on a loaded native-smoke runner.
+	return replayTargetWithMessageTimeout(t, address, replayMessageTimeout)
+}
+
+func replayTargetWithMessageTimeout(t *testing.T, address, messageTimeout string) string {
+	t.Helper()
+	data, err := json.Marshal(replay.Target{Schema: replay.TargetSchema, TestEndpoint: true, Address: address, Transport: "plain", ConnectTimeout: "1s", MessageTimeout: messageTimeout, MaxACKBytes: 4096}, json.Deterministic(true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +164,12 @@ func TestReplayExecutableFailureClassesAppearInConsole(t *testing.T) {
 				}()
 			}
 			output := filepath.Join(t.TempDir(), "run")
-			stdout, stderr, err := run(t, "replay", replayCase(t), "--target", replayTarget(t, address), "--message", "s0001-e000001", "--send", "--output", output)
+			messageTimeout := replayMessageTimeout
+			if name == "timeout" {
+				// This case intentionally tests the sender's short read deadline.
+				messageTimeout = "200ms"
+			}
+			stdout, stderr, err := run(t, "replay", replayCase(t), "--target", replayTargetWithMessageTimeout(t, address, messageTimeout), "--message", "s0001-e000001", "--send", "--output", output)
 			<-done
 			want := name
 			if name == "AE" {

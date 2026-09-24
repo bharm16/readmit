@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/bharm16/readmit/internal/replay"
 )
 
 // The expectations below are authored here rather than produced by a command,
@@ -90,6 +92,13 @@ func explainableRun(t *testing.T) (runPath, directory string) {
 		t.Fatalf("replay: %v %s", err, stderr)
 	}
 	receiver.wait(t)
+	recorded, err := replay.Open(runPath)
+	if err != nil || len(recorded.Events) != 1 {
+		t.Fatalf("read accepted replay timing: %v", err)
+	}
+	// The sender's recorded transaction includes both receiver syncs and the
+	// ACK, plus its own setup and persistence; it bounds sync time from above.
+	t.Logf("fixture replay ACK transaction (including receiver syncs): %s", time.Duration(recorded.Events[0].ElapsedNS))
 	return runPath, directory
 }
 
