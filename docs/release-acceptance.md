@@ -29,8 +29,10 @@ test reported as passing.
   with engine digests/options and import results, including unsupported variants.
 - [ ] #75: test each advertised database/driver/authentication combination,
   SELECT-only grants, TLS verification, parameter binding, cancellation and
-  bounds. Native x86-64 SQL Server tests and separately authorized Oracle 19c
-  tests are required for those claims; Oracle 26ai Free does not prove 19c.
+  bounds. Local Linux/arm64 PostgreSQL 16.15, 17.11 and 18.6 evidence is
+  retained; the native x86-64 SQL Server matrix still requires owner-dispatched
+  evidence, and separately authorized Oracle 19c tests are required for that
+  claim. Oracle 26ai Free does not prove 19c.
 - [ ] #77: integrate downstream (#73), file/API (#74) and database (#75)
   observations in the guided authoring flow, beyond generic adapter fixtures.
 - [ ] #86/#87: prove locks, isolation, bounded admission, cancellation, disk-full

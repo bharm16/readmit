@@ -1,5 +1,14 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- A manually dispatched synthetic database lab now defines the finite D3
+  PostgreSQL 16/17/18 and native x86-64 SQL Server 2019/2022/2025 test matrix
+  (#75). It generates TLS and credentials per run, tests a separate SELECT-only
+  principal, and retains exact image/version plus observation evidence. Local
+  Linux/arm64 PostgreSQL 16.15, 17.11 and 18.6 runs passed and their synthetic
+  completions/snapshots are retained in this checkout with image digests. The
+  workflow is never a PR or release gate; no SQL Server or Oracle version is
+  claimed qualified until the owner dispatches and reviews its evidence.
+
 - Profile validation now refuses an explicitly named pack it cannot read in
   the same words as opening that profile (#394), instead of silently resolving
   against another pack. Discarding unstored profile edits waits for queued

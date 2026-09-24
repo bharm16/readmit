@@ -7658,6 +7658,18 @@
       "disposition": {"kind": "developer-tooling", "reason": "repository build, test and release tooling that developers and CI run against readmit (docs/agents/testing.md); it is not shipped to customers and no customer workflow depends on it"}
     },
     {
+      "id": "tooling.tools.database_lab",
+      "source": "tools/database_lab.py",
+      "kind": "tooling",
+      "capability": "Run one owner-dispatched synthetic TLS and least-privilege database qualification cell and retain its image and observation evidence",
+      "owner": "bharm16/readmit#75",
+      "inputs": [],
+      "outputs": [],
+      "prerequisites": [],
+      "implemented": false,
+      "disposition": {"kind": "developer-tooling", "reason": "manual synthetic qualification tooling; it is not shipped to customers or run as a required check"}
+    },
+    {
       "id": "tooling.tools.fuzz",
       "source": "tools/fuzz.py",
       "kind": "tooling",

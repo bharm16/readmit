@@ -1,0 +1,58 @@
+name: Synthetic database qualification
+
+# Real database servers are an owner-dispatched lab, never a pull-request,
+# push, release or required check. The default branch must hold this workflow
+# before the owner can dispatch SQL Server on native x86-64 Linux.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GOTOOLCHAIN: local
+  GOTELEMETRY: 'off'
+
+jobs:
+  database-lab:
+    name: ${{ matrix.engine }} ${{ matrix.version }} synthetic lab
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - engine: postgresql
+            version: '16'
+          - engine: postgresql
+            version: '17'
+          - engine: postgresql
+            version: '18'
+          - engine: sqlserver
+            version: '2019'
+          - engine: sqlserver
+            version: '2022'
+          - engine: sqlserver
+            version: '2025'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-go
+        with:
+          cache-scope: database-lab-${{ matrix.engine }}-${{ matrix.version }}
+      - name: Qualify one synthetic TLS and least-privilege database
+        run: >-
+          python3 tools/database_lab.py
+          --engine ${{ matrix.engine }}
+          --version ${{ matrix.version }}
+          --output "$RUNNER_TEMP/database-lab-evidence"
+      - name: Retain exact image/version and observation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: database-lab-${{ matrix.engine }}-${{ matrix.version }}
+          path: ${{ runner.temp }}/database-lab-evidence
+          if-no-files-found: warn
+          retention-days: 30

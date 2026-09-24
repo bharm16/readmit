@@ -1,0 +1,72 @@
+"""Static safety checks for the opt-in synthetic database lab runner."""
+
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+from unittest.mock import patch
+
+import database_lab
+
+
+class DatabaseLabTests(unittest.TestCase):
+    def test_finite_matrix_is_exactly_the_adopted_postgres_and_sql_server_targets(self):
+        self.assertEqual(set(database_lab.IMAGES), {
+            ("postgresql", "16"), ("postgresql", "17"), ("postgresql", "18"),
+            ("sqlserver", "2019"), ("sqlserver", "2022"), ("sqlserver", "2025"),
+        })
+        self.assertNotIn(("oracle", "19c"), database_lab.IMAGES)
+
+    def test_existing_evidence_destination_refuses_before_docker(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.object(database_lab, "docker") as docker:
+            with self.assertRaisesRegex(RuntimeError, "destination must be new"):
+                database_lab.run_lab("postgresql", "16", Path(temporary))
+            docker.assert_not_called()
+
+    def test_sql_server_refuses_non_native_machine_before_docker(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.object(database_lab, "docker") as docker, \
+                patch.object(database_lab.platform, "machine", return_value="arm64"):
+            with self.assertRaisesRegex(RuntimeError, "native x86-64"):
+                database_lab.run_lab("sqlserver", "2022", Path(temporary) / "new")
+            docker.assert_not_called()
+
+    def test_failed_subprocess_never_echoes_arguments_or_output(self):
+        result = subprocess.CompletedProcess(["tool", "private-argument"], 1, "private-output", "private-error")
+        with patch.object(database_lab.subprocess, "run", return_value=result):
+            with self.assertRaisesRegex(RuntimeError, "synthetic step failed with exit 1") as caught:
+                database_lab.checked("synthetic step", ["tool", "private-argument"])
+        self.assertNotIn("private-", str(caught.exception))
+
+    def test_secret_bearing_evidence_is_removed_before_upload(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "evidence"
+            output.mkdir()
+            (output / "completion.json").write_text("synthetic-password")
+            with self.assertRaisesRegex(RuntimeError, "was removed"):
+                database_lab.verify_output(output, "synthetic-password")
+            self.assertFalse(output.exists())
+
+    def test_evidence_manifest_names_each_file_in_stable_order(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            (output / "z.txt").write_text("z")
+            (output / "a.txt").write_text("a")
+            database_lab.write_manifest(output)
+            names = [line.split("  ", 1)[1] for line in (output / "sha256sums.txt").read_text().splitlines()]
+            self.assertEqual(names, ["a.txt", "z.txt"])
+
+    def test_cleanup_failure_withholds_qualification_receipt(self):
+        for exits in ((1, 0), (0, 1)):
+            with self.subTest(exits=exits), tempfile.TemporaryDirectory() as temporary:
+                output = Path(temporary) / "evidence"
+                output.mkdir()
+                (output / "qualification.md").write_text("Qualified")
+                answers = [subprocess.CompletedProcess(["docker"], code, "", "") for code in exits]
+                with patch.object(database_lab.subprocess, "run", side_effect=answers):
+                    with self.assertRaisesRegex(RuntimeError, "qualification withheld"):
+                        database_lab.cleanup_lab("own-container", "own-network", True, True, output)
+                self.assertFalse(output.exists())
+
+
+if __name__ == "__main__":
+    unittest.main()
