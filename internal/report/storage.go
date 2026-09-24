@@ -5,16 +5,13 @@ import (
 	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
-	"io"
 	"io/fs"
-	"os"
 	"path"
-	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
-	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 )
 
@@ -27,61 +24,54 @@ func encode(value any) ([]byte, error) {
 	return append(data, '\n'), nil
 }
 
-// reserve creates a new output whose directory entries are synced before it
-// is reported complete, the folder holding it among them. That folder is
-// opened first, so one this command cannot open is refused before anything is
-// created, and the output is made inside the folder that will be synced.
-func reserve(output string) (*os.Root, string, error) {
-	output, err := artifactpath.Destination(output)
-	if err != nil {
-		return nil, "", err
-	}
-	parent, root, err := artifactdir.Reserve(output)
-	if err != nil {
-		return nil, "", errors.New("cannot create report output; destination must be new and parent readable and writable")
-	}
-	root.Close()
-	return parent, output, nil
+// outputErrors are the sentences a failed write of any report output is
+// reported in.
+var outputErrors = artifactdir.Errors{
+	Reserve:   errors.New("cannot create report output; destination must be new and parent readable and writable"),
+	Directory: errors.New("cannot create report evidence directory"),
+	Create:    errors.New("cannot create report evidence; incomplete output retained"),
+	Write:     errors.New("cannot write report evidence; incomplete output retained"),
+	Sync:      errors.New("cannot sync report output; the output was written in full but a power loss could still lose it"),
 }
 
-// syncEntries syncs every directory naming one of files below dir, dir itself
-// and parent, the folder holding it, once dir's completion record is written.
-// Every file is synced by then, so a failure leaves output that may open and
-// says so.
-func syncEntries(parent *os.Root, dir string, files map[string][]byte) error {
-	failed := errors.New("cannot sync report output; the output was written in full but a power loss could still lose it")
-	root, err := parent.OpenRoot(filepath.Base(dir))
-	if err != nil {
-		return failed
+// sealed is a report output sealed by the digest of its manifest, which
+// indexes every other file: a packet, a retained packet, a portable review or
+// a prepared rerun workspace. It holds its files, its own directories and the
+// nested packets it copies whole.
+func sealed(manifest, marker string, directories, nested []string, files ...string) artifactdir.Family {
+	return artifactdir.Family{
+		Layout: artifactdir.Layout{
+			AllowedDirectories: directories,
+			Nested:             nested,
+			AllowFile:          func(name string) bool { return name == manifest || name == marker || slices.Contains(files, name) },
+		},
+		Seal:   artifactdir.ManifestHash("", manifest, marker),
+		Errors: outputErrors,
 	}
-	defer root.Close()
-	if artifactdir.SyncEntries(root, parent, artifactdir.Directories(files)) != nil {
-		return failed
-	}
-	return nil
 }
 
-func writeFile(dir, name string, data []byte) error {
-	return writeFileWithDurability(dir, name, data, artifactdir.Durable)
-}
+var (
+	packetFamily      = sealed("manifest.json", "identity.sha256", []string{"profiles"}, []string{"reproducer", "baseline", "post-fix"}, "spec.json", "baseline-target.json", "post-fix-target.json", "diagnosis.json", "diagnosis.md", "profiles/receiver.json", "profiles/diagnosis.json", "profiles/diagnose-config.json", "diff.json", "diff.md", "history.json", "SUMMARY.md", "RERUN.md")
+	retainedFamily    = sealed("manifest.json", "identity.sha256", nil, []string{"case", "current", "baseline", "baseline-case"}, "spec.json", "SUMMARY.md", "RERUN.md")
+	reviewFamily      = sealed("manifest.json", "identity.sha256", nil, []string{"packet"}, "report.html", "report.md", "report.json", "junit.xml", "report.pdf")
+	preparationFamily = sealed("preparation.json", "preparation.sha256", []string{"baseline", "post-fix", "reintroduced"}, []string{"reproducer"}, "target.json", "RERUN.md", "baseline/spec.json", "post-fix/spec.json", "reintroduced/spec.json")
+	// trialFamily is one trial's execution workspace inside the workspace
+	// Create removes before it answers: the case and spec it sends and the
+	// fixture's target. It is scratch and writes no completion record.
+	trialFamily = artifactdir.Family{
+		Layout: artifactdir.Layout{
+			Nested:    []string{"reproducer"},
+			AllowFile: func(name string) bool { return name == "spec.json" || name == "target.json" },
+		},
+		Errors: artifactdir.Errors{
+			Reserve: errors.New("cannot create report trial workspace"),
+			Create:  outputErrors.Create,
+			Write:   outputErrors.Write,
+		},
+	}
+)
 
-// writeFileWithDurability is writeFile with the durability the caller chose.
-// Scratch is only for the execution workspace Create removes before it answers.
-func writeFileWithDurability(dir, name string, data []byte, durability artifactdir.Durability) error {
-	root, err := os.OpenRoot(dir)
-	if err != nil {
-		return errors.New("cannot create report evidence; incomplete output retained")
-	}
-	defer root.Close()
-	err = durability.WriteFile(root, filepath.ToSlash(name), data)
-	if errors.Is(err, artifactdir.ErrCreateFile) {
-		return errors.New("cannot create report evidence; incomplete output retained")
-	}
-	if err != nil {
-		return errors.New("cannot write report evidence; incomplete output retained")
-	}
-	return nil
-}
+var errInvalidEvidence = errors.New("report evidence must be bounded regular files without symlinks or empty directories")
 
 // readTree rejects links, devices, oversized input and unindexed empty directories.
 // os.Root confines the bounded reads to the selected directory.
@@ -93,70 +83,33 @@ func readTree(dir string) (map[string][]byte, error) {
 // Empty operational sent/ carries no evidence file and is omitted on copy;
 // all other empty directories remain errors, as does sent/ in ordinary input.
 func readTreeAllowEmptySent(dir string, durable bool) (map[string][]byte, error) {
-	invalid := errors.New("report evidence must be bounded regular files without symlinks or empty directories")
-	info, err := os.Lstat(dir)
-	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return nil, invalid
-	}
-	root, err := os.OpenRoot(dir)
+	files, err := artifactdir.Read(dir, evidence(durable))
 	if err != nil {
-		return nil, invalid
-	}
-	defer root.Close()
-	files, directories := make(map[string][]byte), make(map[string]bool)
-	total, entries := 0, 0
-	err = fs.WalkDir(root.FS(), ".", func(name string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return invalid
-		}
-		if name == "." {
-			return nil
-		}
-		entries++
-		if entries > maxFiles*2 || len(name) > 200 || strings.Count(name, "/") > 5 || strings.Contains(name, "\\") {
-			return invalid
-		}
-		info, err := entry.Info()
-		if err != nil || info.Mode()&os.ModeSymlink != 0 {
-			return invalid
-		}
-		if info.IsDir() {
-			directories[name] = false
-			return nil
-		}
-		if !info.Mode().IsRegular() || info.Size() > maxFileBytes || len(files) >= maxFiles {
-			return invalid
-		}
-		file, err := root.Open(name)
-		if err != nil {
-			return invalid
-		}
-		opened, err := file.Stat()
-		if err != nil || !opened.Mode().IsRegular() || !os.SameFile(info, opened) {
-			file.Close()
-			return invalid
-		}
-		data, err := io.ReadAll(io.LimitReader(file, maxFileBytes+1))
-		closeErr := file.Close()
-		total += len(data)
-		if err != nil || closeErr != nil || len(data) > maxFileBytes || total > maxPacketBytes {
-			return invalid
-		}
-		files[name] = data
-		for parent := path.Dir(name); parent != "."; parent = path.Dir(parent) {
-			directories[parent] = true
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	for name, populated := range directories {
-		if !populated && !(durable && name == "sent" && files["engine.json"] != nil) {
-			return nil, invalid
-		}
+		return nil, errInvalidEvidence
 	}
 	return files, nil
+}
+
+// evidence is the one shape a report reads a folder of evidence as, whether a
+// case, a result, a job or a packet: bounded regular files and the directories
+// holding them, with short, shallow names, and no empty directory except a
+// durable job's sent/. Every directory and file counts toward one entry bound.
+func evidence(durable bool) artifactdir.Layout {
+	entries := 0
+	admit := func(name string) bool {
+		entries++
+		return entries <= maxFiles*2 && len(name) <= 200 && strings.Count(name, "/") <= 5 && !strings.Contains(name, "\\")
+	}
+	return artifactdir.Layout{
+		AllowDirectory: admit,
+		AllowFile:      admit,
+		AllowEmpty: func(directory string, files map[string][]byte) bool {
+			return durable && directory == "sent" && files["engine.json"] != nil
+		},
+		MaxFiles:     maxFiles,
+		MaxFileBytes: maxFileBytes,
+		MaxBytes:     maxPacketBytes,
+	}
 }
 
 func index(files map[string][]byte) []bundle.Payload {
@@ -175,13 +128,9 @@ func index(files map[string][]byte) []bundle.Payload {
 	return result
 }
 
-func copyFiles(files map[string][]byte, prefix, output string) error {
-	return copyFilesWithDurability(files, prefix, output, artifactdir.Durable)
-}
-
-// copyFilesWithDurability is copyFiles with the durability the caller chose, as
-// writeFileWithDurability is writeFile.
-func copyFilesWithDurability(files map[string][]byte, prefix, output string, durability artifactdir.Durability) error {
+// copyFiles writes every file of files named below prefix into output, below
+// into, with prefix replaced by it.
+func copyFiles(output *artifactdir.Writer, files map[string][]byte, prefix, into string) error {
 	for name, data := range files {
 		if !strings.HasPrefix(name, prefix) {
 			continue
@@ -190,10 +139,7 @@ func copyFilesWithDurability(files map[string][]byte, prefix, output string, dur
 		if !fs.ValidPath(name) {
 			return errors.New("invalid report evidence path")
 		}
-		if os.MkdirAll(filepath.Join(output, filepath.Dir(filepath.FromSlash(name))), 0700) != nil {
-			return errors.New("cannot create report evidence directory")
-		}
-		if err := writeFileWithDurability(output, name, data, durability); err != nil {
+		if err := output.WriteFile(path.Join(into, name), data); err != nil {
 			return err
 		}
 	}

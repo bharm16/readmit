@@ -115,7 +115,10 @@ What readmit does apply itself is narrow, and this is all of it:
 - **`protect pack` writes no plaintext temporary copy.** It reads a source and
   writes ciphertext straight into the destination `internal/artifactpath`
   reserved. A package that cannot be completed is removed rather than left
-  looking like one. This is a statement about `protect pack` and about nothing
+  looking like one. Every file of a package is synced, the descriptor last,
+  and the package directory and its entry in the folder holding it are synced
+  before it is reported; a package whose directory cannot be synced is written
+  in full, kept, and reported as not confirmed against a power loss. This is a statement about `protect pack` and about nothing
   else — see [what this does not cover](#what-this-does-not-cover).
 - Content **and the package index** are encrypted. A sensitive index is
   sensitive data, not harmless metadata, so the names and sizes of packed files

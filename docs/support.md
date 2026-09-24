@@ -111,8 +111,14 @@ for backups and legal retention obligations. Readmit does not track recipients,
 erase remote copies or certify deletion. Unix output uses 0700/0600; Windows
 uses inherited ACLs, which the customer must constrain before creation.
 
-Ctrl-C cancels creation. Failed/interrupted publication may leave an incomplete
-directory; verification refuses it. Preserve relevant local diagnostic evidence,
+Ctrl-C cancels creation. Each file is synced, `identity.sha256` last, and the
+bundle directory and its entry in the output folder are synced before
+publication is reported; an output folder readmit cannot open is refused before
+anything is written. Failed/interrupted publication may leave an incomplete
+directory; verification refuses it. A publication whose directory entries
+cannot be synced once its marker is written is refused too, although the bundle
+it wrote in full verifies: it is not confirmed against a power loss, so publish
+again under a new name rather than using it. Preserve relevant local diagnostic evidence,
 review again, and use a new output name. Never add a completion marker manually,
 resume a partial transfer automatically or overwrite a previously approved bundle.
 

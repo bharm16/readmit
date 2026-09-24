@@ -381,7 +381,9 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
   files under one subdirectory, a versioned strict-JSON `readmit-backup/v1`
   manifest naming each of them with its length and digest, and a completion
   marker written last, so a backup interrupted at any point is refused rather
-  than restored. See [backing up a workspace](backup.md).
+  than restored. Every file and directory entry is synced before a backup is
+  reported, through the same sealed writer every evidence directory uses. See
+  [backing up a workspace](backup.md).
 - What a backup records about registered evidence is what the shared bundle
   reader reported: `verified`, `changed`, `unreadable` or `missing`. Evidence is
   never reconstructed, substituted or silently omitted, and a backup or restore

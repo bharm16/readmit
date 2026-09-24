@@ -87,21 +87,40 @@ func writeBundle(ctx context.Context, path string, b *Bundle, durability artifac
 	if err != nil {
 		return nil, err
 	}
-	b.Identity, err = artifactdir.WriteContext(ctx, path, artifactdir.WriteOptions{Domain: b.Manifest.Schema, Directories: []string{"payloads"}, Durability: durability}, files)
-	if errors.Is(err, artifactdir.ErrCreateDirectory) {
-		return nil, errors.New("cannot create bundle; destination must be new and parent readable and writable")
-	}
-	if errors.Is(err, artifactdir.ErrCancelled) {
-		return nil, errors.New("bundle write cancelled; any incomplete bundle is retained and refused")
-	}
-	if errors.Is(err, artifactdir.ErrSyncDirectory) {
-		return nil, errors.New("cannot sync bundle directory; the bundle was written in full but a power loss could still lose it")
-	}
+	sealed := family
+	sealed.Seal = artifactdir.DirectoryHash(b.Manifest.Schema)
+	b.Identity, err = artifactdir.Write(ctx, path, sealed, durability, files)
 	if err != nil {
-		return nil, errors.New("cannot write bundle; incomplete bundle retained")
+		return nil, err
 	}
 	return b, nil
 }
+
+// family is the case bundle: payload files, the documents describing them and
+// the ADR-0002 identity under the manifest's schema, written last.
+var family = artifactdir.Family{
+	Layout: artifactdir.Layout{
+		Noun:               "bundle",
+		AllowedDirectories: []string{"payloads"},
+		RequiredFiles:      []string{"manifest.json", "events.jsonl", "correlations.jsonl", "identity.sha256"},
+		AllowFile: func(name string) bool {
+			return name == "manifest.json" || name == "events.jsonl" || name == "correlations.jsonl" || name == "identity.sha256" || name == "observation.json" || name == "collection.json" || name == "engine-export.json" || name == "engine-container.bin" || strings.HasPrefix(name, "payloads/")
+		},
+		MaxFiles:     MaxEvents + 6,
+		MaxFileBytes: maxFileBytes,
+		MaxBytes:     maxBundleBytes,
+	},
+	Errors: artifactdir.Errors{
+		Destination: errWriteBundle,
+		Reserve:     errors.New("cannot create bundle; destination must be new and parent readable and writable"),
+		Open:        errWriteBundle,
+		Write:       errWriteBundle,
+		Sync:        errors.New("cannot sync bundle directory; the bundle was written in full but a power loss could still lose it"),
+		Cancelled:   errors.New("bundle write cancelled; any incomplete bundle is retained and refused"),
+	},
+}
+
+var errWriteBundle = errors.New("cannot write bundle; incomplete bundle retained")
 
 // supported reports whether a manifest declares a case bundle contract this
 // release reads. Describe and Open must accept exactly the same set, so a new
@@ -481,17 +500,7 @@ func sameJSON(a, b any) bool {
 }
 
 func readFiles(path string) (map[string][]byte, error) {
-	return artifactdir.Read(path, artifactdir.Layout{
-		Noun:               "bundle",
-		AllowedDirectories: []string{"payloads"},
-		RequiredFiles:      []string{"manifest.json", "events.jsonl", "correlations.jsonl", "identity.sha256"},
-		AllowFile: func(name string) bool {
-			return name == "manifest.json" || name == "events.jsonl" || name == "correlations.jsonl" || name == "identity.sha256" || name == "observation.json" || name == "collection.json" || name == "engine-export.json" || name == "engine-container.bin" || strings.HasPrefix(name, "payloads/")
-		},
-		MaxFiles:     MaxEvents + 6,
-		MaxFileBytes: maxFileBytes,
-		MaxBytes:     maxBundleBytes,
-	})
+	return artifactdir.Read(path, family.Layout)
 }
 
 // Identity hashes a domain prefix and length-delimited relative paths/contents

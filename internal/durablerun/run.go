@@ -219,7 +219,7 @@ type writer struct {
 	log      *durablelog.Writer
 	halted   error
 	finished bool
-	root     *os.Root
+	job      *artifactdir.Writer
 	summary  Summary
 }
 
@@ -290,17 +290,16 @@ func start(ctx context.Context, plan *testrunner.Plan, output string) (summary S
 	}
 	// The folder holding the job is synced before the first send, so one this
 	// run cannot open is refused here, before anything is created.
-	parent, root, err := artifactdir.Reserve(output)
+	job, err := artifactdir.Create(output, jobFamily, artifactdir.Durable)
 	if err != nil {
-		return Summary{}, errors.New("cannot create durable run; destination must be new and parent readable and writable")
+		return Summary{}, err
 	}
-	defer parent.Close()
-	defer root.Close()
+	defer job.Close()
 	doc := planDocument{Schema: Schema, CreatedAt: time.Now().UTC(), Inputs: plan.PinnedInputs(), Payloads: []payload{}}
-	if err = root.Mkdir("intended", 0700); err != nil {
+	if err = job.Mkdir("intended"); err != nil {
 		return Summary{}, errors.New("cannot retain durable plan")
 	}
-	if err = root.Mkdir("sent", 0700); err != nil {
+	if err = job.Mkdir("sent"); err != nil {
 		return Summary{}, errors.New("cannot retain durable evidence")
 	}
 	for _, m := range doc.Inputs.Mappings {
@@ -309,7 +308,7 @@ func start(ctx context.Context, plan *testrunner.Plan, output string) (summary S
 			return Summary{}, e
 		}
 		name := "intended/" + m.OutboundOccurrence + ".bin"
-		if err = write(root, name, raw); err != nil {
+		if err = write(job, name, raw); err != nil {
 			return Summary{}, err
 		}
 		doc.Payloads = append(doc.Payloads, payload{name, len(raw), digest(raw)})
@@ -318,7 +317,7 @@ func start(ctx context.Context, plan *testrunner.Plan, output string) (summary S
 	if err != nil || len(raw) > maxPlan {
 		return Summary{}, errors.New("cannot encode bounded durable plan")
 	}
-	if err = write(root, "plan.json", raw); err != nil {
+	if err = write(job, "plan.json", raw); err != nil {
 		return Summary{}, err
 	}
 	// The engine pin is a sibling document, like the lease and the send
@@ -329,22 +328,22 @@ func start(ctx context.Context, plan *testrunner.Plan, output string) (summary S
 	if err != nil {
 		return Summary{}, err
 	}
-	if err = write(root, "engine.json", pin); err != nil {
+	if err = write(job, "engine.json", pin); err != nil {
 		return Summary{}, err
 	}
-	if err = writeLease(ctx, root, plan); err != nil {
+	if err = writeLease(ctx, job, plan); err != nil {
 		return Summary{}, err
 	}
 	// The lease is released when this process stops, however it stops. A
 	// crash leaves it, and recovery reports it held until the journal says
 	// otherwise.
-	defer root.Remove("lease.json")
-	f, err := openEvidence(root, "journal.jsonl")
+	defer job.Remove("lease.json")
+	f, err := openEvidence(job, "journal.jsonl")
 	if err != nil {
 		return Summary{}, errors.New("cannot create durable journal")
 	}
 	defer f.Close()
-	w = &writer{root: root, summary: Summary{Schema: Schema, State: Ready, StopReason: Ready, Planned: plan.Count()}}
+	w = &writer{job: job, summary: Summary{Schema: Schema, State: Ready, StopReason: Ready, Planned: plan.Count()}}
 	w.log = durablelog.NewWriter(f, digest(raw), journalLimit, durablelog.Messages{
 		Limit:  errJournalLimit,
 		Sync:   errors.New("cannot sync durable journal; execution stopped"),
@@ -354,9 +353,9 @@ func start(ctx context.Context, plan *testrunner.Plan, output string) (summary S
 		return w.summary, err
 	}
 	// Directory entries must reach stable storage too, before any network
-	// effect: intended/, the job and its entry in the folder holding it.
-	if artifactdir.SyncEntries(root, parent, []string{"intended"}) != nil {
-		return w.summary, errors.New("cannot sync durable evidence directory")
+	// effect: intended/, sent/, the job and its entry in the folder holding it.
+	if err = job.Sync(); err != nil {
+		return w.summary, err
 	}
 	w.summary.State = Running
 	w.summary.StopReason = Running
@@ -423,7 +422,7 @@ func resources(plan *testrunner.Plan) []Resource {
 	return append(declared, Resource{Kind: EndpointResource, Name: plan.Target().Address})
 }
 
-func writeLease(ctx context.Context, root *os.Root, plan *testrunner.Plan) error {
+func writeLease(ctx context.Context, job *artifactdir.Writer, plan *testrunner.Plan) error {
 	lease := Lease{Schema: LeaseSchema, Holder: Holder{PID: os.Getpid(), StartedAt: time.Now().UTC()}, Resources: resources(plan)}
 	if deadline, ok := ctx.Deadline(); ok {
 		lease.DeadlineAt = deadline.UTC()
@@ -432,7 +431,7 @@ func writeLease(ctx context.Context, root *os.Root, plan *testrunner.Plan) error
 	if err != nil || len(raw) > maxLease {
 		return errors.New("cannot encode durable lease")
 	}
-	return write(root, "lease.json", raw)
+	return write(job, "lease.json", raw)
 }
 
 // readLease reads the lease beside a journal, if one is present. A lease that
@@ -529,29 +528,25 @@ func (w *writer) BeforeSend(id string) error {
 	}
 	// Persist replay directory entries (and the decision) before a durable intent
 	// can attest that the frozen source/intended files exist.
-	for _, name := range []string{"result/run/payloads", "result/run", "result", "."} {
-		if err := SyncDirectory(w.root, name); err != nil {
-			return err
-		}
+	if err := w.job.SyncDirectories("result/run/payloads", "result/run", "result", "."); err != nil {
+		return err
 	}
 	return w.appendIntent(id)
 }
 func (w *writer) Sent(id string, raw []byte) error {
-	if err := write(w.root, sentPath(id), raw); err != nil {
+	if err := write(w.job, sentPath(id), raw); err != nil {
 		w.halted = err
 		return err
 	}
-	if err := SyncDirectory(w.root, "sent"); err != nil {
+	if err := w.job.SyncDirectories("sent"); err != nil {
 		w.halted = err
 		return err
 	}
 	return w.appendSent(id, raw)
 }
 func (w *writer) Recorded(event replay.Event) error {
-	for _, name := range []string{"result/run/payloads", "result/run", "result"} {
-		if err := SyncDirectory(w.root, name); err != nil {
-			return err
-		}
+	if err := w.job.SyncDirectories("result/run/payloads", "result/run", "result"); err != nil {
+		return err
 	}
 	return w.appendRecorded(event.OutboundOccurrence, event)
 }

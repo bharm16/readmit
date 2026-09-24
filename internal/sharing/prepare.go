@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/redact"
 	"github.com/bharm16/readmit/internal/report"
@@ -132,26 +133,16 @@ func (c *Candidate) Publish(ctx context.Context, approval, output string) error 
 	if ctx.Err() != nil {
 		return ErrRefused
 	}
-	if e = os.Mkdir(path, 0700); e != nil {
-		return ErrRefused
+	published, e := artifactdir.Create(path, family, artifactdir.Durable)
+	if e != nil {
+		return e
 	}
+	defer published.Close()
 	write := func(name string, raw []byte) error {
 		if ctx.Err() != nil {
 			return ErrRefused
 		}
-		f, e := os.OpenFile(filepath.Join(path, name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-		if e != nil {
-			return ErrRefused
-		}
-		_, e = f.Write(raw)
-		if e == nil {
-			e = f.Sync()
-		}
-		ce := f.Close()
-		if e != nil || ce != nil {
-			return ErrRefused
-		}
-		return nil
+		return published.WriteFile(name, raw)
 	}
 	if e = write("support.json", fresh.raw); e != nil {
 		return e
@@ -163,11 +154,31 @@ func (c *Candidate) Publish(ctx context.Context, approval, output string) error 
 		return e
 	}
 	final, e := Prepare(ctx, c.request)
-	if e != nil || final.Identity() != fresh.Identity() {
+	if e != nil || final.Identity() != fresh.Identity() || ctx.Err() != nil {
 		return ErrRefused
 	}
-	return write("identity.sha256", []byte(fresh.Identity()+"\n"))
+	_, e = published.Seal(nil)
+	return e
 }
+
+// family is a published support summary: the summary, the event recording its
+// publication, and the summary's digest written last. Every refusal is the one
+// refusal sharing gives.
+var family = artifactdir.Family{
+	Layout: artifactdir.Layout{
+		AllowFile: func(name string) bool {
+			return name == "support.json" || name == "event.json" || name == "identity.sha256"
+		},
+	},
+	Seal: artifactdir.ManifestHash("", "support.json", "identity.sha256"),
+	Errors: artifactdir.Errors{
+		Destination: ErrRefused,
+		Reserve:     ErrRefused,
+		Write:       ErrRefused,
+		Sync:        ErrRefused,
+	},
+}
+
 func Open(path string) (Summary, error) {
 	var zero Summary
 	path, e := artifactpath.Directory(path)

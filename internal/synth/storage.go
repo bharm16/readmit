@@ -28,6 +28,22 @@ type Case struct {
 	KnownDefect string `json:"known_defect,omitzero"`
 }
 
+// synthetic is the sealed directory of a synthetic family: one case bundle
+// per variant, each sealed by itself, completed by family.json, which names
+// their identities and is renamed into place only once written in full.
+var synthetic = artifactdir.Family{
+	Layout: artifactdir.Layout{
+		Nested:    []string{"regression", "cancellation", "invalid"},
+		AllowFile: func(name string) bool { return name == "family.json" },
+	},
+	Seal: artifactdir.CompletionRecord("family.json", ".family.json.incomplete"),
+	Errors: artifactdir.Errors{
+		Reserve:  errors.New("cannot create synthetic family; destination must be new and parent readable and writable"),
+		Complete: errors.New("cannot write synthetic family completion record; incomplete output retained"),
+		Sync:     errors.New("cannot sync synthetic family directory; the family was written in full but a power loss could still lose it"),
+	},
+}
+
 // Write creates all three case bundles in a new directory. family.json appears
 // only after every case is complete. A failed write retains incomplete output
 // without that completion record; an existing directory is never overwritten.
@@ -48,12 +64,11 @@ func WriteWithDurability(path string, inputs bundle.GeneratorInputs, durability 
 	if err != nil {
 		return nil, err
 	}
-	parent, root, err := artifactdir.Reserve(path)
+	written, err := artifactdir.Create(path, synthetic, durability)
 	if err != nil {
-		return nil, errors.New("cannot create synthetic family; destination must be new and parent readable and writable")
+		return nil, err
 	}
-	defer parent.Close()
-	defer root.Close()
+	defer written.Close()
 	manifest := &Manifest{Schema: "readmit-synth/v1", State: "complete", Generator: inputs}
 	for _, variant := range variants {
 		b, err := bundle.WriteWithDurability(context.Background(), filepath.Join(path, variant.name), []bundle.Input{{
@@ -68,15 +83,12 @@ func WriteWithDurability(path string, inputs bundle.GeneratorInputs, durability 
 	if err != nil {
 		return nil, errors.New("cannot encode synthetic family; incomplete output retained")
 	}
-	if err := durability.Publish(root, ".family.json.incomplete", "family.json", append(data, '\n')); err != nil {
-		return nil, errors.New("cannot write synthetic family completion record; incomplete output retained")
-	}
 	// Each case synced its own entry in the family. family.json and the
 	// family's own entry in the folder holding it are synced before the family
 	// is reported written; by then every file is, so a failure here leaves a
 	// family that may open and says so.
-	if durability.SyncEntries(root, parent, nil) != nil {
-		return nil, errors.New("cannot sync synthetic family directory; the family was written in full but a power loss could still lose it")
+	if _, err := written.Seal(append(data, '\n')); err != nil {
+		return nil, err
 	}
 	return manifest, nil
 }

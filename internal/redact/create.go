@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -15,6 +16,47 @@ import (
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
+
+// errUnsynced is a review or its private state whose directory entries could
+// not be synced once both were complete.
+var errUnsynced = errors.New("cannot sync redaction output; the review and its private state were written in full but a power loss could still lose them")
+
+// privateFamily is a review's private state: the original proof and the
+// transformation state the review commits to, written last.
+var privateFamily = artifactdir.Family{
+	Layout: artifactdir.Layout{
+		Nested:    []string{"original-proof"},
+		AllowFile: func(name string) bool { return name == "state.json" },
+	},
+	Seal: artifactdir.CompletionRecord("state.json", ""),
+	Errors: artifactdir.Errors{
+		Reserve: errors.New("cannot create private redaction state"),
+		Create:  errCreateFile,
+		Write:   errWriteFile,
+		Sync:    errUnsynced,
+	},
+}
+
+// reviewFamily is a disclosure review: the derived case and spec when every
+// finding was handled, and the review itself, sealed by the ADR-0002 identity
+// of all of them.
+var reviewFamily = artifactdir.Family{
+	Layout: artifactdir.Layout{
+		Noun:         "redaction review",
+		Nested:       []string{"case"},
+		AllowFile:    regularReviewName,
+		MaxFiles:     maxPacketFiles,
+		MaxFileBytes: maxReviewBytes,
+		MaxBytes:     maxPacketBytes,
+	},
+	Seal: artifactdir.DirectoryHash(ReviewSchema),
+	Errors: artifactdir.Errors{
+		Reserve: errors.New("cannot create redaction review"),
+		Create:  errCreateFile,
+		Write:   errWriteFile,
+		Sync:    errUnsynced,
+	},
+}
 
 // Create performs local review first. A fully handled case is tested privately
 // against fresh built-in fixture sessions before its review becomes approvable.
@@ -54,12 +96,11 @@ func Create(ctx context.Context, request Request) (*Review, error) {
 	if err != nil || len(localBytes) > maxReviewBytes {
 		return nil, errors.New("private transformation state exceeds limit")
 	}
-	privateParent, privateRoot, err := artifactdir.Reserve(private)
+	state, err := artifactdir.Create(private, privateFamily, artifactdir.Durable)
 	if err != nil {
-		return nil, errors.New("cannot create private redaction state")
+		return nil, err
 	}
-	defer privateParent.Close()
-	defer privateRoot.Close()
+	defer state.Close()
 	if !hasUnresolved(t.findings) {
 		proofDir := filepath.Join(private, "original-proof")
 		proof, err := runProof(ctx, spec, request.CasePath, proofDir, t.policy.RequiredFailures)
@@ -78,12 +119,11 @@ func Create(ctx context.Context, request Request) (*Review, error) {
 	if err := revalidate(t.local); err != nil {
 		return nil, err
 	}
-	outputParent, outputRoot, err := artifactdir.Reserve(output)
+	written, err := artifactdir.Create(output, reviewFamily, artifactdir.Durable)
 	if err != nil {
-		return nil, errors.New("cannot create redaction review")
+		return nil, err
 	}
-	defer outputParent.Close()
-	defer outputRoot.Close()
+	defer written.Close()
 	if !hasUnresolved(t.findings) {
 		derived, err := bundle.Write(filepath.Join(output, "case"), inputs, bundle.Provenance{Mode: bundle.Derived, Derivation: "readmit-redact/v1"})
 		if err != nil {
@@ -94,7 +134,7 @@ func Create(ctx context.Context, request Request) (*Review, error) {
 		}
 		review.DerivedIdentity = derived.Identity
 		review.DerivedSpecSHA256 = digest(specBytes)
-		if err := writeFile(output, "spec.json", specBytes); err != nil {
+		if err := written.WriteFile("spec.json", specBytes); err != nil {
 			return nil, err
 		}
 		files, err := tree(output)
@@ -150,14 +190,13 @@ func Create(ctx context.Context, request Request) (*Review, error) {
 		}
 		files["review.json"] = raw
 	}
-	if err := writeFile(private, "state.json", localBytes); err != nil {
+	if _, err := state.Complete(localBytes); err != nil {
 		return nil, err
 	}
-	if err := writeFile(output, "review.json", raw); err != nil {
+	if err := written.WriteFile("review.json", raw); err != nil {
 		return nil, err
 	}
-	review.Identity = identity(ReviewSchema, files)
-	if err := writeFile(output, "identity.sha256", []byte(review.Identity+"\n")); err != nil {
+	if review.Identity, err = written.Complete(nil); err != nil {
 		return nil, err
 	}
 	// Export reads state.json and the original proof results through the
@@ -167,11 +206,17 @@ func Create(ctx context.Context, request Request) (*Review, error) {
 	// reported. Every file is by then, so a failure leaves a review that may
 	// open and says so.
 	var proofDirectories []string
-	if _, err := privateRoot.Lstat("original-proof"); err == nil {
+	if _, err := os.Lstat(filepath.Join(private, "original-proof")); err == nil {
 		proofDirectories = []string{"original-proof"}
 	}
-	if artifactdir.SyncEntries(privateRoot, privateParent, proofDirectories) != nil || artifactdir.SyncEntries(outputRoot, outputParent, nil) != nil {
-		return nil, errors.New("cannot sync redaction output; the review and its private state were written in full but a power loss could still lose them")
+	if err := state.SyncDirectories(proofDirectories...); err != nil {
+		return nil, err
+	}
+	if err := state.Sync(); err != nil {
+		return nil, err
+	}
+	if err := written.Sync(); err != nil {
+		return nil, err
 	}
 	return review, nil
 }

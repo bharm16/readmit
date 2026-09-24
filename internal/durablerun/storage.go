@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
@@ -35,8 +36,8 @@ type evidenceFile interface {
 }
 
 var (
-	openEvidence = func(root *os.Root, name string) (evidenceFile, error) {
-		return root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	openEvidence = func(job *artifactdir.Writer, name string) (evidenceFile, error) {
+		return job.Open(name)
 	}
 	journalLimit = maxJournal
 )
@@ -45,16 +46,51 @@ var (
 // so a send whose intent it refused was never attempted.
 var errJournalLimit = errors.New("durable journal reached its size limit; execution stopped")
 
+// jobFamily is a durable job: the frozen plan and the payloads it will send,
+// the engine pin, a lease held while it runs, the journal, each sent payload
+// and the test result under result/. Its completion is the journal's finished
+// record, so artifactdir writes no completion record for it.
+var jobFamily = artifactdir.Family{
+	Layout: artifactdir.Layout{
+		Noun:               "durable run",
+		AllowedDirectories: []string{"intended", "sent"},
+		Nested:             []string{"result"},
+		AllowFile: func(name string) bool {
+			switch name {
+			case "plan.json", "engine.json", "lease.json", "journal.jsonl":
+				return true
+			}
+			return path.Dir(name) == "intended" || path.Dir(name) == "sent"
+		},
+	},
+	Errors: artifactdir.Errors{
+		Reserve: errors.New("cannot create durable run; destination must be new and parent readable and writable"),
+		Create:  errors.New("cannot create durable evidence"),
+		Write:   errDurableWrite,
+		Sync:    ErrSyncDirectory,
+	},
+}
+
+var errDurableWrite = errors.New("cannot sync durable evidence; partial evidence retained")
+
+// ErrSyncDirectory is durable state whose directory could not be synced: a
+// job's, and a capture journal's and a hub schedule history's, which keep the
+// job's shape and report it in the job's words.
+var ErrSyncDirectory = errors.New("cannot sync durable evidence directory")
+
 func digest(b []byte) string { return durablelog.Digest(b) }
-func write(root *os.Root, name string, b []byte) error {
-	f, e := openEvidence(root, name)
+
+// write retains one member of a job through openEvidence, so a full disk can
+// stand in for any of them.
+func write(job *artifactdir.Writer, name string, b []byte) error {
+	f, e := openEvidence(job, name)
 	if e != nil {
-		return errors.New("cannot create durable evidence")
+		return e
 	}
 	e = artifactdir.WriteFileSync(f, b)
 	c := f.Close()
 	if e != nil || c != nil {
-		return errors.New("cannot sync durable evidence; partial evidence retained")
+		return errDurableWrite
 	}
 	return nil
 }

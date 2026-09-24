@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/runcompare"
@@ -99,12 +100,13 @@ func Assemble(ctx context.Context, in RetainedInput, output string) (*RetainedPa
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	parent, dir, err := reserve(output)
+	packet, err := artifactdir.Create(output, retainedFamily, artifactdir.Durable)
 	if err != nil {
 		return nil, err
 	}
-	defer parent.Close()
-	if err := copyFiles(files, "", dir); err != nil {
+	defer packet.Close()
+	dir := packet.Path()
+	if err := copyFiles(packet, files, "", ""); err != nil {
 		return nil, err
 	}
 	manifest, summary, err := inspectRetained(ctx, dir, files)
@@ -114,7 +116,7 @@ func Assemble(ctx context.Context, in RetainedInput, output string) (*RetainedPa
 	files["SUMMARY.md"] = summary
 	files["RERUN.md"] = retainedInstructions()
 	for _, name := range []string{"SUMMARY.md", "RERUN.md"} {
-		if err := writeFile(dir, name, files[name]); err != nil {
+		if err := packet.WriteFile(name, files[name]); err != nil {
 			return nil, err
 		}
 	}
@@ -123,16 +125,13 @@ func Assemble(ctx context.Context, in RetainedInput, output string) (*RetainedPa
 	if err != nil {
 		return nil, err
 	}
-	if err := writeFile(dir, "manifest.json", raw); err != nil {
+	if err := packet.WriteFile("manifest.json", raw); err != nil {
 		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := writeFile(dir, "identity.sha256", []byte(digest(raw)+"\n")); err != nil {
-		return nil, err
-	}
-	if err := syncEntries(parent, dir, files); err != nil {
+	if _, err := packet.Seal(nil); err != nil {
 		return nil, err
 	}
 	return OpenRetained(ctx, dir)

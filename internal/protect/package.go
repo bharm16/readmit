@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -23,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/secret"
 )
@@ -225,22 +225,33 @@ func Pack(ctx context.Context, control Control, sources []Source, notRead int, o
 	if err != nil {
 		return Package{}, err
 	}
-	if err := os.Mkdir(root, 0700); err != nil {
-		return Package{}, errors.New("cannot create the transfer package; the destination must be new and writable")
+	files := map[string][]byte{DescriptorName: manifest}
+	for id, sealed := range ciphertext {
+		files[id+entrySuffix] = sealed
 	}
-	write := func() error {
-		for _, id := range slices.Sorted(maps.Keys(ciphertext)) {
-			if err := writeOwnerOnly(filepath.Join(root, id+entrySuffix), ciphertext[id]); err != nil {
-				return err
-			}
-		}
-		return writeOwnerOnly(filepath.Join(root, DescriptorName), manifest)
-	}
-	if err := write(); err != nil {
-		os.RemoveAll(root)
+	if _, err := artifactdir.Write(context.Background(), root, packageFamily, artifactdir.Durable, files); err != nil {
 		return Package{}, err
 	}
 	return descriptor, nil
+}
+
+// packageFamily is a transfer package: one sealed entry per file and one for
+// the index, completed by the plaintext descriptor naming them. A package that
+// cannot be written in full is removed rather than left for anyone to find.
+var packageFamily = artifactdir.Family{
+	Layout: artifactdir.Layout{
+		AllowFile: func(name string) bool {
+			return name == DescriptorName || !strings.Contains(name, "/") && strings.HasSuffix(name, entrySuffix)
+		},
+	},
+	Seal:       artifactdir.CompletionRecord(DescriptorName, ""),
+	Incomplete: artifactdir.RemoveIncomplete,
+	Errors: artifactdir.Errors{
+		Reserve: errors.New("cannot create the transfer package; the destination must be new and writable"),
+		Create:  errors.New("cannot create a package file; the destination must be new and writable"),
+		Write:   errors.New("cannot write a package file"),
+		Sync:    errors.New("cannot sync the transfer package; the package was written in full but a power loss could still lose it"),
+	},
 }
 
 // Open decrypts a package into a new directory and returns what it held.

@@ -87,14 +87,16 @@ readmit backup restore NEW_RECOVERY_ARCHIVE --output NEW_WORKSPACE
 
 Archive creates an ordinary verified `readmit-backup/v1` recovery archive and
 keeps the source. It is a snapshot, not a read-only flag on the original folder.
-Delete creates a fresh recovery archive, verifies the complete backup and the
-source snapshot, and only then unlinks the whole source project. The new archive
+Delete creates a fresh recovery archive, whose every file and directory entry
+is synced before it is reported, verifies the complete backup and the source
+snapshot, and only then unlinks the whole source project. The new archive
 must be outside the source tree, and an existing destination is never reused.
 Delete requires its explicit flag even when an archive path is supplied.
 
 Missing or changed registered evidence, unreadable project schemas, undeclared
-index recipes, failed backup verification, a changed source snapshot, and
-cancellation before retirement all refuse deletion. Incomplete backup files are
+index recipes, a recovery archive whose directories could not be synced,
+failed backup verification, a changed source snapshot, and cancellation before
+retirement all refuse deletion. Incomplete backup files are
 retained for inspection. Immediately before deletion the source is renamed to
 `PROJECT.retiring`; that name must be unused. Once retirement begins, deletion
 finishes even if cancellation arrives. A filesystem removal error leaves any

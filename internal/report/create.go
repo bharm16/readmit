@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"os"
+	"path"
 	"path/filepath"
 	"time"
 
@@ -34,11 +35,12 @@ func Create(ctx context.Context, scenario, output string) (*Packet, error) {
 	if _, err := testrunner.DecodeSpec(scenarioSpec); err != nil {
 		return nil, errors.New("invalid embedded report scenario")
 	}
-	parent, dir, err := reserve(output)
+	packet, err := artifactdir.Create(output, packetFamily, artifactdir.Durable)
 	if err != nil {
 		return nil, err
 	}
-	defer parent.Close()
+	defer packet.Close()
+	dir := packet.Path()
 	// Everything the execution workspace holds is scratch: the generated
 	// family, each trial's inputs, its fixture's case and ledger and the result
 	// its sender records. The workspace is removed before Create answers and
@@ -57,10 +59,10 @@ func Create(ctx context.Context, scenario, output string) (*Packet, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := copyFiles(caseFiles, "", filepath.Join(dir, "reproducer")); err != nil {
+	if err := copyFiles(packet, caseFiles, "", "reproducer"); err != nil {
 		return nil, err
 	}
-	if err := writeFile(dir, "spec.json", scenarioSpec); err != nil {
+	if err := packet.WriteFile("spec.json", scenarioSpec); err != nil {
 		return nil, err
 	}
 	for _, trial := range []struct {
@@ -68,23 +70,14 @@ func Create(ctx context.Context, scenario, output string) (*Packet, error) {
 		mode observation.Mode
 	}{{"baseline", observation.Defective}, {"post-fix", observation.Fixed}} {
 		trialDir := filepath.Join(work, trial.name)
-		if os.Mkdir(trialDir, 0700) != nil {
-			return nil, errors.New("cannot create report trial workspace")
-		}
-		if err := copyFilesWithDurability(caseFiles, "", filepath.Join(trialDir, "reproducer"), artifactdir.Scratch); err != nil {
-			return nil, err
-		}
-		if err := writeFileWithDurability(trialDir, "spec.json", scenarioSpec, artifactdir.Scratch); err != nil {
-			return nil, err
-		}
-		if err := executeFixture(ctx, trialDir, trial.mode); err != nil {
+		if err := runTrial(ctx, trialDir, caseFiles, trial.mode); err != nil {
 			return nil, err
 		}
 		files, err := readTree(filepath.Join(trialDir, "result"))
 		if err != nil {
 			return nil, err
 		}
-		if err := copyFiles(files, "", filepath.Join(dir, trial.name)); err != nil {
+		if err := copyFiles(packet, files, "", trial.name); err != nil {
 			return nil, err
 		}
 	}
@@ -100,10 +93,10 @@ func Create(ctx context.Context, scenario, output string) (*Packet, error) {
 		if name == "spec.json" {
 			continue
 		}
-		if os.MkdirAll(filepath.Join(dir, filepath.Dir(name)), 0700) != nil {
+		if directory := path.Dir(name); directory != "." && packet.Mkdir(directory) != nil {
 			return nil, errors.New("cannot create report content directory")
 		}
-		if err := writeFile(dir, name, data); err != nil {
+		if err := packet.WriteFile(name, data); err != nil {
 			return nil, err
 		}
 		files[name] = data
@@ -113,18 +106,32 @@ func Create(ctx context.Context, scenario, output string) (*Packet, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := writeFile(dir, "manifest.json", raw); err != nil {
+	if err := packet.WriteFile("manifest.json", raw); err != nil {
 		return nil, err
 	}
 	// The completion record binds the manifest, whose complete index binds all
 	// content files. These two root metadata files cannot index themselves.
-	if err := writeFile(dir, "identity.sha256", []byte(digest(raw)+"\n")); err != nil {
-		return nil, err
-	}
-	if err := syncEntries(parent, dir, files); err != nil {
+	if _, err := packet.Seal(nil); err != nil {
 		return nil, err
 	}
 	return Open(dir)
+}
+
+// runTrial runs one trial in its own scratch workspace at dir: the case and
+// spec it sends and the fixture it sends them to.
+func runTrial(ctx context.Context, dir string, caseFiles map[string][]byte, mode observation.Mode) error {
+	workspace, err := artifactdir.Create(dir, trialFamily, artifactdir.Scratch)
+	if err != nil {
+		return err
+	}
+	defer workspace.Close()
+	if err := copyFiles(workspace, caseFiles, "", "reproducer"); err != nil {
+		return err
+	}
+	if err := workspace.WriteFile("spec.json", scenarioSpec); err != nil {
+		return err
+	}
+	return executeFixture(ctx, workspace, mode)
 }
 
 // fixtureBudget bounds one trial. The fixture receiver waits as long for this
@@ -140,7 +147,8 @@ var sendTrial = func(ctx context.Context, specPath, output string) (*testrunner.
 	return testrunner.RunWithDurability(ctx, specPath, output, artifactdir.Scratch)
 }
 
-func executeFixture(ctx context.Context, dir string, mode observation.Mode) error {
+func executeFixture(ctx context.Context, workspace *artifactdir.Writer, mode observation.Mode) error {
+	dir := workspace.Path()
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		return errors.New("cannot start report loopback fixture")
@@ -150,7 +158,7 @@ func executeFixture(ctx context.Context, dir string, mode observation.Mode) erro
 	if err != nil {
 		return err
 	}
-	if err := writeFileWithDurability(dir, "target.json", config, artifactdir.Scratch); err != nil {
+	if err := workspace.WriteFile("target.json", config); err != nil {
 		return err
 	}
 	// The fixture's live ledger is read back only by this process, inside the
