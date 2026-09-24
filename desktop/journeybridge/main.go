@@ -57,6 +57,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bharm16/readmit/desktop/hubadmin"
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/testlicense"
 )
@@ -310,7 +311,11 @@ func newBridge(root string) (*bridge, error) {
 		filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"),
 		filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"),
 		filepath.Join(state, "operations.json"), license)
-	return &bridge{methods: bind(app), dialogs: dialogs}, nil
+	methods := bind(app)
+	for name, method := range bind(new(hubadmin.Admin)) {
+		methods[name] = method
+	}
+	return &bridge{methods: methods, dialogs: dialogs}, nil
 }
 
 // bind publishes every exported method of a bound struct pointer under the

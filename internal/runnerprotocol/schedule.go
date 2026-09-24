@@ -6,7 +6,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"net/url"
-	"path/filepath"
+	"path"
 	"time"
 )
 
@@ -57,7 +57,7 @@ func DecodeSchedules(data []byte) (SchedulePolicy, error) {
 	for i, s := range p.Schedules {
 		_, zoneErr := time.LoadLocation(s.Zone)
 		clock, clockErr := time.Parse("15:04", s.At)
-		if Exact(raw.Schedules[i], "id", "zone", "at", "window_seconds", "runner_config", "spec", "input_sha256", "route", "approved") != nil || !ID(s.ID) || seen[s.ID] || zoneErr != nil || s.Zone == "Local" || s.Zone == "" || clockErr != nil || clock.Format("15:04") != s.At || s.WindowSeconds < 1 || s.WindowSeconds > 3600 || !filepath.IsAbs(s.Runner) || !filepath.IsAbs(s.Spec) || !validDigest(s.Input) {
+		if Exact(raw.Schedules[i], "id", "zone", "at", "window_seconds", "runner_config", "spec", "input_sha256", "route", "approved") != nil || !ID(s.ID) || seen[s.ID] || zoneErr != nil || s.Zone == "Local" || s.Zone == "" || clockErr != nil || clock.Format("15:04") != s.At || s.WindowSeconds < 1 || s.WindowSeconds > 3600 || !path.IsAbs(s.Runner) || !path.IsAbs(s.Spec) || !validDigest(s.Input) {
 			return p, ErrInvalid
 		}
 		if s.Route != "" {

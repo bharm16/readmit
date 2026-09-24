@@ -6,6 +6,7 @@ toolchain go1.27.1
 
 require (
 	github.com/bharm16/readmit v0.0.0
+	github.com/bharm16/readmit/hub v0.0.0
 	github.com/wailsapp/wails/v2 v2.16.0
 )
 
@@ -51,3 +52,5 @@ require (
 )
 
 replace github.com/bharm16/readmit => ../
+
+replace github.com/bharm16/readmit/hub => ../hub

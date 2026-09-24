@@ -32,6 +32,17 @@ separately; desktop session/filter text can contain patient information.
 
 ## Hub and identity-provider setup
 
+The desktop hub panel can prepare validated handoffs for all seven host
+maintenance commands. Supply copies of the host configuration and, for
+`schedule-init`, the operation and schedule policies; it checks their strict
+schemas and produces a quoted step for the Linux host. It can verify a copied
+backup offline and compute a schedule pin's input identity using the hub's own
+functions. Neither action runs a host command or authorizes an operation.
+Compare the reviewed copies with what is installed on the host, stop the
+service, verify the backup and retain the host's own result before proceeding.
+The desktop [handoff guide](desktop.md#hub-host-administration-handoffs)
+describes each field and its limits.
+
 Use [the hub installation procedure](../hub/README.md#build-and-install) to
 provision an unprivileged identity, dedicated peer-authenticated local PostgreSQL
 role/database, private artifact root, server certificate and dedicated client CA.

@@ -20,6 +20,7 @@ import {
 } from "./bindings";
 import { TeamCollaboration } from "./TeamCollaboration";
 import { OperatorHub } from "./OperatorHub";
+import { HubAdministration } from "./HubAdministration";
 import type { Artifact } from "./bindings";
 
 /** The hub panel sits directly above the privacy screens, so the collaboration
@@ -36,6 +37,7 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
   const [uploadSource, setUploadSource] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [adminOpen, setAdminOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -440,6 +442,12 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
       ) : null}
 
       <OperatorHub />
+      <h4>
+        <button type="button" aria-expanded={adminOpen} aria-controls="hub-admin-handoff" onClick={() => setAdminOpen(!adminOpen)}>
+          Host administration handoffs
+        </button>
+      </h4>
+      <div id="hub-admin-handoff" hidden={!adminOpen}><HubAdministration /></div>
 
       {isAuthenticated && selectedProject ? (
         <TeamCollaboration

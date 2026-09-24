@@ -21,15 +21,20 @@ desktop module is a separate Go build.
 The frontend tests live beside the components and go through
 `desktop/frontend/src/testkit`, which installs a stub of the bindings'
 exported `Facade` interface at the exact `window.go.desktop.App` surface the
-production bindings read. A test can answer only the calls the real facade
+production bindings read. The customer-hub host administration panel has a
+second narrow binding, `window.go.hubadmin.Admin`, installed by the same kit
+through `installHubAdmin`; its Go package lives in the desktop module so it
+can use the hub's readers without adding the hub module to the static CLI.
+A test can answer only the calls the real facade
 publishes, with the real types; an unanswered call rejects instead of
 succeeding quietly. The kit's fixtures carry positions, states and counts,
 never an HL7 value, a credential, a machine path or a network address, and
 the setup file resets the window and the stub between tests. A workflow that
 changes what the window does gets an interaction test through this entry,
 driving real user events; the shared-operation parity evidence for it stays
-on the Go side, where `internal/desktop` and the domain packages are tested
-against the same readers the command line uses.
+on the Go side, where `internal/desktop` (or, for that narrow hub handoff,
+`desktop/hubadmin`) and the domain packages are tested against the same
+readers the command line uses.
 
 The setup file also holds React's development owner-stack budget spent
 (`src/testkit/owner-stacks.ts`). Otherwise React records a stack for more of
@@ -172,7 +177,11 @@ names the `gui_test` that drives it — a component test
 (`desktop/frontend/src/X.test.tsx`) or a journey
 (`desktop/frontend/src/journeys/X.journey.tsx`), by its exact title — and the
 `parity_test` (`{"package": "internal/desktop", "name": "TestX"}`) that proves
-it reaches the shared engine; an open row names no test and its owner is the
+it reaches the shared engine. The hub host administration binding alone names
+`desktop/hubadmin` parity tests because the hub module imports the root module;
+those tests call its real readers and offline functions, and the journey bridge
+binds the same method as the production shell. The ledger still resolves every
+parity reference. An open row names no test and its owner is the
 open issue that will add its screen. A row that is not customer work carries a
 typed `disposition` instead; a Makefile target or tools script is a `tooling`
 row disposed as `developer-tooling`, with no backend.

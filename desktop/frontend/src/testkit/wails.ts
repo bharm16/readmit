@@ -14,7 +14,7 @@
 // handlers here and drives real user events, and its shared-operation parity
 // evidence comes from the Go facade tests, not from a fixture that repeats the
 // engine's answer.
-import type { Facade } from "../bindings";
+import type { Facade, HubAdminFacade } from "../bindings";
 
 /** Exactly one call the window made across the seam, in the order it happened. */
 export interface StubCall {
@@ -159,6 +159,26 @@ export function installFacade(handlers: FacadeHandlers = {}): FacadeStub {
   window.go = { desktop: { App: stub.asFacade() } };
   installed = stub;
   return stub;
+}
+
+/** The customer-host administration binding is separate from desktop.App in
+ * production as well as in this test window. */
+export function installHubAdmin(handlers: Partial<HubAdminFacade>): { callsTo: (method: keyof HubAdminFacade) => StubCall[] } {
+  const calls: StubCall[] = [];
+  const bound = new Proxy({} as HubAdminFacade, {
+    get(_target, property) {
+      if (typeof property !== "string") return undefined;
+      return (...args: unknown[]) => {
+        calls.push({ method: property, args });
+        const handler = handlers[property as keyof HubAdminFacade];
+        if (!handler) return Promise.reject(new UnhandledMethod(`hubadmin.Admin.${property}`));
+        return (handler as (...values: unknown[]) => unknown)(...args);
+      };
+    },
+  });
+  window.go ??= {};
+  window.go.hubadmin = { Admin: bound };
+  return { callsTo: (method) => calls.filter((call) => call.method === method) };
 }
 
 /** Removes the installed stub. The setup file calls this after every test. */

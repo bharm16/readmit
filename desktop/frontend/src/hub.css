@@ -43,6 +43,37 @@
   margin: 1rem 0;
 }
 
+.hub-admin-section {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+.hub-admin-section form {
+  display: grid;
+  gap: 0.5rem;
+  max-width: 48rem;
+}
+
+.hub-admin-section input,
+.hub-admin-section select {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.hub-admin-section form > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.hub-admin-command {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .hub-diagnosis-results,
 .hub-auth-section,
 .hub-identity-section,
