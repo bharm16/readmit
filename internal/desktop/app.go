@@ -295,6 +295,12 @@ type App struct {
 	// an editor's unstored work is retained whether or not an operation runs,
 	// and the writes of one small document must never interleave.
 	draftsMu sync.Mutex
+
+	// corpusMu guards the counts a running corpus generation or scan has
+	// reached, which CorpusProgress reads without waiting for the slot the
+	// operation holds. corpusProgress is nil while neither runs.
+	corpusMu       sync.Mutex
+	corpusProgress *CorpusProgress
 }
 
 // New binds the facade to a host folder dialog and to the four files that hold

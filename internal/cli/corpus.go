@@ -5,14 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 
-	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/corpus"
 	"github.com/bharm16/readmit/internal/importer"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/spf13/cobra"
 )
 
@@ -80,9 +79,9 @@ func corpusGenerateCommand() *cobra.Command {
 					return usage("corpus generate requires --seed, --base-time, --generator-version, --profile-version, --messages, --output, and --manifest")
 				}
 			}
-			base, err := time.Parse(time.RFC3339, baseTime)
-			if err != nil || !synthBaseTimePattern.MatchString(baseTime) {
-				return usage("base time must be a whole-second RFC3339 timestamp with an explicit timezone")
+			base, err := operation.DeclaredBaseTime(baseTime)
+			if err != nil {
+				return usage("%s", err)
 			}
 			plan, err := declared.plan(cmd, "")
 			if err != nil {
@@ -130,27 +129,9 @@ func corpusScanCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			// The benchmark destination is checked before the stream is read,
-			// so an unusable destination is reported in a moment rather than
-			// after a long scan. Exclusive creation still owns the guarantee.
-			if report != "" {
-				reserved, err := artifactpath.Destination(report)
-				if err != nil {
-					return err
-				}
-				if _, err := os.Lstat(reserved); !os.IsNotExist(err) {
-					return errors.New("the benchmark destination must be a new file")
-				}
-			}
-			stream, err := corpus.Open(args[0])
-			if err != nil {
-				return err
-			}
-			defer stream.Close()
 			ctx := cmd.Context()
 			throttle := newReporter(cmd.ErrOrStderr(), progress)
-			started := time.Now()
-			result, scanErr := importer.Scan(ctx, stream, importer.ScanOptions{
+			scan, err := operation.ScanCorpus(ctx, args[0], importer.ScanOptions{
 				Plan:         plan,
 				Window:       importer.Window{Offset: windowOffset, Limit: windowLimit},
 				BatchRecords: batchRecords,
@@ -158,37 +139,23 @@ func corpusScanCommand() *cobra.Command {
 				Report: func(p importer.Progress) {
 					throttle.line("scanning: bytes=%d records=%d occurrences=%d batches=%d\n", p.Bytes, p.Records, p.Occurrences, p.Batches)
 				},
-			})
-			elapsed := time.Since(started)
-			if scanErr != nil && !errors.Is(scanErr, importer.ErrScanCancelled) {
-				return scanErr
-			}
-			bounds := corpus.Bounds{
-				BatchRecords:  batchOrDefault(batchRecords, importer.MaxBatchRecords),
-				BatchBytes:    batchOrDefault(batchBytes, importer.MaxBatchBytes),
-				RecordBytes:   importer.MaxRecordBytes,
-				ResidentBound: importer.ResidentBound,
-			}
-			cancelled := errors.Is(scanErr, importer.ErrScanCancelled)
-			if err := renderScan(cmd.OutOrStdout(), plan, result, bounds, elapsed, cancelled); err != nil {
+			}, report)
+			if err != nil {
 				return err
 			}
-			if cancelled {
+			if err := renderScan(cmd.OutOrStdout(), plan, scan.Result, scan.Bounds, scan.Elapsed, scan.Cancelled); err != nil {
+				return err
+			}
+			if scan.Cancelled {
 				// A cancelled scan read part of a stream, so it measured part
 				// of one. Publishing that as a benchmark would be publishing a
 				// number nothing stands behind.
-				return errors.New("scan cancelled; no benchmark was written")
+				return operation.ErrBenchmarkCancelled
 			}
 			if report == "" {
 				return nil
 			}
-			encoded, err := corpus.EncodeBenchmark(corpus.NewBenchmark(plan, result, bounds, elapsed))
-			if err != nil {
-				return err
-			}
-			return writeNewFile(report, encoded,
-				"cannot create the benchmark; destination must be new and writable",
-				"cannot write the benchmark")
+			return operation.WriteBenchmark(report, scan)
 		},
 	}
 	cmd.Flags().StringVar(&saved, "plan", "", "Existing readmit-import-plan/v1 JSON file holding the declarations below")
@@ -200,13 +167,6 @@ func corpusScanCommand() *cobra.Command {
 	cmd.Flags().StringVar(&report, "report", "", "New readmit-benchmark/v1 file for this run (never overwrite)")
 	addDeclarationFlags(cmd, &declared, false)
 	return cmd
-}
-
-func batchOrDefault(declared, fallback int) int {
-	if declared == 0 {
-		return fallback
-	}
-	return declared
 }
 
 // addDeclarationFlags registers the import plan declarations on a command that

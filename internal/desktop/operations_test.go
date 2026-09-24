@@ -104,6 +104,7 @@ func TestACancellationDuringExecutionAdmissionIsCancelledNotDenied(t *testing.T)
 		{"durable-run", func() desktop.State { return app.StartSuiteRun(desktop.SuiteRunRequest{Workspace: root}).State }},
 		{"reduction", func() desktop.State { return app.StartReduction(desktop.ReductionRequest{Workspace: root}).State }},
 		{"import", func() desktop.State { return app.CommitImport(desktop.ImportCommitRequest{Workspace: root}).State }},
+		{"corpus", func() desktop.State { return app.GenerateCorpus(desktop.CorpusGenerateRequest{Folder: root}).State }},
 		{"", func() desktop.State { return app.BuildIndex(desktop.BuildIndexRequest{Workspace: root}).State }},
 	} {
 		answered, holding := startHolding(t, app, root, bareState, operation.start)

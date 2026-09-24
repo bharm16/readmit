@@ -36,12 +36,14 @@ func Write(ctx context.Context, destination, manifest string, inputs Inputs, rep
 	if corpusPath == manifestPath {
 		return Manifest{}, errors.New("the corpus and its manifest are two new files")
 	}
-	if _, err := os.Lstat(manifestPath); !os.IsNotExist(err) {
+	if _, err := os.Lstat(manifestPath); err == nil {
 		return Manifest{}, errors.New("the corpus manifest destination must be a new file")
+	} else if !os.IsNotExist(err) {
+		return Manifest{}, causedError{"the corpus manifest destination must be a new file", err}
 	}
 	file, err := os.OpenFile(corpusPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
-		return Manifest{}, errors.New("cannot create the corpus; destination must be new and parent writable")
+		return Manifest{}, causedError{"cannot create the corpus; destination must be new and parent writable", err}
 	}
 	summary, err := generateInto(ctx, file, inputs, report)
 	if err != nil {
@@ -82,7 +84,7 @@ func generateInto(ctx context.Context, file *os.File, inputs Inputs, report func
 func writeNew(path string, data []byte) error {
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
-		return errors.New("cannot create the corpus manifest; destination must be new and parent writable")
+		return causedError{"cannot create the corpus manifest; destination must be new and parent writable", err}
 	}
 	_, writeErr := file.Write(data)
 	if writeErr == nil {
@@ -102,15 +104,21 @@ func writeNew(path string, data []byte) error {
 func Open(path string) (io.ReadCloser, error) {
 	resolved, err := artifactpath.Resolve(path)
 	if err != nil {
-		return nil, errors.New("cannot resolve the declared stream")
+		// The resolver's own refusal names no cause; the stat that follows it
+		// reads no content and says whether this account may reach the path.
+		_, cause := os.Stat(path)
+		return nil, causedError{"cannot resolve the declared stream", cause}
 	}
 	info, err := os.Stat(resolved)
-	if err != nil || !info.Mode().IsRegular() {
+	if err != nil {
+		return nil, causedError{"a scanned stream must be a readable regular file", err}
+	}
+	if !info.Mode().IsRegular() {
 		return nil, errors.New("a scanned stream must be a readable regular file")
 	}
 	file, err := os.Open(resolved)
 	if err != nil {
-		return nil, errors.New("cannot open the declared stream")
+		return nil, causedError{"cannot open the declared stream", err}
 	}
 	opened, statErr := file.Stat()
 	if statErr != nil || !opened.Mode().IsRegular() {
@@ -119,3 +127,16 @@ func Open(path string) (io.ReadCloser, error) {
 	}
 	return file, nil
 }
+
+// causedError is a fixed diagnostic that keeps the filesystem's error behind
+// it. Only the sentence is ever shown, so it never repeats a path; the cause
+// lets a caller tell a file this account may not open or create from any
+// other refusal without touching the file again.
+type causedError struct {
+	sentence string
+	cause    error
+}
+
+func (e causedError) Error() string { return e.sentence }
+
+func (e causedError) Unwrap() error { return e.cause }

@@ -284,8 +284,12 @@ corpus, on this machine, under those bounds.
 - **No repair, transcoding or quarantine record.** A scan counts what it could
   not decode and changes nothing. Retaining malformed bytes as evidence is
   [`import`](import.md).
-- **No desktop surface.** The corpus commands are a command-line interface. The
-  desktop shell renders a window of a case it has an index for.
+- **No second implementation in the desktop.** The desktop's
+  [performance-corpus screen](desktop.md#raw-inspection-and-the-performance-corpus)
+  generates and scans through the same `corpus.Write` and `importer.Scan` these
+  commands call, under the same declarations, bounds, refusals and documents;
+  it shows the progress counts `--progress` writes and cancels the same way. It
+  adds no import of a corpus and no measurement beyond `measured`.
 
 ## Reproducing the local performance and interruption qualification
 

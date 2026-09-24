@@ -39,9 +39,9 @@ MUTATIONS = (
     ),
     Mutation(
         name="repetitions-hidden-from-display",
-        path="internal/cli/render.go",
-        old="if len(field.Repetitions) > 1 {",
-        new="if len(field.Repetitions) > 2 {",
+        path="internal/operation/inspect.go",
+        old="if len(field.Repetitions) < 2 {",
+        new="if len(field.Repetitions) < 3 {",
         check="corpus-inspect",
         rationale="a two-repetition field would be displayed as a single value",
     ),

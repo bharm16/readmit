@@ -85,6 +85,12 @@ CASES = (
         'TestAuthoringAndRunComparisonRefuseALinkToACaseOrResultTheyAccept',
         'TestAReductionRefusesALinkToACaseItAccepts',
         'TestChooseRunSpecRefusesEveryPathThatLeavesTheOpenWorkspace',
+        # Raw inspection and the performance corpus (#290): each writer stays
+        # inside the folder the dialog chose, never inside a case, and a pipe
+        # is refused without being opened.
+        'TestRawAndCorpusWritesStayInsideTheChosenFolder',
+        'TestCorpusDestinationsInsideACaseAreRefusedWithoutTouchingIt',
+        'TestRawAndCorpusRefuseAPipeWithoutWaitingOnIt',
         # Application surfaces (#244): backend enforcement behind every window
         # action, restoration, local egress and declared keyboard semantics.
         'TestEveryPathOperationRefusesHostileEntriesPromptlyAndBoundedly',

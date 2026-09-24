@@ -90,7 +90,7 @@ test("the support guidance names the ledger rows still open and the qualificatio
   await renderApp();
   const privacy = privacyRegion();
   expect(privacy.getByRole("heading", { name: "What this build supports" })).toBeTruthy();
-  expect(privacy.getByText(/generate and stream a declared performance corpus/i)).toBeTruthy();
+  expect(privacy.getByText(/generate reproducible SIU synthetic case bundles from declared inputs/i)).toBeTruthy();
   expect(privacy.getByText(/declared, not qualified/i)).toBeTruthy();
   expect(privacy.getByText(/selected and unqualified/i)).toBeTruthy();
 });

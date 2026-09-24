@@ -63,6 +63,8 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 		{name: "ChooseSupportExportPath", call: func(a *desktop.App) any { return a.ChooseSupportExportPath() }, folder: fresh()},
 		{name: "ChoosePacketExportPath", call: func(a *desktop.App) any { return a.ChoosePacketExportPath() }, folder: fresh()},
 		{name: "ChooseRunSpec", call: func(a *desktop.App) any { return a.ChooseRunSpec(workspace) }, files: []string{filepath.Join(resolved(t, workspace), "spec.json")}},
+		{name: "ChooseInspectionPath", call: func(a *desktop.App) any { return a.ChooseInspectionPath("file") }, files: []string{filepath.Join(resolved(t, workspace), "spec.json")}},
+		{name: "ChooseCorpusPath", call: func(a *desktop.App) any { return a.ChooseCorpusPath("corpus-folder") }, folder: fresh()},
 	}
 	window := func(c *chooser) *desktop.App {
 		state := t.TempDir()
