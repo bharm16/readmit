@@ -167,3 +167,71 @@ test("a delivered license file is activated here, used by the command line with 
   expect(license().getByText(/^Valid until \S+\.$/)).toBeTruthy();
   expect((await newProjectByHand("after-import")).code).toBe(0);
 });
+
+test("administrator activation choices, export and clock correction agree with the command line", async () => {
+  const user = userEvent.setup();
+  const supplied = journey.provisionLicense("supplied-activation");
+  const policy = `${supplied}/operation-policy.json`;
+  journey.makePrivateFolder("new-activation");
+  const link = journey.makeLink("activation-shortcut", journey.path("new-activation"));
+  journey.makeFolder("copies");
+  journey.makeFolder("other-copies");
+  journey.writeFile("copies/test-entitlement.json", "existing export must survive");
+  await journey.launch();
+  await openLicensing(user);
+  const pane = within(region("License and trial activation"));
+
+  await journey.chooseFiles([`${supplied}/entitlement.json`], "Choose the received entitlement document");
+  await journey.chooseFiles([`${supplied}/trust.json`], "Choose the vendor trust document");
+  await press(user, pane.getByRole("button", { name: "Verify a received license…" }));
+  await pane.findByText("test-organization");
+  await journey.chooseFolder(link, "Choose the private folder for the local license activation");
+  await press(user, pane.getByRole("button", { name: "Choose the private activation folder…" }));
+  expect(await pane.findByText("choose an existing folder that is not a symbolic link")).toBeTruthy();
+  expect(pane.queryByText(/Activation folder:/)).toBeNull();
+  await journey.dismissDialog("folder", "Choose the private folder for the local license activation");
+  await press(user, pane.getByRole("button", { name: "Choose the private activation folder…" }));
+  expect(await pane.findByText("no folder was chosen")).toBeTruthy();
+
+  await journey.dismissDialog("folder", "Choose the license activation folder");
+  await press(user, pane.getByRole("button", { name: "Select a supplied activation folder…" }));
+  expect(await pane.findByText("no folder was chosen")).toBeTruthy();
+  await journey.chooseFolder(supplied, "Choose the license activation folder");
+  await press(user, pane.getByRole("button", { name: "Select a supplied activation folder…" }));
+  expect(await pane.findByText(/License: active/)).toBeTruthy();
+
+  await journey.chooseFolder(journey.path("copies"), "Choose the folder to export the entitlement into");
+  await press(user, pane.getByRole("button", { name: "Export the installed entitlement…" }));
+  expect(await pane.findByText("the destination folder already holds a file with this name; choose a different folder")).toBeTruthy();
+  expect(journey.readFile("copies/test-entitlement.json")).toBe("existing export must survive");
+  await journey.dismissDialog("folder", "Choose the folder to export the entitlement into");
+  await press(user, pane.getByRole("button", { name: "Export the installed entitlement…" }));
+  expect(await pane.findByText("no folder was chosen")).toBeTruthy();
+  await journey.chooseFolder(journey.path("other-copies"), "Choose the folder to export the entitlement into");
+  await press(user, pane.getByRole("button", { name: "Export the installed entitlement…" }));
+  expect(await pane.findByText(byContent(/Document test-entitlement written to .*other-copies.* byte for byte/))).toBeTruthy();
+  expect(journey.readFile("other-copies/test-entitlement.json")).toBe(journey.readFile("supplied-activation/entitlement.json"));
+
+  const clockFile = "supplied-activation/clock.json";
+  const clock = JSON.parse(journey.readFile(clockFile)) as Record<string, unknown>;
+  const highWater = new Date(Date.now() + 60 * 60 * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+  journey.changeFile(clockFile, JSON.stringify({ ...clock, high_water: highWater, rollback: true }) + "\n");
+  await press(user, pane.getByRole("button", { name: "Refresh local status" }));
+  expect(await pane.findByText(/Clock correction requires explicit resolution/)).toBeTruthy();
+  const cliRefusal = await journey.commandLine(["--operation-policy", policy, "license", "operation", "resolve"]);
+  expect(cliRefusal.code).not.toBe(0);
+  await press(user, pane.getByRole("button", { name: "Resolve corrected clock" }));
+  expect(await pane.findByText(/local UTC moved backwards more than five minutes/)).toBeTruthy();
+  expect((JSON.parse(journey.readFile(clockFile)) as { rollback: boolean }).rollback).toBe(true);
+
+  const corrected = new Date(Date.now() - 60 * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+  journey.changeFile(clockFile, JSON.stringify({ ...clock, high_water: corrected, rollback: true }) + "\n");
+  await press(user, pane.getByRole("button", { name: "Resolve corrected clock" }));
+  expect(await pane.findByText(/No unresolved clock rollback/)).toBeTruthy();
+  const state = JSON.parse(journey.readFile(clockFile)) as { rollback: boolean; high_water: string };
+  expect(state.rollback).toBe(false);
+  expect(Date.parse(state.high_water)).toBeGreaterThanOrEqual(Date.parse(corrected));
+  const cliStatus = await journey.commandLine(["--operation-policy", policy, "license", "operation", "status"]);
+  expect(cliStatus.code).toBe(0);
+  expect(cliStatus.stdout).toContain(state.high_water);
+});

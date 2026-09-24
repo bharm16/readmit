@@ -1,5 +1,17 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The license pane's activation-folder choice, installed-entitlement export
+  and clock-rollback resolution now have keyboard and cancellation interaction
+  coverage plus facade parity with the operation guard (#316). A refused
+  renewal or folder selection keeps the current license status and its release
+  control visible, with the refusal beside it. Runner admit and renew commands
+  remain machine interfaces: a bounded execution claims and releases its slot
+  through the existing operation guard, while the pane shows and settles held
+  capacity. The generated CI handoff still needs a defined license-secret,
+  vendor-trust and shared-authority setup before it can implement the owner's
+  automatic multi-host pipeline decision end to end. No artifact format or
+  command output changes.
+
 - The privacy panel reexecutes an approved review against the target its
   actual original run recorded, as `readmit redact reexecute` does (#310).
   Until now the privacy review stated `external_equivalence: declined` but

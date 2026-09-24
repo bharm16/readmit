@@ -526,7 +526,9 @@
       "inputs": ["readmit-operation-policy/v1", "readmit-entitlement/v2", "readmit-entitlement-trust/v1", "readmit-operation-clock/v1"],
       "outputs": ["readmit-operation-clock/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/license.journey.tsx", "name": "administrator activation choices, export and clock correction agree with the command line"},
+      "parity_test": {"package": "internal/desktop", "name": "TestChooseOperationPolicyAndClockResolutionReachTheCommandLineReaders"},
+      "implemented": true
     },
     {
       "id": "cli.license.operation.status",
@@ -582,12 +584,11 @@
       "kind": "cli",
       "capability": "Admit one execution instance if the authority has a free instance",
       "owner": "bharm16/readmit#316",
-      "screen": "the operation-access pane of the privacy region, whose runner capacity view shows and settles what the authority holds",
-      "action": "admit and renew runner instances from the runner host itself",
       "backend": {"package": "internal/entitlement", "name": "Admissions.Admit"},
       "inputs": ["readmit-runner-admission/v1", "readmit-entitlement/v2", "readmit-entitlement-trust/v1"],
       "outputs": ["readmit-runner-admission/v1"],
       "prerequisites": [],
+      "disposition": {"kind": "machine-interface", "reason": "the unchanged license runner admit command is a machine handshake over the signed authority record, not a control a person operates in the window. A bounded suite execution already claims its slot through operationguard admission; the generated CI handoff still lacks the decided license-secret and shared-authority setup. The window shows and settles retained admissions through desktop.App.ShowRunnerAdmissions and desktop.App.SettleRunnerAdmission"},
       "implemented": false
     },
     {
@@ -644,12 +645,11 @@
       "kind": "cli",
       "capability": "Extend an admitted instance's lease inside the term; a stale instance reporting in becomes active again",
       "owner": "bharm16/readmit#316",
-      "screen": "the operation-access pane of the privacy region, whose runner capacity view shows and settles what the authority holds",
-      "action": "admit and renew runner instances from the runner host itself",
       "backend": {"package": "internal/entitlement", "name": "Admissions.Renew"},
       "inputs": ["readmit-runner-admission/v1", "readmit-entitlement/v2", "readmit-entitlement-trust/v1"],
       "outputs": ["readmit-runner-admission/v1"],
       "prerequisites": [],
+      "disposition": {"kind": "machine-interface", "reason": "the unchanged license runner renew command is a machine handshake for an already admitted instance, not an administrator action in the window. The generated CI handoff does not yet provision automatic renewal from a license secret with one shared authority record. The window shows and settles retained admissions through desktop.App.ShowRunnerAdmissions and desktop.App.SettleRunnerAdmission"},
       "implemented": false
     },
     {
@@ -2289,7 +2289,9 @@
       "inputs": ["readmit-operation-policy/v1"],
       "outputs": ["readmit-desktop-operation-selection/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/license.journey.tsx", "name": "administrator activation choices, export and clock correction agree with the command line"},
+      "parity_test": {"package": "internal/desktop", "name": "TestChooseOperationPolicyAndClockResolutionReachTheCommandLineReaders"},
+      "implemented": true
     },
     {
       "id": "desktop.CompareScenarioLibraryEntries",
@@ -2713,12 +2715,11 @@
       "kind": "desktop",
       "capability": "selectOperationPolicy application operation",
       "owner": "bharm16/readmit#316",
-      "screen": "the operation-access pane of the privacy region",
-      "action": "select an absolute policy path explicitly",
       "backend": {"package": "internal/operationguard", "name": "DecodePolicy"},
       "inputs": ["readmit-operation-policy/v1"],
       "outputs": ["readmit-desktop-operation-selection/v1"],
       "prerequisites": [],
+      "disposition": {"kind": "superseded", "reason": "the operation-access pane chooses a supplied activation folder through desktop.App.ChooseOperationPolicy, which calls this absolute-path selector after the host dialog; a second path-entry control would duplicate that selection", "successor": "desktop.App.ChooseOperationPolicy"},
       "implemented": false
     },
     {
@@ -2765,7 +2766,9 @@
       "inputs": ["readmit-operation-policy/v1", "readmit-entitlement/v2", "readmit-entitlement-trust/v1", "readmit-operation-clock/v1"],
       "outputs": ["readmit-operation-clock/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/license.journey.tsx", "name": "administrator activation choices, export and clock correction agree with the command line"},
+      "parity_test": {"package": "internal/desktop", "name": "TestChooseOperationPolicyAndClockResolutionReachTheCommandLineReaders"},
+      "implemented": true
     },
     {
       "id": "desktop.ReleaseOperations",
@@ -2811,7 +2814,9 @@
       "inputs": [],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/license.journey.tsx", "name": "administrator activation choices, export and clock correction agree with the command line"},
+      "parity_test": {"package": "internal/desktop", "name": "TestChooseLicenseFolderChecksTheNativeChoiceWithoutCreatingAnActivation"},
+      "implemented": true
     },
     {
       "id": "desktop.CreateLicenseActivation",
@@ -2857,7 +2862,9 @@
       "inputs": ["readmit-operation-policy/v1", "readmit-entitlement/v2"],
       "outputs": ["readmit-entitlement/v2"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/license.journey.tsx", "name": "administrator activation choices, export and clock correction agree with the command line"},
+      "parity_test": {"package": "internal/desktop", "name": "TestExportLicenseDocumentWritesExactBytesAndNeverOverwrites"},
+      "implemented": true
     },
     {
       "id": "desktop.ShowRunnerAdmissions",

@@ -314,14 +314,8 @@ var supportStatus = Support{
 		"This is an unsigned development preview: the only published candidate is an early prerelease, nothing is signed for distribution or notarized, and packaged acceptance (#109), release acceptance (#153) and accessibility/privacy acceptance (#111) are open. A new screen certifies none of them.",
 	},
 	Unavailable: []string{
-		"admit and renew runner instances from the runner host itself",
-		"choose the private folder a new local activation is created in",
 		"execute, queue, resume, recover and inspect durable runs",
-		"export the installed entitlement byte for byte",
-		"resolve an expired clock and restate the high-water",
 		"select a saved test or suite through the host's native file dialog",
-		"select an absolute policy path explicitly",
-		"select the operation policy through the native chooser",
 	},
 }
 

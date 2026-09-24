@@ -99,6 +99,55 @@ func TestRunnerAuthorityAdmitsUpToItsGrantedInstances(t *testing.T) {
 	}
 }
 
+func TestAdmissionRecordLinkUpdatesResolvedTargetAndRefusesForeignOrganization(t *testing.T) {
+	grant := testGrantV2(t)
+	root := t.TempDir()
+	target := filepath.Join(root, "authority.json")
+	if _, err := entitlement.CreateAdmissions(target, grant, "ci-pool-main"); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "configured-admissions.json")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symbolic links unavailable: %v", err)
+	}
+	opened, err := entitlement.OpenAdmissions(link)
+	resolved, resolveErr := filepath.EvalSymlinks(target)
+	if err != nil || resolveErr != nil || opened.Path != resolved {
+		t.Fatalf("configured link did not resolve to its authority record: %v %+v", err, opened)
+	}
+	if err := opened.Admit(grant, "run-001", at(9), at(10)); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("update replaced the configured link: %v %v", info, err)
+	}
+	if current, err := entitlement.OpenAdmissions(target); err != nil || len(current.Record.Admissions) != 1 {
+		t.Fatalf("target did not receive admission: %v %+v", err, current)
+	}
+	other := filepath.Join(root, "other-organization.json")
+	otherGrant := grant
+	otherGrant.Claims.Organization = "other-hospital"
+	if _, err := entitlement.CreateAdmissions(other, otherGrant, "ci-pool-main"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(other, link); err != nil {
+		t.Fatal(err)
+	}
+	wrong, err := entitlement.OpenAdmissions(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wrong.Admit(grant, "run-002", at(9), at(10)); !errors.Is(err, entitlement.ErrDifferentOrganization) {
+		t.Fatalf("redirected record admitted under another organization: %v", err)
+	}
+	if current, err := entitlement.OpenAdmissions(target); err != nil || len(current.Record.Admissions) != 1 {
+		t.Fatalf("redirection changed the original authority: %v %+v", err, current)
+	}
+}
+
 // An instance that stops without releasing leaves its admission stale once the
 // lease ends. Stale capacity is held, not reused: the next admission is refused
 // by name until an operator reconciles it or the instance reports in.
