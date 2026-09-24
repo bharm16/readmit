@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/hubprotocol"
 	"github.com/bharm16/readmit/internal/transportsecurity"
 )
 
@@ -182,7 +183,7 @@ func checkHealth(ctx context.Context, httpClient *http.Client, hub string) error
 
 // ProbeProject queries the hub for project lifecycle and artifacts, assessing effective permissions.
 func (c *Client) ProbeProject(ctx context.Context, project string) (ProjectStatus, error) {
-	if !validProject(project) {
+	if !hubprotocol.ValidProject(project) {
 		return ProjectStatus{Project: project, Authorized: false, Reason: "invalid project identifier"}, nil
 	}
 
@@ -221,31 +222,14 @@ func (c *Client) ProbeProject(ctx context.Context, project string) (ProjectStatu
 			return ProjectStatus{Project: project, Authorized: false, Reason: "cannot read lifecycle response"}, err
 		}
 
-		var history struct {
-			Schema string `json:"schema"`
-			Head   int    `json:"head"`
-			Events []struct {
-				Schema  string `json:"schema"`
-				Project string `json:"project"`
-				Actor   string `json:"actor"`
-				At      string `json:"at"`
-				Command struct {
-					Kind     string `json:"kind"`
-					Resource string `json:"resource"`
-					Artifact string `json:"artifact"`
-					Reason   string `json:"reason"`
-				} `json:"command"`
-			} `json:"events"`
-			Warning string `json:"warning"`
-		}
-
+		var history hubprotocol.LifecycleHistory
 		if err := json.Unmarshal(data, &history); err != nil {
 			return ProjectStatus{Project: project, Authorized: false, Reason: "invalid lifecycle history response"}, err
 		}
 
 		artifactsMap := make(map[string]ArtifactMetadata)
 		for _, e := range history.Events {
-			if e.Command.Artifact != "" && validDigest(e.Command.Artifact) {
+			if e.Command.Artifact != "" && hubprotocol.ValidDigest(e.Command.Artifact) {
 				artifactsMap[e.Command.Artifact] = ArtifactMetadata{
 					Digest:   e.Command.Artifact,
 					Resource: e.Command.Resource,
@@ -311,10 +295,10 @@ func (c *Client) ProbeProject(ctx context.Context, project string) (ProjectStatu
 
 // DownloadArtifact retrieves an artifact from the project and verifies its digest and custody warning.
 func (c *Client) DownloadArtifact(ctx context.Context, project, digest, destinationPath string) (TransferResult, error) {
-	if !validProject(project) {
+	if !hubprotocol.ValidProject(project) {
 		return TransferResult{State: "failed"}, errors.New("invalid project identifier")
 	}
-	if !validDigest(digest) {
+	if !hubprotocol.ValidDigest(digest) {
 		return TransferResult{State: "failed"}, errors.New("invalid artifact digest")
 	}
 	if c.session == nil || c.session.token == "" {
@@ -354,9 +338,9 @@ func (c *Client) DownloadArtifact(ctx context.Context, project, digest, destinat
 		return TransferResult{State: "failed"}, fmt.Errorf("download failed with status %d", resp.StatusCode)
 	}
 
-	custodyWarning := resp.Header.Get("Readmit-Custody-Warning")
+	custodyWarning := resp.Header.Get(hubprotocol.CustodyHeader)
 	if custodyWarning == "" {
-		custodyWarning = "Downloaded copies remain under local custody and cannot be revoked."
+		custodyWarning = hubprotocol.CustodyWarning
 	}
 
 	// Read body bounded
@@ -391,7 +375,7 @@ func (c *Client) DownloadArtifact(ctx context.Context, project, digest, destinat
 
 // UploadArtifact publishes an artifact to the project on the hub.
 func (c *Client) UploadArtifact(ctx context.Context, project, sourcePath string) (TransferResult, error) {
-	if !validProject(project) {
+	if !hubprotocol.ValidProject(project) {
 		return TransferResult{State: "failed"}, errors.New("invalid project identifier")
 	}
 	if c.session == nil || c.session.token == "" {
@@ -478,16 +462,4 @@ func writeAtomic(destination string, data []byte) error {
 		return err
 	}
 	return nil
-}
-
-func validDigest(s string) bool {
-	if len(s) != 64 {
-		return false
-	}
-	for _, c := range s {
-		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
-			return false
-		}
-	}
-	return true
 }

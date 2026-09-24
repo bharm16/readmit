@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/hubclient"
+	"github.com/bharm16/readmit/internal/hubprotocol"
 )
 
 type testAuthority struct {
@@ -628,24 +629,22 @@ func TestClientOperations(t *testing.T) {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		resp := map[string]any{
-			"schema": "readmit-hub-lifecycle-history/v1",
-			"head":   42,
-			"events": []map[string]any{
-				{
-					"schema":  "readmit-hub-lifecycle-event/v1",
-					"project": "icu-audit",
-					"actor":   "auditor@hospital.org",
-					"at":      "2026-09-21T12:00:00Z",
-					"command": map[string]any{
-						"kind":     "record",
-						"resource": "evidence",
-						"artifact": artifactDigest,
-						"reason":   "baseline evidence collection",
-					},
+		resp := hubprotocol.LifecycleHistory{
+			Schema: hubprotocol.LifecycleHistorySchema,
+			Head:   42,
+			Events: []hubprotocol.LifecycleEvent{{
+				Schema:  hubprotocol.LifecycleEventSchema,
+				Project: "icu-audit",
+				Actor:   "auditor@hospital.org",
+				At:      "2026-09-21T12:00:00Z",
+				Command: hubprotocol.LifecycleCommand{
+					Kind:     "record",
+					Resource: "evidence",
+					Artifact: artifactDigest,
+					Reason:   "baseline evidence collection",
 				},
-			},
-			"warning": "Customer test warning",
+			}},
+			Warning: "Customer test warning",
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.MarshalWrite(w, resp)

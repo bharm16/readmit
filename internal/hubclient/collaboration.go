@@ -10,175 +10,55 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/hubprotocol"
 )
 
 // ErrConflict reports a stale expected head, duplicate conflicting id, or
 // lifecycle tip conflict. Callers must fetch current state and renew the action.
 var ErrConflict = errors.New("hub head or revision conflict; fetch current state and renew the action")
 
-// ReviewCommand is the complete strict document posted to project reviews.
-// Actor identity always comes from the authenticated session, never from Text.
-type ReviewCommand struct {
-	Schema    string `json:"schema"`
-	ID        string `json:"id"`
-	Expected  int    `json:"expected"`
-	Kind      string `json:"kind"`
-	Evidence  string `json:"evidence"`
-	Parent    string `json:"parent"`
-	Recipient string `json:"recipient"`
-	Text      string `json:"text"`
-	Release   string `json:"release"`
-}
-
-// ReviewEvent is one authenticated collaboration decision retained by the hub.
-type ReviewEvent struct {
-	Schema   string        `json:"schema"`
-	Project  string        `json:"project"`
-	Sequence int           `json:"sequence"`
-	Issuer   string        `json:"issuer"`
-	Actor    string        `json:"actor"`
-	At       string        `json:"at"`
-	Command  ReviewCommand `json:"command"`
-}
-
-// ReviewHistory is the head and events returned by history or notifications.
-type ReviewHistory struct {
-	Schema  string        `json:"schema"`
-	Head    int           `json:"head"`
-	Events  []ReviewEvent `json:"events"`
-	Warning string        `json:"warning,omitzero"`
-}
-
-// ReviewQuery searches history or notifications after a sequence cursor.
-type ReviewQuery struct {
-	Schema   string `json:"schema"`
-	After    int    `json:"after"`
-	Text     string `json:"text"`
-	Evidence string `json:"evidence"`
-}
-
-// refusal is the early refusal of a query the hub's query contract
-// (readmit-hub-review-query/v1) cannot carry: a sequence below zero, text
-// beyond 256 bytes or holding a NUL, or evidence that is not one whole SHA-256
-// digest. Nothing is sent for it, so a mistyped search says what to fix rather
-// than returning the hub's bare refusal; the hub remains the authority for the
-// query's shape and for what it finds.
-func (q ReviewQuery) refusal() error {
-	switch {
-	case q.After < 0:
-		return errors.New("search after a sequence of 0 or more")
-	case len(q.Text) > 256 || !utf8.ValidString(q.Text) || strings.ContainsRune(q.Text, 0):
-		return errors.New("search for at most 256 bytes of text, with no NUL character")
-	case q.Evidence != "" && !validDigest(q.Evidence):
-		return errors.New("name the evidence by its whole SHA-256 digest: 64 lowercase hexadecimal characters")
-	}
-	return nil
-}
-
-// LifecycleCommand is the complete strict document posted to project lifecycle.
-type LifecycleCommand struct {
-	Schema   string   `json:"schema"`
-	ID       string   `json:"id"`
-	Expected int      `json:"expected"`
-	Kind     string   `json:"kind"`
-	Resource string   `json:"resource"`
-	Artifact string   `json:"artifact"`
-	Parents  []string `json:"parents"`
-	Subject  string   `json:"subject"`
-	Until    string   `json:"until"`
-	Reason   string   `json:"reason"`
-}
-
-// LifecycleEvent is one authenticated lifecycle decision retained by the hub.
-type LifecycleEvent struct {
-	Schema     string           `json:"schema"`
-	Project    string           `json:"project"`
-	Sequence   int              `json:"sequence"`
-	Issuer     string           `json:"issuer"`
-	Actor      string           `json:"actor"`
-	At         string           `json:"at"`
-	ReviewHead int              `json:"review_head,omitzero"`
-	Command    LifecycleCommand `json:"command"`
-}
-
-// LifecycleHistory carries events, unresolved revision tips, and the custody warning.
-type LifecycleHistory struct {
-	Schema  string              `json:"schema"`
-	Head    int                 `json:"head"`
-	Events  []LifecycleEvent    `json:"events"`
-	Tips    map[string][]string `json:"tips"`
-	Warning string              `json:"warning"`
-}
-
-// AuditExport is the body returned by an audit-export lifecycle command.
-type AuditExport struct {
-	Schema     string           `json:"schema"`
-	Project    string           `json:"project"`
-	Lifecycle  []LifecycleEvent `json:"lifecycle"`
-	ReviewHead int              `json:"review_head"`
-	Reviews    []ReviewEvent    `json:"reviews"`
-	Warning    string           `json:"warning"`
-}
-
 // LifecycleWriteResult carries either a recorded event or an audit export body.
 type LifecycleWriteResult struct {
-	Event  *LifecycleEvent `json:"event,omitzero"`
-	Audit  *AuditExport    `json:"audit,omitzero"`
-	Replay bool            `json:"replay,omitzero"`
-}
-
-// Removed reports whether the project's administration log records a
-// remove-user command for this issuer and subject. It is the same one rule
-// the hub applies to recipients and runners at every admission
-// (hub: deriveLifecycle().isRemoved); the application consults it before
-// offering a runner lifecycle action, and the hub remains the authority that
-// enforces it again when admission is asked.
-func (h LifecycleHistory) Removed(issuer, subject string) bool {
-	for _, event := range h.Events {
-		if event.Command.Kind == "remove-user" && event.Issuer == issuer && event.Command.Subject == subject {
-			return true
-		}
-	}
-	return false
+	Event  *hubprotocol.LifecycleEvent `json:"event,omitzero"`
+	Audit  *hubprotocol.AuditExport    `json:"audit,omitzero"`
+	Replay bool                        `json:"replay,omitzero"`
 }
 
 // ListHistory reads the collaboration review history for a project.
-func (c *Client) ListHistory(ctx context.Context, project string) (ReviewHistory, error) {
+func (c *Client) ListHistory(ctx context.Context, project string) (hubprotocol.ReviewHistory, error) {
 	return c.readReviewRoute(ctx, project, "history", nil)
 }
 
 // SearchHistory posts a review query against project history.
-func (c *Client) SearchHistory(ctx context.Context, project string, query ReviewQuery) (ReviewHistory, error) {
+func (c *Client) SearchHistory(ctx context.Context, project string, query hubprotocol.ReviewQuery) (hubprotocol.ReviewHistory, error) {
 	return c.readReviewRoute(ctx, project, "history", &query)
 }
 
 // ListNotifications reads collaboration events addressed to the current subject.
-func (c *Client) ListNotifications(ctx context.Context, project string) (ReviewHistory, error) {
+func (c *Client) ListNotifications(ctx context.Context, project string) (hubprotocol.ReviewHistory, error) {
 	return c.readReviewRoute(ctx, project, "notifications", nil)
 }
 
 // SearchNotifications posts a review query against the subject's notifications.
-func (c *Client) SearchNotifications(ctx context.Context, project string, query ReviewQuery) (ReviewHistory, error) {
+func (c *Client) SearchNotifications(ctx context.Context, project string, query hubprotocol.ReviewQuery) (hubprotocol.ReviewHistory, error) {
 	return c.readReviewRoute(ctx, project, "notifications", &query)
 }
 
 // PostReview records a collaboration decision. Retries with the same id and
 // actor replay the original event; a stale expected head returns ErrConflict.
-func (c *Client) PostReview(ctx context.Context, project string, command ReviewCommand) (ReviewEvent, bool, error) {
-	var zero ReviewEvent
+func (c *Client) PostReview(ctx context.Context, project string, command hubprotocol.ReviewCommand) (hubprotocol.ReviewEvent, bool, error) {
+	var zero hubprotocol.ReviewEvent
 	if err := c.requireSession(); err != nil {
 		return zero, false, err
 	}
-	if !validProject(project) {
+	if !hubprotocol.ValidProject(project) {
 		return zero, false, errors.New("invalid project identifier")
 	}
 	if command.Schema == "" {
-		command.Schema = "readmit-hub-review-command/v1"
+		command.Schema = hubprotocol.ReviewCommandV1
 	}
 	body, err := json.Marshal(command)
 	if err != nil {
@@ -195,13 +75,13 @@ func (c *Client) PostReview(ctx context.Context, project string, command ReviewC
 	}
 	switch resp.StatusCode {
 	case http.StatusCreated:
-		var event ReviewEvent
+		var event hubprotocol.ReviewEvent
 		if err := json.Unmarshal(data, &event); err != nil {
 			return zero, false, errors.New("invalid review event response")
 		}
 		return event, false, nil
 	case http.StatusOK:
-		var event ReviewEvent
+		var event hubprotocol.ReviewEvent
 		if err := json.Unmarshal(data, &event); err != nil {
 			return zero, false, errors.New("invalid review event response")
 		}
@@ -220,12 +100,12 @@ func (c *Client) PostReview(ctx context.Context, project string, command ReviewC
 }
 
 // GetLifecycle reads the project lifecycle log, unresolved tips and custody warning.
-func (c *Client) GetLifecycle(ctx context.Context, project string) (LifecycleHistory, error) {
-	var zero LifecycleHistory
+func (c *Client) GetLifecycle(ctx context.Context, project string) (hubprotocol.LifecycleHistory, error) {
+	var zero hubprotocol.LifecycleHistory
 	if err := c.requireSession(); err != nil {
 		return zero, err
 	}
-	if !validProject(project) {
+	if !hubprotocol.ValidProject(project) {
 		return zero, errors.New("invalid project identifier")
 	}
 	resp, err := c.doJSON(ctx, http.MethodGet, "/v2/projects/"+project+"/lifecycle", nil)
@@ -239,12 +119,12 @@ func (c *Client) GetLifecycle(ctx context.Context, project string) (LifecycleHis
 	}
 	switch resp.StatusCode {
 	case http.StatusOK:
-		var history LifecycleHistory
+		var history hubprotocol.LifecycleHistory
 		if err := json.Unmarshal(data, &history); err != nil {
 			return zero, errors.New("invalid lifecycle history response")
 		}
 		if history.Warning == "" {
-			history.Warning = "Downloaded copies remain under local custody and cannot be revoked."
+			history.Warning = hubprotocol.CustodyWarning
 		}
 		if history.Tips == nil {
 			history.Tips = map[string][]string{}
@@ -260,16 +140,16 @@ func (c *Client) GetLifecycle(ctx context.Context, project string) (LifecycleHis
 }
 
 // PostLifecycle records a lifecycle command. audit-export returns Audit instead of Event.
-func (c *Client) PostLifecycle(ctx context.Context, project string, command LifecycleCommand) (LifecycleWriteResult, error) {
+func (c *Client) PostLifecycle(ctx context.Context, project string, command hubprotocol.LifecycleCommand) (LifecycleWriteResult, error) {
 	var zero LifecycleWriteResult
 	if err := c.requireSession(); err != nil {
 		return zero, err
 	}
-	if !validProject(project) {
+	if !hubprotocol.ValidProject(project) {
 		return zero, errors.New("invalid project identifier")
 	}
 	if command.Schema == "" {
-		command.Schema = "readmit-hub-lifecycle-command/v1"
+		command.Schema = hubprotocol.LifecycleCommandSchema
 	}
 	if command.Parents == nil {
 		command.Parents = []string{}
@@ -291,16 +171,16 @@ func (c *Client) PostLifecycle(ctx context.Context, project string, command Life
 	case http.StatusCreated, http.StatusOK:
 		replay := resp.StatusCode == http.StatusOK
 		if command.Kind == "audit-export" {
-			var audit AuditExport
+			var audit hubprotocol.AuditExport
 			if err := json.Unmarshal(data, &audit); err != nil {
 				return zero, errors.New("invalid audit export response")
 			}
 			if audit.Warning == "" {
-				audit.Warning = "Downloaded copies remain under local custody and cannot be revoked."
+				audit.Warning = hubprotocol.CustodyWarning
 			}
 			return LifecycleWriteResult{Audit: &audit, Replay: replay}, nil
 		}
-		var event LifecycleEvent
+		var event hubprotocol.LifecycleEvent
 		if err := json.Unmarshal(data, &event); err != nil {
 			return zero, errors.New("invalid lifecycle event response")
 		}
@@ -316,10 +196,10 @@ func (c *Client) PostLifecycle(ctx context.Context, project string, command Life
 
 // DownloadExport retrieves an authorized support export and verifies its digest.
 func (c *Client) DownloadExport(ctx context.Context, project, digest, destinationPath string) (TransferResult, error) {
-	if !validProject(project) {
+	if !hubprotocol.ValidProject(project) {
 		return TransferResult{State: "failed"}, errors.New("invalid project identifier")
 	}
-	if !validDigest(digest) {
+	if !hubprotocol.ValidDigest(digest) {
 		return TransferResult{State: "failed"}, errors.New("invalid artifact digest")
 	}
 	if err := c.requireSession(); err != nil {
@@ -346,9 +226,9 @@ func (c *Client) DownloadExport(ctx context.Context, project, digest, destinatio
 	if resp.StatusCode != http.StatusOK {
 		return TransferResult{State: "failed"}, fmt.Errorf("export download failed with status %d", resp.StatusCode)
 	}
-	custodyWarning := resp.Header.Get("Readmit-Custody-Warning")
+	custodyWarning := resp.Header.Get(hubprotocol.CustodyHeader)
 	if custodyWarning == "" {
-		custodyWarning = "Downloaded copies remain under local custody and cannot be revoked."
+		custodyWarning = hubprotocol.CustodyWarning
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, MaxArtifactBytes+1))
 	if err != nil {
@@ -373,23 +253,27 @@ func (c *Client) DownloadExport(ctx context.Context, project, digest, destinatio
 	}, nil
 }
 
-func (c *Client) readReviewRoute(ctx context.Context, project, route string, query *ReviewQuery) (ReviewHistory, error) {
-	var zero ReviewHistory
+func (c *Client) readReviewRoute(ctx context.Context, project, route string, query *hubprotocol.ReviewQuery) (hubprotocol.ReviewHistory, error) {
+	var zero hubprotocol.ReviewHistory
 	if err := c.requireSession(); err != nil {
 		return zero, err
 	}
-	if !validProject(project) {
+	if !hubprotocol.ValidProject(project) {
 		return zero, errors.New("invalid project identifier")
 	}
 	var body []byte
 	method := http.MethodGet
 	if query != nil {
-		if err := query.refusal(); err != nil {
+		// A query the contract cannot carry is refused here, before anything
+		// is sent, so a mistyped search says what to fix rather than
+		// returning the hub's bare refusal; the hub remains the authority for
+		// the query's shape and for what it finds.
+		if err := query.Refusal(); err != nil {
 			return zero, err
 		}
 		method = http.MethodPost
 		if query.Schema == "" {
-			query.Schema = "readmit-hub-review-query/v1"
+			query.Schema = hubprotocol.ReviewQuerySchema
 		}
 		encoded, err := json.Marshal(query)
 		if err != nil {
@@ -408,7 +292,7 @@ func (c *Client) readReviewRoute(ctx context.Context, project, route string, que
 	}
 	switch resp.StatusCode {
 	case http.StatusOK:
-		var history ReviewHistory
+		var history hubprotocol.ReviewHistory
 		if err := json.Unmarshal(data, &history); err != nil {
 			return zero, errors.New("invalid review history response")
 		}

@@ -543,7 +543,11 @@ existing test, queue and durable evidence contracts are unchanged. See
 `runner` uses the same compiled durable/test engine, with private local jobs and
 short-lived customer-hub admission. See [runner operation](customer-runner.md).
 The hub imports the shared strict protocol from the root module; the root gains
-no dependency. Customer Ed25519 deployment signatures approve staged updates.
+no dependency. The team hub's review and lifecycle protocol is likewise one root
+package, `internal/hubprotocol`: the commands, events and responses, their strict
+decoders, the derivations of a project's logs, the access-token claim rule and
+the custody sentence, which the hub enforces and `internal/hubclient` builds its
+commands from. Customer Ed25519 deployment signatures approve staged updates.
 
 
 ## Released expectations

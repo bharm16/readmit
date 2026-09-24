@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
+	"github.com/bharm16/readmit/internal/hubprotocol"
 )
 
 type backupEntry struct {
@@ -222,7 +223,7 @@ func readBackup(root *os.Root) (backupManifest, error) {
 			return m, ErrIntegrity
 		}
 		var raw []jsontext.Value
-		if json.Unmarshal(envelope["lifecycle"], &raw) != nil || len(raw) > maxLifecycle {
+		if json.Unmarshal(envelope["lifecycle"], &raw) != nil || len(raw) > hubprotocol.MaxLifecycle {
 			return m, ErrIntegrity
 		}
 		for _, entry := range raw {
@@ -237,7 +238,7 @@ func readBackup(root *os.Root) (backupManifest, error) {
 			if json.Unmarshal(entry, &fields) != nil {
 				return m, ErrIntegrity
 			}
-			if _, e := decodeLifecycle(fields["command"]); e != nil {
+			if _, e := hubprotocol.DecodeLifecycleCommand(fields["command"]); e != nil {
 				return m, ErrIntegrity
 			}
 			lifecycle = append(lifecycle, event)
@@ -262,7 +263,7 @@ func readBackup(root *os.Root) (backupManifest, error) {
 			return m, ErrIntegrity
 		}
 		var raw []jsontext.Value
-		if json.Unmarshal(envelope["reviews"], &raw) != nil || len(raw) > maxReviews {
+		if json.Unmarshal(envelope["reviews"], &raw) != nil || len(raw) > hubprotocol.MaxReviews {
 			return m, ErrLimit
 		}
 		for _, entry := range raw {
@@ -277,7 +278,7 @@ func readBackup(root *os.Root) (backupManifest, error) {
 			if json.Unmarshal(entry, &fields) != nil {
 				return m, ErrIntegrity
 			}
-			if _, e := decodeReviewCommand(fields["command"]); e != nil {
+			if _, e := hubprotocol.DecodeReviewCommand(fields["command"]); e != nil {
 				return m, e
 			}
 			reviews = append(reviews, event)
@@ -385,7 +386,7 @@ func readBackup(root *os.Root) (backupManifest, error) {
 	byProject := map[string][]ReviewEvent{}
 	lastProject := ""
 	for _, event := range reviews {
-		if !validReviewEventVersion(event, isV5) || !validProject(event.Project) || event.Project < lastProject || event.Issuer == "" || !reviewText(event.Issuer, 2048) || event.Actor == "" || !reviewText(event.Actor, 256) || event.Sequence != len(byProject[event.Project])+1 || event.Command.Expected != event.Sequence-1 {
+		if !hubprotocol.ValidEventVersion(event, isV5) || !validProject(event.Project) || event.Project < lastProject || event.Issuer == "" || !reviewText(event.Issuer, 2048) || event.Actor == "" || !reviewText(event.Actor, 256) || event.Sequence != len(byProject[event.Project])+1 || event.Command.Expected != event.Sequence-1 {
 			return m, ErrIntegrity
 		}
 		if _, e := time.Parse(time.RFC3339Nano, event.At); e != nil {
@@ -429,8 +430,8 @@ func readBackup(root *os.Root) (backupManifest, error) {
 			}
 			return data, nil
 		}
-		if e := validateReview(event.Command, event.Actor, event.Issuer, deriveReviews(byProject[event.Project]), load); e != nil {
-			return m, e
+		if e := hubprotocol.DeriveReviews(byProject[event.Project]).Validate(event.Command, event.Actor, event.Issuer, load); e != nil {
+			return m, hubSentinel(e)
 		}
 		byProject[event.Project] = append(byProject[event.Project], event)
 		lastProject = event.Project
@@ -445,7 +446,7 @@ func readBackup(root *os.Root) (backupManifest, error) {
 		if event.ReviewHead < 0 || event.ReviewHead > len(byProject[event.Project]) || (event.Command.Kind != "audit-export" && event.ReviewHead != 0) {
 			return m, ErrIntegrity
 		}
-		if event.Schema != "readmit-hub-lifecycle-event/v1" || !validProject(event.Project) || event.Project < lastProject || event.Sequence != len(prior)+1 || event.Command.Expected != event.Sequence-1 || event.Issuer == "" || !reviewText(event.Issuer, 2048) || event.Actor == "" || !reviewText(event.Actor, 256) {
+		if event.Schema != hubprotocol.LifecycleEventSchema || !validProject(event.Project) || event.Project < lastProject || event.Sequence != len(prior)+1 || event.Command.Expected != event.Sequence-1 || event.Issuer == "" || !reviewText(event.Issuer, 2048) || event.Actor == "" || !reviewText(event.Actor, 256) {
 			return m, ErrIntegrity
 		}
 		at, e := time.Parse(time.RFC3339Nano, event.At)
@@ -481,8 +482,8 @@ func readBackup(root *os.Root) (backupManifest, error) {
 			}
 			return nil, ErrMissing
 		}
-		if e := validateLifecycle(event.Command, prior, load, at); e != nil {
-			return m, e
+		if e := hubprotocol.DeriveLifecycle(prior).Validate(event.Command, load, at); e != nil {
+			return m, hubSentinel(e)
 		}
 		byLifecycleProject[event.Project] = append(prior, event)
 		lastProject = event.Project

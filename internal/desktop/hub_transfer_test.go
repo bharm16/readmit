@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/hubprotocol"
 	"github.com/bharm16/readmit/internal/sharing"
 )
 
@@ -447,11 +448,11 @@ func TestDownloadingAnApprovedSupportExportWritesOnlyTheVerifiedBytes(t *testing
 // sent; a refusal the hub gives is asked once.
 func TestHistoryAndNotificationSearchesCarryThePersonsQueryToTheV2Routes(t *testing.T) {
 	evidence := strings.Repeat("a", 64)
-	events := []map[string]any{
-		{"schema": "readmit-hub-review-event/v1", "project": "cardio-study", "sequence": 2, "issuer": "https://idp.hospital.org",
-			"actor": "reviewer@hospital.org", "at": "2026-09-23T10:00:00Z",
-			"command": map[string]any{"schema": "readmit-hub-review-command/v1", "id": "reviewer-confirms", "expected": 1, "kind": "comment",
-				"evidence": evidence, "parent": "", "recipient": "analyst@hospital.org", "text": "Confirmed the reschedule on the lab fixture", "release": ""}},
+	events := []hubprotocol.ReviewEvent{
+		{Schema: hubprotocol.ReviewEventV1, Project: "cardio-study", Sequence: 2, Issuer: "https://idp.hospital.org",
+			Actor: "reviewer@hospital.org", At: "2026-09-23T10:00:00Z",
+			Command: hubprotocol.ReviewCommand{Schema: hubprotocol.ReviewCommandV1, ID: "reviewer-confirms", Expected: 1, Kind: "comment",
+				Evidence: evidence, Recipient: "analyst@hospital.org", Text: "Confirmed the reschedule on the lab fixture"}},
 	}
 	reads := &hubRequests{}
 	legacy := &hubRequests{}
@@ -463,7 +464,7 @@ func TestHistoryAndNotificationSearchesCarryThePersonsQueryToTheV2Routes(t *test
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.MarshalWrite(w, map[string]any{"schema": "readmit-hub-review-history/v2", "head": 2, "events": events})
+		_ = json.MarshalWrite(w, hubprotocol.ReviewHistory{Schema: hubprotocol.ReviewHistoryV2, Head: 2, Events: events})
 	}
 	mux := http.NewServeMux()
 	healthy(mux)

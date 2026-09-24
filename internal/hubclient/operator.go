@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/bharm16/readmit/internal/hubprotocol"
 	"github.com/bharm16/readmit/internal/strictdoc"
 )
 
@@ -119,7 +120,7 @@ func DecodeOperatorConfig(data []byte) (OperatorConfig, error) {
 	var raw struct {
 		Key jsontext.Value `json:"key"`
 	}
-	if json.Unmarshal(data, &raw) != nil || requireExactMembers(raw.Key, "command", "arguments") != nil {
+	if json.Unmarshal(data, &raw) != nil || hubprotocol.RequireExactMembers(raw.Key, "command", "arguments") != nil {
 		return c, ErrRefused
 	}
 	if err := ValidateOperator(c); err != nil {
@@ -149,7 +150,7 @@ func ValidateOperator(c OperatorConfig) error {
 // CheckDigest refuses an artifact address that is not a whole lowercase
 // SHA-256 digest, the only address the hub's artifact store routes.
 func CheckDigest(digest string) error {
-	if !validDigest(digest) {
+	if !hubprotocol.ValidDigest(digest) {
 		return ErrInvalidDigest
 	}
 	return nil

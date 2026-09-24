@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -12,11 +11,12 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/hubclient"
+	"github.com/bharm16/readmit/internal/hubprotocol"
 )
 
 const (
 	hubSelectionSchema = "readmit-desktop-hub-selection/v1"
-	custodyNotice      = "Downloaded copies remain under local custody and cannot be revoked."
+	custodyNotice      = hubprotocol.CustodyWarning
 
 	// hubSignInWait bounds how long a sign-in waits for the browser to return
 	// to the loopback listener.
@@ -39,6 +39,35 @@ const (
 type hubSelection struct {
 	Schema string `json:"schema"`
 	Config string `json:"config"`
+}
+
+// hubSelectionFile is the shell document that remembers the hub
+// configuration a person selected (readmit-desktop-hub-selection/v1), beside
+// the operation selection: the memory the window's hub connection keeps its
+// selection in.
+type hubSelectionFile string
+
+// Recall reads the remembered selection: nothing when there is no document,
+// and a refusal when the document is not a selection this window reads.
+func (f hubSelectionFile) Recall() (string, error) {
+	if _, err := os.Lstat(string(f)); errors.Is(err, fs.ErrNotExist) {
+		return "", nil
+	}
+	data, err := readOperationFile(string(f))
+	var sel hubSelection
+	if err != nil || json.Unmarshal(data, &sel, json.RejectUnknownMembers(true)) != nil || sel.Schema != hubSelectionSchema || !filepath.IsAbs(sel.Config) {
+		return "", errors.New("the remembered hub selection cannot be read")
+	}
+	return sel.Config, nil
+}
+
+// Remember replaces the document with one naming path.
+func (f hubSelectionFile) Remember(path string) error {
+	encoded, err := json.Marshal(hubSelection{Schema: hubSelectionSchema, Config: path})
+	if err != nil {
+		return err
+	}
+	return writeShellDocument(string(f), append(encoded, '\n'))
 }
 
 // HubProjectInfo describes one project available on the hub.
@@ -145,37 +174,14 @@ type HubUploadRequest struct {
 	SourcePath string `json:"source_path"`
 }
 
-// restoreHubSelection retains the configuration an earlier session selected.
-// Restoring reads the selection and the configuration it names, two local
-// files, and nothing else: it connects to no hub, starts no sign-in and renews
-// no session, so a restored configuration is selected and offline. A
-// remembered selection that can no longer be restored is not dropped: why is
-// kept for the hub status to show, beside the configuration it names, until a
-// configuration is selected again. Nothing remembered is nothing to show.
+// restoreHubSelection retains the configuration an earlier session selected,
+// remembered in the selection document at selectionPath. Restoring reads the
+// selection and the configuration it names, two local files, and nothing
+// else (hubclient.RestoreConnection): a restored configuration is selected
+// and offline, and one that can no longer be restored is shown with why until
+// a configuration is selected again.
 func (a *App) restoreHubSelection(selectionPath string) {
-	a.hubMu.Lock()
-	defer a.hubMu.Unlock()
-	a.hubSelectionPath = selectionPath
-	if _, err := os.Lstat(selectionPath); errors.Is(err, fs.ErrNotExist) {
-		return
-	}
-	data, err := readOperationFile(selectionPath)
-	var sel hubSelection
-	if err != nil || json.Unmarshal(data, &sel, json.RejectUnknownMembers(true)) != nil || sel.Schema != hubSelectionSchema || !filepath.IsAbs(sel.Config) {
-		a.hubRestoreRefusal = "the remembered hub selection cannot be read; choose a hub configuration again"
-		return
-	}
-	a.hubConfigPath = sel.Config
-	if _, err := os.Stat(sel.Config); errors.Is(err, fs.ErrNotExist) {
-		a.hubRestoreRefusal = "the remembered hub configuration is no longer there; choose a hub configuration again"
-		return
-	}
-	cfg, err := hubclient.ReadConfig(sel.Config)
-	if err != nil {
-		a.hubRestoreRefusal = "the remembered hub configuration no longer validates (" + err.Error() + "); choose a hub configuration again"
-		return
-	}
-	a.hubConfig = &cfg
+	a.hub = hubclient.RestoreConnection(hubSelectionFile(selectionPath))
 }
 
 // ChooseHubConfig presents a dialog to select the customer hub configuration file.
@@ -230,40 +236,15 @@ func (a *App) SelectHubConfig(path string) HubResult {
 }
 
 // selectHubConfig is the selection itself, for a caller that already holds
-// the operation slot.
+// the operation slot. The connection remembers the selection before it makes
+// it, so a choice this window cannot remember is refused and changes nothing:
+// the window never says a configuration is selected that the next one will
+// not restore.
 func (a *App) selectHubConfig(path string) HubResult {
-	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
-		return HubResult{State: Failed, Reason: "select a cleaned absolute configuration file path"}
-	}
-	cfg, err := hubclient.ReadConfig(path)
+	cfg, err := a.hub.Select(path)
 	if err != nil {
 		return HubResult{State: Failed, Reason: err.Error()}
 	}
-
-	a.hubMu.Lock()
-	defer a.hubMu.Unlock()
-
-	// The selection is remembered before it is made, so a choice this window
-	// cannot remember is refused and changes nothing: the window never says a
-	// configuration is selected that the next one will not restore.
-	if a.hubSelectionPath != "" {
-		encoded, err := json.Marshal(hubSelection{Schema: hubSelectionSchema, Config: path})
-		if err != nil || writeShellDocument(a.hubSelectionPath, append(encoded, '\n')) != nil {
-			return HubResult{State: Failed, Reason: "cannot retain the hub configuration selection, so the selection is unchanged; choose a hub configuration again"}
-		}
-	}
-
-	// Disconnect previous connection and reset credentials
-	if a.hubAuthFlow != nil {
-		a.hubAuthFlow.Close()
-		a.hubAuthFlow = nil
-	}
-	a.hubClient = nil
-	a.hubSession = nil
-	a.hubConfigPath = path
-	a.hubConfig = &cfg
-	a.hubRestoreRefusal = ""
-
 	return HubResult{
 		State:         Completed,
 		Connected:     false,
@@ -276,12 +257,9 @@ func (a *App) selectHubConfig(path string) HubResult {
 // DiagnoseHub runs actionable prerequisite diagnostics against the configured customer hub.
 func (a *App) DiagnoseHub() HubDiagnosisResult {
 	return runNamed[HubDiagnosisResult, *HubDiagnosisResult](a, profiles["DiagnoseHub"], func(ctx context.Context) HubDiagnosisResult {
-		a.hubMu.Lock()
-		cfg := a.hubConfig
-		a.hubMu.Unlock()
-
+		cfg := a.hub.Status().Config
 		if cfg == nil {
-			return HubDiagnosisResult{State: Failed, Reason: "no customer hub configuration selected"}
+			return HubDiagnosisResult{State: Failed, Reason: hubclient.ErrNotSelected.Error()}
 		}
 
 		prereqs := hubclient.DiagnosePrerequisites(ctx, *cfg)
@@ -306,28 +284,9 @@ func (a *App) DiagnoseHub() HubDiagnosisResult {
 // ConnectHub establishes a mutual TLS connection to the customer hub and checks health probes.
 func (a *App) ConnectHub() HubResult {
 	return runNamed[HubResult, *HubResult](a, profiles["ConnectHub"], func(ctx context.Context) HubResult {
-		a.hubMu.Lock()
-		cfg := a.hubConfig
-		sess := a.hubSession
-		a.hubMu.Unlock()
-
-		if cfg == nil {
-			return HubResult{State: Failed, Reason: "no customer hub configuration selected"}
+		if err := a.hub.Connect(ctx); err != nil {
+			return HubResult{State: Failed, Reason: err.Error()}
 		}
-
-		client, err := hubclient.New(ctx, *cfg, sess)
-		if err != nil {
-			return HubResult{State: Failed, Reason: fmt.Sprintf("cannot create mutual TLS client: %v", err)}
-		}
-
-		if err := client.CheckHealth(ctx); err != nil {
-			return HubResult{State: Failed, Reason: fmt.Sprintf("hub connection failed: %v", err)}
-		}
-
-		a.hubMu.Lock()
-		a.hubClient = client
-		a.hubMu.Unlock()
-
 		return a.hubStatus(ctx)
 	})
 }
@@ -335,25 +294,17 @@ func (a *App) ConnectHub() HubResult {
 // DisconnectHub disconnects from the hub, clears all in-memory credentials, and displays the custody notice.
 func (a *App) DisconnectHub() HubResult {
 	return run(a, false, false, func(ctx context.Context) HubResult {
-		a.hubMu.Lock()
-		if a.hubAuthFlow != nil {
-			a.hubAuthFlow.Close()
-			a.hubAuthFlow = nil
-		}
-		a.hubClient = nil
-		a.hubSession = nil
-		configPath := a.hubConfigPath
+		a.hub.Disconnect()
+		status := a.hub.Status()
 		hubURL := ""
-		if a.hubConfig != nil {
-			hubURL = a.hubConfig.Hub
+		if status.Config != nil {
+			hubURL = status.Config.Hub
 		}
-		a.hubMu.Unlock()
-
 		return HubResult{
 			State:          Completed,
 			Connected:      false,
 			Authenticated:  false,
-			ConfigPath:     configPath,
+			ConfigPath:     status.ConfigPath,
 			HubURL:         hubURL,
 			CustodyWarning: custodyNotice,
 		}
@@ -363,31 +314,14 @@ func (a *App) DisconnectHub() HubResult {
 // StartHubAuth begins an RFC 9068 PKCE authorization flow on a local loopback server.
 func (a *App) StartHubAuth() HubAuthUrlResult {
 	return runNamed[HubAuthUrlResult, *HubAuthUrlResult](a, profiles["StartHubAuth"], func(ctx context.Context) HubAuthUrlResult {
-		a.hubMu.Lock()
-		cfg := a.hubConfig
-		if a.hubAuthFlow != nil {
-			a.hubAuthFlow.Close()
-			a.hubAuthFlow = nil
-		}
-		a.hubMu.Unlock()
-
-		if cfg == nil {
-			return HubAuthUrlResult{State: Failed, Reason: "no customer hub configuration selected"}
-		}
-
-		flow, err := hubclient.StartAuthFlow(*cfg)
+		authURL, port, err := a.hub.StartSignIn()
 		if err != nil {
 			return HubAuthUrlResult{State: Failed, Reason: err.Error()}
 		}
-
-		a.hubMu.Lock()
-		a.hubAuthFlow = flow
-		a.hubMu.Unlock()
-
 		return HubAuthUrlResult{
 			State:   Completed,
-			AuthURL: flow.AuthURL,
-			Port:    flow.Port,
+			AuthURL: authURL,
+			Port:    port,
 		}
 	})
 }
@@ -406,66 +340,12 @@ func (a *App) CompleteHubAuth(code, state string) HubResult {
 
 func (a *App) completeHubAuth(code, state string, wait time.Duration) HubResult {
 	result := runNamed[HubResult, *HubResult](a, profiles["CompleteHubAuth"], func(ctx context.Context) HubResult {
-		cancelled := HubResult{State: Cancelled, Reason: "sign-in was cancelled"}
-		a.hubMu.Lock()
-		cfg := a.hubConfig
-		flow := a.hubAuthFlow
-		a.hubAuthFlow = nil
-		a.hubMu.Unlock()
-
-		if cfg == nil {
-			return HubResult{State: Failed, Reason: "no customer hub configuration selected"}
-		}
-		if flow == nil {
-			return HubResult{State: Failed, Reason: "no authentication flow in progress; start sign-in first"}
-		}
-
-		authCode, authState := code, state
-		var err error
-		if authCode == "" {
-			waitCtx, cancel := context.WithTimeout(ctx, wait)
-			authCode, err = flow.WaitForCallback(waitCtx)
-			cancel()
-			authState = flow.State
-		}
-		flow.Close()
-		switch {
-		case ctx.Err() != nil:
-			return cancelled
-		case errors.Is(err, context.DeadlineExceeded):
-			return HubResult{State: Failed, Reason: "sign-in timed out: the browser did not return; sign in again"}
-		case err != nil:
-			return HubResult{State: Failed, Reason: "authentication callback failed: " + err.Error()}
-		case authState != flow.State:
-			return HubResult{State: Failed, Reason: "state mismatch in authentication response"}
-		}
-
-		session, err := hubclient.ExchangeCode(ctx, *cfg, authCode, flow.Verifier, flow.RedirectURI)
-		if err != nil {
-			if ctx.Err() != nil {
-				return cancelled
+		if err := a.hub.CompleteSignIn(ctx, code, state, wait); err != nil {
+			if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
+				return HubResult{State: Cancelled, Reason: "sign-in was cancelled"}
 			}
-			return HubResult{State: Failed, Reason: "token exchange failed: " + err.Error()}
+			return HubResult{State: Failed, Reason: err.Error()}
 		}
-
-		a.hubMu.Lock()
-		client := a.hubClient
-		a.hubMu.Unlock()
-		// Re-initialize client with new session if connected
-		if client != nil {
-			if updatedClient, err := hubclient.New(ctx, *cfg, session); err == nil {
-				client = updatedClient
-			}
-		}
-		// A cancel that arrives before the session is kept keeps nothing.
-		if ctx.Err() != nil {
-			return cancelled
-		}
-		a.hubMu.Lock()
-		a.hubSession = session
-		a.hubClient = client
-		a.hubMu.Unlock()
-
 		return a.hubStatus(ctx)
 	})
 	// Refused by another operation before it could take the attempt, the
@@ -474,12 +354,7 @@ func (a *App) completeHubAuth(code, state string, wait time.Duration) HubResult 
 	// completion refused by a sign-in that is waiting ends nothing: that
 	// sign-in holds its attempt.
 	if result.State == Busy && !a.operating(hubSignInOperation) {
-		a.hubMu.Lock()
-		if a.hubAuthFlow != nil {
-			a.hubAuthFlow.Close()
-			a.hubAuthFlow = nil
-		}
-		a.hubMu.Unlock()
+		a.hub.EndSignIn()
 	}
 	return result
 }
@@ -492,16 +367,11 @@ func (a *App) HubStatus() HubResult {
 }
 
 func (a *App) hubStatus(ctx context.Context) HubResult {
-	a.hubMu.Lock()
-	cfg := a.hubConfig
-	client := a.hubClient
-	session := a.hubSession
-	configPath := a.hubConfigPath
-	refusal := a.hubRestoreRefusal
-	a.hubMu.Unlock()
+	status := a.hub.Status()
+	cfg, client, session, configPath := status.Config, status.Client, status.Session, status.ConfigPath
 
-	if cfg == nil && refusal != "" {
-		return HubResult{State: Failed, Reason: refusal, ConfigPath: configPath}
+	if cfg == nil && status.Refusal != "" {
+		return HubResult{State: Failed, Reason: status.Refusal, ConfigPath: configPath}
 	}
 	if cfg == nil {
 		return HubResult{
@@ -561,16 +431,9 @@ func probeAllProjects(ctx context.Context, client *hubclient.Client, projects []
 // ListHubProjectArtifacts retrieves the artifacts and lifecycle metadata for an authorized project.
 func (a *App) ListHubProjectArtifacts(project string) HubArtifactsResult {
 	return runNamed[HubArtifactsResult, *HubArtifactsResult](a, profiles["ListHubProjectArtifacts"], func(ctx context.Context) HubArtifactsResult {
-		a.hubMu.Lock()
-		client := a.hubClient
-		session := a.hubSession
-		a.hubMu.Unlock()
-
-		if client == nil {
-			return HubArtifactsResult{State: Failed, Reason: "not connected to customer hub"}
-		}
-		if session == nil || session.IsExpired(time.Now()) {
-			return HubArtifactsResult{State: PermissionDenied, Reason: "sign-in required or session expired"}
+		client, errRes := a.requireHubSession()
+		if errRes != nil {
+			return HubArtifactsResult{State: errRes.State, Reason: errRes.Reason}
 		}
 
 		status, err := client.ProbeProject(ctx, project)
@@ -609,16 +472,9 @@ func (a *App) ListHubProjectArtifacts(project string) HubArtifactsResult {
 // DownloadHubArtifact downloads an artifact from a customer hub project with complete verification.
 func (a *App) DownloadHubArtifact(request HubDownloadRequest) HubTransferResult {
 	return runNamed[HubTransferResult, *HubTransferResult](a, profiles["DownloadHubArtifact"], func(ctx context.Context) HubTransferResult {
-		a.hubMu.Lock()
-		client := a.hubClient
-		session := a.hubSession
-		a.hubMu.Unlock()
-
-		if client == nil {
-			return HubTransferResult{State: Failed, Reason: "not connected to customer hub"}
-		}
-		if session == nil || session.IsExpired(time.Now()) {
-			return HubTransferResult{State: PermissionDenied, Reason: "sign-in required or session expired"}
+		client, errRes := a.requireHubSession()
+		if errRes != nil {
+			return HubTransferResult{State: errRes.State, Reason: errRes.Reason}
 		}
 
 		res, err := client.DownloadArtifact(ctx, request.Project, request.Digest, request.DestinationPath)
@@ -643,16 +499,9 @@ func (a *App) DownloadHubArtifact(request HubDownloadRequest) HubTransferResult 
 // UploadHubArtifact publishes an artifact to the customer hub project. Requires author admission.
 func (a *App) UploadHubArtifact(request HubUploadRequest) HubTransferResult {
 	return runNamed[HubTransferResult, *HubTransferResult](a, profiles["UploadHubArtifact"], func(ctx context.Context) HubTransferResult {
-		a.hubMu.Lock()
-		client := a.hubClient
-		session := a.hubSession
-		a.hubMu.Unlock()
-
-		if client == nil {
-			return HubTransferResult{State: Failed, Reason: "not connected to customer hub"}
-		}
-		if session == nil || session.IsExpired(time.Now()) {
-			return HubTransferResult{State: PermissionDenied, Reason: "sign-in required or session expired"}
+		client, errRes := a.requireHubSession()
+		if errRes != nil {
+			return HubTransferResult{State: errRes.State, Reason: errRes.Reason}
 		}
 
 		res, err := client.UploadArtifact(ctx, request.Project, request.SourcePath)

@@ -3,6 +3,8 @@ package hub
 import (
 	"errors"
 	"testing"
+
+	"github.com/bharm16/readmit/internal/hubprotocol"
 )
 
 func reviewCommand(id string, expected int) ReviewCommand {
@@ -46,7 +48,7 @@ func TestLogAdmitRefusesStaleHeadAndLimit(t *testing.T) {
 		t.Fatal("stale expected head admitted:", err)
 	}
 	fresh := reviewCommand("cmd-2", 1)
-	if _, _, err := reviewLog.admit(events, maxReviews, fresh, "alice", "issuer"); !errors.Is(err, errLogHead) {
+	if _, _, err := reviewLog.admit(events, hubprotocol.MaxReviews, fresh, "alice", "issuer"); !errors.Is(err, errLogHead) {
 		t.Fatal("append at the log limit admitted:", err)
 	}
 }

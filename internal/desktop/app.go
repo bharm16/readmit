@@ -281,18 +281,13 @@ type App struct {
 	// command line reads it from too; empty when the shell was given none.
 	licenseRoot string
 
-	hubMu            sync.Mutex
-	hubSelectionPath string
-	hubConfigPath    string
-	hubConfig        *hubclient.Config
-	hubClient        *hubclient.Client
-	hubSession       *hubclient.Session
-	hubAuthFlow      *hubclient.AuthFlow
-	// hubRestoreRefusal says why the selection an earlier session remembered
-	// could not be restored, until a configuration is selected again.
-	hubRestoreRefusal string
+	// hub is the window's customer-hub connection: the selected
+	// configuration, the connection, the signed-in session and a pending
+	// sign-in, whose rules the connection owns.
+	hub *hubclient.Connection
 	// The hub panel's operator-only mode: its configuration and connection,
 	// held for this window only and never remembered.
+	hubOperatorMu         sync.Mutex
 	hubOperatorConfigPath string
 	hubOperatorConfig     *hubclient.OperatorConfig
 	hubOperatorClient     *hubclient.OperatorClient
@@ -351,7 +346,7 @@ type App struct {
 // drafts. NewWithOperationSelection adds the operation, commercial and hub
 // selection documents. None holds evidence.
 func New(chooser FolderChooser, recentPath, filtersPath, sessionPath, draftsPath string) *App {
-	return &App{operationGuard: operationguard.New(""), chooser: chooser, recentPath: recentPath, filtersPath: filtersPath, sessionPath: sessionPath, draftsPath: draftsPath}
+	return &App{operationGuard: operationguard.New(""), chooser: chooser, recentPath: recentPath, filtersPath: filtersPath, sessionPath: sessionPath, draftsPath: draftsPath, hub: hubclient.NewConnection(nil)}
 }
 
 // Cancel stops the operation that is running now, when that operation can be

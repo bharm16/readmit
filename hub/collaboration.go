@@ -9,153 +9,16 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	"unicode/utf8"
 
-	"github.com/bharm16/readmit/internal/expectation"
+	"github.com/bharm16/readmit/internal/hubprotocol"
 )
 
-const maxReviews = 1024
-
-type ReviewCommand struct {
-	Schema    string `json:"schema"`
-	ID        string `json:"id"`
-	Expected  int    `json:"expected"`
-	Kind      string `json:"kind"`
-	Evidence  string `json:"evidence"`
-	Parent    string `json:"parent"`
-	Recipient string `json:"recipient"`
-	Text      string `json:"text"`
-	Release   string `json:"release"`
-}
-
-// ReviewEvent binds a command to the authenticated actor and server sequence.
-// Neither the local release's approver label nor a client header supplies identity.
-type ReviewEvent struct {
-	Schema   string        `json:"schema"`
-	Project  string        `json:"project"`
-	Sequence int           `json:"sequence"`
-	Issuer   string        `json:"issuer"`
-	Actor    string        `json:"actor"`
-	At       string        `json:"at"`
-	Command  ReviewCommand `json:"command"`
-}
-
-func reviewText(s string, max int) bool {
-	return len(s) <= max && utf8.ValidString(s) && !strings.ContainsRune(s, 0)
-}
-func decodeReviewCommand(data []byte) (ReviewCommand, error) {
-	var c ReviewCommand
-	if len(data) > 8192 || requireExactMembers(data, "schema", "id", "expected", "kind", "evidence", "parent", "recipient", "text", "release") != nil || json.Unmarshal(data, &c, json.RejectUnknownMembers(true)) != nil {
-		return c, errAccess
-	}
-	if (c.Schema != "readmit-hub-review-command/v1" && !supportCommand(c)) || !validProject(c.ID) || c.Expected < 0 || c.Expected >= maxReviews || !validDigest(c.Evidence) || (c.Parent != "" && !validProject(c.Parent)) || !reviewText(c.Recipient, 256) || !reviewText(c.Text, 2048) || strings.TrimSpace(c.Text) == "" {
-		return c, errAccess
-	}
-	if supportCommand(c) {
-		return c, validateSupportShape(c)
-	}
-	switch c.Kind {
-	case "comment":
-		if c.Release != "" {
-			return c, errAccess
-		}
-	case "assignment":
-		if c.Recipient == "" || c.Release != "" || c.Parent != "" {
-			return c, errAccess
-		}
-	case "review-request":
-		if c.Recipient == "" || !validDigest(c.Release) || c.Parent != "" {
-			return c, errAccess
-		}
-	case "approval":
-		if c.Recipient != "" || !validDigest(c.Release) || c.Parent == "" {
-			return c, errAccess
-		}
-	default:
-		return c, errAccess
-	}
-	return c, nil
-}
 func (s *Store) reviewEvents(ctx context.Context, project string) ([]ReviewEvent, error) {
 	return reviewLog.read(ctx, s.db, project)
 }
 func (s *Store) linked(ctx context.Context, project, digest string) bool {
 	exists, e := s.linkedProjectArtifact(ctx, project, digest)
 	return e == nil && exists
-}
-func loadRelease(load func(string) ([]byte, error), digest string) (expectation.Release, error) {
-	data, e := load(digest)
-	if e != nil {
-		return expectation.Release{}, e
-	}
-	return expectation.Decode(data)
-}
-
-func validateReview(c ReviewCommand, actor, issuer string, reviews projectReviews, load func(string) ([]byte, error)) error {
-	if supportCommand(c) {
-		return reviews.validate(c, actor, issuer, load)
-	}
-	events := reviews.events
-	if _, e := load(c.Evidence); e != nil {
-		return e
-	}
-	var parent *ReviewEvent
-	for i := range events {
-		if events[i].Command.ID == c.Parent {
-			parent = &events[i]
-		}
-	}
-	if c.Parent != "" && (parent == nil || parent.Command.Evidence != c.Evidence) {
-		return ErrMissing
-	}
-	if c.Kind != "review-request" && c.Kind != "approval" {
-		return nil
-	}
-	release, e := loadRelease(load, c.Release)
-	if e != nil {
-		return e
-	}
-	if c.Kind == "review-request" {
-		return nil
-	}
-	if parent.Command.Kind != "review-request" || parent.Command.Release != c.Release || parent.Command.Recipient != actor || parent.Issuer != issuer || parent.Actor == actor {
-		return errAccess
-	}
-	var previous *expectation.Release
-	for _, event := range events {
-		if event.Command.Kind != "approval" {
-			continue
-		}
-		if event.Command.Parent == c.Parent {
-			return ErrConflict
-		}
-		prior, e := loadRelease(load, event.Command.Release)
-		if e != nil {
-			return e
-		}
-		if prior.ID == release.ID {
-			previous = &prior
-		}
-	}
-	if previous == nil {
-		if release.Parent != "" || release.Baseline.Revision != 1 {
-			return ErrConflict
-		}
-	} else {
-		if release.Parent != previous.Identity() || release.Baseline.Revision != previous.Baseline.Revision+1 {
-			return ErrConflict
-		}
-		// Recompute both predecessor commitments and all profile continuity rules.
-		spec, e := json.Marshal(release.Baseline.Spec)
-		if e != nil {
-			return e
-		}
-		review, e := expectation.Review(release.ID, spec, release.Profiles, previous, false)
-		if e != nil || review.Identity != release.Review {
-			return ErrConflict
-		}
-	}
-	return nil
 }
 func sendReview(w http.ResponseWriter, status int, v any) {
 	data, e := json.Marshal(v)
@@ -195,7 +58,7 @@ func reviewAdmission(route string, c ReviewCommand, a *Access, r *http.Request, 
 		if c.Kind == "support-policy" {
 			action = "admin"
 		}
-		if c.Kind == "approval" || supportApproval(c) {
+		if c.Kind == "approval" || hubprotocol.IsSupportApproval(c) {
 			action = "approval"
 		}
 		// Reviewers can comment with their existing approval scope, but cannot assign.
@@ -228,17 +91,17 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 			http.Error(w, "method refused", 405)
 			return
 		}
-		data, e := io.ReadAll(io.LimitReader(r.Body, 8193))
+		data, e := io.ReadAll(io.LimitReader(r.Body, hubprotocol.MaxCommandBytes+1))
 		if e != nil {
 			http.Error(w, "incomplete review", 400)
 			return
 		}
-		c, e = decodeReviewCommand(data)
+		c, e = hubprotocol.DecodeReviewCommand(data)
 		if e != nil {
 			http.Error(w, "invalid review", 400)
 			return
 		}
-		if supportCommand(c) && !v2 {
+		if hubprotocol.IsSupport(c) && !v2 {
 			http.Error(w, "review version unavailable", 400)
 			return
 		}
@@ -261,25 +124,23 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 		http.Error(w, "metadata unavailable", 503)
 		return
 	}
-	reviews := deriveReviews(events)
-	if !v2 && reviews.support {
+	reviews := hubprotocol.DeriveReviews(events)
+	if !v2 && reviews.HasSupport() {
 		http.Error(w, "history requires v2", 409)
 		return
 	}
-	if route == "reviews" && supportCommand(c) && !reviews.current(c) {
+	if route == "reviews" && hubprotocol.IsSupport(c) && !reviews.Current(c) {
 		http.Error(w, "sharing policy changed", 409)
 		return
 	}
 	if route != "reviews" {
-		var query struct {
-			Schema   string `json:"schema"`
-			After    int    `json:"after"`
-			Text     string `json:"text"`
-			Evidence string `json:"evidence"`
-		}
+		var query hubprotocol.ReviewQuery
 		if r.Method == "POST" {
-			data, e := io.ReadAll(io.LimitReader(r.Body, 2049))
-			if e != nil || len(data) > 2048 || requireExactMembers(data, "schema", "after", "text", "evidence") != nil || json.Unmarshal(data, &query, json.RejectUnknownMembers(true)) != nil || query.Schema != "readmit-hub-review-query/v1" || query.After < 0 || !reviewText(query.Text, 256) || (query.Evidence != "" && !validDigest(query.Evidence)) {
+			data, e := io.ReadAll(io.LimitReader(r.Body, hubprotocol.MaxQueryBytes+1))
+			if e == nil {
+				query, e = hubprotocol.DecodeReviewQuery(data)
+			}
+			if e != nil {
 				http.Error(w, "invalid search", 400)
 				return
 			}
@@ -291,11 +152,7 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 			}
 			filtered = append(filtered, event)
 		}
-		sendReview(w, 200, struct {
-			Schema string        `json:"schema"`
-			Head   int           `json:"head"`
-			Events []ReviewEvent `json:"events"`
-		}{reviews.historySchema(v2), len(events), filtered})
+		sendReview(w, 200, hubprotocol.ReviewHistory{Schema: reviews.HistorySchema(v2), Head: len(events), Events: filtered})
 		return
 	}
 	total, e := reviewLog.total(r.Context(), s.db)
@@ -323,32 +180,32 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 		return
 	}
 	if c.Recipient != "" {
-		if supportCommand(c) {
+		if hubprotocol.IsSupport(c) {
 			lifecycle, e := s.lifecycleEvents(r.Context(), project)
 			if e != nil {
 				http.Error(w, "recipient unavailable", 403)
 				return
 			}
-			if deriveLifecycle(lifecycle).isRemoved(principal.Issuer, c.Recipient) {
+			if hubprotocol.DeriveLifecycle(lifecycle).Removed(principal.Issuer, c.Recipient) {
 				http.Error(w, "recipient refused", 403)
 				return
 			}
 		}
 		role := policy.role(c.Recipient, project)
-		if role == "" || role == "runner" || ((c.Kind == "review-request" || supportRequest(c)) && (!roleAllows(role, "approval") || c.Recipient == principal.Subject)) {
+		if role == "" || role == "runner" || ((c.Kind == "review-request" || hubprotocol.IsSupportRequest(c)) && (!roleAllows(role, "approval") || c.Recipient == principal.Subject)) {
 			http.Error(w, "recipient refused", 403)
 			return
 		}
 	}
-	if e = validateReview(c, principal.Subject, principal.Issuer, reviews, func(d string) ([]byte, error) {
-		if supportCommand(c) {
+	if e = hubSentinel(reviews.Validate(c, principal.Subject, principal.Issuer, func(d string) ([]byte, error) {
+		if hubprotocol.IsSupport(c) {
 			return s.supportArtifact(r.Context(), project, d)
 		}
 		if !s.linked(r.Context(), project, d) {
 			return nil, ErrMissing
 		}
 		return s.Get(r.Context(), d)
-	}); e != nil {
+	})); e != nil {
 		status := 409
 		if errors.Is(e, ErrMissing) {
 			status = 404
@@ -359,11 +216,11 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 		http.Error(w, "review refused", status)
 		return
 	}
-	eventSchema := "readmit-hub-review-event/v1"
-	if supportCommand(c) {
-		eventSchema = "readmit-hub-review-event/v2"
+	eventSchema := hubprotocol.ReviewEventV1
+	if hubprotocol.IsSupport(c) {
+		eventSchema = hubprotocol.ReviewEventV2
 	}
-	event := ReviewEvent{eventSchema, project, len(events) + 1, principal.Issuer, principal.Subject, time.Now().UTC().Format(time.RFC3339Nano), c}
+	event := ReviewEvent{Schema: eventSchema, Project: project, Sequence: len(events) + 1, Issuer: principal.Issuer, Actor: principal.Subject, At: time.Now().UTC().Format(time.RFC3339Nano), Command: c}
 	if e := reviewLog.commit(r.Context(), s.db, project, event); e != nil {
 		http.Error(w, "review commit unavailable; retry same id", 503)
 		return

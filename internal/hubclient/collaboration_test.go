@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/hubclient"
+	"github.com/bharm16/readmit/internal/hubprotocol"
 )
 
 func TestCollaborationReviewLifecycleAndConflicts(t *testing.T) {
@@ -46,8 +47,8 @@ func TestCollaborationReviewLifecycleAndConflicts(t *testing.T) {
 	var reviewHead int
 	var lifecycleHead int
 	tips := map[string][]string{}
-	posted := map[string]hubclient.ReviewEvent{}
-	lifecyclePosted := map[string]hubclient.LifecycleEvent{}
+	posted := map[string]hubprotocol.ReviewEvent{}
+	lifecyclePosted := map[string]hubprotocol.LifecycleEvent{}
 
 	exportPayload := []byte("authorized-support-export")
 	exportDigest := hex.EncodeToString(sha256Digest(exportPayload))
@@ -59,18 +60,18 @@ func TestCollaborationReviewLifecycleAndConflicts(t *testing.T) {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		events := make([]hubclient.ReviewEvent, 0, len(posted))
+		events := make([]hubprotocol.ReviewEvent, 0, len(posted))
 		for _, e := range posted {
 			events = append(events, e)
 		}
 		if r.Method == http.MethodPost {
 			body, _ := io.ReadAll(io.LimitReader(r.Body, 4096))
-			var q hubclient.ReviewQuery
+			var q hubprotocol.ReviewQuery
 			if json.Unmarshal(body, &q) != nil || q.Schema != "readmit-hub-review-query/v1" {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
-			filtered := []hubclient.ReviewEvent{}
+			filtered := []hubprotocol.ReviewEvent{}
 			for _, e := range events {
 				if e.Sequence > q.After && (q.Evidence == "" || e.Command.Evidence == q.Evidence) && strings.Contains(strings.ToLower(e.Command.Text), strings.ToLower(q.Text)) {
 					filtered = append(filtered, e)
@@ -79,7 +80,7 @@ func TestCollaborationReviewLifecycleAndConflicts(t *testing.T) {
 			events = filtered
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.MarshalWrite(w, hubclient.ReviewHistory{
+		_ = json.MarshalWrite(w, hubprotocol.ReviewHistory{
 			Schema: "readmit-hub-review-history/v2",
 			Head:   reviewHead,
 			Events: events,
@@ -90,14 +91,14 @@ func TestCollaborationReviewLifecycleAndConflicts(t *testing.T) {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		events := []hubclient.ReviewEvent{}
+		events := []hubprotocol.ReviewEvent{}
 		for _, e := range posted {
 			if e.Command.Recipient == "reviewer@hospital.org" {
 				events = append(events, e)
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.MarshalWrite(w, hubclient.ReviewHistory{
+		_ = json.MarshalWrite(w, hubprotocol.ReviewHistory{
 			Schema: "readmit-hub-review-history/v2",
 			Head:   reviewHead,
 			Events: events,
@@ -109,7 +110,7 @@ func TestCollaborationReviewLifecycleAndConflicts(t *testing.T) {
 			return
 		}
 		body, _ := io.ReadAll(io.LimitReader(r.Body, 8192))
-		var cmd hubclient.ReviewCommand
+		var cmd hubprotocol.ReviewCommand
 		if json.Unmarshal(body, &cmd) != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -131,7 +132,7 @@ func TestCollaborationReviewLifecycleAndConflicts(t *testing.T) {
 			return
 		}
 		reviewHead++
-		event := hubclient.ReviewEvent{
+		event := hubprotocol.ReviewEvent{
 			Schema:   "readmit-hub-review-event/v1",
 			Project:  "icu-audit",
 			Sequence: reviewHead,
@@ -156,7 +157,7 @@ func TestCollaborationReviewLifecycleAndConflicts(t *testing.T) {
 				copied[k] = append([]string{}, v...)
 			}
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.MarshalWrite(w, hubclient.LifecycleHistory{
+			_ = json.MarshalWrite(w, hubprotocol.LifecycleHistory{
 				Schema:  "readmit-hub-lifecycle-history/v1",
 				Head:    lifecycleHead,
 				Events:  nil,
@@ -166,7 +167,7 @@ func TestCollaborationReviewLifecycleAndConflicts(t *testing.T) {
 			return
 		}
 		body, _ := io.ReadAll(io.LimitReader(r.Body, 8192))
-		var cmd hubclient.LifecycleCommand
+		var cmd hubprotocol.LifecycleCommand
 		if json.Unmarshal(body, &cmd) != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -182,7 +183,7 @@ func TestCollaborationReviewLifecycleAndConflicts(t *testing.T) {
 			return
 		}
 		lifecycleHead++
-		event := hubclient.LifecycleEvent{
+		event := hubprotocol.LifecycleEvent{
 			Schema:   "readmit-hub-lifecycle-event/v1",
 			Project:  "icu-audit",
 			Sequence: lifecycleHead,
@@ -213,10 +214,10 @@ func TestCollaborationReviewLifecycleAndConflicts(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Content-Disposition", `attachment; filename="audit.json"`)
 			w.WriteHeader(http.StatusCreated)
-			_ = json.MarshalWrite(w, hubclient.AuditExport{
+			_ = json.MarshalWrite(w, hubprotocol.AuditExport{
 				Schema:     "readmit-hub-audit/v1",
 				Project:    "icu-audit",
-				Lifecycle:  []hubclient.LifecycleEvent{event},
+				Lifecycle:  []hubprotocol.LifecycleEvent{event},
 				ReviewHead: reviewHead,
 				Reviews:    nil,
 				Warning:    "Downloaded copies remain under local custody and cannot be revoked.",
@@ -280,7 +281,7 @@ func TestCollaborationReviewLifecycleAndConflicts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	comment := hubclient.ReviewCommand{
+	comment := hubprotocol.ReviewCommand{
 		Schema: "readmit-hub-review-command/v1", ID: "comment-1", Expected: 0, Kind: "comment",
 		Evidence: evidence, Text: "Investigate synthetic mismatch", Recipient: "reviewer@hospital.org",
 	}
@@ -299,7 +300,7 @@ func TestCollaborationReviewLifecycleAndConflicts(t *testing.T) {
 		t.Fatalf("stale head should conflict: %v", err)
 	}
 
-	request := hubclient.ReviewCommand{
+	request := hubprotocol.ReviewCommand{
 		Schema: "readmit-hub-review-command/v1", ID: "review-1", Expected: 1, Kind: "review-request",
 		Evidence: evidence, Recipient: "reviewer@hospital.org", Text: "Please review release", Release: release,
 	}
@@ -311,7 +312,7 @@ func TestCollaborationReviewLifecycleAndConflicts(t *testing.T) {
 	if err != nil || history.Head != 2 || len(history.Events) != 2 {
 		t.Fatalf("ListHistory: %+v err=%v", history, err)
 	}
-	filtered, err := client.SearchHistory(ctx, "icu-audit", hubclient.ReviewQuery{
+	filtered, err := client.SearchHistory(ctx, "icu-audit", hubprotocol.ReviewQuery{
 		Schema: "readmit-hub-review-query/v1", After: 0, Text: "release", Evidence: evidence,
 	})
 	if err != nil || len(filtered.Events) != 1 || filtered.Events[0].Command.ID != "review-1" {
@@ -319,10 +320,10 @@ func TestCollaborationReviewLifecycleAndConflicts(t *testing.T) {
 	}
 	// A query the contract cannot carry is refused here, before the hub is
 	// asked; the hub's own refusal would name its status.
-	searches := map[string]func(context.Context, string, hubclient.ReviewQuery) (hubclient.ReviewHistory, error){
+	searches := map[string]func(context.Context, string, hubprotocol.ReviewQuery) (hubprotocol.ReviewHistory, error){
 		"history": client.SearchHistory, "notifications": client.SearchNotifications,
 	}
-	for problem, query := range map[string]hubclient.ReviewQuery{
+	for problem, query := range map[string]hubprotocol.ReviewQuery{
 		"a negative sequence":   {After: -1},
 		"text beyond 256 bytes": {Text: strings.Repeat("r", 257)},
 		"text holding a NUL":    {Text: "re\x00lease"},
@@ -343,7 +344,7 @@ func TestCollaborationReviewLifecycleAndConflicts(t *testing.T) {
 	if err != nil || life.Head != 0 || !strings.Contains(life.Warning, "local custody") {
 		t.Fatalf("GetLifecycle: %+v err=%v", life, err)
 	}
-	rev1 := hubclient.LifecycleCommand{
+	rev1 := hubprotocol.LifecycleCommand{
 		Schema: "readmit-hub-lifecycle-command/v1", ID: "edit-one", Expected: 0, Kind: "revision",
 		Resource: "case-one", Artifact: evidence, Parents: []string{}, Reason: "offline branch a",
 	}
@@ -354,7 +355,7 @@ func TestCollaborationReviewLifecycleAndConflicts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	branchA := hubclient.LifecycleCommand{
+	branchA := hubprotocol.LifecycleCommand{
 		Schema: "readmit-hub-lifecycle-command/v1", ID: "edit-branch-a", Expected: life.Head, Kind: "revision",
 		Resource: "case-one", Artifact: release, Parents: []string{"edit-one"}, Reason: "concurrent offline edit a",
 	}
@@ -365,7 +366,7 @@ func TestCollaborationReviewLifecycleAndConflicts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	branchB := hubclient.LifecycleCommand{
+	branchB := hubprotocol.LifecycleCommand{
 		Schema: "readmit-hub-lifecycle-command/v1", ID: "edit-branch-b", Expected: life.Head, Kind: "revision",
 		Resource: "case-one", Artifact: evidence, Parents: []string{"edit-one"}, Reason: "concurrent offline edit b",
 	}
@@ -376,7 +377,7 @@ func TestCollaborationReviewLifecycleAndConflicts(t *testing.T) {
 	if err != nil || len(life.Tips["case-one"]) < 2 {
 		t.Fatalf("expected concurrent tips: %+v err=%v", life, err)
 	}
-	resolve := hubclient.LifecycleCommand{
+	resolve := hubprotocol.LifecycleCommand{
 		Schema: "readmit-hub-lifecycle-command/v1", ID: "resolve-1", Expected: life.Head, Kind: "resolve",
 		Resource: "case-one", Artifact: evidence, Parents: append([]string{}, life.Tips["case-one"]...), Reason: "keep both as new revision",
 	}
@@ -384,14 +385,14 @@ func TestCollaborationReviewLifecycleAndConflicts(t *testing.T) {
 		t.Fatalf("resolve: %v", err)
 	}
 
-	removal := hubclient.LifecycleCommand{
+	removal := hubprotocol.LifecycleCommand{
 		Schema: "readmit-hub-lifecycle-command/v1", ID: "remove-1", Expected: lifecycleHead, Kind: "remove-user",
 		Subject: "analyst@hospital.org", Reason: "role removed mid-request",
 	}
 	if _, err := client.PostLifecycle(ctx, "icu-audit", removal); err != nil {
 		t.Fatalf("remove-user: %v", err)
 	}
-	auditCmd := hubclient.LifecycleCommand{
+	auditCmd := hubprotocol.LifecycleCommand{
 		Schema: "readmit-hub-lifecycle-command/v1", ID: "audit-1", Expected: lifecycleHead, Kind: "audit-export",
 		Reason: "export decision history",
 	}
@@ -452,7 +453,7 @@ func TestCollaborationSupportCommandContract(t *testing.T) {
 	hubMux := http.NewServeMux()
 	hubMux.HandleFunc("/v2/projects/icu-audit/reviews", func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(io.LimitReader(r.Body, 8192))
-		var cmd hubclient.ReviewCommand
+		var cmd hubprotocol.ReviewCommand
 		if json.Unmarshal(body, &cmd) != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -464,7 +465,7 @@ func TestCollaborationSupportCommandContract(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		_ = json.MarshalWrite(w, hubclient.ReviewEvent{
+		_ = json.MarshalWrite(w, hubprotocol.ReviewEvent{
 			Schema: "readmit-hub-review-event/v2", Project: "icu-audit", Sequence: 1,
 			Issuer: "https://idp.example.com", Actor: "physician@hospital.org",
 			At: time.Now().UTC().Format(time.RFC3339Nano), Command: cmd,
@@ -515,7 +516,7 @@ func TestCollaborationSupportCommandContract(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	policy := hubclient.ReviewCommand{
+	policy := hubprotocol.ReviewCommand{
 		Schema: "readmit-hub-review-command/v2", ID: "policy-1", Expected: 0, Kind: "support-policy",
 		Evidence: strings.Repeat("a", 64), Text: "support",
 	}
