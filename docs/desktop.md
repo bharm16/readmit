@@ -853,11 +853,24 @@ file built from that case — built in the desktop shell via the in-app builder,
 by `readmit index build` on the command line, or, for the sample case alone, by
 the sample creation described in [the guided sample](guided-sample.md) — see
 [searching a case](index.md). Opening a case auto-selects an applicable verified
-index or presents an unindexed case view. Unindexed cases display their verified
+index only when it names that case's exact evidence; indexes of other cases in
+the workspace are not rebuild candidates. Without its own index, a case shows
+the unindexed view and offers a new file named for that case, with replacement
+off. Unindexed cases display their verified
 evidence counts (occurrences, messages, ACKs, unparsed segments) and keep the
 occurrence sequence and inspector fully functional, never implying the case is
-empty. Stale, expired, damaged, or unsupported indexes show a guided rebuild banner
-with direct access to the builder. The index is the one search path over a case.
+empty. Selecting an index of different evidence reports the mismatch and offers
+to build a separate index for the open case, without selecting replacement.
+An unreadable index whose owner cannot be established also offers a separate
+file. The builder permits replacement only when the existing index verifies as
+an index of the open case; a filename and a Replace request cannot remove a
+different case's index. A case whose bytes changed has a new evidence identity,
+so its old index cannot prove that ownership even if its directory name is the
+same: the grid suggests an unused numbered filename for a fresh index and the
+facade refuses replacement of the old one. If a separately named destination is
+also occupied, choose another name. An expired index, or an index that otherwise fails validation while still
+naming this case's identity, shows a guided rebuild banner. The index is the
+one search path over a case.
 The grid reads no message again, keeps no second index of its own, and asks every
 question about a value or a decoded state through the index, so the retention an
 operator declared is enforced by the index itself.

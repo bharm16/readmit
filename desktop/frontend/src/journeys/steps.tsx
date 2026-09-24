@@ -238,6 +238,9 @@ export async function finishAckTest(user: UserEvent, output: string): Promise<vo
   await press(user, panel.getByRole("button", { name: "Write the test spec" }));
   const written = await panel.findByText(new RegExp(`^Written to ${output.replace(/\./g, "\\.")}`));
   expect(written.textContent).toMatch(/spec identity [0-9a-f]{64}\./);
+  // The saved result can render before the author operation releases the
+  // global slot. Finish this step only when another panel may act on it.
+  await whenEnabled(panel.getByRole("button", { name: "Write the test spec" }));
 }
 
 /** Releases the saved acknowledgement test as its first immutable test

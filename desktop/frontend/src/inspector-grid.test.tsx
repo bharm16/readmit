@@ -8,6 +8,7 @@ import userEvent from "@testing-library/user-event";
 import { Inspector } from "./Inspector";
 import { GRID_WINDOW, MessageGrid } from "./shell";
 import {
+  CASE_IDENTITY,
   GRID_OCCURRENCE,
   INDEX_ENTRY,
   caseResult,
@@ -311,6 +312,67 @@ test("a stale, expired, damaged, or unsupported index shows a rebuild banner", a
   expect(screen.getByRole("form", { name: "Build index form" })).toBeTruthy();
 });
 
+test("an explicitly selected index of another case is refused without offering replacement", async () => {
+  const user = userEvent.setup();
+  const built: unknown[] = [];
+  render(
+    <MessageGrid
+      indicators={indicatorTable()}
+      progress={null}
+      result={null}
+      filters={filtersResult()}
+      entries={[INDEX_ENTRY]}
+      busy={false}
+      onOpen={() => undefined}
+      onSelect={() => undefined}
+      onSave={() => undefined}
+      selectedOccurrence={null}
+      onInspect={() => undefined}
+      caseEvidence={caseResult("followup", "followup-identity").case}
+      indexDetails={indexDetailsFixture({ identity: CASE_IDENTITY, applicable: false, stale: true })}
+      onBuildIndex={(request) => built.push(request)}
+    />,
+  );
+
+  expect(screen.getByRole("alert", { name: "Index mismatch notice" })).toBeTruthy();
+  expect(screen.queryByRole("alert", { name: "Index rebuild notice" })).toBeNull();
+  expect(screen.getByText("Case is unindexed")).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Build case index" }));
+  const output = screen.getByLabelText("Output index file") as HTMLInputElement;
+  expect(output.value).toBe("followup.index.json");
+  expect(screen.queryByLabelText("Replace existing file if present")).toBeNull();
+  fireEvent.change(output, { target: { value: INDEX_ENTRY } });
+  await user.click(screen.getByRole("button", { name: "Build index" }));
+  expect(built).toEqual([expect.objectContaining({ case: "followup", output: INDEX_ENTRY, replace: false })]);
+});
+
+test("an unreadable index with no known owner is not offered for replacement", async () => {
+  const user = userEvent.setup();
+  render(
+    <MessageGrid
+      indicators={indicatorTable()}
+      progress={null}
+      result={null}
+      filters={filtersResult()}
+      entries={[INDEX_ENTRY]}
+      busy={false}
+      onOpen={() => undefined}
+      onSelect={() => undefined}
+      onSave={() => undefined}
+      selectedOccurrence={null}
+      onInspect={() => undefined}
+      caseEvidence={caseResult("followup", "followup-identity").case}
+      indexDetails={indexDetailsFixture({ identity: "", applicable: false, damaged: true })}
+      onBuildIndex={() => undefined}
+    />,
+  );
+
+  expect(screen.getByRole("alert", { name: "Index ownership unknown notice" })).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Build case index" }));
+  expect((screen.getByLabelText("Output index file") as HTMLInputElement).value).toBe("followup.index.json");
+  expect(screen.queryByLabelText("Replace existing file if present")).toBeNull();
+});
+
 test("an active index displays its retention form and permitted searches", () => {
   render(
     <MessageGrid
@@ -385,3 +447,64 @@ test("building an index composes the typed request with retention and structured
   ]);
 });
 
+test("switching to a second unindexed case offers a separate index without replacement", async () => {
+  const user = userEvent.setup();
+  const built: unknown[] = [];
+  const props = {
+    indicators: indicatorTable(), progress: null, result: null,
+    filters: filtersResult(), entries: [INDEX_ENTRY], busy: false,
+    onOpen: () => undefined, onSelect: () => undefined, onSave: () => undefined,
+    selectedOccurrence: null, onInspect: () => undefined,
+    onBuildIndex: (request: unknown) => built.push(request),
+  };
+  const { rerender } = render(
+    <MessageGrid {...props} caseEvidence={caseResult().case} indexDetails={indexDetailsFixture({ applicable: false, stale: true })} />,
+  );
+
+  await user.click(screen.getByRole("button", { name: "Build index" }));
+  fireEvent.change(screen.getByLabelText("Output index file"), { target: { value: INDEX_ENTRY } });
+  expect((screen.getByLabelText("Replace existing file if present") as HTMLInputElement).checked).toBe(true);
+
+  rerender(<MessageGrid {...props} caseEvidence={caseResult("followup", "followup-identity").case} indexDetails={null} />);
+  expect(screen.getByText("Case is unindexed")).toBeTruthy();
+  expect(screen.queryByRole("alert", { name: "Index rebuild notice" })).toBeNull();
+  expect(screen.queryByRole("form", { name: "Build index form" })).toBeNull();
+
+  await user.click(screen.getByRole("button", { name: "Build case index" }));
+  const output = screen.getByLabelText("Output index file") as HTMLInputElement;
+  expect(output.value).toBe("followup.index.json");
+  expect(screen.queryByLabelText("Replace existing file if present")).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Build index" }));
+  expect(built).toEqual([expect.objectContaining({
+    case: "followup", identity: "followup-identity", output: "followup.index.json", replace: false,
+  })]);
+});
+
+test("an occupied conventional index filename gets a fresh suggestion", async () => {
+  const user = userEvent.setup();
+  const built: unknown[] = [];
+  render(
+    <MessageGrid
+      indicators={indicatorTable()}
+      progress={null}
+      result={null}
+      filters={filtersResult()}
+      entries={["followup.index.json"]}
+      busy={false}
+      onOpen={() => undefined}
+      onSelect={() => undefined}
+      onSave={() => undefined}
+      selectedOccurrence={null}
+      onInspect={() => undefined}
+      caseEvidence={caseResult("followup", "changed-identity").case}
+      indexDetails={null}
+      onBuildIndex={(request) => built.push(request)}
+    />,
+  );
+
+  await user.click(screen.getByRole("button", { name: "Build case index" }));
+  expect((screen.getByLabelText("Output index file") as HTMLInputElement).value).toBe("followup.2.index.json");
+  expect(screen.queryByLabelText("Replace existing file if present")).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Build index" }));
+  expect(built).toEqual([expect.objectContaining({ case: "followup", output: "followup.2.index.json", replace: false })]);
+});

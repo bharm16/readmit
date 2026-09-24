@@ -358,15 +358,17 @@ test("built revisions are compared by lineage, by what they retain and edit, and
   await press(user, panel.getByRole("button", { name: "Create a test from this revision" }));
   const inspector = within(region("Inspector"));
   expect(await inspector.findByText("edited-case", { selector: "dd" })).toBeTruthy();
-  // The project already holds the incident's index, which the window offers to
-  // rebuild; the revision is given an index file of its own instead, and the
-  // incident's is left as it was.
+  // The project already holds the incident's index. The new revision has no
+  // index of its own, so the window offers a new file and leaves the incident's
+  // index untouched.
   const incidentIndex = journey.digest(`${PROJECT}/incident.index.json`);
-  await press(user, await inspector.findByRole("button", { name: "Rebuild index" }));
+  expect(await inspector.findByText("Case is unindexed")).toBeTruthy();
+  expect(inspector.queryByRole("button", { name: "Rebuild index" })).toBeNull();
+  await press(user, inspector.getByRole("button", { name: "Build case index" }));
   const indexing = within(await inspector.findByRole("form", { name: "Build index form" }));
-  await enter(user, indexing.getByLabelText("Output index file"), "edited-case.index.json");
-  await user.click(indexing.getByLabelText("Replace existing file if present"));
-  await press(user, indexing.getByRole("button", { name: "Rebuild index" }));
+  expect((indexing.getByLabelText("Output index file") as HTMLInputElement).value).toBe("edited-case.index.json");
+  expect(indexing.queryByLabelText("Replace existing file if present")).toBeNull();
+  await press(user, indexing.getByRole("button", { name: "Build index" }));
   expect(await inspector.findByText("Showing 2 of 2 matching")).toBeTruthy();
   expect(journey.digest(`${PROJECT}/incident.index.json`)).toBe(incidentIndex);
   await authorRescheduleTest(user, "edited-test.json");

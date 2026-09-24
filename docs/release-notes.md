@@ -1,5 +1,14 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Opening a second case in a workspace now offers to build that case's own
+  index instead of presenting another case's index as a rebuild (#417). The
+  builder starts with the second case's filename and replacement off; the first
+  index remains untouched. Explicitly choosing a mismatched index reports why
+  it cannot serve the open case and offers a new index for that case. The builder
+  refuses even an explicit Replace request against another case's index. If a
+  case's evidence identity changed, the grid suggests a numbered fresh filename
+  instead of replacing the old index. No index contract changes.
+
 - Observation setup now asks before a new source or window name replaces
   unsaved edits; Escape keeps the edits (#414). Its pinned-identity line says
   "not saved" for new defaults or an unsaved capture binding, and shows a
