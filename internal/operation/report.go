@@ -17,7 +17,7 @@ type ReportFile struct {
 // interrupted report is visible instead of looking like one that was never
 // started. The subject names the report in the diagnostics, because what a
 // failed write means is the same for every one of them but what was being
-// written is not. Mirrors the command line's own writer byte for byte.
+// written is not. Both entry points write every report directory through it.
 func WriteReportDirectory(destination, subject string, files ...ReportFile) error {
 	if err := os.Mkdir(destination, 0700); err != nil {
 		return errors.New("cannot create report directory; destination must be new and parent writable")

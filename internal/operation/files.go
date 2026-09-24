@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 )
@@ -63,6 +64,54 @@ func WriteNewFile(path string, data []byte, cannotCreate, cannotWrite string) er
 		return errors.New(cannotWrite)
 	}
 	return nil
+}
+
+// checkNewDocument refuses a receipt or report destination that is taken, or
+// whose first missing folder the shared output reservation would not let
+// writeNewDocument create. It creates nothing, so a run refused after it
+// leaves no folder behind.
+func checkNewDocument(path string, taken error) error {
+	if missing := firstMissingFolder(path); missing != "" {
+		_, err := artifactpath.Destination(missing)
+		return err
+	}
+	reserved, err := artifactpath.Destination(path)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Lstat(reserved); !os.IsNotExist(err) {
+		return taken
+	}
+	return nil
+}
+
+// writeNewDocument creates a receipt or report document's missing folders,
+// where the shared output reservation allows the first of them, and then the
+// document itself through WriteNewFile. The caller names what a failed
+// creation and a failed write mean, because by then the work the document
+// describes has been done.
+func writeNewDocument(path string, data []byte, cannotCreate, cannotWrite string) error {
+	if missing := firstMissingFolder(path); missing != "" {
+		if _, err := artifactpath.Destination(missing); err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			return fileError{cannotCreate, err}
+		}
+	}
+	return WriteNewFile(path, data, cannotCreate, cannotWrite)
+}
+
+// firstMissingFolder returns the outermost folder above path that does not
+// exist yet, or "" when its parent folder is already there.
+func firstMissingFolder(path string) string {
+	missing := ""
+	for dir := filepath.Dir(path); ; dir = filepath.Dir(dir) {
+		if _, err := os.Lstat(dir); err == nil || filepath.Dir(dir) == dir {
+			return missing
+		}
+		missing = dir
+	}
 }
 
 // fileError is a fixed diagnostic that keeps the filesystem's own error

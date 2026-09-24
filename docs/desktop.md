@@ -966,7 +966,9 @@ explicit retention choices:
   `digests` (SHA-256 digests of present values, enabling exact match without resting raw text),
   or `states` (presence/empty/null/omitted states only). The form clarifies permitted searches
   without silently expanding retained fields or defaulting to PHI values.
-- Retention duration: An explicit RFC 3339 timestamp or deliberate indefinite retention.
+- Retention duration: An explicit RFC 3339 timestamp or deliberate indefinite retention. The
+  facade reads the end through the index's own rule, so an unstated end is refused as
+  `readmit index build` refuses it; the builder sends `indefinite` when a person chooses it.
 - Workspace registration: Built into a new derived `readmit-index/v1` artifact outside the
   case evidence, registered in the workspace, and immediately opened in the grid.
 
@@ -4036,7 +4038,7 @@ current bounded authority; there is no arbitrary command console.
 | `StartCapture` | Starts a collector or the separately labelled SIU fixture only on explicit authorized action. |
 | `CaptureProgress` | The address a running collector or fixture bound, read without waiting for it; with port 0 the only place the port is known. |
 | `OpenCaptureJournal` | Read-only recovery of a `readmit-capture-journal/v1`; never sends, resends or resumes. |
-| `FinalizeCaptureImport` | Imports staged collected material into a new verified case and offers exploration. |
+| `FinalizeCaptureImport` | Imports staged collected material into a new verified case and offers exploration, through the same import-and-register flow as `CommitImport`; an unnamed receipt is the case name followed by `-receipt.json`, as it is there. |
 
 Start only after preview. Cancel stops through the shared engine. A collector
 and the fixture receiver both run under the `capture` operation name, which is

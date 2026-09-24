@@ -245,6 +245,16 @@ func writeDocument(t *testing.T, dir, name, document string) string {
 	return path
 }
 
+// mustRead reads a file a test or a command wrote.
+func mustRead(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
 // treeOf snapshots every file under a directory by its slash-separated
 // relative path, the one path grammar a "this tree did not change" assertion
 // uses regardless of platform.

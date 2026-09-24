@@ -11,6 +11,7 @@ import (
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/findingreview"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/spf13/cobra"
 )
 
@@ -64,7 +65,7 @@ func diagnoseReviewCommand() *cobra.Command {
 			if err != nil {
 				return errors.New("cannot encode finding review")
 			}
-			if err := writeNewReportDirectory(resolvedOutput, "review", outputFile{"review.json", jsonData}, outputFile{"review.md", findingreview.Markdown(record)}); err != nil {
+			if err := operation.WriteReportDirectory(resolvedOutput, "review", operation.ReportFile{Name: "review.json", Data: jsonData}, operation.ReportFile{Name: "review.md", Data: findingreview.Markdown(record)}); err != nil {
 				return err
 			}
 			confirmed, promoted, unsupported := reviewCounts(record)

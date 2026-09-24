@@ -9,10 +9,8 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"net"
-	"os"
 	"time"
 
-	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/capturejournal"
 	"github.com/bharm16/readmit/internal/collection"
@@ -26,7 +24,32 @@ import (
 	"github.com/bharm16/readmit/internal/transportsecurity"
 )
 
+// maxCertificateBytes bounds each PEM file a listener is configured with,
+// matching the bound a target configuration applies to its own CA file.
 const maxCertificateBytes = 1 << 20
+
+// The bounds a capture runs under when its adapter was not told otherwise:
+// the command line's flag defaults, and what the window uses for a bound its
+// request left out. A capture configuration states every bound it runs
+// under, so an operation never replaces a stated one, zero included.
+const (
+	DefaultMaxFrameBytes      = 1 << 20
+	DefaultIdleTimeout        = 30 * time.Second
+	DefaultApplicationTimeout = 10 * time.Second
+)
+
+// ErrCollectionReceiptExists and ErrAccessReportExists refuse a source run's
+// receipt or diagnosis destination that is already taken, before the source
+// is reached.
+var (
+	ErrCollectionReceiptExists = errors.New("the collection receipt destination must be a new file")
+	ErrAccessReportExists      = errors.New("the access diagnosis destination must be a new file")
+)
+
+// ErrListenerTLSIncomplete refuses a listener that declared part of its
+// transport security: a certificate chain, the reference to its private key
+// and the store holding it are declared together, or not at all.
+var ErrListenerTLSIncomplete = errors.New("a TLS listener requires certificate, key reference and secrets together")
 
 // SourceSave writes a validated evidence-source declaration atomically and
 // reads it back, so a GUI save and a CLI-authored file share one writer.
@@ -59,19 +82,64 @@ func SourceRead(path string) (evidencesource.Source, error) {
 	return evidencesource.ReadSource(path)
 }
 
+// SourceOptions is the declaration a source run reaches its source under: the
+// import plan, and the approved-destination policy when one is named. Both
+// entry points read it here, so neither diagnoses nor collects under a policy
+// the other would refuse, and neither repeats the policy's path.
+func SourceOptions(plan importer.Plan, policyPath string) (evidencesource.Options, error) {
+	options := evidencesource.Options{Plan: plan}
+	if policyPath == "" {
+		return options, nil
+	}
+	data, err := ReadInputFile(policyPath, sendpolicy.MaxPolicyBytes)
+	if err != nil {
+		return evidencesource.Options{}, errors.New("cannot read the approved-destination policy")
+	}
+	policy, err := sendpolicy.DecodePolicy(data)
+	if err != nil {
+		return evidencesource.Options{}, err
+	}
+	options.Policy = &policy
+	return options, nil
+}
+
 // SourceDiagnose reports what access to a declared source was actually
-// available, collecting nothing.
-func SourceDiagnose(ctx context.Context, source evidencesource.Source, options evidencesource.Options) (evidencesource.Access, error) {
-	return evidencesource.Diagnose(ctx, source, options)
+// available, collecting nothing. With a report destination, the
+// readmit-source-access/v1 document is also retained there: the destination
+// is refused before the source is reached unless it is new, its missing
+// folders are created, and the document is written before it is returned.
+func SourceDiagnose(ctx context.Context, source evidencesource.Source, options evidencesource.Options, report string) (evidencesource.Access, error) {
+	if report != "" {
+		if err := checkNewDocument(report, ErrAccessReportExists); err != nil {
+			return evidencesource.Access{}, err
+		}
+	}
+	access, err := evidencesource.Diagnose(ctx, source, options)
+	if err != nil || report == "" {
+		return access, err
+	}
+	encoded, err := evidencesource.EncodeAccess(access)
+	if err != nil {
+		return evidencesource.Access{}, err
+	}
+	if err := writeNewDocument(report, encoded,
+		"cannot create the access diagnosis; destination must be new and writable",
+		"cannot write the access diagnosis"); err != nil {
+		return evidencesource.Access{}, err
+	}
+	return access, nil
 }
 
 // SourceCollect stages the declared source's evidence into a new directory and
-// writes the collection receipt beside it. The receipt destination must be new.
+// writes the collection receipt. The receipt destination is refused before
+// anything is collected unless it is new, so an unusable one cannot leave
+// staged evidence behind that nothing describes; its missing folders are
+// created when it is written.
 func SourceCollect(ctx context.Context, source evidencesource.Source, output, receipt string, options evidencesource.Options) (evidencesource.Collection, error) {
 	if output == "" || receipt == "" {
 		return evidencesource.Collection{}, errors.New("source collect requires a new output directory and a new receipt file")
 	}
-	if err := reserveNewFile(receipt, "the collection receipt destination must be a new file"); err != nil {
+	if err := checkNewDocument(receipt, ErrCollectionReceiptExists); err != nil {
 		return evidencesource.Collection{}, err
 	}
 	collection, collectErr := evidencesource.Collect(ctx, source, output, options)
@@ -82,8 +150,10 @@ func SourceCollect(ctx context.Context, source evidencesource.Source, output, re
 	if err != nil {
 		return evidencesource.Collection{}, err
 	}
-	if err := writeNewReceipt(receipt, encoded); err != nil {
-		return evidencesource.Collection{}, errors.New("the evidence was staged but its receipt was not; the receipt destination must be new and writable")
+	if err := writeNewDocument(receipt, encoded,
+		"the evidence was staged but its receipt was not; the receipt destination must be new and writable",
+		"the evidence was staged but its receipt was not; retry the collection with new destinations"); err != nil {
+		return evidencesource.Collection{}, err
 	}
 	if collectErr != nil {
 		return collection, collectErr
@@ -149,9 +219,14 @@ type CapturePreview struct {
 // CollectConfig is what one MLLP collector serve needs after the operator
 // previewed and authorized it.
 type CollectConfig struct {
-	Address            string
-	ApprovedBind       bool
-	Policy             collection.Policy
+	Address      string
+	ApprovedBind bool
+	// Policy is the receiver policy the collector serves under. Without one,
+	// PolicyPath names the document it is read from, only once the address is
+	// approved, so a bind beyond this machine is refused before anything else
+	// whichever entry point asked.
+	Policy             *collection.Policy
+	PolicyPath         string
 	OutputPath         string
 	JournalPath        string
 	MaxFrameBytes      int
@@ -166,9 +241,11 @@ type CollectConfig struct {
 	SecretsFile        string
 	ClientCAPath       string
 	// Listening, when set, is told the address the collector bound once it is
-	// ready to accept, the point at which `readmit collect` prints its
-	// `Listening:` line. A port of 0 is only known from here.
-	Listening func(bound string)
+	// ready to accept, and the policy it serves under, the point at which
+	// `readmit collect` prints its `Listening:` line. A port of 0 is only
+	// known from here. An error it returns stops the collector before it
+	// serves anyone.
+	Listening func(bound string, policy collection.Policy) error
 }
 
 // ListenConfig is what one SIU fixture serve needs after preview and approval.
@@ -183,46 +260,35 @@ type ListenConfig struct {
 	MaxMessages     int
 	// Listening, when set, is told the address the fixture bound once its
 	// initial observation is installed, the point at which `readmit listen`
-	// prints its `Listening:` line. A port of 0 is only known from here.
-	Listening func(bound string)
+	// prints its `Listening:` line. A port of 0 is only known from here. An
+	// error it returns stops the fixture before it serves anyone.
+	Listening func(bound string) error
 }
+
+// ErrReceiverPolicyRequired refuses a collector configured with no receiver
+// policy at all.
+var ErrReceiverPolicyRequired = errors.New("a receiver policy is required")
 
 // PreviewCollect validates a collector configuration without binding a socket.
 func PreviewCollect(cfg CollectConfig) (CapturePreview, error) {
-	if err := sendpolicy.BindAddress(cfg.Address, cfg.ApprovedBind); err != nil {
+	policy, err := approveCollect(cfg)
+	if err != nil {
 		return CapturePreview{}, err
-	}
-	if err := cfg.Policy.Validate(); err != nil {
-		return CapturePreview{}, err
-	}
-	// A fault policy names the test endpoints it may be served at. The address
-	// is held to them before anything binds, as `readmit collect` holds it, so
-	// a collector never listens where its policy did not approve.
-	if cfg.Policy.Faults != nil {
-		if err := cfg.Policy.Faults.ApproveEndpoint(cfg.Address); err != nil {
-			return CapturePreview{}, err
-		}
 	}
 	if cfg.OutputPath == "" {
 		return CapturePreview{}, errors.New("collector requires a new case destination")
-	}
-	if cfg.MaxFrameBytes <= 0 {
-		cfg.MaxFrameBytes = 1 << 20
-	}
-	if cfg.IdleTimeout <= 0 {
-		cfg.IdleTimeout = 30 * time.Second
 	}
 	transport := "plain"
 	clientCert := cfg.ClientCAPath != ""
 	if cfg.TLSCertificatePath != "" || cfg.TLSKeyReference != "" || cfg.SecretsFile != "" {
 		if cfg.TLSCertificatePath == "" || cfg.TLSKeyReference == "" || cfg.SecretsFile == "" {
-			return CapturePreview{}, errors.New("a TLS listener requires certificate, key reference and secrets together")
+			return CapturePreview{}, ErrListenerTLSIncomplete
 		}
 		transport = "tls"
 	}
 	enhanced := "unsupported"
-	if cfg.Policy.Enhanced != nil {
-		enhanced = cfg.Policy.Enhanced.Operator
+	if policy.Enhanced != nil {
+		enhanced = policy.Enhanced.Operator
 	}
 	connections := cfg.MaxConnections
 	if connections <= 0 {
@@ -232,10 +298,10 @@ func PreviewCollect(cfg CollectConfig) (CapturePreview, error) {
 		Kind:              "collect",
 		Address:           cfg.Address,
 		ApprovedBind:      cfg.ApprovedBind,
-		PolicyName:        cfg.Policy.Name,
-		PolicySchema:      cfg.Policy.Schema,
-		SourceLabel:       cfg.Policy.SourceLabel,
-		Acknowledgement:   cfg.Policy.Acknowledgement.Operator + " " + cfg.Policy.Acknowledgement.Code,
+		PolicyName:        policy.Name,
+		PolicySchema:      policy.Schema,
+		SourceLabel:       policy.SourceLabel,
+		Acknowledgement:   policy.Acknowledgement.Operator + " " + policy.Acknowledgement.Code,
 		Enhanced:          enhanced,
 		Transport:         transport,
 		ClientCertificate: clientCert,
@@ -251,6 +317,41 @@ func PreviewCollect(cfg CollectConfig) (CapturePreview, error) {
 	}, nil
 }
 
+// approveCollect approves the address first, then reads the policy the
+// configuration names when it carries none, and holds a fault policy to the
+// test endpoints it approves. It returns the policy the collector serves
+// under. Nothing binds before it answers.
+func approveCollect(cfg CollectConfig) (collection.Policy, error) {
+	if err := sendpolicy.BindAddress(cfg.Address, cfg.ApprovedBind); err != nil {
+		return collection.Policy{}, err
+	}
+	var policy collection.Policy
+	switch {
+	case cfg.Policy != nil:
+		policy = *cfg.Policy
+	case cfg.PolicyPath != "":
+		read, err := ReceiverPolicyRead(cfg.PolicyPath)
+		if err != nil {
+			return collection.Policy{}, err
+		}
+		policy = read
+	default:
+		return collection.Policy{}, ErrReceiverPolicyRequired
+	}
+	if err := policy.Validate(); err != nil {
+		return collection.Policy{}, err
+	}
+	// A fault policy names the test endpoints it may be served at. The address
+	// is held to them before anything binds, as `readmit collect` holds it, so
+	// a collector never listens where its policy did not approve.
+	if policy.Faults != nil {
+		if err := policy.Faults.ApproveEndpoint(cfg.Address); err != nil {
+			return collection.Policy{}, err
+		}
+	}
+	return policy, nil
+}
+
 // PreviewListen validates a SIU fixture configuration without binding.
 func PreviewListen(cfg ListenConfig) (CapturePreview, error) {
 	if err := sendpolicy.BindAddress(cfg.Address, cfg.ApprovedBind); err != nil {
@@ -260,13 +361,7 @@ func PreviewListen(cfg ListenConfig) (CapturePreview, error) {
 		return CapturePreview{}, errors.New("receiver mode must be fixed or defective")
 	}
 	if cfg.OutputPath == "" || cfg.ObservationPath == "" {
-		return CapturePreview{}, errors.New("fixture requires new case and observation destinations")
-	}
-	if cfg.MaxFrameBytes <= 0 {
-		cfg.MaxFrameBytes = 1 << 20
-	}
-	if cfg.IdleTimeout <= 0 {
-		cfg.IdleTimeout = 30 * time.Second
+		return CapturePreview{}, errors.New("receiver requires new case and observation destinations")
 	}
 	return CapturePreview{
 		Kind:            "listen",
@@ -300,20 +395,14 @@ type ListenResult struct {
 
 // StartCollect binds the collector, serves until a bound, cancellation or error,
 // and returns the sealed case when one was written. It never invents completion
-// when the process stops mid-flight.
+// when the process stops mid-flight. It refuses in the order `readmit collect`
+// always has: the address, the policy, the transport security, the bind, and
+// then the collector's own bounds and destinations; an adapter that wants the
+// destinations refused before anything binds previews first.
 func StartCollect(ctx context.Context, cfg CollectConfig) (CollectResult, error) {
-	preview, err := PreviewCollect(cfg)
+	policy, err := approveCollect(cfg)
 	if err != nil {
 		return CollectResult{}, err
-	}
-	if cfg.MaxFrameBytes <= 0 {
-		cfg.MaxFrameBytes = preview.MaxFrameBytes
-	}
-	if cfg.IdleTimeout <= 0 {
-		cfg.IdleTimeout = 30 * time.Second
-	}
-	if cfg.ApplicationTimeout <= 0 {
-		cfg.ApplicationTimeout = 10 * time.Second
 	}
 	secured, err := listenerTLSConfig(ctx, cfg)
 	if err != nil {
@@ -329,7 +418,7 @@ func StartCollect(ctx context.Context, cfg CollectConfig) (CollectResult, error)
 		listener = tls.NewListener(listener, secured)
 	}
 	collector, err := receiver.NewCollector(receiver.CollectorConfig{
-		Policy:             cfg.Policy,
+		Policy:             policy,
 		OutputPath:         cfg.OutputPath,
 		JournalPath:        cfg.JournalPath,
 		MaxFrameBytes:      cfg.MaxFrameBytes,
@@ -346,7 +435,9 @@ func StartCollect(ctx context.Context, cfg CollectConfig) (CollectResult, error)
 		return CollectResult{}, err
 	}
 	if cfg.Listening != nil {
-		cfg.Listening(bound)
+		if err := cfg.Listening(bound, policy); err != nil {
+			return CollectResult{BoundAddress: bound}, err
+		}
 	}
 	b, serveErr := collector.Serve(ctx, listener)
 	out := CollectResult{BoundAddress: bound, Bundle: b, Journal: collector.Journal()}
@@ -354,17 +445,13 @@ func StartCollect(ctx context.Context, cfg CollectConfig) (CollectResult, error)
 }
 
 // StartListen binds the SIU fixture receiver and serves until a bound,
-// cancellation or error.
+// cancellation or error. It refuses in the order `readmit listen` always
+// has: the address, the bind, and then the receiver's own mode, bounds and
+// destinations; an adapter that wants those refused before anything binds
+// previews first.
 func StartListen(ctx context.Context, cfg ListenConfig) (ListenResult, error) {
-	preview, err := PreviewListen(cfg)
-	if err != nil {
+	if err := sendpolicy.BindAddress(cfg.Address, cfg.ApprovedBind); err != nil {
 		return ListenResult{}, err
-	}
-	if cfg.MaxFrameBytes <= 0 {
-		cfg.MaxFrameBytes = preview.MaxFrameBytes
-	}
-	if cfg.IdleTimeout <= 0 {
-		cfg.IdleTimeout = 30 * time.Second
 	}
 	listener, err := net.Listen("tcp", cfg.Address)
 	if err != nil {
@@ -384,7 +471,9 @@ func StartListen(ctx context.Context, cfg ListenConfig) (ListenResult, error) {
 		return ListenResult{}, err
 	}
 	if cfg.Listening != nil {
-		cfg.Listening(bound)
+		if err := cfg.Listening(bound); err != nil {
+			return ListenResult{BoundAddress: bound}, err
+		}
 	}
 	b, serveErr := r.Serve(ctx, listener)
 	out := ListenResult{BoundAddress: bound, Bundle: b}
@@ -413,12 +502,16 @@ func DefaultImportPlan() importer.Plan {
 	}
 }
 
+// listenerTLSConfig builds the collector's TLS configuration, or nil when the
+// operator declared none. The certificate chain and the client authority are
+// configuration files; the private key is a credential, read from the store
+// its reference names for this one process and never written anywhere.
 func listenerTLSConfig(ctx context.Context, cfg CollectConfig) (*tls.Config, error) {
 	if cfg.TLSCertificatePath == "" && cfg.TLSKeyReference == "" && cfg.SecretsFile == "" && cfg.ClientCAPath == "" {
 		return nil, nil
 	}
 	if cfg.TLSCertificatePath == "" || cfg.TLSKeyReference == "" || cfg.SecretsFile == "" {
-		return nil, errors.New("a TLS listener requires certificate, key reference and secrets together")
+		return nil, ErrListenerTLSIncomplete
 	}
 	chain, err := readBoundedFile(cfg.TLSCertificatePath, maxCertificateBytes)
 	if err != nil {
@@ -434,6 +527,9 @@ func listenerTLSConfig(ctx context.Context, cfg CollectConfig) (*tls.Config, err
 	if err != nil {
 		return nil, err
 	}
+	// The reference is bound to this listener's own endpoint before it is read,
+	// so a credential registered for another address is refused rather than
+	// presented here.
 	reference, err := secret.Bind(store, cfg.TLSKeyReference, secret.MLLPEndpoint, cfg.Address)
 	if err != nil {
 		return nil, err
@@ -443,17 +539,6 @@ func listenerTLSConfig(ctx context.Context, cfg CollectConfig) (*tls.Config, err
 		return nil, errors.New("the private key the listener certificate's reference names did not resolve from its declared store")
 	}
 	return transportsecurity.ServerConfig(chain, value.Expose(), authorities)
-}
-
-func reserveNewFile(path, taken string) error {
-	reserved, err := artifactpath.Destination(path)
-	if err != nil {
-		return err
-	}
-	if _, err := os.Lstat(reserved); !os.IsNotExist(err) {
-		return errors.New(taken)
-	}
-	return nil
 }
 
 func baseName(path string) string {

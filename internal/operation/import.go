@@ -6,7 +6,6 @@ package operation
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -22,9 +21,15 @@ var (
 	ErrImportCaseExists    = errors.New("the case bundle destination must be a new directory")
 	ErrImportReceiptExists = errors.New("the import receipt destination must be a new file")
 	ErrImportNoMembers     = errors.New("the declared containers hold no member to import; preview reports why each entry was excluded")
-	ErrReceiptWrite        = errors.New("the case was written but its receipt was not; retry the import with new destinations")
 	ErrPastedContentLimit  = errors.New("pasted content exceeds maximum source size limit")
 	ErrPastedNameInvalid   = errors.New("pasted content must be named by a valid entry name")
+)
+
+// The two ways an import's receipt can fail once its case exists. Both say the
+// case was written, because by then it was.
+const (
+	importReceiptUncreated = "the case was written but its receipt was not; the receipt destination must be new and writable"
+	importReceiptUnwritten = "the case was written but its receipt was not; retry the import with new destinations"
 )
 
 // EngineExportPreview describes an engine export without writing evidence.
@@ -76,7 +81,7 @@ func ImportPlanCommit(ctx context.Context, plan importer.Plan, files, folders, a
 	if err != nil {
 		return nil, importer.Receipt{}, err
 	}
-	if err := writeNewReceipt(receiptPath, encoded); err != nil {
+	if err := writeNewDocument(receiptPath, encoded, importReceiptUncreated, importReceiptUnwritten); err != nil {
 		return nil, importer.Receipt{}, err
 	}
 	return b, receipt, nil
@@ -127,18 +132,19 @@ func ImportRecipeCommit(ctx context.Context, recipe importer.Recipe, files, fold
 	if err != nil {
 		return nil, importer.MappingReceipt{}, err
 	}
-	if err := writeNewReceipt(receiptPath, encoded); err != nil {
+	if err := writeNewDocument(receiptPath, encoded, importReceiptUncreated, importReceiptUnwritten); err != nil {
 		return nil, importer.MappingReceipt{}, err
 	}
 	return b, receipt, nil
 }
 
-// ImportEnginePreview previews an engine export without writing evidence.
+// ImportEnginePreview previews an engine export without writing evidence. The
+// export is read through ReadInputFile, so no diagnostic repeats its path.
 func ImportEnginePreview(ctx context.Context, plan engineexport.Plan, inputPath string) (EngineExportPreview, error) {
 	if err := plan.Validate(); err != nil {
 		return EngineExportPreview{}, err
 	}
-	data, err := readImportFile(inputPath, engineexport.MaxBytes)
+	data, err := ReadInputFile(inputPath, engineexport.MaxBytes)
 	if err != nil {
 		return EngineExportPreview{}, err
 	}
@@ -154,19 +160,17 @@ func ImportEnginePreview(ctx context.Context, plan engineexport.Plan, inputPath 
 	}, nil
 }
 
-// ImportEngineCommit writes an engine export into a new case bundle.
+// ImportEngineCommit writes an engine export into a new case bundle. The case
+// destination is checked before the export is read, and no diagnostic repeats
+// the export's path.
 func ImportEngineCommit(ctx context.Context, plan engineexport.Plan, inputPath, outputDir string) (*bundle.Bundle, error) {
 	if err := plan.Validate(); err != nil {
 		return nil, err
 	}
-	reservedCase, err := artifactpath.Destination(outputDir)
-	if err != nil {
+	if err := checkNewCase(outputDir); err != nil {
 		return nil, err
 	}
-	if _, err := os.Lstat(reservedCase); !os.IsNotExist(err) {
-		return nil, ErrImportCaseExists
-	}
-	data, err := readImportFile(inputPath, engineexport.MaxBytes)
+	data, err := ReadInputFile(inputPath, engineexport.MaxBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -208,58 +212,25 @@ func StagePastedContent(dir, name string, data []byte) (string, error) {
 	return reserved, nil
 }
 
+// checkNewDestination refuses an import before anything is extracted unless
+// both of its destinations are new: the case directory, and the receipt,
+// whose missing folders the receipt writer will create.
 func checkNewDestination(outputDir, receiptPath string) error {
-	reservedCase, err := artifactpath.Destination(outputDir)
+	if err := checkNewCase(outputDir); err != nil {
+		return err
+	}
+	return checkNewDocument(receiptPath, ErrImportReceiptExists)
+}
+
+// checkNewCase refuses a case destination that is taken or that the shared
+// output reservation refuses.
+func checkNewCase(outputDir string) error {
+	reserved, err := artifactpath.Destination(outputDir)
 	if err != nil {
 		return err
 	}
-	if _, err := os.Lstat(reservedCase); !os.IsNotExist(err) {
+	if _, err := os.Lstat(reserved); !os.IsNotExist(err) {
 		return ErrImportCaseExists
 	}
-	reservedReceipt, err := artifactpath.Destination(receiptPath)
-	if err != nil {
-		return err
-	}
-	if _, err := os.Lstat(reservedReceipt); !os.IsNotExist(err) {
-		return ErrImportReceiptExists
-	}
 	return nil
-}
-
-func writeNewReceipt(path string, encoded []byte) error {
-	reserved, err := artifactpath.Destination(path)
-	if err != nil {
-		return errors.New("cannot resolve receipt destination")
-	}
-	if err := os.MkdirAll(filepath.Dir(reserved), 0700); err != nil {
-		return err
-	}
-	file, err := os.OpenFile(reserved, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return ErrReceiptWrite
-	}
-	defer file.Close()
-	if err := artifactdir.WriteFileSync(file, encoded); err != nil {
-		os.Remove(reserved)
-		return ErrReceiptWrite
-	}
-	return nil
-}
-
-func readImportFile(path string, limit int) ([]byte, error) {
-	resolved, err := artifactpath.Resolve(path)
-	if err != nil {
-		return nil, err
-	}
-	info, err := os.Stat(resolved)
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("%q is not a regular file", path)
-	}
-	if info.Size() > int64(limit) {
-		return nil, fmt.Errorf("%q exceeds size limit of %d bytes", path, limit)
-	}
-	return os.ReadFile(resolved)
 }

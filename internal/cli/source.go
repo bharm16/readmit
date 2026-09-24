@@ -5,13 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
-	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/evidencesource"
 	"github.com/bharm16/readmit/internal/observewindow"
-	"github.com/bharm16/readmit/internal/sendpolicy"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/spf13/cobra"
 )
 
@@ -42,28 +40,15 @@ func sourceDiagnose() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if report != "" {
-				if err := reserveNewFile(report, "the access diagnosis destination must be a new file"); err != nil {
-					return err
-				}
-			}
-			ctx := cmd.Context()
-			access, err := evidencesource.Diagnose(ctx, source, options)
+			access, err := operation.SourceDiagnose(cmd.Context(), source, options, report)
 			if err != nil {
 				return err
-			}
-			encoded, err := evidencesource.EncodeAccess(access)
-			if err != nil {
-				return err
-			}
-			if report != "" {
-				if err := writeNewFile(report, encoded,
-					"cannot create the access diagnosis; destination must be new and writable",
-					"cannot write the access diagnosis"); err != nil {
-					return err
-				}
 			}
 			if machine {
+				encoded, err := evidencesource.EncodeAccess(access)
+				if err != nil {
+					return err
+				}
 				if _, err := cmd.OutOrStdout().Write(encoded); err != nil {
 					return errors.New("cannot write the access diagnosis")
 				}
@@ -98,26 +83,9 @@ func sourceCollect() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			// The receipt destination is checked before anything is collected,
-			// so an unusable receipt location cannot leave staged evidence
-			// behind that nothing describes. Exclusive creation still owns the
-			// guarantee; this only refuses the mistake early.
-			if err := reserveNewFile(receipt, "the collection receipt destination must be a new file"); err != nil {
-				return err
-			}
-			ctx := cmd.Context()
-			collection, collectErr := evidencesource.Collect(ctx, source, output, options)
+			collection, collectErr := operation.SourceCollect(cmd.Context(), source, output, receipt, options)
 			if collectErr != nil && !errors.Is(collectErr, evidencesource.ErrIncomplete) {
 				return collectErr
-			}
-			encoded, err := evidencesource.EncodeCollection(collection)
-			if err != nil {
-				return err
-			}
-			if err := writeNewFile(receipt, encoded,
-				"the evidence was staged but its receipt was not; the receipt destination must be new and writable",
-				"the evidence was staged but its receipt was not; retry the collection with new destinations"); err != nil {
-				return err
 			}
 			if err := renderCollection(cmd.OutOrStdout(), collection); err != nil {
 				return err
@@ -140,7 +108,7 @@ func sourceCollect() *cobra.Command {
 // one subcommand runs under. Both subcommands read the same three, so a
 // diagnosis cannot answer under declarations a collection would not run under.
 func sourceRun(cmd *cobra.Command, path, policy string, declared declaration, saved string) (evidencesource.Source, evidencesource.Options, error) {
-	source, err := evidencesource.ReadSource(path)
+	source, err := operation.SourceRead(path)
 	if err != nil {
 		return evidencesource.Source{}, evidencesource.Options{}, err
 	}
@@ -148,33 +116,11 @@ func sourceRun(cmd *cobra.Command, path, policy string, declared declaration, sa
 	if err != nil {
 		return evidencesource.Source{}, evidencesource.Options{}, err
 	}
-	options := evidencesource.Options{Plan: plan}
-	if policy != "" {
-		data, err := readInputFile(policy, sendpolicy.MaxPolicyBytes)
-		if err != nil {
-			return evidencesource.Source{}, evidencesource.Options{}, errors.New("cannot read the approved-destination policy")
-		}
-		decoded, err := sendpolicy.DecodePolicy(data)
-		if err != nil {
-			return evidencesource.Source{}, evidencesource.Options{}, err
-		}
-		options.Policy = &decoded
+	options, err := operation.SourceOptions(plan, policy)
+	if err != nil {
+		return evidencesource.Source{}, evidencesource.Options{}, err
 	}
 	return source, options, nil
-}
-
-// reserveNewFile refuses a destination that is already taken before a command
-// does the work whose result would go there. Exclusive creation at the writer
-// still owns the guarantee; this only refuses the mistake early.
-func reserveNewFile(path, taken string) error {
-	reserved, err := artifactpath.Destination(path)
-	if err != nil {
-		return err
-	}
-	if _, err := os.Lstat(reserved); !os.IsNotExist(err) {
-		return errors.New(taken)
-	}
-	return nil
 }
 
 // renderAccess reports what access was available. Every line is a count, a

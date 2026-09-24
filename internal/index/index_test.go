@@ -394,6 +394,27 @@ func TestRetentionPolicyDeclaresEveryChoiceExplicitly(t *testing.T) {
 	}
 }
 
+// A retention end is declared, never inferred: an empty one is refused rather
+// than read as indefinite, the word itself declares no end, and an instant is
+// kept in UTC.
+func TestARetentionEndIsDeclaredNeverInferred(t *testing.T) {
+	if end, err := index.RetentionEnd(""); !errors.Is(err, index.ErrRetentionEndUnstated) || end != nil {
+		t.Fatalf("an unstated retention end was read as %v, %v", end, err)
+	}
+	for _, declared := range []string{"never", "2026-10-01", "Indefinite", " indefinite"} {
+		if end, err := index.RetentionEnd(declared); !errors.Is(err, index.ErrRetentionEndInvalid) || end != nil {
+			t.Errorf("%q was read as %v, %v", declared, end, err)
+		}
+	}
+	if end, err := index.RetentionEnd(index.Indefinite); err != nil || end != nil {
+		t.Fatalf("indefinite was read as %v, %v", end, err)
+	}
+	end, err := index.RetentionEnd("2026-10-01T02:00:00+02:00")
+	if want := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC); err != nil || end == nil || !end.Equal(want) || end.Location() != time.UTC {
+		t.Fatalf("an instant was read as %v, %v", end, err)
+	}
+}
+
 func manyFields(n int) []string {
 	fields := make([]string, 0, n)
 	for i := 1; i <= n; i++ {

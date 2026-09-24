@@ -7,6 +7,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/diagnose"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/spf13/cobra"
 )
 
@@ -45,7 +46,7 @@ func diagnoseCommand() *cobra.Command {
 				return errors.New("cannot encode diagnosis report")
 			}
 			markdown := diagnose.Markdown(report)
-			if err := writeNewReportDirectory(resolvedOutput, "diagnosis", outputFile{"report.json", jsonData}, outputFile{"report.md", markdown}); err != nil {
+			if err := operation.WriteReportDirectory(resolvedOutput, "diagnosis", operation.ReportFile{Name: "report.json", Data: jsonData}, operation.ReportFile{Name: "report.md", Data: markdown}); err != nil {
 				return err
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Diagnosis complete: %d findings, %d unsupported items. Ruleset: %s. JSON and Markdown reports written.\n", len(report.Findings), len(report.Unsupported), report.Ruleset)

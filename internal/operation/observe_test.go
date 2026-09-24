@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -169,17 +170,63 @@ func TestObservationSupportMarksDatabaseUnqualified(t *testing.T) {
 	}
 }
 
+// A source and a window that declare different sources are refused before
+// anything is collected or written, rather than collected into a completion
+// recording that the source was unsupported.
 func TestMismatchedSourceAndWindowRefuseLocally(t *testing.T) {
-	dir, window, source := writeObserveDocs(t)
+	dir, window, _ := writeObserveDocs(t)
 	mismatched := strings.Replace(observeSourceDocument, `"scope": "appointments"`, `"scope": "orders"`, 1)
 	path := filepath.Join(dir, "mismatched.json")
 	if err := os.WriteFile(path, []byte(mismatched), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := operation.ValidateObservationPair(path, window); err == nil {
-		t.Fatal("mismatched pair was accepted")
+	if _, _, err := operation.ValidateObservationPair(path, window); err != operation.ErrObservationPairMismatch {
+		t.Fatalf("mismatched pair was refused as %v", err)
 	}
-	_ = source
+	output, snapshot := filepath.Join(dir, "completion.json"), filepath.Join(dir, "snapshot")
+	_, err := operation.CollectObservation(context.Background(), operation.ObservationCollectRequest{
+		SourcePath: path, WindowPath: window, OutputPath: output, SnapshotPath: snapshot, Authorize: true,
+	})
+	if err != operation.ErrObservationPairMismatch {
+		t.Fatalf("a mismatched collection was refused as %v", err)
+	}
+	for _, written := range []string{output, snapshot} {
+		if _, err := os.Lstat(written); !os.IsNotExist(err) {
+			t.Fatalf("a refused collection wrote %s", filepath.Base(written))
+		}
+	}
+}
+
+// A retained completion its declared window does not support is told apart
+// from one that cannot be read: the first is ErrCompletionUnsupported, in the
+// window's own words, and the second is not.
+func TestExplainingACompletionAgainstAnotherWindowIsUnsupportedEvidence(t *testing.T) {
+	dir, window, source := writeObserveDocs(t)
+	output := filepath.Join(dir, "completion.json")
+	if _, err := operation.CollectObservation(context.Background(), operation.ObservationCollectRequest{
+		SourcePath: source, WindowPath: window, OutputPath: output, SnapshotPath: filepath.Join(dir, "snapshot"), Authorize: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	other := filepath.Join(dir, "other-window.json")
+	if err := os.WriteFile(other, []byte(strings.Replace(observeWindowDocument, `"max_records": 100`, `"max_records": 99`, 1)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	completion, err := observewindow.ReadCompletion(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	declared, err := observewindow.ReadWindow(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := declared.Verify(completion)
+	if _, err := operation.ExplainObservation(output, other); want == nil || !errors.Is(err, operation.ErrCompletionUnsupported) || err.Error() != want.Error() {
+		t.Fatalf("a completion of another window was explained as %v, want %v", err, want)
+	}
+	if _, err := operation.ExplainObservation(filepath.Join(dir, "absent.json"), window); err == nil || errors.Is(err, operation.ErrCompletionUnsupported) {
+		t.Fatalf("an unreadable completion was refused as %v", err)
+	}
 }
 
 // A source that names its export relative to its own folder has one identity:

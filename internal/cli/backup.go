@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/backup"
+	"github.com/bharm16/readmit/internal/index"
 	"github.com/spf13/cobra"
 )
 
@@ -188,7 +189,7 @@ func retainUntil(entry backup.Index) string {
 		return "none"
 	}
 	if entry.RetainUntil == nil {
-		return indefinite
+		return index.Indefinite
 	}
 	return entry.RetainUntil.Format(time.RFC3339)
 }

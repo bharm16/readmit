@@ -17,7 +17,6 @@ import (
 	"github.com/bharm16/readmit/internal/observewindow"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/operationguard"
-	"github.com/bharm16/readmit/internal/project"
 )
 
 // CapturePhase names what the capture screen is doing without disclosing values.
@@ -233,7 +232,7 @@ func (a *App) DiagnoseSource(request SourceWorkRequest) SourceAccessResult {
 		if err != nil {
 			return SourceAccessResult{State: Failed, Reason: err.Error()}
 		}
-		access, err := operation.SourceDiagnose(ctx, source, options)
+		access, err := operation.SourceDiagnose(ctx, source, options, "")
 		if err != nil {
 			if ctx.Err() != nil {
 				return SourceAccessResult{State: Cancelled, Reason: cancelledRefusal.reason}
@@ -354,17 +353,16 @@ func (a *App) sourceWork(_ context.Context, request SourceWorkRequest) (evidence
 	if request.Plan != nil {
 		plan = *request.Plan
 	}
-	options := evidencesource.Options{Plan: plan}
+	policyPath := ""
 	if request.PolicyFile != "" {
-		path, ref := resolveWorkspacePath(request.Workspace, request.PolicyFile)
-		if path == "" {
+		var ref refusal
+		if policyPath, ref = resolveWorkspacePath(request.Workspace, request.PolicyFile); policyPath == "" {
 			return evidencesource.Source{}, evidencesource.Options{}, errors.New(ref.reason)
 		}
-		policy, err := operation.ReadSendPolicy(path)
-		if err != nil {
-			return evidencesource.Source{}, evidencesource.Options{}, err
-		}
-		options.Policy = &policy
+	}
+	options, err := operation.SourceOptions(plan, policyPath)
+	if err != nil {
+		return evidencesource.Source{}, evidencesource.Options{}, err
 	}
 	return source, options, nil
 }
@@ -514,11 +512,12 @@ func (a *App) CaptureProgress() CaptureProgressResult {
 	return CaptureProgressResult{State: Completed, Progress: &listening}
 }
 
-func (a *App) reportCaptureProgress(kind string) func(bound string) {
-	return func(bound string) {
+func (a *App) reportCaptureProgress(kind string) func(bound string) error {
+	return func(bound string) error {
 		a.captureMu.Lock()
 		defer a.captureMu.Unlock()
 		a.captureProgress = &CaptureProgress{Kind: kind, BoundAddress: bound}
+		return nil
 	}
 }
 
@@ -594,25 +593,9 @@ func (a *App) StartCapture(request CaptureRequest) CaptureSessionResult {
 
 		switch request.Kind {
 		case "listen":
-			obsName := request.ObservationName
-			if obsName == "" {
-				obsName = request.OutputName + "-observation.json"
-			}
-			cfg := operation.ListenConfig{
-				Address:         request.Address,
-				ApprovedBind:    request.ApprovedBind,
-				Mode:            observation.Mode(request.FixtureMode),
-				OutputPath:      output,
-				ObservationPath: filepath.Join(root, obsName),
-				MaxFrameBytes:   request.MaxFrameBytes,
-				MaxMessages:     request.MaxMessages,
-				Listening:       a.reportCaptureProgress("listen"),
-			}
-			if request.IdleTimeout != "" {
-				if d, err := time.ParseDuration(request.IdleTimeout); err == nil {
-					cfg.IdleTimeout = d
-				}
-			}
+			obsName := observationName(request)
+			cfg := listenConfig(request, output, filepath.Join(root, obsName))
+			cfg.Listening = a.reportCaptureProgress("listen")
 			result, serveErr := operation.StartListen(bounded, cfg)
 			out = CaptureSessionResult{
 				BoundAddress:    result.BoundAddress,
@@ -629,7 +612,8 @@ func (a *App) StartCapture(request CaptureRequest) CaptureSessionResult {
 			if err != nil {
 				return CaptureSessionResult{State: Failed, Reason: err.Error(), Phase: CaptureFailed, Preview: &preview}
 			}
-			cfg.Listening = a.reportCaptureProgress("collect")
+			report := a.reportCaptureProgress("collect")
+			cfg.Listening = func(bound string, _ collection.Policy) error { return report(bound) }
 			result, serveErr := operation.StartCollect(bounded, cfg)
 			out = CaptureSessionResult{
 				BoundAddress: result.BoundAddress,
@@ -653,18 +637,7 @@ func (a *App) StartCapture(request CaptureRequest) CaptureSessionResult {
 
 func (a *App) finishCapture(ctx context.Context, out CaptureSessionResult, b *bundle.Bundle, serveErr error, active CapturePhase) CaptureSessionResult {
 	if b != nil {
-		counts := b.Counts()
-		out.Case = &Case{
-			Name:             out.CasePath,
-			Identity:         b.Identity,
-			Schema:           b.Manifest.Schema,
-			Provenance:       string(b.Manifest.Provenance.Mode),
-			Sources:          len(b.Manifest.Sources),
-			Occurrences:      len(b.Events),
-			Messages:         counts[bundle.Message],
-			Acknowledgements: counts[bundle.Acknowledgement],
-			Unparsed:         counts[bundle.Unparsed],
-		}
+		out.Case = caseView(out.CasePath, b)
 		out.Connections = len(b.Manifest.Sources)
 		if snapshot := b.Observation; snapshot != nil {
 			out.Ledger = &FixtureLedger{
@@ -744,7 +717,9 @@ type FinalizeCaptureRequest struct {
 }
 
 // FinalizeCaptureImport commits staged collected material through the shared
-// import operation and links project registration when asked.
+// import operation, under the default plan unless the request declares one,
+// and registers the case on the project when asked, by the same flow
+// CommitImport uses.
 func (a *App) FinalizeCaptureImport(request FinalizeCaptureRequest) ImportCommitResult {
 	return runNamed[ImportCommitResult, *ImportCommitResult](a, "import", true, true, func(ctx context.Context) ImportCommitResult {
 		folder, ref := resolveWorkspacePath(request.Workspace, request.Folder)
@@ -755,112 +730,22 @@ func (a *App) FinalizeCaptureImport(request FinalizeCaptureRequest) ImportCommit
 		if request.Plan != nil {
 			plan = *request.Plan
 		}
-		targetDir := request.Workspace
-		if request.Project != "" {
-			targetDir = request.Project
+		into := importCommit{
+			workspace: request.Workspace, project: request.Project,
+			outputName: request.OutputName, receiptName: request.ReceiptName,
+			register: request.RegisterInProject, title: request.CaseTitle, owner: request.CaseOwner, version: request.CaseVersion,
 		}
-		if targetDir == "" {
-			return ImportCommitResult{State: Failed, Reason: "a workspace or project is required"}
-		}
-		root, declined := resolveFolder(targetDir)
-		if root == "" {
-			return ImportCommitResult{State: declined.state, Reason: declined.reason}
-		}
-		if request.OutputName == "" {
-			return ImportCommitResult{State: Failed, Reason: "an output case name is required"}
-		}
-		if artifactpath.EntryName(request.OutputName) != nil {
-			return ImportCommitResult{State: Failed, Reason: "the case destination must be one valid directory entry name"}
-		}
-		casePath := filepath.Join(root, request.OutputName)
-		receiptName := request.ReceiptName
-		if receiptName == "" {
-			receiptName = request.OutputName + "-import.json"
-		}
-		if artifactpath.EntryName(receiptName) != nil {
-			return ImportCommitResult{State: Failed, Reason: "the receipt destination must be one valid file entry name"}
-		}
-		receiptPath := filepath.Join(root, receiptName)
-		b, _, err := operation.ImportPlanCommit(ctx, plan, nil, []string{folder}, nil, casePath, receiptPath)
-		if err != nil {
-			if ctx.Err() != nil {
-				return ImportCommitResult{State: Cancelled, Reason: cancelledRefusal.reason}
-			}
-			if errors.Is(err, os.ErrPermission) {
-				return ImportCommitResult{State: PermissionDenied, Reason: "this account cannot write case evidence into the selected directory"}
-			}
-			return ImportCommitResult{State: Failed, Reason: err.Error()}
-		}
-		counts := b.Counts()
-		c := &Case{
-			Name:             request.OutputName,
-			Identity:         b.Identity,
-			Schema:           b.Manifest.Schema,
-			Provenance:       string(b.Manifest.Provenance.Mode),
-			Sources:          len(b.Manifest.Sources),
-			Occurrences:      len(b.Events),
-			Messages:         counts[bundle.Message],
-			Acknowledgements: counts[bundle.Acknowledgement],
-			Unparsed:         counts[bundle.Unparsed],
-		}
-		registered := false
-		var projDoc *project.Document
-		if request.RegisterInProject && request.Project != "" {
-			title := request.CaseTitle
-			if title == "" {
-				title = request.OutputName
-			}
-			_, regErr := operation.RegisterCase(request.Project, request.OutputName, operation.CaseRegistration{
-				Title:            title,
-				Owner:            request.CaseOwner,
-				InterfaceVersion: request.CaseVersion,
-			})
-			if regErr != nil {
-				return ImportCommitResult{
-					State:       Completed,
-					Reason:      "the case and receipt were written, but the case was not registered: " + regErr.Error(),
-					Case:        c,
-					CasePath:    casePath,
-					ReceiptPath: receiptPath,
-				}
-			}
-			registered = true
-			if openedProj, openErr := project.Open(request.Project); openErr == nil {
-				projDoc = &openedProj.Document
-			}
-		}
-		return ImportCommitResult{
-			State:       Completed,
-			Case:        c,
-			CasePath:    casePath,
-			ReceiptPath: receiptPath,
-			Registered:  registered,
-			Project:     projDoc,
-		}
+		return a.commitImport(ctx, into, func(casePath, receiptPath string) (*bundle.Bundle, error) {
+			b, _, err := operation.ImportPlanCommit(ctx, plan, nil, []string{folder}, nil, casePath, receiptPath)
+			return b, err
+		})
 	})
 }
 
 func (a *App) capturePreview(request CaptureRequest) (operation.CapturePreview, error) {
 	switch request.Kind {
 	case "listen":
-		cfg := operation.ListenConfig{
-			Address:         request.Address,
-			ApprovedBind:    request.ApprovedBind,
-			Mode:            observation.Mode(request.FixtureMode),
-			OutputPath:      request.OutputName,
-			ObservationPath: request.ObservationName,
-			MaxFrameBytes:   request.MaxFrameBytes,
-			MaxMessages:     request.MaxMessages,
-		}
-		if cfg.ObservationPath == "" {
-			cfg.ObservationPath = request.OutputName + "-observation.json"
-		}
-		if request.IdleTimeout != "" {
-			if d, err := time.ParseDuration(request.IdleTimeout); err == nil {
-				cfg.IdleTimeout = d
-			}
-		}
-		return operation.PreviewListen(cfg)
+		return operation.PreviewListen(listenConfig(request, request.OutputName, observationName(request)))
 	case "collect":
 		cfg, err := a.collectConfig(request, request.OutputName)
 		if err != nil {
@@ -872,22 +757,75 @@ func (a *App) capturePreview(request CaptureRequest) (operation.CapturePreview, 
 	}
 }
 
-func (a *App) collectConfig(request CaptureRequest, output string) (operation.CollectConfig, error) {
-	policy, err := a.resolvePolicy(request)
-	if err != nil {
-		return operation.CollectConfig{}, err
+// observationName is the ledger a fixture request names, or the one beside
+// its case when it names none.
+func observationName(request CaptureRequest) string {
+	if request.ObservationName != "" {
+		return request.ObservationName
 	}
-	cfg := operation.CollectConfig{
+	return request.OutputName + "-observation.json"
+}
+
+// listenConfig is the fixture configuration a request states. A bound the
+// request left out, or stated as nothing usable, is the operation's default,
+// as the command line's flags default it.
+func listenConfig(request CaptureRequest, output, observationPath string) operation.ListenConfig {
+	return operation.ListenConfig{
 		Address:         request.Address,
 		ApprovedBind:    request.ApprovedBind,
-		Policy:          policy,
+		Mode:            observation.Mode(request.FixtureMode),
 		OutputPath:      output,
-		MaxFrameBytes:   request.MaxFrameBytes,
+		ObservationPath: observationPath,
+		MaxFrameBytes:   positiveOr(request.MaxFrameBytes, operation.DefaultMaxFrameBytes),
+		IdleTimeout:     durationOr(request.IdleTimeout, operation.DefaultIdleTimeout),
 		MaxMessages:     request.MaxMessages,
-		MaxConnections:  request.MaxConnections,
-		MaxSessions:     request.MaxSessions,
-		MaxCaptureBytes: request.MaxCaptureBytes,
-		TLSKeyReference: request.TLSKeyReference,
+	}
+}
+
+// positiveOr is a count a request states, or the fallback when it states
+// none or one that is not positive.
+func positiveOr(stated, fallback int) int {
+	if stated > 0 {
+		return stated
+	}
+	return fallback
+}
+
+// durationOr reads a duration a request states, or the fallback when it
+// states none, one that does not parse, or one that is not positive.
+func durationOr(stated string, fallback time.Duration) time.Duration {
+	if d, err := time.ParseDuration(stated); err == nil && d > 0 {
+		return d
+	}
+	return fallback
+}
+
+// collectConfig is the collector configuration a request states. The policy
+// is the one the request carries, or the document it names, which the
+// operation reads once the address is approved.
+func (a *App) collectConfig(request CaptureRequest, output string) (operation.CollectConfig, error) {
+	cfg := operation.CollectConfig{
+		Address:            request.Address,
+		ApprovedBind:       request.ApprovedBind,
+		OutputPath:         output,
+		MaxFrameBytes:      positiveOr(request.MaxFrameBytes, operation.DefaultMaxFrameBytes),
+		IdleTimeout:        durationOr(request.IdleTimeout, operation.DefaultIdleTimeout),
+		ApplicationTimeout: durationOr(request.ApplicationTimeout, operation.DefaultApplicationTimeout),
+		MaxMessages:        request.MaxMessages,
+		MaxConnections:     request.MaxConnections,
+		MaxSessions:        request.MaxSessions,
+		MaxCaptureBytes:    request.MaxCaptureBytes,
+		TLSKeyReference:    request.TLSKeyReference,
+	}
+	switch {
+	case request.Policy != nil:
+		cfg.Policy = request.Policy
+	case request.PolicyFile != "":
+		path, ref := resolveWorkspacePath(request.Workspace, request.PolicyFile)
+		if path == "" {
+			return operation.CollectConfig{}, errors.New(ref.reason)
+		}
+		cfg.PolicyPath = path
 	}
 	if request.JournalName != "" {
 		path, ref := resolveWorkspacePath(request.Workspace, request.JournalName)
@@ -917,33 +855,5 @@ func (a *App) collectConfig(request CaptureRequest, output string) (operation.Co
 		}
 		cfg.ClientCAPath = path
 	}
-	if request.IdleTimeout != "" {
-		if d, err := time.ParseDuration(request.IdleTimeout); err == nil {
-			cfg.IdleTimeout = d
-		}
-	}
-	if request.ApplicationTimeout != "" {
-		if d, err := time.ParseDuration(request.ApplicationTimeout); err == nil {
-			cfg.ApplicationTimeout = d
-		}
-	}
 	return cfg, nil
-}
-
-func (a *App) resolvePolicy(request CaptureRequest) (collection.Policy, error) {
-	if request.Policy != nil {
-		policy := *request.Policy
-		if err := policy.Validate(); err != nil {
-			return collection.Policy{}, err
-		}
-		return policy, nil
-	}
-	if request.PolicyFile == "" {
-		return collection.Policy{}, errors.New("a receiver policy is required")
-	}
-	path, ref := resolveWorkspacePath(request.Workspace, request.PolicyFile)
-	if path == "" {
-		return collection.Policy{}, errors.New(ref.reason)
-	}
-	return operation.ReceiverPolicyRead(path)
 }

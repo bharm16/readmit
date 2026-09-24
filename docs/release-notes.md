@@ -1,5 +1,20 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- `readmit import`, `import engine`, `listen`, `collect`, `source diagnose|collect`
+  and `observe collect|explain` now run the operations the desktop window runs
+  (#464), so rules that had drifted are decided once. An import refuses an
+  existing `--output` case before reading any evidence ("the case bundle
+  destination must be a new directory"); an import or collection receipt and a
+  `source diagnose --report` may name folders that do not exist yet, created
+  owner-only when written and never inside retained evidence; and `observe
+  collect` refuses a source and window declaring different sources before
+  retaining anything (exit 1) instead of recording an `unsupported` completion.
+  In the window, engine-import refusals no longer quote the export's path,
+  building an index refuses an unstated retention end, the capture screen's
+  import runs the import screen's flow (an unnamed receipt is now
+  `<case>-receipt.json`, was `-import.json`, and it refuses in that screen's
+  words), and a collector is refused a wider bind before its policy is read.
+
 - The desktop window's typed bindings are now generated from the Go facade
   (#488), so a request or result member, its optionality or a vocabulary value
   can no longer differ between the window and the engine. Generating them found

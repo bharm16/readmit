@@ -82,39 +82,17 @@ func windowListening(t *testing.T, app *desktop.App, answered chan desktop.Captu
 	return ""
 }
 
-// caseSummary is the summary the command line prints of a case, up to the
-// timeline `readmit timeline` goes on to list, without the line naming the
-// case's identity, which a recorded case's random session makes differ from
-// any other recording of the same exchange.
-func caseSummary(output string) string {
-	summary, _, _ := strings.Cut(output, "Timeline (")
-	var kept []string
-	for line := range strings.SplitSeq(summary, "\n") {
-		if !strings.HasPrefix(line, "Bundle: ") {
-			kept = append(kept, line)
-		}
-	}
-	return strings.Join(kept, "\n")
-}
-
-// The capture screen's SIU fixture is `readmit listen`: the same exchange, sent
-// to each on the port it chose, is acknowledged the same, exports the same
-// appointment ledger (the hand-authored expectation for its mode), and seals a
-// case the command line reads exactly as it reads its own, with the counts the
-// window reported. Only the random session and the instants differ.
+// The capture screen's SIU fixture runs the listen operation `readmit listen`
+// runs, so what is left to prove is what crosses between the two on disk and
+// on the wire: the window reports where it listens as the command prints it,
+// on the declared host and the port it chose, once its initial ledger is
+// installed; it acknowledges the frozen exchange as the fixture does; it
+// exports the hand-authored ledger for its mode; and it seals a case the
+// command line reads exactly as the window described it. `readmit listen`'s
+// own process contract is TestListenExecutableExportsBothLedgersAndReopensRecordedCase's.
 func TestTheWindowsFixtureListenIsTheCommandLinesListen(t *testing.T) {
 	for _, mode := range []string{"fixed", "defective"} {
 		t.Run(mode, func(t *testing.T) {
-			dir := t.TempDir()
-			command := startReceiver(t, 30*time.Second, "listen", "--address", "127.0.0.1:0", "--mode", mode,
-				"--output", filepath.Join(dir, "command.case"), "--observation", filepath.Join(dir, "command-ledger.json"),
-				"--max-messages", "2", "--idle-timeout", "10s")
-			if startup := command.startup(t, 2); startup != "Profile: readmit-siu-v1\nMode: "+mode+"\n" {
-				t.Fatalf("listen startup: %q", startup)
-			}
-			commandAcks := fixtureExchange(t, command.address, "listen-s12.hl7", "listen-s13.hl7")
-			printed := command.wait(t)
-
 			workspace := t.TempDir()
 			app := desktopApp(t, workspace)
 			answered := make(chan desktop.CaptureSessionResult, 1)
@@ -124,55 +102,42 @@ func TestTheWindowsFixtureListenIsTheCommandLinesListen(t *testing.T) {
 					OutputName: "window.case", ObservationName: "window-ledger.json", MaxMessages: 2, IdleTimeout: "10s",
 				})
 			}()
-			// The window reports where it listens at the point `readmit listen`
-			// prints its Listening line: the declared host, on the port it chose.
 			bound := windowListening(t, app, answered)
-			windowHost, windowPort, err := net.SplitHostPort(bound)
-			commandHost, _, _ := net.SplitHostPort(command.address)
-			if err != nil || windowHost != commandHost || windowHost != "127.0.0.1" || windowPort == "0" {
-				t.Fatalf("the window bound %q and the command line %q for a declared 127.0.0.1:0", bound, command.address)
+			if host, port, err := net.SplitHostPort(bound); err != nil || host != "127.0.0.1" || port == "0" {
+				t.Fatalf("the window bound %q for a declared 127.0.0.1:0", bound)
 			}
 			if _, err := observation.Read(filepath.Join(workspace, "window-ledger.json")); err != nil {
 				t.Fatalf("the window reported listening before its initial ledger was installed: %v", err)
 			}
-			windowAcks := fixtureExchange(t, bound, "listen-s12.hl7", "listen-s13.hl7")
+			acks := fixtureExchange(t, bound, "listen-s12.hl7", "listen-s13.hl7")
 			result := <-answered
 			if result.State != desktop.Completed || result.Case == nil || result.Ledger == nil {
 				t.Fatalf("the window's listen: %+v", result)
 			}
-			if !reflect.DeepEqual(windowAcks, commandAcks) || len(commandAcks) != 2 {
-				t.Fatalf("acknowledgements differ:\nwindow  %q\ncommand %q", windowAcks, commandAcks)
+			for i, control := range []string{"LISTEN-BOOK", "LISTEN-MOVE"} {
+				msa, _, _ := strings.Cut(acks[i], "\r")
+				if fields := strings.Split(msa, "|"); len(fields) < 3 || fields[0] != "MSA" || fields[1] != "AA" || fields[2] != control {
+					t.Fatalf("acknowledgement %d: %q", i, acks[i])
+				}
 			}
 
-			// The exported ledgers are the same appointments, processed in the
-			// same order, and both are the hand-authored expectation.
+			// The exported ledger is the hand-authored expectation for the mode.
 			expected := readStrictDocument[[]observation.Record](t, filepath.Join("..", "testdata", "fixtures", "listen-"+mode+".json"))
-			commandLedger, err := observation.Read(filepath.Join(dir, "command-ledger.json"))
+			ledger, err := observation.Read(filepath.Join(workspace, "window-ledger.json"))
 			if err != nil {
 				t.Fatal(err)
 			}
-			windowLedger, err := observation.Read(filepath.Join(workspace, "window-ledger.json"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !reflect.DeepEqual(windowLedger.Records, expected) || !reflect.DeepEqual(commandLedger.Records, expected) {
-				t.Fatalf("exported ledgers:\nwindow  %+v\ncommand %+v\nwant    %+v", windowLedger.Records, commandLedger.Records, expected)
-			}
-			if !reflect.DeepEqual(windowLedger.Processed, commandLedger.Processed) || windowLedger.Mode != commandLedger.Mode ||
-				windowLedger.Profile != commandLedger.Profile || !windowLedger.Consistent || !commandLedger.Consistent {
-				t.Fatalf("exported ledgers differ:\nwindow  %+v\ncommand %+v", windowLedger, commandLedger)
+			if !reflect.DeepEqual(ledger.Records, expected) || string(ledger.Mode) != mode || !ledger.Consistent {
+				t.Fatalf("exported ledger %+v, want %+v", ledger, expected)
 			}
 
-			// The command line reads the window's case exactly as it printed its
-			// own, and that is what the window reported.
+			// The command line reads the window's case as the window reported it.
 			timeline, stderr, err := run(t, "timeline", filepath.Join(workspace, "window.case"))
 			if err != nil || stderr != "" {
 				t.Fatalf("timeline of the window's case: %v %s", err, stderr)
 			}
-			if caseSummary(timeline) != caseSummary(printed) {
-				t.Fatalf("the window's case reads\n%s\nthe command printed\n%s", timeline, printed)
-			}
 			for _, line := range []string{
+				"Bundle: " + result.Case.Identity,
 				"Schema: " + result.Case.Schema,
 				"Provenance: " + result.Case.Provenance,
 				fmt.Sprintf("Sources: %d", result.Case.Sources),
@@ -185,84 +150,13 @@ func TestTheWindowsFixtureListenIsTheCommandLinesListen(t *testing.T) {
 				fmt.Sprintf("Ledger records: %d", result.Ledger.Records),
 				fmt.Sprintf("Consistent: %t", result.Ledger.Consistent),
 			} {
-				if !strings.Contains(printed, line+"\n") {
-					t.Errorf("the window reported %q, which `readmit listen` did not print", line)
+				if !strings.Contains(timeline, line+"\n") {
+					t.Errorf("the window reported %q, which `readmit timeline` does not read", line)
 				}
 			}
-
-			// The sealed cases hold the same received bytes and the same ledger.
-			windowCase, err := bundle.Open(filepath.Join(workspace, "window.case"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			commandCase, err := bundle.Open(filepath.Join(dir, "command.case"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if windowCase.Identity != result.Case.Identity || !reflect.DeepEqual(windowCase.Observation.Records, commandCase.Observation.Records) {
-				t.Fatal("the sealed ledgers differ")
-			}
-			for i, event := range commandCase.Events {
-				if event.Kind != bundle.Message {
-					continue
-				}
-				commandBytes, _ := commandCase.Raw(event.ID)
-				windowBytes, _ := windowCase.Raw(windowCase.Events[i].ID)
-				if windowCase.Events[i].Kind != bundle.Message || string(windowBytes) != string(commandBytes) {
-					t.Fatalf("received message %d differs", i)
-				}
-			}
-		})
-	}
-}
-
-// What `readmit listen` refuses before it serves, the capture screen refuses
-// in the same words, and neither writes a case or a ledger: a wider bind
-// without approval, a name, an address something else holds, and a
-// destination that already exists.
-func TestTheWindowRefusesAFixtureListenInTheCommandLinesWords(t *testing.T) {
-	held, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer held.Close()
-	for _, refused := range []struct{ name, address, existing string }{
-		{"nonloopback", "0.0.0.0:0", ""},
-		{"name", "localhost:0", ""},
-		{"held", held.Addr().String(), ""},
-		{"case exists", "127.0.0.1:0", "fixture.case"},
-		{"ledger exists", "127.0.0.1:0", "ledger.json"},
-	} {
-		t.Run(refused.name, func(t *testing.T) {
-			dir, workspace := t.TempDir(), t.TempDir()
-			if refused.existing != "" {
-				for _, folder := range []string{dir, workspace} {
-					if err := os.Mkdir(filepath.Join(folder, refused.existing), 0700); err != nil {
-						t.Fatal(err)
-					}
-				}
-			}
-			_, stderr, err := run(t, "listen", "--address", refused.address, "--mode", "fixed",
-				"--output", filepath.Join(dir, "fixture.case"), "--observation", filepath.Join(dir, "ledger.json"), "--max-messages", "1")
-			if err == nil || stderr == "" {
-				t.Fatalf("`readmit listen` served at %s", refused.address)
-			}
-			app := desktopApp(t, workspace)
-			result := app.StartCapture(desktop.CaptureRequest{
-				Workspace: workspace, Kind: "listen", Address: refused.address, FixtureMode: "fixed",
-				OutputName: "fixture.case", ObservationName: "ledger.json", MaxMessages: 1, IdleTimeout: "1s",
-			})
-			if result.State != desktop.Failed || result.Reason != refusedAs(stderr) || result.BoundAddress != "" {
-				t.Fatalf("the window answered %+v, the command line refused with %q", result, refusedAs(stderr))
-			}
-			kept := 0
-			if refused.existing != "" {
-				kept = 1
-			}
-			for _, folder := range []string{dir, workspace} {
-				if entries, _ := os.ReadDir(folder); len(entries) != kept {
-					t.Fatalf("a refused listen wrote into %s: %v", folder, entries)
-				}
+			sealed, err := bundle.Open(filepath.Join(workspace, "window.case"))
+			if err != nil || !reflect.DeepEqual(sealed.Observation.Records, expected) {
+				t.Fatalf("the sealed ledger is not the exported one: %v", err)
 			}
 		})
 	}

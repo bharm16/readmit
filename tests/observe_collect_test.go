@@ -89,7 +89,6 @@ func TestObserveCollectNeverReadsFailedCollectionAsAbsence(t *testing.T) {
 	for name, document := range map[string]string{
 		"a disabled collector": strings.Replace(collectSourceDocument, `"enabled": true`, `"enabled": false`, 1),
 		"a truncated export":   strings.Replace(collectSourceDocument, `"max_bytes": 65536`, `"max_bytes": 8`, 1),
-		"an unsupported scope": strings.Replace(collectSourceDocument, `"scope": "appointments"`, `"scope": "orders"`, 1),
 	} {
 		t.Run(name, func(t *testing.T) {
 			directory, window, source := collectDocuments(t, document)
@@ -120,6 +119,35 @@ func TestObserveCollectNeverReadsFailedCollectionAsAbsence(t *testing.T) {
 			}
 			if stderr != "" {
 				t.Fatalf("%s interleaved a diagnostic with its output: %q", name, stderr)
+			}
+		})
+	}
+}
+
+// A source that declares a different source than the window observes is a
+// mistake in the two declarations, not an observation: it is refused before
+// anything is read or retained, in the words the window refuses it with,
+// rather than retained as a completion saying the source was unsupported.
+func TestObserveCollectRefusesASourceTheWindowDoesNotObserve(t *testing.T) {
+	for name, document := range map[string]string{
+		"another scope":    strings.Replace(collectSourceDocument, `"scope": "appointments"`, `"scope": "orders"`, 1),
+		"another identity": strings.Replace(collectSourceDocument, `"identity": "scheduling-archive"`, `"identity": "billing-archive"`, 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			directory, window, source := collectDocuments(t, document)
+			record, snapshot := filepath.Join(directory, "completion.json"), filepath.Join(directory, "snapshot")
+			for _, format := range [][]string{nil, {"--json"}} {
+				stdout, stderr, err := run(t, append([]string{"observe", "collect", source, "--window", window,
+					"--out", record, "--snapshot", snapshot}, format...)...)
+				if code := exitCode(t, err); code != 1 || stdout != "" ||
+					stderr != "readmit: the observation source and window must declare the same source kind, identity, and scope\n" {
+					t.Fatalf("a mismatched pair exited %d with %q and %q", code, stdout, stderr)
+				}
+				for _, written := range []string{record, snapshot} {
+					if _, err := os.Lstat(written); !os.IsNotExist(err) {
+						t.Fatalf("a refused pair retained %s", filepath.Base(written))
+					}
+				}
 			}
 		})
 	}

@@ -1000,17 +1000,28 @@ func TestBuildIndexValidationAndNegativePaths(t *testing.T) {
 	}
 
 	// Invalid expiry
-	if res := app.BuildIndex(desktop.BuildIndexRequest{Workspace: root, Case: "incident", Output: "test.index.json", Fields: []string{patientField}, Retention: "states", RetainUntil: "not-a-date"}); res.State != desktop.Failed {
+	if res := app.BuildIndex(desktop.BuildIndexRequest{Workspace: root, Case: "incident", Output: "test.index.json", Fields: []string{patientField}, Retention: "states", RetainUntil: "not-a-date"}); res.State != desktop.Failed || res.Reason != index.ErrRetentionEndInvalid.Error() {
 		t.Errorf("expected failure for invalid expiry: %+v", res)
 	}
 
+	// An unstated expiry is refused, as `readmit index build` refuses it,
+	// rather than read as indefinite; the window sends the word.
+	for _, unstated := range []string{"", "  "} {
+		if res := app.BuildIndex(desktop.BuildIndexRequest{Workspace: root, Case: "incident", Output: "test.index.json", Fields: []string{patientField}, Retention: "states", RetainUntil: unstated}); res.State != desktop.Failed || res.Reason != index.ErrRetentionEndUnstated.Error() {
+			t.Errorf("expected failure for an unstated expiry %q: %+v", unstated, res)
+		}
+	}
+	if _, err := os.Lstat(filepath.Join(root, "test.index.json")); !os.IsNotExist(err) {
+		t.Fatal("a refused index build wrote an index")
+	}
+
 	// Output inside evidence
-	if res := app.BuildIndex(desktop.BuildIndexRequest{Workspace: root, Case: "incident", Output: "incident/leak.index.json", Fields: []string{patientField}, Retention: "states"}); res.State != desktop.Failed {
+	if res := app.BuildIndex(desktop.BuildIndexRequest{Workspace: root, Case: "incident", Output: "incident/leak.index.json", Fields: []string{patientField}, Retention: "states", RetainUntil: "indefinite"}); res.State != desktop.Failed {
 		t.Errorf("expected failure for destination inside case: %+v", res)
 	}
 
 	// Case does not exist
-	if res := app.BuildIndex(desktop.BuildIndexRequest{Workspace: root, Case: "nonexistent", Output: "test.index.json", Fields: []string{patientField}, Retention: "states"}); res.State != desktop.Failed {
+	if res := app.BuildIndex(desktop.BuildIndexRequest{Workspace: root, Case: "nonexistent", Output: "test.index.json", Fields: []string{patientField}, Retention: "states", RetainUntil: "indefinite"}); res.State != desktop.Failed || res.Reason != "a case must be named by one directory entry of the open workspace" {
 		t.Errorf("expected failure for nonexistent case: %+v", res)
 	}
 }
