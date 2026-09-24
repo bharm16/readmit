@@ -286,12 +286,12 @@ func (a *App) buildIndex(ctx context.Context, request BuildIndexRequest) BuildIn
 	}
 
 	replacing := false
-	if fi, err := os.Lstat(destination); err == nil {
+	if _, err := os.Lstat(destination); err == nil {
 		if !request.Replace {
 			return fail(Failed, "an index at that destination already exists; choose another name or confirm replacement")
 		}
-		if !fi.Mode().IsRegular() {
-			return fail(Failed, "an index destination must be a regular file")
+		if reason := indexReplacementReason(destination, opened); reason != "" {
+			return fail(Failed, reason)
 		}
 		replacing = true
 	}
@@ -309,6 +309,11 @@ func (a *App) buildIndex(ctx context.Context, request BuildIndexRequest) BuildIn
 	// so a cancelled or refused rebuild leaves the grid the index it was
 	// reading. Writing is exclusive, so it is still removed before the write.
 	if replacing {
+		// The build can take time. Re-check the destination immediately
+		// before removal in case another process changed it while we built.
+		if reason := indexReplacementReason(destination, opened); reason != "" {
+			return fail(Failed, reason)
+		}
 		if err := os.Remove(destination); err != nil {
 			return fail(Failed, "cannot remove existing index for replacement")
 		}
@@ -327,7 +332,28 @@ func (a *App) buildIndex(ctx context.Context, request BuildIndexRequest) BuildIn
 	}
 }
 
-// DescribeIndex reports what one index retains of one case, or finds an applicable index in the workspace.
+// indexReplacementReason permits replacing only an index verified to describe
+// this case's exact evidence. A name or a Replace request is not ownership.
+func indexReplacementReason(path string, opened *bundle.Bundle) string {
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return "an index destination must be a regular file"
+	}
+	existing, err := index.Open(path)
+	if err != nil {
+		return "the existing index cannot be verified as belonging to this case; choose another name"
+	}
+	if existing.Case.Identity != opened.Identity {
+		return "the existing index belongs to a different case; choose another name"
+	}
+	if err := existing.Describes(opened); err != nil {
+		return "the existing index does not describe this case; choose another name"
+	}
+	return ""
+}
+
+// DescribeIndex reports what one named index retains of a case, or finds an
+// index of that case's exact evidence in the workspace.
 func (a *App) DescribeIndex(workspace, caseName, indexName string) IndexResult {
 	return run(a, false, false, func(context.Context) IndexResult {
 		return a.describeIndex(workspace, caseName, indexName)
@@ -356,10 +382,14 @@ func (a *App) describeIndex(workspace, caseName, indexName string) IndexResult {
 
 	standardName := caseName + ".index.json"
 	indexPath := filepath.Join(root, standardName)
+	var candidateResult *IndexResult
 	if info, err := os.Lstat(indexPath); err == nil && info.Mode().IsRegular() {
 		res := describeSpecificIndex(root, standardName, opened, at)
-		if res.State == Completed {
-			return res
+		if res.Index != nil && res.Index.Identity == opened.Identity {
+			if res.State == Completed {
+				return res
+			}
+			candidateResult = &res
 		}
 	}
 
@@ -368,7 +398,6 @@ func (a *App) describeIndex(workspace, caseName, indexName string) IndexResult {
 		return IndexResult{State: Empty, Reason: "no index has been built for this case; build one to explore messages"}
 	}
 
-	var candidateResult *IndexResult
 	for _, entry := range entries {
 		if entry.Name() == standardName {
 			continue
@@ -380,6 +409,13 @@ func (a *App) describeIndex(workspace, caseName, indexName string) IndexResult {
 		}
 		if kind, ok := classify(root, entry.Name(), false); ok && kind == IndexArtifact {
 			res := describeSpecificIndex(root, entry.Name(), opened, at)
+			// A filename or a workspace listing is not ownership. In automatic
+			// discovery, only an index that names this case's exact evidence may
+			// become a rebuild candidate. A person can still explicitly choose
+			// another index and see why it is refused.
+			if res.Index == nil || res.Index.Identity != opened.Identity {
+				continue
+			}
 			if res.State == Completed && res.Index != nil && res.Index.Applicable {
 				return res
 			}
@@ -391,10 +427,6 @@ func (a *App) describeIndex(workspace, caseName, indexName string) IndexResult {
 
 	if candidateResult != nil {
 		return *candidateResult
-	}
-
-	if info, err := os.Lstat(indexPath); err == nil && info.Mode().IsRegular() {
-		return describeSpecificIndex(root, standardName, opened, at)
 	}
 
 	return IndexResult{State: Empty, Reason: "no index has been built for this case; build one to explore messages"}

@@ -860,6 +860,90 @@ func TestBuildIndexSuccessAndRebuild(t *testing.T) {
 	}
 }
 
+func TestDescribeIndexDoesNotOfferAnotherCasesIndex(t *testing.T) {
+	root := t.TempDir()
+	app := workspaceApp(t)
+	first := writeCase(t, root, "incident", framed(gridBooking))
+	second := writeCase(t, root, "followup", framed(gridRebooked))
+	writeIndex(t, root, "incident.index.json", first, nil)
+	before := fingerprint(t, root)
+
+	if got := app.DescribeIndex(root, "incident", ""); got.State != desktop.Completed || got.Index == nil || got.Index.IndexName != "incident.index.json" {
+		t.Fatalf("the first case lost its index: %+v", got)
+	}
+	if got := app.DescribeIndex(root, "followup", ""); got.State != desktop.Empty || got.Index != nil {
+		t.Fatalf("the first case's index was offered for the unindexed second case: %+v", got)
+	}
+	if got := app.DescribeIndex(root, "followup", "incident.index.json"); got.State != desktop.Failed || got.Index == nil || !got.Index.Stale {
+		t.Fatalf("an explicitly selected index of another case must still be refused: %+v", got)
+	}
+	if after := fingerprint(t, root); !reflect.DeepEqual(after, before) {
+		t.Fatalf("describing either case changed the workspace: before %v, after %v", before, after)
+	}
+	wrongReplacement := app.BuildIndex(desktop.BuildIndexRequest{
+		Workspace: root, Case: "followup", Identity: second.Identity,
+		Output: "incident.index.json", Fields: []string{patientField},
+		Retention: "states", RetainUntil: "indefinite", Replace: true,
+	})
+	if wrongReplacement.State != desktop.Failed || !strings.Contains(wrongReplacement.Reason, "different case") {
+		t.Fatalf("replacing the first case's index was not refused: %+v", wrongReplacement)
+	}
+	if after := fingerprint(t, root); !reflect.DeepEqual(after, before) {
+		t.Fatalf("the refused replacement changed the workspace: before %v, after %v", before, after)
+	}
+
+	built := app.BuildIndex(desktop.BuildIndexRequest{
+		Workspace: root, Case: "followup", Identity: second.Identity,
+		Fields: []string{patientField}, Retention: "states", RetainUntil: "indefinite",
+	})
+	if built.State != desktop.Completed || built.Index == nil || built.Index.IndexName != "followup.index.json" {
+		t.Fatalf("the second case did not receive its own index: %+v", built)
+	}
+	if after := fingerprint(t, root); after["incident.index.json"] != before["incident.index.json"] {
+		t.Fatalf("building the second index changed the first index")
+	}
+	if got := app.DescribeIndex(root, "followup", ""); got.State != desktop.Completed || got.Index == nil || got.Index.IndexName != "followup.index.json" {
+		t.Fatalf("the second case's index was not selected: %+v", got)
+	}
+}
+
+func TestChangedCaseCannotReplaceItsOldIndex(t *testing.T) {
+	root := t.TempDir()
+	app := workspaceApp(t)
+	first := writeCase(t, root, "incident", framed(gridBooking))
+	writeIndex(t, root, "incident.index.json", first, nil)
+	before := fingerprint(t, root)["incident.index.json"]
+	if err := os.Rename(filepath.Join(root, "incident"), filepath.Join(root, "incident-original")); err != nil {
+		t.Fatal(err)
+	}
+	revised := writeCase(t, root, "incident", framed(gridRebooked))
+	if revised.Identity == first.Identity {
+		t.Fatal("the revised case must have a different evidence identity")
+	}
+
+	if got := app.DescribeIndex(root, "incident", ""); got.State != desktop.Empty || got.Index != nil {
+		t.Fatalf("the old index was offered as a rebuild of changed evidence: %+v", got)
+	}
+	request := desktop.BuildIndexRequest{
+		Workspace: root, Case: "incident", Identity: revised.Identity,
+		Output: "incident.index.json", Fields: []string{patientField},
+		Retention: "states", RetainUntil: "indefinite", Replace: true,
+	}
+	if got := app.BuildIndex(request); got.State != desktop.Failed || !strings.Contains(got.Reason, "different case") {
+		t.Fatalf("replacing the old evidence's index was not refused: %+v", got)
+	}
+	if after := fingerprint(t, root)["incident.index.json"]; after != before {
+		t.Fatalf("the refused refresh changed the old index")
+	}
+	request.Output, request.Replace = "incident.2.index.json", false
+	if got := app.BuildIndex(request); got.State != desktop.Completed || got.Index == nil || got.Index.IndexName != request.Output {
+		t.Fatalf("the changed case could not receive a fresh index: %+v", got)
+	}
+	if after := fingerprint(t, root)["incident.index.json"]; after != before {
+		t.Fatalf("building a fresh index changed the old index")
+	}
+}
+
 // A person who starts rebuilding an index and cancels has changed their mind,
 // not asked to lose the index the grid was reading. The index being replaced is
 // removed only once its replacement is built, so a cancelled rebuild leaves it

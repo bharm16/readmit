@@ -333,6 +333,21 @@ export function MessageGrid({
   const body = useRef<HTMLTableSectionElement | null>(null);
   const filterName = useRef<HTMLInputElement | null>(null);
   const grid = result?.grid ?? null;
+  const ownedIndex = Boolean(caseEvidence && indexDetails?.identity && indexDetails.identity === caseEvidence.identity);
+  const foreignIndex = Boolean(caseEvidence && indexDetails?.identity && indexDetails.identity !== caseEvidence.identity);
+  const unownedIndex = Boolean(indexDetails && !indexDetails.applicable && !ownedIndex);
+  const rebuildableIndex = Boolean(indexDetails && !indexDetails.applicable && ownedIndex);
+  const freshIndexName = (name: string) => {
+    const standard = `${name}.index.json`;
+    if (!entries.includes(standard)) return standard;
+    // A changed case can keep the same directory name while its old index
+    // remains in the workspace. Suggest an unused entry, never replacement.
+    for (let suffix = 2; suffix <= entries.length + 2; suffix++) {
+      const candidate = `${name}.${suffix}.index.json`;
+      if (!entries.includes(candidate)) return candidate;
+    }
+    return standard;
+  };
 
   // Discarding an unsaved filter writes nothing and changes no selection: the
   // form is emptied and the person is back at its first field.
@@ -342,11 +357,16 @@ export function MessageGrid({
     filterName.current?.focus();
   };
 
+  const caseName = caseEvidence?.name;
+  const caseIdentity = caseEvidence?.identity;
   useEffect(() => {
-    if (caseEvidence && !outputName) {
-      setOutputName(`${caseEvidence.name}.index.json`);
-    }
-  }, [caseEvidence, outputName]);
+    // A draft belongs to the case that opened it. In particular, a replacement
+    // choice must never carry into a different case in the same workspace.
+    setIndexName("");
+    setShowBuildForm(false);
+    setOutputName(caseName ? freshIndexName(caseName) : "");
+    setReplaceExisting(false);
+  }, [caseName, caseIdentity]);
 
   // A new window is a new list, so it starts at its own first row rather than
   // wherever the previous one had been scrolled to.
@@ -372,6 +392,12 @@ export function MessageGrid({
       setOutputName(`${caseEvidence.name}.index.json`);
     }
     setReplaceExisting(true);
+    setShowBuildForm(true);
+  };
+
+  const openNewBuild = () => {
+    setOutputName(caseEvidence ? freshIndexName(caseEvidence.name) : "");
+    setReplaceExisting(false);
     setShowBuildForm(true);
   };
 
@@ -402,8 +428,10 @@ export function MessageGrid({
             className="action-open-build"
             disabled={busy}
             onClick={() => {
-              if (indexDetails && !indexDetails.applicable) {
+              if (rebuildableIndex) {
                 openRebuild();
+              } else if (unownedIndex) {
+                openNewBuild();
               } else {
                 setShowBuildForm((prev) => !prev);
               }
@@ -416,14 +444,32 @@ export function MessageGrid({
         )}
       </div>
 
-      {indexDetails && !indexDetails.applicable ? (
+      {foreignIndex ? (
+        <div className="index-rebuild-banner" role="alert" aria-label="Index mismatch notice">
+          <span className="warning-badge">[Index belongs to different evidence]</span>
+          <p className="rebuild-reason">
+            This index describes another case and cannot be used for the open case. Build a separate index for this case.
+          </p>
+        </div>
+      ) : null}
+
+      {unownedIndex && !foreignIndex ? (
+        <div className="index-rebuild-banner" role="alert" aria-label="Index ownership unknown notice">
+          <span className="warning-badge">[Index cannot be verified]</span>
+          <p className="rebuild-reason">
+            This index cannot be confirmed as belonging to the open case. Build a separate index for this case.
+          </p>
+        </div>
+      ) : null}
+
+      {rebuildableIndex ? (
         <div className="index-rebuild-banner" role="alert" aria-label="Index rebuild notice">
           <span className="warning-badge">[Index rebuild required]</span>
           <p className="rebuild-reason">
-            {indexDetails.stale && "The index was built from different evidence or is stale for this case."}
-            {indexDetails.expired && "The retention period declared for this index has ended."}
-            {indexDetails.damaged && "This index file does not match what was written for it."}
-            {indexDetails.unsupported && "This index was written under an unsupported version."}
+            {indexDetails?.stale && "The index was built from different evidence or is stale for this case."}
+            {indexDetails?.expired && "The retention period declared for this index has ended."}
+            {indexDetails?.damaged && "This index file does not match what was written for it."}
+            {indexDetails?.unsupported && "This index was written under an unsupported version."}
             {" "}The case evidence is unchanged. Rebuild the index from this case to explore records.
           </p>
           {!showBuildForm && onBuildIndex ? (
@@ -439,7 +485,7 @@ export function MessageGrid({
         </div>
       ) : null}
 
-      {!grid && !indexDetails && caseEvidence ? (
+      {!grid && (!indexDetails || unownedIndex) && caseEvidence ? (
         <div className="unindexed-case" aria-label="Unindexed case">
           <h4>Case is unindexed</h4>
           <p className="hint">
@@ -453,10 +499,7 @@ export function MessageGrid({
               type="button"
               className="action-build-index"
               disabled={busy}
-              onClick={() => {
-                setOutputName(`${caseEvidence.name}.index.json`);
-                setShowBuildForm(true);
-              }}
+              onClick={openNewBuild}
             >
               Build case index
             </button>
@@ -504,12 +547,12 @@ export function MessageGrid({
                 : retainUntil
                   ? new Date(retainUntil).toISOString()
                   : "indefinite",
-              replace: replaceExisting,
+              replace: rebuildableIndex && replaceExisting,
             });
             setShowBuildForm(false);
           }}
         >
-          <h4>{indexDetails && !indexDetails.applicable ? "Rebuild case index" : "Build case index"}</h4>
+          <h4>{rebuildableIndex ? "Rebuild case index" : "Build case index"}</h4>
 
           <fieldset className="field-selection">
             <legend>Indexed fields ({buildFields.length} of 16 selected)</legend>
@@ -657,15 +700,17 @@ export function MessageGrid({
               disabled={busy}
               onChange={(e) => setOutputName(e.target.value)}
             />
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={replaceExisting}
-                disabled={busy}
-                onChange={(e) => setReplaceExisting(e.target.checked)}
-              />
-              Replace existing file if present
-            </label>
+            {rebuildableIndex ? (
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={replaceExisting}
+                  disabled={busy}
+                  onChange={(e) => setReplaceExisting(e.target.checked)}
+                />
+                Replace existing file if present
+              </label>
+            ) : null}
           </div>
 
           <div className="form-actions">
@@ -678,7 +723,7 @@ export function MessageGrid({
                 (!isIndefinite && !retainUntil)
               }
             >
-              {indexDetails && !indexDetails.applicable ? "Rebuild index" : "Build index"}
+              {rebuildableIndex ? "Rebuild index" : "Build index"}
             </button>
             <button type="button" disabled={busy} onClick={() => setShowBuildForm(false)}>
               Cancel
