@@ -1,5 +1,5 @@
 name: Pinned Go with a job-specific cache
-description: Check the exact compiler, restore main's newest build and fuzz cache for this job, and save a new one only on main.
+description: Check the exact compiler and restore one main build and fuzz cache per job, compiler and dependency set.
 inputs:
   cache-scope:
     description: Distinct owner for this job or matrix shard.
@@ -23,21 +23,24 @@ runs:
       shell: bash
       env:
         PREFIX: go-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cache-scope }}-${{ steps.toolchain.outputs.version }}-${{ hashFiles(inputs.cache-dependency-path) }}-
+        # Bump deliberately after measuring build-time drift. A new epoch is
+        # seeded once on main and takes the prior epoch through restore-keys.
+        CACHE_EPOCH: stable-1
       run: |
         echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
         echo "modules=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
         echo "prefix=$PREFIX" >> "$GITHUB_OUTPUT"
-    # Only runs on main save a generation; every other run restores main's
-    # newest one and saves nothing. A pull request's own generation could be
-    # restored only by that pull request's next run, and saving it pushed out
-    # the main caches every pull request restores.
+        echo "key=$PREFIX$CACHE_EPOCH" >> "$GITHUB_OUTPUT"
+    # Main saves once per compiler/platform/dependency set and epoch. An exact
+    # hit skips the post-job save; changed source still compiles against the
+    # cached snapshot. Other refs restore main's entry without saving.
     - if: github.ref == 'refs/heads/main'
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
       with:
         path: |
           ${{ steps.paths.outputs.build }}
           ${{ steps.paths.outputs.modules }}
-        key: ${{ steps.paths.outputs.prefix }}${{ github.sha }}
+        key: ${{ steps.paths.outputs.key }}
         restore-keys: |
           ${{ steps.paths.outputs.prefix }}
     - if: github.ref != 'refs/heads/main'
@@ -46,7 +49,7 @@ runs:
         path: |
           ${{ steps.paths.outputs.build }}
           ${{ steps.paths.outputs.modules }}
-        key: ${{ steps.paths.outputs.prefix }}${{ github.sha }}
+        key: ${{ steps.paths.outputs.key }}
         restore-keys: |
           ${{ steps.paths.outputs.prefix }}
     - name: Verify the active Go compiler

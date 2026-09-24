@@ -6,7 +6,8 @@ on:
     branches: [main]
     tags: ['v*']
   # Timed fuzz campaigns run here rather than on pull requests: daily, on
-  # demand, and for every release tag. These runs also refresh main's caches.
+  # demand, and for every release tag. The corpus remains an artifact even if
+  # the job's Go cache is evicted.
   schedule:
     - cron: '41 7 * * *'
   workflow_dispatch:

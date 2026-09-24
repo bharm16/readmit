@@ -142,7 +142,7 @@ sys.stdout.write(answer if isinstance(answer, str) else json.dumps(answer))
         self.add_run(1, [job(11, "fast", 2, 10), job(12, "slow", 3, 50), job(15, "aggregate", 52, 54)])
         self.answers[f"repos/{REPOSITORY}/actions/jobs/11/logs"] = (
             "2026-09-22T10:00:03.1Z Cache Size: ~68 MB\n"
-            "2026-09-22T10:00:03.2Z Cache restored from key: go-v1-Linux-X64-fast-1.27.1-abc-" + "e" * 40 + "\n"
+            "2026-09-22T10:00:03.2Z Cache restored from key: go-v1-Linux-X64-fast-1.27.1-abc-stable-1\n"
             "2026-09-22T10:00:04.0Z Cache restored from key: node-cache-Linux-x64-npm-123\n")
         self.answers[f"repos/{REPOSITORY}/actions/jobs/12/logs"] = (
             "2026-09-22T10:00:04.0Z Cache not found for input keys: go-v1-Linux-X64-slow-1.27.1-abc-" + "f" * 40
@@ -151,7 +151,7 @@ sys.stdout.write(answer if isinstance(answer, str) else json.dumps(answer))
         result = self.report("--caches", "1")
         self.assertEqual(result.returncode, 0, result.stderr)
         lines = result.stdout.splitlines()
-        self.assertTrue(any(line.startswith("  fast") and line.endswith("go restored eeeeeee") for line in lines),
+        self.assertTrue(any(line.startswith("  fast") and line.endswith("go restored stable-1") for line in lines),
                         result.stdout)
         self.assertTrue(any(line.startswith("  slow") and line.endswith("go miss") for line in lines),
                         result.stdout)
@@ -190,7 +190,7 @@ sys.stdout.write(answer if isinstance(answer, str) else json.dumps(answer))
              cache(go.format("tests", "b" * 40), "refs/pull/7/merge", 320, "10:30:00", "10:30:00"),
              cache(go.format("tests", "c" * 40), "refs/pull/8/merge", 330, "10:35:00", "10:50:00")],
             # The second page is fetched too; a fuzz shard's number stays in its prefix.
-            [cache(go.format("fuzz-1", "a" * 40), "refs/heads/main", 180, "09:00:00", "09:00:00"),
+            [cache(go.format("fuzz-1", "stable-1"), "refs/heads/main", 180, "09:00:00", "09:00:00"),
              cache("node-cache-Linux-x64-npm-" + "9" * 64, "refs/heads/main", 35, "08:00:00", "10:31:00"),
              cache(go.format("tests", "d" * 40), "refs/heads/issue-9", 310, "10:36:00", "10:36:00")],
             usage=(1_475_000_000, 6))
@@ -237,21 +237,27 @@ sys.stdout.write(answer if isinstance(answer, str) else json.dumps(answer))
 
 
 class CachePolicy(unittest.TestCase):
-    """The policy the report measures: only runs on main save a Go cache."""
+    """The policy the report measures: one reusable main cache per dependency set."""
 
-    def test_only_main_saves_and_every_other_run_restores_what_main_saved(self):
+    def test_only_main_saves_one_stable_key_and_other_runs_restore_it(self):
         steps = re.split(r"\n    - ", SETUP_GO.read_text())
         saving = [step for step in steps if "uses: actions/cache@" in step]
         restoring = [step for step in steps if "uses: actions/cache/restore@" in step]
         self.assertEqual((len(saving), len(restoring)), (1, 1), steps)
-        self.assertTrue(saving[0].startswith("if: github.ref == 'refs/heads/main'\n"), saving[0])
-        self.assertTrue(restoring[0].startswith("if: github.ref != 'refs/heads/main'\n"), restoring[0])
+        self.assertTrue(saving[0].startswith(
+            "if: github.ref == 'refs/heads/main'\n"), saving[0])
+        self.assertTrue(restoring[0].startswith(
+            "if: github.ref != 'refs/heads/main'\n"), restoring[0])
+        self.assertIn("CACHE_EPOCH: stable-1", SETUP_GO.read_text())
+        self.assertIn('echo "key=$PREFIX$CACHE_EPOCH" >> "$GITHUB_OUTPUT"', SETUP_GO.read_text())
+        self.assertNotIn("github.sha", SETUP_GO.read_text())
         # Another cache release, path or key would make every restore miss
         # the generation main saved.
         pin = lambda step: re.search(r"actions/cache(?:/restore)?@([0-9a-f]{40})", step).group(1)
         self.assertEqual(pin(saving[0]), pin(restoring[0]))
         inputs = lambda step: step[step.index("\n      with:"):]
         self.assertEqual(inputs(saving[0]), inputs(restoring[0]))
+        self.assertIn("key: ${{ steps.paths.outputs.key }}", inputs(saving[0]))
 
 
 if __name__ == "__main__":
