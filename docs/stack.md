@@ -94,7 +94,8 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
   site-defined Z-segments and constrained standard fields, and per field a
   usage code, a typed conditional requirement over one named position, a
   cardinality, a data type, a local code table, an assigning authority and a
-  date rule. A typed editor is the only way it changes, and resolving it
+  date rule. One operation writes its canonical document, which sealing,
+  packaging and the desktop share, and resolving it
   against its pinned pack marks every rule `profile`, `overridden`, `local` or
   `undeclared`. Because a v1 pack carries labels and nothing else, every
   constraint resolves local and the resolution says so. No message is evaluated

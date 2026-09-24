@@ -36,7 +36,7 @@ members:
 | `pack` | Complete `readmit-profile-pack/v1` document, including its original provenance, extraction digest, license and rights-review declarations. |
 | `version` | Complete `readmit-profile-version/v1` seal, verified against the canonical profile. |
 | `origin` | Complete `readmit-profile-origin/v1` document, described below. |
-| `sha256` | 64 lowercase hex digits over all five other members, encoded as compact deterministic JSON with Go `encoding/json/v2`, excluding this member and without a trailing newline. The profile uses its editor's canonical order. |
+| `sha256` | 64 lowercase hex digits over all five other members, encoded as compact deterministic JSON with Go `encoding/json/v2`, excluding this member and without a trailing newline. The profile is in its [canonical order](local-profiles.md#the-canonical-document). |
 
 Existing documents gain no member. Nested readers enforce their own required
 members, limits, versions, closed operators and support claims. Unknown and

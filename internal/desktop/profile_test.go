@@ -1,8 +1,11 @@
 package desktop_test
 
 import (
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -256,6 +259,66 @@ func TestSaveProfile(t *testing.T) {
 	}
 	if !strings.Contains(overwriteResult.Reason, "immutable") {
 		t.Fatalf("expected immutability reason: %s", overwriteResult.Reason)
+	}
+}
+
+// The editor appends a segment it adds after the ones it opened, so the
+// document it hands over holds segments in the order they were added. Saving
+// writes the canonical document whatever that order: segments by identifier,
+// fields by position, members in the order the contract declares them. What is
+// written, what is returned and what the seal was computed over are one set of
+// bytes, and opening or validating the same rules answers that document too.
+func TestSaveProfileWritesTheCanonicalDocument(t *testing.T) {
+	app := workspaceApp(t)
+	root := t.TempDir()
+	canonical := fixture(t, "local-profile.json")
+
+	var document map[string]any
+	if err := json.Unmarshal([]byte(canonical), &document); err != nil {
+		t.Fatal(err)
+	}
+	segments := document["segments"].([]any)
+	slices.Reverse(segments)
+	for _, segment := range segments {
+		slices.Reverse(segment.(map[string]any)["fields"].([]any))
+	}
+	outOfOrder, err := json.Marshal(document, json.Deterministic(true), jsontext.WithIndent("    "))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(outOfOrder) == canonical {
+		t.Fatal("the reordered document is the canonical one")
+	}
+
+	saved := app.SaveProfile(desktop.ProfileSaveRequest{
+		Workspace:  root,
+		Document:   string(outOfOrder),
+		Output:     "saved-profile.json",
+		SealOutput: "saved-profile-seal.json",
+	})
+	if saved.State != desktop.Completed || saved.Seal == nil {
+		t.Fatalf("expected SaveProfile to succeed: %+v", saved)
+	}
+	if written := read(t, filepath.Join(root, "saved-profile.json")); written != canonical {
+		t.Fatalf("SaveProfile wrote a document that is not canonical:\n%s", written)
+	}
+	if saved.Document != canonical {
+		t.Fatalf("SaveProfile returned a document that is not canonical:\n%s", saved.Document)
+	}
+	if read(t, filepath.Join(root, "saved-profile-seal.json")) != fixture(t, "profile-version.json") {
+		t.Fatal("the seal SaveProfile wrote is not the fixture profile's seal")
+	}
+
+	// A profile already on disk out of order still opens, and seals as the
+	// same rules written canonically do.
+	validated := app.ValidateProfile(desktop.ProfileValidateRequest{Workspace: root, Document: string(outOfOrder)})
+	if validated.State != desktop.Completed || validated.Document != canonical || validated.Seal == nil || *validated.Seal != *saved.Seal {
+		t.Fatalf("ValidateProfile answered a document that is not canonical: %+v", validated)
+	}
+	writeDocument(t, root, "out-of-order.json", string(outOfOrder))
+	opened := app.OpenProfile(root, "out-of-order.json", "")
+	if opened.State != desktop.Completed || opened.Document != canonical || opened.Seal == nil || *opened.Seal != *saved.Seal {
+		t.Fatalf("OpenProfile answered a document that is not canonical: %+v", opened)
 	}
 }
 

@@ -139,11 +139,10 @@ func validate(profile, pack, version, origin []byte) (Package, error) {
 	if p.payload.Pack.Support(p.payload.Profile.Base.HL7Version, p.payload.Profile.Base.Family, profilepack.LevelParse) == profilepack.OutcomeUnknown {
 		return Package{}, errors.New("profile combination is not declared by its pinned pack")
 	}
-	editor, err := localprofile.Open(p.payload.Profile)
+	p.payload.Profile, _, err = localprofile.Canonical(p.payload.Profile)
 	if err != nil {
 		return Package{}, err
 	}
-	p.payload.Profile = editor.Profile()
 	return p, nil
 }
 
@@ -206,11 +205,7 @@ func (p Package) Documents() (map[string][]byte, error) {
 	if p.payload.Schema != Schema {
 		return nil, errors.New("profile package was not verified")
 	}
-	editor, err := localprofile.Open(p.payload.Profile)
-	if err != nil {
-		return nil, err
-	}
-	profile, err := editor.Encode()
+	_, profile, err := localprofile.Canonical(p.payload.Profile)
 	if err != nil {
 		return nil, err
 	}

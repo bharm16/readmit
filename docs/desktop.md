@@ -3815,6 +3815,10 @@ The panel provides five functional tabs:
    - Computes canonical profile version seals ([`readmit-profile-version/v1`](profile-versions.md))
      and enforces immutability: saving an approved profile revision requires
      bumping the version; approved profiles are never mutated or overwritten in place.
+     Opening, validating and saving answer the profile's
+     [canonical document](local-profiles.md#the-canonical-document), and saving
+     writes it, whatever order the editor added segments and fields in: the
+     bytes its seal is computed over.
 3. **Version Compare & Test Pins**:
    - Compares two profile revisions side-by-side and reports differences
      categorized by kind (`added`, `removed`, `modified`, `tightened`, `loosened`).

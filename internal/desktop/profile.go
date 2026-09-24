@@ -4,8 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"errors"
 	"io/fs"
 	"os"
@@ -292,13 +290,13 @@ func (a *App) OpenProfile(workspace, entry, packEntry string) LocalProfileResult
 		if err != nil {
 			return LocalProfileResult{State: Failed, Reason: err.Error()}
 		}
-		canonicalBytes, err := json.Marshal(profile, json.Deterministic(true), jsontext.WithIndent("  "))
+		_, document, err := localprofile.Canonical(profile)
 		if err != nil {
 			return LocalProfileResult{State: Failed, Reason: "profile could not be canonicalized"}
 		}
 		return LocalProfileResult{
 			State:      Completed,
-			Document:   string(canonicalBytes) + "\n",
+			Document:   string(document),
 			Profile:    &profile,
 			Resolution: &resolution,
 			Seal:       &seal,
@@ -331,13 +329,13 @@ func (a *App) ValidateProfile(request ProfileValidateRequest) LocalProfileResult
 		if err != nil {
 			return LocalProfileResult{State: Failed, Reason: err.Error()}
 		}
-		canonicalBytes, err := json.Marshal(profile, json.Deterministic(true), jsontext.WithIndent("  "))
+		_, document, err := localprofile.Canonical(profile)
 		if err != nil {
 			return LocalProfileResult{State: Failed, Reason: "profile could not be canonicalized"}
 		}
 		return LocalProfileResult{
 			State:      Completed,
-			Document:   string(canonicalBytes) + "\n",
+			Document:   string(document),
 			Profile:    &profile,
 			Resolution: &resolution,
 			Seal:       &seal,
@@ -361,11 +359,10 @@ func (a *App) SaveProfile(request ProfileSaveRequest) LocalProfileResult {
 		if err != nil {
 			return LocalProfileResult{State: Failed, Reason: err.Error()}
 		}
-		canonicalBytes, err := json.Marshal(profile, json.Deterministic(true), jsontext.WithIndent("  "))
+		_, canonicalDoc, err := localprofile.Canonical(profile)
 		if err != nil {
 			return LocalProfileResult{State: Failed, Reason: "profile could not be canonicalized"}
 		}
-		canonicalDoc := append(canonicalBytes, '\n')
 
 		// Immutability check: never mutate an approved profile or overwrite existing profile.
 		if err := a.checkProfileImmutability(root, profile, request.Output); err != nil {

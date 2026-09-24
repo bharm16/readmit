@@ -1,4 +1,4 @@
-// Package localprofile reads and edits readmit-local-profile/v1: the document
+// Package localprofile reads and writes readmit-local-profile/v1: the document
 // a team writes down its own interface contract in, beside the shared
 // readmit-profile-pack/v1 metadata rather than inside it.
 //
@@ -557,12 +557,6 @@ var profileDocument = strictdoc.Document{
 	Requires:    "a local profile requires profile, base and segments",
 }
 
-// Validate is the profile checked against itself: every rule the contract
-// requires, with no pack involved. Decode runs it, and Editor.Encode runs it,
-// so a profile that was assembled in Go is held to exactly what a profile that
-// was read from a file is held to.
-func (p Profile) Validate() error { return p.check(true) }
-
 // ValidateIdentity holds an id and a version to the rules every identity in
 // this product follows. The what argument names whose identity it is, so the
 // refusal says which of the two a document carries wrongly. A document that pins a local
@@ -573,11 +567,11 @@ func ValidateIdentity(what string, identity Identity) error {
 	return validateIdentity(what, identity)
 }
 
-// check holds a profile to the contract. complete additionally requires what
-// a finished document must have and a profile under construction need not:
-// an editor may hold a profile before its first segment exists, and Encode
-// refuses that profile rather than writing a document with nothing in it.
-func (p Profile) check(complete bool) error {
+// Validate is the profile checked against itself: every rule the contract
+// requires, with no pack involved. Decode runs it, and Canonical runs it, so a
+// profile that was assembled in Go is held to exactly what a profile that was
+// read from a file is held to.
+func (p Profile) Validate() error {
 	if p.Schema != Schema {
 		return errors.New("a local profile must declare " + Schema)
 	}
@@ -591,7 +585,7 @@ func (p Profile) check(complete bool) error {
 	if err != nil {
 		return err
 	}
-	if complete && len(p.Segments) == 0 {
+	if len(p.Segments) == 0 {
 		return errors.New("a local profile constrains at least one segment")
 	}
 	if len(p.Segments) > maxSegments {

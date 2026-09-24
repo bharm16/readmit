@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -52,6 +53,36 @@ func TestRoundTripPreservesVersionAndProvenance(t *testing.T) {
 	}
 	if !bytes.Equal(files["profile.json"], fixture(t, "local-profile.json")) {
 		t.Fatal("profile rules changed")
+	}
+}
+
+// A package carries its profile's canonical document and digest whatever order
+// the profile it was exported from was written in, so the same rules under the
+// same seal export the same package byte for byte.
+func TestExportCarriesTheCanonicalProfileWhateverItsOrder(t *testing.T) {
+	want, e := profilepackage.Export(fixture(t, "local-profile.json"), fixture(t, "profile-pack.json"), fixture(t, "profile-version.json"), origin())
+	if e != nil {
+		t.Fatal(e)
+	}
+	var document map[string]any
+	if e = json.Unmarshal(fixture(t, "local-profile.json"), &document); e != nil {
+		t.Fatal(e)
+	}
+	segments := document["segments"].([]any)
+	slices.Reverse(segments)
+	for _, segment := range segments {
+		slices.Reverse(segment.(map[string]any)["fields"].([]any))
+	}
+	reordered, e := json.Marshal(document, json.Deterministic(true))
+	if e != nil {
+		t.Fatal(e)
+	}
+	got, e := profilepackage.Export(reordered, fixture(t, "profile-pack.json"), fixture(t, "profile-version.json"), origin())
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatal("the same rules in another order exported a different package")
 	}
 }
 

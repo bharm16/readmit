@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json/v2"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -134,7 +135,7 @@ func TestSealIgnoresFormattingAndFollowsRules(t *testing.T) {
 		t.Fatalf("a reformatted profile did not verify: %v", err)
 	}
 
-	changed := relaxed(t, original)
+	changed := relaxed(t)
 	changedSeal, err := profileversion.Seal(changed)
 	if err != nil {
 		t.Fatalf("seal the changed profile: %v", err)
@@ -156,7 +157,7 @@ func TestVerifyRefusesAProfileThatChangedUnderItsVersion(t *testing.T) {
 		t.Fatalf("the sealed profile did not verify against itself: %v", err)
 	}
 
-	changed := relaxed(t, profile(t))
+	changed := relaxed(t)
 	err = sealed.Verify(changed)
 	if err == nil {
 		t.Fatal("a profile that changed under its version verified")
@@ -232,24 +233,25 @@ func TestDecodeVersionRefusesWhatItCannotStandBehind(t *testing.T) {
 	}
 }
 
-// relaxed returns the fixture profile with one rule changed, through the typed
-// editor, so the changed profile is one a reader would also accept.
-func relaxed(t *testing.T, original localprofile.Profile) localprofile.Profile {
+// relaxed returns the fixture profile with one rule changed, SCH-1 now
+// supported and possibly empty, so the changed profile is one a reader would
+// also accept.
+func relaxed(t *testing.T) localprofile.Profile {
 	t.Helper()
-	editor, err := localprofile.Open(original)
-	if err != nil {
-		t.Fatalf("open the profile: %v", err)
+	changed := profile(t)
+	sch := constrained(t, &changed, "SCH")
+	at := slices.IndexFunc(sch.Fields, func(field localprofile.Field) bool { return field.Position == 1 })
+	if at < 0 {
+		t.Fatal("the profile does not constrain SCH-1")
 	}
-	if err := editor.SetField("SCH", localprofile.Field{
+	sch.Fields[at] = localprofile.Field{
 		Position:    1,
 		Name:        "Placer appointment number",
 		Usage:       localprofile.UsageRequiredOrEmpty,
 		Cardinality: &localprofile.Cardinality{Min: 0, Max: "1"},
 		Type:        "EI",
-	}); err != nil {
-		t.Fatalf("relax SCH-1: %v", err)
 	}
-	return editor.Profile()
+	return changed
 }
 
 // TestSealRefusesADocumentNothingCouldReadBack is the size boundary of the

@@ -81,25 +81,17 @@ func FuzzLocalProfileDocument(f *testing.F) {
 			checkSegment(t, segment, declared)
 		}
 
-		// The editor writes exactly what the reader reads, and writing again
+		// Canonical writes exactly what the reader reads, and writing again
 		// changes nothing, so a profile has one canonical document.
-		editor, err := localprofile.Open(profile)
-		if err != nil {
-			t.Fatalf("a decoded profile could not be opened: %v", err)
-		}
-		written, err := editor.Encode()
+		_, written, err := localprofile.Canonical(profile)
 		if err != nil {
 			t.Fatalf("a decoded profile could not be written: %v", err)
 		}
 		again, err := localprofile.Decode(written)
 		if err != nil {
-			t.Fatalf("the editor wrote a document its own reader refuses: %v", err)
+			t.Fatalf("Canonical wrote a document its own reader refuses: %v", err)
 		}
-		rewritten, err := localprofile.Open(again)
-		if err != nil {
-			t.Fatalf("a written profile could not be opened: %v", err)
-		}
-		if second, err := rewritten.Encode(); err != nil || string(second) != string(written) {
+		if _, second, err := localprofile.Canonical(again); err != nil || string(second) != string(written) {
 			t.Fatalf("writing a profile twice produced different bytes: %v", err)
 		}
 
