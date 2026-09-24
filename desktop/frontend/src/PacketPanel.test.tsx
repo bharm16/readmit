@@ -280,6 +280,42 @@ test("export seals all five renderings into a natively chosen destination and re
 
 });
 
+test("packet export chooser shows dismissal and unavailability reasons", async () => {
+  const user = userEvent.setup();
+  const packets: Artifact[] = [...ENTRIES, { name: PACKET_ENTRY, kind: "packet", schema: "readmit-retained-packet/v1" }];
+  const { facade } = renderPanel(
+    {
+      OpenPacket: () => packetResult(),
+      ChoosePacketExportPath: () => ({ state: "cancelled", reason: "no new folder was named" }),
+    },
+    packets,
+  );
+  await user.selectOptions(screen.getByLabelText("Packets of this workspace"), PACKET_ENTRY);
+  await user.click(screen.getByRole("button", { name: "Verify read-only" }));
+  await screen.findByText(/Verified: identity/);
+  const choose = screen.getByRole("button", { name: "Choose destination…" });
+  const exportButton = screen.getByRole("button", { name: "Export portable review" }) as HTMLButtonElement;
+
+  await user.click(choose);
+  expect(await screen.findByText("no new folder was named")).toBeTruthy();
+  expect(screen.getByText("No destination chosen.")).toBeTruthy();
+  expect(exportButton.disabled).toBe(true);
+
+  facade.reply({ ChoosePacketExportPath: () => ({ state: "failed", reason: "the save dialog is unavailable" }) });
+  await user.click(choose);
+  expect(await screen.findByText("the save dialog is unavailable")).toBeTruthy();
+  expect(screen.queryByText("no new folder was named")).toBeNull();
+  expect(screen.getByText("No destination chosen.")).toBeTruthy();
+  expect(exportButton.disabled).toBe(true);
+  expect(facade.callsTo("ExportPacketReview")).toHaveLength(0);
+
+  facade.reply({ ChoosePacketExportPath: () => ({ state: "completed", path: "/chosen/review" }) });
+  await user.click(choose);
+  expect(await screen.findByText("/chosen/review")).toBeTruthy();
+  expect(screen.queryByText("the save dialog is unavailable")).toBeNull();
+  expect(facade.callsTo("ChoosePacketExportPath")).toHaveLength(3);
+});
+
 test("an export refusal is shown as itself and never as a sealed review", async () => {
   const user = userEvent.setup();
   const packets: Artifact[] = [...ENTRIES, { name: PACKET_ENTRY, kind: "packet", schema: "readmit-retained-packet/v1" }];

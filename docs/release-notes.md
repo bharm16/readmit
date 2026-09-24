@@ -1,5 +1,10 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The packet panel now shows why its native export-destination dialog was
+  dismissed or unavailable (#419), as the privacy panel does. Neither answer
+  names a new destination. Packet export and existing artifact contracts are
+  unchanged.
+
 - The desktop collector now authors valid controlled-fault policies from each
   fault control (#407): selecting a fault supplies an explicit test port, and
   opening a saved fault policy fills an untouched address from its approved
