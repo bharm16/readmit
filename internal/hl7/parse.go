@@ -40,7 +40,7 @@ func Parse(source []byte, options Options) (*Document, error) {
 	if options.Terminator != "" && options.Terminator != "auto" && options.Terminator != CR && options.Terminator != LF && options.Terminator != CRLF {
 		return nil, fmt.Errorf("terminator must be auto, cr, lf, or crlf")
 	}
-	doc := &Document{Format: format, source: bytes.Clone(source)}
+	doc := &Document{Format: format, source: bytes.Clone(source), options: options}
 	if format == Raw {
 		message, err := parseMessage(doc.source, Span{0, len(source)}, options.Terminator, &budget)
 		if err != nil {

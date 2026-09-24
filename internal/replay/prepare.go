@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"time"
 
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/destination"
@@ -140,8 +139,7 @@ func validateTransforms(transforms []Transformation) error {
 				return errors.New("control ID transformation does not accept a shift")
 			}
 		case "shift-timestamps":
-			d, err := time.ParseDuration(t.Shift)
-			if err != nil || d == 0 || d%time.Second != 0 || d < -10*365*24*time.Hour || d > 10*365*24*time.Hour {
+			if _, err := hl7.ParseShift(t.Shift); err != nil {
 				return errors.New("timestamp shift requires nonzero whole seconds within ten years")
 			}
 		default:
@@ -195,33 +193,24 @@ func selectedBytes(doc *hl7.Document, path string, required bool) ([]byte, error
 	return v.Decoded, nil
 }
 
-type edit struct {
-	span  hl7.Span
-	value []byte
-}
-
 func transform(raw []byte, mapping Mapping, transformations []Transformation, rebases map[string][]byte) ([]byte, []Change, error) {
 	doc, err := parseRequest(raw)
 	if err != nil {
 		return nil, nil, err
 	}
-	var edits []edit
+	var edits []hl7.Edit
 	changes := []Change{}
-	add := func(name, path string, value []byte) error {
-		selector, err := hl7.ParseSelector(path)
-		if err != nil {
-			return err
-		}
-		field, err := doc.Select(0, selector)
+	add := func(name string, edit hl7.Edit) error {
+		field, err := doc.Select(0, edit.Selector)
 		if err != nil {
 			return err
 		}
 		old := doc.Bytes(field.Span)
-		if bytes.Equal(old, value) {
+		if bytes.Equal(old, edit.Value) {
 			return nil
 		}
-		edits = append(edits, edit{field.Span, bytes.Clone(value)})
-		changes = append(changes, Change{Transformation: name, SourceOccurrence: mapping.SourceOccurrence, OutboundOccurrence: mapping.OutboundOccurrence, Selector: selector.String(), OldState: field.State, NewState: hl7.Present, Old: old, New: bytes.Clone(value)})
+		edits = append(edits, edit)
+		changes = append(changes, Change{Transformation: name, SourceOccurrence: mapping.SourceOccurrence, OutboundOccurrence: mapping.OutboundOccurrence, Selector: edit.Selector.String(), OldState: field.State, NewState: hl7.Present, Old: old, New: bytes.Clone(edit.Value)})
 		return nil
 	}
 	for _, transformation := range transformations {
@@ -252,57 +241,46 @@ func transform(raw []byte, mapping Mapping, transformations []Transformation, re
 			key, _ := json.Marshal(scope, json.Deterministic(true))
 			value, exists := rebases[string(key)]
 			if !exists {
-				value = fmt.Appendf(nil, "READMIT%06d", len(rebases)+1)
+				value = hl7.Surrogate(len(rebases) + 1)
 				rebases[string(key)] = value
 			}
-			if err := add(transformation.Name, "MSH-10", value); err != nil {
+			control, _ := hl7.ParseSelector("MSH-10")
+			if err := add(transformation.Name, hl7.Edit{Selector: control, Value: value}); err != nil {
 				return nil, nil, err
 			}
 		case "shift-timestamps":
-			shift, _ := time.ParseDuration(transformation.Shift)
-			paths := []string{"MSH-7"}
-			count := 0
-			for _, segment := range doc.Messages[0].Segments {
-				if segment.ID != "SCH" {
-					continue
-				}
-				count++
-				for repetition := range segment.Field(11).Repetitions {
-					paths = append(paths, fmt.Sprintf("SCH[%d]-11[%d].4", count, repetition+1))
-					paths = append(paths, fmt.Sprintf("SCH[%d]-11[%d].5", count, repetition+1))
-				}
+			shift, _ := hl7.ParseShift(transformation.Shift)
+			shifted, err := doc.ShiftTimestamps(0, shift)
+			switch {
+			case errors.Is(err, hl7.ErrShiftTimestamp):
+				return nil, nil, errors.New("timestamp transformation supports only whole-second MSH-7 and SCH-11.4/5 with optional numeric offset")
+			case errors.Is(err, hl7.ErrShiftYear):
+				return nil, nil, errors.New("timestamp shift exceeds supported year range")
+			case err != nil:
+				return nil, nil, err
 			}
-			for _, path := range paths {
-				selector, _ := hl7.ParseSelector(path)
-				field, _ := doc.Select(0, selector)
-				if field.State != hl7.Present {
-					continue
-				}
-				value := string(doc.Bytes(field.Span))
-				layout := "20060102150405"
-				if len(value) == 19 {
-					layout += "-0700"
-				}
-				parsed, err := time.Parse(layout, value)
-				if err != nil || parsed.Format(layout) != value {
-					return nil, nil, errors.New("timestamp transformation supports only whole-second MSH-7 and SCH-11.4/5 with optional numeric offset")
-				}
-				shifted := parsed.Add(shift)
-				if shifted.Year() < 1 || shifted.Year() > 9999 {
-					return nil, nil, errors.New("timestamp shift exceeds supported year range")
-				}
-				if err := add(transformation.Name, path, []byte(shifted.Format(layout))); err != nil {
+			for _, edit := range shifted {
+				if err := add(transformation.Name, edit); err != nil {
 					return nil, nil, err
 				}
 			}
 		}
 	}
-	// Reverse-span replacement preserves every byte outside the selected fields,
-	// including segment terminators, character encoding, and existing framing.
-	slices.SortFunc(edits, func(a, b edit) int { return b.span.Start - a.span.Start })
+	// The shared occurrence rewrite preserves every byte outside the selected
+	// fields, including segment terminators, character encoding, and existing
+	// framing, under whatever delimiters the message declares.
 	result := bytes.Clone(raw)
-	for _, edit := range edits {
-		result = append(append(append([]byte{}, result[:edit.span.Start]...), edit.value...), result[edit.span.End:]...)
+	if len(edits) > 0 {
+		rewritten, err := doc.Rewrite(0, edits, hl7.DeclaredDelimiters)
+		switch {
+		case errors.Is(err, hl7.ErrRewriteTooLarge):
+			return nil, nil, errors.New("outbound framed message exceeds 16 MiB")
+		case errors.Is(err, hl7.ErrUnreadableRewrite):
+			return nil, nil, errors.New("selected occurrence is not one supported HL7 message")
+		case err != nil:
+			return nil, nil, err
+		}
+		result = rewritten.Bytes
 	}
 	if doc.Format == hl7.Raw {
 		result = mllp.Frame(result)

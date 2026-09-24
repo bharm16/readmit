@@ -29,11 +29,6 @@ type transformer struct {
 	derived  map[string]*hl7.Document
 }
 
-type edit struct {
-	span  hl7.Span
-	value []byte
-}
-
 func (t *transformer) finding(location, class, reason, policy string, resolved bool) error {
 	if len(t.findings) >= maxFindings {
 		return errors.New("redaction review exceeds finding limit")
@@ -99,24 +94,24 @@ func (t *transformer) transformOccurrence(event bundle.Event, raw []byte) ([]byt
 	}
 	t.original[event.ID] = doc
 	message := doc.Messages[0]
-	if message.Delimiters != (hl7.Delimiters{Field: '|', Component: '^', Repetition: '~', Escape: '\\', Subcomponent: '&'}) {
+	if !message.Delimiters.Standard() {
 		return raw, t.finding(location, "other-unique-identifiers", "unsupported-delimiters", "", false)
 	}
 	covered := make([]bool, len(raw))
-	var edits []edit
+	var edits []hl7.Edit
+	// leftEmpty is every empty position a rule has already claimed by leaving
+	// it empty.
+	leftEmpty := map[hl7.Span]bool{}
 	removed := map[string]bool{}
 	counts := map[string]int{}
-	for index, segment := range message.Segments {
+	for _, segment := range message.Segments {
 		counts[segment.ID]++
 		segmentPath := fmt.Sprintf("%s/%s[%d]", location, segment.ID, counts[segment.ID])
 		if slices.Contains(t.policy.RemoveSegments, segment.ID) {
-			end := message.Span.End
-			if index+1 < len(message.Segments) {
-				end = message.Segments[index+1].Span.Start
-			}
-			// Message.Span excludes MLLP framing; keep any framing intact.
-			edits = append(edits, edit{span: hl7.Span{Start: segment.Span.Start, End: end}})
-			for i := segment.Span.Start; i < end; i++ {
+			// The parser admitted the segment identifier and its occurrence.
+			at, _ := hl7.NewSelector(hl7.Parts{Segment: segment.ID, Occurrence: counts[segment.ID], Field: 1, Repetition: 1})
+			edits = append(edits, hl7.Edit{Selector: at, RemoveSegment: true})
+			for i := segment.Span.Start; i < segment.Span.End; i++ {
 				covered[i] = true
 			}
 			removed[segment.ID] = true
@@ -153,11 +148,6 @@ func (t *transformer) transformOccurrence(event bundle.Event, raw []byte) ([]byt
 				return nil, errors.New("delimiter declarations may only retain exact literals")
 			}
 		}
-		for _, existing := range edits {
-			if value.Span.Start < existing.span.End && existing.span.Start < value.Span.End {
-				return nil, errors.New("redaction policies overlap")
-			}
-		}
 		original := doc.Bytes(value.Span)
 		replacement, handled, err := t.applyRule(doc, value, rule)
 		if err != nil {
@@ -166,15 +156,26 @@ func (t *transformer) transformOccurrence(event bundle.Event, raw []byte) ([]byt
 		if err := t.finding(path, rule.Class, "named-field", rule.Policy, handled); err != nil {
 			return nil, err
 		}
-		if !handled {
-			continue
+		if handled {
+			for i := value.Span.Start; i < value.Span.End; i++ {
+				covered[i] = true
+			}
+			if rule.Class != "structural" && !bytes.Equal(original, replacement) {
+				t.addTerm(original)
+			}
+		} else {
+			replacement = original
 		}
-		for i := value.Span.Start; i < value.Span.End; i++ {
-			covered[i] = true
+		// Every rule claims its position, applied or not, so overlapping rules
+		// are refused whatever order the policy lists them in. Rules that all
+		// leave one empty position empty agree, so it is claimed once for them;
+		// the delimiter declarations are only ever retained exactly as written.
+		quiet := len(original) == 0 && len(replacement) == 0
+		if !value.Literal && !(quiet && leftEmpty[value.Span]) {
+			edits = append(edits, hl7.Edit{Selector: selector, Value: replacement})
 		}
-		edits = append(edits, edit{span: value.Span, value: replacement})
-		if rule.Class != "structural" && !bytes.Equal(original, replacement) {
-			t.addTerm(original)
+		if quiet {
+			leftEmpty[value.Span] = true
 		}
 	}
 	counts = map[string]int{}
@@ -206,27 +207,19 @@ func (t *transformer) transformOccurrence(event bundle.Event, raw []byte) ([]byt
 			}
 		}
 	}
-	slices.SortFunc(edits, func(a, b edit) int { return a.span.Start - b.span.Start })
-	var output []byte
-	position := 0
-	for _, change := range edits {
-		if change.span.Start < position {
-			return nil, errors.New("redaction spans overlap")
-		}
-		output = append(output, raw[position:change.span.Start]...)
-		output = append(output, change.value...)
-		position = change.span.End
-	}
-	output = append(output, raw[position:]...)
-	if len(output) > bundle.MaxSourceBytes {
+	rewritten, err := doc.Rewrite(0, edits, hl7.StandardDelimiters)
+	switch {
+	case errors.Is(err, hl7.ErrOverlappingEdits):
+		return nil, errors.New("redaction policies overlap")
+	case errors.Is(err, hl7.ErrRewriteTooLarge):
 		return nil, errors.New("derived occurrence exceeds size limit")
-	}
-	derived, err := hl7.Parse(output, hl7.Options{Terminator: event.Terminator})
-	if err != nil {
+	case errors.Is(err, hl7.ErrUnreadableRewrite):
 		return nil, errors.New("transformation produced unsupported HL7 syntax")
+	case err != nil:
+		return nil, err
 	}
-	t.derived[event.ID] = derived
-	return output, nil
+	t.derived[event.ID] = rewritten.Document
+	return rewritten.Bytes, nil
 }
 
 func textField(selector hl7.Selector) bool {

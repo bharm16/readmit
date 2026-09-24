@@ -9,6 +9,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/profilepack"
 )
 
@@ -135,15 +136,13 @@ func validateStep(step Step) (Step, error) {
 }
 
 // ParseShift reads the one duration a date shift is held to, and it is the one
-// `readmit replay --shift` already accepts: nonzero whole seconds within ten
-// 365-day years, so every occurrence moves by the same explicit amount and the
-// intervals between them are unchanged.
+// `readmit replay --shift` accepts, because both ask [hl7.ParseShift]: nonzero
+// whole seconds within ten 365-day years, so every occurrence moves by the
+// same explicit amount and the intervals between them are unchanged.
 func ParseShift(shift string) (time.Duration, error) {
-	refused := errors.New("a date shift is a nonzero whole-second duration within ten years, for example 24h or -2h")
-	parsed, err := time.ParseDuration(shift)
-	if err != nil || parsed == 0 || parsed%time.Second != 0 ||
-		parsed < -MaxShift*time.Second || parsed > MaxShift*time.Second {
-		return 0, refused
+	parsed, err := hl7.ParseShift(shift)
+	if err != nil {
+		return 0, errors.New("a date shift is a nonzero whole-second duration within ten years, for example 24h or -2h")
 	}
 	return parsed, nil
 }
