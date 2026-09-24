@@ -255,6 +255,12 @@ func TestProtectionWritesAdmitTheAuthorAndReadsStayFree(t *testing.T) {
 	if denied := viewer.RotateProtectionControl(root, entry, "lab-evidence"); denied.State != desktop.PermissionDenied {
 		t.Fatalf("a policy-less viewer rotated a control: %+v", denied)
 	}
+	if denied := viewer.RetireProtectionControl(root, entry, "lab-evidence"); denied.State != desktop.PermissionDenied || denied.Document != nil {
+		t.Fatalf("a policy-less viewer retired a control: %+v", denied)
+	}
+	if shown := app.ReadProtection(root, entry); shown.Document == nil || shown.Document.Controls[0].State != "active" {
+		t.Fatalf("a refused retirement changed the control: %+v", shown.Document)
+	}
 	if shown := viewer.ReadProtection(root, entry); shown.State != desktop.Completed || shown.Document == nil {
 		t.Fatalf("a policy-less viewer could not read the controls: %+v", shown)
 	}

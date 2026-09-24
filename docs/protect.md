@@ -46,11 +46,13 @@ The [desktop shell](desktop.md#privacy-review-protected-export-and-support-shari
 reaches these operations from its protection panel: a control is registered as
 a structured form, the document is shown with the key masked and the locator
 arguments counted, and packages are packed, inspected, opened and discarded
-under the control a person selects. The window never renders key material, a
-rotation is recorded only when the declared store answers, and every refusal —
-a missing key, a retired control, a retained package — is this command's own.
-Packing a package writes it beside the evidence; moving it anywhere remains a
-separate deliberate act.
+under the control a person selects. Retiring a control there is `protect
+retire`, written as the same bytes; the window asks first, then shows the
+control retired, offers it for no new package and still opens what it wrote.
+The window never renders key material, a rotation is recorded only when the
+declared store answers, and every refusal — a missing key, a retired control, a
+retained package — is this command's own. Packing a package writes it beside
+the evidence; moving it anywhere remains a separate deliberate act.
 
 ## The protection document
 

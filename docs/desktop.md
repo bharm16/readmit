@@ -99,7 +99,9 @@ a send and during authoring that reopen to uncertain delivery and to the
 draft, never to a resend. From there the test becomes a suite that fails and
 then passes the same way and is handed to CI as the workflow the window
 writes; the runs become a sealed packet, a portable review and a reviewed
-support summary, and a planted example goes through privacy review and export;
+support summary published only into a new folder and refused once changed, and
+a planted example goes through privacy review and export; a protection control
+writes a package, is retired only once confirmed, and still opens what it wrote;
 the project is backed up, held to a quota, archived, deleted and restored; and
 a delivered license is installed, activated and released, an expired term is
 renewed and a term in grace still admits work, beside the commercial portal's
@@ -2604,10 +2606,18 @@ substitutes for unavailable external proof.
 **Protection** registers a control as a structured reference — the declared
 at-rest storage, the absolute path of the program that prints the key, and
 locator arguments that are counted rather than echoed — and packs, inspects,
-opens and discards transfer packages under it. Key material is never in the
-window: the views show the one mask, a rotation is recorded only after the
-declared store answers, and a missing key, a wrong key, a rotated-away key and
-a tampered package are each the operation's own refusal. The package view
+opens and discards transfer packages under it. A document not written yet is
+named under **New protection document**; it reads as empty, and registering the
+first control writes it. Key material is never in the window: the views show
+the one mask, a rotation is recorded only after the declared store answers, and
+a missing key, a wrong key, a rotated-away key and a tampered package are each
+the operation's own refusal. Every registration, rotation and retirement shows
+the document it wrote. **Retire** is `protect retire`, and no command makes a
+retired control active again, so it asks first: **Retire it** retires the
+control, and **Keep it active** or `Escape` changes nothing and returns focus
+to **Retire**. A retired control is shown retired and is no longer offered to
+write a package, and it still opens the packages it wrote. Retirement is not
+revocation, and the panel says so. The package view
 shows the recipient and authority facts the descriptor declares — the control,
 the generation, the retention period — beside what encryption does not
 establish: not source authentication, not revocation, deletion is not erasure,
@@ -2615,16 +2625,24 @@ and opening a package ends the protection it carried. Packing writes a local
 directory; moving it anywhere is somebody's separate deliberate act.
 
 **Support** authors the sharing policy through structured controls, previews
-the value-free summary — the preview is every byte the bundle will hold, and
-no free-form field exists in it to hide anything — and publishes the bundle
-into a new folder named in the host's save dialog, or one fresh workspace
-entry, only under an
-approval naming the exact preview identity, which the publish regenerates and
-re-checks. A stale approval is a
-refusal. The bundle verifies offline, independently of its source, and the
-panel states the exclusions: no evidence payload, no recursive collection, no
-upload — a team transfer is the customer hub's separate authenticated
-workflow, and a local typed approver label is not authenticated team approval.
+the value-free summary — the preview is every byte the bundle will hold, and no
+free-form field exists in it to hide anything — and publishes the bundle into a
+new folder named in the host's save dialog, or one fresh workspace entry, only
+under an approval naming the exact preview identity, which the publish
+regenerates and re-checks. A stale approval is a refusal. Selecting a sharing
+policy reads it through the contract's own decoder, and a policy the decoder
+refuses is named as refused. Choosing another source, private state or policy
+withdraws the preview and the approval typed against it. A dismissed save
+dialog names nothing, and the panel says so; a folder that already exists,
+which the save dialog returns once a person confirms replacing it, is refused
+by the writer, and nothing is written into it. The bundle verifies offline,
+independently of its source, through the reader `readmit share verify` runs,
+and **Verify again** reads the selected bundle once more: a bundle missing,
+holding or changing anything since it was published is refused and shows no
+identity. The panel states the exclusions: no evidence payload, no recursive
+collection, no upload — a team transfer is the customer hub's separate
+authenticated workflow, and a local typed approver label is not authenticated
+team approval.
 
 ## Comparing retained executions
 

@@ -11,13 +11,13 @@ import {
   verifySupportBundle,
   cancel,
   type Artifact,
+  type PacketPathResult,
   type Review as ReviewDocument,
   type ReviewResult,
   type PrivacyExportRequest,
   type PrivacyExportResult,
   type PrivacyReviewRequest,
   type PrivacyReviewResult,
-  type SupportPolicy,
   type SupportPolicyRequest,
   type SupportPolicyResult,
   type SupportPreviewResult,
@@ -77,7 +77,7 @@ export function PrivacyPanel({
   const [policyName, setPolicyName] = useState("");
   const [inventoryName, setInventoryName] = useState("");
   const [derived, setDerived] = useState<PrivacyReviewResult | null>(null);
-  const [operation, setOperation] = useState<"deriving" | "exporting" | "reading" | "previewing" | "publishing" | null>(null);
+  const [operation, setOperation] = useState<"deriving" | "exporting" | "reading" | "previewing" | "publishing" | "choosing" | "verifying" | null>(null);
   const busy = operation !== null;
 
   // Approval and export selections. The approval input holds what the reviewer
@@ -97,18 +97,29 @@ export function PrivacyPanel({
   const [policyOutput, setPolicyOutput] = useState("");
   const [authoredPolicy, setAuthoredPolicy] = useState<SupportPolicyResult | null>(null);
   const [selectedPolicy, setSelectedPolicy] = useState("");
-  const [policyView, setPolicyView] = useState<SupportPolicy | null>(null);
+  const [policyView, setPolicyView] = useState<SupportPolicyResult | null>(null);
   const [supportSource, setSupportSource] = useState("");
   const [supportPrivate, setSupportPrivate] = useState("");
   const [supportPreview, setSupportPreview] = useState<SupportPreviewResult | null>(null);
   const [supportApproval, setSupportApproval] = useState("");
   const [supportOutput, setSupportOutput] = useState("");
+  const [destinationChoice, setDestinationChoice] = useState<PacketPathResult | null>(null);
   const [published, setPublished] = useState<SupportPublishResult | null>(null);
+  const [verifyEntry, setVerifyEntry] = useState("");
   const [verified, setVerified] = useState<SupportPreviewResult | null>(null);
 
   function resetApproval() {
     setApproval("");
     setExported(null);
+  }
+
+  // A preview belongs to the source, private state and policy it was prepared
+  // from, and a support approval to the preview it was typed against: changing
+  // any of them withdraws the preview, the approval and what was published.
+  function withdrawPreview() {
+    setSupportPreview(null);
+    setSupportApproval("");
+    setPublished(null);
   }
 
   async function derive() {
@@ -177,7 +188,11 @@ export function PrivacyPanel({
       const answer = await saveSharingPolicy(request);
       setAuthoredPolicy(answer);
       onRefresh();
-      if (answer.policy) setSelectedPolicy(answer.policy.entry);
+      if (answer.policy) {
+        setSelectedPolicy(answer.policy.entry);
+        setPolicyView(answer);
+        withdrawPreview();
+      }
     } finally {
       setOperation(null);
     }
@@ -186,11 +201,11 @@ export function PrivacyPanel({
   async function selectPolicy(entry: string) {
     setSelectedPolicy(entry);
     setPolicyView(null);
+    withdrawPreview();
     if (workspace && entry) {
-      setOperation("previewing");
+      setOperation("reading");
       try {
-        const answer = await readSharingPolicy(workspace, entry);
-        if (answer.policy) setPolicyView(answer.policy);
+        setPolicyView(await readSharingPolicy(workspace, entry));
       } finally {
         setOperation(null);
       }
@@ -238,9 +253,10 @@ export function PrivacyPanel({
 
   async function chooseDestination() {
     if (busy) return;
-    setOperation("previewing");
+    setOperation("choosing");
     try {
       const choice = await chooseSupportExportPath();
+      setDestinationChoice(choice);
       if (choice.state === "completed" && choice.path) setSupportOutput(choice.path);
     } finally {
       setOperation(null);
@@ -248,8 +264,11 @@ export function PrivacyPanel({
   }
 
   async function verify(entry: string) {
+    if (busy) return;
+    setVerifyEntry(entry);
+    setVerified(null);
     if (!workspace || !entry) return;
-    setOperation("publishing");
+    setOperation("verifying");
     try {
       setVerified(await verifySupportBundle(workspace, entry));
     } finally {
@@ -391,11 +410,12 @@ export function PrivacyPanel({
         <option value="">Select a sharing policy…</option>
         {sharingPolicies.map((name) => <option key={name} value={name}>{name}</option>)}
       </select>
-      {policyView ? <p>Support {policyView.support ? "allowed" : "denied"} · {policyView.destinations.join(", ")} · {policyView.max_bytes} bytes.</p> : null}
+      {policyView?.policy ? <p>Support {policyView.policy.support ? "allowed" : "denied"} · {policyView.policy.destinations.join(", ")} · {policyView.policy.max_bytes} bytes.</p> : null}
+      {policyView?.reason ? <p>{policyView.reason}</p> : null}
 
       <label htmlFor="support-source">Source to summarize</label>
       <select id="support-source" value={supportSource} disabled={busy}
-        onChange={(e) => { setSupportSource(e.target.value); setSupportPreview(null); setPublished(null); }}>
+        onChange={(e) => { setSupportSource(e.target.value); withdrawPreview(); }}>
         <option value="">Select a derived review, sealed packet or portable review…</option>
         {reviews.map((name) => <option key={"r" + name} value={name}>{name} — derived review</option>)}
         {sealedPackets.map((name) => <option key={"k" + name} value={name}>{name} — retained packet</option>)}
@@ -404,7 +424,7 @@ export function PrivacyPanel({
       {supportSources.get(supportSource) === "derived-review" ? <>
         <label htmlFor="support-private">Its private local state (bound, never copied)</label>
         <input id="support-private" value={supportPrivate} disabled={busy}
-          onChange={(e) => { setSupportPrivate(e.target.value); setSupportPreview(null); }} />
+          onChange={(e) => { setSupportPrivate(e.target.value); withdrawPreview(); }} />
       </> : null}
       <button disabled={busy || !supportSource || !selectedPolicy} onClick={() => void preview()}>
         {operation === "previewing" ? "Preparing…" : "Preview summary"}
@@ -430,8 +450,9 @@ export function PrivacyPanel({
         onChange={(e) => setSupportApproval(e.target.value)} />
       <label htmlFor="support-output">New support folder</label>
       <input id="support-output" value={supportOutput} disabled={busy} placeholder="generated in this workspace"
-        onChange={(e) => setSupportOutput(e.target.value)} />
+        onChange={(e) => { setSupportOutput(e.target.value); setDestinationChoice(null); }} />
       <button disabled={busy} onClick={() => void chooseDestination()}>Choose destination…</button>
+      {destinationChoice && destinationChoice.state !== "completed" ? <p>{destinationChoice.reason}</p> : null}
       <button disabled={busy || !supportPreview?.summary || supportApproval === ""} onClick={() => void publish()}>
         {operation === "publishing" ? "Publishing…" : "Publish support bundle"}
       </button>
@@ -443,11 +464,12 @@ export function PrivacyPanel({
       </div> : null}
 
       <label htmlFor="support-verify">Verify a support bundle</label>
-      <select id="support-verify" value="" disabled={busy || bundles.length === 0}
+      <select id="support-verify" value={verifyEntry} disabled={busy || bundles.length === 0}
         onChange={(e) => void verify(e.target.value)}>
         <option value="">Select a support bundle…</option>
         {bundles.map((name) => <option key={name} value={name}>{name}</option>)}
       </select>
+      <button disabled={busy || !verifyEntry} onClick={() => void verify(verifyEntry)}>Verify again</button>
       {verified?.reason ? <p>{verified.reason}</p> : null}
       {verified?.summary ? <p>Verified bundle identity: <strong>{verified.summary.identity}</strong> — integrity only, not authentication or authorization.</p> : null}
     </div>
