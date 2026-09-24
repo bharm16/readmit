@@ -71,15 +71,15 @@ func DefaultObservationSource() observesource.Source {
 }
 
 // OpenOrNewObservationWindow reads a window to edit, or returns the default
-// starting values when the file does not exist yet.
-func OpenOrNewObservationWindow(path string) (observewindow.Window, error) {
+// starting values when the file does not exist yet. Only a read file has an identity.
+func OpenOrNewObservationWindow(path string) (observewindow.Window, string, error) {
 	if path == "" {
-		return observewindow.Window{}, errors.New("observation window path must not be empty")
+		return observewindow.Window{}, "", errors.New("observation window path must not be empty")
 	}
 	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
-		return DefaultObservationWindow(), nil
+		return DefaultObservationWindow(), "", nil
 	}
-	return observewindow.ReadWindow(path)
+	return ValidateObservationWindow(path)
 }
 
 // SaveObservationWindow writes one window atomically and reads it back.
@@ -106,18 +106,17 @@ func ValidateObservationWindow(path string) (observewindow.Window, string, error
 	return window, window.Identity(), nil
 }
 
-// OpenOrNewObservationSource reads a source to edit, or returns defaults. It
-// answers the source as the document declares it, so what an editor saves
-// back keeps the paths the document declared rather than this machine's.
-func OpenOrNewObservationSource(path string) (observesource.Source, error) {
+// OpenOrNewObservationSource reads a source to edit, or returns defaults with
+// no identity. It answers a read source as the document declares it, so what an
+// editor saves back keeps the paths the document declared rather than this machine's.
+func OpenOrNewObservationSource(path string) (observesource.Source, string, error) {
 	if path == "" {
-		return observesource.Source{}, errors.New("observation source path must not be empty")
+		return observesource.Source{}, "", errors.New("observation source path must not be empty")
 	}
 	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
-		return DefaultObservationSource(), nil
+		return DefaultObservationSource(), "", nil
 	}
-	source, _, err := ValidateObservationSource(path)
-	return source, err
+	return ValidateObservationSource(path)
 }
 
 // CaptureObservationBinding is the navigation handoff from a retained capture

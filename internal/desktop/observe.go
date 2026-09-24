@@ -132,11 +132,11 @@ func (a *App) OpenObservationWindow(workspace, windowFile string) ObservationWin
 		if path == "" {
 			return ObservationWindowResult{State: ref.state, Reason: ref.reason}
 		}
-		window, err := operation.OpenOrNewObservationWindow(path)
+		window, identity, err := operation.OpenOrNewObservationWindow(path)
 		if err != nil {
 			return ObservationWindowResult{State: Failed, Reason: err.Error()}
 		}
-		return ObservationWindowResult{State: Completed, Window: &window, WindowFile: windowFile, Identity: window.Identity()}
+		return ObservationWindowResult{State: Completed, Window: &window, WindowFile: windowFile, Identity: identity}
 	})
 }
 
@@ -180,12 +180,12 @@ func (a *App) OpenObservationSource(workspace, sourceFile string) ObservationSou
 		if path == "" {
 			return ObservationSourceResult{State: ref.state, Reason: ref.reason}
 		}
-		source, err := operation.OpenOrNewObservationSource(path)
+		source, identity, err := operation.OpenOrNewObservationSource(path)
 		if err != nil {
 			return ObservationSourceResult{State: Failed, Reason: err.Error()}
 		}
 		support := supportFor(source)
-		return ObservationSourceResult{State: Completed, Source: &source, SourceFile: sourceFile, Identity: source.Identity(), Support: &support}
+		return ObservationSourceResult{State: Completed, Source: &source, SourceFile: sourceFile, Identity: identity, Support: &support}
 	})
 }
 

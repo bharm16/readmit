@@ -48,6 +48,13 @@ func TestObservationFacadeOpensWithoutQuerying(t *testing.T) {
 	if opened.Source.Observes.Kind != observesource.FileExport {
 		t.Fatalf("default kind = %s", opened.Source.Observes.Kind)
 	}
+	if opened.Identity != "" {
+		t.Fatalf("missing source has a pinned identity: %q", opened.Identity)
+	}
+	window := app.OpenObservationWindow(dir, "missing-window.json")
+	if window.State != desktop.Completed || window.Window == nil || window.Identity != "" {
+		t.Fatalf("missing window has a pinned identity: %+v", window)
+	}
 	support := app.ObservationSupport()
 	if support.State != desktop.Completed || len(support.Support) < 4 {
 		t.Fatalf("support: %+v", support)
@@ -60,7 +67,6 @@ func TestObservationFacadeSavesAndValidatesLocally(t *testing.T) {
 	writeDocument(t, dir, "window.json", facadeWindowDocument)
 	writeDocument(t, dir, "source.json", facadeSourceDocument)
 	writeDocument(t, dir, "export.csv", "appointment,status\nA1,booked\n")
-
 	source := app.ValidateObservationSource(dir, "source.json")
 	if source.State != desktop.Completed || source.Identity == "" {
 		t.Fatalf("validate source: %+v", source)
@@ -68,6 +74,12 @@ func TestObservationFacadeSavesAndValidatesLocally(t *testing.T) {
 	window := app.ValidateObservationWindow(dir, "window.json")
 	if window.State != desktop.Completed || window.Identity == "" {
 		t.Fatalf("validate window: %+v", window)
+	}
+	if opened := app.OpenObservationSource(dir, "source.json"); opened.State != desktop.Completed || opened.Identity != source.Identity {
+		t.Fatalf("opened source identity differs from strict read: %+v", opened)
+	}
+	if opened := app.OpenObservationWindow(dir, "window.json"); opened.State != desktop.Completed || opened.Identity != window.Identity {
+		t.Fatalf("opened window identity differs from strict read: %+v", opened)
 	}
 	pair := app.ValidateObservationPair(desktop.ObservationValidateRequest{
 		Workspace: dir, SourceFile: "source.json", WindowFile: "window.json",

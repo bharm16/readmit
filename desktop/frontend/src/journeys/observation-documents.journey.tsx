@@ -220,6 +220,8 @@ test("an invalid document, an unsupported version, a refused write and an abando
   // reservation, creates nothing inside the case, and the case still
   // verifies as the command line reads it.
   await enter(user, panel.getByLabelText("Source document"), "reschedule-feed/observations/observation-source.json");
+  expect(panel.getByRole("group", { name: "Replace source document?" })).toBeTruthy();
+  await press(user, panel.getByRole("button", { name: "Replace source document" }));
   await saveRefused(user, panel);
   expect(
     await panel.findByText("Not saved: cannot write an observation source here. A collection reads the documents saved before."),
