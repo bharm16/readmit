@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/customerrunner"
@@ -958,16 +960,36 @@ func (a *App) OpenSchedulePolicy(path string) SchedulePreviewResult {
 
 // CIHandoffRequest names the six non-secret path and selection variables the
 // supported CI integrations are documented around, the integration to
-// prepare, and where the reviewed file is written.
+// prepare, and where the reviewed file is written. Gate, when present, adds
+// the reviewed change-gate step after the suite run.
 type CIHandoffRequest struct {
-	Integration     string `json:"integration"`
-	Binary          string `json:"binary"`
-	OperationPolicy string `json:"operation_policy"`
-	SuiteFile       string `json:"suite_file"`
-	Environment     string `json:"environment"`
-	RunDirectory    string `json:"run_directory"`
-	CoverageFile    string `json:"coverage_file"`
-	Output          string `json:"output"`
+	Integration     string      `json:"integration"`
+	Binary          string      `json:"binary"`
+	OperationPolicy string      `json:"operation_policy"`
+	SuiteFile       string      `json:"suite_file"`
+	Environment     string      `json:"environment"`
+	RunDirectory    string      `json:"run_directory"`
+	CoverageFile    string      `json:"coverage_file"`
+	Output          string      `json:"output"`
+	Gate            *CIGateStep `json:"gate,omitzero"`
+}
+
+// CIGateStep is the reviewed change gate a handoff runs after the suite: the
+// approved promotion `suite ci` must retain for a gate to assess it (its
+// release references, approval, full approval identity and the operator's
+// target revision), the privately reviewed baseline run, the reviewed gate
+// policy with the identity pinned for it, and the new directory each
+// invocation retains its snapshot in. Every path names the agent's
+// filesystem, as the six variables do; nothing here is read on this machine.
+type CIGateStep struct {
+	Releases          string `json:"releases"`
+	Promotion         string `json:"promotion"`
+	PromotionIdentity string `json:"promotion_identity"`
+	Revision          string `json:"revision"`
+	Baseline          string `json:"baseline"`
+	Policy            string `json:"policy"`
+	PolicyIdentity    string `json:"policy_identity"`
+	SnapshotDirectory string `json:"snapshot_directory"`
 }
 
 // CIHandoffResult carries one reviewed handoff document: the exact script or
@@ -986,28 +1008,14 @@ func (r *CIHandoffResult) refuse(state State, reason string) { r.State, r.Reason
 
 // SaveCIHandoff generates the exact workflow a supported integration runs:
 // the documented command, unchanged, with the six variables the customer
-// provisions on a trusted self-hosted agent. The generated text contains no
-// value, no credential and no patient data.
+// provisions on a trusted self-hosted agent, and, when a reviewed change gate
+// is requested, the documented gate step after it. Every value is validated
+// before anything is written. The generated text contains no value, no
+// credential and no patient data.
 func (a *App) SaveCIHandoff(request CIHandoffRequest) CIHandoffResult {
 	return run(a, false, true, func(context.Context) CIHandoffResult {
-		switch request.Integration {
-		case "posix", "github", "azure":
-		default:
-			return CIHandoffResult{State: Failed, Reason: "the supported integrations are the POSIX shell, GitHub Actions and Azure DevOps workflows the customer CI documentation describes"}
-		}
-		if !runnerprotocol.ID(request.Environment) {
-			return CIHandoffResult{State: Failed, Reason: "the environment is the named nonproduction environment the suite binds to"}
-		}
-		for name, value := range map[string]string{
-			"the installed readmit executable": request.Binary,
-			"the activated operation policy":   request.OperationPolicy,
-			"the saved suite":                  request.SuiteFile,
-			"the run directory":                request.RunDirectory,
-			"the coverage declaration":         request.CoverageFile,
-		} {
-			if !filepath.IsAbs(value) || filepath.Clean(value) != value {
-				return CIHandoffResult{State: Failed, Reason: name + " must be a cleaned absolute path on the agent"}
-			}
+		if declined := validateCIHandoff(request); declined != "" {
+			return CIHandoffResult{State: Failed, Reason: declined}
 		}
 		document := ciHandoffDocument(request)
 		if declined := writePrivateDocument(request.Output, []byte(document)); declined.reason != "" {
@@ -1017,17 +1025,137 @@ func (a *App) SaveCIHandoff(request CIHandoffRequest) CIHandoffResult {
 	})
 }
 
+// validateCIHandoff answers the first thing wrong with a handoff request, in
+// the order the form asks for it, or nothing. Every value the checklist
+// names is one line: a line break would end the checklist's comment and put
+// the rest of the value into the workflow the agent runs.
+func validateCIHandoff(request CIHandoffRequest) string {
+	switch request.Integration {
+	case "posix", "github", "azure":
+	default:
+		return "the supported integrations are the POSIX shell, GitHub Actions and Azure DevOps workflows the customer CI documentation describes"
+	}
+	if declined := uncleanPath(
+		agentValue{"the installed readmit executable", request.Binary},
+		agentValue{"the activated operation policy", request.OperationPolicy},
+		agentValue{"the saved suite", request.SuiteFile},
+	); declined != "" {
+		return declined
+	}
+	if !runnerprotocol.ID(request.Environment) {
+		return "the environment is the named nonproduction environment the suite binds to"
+	}
+	if declined := uncleanPath(
+		agentValue{"the run directory", request.RunDirectory},
+		agentValue{"the coverage declaration", request.CoverageFile},
+	); declined != "" {
+		return declined
+	}
+	gate := request.Gate
+	if gate == nil {
+		return ""
+	}
+	if declined := uncleanPath(
+		agentValue{"the release references", gate.Releases},
+		agentValue{"the promotion approval", gate.Promotion},
+	); declined != "" {
+		return declined
+	}
+	if !fullIdentity(gate.PromotionIdentity) {
+		return "the promotion approval identity is its full 64-character lowercase SHA-256 identity"
+	}
+	if strings.TrimSpace(gate.Revision) == "" || len(gate.Revision) > 256 || !utf8.ValidString(gate.Revision) || strings.ContainsFunc(gate.Revision, unicode.IsControl) {
+		return "the target revision is the operator's one-line assumption of at most 256 bytes"
+	}
+	if declined := uncleanPath(
+		agentValue{"the reviewed baseline run directory", gate.Baseline},
+		agentValue{"the reviewed gate policy", gate.Policy},
+	); declined != "" {
+		return declined
+	}
+	if !fullIdentity(gate.PolicyIdentity) {
+		return "the reviewed gate policy identity is its full 64-character lowercase SHA-256 identity"
+	}
+	if declined := uncleanPath(agentValue{"the retained gate snapshot directory", gate.SnapshotDirectory}); declined != "" {
+		return declined
+	}
+	// `suite gate` refuses a snapshot inside either run it copies, and the
+	// baseline must be a run other than the one being judged.
+	directories := []string{request.RunDirectory, gate.Baseline, gate.SnapshotDirectory}
+	for i, one := range directories {
+		for _, other := range directories[i+1:] {
+			if sameOrInside(one, other) || sameOrInside(other, one) {
+				return "the run directory, the reviewed baseline and the retained gate snapshot are three separate folders, none inside another"
+			}
+		}
+	}
+	return ""
+}
+
+// agentValue is one path the handoff form asks for, by the name its refusal
+// gives it.
+type agentValue struct{ name, path string }
+
+// uncleanPath names the first of the values that is not a cleaned absolute
+// path on the agent, on one line.
+func uncleanPath(values ...agentValue) string {
+	for _, value := range values {
+		if !agentPath(value.path) {
+			return value.name + " must be a cleaned absolute path on the agent"
+		}
+	}
+	return ""
+}
+
+// agentPath is a cleaned absolute path on one line.
+func agentPath(value string) bool {
+	return filepath.IsAbs(value) && filepath.Clean(value) == value && !strings.ContainsFunc(value, unicode.IsControl)
+}
+
+// sameOrInside reports whether path is folder or inside it.
+func sameOrInside(path, folder string) bool {
+	rel, err := filepath.Rel(folder, path)
+	return err == nil && filepath.IsLocal(rel)
+}
+
+// fullIdentity is a full SHA-256 identity as readmit prints one: 64 lowercase
+// hexadecimal digits.
+func fullIdentity(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	for _, digit := range value {
+		if (digit < '0' || digit > '9') && (digit < 'a' || digit > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 // ciWorkflowMarker separates the provisioning checklist (which names the
 // customer's reviewed values) from the workflow text (which is env-var driven
 // and identical for every customer). Tests and reviewers read the workflow
 // part alone.
 const ciWorkflowMarker = "# --- reviewed workflow (install as-is) ---"
 
+// ciSuiteCommand and ciGatedSuiteCommand are the documented `suite ci`
+// invocations; the gated one also retains the approved promotion the change
+// gate assesses. ciGateCommand is the documented change gate. It needs no
+// operation policy: assessing retained evidence is not licensed work.
+const (
+	ciSuiteCommand      = `"$READMIT_BIN" --operation-policy "$OPERATION_POLICY" suite ci "$SUITE_FILE" --environment "$SUITE_ENVIRONMENT" --output "$RUN_DIRECTORY" --requirements "$COVERAGE_FILE" --send --deadline 5m`
+	ciGatedSuiteCommand = `"$READMIT_BIN" --operation-policy "$OPERATION_POLICY" suite ci "$SUITE_FILE" --environment "$SUITE_ENVIRONMENT" --output "$RUN_DIRECTORY" --requirements "$COVERAGE_FILE" --releases "$RELEASES_FILE" --promotion "$PROMOTION_FILE" --promotion-identity "$PROMOTION_IDENTITY" --revision "$TARGET_REVISION" --send --deadline 5m`
+	ciGateCommand       = `"$READMIT_BIN" suite gate "$RUN_DIRECTORY" --baseline "$BASELINE_DIRECTORY" --policy "$GATE_POLICY" --policy-identity "$GATE_POLICY_IDENTITY" --output "$GATE_DIRECTORY"`
+)
+
 // ciHandoffDocument renders the supported integrations' exact documented
 // workflows. The command text is the command the documentation promises and
 // the differential tests execute; every line before the marker is a comment,
 // so the whole document is valid for its target and nothing customer-specific
-// reaches the workflow itself.
+// reaches the workflow itself. A gated workflow runs the change gate after the
+// suite whether or not the suite passed, and never lets the gate's exit
+// replace the suite's: the POSIX script exits with the suite's status when it
+// failed, and each hosted integration runs the gate as its own step.
 func ciHandoffDocument(request CIHandoffRequest) string {
 	checklist := []string{
 		"Provision these six non-secret path/selection variables on the trusted customer-owned agent:",
@@ -1037,20 +1165,41 @@ func ciHandoffDocument(request CIHandoffRequest) string {
 		"  SUITE_ENVIRONMENT=" + request.Environment,
 		"  RUN_DIRECTORY=" + request.RunDirectory + " (a new path on the persistent private volume for this one invocation)",
 		"  COVERAGE_FILE=" + request.CoverageFile,
+	}
+	gate := request.Gate
+	command := ciSuiteCommand
+	if gate != nil {
+		command = ciGatedSuiteCommand
+		checklist = append(checklist,
+			"The reviewed change gate adds these eight, pinned in protected customer configuration:",
+			"  RELEASES_FILE="+gate.Releases,
+			"  PROMOTION_FILE="+gate.Promotion,
+			"  PROMOTION_IDENTITY="+gate.PromotionIdentity,
+			"  TARGET_REVISION="+gate.Revision,
+			"  BASELINE_DIRECTORY="+gate.Baseline,
+			"  GATE_POLICY="+gate.Policy,
+			"  GATE_POLICY_IDENTITY="+gate.PolicyIdentity,
+			"  GATE_DIRECTORY="+gate.SnapshotDirectory+" (a new path on the persistent private volume for this one invocation)",
+		)
+	}
+	checklist = append(checklist,
 		"No checkout, upload, retry or network install runs here. Raw evidence and reports stay private and are not CI artifacts.",
 		"Gate on the process exit; disable automatic reruns and inspect receiver state before authorizing another execution.",
-		"",
-		ciWorkflowMarker,
-		"",
+	)
+	if gate != nil {
+		checklist = append(checklist,
+			"The change gate runs after the suite even when it failed, never sends, and never replaces the suite's exit status; require both in branch or environment protection.",
+			"Never compute and accept a new gate policy identity inside the pipeline; a changed policy needs a new review.",
+		)
 	}
+	checklist = append(checklist, "", ciWorkflowMarker, "")
 	header := ""
 	for _, line := range checklist {
 		header += "# " + line + "\n"
 	}
-	command := `"$READMIT_BIN" --operation-policy "$OPERATION_POLICY" suite ci "$SUITE_FILE" --environment "$SUITE_ENVIRONMENT" --output "$RUN_DIRECTORY" --requirements "$COVERAGE_FILE" --send --deadline 5m`
 	switch request.Integration {
 	case "github":
-		return header + `name: Customer saved suite
+		workflow := header + `name: Customer saved suite
 on: workflow_dispatch
 permissions: {}
 concurrency:
@@ -1065,8 +1214,16 @@ jobs:
         shell: bash
         run: |
           ` + command + "\n"
+		if gate != nil {
+			workflow += `      - name: Retain the reviewed change gate
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          ` + ciGateCommand + "\n"
+		}
+		return workflow
 	case "azure":
-		return header + `trigger: none
+		workflow := header + `trigger: none
 pr: none
 pool:
   name: readmit-private
@@ -1077,7 +1234,20 @@ steps:
     displayName: Execute the saved suite
     timeoutInMinutes: 10
 `
+		if gate != nil {
+			workflow += `  - bash: |
+      ` + ciGateCommand + `
+    displayName: Retain the reviewed change gate
+    condition: succeededOrFailed()
+    timeoutInMinutes: 10
+`
+		}
+		return workflow
 	default:
+		if gate != nil {
+			return "#!/bin/sh\n" + header + command + "\nexecution=$?\n" + ciGateCommand + "\ngate=$?\n" +
+				"if [ \"$execution\" -ne 0 ]; then\n  exit \"$execution\"\nfi\nexit \"$gate\"\n"
+		}
 		return "#!/bin/sh\n" + header + command + "\nexit $?\n"
 	}
 }
@@ -1173,4 +1343,87 @@ func (a *App) InspectGatePolicy(path string) GatePolicyResult {
 			Specifications: len(policy.Coverage.Specifications), RetainUntil: policy.RetainUntil,
 			Approver: policy.Approver, Rationale: policy.Rationale}
 	})
+}
+
+// CIGateVerifyResult carries one retained change-gate snapshot's
+// verification: the readmit-ci-gate/v1 summary `readmit suite verify-gate`
+// prints for the same snapshot and identity, and the parts of it that stayed
+// unknown, which are what the verification could not establish. A snapshot
+// whose gate is unknown is not reported as completed: it could not be
+// verified, and an unknown gate is never a pass. Like the summary, the result
+// carries fixed vocabulary only — no path, label, hash or value.
+type CIGateVerifyResult struct {
+	State      State             `json:"state"`
+	Reason     string            `json:"reason,omitzero"`
+	Gate       *suite.GateReport `json:"gate,omitzero"`
+	Unverified []string          `json:"unverified,omitzero"`
+}
+
+func (r *CIGateVerifyResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
+// VerifyCIGate verifies one retained change-gate snapshot against the policy
+// identity pinned for it, through suite.VerifyGate exactly as
+// `readmit suite verify-gate` does: every retained byte is checked against the
+// snapshot's manifest and the assessment is repeated at its original instant,
+// with retention expiry judged by this machine's clock. It reads only the
+// snapshot, never sends, reruns or resumes anything, and changes no byte.
+// Cancelling it stops the reading and reaches no verdict.
+func (a *App) VerifyCIGate(directory, identity string) CIGateVerifyResult {
+	return runNamed[CIGateVerifyResult, *CIGateVerifyResult](a, ciGateVerifyOperation, true, false, func(ctx context.Context) CIGateVerifyResult {
+		return verifyCIGate(ctx, directory, identity, time.Now().UTC())
+	})
+}
+
+// ciGateVerifyOperation names a verification while it holds the slot, so the
+// CI panel's cancel control stops exactly the verification it started. It is
+// local work that reaches no destination.
+const ciGateVerifyOperation = "ci-gate-verify"
+
+// ciGateParts are the summary's component verdicts in the order it lists them.
+var ciGateParts = []struct {
+	name  string
+	state func(suite.GateReport) string
+}{
+	{"approval", func(r suite.GateReport) string { return r.Approval }},
+	{"pins", func(r suite.GateReport) string { return r.Pins }},
+	{"coverage", func(r suite.GateReport) string { return r.Coverage }},
+	{"baseline", func(r suite.GateReport) string { return r.Baseline }},
+	{"retention", func(r suite.GateReport) string { return r.Retention }},
+	{"target_revision", func(r suite.GateReport) string { return r.TargetRevision }},
+}
+
+func verifyCIGate(ctx context.Context, directory, identity string, now time.Time) CIGateVerifyResult {
+	if !agentPath(directory) {
+		return CIGateVerifyResult{State: Failed, Reason: "a retained gate snapshot is named by a cleaned absolute path"}
+	}
+	if !fullIdentity(identity) {
+		return CIGateVerifyResult{State: Failed, Reason: "the pinned gate policy identity is its full 64-character lowercase SHA-256 identity"}
+	}
+	report := suite.VerifyGate(ctx, directory, identity, now)
+	// A cancellation that stopped the reading leaves the gate unknown; one that
+	// arrived after the verdict was reached does not take it back.
+	if report.State == "unknown" && ctx.Err() != nil {
+		return CIGateVerifyResult{State: Cancelled, Reason: "the verification was cancelled before it reached a verdict; nothing was changed"}
+	}
+	result := CIGateVerifyResult{State: Completed, Gate: &report}
+	for _, part := range ciGateParts {
+		if part.state(report) == "unknown" {
+			result.Unverified = append(result.Unverified, part.name)
+		}
+	}
+	// VerifyGate answers retention "retained" only once every retained byte
+	// matched a manifest pinned to this identity; before that, it knows
+	// nothing, and past the retention end it stops at "expired".
+	if report.State == "unknown" {
+		result.State = Failed
+		switch report.Retention {
+		case "retained":
+			result.Reason = "the retained snapshot matches its manifest under this identity, but its repeated assessment is unknown; an unknown gate is never a pass"
+		case "expired":
+			result.Reason = "the retained snapshot matches its manifest under this identity, but its retention commitment has ended, so it no longer verifies; nothing was deleted"
+		default:
+			result.Reason = "the retained change gate could not be verified against this identity: it is missing, changed, retained under another policy or not a snapshot; an unknown gate is never a pass"
+		}
+	}
+	return result
 }

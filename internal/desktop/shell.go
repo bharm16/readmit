@@ -321,7 +321,6 @@ var supportStatus = Support{
 		"preview or explicitly send selected case messages",
 		"reexecute reviewed transformed evidence against an explicitly selected authorized target",
 		"resolve an expired clock and restate the high-water",
-		"retain and verify a reviewed CI change gate snapshot",
 		"select a saved test or suite through the host's native file dialog",
 		"select an absolute policy path explicitly",
 		"select the operation policy through the native chooser",

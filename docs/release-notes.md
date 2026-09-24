@@ -1,5 +1,30 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The CI panel adds the reviewed change gate to the workflow it generates and
+  verifies retained gate snapshots (#307). Until now the generated workflow
+  had no change-gate step and nothing in the application reached
+  `readmit suite gate` or `readmit suite verify-gate`. Asked for, the handoff
+  now runs `suite ci` with the approved promotion the gate assesses and then the
+  unchanged `readmit suite gate` against the reviewed baseline, gate policy and
+  pinned identity, even when the suite failed, without its exit ever replacing
+  the suite's: the POSIX script exits with the suite's status when it failed,
+  and GitHub Actions and Azure DevOps run the gate as its own step. Its eight
+  further variables are validated before anything is written. A new
+  **Verify a retained change gate** action checks a snapshot against its pinned
+  identity through the operation `readmit suite verify-gate` runs, shows the
+  summary the command prints, names every part not verified, and can be
+  cancelled; a tampered, foreign or expired snapshot, and one whose retained
+  verdict is unknown, is refused for what it is, never a pass.
+  Driving the panel found three defects, each fixed with a test: a value
+  holding a line break ended its checklist comment and put the rest of itself
+  into the workflow the agent runs; a handoff with several wrong values named a
+  different one from one attempt to the next, and now names the first in the
+  form's order; and a gate policy's identity stayed on screen beside a policy
+  path typed after it was read, where it could be pinned by mistake, as CI
+  results stayed beside another directory. The facade
+  gains `VerifyCIGate`, and the handoff request an optional `gate`; no
+  `readmit-*` document, command, flag, exit status or machine output changes.
+
 - The sequence panel's correlation rules, its review of correlation links and
   its sequence-analysis editor are driven end to end through the facade
   (#298). Until now no interaction test chose a rules document, so `readmit

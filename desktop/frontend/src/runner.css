@@ -91,6 +91,15 @@
   padding-left: 0.6rem;
 }
 
+.runner-gate-step {
+  border: 1px solid var(--border, #ddd);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.5rem;
+}
+
 .runner-table {
   border-collapse: collapse;
   font-size: 0.85rem;

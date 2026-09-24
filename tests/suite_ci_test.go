@@ -35,7 +35,9 @@ func TestCustomerCIExamplesExecuteSavedSuiteAndPropagateFailures(t *testing.T) {
 	var commands []string
 	for _, line := range strings.Split(string(doc), "\n") {
 		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, `"$READMIT_BIN" --operation-policy "$OPERATION_POLICY" suite ci `) {
+		// The gated example, which also retains an approved promotion, is run
+		// by the desktop parity test that holds the generated workflow to it.
+		if strings.HasPrefix(line, `"$READMIT_BIN" --operation-policy "$OPERATION_POLICY" suite ci `) && !strings.Contains(line, "--promotion") {
 			commands = append(commands, line)
 		}
 	}

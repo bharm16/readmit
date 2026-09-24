@@ -233,6 +233,20 @@ test("a suite over the saved test fails on the downstream's defect and passes on
   expect(journey.callsTo("StartDurableRun")).toHaveLength(0);
 });
 
+/** The coverage declaration: the one requirement the suite's one job covers,
+ * pinned to the prepared suite's retained bytes. */
+async function declareCoverage(user: UserEvent) {
+  const coverage = await suiteView(user, "Coverage");
+  await coverage.findAllByRole("option", { name: "prepared-downstream" });
+  const [authoredFrom] = coverage.getAllByLabelText("Prepared suite directory");
+  await user.selectOptions(authoredFrom!, "prepared-downstream");
+  await enter(user, coverage.getByLabelText("Requirement 1"), "reschedule-accepted");
+  await enter(user, coverage.getByLabelText("Requirement jobs 1"), JOB);
+  await enter(user, coverage.getByLabelText("New coverage entry"), "coverage.json");
+  await press(user, coverage.getByRole("button", { name: "Author coverage document" }));
+  expect(await coverage.findByText("Saved coverage.json.")).toBeTruthy();
+}
+
 /** The runner, schedules and CI panel's CI handoff view. */
 async function ciHandoffs(user: UserEvent) {
   const panel = within(region("Privacy status")).getByRole("region", { name: "Runners, schedules and CI" });
@@ -273,17 +287,7 @@ test("a suite handed to CI runs as the workflow the application wrote, and its g
   await authorSuite(user);
   await prepareSuite(user, "prepared-downstream");
 
-  // The coverage declaration: the one requirement the suite's one job covers,
-  // pinned to the prepared suite's retained bytes.
-  const coverage = await suiteView(user, "Coverage");
-  await coverage.findAllByRole("option", { name: "prepared-downstream" });
-  const [authoredFrom] = coverage.getAllByLabelText("Prepared suite directory");
-  await user.selectOptions(authoredFrom!, "prepared-downstream");
-  await enter(user, coverage.getByLabelText("Requirement 1"), "reschedule-accepted");
-  await enter(user, coverage.getByLabelText("Requirement jobs 1"), JOB);
-  await enter(user, coverage.getByLabelText("New coverage entry"), "coverage.json");
-  await press(user, coverage.getByRole("button", { name: "Author coverage document" }));
-  expect(await coverage.findByText("Saved coverage.json.")).toBeTruthy();
+  await declareCoverage(user);
 
   // The handoff: the documented POSIX workflow for this suite, written once
   // to a new file for the customer administrator to install.
@@ -636,4 +640,272 @@ test("a suite pinned to the release identity the window reads is reviewed and ap
   expect(journey.readFile(`${PROJECT}/downstream-promotion.json`)).toBe(journey.readFile(`${PROJECT}/cli-promotion.json`));
   // Review and approval sent nothing.
   expect(downstream.received()).toHaveLength(0);
+});
+
+/** Pins the suite's one test to its first released version, then reviews and
+ * approves the suite's promotion to the downstream environment under the
+ * operator's target revision, through the suite panel. Returns the approval's
+ * identity as the window shows it. */
+async function promoteSuite(user: UserEvent, revision: string): Promise<string> {
+  const releases = await suiteView(user, "Releases and impact");
+  await enter(user, releases.getByLabelText("Test 1"), "reschedule-accepted");
+  await enter(user, releases.getByLabelText("Release entry 1"), RELEASE.output);
+  await press(user, releases.getByRole("button", { name: "Read identity of release entry 1" }));
+  expect(await releases.findByText(`Test reschedule, revision 1, local approver ${APPROVER}.`)).toBeTruthy();
+  await enter(user, releases.getByLabelText("New sidecar entry"), "releases.json");
+  await press(user, releases.getByRole("button", { name: "Save release references" }));
+  expect(await releases.findByText("Saved releases.json.")).toBeTruthy();
+
+  const promotion = await suiteView(user, "Promotion");
+  await promotion.findAllByRole("option", { name: "releases.json" });
+  await user.selectOptions(promotion.getByLabelText("Suite entry"), SUITE);
+  await enter(user, promotion.getByLabelText("Environment"), "downstream");
+  await user.selectOptions(promotion.getByLabelText("Release references"), "releases.json");
+  await enter(user, promotion.getByLabelText("Target revision (operator-declared)"), revision);
+  await press(user, promotion.getByRole("button", { name: "Review promotion" }));
+  await promotion.findByText(byContent(/^Review identity [0-9a-f]{64}: /));
+  await enter(user, promotion.getByLabelText("Local approver"), APPROVER);
+  await enter(user, promotion.getByLabelText("Approval rationale"), "Reviewed the downstream mapping and isolation");
+  await enter(user, promotion.getByLabelText("New approval entry"), "downstream-promotion.json");
+  await press(user, promotion.getByRole("button", { name: "Approve this exact promotion" }));
+  const approved = await promotion.findByText(byContent(/^Approved and saved downstream-promotion\.json\. Approval identity: [0-9a-f]{64}$/));
+  return (approved.textContent ?? "").replace(/^.*Approval identity: /, "");
+}
+
+/** The readmit-ci-gate/v1 summary one command printed, and its exit. */
+interface GateRun {
+  code: number | null;
+  gate: Record<string, unknown>;
+}
+
+async function gateCommand(args: string[]): Promise<GateRun> {
+  const run = await journey.commandLine(args);
+  return { code: run.code, gate: JSON.parse(run.stdout) as Record<string, unknown> };
+}
+
+/** Verifies one retained gate snapshot through the CI panel against the
+ * identity typed beside it, and returns the verdict line the window drew with
+ * the summary the facade answered. */
+async function verifyInWindow(user: UserEvent, snapshot: string, identity: string) {
+  const panel = await ciHandoffs(user);
+  await enter(user, panel.getByLabelText("Retained gate snapshot"), journey.path(snapshot));
+  await enter(user, panel.getByLabelText("Pinned gate policy identity"), identity);
+  const asked = journey.callsTo("VerifyCIGate").length;
+  await press(user, panel.getByRole("button", { name: "Verify retained gate" }));
+  const line = await panel.findByText(byContent(/^Retained change gate: \w+ \(exit \d\)\.$/));
+  const answer = journey.callsTo("VerifyCIGate")[asked]?.result as { state: string; gate: Record<string, unknown>; unverified?: string[] };
+  const unverified = panel.queryByText(/^Not verified: /)?.textContent ?? "";
+  return { line: line.textContent ?? "", state: answer.state, gate: answer.gate, unverified };
+}
+
+test("a suite's reviewed change gate retained by the workflow the application wrote verifies as the command line verifies it, and a tampered or foreign snapshot never passes", async () => {
+  const user = userEvent.setup();
+  const { downstream } = await savedAckTest(user, journey, "fixed");
+  await releaseSavedTest(user, RELEASE);
+  await authorSuite(user);
+  await prepareSuite(user, "prepared-downstream");
+  await declareCoverage(user);
+  const promotion = await promoteSuite(user, "fixture-build-7");
+  const license = journey.path("vendor-delivered-license", "operation-policy.json");
+  journey.makeFolder("ci-runs");
+  journey.makeFolder("ci-gates");
+
+  // The baseline: the promoted suite run once by the pipeline's own command
+  // against the fixed downstream, and reviewed privately.
+  const promoted = [
+    "--releases",
+    journey.path(PROJECT, "releases.json"),
+    "--promotion",
+    journey.path(PROJECT, "downstream-promotion.json"),
+    "--promotion-identity",
+    promotion,
+    "--revision",
+    "fixture-build-7",
+  ];
+  downstream.reset();
+  const baseline = await journey.commandLine([
+    "--operation-policy",
+    license,
+    "suite",
+    "ci",
+    journey.path(PROJECT, SUITE),
+    "--environment",
+    "downstream",
+    "--output",
+    journey.path("ci-runs", "baseline"),
+    "--requirements",
+    journey.path(PROJECT, "coverage.json"),
+    ...promoted,
+    "--send",
+    "--deadline",
+    "5m",
+  ]);
+  expect(baseline.code).toBe(0);
+  expect(downstream.ledger()).toEqual({ "PLACER-101": MOVED });
+
+  // The reviewer's gate policy, written by hand from what they reviewed: the
+  // baseline job's result identity and engine as the command line reports
+  // them, the coverage declaration and the promotion approved above.
+  const status = JSON.parse((await journey.commandLine(["run", "status", `ci-runs/baseline/runs/${JOB}`, "--json"])).stdout) as { result_identity: string };
+  const engine = (JSON.parse(journey.readFile(`ci-runs/baseline/runs/${JOB}/engine.json`)) as { engine: string }).engine;
+  const policy = {
+    schema: "readmit-ci-gate-policy/v1",
+    environment: "downstream",
+    revision_assumption: "fixture-build-7",
+    engine,
+    promotion_identity: promotion,
+    coverage: JSON.parse(journey.readFile(`${PROJECT}/coverage.json`)) as unknown,
+    baseline_results: [{ job: JOB, sha256: status.result_identity }],
+    max_bytes: 268435456,
+    retain_until: "2036-01-01T00:00:00Z",
+    approver: APPROVER,
+    rationale: "Reviewed the baseline acknowledgements",
+  };
+  journey.writeFile("gate-policy.json", JSON.stringify(policy));
+
+  // The window reads the policy's identity, the one
+  // `readmit suite gate-policy` prints, for the person to pin.
+  const ci = await ciHandoffs(user);
+  await enter(user, ci.getByLabelText("Gate policy file"), journey.path("gate-policy.json"));
+  await press(user, ci.getByRole("button", { name: "Inspect gate policy" }));
+  const read = await ci.findByText(byContent(/^Identity [0-9a-f]{64} for environment downstream, /));
+  const identity = /[0-9a-f]{64}/.exec(read.textContent ?? "")![0];
+  expect((await journey.commandLine(["suite", "gate-policy", journey.path("gate-policy.json")])).stdout.trim()).toBe(identity);
+
+  // The gated handoff: the documented POSIX workflow with the change gate
+  // after the suite, every pin typed as reviewed.
+  await user.selectOptions(ci.getByLabelText("Integration"), "posix");
+  await enter(user, ci.getByLabelText("Installed executable"), journey.commandLineExecutable);
+  await enter(user, ci.getByLabelText("Activated operation policy"), license);
+  await enter(user, ci.getByLabelText("Saved suite"), journey.path(PROJECT, SUITE));
+  await enter(user, ci.getByLabelText("Environment"), "downstream");
+  await enter(user, ci.getByLabelText("Run directory (fresh per invocation)"), journey.path("ci-runs", "first"));
+  await enter(user, ci.getByLabelText("Coverage declaration"), journey.path(PROJECT, "coverage.json"));
+  await enter(user, ci.getByLabelText("Handoff destination"), journey.path("readmit-suite-gate.sh"));
+  await press(user, ci.getByRole("checkbox", { name: /Add the reviewed change-gate step after the suite/ }));
+  await enter(user, ci.getByLabelText("Release references"), journey.path(PROJECT, "releases.json"));
+  await enter(user, ci.getByLabelText("Promotion approval"), journey.path(PROJECT, "downstream-promotion.json"));
+  await enter(user, ci.getByLabelText("Promotion approval identity"), promotion);
+  await enter(user, ci.getByLabelText("Target revision (operator-declared)"), "fixture-build-7");
+  await enter(user, ci.getByLabelText("Reviewed baseline run directory"), journey.path("ci-runs", "baseline"));
+  await enter(user, ci.getByLabelText("Reviewed gate policy"), journey.path("gate-policy.json"));
+  // A snapshot inside the run it judges is refused before anything is written.
+  await enter(user, ci.getByLabelText("Reviewed gate policy identity"), identity);
+  await enter(user, ci.getByLabelText("Gate snapshot directory (fresh per invocation)"), journey.path("ci-runs", "first", "gate"));
+  await press(user, ci.getByRole("button", { name: "Generate handoff" }));
+  expect(
+    await ci.findByText(
+      "Refused: the run directory, the reviewed baseline and the retained gate snapshot are three separate folders, none inside another",
+    ),
+  ).toBeTruthy();
+  expect(() => journey.readFile("readmit-suite-gate.sh")).toThrow();
+  await enter(user, ci.getByLabelText("Gate snapshot directory (fresh per invocation)"), journey.path("ci-gates", "first"));
+  await press(user, ci.getByRole("button", { name: "Generate handoff" }));
+  expect(await ci.findByText(`Saved to ${journey.path("readmit-suite-gate.sh")}. Install it as the customer administrator.`)).toBeTruthy();
+  const workflow = journey.readFile("readmit-suite-gate.sh");
+  expect(workflow).toContain('"$READMIT_BIN" suite gate "$RUN_DIRECTORY" --baseline "$BASELINE_DIRECTORY" --policy "$GATE_POLICY" --policy-identity "$GATE_POLICY_IDENTITY" --output "$GATE_DIRECTORY"');
+
+  /** The variables the checklist names, with this invocation's fresh run and
+   * snapshot directories. */
+  const invocation = (name: string) => ({
+    ...provisioned("readmit-suite-gate.sh", `ci-runs/${name}`),
+    GATE_DIRECTORY: journey.path("ci-gates", name),
+  });
+
+  // The agent runs the file against the fixed downstream: the suite passes,
+  // the gate retains a passing snapshot, and the gate sent nothing.
+  downstream.reset();
+  const beforeFirst = downstream.received().length;
+  const first = await journey.automationAgent("readmit-suite-gate.sh", invocation("first"));
+  expect(first.code).toBe(0);
+  expect(downstream.received().slice(beforeFirst)).toEqual([EXPORTED_BOOKING, EXPORTED_RESCHEDULE]);
+  const retained = JSON.parse(journey.readFile("ci-gates/first/gate.json")) as Record<string, unknown>;
+  expect(retained).toEqual({
+    schema: "readmit-ci-gate/v1",
+    state: "passed",
+    exit_code: 0,
+    approval: "passed",
+    pins: "passed",
+    coverage: "passed",
+    baseline: "passed",
+    retention: "retained",
+    target_revision: "operator_asserted",
+  });
+  // The same gate run by hand over the same runs retains the same verdict.
+  const gateArgs = (current: string, output: string, pin = identity, policyFile = "gate-policy.json") => [
+    "suite",
+    "gate",
+    journey.path("ci-runs", current),
+    "--baseline",
+    journey.path("ci-runs", "baseline"),
+    "--policy",
+    journey.path(policyFile),
+    "--policy-identity",
+    pin,
+    "--output",
+    journey.path("ci-gates", output),
+  ];
+  const byHand = await gateCommand(gateArgs("first", "by-hand"));
+  expect(byHand).toEqual({ code: 0, gate: retained });
+
+  // The window verifies the retained snapshot as `readmit suite verify-gate`
+  // does, and nothing is sent to verify it.
+  const sent = downstream.received().length;
+  const verifyGate = (snapshot: string, pin = identity) =>
+    gateCommand(["suite", "verify-gate", journey.path(snapshot), "--policy-identity", pin]);
+  const intact = await verifyInWindow(user, "ci-gates/first", identity);
+  expect(intact).toEqual({ line: "Retained change gate: passed (exit 0).", state: "completed", gate: retained, unverified: "" });
+  expect(await verifyGate("ci-gates/first")).toEqual({ code: 0, gate: intact.gate });
+
+  // A snapshot changed on disk after it was retained is unknown, never a
+  // pass, and the window names every part it could not verify.
+  journey.changeFile("ci-gates/by-hand/current/ci.json", "{}");
+  const unknown = {
+    schema: "readmit-ci-gate/v1",
+    state: "unknown",
+    exit_code: 2,
+    approval: "unknown",
+    pins: "unknown",
+    coverage: "unknown",
+    baseline: "unknown",
+    retention: "unknown",
+    target_revision: "unknown",
+  };
+  const everything = "Not verified: approval, pins, coverage, baseline, retention, target revision.";
+  expect(await verifyInWindow(user, "ci-gates/by-hand", identity)).toEqual({
+    line: "Retained change gate: unknown (exit 2).",
+    state: "failed",
+    gate: unknown,
+    unverified: everything,
+  });
+  expect(await verifyGate("ci-gates/by-hand")).toEqual({ code: 2, gate: unknown });
+
+  // A snapshot another reviewed policy retained is foreign to this identity.
+  journey.writeFile("other-gate-policy.json", JSON.stringify({ ...policy, rationale: "A second review of the same baseline" }));
+  const otherIdentity = (await journey.commandLine(["suite", "gate-policy", journey.path("other-gate-policy.json")])).stdout.trim();
+  expect(otherIdentity).not.toBe(identity);
+  expect((await gateCommand(gateArgs("first", "other", otherIdentity, "other-gate-policy.json"))).code).toBe(0);
+  expect(await verifyInWindow(user, "ci-gates/other", identity)).toEqual({
+    line: "Retained change gate: unknown (exit 2).",
+    state: "failed",
+    gate: unknown,
+    unverified: everything,
+  });
+  expect(await verifyGate("ci-gates/other")).toEqual({ code: 2, gate: unknown });
+  expect(downstream.received()).toHaveLength(sent);
+
+  // Against the defect, the suite fails and the gate still retains the run:
+  // the behavioral change is proven, and the workflow exits with the suite's
+  // own status, never the gate's.
+  downstream.setMode("defective");
+  downstream.reset();
+  const second = await journey.automationAgent("readmit-suite-gate.sh", invocation("second"));
+  expect(JSON.parse(journey.readFile("ci-runs/second/ci.json"))).toMatchObject({ state: "error", exit_code: 2, coverage: "failed" });
+  expect(second.code).toBe(2);
+  expect(downstream.ledger()).toEqual({ "PLACER-101": BOOKED });
+  const failed = JSON.parse(journey.readFile("ci-gates/second/gate.json")) as Record<string, unknown>;
+  expect(failed).toMatchObject({ state: "failed", exit_code: 1, approval: "passed", baseline: "failed" });
+  const refused = await verifyInWindow(user, "ci-gates/second", identity);
+  expect(refused).toEqual({ line: "Retained change gate: failed (exit 1).", state: "completed", gate: failed, unverified: "Not verified: pins, coverage." });
+  expect(await verifyGate("ci-gates/second")).toEqual({ code: 1, gate: failed });
 });

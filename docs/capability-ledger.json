@@ -1928,12 +1928,14 @@
       "capability": "Assess retained suite evidence against an explicitly pinned CI gate policy without sending",
       "owner": "bharm16/readmit#307",
       "screen": "the runner, schedules and CI panel of the privacy region",
-      "action": "retain and verify a reviewed CI change gate snapshot",
+      "action": "generate the documented CI workflow with the reviewed change-gate step run after the suite, its pins validated",
       "backend": {"package": "internal/suite", "name": "RetainGate"},
       "inputs": ["readmit-ci-gate-policy/v1", "readmit-suite-coverage/v1", "readmit-suite/v1", "readmit-suite-selection/v1", "readmit-run-queue/v1", "readmit-run-queue-report/v1", "readmit-suite-promotion/v1", "readmit-suite-releases/v1", "readmit-test-release/v1", "readmit-test/v1", "readmit-job/v1", "readmit-result/v1"],
       "outputs": ["readmit-ci-retention/v1", "readmit-ci-gate/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/suites.journey.tsx", "name": "a suite's reviewed change gate retained by the workflow the application wrote verifies as the command line verifies it, and a tampered or foreign snapshot never passes"},
+      "parity_test": {"package": "internal/desktop", "name": "TestTheGeneratedGateStepRetainsTheVerdictAHandRunGateRetains"},
+      "implemented": true
     },
     {
       "id": "cli.suite.gate-policy",
@@ -2006,12 +2008,14 @@
       "capability": "Assess retained suite evidence against an explicitly pinned CI gate policy without sending",
       "owner": "bharm16/readmit#307",
       "screen": "the runner, schedules and CI panel of the privacy region",
-      "action": "retain and verify a reviewed CI change gate snapshot",
+      "action": "verify a retained CI change-gate snapshot against its pinned policy identity and name what could not be verified",
       "backend": {"package": "internal/suite", "name": "VerifyGate"},
       "inputs": ["readmit-ci-retention/v1", "readmit-ci-gate-policy/v1", "readmit-suite-coverage/v1", "readmit-suite/v1", "readmit-suite-selection/v1", "readmit-run-queue/v1", "readmit-run-queue-report/v1", "readmit-suite-promotion/v1", "readmit-suite-releases/v1", "readmit-test-release/v1", "readmit-test/v1", "readmit-job/v1", "readmit-result/v1"],
       "outputs": ["readmit-ci-gate/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/suites.journey.tsx", "name": "a suite's reviewed change gate retained by the workflow the application wrote verifies as the command line verifies it, and a tampered or foreign snapshot never passes"},
+      "parity_test": {"package": "internal/desktop", "name": "TestTheWindowVerifiesRetainedGatesAsReadmitSuiteVerifyGateDoes"},
+      "implemented": true
     },
     {
       "id": "cli.synth",
@@ -5740,7 +5744,7 @@
       "capability": "saveCIHandoff application operation",
       "owner": "bharm16/readmit#263",
       "screen": "the runner, schedules and CI panel of the privacy region",
-      "action": "generate the documented CI workflow for one supported integration with the six provisioned variables validated",
+      "action": "generate the documented CI workflow for one supported integration with the six provisioned variables validated, and the reviewed change-gate step when asked for",
       "backend": {"package": "internal/desktop", "name": "ciHandoffDocument"},
       "inputs": [],
       "outputs": [],
@@ -5779,6 +5783,22 @@
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/RunnerPanel.test.tsx", "name": "the CI handoff is generated in-app and results are inspected in-app"},
       "parity_test": {"package": "internal/desktop", "name": "TestInspectGatePolicyComputesTheCanonicalIdentity"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.VerifyCIGate",
+      "source": "desktop.App.VerifyCIGate",
+      "kind": "desktop",
+      "capability": "verifyCIGate application operation",
+      "owner": "bharm16/readmit#307",
+      "screen": "the runner, schedules and CI panel of the privacy region",
+      "action": "verify a retained CI change-gate snapshot against its pinned policy identity and name what could not be verified",
+      "backend": {"package": "internal/suite", "name": "VerifyGate"},
+      "inputs": ["readmit-ci-retention/v1", "readmit-ci-gate-policy/v1", "readmit-suite-coverage/v1", "readmit-suite/v1", "readmit-suite-selection/v1", "readmit-run-queue/v1", "readmit-run-queue-report/v1", "readmit-suite-promotion/v1", "readmit-suite-releases/v1", "readmit-test-release/v1", "readmit-test/v1", "readmit-job/v1", "readmit-result/v1"],
+      "outputs": ["readmit-ci-gate/v1"],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/RunnerPanel.test.tsx", "name": "a retained change gate is verified against its pinned identity, and what could not be verified is named"},
+      "parity_test": {"package": "internal/desktop", "name": "TestTheWindowVerifiesRetainedGatesAsReadmitSuiteVerifyGateDoes"},
       "implemented": true
     },
     {
