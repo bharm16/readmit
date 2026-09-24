@@ -210,6 +210,81 @@ test("the clock correction journey resolves a latched rollback explicitly", asyn
   expect(await screen.findByText(/No unresolved clock rollback/)).toBeTruthy();
 });
 
+test("activation folder choice, export and clock recovery retain status on refusal or cancellation", async () => {
+  const user = userEvent.setup();
+  const status = { ...activeStatus(), clock: { ...activeStatus().clock!, rollback: true } };
+  const facade = installFacade(quiet({
+    OperationStatus: () => status,
+    VerifyLicenseDocument: () => receivedLicense(),
+    ChooseLicenseFolder: () => ({ state: "failed" as const, reason: "choose an existing folder that is not a symbolic link" }),
+    ExportLicenseDocument: () => ({ state: "failed" as const, reason: "the destination folder already holds a file with this name" }),
+    ResolveOperationClock: () => ({ state: "failed" as const, selected: true, reason: "local UTC time is still behind the recorded high-water" }),
+    RenewLicenseDocument: () => ({ state: "failed" as const, selected: true, reason: "the later issue does not assign this device" }),
+  }));
+  render(<OperationAccess />);
+  expect(await screen.findByText(/Clock correction requires explicit resolution/)).toBeTruthy();
+
+  await user.click(screen.getByRole("button", { name: "Verify a received license…" }));
+  await screen.findByText("example-hospital");
+  const choose = screen.getByRole("button", { name: "Choose the private activation folder…" });
+  choose.focus();
+  await user.keyboard("{Enter}");
+  expect(await screen.findByText("choose an existing folder that is not a symbolic link")).toBeTruthy();
+  expect(screen.queryByText(/Activation folder:/)).toBeNull();
+
+  facade.reply({ ChooseLicenseFolder: () => ({ state: "cancelled", reason: "no folder was chosen" }) });
+  await user.click(choose);
+  expect(await screen.findByText("no folder was chosen")).toBeTruthy();
+  expect(screen.queryByText(/Activation folder:/)).toBeNull();
+
+  const exportButton = screen.getByRole("button", { name: "Export the installed entitlement…" });
+  exportButton.focus();
+  await user.keyboard("{Enter}");
+  expect(await screen.findByText("the destination folder already holds a file with this name")).toBeTruthy();
+  facade.reply({ ExportLicenseDocument: () => ({ state: "cancelled", reason: "no folder was chosen" }) });
+  await user.click(exportButton);
+  expect(await screen.findByText("no folder was chosen")).toBeTruthy();
+  facade.reply({ ExportLicenseDocument: () => ({ state: "completed", document: "ENT-0002", path: "/private/export/ENT-0002.json" }) });
+  await user.click(exportButton);
+  expect(await screen.findByText(/Document ENT-0002 written to \/private\/export\/ENT-0002.json, byte for byte/)).toBeTruthy();
+
+  const resolve = screen.getByRole("button", { name: "Resolve corrected clock" });
+  resolve.focus();
+  await user.keyboard("{Enter}");
+  expect(await screen.findByText(/local UTC time is still behind the recorded high-water/)).toBeTruthy();
+  expect(screen.getByText(/Clock correction requires explicit resolution/)).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Renew or extend with a later issue…" }));
+  expect(await screen.findByText("the later issue does not assign this device")).toBeTruthy();
+  expect(screen.getByText(/Clock correction requires explicit resolution/)).toBeTruthy();
+  expect((screen.getByRole("button", { name: "Release this activation" }) as HTMLButtonElement).disabled).toBe(false);
+  expect(facade.callsTo("ChooseLicenseFolder")).toHaveLength(2);
+  expect(facade.callsTo("ExportLicenseDocument")).toHaveLength(3);
+  expect(facade.callsTo("ResolveOperationClock")).toHaveLength(1);
+});
+
+test("a supplied activation folder can be chosen from the keyboard and cancellation leaves the old selection", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade(quiet({
+    OperationStatus: () => activeStatus(),
+    ChooseOperationPolicy: () => ({ state: "cancelled" as const, selected: true, reason: "no folder was chosen" }),
+  }));
+  render(<OperationAccess />);
+  await screen.findByText(/License: active/);
+  const choice = screen.getByRole("button", { name: "Select a supplied activation folder…" });
+  choice.focus();
+  await user.keyboard("{Enter}");
+  expect(await screen.findByText("no folder was chosen")).toBeTruthy();
+  expect(screen.getByText(/License: active/)).toBeTruthy();
+  facade.reply({
+    ChooseOperationPolicy: () => ({ state: "completed", selected: true }),
+    OperationStatus: () => ({ ...activeStatus(), term: "grace" }),
+  });
+  await user.click(choice);
+  expect(await screen.findByText(/License: grace/)).toBeTruthy();
+  expect(facade.callsTo("OperationStatus")).toHaveLength(2);
+  expect(facade.callsTo("ChooseOperationPolicy")).toHaveLength(2);
+});
+
 test("runner capacity is shown and settled explicitly, never silently", async () => {
   const user = userEvent.setup();
   const settled: { instance: string; reconcile: boolean }[] = [];

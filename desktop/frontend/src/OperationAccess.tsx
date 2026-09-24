@@ -46,6 +46,11 @@ export function OperationAccess() {
     try { apply(await action()); } finally { setBusy(false); }
   }
 
+  function showOperationResult(value: OperationResult) {
+    if (value.state === "completed") setResult(value);
+    else setNotice(value.reason ?? null);
+  }
+
   const document = verified?.state === "completed" ? verified.document : undefined;
   const assignment = document?.assignments?.find(entry => entry.author === author);
   const devices = assignment?.devices ?? [];
@@ -79,17 +84,22 @@ export function OperationAccess() {
         setAuthority(NONE);
         setFolder(null);
       })}>Verify a received license…</button>
-      <button disabled={busy || !result?.selected} onClick={() => void perform(activateOperations, setResult)}>Activate license</button>
+      <button disabled={busy || !result?.selected} onClick={() => void perform(activateOperations, showOperationResult)}>Activate license</button>
       <button disabled={busy} onClick={() => void perform(operationStatus, setResult)}>Refresh local status</button>
-      <button disabled={busy || !result?.clock?.rollback} onClick={() => void perform(resolveOperationClock, setResult)}>Resolve corrected clock</button>
-      <button disabled={busy || !result?.clock || result.clock.released} onClick={() => void perform(releaseOperations, setResult)}>Release this activation</button>
+      <button disabled={busy || !result?.clock?.rollback} onClick={() => void perform(resolveOperationClock, showOperationResult)}>Resolve corrected clock</button>
+      <button disabled={busy || !result?.clock || result.clock.released} onClick={() => void perform(releaseOperations, showOperationResult)}>Release this activation</button>
       <button disabled={busy} onClick={() => void perform(renewLicenseDocument, value => {
-        setResult(value);
-        setNotice("A renewal or an approved extension installs here: choose the later issue the vendor signed. Transfers are refused; import them where they apply.");
+        if (value.state === "completed") {
+          setResult(value);
+          setNotice("A renewal or an approved extension installs here: choose the later issue the vendor signed. Transfers are refused; import them where they apply.");
+        } else setNotice(value.reason ?? null);
       })}>Renew or extend with a later issue…</button>
       <button disabled={busy} onClick={() => void perform(exportLicenseDocument, setExported)}>Export the installed entitlement…</button>
       <button disabled={busy} onClick={() => void perform(showRunnerAdmissions, setRunners)}>Show runner capacity</button>
-      <button disabled={busy} onClick={() => void perform(chooseOperationPolicy, setResult)}>Select a supplied activation folder…</button>
+      <button disabled={busy} onClick={() => void perform(async () => {
+        const choice = await chooseOperationPolicy();
+        return choice.state === "completed" ? operationStatus() : choice;
+      }, showOperationResult)}>Select a supplied activation folder…</button>
     </div>
 
     {verified ? (
@@ -139,8 +149,10 @@ export function OperationAccess() {
             authority: authority === NONE ? "" : authority,
             folder: folder ?? "",
           }), value => {
-            setResult(value);
-            setFolder(null);
+            if (value.state === "completed") {
+              setResult(value);
+              setFolder(null);
+            } else setNotice(value.reason ?? null);
           })}>Create the local activation</button>
           {!roleComplete ? <p role="note">Select the author and the device together, or neither.</p> : null}
         </> : null}

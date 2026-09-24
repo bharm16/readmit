@@ -10,6 +10,7 @@ package desktop_test
 import (
 	"crypto/ed25519"
 	"encoding/base64"
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"slices"
@@ -29,6 +30,90 @@ type signing struct {
 	public  ed25519.PublicKey
 	private ed25519.PrivateKey
 	trust   entitlement.Trust
+}
+
+func TestChooseLicenseFolderChecksTheNativeChoiceWithoutCreatingAnActivation(t *testing.T) {
+	folder := t.TempDir()
+	app := freshApp(t, &queueChooser{folders: []string{folder}}, "")
+	if chosen := app.ChooseLicenseFolder(); chosen.State != desktop.Completed || chosen.Folder != folder {
+		t.Fatalf("existing folder not chosen: %+v", chosen)
+	}
+	if entries, err := os.ReadDir(folder); err != nil || len(entries) != 0 {
+		t.Fatalf("choosing wrote activation files: %v %v", entries, err)
+	}
+	link := filepath.Join(t.TempDir(), "activation-link")
+	if err := os.Symlink(folder, link); err != nil {
+		t.Skipf("symbolic links unavailable: %v", err)
+	}
+	if chosen := freshApp(t, &queueChooser{folders: []string{link}}, "").ChooseLicenseFolder(); chosen.State != desktop.Failed || chosen.Folder != "" {
+		t.Fatalf("symbolic-link folder chosen: %+v", chosen)
+	}
+	if chosen := freshApp(t, &queueChooser{}, "").ChooseLicenseFolder(); chosen.State != desktop.Cancelled || chosen.Folder != "" {
+		t.Fatalf("cancelled native choice selected a folder: %+v", chosen)
+	}
+}
+
+func TestChooseOperationPolicyAndClockResolutionReachTheCommandLineReaders(t *testing.T) {
+	signer := newSigning(t)
+	document := signer.document(t, claims(1, time.Now().UTC().Add(30*24*time.Hour)))
+	entitlementPath, trustPath := writeReceived(t, "received", document, signer.trustBytes(t))
+	folder := t.TempDir()
+	selection := filepath.Join(t.TempDir(), "operations.json")
+	creator := freshApp(t, &queueChooser{}, selection)
+	if created := creator.CreateLicenseActivation(desktop.LicenseActivationRequest{
+		Entitlement: entitlementPath, Trust: trustPath, Author: "alice", Device: "laptop", Folder: folder,
+	}); created.State != desktop.Completed {
+		t.Fatal(created)
+	}
+	if activated := creator.ActivateOperations(); activated.State != desktop.Completed {
+		t.Fatal(activated)
+	}
+	app := freshApp(t, &queueChooser{folders: []string{folder}}, filepath.Join(t.TempDir(), "chosen.json"))
+	if selected := app.ChooseOperationPolicy(); selected.State != desktop.Completed || !selected.Selected {
+		t.Fatalf("native choice did not select policy: %+v", selected)
+	}
+	policyPath := filepath.Join(folder, "operation-policy.json")
+	before, err := operationguard.Read(policyPath)
+	if err != nil || app.OperationStatus().Clock == nil || *app.OperationStatus().Clock != before {
+		t.Fatalf("selected policy disagrees with command-line reader: %v %+v", err, app.OperationStatus())
+	}
+	if declined := freshApp(t, &queueChooser{}, filepath.Join(t.TempDir(), "declined.json")).ChooseOperationPolicy(); declined.State != desktop.Cancelled {
+		t.Fatalf("cancelled policy choice succeeded: %+v", declined)
+	}
+
+	policy, err := operationguard.DecodePolicy(mustRead(t, policyPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock := before
+	clock.HighWater = time.Now().UTC().Truncate(time.Second).Add(time.Hour)
+	clock.Rollback = true
+	data, err := json.Marshal(clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(policy.State, append(data, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if refused := app.ResolveOperationClock(); refused.State != desktop.Failed || !strings.Contains(refused.Reason, "clock") {
+		t.Fatalf("resolved while wall time was behind high-water: %+v", refused)
+	}
+	if same, err := operationguard.Read(policyPath); err != nil || !same.Rollback || !same.HighWater.Equal(clock.HighWater) {
+		t.Fatalf("refused resolution changed clock: %v %+v", err, same)
+	}
+	clock.HighWater = time.Now().UTC().Truncate(time.Second).Add(-time.Minute)
+	data, err = json.Marshal(clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(policy.State, append(data, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	resolved := app.ResolveOperationClock()
+	after, err := operationguard.Read(policyPath)
+	if resolved.State != desktop.Completed || resolved.Clock == nil || err != nil || after.Rollback || *resolved.Clock != after || after.HighWater.Before(clock.HighWater) {
+		t.Fatalf("facade resolution disagrees with command-line reader: %+v %v %+v", resolved, err, after)
+	}
 }
 
 func newSigning(t *testing.T) *signing {

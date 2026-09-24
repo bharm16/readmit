@@ -3129,9 +3129,16 @@ This computer's license comes first in the license pane, handled the way any sof
 
 The earlier controls below remain for an activation folder an administrator supplies or builds; when the selected activation is this computer's license, renewing or releasing it there acts on the license as the controls above do.
 
+If a supplied-folder selection is cancelled or a renewal is refused, the
+current activation status and its release control remain visible; the reason
+appears beside them. The folder chooser rejects a symbolic link, and an
+occupied activation or export destination is refused rather than overwritten.
+
 The privacy pane carries the whole license journey. A received entitlement is verified against the vendor's trust document through two native file dialogs, using the same v1/v2 readers the command line uses; the report is what the document itself declares plus the term state decided from the local clock, and a tampered document, an unknown, retired or revoked key, and an expired term are each refused or reported by name. A verified v2 document then configures activation without hand-authored JSON: the author, the device and the runner authority are chosen from what the document itself assigns (an unused role is explicitly empty, as the policy contract requires), a private activation folder is chosen natively, and the pane writes the received documents and one `readmit-operation-policy/v1` into it. Creation re-verifies the documents at the moment it writes, never overwrites an occupied folder, and does not activate: activation stays the separate explicit action it is on the command line, after which the pane shows signed term dates and the visible UTC high-water/rollback state.
 
 Renewal — a paid renewal or the one approved trial extension — chooses the later issue natively, verifies it against the same trust, refuses a transfer (a reissue that no longer assigns this device to this author, or no longer names the configured runner authority), a superseded or foreign-organization sequence, and a released activation, installs the new document beside the old one and rewrites the policy atomically; the retained clock state is never touched. The installed document exports byte for byte into a chosen folder and never overwrites. Runner capacity is shown per authority — active, stale and free against the granted instances — and an admission is released or reconciled explicitly, never silently; admitting and renewing instances is the runner host's own lifecycle, not the pane's. New authoring and execution are admitted through the shared operation guard; unconfigured, expired, released, corrupt or rollback-blocked state refuses them. The application still opens, reads/verifies/exports existing evidence, and runs its frozen synthetic practice without activation, and every license-management action works with no activation at all. Selection is persisted separately as `readmit-desktop-operation-selection/v1`. See [the local evaluation contract](license-v2.md#complete-local-evaluation-and-operation-admission).
+
+The runner's automatic claim and release follows [D10](product-decisions.md#d10--runner-instances-claim-purchased-capacity-automatically). The generated CI handoff still expects an agent's activated operation-policy path; it does not yet provision a signed license from a CI secret or establish one shared authority record across hosts. Do not copy an admission record to each host to simulate shared capacity.
 
 ### Commercial account and checkout destination (`readmit-commercial-destinations/v1`)
 
@@ -3951,4 +3958,3 @@ drivers remain unqualified production claims until #75. Downstream-capture
 sources accept a retained case path; Capture completion hands that path into
 `BindCaptureObservation` without starting a second capture UI. Verified window
 references bind into guided test authoring without hand-authored JSON.
-

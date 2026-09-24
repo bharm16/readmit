@@ -303,6 +303,27 @@ identity is decided elsewhere, so the first activation also asks for the
 vendor's verification keys file and keeps it with the license for renewals.
 Details: [this computer's license](license.md#this-computers-license).
 
+## D10 — Runner instances claim purchased capacity automatically
+
+Owner decision of September 22, 2026, recorded on
+[#316](https://github.com/bharm16/readmit/issues/316): a CI job uses the same
+license model as other developer tools. The customer supplies its signed
+license through protected CI configuration; the runner claims a slot when
+work starts, keeps the lease while it runs and releases the slot when it ends.
+An administrator sees active and stale capacity in the license pane and can
+reconcile a stuck instance after establishing that it stopped. The
+`license runner init/admit/renew/release` commands remain scriptable machine
+interfaces, not steps a person must add to each pipeline.
+
+The current operation guard already admits and releases a bounded `suite ci`
+execution against one authority record. The generated CI handoff still names
+an activated operation-policy path on its self-hosted agent. Supplying a
+license as a pipeline secret and sharing one authority record across hosts
+need an explicit trust, activation and storage handoff before the generator
+can claim this decision end to end. A copy of a record on another host is a
+second authority and cannot enforce the purchased capacity. No automatic
+vendor network check or hardware identifier is introduced by this decision.
+
 ## Start prerequisites and acceptance gates
 
 | Work | Implementation can start after | Completion or release still requires |
