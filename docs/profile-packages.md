@@ -120,9 +120,9 @@ context between files; no network work is started or resumed.
 The desktop application's profile panel imports through the same `Import`
 into a new directory of the open workspace, refuses what this command refuses
 in the same words, shows the verified profile, pin, seal, origin and pack
-provenance, and can open the imported profile against its pinned pack
-([desktop](desktop.md#interface-profile-management)). It activates nothing
-either.
+provenance, and can open the imported profile against its pinned pack named
+beside it ([desktop](desktop.md#interface-profile-management)). It activates
+nothing either.
 
 Owner review still covers actual content rights, applicable HL7 incorporation
 terms and any external mapping's accuracy. The graphical profile editor and

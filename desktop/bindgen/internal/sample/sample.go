@@ -62,6 +62,14 @@ type Request struct {
 		A int `json:"a"`
 	} `json:"inline"`
 	Items []*Item `json:"items"`
+	Promoted
+}
+
+// Promoted is embedded untagged, so encoding/json writes its members as the
+// embedding struct's own, in its place.
+type Promoted struct {
+	Origin string `json:"origin"`
+	Depth  int    `json:"depth,omitzero"`
 }
 
 type Item struct {
@@ -78,9 +86,31 @@ type Embedding struct{}
 
 func (*Embedding) Get() Embeds { return Embeds{} }
 
-type Embeds struct{ Base }
+// Embeds embeds a pointer, whose members encoding/json writes only when it is
+// not nil.
+type Embeds struct{ *Base }
 
 type Base struct {
+	ID string `json:"id"`
+}
+
+type TaggedEmbedding struct{}
+
+func (*TaggedEmbedding) Get() TaggedEmbeds { return TaggedEmbeds{} }
+
+// TaggedEmbeds embeds a struct under a json tag.
+type TaggedEmbeds struct {
+	Base `json:"base"`
+}
+
+type Shadowing struct{}
+
+func (*Shadowing) Get() Shadows { return Shadows{} }
+
+// Shadows declares a member its embedded struct also declares, and
+// encoding/json keeps only one of them.
+type Shadows struct {
+	Base
 	ID string `json:"id"`
 }
 

@@ -114,6 +114,54 @@ func TestSupportIsOneAnswerPerLevelAndCombination(t *testing.T) {
 	}
 }
 
+// TestOutcomesIsTheFourLevelsAnsweredAtOnce holds the one answer about a
+// combination to the four answers Support gives one level at a time, across
+// every combination of the closed sets and some outside them, and Covered to
+// whether the pack declares the combination at all.
+func TestOutcomesIsTheFourLevelsAnsweredAtOnce(t *testing.T) {
+	pack, err := profilepack.Decode(fixture(t, "profile-pack.json"))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	declared := map[profilepack.Combination]bool{}
+	for _, coverage := range pack.Coverage {
+		declared[profilepack.Combination{Version: coverage.HL7Version, Family: coverage.Family}] = true
+	}
+	combinations := []profilepack.Combination{{Version: "2.9", Family: "SIU"}, {Version: "2.5.1", Family: "siu"}, {}}
+	for _, version := range profilepack.HL7Versions() {
+		for _, family := range profilepack.Families() {
+			combinations = append(combinations, profilepack.Combination{Version: version, Family: family})
+		}
+	}
+	for _, combination := range combinations {
+		got := pack.Outcomes(combination.Version, combination.Family)
+		want := profilepack.Outcomes{
+			Parse:      pack.Support(combination.Version, combination.Family, profilepack.LevelParse),
+			Labels:     pack.Support(combination.Version, combination.Family, profilepack.LevelLabels),
+			Structural: pack.Support(combination.Version, combination.Family, profilepack.LevelStructural),
+			Workflow:   pack.Support(combination.Version, combination.Family, profilepack.LevelWorkflow),
+		}
+		if got != want {
+			t.Errorf("Outcomes(%q, %q) = %+v, want %+v", combination.Version, combination.Family, got, want)
+		}
+		if got.Covered() != declared[combination] {
+			t.Errorf("Outcomes(%q, %q).Covered() = %v", combination.Version, combination.Family, got.Covered())
+		}
+	}
+	if got := pack.Outcomes("2.5.1", "SIU"); got != (profilepack.Outcomes{Parse: profilepack.OutcomeSupported, Labels: profilepack.OutcomeSupported,
+		Structural: profilepack.OutcomeUnsupported, Workflow: profilepack.OutcomeUnsupported}) {
+		t.Fatalf("the fixture's own combination: %+v", got)
+	}
+	unknown := profilepack.Outcomes{Parse: profilepack.OutcomeUnknown, Labels: profilepack.OutcomeUnknown,
+		Structural: profilepack.OutcomeUnknown, Workflow: profilepack.OutcomeUnknown}
+	if got := (profilepack.Pack{}).Outcomes("2.5.1", "SIU"); got != unknown || got.Covered() {
+		t.Fatalf("a pack nothing decoded answered %+v", got)
+	}
+	if (profilepack.Outcomes{}).Covered() {
+		t.Fatal("outcomes no pack answered cover a combination")
+	}
+}
+
 func TestLabelIsReturnedOnlyUnderASupportedLabelsCombination(t *testing.T) {
 	pack, err := profilepack.Decode(fixture(t, "profile-pack.json"))
 	if err != nil {
@@ -510,6 +558,31 @@ func TestPendingRightsReviewDecodes(t *testing.T) {
       "reference": "testdata/README.md"`, `"status": "pending",
       "reference": ""`)); err != nil {
 		t.Fatalf("a pending pack with no reference yet must decode: %v", err)
+	}
+}
+
+// TestBundleableIsTheRecordedRightsReview is the one-pack gate a library and
+// the window's pack inspection both ask: an approved recorded review is
+// bundleable, a pending one is readable and not bundleable, and a pack nothing
+// decoded is neither.
+func TestBundleableIsTheRecordedRightsReview(t *testing.T) {
+	approved, err := profilepack.Decode(fixture(t, "profile-pack.json"))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if err := approved.Bundleable(); err != nil {
+		t.Fatalf("an approved review is not bundleable: %v", err)
+	}
+	pending, err := profilepack.Decode(fixture(t, "profile-pack-pending-review.json"))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if err := pending.Bundleable(); err == nil || !strings.Contains(err.Error(), "records no approved rights review") {
+		t.Fatalf("a pending review is bundleable: %v", err)
+	}
+	assembled := profilepack.Pack{Schema: approved.Schema, Identity: approved.Identity, Provenance: approved.Provenance, Coverage: approved.Coverage}
+	if err := assembled.Bundleable(); err == nil {
+		t.Fatal("a pack nothing decoded is bundleable")
 	}
 }
 

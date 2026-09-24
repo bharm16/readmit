@@ -64,15 +64,6 @@ type Finding struct {
 	Detail  string      `json:"detail"`
 }
 
-// Support is what the pinned pack declares about the combination this profile
-// constrains, at each of the four levels the pack keeps separate.
-type Support struct {
-	Parse      profilepack.Outcome `json:"parse"`
-	Labels     profilepack.Outcome `json:"labels"`
-	Structural profilepack.Outcome `json:"structural"`
-	Workflow   profilepack.Outcome `json:"workflow"`
-}
-
 // ResolvedField is one constrained position with the origin of every rule on
 // it. Each rule's origin is answered separately, so a locally invented
 // cardinality beside a field name that came from the pack cannot be read as
@@ -122,10 +113,12 @@ type Resolution struct {
 	Base    Base     `json:"base"`
 	// Pinned is whether the pack offered is exactly the pinned one. When it
 	// is false nothing at all is read from the pack.
-	Pinned   bool              `json:"pinned"`
-	Support  Support           `json:"support"`
-	Segments []ResolvedSegment `json:"segments"`
-	Findings []Finding         `json:"findings"`
+	Pinned bool `json:"pinned"`
+	// Support is what the pinned pack declares about the combination this
+	// profile constrains, at each of the four levels the pack keeps separate.
+	Support  profilepack.Outcomes `json:"support"`
+	Segments []ResolvedSegment    `json:"segments"`
+	Findings []Finding            `json:"findings"`
 }
 
 // Resolve reads one local profile together with the pack it pins and answers,
@@ -175,31 +168,24 @@ func Resolve(profile Profile, pack profilepack.Pack) Resolution {
 	return resolution
 }
 
-func support(base Base, pack profilepack.Pack, pinned bool) Support {
+// support is what the pack declares about the profile's combination. An
+// unpinned pack contributes nothing, so the zero pack, which declares nothing,
+// answers for it: unknown at every level.
+func support(base Base, pack profilepack.Pack, pinned bool) profilepack.Outcomes {
 	if !pinned {
-		return Support{
-			Parse:      profilepack.OutcomeUnknown,
-			Labels:     profilepack.OutcomeUnknown,
-			Structural: profilepack.OutcomeUnknown,
-			Workflow:   profilepack.OutcomeUnknown,
-		}
+		pack = profilepack.Pack{}
 	}
-	return Support{
-		Parse:      pack.Support(base.HL7Version, base.Family, profilepack.LevelParse),
-		Labels:     pack.Support(base.HL7Version, base.Family, profilepack.LevelLabels),
-		Structural: pack.Support(base.HL7Version, base.Family, profilepack.LevelStructural),
-		Workflow:   pack.Support(base.HL7Version, base.Family, profilepack.LevelWorkflow),
-	}
+	return pack.Outcomes(base.HL7Version, base.Family)
 }
 
-func combinationFindings(declared Support, pinned bool) []Finding {
+func combinationFindings(declared profilepack.Outcomes, pinned bool) []Finding {
 	findings := []Finding{}
 	if !pinned {
 		findings = append(findings, Finding{
 			Kind:   FindingPackNotPinned,
 			Detail: "the selected pack is not the pack id and version this profile pins, so nothing was read from it",
 		})
-	} else if declared.Labels == profilepack.OutcomeUnknown {
+	} else if !declared.Covered() {
 		findings = append(findings, Finding{
 			Kind:   FindingCombinationUnknown,
 			Detail: "the pinned pack declares nothing about this HL7 version and message family",

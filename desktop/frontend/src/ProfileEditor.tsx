@@ -483,7 +483,7 @@ export function ProfileEditor({
                 <span>Pack entry</span>
                 <input
                   type="text"
-                  placeholder="Empty for the pinned pack beside the profile"
+                  placeholder="Empty for the pinned pack in the workspace"
                   value={openPack}
                   disabled={disabled}
                   onChange={(e) => setOpenPack(e.target.value)}

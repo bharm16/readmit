@@ -202,7 +202,8 @@ and every name resolves `local` or `undeclared`. A pack assembled in Go without
 going through its own reader satisfies no pin either, so the pack reader's
 refusals cannot be walked around from this side.
 
-`Support` carries the pack's four levels for the combination separately, and
+`Support` carries the pack's four levels for the combination separately, as the
+one `profilepack.Outcomes` type every consumer of the four levels shares, and
 they are stated, never borrowed: a combination whose labels are `untested`, and
 one the pack never declares at all, each originate no name.
 
@@ -247,8 +248,9 @@ of the consumer's own contract.
 - **Desktop application editing**: The desktop app provides an interactive,
   typed constraint editor in the inspector region (`manage-profiles` command),
   with draft-store persistence, canonical Go validation, opening an existing
-  profile (one a package import wrote included) against its pinned pack,
-  version comparison, impact assessment against saved test reference indexes,
+  profile (one a package import wrote included, with the pack beside it named)
+  against its pinned pack, version comparison, impact assessment against saved
+  test reference indexes,
   single-test pin upgrading, and package export/import
   ([`desktop.md`](desktop.md)).
 - **No profile is bundled**, and nothing reads the bundled v2.5.1 dictionary

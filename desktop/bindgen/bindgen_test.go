@@ -143,6 +143,8 @@ export interface SampleRequest {
   Untagged: boolean;
   inline: { a: number };
   items: (SampleItem | null)[];
+  origin: string;
+  depth?: number;
 }
 `,
 		`export interface SampleItem {
@@ -228,7 +230,9 @@ func TestShapesThatCannotBeDeclaredExactlyAreRefused(t *testing.T) {
 		names names
 		want  string
 	}{
-		{&sample.Embedding{}, names{}, "embeds sample.Base"},
+		{&sample.Embedding{}, names{}, "embeds *sample.Base"},
+		{&sample.TaggedEmbedding{}, names{}, "TaggedEmbeds embeds sample.Base"},
+		{&sample.Shadowing{}, names{}, `declares the member "id" twice`},
 		{&sample.SelfMarshaling{}, names{}, "sample.Marshals marshals itself"},
 		{&sample.Variadic{}, names{}, "cannot call a variadic method"},
 		{&sample.Pair{}, names{}, "one result and an optional error"},

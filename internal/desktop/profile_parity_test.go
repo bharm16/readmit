@@ -271,9 +271,9 @@ func TestAProfileOpenedInTheWindowCarriesTheSealTheCommandLineImported(t *testin
 		t.Fatal(err)
 	}
 
-	// Named beside it, or found beside it, the pinned pack resolves the
-	// profile, and the seal computed from what was opened is the one the
-	// import wrote.
+	// Named beside it, or found among the workspace's own entries, where the
+	// package was exported from, the pinned pack resolves the profile, and the
+	// seal computed from what was opened is the one the import wrote.
 	for _, pack := range []string{"imported/pack.json", ""} {
 		opened := app.OpenProfile(root, "imported/profile.json", pack)
 		if opened.State != desktop.Completed || opened.Seal == nil || *opened.Seal != sealed || opened.Resolution == nil || !opened.Resolution.Pinned {

@@ -23,6 +23,13 @@
 // Every one of them answers unknown at all four levels, and unknown does not
 // pass.
 //
+// Finding the pack a local profile pins is the other way packs are read from a
+// place, and it keeps the same rule. A folder a person keeps other documents
+// in, such as the open workspace, is not a library, so FindPinned passes over what
+// is not the pinned pack rather than refusing it; but two different documents
+// that both claim the pinned id and version offer neither, exactly as a
+// library chooses between neither of two packs declaring one combination.
+//
 // Rights review is a person's work. Bundleable reports whether every pack in
 // the library records an approved review; it cannot establish that the review
 // happened, that it covered the exact extracted content, or that the content
@@ -34,6 +41,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -84,11 +92,8 @@ type Label struct {
 type Row struct {
 	HL7Version string
 	Family     string
-	Parse      profilepack.Outcome
-	Labels     profilepack.Outcome
-	Structural profilepack.Outcome
-	Workflow   profilepack.Outcome
-	Pack       profilepack.Identity
+	profilepack.Outcomes
+	Pack profilepack.Identity
 }
 
 // Open reads one directory of profile packs as a library. The directory holds
@@ -129,6 +134,45 @@ func Open(directory string) (Library, error) {
 		}
 	}
 	return library, nil
+}
+
+// FindPinned finds the pack a pin names among the documents one folder holds
+// beside others, such as the open workspace, where a profile's pinned pack is
+// looked for when nobody named one. Only the folder's own regular *.json
+// entries are candidates, in name order, each bounded before it is read and
+// read through the pack reader. Unlike Open it refuses nothing: a
+// subdirectory, a symbolic link, a member that cannot be read or is longer
+// than a pack may be, a document the pack reader refuses and a pack the pin
+// does not name are each passed over, and nothing in a folder of the folder
+// is looked at. The same pack under two names is one pack and answers; two
+// different documents that both satisfy the pin offer neither, because choosing
+// between them by name would be guessing. A folder that cannot be listed
+// offers nothing. What nothing answers is the zero Pack, which satisfies no
+// pin and answers unknown everywhere.
+func FindPinned(directory string, pin profilepack.Identity) profilepack.Pack {
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return profilepack.Pack{}
+	}
+	var found profilepack.Pack
+	for _, entry := range entries {
+		if !entry.Type().IsRegular() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		data, err := read(filepath.Join(directory, entry.Name()))
+		if err != nil {
+			continue
+		}
+		pack, err := profilepack.Decode(data)
+		if err != nil || pack.Satisfies(pin) != nil {
+			continue
+		}
+		if found.Satisfies(pin) == nil && !reflect.DeepEqual(found, pack) {
+			return profilepack.Pack{}
+		}
+		found = pack
+	}
+	return found
 }
 
 // read opens one library member and reads it under the pack contract's own
@@ -237,20 +281,16 @@ func (l Library) Matrix() []Row {
 	rows := make([]Row, 0, len(versions)*len(families))
 	for _, version := range versions {
 		for _, family := range families {
-			row := Row{
+			// The pack that declares the combination answers all four levels
+			// and is the one the row names. Where nobody declares it, the zero
+			// pack answers unknown at every level and names nobody.
+			pack, _ := l.declaring(version, family)
+			rows = append(rows, Row{
 				HL7Version: version,
 				Family:     family,
-				Parse:      l.Support(version, family, profilepack.LevelParse).Outcome,
-				Labels:     l.Support(version, family, profilepack.LevelLabels).Outcome,
-				Structural: l.Support(version, family, profilepack.LevelStructural).Outcome,
-				Workflow:   l.Support(version, family, profilepack.LevelWorkflow).Outcome,
-			}
-			// The row names the pack that declares the combination, not the
-			// pack that happened to answer one level of it.
-			if pack, ok := l.declaring(version, family); ok {
-				row.Pack = pack.Identity
-			}
-			rows = append(rows, row)
+				Outcomes:   pack.Outcomes(version, family),
+				Pack:       pack.Identity,
+			})
 		}
 	}
 	return rows
@@ -268,8 +308,8 @@ func (l Library) Bundleable() error {
 		return errors.New("a profile library holding no pack is not a library to bundle")
 	}
 	for _, pack := range l.packs {
-		if pack.Provenance.RightsReview.Status != profilepack.ReviewApproved {
-			return errors.New("the pack " + pack.Identity.ID + " records no approved rights review, so it is readable and not bundleable")
+		if err := pack.Bundleable(); err != nil {
+			return err
 		}
 	}
 	return nil

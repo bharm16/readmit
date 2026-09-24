@@ -403,3 +403,114 @@ func TestAnEmptyDirectoryIsAnEmptyLibrary(t *testing.T) {
 		t.Fatal("an empty library is not a library to bundle")
 	}
 }
+
+// siuPin is what the local-profile fixture pins: the fixture SIU pack.
+var siuPin = profilepack.Identity{ID: "fixture-siu", Version: "1"}
+
+// pinned requires FindPinned to answer with exactly the pack the pin names, or,
+// when want is false, with the zero pack that satisfies no pin and answers
+// unknown everywhere.
+func pinned(t *testing.T, directory string, pin profilepack.Identity, want bool) {
+	t.Helper()
+	pack := profilelibrary.FindPinned(directory, pin)
+	if want {
+		if err := pack.Satisfies(pin); err != nil {
+			t.Fatalf("no pack answered the pin %+v: %v", pin, err)
+		}
+		return
+	}
+	if pack.Identity != (profilepack.Identity{}) || pack.Satisfies(pin) == nil || pack.Outcomes("2.5.1", "SIU").Covered() {
+		t.Fatalf("a pack answered the pin %+v: %+v", pin, pack.Identity)
+	}
+}
+
+// TestFindPinnedPassesOverEveryDocumentThatIsNotThePinnedPack is workspace
+// discovery: a folder that holds a profile, its seal, another pack, a document
+// the pack reader refuses, a subdirectory named like a pack, an oversized
+// member and a pack under a name that is not *.json offers exactly the one
+// regular *.json pack the pin names, where Open refuses the same folder as a
+// library.
+func TestFindPinnedPassesOverEveryDocumentThatIsNotThePinnedPack(t *testing.T) {
+	root := directory(t, "local-profile.json", "profile-version.json", "profile-pack-adt.json", "profile-pack-refused.json", "profile-pack.json")
+	if err := os.Mkdir(filepath.Join(root, "archived.json"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "oversized.json"), make([]byte, profilepack.MaxPackBytes+1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pinned(t, root, siuPin, true)
+	if _, err := profilelibrary.Open(root); err == nil {
+		t.Fatal("a workspace of mixed documents opened as a library")
+	}
+
+	// A pin nothing here satisfies is answered by nothing: no other version,
+	// no other pack and no nearest match.
+	pinned(t, root, profilepack.Identity{ID: "fixture-siu", Version: "2"}, false)
+	pinned(t, root, profilepack.Identity{}, false)
+
+	// The pinned pack under a name that is not *.json is not discovered.
+	elsewhere := directory(t, "profile-pack-adt.json")
+	data, err := os.ReadFile(fixtureRoot + "profile-pack.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(elsewhere, "pack.document"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pinned(t, elsewhere, siuPin, false)
+}
+
+// TestTwoPacksSatisfyingOnePinAnswerOnlyWhenTheyAreOnePack is the library's
+// one-pack rule applied to discovery: the same pack under two names is still
+// one pack and answers, and two different documents that both claim the
+// pinned id and version offer neither, because choosing between them by name
+// order would be guessing at which is the pack the profile was written against.
+func TestTwoPacksSatisfyingOnePinAnswerOnlyWhenTheyAreOnePack(t *testing.T) {
+	data, err := os.ReadFile(fixtureRoot + "profile-pack.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	same := directory(t, "profile-pack.json")
+	// Reformatting a pack changes no member of it.
+	if err := os.WriteFile(filepath.Join(same, "copy.json"), []byte(strings.ReplaceAll(string(data), "\n", "\n  ")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pinned(t, same, siuPin, true)
+
+	differing := directory(t, "profile-pack.json")
+	changed := strings.Replace(string(data), `"hl7_version": "2.4"`, `"hl7_version": "2.6"`, 1)
+	if changed == string(data) {
+		t.Fatal("the fixture no longer declares 2.4")
+	}
+	if err := os.WriteFile(filepath.Join(differing, "a-different-pack.json"), []byte(changed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := profilepack.Decode([]byte(changed)); err != nil {
+		t.Fatalf("the differing pack is not one the reader accepts: %v", err)
+	}
+	pinned(t, differing, siuPin, false)
+}
+
+// TestFindPinnedLooksInTheFolderItIsGivenAndNowhereElse is the scope rule: a pack
+// in a folder of the folder searched is not discovered, the same folder
+// searched directly offers it, and a folder that is not there or is not a
+// folder offers nothing.
+func TestFindPinnedLooksInTheFolderItIsGivenAndNowhereElse(t *testing.T) {
+	root := directory(t, "profile-pack-adt.json")
+	imported := filepath.Join(root, "imported")
+	if err := os.Mkdir(imported, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(fixtureRoot + "profile-pack.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(imported, "pack.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pinned(t, root, siuPin, false)
+	pinned(t, imported, siuPin, true)
+	pinned(t, filepath.Join(root, "absent"), siuPin, false)
+	pinned(t, filepath.Join(imported, "pack.json"), siuPin, false)
+	pinned(t, "", siuPin, false)
+}

@@ -72,6 +72,31 @@ The zero `Library` holds no pack. It answers `unknown` everywhere, publishes
 the complete matrix as `unknown`, and is not bundleable — which is precisely
 what this release carries.
 
+## Finding the pack a profile pins
+
+```go
+pack := profilelibrary.FindPinned(workspace, profile.Base.Pack) // the zero Pack when nothing answers
+```
+
+A [local profile](local-profiles.md) pins one pack, and when nobody names the
+pack it is looked for in a folder a person keeps other documents in too — the
+open workspace, where the desktop application's profile panel looks when
+opening, validating and saving a profile alike. That folder is not a library,
+so `FindPinned` refuses nothing in it: only the folder's own regular `*.json`
+entries are candidates, each bounded before it is read and read through the
+pack reader, and a subdirectory, a symbolic link, a member that cannot be read
+or is longer than 4 MiB, a document the pack reader refuses and a pack the pin
+does not name are each passed over. Nothing in a folder of the folder is
+looked at.
+
+The library's one rule still holds. The same pack under two names is one pack
+and answers, but **two different documents that both claim the pinned id and
+version offer neither**: choosing between them by name order would be guessing
+at which one the profile was written against. A folder that cannot be listed
+offers nothing. What nothing answers is the zero `Pack`, which satisfies no pin
+and answers `unknown` at every level, so a profile resolved against it says
+that no pack was read.
+
 ## The published support matrix
 
 This is the matrix of the library this release bundles. It is the complete
@@ -140,8 +165,9 @@ label := library.Label("2.5.1", "SIU", "SCH", 1)
 | `Entries()` | What the library holds, in read order: each pack's `{id, version}` and the provenance and rights review its publisher recorded. Pack content is not exposed here. |
 | `Support(version, family, level)` | `{Outcome, Pack}` for one level of one combination. `Pack` is the zero identity when the outcome is `unknown`, because nothing answered. |
 | `Label(version, family, segment, position)` | `{Outcome, Name, Pack}`. The name is withheld unless the answering pack's `labels` level is supported for that combination. |
-| `Matrix()` | All 28 rows, covered or not, in version then family order. |
+| `Matrix()` | All 28 rows, covered or not, in version then family order. Each row carries the declaring pack's `profilepack.Outcomes` for its combination. |
 | `Bundleable()` | Whether this library may be bundled with a release. See the gate below. |
+| `FindPinned(directory, pin)` | The one pack among a folder's own documents that the pin names, or the zero `Pack`. See [finding the pack a profile pins](#finding-the-pack-a-profile-pins). |
 
 Levels, outcomes and the closed version and family sets are the pack contract's
 own: `profilepack.LevelParse`, `LevelLabels`, `LevelStructural`,
@@ -162,7 +188,9 @@ if err := library.Bundleable(); err != nil { /* readable, not shippable */ }
 ```
 
 `Bundleable` requires at least one pack — an empty library is not a library to
-ship — and an approved recorded rights review on **every** pack it holds. A
+ship — and an approved recorded rights review on **every** pack it holds, the
+gate each pack's own `profilepack.Pack.Bundleable` answers and the desktop
+application's pack inspection reports. A
 library holding one pending review is refused as a whole: a release bundles a
 library, not a subset of one. A pending pack stays readable, which is how a
 reviewer inspects exactly what would ship.

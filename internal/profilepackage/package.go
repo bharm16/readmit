@@ -136,7 +136,7 @@ func validate(profile, pack, version, origin []byte) (Package, error) {
 	}
 	// A package can carry explicitly unsupported levels, but cannot pretend an
 	// undeclared combination is a resolved reusable contract.
-	if p.payload.Pack.Support(p.payload.Profile.Base.HL7Version, p.payload.Profile.Base.Family, profilepack.LevelParse) == profilepack.OutcomeUnknown {
+	if !p.payload.Pack.Outcomes(p.payload.Profile.Base.HL7Version, p.payload.Profile.Base.Family).Covered() {
 		return Package{}, errors.New("profile combination is not declared by its pinned pack")
 	}
 	p.payload.Profile, _, err = localprofile.Canonical(p.payload.Profile)
