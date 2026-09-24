@@ -568,7 +568,10 @@ func (l Locator) Read(ctx context.Context) (Value, error) {
 	declared := exec.CommandContext(ctx, path, l.Arguments...)
 	declared.Stdout = &bounded{to: &out, remaining: maxValueBytes}
 	declared.Stderr = io.Discard
-	if err := declared.Run(); err != nil {
+	ended := DeclaredProgramStarting(ctx)
+	err = declared.Run()
+	ended()
+	if err != nil {
 		return Value{}, errors.New("the credential could not be read from its declared store")
 	}
 	raw := bytes.TrimSuffix(out.Bytes(), []byte("\n"))
@@ -577,6 +580,33 @@ func (l Locator) Read(ctx context.Context) (Value, error) {
 		return Value{}, errors.New("the declared store returned no credential value")
 	}
 	return Value{raw: bytes.Clone(raw)}, nil
+}
+
+// declaredObserver is the key a context carries the observer of
+// ObserveDeclaredPrograms under.
+type declaredObserver struct{}
+
+// ObserveDeclaredPrograms returns a context under which every program an
+// operator declared that readmit runs reports itself: started is called as the
+// program is about to start, and the function it returns once the program has
+// ended, however it ended. readmit starts a program in exactly two places — a
+// locator's [Locator.Read], and the transfer program a source registration
+// declares — and both report here, so a caller that has to say while such a
+// program is running learns it from the run itself. The observer learns that
+// a program runs and nothing else: not which one, its arguments, or anything
+// it printed.
+func ObserveDeclaredPrograms(ctx context.Context, started func() (ended func())) context.Context {
+	return context.WithValue(ctx, declaredObserver{}, started)
+}
+
+// DeclaredProgramStarting tells the observer ctx carries, if it carries one,
+// that an operator-declared program is about to start, and returns what to
+// call once that program has ended. Without an observer both do nothing.
+func DeclaredProgramStarting(ctx context.Context) (ended func()) {
+	if started, ok := ctx.Value(declaredObserver{}).(func() func()); ok {
+		return started()
+	}
+	return func() {}
 }
 
 // bounded stops a provider that streams more than one credential's worth of

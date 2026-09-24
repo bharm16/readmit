@@ -1,5 +1,27 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The privacy status now shows when an operator-declared program is running
+  (#356). Testing, rotating or scanning a credential reference runs the
+  locator program the reference declares, and a hub configuration's key
+  command, a runner configuration's key and token commands, a protection
+  control's key program, a client certificate's or capture listener's key
+  locator, a source's transfer program and an observation source's credential
+  locator are programs the operator declared too. Any of them may contact a
+  secret store or vault, but the status listed none of them, and testing,
+  rotating or scanning a credential reference held the operation slot unnamed,
+  so the status answered busy while its locator ran. A new row, Operator-declared
+  programs, reads active while such a program runs and idle otherwise. It says
+  which operation's program is running and that it may contact whatever it is
+  configured to reach; Readmit cannot see or vouch for those destinations and
+  adds no network access of its own. Each program reports itself from its
+  start to its end through the locator read or the transfer program, the only
+  two places Readmit starts one, so the row is never active merely because an
+  operation that could run one is under way. The credential operations now run
+  under names (`secret-test`, `secret-rotation`, `secret-scan`), and a runner
+  execution's closing release now reports its key and token commands like its
+  enrollment's. No `readmit-*` document, `readmit` command, bound method or
+  authority changes; the status still contacts nothing.
+
 - A customer hub configuration the window cannot remember is no longer shown
   as selected (#364). Choosing one ignored a failure to write
   `readmit-desktop-hub-selection/v1`, so the panel showed the configuration

@@ -284,6 +284,10 @@ type App struct {
 	operation string
 	runOutput string
 	cancel    context.CancelFunc
+	// programs counts the operator-declared programs the operation holding
+	// the slot is running now, as the programs report themselves; see
+	// declaredProgramStarted.
+	programs int
 
 	// sessionMu serializes the working session alone. Retaining an unstored
 	// note edit and the place it was typed in must not wait for the operation
@@ -361,6 +365,26 @@ func (a *App) release() {
 	a.running = false
 	a.operation = ""
 	a.runOutput = ""
+}
+
+// declaredProgramStarted counts one operator-declared program as running,
+// until the function it returns is called. runNamed hands it to the work of
+// every operation as the observer of the programs that work runs, so a program
+// is counted exactly while it runs, whichever engine package starts it, and
+// the privacy status reads the count under the slot's lock. The returned
+// function counts the program's end once, however often it is called.
+func (a *App) declaredProgramStarted() func() {
+	a.mu.Lock()
+	a.programs++
+	a.mu.Unlock()
+	var ended sync.Once
+	return func() {
+		ended.Do(func() {
+			a.mu.Lock()
+			a.programs--
+			a.mu.Unlock()
+		})
+	}
 }
 
 // begin claims the slot for work Cancel can interrupt. operation names the

@@ -18,3 +18,11 @@ func CompleteHubAuthWithinForTest(a *App, code, state string, wait time.Duration
 func HoldSlotForTest(a *App, name string) (func(), bool) {
 	return a.claim(name)
 }
+
+// DeclaredProgramRunningForTest counts one operator-declared program as
+// running, exactly as a program an operation runs reports itself, and returns
+// the function that reports it ended: a test reads what the privacy status
+// says while a program runs under a held name without running one.
+func DeclaredProgramRunningForTest(a *App) func() {
+	return a.declaredProgramStarted()
+}

@@ -214,22 +214,28 @@ func openTransfer(ctx context.Context, source Source, entry listedEntry) (io.Rea
 		stop()
 		return nil, errors.New("the declared transfer program could not be read")
 	}
+	finished := secret.DeclaredProgramStarting(ctx)
 	if err := command.Start(); err != nil {
+		finished()
 		stop()
 		return nil, errors.New("the declared transfer program could not be started")
 	}
-	return &transferStream{stdout: stdout, command: command, stop: stop}, nil
+	return &transferStream{stdout: stdout, command: command, stop: stop, finished: finished}, nil
 }
 
 // transferStream is one running transfer. Closing a stream that was read to its
 // end waits for the program and reports a nonzero exit, so an entry whose
 // transfer failed after printing some bytes is a failed read rather than a
 // short one that looked complete.
+//
+// The program is reported running, to an observer of declared programs the
+// context carries, from its start until the stream has waited for it.
 type transferStream struct {
-	stdout  io.ReadCloser
-	command *exec.Cmd
-	stop    func()
-	ended   bool
+	stdout   io.ReadCloser
+	command  *exec.Cmd
+	stop     func()
+	finished func()
+	ended    bool
 }
 
 func (t *transferStream) Read(p []byte) (int, error) {
@@ -248,9 +254,11 @@ func (t *transferStream) Close() error {
 		// that is still printing.
 		t.stop()
 		t.command.Wait()
+		t.finished()
 		return nil
 	}
 	err := t.command.Wait()
+	t.finished()
 	t.stop()
 	if err != nil {
 		return errors.New("the declared transfer program did not complete the entry")
@@ -314,6 +322,8 @@ func run(ctx context.Context, source Source, out *bytes.Buffer, limit int, verb 
 	}
 	defer stop()
 	command.Stdout = &boundedWriter{to: out, remaining: limit}
+	finished := secret.DeclaredProgramStarting(ctx)
+	defer finished()
 	return command.Run()
 }
 

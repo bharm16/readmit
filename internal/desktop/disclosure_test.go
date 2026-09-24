@@ -38,7 +38,7 @@ func TestPrivacyDisclosureNamesDestinationDataAndAuthorizationPerOperation(t *te
 			}
 		}
 	}
-	for _, id := range []string{"run", "runner", "capture", "environment", "observe", "hub", "portal"} {
+	for _, id := range []string{"run", "runner", "capture", "environment", "observe", "hub", "declared-program", "portal"} {
 		if !ids[id] {
 			t.Errorf("the privacy status discloses no %q operation, so its destinations are unstated", id)
 		}
@@ -113,7 +113,7 @@ func TestDisclosureStatusReportsConnectionStatesWithoutContactingAnything(t *tes
 	for _, state := range result.States {
 		states[state.ID] = state
 	}
-	for _, id := range []string{"run", "runner", "capture", "environment", "observe"} {
+	for _, id := range []string{"run", "runner", "capture", "environment", "observe", "declared-program"} {
 		state, ok := states[id]
 		if !ok {
 			t.Fatalf("disclosure status names no %q state: %+v", id, result.States)

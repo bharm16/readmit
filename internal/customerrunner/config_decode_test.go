@@ -19,10 +19,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/bharm16/readmit/internal/customerrunner"
+	"github.com/bharm16/readmit/internal/operationguard"
+	"github.com/bharm16/readmit/internal/secret"
+	"github.com/bharm16/readmit/internal/testlicense"
 )
 
 // decodeFixture is a structurally complete configuration whose runner root may
@@ -158,7 +162,10 @@ func credentials(t *testing.T, name, value string) customerrunner.Reference {
 	return customerrunner.Reference{Command: "/bin/cat", Arguments: []string{path}}
 }
 
-func TestEnrollReportsTheHubRefusalReason(t *testing.T) {
+// runnerClient writes a self-signed runner client certificate to a private
+// folder and returns its path and the private key that pairs with it.
+func runnerClient(t *testing.T) (certPath string, clientKey []byte) {
+	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -167,7 +174,6 @@ func TestEnrollReportsTheHubRefusalReason(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	clientKey := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
 	clientTmpl := &x509.Certificate{
 		SerialNumber: big.NewInt(time.Now().UnixNano()),
 		Subject:      pkix.Name{CommonName: "runner"},
@@ -179,13 +185,17 @@ func TestEnrollReportsTheHubRefusalReason(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	clientCert := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: clientRaw})
 	certDir := t.TempDir()
 	os.Chmod(certDir, 0700)
-	certPath := filepath.Join(certDir, "client.pem")
-	if err := os.WriteFile(certPath, clientCert, 0600); err != nil {
+	certPath = filepath.Join(certDir, "client.pem")
+	if err := os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: clientRaw}), 0600); err != nil {
 		t.Fatal(err)
 	}
+	return certPath, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+}
+
+func TestEnrollReportsTheHubRefusalReason(t *testing.T) {
+	certPath, clientKey := runnerClient(t)
 
 	for _, tc := range []struct {
 		status int
@@ -213,5 +223,46 @@ func TestEnrollReportsTheHubRefusalReason(t *testing.T) {
 		if !strings.Contains(err.Error(), tc.want) {
 			t.Fatalf("reason %q does not name the hub refusal %q", err.Error(), tc.want)
 		}
+	}
+}
+
+// The runner's key and token commands are programs the operator declared, and
+// each run of them reports itself to an observer the caller's context carries:
+// the release that ends an admitted run as well as the enrollment that began
+// it, although the release is never cancelled with the run.
+func TestRunReportsEveryKeyAndTokenCommandItRuns(t *testing.T) {
+	certPath, clientKey := runnerClient(t)
+	lease := `{"schema":"readmit-runner-lease/v1","expires_at":"` + time.Now().Add(9*time.Second).UTC().Format(time.RFC3339Nano) +
+		`","max_seconds":60,"max_jobs":1}`
+	hubURL, caPath := admissionTLS(t, http.StatusOK, lease)
+	root := t.TempDir()
+	os.Chmod(root, 0700)
+	c := customerrunner.Config{
+		Schema: "readmit-runner/v1", Hub: hubURL, Project: "alpha", Environment: "lab",
+		Root: root, CA: caPath, Certificate: certPath,
+		Key:       credentials(t, "key.pem", string(clientKey)),
+		Token:     credentials(t, "token", "rh_token"),
+		UpdateKey: base64.StdEncoding.EncodeToString(make([]byte, 32)), UpdateEngine: "next",
+	}
+	var running, started, ended atomic.Int64
+	guarded := customerrunner.WithOperationGuard(context.Background(), operationguard.New(testlicense.New(t)))
+	ctx := secret.ObserveDeclaredPrograms(guarded, func() func() {
+		running.Add(1)
+		started.Add(1)
+		return func() {
+			running.Add(-1)
+			ended.Add(1)
+		}
+	})
+	// The job names a specification that is not there, so the admitted run is
+	// refused before it executes anything and releases its admission at once.
+	job := customerrunner.Job{Schema: "readmit-runner-job/v1", ID: "nightly-001", Spec: filepath.Join(t.TempDir(), "absent.json")}
+	if _, err := customerrunner.Run(ctx, c, job); !errors.Is(err, customerrunner.ErrRefused) {
+		t.Fatalf("run: %v", err)
+	}
+	// Enrolling and releasing each read the key and the token once.
+	if started.Load() != 4 || ended.Load() != 4 || running.Load() != 0 {
+		t.Fatalf("the key and token commands were reported %d started, %d ended, %d running; want both read for the enrollment and the release",
+			started.Load(), ended.Load(), running.Load())
 	}
 }

@@ -49,6 +49,41 @@ test("the live states come from the facade and refresh deliberately", async () =
   expect(facade.callsTo("DisclosureStatus").length).toBeGreaterThan(initialCalls);
 });
 
+test("a running operator-declared program reads active with the sentence the facade gives, and idle once it ends", async () => {
+  const user = userEvent.setup();
+  let running = true;
+  await renderApp({
+    DisclosureStatus: () =>
+      disclosureStatusResult([
+        { id: "run", state: "idle", detail: "No run is in progress." },
+        { id: "hub", state: running ? "active" : "offline", detail: "A hub action you started is in progress now." },
+        {
+          id: "declared-program",
+          state: running ? "active" : "idle",
+          detail: running
+            ? "An operator-declared program is running now: the key command of the selected hub configuration. It may contact whatever it is configured to reach; Readmit cannot see or vouch for that program's destinations."
+            : "No operator-declared program is running.",
+        },
+        { id: "portal", state: "not-configured", detail: "No destinations file is selected." },
+      ]),
+  });
+  const table = screen.getByRole("table", { name: /deliberately configured activities/i });
+  const declared = within(table).getByRole("row", { name: /Operator-declared programs/ });
+  expect(within(declared).getByText(/cannot see or vouch for it/i)).toBeTruthy();
+  expect(await within(declared).findByText("Active now")).toBeTruthy();
+  expect(within(declared).getByText(/key command of the selected hub configuration/)).toBeTruthy();
+  expect(within(declared).getByText(/cannot see or vouch for that program's destinations/)).toBeTruthy();
+  // The hub's own row keeps its own state beside it.
+  const hub = within(table).getByRole("row", { name: /Customer artifact hub/ });
+  expect(within(hub).getByText("Active now")).toBeTruthy();
+
+  running = false;
+  await user.click(privacyRegion().getByRole("button", { name: "Refresh the states" }));
+  expect(await within(declared).findByText("Idle — nothing is connected")).toBeTruthy();
+  expect(within(declared).getByText("No operator-declared program is running.")).toBeTruthy();
+  expect(within(declared).queryByText("Active now")).toBeNull();
+});
+
 test("a refused state read is shown instead of a stale table answer", async () => {
   const { facade } = await renderApp({
     DisclosureStatus: () => ({ state: "busy", reason: "another operation holds the slot" }),

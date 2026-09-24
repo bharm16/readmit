@@ -25,6 +25,15 @@ const (
 	sendPolicyOperation  = "send-policy-evaluation"
 )
 
+// The names testing, rotating and scanning credential references run under.
+// Each runs the locator program a reference declares, so the privacy status
+// reports its declared-program row active while that program runs.
+const (
+	secretTestOperation     = "secret-test"
+	secretRotationOperation = "secret-rotation"
+	secretScanOperation     = "secret-scan"
+)
+
 // TargetSaveRequest saves one target configuration in the open workspace or at an absolute path.
 type TargetSaveRequest struct {
 	Workspace  string        `json:"workspace"`
@@ -473,7 +482,7 @@ func (a *App) RemoveSecretReference(workspace, secretsFile, name string) Secrets
 
 // TestSecretReference checks if the declared locator resolves the credential without storing or logging it.
 func (a *App) TestSecretReference(workspace, secretsFile, name string) SecretTestResult {
-	return run(a, true, false, func(ctx context.Context) SecretTestResult {
+	return runNamed[SecretTestResult, *SecretTestResult](a, secretTestOperation, true, false, func(ctx context.Context) SecretTestResult {
 		path, ref := resolveWorkspacePath(workspace, secretsFile)
 		if path == "" {
 			return SecretTestResult{State: ref.state, Reason: ref.reason}
@@ -495,7 +504,7 @@ func (a *App) TestSecretReference(workspace, secretsFile, name string) SecretTes
 
 // RotateSecretReference verifies resolution, increments generation, stamps rotation time, and saves.
 func (a *App) RotateSecretReference(workspace, secretsFile, name string) SecretsResult {
-	return run(a, true, true, func(ctx context.Context) SecretsResult {
+	return runNamed[SecretsResult, *SecretsResult](a, secretRotationOperation, true, true, func(ctx context.Context) SecretsResult {
 		path, ref := resolveWorkspacePath(workspace, secretsFile)
 		if path == "" {
 			return SecretsResult{State: ref.state, Reason: ref.reason}
@@ -510,7 +519,7 @@ func (a *App) RotateSecretReference(workspace, secretsFile, name string) Secrets
 
 // ScanSecrets checks workspace files and configurations for residual credential leaks.
 func (a *App) ScanSecrets(request SecretScanRequest) SecretScanResult {
-	return run(a, true, false, func(ctx context.Context) SecretScanResult {
+	return runNamed[SecretScanResult, *SecretScanResult](a, secretScanOperation, true, false, func(ctx context.Context) SecretScanResult {
 		secretsPath, ref := resolveWorkspacePath(request.Workspace, request.SecretsFile)
 		if secretsPath == "" {
 			return SecretScanResult{State: ref.state, Reason: ref.reason}

@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -41,6 +42,19 @@ func provider(mode string, args []string) int {
 		return 0
 	case "empty":
 		return 0
+	case "hold":
+		// The provider says it has started, then answers only once the test
+		// releases it, so the test can look while it runs.
+		if len(args) != 1 || os.WriteFile(filepath.Join(args[0], "started"), nil, 0600) != nil {
+			return 4
+		}
+		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+			if _, err := os.Stat(filepath.Join(args[0], "release")); err == nil {
+				os.Stdout.WriteString(testOnlyValue)
+				return 0
+			}
+		}
+		return 5
 	}
 	if len(args) != 1 {
 		return 4
@@ -229,6 +243,96 @@ func TestResolveStopsWhenTheCallerCancels(t *testing.T) {
 	cancel()
 	if _, err := Resolve(ctx, reference(t, "lab-mllp", testOnlyValue)); err == nil {
 		t.Fatal("a cancelled resolution returned a value")
+	}
+}
+
+// programCounter counts the declared programs a context's observer is
+// told about: how many are running now, and how many started and ended.
+type programCounter struct {
+	mu                      sync.Mutex
+	running, started, ended int
+}
+
+func (o *programCounter) observe() func() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.running++
+	o.started++
+	return func() {
+		o.mu.Lock()
+		defer o.mu.Unlock()
+		o.running--
+		o.ended++
+	}
+}
+
+func (o *programCounter) counts() (running, started, ended int) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.running, o.started, o.ended
+}
+
+// A caller that has to say while a declared program runs is told by the run
+// itself: the program is reported running from just before it starts until it
+// has ended, whether it answered or failed, and a locator refused before any
+// program starts reports nothing. Without an observer a read is unchanged.
+func TestLocatorReportsItsDeclaredProgramWhileItRuns(t *testing.T) {
+	t.Setenv(providerSwitch, "hold")
+	observer := &programCounter{}
+	ctx := ObserveDeclaredPrograms(context.Background(), observer.observe)
+	held := t.TempDir()
+	answered := make(chan error, 1)
+	go func() {
+		value, err := Locator{Command: providerCommand(t), Arguments: []string{held}}.Read(ctx)
+		if err == nil && string(value.Expose()) != testOnlyValue {
+			err = fmt.Errorf("read %q", value.Expose())
+		}
+		answered <- err
+	}()
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(5 * time.Millisecond) {
+		if _, err := os.Stat(filepath.Join(held, "started")); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the declared program never started")
+		}
+	}
+	if running, started, ended := observer.counts(); running != 1 || started != 1 || ended != 0 {
+		t.Fatalf("while the program ran the observer saw %d running, %d started, %d ended", running, started, ended)
+	}
+	if err := os.WriteFile(filepath.Join(held, "release"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-answered; err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if running, started, ended := observer.counts(); running != 0 || started != 1 || ended != 1 {
+		t.Fatalf("after the program ended the observer saw %d running, %d started, %d ended", running, started, ended)
+	}
+
+	t.Setenv(providerSwitch, "fail")
+	if _, err := Resolve(ctx, reference(t, "lab-mllp", testOnlyValue)); err == nil {
+		t.Fatal("a failing provider was accepted")
+	}
+	if running, started, ended := observer.counts(); running != 0 || started != 2 || ended != 2 {
+		t.Fatalf("a failed program was reported as %d running, %d started, %d ended", running, started, ended)
+	}
+	refused := reference(t, "lab-mllp", testOnlyValue)
+	refused.Command = "provider"
+	if _, err := Resolve(ctx, refused); err == nil {
+		t.Fatal("a relative command was accepted")
+	}
+	if _, started, _ := observer.counts(); started != 2 {
+		t.Fatal("a locator refused before its program started was reported as a running program")
+	}
+
+	t.Setenv(providerSwitch, "emit")
+	if _, err := Resolve(context.Background(), reference(t, "lab-mllp", testOnlyValue)); err != nil {
+		t.Fatalf("a read without an observer: %v", err)
+	}
+	DeclaredProgramStarting(context.Background())()
+	if _, started, _ := observer.counts(); started != 2 {
+		t.Fatal("a read under another context reached this observer")
 	}
 }
 

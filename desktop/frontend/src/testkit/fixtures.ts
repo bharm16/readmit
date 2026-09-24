@@ -215,6 +215,13 @@ export function shellResult(): ShellResult {
           authorization: "A selected configuration and a per-session sign-in.",
         },
         {
+          id: "declared-program",
+          activity: "Operator-declared programs",
+          destination: "Whatever the program is configured to reach; Readmit cannot see or vouch for it.",
+          data: "Only the arguments the operator declared.",
+          authorization: "A program declared by absolute path, and the action that needs it.",
+        },
+        {
           id: "portal",
           activity: "Commercial portal",
           destination: "The portal address the destinations file names, in your browser.",
@@ -243,6 +250,7 @@ export function disclosureStatusResult(
     { id: "capture", state: "idle", detail: "No capture or collection is in progress." },
     { id: "observe", state: "idle", detail: "No observation window is open." },
     { id: "hub", state: "not-configured", detail: "No hub configuration is selected." },
+    { id: "declared-program", state: "idle", detail: "No operator-declared program is running." },
     { id: "portal", state: "not-configured", detail: "No destinations file is selected." },
   ],
 ): DisclosureStatusResult {

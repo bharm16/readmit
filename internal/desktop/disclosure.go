@@ -9,7 +9,8 @@ import (
 // deliberately configurable activity is connected, offline, configured or idle
 // right now — from state the window already holds, and contacts nothing: the
 // answer is read out of the hub's own connection objects, the retained
-// commercial selection and the operation slot, never by probing a destination.
+// commercial selection, the operation slot and the operator-declared programs
+// running under it, never by probing a destination.
 //
 // The states are a closed vocabulary the interface renders word by word:
 //
@@ -62,18 +63,24 @@ func (r *DisclosureStatusResult) refuse(state State, reason string) {
 // An operation that holds the slot without a name is local work that no
 // activity can be attributed to, so while one does the answer is busy rather
 // than an idle state the status did not establish.
+//
+// An operator-declared program reports itself while it runs, and the count of
+// those running is read together with the slot's holder, so the
+// declared-program row is active exactly while one runs and names the
+// operation running it. What the program itself reaches is outside this
+// window: the row says a program is running, never where it connects.
 func (a *App) DisclosureStatus() DisclosureStatusResult {
-	holder, held := a.slotHolder()
+	holder, held, programs := a.slotState()
 	if held && holder == "" {
 		var result DisclosureStatusResult
 		result.refuse(Busy, busyRefusal.reason)
 		return result
 	}
-	states := make([]DisclosureState, 0, len(slotActivities)+2)
+	states := make([]DisclosureState, 0, len(slotActivities)+3)
 	for _, activity := range slotActivities {
 		states = append(states, slotDisclosure(activity, holder))
 	}
-	states = append(states, a.hubDisclosure(holder), a.portalDisclosure())
+	states = append(states, a.hubDisclosure(holder), declaredProgramDisclosure(holder, programs), a.portalDisclosure())
 	return DisclosureStatusResult{State: Completed, States: states}
 }
 
@@ -84,12 +91,13 @@ func (a *App) operating(name string) bool {
 	return a.running && a.operation == name
 }
 
-// slotHolder names the operation holding the slot now, and reports whether the
-// slot is held at all: an operation can hold it without a name.
-func (a *App) slotHolder() (string, bool) {
+// slotState names the operation holding the slot now, reports whether the
+// slot is held at all — an operation can hold it without a name — and counts
+// the operator-declared programs running now.
+func (a *App) slotState() (string, bool, int) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.operation, a.running
+	return a.operation, a.running, a.programs
 }
 
 // slotActivity is one disclosed activity whose network use happens only while
@@ -166,6 +174,61 @@ var hubOperations = []namedOperation{
 	{hubRequestOperation, "A hub action you started is in progress now, reaching the configured hub over mutual TLS."},
 	{hubSignInStartOperation, "A sign-in is starting now: this window opens the loopback listener your browser returns to from your identity provider."},
 	{hubSignInOperation, "A sign-in is in progress now: this window waits for your browser to return from your identity provider, then exchanges the code with it."},
+}
+
+// declaredProgramActivity is the privacy status row of the programs an
+// operator declared: the locator of a credential reference, the key command
+// of a hub configuration, the key and token commands of a runner
+// configuration, the key program of a protection control, the locator naming
+// a client certificate's or a TLS capture listener's private key, a source's
+// transfer program or credential locator, and an observation source's
+// credential locator. Readmit runs one only by the absolute path the operator
+// declared, and only while an operation needs it.
+const declaredProgramActivity = "declared-program"
+
+// declaredProgramReach ends every sentence the declared-program row says while
+// one runs: what the program reaches is its own configuration's business, and
+// Readmit neither sees it nor gains any access of its own through it.
+const declaredProgramReach = " It may contact whatever it is configured to reach; Readmit cannot see or vouch for that program's destinations and adds no network access of its own."
+
+// declaredProgramOperations are the names of the operations that can run an
+// operator-declared program, each with the sentence the declared-program row
+// says while that operation's program runs: which program it is and why the
+// operation runs it.
+var declaredProgramOperations = []namedOperation{
+	{secretTestOperation, "An operator-declared program is running now: the locator of the credential reference being tested." + declaredProgramReach},
+	{secretRotationOperation, "An operator-declared program is running now: the locator of the credential reference being rotated, confirming it still resolves." + declaredProgramReach},
+	{secretScanOperation, "An operator-declared program is running now: the locator of each credential reference a residual scan checks for." + declaredProgramReach},
+	{protectOperation, "An operator-declared program is running now: the key program of the protection control a rotation, packing or opening uses." + declaredProgramReach},
+	{hubRequestOperation, "An operator-declared program is running now: the key command of the selected hub configuration, reading the client key a hub action connects with." + declaredProgramReach},
+	{hubSignInOperation, "An operator-declared program is running now: the key command of the selected hub configuration, reading the client key the signed-in connection uses." + declaredProgramReach},
+	{"runner-enrollment", "An operator-declared program is running now: the key or token command of the runner configuration an enrollment presents." + declaredProgramReach},
+	{"runner", "An operator-declared program is running now: the key or token command of the runner configuration a runner execution presents." + declaredProgramReach},
+	{targetCheckOperation, "An operator-declared program is running now: the locator of the private key the connectivity check's client certificate presents." + declaredProgramReach},
+	{targetResetOperation, "An operator-declared program is running now: the locator of the private key the client certificate of a fixture reset's check presents." + declaredProgramReach},
+	{"reduction", "An operator-declared program is running now: the locator of the private key the client certificate of a reduction's fixture reset presents." + declaredProgramReach},
+	{"source-diagnosis", "An operator-declared program is running now: the transfer program or credential locator the source registration declares, for a source access check." + declaredProgramReach},
+	{"collect", "An operator-declared program is running now: the transfer program or credential locator the source registration declares, for a source collection." + declaredProgramReach},
+	{"capture", "An operator-declared program is running now: the locator of the private key a TLS capture listener presents." + declaredProgramReach},
+	{"observation", "An operator-declared program is running now: the credential locator the observation source declares." + declaredProgramReach},
+}
+
+// declaredProgramDisclosure answers for the programs an operator declared:
+// active while at least one runs, saying which operation's program it is, and
+// idle otherwise. A program is counted only while it runs (runNamed), so an
+// operation that could run one never makes the row active on its own. A
+// program running under a name without a sentence of its own is still
+// reported as running.
+func declaredProgramDisclosure(holder string, programs int) DisclosureState {
+	if programs == 0 {
+		return DisclosureState{ID: declaredProgramActivity, State: disclosureIdle,
+			Detail: "No operator-declared program is running. One runs only while an action you started needs it, such as testing, rotating or scanning a credential reference, a hub, runner or protection action, or a check, reset, reduction, collection, capture or observation whose configuration declares one."}
+	}
+	active, ok := holding(declaredProgramOperations, holder)
+	if !ok {
+		active = "An operator-declared program is running now." + declaredProgramReach
+	}
+	return DisclosureState{ID: declaredProgramActivity, State: disclosureActive, Detail: active}
 }
 
 // holding answers the sentence of the named operation that holds the slot, if
