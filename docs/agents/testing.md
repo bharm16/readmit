@@ -202,7 +202,26 @@ The macOS shell job also executes the frontend behavior tests and the
 interaction journeys and publishes their output as an artifact, so a failing
 component test or journey fails the `desktop` aggregate rather than only a
 developer's local run.
-It fails the same way if any of them fails, is skipped or is cancelled. Release credentials remain exclusive to
+An install job can also drive the application it installed through the
+platform's accessibility API with `tools/native_journey.py`, before removing
+it, and publish the receipt and the accessibility tree at each checkpoint as
+`native-journey-OS-ARCH`; a failing native journey fails that install job and
+so `desktop`. To keep pull requests fast, a pull request's run, and a push to
+main that runs its jobs, drives it only in the linux/amd64 install job; every
+other target installs, checks and removes its package exactly as before. The
+daily run and a dispatched run drive it on all five targets, and they are the
+runs an accessibility review cites. The workflow decides this from the event
+alone (`NATIVE_JOURNEYS` in `desktop-package` and `desktop-install`, which must
+stay identical), so a push to main whose tree was proven still skips every
+job. To see a platform's journeys on a branch, dispatch the desktop workflow
+on it with `gh workflow run desktop.yml --ref BRANCH`. The journey steps and every expected outcome live once in that
+tool; the per-platform backends in `tools/native/` only read the tree and act
+on it, so a new step is written once for every platform. `make test-tools`
+checks the driver against a fake backend. Run it locally only on a machine
+where you can give up the keyboard: on macOS it answers folder panels with
+keystrokes, once the application is frontmost, and needs your terminal to hold
+the accessibility permission.
+The `desktop` aggregate fails the same way if any of them fails, is skipped or is cancelled. Release credentials remain exclusive to
 trusted tag runs; no signing credential reaches any workflow.
 
 Wait for `quality`, `package`, all five `native-smoke` checks, and `desktop` on

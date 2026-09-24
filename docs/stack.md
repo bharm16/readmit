@@ -493,6 +493,7 @@ Pin the current patch release and bump through reviewed pull requests, never dur
 | govulncheck | v1.8.0 |
 | GoReleaser OSS | v2.18.2 |
 | WiX | 6.0.1 (Windows installer database only; not in the application) |
+| Accessibility drivers | not pinned: the hosted macOS image's Swift compiler and `osascript`, Windows PowerShell 5.1's .NET Framework UI Automation client, and Ubuntu's `at-spi2-core`, `python3-gi`, `gir1.2-atspi-2.0` and `dbus-x11`, which, like Xvfb and the WebKitGTK runtime in the same jobs, are what the runner image and Ubuntu's archive provide. They drive the install jobs' native journeys only; nothing is added to any package or application |
 | actions/attest | v4, by commit SHA |
 
 Commit `go.mod` and `go.sum`. Neither directive alone locks the compiler.

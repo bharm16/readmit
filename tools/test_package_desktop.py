@@ -202,6 +202,37 @@ class PackagingTests(unittest.TestCase):
             packaging.verify(self.declaration, output)
         self.assertIn("not a package beside it", str(refused.exception))
 
+    def test_a_packages_folder_holding_a_file_its_manifest_does_not_record_is_refused(self):
+        """`readmit upgrade` refuses such a folder as a staged candidate, so
+        the packaging check refuses it before it is published as one."""
+        output = self.build()
+        (output / "readmit-desktop_1.2.3-alpha.4_amd64.wixpdb").write_bytes(b"a build tool's debug database")
+        with self.assertRaises(packaging.Refused) as refused:
+            packaging.verify(self.declaration, output)
+        self.assertIn("readmit-desktop_1.2.3-alpha.4_amd64.wixpdb, which its manifest does not record", str(refused.exception))
+
+    def test_the_msi_build_keeps_wix_s_debug_database_out_of_the_packages_folder(self):
+        """WiX writes a .wixpdb beside the installer unless told where. Beside
+        the installer it was published with the packages, and the staged
+        candidate `readmit upgrade` read was refused for holding it."""
+        commands = []
+
+        def wix(args, **kwargs):
+            commands.append(list(args))
+            Path(args[args.index("-o") + 1]).write_bytes(b"an installer database")
+            if "-pdb" in args:
+                Path(args[args.index("-pdb") + 1]).write_bytes(b"a debug database")
+            else:
+                Path(args[args.index("-o") + 1]).with_suffix(".wixpdb").write_bytes(b"a debug database")
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        output = self.work / "windows-packages"
+        with patch.object(packaging.shutil, "which", return_value="wix"), patch.object(packaging.subprocess, "run", side_effect=wix):
+            manifest = packaging.build(self.declaration, self.binary, "1.2.3", self.target(("windows", "amd64")), output)
+        self.assertEqual(len(commands), 1)
+        self.assertEqual(sorted(entry.name for entry in output.iterdir()),
+                         sorted([packaging.MANIFEST_NAME] + [package["name"] for package in manifest["packages"]]))
+
     def test_a_declaration_written_by_another_release_is_refused(self):
         document = json.loads(packaging.DECLARATION.read_bytes())
         for change, expected in (

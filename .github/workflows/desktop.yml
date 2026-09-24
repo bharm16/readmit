@@ -154,6 +154,11 @@ jobs:
           - {os: windows, arch: amd64, runner: windows-2025}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
+    # Keep this expression identical to NATIVE_JOURNEYS in desktop-install:
+    # only the targets whose install job drives the native journeys need the
+    # journey bridge.
+    env:
+      NATIVE_JOURNEYS: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (matrix.os == 'linux' && matrix.arch == 'amd64')) && 'true' || 'false' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -211,6 +216,16 @@ jobs:
           go build -trimpath \
             -ldflags "-s -w -X github.com/bharm16/readmit/internal/engine.version=$READMIT_PREVIEW_VERSION" \
             -o "build/readmit${{ matrix.os == 'windows' && '.exe' || '' }}" ./cmd/readmit
+      # The journey bridge is a test program, never packaged: the install
+      # check's native journeys use it only to provision the synthetic
+      # activation folder a vendor would deliver, as the interaction journeys do.
+      - name: Build the journey bridge the native journeys provision a test license with
+        if: env.NATIVE_JOURNEYS == 'true'
+        shell: bash
+        working-directory: desktop
+        env:
+          CGO_ENABLED: '0'
+        run: go build -trimpath -o "../build/journeybridge${{ matrix.os == 'windows' && '.exe' || '' }}" ./journeybridge
       - name: Build and verify the native packages for this target
         shell: bash
         run: |
@@ -237,7 +252,9 @@ jobs:
         with:
           name: desktop-install-cli-${{ matrix.os }}-${{ matrix.arch }}
           if-no-files-found: error
-          path: build/readmit*
+          path: |
+            build/readmit*
+            build/journeybridge*
 
   # Fresh runners download the artifacts; no Go/Node/WiX build setup here.
   # Hosted images still contain developer tools. Empty-PATH execution is a
@@ -258,6 +275,14 @@ jobs:
           - {os: windows, arch: amd64, runner: windows-2025}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
+    # The native journeys drive the installed application through its
+    # platform's accessibility API. Every pull request, and a push to main that
+    # runs its jobs, drives it on linux/amd64 only; the daily run and a
+    # dispatched run drive it on every target, and they are the runs whose
+    # published accessibility trees an accessibility review cites. Every other
+    # target installs, checks and removes its package exactly as without them.
+    env:
+      NATIVE_JOURNEYS: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (matrix.os == 'linux' && matrix.arch == 'amd64')) && 'true' || 'false' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -275,6 +300,7 @@ jobs:
         run: |
           echo "READMIT_PREVIEW_VERSION=0.0.0+dev.${GITHUB_SHA::7}" >> "$GITHUB_ENV"
           chmod +x build/readmit* || exit 1
+          if [ "$NATIVE_JOURNEYS" = true ]; then chmod +x build/journeybridge* || exit 1; fi
           python3 tools/package_desktop.py verify --packages dist-desktop
           mkdir -p "$HOME/readmit-install-retention/project" "$HOME/readmit-install-retention/state"
           printf 'synthetic evidence retained\n' > "$HOME/readmit-install-retention/project/marker.txt"
@@ -298,6 +324,26 @@ jobs:
             --desktop /usr/bin/readmit-desktop --command-line build/readmit \
             --resources /usr/share/doc/readmit-desktop --version "$READMIT_PREVIEW_VERSION"
           xvfb-run -a python3 tools/package_desktop.py startup --desktop /usr/bin/readmit-desktop
+          if [ "$NATIVE_JOURNEYS" = true ]; then
+            # The native journeys drive the installed window through AT-SPI.
+            # Its bus and the system Python's bindings are test tooling, added
+            # only after the checks above ran on the declared dependencies. Each
+            # journey has its own X server and session bus, so the two run at
+            # once without sharing a keyboard.
+            sudo apt-get install -y --no-install-recommends at-spi2-core python3-gi gir1.2-atspi-2.0 dbus-x11
+            journey() {
+              xvfb-run -n "$1" -s "-screen 0 1920x1200x24" dbus-run-session -- python3 tools/native_journey.py \
+                --desktop /usr/bin/readmit-desktop --command-line build/readmit --bridge build/journeybridge \
+                --candidate dist-desktop --version "$READMIT_PREVIEW_VERSION" --journey "$2" --evidence "native-journey/$2"
+            }
+            journey 91 guided-sample & guided=$!
+            upgrade=0; journey 92 staged-upgrade || upgrade=$?
+            sample=0; wait "$guided" || sample=$?
+            # Each result is checked on its own line: under bash -e a failing
+            # test that is not the last of an && list would not end the step.
+            test "$sample" -eq 0 || { echo "the guided-sample journey failed" >&2; exit 1; }
+            test "$upgrade" -eq 0 || { echo "the staged-upgrade journey failed" >&2; exit 1; }
+          fi
           sudo apt-get remove -y readmit-desktop
           test ! -e /usr/bin/readmit-desktop
       - name: Install, check and remove the macOS packages through their own tools
@@ -332,6 +378,13 @@ jobs:
             --command-line build/readmit \
             --resources /Applications/readmit-desktop.app/Contents/Resources --version "$READMIT_PREVIEW_VERSION"
           python3 tools/package_desktop.py startup --desktop /Applications/readmit-desktop.app/Contents/MacOS/readmit-desktop
+          # The native journeys drive the installed window through the
+          # Accessibility API the runner image grants its shell.
+          if [ "$NATIVE_JOURNEYS" = true ]; then
+            python3 tools/native_journey.py --desktop /Applications/readmit-desktop.app/Contents/MacOS/readmit-desktop \
+              --command-line build/readmit --bridge build/journeybridge --candidate dist-desktop \
+              --version "$READMIT_PREVIEW_VERSION" --evidence native-journey
+          fi
           sudo rm -rf /Applications/readmit-desktop.app
           test ! -e /Applications/readmit-desktop.app
       - name: Install, check and remove the MSI silently, as managed deployment does
@@ -360,9 +413,23 @@ jobs:
           if ((Get-AuthenticodeSignature $installed).Status -ne 'NotSigned') {
             throw "preview executable unexpectedly carries signature material"
           }
+          # The native journeys drive the installed window through UI Automation.
+          if ($env:NATIVE_JOURNEYS -eq 'true') {
+            python tools\native_journey.py --desktop "$installed" --command-line build\readmit.exe --bridge build\journeybridge.exe --candidate dist-desktop --version "$env:READMIT_PREVIEW_VERSION" --evidence native-journey
+            if ($LASTEXITCODE -ne 0) { throw "the native journeys failed on the installed application" }
+          }
           $remove = Start-Process msiexec -ArgumentList "/x `"$installer`" /qn /norestart" -Wait -PassThru
           if ($remove.ExitCode -ne 0) { throw "silent removal failed: $($remove.ExitCode)" }
           if (Test-Path $installed) { throw "removal left the application behind" }
+      # The receipt and the accessibility tree at each checkpoint, which an
+      # accessibility review can cite for what a screen reader was given.
+      - name: Publish the native journeys' receipt and accessibility trees
+        if: always() && env.NATIVE_JOURNEYS == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-journey-${{ matrix.os }}-${{ matrix.arch }}
+          path: native-journey
+          if-no-files-found: warn
       - name: Removal preserved synthetic evidence and local state
         shell: bash
         run: |

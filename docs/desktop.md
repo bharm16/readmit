@@ -142,8 +142,9 @@ is read out of the `.dmg` by mounting the image, and the application, identifier
 and install location are read out of the `.pkg` by expanding it. A `.deb` that
 dropped a declared dependency, an application whose identity disagrees with the
 release, a manifest that omits a format its target declares, a manifest naming a
-file beside it that is not there, and a manifest claiming a signature are each
-refused by name, as is an application that names a signing authority while its
+file beside it that is not there, a file beside the manifest that it does not
+record (the same refusal `readmit upgrade` makes of a staged candidate), and a
+manifest claiming a signature are each refused by name, as is an application that names a signing authority while its
 manifest records that it has none — read at `codesign -dvv`, because `-dv`
 prints no authority even for a genuinely signed application. An `.msi` is
 checked here only for being an installer database:
@@ -211,10 +212,16 @@ preview MSI and executable are unsigned.
 
 Each installed payload also runs `--startup-check`, which initializes the real
 native webview against fresh temporary shell state and exits only when its DOM
-is ready. Linux supplies Xvfb. See [native acceptance](native-acceptance.md).
+is ready. Linux supplies Xvfb. The installed application is then driven through
+the platform's accessibility API — the guided sample from first run to both
+verdicts read back after a reopen, and a staged upgrade checked against the
+real candidate the same run built — by `tools/native_journey.py`, which finds
+every control as a screen reader names it: on linux/amd64 in every pull
+request's run, and on all five targets in the daily and dispatched runs. See
+[native acceptance](native-acceptance.md).
 
 Hosted runners still contain developer tools. These are **preview installation
-and startup checks**, not proof of an offline dependency closure, full interactive journeys,
+and startup checks and two native journeys**, not proof of an offline dependency closure, every interactive journey,
 a clean managed machine, production publisher signatures or the full D5 OS
 version matrix. An empty PATH only rules out PATH-resolved helpers during
 `--version`; it cannot prove every application action needs no runtime tool.

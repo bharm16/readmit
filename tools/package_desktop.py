@@ -408,6 +408,10 @@ def build_msi(declaration, binary, version, target, output):
             "-d", f"WebView2Value={declaration['webview2']['registry_value']}",
             "-d", f"WebView2Message={declaration['webview2']['message']}",
             "-d", f"BuildDir={staged}",
+            # WiX writes a debug database beside the installer unless told
+            # where; it is not a package, so it stays in the staging folder
+            # and the output holds only what the manifest records.
+            "-pdb", str(staged / f"{name}.wixpdb"),
             "-o", str(output / name), str(WIX_SOURCE), str(legal_source),
         ], check=True, capture_output=True, timeout=900)
     return [(name, "msi")]
@@ -727,6 +731,13 @@ def verify(declaration, directory):
             verify_installer_package(declaration, document["version"], path)
         elif package["format"] == "msi":
             verify_installer_database(path)
+    # A staged candidate holds the manifest and the packages it records and
+    # nothing else: that is what `readmit upgrade` reads it as, and an
+    # unrecorded file beside them is how the wrong installer gets run.
+    recorded = {MANIFEST_NAME} | {package["name"] for package in document["packages"]}
+    unrecorded = sorted(entry.name for entry in directory.iterdir() if entry.name not in recorded)
+    if unrecorded:
+        raise Refused(f"the packages folder holds {', '.join(unrecorded)}, which its manifest does not record")
     print(
         f"PASS: {len(document['packages'])} {document['os']}/{document['arch']} package(s) "
         f"for {document['version']}, development preview not signed for distribution"

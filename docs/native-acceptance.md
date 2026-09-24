@@ -167,6 +167,119 @@ observation must refuse. A later automated read of this fixture is not a fresh
 native UI run. Candidate archives remain local acceptance artifacts; these
 hashes and the fixture are not a published/signed release or provenance signature.
 
+## Native interaction on the installed packages
+
+A `desktop-install` job of the desktop workflow drives the application it has
+just installed — the exact package `desktop-package` built for that target —
+through the platform's own accessibility API, before removing it. A pull
+request's run, and a push to main that runs its jobs, does so only in the
+linux/amd64 install job, to keep pull requests fast; the daily run on main and
+a dispatched run do so on all five targets, and they are the runs to cite. The
+other targets of a pull request's run install, check and remove their
+packages without the journeys.
+
+```sh
+python3 tools/native_journey.py --desktop /absolute/installed/readmit-desktop \
+  --command-line build/readmit --bridge build/journeybridge \
+  --candidate dist-desktop --version EXACT_VERSION --evidence native-journey
+```
+
+The application runs as installed, with its shell state in a fresh folder.
+Nothing calls its Go facade or runs script in its webview: every step finds a
+control by the role and accessible name a screen reader announces and acts
+through the interface an assistive technology uses, and the host's own folder
+dialogs are answered through that interface too. What each step waits for and
+every expected outcome live once in `tools/native_journey.py`; a small backend
+per platform in `tools/native/` only reads the tree and acts on it:
+
+- macOS, Apple silicon and Intel: the Accessibility API, from a backend the
+  runner compiles with its own Swift compiler. The hosted image grants the
+  runner's shell and `osascript` the accessibility permission, which is all
+  this needs. A folder panel is answered by typing its path after
+  Shift-Command-G through System Events, only while the application is
+  frontmost, and the window is closed with its own close button.
+- Windows: UI Automation from Windows PowerShell's .NET Framework client, in
+  the runner's interactive session. A press first brings the window forward
+  and focuses the control, as a click does. Text reaches the page as key presses,
+  because a value set through UI Automation does not reach it as input; the
+  folder dialog's Folder field and Select Folder button are answered with
+  window messages, and the window is closed through its window pattern.
+- Linux, amd64 and arm64: AT-SPI under Xvfb on a private session bus, through
+  the system Python's bindings. No window manager runs, so keys reach the
+  window under the pointer, a field is clicked before it is typed into, and
+  closing the window is ending the process.
+
+Two journeys run wherever the native journeys run:
+
+1. The interactive journey above: the sample created in a folder chosen
+   through the host dialog, `regression` verified and opened, every authoring
+   stage answered and a new test saved, `assertion_failure` against the
+   misbehaving fixture and `pass` against the corrected one, then the window
+   closed and reopened with both verdicts read back. `readmit diff` over the
+   two retained results reports the same.
+2. A staged upgrade checked against the real candidate: the vendor's
+   activation folder chosen and reported active, a project created through
+   the window, and on its maintenance screen the candidate `desktop-package`
+   built for this target — its manifest and its packages, staged as the
+   workflow publishes them — checked. The window reports
+   `installed V → candidate V · signed=false · refused`: the candidate is the
+   build already installed, and it is a development preview. `readmit upgrade
+   check` reports the same plan; `readmit upgrade prepare --approve` takes the
+   rollback archive into a new folder, which `readmit backup verify` verifies;
+   and a candidate whose package was staged partway, as an interrupted
+   download leaves it, is refused before any archive is written.
+
+The `native-journey-OS-ARCH` artifact of each install job that ran them holds a receipt —
+each journey's result, its steps with when each began, and its checkpoints; on
+Linux one receipt per journey, since the two run at once — and, under each
+journey's `accessibility/`, the tree the window gave a screen reader at each
+checkpoint: every element's role, accessible name, text, value and enabled,
+focused and checked states. That is the screen-reader evidence an
+accessibility review can cite per platform, and each checkpoint records how
+many buttons in the page have no accessible name. Only the daily and
+dispatched runs publish it for every target; artifacts expire, and the daily
+run on main regenerates them from main's own packages, so cite that run.
+
+What driving the installed packages found:
+
+1. The Windows packages folder held WiX's debug database beside the installer,
+   and the workflow published it with the packages. `readmit upgrade` refuses a
+   staged candidate holding a file its manifest does not record, so the real
+   Windows candidate could not be checked at all. The build now keeps the debug
+   database in its staging folder, and `tools/package_desktop.py verify` refuses
+   a packages folder holding anything its manifest does not record.
+2. Not fixed here: every destination the window asks for as "a new folder" —
+   a backup, a restored project, a recovery or rollback archive, a portable
+   review, a support export — is chosen with a folder picker, which on every
+   platform returns only a folder that already exists, while each of those
+   writers requires a folder that does not. Through the installed window those
+   writes are always refused; the staged-upgrade journey shows the rollback
+   archive refused and nothing written into the chosen folder. The jsdom
+   journeys answer those dialogs with a path that does not exist yet, which no
+   host dialog returns.
+3. Not fixed here: on Windows the installed application can end, with exit
+   status 1, as a host folder dialog opens. Wails hands the window's focus to
+   WebView2 whenever the window gains it, WebView2 can refuse that while the
+   dialog is opening, and the go-webview2 release the shell pins ends the
+   process on any refusal. It happened in roughly one Windows staged-upgrade
+   journey in ten, each of which opens five dialogs; a person would lose the
+   window and anything it had not stored. The fix is a dependency decision,
+   so the Windows journey records each such exit in its receipt and a
+   warning and takes the journey again from the start, at most three times in
+   all; any other failure fails it at once.
+4. How the platforms read the same page differs, and the retained trees record
+   it: a stylesheet's capitals are what macOS and Windows read out (region
+   names such as `EVIDENCE`, statuses such as `ASSERTION_FAILURE`), Windows
+   reads a list item's content as its name, and WebKitGTK names a field by its
+   label followed by its placeholder.
+
+These two journeys are what the native interaction covers. Importing and
+investigating a person's own evidence, execution against an independent
+downstream system, export and review, collaboration, the CI handoff and the
+commercial and entitlement failure paths still run only in jsdom, against the
+facade the packaged shell binds, and every package is an unsigned development
+preview.
+
 ## Interaction journeys over the real facade
 
 `npm run test:journeys` in `desktop/frontend` drives the production window with
@@ -393,9 +506,10 @@ Intel/Apple-Silicon macOS matrix, installation/upgrades/rollback on clean manage
 machines, real signing/notarization, independent connector/observation targets,
 real IdP collaboration and revocation, and approved Paddle sandbox billing and
 entitlement failure scenarios. Re-run against the precise release candidate.
-The full guided journey is locally evidenced on one unsigned macOS candidate;
-other platforms have startup checks and existing component tests. The
-interaction journeys over the real facade run on the macOS shell job only and
-drive no installed package. No owner
+The guided journey and a staged upgrade against the real candidate are driven
+through the accessibility API on the installed package of every target in the
+matrix, unsigned, in the daily and dispatched runs, and on linux/amd64 in every
+pull request's run; every other journey runs in jsdom over the real facade on the
+macOS shell job and drives no installed package. No owner
 choice about a permanent frontend test runner (#183) is made here. No result
 supplants #110 performance or #111 security/privacy/accessibility acceptance.
