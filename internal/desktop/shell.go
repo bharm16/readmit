@@ -313,10 +313,7 @@ var supportStatus = Support{
 		"External workflow correctness is declined: fixture proof never substitutes for evidence from the actual target, and every prepared disclosure records external_equivalence as declined.",
 		"This is an unsigned development preview: the only published candidate is an early prerelease, nothing is signed for distribution or notarized, and packaged acceptance (#109), release acceptance (#153) and accessibility/privacy acceptance (#111) are open. A new screen certifies none of them.",
 	},
-	Unavailable: []string{
-		"execute, queue, resume, recover and inspect durable runs",
-		"select a saved test or suite through the host's native file dialog",
-	},
+	Unavailable: []string{},
 }
 
 // Shell describes the window: the regions focus moves through, how each status

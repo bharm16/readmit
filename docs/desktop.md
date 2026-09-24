@@ -424,6 +424,8 @@ artifacts are never reported as completed.
 | `OpenCorrelationRules` | Reads one correlation-rules entry through the reader `readmit correlate` applies and reports its rules and authorities and the SHA-256 of its exact bytes. |
 | `OpenSequenceAnalysis` | Reads one sequence-analysis entry through the reader the sequence applies and reports what it declares and the SHA-256 of its exact bytes. |
 | `StartDurableRun` | Sends once with an explicit operator action into a fresh workspace entry, under the identity the preflight fixed; a changed test is refused rather than executed. Cancel stops future sends; in-flight effects remain visible. |
+| `ResumeDurableRun` | Explicitly repeats only never-attempted work from a completed retained job into a new workspace entry through the command's shared operation; refuses after any send or changed plan. |
+| `CleanDurableRun` | Verifies a retained job and removes only its stale lease after completion; evidence stays in place. |
 | `OpenDurableRun` | Recovers one retained run folder read-only; never sends, resumes or resets. |
 | `PreflightRun` | Validates a saved test or suite locally and reports exactly what one execution would do: selected input, target and environment, effective configuration, observation and reset requirements, pinned versions, deadline, a generated fresh destination and the operation guard's admission decision. No network, no verdict. |
 | `StartSuiteRun` | Executes one suite environment through the existing durable queue into a fresh destination, reporting each job's admission and its own durable summary. |
@@ -2385,12 +2387,12 @@ is unavailable rather than answered busy.
   16 drafts, recovery returns every one of them, and the command line reaches
   the same notes; the window's editor writes the one draft of the open
   workspace, whichever case or revision that draft says it is about.
-- Resuming, restarting or resending an interrupted run, from recovery or from
-  anywhere else in the window. The window has no resume, the retained output is
-  always refused for a new execution, and an uncertain delivery is never
-  resolved by reading. The command line's `run resume` is a separate deliberate
-  action into a new output that repeats only never-attempted work and refuses
-  after any send; see [durable local runs](durable-runs.md).
+- Resuming, restarting or resending an interrupted run from recovery. The
+  retained output is always refused for a new execution, and an uncertain
+  delivery is never resolved by reading. Run history has a separate deliberate
+  **Resume never-attempted work** action into a new folder; it requires the
+  unchanged saved test and refuses after any send, like `readmit run resume`.
+  See [durable local runs](durable-runs.md).
 - Storing a note on a person's behalf. A retained draft stays a draft until it
   is stored deliberately, and a refused store leaves it retained as unstored
   work rather than discarding it.
@@ -2600,8 +2602,9 @@ the link points, and a path that leaves through `..` are refused. Preflight,
 execution, a suite run and the run-history reads apply the same rule to the
 entry they are handed, so naming an entry directly reaches nothing the dialog
 refuses; see [workspaces and artifacts](#workspaces-and-artifacts).
-No path is typed by hand and no internal path is copied: a fresh output folder
-is generated and validated by the application itself.
+The file chooser adds no arbitrary path to the workspace. Initial execution
+can generate a fresh output name at preflight; explicit resume requires a new
+workspace entry name, which the facade validates before the shared operation.
 
 **Validate and preflight** is local validation with no network connection, no
 send and no result verdict. It reads the exact plan a send would execute and
@@ -2638,9 +2641,13 @@ decision was read from. Expected and observed values are hidden until
 **Reveal expected and observed values** is pressed — a deliberate local
 action, the same boundary the baseline panel uses — and the source case is a
 link that opens the case in the inspector, not a value. An incomplete journal
-and a delivery-uncertain run stay exactly what the journal says: no view here
-resumes, resets or resends anything, and executing again is always a fresh
-preflight and a fresh destination. See
+and a delivery-uncertain run stay exactly what the journal says: merely opening
+the view never resumes, resets or resends anything. After opening a durable
+job, **Resume never-attempted work** explicitly names the unchanged saved
+test and a fresh output folder; the backend refuses incomplete completion,
+any attempted send or a changed plan. **Remove stale lease** calls the same
+cleanup as `readmit run clean`, refusing a live lease or an unknown entry and
+retaining every evidence file. See
 [durable local runs](durable-runs.md) for the retained contracts.
 
 ## Explaining a retained run

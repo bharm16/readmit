@@ -43,7 +43,12 @@ and the workspace listing is refreshed so completed and partial outputs appear
 in run history immediately. Retained runs and results reopen read-only through
 the same readers the command line verifies one with, per-assertion detail
 included, with expected and observed values revealed only by a deliberate
-local action. Closing a view does not trigger a resend. Killing the desktop
+local action. A retained durable job then offers two separate actions:
+**Resume never-attempted work** names the unchanged saved test and a fresh
+folder, and **Remove stale lease** cleans only a lease after recorded
+completion. They call the same shared operations as `run resume` and
+`run clean`; opening the view authorizes neither. Closing a view does not
+trigger a resend. Killing the desktop
 process stops its local execution; use recovery after restarting. The CLI can
 run separately from the desktop.
 

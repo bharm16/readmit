@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import {
   cancel,
+  cleanDurableRun,
   chooseRunSpec,
   durableRunProgress,
   openRunEvidence,
   preflightRun,
+  resumeDurableRun,
   startDurableRun,
   startSuiteRun,
   type Artifact,
   type DurableRunResult,
+  type CleanRunResult,
+  type ResumeRunResult,
   type RunEvidenceResult,
   type RunPreflightRequest,
   type RunPreflightResult,
@@ -16,6 +20,12 @@ import {
   type SuiteRunReport,
 } from "./bindings";
 import { EnvironmentBanner } from "./EnvironmentPanel";
+
+// The backend owns entry validation. This narrower check keeps a malformed
+// output name out of the viewer's session before the backend can refuse it.
+function watchableEntry(name: string) {
+  return name !== "" && name !== "." && name !== ".." && !/[\\/\0]/.test(name);
+}
 
 /** The durable-run panels: selection, preflight, one execution, live progress,
  * run history and linked assertion evidence.
@@ -59,8 +69,10 @@ export function RunPanel({
   const [selected, setSelected] = useState("");
   const [environment, setEnvironment] = useState("");
   const [output, setOutput] = useState("");
+  const [resumeOutput, setResumeOutput] = useState("");
+  const [resumedTo, setResumedTo] = useState("");
   const [preflight, setPreflight] = useState<RunPreflightResult | null>(null);
-  const [operation, setOperation] = useState<"executing" | "preflighting" | "browsing" | null>(null);
+  const [operation, setOperation] = useState<"executing" | "preflighting" | "browsing" | "cleaning" | null>(null);
   const busy = operation !== null;
   const [result, setResult] = useState<DurableRunResult | null>(null);
   const [report, setReport] = useState<SuiteRunReport | null>(null);
@@ -68,6 +80,8 @@ export function RunPanel({
   const [evidence, setEvidence] = useState<RunEvidenceResult | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [history, setHistory] = useState("");
+  const [resumeResult, setResumeResult] = useState<ResumeRunResult | null>(null);
+  const [cleanResult, setCleanResult] = useState<CleanRunResult | null>(null);
   const inFlight = useRef(false);
   const poll = useRef<number | null>(null);
 
@@ -185,6 +199,51 @@ export function RunPanel({
     }
   }
 
+  async function resumeHistory() {
+    if (!workspace || !history || !selected || !resumeOutput || inFlight.current) return;
+    inFlight.current = true;
+    const destination = resumeOutput;
+    setOperation("executing");
+    setResumeResult(null);
+    setCleanResult(null);
+    try {
+      // Record the new folder before the backend may send. If it refuses
+      // before creating that folder, restore the retained view we opened.
+      if (watchableEntry(destination)) await onWatch(destination);
+      const answer = await resumeDurableRun({ workspace, job: history, spec: selected, output: destination });
+      setResumeResult(answer);
+      onRefresh();
+      if (answer.resume) {
+        setResumedTo(destination);
+        setResumeOutput("");
+        setProgress(await durableRunProgress(workspace, destination));
+      } else {
+        await onWatch(history);
+      }
+    } finally {
+      setOperation(null);
+      inFlight.current = false;
+    }
+  }
+
+  async function cleanHistory() {
+    if (!workspace || !history || inFlight.current) return;
+    inFlight.current = true;
+    setOperation("cleaning");
+    setCleanResult(null);
+    try {
+      const answer = await cleanDurableRun(workspace, history);
+      setCleanResult(answer);
+      if (answer.state === "completed") {
+        onRefresh();
+        setProgress(await durableRunProgress(workspace, history));
+      }
+    } finally {
+      setOperation(null);
+      inFlight.current = false;
+    }
+  }
+
   const canExecute = plan !== null && plan !== undefined && !changed && plan.admission.admitted && plan.destination.fresh && (!isSuite || environment !== "");
 
   return <section aria-labelledby="durable-runs-title">
@@ -287,11 +346,22 @@ export function RunPanel({
     <div className="run-history">
       <h4>Run history</h4>
       <label htmlFor="run-history">Retained executions of this workspace</label>
-      <select id="run-history" value={history} disabled={busy} onChange={(e) => { setHistory(e.target.value); setEvidence(null); setProgress(null); }}>
+      <select id="run-history" value={history} disabled={busy} onChange={(e) => { setHistory(e.target.value); setEvidence(null); setProgress(null); setResumeResult(null); setCleanResult(null); }}>
         <option value="">Select a retained run…</option>
         {runs.map((name) => <option key={name} value={name}>{name}</option>)}
       </select>
       <button disabled={busy || !history} onClick={() => void openHistory(false)}>Open evidence read-only</button>
+      {evidence?.evidence?.durable && evidence.evidence.entry === history ? <div className="actions">
+        <label htmlFor="run-resume-output">Fresh folder for resumed run</label>
+        <input id="run-resume-output" value={resumeOutput} disabled={busy} onChange={(e) => setResumeOutput(e.target.value)} />
+        <button disabled={busy || !specs.includes(selected) || !resumeOutput} onClick={() => void resumeHistory()}>Resume never-attempted work</button>
+        {evidence.evidence.terminal ? <button disabled={busy} onClick={() => void cleanHistory()}>Remove stale lease</button> : null}
+        <p>Resume requires the unchanged saved test selected above. It writes a new folder and refuses any previously attempted send. Cleanup retains all evidence.</p>
+      </div> : null}
+      {resumeResult?.reason ? <p role="alert">{resumeResult.reason}</p> : null}
+      {resumeResult?.resume ? <p>Resumed {resumeResult.resume.repeated} never-attempted occurrence(s) into {resumedTo}. Run: {resumeResult.resume.run.state}.</p> : null}
+      {cleanResult?.reason ? <p role="alert">Cleanup refused: {cleanResult.reason}</p> : null}
+      {cleanResult?.cleanup ? <p>Cleanup removed {cleanResult.cleanup.removed.length ? cleanResult.cleanup.removed.join(", ") : "nothing"}; retained {cleanResult.cleanup.retained.length} evidence entries.</p> : null}
       {evidence?.evidence ? <button disabled={busy} onClick={() => void openHistory(!revealed)}>{revealed ? "Hide values" : "Reveal expected and observed values"}</button> : null}
       {evidence?.evidence ? <RunEvidenceView evidence={evidence.evidence} onOpenCase={onOpenCase} /> : null}
       {progress && history ? <p>{progress.state === "empty" ? progress.reason : null}</p> : null}

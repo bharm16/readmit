@@ -1496,7 +1496,9 @@
       "inputs": ["readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-run-lease/v1"],
       "outputs": ["readmit-run-cleanup/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "cleanup is offered after completion, refuses a changed live run, then removes only its stale lease"},
+      "parity_test": {"package": "internal/desktop", "name": "TestResumeAndCleanDurableRunsAgreeWithCommandLine"},
+      "implemented": true
     },
     {
       "id": "cli.run.queue",
@@ -1526,7 +1528,9 @@
       "inputs": ["readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-run-lease/v1", "readmit-test/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-observation/v1"],
       "outputs": ["readmit-run-resume/v1", "readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-send-decision/v1", "hl7"],
       "prerequisites": ["execute"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "resume repeats a retained never-attempted run only after explicit keyboard action into a fresh folder"},
+      "parity_test": {"package": "internal/desktop", "name": "TestResumeAndCleanDurableRunsAgreeWithCommandLine"},
+      "implemented": true
     },
     {
       "id": "cli.run.start",
@@ -3056,6 +3060,38 @@
       "prerequisites": ["execute"],
       "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "send once: the folder is named in the session before the send, the pinned identity is executed, and the retained evidence opens read-only"},
       "parity_test": {"package": "internal/desktop", "name": "TestTheRunJourneyFromPreflightToLinkedAssertionEvidence"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.ResumeDurableRun",
+      "source": "desktop.App.ResumeDurableRun",
+      "kind": "desktop",
+      "capability": "resume only never-attempted work from a completed retained run into a fresh folder",
+      "owner": "bharm16/readmit#305",
+      "screen": "the durable-run panels of the evidence region",
+      "action": "resume an unchanged saved test explicitly after opening the retained run",
+      "backend": {"package": "internal/durablerun", "name": "Resume"},
+      "inputs": ["readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-run-lease/v1", "readmit-test/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-observation/v1"],
+      "outputs": ["readmit-run-resume/v1", "readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-send-decision/v1", "hl7"],
+      "prerequisites": ["execute"],
+      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "resume repeats a retained never-attempted run only after explicit keyboard action into a fresh folder"},
+      "parity_test": {"package": "internal/desktop", "name": "TestResumeAndCleanDurableRunsAgreeWithCommandLine"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.CleanDurableRun",
+      "source": "desktop.App.CleanDurableRun",
+      "kind": "desktop",
+      "capability": "remove only a stale lease after completed retained work",
+      "owner": "bharm16/readmit#305",
+      "screen": "the durable-run panels of the evidence region",
+      "action": "remove a stale lease while retaining all evidence",
+      "backend": {"package": "internal/durablerun", "name": "Clean"},
+      "inputs": ["readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-run-lease/v1"],
+      "outputs": ["readmit-run-cleanup/v1"],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "cleanup is offered after completion, refuses a changed live run, then removes only its stale lease"},
+      "parity_test": {"package": "internal/desktop", "name": "TestResumeAndCleanDurableRunsAgreeWithCommandLine"},
       "implemented": true
     },
     {
@@ -5840,7 +5876,9 @@
       "inputs": [],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "the native file dialog can still select a saved test, kept inside the workspace"},
+      "parity_test": {"package": "internal/desktop", "name": "TestChooseRunSpecRefusesOutsideOpenWorkspaceOnEveryPlatform"},
+      "implemented": true
     },
     {
       "id": "desktop.CollectSource",

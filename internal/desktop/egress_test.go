@@ -306,7 +306,7 @@ func writeHubClientConfig(t *testing.T, dir, hub string) string {
 // reports as its activity. A program an operator declared, which may itself
 // connect, is inventoried in operationsRunningDeclaredPrograms.
 var destinationActivities = map[string]string{
-	"StartDurableRun": "run", "StartSuiteRun": "run", "RunPractice": "run",
+	"StartDurableRun": "run", "ResumeDurableRun": "run", "StartSuiteRun": "run", "RunPractice": "run",
 	"DeriveExportReview": "run", "ExportDerivedPacket": "run", "GenerateSyntheticPacket": "run", "SendReplay": "run", "ReexecuteReviewedEvidence": "run",
 	"EnrollRunner": "runner", "ExecuteRunnerJob": "runner",
 	"DiagnoseSource": "capture", "CollectSource": "capture", "StartCapture": "capture",

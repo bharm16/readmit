@@ -17,6 +17,16 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   packaging-tool refusal as `hdiutil create` and `pkgbuild`; MSI bytes, names
   and `readmit-desktop-package/v1` manifests remain unchanged.
 
+- The durable-run history now exposes explicit **Resume never-attempted work**
+  and **Remove stale lease** actions (#305). The former uses the command's
+  shared resume operation with an unchanged saved test and a new folder;
+  incomplete completion, any attempted delivery and a changed plan refuse
+  before a new send. The latter uses the command's cleanup reader and only
+  removes a stale lease after completion, leaving evidence intact. The native
+  run-spec chooser's outside-workspace refusal and command parity are recorded
+  in the capability ledger. Existing run and result artifacts, CLI output and
+  exit statuses remain unchanged.
+
 - The privacy panel reexecutes an approved review against the target its
   actual original run recorded, as `readmit redact reexecute` does (#310).
   Until now the privacy review stated `external_equivalence: declined` but
