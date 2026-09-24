@@ -268,6 +268,7 @@ test("a send policy and a reset plan are saved under the identity of their bytes
   // A prefix that is not in canonical masked form is refused on save and
   // nothing is written; the draft stays to be corrected. Enter adds a prefix.
   await press(user, panel.getByRole("button", { name: "Approved Send Policy" }));
+  await press(user, await panel.findByRole("button", { name: "Start New Send Policy" }));
   await enter(user, panel.getByLabelText("Approved destination prefix"), "127.0.0.5/8{Enter}");
   expect(await panel.findByText("127.0.0.5/8", { selector: "code" })).toBeTruthy();
   await press(user, panel.getByRole("button", { name: "Save Approved Send Policy" }));
@@ -298,6 +299,7 @@ test("a send policy and a reset plan are saved under the identity of their bytes
   // A reset plan: an observation action without its file is refused, and the
   // plan saved without it is the plan the reset reader runs, by identity.
   await press(user, panel.getByRole("button", { name: "Fixture Reset Plan" }));
+  await press(user, await panel.findByRole("button", { name: "Start New Reset Plan" }));
   await enter(user, panel.getByLabelText("Environment Name Match"), "lab-siu");
   await enter(user, panel.getByLabelText("Action ID"), "stop-listener");
   await enter(user, panel.getByLabelText("Side-Effect & Reset Instructions"), "Stop the prior listen session and wait for it to exit.");
@@ -325,4 +327,45 @@ test("a send policy and a reset plan are saved under the identity of their bytes
   expect(reset.stdout).toContain(`Reset plan: ${plan} (readmit-reset-plan/v1)\n`);
   const outcome = JSON.parse(journey.readFile(`${PROJECT}/reset-1.json`)) as { plan_sha256: string; outcome: string };
   expect(outcome).toMatchObject({ plan_sha256: plan, outcome: "confirmed" });
+});
+
+test.each([false, true])("a credential bound from the default target file resolves the displayed secrets document in target check (symlinked: %s)", async (symlinked) => {
+  const user = userEvent.setup();
+  const downstream = await journey.startDownstream("downstream/default-target-ledger.csv", "fixed");
+  await licensedProject(journey, user);
+  if (symlinked) {
+    journey.makeFolder(`${PROJECT}/nested/targets`);
+    journey.writeFile(`${PROJECT}/nested/secrets.json`, "{}");
+    journey.makeLink(`${PROJECT}/targets`, journey.path(PROJECT, "nested/targets"));
+    journey.makeLink(`${PROJECT}/alias`, journey.path(PROJECT, "nested/targets"));
+  }
+  const panel = environment();
+  await press(user, panel.getByRole("button", { name: "Credential References" }));
+  if (symlinked) {
+    // The facade cleans a workspace-relative name before opening it. Keeping
+    // alias/.. in an absolute binding would instead reach nested/secrets.json.
+    await enter(user, panel.getByLabelText("Secrets Document File"), "alias/../secrets.json");
+  }
+  await register(user, { name: "default-target-key", address: downstream.address, command: LOCATOR });
+  await says("Secret reference registered successfully.");
+
+  await press(user, panel.getByRole("button", { name: "Target & Diagnostics" }));
+  expect((panel.getByLabelText("Target Config File") as HTMLInputElement).value).toBe("targets/default.json");
+  await enter(user, panel.getByLabelText("Environment Name"), "default-lab");
+  await user.selectOptions(panel.getByLabelText("Classification"), "nonproduction");
+  await enter(user, panel.getByLabelText("Destination Address"), downstream.address);
+  await user.selectOptions(panel.getByLabelText("Credential Reference"), "default-target-key");
+  const secretsPath = journey.path(PROJECT, "secrets.json");
+  expect(panel.getByText(secretsPath, { selector: "code" })).toBeTruthy();
+  await press(user, panel.getByRole("button", { name: "Save Target Configuration" }));
+  await says("Target configuration saved successfully.");
+
+  const saved = JSON.parse(journey.readFile(`${PROJECT}/targets/default.json`)) as { credential: { secrets_file: string; reference: string } };
+  expect(saved.credential).toEqual({ secrets_file: secretsPath, reference: "default-target-key" });
+  const checked = await commandLine(["target", "check", "--target", `${PROJECT}/targets/default.json`]);
+  expect(checked.code).toBe(0);
+  expect(checked.stderr).toBe("");
+  expect(checked.stdout).toContain("Environment: default-lab\n");
+  expect(checked.stdout).toContain("Diagnosis: reachable (phase=confirm)\n");
+  expect(downstream.received()).toHaveLength(0);
 });

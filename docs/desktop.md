@@ -3869,6 +3869,11 @@ Readmit does not store credentials in application state, configuration files, lo
   one of its text fields saves it.
 - A document the panel cannot read shows the reason in place of the references, never the
   references of a document read before it.
+- A reference chosen from the panel records the absolute path of the secrets document
+  the panel read, and the target form shows that exact path before save. This binding is
+  local to this machine; rebind it after moving the target to another machine. An absolute
+  path keeps `targets/default.json` pointed at the displayed `secrets.json` even when the
+  `targets` directory is a shortcut to another physical directory.
 - A target naming a reference registered for another purpose is refused when it is saved,
   in the words `readmit target set` uses.
 - Step-by-step native store and customer-vault provisioning handoff instructions guide users on how to store secrets in their native keychain.
@@ -3884,6 +3889,9 @@ All message transmission requires explicit approved-destination policy rules:
   `10.1.2.3/16`, is refused on save by the policy reader and nothing is written. The saved
   policy is the one `readmit target check --policy` reads.
 - Local destination evaluation checks address approval and classification rules without opening a connection; a host name the policy is asked about is resolved to the addresses it names, which the privacy status discloses.
+- A policy file the panel cannot read shows the reader's reason and clears the previous
+  policy. Saving is unavailable until the person chooses **Start New Send Policy** to
+  author a fresh document under the named file.
 - Refusal rules strictly enforce that unclassified destinations and production targets reject all sends.
 
 ### Fixture reset plans (`readmit-reset-plan/v1`) and deliberate execution
@@ -3896,6 +3904,9 @@ Fixture reset plans return nonproduction test fixtures to a declared starting st
 - A saved plan's identity is the `plan_sha256` that `readmit target reset` and the window's
   own reset retain for it. A plan the reader refuses, such as an `observation_empty` action
   without its observation file, is not written.
+- A plan file the panel cannot read shows the reader's reason and clears the previous
+  plan. Saving is unavailable until the person chooses **Start New Reset Plan** to
+  author a fresh document under the named file.
 
 Contextual offline help and recovery codes, with ADT/SIU/ORM/ORU recipes: [workflow help](workflow-help.md).
 

@@ -1167,7 +1167,7 @@ export function defaultTargetResult(overrides: Partial<TargetResult> = {}): Targ
       message_timeout: "10s",
       max_ack_bytes: 1024,
       credential: {
-        secrets_file: "secrets.json",
+        secrets_file: `${WORKSPACE_ROOT}/secrets.json`,
         reference: "mllp-basic-auth",
       },
     },

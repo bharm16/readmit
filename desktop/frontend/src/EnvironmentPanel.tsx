@@ -117,6 +117,28 @@ interface SecretEdit {
  * offer. It is not a reference name: a name never holds a space. */
 const KEEP_BINDING = "(keep the recorded binding)";
 
+const newPolicy = (): SendPolicy => ({ schema: "readmit-send-policy/v1", approved_destinations: [] });
+const newPlan = (): ResetPlan => ({ schema: "readmit-reset-plan/v1", environment: "local-dev", actions: [] });
+
+/** A relative reference would be anchored to the target's physical directory,
+ * which can differ from the path the window names through a folder symlink.
+ * Use the exact workspace path ReadSecrets used, independent of that target. */
+function secretsReference(workspace: string, secretsFile: string): string {
+  const windowsPath = /^[A-Za-z]:[\\/]/.test(workspace) || workspace.startsWith("\\\\");
+  if (secretsFile.startsWith("/") || (windowsPath && (secretsFile.startsWith("\\\\") || /^[A-Za-z]:[\\/]/.test(secretsFile)))) return secretsFile;
+  // resolveWorkspacePath cleans a relative name before ReadSecrets opens it.
+  // Clean it here too, before a symlink/.. sequence can change which file the
+  // absolute target credential reference reaches.
+  const parts = (windowsPath ? secretsFile.replaceAll("\\", "/") : secretsFile).split("/");
+  const clean: string[] = [];
+  for (const part of parts) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") clean.pop();
+    else clean.push(part);
+  }
+  return workspace.replace(/[\\/]$/, "") + "/" + clean.join("/");
+}
+
 /** A document whose reference declares no locator arguments may carry none. */
 function argumentCount(ref: SecretReference): number {
   return (ref.arguments ?? []).length;
@@ -254,10 +276,9 @@ export function EnvironmentPanel({
 
   // Send Policy State
   const [currentPolicyFile, setCurrentPolicyFile] = useState(policyFile);
-  const [policy, setPolicy] = useState<SendPolicy>({
-    schema: "readmit-send-policy/v1",
-    approved_destinations: [],
-  });
+  const [policy, setPolicy] = useState<SendPolicy>(newPolicy);
+  const [policyReady, setPolicyReady] = useState(false);
+  const [policyRefusal, setPolicyRefusal] = useState<string | null>(null);
   const [newDestination, setNewDestination] = useState("");
   const [evalAddress, setEvalAddress] = useState("");
   const [evalClassification, setEvalClassification] = useState<TargetClassification>("nonproduction");
@@ -267,11 +288,9 @@ export function EnvironmentPanel({
 
   // Fixture Reset Plan State
   const [currentPlanFile, setCurrentPlanFile] = useState(planFile);
-  const [resetPlan, setResetPlan] = useState<ResetPlan>({
-    schema: "readmit-reset-plan/v1",
-    environment: "local-dev",
-    actions: [],
-  });
+  const [resetPlan, setResetPlan] = useState<ResetPlan>(newPlan);
+  const [planReady, setPlanReady] = useState(false);
+  const [planRefusal, setPlanRefusal] = useState<string | null>(null);
   const [newActionId, setNewActionId] = useState("");
   const [newActionOperator, setNewActionOperator] = useState<ResetOperator>("operator_confirms");
   const [newActionInstructions, setNewActionInstructions] = useState("");
@@ -331,8 +350,12 @@ export function EnvironmentPanel({
   const secretsLoad = useRef(0);
   const policyLoad = useRef(0);
   const planLoad = useRef(0);
+  const policyRead = useRef<{ key: string; succeeded: boolean } | null>(null);
+  const planRead = useRef<{ key: string; succeeded: boolean } | null>(null);
+  const policyDraftPending = useRef(false);
+  const planDraftPending = useRef(false);
   const adoptedDrafts = useRef(false);
-  const holdInitialLoad = useRef({ target: false, policy: false, plan: false });
+  const holdInitialLoad = useRef({ target: false });
 
   const loadTarget = useCallback(async (file: string) => {
     const token = ++targetLoad.current;
@@ -380,7 +403,16 @@ export function EnvironmentPanel({
       const res = await readSendPolicy(workspace, file);
       if (token !== policyLoad.current) return;
       if (res.state === "completed" && res.policy) {
-        setPolicy(res.policy);
+        if (!policyDraftPending.current) setPolicy(res.policy);
+        setPolicyReady(true);
+        setPolicyRefusal(null);
+        policyRead.current = { key: `${workspace}\0${file}`, succeeded: true };
+      } else {
+        setPolicy(newPolicy());
+        setPolicyReady(false);
+        setPolicyRefusal(res.reason || "This send policy cannot be read.");
+        policyDraftPending.current = false;
+        policyRead.current = { key: `${workspace}\0${file}`, succeeded: false };
       }
     } finally {
       endLoad();
@@ -394,7 +426,16 @@ export function EnvironmentPanel({
       const res = await readResetPlan(workspace, file);
       if (token !== planLoad.current) return;
       if (res.state === "completed" && res.plan) {
-        setResetPlan(res.plan);
+        if (!planDraftPending.current) setResetPlan(res.plan);
+        setPlanReady(true);
+        setPlanRefusal(null);
+        planRead.current = { key: `${workspace}\0${file}`, succeeded: true };
+      } else {
+        setResetPlan(newPlan());
+        setPlanReady(false);
+        setPlanRefusal(res.reason || "This reset plan cannot be read.");
+        planDraftPending.current = false;
+        planRead.current = { key: `${workspace}\0${file}`, succeeded: false };
       }
     } finally {
       endLoad();
@@ -414,21 +455,25 @@ export function EnvironmentPanel({
     }
     const policyDraft = draftFor(drafts, "environment/policy", workspace);
     const policyRecord = draftRecord(policyDraft?.content);
-    if (policyRecord?.schema === "readmit-send-policy/v1") {
-      policyLoad.current += 1;
-      holdInitialLoad.current.policy = true;
+    const policyReadState = policyRead.current;
+    const policyKey = `${workspace}\0${currentPolicyFile}`;
+    if (policyRecord?.schema === "readmit-send-policy/v1" && (policyReadState?.key !== policyKey || policyReadState.succeeded)) {
+      policyDraftPending.current = true;
       setPolicy(policyRecord as unknown as SendPolicy);
+      setPolicyReady(policyReadState?.key === policyKey && policyReadState.succeeded);
       if (policyDraft) retainer.keepId(policyDraft.id);
     }
     const planDraft = draftFor(drafts, "environment/reset", workspace);
     const planRecord = draftRecord(planDraft?.content);
-    if (planRecord?.schema === "readmit-reset-plan/v1") {
-      planLoad.current += 1;
-      holdInitialLoad.current.plan = true;
+    const planReadState = planRead.current;
+    const planKey = `${workspace}\0${currentPlanFile}`;
+    if (planRecord?.schema === "readmit-reset-plan/v1" && (planReadState?.key !== planKey || planReadState.succeeded)) {
+      planDraftPending.current = true;
       setResetPlan(planRecord as unknown as ResetPlan);
+      setPlanReady(planReadState?.key === planKey && planReadState.succeeded);
       if (planDraft) retainer.keepId(planDraft.id);
     }
-  }, [drafts, retainer, workspace]);
+  }, [drafts, retainer, workspace, currentPolicyFile, currentPlanFile]);
 
   // Each document is read when its own file is named, so typing one name
   // re-reads that document and leaves the other three as they are.
@@ -440,12 +485,10 @@ export function EnvironmentPanel({
     void loadSecrets(currentSecretsFile);
   }, [currentSecretsFile, loadSecrets]);
   useEffect(() => {
-    if (holdInitialLoad.current.policy) holdInitialLoad.current.policy = false;
-    else void loadPolicy(currentPolicyFile);
+    void loadPolicy(currentPolicyFile);
   }, [currentPolicyFile, loadPolicy]);
   useEffect(() => {
-    if (holdInitialLoad.current.plan) holdInitialLoad.current.plan = false;
-    else void loadPlan(currentPlanFile);
+    void loadPlan(currentPlanFile);
   }, [currentPlanFile, loadPlan]);
 
   // Another workspace is other documents: an open edit and the identities of
@@ -715,6 +758,7 @@ export function EnvironmentPanel({
 
   // Handle Add Policy Destination
   function handleAddDestination() {
+    if (!policyReady) return;
     if (!newDestination.trim()) return;
     const dest = newDestination.trim();
     if (policy.approved_destinations.includes(dest)) {
@@ -732,6 +776,7 @@ export function EnvironmentPanel({
 
   // Handle Remove Policy Destination
   function handleRemoveDestination(dest: string) {
+    if (!policyReady) return;
     const updated = {
       ...policy,
       approved_destinations: policy.approved_destinations.filter((d) => d !== dest),
@@ -742,6 +787,7 @@ export function EnvironmentPanel({
 
   // Handle Save Send Policy
   async function handleSavePolicy() {
+    if (!policyReady) return;
     beginBusy();
     setFeedback(null);
     setPolicyWritten(null);
@@ -790,6 +836,7 @@ export function EnvironmentPanel({
 
   // Handle Add Reset Action
   function handleAddResetAction() {
+    if (!planReady) return;
     if (!newActionId.trim() || !newActionInstructions.trim()) {
       setFeedback("Action ID and instructions are required.");
       return;
@@ -821,6 +868,7 @@ export function EnvironmentPanel({
 
   // Handle Remove Reset Action
   function handleRemoveResetAction(id: string) {
+    if (!planReady) return;
     const updated = {
       ...resetPlan,
       actions: resetPlan.actions.filter((a) => a.id !== id),
@@ -832,6 +880,7 @@ export function EnvironmentPanel({
 
   // Handle Save Reset Plan
   async function handleSavePlan() {
+    if (!planReady) return;
     beginBusy();
     setFeedback(null);
     setPlanWritten(null);
@@ -884,7 +933,7 @@ export function EnvironmentPanel({
   // A credential the target binds in a document other than the one loaded here,
   // or under a name that document does not list, is kept as its own choice.
   const bound = target.credential;
-  const boundInOther = bound !== undefined && bound.secrets_file !== currentSecretsFile;
+  const boundInOther = bound !== undefined && bound.secrets_file !== secretsReference(workspace, currentSecretsFile);
   const boundUnlisted =
     bound !== undefined && !boundInOther && !(secretsDoc?.references ?? []).some((r) => r.name === bound.reference);
 
@@ -1108,7 +1157,7 @@ export function EnvironmentPanel({
                   if (refName === KEEP_BINDING) return;
                   const updated: Target = { ...target };
                   if (refName) {
-                    updated.credential = { secrets_file: currentSecretsFile, reference: refName };
+                    updated.credential = { secrets_file: secretsReference(workspace, currentSecretsFile), reference: refName };
                   } else {
                     delete updated.credential;
                   }
@@ -1131,6 +1180,7 @@ export function EnvironmentPanel({
                   </option>
                 ))}
               </select>
+              {target.credential ? <p className="hint">Credential document saved with this target: <code>{target.credential.secrets_file}</code></p> : null}
             </div>
           </div>
 
@@ -1542,9 +1592,23 @@ export function EnvironmentPanel({
               onChange={(e) => {
                 setCurrentPolicyFile(e.target.value);
                 setPolicyWritten(null);
+                setPolicyReady(false);
+                setPolicyRefusal(null);
+                policyDraftPending.current = false;
               }}
             />
           </div>
+
+          {policyRefusal ? (
+            <div className="report-box" role="status">
+              <p>{policyRefusal}</p>
+              <button type="button" disabled={blocked} onClick={() => {
+                setPolicy(newPolicy());
+                setPolicyReady(true);
+                setPolicyRefusal(null);
+              }}>Start New Send Policy</button>
+            </div>
+          ) : null}
 
           <h5>Approved CIDR Prefixes</h5>
           <ul style={{ listStyle: "none", paddingLeft: 0 }}>
@@ -1553,7 +1617,7 @@ export function EnvironmentPanel({
                 <code>{dest}</code>
                 <button
                   type="button"
-                  disabled={blocked || policy.approved_destinations.length <= 1}
+                  disabled={blocked || !policyReady || policy.approved_destinations.length <= 1}
                   onClick={() => handleRemoveDestination(dest)}
                 >
                   Remove
@@ -1574,16 +1638,16 @@ export function EnvironmentPanel({
               aria-label="Approved destination prefix"
               placeholder="network/prefix"
               value={newDestination}
-              disabled={blocked}
+              disabled={blocked || !policyReady}
               onChange={(e) => setNewDestination(e.target.value)}
             />
-            <button type="submit" disabled={blocked || !newDestination}>
+            <button type="submit" disabled={blocked || !policyReady || !newDestination}>
               Add CIDR Prefix
             </button>
           </form>
 
           <div className="environment-actions" style={{ marginTop: "1rem" }}>
-            <button type="button" disabled={blocked} onClick={() => void handleSavePolicy()}>
+            <button type="button" disabled={blocked || !policyReady} onClick={() => void handleSavePolicy()}>
               Save Approved Send Policy
             </button>
           </div>
@@ -1663,6 +1727,9 @@ export function EnvironmentPanel({
                 onChange={(e) => {
                   setCurrentPlanFile(e.target.value);
                   setPlanWritten(null);
+                  setPlanReady(false);
+                  setPlanRefusal(null);
+                  planDraftPending.current = false;
                 }}
               />
             </div>
@@ -1671,7 +1738,7 @@ export function EnvironmentPanel({
               <input
                 id="plan-env-input"
                 value={resetPlan.environment}
-                disabled={blocked}
+                disabled={blocked || !planReady}
                 onChange={(e) => {
                   const updated = { ...resetPlan, environment: e.target.value };
                   setResetPlan(updated);
@@ -1680,6 +1747,17 @@ export function EnvironmentPanel({
               />
             </div>
           </div>
+
+          {planRefusal ? (
+            <div className="report-box" role="status">
+              <p>{planRefusal}</p>
+              <button type="button" disabled={blocked} onClick={() => {
+                setResetPlan(newPlan());
+                setPlanReady(true);
+                setPlanRefusal(null);
+              }}>Start New Reset Plan</button>
+            </div>
+          ) : null}
 
           <h5>Reviewed Reset Actions</h5>
           {resetPlan.actions.length === 0 ? (
@@ -1694,7 +1772,7 @@ export function EnvironmentPanel({
                   <button
                     type="button"
                     style={{ marginLeft: "auto" }}
-                    disabled={blocked}
+                    disabled={blocked || !planReady}
                     onClick={() => handleRemoveResetAction(act.id)}
                   >
                     Remove
@@ -1709,7 +1787,7 @@ export function EnvironmentPanel({
                     <input
                       type="checkbox"
                       checked={confirmedActions.includes(act.id)}
-                      disabled={blocked}
+                      disabled={blocked || !planReady}
                       onChange={(e) => {
                         if (e.target.checked) {
                           setConfirmedActions((prev) => [...prev, act.id]);
@@ -1733,7 +1811,7 @@ export function EnvironmentPanel({
                 id="action-id"
                 value={newActionId}
                 placeholder="e.g. purge-inbox"
-                disabled={blocked}
+                disabled={blocked || !planReady}
                 onChange={(e) => setNewActionId(e.target.value)}
               />
             </div>
@@ -1742,7 +1820,7 @@ export function EnvironmentPanel({
               <select
                 id="action-operator"
                 value={newActionOperator}
-                disabled={blocked}
+                disabled={blocked || !planReady}
                 onChange={(e) => setNewActionOperator(e.target.value as ResetOperator)}
               >
                 <option value="operator_confirms">operator_confirms (Human confirmation required; authority: none)</option>
@@ -1757,7 +1835,7 @@ export function EnvironmentPanel({
                 rows={2}
                 value={newActionInstructions}
                 placeholder="Describe exact manual action or side effect for the operator..."
-                disabled={blocked}
+                disabled={blocked || !planReady}
                 onChange={(e) => setNewActionInstructions(e.target.value)}
               />
             </div>
@@ -1768,7 +1846,7 @@ export function EnvironmentPanel({
                   id="action-obs"
                   value={newActionObservation}
                   placeholder="observation.json"
-                  disabled={blocked}
+                  disabled={blocked || !planReady}
                   onChange={(e) => setNewActionObservation(e.target.value)}
                 />
               </div>
@@ -1776,15 +1854,15 @@ export function EnvironmentPanel({
           </div>
 
           <div className="environment-actions">
-            <button type="button" disabled={blocked} onClick={handleAddResetAction}>
+            <button type="button" disabled={blocked || !planReady} onClick={handleAddResetAction}>
               Add Action to Plan
             </button>
-            <button type="button" disabled={blocked} onClick={() => void handleSavePlan()}>
+            <button type="button" disabled={blocked || !planReady} onClick={() => void handleSavePlan()}>
               Save Reset Plan
             </button>
             <button
               type="button"
-              disabled={blocked || resetPlan.actions.length === 0}
+              disabled={blocked || !planReady || resetPlan.actions.length === 0}
               onClick={() => void handleExecuteReset()}
               style={{ fontWeight: "bold" }}
             >

@@ -57,6 +57,7 @@ async function recordReset(user: UserEvent): Promise<void> {
   const heading = screen.getByRole("heading", { name: "Environment & Credential Configuration" });
   const panel = within(heading.closest("section") as HTMLElement);
   await press(user, panel.getByRole("button", { name: "Fixture Reset Plan" }));
+  await press(user, await panel.findByRole("button", { name: "Start New Reset Plan" }));
   await enter(user, panel.getByLabelText("Environment Name Match"), "scheduling-downstream");
   await enter(user, panel.getByLabelText("Action ID"), "empty-ledger");
   await enter(user, panel.getByLabelText("Side-Effect & Reset Instructions"), "Empty the downstream appointment ledger.");
