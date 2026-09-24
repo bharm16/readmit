@@ -15,6 +15,14 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   The facade reports that count for each row; inspection and command output
   retain their existing byte-preserving behavior.
 
+- The environment panel now refuses to reuse a previously read send policy or
+  reset plan when the newly named file cannot be read (#381). It shows the
+  reader's reason and requires an explicit fresh-document choice before a save.
+  Target credential bindings name the exact secrets document the panel read,
+  including when the default target directory is a symlink; the absolute
+  binding is local to this machine and must be rebound after moving the target.
+  No `readmit-*` document, command or machine output changes.
+
 - The license pane's activation-folder choice, installed-entitlement export
   and clock-rollback resolution now have keyboard and cancellation interaction
   coverage plus facade parity with the operation guard (#316). A refused

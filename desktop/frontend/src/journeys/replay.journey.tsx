@@ -90,6 +90,7 @@ async function configureRefusals(user: UserEvent, address: string): Promise<void
   expect(await panel.findByText("Target configuration saved successfully.")).toBeTruthy();
   await press(user, panel.getByRole("button", { name: "Approved Send Policy" }));
   await enter(user, panel.getByLabelText("Policy File"), "elsewhere-policy.json");
+  await press(user, await panel.findByRole("button", { name: "Start New Send Policy" }));
   await enter(user, panel.getByLabelText("Approved destination prefix"), "10.1.0.0/16{Enter}");
   await panel.findByText("10.1.0.0/16", { selector: "code" });
   for (const prefix of panel.queryAllByText(/^\d+\.\d+\.\d+\.\d+\/\d+$/, { selector: "code" })) {

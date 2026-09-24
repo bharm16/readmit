@@ -175,6 +175,7 @@ export async function configureTarget(user: UserEvent, address: string): Promise
   await press(user, panel.getByRole("button", { name: "Save Target Configuration" }));
   expect(await panel.findByText("Target configuration saved successfully.")).toBeTruthy();
   await press(user, panel.getByRole("button", { name: "Approved Send Policy" }));
+  await press(user, await panel.findByRole("button", { name: "Start New Send Policy" }));
   await enter(user, panel.getByPlaceholderText("network/prefix"), "127.0.0.1/32");
   await press(user, panel.getByRole("button", { name: "Add CIDR Prefix" }));
   await press(user, panel.getByRole("button", { name: "Save Approved Send Policy" }));

@@ -670,7 +670,7 @@ test("a reference that declares no locator arguments is shown and edited, and a 
   secrets.document.references[0] = { ...reference, arguments: null as unknown as string[] };
   const target = defaultTargetResult();
   if (!target.target) throw new Error("fixture target missing");
-  target.target.credential = { secrets_file: "secrets.json", reference: "unlisted-reference" };
+  target.target.credential = { secrets_file: `${WORKSPACE_ROOT}/secrets.json`, reference: "unlisted-reference" };
   installFacade({ ...readsAnswered, ReadSecrets: async () => secrets, ReadTarget: async () => target });
   renderPanel("target");
   const bound = (await screen.findByLabelText("Credential Reference")) as HTMLSelectElement;
@@ -697,6 +697,74 @@ test("a target bound to a reference in another secrets document says so rather t
   // The loaded document's reference of the same name is still a choice of its own.
   await user.selectOptions(bound, "mllp-basic-auth (mllp-endpoint · os-keychain)");
   await user.click(screen.getByRole("button", { name: "Save Target Configuration" }));
-  expect(saved).toMatchObject({ target: { credential: { secrets_file: "secrets.json", reference: "mllp-basic-auth" } } });
+  expect(saved).toMatchObject({ target: { credential: { secrets_file: `${WORKSPACE_ROOT}/secrets.json`, reference: "mllp-basic-auth" } } });
+  uninstallFacade();
+});
+
+test.each([
+  {
+    tab: "policy" as const,
+    fileLabel: "Policy File",
+    oldContent: "approved-peer",
+    refusal: "invalid send policy document",
+    save: "Save Approved Send Policy",
+    method: "SaveSendPolicy" as const,
+    fresh: "Start New Send Policy",
+  },
+  {
+    tab: "reset" as const,
+    fileLabel: "Plan File",
+    oldContent: "Confirm patient database is wiped.",
+    refusal: "invalid fixture reset plan",
+    save: "Save Reset Plan",
+    method: "SaveResetPlan" as const,
+    fresh: "Start New Reset Plan",
+  },
+])("a failed $tab read clears the prior document and cannot save it to the new file", async ({ tab, fileLabel, oldContent, refusal, save, method, fresh }) => {
+  const user = userEvent.setup();
+  const facade = installFacade({
+    ...readsAnswered,
+    ReadSendPolicy: async (_workspace, file) => file === "send-policy.json" ? defaultSendPolicyResult() : { state: "failed", reason: "invalid send policy document" },
+    ReadResetPlan: async (_workspace, file) => file === "reset-plan.json" ? defaultResetPlanResult() : { state: "failed", reason: "invalid fixture reset plan" },
+  });
+  renderPanel(tab);
+  expect(await screen.findByText(oldContent)).toBeTruthy();
+  await user.clear(screen.getByLabelText(fileLabel));
+  await user.type(screen.getByLabelText(fileLabel), "unreadable.json");
+  expect(await screen.findByText(refusal)).toBeTruthy();
+  expect(screen.queryByText(oldContent)).toBeNull();
+  expect((screen.getByRole("button", { name: save }) as HTMLButtonElement).disabled).toBe(true);
+  expect(facade.callsTo(method)).toHaveLength(0);
+  expect(screen.getByRole("button", { name: fresh })).toBeTruthy();
+  uninstallFacade();
+});
+
+test.each(["policy", "reset"] as const)("a retained %s draft cannot bypass a failed read of the named file", async (tab) => {
+  const policy = defaultSendPolicyResult().policy;
+  const plan = defaultResetPlanResult().plan;
+  if (!policy || !plan) throw new Error("fixture document missing");
+  const facade = installFacade({
+    ...readsAnswered,
+    ReadSendPolicy: async () => ({ state: "failed", reason: "policy file is unreadable" }),
+    ReadResetPlan: async () => ({ state: "failed", reason: "plan file is unreadable" }),
+  });
+  render(<EnvironmentPanel
+    workspace={WORKSPACE_ROOT}
+    initialTab={tab}
+    drafts={[{
+      id: "retained-draft",
+      kind: tab === "policy" ? "environment/policy" : "environment/reset",
+      workspace: WORKSPACE_ROOT,
+      case: "",
+      identity: "",
+      content_schema: tab === "policy" ? "readmit-send-policy-draft/v1" : "readmit-reset-plan-draft/v1",
+      content: tab === "policy" ? policy : plan,
+    }]}
+  />);
+  expect(await screen.findByText(tab === "policy" ? "policy file is unreadable" : "plan file is unreadable")).toBeTruthy();
+  expect(screen.queryByText(tab === "policy" ? "approved-peer" : "Confirm patient database is wiped.")).toBeNull();
+  const save = screen.getByRole("button", { name: tab === "policy" ? "Save Approved Send Policy" : "Save Reset Plan" }) as HTMLButtonElement;
+  expect(save.disabled).toBe(true);
+  expect(facade.callsTo(tab === "policy" ? "SaveSendPolicy" : "SaveResetPlan")).toHaveLength(0);
   uninstallFacade();
 });
