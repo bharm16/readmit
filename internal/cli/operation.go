@@ -73,7 +73,7 @@ func wireOperations(root *cobra.Command, policy *string, ran *bool) {
 					*ran = true
 				}
 				if guard == nil {
-					guard = operationguard.New(*policy)
+					guard = operationguard.New(operationPolicyPath(*policy))
 				}
 				if cmd.CommandPath() == "readmit runner execute" || cmd.CommandPath() == "readmit runner serve" {
 					cmd.SetContext(customerrunner.WithOperationGuard(cmd.Context(), guard))
@@ -174,6 +174,7 @@ func licenseOperation() *cobra.Command {
 	for _, action := range []string{"activate", "status", "resolve", "release"} {
 		command := &cobra.Command{Use: action, Args: cobra.NoArgs, Annotations: declare(capabilityFree), RunE: func(cmd *cobra.Command, _ []string) error {
 			path, _ := cmd.Flags().GetString("operation-policy")
+			path = operationPolicyPath(path)
 			var err error
 			switch action {
 			case "activate":
@@ -195,6 +196,17 @@ func licenseOperation() *cobra.Command {
 		root.AddCommand(command)
 	}
 	return root
+}
+
+// operationPolicyPath is the operation policy new work is admitted through:
+// the one --operation-policy names, or this computer's license when none is
+// named. An account with no installed license refuses new work exactly as an
+// absent policy always has.
+func operationPolicyPath(named string) string {
+	if named != "" {
+		return named
+	}
+	return operationguard.InstalledPolicy()
 }
 
 func refusedCI(cmd *cobra.Command) error {

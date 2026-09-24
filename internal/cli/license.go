@@ -5,11 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/bharm16/readmit/internal/entitlement"
+	"github.com/bharm16/readmit/internal/operationguard"
 	"github.com/spf13/cobra"
 )
 
@@ -74,14 +78,11 @@ func licenseVerify() *cobra.Command {
 func licenseImport() *cobra.Command {
 	var trustPath, author, device, output string
 	command := &cobra.Command{
-		Use:         "import ENTITLEMENT --trust TRUST_STORE --device ID --output NEW_DIRECTORY",
+		Use:         "import ENTITLEMENT --trust TRUST_STORE --device ID [--output NEW_DIRECTORY]",
 		Annotations: declare(capabilityFree),
 		Short:       "Verify a received entitlement and install it for one device",
 		Args:        licenseOneArgument,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if output == "" {
-				return usage("license import requires --output with a new directory")
-			}
 			if device == "" {
 				return usage("license import requires --device with the identifier this entitlement names")
 			}
@@ -97,18 +98,21 @@ func licenseImport() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if version == entitlement.SchemaV2 && author == "" {
+				return usage("license import of a v2 entitlement requires --author with the named author this device is assigned to")
+			}
+			if version != entitlement.SchemaV2 && author != "" {
+				return errors.New("a v1 entitlement binds devices, not named authors; --author applies to a v2 entitlement")
+			}
+			if output == "" {
+				return installLicense(cmd.OutOrStdout(), data, trustPath, trust, author, device)
+			}
 			if version == entitlement.SchemaV2 {
-				if author == "" {
-					return usage("license import of a v2 entitlement requires --author with the named author this device is assigned to")
-				}
 				store, err := entitlement.ImportV2(output, data, trust, author, device, licenseNow())
 				if err != nil {
 					return err
 				}
 				return storeV2{store}.report(cmd.OutOrStdout(), "Entitlement installed: "+store.Claims.ID, trust, "")
-			}
-			if author != "" {
-				return errors.New("a v1 entitlement binds devices, not named authors; --author applies to a v2 entitlement")
 			}
 			store, err := entitlement.Import(output, data, trust, device, licenseNow())
 			if err != nil {
@@ -120,23 +124,30 @@ func licenseImport() *cobra.Command {
 	command.Flags().StringVar(&trustPath, "trust", "", "Trust store of vendor signing keys to verify against")
 	command.Flags().StringVar(&author, "author", "", "Named author to activate for, which a v2 entitlement must assign this device to")
 	command.Flags().StringVar(&device, "device", "", "Device identifier to activate, which the entitlement must name")
-	command.Flags().StringVar(&output, "output", "", "New entitlement store directory (never overwrite)")
+	command.Flags().StringVar(&output, "output", "", "New entitlement store directory (never overwrite); without it, install as this computer's license")
 	return command
 }
 
 func licenseShow() *cobra.Command {
 	var trustPath, require string
 	command := &cobra.Command{
-		Use:         "show STORE --trust TRUST_STORE",
+		Use:         "show [STORE] --trust TRUST_STORE",
 		Annotations: declare(capabilityFree),
 		Short:       "Report the installed entitlement, its term state and its scope",
-		Args:        licenseOneArgument,
+		Args:        licenseOptionalStore,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			path, installed, err := licenseStore(args)
+			if err != nil {
+				return err
+			}
+			if installed && trustPath == "" {
+				trustPath = operationguard.InstalledTrustIn(path)
+			}
 			trust, err := readTrust(trustPath)
 			if err != nil {
 				return err
 			}
-			store, err := openStore(args[0])
+			store, err := openStore(path)
 			if err != nil {
 				return err
 			}
@@ -151,11 +162,18 @@ func licenseShow() *cobra.Command {
 func licenseRenew() *cobra.Command {
 	var trustPath string
 	command := &cobra.Command{
-		Use:         "renew STORE ENTITLEMENT --trust TRUST_STORE",
+		Use:         "renew [STORE] ENTITLEMENT --trust TRUST_STORE",
 		Annotations: declare(capabilityFree),
 		Short:       "Install a later issue of the same entitlement for this device",
 		Args:        licenseTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			path, installed, err := licenseStore(args[:len(args)-1])
+			if err != nil {
+				return err
+			}
+			if installed {
+				return renewInstalledLicense(cmd.OutOrStdout(), path, args[len(args)-1], trustPath)
+			}
 			trust, err := readTrust(trustPath)
 			if err != nil {
 				return err
@@ -164,7 +182,7 @@ func licenseRenew() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			store, err := openStore(args[0])
+			store, err := openStore(path)
 			if err != nil {
 				return err
 			}
@@ -181,15 +199,19 @@ func licenseRenew() *cobra.Command {
 func licenseExport() *cobra.Command {
 	var output string
 	command := &cobra.Command{
-		Use:         "export STORE --output NEW_FILE",
+		Use:         "export [STORE] --output NEW_FILE",
 		Annotations: declare(capabilityFree),
 		Short:       "Write the installed entitlement back out, byte for byte",
-		Args:        licenseOneArgument,
+		Args:        licenseOptionalStore,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if output == "" {
 				return usage("license export requires --output with a new file")
 			}
-			store, err := openStore(args[0])
+			path, _, err := licenseStore(args)
+			if err != nil {
+				return err
+			}
+			store, err := openStore(path)
 			if err != nil {
 				return err
 			}
@@ -208,17 +230,30 @@ func licenseExport() *cobra.Command {
 
 func licenseRelease() *cobra.Command {
 	command := &cobra.Command{
-		Use:         "release STORE",
+		Use:         "release [STORE]",
 		Annotations: declare(capabilityFree),
 		Short:       "Release this device's activation so the seat can be reissued",
-		Args:        licenseOneArgument,
+		Args:        licenseOptionalStore,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			store, err := openStore(args[0])
+			path, installed, err := licenseStore(args)
 			if err != nil {
 				return err
 			}
-			if err := store.release(licenseNow()); err != nil {
+			if installed {
+				// This computer's license stops admitting new work before its
+				// store records the release, in the window and here alike.
+				if err := operationguard.ReleaseInstalledLicense(path, licenseNow()); err != nil {
+					return err
+				}
+			}
+			store, err := openStore(path)
+			if err != nil {
 				return err
+			}
+			if !installed {
+				if err := store.release(licenseNow()); err != nil {
+					return err
+				}
 			}
 			return writeLicense(cmd.OutOrStdout(), func(w io.Writer) {
 				fmt.Fprintf(w, "Activation released: %s\nEntitlement: %s\nReleased: %s\nTransfer: ask the vendor to reissue this entitlement for the new device, then import it there\nLocal record: releasing is recorded here, not proven to the vendor; seat accounting is settled when the vendor reissues\n",
@@ -338,8 +373,100 @@ func licenseOneArgument(_ *cobra.Command, args []string) error {
 }
 
 func licenseTwoArguments(_ *cobra.Command, args []string) error {
-	if len(args) != 2 {
-		return errors.New("license renew requires an entitlement store and one received entitlement")
+	if len(args) != 1 && len(args) != 2 {
+		return errors.New("license renew requires one received entitlement, after an entitlement store unless it renews this computer's license")
 	}
 	return nil
+}
+
+// licenseOptionalStore accepts one named store, or none for this computer's
+// license.
+func licenseOptionalStore(_ *cobra.Command, args []string) error {
+	if len(args) > 1 {
+		return errors.New("license subcommand takes at most one entitlement store; without one it acts on this computer's license")
+	}
+	return nil
+}
+
+// licenseStore names the store a command acts on: the one named, or this
+// computer's license when none is. installed reports that the store is this
+// computer's license, named or not, so its release and renewal keep the
+// operation state and trust beside it in step with the store.
+func licenseStore(args []string) (path string, installed bool, err error) {
+	root, rootErr := operationguard.InstalledLicensePath()
+	if len(args) == 1 {
+		return args[0], rootErr == nil && samePath(args[0], root), nil
+	}
+	if rootErr != nil {
+		return "", false, rootErr
+	}
+	if _, err := os.Lstat(root); errors.Is(err, fs.ErrNotExist) {
+		return "", false, operationguard.ErrNoLicense
+	}
+	return root, true, nil
+}
+
+func samePath(a, b string) bool {
+	resolved := func(path string) string {
+		if real, err := filepath.EvalSymlinks(path); err == nil {
+			path = real
+		}
+		if absolute, err := filepath.Abs(path); err == nil {
+			path = absolute
+		}
+		return filepath.Clean(path)
+	}
+	return resolved(a) == resolved(b)
+}
+
+// installLicense installs a received entitlement as this computer's license:
+// the store `license import --output` writes, in this account's configuration
+// directory, with the trust store beside it and, under v2, activated for new
+// work through the shared operation guard. The report is import's own.
+func installLicense(out io.Writer, data []byte, trustPath string, trust entitlement.Trust, author, device string) error {
+	root, err := operationguard.InstalledLicensePath()
+	if err != nil {
+		return err
+	}
+	trustData, err := readInputFile(trustPath, entitlement.MaxDocumentBytes)
+	if err != nil {
+		return err
+	}
+	if err := operationguard.InstallLicense(root, data, trustData, author, device, "", licenseNow()); err != nil {
+		return err
+	}
+	store, err := openStore(root)
+	if err != nil {
+		return err
+	}
+	return store.report(out, "Entitlement installed: "+store.id(), trust, "")
+}
+
+// renewInstalledLicense renews this computer's license in place. A named
+// trust store verifies the later issue and replaces the one installed beside
+// it; without one the installed trust store verifies it. The report is
+// renew's own.
+func renewInstalledLicense(out io.Writer, root, received, trustPath string) error {
+	data, err := readInputFile(received, entitlement.MaxDocumentBytes)
+	if err != nil {
+		return err
+	}
+	var trustData []byte
+	if trustPath != "" {
+		if trustData, err = readInputFile(trustPath, entitlement.MaxDocumentBytes); err != nil {
+			return err
+		}
+	}
+	if err := operationguard.RenewInstalledLicense(root, data, trustData); err != nil {
+		return err
+	}
+	trust, err := readTrust(operationguard.InstalledTrustIn(root))
+	if err != nil {
+		return err
+	}
+	store, err := openStore(root)
+	if err != nil {
+		return err
+	}
+	return store.report(out, "Entitlement renewed: "+store.id(), trust, "")
 }

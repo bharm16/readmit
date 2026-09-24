@@ -46,7 +46,7 @@ const (
 	commercialDestinationsSchema = "readmit-commercial-destinations/v1"
 	commercialSelectionSchema    = "readmit-desktop-commercial-selection/v1"
 	commercialPrerequisite       = "the commercial portal destination is not configured; choose the operator-supplied destinations file"
-	commercialUndecodable        = "the destinations file cannot be read here; select a valid readmit-commercial-destinations/v1 file again"
+	commercialUndecodable        = "the destinations file cannot be read here; choose a valid commercial destinations file again"
 )
 
 var errRetainedSelection = errors.New("cannot retain operation policy selection")
@@ -330,6 +330,12 @@ func verifyLicenseFiles(entitlementPath, trustPath string, at time.Time) (*Licen
 	if err != nil {
 		return nil, err.Error()
 	}
+	return licenseDocumentView(received), ""
+}
+
+// licenseDocumentView is what one verified document declares, as the window
+// reports it.
+func licenseDocumentView(received operationguard.Received) *LicenseDocumentView {
 	view := &LicenseDocumentView{
 		Version: received.Version, ID: received.ID, Organization: received.Organization, Plan: received.Plan,
 		Sequence: received.Sequence, Issued: licenseTime(received.Issued), NotBefore: licenseTime(received.NotBefore),
@@ -344,7 +350,7 @@ func verifyLicenseFiles(entitlementPath, trustPath string, at time.Time) (*Licen
 	for _, authority := range received.Authorities {
 		view.Authorities = append(view.Authorities, LicenseAuthorityView{ID: authority.ID, Instances: authority.Instances})
 	}
-	return view, ""
+	return view
 }
 
 // ChooseLicenseFolder asks for the existing private folder a new activation is
@@ -390,7 +396,7 @@ func (a *App) CreateLicenseActivation(request LicenseActivationRequest) Operatio
 			return OperationResult{State: Failed, Reason: err.Error()}
 		}
 		if !received.OperationCapable {
-			return OperationResult{State: Failed, Reason: "a v1 entitlement binds devices and does not grant named-author operation admission; request a readmit-entitlement/v2 document"}
+			return OperationResult{State: Failed, Reason: "this license is in an earlier format that lists licensed computers and cannot activate new work here; ask your vendor for a license in the current format"}
 		}
 		if request.Author != "" {
 			if err = received.Assigned(request.Author, request.Device); err != nil {
@@ -453,6 +459,9 @@ func (a *App) RenewLicenseDocument() OperationResult {
 		if path == "" {
 			return OperationResult{State: Failed, Reason: operationguard.ErrUnavailable.Error()}
 		}
+		if a.installedSelected(path) {
+			return a.renewSelectedInstalled(ctx, path)
+		}
 		policy, err := readSelectedPolicy(path)
 		if err != nil {
 			return OperationResult{State: Failed, Reason: operationguard.ErrUnavailable.Error()}
@@ -473,7 +482,7 @@ func (a *App) RenewLicenseDocument() OperationResult {
 			return OperationResult{State: Failed, Reason: err.Error()}
 		}
 		if !received.OperationCapable {
-			return OperationResult{State: Failed, Reason: "a later issue must be a readmit-entitlement/v2 document"}
+			return OperationResult{State: Failed, Reason: "a later issue must be a license in the current format"}
 		}
 		installed, err := readOperationFile(policy.Entitlement)
 		if err != nil {
@@ -537,6 +546,31 @@ func (a *App) RenewLicenseDocument() OperationResult {
 		}
 		return OperationResult{State: Completed, Selected: true, Reason: "the later issue is installed; activate it to admit licensed work"}
 	})
+}
+
+// installedSelected reports whether the selected policy is this computer's
+// license, whose document is renewed in place as its store is, never beside it.
+func (a *App) installedSelected(path string) bool {
+	return a.licenseRoot != "" && path == operationguard.InstalledPolicyIn(a.licenseRoot)
+}
+
+// renewSelectedInstalled renews this computer's license in place when it is
+// the selected activation, through the same renewal `readmit license renew`
+// performs, so its store and its operation policy keep naming one document.
+func (a *App) renewSelectedInstalled(ctx context.Context, path string) OperationResult {
+	files, declined := a.chooseFiles(ctx, "Choose the later-issue entitlement document", "JSON documents", "*.json")
+	if len(files) == 0 {
+		return declined.operation()
+	}
+	data, reason := readReceived(files[0], operationguard.ErrUnavailable.Error())
+	if reason != "" {
+		return OperationResult{State: Failed, Reason: reason}
+	}
+	if err := operationguard.RenewInstalledLicense(a.licenseRoot, data, nil); err != nil {
+		return OperationResult{State: Failed, Reason: err.Error()}
+	}
+	a.installOperationPolicy(path)
+	return a.OperationStatus()
 }
 
 // ExportLicenseDocument writes the installed entitlement document to a new

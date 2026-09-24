@@ -26,7 +26,7 @@ type (
 
 // ErrTrustUnreadable names a trust document none of this release's readers
 // accepts, without repeating any of its bytes.
-var ErrTrustUnreadable = errors.New("the trust document cannot be read here; select the vendor's readmit-entitlement-trust/v1 file")
+var ErrTrustUnreadable = errors.New("the trust document cannot be read here; select the vendor's verification keys file")
 
 // ErrAdmissionsMissing names a runner admission record that activation has
 // not created or that cannot be read.

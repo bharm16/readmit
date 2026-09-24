@@ -125,6 +125,9 @@ must be new and outside evidence. Under v1 omit `--author`; v1 counts bound
 devices, not named humans. Verification reports the term state; use
 `--require CAPABILITY` on `verify` or `show` when admission requires a specific
 currently granted capability. Import alone is not proof of an active term.
+Without `--output`, the same import installs and activates
+[this computer's license](license.md#this-computers-license) for the user who
+runs it, which the application and the command line then use without naming it.
 
 An existing output or another device assignment refuses instead of overwriting.
 Do not erase a store to renew: use `license renew STORE ENTITLEMENT --trust TRUST`.

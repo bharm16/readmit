@@ -276,7 +276,8 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
   `readmit-operation-policy/v1`. CLI, desktop, hub and customer runners admit new
   work through it; existing evidence access and frozen practice remain free. See [named authors and active runners](license-v2.md).
 - Verification is a pure function of the document bytes and a trust store the
-  operator selected with `--trust`. No network call, no activation service, no
+  operator selected: with `--trust`, or the one chosen when this computer's
+  license was activated and kept beside it. No network call, no activation service, no
   phone-home and no update check. No trust store is embedded: the vendor's
   signing identity is decided outside the engine, and no command signs an
   entitlement.

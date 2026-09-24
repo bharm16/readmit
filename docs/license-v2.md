@@ -274,9 +274,10 @@ and nothing an instance did.
 
 ## Complete local evaluation and operation admission
 
-New authoring and execution now require an explicitly selected signed v2
-entitlement. No policy flag, absent or corrupt activation, a released
-activation, an unassigned author/device, missing capability, a superseded issue,
+New authoring and execution now require an activated signed v2 entitlement:
+the policy named with `--operation-policy`, or without one
+[this computer's license](license.md#this-computers-license). No policy and no
+installed license, an absent or corrupt activation, a released activation, an unassigned author/device, missing capability, a superseded issue,
 or an ended term refuses **before** work starts. The CLI, desktop, hub writes
 and customer runner use `internal/operationguard`; core evidence readers keep
 no licensing dependency. v1 verification and its bound-device meaning remain
@@ -296,6 +297,13 @@ capture` and `sample index` remain ungated; these sample commands accept only
 the pinned synthetic bytes/inputs, never arbitrary evidence or targets.
 
 ### Explicit customer activation
+
+Most people activate [this computer's license](license.md#this-computers-license)
+instead: the application's license pane, or `readmit license import` without
+`--output`, writes exactly the files below into this account's configuration
+folder and activates them, and the command line then admits new work through
+them without `--operation-policy`. An operation policy named with
+`--operation-policy` is still used whenever it is named, as below.
 
 The issuer supplies the signed entitlement and its public trust document. The
 operator writes one private `readmit-operation-policy/v1` file selecting local
@@ -423,8 +431,10 @@ plan name.
 ### Running command-line recipes with an activated license
 
 Read-only commands and the frozen walkthrough work directly without this setup.
-For a shell workflow that creates or executes other work, select your supplied
-policy explicitly. In a POSIX shell, this wrapper keeps existing recipe commands
+With [this computer's license](license.md#this-computers-license) activated,
+recipes that create or execute work run as written too, with no flag and no
+wrapper. For a shell workflow that uses a supplied policy instead, select it
+explicitly. In a POSIX shell, this wrapper keeps existing recipe commands
 literal while passing the documented flag on every invocation:
 
 ```sh

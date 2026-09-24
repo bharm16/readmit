@@ -28,6 +28,7 @@ export async function renderApp(handlers: FacadeHandlers = {}) {
     EditorDrafts: () => ({ state: "empty" }),
     OperationStatus: () => ({ state: "empty", selected: false }),
     CommercialStatus: () => ({ state: "empty" }),
+    LicenseStatus: () => ({ state: "empty" }),
     HubStatus: () => ({ state: "empty", connected: false, authenticated: false }),
     DisclosureStatus: () => disclosureStatusResult(),
     // Retaining where the viewer is and dropping a stored draft answer

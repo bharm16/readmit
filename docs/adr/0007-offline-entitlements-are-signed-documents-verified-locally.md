@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-09-18
-amended: 2026-09-18
+amended: 2026-09-22
 ---
 
 # Organization entitlements are signed documents verified locally
@@ -149,3 +149,15 @@ records the separate vendor-billing boundary.
 ## Operation admission implementation
 
 The D6 guard is now implemented as `readmit-operation-policy/v1` and `readmit-operation-clock/v1`, with mandatory production CLI/desktop/hub/runner admission. It preserves the v1/v2 signed claim formats and pure verifiers. The local trial issuer uses separate strict policy/account contracts and signs v2 claims; production issuer deployment remains external. Frozen practice and existing-evidence access remain ungated.
+
+## Amendment: this computer's license
+
+[D9](../product-decisions.md#d9--one-license-per-computer-handled-as-any-software-purchase)
+keeps one installed license per computer, in the account's configuration
+folder, used by the application and by the command line without naming it.
+Verification is unchanged: the trust store is still selected by the person —
+chosen when the license is activated, or named with `--trust` — and is kept
+beside the license rather than embedded. That folder is the one location readmit
+discovers, and it holds only the existing store, trust, operation policy, clock
+and runner contracts; no contract gains a member, and a policy or store named
+explicitly is used exactly as before.

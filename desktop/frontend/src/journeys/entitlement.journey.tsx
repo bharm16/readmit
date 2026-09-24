@@ -58,7 +58,7 @@ test("a delivered license is verified, installed and activated without hand-writ
   await press(user, access().getByRole("button", { name: "Verify a received license…" }));
   const received = within(await access().findByRole("heading", { name: "Received license" }).then((heading) => heading.parentElement!));
   const facts = received.getAllByRole("definition").map((item) => item.textContent ?? "");
-  expect(facts[0]).toBe("test-entitlement (readmit-entitlement/v2)");
+  expect(facts[0]).toBe("test-entitlement (current format)");
   expect(facts[1]).toBe("test-organization");
   expect(facts[3]).toMatch(/^\S+ to \S+; grace 0 days \(ends \S+\); state active$/);
   expect(facts.slice(4)).toEqual(["1 author seats, 2 devices each; 16 runner instances", "author, execute, hub", "test-key (active)"]);
@@ -171,7 +171,7 @@ test("the commercial portal is an operator-supplied destination: stated as missi
   await journey.chooseFiles([journey.path("operator/destinations-insecure.json")], "Choose the commercial destinations file");
   await press(user, commercial().getByRole("button", { name: "Choose the commercial destinations file…" }));
   expect(
-    await commercial().findByText("the destinations file cannot be read here; select a valid readmit-commercial-destinations/v1 file again"),
+    await commercial().findByText("the destinations file cannot be read here; choose a valid commercial destinations file again"),
   ).toBeTruthy();
   expect(commercial().queryByRole("link", { name: "Open the commercial portal in your browser" })).toBeNull();
 

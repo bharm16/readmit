@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ComputerLicense } from "./ComputerLicense";
 import {
   activateOperations, chooseCommercialDestinations, chooseLicenseFolder, chooseOperationPolicy,
   commercialStatus, createLicenseActivation, exportLicenseDocument, operationStatus, releaseOperations,
@@ -53,7 +54,13 @@ export function OperationAccess() {
 
   return <section aria-labelledby="operation-access-title">
     <h3 id="operation-access-title">License and trial activation</h3>
-    <p>Try the guided synthetic sample without a license. Open, verify and export existing work anytime. To create or run other work, import the license your vendor delivered and activate it here. A trial evaluation and a purchased license both arrive the same way: request one in the commercial portal below, then import the signed document when it is delivered; a trial extension is a renewal of that document, not a second license.</p>
+    <p>Try the guided synthetic sample without a license. Open, verify and export existing work anytime. To create or run other work, activate the license your vendor delivered on this computer. A trial evaluation and a purchased license both arrive the same way: request one in the commercial portal below, then activate the license file when it is delivered; a trial extension is a renewal of that license, not a second one.</p>
+    <ComputerLicense
+      portal={commercial?.state === "completed" ? commercial.portal : undefined}
+      onChanged={() => { void operationStatus().then(setResult); }}
+    />
+    <h4>Activation folders supplied by an administrator</h4>
+    <p>An administrator can instead supply a prepared activation folder for this window, or build one from a received license and its trust document below.</p>
     <div role="status" aria-live="polite">
       {result?.reason ? <p>{result.reason}</p> : null}
       {result?.term ? <p>License: {result.term}. Organization: {result.clock?.organization}. Named authors: {result.author_seats}; runner instances: {result.runner_instances}. Expires: {result.expires}. Grace ends: {result.grace_ends}.</p> : null}
@@ -90,7 +97,7 @@ export function OperationAccess() {
         <h4>Received license</h4>
         {verified.state === "completed" && document ? <>
           <dl>
-            <dt>Document</dt><dd>{document.id} ({document.version})</dd>
+            <dt>Document</dt><dd>{document.id} ({document.operation_capable ? "current format" : "earlier format"})</dd>
             <dt>Organization</dt><dd>{document.organization}</dd>
             <dt>Plan</dt><dd>{document.plan}</dd>
             <dt>Term</dt><dd>{document.not_before} to {document.expires}; grace {document.grace_days ?? 0} days (ends {document.grace_ends}); state {document.state}</dd>
@@ -98,7 +105,7 @@ export function OperationAccess() {
             <dt>Capabilities</dt><dd>{document.capabilities?.join(", ")}</dd>
             <dt>Signed by</dt><dd>{document.key_id} ({document.key_status})</dd>
           </dl>
-          {document.operation_capable ? null : <p role="note">This document binds devices and does not grant named-author operation admission; request a readmit-entitlement/v2 document to activate licensed work.</p>}
+          {document.operation_capable ? null : <p role="note">This license is in an earlier format that lists licensed computers and cannot activate new work here; ask your vendor for a license in the current format.</p>}
         </> : <p role="note">{verified.reason}</p>}
         {document?.operation_capable ? <>
           <label htmlFor="license-author">Author this device works as</label>

@@ -200,7 +200,10 @@ func runnerAdmit() *cobra.Command {
 		Short:       "Admit one execution instance if the authority has a free instance",
 		Args:        runnerTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			until, err := leaseEnd(lease)
+			// One instant decides both ends of the lease, so a second boundary
+			// between two clock reads cannot shorten it to nothing.
+			at := licenseNow()
+			until, err := leaseEnd(lease, at)
 			if err != nil {
 				return err
 			}
@@ -215,7 +218,7 @@ func runnerAdmit() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := record.Admit(grant, instance, licenseNow(), until); err != nil {
+			if err := record.Admit(grant, instance, at, until); err != nil {
 				return err
 			}
 			return writeAdmissions(cmd.OutOrStdout(), "Instance admitted: "+instance, record, grant)
@@ -235,7 +238,8 @@ func runnerRenew() *cobra.Command {
 		Short:       "Extend an admitted instance's lease inside the term; a stale instance reporting in becomes active again",
 		Args:        runnerTwoArguments,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			until, err := leaseEnd(lease)
+			at := licenseNow()
+			until, err := leaseEnd(lease, at)
 			if err != nil {
 				return err
 			}
@@ -244,7 +248,7 @@ func runnerRenew() *cobra.Command {
 				return err
 			}
 			return settleInstance(cmd, args[0], instance, "Instance renewed: ", func(record *entitlement.Admissions) error {
-				return record.Renew(grant, instance, licenseNow(), until)
+				return record.Renew(grant, instance, at, until)
 			})
 		},
 	}
@@ -344,10 +348,10 @@ func readGrantV2(path, trustPath string) (entitlement.GrantV2, error) {
 	return entitlement.VerifyV2(data, trust)
 }
 
-// leaseEnd turns a declared lease into the instant it ends. The lease is
-// bounded by the contract; the caller chooses it, and readmit chooses no
-// default.
-func leaseEnd(lease string) (time.Time, error) {
+// leaseEnd turns a declared lease into the instant it ends, counted from the
+// instant the admission records. The lease is bounded by the contract; the
+// caller chooses it, and readmit chooses no default.
+func leaseEnd(lease string, at time.Time) (time.Time, error) {
 	if lease == "" {
 		return time.Time{}, usage("license runner requires --lease with how long the admission holds, for example 30m")
 	}
@@ -358,7 +362,7 @@ func leaseEnd(lease string) (time.Time, error) {
 	if duration > entitlement.MaxLease {
 		return time.Time{}, entitlement.ErrLeaseTooLong
 	}
-	return licenseNow().Add(duration), nil
+	return at.Add(duration), nil
 }
 
 func writeAdmissions(out io.Writer, headline string, record *entitlement.Admissions, grant entitlement.GrantV2) error {

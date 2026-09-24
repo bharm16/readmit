@@ -277,7 +277,7 @@ func TestVerifyLicenseDocumentReportsV1AndExpiredTermsTruthfully(t *testing.T) {
 	if len(result.Document.Devices) != 1 || result.Document.Devices[0] != "workstation-a" || result.Document.State != string(entitlement.StateActive) || result.Document.Seats != 1 || result.Document.RunnerInstances != 1 {
 		t.Fatalf("v1 scope not reported: %+v", result.Document)
 	}
-	if created := app.CreateLicenseActivation(desktop.LicenseActivationRequest{Entitlement: v1Path, Trust: trustPath, Author: "alice", Device: "laptop", Folder: t.TempDir()}); created.State != desktop.Failed || !strings.Contains(created.Reason, "v1") {
+	if created := app.CreateLicenseActivation(desktop.LicenseActivationRequest{Entitlement: v1Path, Trust: trustPath, Author: "alice", Device: "laptop", Folder: t.TempDir()}); created.State != desktop.Failed || !strings.Contains(created.Reason, "earlier format") {
 		t.Fatalf("v1 configured operation admission: %+v", created)
 	}
 

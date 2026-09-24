@@ -1,5 +1,28 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- This computer's license is handled the way any software purchase is
+  (#315). The `readmit license import`, `show`, `renew`, `export` and
+  `release` commands had no screen, and the window's license pane installed a
+  different form than `license import`, so neither entry point could read what
+  the other activated. The license pane now activates one license per computer
+  from the file received at purchase or its pasted contents, checks it
+  locally and describes the licensee, plan, seats and term in plain words;
+  renews it in place when the renewed file is activated; saves a copy byte for
+  byte; and deactivates this computer after asking, so the seat can be
+  reissued. It is the license the command line uses: without
+  `--operation-policy` new work is admitted through it, `license show`,
+  `renew`, `export` and `release` without a store act on it, and `license
+  import` without `--output` installs it. Given a store, every command keeps
+  its flags, output and exit statuses. The license lives in the account's
+  configuration folder as an unchanged entitlement store beside the trust
+  document it was verified against and, for a v2 license, the operation
+  policy, clock and runner record new work is admitted through; no
+  `readmit-*` contract changes, and a released license is set aside, never
+  deleted. The window warns thirty days before a term ends and offers the
+  operator-configured account address only as a link. The window's facade
+  gains `LicenseStatus`, `ReviewLicense`, `ActivateLicense`,
+  `ExportInstalledLicense` and `DeactivateLicense`.
+
 - A new folder the window asks for is now named in the host's save dialog, so
   it can be written through the installed application (#377). A backup, a
   restored project, a recovery or rollback archive, a portable review and a

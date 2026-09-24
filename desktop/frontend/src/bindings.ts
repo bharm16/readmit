@@ -604,6 +604,11 @@ export interface Facade {
   SettleRunnerAdmission(request: RunnerSettleRequest): Promise<RunnerStatusResult>;
   ChooseCommercialDestinations(): Promise<CommercialStatusResult>;
   CommercialStatus(): Promise<CommercialStatusResult>;
+  LicenseStatus(): Promise<InstalledLicenseResult>;
+  ReviewLicense(request: LicenseReviewRequest): Promise<LicenseReviewResult>;
+  ActivateLicense(request: LicenseActivateRequest): Promise<InstalledLicenseResult>;
+  DeactivateLicense(): Promise<InstalledLicenseResult>;
+  ExportInstalledLicense(): Promise<LicenseExportResult>;
   CompareRuns(request: RunComparisonRequest): Promise<RunComparisonResult>;
   StartDurableRun(request: DurableRunRequest): Promise<DurableRunResult>;
   OpenDurableRun(path: string): Promise<DurableRunResult>;
@@ -4459,6 +4464,28 @@ export function settleRunnerAdmission(request: RunnerSettleRequest): Promise<Run
 export interface CommercialStatusResult { state: State; reason?: string; environment?: string; portal?: string; config_path?: string; }
 export function chooseCommercialDestinations(): Promise<CommercialStatusResult> {return guard(() => facade().ChooseCommercialDestinations(), {state:"failed"});}
 export function commercialStatus(): Promise<CommercialStatusResult> {return retryingRead(() => facade().CommercialStatus(), {state:"empty"});}
+
+/** This computer's license in plain facts: who it is licensed to, what it
+ * includes, who and which computer it was activated for, and its term. It
+ * never carries a signature, key, path or contract name. */
+export interface InstalledLicenseView {
+ organization: string; plan: string; sequence: number; author_seats: number; runner_slots: number;
+ author?: string; device: string; runner_pool?: string; starts: string; expires: string; grace_ends: string;
+ term: string; days_left: number; renew_soon: boolean; activated: string; deactivated: boolean; deactivated_at?: string;
+ new_work: boolean; current_format: boolean;
+}
+export interface InstalledLicenseResult { state: State; reason?: string; outcome?: string; license?: InstalledLicenseView; }
+/** A received license to check: pasted contents, or none to choose the file. */
+export interface LicenseReviewRequest { contents?: string; choose_keys: boolean; }
+export interface LicenseReviewResult { state: State; reason?: string; entitlement?: string; trust?: string; document?: LicenseDocumentView; renewal: boolean; }
+export interface LicenseActivateRequest {
+ entitlement?: string; contents?: string; trust?: string; author?: string; device?: string; authority?: string;
+}
+export function licenseStatus(): Promise<InstalledLicenseResult> {return retryingRead(() => facade().LicenseStatus(), {state:"failed"});}
+export function reviewLicense(request: LicenseReviewRequest): Promise<LicenseReviewResult> {return guard(() => facade().ReviewLicense(request), {state:"failed", renewal:false});}
+export function activateLicense(request: LicenseActivateRequest): Promise<InstalledLicenseResult> {return guard(() => facade().ActivateLicense(request), {state:"failed"});}
+export function deactivateLicense(): Promise<InstalledLicenseResult> {return guard(() => facade().DeactivateLicense(), {state:"failed"});}
+export function exportInstalledLicense(): Promise<LicenseExportResult> {return guard(() => facade().ExportInstalledLicense(), {state:"failed"});}
 
 
 export interface HubProjectInfo {

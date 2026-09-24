@@ -29,6 +29,9 @@ func rawOperation(t *testing.T, args ...string) (string, error) {
 }
 
 func TestOperationAdmissionMissingAndReleasedRefuseAuthoring(t *testing.T) {
+	// No policy named means this computer's license, so the account is one
+	// with none installed rather than whoever runs the suite.
+	isolateInstalledLicense(t)
 	for _, policy := range []string{"", testlicense.New(t)} {
 		args := []string{}
 		if policy != "" {
@@ -103,6 +106,7 @@ func TestUnactivatedFrozenSampleRefusesArbitraryInputs(t *testing.T) {
 }
 
 func TestUnactivatedCIAdmissionRetainsMachineReadableFailure(t *testing.T) {
+	isolateInstalledLicense(t)
 	out, err := rawOperation(t, "suite", "ci", "absent", "--send", "--environment", "lab", "--output", filepath.Join(t.TempDir(), "run"))
 	if err == nil || !strings.Contains(out, `"schema":"readmit-suite-ci/v1"`) || !strings.Contains(out, `"exit_code":2`) {
 		t.Fatalf("CI admission result: %v %s", err, out)
