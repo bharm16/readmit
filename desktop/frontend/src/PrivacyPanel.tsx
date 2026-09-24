@@ -25,6 +25,7 @@ import {
   type SupportPublishResult,
   type SupportRequest,
 } from "./bindings";
+import { Reexecution } from "./Reexecution";
 
 /** The privacy panel: preparation, materialization, review, approval and
  * export, and the value-free support summary beside them.
@@ -39,7 +40,9 @@ import {
  * act over the identity the bytes have now — it is typed per action, never
  * retained, and no draft can restore one. Nothing is uploaded: an export is a
  * directory beside the evidence, and a team transfer is the customer hub's own
- * authenticated workflow. */
+ * authenticated workflow. The one step here that sends is the reexecution of
+ * an approved review against its authorized target, `readmit redact
+ * reexecute`, which sends only after its own explicit authorization. */
 export function PrivacyPanel({
   workspace,
   entries,
@@ -372,6 +375,8 @@ export function PrivacyPanel({
         </> : null}
       </div> : null}
     </div>
+
+    <Reexecution workspace={workspace} reviews={reviews} packets={sealedPackets} specs={specs} onRefresh={onRefresh} />
 
     <div className="actions">
       <h4>Support summary</h4>

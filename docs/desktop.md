@@ -2866,11 +2866,13 @@ The **privacy** panels are where an investigation's material actually becomes
 shareable, honestly or not at all: they derive a disclosure review from what
 the workspace really holds, read it through the same verified reader the
 export gate uses, export the reviewed packet under an approval naming the
-exact identity, protect a packet in an encrypted transfer package, and prepare
-the value-free support summary. All four are the existing `redact`, `redact
-export`, `protect` and `share` operations; the panels decide nothing the
-reporting engine does not already own, and the command line reaches the same
-verified decisions and the same disclosure refusals over the same bytes.
+exact identity, reexecute an approved review against the target its original
+run recorded, protect a packet in an encrypted transfer package, and prepare
+the value-free support summary. All five are the existing `redact`, `redact
+export`, `redact reexecute`, `protect` and `share` operations; the panels
+decide nothing the reporting engine does not already own, and the command line
+reaches the same verified decisions and the same disclosure refusals over the
+same bytes.
 
 **Preparation** selects four entries of the open workspace — the case, the
 original specification, the disclosure policy and the complete
@@ -2901,6 +2903,39 @@ disclosure-reviewed extract, and it declines the other thing by name: no
 external regression-equivalence claim exists in this release, no
 re-execution happens while preparing an export, and no synthetic result
 substitutes for unavailable external proof.
+
+**Reexecution** is [`redact reexecute`](redact.md#authorized-reexecution-and-declined-external-equivalence)
+and the one privacy step that sends. It takes an approved review, the private
+entry its derivation wrote, a retained packet whose current run is the actual
+original phase, the specification the person rebound to the approved derived
+case, the target and a new observation, the phase — `failure` or `pass` — and
+the exact review identity typed in fresh. **Preview reexecution** is the
+command's own preparation and sends nothing: it shows the target the original
+execution recorded, with its classification, transport and address, the
+occurrences of the derived case a send would deliver, the reset the
+specification declares for the person to perform first, the identities the
+assessment will bind, the fresh job folder, and whether execution is admitted,
+asked the way the send asks it. An identity that is not the review's, a
+blocked review, another derivation's private entry, a phase the original run
+does not meet, a target other than the one it recorded, a host name nobody
+approved and a production-classified target are each refused in the command's
+own sentence. **Send once** is offered only after the person ticks the
+authorization of that single nonproduction send, and the backend admits it as
+execution and sends only while the inputs still prepare to the preview the
+person reviewed; otherwise it is refused and nothing is written. The send goes
+through the durable runner into a new job entry and is assessed exactly as the
+command assesses it — `matched`, `changed` or `unavailable-or-unstable`, with
+external equivalence always `declined` — beside a read-only recovery of the
+job: acknowledged, uncertain and never-attempted deliveries. Only a matched
+phase completes; a changed or unavailable one is refused with the assessment's
+own reason, as the command refuses it with status 2, and keeps its job. **Cancel
+reexecution** stops further sends; a cancelled, timed-out or delivery-uncertain
+send is never reported as completed, and nothing is ever resent. An attempt
+spends its preview and its authorization, so another send needs a new preview
+and a new decision after the person reconciles any uncertain delivery at the
+target; nothing here resets a target, retries or resumes. New
+acknowledgements, observations and metadata in the job stay customer-local and
+need a fresh disclosure review before they are shared.
 
 **Protection** registers a control as a structured reference — the declared
 at-rest storage, the absolute path of the program that prints the key, and

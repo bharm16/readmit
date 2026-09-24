@@ -123,11 +123,11 @@ func (a *App) setRunOutput(output string) {
 }
 
 // executing reports whether the operation holding the slot is this window's
-// durable run writing exactly path.
+// durable run, or its reexecution of a review, writing exactly path.
 func (a *App) executing(path string) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.running && a.operation == runOperation && a.runOutput == path
+	return a.running && (a.operation == runOperation || a.operation == reexecutionOperation) && a.runOutput == path
 }
 
 // OpenDurableRun is read-only recovery and never acquires send authority.
@@ -641,9 +641,15 @@ func (a *App) DurableRunProgress(workspace, entry string) RunProgressResult {
 		}
 		return RunProgressResult{State: Failed, Reason: "the durable run could not be verified; partial evidence has not been changed"}
 	}
-	progress := RunProgress{Phase: string(recovery.Run.State), Run: &recovery.Run,
-		Acknowledged: recovery.Acknowledged, Uncertain: recovery.Uncertain, NotAttempted: recovery.NotAttempted, Lease: recovery.Lease}
+	progress := progressOf(recovery)
 	return RunProgressResult{State: Completed, Progress: &progress}
+}
+
+// progressOf is what one recovery read of a run folder nobody is writing
+// establishes, in the recovery vocabulary.
+func progressOf(recovery durablerun.Recovery) RunProgress {
+	return RunProgress{Phase: string(recovery.Run.State), Run: &recovery.Run,
+		Acknowledged: recovery.Acknowledged, Uncertain: recovery.Uncertain, NotAttempted: recovery.NotAttempted, Lease: recovery.Lease}
 }
 
 // RunEvidenceRequest opens one retained execution read-only: a result

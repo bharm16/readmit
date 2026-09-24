@@ -127,6 +127,7 @@ var slotActivities = []slotActivity{
 			{privacyOperation, "A disclosure review or derived export is in progress now; its proof sends synthetic fixture messages only to built-in receivers it starts on loopback in this process."},
 			{syntheticPacketOperation, "A synthetic demonstration packet is being generated now; it sends the scenario's synthetic messages only to built-in receivers it starts on loopback in this process."},
 			{replayOperation, "A replay is sending now; it sends the case messages its approved preview showed only to the target that preview named, one at a time, and retains the run and its send decision."},
+			{reexecutionOperation, "A reviewed reexecution you authorized is sending now; it sends the approved derived case only to the target its preview named, once."},
 		},
 		idle: "No run is in progress. A run sends only while it executes; selecting, preflighting and reading history connect to nothing.",
 	},

@@ -376,8 +376,9 @@ func TestRunEvidenceReadsRefuseEveryEntryThatLeavesTheWorkspace(t *testing.T) {
 // Every other operation that reads an entry named by the caller: the
 // protection document each protection operation reads and whose key program
 // it may run, the entries a package is packed from, the private local state an
-// export or a support summary is bound to, and the built reproducer a revision
-// is copied from.
+// export, a support summary or a reexecution is bound to, the specification a
+// reexecution sends and the review and packet it names, and the built
+// reproducer a revision is copied from.
 func TestEveryOtherEntryReadByNameRefusesALinkAndEveryEscape(t *testing.T) {
 	parent := t.TempDir()
 	app := workspaceApp(t)
@@ -428,6 +429,16 @@ func TestEveryOtherEntryReadByNameRefusesALinkAndEveryEscape(t *testing.T) {
 	document := []string{"the protection document must be one entry of the open workspace",
 		"the protection document must be one regular file of the open workspace, never a symbolic link"}
 	private := []string{"the private local state must be one folder of the open workspace, never a symbolic link"}
+	reexecutionSpec := []string{"the rebound execution specification must be one regular entry of the open workspace"}
+	// escapes names an entry in every way that is not one name of the
+	// workspace: a `..` escape and an absolute path inside and outside it.
+	escapes := func(entry string) map[string]string {
+		return map[string]string{
+			"a `..` escape": filepath.Join("..", "outside", entry),
+			"an absolute path to the workspace's entry": filepath.Join(root, entry),
+			"an absolute path outside the workspace":    filepath.Join(outside, entry),
+		}
+	}
 	refusesEveryEntry(t, []confinedMember{
 		{"ReadProtection", document, hostile("protection.json", "folder.json"), func(entry string) refused {
 			result := app.ReadProtection(root, entry)
@@ -472,6 +483,30 @@ func TestEveryOtherEntryReadByNameRefusesALinkAndEveryEscape(t *testing.T) {
 		{"PublishSupportSummary(Private)", private, hostile("private", "evidence.txt"), func(entry string) refused {
 			result := app.PublishSupportSummary(desktop.SupportPublishRequest{Workspace: root, Source: "review", Kind: "derived-review", Private: entry, Policy: "policy.json", Approval: "approved", Output: "fresh"})
 			return refused{result.State, result.Reason}
+		}},
+		{"PreviewReexecution(LocalState)", private, hostile("private", "evidence.txt"), func(entry string) refused {
+			result := app.PreviewReexecution(reexecutionNaming(root, "local state", entry))
+			return refused{result.State, result.Reason}
+		}},
+		{"ReexecuteReviewedEvidence(LocalState)", private, hostile("private", "evidence.txt"), func(entry string) refused {
+			return sendNaming(app, reexecutionNaming(root, "local state", entry))
+		}},
+		{"PreviewReexecution(Spec)", reexecutionSpec, hostile("evidence.txt", "private"), func(entry string) refused {
+			result := app.PreviewReexecution(reexecutionNaming(root, "spec", entry))
+			return refused{result.State, result.Reason}
+		}},
+		{"ReexecuteReviewedEvidence(Spec)", reexecutionSpec, hostile("evidence.txt", "private"), func(entry string) refused {
+			return sendNaming(app, reexecutionNaming(root, "spec", entry))
+		}},
+		// The review and the original packet are verified by their own
+		// readers, which refuse a link themselves; a name that is not one
+		// entry is refused before either reader is reached.
+		{"PreviewReexecution(Review)", []string{"the approved review must be one entry of the open workspace"}, escapes("review"), func(entry string) refused {
+			result := app.PreviewReexecution(reexecutionNaming(root, "review", entry))
+			return refused{result.State, result.Reason}
+		}},
+		{"ReexecuteReviewedEvidence(OriginalPacket)", []string{"the original packet must be one entry of the open workspace"}, escapes("packet"), func(entry string) refused {
+			return sendNaming(app, reexecutionNaming(root, "packet", entry))
 		}},
 		{"RegisterRevision(Source)", []string{"a built reproducer must be named by one directory entry of the open workspace"}, hostile("built", "evidence.txt"), func(entry string) refused {
 			result := app.RegisterRevision(desktop.RevisionRegistration{Workspace: root, Source: entry, Name: "fresh", Parent: "incident"})
@@ -786,4 +821,30 @@ func TestFindingAnIndexNeverReadsThroughALink(t *testing.T) {
 	if readSince(t, target) {
 		t.Fatal("finding an index read through a symbolic link out of the workspace")
 	}
+}
+
+// reexecutionNaming is one reexecution of the workspace's review, private
+// state, packet and specification, with the one member named replaced.
+func reexecutionNaming(root, member, entry string) desktop.ReexecutionRequest {
+	request := desktop.ReexecutionRequest{Workspace: root, Review: "review", LocalState: "private", OriginalPacket: "packet",
+		Spec: "evidence.txt", Phase: "failure", Approval: "approved"}
+	switch member {
+	case "review":
+		request.Review = entry
+	case "local state":
+		request.LocalState = entry
+	case "packet":
+		request.OriginalPacket = entry
+	case "spec":
+		request.Spec = entry
+	}
+	return request
+}
+
+// sendNaming sends the reexecution a request names, authorized and pinned.
+func sendNaming(app *desktop.App, request desktop.ReexecutionRequest) refused {
+	result := app.ReexecuteReviewedEvidence(desktop.ReexecutionSendRequest{Workspace: request.Workspace, Review: request.Review,
+		LocalState: request.LocalState, OriginalPacket: request.OriginalPacket, Spec: request.Spec, Phase: request.Phase,
+		Approval: request.Approval, Output: "fresh", Expected: "previewed", Authorize: true})
+	return refused{result.State, result.Reason}
 }

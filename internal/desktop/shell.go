@@ -318,7 +318,6 @@ var supportStatus = Support{
 		"choose the private folder a new local activation is created in",
 		"execute, queue, resume, recover and inspect durable runs",
 		"export the installed entitlement byte for byte",
-		"reexecute reviewed transformed evidence against an explicitly selected authorized target",
 		"resolve an expired clock and restate the high-water",
 		"select a saved test or suite through the host's native file dialog",
 		"select an absolute policy path explicitly",

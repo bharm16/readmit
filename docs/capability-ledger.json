@@ -1346,13 +1346,15 @@
       "kind": "cli",
       "capability": "Reexecute reviewed transformed evidence against an explicitly selected authorized target",
       "owner": "bharm16/readmit#310",
-      "screen": "a privacy-review screen",
+      "screen": "the privacy panel of the privacy region",
       "action": "reexecute reviewed transformed evidence against an explicitly selected authorized target",
       "backend": {"package": "internal/redact", "name": "Reexecution.Execute"},
       "inputs": ["readmit-export-review/v1", "readmit-redact-local/v1", "readmit-retained-packet/v1", "readmit-result/v1", "readmit-test/v1", "readmit-case/v3", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3"],
       "outputs": ["readmit-reexecution-assessment/v1", "readmit-job/v1", "readmit-result/v1", "hl7"],
       "prerequisites": ["execute"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/packets.journey.tsx", "name": "an approved review is reexecuted against the target its original failing run recorded, only after a preview and an explicit authorization"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowReexecutesReviewedEvidenceExactlyAsReadmitRedactReexecuteDoes"},
+      "implemented": true
     },
     {
       "id": "cli.replay",
@@ -6759,6 +6761,38 @@
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/PrivacyPanel.test.tsx", "name": "the packet exports only under the exact approval, and changing the review clears what was typed"},
       "parity_test": {"package": "tests", "name": "TestDesktopAndCommandLineApproveAndExportTheSameReviews"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.PreviewReexecution",
+      "source": "desktop.App.PreviewReexecution",
+      "kind": "desktop",
+      "capability": "Preview one reexecution of an approved review: the recorded target, the derived messages a send would deliver and the assessment binding, sending nothing",
+      "owner": "bharm16/readmit#310",
+      "screen": "the privacy panel of the privacy region",
+      "action": "reexecute reviewed transformed evidence against an explicitly selected authorized target",
+      "backend": {"package": "internal/redact", "name": "PrepareReexecution"},
+      "inputs": ["readmit-export-review/v1", "readmit-redact-local/v1", "readmit-retained-packet/v1", "readmit-result/v1", "readmit-test/v1", "readmit-case/v3", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3"],
+      "outputs": [],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/Reexecution.test.tsx", "name": "a preview names the target and the messages a send would deliver, and sends nothing"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowReexecutesReviewedEvidenceExactlyAsReadmitRedactReexecuteDoes"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.ReexecuteReviewedEvidence",
+      "source": "desktop.App.ReexecuteReviewedEvidence",
+      "kind": "desktop",
+      "capability": "Send one previewed reexecution of an approved review to its authorized target under an explicit authorization, retaining its job",
+      "owner": "bharm16/readmit#310",
+      "screen": "the privacy panel of the privacy region",
+      "action": "reexecute reviewed transformed evidence against an explicitly selected authorized target",
+      "backend": {"package": "internal/redact", "name": "Reexecution.Execute"},
+      "inputs": ["readmit-export-review/v1", "readmit-redact-local/v1", "readmit-retained-packet/v1", "readmit-result/v1", "readmit-test/v1", "readmit-case/v3", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3"],
+      "outputs": ["readmit-reexecution-assessment/v1", "readmit-job/v1", "readmit-result/v1", "hl7"],
+      "prerequisites": ["execute"],
+      "gui_test": {"file": "desktop/frontend/src/Reexecution.test.tsx", "name": "the send happens only under the explicit authorization, pinned to the reviewed preview, and spends both"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowReexecutesReviewedEvidenceExactlyAsReadmitRedactReexecuteDoes"},
       "implemented": true
     },
     {

@@ -307,7 +307,7 @@ func writeHubClientConfig(t *testing.T, dir, hub string) string {
 // connect, is inventoried in operationsRunningDeclaredPrograms.
 var destinationActivities = map[string]string{
 	"StartDurableRun": "run", "StartSuiteRun": "run", "RunPractice": "run",
-	"DeriveExportReview": "run", "ExportDerivedPacket": "run", "GenerateSyntheticPacket": "run", "SendReplay": "run",
+	"DeriveExportReview": "run", "ExportDerivedPacket": "run", "GenerateSyntheticPacket": "run", "SendReplay": "run", "ReexecuteReviewedEvidence": "run",
 	"EnrollRunner": "runner", "ExecuteRunnerJob": "runner",
 	"DiagnoseSource": "capture", "CollectSource": "capture", "StartCapture": "capture",
 	"CheckTarget": "environment", "ResetTarget": "environment", "EvaluateSendPolicy": "environment", "StartReduction": "environment", "PreviewReplay": "environment",

@@ -51,6 +51,11 @@ type ReexecutionAssessment struct {
 // ACK, observation, metadata or historical target configuration for disclosure.
 func (p *Reexecution) Preview() ReexecutionAssessment { return p.binding }
 
+// PinnedInputs are the prepared inputs Execute would send: the rebound
+// specification, the target configuration and the outbound mapping of each
+// selected occurrence of the approved derived case. Reading them sends nothing.
+func (p *Reexecution) PinnedInputs() testrunner.PinnedInputs { return p.prepared.PinnedInputs() }
+
 func PrepareReexecution(ctx context.Context, request ReexecutionRequest) (*Reexecution, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
