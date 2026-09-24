@@ -3,7 +3,6 @@ package redact
 import (
 	"errors"
 	"fmt"
-	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/observation"
@@ -126,12 +125,11 @@ func selectedText(doc *hl7.Document, path string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	value, err := doc.Select(0, selector)
-	if err != nil || value.State != hl7.Present {
+	value, err := doc.Read(0, selector, hl7.IgnoreMSH18)
+	if err != nil {
 		return "", false
 	}
-	decoded, err := hl7.Decode(doc.Bytes(value.Span), doc.Messages[0].Delimiters)
-	return string(decoded), err == nil && utf8.Valid(decoded)
+	return value.Text()
 }
 
 func failedAssertions(artifact *testrunner.Artifact) []int {

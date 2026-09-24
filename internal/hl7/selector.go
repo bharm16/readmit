@@ -8,37 +8,69 @@ import (
 )
 
 // Selector addresses one value. Segment occurrence and field repetition default
-// to one; all positions in the text form are one-based. Use ParseSelector rather
-// than constructing selectors: its private fields keep invalid paths out.
+// to one; all positions in the text form are one-based. Use ParseSelector or
+// NewSelector rather than constructing selectors: its private fields keep
+// invalid paths out.
 type Selector struct {
 	segment                                                string
 	occurrence, field, repetition, component, subcomponent int
 }
 
-var selectorPattern = regexp.MustCompile(`^([A-Z][A-Z0-9]{2})(?:\[([1-9][0-9]*)\])?-([1-9][0-9]*)(?:\[([1-9][0-9]*)\])?(?:\.([1-9][0-9]*))?(?:\.([1-9][0-9]*))?$`)
+// Parts are the positions one selector addresses. Occurrence, Field and
+// Repetition are one-based. Component and Subcomponent are one-based, or zero
+// when the selector addresses no component or no subcomponent.
+type Parts struct {
+	Segment                                                string
+	Occurrence, Field, Repetition, Component, Subcomponent int
+}
+
+const segmentSyntax = `[A-Z][A-Z0-9]{2}`
+
+var (
+	selectorPattern = regexp.MustCompile(`^(` + segmentSyntax + `)(?:\[([1-9][0-9]*)\])?-([1-9][0-9]*)(?:\[([1-9][0-9]*)\])?(?:\.([1-9][0-9]*))?(?:\.([1-9][0-9]*))?$`)
+	segmentPattern  = regexp.MustCompile(`^` + segmentSyntax + `$`)
+	errSelector     = errors.New("invalid field selector; use SEG[occurrence]-field[repetition].component.subcomponent with positive positions")
+)
 
 func ParseSelector(path string) (Selector, error) {
-	invalid := errors.New("invalid field selector; use SEG[occurrence]-field[repetition].component.subcomponent with positive positions")
 	if len(path) > 96 {
-		return Selector{}, invalid
+		return Selector{}, errSelector
 	}
 	parts := selectorPattern.FindStringSubmatch(path)
 	if parts == nil {
-		return Selector{}, invalid
+		return Selector{}, errSelector
 	}
-	s := Selector{segment: parts[1], occurrence: 1, repetition: 1}
-	positions := []*int{&s.occurrence, &s.field, &s.repetition, &s.component, &s.subcomponent}
+	p := Parts{Segment: parts[1], Occurrence: 1, Repetition: 1}
+	positions := []*int{&p.Occurrence, &p.Field, &p.Repetition, &p.Component, &p.Subcomponent}
 	for i, target := range positions {
 		if parts[i+2] == "" {
 			continue
 		}
 		n, err := strconv.Atoi(parts[i+2])
-		if err != nil || n > maxSyntaxNodes {
-			return Selector{}, invalid
+		if err != nil {
+			return Selector{}, errSelector
 		}
 		*target = n
 	}
-	return s, nil
+	return NewSelector(p)
+}
+
+// NewSelector builds the selector at explicit positions. It refuses exactly
+// what ParseSelector refuses, with the same fixed error, so a selector built
+// from its own Parts, or parsed from its own String, is the same selector.
+func NewSelector(p Parts) (Selector, error) {
+	if !segmentPattern.MatchString(p.Segment) || p.Occurrence < 1 || p.Field < 1 || p.Repetition < 1 ||
+		p.Component < 0 || p.Subcomponent < 0 || p.Component == 0 && p.Subcomponent != 0 ||
+		max(p.Occurrence, p.Field, p.Repetition, p.Component, p.Subcomponent) > maxSyntaxNodes {
+		return Selector{}, errSelector
+	}
+	return Selector{segment: p.Segment, occurrence: p.Occurrence, field: p.Field, repetition: p.Repetition, component: p.Component, subcomponent: p.Subcomponent}, nil
+}
+
+// Parts returns the positions the selector addresses. They are a copy, so a
+// selector cannot be changed through them; build another with NewSelector.
+func (s Selector) Parts() Parts {
+	return Parts{Segment: s.segment, Occurrence: s.occurrence, Field: s.field, Repetition: s.repetition, Component: s.component, Subcomponent: s.subcomponent}
 }
 
 // String returns the explicit canonical path; it never contains payload data.

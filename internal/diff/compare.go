@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
-	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/dictionary"
 	"github.com/bharm16/readmit/internal/hl7"
@@ -208,27 +206,26 @@ func comparePair(pair alignedPair, fields []hl7.Selector, labels *dictionary.Dic
 	return result, nil
 }
 
+// selectValue reads one value through the shared hl7 read, which does not
+// hold it to MSH-18: a diff compares valid UTF-8 whatever the character set
+// either message declares. A value that is not text keeps the bytes it
+// displays: the original ones when its escapes did not resolve.
 func selectValue(item *occurrence, selector hl7.Selector, show bool) (Value, []byte) {
-	selected, _ := item.doc.Select(item.index, selector) // selectors and index were validated at the input boundary
-	value := Value{State: selected.State}
-	if selected.State != hl7.Present {
+	reading, _ := item.doc.Read(item.index, selector, hl7.IgnoreMSH18) // selectors and index were validated at the input boundary
+	value := Value{State: reading.State}
+	if reading.State != hl7.Present {
 		return value, nil
 	}
-	raw := item.doc.Bytes(selected.Span)
-	decoded := raw
-	path := selector.String()
-	if path == "MSH[1]-1[1]" || path == "MSH[1]-2[1]" {
+	decoded := reading.Decoded
+	switch {
+	case reading.Literal:
 		value.Encoding = "literal-delimiters"
-	} else {
-		var err error
-		decoded, err = hl7.Decode(raw, item.doc.Messages[item.index].Delimiters)
-		if err != nil {
-			value.Encoding, decoded = "unsupported_escape", raw
-		} else if !utf8.Valid(decoded) {
-			value.Encoding = "non_utf8"
-		} else {
-			value.Encoding = "decoded-utf8"
-		}
+	case reading.Reason == hl7.UnsupportedEscape:
+		value.Encoding, decoded = "unsupported_escape", item.doc.Bytes(reading.Span)
+	case reading.Reason == hl7.InvalidUTF8:
+		value.Encoding = "non_utf8"
+	default:
+		value.Encoding = "decoded-utf8"
 	}
 	if show {
 		display := strconv.QuoteToASCII(string(decoded))
@@ -290,8 +287,6 @@ func hasDictionary(item *occurrence, labels *dictionary.Dictionary) bool {
 }
 
 func fieldName(selector hl7.Selector, labels *dictionary.Dictionary) string {
-	segment, field, _ := strings.Cut(selector.String(), "-")
-	field, _, _ = strings.Cut(field, "[")
-	number, _ := strconv.Atoi(field)
-	return labels.Segments[segment[:3]][number]
+	position := selector.Parts()
+	return labels.Segments[position.Segment][position.Field]
 }

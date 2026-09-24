@@ -287,6 +287,7 @@ func TestUnsupportedRepetitionEncodingAndERRTableAreNotMisinterpreted(t *testing
 		{"filler repetition", bytes.ReplaceAll(fixture(t, "diagnose-reschedule.hl7"), []byte("FILLER-001^READMIT"), []byte("FILLER-001^READMIT~OTHER^READMIT")), diagnose.BookingNotObserved, "unsupported_field_repetition"},
 		{"unknown ERR table", bytes.ReplaceAll(fixture(t, "diagnose-ack.hl7"), []byte("HL70357"), []byte("SECRET-CUSTOM")), diagnose.ACKError, "unsupported_err_coding_system"},
 		{"non-ASCII without declaration", bytes.ReplaceAll(fixture(t, "diagnose-reschedule.hl7"), []byte("FILLER-001"), []byte("FILLER-é")), diagnose.BookingNotObserved, "unsupported_field_encoding"},
+		{"another declared character set", bytes.ReplaceAll(fixture(t, "diagnose-reschedule.hl7"), []byte("|P|2.5.1"), []byte("|P|2.5.1||||||8859/1")), diagnose.BookingNotObserved, "unsupported_character_set"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := run(t, writeCase(t, fixture(t, "diagnose-booking.hl7"), tc.raw), diagnose.DefaultConfig())
@@ -303,6 +304,22 @@ func TestUnsupportedRepetitionEncodingAndERRTableAreNotMisinterpreted(t *testing
 				t.Fatalf("missing unsupported explanation: %+v", r)
 			}
 		})
+	}
+}
+
+// Diagnosis holds a value to the character set MSH-18 declares: non-ASCII text
+// is interpreted under a declared UNICODE UTF-8 and nowhere else.
+func TestDeclaredUTF8IsInterpreted(t *testing.T) {
+	raw := bytes.ReplaceAll(fixture(t, "diagnose-reschedule.hl7"), []byte("|P|2.5.1"), []byte("|P|2.5.1||||||UNICODE UTF-8"))
+	raw = bytes.ReplaceAll(raw, []byte("FILLER-001"), []byte("FILLER-é"))
+	r := run(t, writeCase(t, fixture(t, "diagnose-booking.hl7"), raw), diagnose.DefaultConfig())
+	for _, u := range r.Unsupported {
+		if u.Code == "unsupported_field_encoding" || u.Code == "unsupported_character_set" {
+			t.Fatalf("declared UTF-8 was not interpreted: %+v", r.Unsupported)
+		}
+	}
+	if len(findings(r, diagnose.BookingNotObserved)) != 1 {
+		t.Fatalf("the declared UTF-8 filler identifier was not compared: %+v", r)
 	}
 }
 

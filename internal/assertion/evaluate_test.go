@@ -427,6 +427,26 @@ func TestAValueTheParserCannotDecodeIsAnExecutionError(t *testing.T) {
 	}
 }
 
+// MSH-1 and MSH-2 declare the delimiters literally, escape character
+// included, so they are read as written rather than decoded. An assertion
+// over MSH-2 decides, and the set it belongs to keeps its verdict instead of
+// being voided as unreadable.
+func TestAnAssertionOverTheDelimiterDeclarationDecidesWithoutVoidingTheSet(t *testing.T) {
+	set := decode(t, `{"schema":"readmit-assertion-set/v1","name":"delimiters","assertions":[`+
+		`{"id":"encoding-characters","operator":"field_equals","subject":`+observedField("s0001-e000001", "MSH-2")+`,"when":null,"expected":{"field":{"state":"present","text":"^~\\&"}}},`+
+		`{"id":"field-separator","operator":"field_equals","subject":`+observedField("s0001-e000001", "MSH-1")+`,"when":null,"expected":{"field":{"state":"present","text":"|"}}},`+
+		`{"id":"ack-accepted","operator":"field_equals","subject":`+observedField("s0001-e000001", "MSA-1")+`,"when":null,"expected":{"field":{"state":"present","text":"AA"}}}]}`)
+	produced := report(t, set, evidence(t))
+	if produced.Verdict != assertion.VerdictPass || produced.Passed != 3 {
+		t.Fatalf("verdict %q with %d passed", produced.Verdict, produced.Passed)
+	}
+	// A different declaration is a failed assertion, not an unreadable one.
+	set = single(t, "field_equals", observedField("s0001-e000001", "MSH-2"), `{"field":{"state":"present","text":"^~\\&#"}}`)
+	if result := only(t, set, evidence(t)); result.Outcome != assertion.OutcomeFailed {
+		t.Fatalf("outcome %q", result.Outcome)
+	}
+}
+
 // Cancelling produces no verdict, and evaluating the same set against the
 // same evidence afterwards produces exactly the report the cancelled run
 // would have. Recovery is re-evaluation; nothing is retained to resume.

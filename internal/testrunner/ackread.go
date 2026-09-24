@@ -1,10 +1,6 @@
 package testrunner
 
-import (
-	"unicode/utf8"
-
-	"github.com/bharm16/readmit/internal/hl7"
-)
+import "github.com/bharm16/readmit/internal/hl7"
 
 // ACKReadFailure names the step at which one retained acknowledgement could
 // not be read. The reading is this module's; each caller turns the failure
@@ -42,17 +38,16 @@ func ACKField(document *hl7.Document, selector string) (*FieldValue, ACKReadFail
 	if err != nil {
 		return nil, ACKNoSuchPosition
 	}
-	value, err := document.Select(0, parsed)
+	reading, err := document.Read(0, parsed, hl7.IgnoreMSH18)
 	if err != nil {
 		return nil, ACKNoSuchPosition
 	}
-	field := &FieldValue{State: value.State}
-	if value.State == hl7.Present {
-		decoded, err := hl7.Decode(document.Bytes(value.Span), document.Messages[0].Delimiters)
-		if err != nil || !utf8.Valid(decoded) {
+	field := &FieldValue{State: reading.State}
+	if reading.State == hl7.Present {
+		text, ok := reading.Text()
+		if !ok {
 			return nil, ACKNotText
 		}
-		text := string(decoded)
 		field.Text = &text
 	}
 	return field, 0

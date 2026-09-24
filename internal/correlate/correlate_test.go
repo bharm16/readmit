@@ -258,6 +258,23 @@ func TestIdentifiersCorrelateOnlyUnderAConfiguredAuthority(t *testing.T) {
 	}
 }
 
+// Correlation does not hold an identifier to the character set MSH-18
+// declares, where diagnosis does: undeclared non-ASCII text is compared as
+// UTF-8, and only bytes that are not UTF-8 are unsupported.
+func TestIdentifiersAreComparedAsUTF8WhateverMSH18Declares(t *testing.T) {
+	readmit := `{"key":"READMIT-MR","namespace":"READMIT","universal_id":"","universal_id_type":""}`
+	accented := strings.Replace(bookingReadmit, "PATIENT-001", "PATIENT-\u00e9", 1)
+	linked := report(t, writeCase(t, mllp(accented), mllp(accented)), rules(t, readmit, patientSelector))
+	if len(linked.Links) != 1 || containsString(codes(linked), "unsupported_field_encoding") {
+		t.Fatalf("an undeclared UTF-8 identifier was not compared: %+v", linked)
+	}
+	invalid := strings.Replace(bookingReadmit, "PATIENT-001", "PATIENT-\xff", 1)
+	refused := report(t, writeCase(t, mllp(invalid), mllp(invalid)), rules(t, readmit, patientSelector))
+	if len(refused.Links) != 0 || !containsString(codes(refused), "unsupported_field_encoding") {
+		t.Fatalf("an identifier that is not UTF-8 was compared: %+v", refused)
+	}
+}
+
 func TestMissingAndExplicitlyNullAuthoritiesAreUnsupportedRatherThanMerged(t *testing.T) {
 	readmit := `{"key":"READMIT-MR","namespace":"READMIT","universal_id":"","universal_id_type":""}`
 	for name, payload := range map[string]string{"omitted": noAuthority, "explicit null": nullAuthority} {

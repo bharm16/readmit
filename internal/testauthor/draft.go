@@ -468,7 +468,7 @@ func checkExpectation(draft Draft, expectation Expectation, sent map[string]bool
 		if err != nil {
 			return errors.New("an acknowledgement position is not one this release addresses")
 		}
-		if !strings.HasPrefix(selector.String(), "MSA[") && !strings.HasPrefix(selector.String(), "ERR[") {
+		if segment := selector.Parts().Segment; segment != "MSA" && segment != "ERR" {
 			return errors.New("an acknowledgement expectation addresses an MSA or ERR position")
 		}
 		if err := checkField(expectation.Field); err != nil {

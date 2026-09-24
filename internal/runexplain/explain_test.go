@@ -129,12 +129,12 @@ func peer(t *testing.T, code string) replay.Target {
 			return
 		}
 		selector, _ := hl7.ParseSelector("MSH-10")
-		value, _ := document.Select(0, selector)
-		control, err := hl7.Decode(document.Bytes(value.Span), document.Messages[0].Delimiters)
-		if err != nil {
+		value, _ := document.Read(0, selector, hl7.IgnoreMSH18)
+		control, ok := value.Text()
+		if !ok {
 			return
 		}
-		answer := "MSH|^~\\&|DOWNSTREAM|LAB|SCHEDULE|SITE-A|20260101120001+0000||ACK^S12|ACK-001|P|2.5.1\rMSA|" + code + "|" + string(control) + "\r"
+		answer := "MSH|^~\\&|DOWNSTREAM|LAB|SCHEDULE|SITE-A|20260101120001+0000||ACK^S12|ACK-001|P|2.5.1\rMSA|" + code + "|" + control + "\r"
 		_, _ = connection.Write(mllp.Frame([]byte(answer)))
 	}()
 	t.Cleanup(func() {

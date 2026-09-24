@@ -1,7 +1,6 @@
 package diagnose
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json/v2"
@@ -10,7 +9,6 @@ import (
 	"slices"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
@@ -30,7 +28,6 @@ type message struct {
 	event         bundle.Event
 	doc           *hl7.Document
 	kind, trigger string
-	utf8          bool
 }
 
 type identity struct{ namespace, value string }
@@ -125,12 +122,7 @@ func Run(path string, config Config) (Report, error) {
 		if !headerSupported {
 			continue
 		}
-		charset, _ := e.value(m, "MSH-18")
-		switch string(m.doc.Bytes(charset.Span)) {
-		case "", "ASCII":
-		case "UNICODE UTF-8":
-			m.utf8 = true
-		default:
+		if _, readable := m.doc.CharacterSet(0); !readable {
 			e.unsupportedItem("unsupported_character_set", event.ID, "MSH-18", "Only ASCII (the default) or declared UNICODE UTF-8 values are interpreted.")
 			continue
 		}
@@ -235,11 +227,19 @@ func caseWindow(b *bundle.Bundle) Window {
 	return w
 }
 
-func (m message) value(path string) hl7.Value {
+func builtinSelector(path string) hl7.Selector {
 	s, err := hl7.ParseSelector(path)
 	if err != nil {
 		panic("invalid built-in diagnosis selector")
 	}
+	return s
+}
+
+func (m message) value(path string) hl7.Value {
+	return m.at(builtinSelector(path))
+}
+
+func (m message) at(s hl7.Selector) hl7.Value {
 	v, err := m.doc.Select(0, s)
 	if err != nil {
 		panic("invalid built-in diagnosis message index")
@@ -248,7 +248,10 @@ func (m message) value(path string) hl7.Value {
 }
 
 func (m message) evidence(path string) Evidence {
-	v := m.value(path)
+	return m.evidenceOf(path, m.value(path))
+}
+
+func (m message) evidenceOf(path string, v hl7.Value) Evidence {
 	e := Evidence{Occurrence: m.event.ID, Field: path, State: v.State}
 	if v.State != hl7.Omitted {
 		offset, length := v.Span.Start, v.Span.End-v.Span.Start
@@ -273,12 +276,17 @@ func (e *evaluator) text(m message, path string) (string, bool) {
 	if !supported || v.State != hl7.Present {
 		return "", false
 	}
-	decoded, err := hl7.Decode(m.doc.Bytes(v.Span), m.doc.Messages[0].Delimiters)
-	if err != nil || !utf8.Valid(decoded) || !m.utf8 && bytes.IndexFunc(decoded, func(r rune) bool { return r > 127 }) >= 0 {
+	// Diagnosis holds every value to the character set MSH-18 declares.
+	reading, err := m.doc.Read(0, builtinSelector(path), hl7.EnforceMSH18)
+	if err != nil {
+		panic("invalid built-in diagnosis message index")
+	}
+	text, ok := reading.Text()
+	if !ok {
 		e.unsupportedItem("unsupported_field_encoding", m.event.ID, path, "A field uses an unsupported escape, invalid UTF-8, or undeclared non-ASCII bytes; its value was not interpreted.")
 		return "", false
 	}
-	return string(decoded), true
+	return text, true
 }
 
 func (e *evaluator) unsupportedItem(code, occurrence, field, detail string) {

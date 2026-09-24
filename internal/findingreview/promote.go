@@ -1,8 +1,8 @@
 package findingreview
 
 import (
+	"errors"
 	"fmt"
-	"regexp"
 	"slices"
 
 	"github.com/bharm16/readmit/internal/bundle"
@@ -66,20 +66,17 @@ const (
 // control identifier an acknowledgement echoes, and it is refused here by
 // construction rather than by anyone remembering to.
 //
-// The keys are canonical selectors of the shared grammar, at the first
-// repetition of each field: the profile reads these positions as scalars, so a
-// further repetition of one of them is not one of these positions.
-var vocabularies = map[string][]string{
-	"MSA-1[1]":   diagnose.DeclaredACKOutcomes(),
-	"ERR-3[1].1": diagnose.DeclaredErrorCodes(),
-	"ERR-4[1]":   diagnose.DeclaredErrorSeverities(),
+// The keys are selector positions, looked up for every occurrence of their
+// segment as its first, and at the first repetition of each field: the
+// profile reads these positions as scalars, so a further repetition of one of
+// them is not one of these positions. Comparing positions is a comparison, not
+// a spelling: an expectation keeps the selector the diagnosis wrote, and open
+// decision #164 is not answered here.
+var vocabularies = map[hl7.Parts][]string{
+	{Segment: "MSA", Occurrence: 1, Field: 1, Repetition: 1}:               diagnose.DeclaredACKOutcomes(),
+	{Segment: "ERR", Occurrence: 1, Field: 3, Repetition: 1, Component: 1}: diagnose.DeclaredErrorCodes(),
+	{Segment: "ERR", Occurrence: 1, Field: 4, Repetition: 1}:               diagnose.DeclaredErrorSeverities(),
 }
-
-// canonicalPosition splits the shared selector grammar's canonical form into
-// the segment and the position inside it. Comparing canonical forms is a
-// comparison, not a spelling: an expectation keeps the selector the diagnosis
-// wrote, and open decision #164 is not answered here.
-var canonicalPosition = regexp.MustCompile(`^([A-Z][A-Z0-9]{2})\[[0-9]+\]-([0-9]+\[[0-9]+\](?:\.[0-9]+){0,2})$`)
 
 // Unsupported is one thing a promotion could not express, named.
 type Unsupported struct {
@@ -164,8 +161,8 @@ func candidateFor(source *bundle.Bundle, event bundle.Event, acknowledged map[st
 	if err != nil {
 		return refuse(PositionOutsideContract, "The position this finding names is not one the shared selector grammar addresses.")
 	}
-	position := canonicalPosition.FindStringSubmatch(selector.String())
-	if position == nil || position[1] != "MSA" && position[1] != "ERR" {
+	position := selector.Parts()
+	if position.Segment != "MSA" && position.Segment != "ERR" {
 		return refuse(PositionOutsideContract, "This release addresses an acknowledgement at its MSA and ERR positions; a test makes no claim about any other position of one.")
 	}
 	message, linked := acknowledged[event.ID]
@@ -178,7 +175,8 @@ func candidateFor(source *bundle.Bundle, event bundle.Event, acknowledged map[st
 	}
 	field := testrunner.FieldValue{State: value.State}
 	if value.State == hl7.Present {
-		declared, known := vocabularies[position[1]+"-"+position[2]]
+		position.Occurrence = 1
+		declared, known := vocabularies[position]
 		if !known {
 			return refuse(PositionHasNoVocabulary, "The captured position holds a value, and the named profile declares no closed code vocabulary for it. A promoted test carries a value only from a vocabulary the profile declares.")
 		}
@@ -207,24 +205,26 @@ type decoded struct {
 
 // read reads one position of one verified occurrence. It reads the case rather
 // than the report, because a report deliberately records that a field was
-// present without recording what it held.
+// present without recording what it held. Only an escape that does not
+// resolve makes a value unreadable here: decoded bytes that are not UTF-8
+// text, whatever MSH-18 declares, are still compared against the declared
+// vocabulary, which never holds them.
 func read(source *bundle.Bundle, event bundle.Event, selector hl7.Selector) (decoded, error) {
 	document, err := source.Document(event)
 	if err != nil {
 		return decoded{}, err
 	}
-	value, err := document.Select(0, selector)
+	value, err := document.Read(0, selector, hl7.IgnoreMSH18)
 	if err != nil {
 		return decoded{}, err
 	}
 	if value.State != hl7.Present {
 		return decoded{State: value.State}, nil
 	}
-	text, err := hl7.Decode(document.Bytes(value.Span), document.Messages[0].Delimiters)
-	if err != nil {
-		return decoded{}, err
+	if value.Reason == hl7.UnsupportedEscape {
+		return decoded{}, errors.New("the value uses an unsupported escape")
 	}
-	return decoded{State: hl7.Present, Text: string(text)}, nil
+	return decoded{State: hl7.Present, Text: string(value.Decoded)}, nil
 }
 
 // answer records the derived expectations through the authoring flow's own

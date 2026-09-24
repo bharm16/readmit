@@ -179,27 +179,6 @@ func (e *evaluator) asksForAStage(m message) bool {
 	return false
 }
 
-// errorLocation is one ERL an acknowledgement declares, as positions of the
-// shared selector grammar. Segment occurrence and field repetition default to
-// one; a component and a subcomponent are optional, and zero means the
-// declaration named none. A field position is not optional.
-type errorLocation struct {
-	segment                                              string
-	sequence, field, repetition, component, subcomponent int
-}
-
-// selector spells the declared location in the shared grammar.
-func (l errorLocation) selector() string {
-	path := fmt.Sprintf("%s[%d]-%d[%d]", l.segment, l.sequence, l.field, l.repetition)
-	if l.component != 0 {
-		path += "." + strconv.Itoa(l.component)
-		if l.subcomponent != 0 {
-			path += "." + strconv.Itoa(l.subcomponent)
-		}
-	}
-	return path
-}
-
 // errorLocations reports where an acknowledgement says its error is, inside the
 // occurrence it acknowledges. It reports the state of that field and never
 // claims the field is at fault or copies either message's values.
@@ -227,58 +206,55 @@ func (e *evaluator) errorLocations(m, acknowledged message) {
 			e.unsupportedItem("unsupported_error_location", m.event.ID, path, "The declared error location is not a segment identifier with positive positions this profile can address; it was not resolved.")
 			continue
 		}
-		located := location.selector()
-		state := acknowledged.value(located).State
-		e.finding(ACKErrorLocation, "observed_fact", fmt.Sprintf("The captured acknowledgement locates an error at %s of the occurrence whose control identifier it echoes; that field is %s there. This reports where the acknowledging system says the error is, not that the field is wrong, and the two occurrences are matched by the echoed control identifier inside this case alone.", located, state), e.findingWindow, m.evidence("MSA-2"), m.evidence(path), acknowledged.evidence(located))
+		located := acknowledged.at(location)
+		e.finding(ACKErrorLocation, "observed_fact", fmt.Sprintf("The captured acknowledgement locates an error at %s of the occurrence whose control identifier it echoes; that field is %s there. This reports where the acknowledging system says the error is, not that the field is wrong, and the two occurrences are matched by the echoed control identifier inside this case alone.", location, located.State), e.findingWindow, m.evidence("MSA-2"), m.evidence(path), acknowledged.evidenceOf(location.String(), located))
 	}
 }
 
-// declaredLocation reads one ERL structurally. Every position is decoded as a
-// bounded positive integer and the result must parse as the shared selector
-// grammar, so no acknowledgement text reaches the report through a reference.
-func (e *evaluator) declaredLocation(m message, base string) (errorLocation, bool) {
-	location := errorLocation{sequence: 1, repetition: 1}
+// declaredLocation reads one ERL structurally, as the positions of the shared
+// selector grammar. Segment occurrence and field repetition default to one; a
+// component and a subcomponent are optional. Every position is decoded as a
+// bounded positive integer and the positions must build a selector, so no
+// acknowledgement text reaches the report through a reference.
+func (e *evaluator) declaredLocation(m message, base string) (hl7.Selector, bool) {
+	location := hl7.Parts{Occurrence: 1, Repetition: 1}
 	segment, ok := e.text(m, base+".1")
 	if !ok || !segmentIdentifier.MatchString(segment) {
-		return errorLocation{}, false
+		return hl7.Selector{}, false
 	}
-	location.segment = segment
+	location.Segment = segment
 	for _, part := range []struct {
 		component string
 		into      *int
 	}{
-		{".2", &location.sequence},
-		{".3", &location.field},
-		{".4", &location.repetition},
-		{".5", &location.component},
-		{".6", &location.subcomponent},
+		{".2", &location.Occurrence},
+		{".3", &location.Field},
+		{".4", &location.Repetition},
+		{".5", &location.Component},
+		{".6", &location.Subcomponent},
 	} {
 		v, supported := e.value(m, base+part.component)
 		if !supported {
-			return errorLocation{}, false
+			return hl7.Selector{}, false
 		}
 		if v.State == hl7.Omitted || v.State == hl7.Empty {
 			continue
 		}
 		text, ok := e.text(m, base+part.component)
 		if !ok {
-			return errorLocation{}, false
+			return hl7.Selector{}, false
 		}
 		position, err := strconv.Atoi(text)
 		if err != nil || position < 1 || position > maxErrorPosition {
-			return errorLocation{}, false
+			return hl7.Selector{}, false
 		}
 		*part.into = position
 	}
 	// A location without a field position addresses no field, and a
-	// subcomponent without its component addresses a different one.
-	if location.field == 0 || location.component == 0 && location.subcomponent != 0 {
-		return errorLocation{}, false
-	}
-	if _, err := hl7.ParseSelector(location.selector()); err != nil {
-		return errorLocation{}, false
-	}
-	return location, true
+	// subcomponent without its component addresses a different one: the
+	// selector refuses both.
+	selector, err := hl7.NewSelector(location)
+	return selector, err == nil
 }
 
 func (e *evaluator) linksAcknowledgements() bool {
