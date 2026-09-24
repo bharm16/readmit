@@ -384,6 +384,8 @@ artifacts are never reported as completed.
 | `DiscardEditorDraft` | Drops one retained editor draft, once its work is stored or the person asked. |
 | `EditorDrafts` | Lists every editor draft this viewer has retained. |
 | `Compare` | Aligns two collections of the open workspace and reports one window of the rows both panes draw. |
+| `NormalizeCompare` | Reads the same comparison under one normalization-policy entry and reports one window of its differences beside what the policy did about each, as `readmit normalize` does. |
+| `OpenNormalizationPolicy` | Reads one normalization-policy entry through the reader `readmit normalize` applies and reports its rules and the SHA-256 of its exact bytes. |
 | `EditReproducer` | Adds one step to a reproducer plan and reports what it now means over the case. |
 | `UndoReproducer` | Removes the last step of a plan and resolves what remains. |
 | `BuildReproducer` | Writes the reproducer into a new folder of the open workspace. |
@@ -434,7 +436,8 @@ reports; the privacy region below describes it.
 `Cancel` cannot retract bytes an operation has already written. Choosing a
 folder and listing it are interruptible; `OpenCase`, `OpenProject`,
 `OpenRevisions`, `SaveNote`, `Search`, `OpenGrid`, `SaveFilter`,
-`SelectFilter`, `ForgetWorkspace`, `InspectOccurrence`, `Compare`, `EditReproducer`, `UndoReproducer`,
+`SelectFilter`, `ForgetWorkspace`, `InspectOccurrence`, `Compare`, `NormalizeCompare`,
+`OpenNormalizationPolicy`, `EditReproducer`, `UndoReproducer`,
 `BuildReproducer`, `CompareReproducers`, `AuthorTest`, `SaveTest`,
 `SuggestExpectations`, `ApproveExpectations`, `PreviewTransformation`,
 `OpenReview` and `RecoverSession` are not, because each runs to completion under
@@ -1217,6 +1220,39 @@ resolve, a value that decoded to bytes that are not UTF-8, and a message
 declaring an HL7 version the bundled labels do not cover. Equal fields are not
 proof of delivery or of correct behaviour, and the window renders the engine's
 own statement of that rather than a summary of it.
+
+### Reading a comparison under a normalization policy
+
+**Preview under this policy** reads the comparison shown above it — the same
+collection, paired on the same keys and narrowed to the same fields, as the
+engine echoed them — under one `readmit-normalization-policy/v1` entry of the
+workspace, through the engine [`readmit normalize`](normalize.md) runs. Typing
+another collection or key into the comparison form changes nothing until that
+comparison is asked for, and there is nothing to preview until one is shown.
+The reading names the policy entry and the SHA-256 of its exact bytes, every
+rule with what it compared, suppressed, retained and left undecided, and pages
+its differences as the comparison pages its rows. A reading stays below the
+comparison only while it reads that comparison: paging the rows keeps it, and a
+comparison of another pair, or one that is refused, withdraws it. A policy the
+reader refuses is refused in the command line's own sentence, and no earlier
+reading is left beside the refusal.
+
+**Author a normalization policy** composes rules from typed controls and saves
+the policy as a new entry, never over an existing one. **Open this document**
+reads a retained policy through the same strict reader: once it is accepted, its
+rules become the editor's rules, so a rule added or removed edits that policy,
+and the window names the entry beside the SHA-256 of the bytes it read — the
+identity a preview under it names. A policy the reader refuses leaves the
+editor as it was, and while an open or a save runs the editor says so and its
+controls wait. Opening a policy while the editor holds rules that were changed
+since they were last opened or saved asks first: **Replace them with** the
+chosen entry reads it, and **Keep these rules** or `Escape` reads nothing and
+returns to the open control. Saving the rules withdraws the question.
+
+A comparison and a reading under a policy each read two verified collections
+within their readers' bounds and write nothing, so each runs to completion once
+it starts. The window's `Escape` does not interrupt one; what it answers is
+what is shown.
 
 ## Diagnosis and finding review
 
