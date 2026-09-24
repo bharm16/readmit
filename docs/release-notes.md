@@ -1,5 +1,32 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The review-and-transform panel opens, saves and previews transformation
+  plans, and the controlled reduction panel previews and runs a bounded
+  reduction, with checked evidence (#301). Open this plan reads a plan
+  entry back through the decoder `readmit transform` uses; a plan that decoder
+  refuses is refused in its words and leaves the steps on screen alone, and an
+  open that would replace steps nobody saved is asked first. A step can be
+  removed, so a save the decoder refused is corrected rather than retyped, and
+  a saved plan is the one selected for preview. A preview names the plan and
+  rules it was of, and a preview, a plan answer and a reduction report leave
+  with the case they were made over. Driving the reduction panel showed four
+  faults. A preview created and then deleted a folder named
+  `.readmit-reduction-preview` inside the workspace, removing an entry of the
+  person's own under that name; it now works outside the workspace and writes
+  nothing there. Stopping a reduction while a trial waited on its
+  acknowledgement was answered completed; it is now cancelled, and the
+  interrupted trial stays an uncertain delivery that is never resent. A run the
+  engine refused, or whose resets let no trial run, left an empty working
+  folder that refused the next attempt under the same name; it is removed. And
+  a reset plan saved in the environment panel was not offered until something
+  else re-read the folder. The panel also marks a bounded result incomplete and
+  an undecided one as what it held when it stopped, never as reduced, sends
+  correlation rules only with the grouping that uses them, and moves focus to
+  Stop while a run holds the window. Two interaction journeys and Go parity
+  tests hold the window to `readmit transform`, `readmit correlate` and
+  `internal/reduce`. No `readmit-*` document, command, bound method, exit
+  status or machine output changes.
+
 - The window reads and stores artifacts of an operator-only hub (#312). A hub
   served without an access policy offers only `GET` and `PUT
   /v1/artifacts/{digest}` under mutual TLS, while the hub panel required team

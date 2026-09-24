@@ -74,6 +74,7 @@ import {
   openReview,
   previewTransformation,
   saveTransformPlan,
+  openTransformPlan,
   previewReduction,
   startReduction,
   type ReviewResult,
@@ -177,6 +178,8 @@ type Running =
   | "sequence"
   | "transformation"
   | "transform-plan"
+  | "transform-open"
+  | "reduction-preview"
   | "reduction"
   | "review"
   | "diagnosis"
@@ -482,6 +485,8 @@ export default function App() {
     setRevisionResult(null);
     setComparisonSeed(null);
     setTransformResult(null);
+    setPlanResult(null);
+    setReductionResult(null);
     setReviewResult(null);
     setDiagnosisResult(null);
     setDiagnosisGroupsResult(null);
@@ -1110,10 +1115,13 @@ export default function App() {
     [evidence, operate, root],
   );
 
+  // A saved plan is a new entry of the folder, so the listing is read again
+  // before the panel is answered and its pickers offer the plan at once.
   const savePlan = useCallback(
     async (rules: string, profile: string, steps: TransformStep[], output: string) => {
       const open = evidence?.case;
-      if (!root || !open) return;
+      if (!root || !open) return null;
+      const answered: { result: TransformPlanResult | null } = { result: null };
       await operate("transform-plan", async () => {
         setPlanResult(null);
         const result = await saveTransformPlan({
@@ -1126,11 +1134,30 @@ export default function App() {
           output,
         });
         setPlanResult(result);
+        answered.result = result;
         if (result.plan) {
           const refreshed = await openWorkspace(root);
-          setWorkspace(refreshed);
+          if (refreshed.workspace) setWorkspace(refreshed);
         }
       });
+      return answered.result;
+    },
+    [evidence, operate, root],
+  );
+
+  // Reopening a plan reads the entry again through the decoder a preview
+  // uses and writes nothing; the panel takes its steps from the answer.
+  const openPlan = useCallback(
+    async (entry: string) => {
+      if (!root || !evidence?.case) return null;
+      const answered: { result: TransformPlanResult | null } = { result: null };
+      await operate("transform-open", async () => {
+        setPlanResult(null);
+        const result = await openTransformPlan(root, entry);
+        setPlanResult(result);
+        answered.result = result;
+      });
+      return answered.result;
     },
     [evidence, operate, root],
   );
@@ -1139,7 +1166,7 @@ export default function App() {
     async (config: ReductionForm) => {
       const open = evidence?.case;
       if (!root || !open) return;
-      await operate("reduction", async () => {
+      await operate("reduction-preview", async () => {
         setReductionResult(null);
         setReductionResult(
           await previewReduction({
@@ -2535,15 +2562,23 @@ export default function App() {
             planResult={planResult}
             reviewResult={reviewResult}
             caseOpen={verified !== null}
+            caseIdentity={verified?.identity ?? ""}
             busy={busy}
             transformProgress={
               running === "transformation" ? "Previewing this transformation." : null
             }
-            planProgress={running === "transform-plan" ? "Saving this transformation plan." : null}
+            planProgress={
+              running === "transform-plan"
+                ? "Saving this transformation plan."
+                : running === "transform-open"
+                  ? "Reading this transformation plan."
+                  : null
+            }
             reviewProgress={running === "review" ? "Reading this export review." : null}
             indicators={indicators}
             onPreview={(rules, plan, profile) => void previewPlan(rules, plan, profile)}
-            onSavePlan={(rules, profile, steps, output) => void savePlan(rules, profile, steps, output)}
+            onSavePlan={savePlan}
+            onOpenPlan={openPlan}
             onReview={(review, approve, offset) => void readReview(review, approve, offset)}
           />
           {verified ? (
@@ -2555,7 +2590,14 @@ export default function App() {
               policyEntries={(opened.artifacts ?? []).filter((artifact) => artifact.kind === "policy").map((artifact) => artifact.name)}
               result={reductionResult}
               busy={busy}
-              progress={running === "reduction" ? "Running or previewing this reduction." : null}
+              progress={
+                running === "reduction-preview"
+                  ? "Previewing how this reduction would take the sequence apart. Nothing is reset or sent."
+                  : running === "reduction"
+                    ? "Running this reduction: every trial resets the environment, then sends."
+                    : null
+              }
+              reducing={running === "reduction"}
               indicators={indicators}
               caseOpen={verified !== null}
               onPreview={(config) => void runReductionPreview(config)}
@@ -2574,6 +2616,7 @@ export default function App() {
             planFile={environmentArtifact?.kind === "reset" ? environmentArtifact.name : "reset-plan.json"}
             initialTab={environmentArtifact?.kind ?? "target"}
             drafts={drafts}
+            onPlanSaved={() => void refreshListing()}
           />
         ) : null}
         {!evidence && !busy ? <p className="hint">Open a case to see what it holds.</p> : null}

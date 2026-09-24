@@ -21,7 +21,11 @@ messages to a real endpoint dozens of times, and what may point at an
 environment is a decision this release makes deliberately rather than by adding
 a flag. The package is the interface, and
 [`DurableOracle`](#the-oracle-is-the-thing-that-is-not-trusted) is the execution
-it ships with.
+it ships with. The [desktop shell's controlled reduction
+panel](desktop.md#running-a-controlled-reduction) previews and runs it over the
+verified case, under the execution admission a send takes and the reset plan's
+own authorization for every trial; its preview and report are this package's
+`PreviewPlan` and `Run` over the same documents.
 
 > A reduction is not a de-identification, an approval to share, or a claim about
 > cause. It says a smaller sequence still failed the same way. Nothing else.
@@ -247,8 +251,9 @@ back as a case, and it must be outside every artifact.
 
 ## Not supported in this release
 
-- **A command.** There is no `readmit reduce`, no `--reduce` flag and no
-  reduction from the desktop shell. The package is the interface.
+- **A command.** There is no `readmit reduce` and no `--reduce` flag. The
+  package is the interface, and the desktop shell's controlled reduction panel
+  is the one screen that drives it.
 - **A global minimum.** No subset search, no binary partitioning of the
   sequence, and no claim beyond 1-minimality over the declared grouping.
 - **Reducing anything but the sequence.** Fields, repetitions, segments and

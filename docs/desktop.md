@@ -407,6 +407,10 @@ artifacts are never reported as completed.
 | `BuildReproducer` | Writes the reproducer into a new folder of the open workspace. |
 | `CompareReproducers` | Compares two built reproducer revisions and what the runs retained for each one decided. |
 | `PreviewTransformation` | Reports what one transformation plan would do to the sequence a replay sends, over the verified case. |
+| `SaveTransformPlan` | Writes authored steps as one new `readmit-transform-plan/v1` entry bound to the verified case, the chosen rules' digest and an optional pinned pack, decoded by `readmit transform`'s reader first. |
+| `OpenTransformPlan` | Reads one plan entry back through the same decoder and writes nothing. |
+| `PreviewReduction` | Reports how a controlled reduction would take the sequence apart and which groups its signature pins, without resetting, sending or writing into the workspace. |
+| `StartReduction` | Runs one controlled reduction under execution admission, every trial after a reset its plan confirmed, into a new working folder; Cancel stops further trials and resends nothing. |
 | `OpenReview` | Reads one export review of the open workspace and reports its inventory, its coverage and the reviewer's decision. |
 | `AuthorTest` | Answers one stage of a test draft and reports what it now means over the case. |
 | `SaveTest` | Writes the generated test spec into a new entry of the open workspace. |
@@ -462,7 +466,8 @@ folder and listing it are interruptible; `OpenCase`, `OpenProject`,
 `OpenNormalizationPolicy`, `EditReproducer`, `UndoReproducer`,
 `BuildReproducer`, `CompareReproducers`, `AuthorTest`, `SaveTest`,
 `SuggestExpectations`, `ApproveExpectations`, `PreviewTransformation`,
-`OpenReview` and `RecoverSession` are not, because each runs to completion under
+`SaveTransformPlan`, `OpenTransformPlan`, `PreviewReduction`, `OpenReview` and
+`RecoverSession` are not, because each runs to completion under
 its own size limits once it starts. The window enables the Cancel control only
 while an interruptible operation runs; `Escape` reaches the same operation
 whenever the palette is not open, and cancelling when nothing is running does
@@ -1519,6 +1524,35 @@ Neither half is this window's own answer. The preview is the engine
 same verified offline reader the export gate uses, so what the panel draws is
 exactly what the command line reports over the same bytes.
 
+### Authoring, saving and reopening a transformation plan
+
+A plan is composed in the panel from the five typed operators
+[`readmit transform`](transform.md#the-five-operators) reads: each **Add this
+step** appends one, and each step's **Remove** control takes it out again, so a
+step the decoder refused is corrected rather than retyped. Nothing about what a
+step means is decided here.
+
+**Save this transformation plan** writes the steps as one new
+`readmit-transform-plan/v1` entry of the open workspace, bound to the identity of
+the case the window verified and to the SHA-256 of the correlation rules chosen
+below it — the `rules_sha256` `readmit correlate` reports for the same document —
+and, where a profile pack is chosen, pinned to that pack. The plan is decoded by
+the reader `readmit transform` uses before anything is written, so a step that
+reader refuses, such as a shift that is not a whole-second duration, is refused
+in its words, nothing is written, and the steps and the name typed stay. Saving
+admits the author, as every write of an authored document does, and never
+replaces an entry. Once saved, the listing is read again and the new plan is the
+one selected for preview.
+
+**Open this plan** reads a plan entry back through the same decoder and puts its
+steps in the panel to preview or to extend and save as a new entry; it writes
+nothing. A plan the decoder refuses — an unknown member, a step carrying a member
+another operator uses, a contract version this release does not read — is
+refused in the sentence `readmit transform` prints for the same file, and the
+steps on screen are left as they were. An open that would replace steps nobody
+saved is asked first; **Keep these steps**, or Escape, reads nothing. Steps are
+authored over the case on screen, so opening another case starts the plan again.
+
 ### Previewing a transformation
 
 The window names the case it verified and two documents of the open workspace —
@@ -1531,16 +1565,19 @@ every preview.
 **This writes nothing at all.** No case, no run, no derived bundle and no
 revision: the derivation names [ADR-0004](adr/0004-derived-evidence-and-generated-export.md)
 admits are untouched, there is nothing to cancel and nothing to recover, and the
-[reproducer editor](#building-a-reproducer) gains no operator from it. A plan is
-a document somebody authored beside the evidence; nothing in this window writes
-or edits one.
+[reproducer editor](#building-a-reproducer) gains no operator from it. The only
+document this panel writes is a plan, as a new entry, when a person saves one.
 
 The panel shows every position the plan would rewrite, what happened to every
 declared relation, what the pinned pack declares about the transformed sequence
 at all four levels, and everything the transformation left exactly as it found
-it. A plan that declares no step is reported as such rather than as a
-transformation, because a plan nobody has added a step to yet is a state a
-person is on the way out of.
+it, and names the plan and rules it previewed, so choosing another plan
+afterwards never relabels it. The preview is the document `readmit transform
+--format json` prints for the same case, rules and plan. A plan that declares no
+step is reported as such rather than as a transformation, because a plan nobody
+has added a step to yet is a state a person is on the way out of. A preview and a
+plan answer are about the case they were made over, and leave with it when
+another case is opened.
 
 ### Reading an export review
 
@@ -1633,6 +1670,57 @@ Nothing about this panel is written anywhere: not into the case, not into the
 review, not into the saved filters, and not into the working session. Both
 operations read again from disk every time, including for the next window of an
 inventory, so a decision is never shown beside counts from bytes that changed.
+
+## Running a controlled reduction
+
+The controlled reduction panel runs [`internal/reduce`](reduction.md) over the
+verified case: the saved regression test whose failure is held, the failed
+assertion identifiers that are that failure, a grouping — per occurrence, or by
+the correlation rules chosen for it — a trial budget and a number of
+confirmations, the approved environment and the reviewed
+[reset plan](#fixture-reset-plans-readmit-reset-planv1-and-deliberate-execution)
+every trial runs first, a send policy where the reset opens a connection, the
+reset actions the person confirms, and a new working folder for the trials. Each
+document is one entry of the open workspace. A reset plan saved in the
+environment panel is offered here as soon as it is written.
+
+**Preview planned side effects** reports how the sequence would be taken apart,
+which groups the signature pins, and the boundary a report carries. It is
+`reduce.PreviewPlan` over the same documents: it resets nothing, sends nothing,
+needs no activation and writes nothing into the workspace — the oracle it builds
+to read the sequence works in a private folder outside the workspace, removed
+before the preview answers.
+
+**Run this reduction** is `reduce.Run` with a durable oracle over the same
+documents. It runs under the execution admission `readmit test --send` takes,
+reserved once for the whole reduction, and every trial under the reset plan's
+own authorization: only a `confirmed` reset lets a trial send, so a
+confirmation withheld leaves the first reset `unconfirmed` and one naming an
+action the plan does not ask a person to perform is `refused`, and either stops
+the reduction before anything is sent. Rules chosen for a correlation grouping
+are sent only while that grouping is selected. A reduction the engine or the
+license refuses sends nothing and leaves no working folder; one whose resets let
+no trial run leaves none either, so the same name is free for the next attempt.
+Every trial that ran is a durable run in the working folder, which the command
+line's `readmit run status` reads.
+
+While it runs, focus moves to **Stop reduction**, the one control the running
+reduction offers. Stopping answers `cancelled` whichever way the trial it
+interrupted then ended: a send stopped while it waited on an acknowledgement is
+recorded as an uncertain delivery, nothing is resent, and `readmit run status
+--recovery` reads that trial as uncertain and never safe to repeat. Once the
+answer arrives, focus returns to **Run this reduction**.
+
+The report is shown in the engine's own closed words — outcome, minimality,
+reason, and every trial's purpose, reset, verdict and run state — beside a
+sentence saying what the outcome establishes. Only `reduced` claims
+`group-1-minimal`, and only over the declared grouping. A `bounded` result is
+marked incomplete: the retained sequence reproduced the failure the last time it
+was asked and nothing is claimed minimal. `not_attempted` and `undecided` claim
+nothing, and the sequence an undecided reduction was holding is shown as what it
+held when it stopped, never as an answer. A preview or report names the test, the
+case and the plan the engine applied, so a form changed afterwards never
+relabels it, and it leaves with the case it was made over.
 
 ## Recovering after an interruption
 

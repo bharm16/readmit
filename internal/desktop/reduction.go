@@ -73,8 +73,9 @@ const reductionObservation = "Each retained trial is one durable run after one r
 
 // PreviewReduction reports how the declared plan would take the sequence apart
 // and what side effects a run would spend, without resetting, sending, or
-// writing evidence. The durable oracle is built only to resolve the sequence
-// and signature pins the chosen assertions name.
+// writing into the workspace. The durable oracle is built only to resolve the
+// sequence and signature pins the chosen assertions name, in a private folder
+// outside the workspace that is removed before the preview answers.
 func (a *App) PreviewReduction(request ReductionRequest) ReductionResult {
 	return run(a, false, false, func(context.Context) ReductionResult {
 		prepared, declined := a.prepareReduction(request, false)
@@ -117,6 +118,12 @@ func (a *App) StartReduction(request ReductionRequest) ReductionResult {
 		bounded, cancel := context.WithTimeout(ctx, operationguard.MaxDuration)
 		defer cancel()
 		report, err := reduce.Run(bounded, prepared.request, prepared.oracle)
+		// A working folder no trial wrote into holds nothing: the engine
+		// refused the plan before its first trial, a reset let no trial run,
+		// or the reduction was stopped before one. It is removed rather than
+		// left to refuse the next attempt under the same name; os.Remove
+		// leaves a folder any trial wrote into.
+		emptied := os.Remove(prepared.work) == nil
 		if err != nil {
 			return ReductionResult{State: Failed, Reason: err.Error()}
 		}
@@ -124,7 +131,15 @@ func (a *App) StartReduction(request ReductionRequest) ReductionResult {
 			Case: request.Case, Spec: request.Spec, Work: request.Work,
 			Report: &report, Boundary: report.Scope, Observation: reductionObservation,
 		}
-		if report.Outcome == reduce.OutcomeUndecided && report.Reason == reduce.OperatorStopped {
+		if emptied {
+			view.Work = ""
+		}
+		// A person who stopped the reduction stopped it, whichever way the
+		// trial it interrupted then ended: a send cancelled while it waited on
+		// an acknowledgement ends that trial as an uncertain delivery, which
+		// the report names. A stop that arrived after the reduction had
+		// reached an outcome stopped nothing, and the outcome stands.
+		if report.Outcome == reduce.OutcomeUndecided && (ctx.Err() != nil || report.Reason == reduce.OperatorStopped) {
 			return ReductionResult{State: Cancelled, Reason: "reduction stopped; retained trials were not resent", Reduction: view}
 		}
 		return ReductionResult{State: Completed, Reduction: view}
@@ -134,6 +149,8 @@ func (a *App) StartReduction(request ReductionRequest) ReductionResult {
 type preparedReduction struct {
 	request reduce.Request
 	oracle  *reduce.DurableOracle
+	// work is the working folder a run created, and empty for a preview.
+	work string
 }
 
 func (a *App) prepareReduction(request ReductionRequest, createWork bool) (preparedReduction, refusal) {
@@ -229,8 +246,17 @@ func (a *App) prepareReduction(request ReductionRequest, createWork bool) (prepa
 		}
 		workPath = artifactpath.JoinReference(root, request.Work)
 	} else {
-		workPath = filepath.Join(root, ".readmit-reduction-preview")
-		_ = os.RemoveAll(workPath)
+		// A preview spends no trial. The oracle it builds only to read the
+		// sequence and the occurrences the signature pins works in a private
+		// folder outside the workspace, removed before the preview answers,
+		// so a preview writes nothing into the folder the person opened and
+		// never removes an entry of it.
+		scratch, err := os.MkdirTemp("", "readmit-reduction-preview-")
+		if err != nil {
+			return preparedReduction{}, refusal{Failed, "cannot prepare the reduction preview"}
+		}
+		defer os.RemoveAll(scratch)
+		workPath = filepath.Join(scratch, "trials")
 	}
 	oracle, err := reduce.NewDurableOracle(reduce.OracleRequest{
 		SpecPath: specPath, Workspace: workPath, Signature: plan.Signature,
@@ -238,9 +264,6 @@ func (a *App) prepareReduction(request ReductionRequest, createWork bool) (prepa
 	})
 	if err != nil {
 		return preparedReduction{}, refusal{Failed, err.Error()}
-	}
-	if !createWork {
-		_ = os.RemoveAll(workPath)
 	}
 	casePath := artifactpath.JoinReference(root, request.Case)
 	prepared := preparedReduction{
@@ -250,7 +273,7 @@ func (a *App) prepareReduction(request ReductionRequest, createWork bool) (prepa
 		},
 	}
 	if createWork {
-		prepared.oracle = oracle
+		prepared.oracle, prepared.work = oracle, workPath
 	}
 	return prepared, refusal{}
 }
