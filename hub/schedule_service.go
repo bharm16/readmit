@@ -11,6 +11,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/customerrunner"
 	"github.com/bharm16/readmit/internal/durablerun"
+	"github.com/bharm16/readmit/internal/operationguard"
 )
 
 // sendScheduleAlert has no proxy, redirects, authentication headers or response
@@ -37,6 +38,10 @@ func scheduleAlert(ctx context.Context, destination string, body []byte, roots *
 	}
 	return nil
 }
+
+// scheduledRun is the profile the hub's scheduler declares for a scheduled
+// run: the runner admits each job it runs as its own execution.
+var scheduledRun = operationguard.Profile{Name: "scheduled-run", Execution: operationguard.ExecuteEachJob}
 
 // ExecuteScheduledRun uses the existing customer-runner execution boundary.
 func ExecuteScheduledRun(ctx context.Context, spec Schedule, id string) string {
@@ -91,8 +96,16 @@ func (s *Store) serveSchedules(ctx context.Context, access *Access, runnerPath, 
 		}
 		return nil
 	}
-	execute := func(jobCtx context.Context, spec Schedule, id string) string {
-		return ExecuteScheduledRun(customerrunner.WithOperationGuard(jobCtx, s.operationGuard()), spec, id)
+	execute := func(jobCtx context.Context, spec Schedule, id string) (state string) {
+		// Each scheduled job is admitted, bounded and settled as its own
+		// execution by the runner that runs it, through the hub's guard. The
+		// profile takes no admission of its own, so Run answers only what the
+		// work does, and the work answers its state.
+		_ = s.operationGuard().Run(jobCtx, scheduledRun, func(ctx context.Context) error {
+			state = ExecuteScheduledRun(ctx, spec, id)
+			return nil
+		})
+		return state
 	}
 	scheduler, e := OpenScheduler(scheduleDirectory(s.config.Root), p, execute, sendScheduleAlert, authorize)
 	if e != nil {

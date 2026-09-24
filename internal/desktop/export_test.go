@@ -2,8 +2,30 @@ package desktop
 
 import (
 	"context"
+	"maps"
 	"time"
+
+	"github.com/bharm16/readmit/internal/operationguard"
 )
+
+// DeclaredProfilesForTest is the profile every named operation of the facade
+// declares, keyed by its bound method: the table the tests read the capability
+// ledger, the privacy status and admission against.
+func DeclaredProfilesForTest() map[string]operationguard.Profile {
+	return maps.Clone(profiles)
+}
+
+// RunUnderProfileForTest runs work under the profile the facade declares for
+// method — its slot, its admission, the bound and recheck its execution is
+// given, and its settlement — and answers the state and reason the operation
+// ends in. Only the work is the test's.
+func RunUnderProfileForTest(a *App, method string, work func(context.Context)) (State, string) {
+	result := runNamed[CleanRunResult, *CleanRunResult](a, profiles[method], func(ctx context.Context) CleanRunResult {
+		work(ctx)
+		return CleanRunResult{State: Completed}
+	})
+	return result.State, result.Reason
+}
 
 // CompleteHubAuthWithinForTest is CompleteHubAuth with a shorter wait for the
 // browser, so a test reaches the sign-in timeout without waiting minutes. The

@@ -140,7 +140,7 @@ type ExplainedAssertion struct {
 // nothing, so explaining again decides exactly what the cancelled one would
 // have.
 func (a *App) ExplainRun(request RunExplanationRequest) RunExplanationResult {
-	return runNamed[RunExplanationResult, *RunExplanationResult](a, explanationOperation, true, false, func(ctx context.Context) RunExplanationResult {
+	return runNamed[RunExplanationResult, *RunExplanationResult](a, profiles["ExplainRun"], func(ctx context.Context) RunExplanationResult {
 		return explainRun(ctx, request)
 	})
 }

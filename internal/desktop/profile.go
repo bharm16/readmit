@@ -553,7 +553,7 @@ func (a *App) ExportProfilePackage(request ProfilePackageExportRequest) ProfileP
 // be cancelled from the profile panel; a cancellation after the directory was
 // created says the directory holds an incomplete import.
 func (a *App) ImportProfilePackage(request ProfilePackageImportRequest) ProfilePackageResult {
-	return runNamed[ProfilePackageResult, *ProfilePackageResult](a, profileImportOperation, true, false, func(ctx context.Context) ProfilePackageResult {
+	return runNamed[ProfilePackageResult, *ProfilePackageResult](a, profiles["ImportProfilePackage"], func(ctx context.Context) ProfilePackageResult {
 		return importProfilePackage(ctx, request)
 	})
 }

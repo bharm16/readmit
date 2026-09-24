@@ -11,7 +11,7 @@ func suiteCICommand() *cobra.Command {
 	var request suite.CIRequest
 	var send bool
 	var deadline string
-	command := &cobra.Command{Use: "ci FILE", Short: "Execute a saved suite once with private evidence and fixed-label CI summaries", Annotations: declareInterruptible(capabilityExecute), RunE: func(cmd *cobra.Command, args []string) error {
+	command := &cobra.Command{Use: "ci FILE", Short: "Execute a saved suite once with private evidence and fixed-label CI summaries", Annotations: mergeAnnotations(declareInterruptible(capabilityExecute), map[string]string{ciSummaryAnnotation: "true"}), RunE: func(cmd *cobra.Command, args []string) error {
 		result := suite.CIError()
 		if len(args) == 1 && send {
 			request.Path = args[0]

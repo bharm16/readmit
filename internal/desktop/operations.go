@@ -81,26 +81,14 @@ func (a *App) selectedOperation() (*operationguard.Guard, string) {
 	defer a.operationMu.Unlock()
 	return a.operationGuard, a.operationPolicy
 }
-func (a *App) admitAuthor() error { return a.admitAuthorContext(context.Background()) }
 
-// admitAuthorContext admits an author for work a cancellation can reach, so
-// admission that is still waiting stops when the operation is cancelled.
-func (a *App) admitAuthorContext(ctx context.Context) error {
+// admitAuthor admits the author part way through local work that writes only
+// once its request has been read. Work that always writes is admitted before
+// it starts, as it takes the slot: run's writes, or its declared profile.
+func (a *App) admitAuthor() error {
 	g, _ := a.selectedOperation()
-	_, err := g.AdmitContext(ctx, "author")
+	_, err := g.AdmitContext(context.Background(), "author")
 	return err
-}
-
-// settlementFailed is the one reason an execution whose admission could not
-// be settled gives, whatever it did before.
-const settlementFailed = "runner settlement failed; reconcile the retained admission before new work"
-
-// admitExecution reserves one signed runner instance for work that reaches a
-// destination, the way the command line admits `execute`; settle releases it
-// once the work has finished.
-func (a *App) admitExecution(ctx context.Context) (func() error, error) {
-	g, _ := a.selectedOperation()
-	return g.AdmitContext(ctx, "execute")
 }
 
 // ChooseOperationPolicy uses the native folder chooser for the operator's

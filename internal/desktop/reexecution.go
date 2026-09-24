@@ -3,12 +3,12 @@ package desktop
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"os"
 	"path/filepath"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/durablerun"
-	"github.com/bharm16/readmit/internal/operationguard"
 	"github.com/bharm16/readmit/internal/redact"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
@@ -167,23 +167,16 @@ func (r *ReexecutionResult) refuse(state State, reason string) { r.State, r.Reas
 // assesses what it retained. Cancelling stops further sends; whatever may
 // already have been delivered stays uncertain in the job and is never resent.
 func (a *App) ReexecuteReviewedEvidence(request ReexecutionSendRequest) ReexecutionResult {
-	return runNamed[ReexecutionResult, *ReexecutionResult](a, reexecutionOperation, true, false, func(ctx context.Context) (out ReexecutionResult) {
+	authorized := func() (ReexecutionResult, bool) {
 		if !request.Authorize {
-			return ReexecutionResult{State: Failed, Reason: "a reexecution sends only under an explicit authorization of this single send; the preview sent nothing"}
+			return ReexecutionResult{State: Failed, Reason: "a reexecution sends only under an explicit authorization of this single send; the preview sent nothing"}, false
 		}
 		if request.Expected == "" {
-			return ReexecutionResult{State: Failed, Reason: "preview the reexecution first; a send executes only the preview a person reviewed"}
+			return ReexecutionResult{State: Failed, Reason: "preview the reexecution first; a send executes only the preview a person reviewed"}, false
 		}
-		settle, admissionErr := a.admitExecution(ctx)
-		if admissionErr != nil {
-			declined := admissionRefusal(ctx, admissionErr)
-			return ReexecutionResult{State: declined.state, Reason: declined.reason}
-		}
-		defer func() {
-			if err := settle(); err != nil {
-				out.State, out.Reason = Failed, settlementFailed
-			}
-		}()
+		return ReexecutionResult{}, true
+	}
+	return runNamedChecked[ReexecutionResult, *ReexecutionResult](a, profiles["ReexecuteReviewedEvidence"], authorized, func(ctx context.Context) ReexecutionResult {
 		root, declined := resolveFolder(request.Workspace)
 		if root == "" {
 			return ReexecutionResult{State: declined.state, Reason: declined.reason}
@@ -204,14 +197,12 @@ func (a *App) ReexecuteReviewedEvidence(request ReexecutionSendRequest) Reexecut
 		// read tells a send in flight from one a crash interrupted.
 		a.setRunOutput(output)
 		defer a.setRunOutput("")
-		bounded, cancel := context.WithTimeout(ctx, operationguard.MaxDuration)
-		defer cancel()
-		assessment, err := plan.Execute(bounded, output)
+		assessment, err := plan.Execute(ctx, output)
 		var outcome *ReexecutionOutcome
 		if _, statErr := os.Lstat(output); statErr == nil {
 			outcome = &ReexecutionOutcome{Job: destination.Name, Assessment: assessment, Retained: retainedJob(output), Limitations: reexecutionBoundaries}
 		}
-		return answerReexecution(ctx.Err() != nil, assessment, outcome, err)
+		return answerReexecution(errors.Is(ctx.Err(), context.Canceled), assessment, outcome, err)
 	})
 }
 

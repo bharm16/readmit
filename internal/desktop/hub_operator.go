@@ -64,7 +64,7 @@ func (a *App) ChooseOperatorHubConfig() HubResult {
 // connects to the operator-only hub over mutual TLS and checks its health
 // probes. Connecting reads and stores nothing.
 func (a *App) ConnectOperatorHub() HubResult {
-	return runNamed[HubResult, *HubResult](a, hubRequestOperation, false, false, func(ctx context.Context) HubResult {
+	return runNamed[HubResult, *HubResult](a, profiles["ConnectOperatorHub"], func(ctx context.Context) HubResult {
 		a.hubMu.Lock()
 		cfg, path := a.hubOperatorConfig, a.hubOperatorConfigPath
 		a.hubMu.Unlock()
@@ -107,7 +107,7 @@ func (a *App) DisconnectOperatorHub() HubResult {
 // owner-only and exclusively, only once they hash to the digest; otherwise
 // nothing is written.
 func (a *App) ReadOperatorHubArtifact(digest string) HubTransferResult {
-	return runNamed[HubTransferResult, *HubTransferResult](a, hubRequestOperation, false, false, func(ctx context.Context) HubTransferResult {
+	return runNamed[HubTransferResult, *HubTransferResult](a, profiles["ReadOperatorHubArtifact"], func(ctx context.Context) HubTransferResult {
 		client := a.operatorHubClient()
 		if client == nil {
 			return HubTransferResult{State: Failed, Reason: operatorNotConnected}
@@ -151,7 +151,7 @@ func (a *App) ReadOperatorHubArtifact(digest string) HubTransferResult {
 // that never arrived leaves the store uncertain, never completed; storing
 // the same file again is safe.
 func (a *App) StoreOperatorHubArtifact() HubTransferResult {
-	return runNamed[HubTransferResult, *HubTransferResult](a, hubRequestOperation, false, true, func(ctx context.Context) HubTransferResult {
+	return runNamed[HubTransferResult, *HubTransferResult](a, profiles["StoreOperatorHubArtifact"], func(ctx context.Context) HubTransferResult {
 		client := a.operatorHubClient()
 		if client == nil {
 			return HubTransferResult{State: Failed, Reason: operatorNotConnected}

@@ -633,6 +633,17 @@ func TestASuiteIsPreflightedAndExecutedThroughTheExistingQueue(t *testing.T) {
 // one test whose template is the workspace's saved spec.
 func writeSuite(t *testing.T, workspace, name string) {
 	t.Helper()
+	writeSuiteRows(t, workspace, name, "one")
+}
+
+// writeSuiteRows is writeSuite with one data row, and so one job, per row id,
+// executed in turn.
+func writeSuiteRows(t *testing.T, workspace, name string, ids ...string) {
+	t.Helper()
+	rows := []any{}
+	for _, id := range ids {
+		rows = append(rows, map[string]any{"id": id, "case": "case"})
+	}
 	document := map[string]any{
 		"schema":       "readmit-suite/v1",
 		"id":           "nightly",
@@ -640,7 +651,7 @@ func writeSuite(t *testing.T, workspace, name string) {
 		"tags":         []string{"smoke"},
 		"parallelism":  1,
 		"environments": []any{map[string]any{"id": "east", "site": "hospital-a", "bindings": []any{map[string]any{"parameter": "scheduling", "target": "target.json"}}}},
-		"tables":       []any{map[string]any{"id": "patients", "rows": []any{map[string]any{"id": "one", "case": "case"}}}},
+		"tables":       []any{map[string]any{"id": "patients", "rows": rows}},
 		"tests": []any{map[string]any{
 			"id": "booking", "spec": "booking.json", "owner": "interop-team", "tags": []string{"smoke"},
 			"parameter": "scheduling", "table": "patients", "isolation": "shared", "sequence": []string{"s0001-e000001"},

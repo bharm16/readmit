@@ -200,7 +200,7 @@ func (a *App) ChooseCorpusPath(kind string) CorpusPathResult {
 // manifest, and the progress it reached is readable meanwhile through
 // CorpusProgress.
 func (a *App) GenerateCorpus(request CorpusGenerateRequest) CorpusGenerateResult {
-	return runNamed[CorpusGenerateResult, *CorpusGenerateResult](a, corpusOperation, true, true, func(ctx context.Context) CorpusGenerateResult {
+	return runNamed[CorpusGenerateResult, *CorpusGenerateResult](a, profiles["GenerateCorpus"], func(ctx context.Context) CorpusGenerateResult {
 		// The command reads --seed as its flag library reads every unsigned
 		// number, so a seed is read the same way here and one spelling means
 		// one seed in both places.
@@ -261,7 +261,7 @@ func (a *App) GenerateCorpus(request CorpusGenerateRequest) CorpusGenerateResult
 // interruptible: a cancelled scan answers with the counts it reached, the case
 // bounds not evaluated and no benchmark.
 func (a *App) ScanCorpus(request CorpusScanRequest) CorpusScanResult {
-	return runNamed[CorpusScanResult, *CorpusScanResult](a, corpusOperation, true, false, func(ctx context.Context) CorpusScanResult {
+	return runNamed[CorpusScanResult, *CorpusScanResult](a, profiles["ScanCorpus"], func(ctx context.Context) CorpusScanResult {
 		if !filepath.IsAbs(request.File) {
 			return CorpusScanResult{State: Failed, Reason: "choose the stream with the file dialog; a scan reads one file named by its full path"}
 		}

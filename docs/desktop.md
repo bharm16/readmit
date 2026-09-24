@@ -569,13 +569,28 @@ under capture; a connectivity check (`target-check`), a fixture reset
 name when a send policy is selected (`replay-preview`), and a controlled
 reduction (`reduction`) under the environment; an observation (`observation`) under observe; and every hub request
 (`hub`), the start of a sign-in (`hub-sign-in-start`) and the sign-in itself
-(`hub-sign-in`) under the hub. Only local work may run unnamed. The facade's
-tests enumerate the bound operations that can reach a destination from the
-facade's own source — those that take execution admission, hand the system
-resolver to a call, or call the hub's clients — and hold them to the reviewed
-inventory of operations that reach a destination; every operation in that
-inventory fails them if it holds the slot unnamed or under a name the status
-does not report as its own activity.
+(`hub-sign-in`) under the hub. Only local work may run unnamed. Every named
+operation declares its profile in one table of the facade: its name, whether
+it can be interrupted, and the admission it takes. The facade's tests
+enumerate the bound operations that can reach a destination — those whose
+declared profile takes execution admission, and, from the facade's own source,
+those that hand the system resolver to a call or call the hub's clients — and
+hold them to the reviewed inventory of operations that reach a destination;
+every operation in that inventory fails them if it holds the slot unnamed or
+under a name the status does not report as its own activity.
+
+Every execution a profile declares is admitted through the operation guard's
+one admitted execution, the one the command line admits the same operations
+through: one runner instance is reserved before the work starts, the work is
+bounded by the guard's seven-day limit, a suite run rechecks the admission
+before each of its jobs — an activation released or a term ended part way
+lets the running job finish and refuses the next — and the instance is
+released when the work ends. A release that fails answers `failed`, whatever
+the work answered, because the retained admission must be reconciled before
+new work. A runner job is admitted by the runner itself, as `readmit runner
+execute` admits it. A source collection, a capture, a fixture reset, an
+observation collection, runner enrollment and runner execution also admit the
+author, which their commands do not.
 
 An operation that can run a program an operator declared is named for the same
 reason: testing, rotating and scanning credential references run under

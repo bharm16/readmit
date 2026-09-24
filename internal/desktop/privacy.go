@@ -112,7 +112,7 @@ func (r *PrivacyReviewResult) refuse(state State, reason string) { r.State, r.Re
 // original proof it runs privately speaks only to fresh built-in fixture
 // receivers on the loopback, and never to a configured endpoint.
 func (a *App) DeriveExportReview(request PrivacyReviewRequest) PrivacyReviewResult {
-	return runNamed[PrivacyReviewResult, *PrivacyReviewResult](a, privacyOperation, true, true, func(ctx context.Context) PrivacyReviewResult {
+	return runNamed[PrivacyReviewResult, *PrivacyReviewResult](a, profiles["DeriveExportReview"], func(ctx context.Context) PrivacyReviewResult {
 		root, declined := resolveFolder(request.Workspace)
 		if root == "" {
 			return PrivacyReviewResult{State: declined.state, Reason: declined.reason}
@@ -261,7 +261,7 @@ func (r *PrivacyExportResult) refuse(state State, reason string) { r.State, r.Re
 // addresses the operation ever speaks to are the loopback fixture receivers it
 // starts itself, and their configuration is inside the packet it writes.
 func (a *App) ExportDerivedPacket(request PrivacyExportRequest) PrivacyExportResult {
-	return runNamed[PrivacyExportResult, *PrivacyExportResult](a, privacyOperation, true, false, func(ctx context.Context) PrivacyExportResult {
+	return runNamed[PrivacyExportResult, *PrivacyExportResult](a, profiles["ExportDerivedPacket"], func(ctx context.Context) PrivacyExportResult {
 		root, declined := resolveFolder(request.Workspace)
 		if root == "" {
 			return PrivacyExportResult{State: declined.state, Reason: declined.reason}
@@ -620,7 +620,7 @@ func (r *SupportPublishResult) refuse(state State, reason string) { r.State, r.R
 // A stale approval is a refusal, never a warning. The local directory is the
 // only thing written; there is no automatic upload path of any kind.
 func (a *App) PublishSupportSummary(request SupportPublishRequest) SupportPublishResult {
-	return runNamed[SupportPublishResult, *SupportPublishResult](a, supportOperation, true, false, func(ctx context.Context) SupportPublishResult {
+	return runNamed[SupportPublishResult, *SupportPublishResult](a, profiles["PublishSupportSummary"], func(ctx context.Context) SupportPublishResult {
 		root, declined := resolveFolder(request.Workspace)
 		if root == "" {
 			return SupportPublishResult{State: declined.state, Reason: declined.reason}

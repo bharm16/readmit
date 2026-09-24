@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json/v2"
+	"errors"
 	"os"
 	"path/filepath"
 
@@ -13,7 +14,6 @@ import (
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/operation"
-	"github.com/bharm16/readmit/internal/operationguard"
 	"github.com/bharm16/readmit/internal/reduce"
 	"github.com/bharm16/readmit/internal/sendpolicy"
 )
@@ -98,26 +98,12 @@ func (a *App) PreviewReduction(request ReductionRequest) ReductionResult {
 // are left for recovery and nothing is resent. The report's own outcome names
 // whether anything was established.
 func (a *App) StartReduction(request ReductionRequest) ReductionResult {
-	return runNamed[ReductionResult, *ReductionResult](a, "reduction", true, false, func(ctx context.Context) (out ReductionResult) {
-		guard, _ := a.selectedOperation()
-		settle, admissionErr := guard.AdmitContext(ctx, "execute")
-		if admissionErr != nil {
-			declined := admissionRefusal(ctx, admissionErr)
-			return ReductionResult{State: declined.state, Reason: declined.reason}
-		}
-		defer func() {
-			if err := settle(); err != nil {
-				out.State = Failed
-				out.Reason = "runner settlement failed; reconcile the retained admission before new work"
-			}
-		}()
+	return runNamed[ReductionResult, *ReductionResult](a, profiles["StartReduction"], func(ctx context.Context) ReductionResult {
 		prepared, declined := a.prepareReduction(request, true)
 		if declined.state != "" {
 			return declined.reduction()
 		}
-		bounded, cancel := context.WithTimeout(ctx, operationguard.MaxDuration)
-		defer cancel()
-		report, err := reduce.Run(bounded, prepared.request, prepared.oracle)
+		report, err := reduce.Run(ctx, prepared.request, prepared.oracle)
 		// A working folder no trial wrote into holds nothing: the engine
 		// refused the plan before its first trial, a reset let no trial run,
 		// or the reduction was stopped before one. It is removed rather than
@@ -139,7 +125,7 @@ func (a *App) StartReduction(request ReductionRequest) ReductionResult {
 		// an acknowledgement ends that trial as an uncertain delivery, which
 		// the report names. A stop that arrived after the reduction had
 		// reached an outcome stopped nothing, and the outcome stands.
-		if report.Outcome == reduce.OutcomeUndecided && (ctx.Err() != nil || report.Reason == reduce.OperatorStopped) {
+		if report.Outcome == reduce.OutcomeUndecided && (errors.Is(ctx.Err(), context.Canceled) || report.Reason == reduce.OperatorStopped) {
 			return ReductionResult{State: Cancelled, Reason: "reduction stopped; retained trials were not resent", Reduction: view}
 		}
 		return ReductionResult{State: Completed, Reduction: view}

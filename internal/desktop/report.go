@@ -295,7 +295,7 @@ func (r *PacketResult) refuse(state State, reason string) { r.State, r.Reason = 
 // incomplete. The CLI assembles free of operation admission, so this writes
 // under no admission either; it sends nothing and contacts nothing.
 func (a *App) AssemblePacket(request PacketRequest) PacketResult {
-	return runNamed[PacketResult, *PacketResult](a, packetOperation, true, false, func(ctx context.Context) PacketResult {
+	return runNamed[PacketResult, *PacketResult](a, profiles["AssemblePacket"], func(ctx context.Context) PacketResult {
 		root, declined := resolveFolder(request.Workspace)
 		if root == "" {
 			return PacketResult{State: declined.state, Reason: declined.reason}
@@ -458,7 +458,7 @@ func (r *PacketExportResult) refuse(state State, reason string) { r.State, r.Rea
 // either. A cancelled or failed export leaves the destination explicitly
 // incomplete; nothing is transmitted and no original evidence is changed.
 func (a *App) ExportPacketReview(request PacketExportRequest) PacketExportResult {
-	return runNamed[PacketExportResult, *PacketExportResult](a, packetOperation, true, false, func(ctx context.Context) PacketExportResult {
+	return runNamed[PacketExportResult, *PacketExportResult](a, profiles["ExportPacketReview"], func(ctx context.Context) PacketExportResult {
 		root, declined := resolveFolder(request.Workspace)
 		if root == "" {
 			return PacketExportResult{State: declined.state, Reason: declined.reason}

@@ -605,7 +605,7 @@ const scenarioCheckOperation = "scenario-check"
 // and runs scenariolibrary.Check on them. It is interruptible; a cancelled
 // check removes its private regeneration and passes nothing.
 func (a *App) CheckScenarioLibrary(request ScenarioLibraryRequest) ScenarioLibraryResult {
-	return runNamed[ScenarioLibraryResult, *ScenarioLibraryResult](a, scenarioCheckOperation, true, false, func(ctx context.Context) ScenarioLibraryResult {
+	return runNamed[ScenarioLibraryResult, *ScenarioLibraryResult](a, profiles["CheckScenarioLibrary"], func(ctx context.Context) ScenarioLibraryResult {
 		library, err := a.resolveScenarioDocument(request.Workspace, request.Library, scenariolibrary.MaxBytes)
 		if err != nil {
 			return ScenarioLibraryResult{State: Failed, Reason: err.Error()}

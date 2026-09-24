@@ -4,10 +4,11 @@ package desktop_test
 // that holds the slot carries that activity's name. So every operation of the
 // window that can reach a network destination or change a target runs under
 // a name, and the status reports that name's activity as active. The
-// operations are enumerated from the facade itself — its bound methods, and
-// what their own source does — and held to the reviewed inventory of
-// destinationActivities, so an operation added later that reaches a
-// destination without a name fails here rather than showing busy.
+// operations are enumerated from the facade itself — its bound methods, the
+// profiles its named operations declare, and what their own source calls —
+// and held to the reviewed inventory of destinationActivities, so an
+// operation added later that reaches a destination without a name fails here
+// rather than showing busy.
 
 import (
 	"context"
@@ -37,6 +38,7 @@ import (
 	"github.com/bharm16/readmit/internal/expectation"
 	"github.com/bharm16/readmit/internal/guide"
 	"github.com/bharm16/readmit/internal/mllp"
+	"github.com/bharm16/readmit/internal/operationguard"
 	"github.com/bharm16/readmit/internal/profileversion"
 	"github.com/bharm16/readmit/internal/sharing"
 )
@@ -243,21 +245,24 @@ func TestOnlyDeclaredProgramsAreStarted(t *testing.T) {
 	}
 }
 
-// reachingOf reads, from the facade's own source, which bound methods can
-// reach a network destination or change a target, and the name of every slot
-// claim each makes. A method can reach one when it, or a facade method or
-// function it calls:
+// reachingOf reports which bound methods can reach a network destination or
+// change a target, and the name each runs under. A method's name, and whether
+// it takes execution admission, is the profile it declares
+// (DeclaredProfilesForTest); a method that declares none holds the slot
+// unnamed if it holds it at all. A method can reach a destination when:
 //
-//   - takes execution admission: work that reaches a destination, including a
-//     fixture reset that changes one, reserves a runner instance (admissionsOf);
-//   - hands the system resolver to a call, which looks a configured host name
-//     up through the operating system;
-//   - calls a function or method of the hub's client packages that takes a
-//     context — the calls that wait on the hub, its identity provider or a
-//     runner's hub. The rest of those packages read local files only.
+//   - its declared profile takes execution admission: work that reaches a
+//     destination, including a fixture reset that changes one, reserves a
+//     runner instance;
+//   - it, or a facade method or function it calls, hands the system resolver
+//     to a call, which looks a configured host name up through the operating
+//     system;
+//   - it, or one it calls, calls a function or method of the hub's client
+//     packages that takes a context — the calls that wait on the hub, its
+//     identity provider or a runner's hub. The rest of those packages read
+//     local files only.
 //
-// A claim is run (unnamed), runNamed, claim or begin, named by a literal or a
-// constant of the package; one that is neither reads as "?".
+// The last two are read from the facade's own source.
 func reachingOf(t *testing.T) (map[string][]string, map[string][]string) {
 	t.Helper()
 	contextual := map[string]map[string]bool{}
@@ -285,7 +290,7 @@ func reachingOf(t *testing.T) (map[string][]string, map[string][]string) {
 	}
 
 	methods, functions := map[string]*ast.FuncDecl{}, map[string]*ast.FuncDecl{}
-	imports, constants := map[string]string{}, map[string]string{}
+	imports := map[string]string{}
 	for _, file := range parsePackage(t, ".") {
 		for _, spec := range file.Imports {
 			path, _ := strconv.Unquote(spec.Path.Value)
@@ -296,56 +301,27 @@ func reachingOf(t *testing.T) (map[string][]string, map[string][]string) {
 			imports[name] = path
 		}
 		for _, declaration := range file.Decls {
-			switch declaration := declaration.(type) {
-			case *ast.FuncDecl:
+			if declaration, ok := declaration.(*ast.FuncDecl); ok {
 				if declaration.Recv != nil {
 					methods[declaration.Name.Name] = declaration
 				} else {
 					functions[declaration.Name.Name] = declaration
 				}
-			case *ast.GenDecl:
-				if declaration.Tok != token.CONST {
-					continue
-				}
-				for _, spec := range declaration.Specs {
-					value := spec.(*ast.ValueSpec)
-					for i, name := range value.Names {
-						if i < len(value.Values) {
-							if literal, ok := value.Values[i].(*ast.BasicLit); ok && literal.Kind == token.STRING {
-								constants[name.Name], _ = strconv.Unquote(literal.Value)
-							}
-						}
-					}
-				}
 			}
 		}
-	}
-	nameOf := func(expression ast.Expr) string {
-		switch expression := expression.(type) {
-		case *ast.BasicLit:
-			if name, err := strconv.Unquote(expression.Value); err == nil {
-				return name
-			}
-		case *ast.Ident:
-			if name, ok := constants[expression.Name]; ok {
-				return name
-			}
-		}
-		return "?"
 	}
 
-	type found struct{ why, claims []string }
-	derived := map[*ast.FuncDecl]*found{}
-	var visit func(*ast.FuncDecl) *found
-	visit = func(declaration *ast.FuncDecl) *found {
-		if result, ok := derived[declaration]; ok {
-			return result
+	derived := map[*ast.FuncDecl][]string{}
+	var visit func(*ast.FuncDecl) []string
+	visit = func(declaration *ast.FuncDecl) []string {
+		if why, ok := derived[declaration]; ok {
+			return why
 		}
-		result := &found{}
-		derived[declaration] = result
-		add := func(list *[]string, value string) {
-			if !slices.Contains(*list, value) {
-				*list = append(*list, value)
+		derived[declaration] = nil
+		var why []string
+		add := func(value string) {
+			if !slices.Contains(why, value) {
+				why = append(why, value)
 			}
 		}
 		ast.Inspect(declaration.Body, func(node ast.Node) bool {
@@ -355,7 +331,7 @@ func reachingOf(t *testing.T) (map[string][]string, map[string][]string) {
 			}
 			for _, argument := range call.Args {
 				if selector, ok := argument.(*ast.SelectorExpr); ok && selector.Sel.Name == "SystemResolver" && isPackage(selector.X, "sendpolicy") {
-					add(&result.why, "the system resolver")
+					add("the system resolver")
 				}
 			}
 			function := call.Fun
@@ -365,45 +341,32 @@ func reachingOf(t *testing.T) (map[string][]string, map[string][]string) {
 			var callee *ast.FuncDecl
 			switch function := function.(type) {
 			case *ast.Ident:
-				switch function.Name {
-				case "run":
-					add(&result.claims, "")
-				case "runNamed":
-					add(&result.claims, nameOf(call.Args[1]))
-				default:
-					callee = functions[function.Name]
-				}
+				callee = functions[function.Name]
 			case *ast.SelectorExpr:
 				receiver, _ := function.X.(*ast.Ident)
 				switch {
 				case receiver != nil && receiver.Name == "a":
-					if function.Sel.Name == "claim" || function.Sel.Name == "begin" {
-						add(&result.claims, nameOf(call.Args[0]))
-					}
 					callee = methods[function.Sel.Name]
 				case receiver != nil && imports[receiver.Name] != "":
 					if contextual[imports[receiver.Name]][function.Sel.Name] {
-						add(&result.why, receiver.Name+"."+function.Sel.Name)
+						add(receiver.Name + "." + function.Sel.Name)
 					}
 				case contextualMethods[function.Sel.Name]:
-					add(&result.why, "the hub client's "+function.Sel.Name)
+					add("the hub client's " + function.Sel.Name)
 				}
 			}
 			if callee != nil {
-				inner := visit(callee)
-				for _, why := range inner.why {
-					add(&result.why, why)
-				}
-				for _, claim := range inner.claims {
-					add(&result.claims, claim)
+				for _, reason := range visit(callee) {
+					add(reason)
 				}
 			}
 			return true
 		})
-		return result
+		derived[declaration] = why
+		return why
 	}
 
-	admissions := admissionsOf(t)
+	declared := desktop.DeclaredProfilesForTest()
 	reaching, claims := map[string][]string{}, map[string][]string{}
 	facade := reflect.TypeFor[*desktop.App]()
 	for i := range facade.NumMethod() {
@@ -412,12 +375,15 @@ func reachingOf(t *testing.T) (map[string][]string, map[string][]string) {
 		if declaration == nil {
 			t.Fatalf("bound method %s has no declaration in the facade's source", method)
 		}
-		result := visit(declaration)
-		why := slices.Clone(result.why)
-		if admissions[method]["execute"] {
+		why := slices.Clone(visit(declaration))
+		profile, named := declared[method]
+		if profile.Execution != operationguard.NoExecution {
 			why = append([]string{"execution admission"}, why...)
 		}
-		reaching[method], claims[method] = why, result.claims
+		if named {
+			claims[method] = []string{profile.Name}
+		}
+		reaching[method] = why
 	}
 	return reaching, claims
 }

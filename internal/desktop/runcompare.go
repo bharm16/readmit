@@ -29,7 +29,7 @@ func (r *RunComparisonResult) refuse(state State, reason string) {
 // CompareRuns reads only named workspace entries. Cancellation discards the
 // view, never evidence; recovery is a fresh verification of the selected runs.
 func (a *App) CompareRuns(request RunComparisonRequest) RunComparisonResult {
-	return runNamed[RunComparisonResult, *RunComparisonResult](a, "run-comparison", true, false, func(ctx context.Context) RunComparisonResult {
+	return runNamed[RunComparisonResult, *RunComparisonResult](a, profiles["CompareRuns"], func(ctx context.Context) RunComparisonResult {
 		return a.compareRuns(ctx, request)
 	})
 }

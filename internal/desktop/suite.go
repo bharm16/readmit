@@ -296,7 +296,7 @@ type SuiteCoverageAssessRequest struct {
 // coverage` does. Missing evidence is unknown, exclusions never pass, and an
 // expired exclusion stays visible; nothing executes and nothing is sent.
 func (a *App) AssessSuiteCoverage(request SuiteCoverageAssessRequest) SuiteCoverageResult {
-	return runNamed[SuiteCoverageResult, *SuiteCoverageResult](a, "suite-coverage-assessment", true, false, func(ctx context.Context) SuiteCoverageResult {
+	return runNamed[SuiteCoverageResult, *SuiteCoverageResult](a, profiles["AssessSuiteCoverage"], func(ctx context.Context) SuiteCoverageResult {
 		root, declined := resolveFolder(request.Workspace)
 		if root == "" {
 			return SuiteCoverageResult{State: declined.state, Reason: declined.reason}
