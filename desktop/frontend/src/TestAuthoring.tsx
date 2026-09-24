@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type {
   FieldState,
   GridRow,
@@ -14,6 +14,7 @@ import type {
   TestStage,
   TestSuggestion,
   TestSuggestionRequest,
+  TestSuggestions,
 } from "./bindings";
 import { Report, type Indicators } from "./shell";
 import { EnvironmentBanner } from "./EnvironmentPanel";
@@ -142,6 +143,13 @@ export function TestAuthoring({
   const [position, setPosition] = useState("MSA-1");
   const [positions, setPositions] = useState<string[]>(["MSA-1"]);
   const [edits, setEdits] = useState<Record<string, Edit>>({});
+  // The request the proposals on screen were asked with, which is the one a
+  // review is recorded against, and the set this panel withdrew. Asking again
+  // or cancelling the review withdraws the proposals on screen, so a refused
+  // request never leaves another run's proposals standing beside its refusal.
+  const [proposedWith, setProposedWith] = useState<TestSuggestionRequest | null>(null);
+  const [withdrawn, setWithdrawn] = useState<TestSuggestions | null>(null);
+  const reviewedEntry = useRef<HTMLInputElement>(null);
 
   const view = result?.test;
   const draft = view?.draft;
@@ -155,7 +163,7 @@ export function TestAuthoring({
     onAnswer({ stage: "expectations", expectations: next });
 
   const coverage = resolution?.coverage;
-  const suggestions = view?.suggestions;
+  const suggestions = view?.suggestions !== withdrawn && proposedWith ? view?.suggestions : undefined;
   const approval = view?.approval;
   const request: TestSuggestionRequest = {
     result: runEntry,
@@ -607,12 +615,15 @@ export function TestAuthoring({
         onSubmit={(event) => {
           event.preventDefault();
           setEdits({});
+          setWithdrawn(view?.suggestions ?? null);
+          setProposedWith(request);
           onSuggest(request);
         }}
       >
         <label htmlFor="authoring-reviewed">Entry holding the reviewed run result</label>
         <input
           id="authoring-reviewed"
+          ref={reviewedEntry}
           placeholder="baseline-result"
           value={runEntry}
           onChange={(event) => setRunEntry(event.target.value)}
@@ -679,7 +690,7 @@ export function TestAuthoring({
         </button>
       </form>
 
-      {suggestions ? (
+      {suggestions && proposedWith ? (
         <>
           <p className="hint">
             From {suggestions.origin.result} · the run reports {suggestions.origin.status} at{" "}
@@ -809,14 +820,28 @@ export function TestAuthoring({
               // offering to record it again; re-approving one proposal is a
               // second expectation of the same name, which the engine refuses.
               setEdits({});
-              onApprove(request, {
-                result: request.result,
+              onApprove(proposedWith, {
+                result: proposedWith.result,
                 identity: suggestions.origin.identity,
                 decisions: decided,
               });
             }}
           >
             Record these decisions
+          </button>
+          {/* Cancelling a review records nothing: the decisions made above
+              are dropped with the proposals, and the draft keeps only what
+              was recorded before. */}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setEdits({});
+              setWithdrawn(suggestions);
+              reviewedEntry.current?.focus();
+            }}
+          >
+            Cancel this review
           </button>
         </>
       ) : null}

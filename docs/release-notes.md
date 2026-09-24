@@ -1,5 +1,24 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The test authoring panel's review of proposed expectations and the
+  assertion-set panel's Import and Export are driven end to end (#302); no test
+  pressed them before. A review is now recorded against the request that
+  proposed what is on screen, not whatever the entry field names by then.
+  Asking again withdraws the proposals on screen, so a refused request, such
+  as one naming a run whose own expectations failed, no longer leaves another
+  run's proposals standing beside its refusal, and a new Cancel this review
+  control drops the proposals and every decision taken on them and records
+  nothing. Saving or exporting an assertion set to a name that is already an
+  entry of the workspace is refused as one, where it was reported as a failure
+  to create the file. One interaction journey proposes expectations from runs
+  the command line made, approves, edits and rejects them, and has the command
+  line run what was approved; another imports a colleague's set, refuses an
+  undecodable one in the command's words, and exports reviewed bytes that
+  `readmit explain` reads unchanged. Go parity tests hold both to
+  `readmit diff`, `readmit test` and `readmit explain` over the runs the native
+  window retained in September. No `readmit-*` document, command, bound method
+  or machine output changes.
+
 - The synthetic scenario panel's design, library and SIU fixture controls are
   now driven end to end (#299), and what the window writes is what `readmit
   scenario preview`, `readmit scenario check-library` and `readmit synth`

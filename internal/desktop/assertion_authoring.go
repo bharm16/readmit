@@ -3,6 +3,7 @@ package desktop
 import (
 	"context"
 	"errors"
+	"os"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/assertion"
@@ -127,9 +128,7 @@ func (a *App) saveAssertionSet(request AssertionSetRequest) AssertionSetResult {
 	}
 	saved, err := assertionauthor.Save(root, draft, request.Output)
 	if errors.Is(err, assertionauthor.ErrCannotWrite) {
-		return probeWriteFailure(root,
-			"this account cannot write into the open workspace",
-			"the assertion set could not be created in the open workspace").assertionSet()
+		return assertionWriteRefusal(root, request.Output).assertionSet()
 	}
 	if err != nil {
 		return AssertionSetResult{State: Failed, Reason: err.Error()}
@@ -180,9 +179,7 @@ func (a *App) ExportAssertionSet(request CanonicalAssertionRequest) CanonicalAss
 		}
 		saved, err := assertionauthor.Export(root, []byte(request.Document), request.Output)
 		if errors.Is(err, assertionauthor.ErrCannotWrite) {
-			refused := probeWriteFailure(root,
-				"this account cannot write into the open workspace",
-				"the assertion set could not be created in the open workspace")
+			refused := assertionWriteRefusal(root, request.Output)
 			return CanonicalAssertionResult{State: refused.state, Reason: refused.reason}
 		}
 		if err != nil {
@@ -193,4 +190,18 @@ func (a *App) ExportAssertionSet(request CanonicalAssertionRequest) CanonicalAss
 			Output: saved.Output, Identity: saved.Identity,
 		}
 	})
+}
+
+// assertionWriteRefusal says why an assertion set was not created at one entry
+// of the open workspace, once the exclusive create has already failed. The
+// entry is only looked at, never touched: a name that is already an entry is
+// the person's to change, so it is refused as one rather than as a failure of
+// the folder, and the rest is separated as every other write in this window is.
+func assertionWriteRefusal(root, output string) refusal {
+	if _, err := os.Lstat(artifactpath.JoinReference(root, output)); err == nil {
+		return refusal{Failed, "that name is already an entry of this workspace; an assertion set is written to a new entry"}
+	}
+	return probeWriteFailure(root,
+		"this account cannot write into the open workspace",
+		"the assertion set could not be created in the open workspace")
 }
