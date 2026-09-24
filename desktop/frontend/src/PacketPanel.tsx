@@ -9,6 +9,7 @@ import {
   previewPacket,
   type Artifact,
   type PacketExportResult,
+  type PacketPathResult,
   type PacketPreviewResult,
   type PacketRequest,
   type PacketResult,
@@ -63,6 +64,7 @@ export function PacketPanel({
   const [packetName, setPacketName] = useState("");
   const [packet, setPacket] = useState<PacketResult | null>(null);
   const [exportDestination, setExportDestination] = useState("");
+  const [destinationChoice, setDestinationChoice] = useState<PacketPathResult | null>(null);
   const [exported, setExported] = useState<PacketExportResult | null>(null);
   const [reviewName, setReviewName] = useState("");
   const [review, setReview] = useState<PacketReviewResult | null>(null);
@@ -140,6 +142,7 @@ export function PacketPanel({
     setOperation("exporting");
     try {
       const choice = await choosePacketExportPath();
+      setDestinationChoice(choice);
       if (choice.state === "completed" && choice.path) setExportDestination(choice.path);
     } finally {
       setOperation(null);
@@ -251,7 +254,7 @@ export function PacketPanel({
       <h4>Sealed packets</h4>
       <label htmlFor="packet-open">Packets of this workspace</label>
       <select id="packet-open" value={packetName} disabled={busy}
-        onChange={(e) => { setPacketName(e.target.value); setPacket(null); setExported(null); setExportDestination(""); }}>
+        onChange={(e) => { setPacketName(e.target.value); setPacket(null); setExported(null); setExportDestination(""); setDestinationChoice(null); }}>
         <option value="">Select a packet…</option>
         {packets.map((name) => <option key={name} value={name}>{name}</option>)}
       </select>
@@ -263,6 +266,7 @@ export function PacketPanel({
         <p>Export the packet with all five offline renderings — offline HTML, PDF, Markdown, strict JSON and JUnit — into a new folder chosen natively. The review stays customer-local: sealing it approves no disclosure and uploads nothing.</p>
         <button disabled={busy} onClick={() => void chooseDestination()}>Choose destination…</button>
         <p className="hint">{exportDestination || "No destination chosen."}</p>
+        {destinationChoice && destinationChoice.state !== "completed" ? <p>{destinationChoice.reason}</p> : null}
         <button disabled={busy || !exportDestination} onClick={() => void seal()}>
           {operation === "exporting" ? "Exporting…" : "Export portable review"}
         </button>
