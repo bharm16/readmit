@@ -327,6 +327,6 @@ complete finished-product release acceptance.
 
 [Administrator operations](docs/administration.md): deployment, identity, runner recovery, backups and retention.
 [Security operations](docs/security-operations.md): egress, secrets, incident reporting and release dependency/SBOM limits.
-New authoring and execution require an explicitly activated signed v2 entitlement and `--operation-policy`. Reading, verification, export and the frozen synthetic walkthrough remain available without one. See [local evaluation and activation](docs/license-v2.md#complete-local-evaluation-and-operation-admission).
+New authoring and execution require an activated signed v2 license: this computer's license, activated in the application or with `readmit license import`, or one named with `--operation-policy`. Reading, verification, export and the frozen synthetic walkthrough remain available without one. See [this computer's license](docs/license.md#this-computers-license) and [local evaluation and activation](docs/license-v2.md#complete-local-evaluation-and-operation-admission).
 
 Contextual offline help and recovery codes, with ADT/SIU/ORM/ORU recipes: [workflow help](docs/workflow-help.md).

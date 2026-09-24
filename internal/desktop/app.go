@@ -266,6 +266,10 @@ type App struct {
 	sessionPath            string
 	draftsPath             string
 
+	// licenseRoot is where this computer's license lives, the folder the
+	// command line reads it from too; empty when the shell was given none.
+	licenseRoot string
+
 	hubMu            sync.Mutex
 	hubSelectionPath string
 	hubConfigPath    string

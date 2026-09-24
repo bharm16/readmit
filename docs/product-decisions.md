@@ -261,6 +261,48 @@ permissive licensing of the whole paid product by default, message-volume
 billing, broad floating seats, draconian offline DRM, and unsupported
 HIPAA/certification guarantees.
 
+## D9 — One license per computer, handled as any software purchase
+
+Owner decision of September 22, 2026, recorded on
+[#315](https://github.com/bharm16/readmit/issues/315): "it should be handled the
+same way any software purchase is handled." Customers never need to know what
+an entitlement store, an activation folder or an operation policy is.
+
+- **One installed license per computer, installed one way.** The application's
+  license pane activates the license file received at purchase, or its pasted
+  contents, verifies it locally with no network
+  ([ADR-0007](adr/0007-offline-entitlements-are-signed-documents-verified-locally.md)),
+  and shows the licensee, plan, seats and expiry in plain words.
+- **The command line uses the same installed license automatically.** Without
+  `--operation-policy`, new work is admitted through it; `readmit license show`
+  reports what the application activated, and the application reports what
+  `readmit license import` installed. `license import/show/renew/export/release`
+  keep their flags, output and exit statuses for scripts and, without a store,
+  act on that one installed license.
+- **Moving to a new computer:** *Deactivate this computer* releases the seat,
+  as `license release` does, and the account portal is where the seat is
+  reissued.
+- **Renewal:** the pane warns ahead of expiry (thirty days, a reminder rather
+  than a term); *Get renewed license* opens the account address an operator
+  configured only when the person clicks it, with no automatic network access;
+  activating the renewed file replaces the license in place. An expired license
+  keeps read and export access, as it always has.
+- **Words:** what a person reads says license, activate, deactivate and renew,
+  never a contract name.
+- **No new contract.** This computer's license is an entitlement store
+  (`readmit-entitlement-store/v1` or `/v2`, unchanged) kept in the account's
+  configuration folder with the vendor trust document it was verified against
+  and, for a license that admits new work, the `readmit-operation-policy/v1`,
+  `readmit-operation-clock/v1` and `readmit-runner-admission/v1` files beside
+  it, so every existing reader reads it. Historical documents, stores and
+  activation folders read exactly as before; a released license is set aside,
+  never rewritten or deleted.
+
+This release embeds no trust store, because the vendor's production signing
+identity is decided elsewhere, so the first activation also asks for the
+vendor's verification keys file and keeps it with the license for renewals.
+Details: [this computer's license](license.md#this-computers-license).
+
 ## Start prerequisites and acceptance gates
 
 | Work | Implementation can start after | Completion or release still requires |

@@ -69,6 +69,7 @@ function quiet(extra: FacadeHandlers = {}): FacadeHandlers {
   return {
     OperationStatus: () => ({ state: "failed", reason: "operation activation is missing or invalid; select and activate an operation policy", selected: false }),
     CommercialStatus: () => ({ state: "empty", reason: "the commercial portal destination is not configured; choose the operator-supplied destinations file" }),
+    LicenseStatus: () => ({ state: "empty", reason: "no license is activated on this computer" }),
     ...extra,
   };
 }
@@ -183,7 +184,7 @@ test("a v1 document verifies, is reported as such, and cannot configure operatio
   }));
   render(<OperationAccess />);
   await user.click(screen.getByRole("button", { name: "Verify a received license…" }));
-  expect(await screen.findByText(/does not grant named-author operation admission/)).toBeTruthy();
+  expect(await screen.findByText(/earlier format that lists licensed computers and cannot activate new work here/)).toBeTruthy();
   expect(screen.queryByLabelText("Author this device works as")).toBeNull();
 });
 

@@ -291,10 +291,16 @@ func newBridge(root string) (*bridge, error) {
 		return nil, err
 	}
 	dialogs := &scriptedDialogs{}
-	app := desktop.NewWithOperationSelection(dialogs,
+	// This computer's license lives where the command line reads it: the
+	// account configuration folder of the journey's own home inside root.
+	license, err := desktop.DefaultInstalledLicensePath()
+	if err != nil {
+		return nil, err
+	}
+	app := desktop.NewWithInstalledLicense(dialogs,
 		filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"),
 		filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"),
-		filepath.Join(state, "operations.json"))
+		filepath.Join(state, "operations.json"), license)
 	return &bridge{methods: bind(app), dialogs: dialogs}, nil
 }
 

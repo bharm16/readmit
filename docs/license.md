@@ -21,6 +21,49 @@ readmit license import entitlement.json --trust vendor-keys.json \
 readmit license show ~/.readmit/entitlement --trust vendor-keys.json
 ```
 
+## This computer's license
+
+Most people never name a store. A license is handled the way any software
+purchase is: one license per computer, activated once, and used by the
+application and the command line alike
+([D9](product-decisions.md#d9--one-license-per-computer-handled-as-any-software-purchase)).
+Activate it in the application's license pane from the file received at
+purchase, or its pasted contents, or on the command line with `license import`
+and no `--output`:
+
+```sh
+readmit license import entitlement.json --trust vendor-keys.json --author a.nguyen --device ws-0413
+readmit license show
+readmit license renew renewed-entitlement.json
+readmit license export --output copy.json
+readmit license release
+```
+
+It lives in this account's configuration folder, in `readmit/license`
+(`~/Library/Application Support/readmit/license` on macOS,
+`$XDG_CONFIG_HOME/readmit/license` or `~/.config/readmit/license` on Linux,
+`%AppData%\readmit\license` on Windows). It is an entitlement store exactly as
+`license import --output` writes one, with the vendor trust document it was
+verified against beside it and, for a v2 license, the operation policy, clock
+state and runner record through which new work is admitted. No contract is
+added or changed: `license show STORE` reads the folder as it reads any store.
+
+- `show`, `renew`, `export` and `release` without a store act on this
+  computer's license and verify it against the trust document installed with
+  it; `--trust` on `renew` names an updated one, which then replaces it.
+- Without `--operation-policy`, new authoring and execution on the command line
+  are admitted through this computer's license, the one the application
+  activated. A policy named with `--operation-policy` is used instead, exactly
+  as before.
+- A second installation beside an active license is refused: a later issue of
+  it is a renewal. Releasing it stops new work here and in the application
+  first, then records the store's release; a released license is set aside
+  beside the next one as `license.released-TIME`, never deleted. An
+  interrupted installation is retained as `license.incomplete` and reported.
+- The first activation needs the vendor's trust document, because this release
+  embeds none; renewals are verified against the one installed with the
+  license.
+
 ## What an entitlement never touches
 
 **Evidence is not gated.** No read, verification or export path in readmit
@@ -68,15 +111,21 @@ settled by the issuer when it reissues.
 | Command | What it does |
 | --- | --- |
 | `license verify ENTITLEMENT --trust TRUST_STORE` | Verifies a received file and reports what it grants |
-| `license import ENTITLEMENT --trust TRUST_STORE --device ID --output NEW_DIRECTORY` | Verifies and installs it for one device |
-| `license show STORE --trust TRUST_STORE` | Re-verifies the installed entitlement and reports its state |
-| `license renew STORE ENTITLEMENT --trust TRUST_STORE` | Installs a later issue for the same device |
-| `license export STORE --output NEW_FILE` | Writes the installed entitlement back out, byte for byte |
-| `license release STORE` | Releases this device's activation so the seat can be reissued |
+| `license import ENTITLEMENT --trust TRUST_STORE --device ID [--output NEW_DIRECTORY]` | Verifies and installs it for one device: into a new store, or as this computer's license |
+| `license show [STORE] [--trust TRUST_STORE]` | Re-verifies the installed entitlement and reports its state |
+| `license renew [STORE] ENTITLEMENT [--trust TRUST_STORE]` | Installs a later issue for the same device |
+| `license export [STORE] --output NEW_FILE` | Writes the installed entitlement back out, byte for byte |
+| `license release [STORE]` | Releases this device's activation so the seat can be reissued |
+
+A command without a store acts on [this computer's license](#this-computers-license),
+and `--trust` defaults there to the trust document installed with it. Naming a
+store keeps every flag, report and exit status these commands had; naming the
+folder of this computer's license acts on it exactly as omitting it does.
 
 `--trust` names the vendor signing keys explicitly, the way every other target
 configuration in readmit is named: there is no hidden global configuration and
-no environment-variable precedence. **This release embeds no trust store.** The
+no environment-variable precedence beyond the one place this computer's
+license is kept. **This release embeds no trust store.** The
 vendor's production signing identity is an owner decision made outside the
 engine, and no readmit command signs an entitlement — the private key never
 exists on a customer machine.
@@ -286,6 +335,12 @@ Every refusal names one reason and repeats no part of the document.
 | `this device released its entitlement activation` | Import the reissued document on the device it names |
 | `installed entitlement is already at this issue sequence or a later one` | An earlier or equal issue never replaces what is installed |
 | `entitlement belongs to a different organization` | Renewal replaces one organization's entitlement, not another's |
+| `no license is installed on this computer` | A command without a store found no [license on this computer](#this-computers-license) |
+| `this computer already has a license installed; renew it with a later issue, or release it before installing another` | `license import` without `--output` never replaces an active license |
+| `an interrupted or set-aside license is retained beside this computer's license; move it aside before installing again` | A `license.incomplete` installation, or a retained `trust.json.incomplete`, is in the way; recovery is moving it aside outside readmit |
+| `this computer's license folder cannot be read; move it aside before installing again` | The folder is not a store any reader accepts; it is reported, never repaired |
+| `this computer's license has no verification keys beside it; install it again with the vendor trust document` | The trust document installed with the license is missing |
+| `cannot locate this account's configuration directory for the installed license` | The account has no configuration directory, so this computer's license has no place |
 
 Unknown and unsupported are never a pass. Diagnostics go to standard error as
 fixed sentences and never echo a path, an identifier or an argument.

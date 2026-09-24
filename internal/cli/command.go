@@ -116,7 +116,7 @@ func rootCommand(version string) (*cobra.Command, *bool) {
 	root.AddCommand(reportCommand())
 	root.AddCommand(shareCommand())
 	var operationPolicy string
-	root.PersistentFlags().StringVar(&operationPolicy, "operation-policy", "", "Explicit local operation admission policy for new authoring and execution")
+	root.PersistentFlags().StringVar(&operationPolicy, "operation-policy", "", "Local operation admission policy for new authoring and execution; without it, this computer's installed license")
 	wireOperations(root, &operationPolicy, &ran)
 	return root, &ran
 }

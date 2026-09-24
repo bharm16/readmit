@@ -166,7 +166,16 @@ func (a *App) ActivateOperations() OperationResult { return a.changeOperation(op
 func (a *App) ResolveOperationClock() OperationResult {
 	return a.changeOperation(operationguard.Resolve)
 }
-func (a *App) ReleaseOperations() OperationResult { return a.changeOperation(operationguard.Release) }
+func (a *App) ReleaseOperations() OperationResult {
+	return a.changeOperation(func(path string) error {
+		// This computer's license is deactivated whole, as `readmit license
+		// release` does, so its store and its operation state agree.
+		if a.installedSelected(path) {
+			return operationguard.ReleaseInstalledLicense(a.licenseRoot, time.Now().UTC().Truncate(time.Second))
+		}
+		return operationguard.Release(path)
+	})
+}
 
 // DefaultOperationSelectionPath identifies only viewer configuration. Policy,
 // clock and admission files remain where the operator explicitly selected them.
