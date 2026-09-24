@@ -33,11 +33,12 @@ test reported as passing.
 - [ ] #75: test each advertised database/driver/authentication combination,
   SELECT-only grants, TLS verification, parameter binding, cancellation and
   bounds. Local Linux/arm64 PostgreSQL 16.15, 17.11 and 18.6 evidence is
-  retained. Six native Linux/amd64 branch-discovery cells have retained
-  candidate evidence, including SQL Server 2019/2022/2025; those SQL Server
-  claims still require a successful digest-pinned default-branch dispatch and
-  evidence review. Separately authorized Oracle 19c tests are required for
-  that claim. Oracle 26ai Free does not prove 19c.
+  retained. The [digest-pinned main run](https://github.com/bharm16/readmit/actions/runs/36029817324)
+  passed all six native Linux/amd64 PostgreSQL 16/17/18 and SQL Server
+  2019/2022/2025 cells at commit `cea49f96669a18759ba323c38a915886d62430b6`;
+  its exact synthetic artifacts are retained in `testdata/lab-evidence/pinned-main-36029817324/`.
+  Oracle 26ai Free and separately authorized Oracle 19c tests are still
+  required. Oracle 26ai Free does not prove 19c.
 - [ ] #77: integrate downstream (#73), file/API (#74) and database (#75)
   observations in the guided authoring flow, beyond generic adapter fixtures.
 - [ ] #86/#87: prove locks, isolation, bounded admission, cancellation, disk-full
