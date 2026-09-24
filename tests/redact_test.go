@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -50,6 +51,35 @@ func redactFixture(t *testing.T) redact.Request {
 		}
 	}
 	return request
+}
+
+// The packaged Windows journey otherwise puts both the redaction fixture and
+// the command's signed test policy on the runner's OS disk. Keep their required
+// syncs on the runner's separate temporary volume when one is available.
+func useRedactRunnerTemp(t *testing.T) {
+	t.Helper()
+	runnerTemp := os.Getenv("RUNNER_TEMP")
+	if runtime.GOOS != "windows" || runnerTemp == "" {
+		return
+	}
+	if !filepath.IsAbs(runnerTemp) {
+		t.Fatal("runner temporary directory is not absolute")
+	}
+	info, err := os.Stat(runnerTemp)
+	if err != nil || !info.IsDir() {
+		t.Fatal("runner temporary directory is unavailable")
+	}
+	defaultVolume := filepath.VolumeName(os.TempDir())
+	t.Setenv("TMP", runnerTemp)
+	t.Setenv("TEMP", runnerTemp)
+	t.Logf("redact acceptance uses runner temporary volume; distinct from default: %t", !strings.EqualFold(defaultVolume, filepath.VolumeName(os.TempDir())))
+}
+
+func timedRedactCommand(t *testing.T, phase string, args ...string) (string, string, error) {
+	t.Helper()
+	return runObserved(t, func(policySetup, process time.Duration) {
+		t.Logf("%s signed policy setup elapsed: %s; CLI process elapsed: %s", phase, policySetup.Round(time.Millisecond), process.Round(time.Millisecond))
+	}, args...)
 }
 
 func redactJSON(t *testing.T, path string, value any) {
@@ -121,10 +151,13 @@ func redactOriginalArtifacts(t *testing.T, request redact.Request) []string {
 }
 
 func TestRedactExecutableGeneratesOnlyDerivedProofAndNoPlantedValues(t *testing.T) {
+	useRedactRunnerTemp(t)
+	setupStarted := time.Now()
 	request := redactFixture(t)
 	newOnly := redactOriginalArtifacts(t, request)
 	before := treeOf(t, request.CasePath)
-	stdout, stderr, err := run(t, "redact", request.CasePath, "--spec", request.SpecPath, "--policy", request.PolicyPath, "--inventory", request.InventoryPath, "--local-state", request.LocalState, "--output", request.Output)
+	t.Logf("redact fixture setup elapsed: %s", time.Since(setupStarted).Round(time.Millisecond))
+	stdout, stderr, err := timedRedactCommand(t, "redact review", "redact", request.CasePath, "--spec", request.SpecPath, "--policy", request.PolicyPath, "--inventory", request.InventoryPath, "--local-state", request.LocalState, "--output", request.Output)
 	if err != nil {
 		t.Fatalf("redact: %v %s %s", err, stdout, stderr)
 	}
@@ -136,7 +169,7 @@ func TestRedactExecutableGeneratesOnlyDerivedProofAndNoPlantedValues(t *testing.
 		t.Fatal("original assertion failure was not bound to approval")
 	}
 	packet := filepath.Join(filepath.Dir(request.Output), "packet")
-	out, diagnostic, err := run(t, "redact", "export", request.Output, "--local-state", request.LocalState, "--approve", review.Identity, "--output", packet)
+	out, diagnostic, err := timedRedactCommand(t, "redact export", "redact", "export", request.Output, "--local-state", request.LocalState, "--approve", review.Identity, "--output", packet)
 	if err != nil {
 		t.Fatalf("export: %v %s %s", err, out, diagnostic)
 	}
