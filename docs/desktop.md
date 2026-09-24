@@ -420,7 +420,7 @@ artifacts are never reported as completed.
 | `OpenReview` | Reads one export review of the open workspace and reports its inventory, its coverage and the reviewer's decision. |
 | `AuthorTest` | Answers one stage of a test draft and reports what it now means over the case. |
 | `SaveTest` | Writes the generated test spec into a new entry of the open workspace. |
-| `SuggestExpectations` | Proposes the expectations one reviewed run would support, and records none of them. |
+| `SuggestExpectations` | Proposes the expectations one verified direct result or finalized durable run would support, and records none of them. |
 | `ApproveExpectations` | Records what a person decided about those proposals and reports the draft their approvals produced. |
 | `OpenCorrelationReview` | Rebuilds an explicitly selected human mapping over verified findings; refuses stale dependent mapping identities. |
 | `DecideCorrelation` | Saves an explicit accept, reject or added pair with a local analyst and reason in a new immutable review directory. |
@@ -1110,10 +1110,10 @@ revision nobody has run yet claims nothing rather than reading as one that
 passed. There is no overall verdict here: which expectation carries the incident
 is a person's judgement. Every run that was named is shown as its reader read it,
 including the one run of a pair that claims nothing because the other revision
-has none. A run is named by one entry of the workspace, such as the result
-directory `readmit test --send --output` writes; a durable run of the window
-keeps its result inside its job folder, which is not one entry, so it is not
-offered as proof here.
+has none. A run is named by one entry of the workspace: either the result
+directory `readmit test --send --output` writes or a durable job the window
+made with a finalized, verified result inside it. The job's result is read
+without changing the job or the command line's input rules.
 
 This compares plans and manifests, never messages. The two derived cases are not
 compared byte for byte, because where one revision edits a position the other

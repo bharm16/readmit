@@ -3801,7 +3801,7 @@
       "inputs": ["readmit-reproducer/v1", "readmit-case/v3", "readmit-result/v1", "readmit-run/v1"],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/journeys/reproducer-revisions.journey.tsx", "name": "built revisions are compared by lineage, by what they retain and edit, and by what the command line's runs of each decided"},
+      "gui_test": {"file": "desktop/frontend/src/journeys/reproducer-revisions.journey.tsx", "name": "built revisions are compared by lineage, by what they retain and edit, and by what the retained runs of each decided"},
       "parity_test": {"package": "tests", "name": "TestRevisionProofIsWhatTheCommandLineReadsFromEachRun"},
       "implemented": true
     },

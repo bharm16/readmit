@@ -1,8 +1,10 @@
 package testauthor_test
 
 import (
+	"context"
 	"encoding/json/v2"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,7 +12,11 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/guide"
+	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/mllp"
+	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/synth"
 	"github.com/bharm16/readmit/internal/testauthor"
 	"github.com/bharm16/readmit/internal/testrunner"
@@ -136,6 +142,156 @@ func TestSuggestionsCarryTheRunAndThePositionTheyWereReadFrom(t *testing.T) {
 	}
 	if acknowledged.Evidence.Message != booking || acknowledged.Evidence.Selector != "MSA-1" || acknowledged.Evidence.Payload == "" {
 		t.Fatalf("the acknowledgement proposal does not name where it was read: %+v", acknowledged.Evidence)
+	}
+}
+
+// durableReviewedRun executes the same synthetic message the authoring test
+// names, through the actual durable runner and a local ACK peer.
+func durableReviewedRun(t *testing.T) (string, testauthor.Draft) {
+	t.Helper()
+	root := t.TempDir()
+	raw, err := os.ReadFile("../../testdata/fixtures/listen-s12.hl7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := bundle.Write(filepath.Join(root, "case"), []bundle.Input{{Data: raw, Options: hl7.Options{Format: hl7.Raw}}},
+		bundle.Provenance{Mode: bundle.Generated, Generator: &bundle.GeneratorInputs{BaseTime: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), GeneratorVersion: "fixture", ProfileVersion: "fixture"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { listener.Close() })
+	go func() {
+		conn, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			return
+		}
+		defer conn.Close()
+		conn.SetDeadline(time.Now().Add(5 * time.Second))
+		reader, readErr := mllp.NewReader(conn, 1<<20)
+		if readErr != nil {
+			return
+		}
+		if _, readErr = reader.ReadFrame(); readErr == nil {
+			fmt.Fprint(conn, "\x0bMSH|^~\\&|FIXTURE|LAB|READMIT|TEST|20260101120000||ACK|ACK-1|P|2.5.1\rMSA|AA|LISTEN-BOOK\r\x1c\r")
+		}
+	}()
+	target := replay.Target{Schema: replay.TargetSchema, TestEndpoint: true, Address: listener.Addr().String(), Transport: "plain", ConnectTimeout: "2s", MessageTimeout: "5s", MaxACKBytes: 4096}
+	text := "AA"
+	spec := testrunner.Spec{Schema: testrunner.SpecSchema, Name: "ACK", Input: testrunner.Input{Case: "case", Messages: []string{booking}}, Target: "target.json",
+		Setup:       testrunner.Setup{InitialState: "operator-declared", ResetInstructions: "Reset the synthetic peer"},
+		Observation: testrunner.Observation{Boundary: testrunner.ACKBoundary},
+		Assertions:  []testrunner.Assertion{{ID: "accepted", Operator: "ack_field_equals", Message: booking, Selector: "MSA-1", Expected: testrunner.Value{Field: &testrunner.FieldValue{State: hl7.Present, Text: &text}}}}}
+	for name, value := range map[string]any{"target.json": target, "spec.json": spec} {
+		data, marshalErr := json.Marshal(value)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		if writeErr := os.WriteFile(filepath.Join(root, name), data, 0600); writeErr != nil {
+			t.Fatal(writeErr)
+		}
+	}
+	if summary, runErr := durablerun.Start(context.Background(), filepath.Join(root, "spec.json"), filepath.Join(root, "job")); runErr != nil || summary.State != durablerun.Passed {
+		t.Fatalf("durable run did not pass: %+v %v", summary, runErr)
+	}
+	draft, err := testauthor.NewDraft("case", source.Identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, answer := range []testauthor.Answer{{Stage: testauthor.StageName, Name: "ACK"}, {Stage: testauthor.StageMessages, Messages: []string{booking}},
+		{Stage: testauthor.StageTarget, Target: "target.json"}, {Stage: testauthor.StageBoundary, Boundary: testrunner.ACKBoundary},
+		{Stage: testauthor.StageReset, Reset: "Reset the synthetic peer"}} {
+		draft, err = draft.Answer(answer)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root, draft
+}
+
+// A desktop execution retains its verified result inside the job entry. The
+// review still names that entry, while evidence links point into its result.
+func TestSuggestionsReadAVerifiedDurableRunResult(t *testing.T) {
+	root, draft := durableReviewedRun(t)
+	set, err := testauthor.Suggest(root, draft, testauthor.SuggestionRequest{
+		Result: "job", Positions: []string{"MSA-1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if set.Origin.Result != "job" || set.SupportedCount != 1 || set.UnsupportedCount != 0 {
+		t.Fatalf("the durable run was not proposed from: %+v", set)
+	}
+	link := set.Suggestions[0].Evidence
+	if link.Artifact != "job/result/run" || link.Payload == "" || link.Message != booking || link.Selector != "MSA-1" {
+		t.Fatalf("the evidence link does not locate the retained acknowledgement: %+v", link)
+	}
+	retained, err := replay.Open(filepath.Join(root, link.Artifact))
+	if err != nil {
+		t.Fatalf("the suggestion did not link to a verified run bundle: %v", err)
+	}
+	linked := false
+	for _, event := range retained.Events {
+		if event.SourceOccurrence != link.Message || event.Received.Path != link.Payload || event.Received.SHA256 != link.Digest {
+			continue
+		}
+		raw, rawErr := retained.Raw(event.Received)
+		if rawErr != nil {
+			t.Fatalf("the linked payload failed the run reader: %v", rawErr)
+		}
+		message, failure := testrunner.ParseACK(raw)
+		if failure != 0 {
+			t.Fatalf("the linked acknowledgement was not readable: %v", failure)
+		}
+		field, failure := testrunner.ACKField(message, link.Selector)
+		if failure != 0 || field.Text == nil || *field.Text != "AA" {
+			t.Fatalf("the linked position was not the proposed value: %+v %v", field, failure)
+		}
+		linked = true
+	}
+	if !linked {
+		t.Fatalf("the verified run held no event at the suggested link: %+v", link)
+	}
+	approved, review, err := testauthor.Approve(draft, set, testauthor.Review{
+		Result: "job", Identity: set.Origin.Identity,
+		Decisions: []testauthor.Decision{{Suggestion: set.Suggestions[0].ID, Approved: true}},
+	})
+	if err != nil || review.ApprovedCount != 1 || len(approved.Expectations) != 1 {
+		t.Fatalf("the durable run's proposal could not be approved: %+v %+v %v", approved, review, err)
+	}
+}
+
+func TestSuggestionsRefuseUnverifiedDurableResults(t *testing.T) {
+	root, draft := durableReviewedRun(t)
+	request := testauthor.SuggestionRequest{Result: "job", Positions: []string{"MSA-1"}}
+	journal := filepath.Join(root, "job", "journal.jsonl")
+	complete, err := os.ReadFile(journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(journal, append(append([]byte{}, complete...), []byte(`{"partial":`)...), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testauthor.Suggest(root, draft, request); err == nil {
+		t.Fatal("an incomplete durable journal supported suggestions")
+	}
+	if err := os.WriteFile(journal, complete, 0600); err != nil {
+		t.Fatal(err)
+	}
+	// Removing one retained byte breaks both the result identity and the job's
+	// lifecycle binding. A result-shaped folder alone is not evidence.
+	result := filepath.Join(root, "job", "result", "result.json")
+	if err := os.Remove(result); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testauthor.Suggest(root, draft, request); err == nil {
+		t.Fatal("a damaged durable result supported suggestions")
+	}
+	if _, err := testauthor.Suggest(root, draft, testauthor.SuggestionRequest{Result: "job/result", Positions: []string{"MSA-1"}}); err == nil {
+		t.Fatal("a nested path was accepted as a workspace entry")
 	}
 }
 
