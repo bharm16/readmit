@@ -27,6 +27,19 @@ non-launching stub. On macOS the module also links the UniformTypeIdentifiers
 framework required by the native file dialogs. A `--version` check alone cannot
 prove a window launches.
 
+On Windows, Wails hands the window's keyboard focus to WebView2 whenever the
+window receives it, and the go-webview2 release it pins ends the process when
+WebView2 refuses. WebView2 refuses the focus of a disabled window, and a host
+dialog disables the window it belongs to for as long as it is open, while the
+window can still receive the focus. No Wails 2 or go-webview2 release handles
+that refusal, so the shell withholds the focus while its window is disabled
+(`desktop/focus_windows.go`). A disabled window takes no input, so the page
+loses nothing: when the dialog closes, the window is enabled and activated
+again and its focus reaches the page as before. The guard finds Wails' window
+by the class Wails registers it under, and `--startup-check` fails on Windows
+when the guard is not in place, so a Wails release that changes that class
+fails every installed startup check instead of bringing the exit back.
+
 The interface is bundled into `frontend/dist` and embedded in the executable, so
 `npm run build` must run before `go build`. `npm run build` type-checks first: a
 binding that no longer matches the facade fails there. The desktop build is not
