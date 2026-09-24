@@ -102,7 +102,8 @@ unanswered is rejected. The kit's verbs:
   root and stopped when the journey ends, its own license, and a customer
   identity provider for the people it grants roles. The hub names the client
   configuration folder a window selects, completes a sign-in the window started
-  as the person's browser does (`signIn(authorizationURL, subject)`), issues a
+  as the person's browser does (`signIn(authorizationURL, subject)`, for a
+  five-minute session unless a lifetime in seconds is given), issues a
   runner token (`runnerToken(subject)`), runs the binary's operator operations
   with the service stopped (`operate`) and restarts it with further policies
   (`restart`). It needs `READMIT_POSTGRES_BIN` naming a PostgreSQL

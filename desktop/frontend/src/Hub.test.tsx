@@ -469,3 +469,53 @@ test("HubPanel keeps a remembered configuration's reason when choosing another i
 
   uninstallFacade();
 });
+
+// Publishing is authoring, so the application admits the author against the
+// activated license before anything is sent (#311). An upload it does not
+// admit is shown refused with the reason, and nothing is refreshed on the
+// person's behalf; once admitted, the published digest is shown and the
+// project's artifacts are read again. Publishing is reachable from the
+// keyboard: the source field, then the button.
+test("HubPanel shows an upload the license does not admit as refused with why, and publishes from the keyboard once admitted", async () => {
+  const user = userEvent.setup();
+  const admission = "operation activation is missing or invalid; select and activate an operation policy";
+  const published = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
+  const answers: HubTransferResult[] = [
+    { state: "permission_denied", reason: admission },
+    { state: "completed", transfer_state: "completed", digest: published, size: 43, path: "/workspace-under-test/evidence.txt" },
+  ];
+  const facade = installFacade({
+    HubStatus: async () => defaultHubResult(),
+    ListHubProjectArtifacts: async () => defaultArtifactsResult(),
+    UploadHubArtifact: async () => answers.shift()!,
+  });
+
+  render(<HubPanel />);
+  await user.click(await screen.findByRole("button", { name: /View Project Artifacts/i }));
+  const publish = await screen.findByRole("button", { name: "Publish Artifact" });
+  expect(publish.hasAttribute("disabled")).toBe(true);
+
+  await user.type(screen.getByLabelText("Upload source path:"), "/workspace-under-test/evidence.txt");
+  await user.tab();
+  expect(document.activeElement).toBe(publish);
+  await user.keyboard("{Enter}");
+  expect(await screen.findByText(admission)).toBeTruthy();
+  expect(screen.getByText(/Transfer state:/).textContent).toBe("Transfer state: permission_denied");
+  expect(screen.queryByText(published)).toBeNull();
+  expect(facade.callsTo("ListHubProjectArtifacts").length).toBe(1);
+
+  await waitFor(() => expect(publish.hasAttribute("disabled")).toBe(false));
+  await user.click(screen.getByLabelText("Upload source path:"));
+  await user.tab();
+  expect(document.activeElement).toBe(publish);
+  await user.keyboard("[Space]");
+  expect(await screen.findByText(published)).toBeTruthy();
+  expect(screen.queryByText(admission)).toBeNull();
+  expect(facade.callsTo("UploadHubArtifact").map((call) => call.args[0])).toEqual([
+    { project: "cardio-icu", source_path: "/workspace-under-test/evidence.txt" },
+    { project: "cardio-icu", source_path: "/workspace-under-test/evidence.txt" },
+  ]);
+  await waitFor(() => expect(facade.callsTo("ListHubProjectArtifacts").length).toBe(2));
+
+  uninstallFacade();
+});

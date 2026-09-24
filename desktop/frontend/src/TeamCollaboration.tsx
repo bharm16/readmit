@@ -4,6 +4,8 @@ import {
   postHubReview,
   postHubSupportReview,
   listHubNotifications,
+  searchHubReviews,
+  searchHubNotifications,
   listHubLifecycle,
   postHubLifecycle,
   downloadHubExport,
@@ -32,6 +34,14 @@ export function TeamCollaboration({ project, workspace = "", entries = [], capab
   const [drafts, setDrafts] = useState<EditorDraftsResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+
+  // A search of the history or of this person's notifications: what to look
+  // for, as the hub's query contract carries it, and what the hub found.
+  const [queryText, setQueryText] = useState("");
+  const [queryEvidence, setQueryEvidence] = useState("");
+  const [queryAfter, setQueryAfter] = useState("");
+  const [queryProblem, setQueryProblem] = useState<string | null>(null);
+  const [found, setFound] = useState<{ scope: "history" | "notifications"; result: HubReviewsResult } | null>(null);
 
   const [commentText, setCommentText] = useState("Evidence-linked comment");
   const [evidence, setEvidence] = useState("");
@@ -85,6 +95,24 @@ export function TeamCollaboration({ project, workspace = "", entries = [], capab
         setExportDigest(res.events?.[0]?.evidence ?? "");
       }
     });
+  }
+
+  // Searches are asked of the hub only when the person searches. A sequence
+  // that is not a whole number is refused here; every other part of the
+  // query is the application's and the hub's to judge.
+  function search(scope: "history" | "notifications") {
+    const after = queryAfter.trim();
+    if (after !== "" && !/^\d{1,9}$/.test(after)) {
+      setQueryProblem("Search after a sequence number: a whole number, 0 or more.");
+      setFound(null);
+      return;
+    }
+    setQueryProblem(null);
+    const request = { project, after: after === "" ? 0 : Number(after), text: queryText, evidence: queryEvidence.trim() };
+    void run(
+      () => (scope === "history" ? searchHubReviews(request) : searchHubNotifications(request)),
+      (result) => setFound({ scope, result }),
+    );
   }
 
   async function run<T>(work: () => Promise<T>, apply: (value: T) => void) {
@@ -146,6 +174,11 @@ export function TeamCollaboration({ project, workspace = "", entries = [], capab
       {notifications && (
         <div className="hub-collab-block">
           <h4>Notifications</h4>
+          {notifications.state !== "completed" ? (
+            <p role="status">{notifications.reason ?? "The notifications could not be read."}</p>
+          ) : (notifications.events ?? []).length === 0 ? (
+            <p>Nothing in this project is addressed to you.</p>
+          ) : null}
           <ul>
             {(notifications.events ?? []).map((event) => (
               <li key={`n-${event.command_id}-${event.sequence}`}>
@@ -155,6 +188,64 @@ export function TeamCollaboration({ project, workspace = "", entries = [], capab
           </ul>
         </div>
       )}
+
+      <form
+        className="hub-collab-form"
+        aria-label="Search history and notifications"
+        onSubmit={(e) => {
+          e.preventDefault();
+          search("history");
+        }}
+      >
+        <h4>Search history and notifications</h4>
+        <p className="hub-team-note">
+          The hub searches what it recorded for this project, or only what is addressed to you. Nothing is
+          asked until you search.
+        </p>
+        <label>
+          Text contains
+          <input value={queryText} onChange={(e) => setQueryText(e.target.value)} disabled={busy} />
+        </label>
+        <label>
+          Evidence (whole SHA-256 digest)
+          <input value={queryEvidence} onChange={(e) => setQueryEvidence(e.target.value)} disabled={busy} />
+        </label>
+        <label>
+          After sequence
+          <input value={queryAfter} inputMode="numeric" onChange={(e) => setQueryAfter(e.target.value)} disabled={busy} />
+        </label>
+        <div className="hub-actions">
+          <button type="submit" disabled={busy}>
+            Search history
+          </button>
+          <button type="button" disabled={busy} onClick={() => search("notifications")}>
+            Search notifications
+          </button>
+        </div>
+        {queryProblem ? <p role="alert">{queryProblem}</p> : null}
+        {found ? (
+          <div className="hub-collab-block">
+            <h5>
+              {found.result.state === "completed"
+                ? `${found.scope === "history" ? "History" : "Notifications"} matching: ${(found.result.events ?? []).length} (head ${found.result.head ?? 0})`
+                : `${found.scope === "history" ? "History" : "Notification"} search did not complete`}
+            </h5>
+            {found.result.state !== "completed" ? (
+              <p role="status">{found.result.reason ?? "The search could not be completed."}</p>
+            ) : (found.result.events ?? []).length === 0 ? (
+              <p>Nothing recorded matches this search.</p>
+            ) : null}
+            <ul>
+              {(found.result.events ?? []).map((event) => (
+                <li key={`s-${event.command_id}-${event.sequence}`}>
+                  #{event.sequence} <strong>{event.kind}</strong> by {event.actor}@{event.issuer} · evidence{" "}
+                  {event.evidence.slice(0, 12)}… — {event.text}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </form>
 
       <div className="hub-collab-form">
         <h4>Post collaboration decision</h4>

@@ -317,6 +317,23 @@ func TestCollaborationReviewLifecycleAndConflicts(t *testing.T) {
 	if err != nil || len(filtered.Events) != 1 || filtered.Events[0].Command.ID != "review-1" {
 		t.Fatalf("SearchHistory: %+v err=%v", filtered, err)
 	}
+	// A query the contract cannot carry is refused here, before the hub is
+	// asked; the hub's own refusal would name its status.
+	searches := map[string]func(context.Context, string, hubclient.ReviewQuery) (hubclient.ReviewHistory, error){
+		"history": client.SearchHistory, "notifications": client.SearchNotifications,
+	}
+	for problem, query := range map[string]hubclient.ReviewQuery{
+		"a negative sequence":   {After: -1},
+		"text beyond 256 bytes": {Text: strings.Repeat("r", 257)},
+		"text holding a NUL":    {Text: "re\x00lease"},
+		"a partial digest":      {Evidence: evidence[:63]},
+	} {
+		for route, search := range searches {
+			if _, err := search(ctx, "icu-audit", query); err == nil || strings.Contains(err.Error(), "status") {
+				t.Fatalf("a %s search with %s: %v", route, problem, err)
+			}
+		}
+	}
 	notes, err := client.ListNotifications(ctx, "icu-audit")
 	if err != nil || len(notes.Events) != 2 {
 		t.Fatalf("ListNotifications: %+v err=%v", notes, err)

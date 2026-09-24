@@ -23,8 +23,9 @@ export interface Hub {
    * returns its output; the service stays stopped until restart. */
   operate(extra: string[]): Promise<string>;
   /** Completes a sign-in the window started, as the browser and the identity
-   * provider do, authenticating subject. Resolves with the callback's status. */
-  signIn(authorizationURL: string, subject: string): Promise<number>;
+   * provider do, authenticating subject for a session of lifetimeSeconds (five
+   * minutes unless given). Resolves with the callback's status. */
+  signIn(authorizationURL: string, subject: string, lifetimeSeconds?: number): Promise<number>;
   /** Issues an authorization code for subject, for a colleague's window. */
   issueCode(subject: string): string;
   /** Restarts the hub with further serve flags, as its operator would. */
