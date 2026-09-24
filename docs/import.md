@@ -52,8 +52,12 @@ them later.
 The declarations are data, so the same import is repeatable and reviewable.
 There is no interactive prompt and no hidden state: re-running step 3 with the
 same declarations and the same containers produces the same sources in the same
-order. This command line is the whole of the import interface in this release;
-the desktop shell has no import surface, and none is added here.
+order. In the desktop window, open **Import evidence** from a project. Its
+**Import Plan (HL7 v2)** tab declares local files, folders and ZIP archives,
+previews extraction, then commits a case and receipt through the same readers
+and limits. **Mapping Recipe (Envelopes)** authors a typed recipe for CSV, JSON,
+XML or text exports; **Engine Export Adapter** exposes the finite, unqualified adapter
+described below. The command line remains available for saved plans and recipes.
 
 ## Declaring containers
 
@@ -368,9 +372,9 @@ limits above.
   mixed-direction corpus needs one import per direction. Observed times stay
   unknown. Reading either out of an envelope is `--recipe`, and supplying them
   per occurrence directly is `capture --metadata`.
-- **No desktop surface.** The import wizard is a command-line interface in this
-  release. The desktop shell lists, verifies and searches a workspace; it does
-  not import.
+- **No implicit declaration in the desktop window.** The import form exposes
+  the plan, recipe and engine adapter choices, but its preview and commit still
+  use the declared readers and preserve the original containers.
 
 ## Engine exports: unqualified local adapter
 

@@ -33,7 +33,7 @@ function licensed(args: string[]) {
   return journey.commandLine(["--operation-policy", journey.path("vendor-delivered-license", "operation-policy.json"), ...args]);
 }
 
-/** The sentence the command line refused with, as the window shows it. */
+/** The sentence the command line refused with, before window-specific guidance. */
 function refusal(stderr: string): string {
   return stderr.replace(/^readmit: /, "").trim();
 }
@@ -70,14 +70,15 @@ test("the SIU fixture listens on the port it chose, completes, is cancelled part
   const start = capture.getByRole("button", { name: "Start fixture listener" });
 
   // Every interface without the explicit approval is refused before anything
-  // binds, in the command line's own words.
+  // binds; the fixture window directs the person to a loopback address while
+  // the command line retains its flag wording.
   await enter(user, address, "0.0.0.0:0");
   await press(user, preview);
   const wider = await licensed(["listen", "--address", "0.0.0.0:0", "--mode", "fixed",
     "--output", `${PROJECT}/never.case`, "--observation", `${PROJECT}/never.json`]);
   expect(wider.code).not.toBe(0);
-  expect(await capture.findByText(refusal(wider.stderr))).toBeTruthy();
-  expect(refusal(wider.stderr)).toMatch(/opt-in/);
+  expect(await capture.findByText("Choose a loopback listen address for the SIU fixture.")).toBeTruthy();
+  expect(refusal(wider.stderr)).toBe("accepting connections from beyond this machine is opt-in: pass --approved-bind to bind a nonloopback address");
   expect((start as HTMLButtonElement).disabled).toBe(true);
 
   // An address another program already holds is refused at the bind, as the
@@ -155,6 +156,40 @@ test("the SIU fixture listens on the port it chose, completes, is cancelled part
   const cancelled = await journey.commandLine(["timeline", `${PROJECT}/cancelled.case`]);
   expect(cancelled.stdout).toContain("Messages: 1\nACKs: 1\n");
   expect(cancelled.stdout).toContain("Processed occurrences: 1\nLedger records: 1\nConsistent: true\n");
+});
+
+test("a controlled collector rejection authored in the window passes the real policy reader before preview", async () => {
+  const user = userEvent.setup();
+  await licensedProject(journey, user);
+  const capture = await openCapture(user);
+  await press(user, capture.getByRole("tab", { name: "MLLP collect" }));
+
+  await user.selectOptions(capture.getByLabelText("Controlled fault (v3 synthetic)"), "reject");
+  expect((capture.getByLabelText("Listen address") as HTMLInputElement).value).toBe("127.0.0.1:2575");
+  await press(user, capture.getByRole("button", { name: "Preview collector" }));
+  await whenEnabled(capture.getByRole("button", { name: "Start collecting" }));
+
+  const saved = JSON.parse(journey.readFile(`${PROJECT}/receiver-policy.json`));
+  expect(saved).toMatchObject({
+    schema: "readmit-receiver-policy/v3",
+    faults: {
+      environment_class: "nonproduction",
+      approved_test_endpoints: ["127.0.0.1:2575"],
+      steps: [{ message: 1, stage: "application", action: "reject", delay_ms: 0 }],
+    },
+  });
+  expect(journey.callsTo("SaveReceiverPolicy")).toHaveLength(1);
+  expect(journey.callsTo("PreviewCapture").at(-1)?.result).toMatchObject({ state: "completed" });
+
+  // If the person changes that explicit endpoint back to port zero, the
+  // shared reader refuses the attempted replacement without changing the
+  // accepted document or running a collector preview.
+  const policyBytes = journey.digest(`${PROJECT}/receiver-policy.json`);
+  await enter(user, capture.getByLabelText("Listen address"), "127.0.0.1:0");
+  await press(user, capture.getByRole("button", { name: "Preview collector" }));
+  expect(await capture.findByText("fault endpoints must be literal unicast IP addresses and nonzero ports")).toBeTruthy();
+  expect(journey.digest(`${PROJECT}/receiver-policy.json`)).toBe(policyBytes);
+  expect(journey.callsTo("PreviewCapture")).toHaveLength(1);
 });
 
 test("a declared source registration and responder policy reopen for review and further editing, read as the command line reads them", async () => {
@@ -287,11 +322,16 @@ test("a declared source registration and responder policy reopen for review and 
   ).toBeTruthy();
   expect((capture.getByLabelText("Controlled fault (v3 synthetic)") as HTMLSelectElement).value).toBe("delay");
   expect((capture.getByLabelText("Policy name") as HTMLInputElement).value).toBe("faulting-sink");
+  expect((capture.getByLabelText("Listen address") as HTMLInputElement).value).toBe("127.0.0.1:2575");
 
-  // Previewed as it was opened, at a port chosen by the system or at an
-  // address its faults do not approve, it is refused before anything binds,
-  // in the command line's words, and the document on disk is not rewritten.
+  // Its approved address previews immediately without rewriting the saved
+  // document. An explicitly chosen port zero or another unapproved address
+  // is still refused before anything binds, in the command line's words.
   const policyBytes = journey.digest(`${PROJECT}/policies/faulting.json`);
+  await press(user, capture.getByRole("button", { name: "Preview collector" }));
+  await whenEnabled(capture.getByRole("button", { name: "Start collecting" }));
+  expect(journey.callsTo("SaveReceiverPolicy")).toHaveLength(0);
+  expect(journey.digest(`${PROJECT}/policies/faulting.json`)).toBe(policyBytes);
   for (const unapproved of ["127.0.0.1:0", "127.0.0.1:2576"]) {
     await enter(user, capture.getByLabelText("Listen address"), unapproved);
     await press(user, capture.getByRole("button", { name: "Preview collector" }));

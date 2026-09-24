@@ -16,6 +16,11 @@ readmit import --recipe engine-export.json --folder exports \
 readmit timeline incident.case
 ```
 
+In the desktop window, open **Import evidence** from a project and choose
+**Mapping Recipe (Envelopes)**. The form authors the same typed recipe, selects
+local files, folders or ZIP archives, previews the extraction, then commits the
+case and receipt. The reader and mapping limits below apply to both surfaces.
+
 `--recipe` reads a `readmit-mapping-recipe/v1` document. It is exclusive with
 `--plan` and with every declaration flag: a recipe already states the framing,
 the terminator, the encoding, the members and the direction, so combining the
@@ -360,5 +365,5 @@ there is one reading of what a record is rather than two.
   recorded in the receipt, so a reader that needs them reads the receipt.
 - **No mapping state in the case bundle.** Which sources a recipe mapped is in
   the receipt for the same reason.
-- **No desktop surface.** Mapping recipes are a command-line interface in this
-  release.
+- **No automatic envelope detection.** The desktop mapping form also requires
+  an explicit envelope, dialect and typed operators before preview.
