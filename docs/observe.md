@@ -723,7 +723,7 @@ an application populated its view recently. The declared baseline and watermark
 retain their existing meanings. Repeated stable samples establish only the
 observed key state; they do not imply a serializable snapshot across polls.
 
-### Qualification still required
+### Finite qualification and remaining gates
 
 The opt-in [synthetic database lab](../.github/workflows/database-lab.yml) is
 `workflow_dispatch` only. It is never a pull-request, push, release or required
@@ -735,12 +735,11 @@ a setup principal separate from the SELECT-only observation principal, and
 loopback-only published ports. Each job retains its actual image digest and
 server version beside synthetic completion/snapshot evidence for positive,
 empty, ambiguous, permission, bound, cancellation and recovery paths. A
-successful PR containing the workflow is not server qualification: the owner
-must merge it, dispatch it on the default branch, and inspect all six retained
-artifacts before those combinations are advertised. Oracle 26ai Free and 19c
-are deliberately not run in this round and remain unqualified. Workflow
-artifacts expire after 30 days; the owner must preserve the verified safe
-receipts before expiration for a lasting qualification claim.
+successful PR containing the workflow is not server qualification. The final
+digest-pinned default-branch run and its six retained artifacts are identified
+below. Oracle 26ai Free and 19c were deliberately not run and remain
+unqualified. Actions artifacts expire after 30 days; the verified final-run
+receipts are also preserved in this checkout.
 
 The runner uses the [official PostgreSQL image](https://hub.docker.com/_/postgres)
 and Microsoft's [Linux TLS configuration](https://learn.microsoft.com/en-us/sql/linux/security/encrypted-connections?view=sql-server-ver17)
@@ -777,34 +776,33 @@ Exact image identities, rather than the mutable major tags alone:
 - 18: image ID `sha256:d8a40176c29aa0c7a20a19f85ddddc47f72d8d6789a7a86a21f3713e71fb4ad6`; Docker reported both `postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722` and `postgres@sha256:86c951e05bf56c93d95d397747fb8820ac76cc3bedb78f43abd83eedbe3666ae`. The image ID and both reported digests are retained rather than choosing one silently.
 
 The six-cell [branch discovery run](https://github.com/bharm16/readmit/actions/runs/36025500364)
-passed on native Linux x86-64 and retained synthetic evidence in this checkout.
-It ran before the workflow pinned the image digests below. These results identify
-the exact candidates for a final digest-pinned dispatch from `main`; they are
-**not** that final qualification. The committed evidence's SHA-256 manifests
-and strict completion/database readers are checked by
-`TestCommittedDatabaseQualificationEvidence`.
+identified exact image digests on native Linux x86-64. It was candidate evidence,
+not final qualification. The [digest-pinned main run 36029817324](https://github.com/bharm16/readmit/actions/runs/36029817324)
+on commit `cea49f96669a18759ba323c38a915886d62430b6` then passed all six
+cells. Its separate [byte-exact retained artifacts and provenance](https://github.com/bharm16/readmit/tree/main/testdata/lab-evidence/pinned-main-36029817324)
+include 94-file SHA-256 manifests per cell. `TestCommittedDatabaseQualificationEvidence`
+checks both hosted runs' manifests and the strict completion/database readers;
+the final artifacts also retain the pinned digest, platform and server patch.
 
-| Branch discovery cell | Actual server patch | Image repository digest | Retained evidence |
-| --- | --- | --- | --- |
-| PostgreSQL 16, Linux amd64 | 16.15 (Debian 16.15-1.pgdg13+2) | `postgres@sha256:a3b7f434b2dc57ce85a67e171163eb8ab1a1ebcb39d27484661f26b1dfbe30d6` | [receipt and snapshots](https://github.com/bharm16/readmit/tree/main/testdata/lab-evidence/postgresql-16-linux-amd64) |
-| PostgreSQL 17, Linux amd64 | 17.11 (Debian 17.11-1.pgdg13+2) | `postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f` | [receipt and snapshots](https://github.com/bharm16/readmit/tree/main/testdata/lab-evidence/postgresql-17-linux-amd64) |
-| PostgreSQL 18, Linux amd64 | 18.6 (Debian 18.6-1.pgdg13+2) | `postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722` | [receipt and snapshots](https://github.com/bharm16/readmit/tree/main/testdata/lab-evidence/postgresql-18-linux-amd64) |
-| SQL Server 2019, Linux amd64 | 15.0.4490.9 | `mcr.microsoft.com/mssql/server@sha256:ef0b8db33970ecd01bed49c3a84a1d083c435a9891718df619298b67b352e74a` | [receipt and snapshots](https://github.com/bharm16/readmit/tree/main/testdata/lab-evidence/sqlserver-2019-linux-amd64) |
-| SQL Server 2022, Linux amd64 | 16.0.4295.3 | `mcr.microsoft.com/mssql/server@sha256:4402d880dd4c34bfa7d8705e56a86cd6c88da80a1f6bbbe741f999e76264a090` | [receipt and snapshots](https://github.com/bharm16/readmit/tree/main/testdata/lab-evidence/sqlserver-2022-linux-amd64) |
-| SQL Server 2025, Linux amd64 | 17.0.5005.3 | `mcr.microsoft.com/mssql/server@sha256:2b5b581621126574f3d1f75e78d3eebe8d05aedb59ad0cfdf9aa42cb0634d726` | [receipt and snapshots](https://github.com/bharm16/readmit/tree/main/testdata/lab-evidence/sqlserver-2025-linux-amd64) |
+| Qualified Linux amd64 cell | Actual server patch | Pinned image repository digest | Branch discovery | Final pinned main evidence |
+| --- | --- | --- | --- | --- |
+| PostgreSQL 16 | 16.15 (Debian 16.15-1.pgdg13+2) | `postgres@sha256:a3b7f434b2dc57ce85a67e171163eb8ab1a1ebcb39d27484661f26b1dfbe30d6` | [candidate](https://github.com/bharm16/readmit/tree/main/testdata/lab-evidence/postgresql-16-linux-amd64) | [qualified receipt](https://github.com/bharm16/readmit/tree/main/testdata/lab-evidence/pinned-main-36029817324/postgresql-16-linux-amd64) |
+| PostgreSQL 17 | 17.11 (Debian 17.11-1.pgdg13+2) | `postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f` | [candidate](https://github.com/bharm16/readmit/tree/main/testdata/lab-evidence/postgresql-17-linux-amd64) | [qualified receipt](https://github.com/bharm16/readmit/tree/main/testdata/lab-evidence/pinned-main-36029817324/postgresql-17-linux-amd64) |
+| PostgreSQL 18 | 18.6 (Debian 18.6-1.pgdg13+2) | `postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722` | [candidate](https://github.com/bharm16/readmit/tree/main/testdata/lab-evidence/postgresql-18-linux-amd64) | [qualified receipt](https://github.com/bharm16/readmit/tree/main/testdata/lab-evidence/pinned-main-36029817324/postgresql-18-linux-amd64) |
+| SQL Server 2019 | 15.0.4490.9 | `mcr.microsoft.com/mssql/server@sha256:ef0b8db33970ecd01bed49c3a84a1d083c435a9891718df619298b67b352e74a` | [candidate](https://github.com/bharm16/readmit/tree/main/testdata/lab-evidence/sqlserver-2019-linux-amd64) | [qualified receipt](https://github.com/bharm16/readmit/tree/main/testdata/lab-evidence/pinned-main-36029817324/sqlserver-2019-linux-amd64) |
+| SQL Server 2022 | 16.0.4295.3 | `mcr.microsoft.com/mssql/server@sha256:4402d880dd4c34bfa7d8705e56a86cd6c88da80a1f6bbbe741f999e76264a090` | [candidate](https://github.com/bharm16/readmit/tree/main/testdata/lab-evidence/sqlserver-2022-linux-amd64) | [qualified receipt](https://github.com/bharm16/readmit/tree/main/testdata/lab-evidence/pinned-main-36029817324/sqlserver-2022-linux-amd64) |
+| SQL Server 2025 | 17.0.5005.3 | `mcr.microsoft.com/mssql/server@sha256:2b5b581621126574f3d1f75e78d3eebe8d05aedb59ad0cfdf9aa42cb0634d726` | [candidate](https://github.com/bharm16/readmit/tree/main/testdata/lab-evidence/sqlserver-2025-linux-amd64) | [qualified receipt](https://github.com/bharm16/readmit/tree/main/testdata/lab-evidence/pinned-main-36029817324/sqlserver-2025-linux-amd64) |
 
-SQL Server 2019/2022/2025 and Oracle 26ai Free/19c remain **unqualified**.
-The SQL Server cells require a successful final dispatch of the pinned workflow
-from `main` and review of its retained evidence. Oracle is skipped this round;
-19c also needs its separately authorized installation. The remaining owner gates:
+These are exact image/platform/server-patch results, not generic claims for
+PostgreSQL or SQL Server installations. Native Linux x86-64 was the SQL Server
+reference environment; Apple-Silicon emulation did not substitute for it.
+Oracle 26ai Free/19c remain **unqualified**. Oracle was skipped this round; 19c
+also needs its separately authorized installation. The remaining owner gates:
 
-- SQL Server **2019, 2022 and 2025** on native **x86-64 Linux** in the final
-  digest-pinned default-branch run, with its retained evidence inspected.
-  Apple-Silicon emulation cannot substitute for the reference environment.
 - Oracle **26ai Free**, plus a separately **authorized Oracle 19c installation**,
   each with exact patch/image identity. 26ai and a protocol fixture cannot
   establish 19c behavior or rights to run it.
-- A TLS endpoint and trusted CA/name for each remaining lab; separate SELECT-only and
+- A TLS endpoint and trusted CA/name for each Oracle lab; separate SELECT-only and
   setup/reset principals; approved views populated only with synthetic keys.
   Register store references locally; never attach values or DSNs to issues.
 - Retained `observe collect` completion/snapshot evidence for populated and
@@ -812,13 +810,12 @@ from `main` and review of its retained evidence. Oracle is skipped this round;
   refused permissions/writes, row/byte/query deadlines, lost connections,
   wrong-name/untrusted/no-TLS refusal, cancellation and a fresh successful
   recovery. Record the actual grants and independent denial tests without
-  credential values. The pinned candidate digests above must match the final
-  lab's reported identities.
+  credential values. Record each Oracle lab's actual version and image identity.
 
 The committed TLS PostgreSQL-wire fixture exercises the real pgx driver and
 public collector, including bound injection-like values and failure redaction.
 It is not a real PostgreSQL server, grant proof, SQL Server/Oracle qualification,
-or release acceptance. #75 remains open until the named matrix is exercised.
+or release acceptance. #75 remains open because the Oracle matrix is untested.
 
 The optional `TestDatabasePostgreSQLLab` creates and destroys its own isolated
 cluster using an explicitly selected `READMIT_POSTGRES_BIN` directory. It uses
@@ -826,8 +823,8 @@ synthetic data, TLS and a separate view-only principal, verifies write/permissio
 denial, exact numeric/timestamp mappings, query timeout and fresh recovery. Its
 loopback-only trust authentication tests grants and transport, **not password
 authentication**. Its local run used PostgreSQL 14.19 (Homebrew) and does not
-substitute for the three Linux/arm64 password-authenticated cells above or any
-pending SQL Server/Oracle cell. Example invocation:
+substitute for the password-authenticated Linux/arm64 and Linux/amd64 cells
+above or any untested Oracle cell. Example invocation:
 
 ```sh
 READMIT_POSTGRES_BIN=/absolute/path/to/postgresql/bin \

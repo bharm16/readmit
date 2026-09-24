@@ -1,5 +1,13 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The digest-pinned default-branch synthetic database lab passed all six native
+  Linux/amd64 cells on commit `cea49f96669a18759ba323c38a915886d62430b6`
+  (#75). Its exact 94-member-per-cell artifacts are retained separately from
+  branch discovery, with strict-reader/hash checks and run provenance. This
+  qualifies the recorded PostgreSQL 16.15/17.11/18.6 and SQL Server 2019
+  15.0.4490.9, 2022 16.0.4295.3 and 2025 17.0.5005.3 image/platform cells.
+  Oracle 26ai Free/19c remains unqualified, so #75 stays open.
+
 - The SQL Server database-observation connector now selects TCP explicitly
   (#75). The pinned driver did not infer a protocol from the typed connector
   configuration, so its first prelogin could panic on a nil connection. A
@@ -9,8 +17,7 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   runs remain failed evidence, not SQL Server qualification. A successful
   six-cell branch discovery run retained synthetic Linux/amd64 receipts and
   exact image digests for PostgreSQL 16/17/18 and SQL Server 2019/2022/2025.
-  The manual workflow now pins those digests; SQL Server qualification still
-  needs a successful pinned default-branch run and evidence review.
+  The manual workflow pins those digests; final qualification is recorded above.
 
 - A manually dispatched synthetic database lab now defines the finite D3
   PostgreSQL 16/17/18 and native x86-64 SQL Server 2019/2022/2025 test matrix
@@ -18,8 +25,8 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   principal, and retains exact image/version plus observation evidence. Local
   Linux/arm64 PostgreSQL 16.15, 17.11 and 18.6 runs passed and their synthetic
   completions/snapshots are retained in this checkout with image digests. The
-  workflow is never a PR or release gate; no SQL Server or Oracle version is
-  claimed qualified until the owner dispatches and reviews its evidence.
+  workflow is never a PR or release gate; its later final main run is recorded
+  above, while Oracle remains unqualified.
 
 - `readmit import engine` now reads the source RAW stage of original synthetic
   Mirth Connect 4.5.2 and OIE 4.6.0 whole-message exports (#35). Their
