@@ -8,11 +8,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/bharm16/readmit/internal/evidencesource"
 	"github.com/bharm16/readmit/internal/observewindow"
+	"github.com/bharm16/readmit/internal/secret"
 )
 
 // transferSource writes a read-only transfer program and the declaration that
@@ -275,5 +277,92 @@ esac
 	// could have read.
 	if listed := collection.Totals.Declared - collection.Totals.NotRead; len(collection.Entries) != listed {
 		t.Fatalf("entries = %d of %d listed, want every listed entry accounted for", len(collection.Entries), listed)
+	}
+}
+
+// declaredPrograms counts the declared programs a context's observer is told
+// about: how many are running now, and how many started and ended.
+type declaredPrograms struct {
+	mu                      sync.Mutex
+	running, started, ended int
+}
+
+func (d *declaredPrograms) observe() func() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.running++
+	d.started++
+	return func() {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		d.running--
+		d.ended++
+	}
+}
+
+func (d *declaredPrograms) counts() (running, started, ended int) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.running, d.started, d.ended
+}
+
+// The transfer program is a program the operator declared, so each run of it
+// is reported to an observer the context carries: running from its start
+// until readmit has waited for it, whether it printed a listing, streamed an
+// entry to its end, or was stopped part way when a diagnosis had read enough.
+// The program records every run, so each one is matched by a report.
+func TestTransferProgramIsReportedRunningFromItsStartUntilItEnds(t *testing.T) {
+	source := transferSource(t, withMessage(`
+state="$1"; shift
+printf '%s\n' "$1" >> "$state.runs"
+case "$1" in
+list) printf '%d\ta.hl7\n' "${#MESSAGE}" ;;
+get)  : > "$state.started"
+      waited=0
+      while [ ! -e "$state.release" ]; do
+        [ "$waited" -ge 1000 ] && exit 1
+        sleep 0.01; waited=$((waited + 1))
+      done
+      printf '%s' "$MESSAGE" ;;
+esac
+`))
+	state := filepath.Join(filepath.Dir(source.Command), "state")
+	observer := &declaredPrograms{}
+	ctx := secret.ObserveDeclaredPrograms(context.Background(), observer.observe)
+	collected := make(chan error, 1)
+	go func() {
+		_, err := evidencesource.Collect(ctx, source, destination(t), transferOptions(t))
+		collected <- err
+	}()
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(5 * time.Millisecond) {
+		if _, err := os.Stat(state + ".started"); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the transfer program never started streaming the entry")
+		}
+	}
+	if running, started, ended := observer.counts(); running != 1 || started != 2 || ended != 1 {
+		t.Fatalf("while the entry streamed the observer saw %d running, %d started, %d ended; want the listing ended and the transfer running", running, started, ended)
+	}
+	if err := os.WriteFile(state+".release", nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-collected; err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	if _, err := evidencesource.Diagnose(ctx, source, transferOptions(t)); err != nil {
+		t.Fatalf("diagnose: %v", err)
+	}
+	runs, err := os.ReadFile(state + ".runs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ran := strings.Count(string(runs), "\n")
+	if running, started, ended := observer.counts(); running != 0 || started != ran || ended != ran {
+		t.Fatalf("the program ran %d times and the observer saw %d started, %d ended, %d still running", ran, started, ended, running)
+	}
+	if ran < 4 {
+		t.Fatalf("the collection and the diagnosis ran the program %d times; want a listing and an entry each", ran)
 	}
 }

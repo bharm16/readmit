@@ -277,6 +277,13 @@ var privacyStatus = Privacy{
 			Authorization: "an operator-selected hub configuration, the mutual-TLS material it names, and your per-session identity-provider sign-in",
 		},
 		{
+			ID:            "declared-program",
+			Activity:      "Operator-declared programs",
+			Destination:   "whatever the program is configured to reach, such as a secret store or vault, a key service, or the source a transfer program reads; Readmit cannot see or vouch for that program's destinations, and running one adds no network access of Readmit's own",
+			Data:          "only the arguments the operator declared, and for a transfer program the credential its reference names, on standard input; Readmit reads back one bounded credential or key, or the listing and entries a transfer program prints, and discards the program's diagnostics",
+			Authorization: "a program declared by absolute path in a credential reference, a hub or runner configuration, a protection control, a source registration or an observation source, and your explicit action that needs it: testing, rotating or scanning credential references, a hub, runner or protection action, or a check, reset, reduction, collection, capture or observation whose configuration declares one",
+		},
+		{
 			ID:            "portal",
 			Activity:      "Commercial portal",
 			Destination:   "the vendor portal address your operator's destinations file names, opened in your own browser",

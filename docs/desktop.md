@@ -446,6 +446,22 @@ inventory of operations that reach a destination; every operation in that
 inventory fails them if it holds the slot unnamed or under a name the status
 does not report as its own activity.
 
+An operation that can run a program an operator declared is named for the same
+reason: testing, rotating and scanning credential references run under
+`secret-test`, `secret-rotation` and `secret-scan`, and the rest already have
+the names above — `protect` for a protection control's key program, the hub's
+names for its key command, the runner's for its key and token commands, the
+environment's for the locator of a client certificate's private key, the
+capture row's for a transfer program or a capture listener's key, and
+`observation` for an observation source's credential. Every such program
+reports itself while it runs, whichever engine package starts it, and the
+privacy status's declared-program row is active exactly then, in the sentence
+its operation's name has. The facade's tests hold every operation in the
+reviewed inventory of operations that run a declared program to a name with
+its own sentence, and hold the engine to starting a program in only the two
+places that report it: the locator read every credential, key and token goes
+through, and a source's transfer program.
+
 ## Workspaces and artifacts
 
 A workspace is a folder. Opening it lists each immediate entry with the contract
@@ -1784,6 +1800,33 @@ That status is part
 of the facade, so it is the same fact the rest of the product is built on rather
 than a sentence the interface maintains separately, and the frontend sources are
 checked to hold no network call and no browser storage at all.
+
+Some operations run a program the operator declared by its absolute path: the
+locator of a credential reference when one is tested, rotated or scanned for,
+the key command of a hub configuration when the window connects, diagnoses or
+completes a sign-in while connected, the key and token commands of a runner
+configuration, the key program of a protection control, the locator naming a
+client certificate's or a TLS capture listener's private key, a source's
+transfer program or credential locator, and an observation source's credential
+locator. Such a program may contact a secret store, a vault or anything else it
+is configured to reach, so the privacy status has a row for it: **Operator-declared
+programs**. While one of those programs is running the row reads active, says
+which operation's program it is, and says that the program may contact whatever
+it is configured to reach. Otherwise it reads idle. Beside it, the row of the
+operation that runs the program keeps its own state, so a hub connection shows
+both the hub and the declared program active while its key command runs, and
+only the hub once the command has ended.
+
+What the row cannot say is where the program connects. Readmit starts it, hands
+it only the arguments the operator declared (a transfer program also receives
+its credential on standard input), reads back one bounded value or the entries
+a transfer program prints, and discards its diagnostics. It never sees the
+program's own connections, so it cannot see or vouch for their destinations,
+and the row never names one. Running the program adds no network access of
+Readmit's own. The row is active only while the program is actually running,
+not for the whole operation that runs it and not merely because an operation
+that could run one holds the slot. An operation refused before its program
+starts never makes it active.
 
 ## Project maintenance, backup and staged upgrades
 

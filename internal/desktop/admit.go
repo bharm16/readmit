@@ -1,6 +1,10 @@
 package desktop
 
-import "context"
+import (
+	"context"
+
+	"github.com/bharm16/readmit/internal/secret"
+)
 
 // refused is implemented by every operation result through a pointer receiver,
 // so the one admission runner below can fill in the single state-plus-reason
@@ -41,6 +45,14 @@ func run[R any, PR interface {
 // and execution, and every hub request and step of a sign-in — starts here,
 // under a name disclosure.go maps to its row, whether or not it is
 // interruptible. Only local work may be unnamed.
+//
+// The work's context also carries the observer of operator-declared programs
+// (secret.ObserveDeclaredPrograms), so every program the work runs — a
+// credential reference's locator, a hub, runner or protection key command, a
+// source's transfer program — reports itself while it runs, and the privacy
+// status's declared-program row is active exactly then. Every operation that
+// can run one — testing, rotating or scanning credential references
+// included — is named, and disclosure.go says what each name's program is.
 func runNamed[R any, PR interface {
 	*R
 	refused
@@ -59,6 +71,7 @@ func runNamed[R any, PR interface {
 		return refused
 	}
 	defer release()
+	ctx = secret.ObserveDeclaredPrograms(ctx, a.declaredProgramStarted)
 	if writes {
 		if err := a.admitAuthorContext(ctx); err != nil {
 			declined := admissionRefusal(ctx, err)

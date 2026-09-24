@@ -111,6 +111,138 @@ func activeUnder(t *testing.T, app *desktop.App, name string) string {
 	return activeNow(app)
 }
 
+// Every operation that can run a program an operator declared holds the slot
+// only under a name, and the name alone never makes the declared-program row
+// active: holding it reads exactly the row the operation reaches a
+// destination under, if it has one. While a program runs under that name the
+// row is active beside it, in the name's own sentence, which says whose
+// program it is and that Readmit cannot vouch for where it connects.
+func TestEveryOperationThatRunsADeclaredProgramRunsUnderANameTheStatusMaps(t *testing.T) {
+	_, claims := reachingOf(t)
+	app := newApp(t, &chooser{})
+	if result := app.SelectHubConfig(writeHubClientConfig(t, t.TempDir(), "https://127.0.0.1:1")); result.State != desktop.Completed {
+		t.Fatalf("hub configuration: %+v", result)
+	}
+	// A program running under a name with no sentence of its own is still
+	// reported running, in a sentence that names no operation.
+	reading, unattributed := runningUnder(t, app, "an-operation-with-no-sentence")
+	if reading != "declared-program" || !strings.Contains(unattributed, "cannot see or vouch") {
+		t.Fatalf("a program running under an unmapped name reads %q: %q", reading, unattributed)
+	}
+	for _, method := range operationsRunningDeclaredPrograms {
+		if len(claims[method]) == 0 {
+			t.Errorf("%s runs a declared program but claims no operation slot the status could read", method)
+		}
+		for _, name := range claims[method] {
+			if name == "" {
+				t.Errorf("%s runs a declared program and holds the slot without a name, so the status answers busy while it runs", method)
+				continue
+			}
+			own := destinationActivities[method]
+			if alone := activeUnder(t, app, name); alone != own {
+				t.Errorf("%s holds the slot as %q, and with no program running the privacy status reads %q, want %q", method, name, alone, own)
+			}
+			want := "declared-program"
+			if own != "" {
+				want = own + ",declared-program"
+			}
+			reading, detail := runningUnder(t, app, name)
+			if reading != want {
+				t.Errorf("while %s's program runs as %q the privacy status reads %q, want %q", method, name, reading, want)
+			}
+			if detail == unattributed || !strings.Contains(detail, "cannot see or vouch") {
+				t.Errorf("while %s's program runs as %q the declared-program row says %q, not whose program it is", method, name, detail)
+			}
+		}
+	}
+}
+
+// runningUnder holds the slot under name while a declared program is counted
+// running, and returns what the privacy status then reports active and what
+// its declared-program row says.
+func runningUnder(t *testing.T, app *desktop.App, name string) (string, string) {
+	t.Helper()
+	release, held := desktop.HoldSlotForTest(app, name)
+	if !held {
+		t.Fatalf("the slot was not free to hold as %q", name)
+	}
+	defer release()
+	ended := desktop.DeclaredProgramRunningForTest(app)
+	defer ended()
+	return activeNow(app), declaredProgramDetail(app)
+}
+
+// declaredProgramDetail is what the privacy status's declared-program row
+// says now.
+func declaredProgramDetail(app *desktop.App) string {
+	for _, state := range app.DisclosureStatus().States {
+		if state.ID == "declared-program" {
+			return state.Detail
+		}
+	}
+	return ""
+}
+
+// Readmit starts a program in exactly two places, and both report it to the
+// observer every operation's context carries: the one read of a locator
+// (secret.Locator.Read), through which every credential, key and token is
+// resolved, and a source's transfer program (evidencesource). No other
+// package the facade can reach imports os/exec or starts a process another
+// way, so no program runs that the declared-program row could miss.
+func TestOnlyDeclaredProgramsAreStarted(t *testing.T) {
+	starters := map[string]bool{}
+	err := filepath.WalkDir("..", func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			if entry.Name() == "testdata" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		source, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, source, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		for _, spec := range file.Imports {
+			imported, _ := strconv.Unquote(spec.Path.Value)
+			if imported == "os/exec" {
+				starters[filepath.ToSlash(path)] = true
+			}
+		}
+		for _, starter := range []string{"os.StartProcess", "syscall.ForkExec", "syscall.Exec", "syscall.StartProcess"} {
+			if strings.Contains(string(source), starter) {
+				starters[filepath.ToSlash(path)] = true
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{"../secret/secret.go": true, "../evidencesource/transfer.go": true}
+	if !maps.Equal(starters, want) {
+		t.Errorf("programs are started from %v; only the locator read and the transfer program report themselves (%v)", slices.Sorted(maps.Keys(starters)), slices.Sorted(maps.Keys(want)))
+	}
+	for path := range want {
+		source, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(source), "DeclaredProgramStarting(ctx)") {
+			t.Errorf("%s starts a declared program without reporting it", path)
+		}
+	}
+}
+
 // reachingOf reads, from the facade's own source, which bound methods can
 // reach a network destination or change a target, and the name of every slot
 // claim each makes. A method can reach one when it, or a facade method or

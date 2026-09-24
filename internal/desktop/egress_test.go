@@ -195,7 +195,7 @@ func TestStartupRestorationAndInspectionReachNoConfiguredDestination(t *testing.
 	for _, state := range disclosure.States {
 		disclosed[state.ID] = state.State
 	}
-	for id, want := range map[string]string{"run": "idle", "runner": "idle", "capture": "idle", "environment": "idle", "observe": "idle", "hub": "offline", "portal": "configured"} {
+	for id, want := range map[string]string{"run": "idle", "runner": "idle", "capture": "idle", "environment": "idle", "observe": "idle", "hub": "offline", "declared-program": "idle", "portal": "configured"} {
 		if disclosed[id] != want {
 			t.Errorf("after a restart %s is %q, want %q: %+v", id, disclosed[id], want, disclosure)
 		}
@@ -296,15 +296,15 @@ func writeHubClientConfig(t *testing.T, dir, hub string) string {
 }
 
 // destinationActivities is the reviewed inventory of bound operations that can
-// reach something outside this window — a connection, a listener, a name
-// lookup or a program that may itself connect — each with the disclosed
-// activity whose row states its destination, data and authorization. It is a
-// list, not an enumeration: an operation that starts reaching a destination
-// has to be added here, and one the facade's own source shows reaching a
-// destination fails TestEveryOperationThatCanReachADestinationRunsUnderADisclosedName
+// reach something outside this window — a connection, a listener or a name
+// lookup — each with the disclosed activity whose row states its destination,
+// data and authorization. It is a list, not an enumeration: an operation that
+// starts reaching a destination has to be added here, and one the facade's own
+// source shows reaching a destination fails TestEveryOperationThatCanReachADestinationRunsUnderADisclosedName
 // until it is. Each runs only on the explicit action that calls it, which the
 // test above holds for everything else, and under a name the privacy status
-// reports as its activity.
+// reports as its activity. A program an operator declared, which may itself
+// connect, is inventoried in operationsRunningDeclaredPrograms.
 var destinationActivities = map[string]string{
 	"StartDurableRun": "run", "StartSuiteRun": "run", "RunPractice": "run",
 	"DeriveExportReview": "run", "ExportDerivedPacket": "run",
@@ -319,10 +319,39 @@ var destinationActivities = map[string]string{
 	"ListHubLifecycle": "hub", "PostHubLifecycle": "hub", "DownloadHubExport": "hub", "ReconcileHubOfflineDraft": "hub",
 }
 
-// The privacy status covers the reviewed inventory: every operation in it
+// operationsRunningDeclaredPrograms is the reviewed inventory of bound
+// operations that can run a program an operator declared: the locator of a
+// credential reference, the key command of a hub configuration, the key and
+// token commands of a runner configuration, the key program of a protection
+// control, the locator naming the private key a target's client certificate
+// or a TLS capture listener presents, a source's transfer program or
+// credential locator, and an observation source's credential locator.
+// Readmit runs such a program by the absolute path the operator declared and
+// cannot see where it connects, so each runs under a name the privacy
+// status's declared-program row has a sentence for, and the row is active
+// while the program runs. An operation that also reaches a destination of its
+// own is in destinationActivities too.
+//
+// It is a list, not an enumeration: finding the operations whose calls reach a
+// program would need the engine's types, not only the facade's source. Every
+// program Readmit starts reports itself, whichever operation runs it
+// (TestOnlyDeclaredProgramsAreStarted), so a named operation missing here
+// still shows the row active, in a sentence that does not say whose program
+// it is; one that holds the slot without a name is answered busy, never idle.
+var operationsRunningDeclaredPrograms = []string{
+	"TestSecretReference", "RotateSecretReference", "ScanSecrets",
+	"RotateProtectionControl", "PackProtectedPackage", "OpenProtectedPackage",
+	"DiagnoseHub", "ConnectHub", "CompleteHubAuth",
+	"EnrollRunner", "ExecuteRunnerJob",
+	"CheckTarget", "ResetTarget", "StartReduction",
+	"DiagnoseSource", "CollectSource", "StartCapture",
+	"CollectObservation",
+}
+
+// The privacy status covers the reviewed inventories: every operation in them
 // belongs to an activity the window discloses, and every disclosed activity
 // is reached by something, so neither a blanket claim nor a stale row can
-// stand in for the list.
+// stand in for the lists.
 func TestEveryDestinationReachingOperationIsADisclosedActivity(t *testing.T) {
 	disclosed := map[string]bool{}
 	for _, operation := range shell(t).Privacy.Operations {
@@ -338,6 +367,15 @@ func TestEveryDestinationReachingOperationIsADisclosedActivity(t *testing.T) {
 			t.Errorf("%s reaches a destination under %q, which the privacy status does not disclose", name, activity)
 		}
 		reached[activity] = true
+	}
+	for _, name := range operationsRunningDeclaredPrograms {
+		if _, ok := bound.MethodByName(name); !ok {
+			t.Errorf("%s runs a declared program but is not a bound operation", name)
+		}
+		reached["declared-program"] = true
+	}
+	if !disclosed["declared-program"] {
+		t.Error("operations run programs an operator declared, and the privacy status does not disclose them")
 	}
 	for activity := range disclosed {
 		if !reached[activity] {

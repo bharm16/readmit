@@ -179,7 +179,11 @@ func run(ctx context.Context, c Config, job Job, inputIdentity string) (summary 
 	if err != nil {
 		return zero, err
 	}
-	defer func() { admission(context.Background(), c, instance, job.ID, "DELETE") }()
+	// The release is sent even when the run was cancelled, so it is never
+	// cancelled with it, but it keeps the context's values: the key and token
+	// commands it runs report themselves to an observer the caller installed
+	// (secret.ObserveDeclaredPrograms), as the enrollment's did.
+	defer func() { admission(context.WithoutCancel(ctx), c, instance, job.ID, "DELETE") }()
 	status, err := Health(c.Root)
 	if err != nil || status.Jobs >= lease.MaxJobs {
 		return zero, ErrRefused
