@@ -16,7 +16,6 @@ import (
 	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/observewindow"
 	"github.com/bharm16/readmit/internal/operation"
-	"github.com/bharm16/readmit/internal/operationguard"
 )
 
 // CapturePhase names what the capture screen is doing without disclosing values.
@@ -215,26 +214,14 @@ func (r *SourceCollectionResult) refuse(state State, reason string) {
 
 // DiagnoseSource reports what access was available without collecting.
 func (a *App) DiagnoseSource(request SourceWorkRequest) SourceAccessResult {
-	return runNamed[SourceAccessResult, *SourceAccessResult](a, "source-diagnosis", true, false, func(ctx context.Context) (out SourceAccessResult) {
-		guard, _ := a.selectedOperation()
-		settle, admissionErr := guard.AdmitContext(ctx, "execute")
-		if admissionErr != nil {
-			declined := admissionRefusal(ctx, admissionErr)
-			return SourceAccessResult{State: declined.state, Reason: declined.reason}
-		}
-		defer func() {
-			if err := settle(); err != nil {
-				out.State = Failed
-				out.Reason = "runner settlement failed; reconcile the retained admission before new work"
-			}
-		}()
+	return runNamed[SourceAccessResult, *SourceAccessResult](a, profiles["DiagnoseSource"], func(ctx context.Context) SourceAccessResult {
 		source, options, err := a.sourceWork(ctx, request)
 		if err != nil {
 			return SourceAccessResult{State: Failed, Reason: err.Error()}
 		}
 		access, err := operation.SourceDiagnose(ctx, source, options, "")
 		if err != nil {
-			if ctx.Err() != nil {
+			if errors.Is(ctx.Err(), context.Canceled) {
 				return SourceAccessResult{State: Cancelled, Reason: cancelledRefusal.reason}
 			}
 			return SourceAccessResult{State: Failed, Reason: err.Error()}
@@ -250,19 +237,7 @@ func (a *App) DiagnoseSource(request SourceWorkRequest) SourceAccessResult {
 
 // CollectSource stages evidence from an approved source with a receipt.
 func (a *App) CollectSource(request SourceWorkRequest) SourceCollectionResult {
-	return runNamed[SourceCollectionResult, *SourceCollectionResult](a, "collect", true, true, func(ctx context.Context) (out SourceCollectionResult) {
-		guard, _ := a.selectedOperation()
-		settle, admissionErr := guard.AdmitContext(ctx, "execute")
-		if admissionErr != nil {
-			declined := admissionRefusal(ctx, admissionErr)
-			return SourceCollectionResult{State: declined.state, Reason: declined.reason}
-		}
-		defer func() {
-			if err := settle(); err != nil {
-				out.State = Failed
-				out.Reason = "runner settlement failed; reconcile the retained admission before new work"
-			}
-		}()
+	return runNamed[SourceCollectionResult, *SourceCollectionResult](a, profiles["CollectSource"], func(ctx context.Context) SourceCollectionResult {
 		outputName := request.OutputName
 		if outputName == "" {
 			outputName = "collected"
@@ -292,7 +267,7 @@ func (a *App) CollectSource(request SourceWorkRequest) SourceCollectionResult {
 		receipt := filepath.Join(root, receiptName)
 		collection, err := operation.SourceCollect(ctx, source, output, receipt, options)
 		if err != nil && !errors.Is(err, evidencesource.ErrIncomplete) {
-			if ctx.Err() != nil {
+			if errors.Is(ctx.Err(), context.Canceled) {
 				return SourceCollectionResult{State: Cancelled, Reason: cancelledRefusal.reason, OutputPath: outputName, ReceiptPath: receiptName}
 			}
 			if errors.Is(err, os.ErrPermission) {
@@ -469,6 +444,16 @@ type CaptureSessionResult struct {
 
 func (r *CaptureSessionResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
+// refuseExecution answers a capture its execution admission declined: it
+// never started, so it failed, or stopped when the person cancelled while
+// admission waited.
+func (r *CaptureSessionResult) refuseExecution(state State, reason string) {
+	r.State, r.Reason, r.Phase = state, reason, CaptureFailed
+	if state == Cancelled {
+		r.Phase = CaptureStopped
+	}
+}
+
 // FixtureLedger is the appointment ledger a fixture listen sealed into its
 // case, counted as `readmit listen` and `readmit timeline` print it: the
 // receiver's testimony, never a verdict, and never one of its values.
@@ -552,22 +537,7 @@ func (a *App) PreviewCapture(request CaptureRequest) CapturePreviewResult {
 // StartCapture starts a collector or SIU fixture only after explicit authorized
 // action. Stop/cancel uses Cancel through the shared engine.
 func (a *App) StartCapture(request CaptureRequest) CaptureSessionResult {
-	return runNamed[CaptureSessionResult, *CaptureSessionResult](a, "capture", true, true, func(ctx context.Context) (out CaptureSessionResult) {
-		guard, _ := a.selectedOperation()
-		settle, admissionErr := guard.AdmitContext(ctx, "execute")
-		if admissionErr != nil {
-			declined, phase := admissionRefusal(ctx, admissionErr), CaptureFailed
-			if declined.state == Cancelled {
-				phase = CaptureStopped
-			}
-			return CaptureSessionResult{State: declined.state, Reason: declined.reason, Phase: phase}
-		}
-		defer func() {
-			if err := settle(); err != nil {
-				out.State = Failed
-				out.Reason = "runner settlement failed; reconcile the retained admission before new work"
-			}
-		}()
+	return runNamed[CaptureSessionResult, *CaptureSessionResult](a, profiles["StartCapture"], func(ctx context.Context) (out CaptureSessionResult) {
 		if artifactpath.EntryName(request.OutputName) != nil {
 			return CaptureSessionResult{State: Failed, Reason: "the captured case must be one new entry of the open workspace", Phase: CaptureFailed}
 		}
@@ -581,8 +551,6 @@ func (a *App) StartCapture(request CaptureRequest) CaptureSessionResult {
 		if root == "" {
 			return CaptureSessionResult{State: declined.state, Reason: declined.reason, Phase: CaptureFailed}
 		}
-		bounded, cancel := context.WithTimeout(ctx, operationguard.MaxDuration)
-		defer cancel()
 		defer a.endCaptureProgress()
 
 		preview, err := a.capturePreview(request)
@@ -596,7 +564,7 @@ func (a *App) StartCapture(request CaptureRequest) CaptureSessionResult {
 			obsName := observationName(request)
 			cfg := listenConfig(request, output, filepath.Join(root, obsName))
 			cfg.Listening = a.reportCaptureProgress("listen")
-			result, serveErr := operation.StartListen(bounded, cfg)
+			result, serveErr := operation.StartListen(ctx, cfg)
 			out = CaptureSessionResult{
 				BoundAddress:    result.BoundAddress,
 				CasePath:        request.OutputName,
@@ -606,7 +574,7 @@ func (a *App) StartCapture(request CaptureRequest) CaptureSessionResult {
 			if result.Observation != nil {
 				out.Received = len(result.Observation.Processed)
 			}
-			return a.finishCapture(bounded, out, result.Bundle, serveErr, CaptureListening)
+			return a.finishCapture(ctx, out, result.Bundle, serveErr, CaptureListening)
 		case "collect":
 			cfg, err := a.collectConfig(request, output)
 			if err != nil {
@@ -614,7 +582,7 @@ func (a *App) StartCapture(request CaptureRequest) CaptureSessionResult {
 			}
 			report := a.reportCaptureProgress("collect")
 			cfg.Listening = func(bound string, _ collection.Policy) error { return report(bound) }
-			result, serveErr := operation.StartCollect(bounded, cfg)
+			result, serveErr := operation.StartCollect(ctx, cfg)
 			out = CaptureSessionResult{
 				BoundAddress: result.BoundAddress,
 				CasePath:     request.OutputName,
@@ -628,7 +596,7 @@ func (a *App) StartCapture(request CaptureRequest) CaptureSessionResult {
 			if result.Bundle != nil {
 				out.Connections = len(result.Bundle.Manifest.Sources)
 			}
-			return a.finishCapture(bounded, out, result.Bundle, serveErr, CaptureCollecting)
+			return a.finishCapture(ctx, out, result.Bundle, serveErr, CaptureCollecting)
 		default:
 			return CaptureSessionResult{State: Failed, Reason: "capture kind must be collect or listen", Phase: CaptureFailed}
 		}
@@ -721,7 +689,7 @@ type FinalizeCaptureRequest struct {
 // and registers the case on the project when asked, by the same flow
 // CommitImport uses.
 func (a *App) FinalizeCaptureImport(request FinalizeCaptureRequest) ImportCommitResult {
-	return runNamed[ImportCommitResult, *ImportCommitResult](a, "import", true, true, func(ctx context.Context) ImportCommitResult {
+	return runNamed[ImportCommitResult, *ImportCommitResult](a, profiles["FinalizeCaptureImport"], func(ctx context.Context) ImportCommitResult {
 		folder, ref := resolveWorkspacePath(request.Workspace, request.Folder)
 		if folder == "" {
 			return ImportCommitResult{State: ref.state, Reason: ref.reason}

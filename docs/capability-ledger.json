@@ -1591,7 +1591,7 @@
       "backend": {"package": "internal/customerrunner", "name": "Run"},
       "inputs": ["readmit-runner/v1", "readmit-runner-job/v1", "readmit-test/v1"],
       "outputs": ["readmit-job/v1", "readmit-result/v1", "hl7"],
-      "prerequisites": ["hub:execution", "hub:enrollment"],
+      "prerequisites": ["execute", "hub:execution", "hub:enrollment"],
       "gui_test": {"file": "desktop/frontend/src/RunnerPanel.test.tsx", "name": "a retained job id is never replayed and no resend is offered"},
       "parity_test": {"package": "hub", "name": "TestRunnerScreenPreparesConfiguresAndExecutesThroughExistingContracts"},
       "implemented": true
@@ -1605,7 +1605,7 @@
       "backend": {"package": "internal/customerrunner", "name": "Serve"},
       "inputs": ["readmit-runner/v1", "readmit-runner-job/v1", "readmit-test/v1"],
       "outputs": ["readmit-job/v1", "readmit-result/v1", "hl7"],
-      "prerequisites": ["hub:execution", "hub:enrollment"],
+      "prerequisites": ["execute", "hub:execution", "hub:enrollment"],
       "implemented": false,
       "disposition": {"kind": "machine-interface", "reason": "`readmit runner serve INBOX --send` is the long-lived runner-host service process: customerrunner.Serve polls a customer-local inbox every second until SIGTERM and executes each new job document without any interactive input or output, and it is started only by the shipped systemd unit (runner/readmit-runner.service ExecStart) and container ENTRYPOINT (runner/Dockerfile). No person operates the running process; people author its configuration and job documents, which the runner panel generates."}
     },

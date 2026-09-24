@@ -19,3 +19,7 @@ func (s *Store) RunnerHandlerWithClockForTest(access *Access, policyPath string,
 func (s *Store) ServeSchedulesWithClockForTest(ctx context.Context, access *Access, runnerPath, policyPath string, clock func() time.Time) error {
 	return s.serveSchedules(ctx, access, runnerPath, policyPath, clock)
 }
+
+// ScheduledRunForTest is the profile the scheduler runs each scheduled job
+// under, so a test ticks a scheduler exactly as ServeSchedules does.
+var ScheduledRunForTest = scheduledRun

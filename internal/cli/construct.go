@@ -128,3 +128,12 @@ func declareInterruptible(capability string) map[string]string {
 	annotations[interruptibleAnnotation] = "true"
 	return annotations
 }
+
+// declareEachJob marks an interruptible command that executes job after job,
+// each admitted, bounded and settled as its own execution rather than under
+// one instance held for the whole invocation.
+func declareEachJob() map[string]string {
+	annotations := declareInterruptible(capabilityExecute)
+	annotations[executionAnnotation] = executeEachJob
+	return annotations
+}

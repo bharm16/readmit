@@ -19,6 +19,7 @@ import (
 	"github.com/bharm16/readmit/internal/customerrunner"
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/engine"
+	"github.com/bharm16/readmit/internal/operationguard"
 	"github.com/bharm16/readmit/internal/runnerprotocol"
 	"github.com/bharm16/readmit/internal/suite"
 )
@@ -382,7 +383,7 @@ func (r *RunnerEnrollmentResult) refuse(state State, reason string) {
 // does: one certificate-bound probe that reserves the environment for at most
 // ten seconds and saves no credential or registration state.
 func (a *App) EnrollRunner(configPath string) RunnerEnrollmentResult {
-	return runNamed[RunnerEnrollmentResult, *RunnerEnrollmentResult](a, "runner-enrollment", false, true, func(ctx context.Context) RunnerEnrollmentResult {
+	return runNamed[RunnerEnrollmentResult, *RunnerEnrollmentResult](a, profiles["EnrollRunner"], func(ctx context.Context) RunnerEnrollmentResult {
 		config, declined := readRunnerConfig(configPath)
 		if declined.reason != "" {
 			return RunnerEnrollmentResult{State: declined.state, Reason: declined.reason}
@@ -494,18 +495,18 @@ type RunnerExecutionResult struct {
 func (r *RunnerExecutionResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
 // ExecuteRunnerJob runs one job through the same enrolled path as the
-// command line: explicit operation admission first, then the runner's own
-// lease, duplicate-admission and state-isolation rules, which this facade
-// does not widen. Cancel stops future sends and retains any uncertain
-// delivery exactly as `run start` does.
+// command line: the runner admits the job as its own execution, then applies
+// its own lease, duplicate-admission and state-isolation rules, which this
+// facade does not widen. The window also admits the author first, which
+// `readmit runner execute` does not (profiles). Cancel stops future sends and
+// retains any uncertain delivery exactly as `run start` does.
 func (a *App) ExecuteRunnerJob(request RunnerExecuteRequest) RunnerExecutionResult {
-	return runNamed[RunnerExecutionResult, *RunnerExecutionResult](a, "runner", true, true, func(ctx context.Context) (out RunnerExecutionResult) {
-		// The explicit execution approval is the runner's own admission,
-		// asked of the selected operation policy exactly once, as the command
-		// line asks it. This seam is also where a team authority (the
-		// administration surface) settles what may execute.
-		guard, _ := a.selectedOperation()
-		ctx = customerrunner.WithOperationGuard(ctx, guard)
+	return runNamed[RunnerExecutionResult, *RunnerExecutionResult](a, profiles["ExecuteRunnerJob"], func(ctx context.Context) (out RunnerExecutionResult) {
+		// The explicit execution approval is the runner's own admission of the
+		// job, asked of the selected operation policy exactly once through the
+		// profile's each-job execution, as the command line asks it. This seam
+		// is also where a team authority (the administration surface) settles
+		// what may execute.
 		config, declined := readRunnerConfig(request.ConfigPath)
 		if declined.reason != "" {
 			return RunnerExecutionResult{State: declined.state, Reason: declined.reason}
@@ -544,8 +545,13 @@ func (a *App) ExecuteRunnerJob(request RunnerExecuteRequest) RunnerExecutionResu
 			out.State = Failed
 			out.Reason = err.Error()
 			// A refusal before any run existed is an admission answer, not a
-			// broken execution: the authority declined this instance.
-			if !errors.Is(err, customerrunner.ErrRefused) && summary.Schema == "" {
+			// broken execution: the authority declined this instance. A
+			// cancellation while the job's admission waited refused nothing.
+			var admission *operationguard.Declined
+			switch {
+			case errors.As(err, &admission) && admission.Cancelled:
+				out.State, out.Reason = cancelledRefusal.state, cancelledRefusal.reason
+			case !errors.Is(err, customerrunner.ErrRefused) && summary.Schema == "":
 				out.State = PermissionDenied
 			}
 			return out
@@ -1377,7 +1383,7 @@ func (r *CIGateVerifyResult) refuse(state State, reason string) { r.State, r.Rea
 // snapshot, never sends, reruns or resumes anything, and changes no byte.
 // Cancelling it stops the reading and reaches no verdict.
 func (a *App) VerifyCIGate(directory, identity string) CIGateVerifyResult {
-	return runNamed[CIGateVerifyResult, *CIGateVerifyResult](a, ciGateVerifyOperation, true, false, func(ctx context.Context) CIGateVerifyResult {
+	return runNamed[CIGateVerifyResult, *CIGateVerifyResult](a, profiles["VerifyCIGate"], func(ctx context.Context) CIGateVerifyResult {
 		return verifyCIGate(ctx, directory, identity, time.Now().UTC())
 	})
 }

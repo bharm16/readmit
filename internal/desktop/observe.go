@@ -2,6 +2,7 @@ package desktop
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 
 	"github.com/bharm16/readmit/internal/observesource"
@@ -248,18 +249,10 @@ func (a *App) ValidateObservationPair(request ObservationValidateRequest) Observ
 // operation, so the privacy status can tell a window in the middle of a
 // collection from an idle one, and the window's own cancel command still stops
 // it exactly as before. Like `readmit observe collect`, it is admitted as
-// execution as well as authoring.
+// execution; the window also admits the author, which the command does not
+// (profiles).
 func (a *App) CollectObservation(request ObservationCollectFacadeRequest) ObservationCompletionResult {
-	return runNamed[ObservationCompletionResult, *ObservationCompletionResult](a, "observation", true, true, func(ctx context.Context) (out ObservationCompletionResult) {
-		settle, admitted := a.admitExecution(ctx)
-		if admitted != nil {
-			return ObservationCompletionResult{State: PermissionDenied, Reason: admitted.Error()}
-		}
-		defer func() {
-			if err := settle(); err != nil {
-				out.State, out.Reason = Failed, settlementFailed
-			}
-		}()
+	return runNamed[ObservationCompletionResult, *ObservationCompletionResult](a, profiles["CollectObservation"], func(ctx context.Context) ObservationCompletionResult {
 		sourcePath, ref := resolveWorkspacePath(request.Workspace, request.SourceFile)
 		if sourcePath == "" {
 			return ObservationCompletionResult{State: ref.state, Reason: ref.reason}
@@ -290,7 +283,7 @@ func (a *App) CollectObservation(request ObservationCollectFacadeRequest) Observ
 		})
 		if err != nil {
 			state := Failed
-			if ctx.Err() != nil {
+			if errors.Is(ctx.Err(), context.Canceled) {
 				state = Cancelled
 			}
 			return ObservationCompletionResult{State: state, Reason: err.Error()}

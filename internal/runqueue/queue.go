@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/bharm16/readmit/internal/durablerun"
+	"github.com/bharm16/readmit/internal/operationguard"
 )
 
 // ReportSchema is what one queue established: for every job it was given, the
@@ -276,7 +277,10 @@ func (q *schedule) run(ctx context.Context, parallelism int) {
 				current.stop(Refused, "another durable run in this runs directory still holds "+holder+"; readmit does not join a holder, and run clean removes a lease a stopped writer could not release")
 				continue
 			}
-			if err := admitted(ctx); err != nil {
+			// The queue owns no commercial policy: the execution that holds
+			// this invocation's instance rechecks it before each new job, and a
+			// pure engine caller's context carries none.
+			if err := operationguard.Recheck(ctx); err != nil {
 				current.stop(Refused, err.Error())
 				continue
 			}

@@ -245,8 +245,7 @@ func TestRunReportsEveryKeyAndTokenCommandItRuns(t *testing.T) {
 		UpdateKey: base64.StdEncoding.EncodeToString(make([]byte, 32)), UpdateEngine: "next",
 	}
 	var running, started, ended atomic.Int64
-	guarded := customerrunner.WithOperationGuard(context.Background(), operationguard.New(testlicense.New(t)))
-	ctx := secret.ObserveDeclaredPrograms(guarded, func() func() {
+	ctx := secret.ObserveDeclaredPrograms(context.Background(), func() func() {
 		running.Add(1)
 		started.Add(1)
 		return func() {
@@ -257,7 +256,14 @@ func TestRunReportsEveryKeyAndTokenCommandItRuns(t *testing.T) {
 	// The job names a specification that is not there, so the admitted run is
 	// refused before it executes anything and releases its admission at once.
 	job := customerrunner.Job{Schema: "readmit-runner-job/v1", ID: "nightly-001", Spec: filepath.Join(t.TempDir(), "absent.json")}
-	if _, err := customerrunner.Run(ctx, c, job); !errors.Is(err, customerrunner.ErrRefused) {
+	// The job is admitted as the runner's own execution, as `runner execute`
+	// admits each job it runs.
+	eachJob := operationguard.Profile{Name: "runner", Execution: operationguard.ExecuteEachJob}
+	err := operationguard.New(testlicense.New(t)).Run(ctx, eachJob, func(ctx context.Context) error {
+		_, err := customerrunner.Run(ctx, c, job)
+		return err
+	})
+	if !errors.Is(err, customerrunner.ErrRefused) {
 		t.Fatalf("run: %v", err)
 	}
 	// Enrolling and releasing each read the key and the token once.

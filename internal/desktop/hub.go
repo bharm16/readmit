@@ -275,7 +275,7 @@ func (a *App) selectHubConfig(path string) HubResult {
 
 // DiagnoseHub runs actionable prerequisite diagnostics against the configured customer hub.
 func (a *App) DiagnoseHub() HubDiagnosisResult {
-	return runNamed[HubDiagnosisResult, *HubDiagnosisResult](a, hubRequestOperation, false, false, func(ctx context.Context) HubDiagnosisResult {
+	return runNamed[HubDiagnosisResult, *HubDiagnosisResult](a, profiles["DiagnoseHub"], func(ctx context.Context) HubDiagnosisResult {
 		a.hubMu.Lock()
 		cfg := a.hubConfig
 		a.hubMu.Unlock()
@@ -305,7 +305,7 @@ func (a *App) DiagnoseHub() HubDiagnosisResult {
 
 // ConnectHub establishes a mutual TLS connection to the customer hub and checks health probes.
 func (a *App) ConnectHub() HubResult {
-	return runNamed[HubResult, *HubResult](a, hubRequestOperation, false, false, func(ctx context.Context) HubResult {
+	return runNamed[HubResult, *HubResult](a, profiles["ConnectHub"], func(ctx context.Context) HubResult {
 		a.hubMu.Lock()
 		cfg := a.hubConfig
 		sess := a.hubSession
@@ -362,7 +362,7 @@ func (a *App) DisconnectHub() HubResult {
 
 // StartHubAuth begins an RFC 9068 PKCE authorization flow on a local loopback server.
 func (a *App) StartHubAuth() HubAuthUrlResult {
-	return runNamed[HubAuthUrlResult, *HubAuthUrlResult](a, hubSignInStartOperation, false, false, func(ctx context.Context) HubAuthUrlResult {
+	return runNamed[HubAuthUrlResult, *HubAuthUrlResult](a, profiles["StartHubAuth"], func(ctx context.Context) HubAuthUrlResult {
 		a.hubMu.Lock()
 		cfg := a.hubConfig
 		if a.hubAuthFlow != nil {
@@ -405,7 +405,7 @@ func (a *App) CompleteHubAuth(code, state string) HubResult {
 }
 
 func (a *App) completeHubAuth(code, state string, wait time.Duration) HubResult {
-	result := runNamed[HubResult, *HubResult](a, hubSignInOperation, true, false, func(ctx context.Context) HubResult {
+	result := runNamed[HubResult, *HubResult](a, profiles["CompleteHubAuth"], func(ctx context.Context) HubResult {
 		cancelled := HubResult{State: Cancelled, Reason: "sign-in was cancelled"}
 		a.hubMu.Lock()
 		cfg := a.hubConfig
@@ -486,7 +486,7 @@ func (a *App) completeHubAuth(code, state string, wait time.Duration) HubResult 
 
 // HubStatus reports the current connection, authentication, and authorized project states.
 func (a *App) HubStatus() HubResult {
-	return runNamed[HubResult, *HubResult](a, hubRequestOperation, false, false, func(ctx context.Context) HubResult {
+	return runNamed[HubResult, *HubResult](a, profiles["HubStatus"], func(ctx context.Context) HubResult {
 		return a.hubStatus(ctx)
 	})
 }
@@ -560,7 +560,7 @@ func probeAllProjects(ctx context.Context, client *hubclient.Client, projects []
 
 // ListHubProjectArtifacts retrieves the artifacts and lifecycle metadata for an authorized project.
 func (a *App) ListHubProjectArtifacts(project string) HubArtifactsResult {
-	return runNamed[HubArtifactsResult, *HubArtifactsResult](a, hubRequestOperation, false, false, func(ctx context.Context) HubArtifactsResult {
+	return runNamed[HubArtifactsResult, *HubArtifactsResult](a, profiles["ListHubProjectArtifacts"], func(ctx context.Context) HubArtifactsResult {
 		a.hubMu.Lock()
 		client := a.hubClient
 		session := a.hubSession
@@ -608,7 +608,7 @@ func (a *App) ListHubProjectArtifacts(project string) HubArtifactsResult {
 
 // DownloadHubArtifact downloads an artifact from a customer hub project with complete verification.
 func (a *App) DownloadHubArtifact(request HubDownloadRequest) HubTransferResult {
-	return runNamed[HubTransferResult, *HubTransferResult](a, hubRequestOperation, false, false, func(ctx context.Context) HubTransferResult {
+	return runNamed[HubTransferResult, *HubTransferResult](a, profiles["DownloadHubArtifact"], func(ctx context.Context) HubTransferResult {
 		a.hubMu.Lock()
 		client := a.hubClient
 		session := a.hubSession
@@ -642,7 +642,7 @@ func (a *App) DownloadHubArtifact(request HubDownloadRequest) HubTransferResult 
 
 // UploadHubArtifact publishes an artifact to the customer hub project. Requires author admission.
 func (a *App) UploadHubArtifact(request HubUploadRequest) HubTransferResult {
-	return runNamed[HubTransferResult, *HubTransferResult](a, hubRequestOperation, false, true, func(ctx context.Context) HubTransferResult {
+	return runNamed[HubTransferResult, *HubTransferResult](a, profiles["UploadHubArtifact"], func(ctx context.Context) HubTransferResult {
 		a.hubMu.Lock()
 		client := a.hubClient
 		session := a.hubSession

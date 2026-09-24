@@ -187,7 +187,7 @@ func (a *App) StagePastedContent(request PastedSourceRequest) PastedSourceResult
 
 // PreviewImport extracts and previews records without writing any evidence.
 func (a *App) PreviewImport(request ImportRequest) ImportPreviewResult {
-	return runNamed[ImportPreviewResult, *ImportPreviewResult](a, "import", true, false, func(ctx context.Context) ImportPreviewResult {
+	return runNamed[ImportPreviewResult, *ImportPreviewResult](a, profiles["PreviewImport"], func(ctx context.Context) ImportPreviewResult {
 		switch request.Mode {
 		case "plan":
 			if request.Plan == nil {
@@ -248,7 +248,7 @@ func (a *App) PreviewImport(request ImportRequest) ImportPreviewResult {
 
 // CommitImport commits the extraction to new case and receipt destinations, and registers it if requested.
 func (a *App) CommitImport(request ImportCommitRequest) ImportCommitResult {
-	return runNamed[ImportCommitResult, *ImportCommitResult](a, "import", true, true, func(ctx context.Context) ImportCommitResult {
+	return runNamed[ImportCommitResult, *ImportCommitResult](a, profiles["CommitImport"], func(ctx context.Context) ImportCommitResult {
 		into := importCommit{
 			workspace: request.Workspace, project: request.Project,
 			outputName: request.OutputName, receiptName: request.ReceiptName,

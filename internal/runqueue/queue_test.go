@@ -11,6 +11,9 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/durablerun"
+	"github.com/bharm16/readmit/internal/entitlement"
+	"github.com/bharm16/readmit/internal/operationguard"
+	"github.com/bharm16/readmit/internal/testlicense"
 )
 
 const staging = "staging"
@@ -95,6 +98,9 @@ type fake struct {
 	// the interface rather than against a live spec.
 	identity    string
 	identityErr error
+	// during runs while the job is inside, as something else happening to
+	// the machine while the queue executes it.
+	during func()
 }
 
 func (f *fake) Resources() []durablerun.Resource { return f.resources }
@@ -104,6 +110,9 @@ func (f *fake) InputIdentity() (string, error) { return f.identity, f.identityEr
 func (f *fake) Start(ctx context.Context, output string) (durablerun.Summary, error) {
 	f.tracker.enter(f.id, f.resources)
 	defer f.tracker.leave(f.id, f.resources)
+	if f.during != nil {
+		f.during()
+	}
 	if f.meet {
 		if err := f.tracker.rendezvous(); err != nil {
 			return durablerun.Summary{}, err
@@ -431,26 +440,32 @@ func TestAnUnreadableRunsDirectoryRefusesTheQueue(t *testing.T) {
 	}
 }
 
+// The invocation holds one instance for the whole queue, and the execution
+// that holds it rechecks it before each new job: a term that ends while one
+// job runs lets that job finish and refuses the next.
 func TestAdmissionIsRecheckedForEachNewJobWithoutStoppingAnAdmittedJob(t *testing.T) {
+	policy := testlicense.New(t)
 	watch := newTracker()
 	queued(t, map[string]*fake{
-		"a.json": {id: "a", state: durablerun.Passed, tracker: watch},
+		"a.json": {id: "a", state: durablerun.Passed, tracker: watch, during: func() {
+			if err := operationguard.Release(policy); err != nil {
+				t.Error(err)
+			}
+		}},
 		"b.json": {id: "b", state: durablerun.Passed, tracker: watch},
 	})
 	document := `{"schema":"readmit-run-queue/v1","parallelism":1,"jobs":[{"id":"a","spec":"a.json","isolation":"isolated"},{"id":"b","spec":"b.json","isolation":"isolated"}]}`
-	remaining := 1
-	ctx := WithAdmission(t.Context(), func() error {
-		if remaining == 0 {
-			return errors.New("term ended")
-		}
-		remaining--
-		return nil
+	var report Report
+	execute := operationguard.Profile{Name: "queue", Execution: operationguard.Execute}
+	err := operationguard.New(policy).Run(t.Context(), execute, func(ctx context.Context) (err error) {
+		report, err = Run(ctx, Request{PlanBytes: []byte(document), PlanDirectory: t.TempDir(), Runs: t.TempDir()})
+		return err
 	})
-	report, err := Run(ctx, Request{PlanBytes: []byte(document), PlanDirectory: t.TempDir(), Runs: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Executed != 1 || report.Refused != 1 || jobs(report)["a"].Run.State != durablerun.Passed || jobs(report)["b"].Run != nil {
+	if report.Executed != 1 || report.Refused != 1 || jobs(report)["a"].Run.State != durablerun.Passed || jobs(report)["b"].Run != nil ||
+		jobs(report)["b"].Reason != entitlement.ErrReleased.Error() {
 		t.Fatalf("admission did not isolate new work: %+v", report)
 	}
 }

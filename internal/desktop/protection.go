@@ -195,7 +195,7 @@ func (a *App) SaveProtectionControl(request ProtectionControlRequest) Protection
 // printed is discarded, never written, logged or shown. readmit never read the
 // previous key, so a recorded rotation is an assertion, not a verification.
 func (a *App) RotateProtectionControl(workspace, entry, name string) ProtectionResult {
-	return runNamed[ProtectionResult, *ProtectionResult](a, protectOperation, true, true, func(ctx context.Context) ProtectionResult {
+	return runNamed[ProtectionResult, *ProtectionResult](a, profiles["RotateProtectionControl"], func(ctx context.Context) ProtectionResult {
 		_, file, declined := protectionEntryFile(workspace, entry)
 		if declined.state != "" {
 			return ProtectionResult{State: declined.state, Reason: declined.reason}
@@ -298,7 +298,7 @@ func packageView(entry string, descriptor protect.Package, now time.Time, notRea
 // reached. A package that cannot be completed is removed rather than left
 // looking like one.
 func (a *App) PackProtectedPackage(request ProtectionPackRequest) ProtectionPackageResult {
-	return runNamed[ProtectionPackageResult, *ProtectionPackageResult](a, protectOperation, true, false, func(ctx context.Context) ProtectionPackageResult {
+	return runNamed[ProtectionPackageResult, *ProtectionPackageResult](a, profiles["PackProtectedPackage"], func(ctx context.Context) ProtectionPackageResult {
 		root, file, declined := protectionEntryFile(request.Workspace, request.Entry)
 		if declined.state != "" {
 			return ProtectionPackageResult{State: declined.state, Reason: declined.reason}
@@ -393,7 +393,7 @@ type ProtectionOpenRequest struct {
 // else: opening a package ends the protection the package carried, and the
 // result says so.
 func (a *App) OpenProtectedPackage(request ProtectionOpenRequest) ProtectionPackageResult {
-	return runNamed[ProtectionPackageResult, *ProtectionPackageResult](a, protectOperation, true, false, func(ctx context.Context) ProtectionPackageResult {
+	return runNamed[ProtectionPackageResult, *ProtectionPackageResult](a, profiles["OpenProtectedPackage"], func(ctx context.Context) ProtectionPackageResult {
 		root, file, declined := protectionEntryFile(request.Workspace, request.Entry)
 		if declined.state != "" {
 			return ProtectionPackageResult{State: declined.state, Reason: declined.reason}

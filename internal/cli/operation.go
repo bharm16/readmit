@@ -12,9 +12,7 @@ import (
 	"github.com/bharm16/readmit/internal/suite"
 	"io"
 
-	"github.com/bharm16/readmit/internal/customerrunner"
 	"github.com/bharm16/readmit/internal/operationguard"
-	"github.com/bharm16/readmit/internal/runqueue"
 	"github.com/spf13/cobra"
 )
 
@@ -57,7 +55,10 @@ func placeholderCount(use string) int {
 // It is also the one construction pass over the finished command tree: the
 // started mark is set here, once, the moment a command's own RunE begins —
 // never inside the ~110 command bodies — and arg-count validation is derived
-// from each command's Use when the command declares none of its own.
+// from each command's Use when the command declares none of its own. Each
+// command's admission is the profile its annotations declare, taken through
+// the one admitted execution the operation guard owns; no command is told
+// apart by its path.
 func wireOperations(root *cobra.Command, policy *string, ran *bool) {
 	var guard *operationguard.Guard
 	var visit func(*cobra.Command)
@@ -66,7 +67,7 @@ func wireOperations(root *cobra.Command, policy *string, ran *bool) {
 			if command.Args == nil {
 				command.Args = exactArgs(command)
 			}
-			command.RunE = func(cmd *cobra.Command, args []string) (err error) {
+			command.RunE = func(cmd *cobra.Command, args []string) error {
 				// The help topic lookup is not a started operation: its refusal
 				// is reported the way every pre-execution refusal is reported.
 				if cmd.Annotations[helpTopicAnnotation] != "true" {
@@ -75,51 +76,26 @@ func wireOperations(root *cobra.Command, policy *string, ran *bool) {
 				if guard == nil {
 					guard = operationguard.New(operationPolicyPath(*policy))
 				}
-				if cmd.CommandPath() == "readmit runner execute" || cmd.CommandPath() == "readmit runner serve" {
-					cmd.SetContext(customerrunner.WithOperationGuard(cmd.Context(), guard))
-				}
-				if interruptible(cmd) {
+				profile, declared := commandProfile(cmd)
+				if profile.Interruptible {
 					ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 					defer stop()
 					cmd.SetContext(ctx)
 				}
-				capability := operationCapability(cmd)
-				if capability == "" {
-					return run(cmd, args)
-				}
-				*ran = true
-				release, err := guard.AdmitContext(cmd.Context(), capability)
-				if err != nil {
-					if cmd.CommandPath() == "readmit suite ci" {
-						return refusedCI(cmd)
-					}
+				if !declared {
+					// A newly registered operation that declares nothing is
+					// refused closed rather than run free.
+					_, err := guard.AdmitContext(cmd.Context(), operationCapability(cmd))
 					return err
 				}
-				if cmd.CommandPath() == "readmit suite ci" {
-					ctx, cancel := context.WithTimeout(cmd.Context(), operationguard.MaxDuration)
-					defer cancel()
-					cmd.SetContext(runqueue.WithAdmission(ctx, func() error { return guard.CheckExecutionContext(ctx) }))
-					destination := cmd.OutOrStdout()
-					var buffered bytes.Buffer
-					cmd.SetOut(&buffered)
-					runErr := run(cmd, args)
-					settleErr := release()
-					cmd.SetOut(destination)
-					if settleErr != nil {
-						return refusedCI(cmd)
-					}
-					if _, copyErr := io.Copy(destination, &buffered); copyErr != nil {
-						return errors.New("cannot write CI summary")
-					}
-					return runErr
+				work := func(ctx context.Context) error {
+					cmd.SetContext(ctx)
+					return run(cmd, args)
 				}
-				defer func() { err = errors.Join(err, release()) }()
-				if capability == "execute" {
-					ctx, cancel := context.WithTimeout(cmd.Context(), operationguard.MaxDuration)
-					defer cancel()
-					cmd.SetContext(runqueue.WithAdmission(ctx, func() error { return guard.CheckExecutionContext(ctx) }))
+				if cmd.Annotations[ciSummaryAnnotation] == "true" {
+					return runCISummary(cmd, guard, profile, work)
 				}
-				return run(cmd, args)
+				return guard.Run(cmd.Context(), profile, work)
 			}
 		}
 		for _, child := range command.Commands() {
@@ -129,11 +105,49 @@ func wireOperations(root *cobra.Command, policy *string, ran *bool) {
 	visit(root)
 }
 
+// runCISummary runs a command whose output is a CI summary. The summary is
+// withheld until the execution has settled, and any admission or settlement
+// refusal is answered with the fixed CI error summary instead, so a pipeline
+// never reads a verdict whose instance was not released.
+func runCISummary(cmd *cobra.Command, guard *operationguard.Guard, profile operationguard.Profile, work func(context.Context) error) error {
+	destination := cmd.OutOrStdout()
+	var buffered bytes.Buffer
+	cmd.SetOut(&buffered)
+	started := false
+	err := guard.Run(cmd.Context(), profile, func(ctx context.Context) error {
+		started = true
+		return work(ctx)
+	})
+	cmd.SetOut(destination)
+	var unsettled *operationguard.Unsettled
+	if !started || errors.As(err, &unsettled) {
+		return refusedCI(cmd)
+	}
+	if _, copyErr := io.Copy(destination, &buffered); copyErr != nil {
+		return errors.New("cannot write CI summary")
+	}
+	return err
+}
+
 // Operation capabilities are declared where each command is built, and the
 // admission wrapper reads the declaration instead of classifying command
 // paths. A runnable command that declares nothing is refused closed: it cannot
 // silently acquire the read-only exemption by missing a declaration.
 const capabilityAnnotation = "readmit.dev/operation-capability"
+
+// executionAnnotation declares how a command that executes is admitted when
+// it is not one execution held for the whole invocation: each-job commands
+// run job after job, each admitted, bounded and settled as its own.
+const executionAnnotation = "readmit.dev/execution"
+
+// executeEachJob is the executionAnnotation value of a runner that serves
+// jobs.
+const executeEachJob = "each-job"
+
+// ciSummaryAnnotation declares that a command's output is a CI summary, which
+// is withheld until its execution settles and replaced by the fixed CI error
+// summary on any admission or settlement refusal.
+const ciSummaryAnnotation = "readmit.dev/ci-summary"
 
 const (
 	capabilityFree                = "free"
@@ -145,6 +159,26 @@ const (
 
 func declare(capability string) map[string]string {
 	return map[string]string{capabilityAnnotation: capability}
+}
+
+// commandProfile is the operation profile a command's annotations declare:
+// its path, whether an interrupt stops it, and its admission. A command that
+// declares no admission the vocabulary knows is not declared.
+func commandProfile(cmd *cobra.Command) (operationguard.Profile, bool) {
+	profile := operationguard.Profile{Name: cmd.CommandPath(), Interruptible: interruptible(cmd)}
+	switch operationCapability(cmd) {
+	case "":
+	case capabilityAuthor:
+		profile.Author = true
+	case capabilityExecute:
+		profile.Execution = operationguard.Execute
+		if cmd.Annotations[executionAnnotation] == executeEachJob {
+			profile.Execution = operationguard.ExecuteEachJob
+		}
+	default:
+		return profile, false
+	}
+	return profile, true
 }
 
 func operationCapability(cmd *cobra.Command) string {

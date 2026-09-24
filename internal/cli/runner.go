@@ -24,9 +24,14 @@ func runnerCommand() *cobra.Command {
 			count = 2
 		}
 		var send bool
-		// The long-lived runner checks each job through the installed guard, so
-		// execute and serve declare free like the read-only runner operations.
-		cmd := &cobra.Command{Use: use, Args: cobra.ExactArgs(count), Annotations: declareInterruptible(capabilityFree), RunE: func(cmd *cobra.Command, args []string) error {
+		// A runner admits each job it runs as its own execution, so execute
+		// and serve declare execution each job; the rest are free reads and
+		// the enrollment probe the hub alone admits.
+		annotations := declareInterruptible(capabilityFree)
+		if operation == "execute" || operation == "serve" {
+			annotations = declareEachJob()
+		}
+		cmd := &cobra.Command{Use: use, Args: cobra.ExactArgs(count), Annotations: annotations, RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel, err := deadlineContext(cmd.Context(), "")
 			if err != nil {
 				return err

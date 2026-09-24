@@ -279,8 +279,9 @@ the policy named with `--operation-policy`, or without one
 [this computer's license](license.md#this-computers-license). No policy and no
 installed license, an absent or corrupt activation, a released activation, an unassigned author/device, missing capability, a superseded issue,
 or an ended term refuses **before** work starts. The CLI, desktop, hub writes
-and customer runner use `internal/operationguard`; core evidence readers keep
-no licensing dependency. v1 verification and its bound-device meaning remain
+and customer runner use `internal/operationguard`, whose one admitted
+execution admits, bounds, rechecks and settles every execution each of them
+declares; core evidence readers keep no licensing dependency. v1 verification and its bound-device meaning remain
 unchanged; v1 does not grant named-author operation admission.
 
 The three operation capabilities are `author`, `execute` and `hub`. Authoring

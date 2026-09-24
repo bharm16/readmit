@@ -68,19 +68,7 @@ func (r *ResumeRunResult) refuse(state State, reason string) { r.State, r.Reason
 // any occurrence may repeat; a synced send, uncertain delivery, incomplete
 // completion or changed plan is refused before a new folder is written.
 func (a *App) ResumeDurableRun(request ResumeRunRequest) ResumeRunResult {
-	return runNamed[ResumeRunResult, *ResumeRunResult](a, runOperation, true, false, func(ctx context.Context) (out ResumeRunResult) {
-		guard, _ := a.selectedOperation()
-		settle, err := guard.AdmitContext(ctx, "execute")
-		if err != nil {
-			declined := admissionRefusal(ctx, err)
-			return ResumeRunResult{State: declined.state, Reason: declined.reason}
-		}
-		defer func() {
-			if err := settle(); err != nil {
-				out.State = Failed
-				out.Reason = "runner settlement failed; reconcile the retained admission before new work"
-			}
-		}()
+	return runNamed[ResumeRunResult, *ResumeRunResult](a, profiles["ResumeDurableRun"], func(ctx context.Context) ResumeRunResult {
 		root, declined := resolveFolder(request.Workspace)
 		if root == "" {
 			return ResumeRunResult{State: declined.state, Reason: declined.reason}
@@ -99,9 +87,7 @@ func (a *App) ResumeDurableRun(request ResumeRunRequest) ResumeRunResult {
 		}
 		a.setRunOutput(output)
 		defer a.setRunOutput("")
-		bounded, cancel := context.WithTimeout(ctx, operationguard.MaxDuration)
-		defer cancel()
-		resumed, err := durablerun.Resume(bounded, job, spec, output)
+		resumed, err := durablerun.Resume(ctx, job, spec, output)
 		if err != nil {
 			if resumed.Schema != "" {
 				return ResumeRunResult{State: Failed, Reason: "the resumed run could not finish; recover its new output before any further execution", Resume: &resumed}
@@ -180,19 +166,7 @@ type DurableRunRequest struct {
 // an unconfigured, expired or released term refuses here before anything is
 // created, exactly as the preflight said it would.
 func (a *App) StartDurableRun(request DurableRunRequest) DurableRunResult {
-	return runNamed[DurableRunResult, *DurableRunResult](a, runOperation, true, false, func(ctx context.Context) (out DurableRunResult) {
-		guard, _ := a.selectedOperation()
-		settle, admissionErr := guard.AdmitContext(ctx, "execute")
-		if admissionErr != nil {
-			declined := admissionRefusal(ctx, admissionErr)
-			return DurableRunResult{State: declined.state, Reason: declined.reason}
-		}
-		defer func() {
-			if err := settle(); err != nil {
-				out.State = Failed
-				out.Reason = "runner settlement failed; reconcile the retained admission before new work"
-			}
-		}()
+	return runNamed[DurableRunResult, *DurableRunResult](a, profiles["StartDurableRun"], func(ctx context.Context) DurableRunResult {
 		root, declined := resolveFolder(request.Workspace)
 		if root == "" {
 			return DurableRunResult{State: declined.state, Reason: declined.reason}
@@ -218,9 +192,7 @@ func (a *App) StartDurableRun(request DurableRunRequest) DurableRunResult {
 		// count and an interruption.
 		a.setRunOutput(output)
 		defer a.setRunOutput("")
-		bounded, cancel := context.WithTimeout(ctx, operationguard.MaxDuration)
-		defer cancel()
-		result, err := prepared.Start(bounded, output)
+		result, err := prepared.Start(ctx, output)
 		if err != nil {
 			if result.Schema != "" {
 				return DurableRunResult{State: Failed, Run: &result, Reason: "journal persistence failed; recover retained output before any new execution"}
@@ -624,24 +596,13 @@ type suiteRunJob struct {
 
 // StartSuiteRun executes a suite's jobs through the existing durable queue:
 // one foreground execution into a fresh destination, admitting against the
-// same leases and serializing the same shared resources the command line
-// does. Scheduling, isolation and every refusal are the queue's own; this
-// panel adds no parallelism and relaxes no rule. Cancel stops future jobs;
-// what already ran is retained exactly as the queue retains it.
+// same leases, rechecking its admission before each job and serializing the
+// same shared resources the command line does. Scheduling, isolation and
+// every refusal are the queue's own; this panel adds no parallelism and
+// relaxes no rule. Cancel stops future jobs; what already ran is retained
+// exactly as the queue retains it.
 func (a *App) StartSuiteRun(request SuiteRunRequest) SuiteRunResult {
-	return runNamed[SuiteRunResult, *SuiteRunResult](a, runOperation, true, false, func(ctx context.Context) (out SuiteRunResult) {
-		guard, _ := a.selectedOperation()
-		settle, admissionErr := guard.AdmitContext(ctx, "execute")
-		if admissionErr != nil {
-			declined := admissionRefusal(ctx, admissionErr)
-			return SuiteRunResult{State: declined.state, Reason: declined.reason}
-		}
-		defer func() {
-			if err := settle(); err != nil {
-				out.State = Failed
-				out.Reason = "runner settlement failed; reconcile the retained admission before new work"
-			}
-		}()
+	return runNamed[SuiteRunResult, *SuiteRunResult](a, profiles["StartSuiteRun"], func(ctx context.Context) SuiteRunResult {
 		root, declined := resolveFolder(request.Workspace)
 		if root == "" {
 			return SuiteRunResult{State: declined.state, Reason: declined.reason}
@@ -669,14 +630,12 @@ func (a *App) StartSuiteRun(request SuiteRunRequest) SuiteRunResult {
 			}
 			references = referencePath
 		}
-		bounded, cancel := context.WithTimeout(ctx, operationguard.MaxDuration)
-		defer cancel()
 		var report runqueue.Report
 		var runErr error
 		if references != "" {
-			report, runErr = suite.RunApproved(bounded, suitePath, request.Environment, output, references)
+			report, runErr = suite.RunApproved(ctx, suitePath, request.Environment, output, references)
 		} else {
-			report, runErr = suite.Run(bounded, suitePath, request.Environment, output)
+			report, runErr = suite.Run(ctx, suitePath, request.Environment, output)
 		}
 		if runErr != nil && report.Schema == "" {
 			return SuiteRunResult{State: Failed, Reason: "the suite could not be prepared; nothing was sent"}

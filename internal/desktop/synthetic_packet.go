@@ -123,7 +123,7 @@ func (r *SyntheticPacketResult) refuse(state State, reason string) { r.State, r.
 // requires by name; any other is refused by the operation itself. Cancel
 // stops the fixture executions; the partial folder never verifies.
 func (a *App) GenerateSyntheticPacket(request SyntheticPacketRequest) SyntheticPacketResult {
-	return runNamed[SyntheticPacketResult, *SyntheticPacketResult](a, syntheticPacketOperation, true, false, func(ctx context.Context) SyntheticPacketResult {
+	return runNamed[SyntheticPacketResult, *SyntheticPacketResult](a, profiles["GenerateSyntheticPacket"], func(ctx context.Context) SyntheticPacketResult {
 		return generateSyntheticPacket(ctx, request)
 	})
 }

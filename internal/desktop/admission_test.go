@@ -4,14 +4,15 @@ package desktop_test
 // operation, and the capability ledger says which admission that is. Work that
 // reaches a destination reserves a runner instance; writing a new authored
 // document admits the author; and no refusal waits for a control to have been
-// disabled. Each refused path below is called straight through the facade.
+// disabled. Each refused path below is called straight through the facade, and
+// every named operation's admission is the profile it declares.
 
 import (
+	"context"
 	"go/ast"
-	"go/parser"
-	"go/token"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -136,28 +137,171 @@ func TestExportingAnEditedTestOrAssertionSetIsAdmittedAsAuthoring(t *testing.T) 
 	}
 }
 
-// admissionsOf reads, from the facade's own source, which local admissions
-// each bound method takes: an operation slot claimed for a write admits the
-// author, and an execute admission or the runner's operation guard reserves a
-// runner instance, directly or through the methods it calls. A write decided
-// at run time is conditional. The preflight's admission preview asks and
-// settles at once without admitting any work, so it is not an admission.
-func admissionsOf(t *testing.T) map[string]map[string]bool {
-	t.Helper()
-	fileset := token.NewFileSet()
-	sources, err := filepath.Glob("*.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	bodies := map[string]*ast.BlockStmt{}
-	for _, source := range sources {
-		if strings.HasSuffix(source, "_test.go") {
+// Every execution a named operation declares is admitted, bounded by the
+// operation guard's MaxDuration and settled, and a settlement failure
+// overrides whatever the work answered: the one module the command line
+// admits the same operations through does it, so no operation's copy can
+// leave the bound or the settlement out. A runner's job is bounded where the
+// runner admits it.
+func TestEveryDeclaredExecutionIsBoundedAndSettled(t *testing.T) {
+	app := windowWith(t, testlicense.New(t))
+	executions := 0
+	for method, profile := range desktop.DeclaredProfilesForTest() {
+		if profile.Execution == operationguard.NoExecution {
 			continue
 		}
-		file, err := parser.ParseFile(fileset, source, nil, 0)
-		if err != nil {
+		executions++
+		started := time.Now()
+		var deadline time.Time
+		var bounded bool
+		state, reason := desktop.RunUnderProfileForTest(app, method, func(ctx context.Context) {
+			if profile.Execution == operationguard.ExecuteEachJob {
+				if err := operationguard.RunJob(ctx, func(ctx context.Context) error {
+					deadline, bounded = ctx.Deadline()
+					return nil
+				}); err != nil {
+					t.Errorf("%s's job was not admitted: %v", method, err)
+				}
+				return
+			}
+			deadline, bounded = ctx.Deadline()
+		})
+		if state != desktop.Completed {
+			t.Errorf("%s under its declared profile: %s %q", method, state, reason)
+		}
+		if limit := started.Add(operationguard.MaxDuration); !bounded || deadline.After(limit.Add(time.Minute)) || deadline.Before(limit.Add(-time.Minute)) {
+			t.Errorf("%s executes with deadline %v (bounded %v), want the operation guard's MaxDuration", method, deadline, bounded)
+		}
+	}
+	if executions < 13 {
+		t.Fatalf("implausibly few declared executions: %d", executions)
+	}
+	for _, method := range []string{"DiagnoseSource", "CollectSource", "CheckTarget", "ResetTarget", "CollectObservation"} {
+		if profile := desktop.DeclaredProfilesForTest()[method]; profile.Execution != operationguard.Execute {
+			t.Errorf("%s declares execution %v, want one execution held and bounded for the operation", method, profile.Execution)
+		}
+	}
+	// The record the instance is released into is no longer readable when
+	// the work ends, so the operation answers the settlement failure.
+	policy := testlicense.New(t)
+	unsettled := windowWith(t, policy)
+	state, reason := desktop.RunUnderProfileForTest(unsettled, "CheckTarget", func(context.Context) {
+		if err := os.WriteFile(filepath.Join(filepath.Dir(policy), "admissions.json"), []byte("{}"), 0o600); err != nil {
 			t.Fatal(err)
 		}
+	})
+	if state != desktop.Failed || reason != "runner settlement failed; reconcile the retained admission before new work" {
+		t.Fatalf("an execution whose settlement failed answered %s %q", state, reason)
+	}
+	// A profile the table does not declare runs nothing.
+	ran := false
+	if state, _ := desktop.RunUnderProfileForTest(app, "NotAnOperation", func(context.Context) { ran = true }); state != desktop.Failed || ran {
+		t.Fatalf("an undeclared operation answered %s and ran %v", state, ran)
+	}
+}
+
+// A suite run holds one runner instance for its whole execution and rechecks
+// it before each job, as `readmit suite run` does
+// (TestEveryJobAnExecutionQueuesIsRecheckedUnderItsInstance): an activation
+// released while the first job waits for its acknowledgement lets that job
+// finish and refuses the next, which sends nothing.
+func TestASuiteRunRechecksItsAdmissionBeforeEachJob(t *testing.T) {
+	peer := newDelayedAckingPeer(t, "AA", 500*time.Millisecond)
+	workspace := ackWorkspace(t, peer.address)
+	writeAckSpec(t, workspace, "booking.json", "AA")
+	writeSuiteRows(t, workspace, "nightly.json", "one", "two")
+	policy := testlicense.New(t)
+	app := windowWith(t, policy)
+	answered := make(chan desktop.SuiteRunResult, 1)
+	go func() {
+		answered <- app.StartSuiteRun(desktop.SuiteRunRequest{Workspace: workspace, Suite: "nightly.json", Environment: "east", Output: "suite-run"})
+	}()
+	for peer.deliveries() == 0 {
+		select {
+		case result := <-answered:
+			t.Fatalf("the suite answered before its first job sent: %+v", result)
+		case <-time.After(time.Millisecond):
+		}
+	}
+	if err := operationguard.Release(policy); err != nil {
+		t.Fatal(err)
+	}
+	result := <-answered
+	if result.State != desktop.Completed || result.Report == nil {
+		t.Fatalf("suite run: %+v", result)
+	}
+	jobs := map[string]string{}
+	for _, job := range result.Report.Jobs {
+		jobs[job.ID] = job.Admission + " " + job.Reason
+	}
+	if result.Report.Executed != 1 || result.Report.Refused != 1 || jobs["booking-one"] != "executed " ||
+		jobs["booking-two"] != "refused "+entitlement.ErrReleased.Error() {
+		t.Fatalf("a job started after the activation was released: %+v", jobs)
+	}
+	if sent := peer.deliveries(); sent != 1 {
+		t.Fatalf("the refused job sent: %d deliveries", sent)
+	}
+}
+
+// A send nobody approved is refused as the request it is, but only once the
+// operation holds the slot and before admission is asked, as every send has
+// been: while another operation runs it is busy, and afterwards it is refused
+// with its own reason even where nothing could have admitted it.
+func TestAnUnapprovedSendIsRefusedWhileItHoldsTheSlotBeforeAdmission(t *testing.T) {
+	app := windowWith(t, "")
+	sends := map[string]func() (desktop.State, string){
+		"SendReplay": func() (desktop.State, string) {
+			return stateOf(app.SendReplay(desktop.ReplaySendRequest{}))
+		},
+		"ReexecuteReviewedEvidence": func() (desktop.State, string) {
+			return stateOf(app.ReexecuteReviewedEvidence(desktop.ReexecutionSendRequest{}))
+		},
+	}
+	release, held := desktop.HoldSlotForTest(app, "another-operation")
+	if !held {
+		t.Fatal("the slot was not free")
+	}
+	for name, send := range sends {
+		if state, _ := send(); state != desktop.Busy {
+			t.Errorf("%s answered %s while another operation held the slot", name, state)
+		}
+	}
+	release()
+	for name, send := range sends {
+		if state, reason := send(); state != desktop.Failed || strings.Contains(reason, operationguard.ErrUnavailable.Error()) {
+			t.Errorf("%s without approval answered %s %q, want its own refusal before admission", name, state, reason)
+		}
+	}
+}
+
+// A capture its execution admission declines never started, so it reports
+// the failed phase; one its author admission declines, first, reports none,
+// as it always has.
+func TestACaptureDeclinedByItsExecutionAdmissionReportsTheFailedPhase(t *testing.T) {
+	request := desktop.CaptureRequest{Workspace: t.TempDir(), Kind: "collect", OutputName: "captured"}
+	unactivated := windowWith(t, "").StartCapture(request)
+	if unactivated.State != desktop.PermissionDenied || unactivated.Phase != "" {
+		t.Errorf("a capture refused by its author admission: %s, phase %q", unactivated.State, unactivated.Phase)
+	}
+	authorOnly := windowWith(t, authorOnlyPolicy(t)).StartCapture(request)
+	if authorOnly.State != desktop.PermissionDenied || authorOnly.Reason != entitlement.ErrAuthorityNotNamed.Error() || authorOnly.Phase != desktop.CaptureFailed {
+		t.Errorf("a capture refused by its execution admission: %s %q, phase %q", authorOnly.State, authorOnly.Reason, authorOnly.Phase)
+	}
+}
+
+// localAdmissionsOf reads, from the facade's own source, the admission local
+// work takes. Local work runs unnamed and declares no profile: it admits the
+// author when run is told it writes, or part way through once its request has
+// been read (admitAuthor), and a write decided at run time is conditional.
+// Every named operation's admission is its declared profile instead, so a
+// method's callees that declare one are not read. An execution asked of the
+// guard directly is read too, so one taken outside a declared profile fails.
+// The preflight's admission preview asks and settles at once without
+// admitting any work, so it is not an admission.
+func localAdmissionsOf(t *testing.T, declared map[string]operationguard.Profile) map[string]map[string]bool {
+	t.Helper()
+	bodies := map[string]*ast.BlockStmt{}
+	for _, file := range parsePackage(t, ".") {
 		for _, declaration := range file.Decls {
 			if function, ok := declaration.(*ast.FuncDecl); ok && function.Recv != nil && function.Body != nil {
 				bodies[function.Name.Name] = function.Body
@@ -171,7 +315,7 @@ func admissionsOf(t *testing.T) map[string]map[string]bool {
 			return found
 		}
 		found := map[string]bool{}
-		if seen[method] || method == "admissionPreview" {
+		if _, named := declared[method]; seen[method] || named || method == "admissionPreview" {
 			return found
 		}
 		seen[method] = true
@@ -184,12 +328,8 @@ func admissionsOf(t *testing.T) map[string]map[string]bool {
 			if generic, ok := function.(*ast.IndexListExpr); ok {
 				function = generic.X
 			}
-			if slot, ok := function.(*ast.Ident); ok && (slot.Name == "run" || slot.Name == "runNamed") {
-				writes := call.Args[2]
-				if slot.Name == "runNamed" {
-					writes = call.Args[3]
-				}
-				switch literal, _ := writes.(*ast.Ident); {
+			if slot, ok := function.(*ast.Ident); ok && slot.Name == "run" {
+				switch literal, _ := call.Args[2].(*ast.Ident); {
 				case literal != nil && literal.Name == "true":
 					found["author"] = true
 				case literal == nil || literal.Name != "false":
@@ -203,8 +343,6 @@ func admissionsOf(t *testing.T) map[string]map[string]bool {
 			switch selector.Sel.Name {
 			case "admitAuthor":
 				found["author"] = true
-			case "admitExecution", "WithOperationGuard":
-				found["execute"] = true
 			case "AdmitContext", "Admit":
 				if capability, ok := call.Args[len(call.Args)-1].(*ast.BasicLit); ok {
 					found[strings.Trim(capability.Value, `"`)] = true
@@ -227,9 +365,12 @@ func admissionsOf(t *testing.T) map[string]map[string]bool {
 }
 
 // Every desktop row of the capability ledger declares the local admission its
-// bound method actually takes, in both directions: a method that admits the
-// author or reserves a runner instance says so, and a row that promises an
-// admission is held to one. A conditional write may declare either.
+// bound method takes, in both directions: a named operation's row states
+// exactly the admission its declared profile takes, a local method's row the
+// author admission its work takes, and a row that promises an admission is
+// held to one. A conditional local write may declare either. Execution is
+// admitted only under a declared profile, and every declared profile belongs
+// to a bound method the ledger covers.
 func TestEveryDesktopLedgerRowDeclaresTheAdmissionItsMethodTakes(t *testing.T) {
 	data, err := os.ReadFile("../../docs/capability-ledger.json")
 	if err != nil {
@@ -239,22 +380,41 @@ func TestEveryDesktopLedgerRowDeclaresTheAdmissionItsMethodTakes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	derived := admissionsOf(t)
+	declared := desktop.DeclaredProfilesForTest()
+	local := localAdmissionsOf(t, declared)
+	covered := map[string]bool{}
 	for _, row := range ledger.Rows {
 		if row.Kind != capability.KindDesktop {
 			continue
 		}
 		method := strings.TrimPrefix(row.Source, "desktop.App.")
-		found := derived[method]
+		covered[method] = true
+		takes := local[method]
+		if profile, named := declared[method]; named {
+			takes = map[string]bool{}
+			for _, admission := range profile.Prerequisites() {
+				takes[admission] = true
+			}
+		} else if takes["execute"] {
+			t.Errorf("%s admits execution outside a declared profile", method)
+		}
 		for _, admission := range []string{"author", "execute"} {
-			declared := slices.Contains(row.Prerequisites, admission)
-			takes := found[admission]
-			if admission == "author" && found["conditional"] {
+			declaredByRow := slices.Contains(row.Prerequisites, admission)
+			if admission == "author" && takes["conditional"] {
 				continue
 			}
-			if declared != takes {
-				t.Errorf("%s: the ledger declares %s admission %v, the facade takes it %v", row.ID, admission, declared, takes)
+			if declaredByRow != takes[admission] {
+				t.Errorf("%s: the ledger declares %s admission %v, the facade takes it %v", row.ID, admission, declaredByRow, takes[admission])
 			}
+		}
+	}
+	facade := reflect.TypeFor[*desktop.App]()
+	for method := range declared {
+		if _, bound := facade.MethodByName(method); !bound {
+			t.Errorf("%s declares a profile but is not a bound operation", method)
+		}
+		if !covered[method] {
+			t.Errorf("%s declares a profile but no ledger row covers it", method)
 		}
 	}
 }

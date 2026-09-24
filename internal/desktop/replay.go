@@ -3,6 +3,7 @@ package desktop
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,7 +13,6 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/operation"
-	"github.com/bharm16/readmit/internal/operationguard"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/sendpolicy"
 )
@@ -168,7 +168,7 @@ type ReplayOutcome struct {
 // question without requesting a send. It opens no connection and writes
 // nothing — not even the decision, which a send retains beside its run.
 func (a *App) PreviewReplay(request ReplayRequest) ReplayResult {
-	return runNamed[ReplayResult, *ReplayResult](a, replayPreviewOperation, true, false, func(ctx context.Context) ReplayResult {
+	return runNamed[ReplayResult, *ReplayResult](a, profiles["PreviewReplay"], func(ctx context.Context) ReplayResult {
 		inputs, declined := replayInputsOf(request)
 		if declined.state != "" {
 			return ReplayResult{State: declined.state, Reason: declined.reason}
@@ -243,23 +243,16 @@ func (a *App) PreviewReplay(request ReplayRequest) ReplayResult {
 // opened, including a denial. Cancel stops at the message in flight: later
 // messages are recorded as not attempted and nothing is ever sent again.
 func (a *App) SendReplay(request ReplaySendRequest) ReplayResult {
-	return runNamed[ReplayResult, *ReplayResult](a, replayOperation, true, false, func(ctx context.Context) (out ReplayResult) {
+	approved := func() (ReplayResult, bool) {
 		if !request.Approved {
-			return ReplayResult{State: Failed, Reason: "a replay sends only once its preview is explicitly approved; nothing was sent"}
+			return ReplayResult{State: Failed, Reason: "a replay sends only once its preview is explicitly approved; nothing was sent"}, false
 		}
 		if request.Expected == "" || request.Replay.Output == "" {
-			return ReplayResult{State: Failed, Reason: "a replay sends only what its preview showed, into the run folder it named; preview it before sending. Nothing was sent"}
+			return ReplayResult{State: Failed, Reason: "a replay sends only what its preview showed, into the run folder it named; preview it before sending. Nothing was sent"}, false
 		}
-		settle, admitted := a.admitExecution(ctx)
-		if admitted != nil {
-			declined := admissionRefusal(ctx, admitted)
-			return ReplayResult{State: declined.state, Reason: declined.reason}
-		}
-		defer func() {
-			if err := settle(); err != nil {
-				out.State, out.Reason = Failed, settlementFailed
-			}
-		}()
+		return ReplayResult{}, true
+	}
+	return runNamedChecked[ReplayResult, *ReplayResult](a, profiles["SendReplay"], approved, func(ctx context.Context) ReplayResult {
 		inputs, declined := replayInputsOf(request.Replay)
 		if declined.state != "" {
 			return ReplayResult{State: declined.state, Reason: declined.reason}
@@ -285,10 +278,8 @@ func (a *App) SendReplay(request ReplaySendRequest) ReplayResult {
 		if identity, err := replayIdentity(plan, inputs); err != nil || identity != request.Expected || plan.SourceIdentity() != request.Replay.Identity {
 			return ReplayResult{State: Failed, Reason: "the replay changed after its preview; preview it again before sending. Nothing was sent"}
 		}
-		bounded, cancel := context.WithTimeout(ctx, operationguard.MaxDuration)
-		defer cancel()
-		run, err := replay.ExecuteWithPolicy(bounded, plan, output, inputs.policy, record)
-		if err != nil && ctx.Err() != nil {
+		run, err := replay.ExecuteWithPolicy(ctx, plan, output, inputs.policy, record)
+		if err != nil && errors.Is(ctx.Err(), context.Canceled) {
 			// A lookup the cancellation interrupted decides nothing about the
 			// destination; the person cancelled, and nothing was sent.
 			return ReplayResult{State: Cancelled, Reason: "the replay was cancelled before anything was sent; the decision it had reached is retained beside the run folder", Decision: decisionReached(decision)}
@@ -297,7 +288,7 @@ func (a *App) SendReplay(request ReplaySendRequest) ReplayResult {
 			return ReplayResult{State: Failed, Reason: err.Error(), Decision: decisionReached(decision)}
 		}
 		result := ReplayResult{State: Completed, Decision: decisionReached(decision), Run: replayRunView(run, destination.Name, decisionFile)}
-		if ctx.Err() != nil {
+		if errors.Is(ctx.Err(), context.Canceled) {
 			result.State, result.Reason = Cancelled, "the replay was cancelled; messages after the one in flight were not attempted, and nothing is sent again"
 		}
 		return result

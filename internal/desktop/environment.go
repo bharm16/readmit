@@ -282,16 +282,7 @@ func (a *App) ReadTarget(workspace, targetFile string) TargetResult {
 // `readmit target check` is: an unactivated or expired term, or an activation
 // with no runner authority, refuses it before anything is reached.
 func (a *App) CheckTarget(request TargetCheckRequest) TargetCheckResult {
-	return runNamed[TargetCheckResult, *TargetCheckResult](a, targetCheckOperation, true, false, func(ctx context.Context) (out TargetCheckResult) {
-		settle, admitted := a.admitExecution(ctx)
-		if admitted != nil {
-			return TargetCheckResult{State: PermissionDenied, Reason: admitted.Error()}
-		}
-		defer func() {
-			if err := settle(); err != nil {
-				out.State, out.Reason = Failed, settlementFailed
-			}
-		}()
+	return runNamed[TargetCheckResult, *TargetCheckResult](a, profiles["CheckTarget"], func(ctx context.Context) TargetCheckResult {
 		targetPath, ref := resolveWorkspacePath(request.Workspace, request.TargetFile)
 		if targetPath == "" {
 			return TargetCheckResult{State: ref.state, Reason: ref.reason}
@@ -331,18 +322,10 @@ func (a *App) CheckTarget(request TargetCheckRequest) TargetCheckResult {
 }
 
 // ResetTarget executes a reviewed fixture reset plan against a target environment.
-// Like `readmit target reset`, it is admitted as execution as well as authoring.
+// Like `readmit target reset`, it is admitted as execution; the window also
+// admits the author, which the command does not (profiles).
 func (a *App) ResetTarget(request TargetResetRequest) TargetResetResult {
-	return runNamed[TargetResetResult, *TargetResetResult](a, targetResetOperation, true, true, func(ctx context.Context) (out TargetResetResult) {
-		settle, admitted := a.admitExecution(ctx)
-		if admitted != nil {
-			return TargetResetResult{State: PermissionDenied, Reason: admitted.Error()}
-		}
-		defer func() {
-			if err := settle(); err != nil {
-				out.State, out.Reason = Failed, settlementFailed
-			}
-		}()
+	return runNamed[TargetResetResult, *TargetResetResult](a, profiles["ResetTarget"], func(ctx context.Context) TargetResetResult {
 		targetPath, ref := resolveWorkspacePath(request.Workspace, request.TargetFile)
 		if targetPath == "" {
 			return TargetResetResult{State: ref.state, Reason: ref.reason}
@@ -482,7 +465,7 @@ func (a *App) RemoveSecretReference(workspace, secretsFile, name string) Secrets
 
 // TestSecretReference checks if the declared locator resolves the credential without storing or logging it.
 func (a *App) TestSecretReference(workspace, secretsFile, name string) SecretTestResult {
-	return runNamed[SecretTestResult, *SecretTestResult](a, secretTestOperation, true, false, func(ctx context.Context) SecretTestResult {
+	return runNamed[SecretTestResult, *SecretTestResult](a, profiles["TestSecretReference"], func(ctx context.Context) SecretTestResult {
 		path, ref := resolveWorkspacePath(workspace, secretsFile)
 		if path == "" {
 			return SecretTestResult{State: ref.state, Reason: ref.reason}
@@ -504,7 +487,7 @@ func (a *App) TestSecretReference(workspace, secretsFile, name string) SecretTes
 
 // RotateSecretReference verifies resolution, increments generation, stamps rotation time, and saves.
 func (a *App) RotateSecretReference(workspace, secretsFile, name string) SecretsResult {
-	return runNamed[SecretsResult, *SecretsResult](a, secretRotationOperation, true, true, func(ctx context.Context) SecretsResult {
+	return runNamed[SecretsResult, *SecretsResult](a, profiles["RotateSecretReference"], func(ctx context.Context) SecretsResult {
 		path, ref := resolveWorkspacePath(workspace, secretsFile)
 		if path == "" {
 			return SecretsResult{State: ref.state, Reason: ref.reason}
@@ -519,7 +502,7 @@ func (a *App) RotateSecretReference(workspace, secretsFile, name string) Secrets
 
 // ScanSecrets checks workspace files and configurations for residual credential leaks.
 func (a *App) ScanSecrets(request SecretScanRequest) SecretScanResult {
-	return runNamed[SecretScanResult, *SecretScanResult](a, secretScanOperation, true, false, func(ctx context.Context) SecretScanResult {
+	return runNamed[SecretScanResult, *SecretScanResult](a, profiles["ScanSecrets"], func(ctx context.Context) SecretScanResult {
 		secretsPath, ref := resolveWorkspacePath(request.Workspace, request.SecretsFile)
 		if secretsPath == "" {
 			return SecretScanResult{State: ref.state, Reason: ref.reason}
@@ -573,7 +556,7 @@ func (a *App) SaveSendPolicy(request SendPolicySaveRequest) SendPolicyResult {
 // A host name it is asked about is resolved through the system's resolver, so it
 // runs under a name the privacy status reports.
 func (a *App) EvaluateSendPolicy(request SendPolicyEvalRequest) SendPolicyEvalResult {
-	return runNamed[SendPolicyEvalResult, *SendPolicyEvalResult](a, sendPolicyOperation, false, false, func(ctx context.Context) SendPolicyEvalResult {
+	return runNamed[SendPolicyEvalResult, *SendPolicyEvalResult](a, profiles["EvaluateSendPolicy"], func(ctx context.Context) SendPolicyEvalResult {
 		var policy *sendpolicy.Policy
 		if request.PolicyFile != "" {
 			path, ref := resolveWorkspacePath(request.Workspace, request.PolicyFile)
