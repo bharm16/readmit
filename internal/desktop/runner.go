@@ -423,7 +423,10 @@ func (r *RunnerJobPreviewResult) refuse(state State, reason string) {
 }
 
 // InspectRunnerJob reads one job document and prepares its spec exactly as
-// execution would, without contacting the hub or opening a connection.
+// execution would, without contacting the hub or opening a connection. When
+// the runner root is on this machine and already holds the job id, the id is
+// occupied: the runner reserves it permanently, whatever became of the job,
+// so the preflight names the id rather than a pin that can never run.
 func (a *App) InspectRunnerJob(configPath, jobPath string) RunnerJobPreviewResult {
 	return run(a, false, false, func(context.Context) RunnerJobPreviewResult {
 		config, declined := readRunnerConfig(configPath)
@@ -452,6 +455,13 @@ func (a *App) InspectRunnerJob(configPath, jobPath string) RunnerJobPreviewResul
 						Reason: fmt.Sprintf("the prepared inputs bind environment %s; this runner is configured for %s", resource.Name, config.Environment)}
 				}
 			}
+		}
+		// Only a root this machine can read answers here; one it cannot read
+		// decides nothing, and the runner's own claim at execution stays the
+		// rule either way.
+		if retained, err := customerrunner.Retained(config.Root, job.ID); err == nil && retained {
+			return RunnerJobPreviewResult{State: Failed, JobID: job.ID, Spec: job.Spec,
+				Reason: fmt.Sprintf("job id %s is already retained in this runner's root and never runs again; read its recovery, and save a new job document with a new job id once receiver state is established", job.ID)}
 		}
 		return result
 	})
@@ -581,10 +591,12 @@ func (a *App) ReadRunnerRecovery(configPath, jobID string) RunnerRecoveryResult 
 	})
 }
 
-// RunnerUpdateResult reports one explicit update verification.
+// RunnerUpdateResult reports one explicit update verification. Engine is the
+// build the configuration approves, which a verified manifest names exactly.
 type RunnerUpdateResult struct {
 	State  State  `json:"state"`
 	Reason string `json:"reason,omitzero"`
+	Engine string `json:"engine,omitzero"`
 }
 
 func (r *RunnerUpdateResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
@@ -602,7 +614,7 @@ func (a *App) VerifyRunnerUpdate(configPath, manifest, binary string) RunnerUpda
 		if err := customerrunner.VerifyUpdate(config, manifest, binary); err != nil {
 			return RunnerUpdateResult{State: Failed, Reason: "the staged candidate is not the approved update; " + err.Error()}
 		}
-		return RunnerUpdateResult{State: Completed}
+		return RunnerUpdateResult{State: Completed, Engine: config.UpdateEngine}
 	})
 }
 

@@ -34,11 +34,12 @@ function inside(root, path) {
   return resolved;
 }
 
-/** Writes a file inside root, creating the folders above it. */
-export function writeInRoot(root, path, content) {
+/** Writes a file inside root, creating the folders above it: private to
+ * this account unless a mode says otherwise, such as an executable. */
+export function writeInRoot(root, path, content, mode = 0o600) {
   const target = inside(root, path);
   mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, content, { mode: 0o600 });
+  writeFileSync(target, content, { mode });
   return target;
 }
 

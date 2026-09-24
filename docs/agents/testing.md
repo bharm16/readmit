@@ -58,7 +58,9 @@ unanswered is rejected. The kit's verbs:
   that opens it. Name the dialog title the facade shows.
 - `writeFile`, `makeFolder` and `provisionLicense` prepare what a person or
   their vendor put on the machine before the application saw it: exported
-  evidence, a folder for a project, a signed activation folder.
+  evidence, a folder for a project, a signed activation folder. A file is
+  private to this account unless `writeFile` is given a mode, such as `0o700`
+  for a program an administrator staged.
   `provisionLicenseIssues(issues)` provisions several activation folders, each
   with its own term (sequence, expiry relative to now such as `-48h`, grace
   days) and all signed with one fresh key, so a later issue installs as the
@@ -66,6 +68,12 @@ unanswered is rejected. The kit's verbs:
   account can open, such as a runner's root. `digest(path)` is the SHA-256 of
   a file's bytes, the identity a hub or a release names those bytes by, so a
   journey states it from the file rather than from what the window answered.
+  `deploymentAuthority()` is a customer's deployment authority
+  (`testkit/deployment.js`), written from the update manifest's documentation:
+  a fresh Ed25519 key held in memory, whose public key a runner configuration
+  pins and whose `manifest({engine, sha256, signed})` is the
+  `readmit-runner-update/v1` document it signs over a staged candidate's
+  bytes for this machine's platform, or leaves unsigned.
 - `close()` waits for the window to settle, then ends the process as closing
   the window does; `crash()` ends it at once and abandons what was running;
   `launch()` again reopens over the same files.

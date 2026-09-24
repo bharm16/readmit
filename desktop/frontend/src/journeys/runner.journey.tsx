@@ -7,13 +7,17 @@
 // against the independent downstream system, its verdict following the
 // system's defect, its recovery read offline, and a second submission of the
 // same job refused. The window's own durable run and the command line's
-// runner, over the same configuration, reach the same verdict.
+// runner, over the same configuration, reach the same verdict. A grant that
+// went stale with an update is refused by the hub until the window's
+// revision of the installed policy replaces it; a job cancelled while its
+// delivery waits on the downstream system stays uncertain, and its job id,
+// occupied from then on, is never run again by the window or the command line.
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UserEvent } from "@testing-library/user-event";
-import { byContent, enter, Journey, press, region } from "../testkit/journey";
-import { runOnce, savedAckTest } from "./steps";
+import { byContent, enter, Journey, press } from "../testkit/journey";
+import { fillRunnerForm, RUNNER_REFUSED, runnerView, runOnce, savedAckTest, tabTo } from "./steps";
 
 let journey: Journey;
 
@@ -28,13 +32,6 @@ afterEach(async () => {
 const PROJECT = "investigations/scheduling-investigation";
 const HUB_PROJECT = "scheduling";
 const ENVIRONMENT = "scheduling-downstream";
-
-/** One view of the runner, schedules and CI panel. */
-async function runnerView(user: UserEvent, tab: string, name: string) {
-  const panel = within(region("Privacy status")).getByRole("region", { name: "Runners, schedules and CI" });
-  await press(user, within(panel).getByRole("tab", { name: tab }));
-  return within(within(panel).getByRole("region", { name }));
-}
 
 const BOOKED = "20260102100000+0000";
 const MOVED = "20260103110000+0000";
@@ -283,5 +280,182 @@ test(
     await waitFor(() => expect(journey.callsTo("OpenSchedulePolicy")[opened]?.settled).toBe(true));
     expect(journey.callsTo("OpenSchedulePolicy")[opened]?.result).toMatchObject({ state: "completed", identity });
     expect(await installed.findByText(identity!)).toBeTruthy();
+  },
+);
+
+test(
+  "a runner whose hub grant went stale is refused until the window's grant revision is installed, a job cancelled while its delivery is unacknowledged stays uncertain, and its occupied job id is never run again by the window or the command line",
+  async (context) => {
+    // A real hub needs a PostgreSQL installation to create its cluster from.
+    if (!Journey.hubAvailable) context.skip();
+    const user = userEvent.setup();
+    const hub = await journey.startHub(HUB_PROJECT, [{ subject: "analyst", role: "analyst" }]);
+    const { downstream } = await savedAckTest(user, journey, "fixed");
+    const token = hub.runnerToken("runner");
+    const runnerRoot = journey.makePrivateFolder("runner/root");
+    journey.makePrivateFolder("runner/documents");
+    const configuration = journey.path("runner/documents/runner.json");
+    /** The command line's runner executing a job document the window saved,
+     * over the configuration the window saved. */
+    const runnerExecute = (id: string) =>
+      journey.commandLine([
+        "--operation-policy",
+        journey.path("vendor-delivered-license", "operation-policy.json"),
+        "runner",
+        "execute",
+        journey.path(`runner/documents/${id}.json`),
+        "--config",
+        configuration,
+        "--send",
+      ]);
+    // The build this machine's runner is, as its installed executable says.
+    const build = (await journey.commandLine(["--version"])).stdout.replace(/^readmit version (\S+)\n$/, "$1");
+
+    const view = await runnerView(user, "Runner", "Runner configuration and work");
+    await fillRunnerForm(user, view, {
+      hub: `https://${hub.address}`,
+      project: HUB_PROJECT,
+      environment: ENVIRONMENT,
+      root: runnerRoot,
+      ca: hub.certificateAuthority,
+      certificate: hub.clientCertificate,
+      key: { program: "/bin/cat", arguments: hub.clientKey },
+      token: { program: "/bin/cat", arguments: token },
+      updateKey: "A".repeat(43) + "=",
+      updateEngine: "next-approved-build",
+      destination: configuration,
+    });
+    await press(user, view.getByRole("button", { name: "Save configuration" }));
+    expect(await outcome(view, /^Saved to .*runner\.json\.$/)).toBe(`Saved to ${configuration}.`);
+
+    // The grant the hub's operator installed before this runner's last update
+    // pins the build it ran then.
+    await enter(user, view.getAllByLabelText("Project").at(-1)!, HUB_PROJECT);
+    await enter(user, view.getByLabelText("Subject"), "runner");
+    await enter(user, view.getAllByLabelText("Environment").at(-1)!, ENVIRONMENT);
+    await enter(user, view.getByLabelText("Engine (empty names this build)"), "retired-build");
+    await enter(user, view.getAllByLabelText("Destination").at(-1)!, journey.path("runner/documents/runners.json"));
+    await press(user, view.getByRole("button", { name: "Save grant revision" }));
+    expect(await outcome(view, /^Saved to .*runners\.json\. /)).toBe(
+      `Saved to ${journey.path("runner/documents/runners.json")}. Installing it on the hub is the administrator's action.`,
+    );
+    await hub.restart(["-runner-policy", journey.path("runner/documents/runners.json")]);
+
+    // Under the stale grant the hub refuses this build's admission, with its
+    // own reason.
+    await enter(user, view.getByLabelText("Configuration path"), configuration);
+    await press(user, view.getByRole("button", { name: "Inspect runner" }));
+    expect(await outcome(view, /^Health: /)).toBe("Health: idle, 0 retained job(s).");
+    await press(user, view.getByRole("button", { name: "Enroll (probe admission)" }));
+    expect(await outcome(view, /^Admission refused: /)).toMatch(/hub refused admission \(Forbidden\): version or environment refused$/);
+
+    // The window revises the installed policy. A policy a later release
+    // wrote is refused by the admission protocol's reader, and nothing is
+    // written.
+    journey.writeFile(
+      "runner/documents/runners-later.json",
+      journey.readFile("runner/documents/runners.json").replace("readmit-runner-policy/v1", "readmit-runner-policy/v2"),
+    );
+    await enter(user, view.getByLabelText("Existing policy (optional)"), journey.path("runner/documents/runners-later.json"));
+    await enter(user, view.getByLabelText("Engine (empty names this build)"), "");
+    await enter(user, view.getAllByLabelText("Destination").at(-1)!, journey.path("runner/documents/runners-revision.json"));
+    await press(user, view.getByRole("button", { name: "Save grant revision" }));
+    expect(await outcome(view, /^Refused: /)).toBe("Refused: the existing runner policy could not be read through its own strict reader");
+    expect(() => journey.readFile("runner/documents/runners-revision.json")).toThrow();
+
+    // Over the installed policy, saved from the keyboard, this build replaces
+    // the stale grant for the pair rather than joining it. The revision is a
+    // new file, shown as it was written.
+    await enter(user, view.getByLabelText("Existing policy (optional)"), journey.path("runner/documents/runners.json"));
+    await tabTo(user, view.getByRole("button", { name: "Save grant revision" }));
+    await user.keyboard("{Enter}");
+    expect(await outcome(view, /^Saved to .*runners-revision\.json\. /)).toBe(
+      `Saved to ${journey.path("runner/documents/runners-revision.json")}. Installing it on the hub is the administrator's action.`,
+    );
+    const revision = journey.readFile("runner/documents/runners-revision.json");
+    expect(JSON.parse(revision)).toEqual({
+      schema: "readmit-runner-policy/v1",
+      runners: [
+        { project: HUB_PROJECT, subject: "runner", environment: ENVIRONMENT, engine: build, spec: "readmit-test/v1", profile: "readmit-siu-v1", max_seconds: 300, max_jobs: 100 },
+      ],
+    });
+    expect(view.getByText(byContent(/^\{\n {2}"schema": "readmit-runner-policy\/v1"/)).textContent).toBe(revision);
+    expect(JSON.parse(journey.readFile("runner/documents/runners.json")).runners[0].engine).toBe("retired-build");
+
+    // The operator installs the revision and restarts the hub with it. Once
+    // the restarted hub issues leases, the same probe is admitted.
+    await hub.restart(["-runner-policy", journey.path("runner/documents/runners-revision.json")]);
+    await pause(10_500);
+    await press(user, view.getByRole("button", { name: "Enroll (probe admission)" }));
+    expect(await outcome(view, /^Admitted: /)).toMatch(/^Admitted: lease until \S+, at most 300s per job and 100 retained jobs\.$/);
+    await pause(10_500);
+
+    // A job is preflighted and executed from the keyboard while the
+    // downstream system holds its acknowledgement, and cancelled from the
+    // keyboard once the first message has reached it.
+    downstream.reset();
+    downstream.holdAcknowledgements();
+    await enter(user, view.getByLabelText("Job id"), "reschedule-001");
+    await enter(user, view.getByLabelText("Spec path"), journey.path(PROJECT, "reschedule-ack-test.json"));
+    await saveJob(user, view, "reschedule-001");
+    await enter(user, view.getByLabelText("Job document"), journey.path("runner/documents/reschedule-001.json"));
+    await press(user, view.getByRole("button", { name: "Preflight job" }));
+    expect(await outcome(view, /^Prepared inputs /)).toMatch(new RegExp(`^Prepared inputs [0-9a-f]{64} bind environment ${ENVIRONMENT}\\.$`));
+    // Execute is disabled while the job runs, and the focus moves to Cancel,
+    // the one action the running job offers.
+    const asked = journey.callsTo("ExecuteRunnerJob").length;
+    await tabTo(user, view.getByRole("button", { name: "Execute job" }));
+    await user.keyboard("{Enter}");
+    const cancel = await view.findByRole("button", { name: "Cancel" });
+    await waitFor(() => expect(document.activeElement).toBe(cancel));
+    await waitFor(() => expect(downstream.received()).toHaveLength(1), { timeout: 60_000 });
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(journey.callsTo("ExecuteRunnerJob")[asked]?.settled).toBe(true), { timeout: 60_000 });
+    expect(journey.callsTo("Cancel").at(-1)?.args).toEqual(["runner"]);
+    expect(journey.callsTo("ExecuteRunnerJob")[asked]?.result).toMatchObject({
+      state: "completed",
+      summary: { state: "delivery_uncertain", stop_reason: "cancelled", delivery_uncertain: true },
+    });
+    expect(await outcome(view, /^Job reschedule-001 finished: /)).toBe(
+      "Job reschedule-001 finished: delivery_uncertain. Delivery stayed uncertain; nothing will be resent from here.",
+    );
+    downstream.releaseAcknowledgement();
+    expect(downstream.received()).toHaveLength(1);
+
+    // Recovery reads the cancelled job as uncertain, in the window and on the
+    // command line, and offers nothing to resume.
+    await enter(user, view.getByLabelText("Retained job id for recovery"), "reschedule-001");
+    await press(user, view.getByRole("button", { name: "Read recovery" }));
+    expect(await outcome(view, /^reschedule-001: /)).toBe("reschedule-001: 0 acknowledged, 1 uncertain, 1 not attempted. Recovery never sends.");
+    const recovery = await journey.commandLine(["run", "status", `${runnerRoot}/reschedule-001/run`, "--recovery", "--json"]);
+    expect(recovery.code).toBe(2);
+    expect(JSON.parse(recovery.stdout)).toMatchObject({
+      schema: "readmit-run-recovery/v1",
+      run: { delivery_uncertain: true },
+      uncertain: 1,
+      not_attempted: 1,
+      safe_to_repeat: false,
+    });
+
+    // Its job id is occupied from now on. The preflight says so, the window's
+    // execution and the command line's runner are each refused with the
+    // runner's reason, and the downstream system receives nothing more.
+    await press(user, view.getByRole("button", { name: "Preflight job" }));
+    expect(await outcome(view, /^Preflight refused: /)).toBe(
+      "Preflight refused: job id reschedule-001 is already retained in this runner's root and never runs again; read its recovery, and save a new job document with a new job id once receiver state is established",
+    );
+    expect(await execute(user, view)).toMatchObject({ state: "failed", job_id: "reschedule-001", reason: RUNNER_REFUSED });
+    expect(await runnerExecute("reschedule-001")).toMatchObject({ code: 1, stdout: "", stderr: `readmit: ${RUNNER_REFUSED}\n` });
+    expect(downstream.received()).toHaveLength(1);
+
+    // A new job id the window writes runs unchanged through the command
+    // line's runner, over the configuration the window wrote.
+    downstream.reset();
+    await enter(user, view.getByLabelText("Job id"), "reschedule-002");
+    await saveJob(user, view, "reschedule-002");
+    const next = await runnerExecute("reschedule-002");
+    expect(next.code).toBe(0);
+    expect(JSON.parse(next.stdout)).toMatchObject({ schema: "readmit-job/v1", state: "passed", delivery_uncertain: false });
+    expect(downstream.ledger()).toEqual({ "PLACER-101": MOVED });
   },
 );

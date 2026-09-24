@@ -4916,9 +4916,12 @@ export interface RunnerRecoveryResult {
   summary?: DurableRunSummary;
 }
 
+/** One staged-update check: the build the configuration approves, which a
+ * verified manifest names exactly. */
 export interface RunnerUpdateResult {
   state: State;
   reason?: string;
+  engine?: string;
 }
 
 /** One entry of a readmit-hub-schedules/v1 revision as the structured form

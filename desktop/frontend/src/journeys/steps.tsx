@@ -308,3 +308,52 @@ export async function tabTo(user: UserEvent, control: HTMLElement): Promise<void
   }
   throw new Error(`${control.textContent ?? control.getAttribute("aria-label")} is not reachable with Tab`);
 }
+
+/** The runner's own refusal, the sentence the command line prints after
+ * "readmit: " and the window shows as the reason. */
+export const RUNNER_REFUSED = "runner operation refused; check private configuration, admission, and retained status";
+
+/** One view of the runner, schedules and CI panel in the privacy status: the
+ * tab chosen, then its named section. */
+export async function runnerView(user: UserEvent, tab: string, name: string) {
+  const panel = within(region("Privacy status")).getByRole("region", { name: "Runners, schedules and CI" });
+  await press(user, within(panel).getByRole("tab", { name: tab }));
+  return within(within(panel).getByRole("region", { name }));
+}
+
+/** What a customer administrator enters in the runner configuration form:
+ * every member readmit-runner/v1 requires, each credential reference as the
+ * program that reads it back and its arguments (one per line), never a
+ * value. */
+export interface RunnerForm {
+  hub: string;
+  project: string;
+  environment: string;
+  root: string;
+  ca: string;
+  certificate: string;
+  key: { program: string; arguments: string };
+  token: { program: string; arguments: string };
+  updateKey: string;
+  updateEngine: string;
+  destination: string;
+}
+
+/** Fills the runner configuration form of the runner view field by field.
+ * Its project, environment and destination come before the grant form's
+ * fields of the same names. */
+export async function fillRunnerForm(user: UserEvent, view: ReturnType<typeof within>, form: RunnerForm): Promise<void> {
+  await enter(user, view.getByLabelText("Hub URL"), form.hub);
+  await enter(user, view.getAllByLabelText("Project")[0]!, form.project);
+  await enter(user, view.getAllByLabelText("Environment")[0]!, form.environment);
+  await enter(user, view.getByLabelText("Runner root"), form.root);
+  await enter(user, view.getByLabelText("CA file"), form.ca);
+  await enter(user, view.getByLabelText("Client certificate"), form.certificate);
+  await enter(user, view.getByLabelText("Key reader program"), form.key.program);
+  await enter(user, view.getByLabelText("Key reader arguments (one per line)"), form.key.arguments);
+  await enter(user, view.getByLabelText("Token reader program"), form.token.program);
+  await enter(user, view.getByLabelText("Token reader arguments (one per line)"), form.token.arguments);
+  await enter(user, view.getByLabelText("Approved update key (standard base64)"), form.updateKey);
+  await enter(user, view.getByLabelText("Approved update engine"), form.updateEngine);
+  await enter(user, view.getAllByLabelText("Destination")[0]!, form.destination);
+}

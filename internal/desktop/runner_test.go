@@ -480,6 +480,46 @@ func TestInspectRunnerJobRefusesAnotherEnvironmentBeforeAnythingIsSent(t *testin
 	}
 }
 
+// A job id the runner root on this machine already holds is occupied: the
+// runner reserves it permanently, so the preflight names it and offers no pin
+// rather than one the runner will refuse. Reading changes nothing.
+func TestInspectRunnerJobRefusesAJobIdTheRunnerRootRetains(t *testing.T) {
+	app := workspaceApp(t)
+	dir := t.TempDir()
+	spec := writableSpec(t, dir)
+	root := filepath.Join(dir, "runs")
+	if err := os.Mkdir(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	configRequest := runnerConfigInput(t, root)
+	configRequest.Output = filepath.Join(dir, "runner.json")
+	if saved := app.SaveRunnerConfig(configRequest); saved.State != desktop.Completed {
+		t.Fatalf("config: %+v", saved)
+	}
+	jobPath := filepath.Join(dir, "job.json")
+	if saved := app.SaveRunnerJob(desktop.RunnerJobRequest{ID: "nightly-001", Spec: spec, Output: jobPath}); saved.State != desktop.Completed {
+		t.Fatalf("job: %+v", saved)
+	}
+	free := app.InspectRunnerJob(configRequest.Output, jobPath)
+	if free.State != desktop.Completed || free.InputIdentity == "" || free.Environment != "lab" {
+		t.Fatalf("a free job id: %+v", free)
+	}
+	// The runner's own claim of the id, as Run leaves it whatever the job
+	// became: a directory named by the id beneath the root.
+	if err := os.Mkdir(filepath.Join(root, "nightly-001"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	occupied := app.InspectRunnerJob(configRequest.Output, jobPath)
+	if occupied.State != desktop.Failed || occupied.JobID != "nightly-001" || occupied.InputIdentity != "" ||
+		!strings.Contains(occupied.Reason, "job id nightly-001 is already retained in this runner's root and never runs again") {
+		t.Fatalf("an occupied job id: %+v", occupied)
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("the preflight changed the runner root: %v %v", entries, err)
+	}
+}
+
 func TestVerifyRunnerUpdateChecksTheStagedCandidateWithoutExecutingIt(t *testing.T) {
 	app := workspaceApp(t)
 	public, private, _ := ed25519.GenerateKey(rand.Reader)
@@ -509,7 +549,7 @@ func TestVerifyRunnerUpdateChecksTheStagedCandidateWithoutExecutingIt(t *testing
 	if err := os.WriteFile(manifest, raw, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if result := app.VerifyRunnerUpdate(configRequest.Output, manifest, bin); result.State != desktop.Completed {
+	if result := app.VerifyRunnerUpdate(configRequest.Output, manifest, bin); result.State != desktop.Completed || result.Engine != "v-next" {
 		t.Fatalf("verify: %+v", result)
 	}
 	if err := os.WriteFile(bin, []byte("altered candidate"), 0700); err != nil {

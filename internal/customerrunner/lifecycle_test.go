@@ -87,3 +87,24 @@ func TestRunnerRefusesEvidenceRootBeforeCreatingClaim(t *testing.T) {
 		t.Fatal("evidence changed")
 	}
 }
+
+// A job id the root holds is retained, whatever the entry became; an id the
+// root does not hold is free; and a root that cannot be read is refused
+// rather than reported free.
+func TestRetainedReportsTheIdsTheRootReserves(t *testing.T) {
+	c, _ := localConfig(t)
+	if retained, err := customerrunner.Retained(c.Root, "nightly-001"); err != nil || retained {
+		t.Fatalf("a free id: %v %v", retained, err)
+	}
+	os.Mkdir(filepath.Join(c.Root, "nightly-001"), 0700)
+	if retained, err := customerrunner.Retained(c.Root, "nightly-001"); err != nil || !retained {
+		t.Fatalf("a retained id: %v %v", retained, err)
+	}
+	blocked := filepath.Join(t.TempDir(), "blocked")
+	if err := os.WriteFile(blocked, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if retained, err := customerrunner.Retained(blocked, "nightly-001"); err == nil || retained {
+		t.Fatalf("a root that is not a directory: %v %v", retained, err)
+	}
+}
