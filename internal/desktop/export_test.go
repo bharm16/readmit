@@ -1,6 +1,9 @@
 package desktop
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // CompleteHubAuthWithinForTest is CompleteHubAuth with a shorter wait for the
 // browser, so a test reaches the sign-in timeout without waiting minutes. The
@@ -26,3 +29,16 @@ func HoldSlotForTest(a *App, name string) (func(), bool) {
 func DeclaredProgramRunningForTest(a *App) func() {
 	return a.declaredProgramStarted()
 }
+
+// ImportProfilePackageWithinForTest is ImportProfilePackage's work under a
+// context the test controls, so a cancellation lands before the import
+// directory exists or after one of its documents was written rather than
+// wherever scheduling puts it. The reader, the import and every refusal are
+// the production ones; only the operation slot is not taken.
+func ImportProfilePackageWithinForTest(ctx context.Context, request ProfilePackageImportRequest) ProfilePackageResult {
+	return importProfilePackage(ctx, request)
+}
+
+// ProfileImportOperationForTest is the name a package import holds the slot
+// under, which the profile panel's cancel must name.
+const ProfileImportOperationForTest = profileImportOperation

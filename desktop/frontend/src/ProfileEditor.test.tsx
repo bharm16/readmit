@@ -1,10 +1,10 @@
 import { expect, test } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ProfileEditor } from "./ProfileEditor";
 import { installFacade } from "./testkit/wails";
 import { localProfileFixture, profilePackFixture, WORKSPACE_ROOT } from "./testkit/fixtures";
-import type { EditorDraft } from "./bindings";
+import type { EditorDraft, ProfilePackageResult } from "./bindings";
 import type { FacadeHandlers } from "./testkit/wails";
 
 function renderEditor(handlers: FacadeHandlers = {}, drafts: EditorDraft[] | null = []) {
@@ -292,4 +292,199 @@ test("retains draft edits in draft store and allows discarding", async () => {
     const calls = facade.callsTo("SaveEditorDraft");
     expect(calls.length).toBeGreaterThan(0);
   });
+});
+
+/** A completed import as the facade reports one: what the package carried,
+ * read by the same readers the import wrote it with. */
+function importedPackage(): ProfilePackageResult {
+  return {
+    state: "completed",
+    output: "imported-interface",
+    profile: { id: "fixture-local-siu", version: "1" },
+    pack: { id: "fixture-siu", version: "1" },
+    version: { id: "fixture-local-siu", version: "1" },
+    seal: localProfileFixture().seal!,
+    provenance: profilePackFixture().provenance!,
+    origin: {
+      schema: "readmit-profile-origin/v1",
+      source_format: "readmit-local-profile/v1",
+      source: "Fixture Source",
+      revision: "1",
+      license: "LicenseRef-readmit-fixture",
+      notice: "Fixture notice text",
+      mapping_limitations: "No external mapping",
+      review_reference: "Ref-123",
+    },
+    sha256: "aabbcc1122334455",
+    rights: "Ref-123",
+    dependency: "fixture-siu 1",
+  };
+}
+
+/** The import controls of the package exchange tab. */
+async function exchange(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("tab", { name: "Package Exchange" }));
+  return within(screen.getByRole("form", { name: "Import profile package" }));
+}
+
+test("imports a package into a new directory from the keyboard and shows what it verified, its provenance and that nothing was activated", async () => {
+  const user = userEvent.setup();
+  const facade = renderEditor({ ImportProfilePackage: () => importedPackage() });
+  const form = await exchange(user);
+
+  await user.clear(form.getByLabelText("Package File:"));
+  await user.type(form.getByLabelText("Package File:"), "interface-package.json");
+  await user.clear(form.getByLabelText("Output Directory:"));
+  await user.type(form.getByLabelText("Output Directory:"), "imported-interface{Enter}");
+
+  const imported = within(await screen.findByRole("region", { name: "Package import" }));
+  expect(imported.getByRole("heading", { name: "Imported into imported-interface" })).toBeTruthy();
+  expect(facade.oneCall("ImportProfilePackage")).toEqual([
+    { workspace: WORKSPACE_ROOT, package: "interface-package.json", output: "imported-interface" },
+  ]);
+  const fact = (term: string) => imported.getByText(term, { selector: "dt" }).nextElementSibling?.textContent;
+  expect(fact("Profile")).toBe("fixture-local-siu v1");
+  expect(fact("Pinned pack")).toBe("fixture-siu v1");
+  expect(fact("Version seal")).toBe(
+    "fixture-local-siu v1 · SHA-256 e96a3350b728a78d063cf99afddeec3854d393682039ed4348fbc89057c55054 · 3322 bytes",
+  );
+  expect(fact("Package SHA-256")).toBe("aabbcc1122334455");
+  expect(fact("Source")).toBe("Fixture Source");
+  expect(fact("Review reference")).toBe("Ref-123");
+  expect(fact("Mapping limitations")).toBe("No external mapping");
+  expect(fact("Pack source")).toBe("Fixture Author · testdata/fixtures/profile-pack.json @ 1");
+  expect(fact("Rights review")).toBe("approved (testdata/README.md)");
+  // The notice is disclosed on request.
+  await user.click(imported.getByText("License notice"));
+  expect(imported.getByText("Fixture notice text")).toBeTruthy();
+  expect(imported.getByText(/^Nothing was activated: no project changed, no saved test was repinned/)).toBeTruthy();
+
+  // The editor still holds what it held: importing opened nothing.
+  await user.click(screen.getByRole("tab", { name: "Profile Editor" }));
+  expect((screen.getByLabelText("Profile ID") as HTMLInputElement).value).toBe("local-siu-profile");
+  expect(facade.callsTo("OpenProfile")).toHaveLength(0);
+});
+
+test("refuses tampered, unsupported and occupied imports in the engine's words and returns focus to the import", async () => {
+  const user = userEvent.setup();
+  const facade = renderEditor();
+  const form = await exchange(user);
+  for (const reason of [
+    "profile package integrity check failed",
+    "unsupported profile package version",
+    "cannot create profile import directory; destination must be new and parent writable",
+  ]) {
+    facade.reply({ ImportProfilePackage: () => ({ state: "failed", reason }) });
+    await user.click(form.getByRole("button", { name: "Import Package" }));
+    const refused = within(await screen.findByRole("region", { name: "Package import" }));
+    expect(await refused.findByText(reason)).toBeTruthy();
+    expect(refused.getByRole("heading", { name: "Import refused" })).toBeTruthy();
+    expect(refused.queryByText("Version seal")).toBeNull();
+    expect(refused.queryByText(/Nothing was activated/)).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(form.getByRole("button", { name: "Import Package" })));
+  }
+  expect(facade.callsTo("ImportProfilePackage")).toHaveLength(3);
+});
+
+test("cancels an import in progress from the keyboard and says what the cancellation left", async () => {
+  const user = userEvent.setup();
+  const facade = renderEditor({ Cancel: () => undefined });
+  const parked = facade.park("ImportProfilePackage");
+  const form = await exchange(user);
+
+  await user.click(form.getByLabelText("Output Directory:"));
+  await user.keyboard("{Enter}");
+  // A running import offers its cancel and moves focus to it.
+  const cancelling = await form.findByRole("button", { name: "Cancel import" });
+  await waitFor(() => expect(document.activeElement).toBe(cancelling));
+  expect((form.getByRole("button", { name: "Import Package" }) as HTMLButtonElement).disabled).toBe(true);
+  await user.keyboard("{Enter}");
+  expect(facade.oneCall("Cancel")).toEqual(["profile-import"]);
+
+  parked.resolve({ state: "cancelled", reason: "the import was cancelled before anything was written" });
+  const cancelled = within(await screen.findByRole("region", { name: "Package import" }));
+  expect(cancelled.getByRole("heading", { name: "Import cancelled" })).toBeTruthy();
+  expect(cancelled.getByText("the import was cancelled before anything was written")).toBeTruthy();
+  expect(form.queryByRole("button", { name: "Cancel import" })).toBeNull();
+  await waitFor(() => expect(document.activeElement).toBe(form.getByRole("button", { name: "Import Package" })));
+});
+
+test("opens an existing local profile from the keyboard, resolves it against its pinned pack and shows its seal", async () => {
+  const user = userEvent.setup();
+  const opened = { ...localProfileFixture(), document: '{"schema":"readmit-local-profile/v1"}\n' };
+  const facade = renderEditor({ OpenProfile: () => opened });
+  const form = within(screen.getByRole("form", { name: "Open an existing profile" }));
+
+  await user.type(form.getByLabelText("Profile entry"), "imported-interface/profile.json");
+  await user.type(form.getByLabelText("Pack entry"), "imported-interface/pack.json{Enter}");
+
+  expect(await screen.findByRole("heading", { name: "Open imported-interface/profile.json: completed" })).toBeTruthy();
+  expect(facade.oneCall("OpenProfile")).toEqual([WORKSPACE_ROOT, "imported-interface/profile.json", "imported-interface/pack.json"]);
+  expect(screen.getByText("e96a3350b728a78d063cf99afddeec3854d393682039ed4348fbc89057c55054")).toBeTruthy();
+  expect(
+    screen.getByText(
+      "Resolved against the pinned pack fixture-siu v1: parse supported · labels supported · structural unsupported · workflow unsupported",
+    ),
+  ).toBeTruthy();
+  // The opened profile is what the editor now edits, and its canonical
+  // document is what the raw view holds.
+  expect((screen.getByLabelText("Profile ID") as HTMLInputElement).value).toBe("fixture-local-siu");
+  await waitFor(() => expect(document.activeElement).toBe(form.getByRole("button", { name: "Open Profile" })));
+  await user.click(screen.getByRole("tab", { name: "Canonical JSON" }));
+  expect((screen.getByLabelText("Raw Canonical JSON") as HTMLTextAreaElement).value).toBe(opened.document);
+  // Opening is a read: nothing was retained or saved.
+  expect(facade.callsTo("SaveEditorDraft")).toHaveLength(0);
+  expect(facade.callsTo("SaveProfile")).toHaveLength(0);
+});
+
+test("an opened profile that no offered pack satisfies says nothing was read from one", async () => {
+  const user = userEvent.setup();
+  const unpinned = localProfileFixture();
+  unpinned.resolution = {
+    ...unpinned.resolution!,
+    pinned: false,
+    support: { parse: "unknown", labels: "unknown", structural: "unknown", workflow: "unknown" },
+    findings: [{ kind: "pack_not_pinned", detail: "the pack offered is not fixture-siu 1; nothing was read from it" }],
+  };
+  renderEditor({ OpenProfile: () => unpinned });
+  const form = within(screen.getByRole("form", { name: "Open an existing profile" }));
+  await user.type(form.getByLabelText("Profile entry"), "profile.json");
+  await user.type(form.getByLabelText("Pack entry"), "adt-pack.json");
+  await user.click(form.getByRole("button", { name: "Open Profile" }));
+  expect(
+    await screen.findByText(
+      "Not resolved against the pinned pack fixture-siu v1: no pack offered satisfies the pin, so nothing was read from one.",
+    ),
+  ).toBeTruthy();
+  expect(screen.getByText(/the pack offered is not fixture-siu 1; nothing was read from it/)).toBeTruthy();
+});
+
+test("refuses to open over unstored edits and shows an open the reader refused without replacing the editor", async () => {
+  const user = userEvent.setup();
+  const facade = renderEditor({ OpenProfile: () => ({ state: "failed", reason: "the local profile must be one regular file of the open workspace" }) });
+
+  // An edit is retained, so opening would replace it: the window says so and
+  // opens nothing.
+  await user.clear(screen.getByLabelText("Profile ID"));
+  await user.type(screen.getByLabelText("Profile ID"), "edited-profile");
+  await waitFor(() => expect(facade.callsTo("SaveEditorDraft").length).toBeGreaterThan(0));
+  const form = within(screen.getByRole("form", { name: "Open an existing profile" }));
+  await user.type(form.getByLabelText("Profile entry"), "missing.json{Enter}");
+  expect((await form.findByRole("alert")).textContent).toMatch(/^This editor holds unstored edits\./);
+  expect(facade.callsTo("OpenProfile")).toHaveLength(0);
+  expect((screen.getByLabelText("Profile ID") as HTMLInputElement).value).toBe("edited-profile");
+
+  // Once the edits are discarded the open reaches the facade, and its refusal
+  // leaves the editor as it was.
+  await user.click(screen.getByRole("tab", { name: "Canonical JSON" }));
+  await user.click(screen.getByRole("button", { name: "Discard Unstored Edits" }));
+  await user.click(screen.getByRole("tab", { name: "Profile Editor" }));
+  const reopened = within(screen.getByRole("form", { name: "Open an existing profile" }));
+  // What was typed is still there.
+  expect((reopened.getByLabelText("Profile entry") as HTMLInputElement).value).toBe("missing.json");
+  await user.click(reopened.getByRole("button", { name: "Open Profile" }));
+  expect(await screen.findByRole("heading", { name: "Open missing.json: failed" })).toBeTruthy();
+  expect(screen.getByText("the local profile must be one regular file of the open workspace")).toBeTruthy();
+  expect(reopened.queryByRole("alert")).toBeNull();
+  expect((screen.getByLabelText("Profile ID") as HTMLInputElement).value).toBe("local-siu-profile");
 });

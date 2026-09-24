@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
+  cancel,
   compareProfiles,
   exportProfilePackage,
   importProfilePackage,
   inspectProfilePackage,
   inspectProfilePack,
+  openProfile,
   openProfileLibrary,
   saveProfile,
   upgradeProfilePin,
@@ -14,6 +16,7 @@ import {
   type EditorDraft,
   type Field,
   type LocalProfile,
+  type LocalProfileResolution,
   type LocalProfileResult,
   type ProfileCompareResult,
   type ProfileLibraryResult,
@@ -21,6 +24,7 @@ import {
   type ProfilePackResult,
   type ProfileUpgradePinResult,
   type Segment,
+  type State,
 } from "./bindings";
 import { RetentionStatus, draftFor, useRetainer } from "./drafting";
 import "./profile.css";
@@ -37,6 +41,49 @@ const DATA_TYPES = [
   "PT", "RP", "SAD", "SI", "SN", "ST", "TM", "TS", "TX", "VID", "XAD", "XCN",
   "XON", "XPN", "XTN",
 ];
+
+// The name the facade gives a package import while it runs, so this panel's
+// cancel stops exactly the import it started.
+const PROFILE_IMPORT = "profile-import";
+
+// What an import that did not complete is called, by the state it answered.
+function importHeading(state: State): string {
+  switch (state) {
+    case "failed":
+      return "Import refused";
+    case "cancelled":
+      return "Import cancelled";
+    case "permission_denied":
+      return "Import denied";
+    case "busy":
+      return "Import not started";
+    default:
+      return `Import ${state}`;
+  }
+}
+
+/** Whether the pack a profile pins answered its resolution, and with what. */
+function PinStatus({ resolution }: { resolution: LocalProfileResolution }) {
+  const pinned = `${resolution.base.pack.id} v${resolution.base.pack.version}`;
+  const { parse, labels, structural, workflow } = resolution.support;
+  return (
+    <p className="pin-status">
+      {resolution.pinned
+        ? `Resolved against the pinned pack ${pinned}: parse ${parse} · labels ${labels} · structural ${structural} · workflow ${workflow}`
+        : `Not resolved against the pinned pack ${pinned}: no pack offered satisfies the pin, so nothing was read from one.`}
+    </p>
+  );
+}
+
+/** One fact of what an import verified, as a term and its description. */
+function Fact({ term, children }: { term: string; children: ReactNode }) {
+  return (
+    <>
+      <dt>{term}</dt>
+      <dd>{children}</dd>
+    </>
+  );
+}
 
 function emptyProfile(): LocalProfile {
   return {
@@ -92,6 +139,13 @@ export function ProfileEditor({
 
   // Profile validation and seal state
   const [profileResult, setProfileResult] = useState<LocalProfileResult | null>(null);
+  // Which action the result below answers: a validation or save, or an open.
+  const [resultLabel, setResultLabel] = useState("Validation Result");
+
+  // Opening an existing profile
+  const [openEntry, setOpenEntry] = useState("");
+  const [openPack, setOpenPack] = useState("");
+  const [openNotice, setOpenNotice] = useState<string | null>(null);
 
   // Version comparison and pin upgrade state
   const [compareFrom, setCompareFrom] = useState("profile-v1.json");
@@ -111,10 +165,30 @@ export function ProfileEditor({
   const [pkgImportOutput, setPkgImportOutput] = useState("imported-profile");
   const [pkgInspectFile, setPkgInspectFile] = useState("package.json");
   const [packageResult, setPackageResult] = useState<ProfilePackageResult | null>(null);
+  const [importResult, setImportResult] = useState<ProfilePackageResult | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const [pending, setPending] = useState(false);
   const retainer = useRetainer();
   const disabled = busy || pending;
+
+  // A browser takes focus from a control it disables, so once an action
+  // answers focus returns to the control that started it, and a running
+  // import puts focus on its cancel.
+  const openButton = useRef<HTMLButtonElement>(null);
+  const importButton = useRef<HTMLButtonElement>(null);
+  const cancelImportButton = useRef<HTMLButtonElement>(null);
+  const [returnFocus, setReturnFocus] = useState<"open" | "import" | null>(null);
+  useEffect(() => {
+    if (importing) {
+      cancelImportButton.current?.focus();
+    }
+  }, [importing]);
+  useEffect(() => {
+    if (pending || returnFocus === null) return;
+    (returnFocus === "open" ? openButton : importButton).current?.focus();
+    setReturnFocus(null);
+  }, [pending, returnFocus]);
 
   // Restore draft on mount for this workspace
   const loaded = useRef<string | null>(null);
@@ -210,6 +284,32 @@ export function ProfileEditor({
     }
   }
 
+  async function handleOpenProfile(event: FormEvent) {
+    event.preventDefault();
+    // Opening replaces what the editor shows, so it never replaces edits
+    // that are retained and not stored.
+    if (retainer.currentId() !== "" || retainer.retention.state !== "idle") {
+      setOpenNotice(
+        "This editor holds unstored edits. Save them as a profile revision, or discard them with Discard Unstored Edits under Canonical JSON, before opening another profile.",
+      );
+      return;
+    }
+    setOpenNotice(null);
+    setPending(true);
+    try {
+      const res = await openProfile(workspace, openEntry, openPack);
+      setResultLabel(`Open ${openEntry}`);
+      setProfileResult(res);
+      if (res.state === "completed" && res.profile) {
+        setProfile(res.profile);
+        setRawJson(res.document ?? JSON.stringify(res.profile, null, 2));
+      }
+    } finally {
+      setPending(false);
+      setReturnFocus("open");
+    }
+  }
+
   async function handleValidateProfile() {
     setPending(true);
     try {
@@ -218,6 +318,7 @@ export function ProfileEditor({
         document: rawJson,
         pack: packEntry,
       });
+      setResultLabel("Validation Result");
       setProfileResult(res);
     } finally {
       setPending(false);
@@ -233,6 +334,7 @@ export function ProfileEditor({
         output: saveOutput,
         seal_output: sealOutput,
       });
+      setResultLabel("Validation Result");
       setProfileResult(res);
       if (res.state === "completed") {
         const id = retainer.currentId();
@@ -305,17 +407,22 @@ export function ProfileEditor({
     }
   }
 
-  async function handleImportPackage() {
+  async function handleImportPackage(event: FormEvent) {
+    event.preventDefault();
+    setImportResult(null);
     setPending(true);
+    setImporting(true);
     try {
       const res = await importProfilePackage({
         workspace,
         package: pkgImportFile,
         output: pkgImportOutput,
       });
-      setPackageResult(res);
+      setImportResult(res);
     } finally {
+      setImporting(false);
       setPending(false);
+      setReturnFocus("import");
     }
   }
 
@@ -397,6 +504,44 @@ export function ProfileEditor({
       {/* TAB 1: LOCAL PROFILE EDITOR */}
       {activeTab === "editor" && (
         <div className="tab-panel" role="tabpanel" aria-label="Profile Editor">
+          <form className="open-profile" aria-label="Open an existing profile" onSubmit={(e) => void handleOpenProfile(e)}>
+            <h4>Open an Existing Profile</h4>
+            <p className="hint">
+              Opens a local profile from the workspace or one of its folders, such as a directory a package was imported
+              into, resolves it against the pack it pins and shows its seal. Opening activates nothing.
+            </p>
+            <div className="pack-input-row">
+              <label>
+                <span>Profile entry</span>
+                <input
+                  type="text"
+                  placeholder="profile.json or folder/profile.json"
+                  value={openEntry}
+                  disabled={disabled}
+                  onChange={(e) => setOpenEntry(e.target.value)}
+                />
+              </label>
+              <label>
+                <span>Pack entry</span>
+                <input
+                  type="text"
+                  placeholder="Empty for the pinned pack beside the profile"
+                  value={openPack}
+                  disabled={disabled}
+                  onChange={(e) => setOpenPack(e.target.value)}
+                />
+              </label>
+              <button type="submit" ref={openButton} disabled={disabled || !openEntry}>
+                Open Profile
+              </button>
+            </div>
+            {openNotice && (
+              <p className="warning-text" role="alert">
+                {openNotice}
+              </p>
+            )}
+          </form>
+
           <div className="profile-meta-grid">
             <label>
               <span>Profile ID</span>
@@ -858,8 +1003,11 @@ export function ProfileEditor({
 
           {profileResult && (
             <div className={`result-box result-${profileResult.state}`}>
-              <h4>Validation Result: {profileResult.state}</h4>
+              <h4>
+                {resultLabel}: {profileResult.state}
+              </h4>
               {profileResult.reason && <p className="error-text">{profileResult.reason}</p>}
+              {profileResult.resolution && <PinStatus resolution={profileResult.resolution} />}
               {profileResult.seal && (
                 <div className="seal-details">
                   <strong>Sealed Version:</strong> {profileResult.seal.profile.id} v{profileResult.seal.profile.version}
@@ -1195,38 +1343,120 @@ export function ProfileEditor({
 
           <hr className="divider" />
 
-          <h4>Import Profile Package</h4>
-          <p className="hint">
-            Import safely unpacks a package into a new directory in this workspace. It verifies SHA-256 digests and
-            refuses to overwrite any existing files.
-          </p>
-          <div className="exchange-grid">
-            <label>
-              <span>Package File:</span>
-              <input
-                type="text"
-                value={pkgImportFile}
-                disabled={disabled}
-                onChange={(e) => setPkgImportFile(e.target.value)}
-              />
-            </label>
-            <label>
-              <span>Output Directory:</span>
-              <input
-                type="text"
-                value={pkgImportOutput}
-                disabled={disabled}
-                onChange={(e) => setPkgImportOutput(e.target.value)}
-              />
-            </label>
-          </div>
-          <button
-            type="button"
-            disabled={disabled || !pkgImportFile || !pkgImportOutput}
-            onClick={() => void handleImportPackage()}
-          >
-            Import Package
-          </button>
+          <form aria-label="Import profile package" onSubmit={(e) => void handleImportPackage(e)}>
+            <h4>Import Profile Package</h4>
+            <p className="hint">
+              Import verifies a package and writes its documents into a new directory of this workspace, as
+              `readmit profile import` does. It refuses a directory that already exists and activates nothing.
+            </p>
+            <div className="exchange-grid">
+              <label>
+                <span>Package File:</span>
+                <input
+                  type="text"
+                  value={pkgImportFile}
+                  disabled={disabled}
+                  onChange={(e) => setPkgImportFile(e.target.value)}
+                />
+              </label>
+              <label>
+                <span>Output Directory:</span>
+                <input
+                  type="text"
+                  value={pkgImportOutput}
+                  disabled={disabled}
+                  onChange={(e) => setPkgImportOutput(e.target.value)}
+                />
+              </label>
+            </div>
+            <button type="submit" ref={importButton} disabled={disabled || !pkgImportFile || !pkgImportOutput}>
+              Import Package
+            </button>
+            {importing && (
+              <button type="button" ref={cancelImportButton} onClick={() => cancel(PROFILE_IMPORT)}>
+                Cancel import
+              </button>
+            )}
+          </form>
+
+          {importResult && (
+            <section className={`result-box result-${importResult.state}`} aria-label="Package import">
+              {importResult.state === "completed" ? (
+                <>
+                  <h4>Imported into {importResult.output}</h4>
+                  <p>
+                    Verified, then written as profile.json, pack.json, version.json and origin.json, with package.json
+                    last as the completion record.
+                  </p>
+                  <dl className="import-facts">
+                    {importResult.profile && (
+                      <Fact term="Profile">
+                        {importResult.profile.id} v{importResult.profile.version}
+                      </Fact>
+                    )}
+                    {importResult.pack && (
+                      <Fact term="Pinned pack">
+                        {importResult.pack.id} v{importResult.pack.version}
+                      </Fact>
+                    )}
+                    {importResult.seal && (
+                      <Fact term="Version seal">
+                        {importResult.seal.profile.id} v{importResult.seal.profile.version} · SHA-256{" "}
+                        <code>{importResult.seal.content.sha256}</code> · {importResult.seal.content.bytes} bytes
+                      </Fact>
+                    )}
+                    {importResult.sha256 && (
+                      <Fact term="Package SHA-256">
+                        <code>{importResult.sha256}</code>
+                      </Fact>
+                    )}
+                  </dl>
+                  {importResult.origin && (
+                    <>
+                      <h5>Local origin</h5>
+                      <dl className="import-facts">
+                        <Fact term="Source format">{importResult.origin.source_format}</Fact>
+                        <Fact term="Source">{importResult.origin.source}</Fact>
+                        <Fact term="Revision">{importResult.origin.revision}</Fact>
+                        <Fact term="License">{importResult.origin.license}</Fact>
+                        <Fact term="Mapping limitations">{importResult.origin.mapping_limitations}</Fact>
+                        <Fact term="Review reference">{importResult.origin.review_reference}</Fact>
+                      </dl>
+                      <details>
+                        <summary>License notice</summary>
+                        <p className="notice-text">{importResult.origin.notice}</p>
+                      </details>
+                    </>
+                  )}
+                  {importResult.provenance && (
+                    <>
+                      <h5>Pack provenance</h5>
+                      <dl className="import-facts">
+                        <Fact term="Pack source">
+                          {importResult.provenance.source.name} · {importResult.provenance.source.location} @{" "}
+                          {importResult.provenance.source.revision}
+                        </Fact>
+                        <Fact term="Pack license">{importResult.provenance.license.spdx}</Fact>
+                        <Fact term="Rights review">
+                          {importResult.provenance.rights_review.status} ({importResult.provenance.rights_review.reference})
+                        </Fact>
+                      </dl>
+                    </>
+                  )}
+                  <p className="activation-note">
+                    Nothing was activated: no project changed, no saved test was repinned, no message was evaluated and
+                    the profile in the editor is unchanged. Open {importResult.output}/profile.json in the Profile Editor
+                    to review it.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h4>{importHeading(importResult.state)}</h4>
+                  {importResult.reason && <p className="error-text">{importResult.reason}</p>}
+                </>
+              )}
+            </section>
+          )}
 
           <hr className="divider" />
 

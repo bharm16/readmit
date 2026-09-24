@@ -249,3 +249,22 @@
 .danger-btn {
   color: #c00;
 }
+
+.open-profile {
+  margin-bottom: 1rem;
+}
+
+.import-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.3rem 0.8rem;
+}
+
+.import-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.notice-text {
+  white-space: pre-wrap;
+}
