@@ -124,10 +124,10 @@ func runShell(arguments []string) error {
 		fmt.Printf("readmit-desktop version %s\n", engine.Version())
 		return nil
 	}
-	// The four files of local shell state, each named explicitly. None holds
-	// evidence: the folders opened recently, the filters this person saved, the
-	// working session they have not stored, and the editor drafts they have not
-	// stored, which is what the window restores after an interruption.
+	// Seven local shell documents hold no evidence: recent folders, saved
+	// filters, the working session, editor drafts, and the selected paths of
+	// the operation policy, commercial destinations and customer hub config.
+	// The last two selection paths live beside the operation selection.
 	startupCheck := len(arguments) == 1 && arguments[0] == "--startup-check"
 	var recent, filters, session, drafts, operationSelection, license string
 	if startupCheck {

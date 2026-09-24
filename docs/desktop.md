@@ -258,8 +258,8 @@ msiexec /x readmit-desktop_VERSION_x64.msi /qn /norestart
 ```
 
 Removing the application removes the application. It never removes evidence, a
-project, or the three local shell-state documents named above; those are files
-in folders an operator chose, and no uninstaller of ours deletes them.
+project, or the seven local shell-state documents described under Appearance;
+the uninstaller does not delete those owner-only files.
 
 Continuous integration downloads the built packages onto fresh native runners,
 verifies them, installs and removes them through the native tools. Installation
@@ -2039,10 +2039,16 @@ retention of.
 
 The window offers `system`, `light` and `dark`, and text sizes from 100% to
 200%. Both start from the system every time the window opens and are written
-nowhere. The shell stores recent folder paths, saved filters and the working
-session in three separate owner-only local documents. Saved filter terms and a
-retained draft may contain patient data entered by the operator; no values read
-from case evidence are persisted by the shell.
+nowhere. The shell keeps seven separate owner-only local documents: recent
+folder paths (`readmit-desktop-recent/v1`), saved filters (`readmit-filters/v1`),
+the working session (`readmit-desktop-session/v1`), editor drafts
+(`readmit-desktop-drafts/v1`), and selected paths for the operation policy
+(`readmit-desktop-operation-selection/v1`), commercial destinations
+(`readmit-desktop-commercial-selection/v1`) and customer hub configuration
+(`readmit-desktop-hub-selection/v1`). Saved filter terms and retained drafts may
+contain patient data entered by the operator; no values read from case evidence
+are persisted by the shell. A remembered selection that cannot be read is
+reported until the person chooses another file.
 
 ## The sample workspace
 
@@ -3158,6 +3164,10 @@ resolved before writing; a chosen folder that is itself a link is refused.
 
 The runner's automatic claim and release follows [D10](product-decisions.md#d10--runner-instances-claim-purchased-capacity-automatically). The generated CI handoff still expects an agent's activated operation-policy path; it does not yet provision a signed license from a CI secret or establish one shared authority record across hosts. Do not copy an admission record to each host to simulate shared capacity.
 
+If the remembered operation selection cannot be read, the license pane reports
+that refusal at startup and asks the person to choose an activation folder
+again. It keeps the unreadable document until that explicit choice.
+
 ### Commercial account and checkout destination (`readmit-commercial-destinations/v1`)
 
 Purchasing, invoicing, renewing and cancelling happen in the merchant of record's hosted checkout and customer portal — a separate vendor service outside this repository ([ADR-0010](adr/0010-vendor-billing-issues-offline-entitlements-without-evidence.md)). The pane's commercial section navigates there deliberately or states plainly that it cannot:
@@ -3170,7 +3180,7 @@ Purchasing, invoicing, renewing and cancelling happen in the merchant of record'
 }
 ```
 
-The destinations file is operator-supplied configuration, selected through a native file dialog and retained beside the operation selection as `readmit-desktop-commercial-selection/v1`. `environment` is the operator's own `sandbox` or `production` label; `portal` is one https destination without credentials or a fragment. This application embeds no production URL, invents no merchant approval, price or signing identity, and makes no request to the portal: reading the file, restoring a session and inspecting local work all stay local, the destination is shown before navigation, and the pane opens it only when the person clicks the link. Until a file is selected — or when it has vanished or stopped decoding — the portal is a visible prerequisite, never a faked successful flow. External launch, sandbox acceptance and production destinations remain owner gates under [#153](https://github.com/bharm16/readmit/issues/153).
+The destinations file is operator-supplied configuration, selected through a native file dialog and retained beside the operation selection as `readmit-desktop-commercial-selection/v1`. `environment` is the operator's own `sandbox` or `production` label; `portal` is one https destination without credentials or a fragment. This application embeds no production URL, invents no merchant approval, price or signing identity, and makes no request to the portal: reading the file, restoring a session and inspecting local work all stay local, the destination is shown before navigation, and the pane opens it only when the person clicks the link. Until a file is selected — or when it has vanished or stopped decoding — the portal is a visible prerequisite, never a faked successful flow. An unreadable remembered selection is reported until the person chooses a destinations file again. External launch, sandbox acceptance and production destinations remain owner gates under [#153](https://github.com/bharm16/readmit/issues/153).
 
 The journey after checkout is handled truthfully: completing a payment is not proof of a valid entitlement, so nothing activates until the signed document the vendor delivers is verified and imported. Returning with nothing delivered, a cancelled payment, or a pending issuance leaves everything unchanged — no evidence is deleted and existing work stays readable, verifiable and exportable — and the import can be retried offline at any time. A duplicate checkout event is settled in the vendor's billing ledger, whose authenticated-event and idempotency contracts are unchanged ([purchasing through a separate portal](billing.md)).
 

@@ -253,6 +253,7 @@ func (a *App) retainOperationPolicy(path string) error {
 	}
 	a.operationPolicy = path
 	a.operationGuard = operationguard.New(path)
+	a.operationRestoreRefusal = ""
 	return nil
 }
 
@@ -702,18 +703,23 @@ func (a *App) ChooseCommercialDestinations() CommercialStatusResult {
 			}
 		}
 		a.commercialConfigPath = path
+		a.commercialRestoreRefusal = ""
 		return CommercialStatusResult{State: Completed, Environment: destinations.Environment, Portal: destinations.Portal, ConfigPath: path}
 	})
 }
 
 // CommercialStatus reports the retained commercial destination. Until one is
-// configured the portal is a visible prerequisite; the pane shows the
-// destination and navigates only when the person deliberately chooses to.
+// configured the portal is a visible prerequisite; an unreadable remembered
+// selection reports its refusal until the person chooses again. The pane
+// shows the destination and navigates only on a deliberate choice.
 func (a *App) CommercialStatus() CommercialStatusResult {
 	return run(a, false, false, func(context.Context) CommercialStatusResult {
 		a.commercialMu.Lock()
-		path := a.commercialConfigPath
+		path, refusal := a.commercialConfigPath, a.commercialRestoreRefusal
 		a.commercialMu.Unlock()
+		if refusal != "" {
+			return CommercialStatusResult{State: Failed, Reason: refusal}
+		}
 		if path == "" {
 			return CommercialStatusResult{State: Empty, Reason: commercialPrerequisite}
 		}
@@ -768,17 +774,19 @@ func decodeCommercialDestinations(data []byte) (commercialDestinations, error) {
 }
 
 // restoreCommercialSelection retains only an explicit prior destinations
-// selection. Restoring reads one local file; it makes no request.
+// selection. Restoring reads one local file and makes no request. A document
+// that exists but cannot be read stays visible as a refusal until reselected.
 func (a *App) restoreCommercialSelection(selectionPath string) {
 	a.commercialMu.Lock()
 	defer a.commercialMu.Unlock()
 	a.commercialSelectionPath = selectionPath
-	data, err := readOperationFile(selectionPath)
-	if err != nil {
+	if _, err := os.Lstat(selectionPath); errors.Is(err, fs.ErrNotExist) {
 		return
 	}
+	data, err := readOperationFile(selectionPath)
 	var selection commercialSelection
-	if json.Unmarshal(data, &selection, json.RejectUnknownMembers(true)) != nil || selection.Schema != commercialSelectionSchema || !filepath.IsAbs(selection.Config) {
+	if err != nil || json.Unmarshal(data, &selection, json.RejectUnknownMembers(true)) != nil || selection.Schema != commercialSelectionSchema || !filepath.IsAbs(selection.Config) {
+		a.commercialRestoreRefusal = "the remembered commercial selection cannot be read; choose a destinations file again"
 		return
 	}
 	a.commercialConfigPath = selection.Config

@@ -5,6 +5,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
@@ -36,21 +37,24 @@ type OperationResult struct {
 func (r *OperationResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
 // NewWithOperationSelection restores only an explicit prior policy selection.
-// Missing or invalid selection keeps reads available and paid work refused.
+// A missing selection keeps reads available and paid work refused. An
+// unreadable selection is reported until the person explicitly chooses again.
 // The commercial destinations and customer hub selections live beside it and
 // restore the same way: a local read that contacts nothing.
 func NewWithOperationSelection(chooser FolderChooser, recent, filters, session, drafts, selection string) *App {
 	a := New(chooser, recent, filters, session, drafts)
 	a.operationSelectionPath = selection
-	data, err := readOperationFile(selection)
-	if err == nil {
-		var selected operationSelection
-		if json.Unmarshal(data, &selected, json.RejectUnknownMembers(true)) == nil && selected.Schema == operationSelectionSchema && filepath.IsAbs(selected.Policy) {
-			a.operationPolicy = selected.Policy
-			a.operationGuard = operationguard.New(selected.Policy)
-		}
-	}
 	if selection != "" {
+		if _, err := os.Lstat(selection); !errors.Is(err, fs.ErrNotExist) {
+			data, readErr := readOperationFile(selection)
+			var selected operationSelection
+			if readErr != nil || json.Unmarshal(data, &selected, json.RejectUnknownMembers(true)) != nil || selected.Schema != operationSelectionSchema || !filepath.IsAbs(selected.Policy) {
+				a.operationRestoreRefusal = "the remembered operation selection cannot be read; choose an activation folder again"
+			} else {
+				a.operationPolicy = selected.Policy
+				a.operationGuard = operationguard.New(selected.Policy)
+			}
+		}
 		a.restoreCommercialSelection(filepath.Join(filepath.Dir(selection), "commercial.json"))
 		a.restoreHubSelection(filepath.Join(filepath.Dir(selection), "hub.json"))
 	}
@@ -123,20 +127,18 @@ func (a *App) SelectOperationPolicy(path string) OperationResult {
 	if _, err = operationguard.DecodePolicy(data); err != nil {
 		return OperationResult{State: Failed, Reason: err.Error()}
 	}
-	a.operationMu.Lock()
-	defer a.operationMu.Unlock()
-	if a.operationSelectionPath != "" {
-		encoded, err := json.Marshal(operationSelection{Schema: operationSelectionSchema, Policy: path})
-		if err != nil || writeShellDocument(a.operationSelectionPath, append(encoded, '\n')) != nil {
-			return OperationResult{State: Failed, Reason: "cannot retain operation policy selection"}
-		}
+	if err := a.retainOperationPolicy(path); err != nil {
+		return OperationResult{State: Failed, Reason: err.Error()}
 	}
-	a.operationPolicy = path
-	a.operationGuard = operationguard.New(path)
 	return OperationResult{State: Completed, Selected: true}
 }
 func (a *App) OperationStatus() OperationResult {
-	_, path := a.selectedOperation()
+	a.operationMu.Lock()
+	path, refusal := a.operationPolicy, a.operationRestoreRefusal
+	a.operationMu.Unlock()
+	if refusal != "" {
+		return OperationResult{State: Failed, Reason: refusal}
+	}
 	state, err := operationguard.Read(path)
 	if err != nil {
 		return OperationResult{State: Failed, Reason: err.Error(), Selected: path != ""}

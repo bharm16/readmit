@@ -12,11 +12,10 @@ import (
 	"github.com/bharm16/readmit/internal/artifactpath"
 )
 
-// This file holds what the shell's local documents share. They are three
-// separate files — the recent workspace list, the saved filters, and the
-// working session — and nothing derives one from another, but they are written
-// and checked the same way, so the rule for doing that lives in one place
-// rather than once per document. replaceDocument, beneath writeShellDocument,
+// This file holds what the shell's seven local documents share: recent
+// workspaces, saved filters, working session, editor drafts, and operation,
+// commercial and hub selections. They are separate owner-only files written
+// through one replacement rule. replaceDocument, beneath writeShellDocument,
 // is also how a workspace save writes over an entry it may overwrite.
 
 // incompleteSuffix marks the partial file a replacement is written to first.
