@@ -11,8 +11,8 @@ on:
   pull_request:
   push:
     branches: [main]
-  # A daily run keeps main's desktop caches fresh for pull requests even when
-  # every push to main repeated a tree its pull request already tested.
+  # A daily run exercises every native journey even when every push to main
+  # repeated a tree its pull request already tested.
   schedule:
     - cron: '41 7 * * *'
   workflow_dispatch:

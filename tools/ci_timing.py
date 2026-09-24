@@ -8,7 +8,7 @@ that ended last, the needed job that ended last, reading `needs` from the
 workflow file in this checkout. `--caches` also reads each job's log for the
 Go cache it restored and whether it saved one. `--budget` reports the
 repository's Actions cache: every entry grouped by its key without the
-generation's version, checksum and commit, and by the scope that saved it
+generation's version, checksum and commit or epoch, and by the scope that saved it
 (main, a pull request, another branch or a tag), with how many entries were
 restored after they were saved. The report reads through the GitHub CLI and
 changes nothing.
@@ -77,12 +77,17 @@ def cache_saves(log):
 
 
 def key_prefix(key):
-    """A cache key without the version, checksum and commit segments that change between generations."""
+    """A cache key without the version, checksum and generation suffix."""
     while True:
-        shorter = re.sub(r"-(?:[0-9a-f]{7,}|\d+(?:\.\d+)+)$", "", key)
+        shorter = re.sub(r"-(?:stable-\d+|[0-9a-f]{7,}|\d+(?:\.\d+)+)$", "", key)
         if shorter == key:
             return key
         key = shorter
+
+
+def generation_label(key):
+    stable = re.search(r"stable-\d+$", key)
+    return stable.group() if stable else key.rsplit("-", 1)[-1][:7]
 
 
 def scope(ref):
@@ -162,7 +167,7 @@ def report(repository, run_number, workflows, caches):
             attempted += len(restores)
             found += sum(1 for outcome, _ in restores if outcome == "restored")
             saved += saves
-            row += "".join(f"  go {outcome}" + (f" {key.rsplit('-', 1)[-1][:7]}" if outcome == "restored" else "")
+            row += "".join(f"  go {outcome}" + (f" {generation_label(key)}" if outcome == "restored" else "")
                            for outcome, key in restores)
             row += "  go saved" * saves
         print(row)

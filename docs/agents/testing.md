@@ -293,21 +293,25 @@ dispatched runs are always complete. A pull request may merge on a stale base,
 so the main run after it is the check that proves that merge.
 
 Each job has its own Go cache scope, including each fuzz shard. Keys include the
-compiler, platform, dependency checksums and commit; a prefix restores the prior
-generation before the current one is saved. This keeps compiled tests and fuzz
-corpora from being overwritten by the faster packaging job. A first cold run
-still needs compilation; assess steady-state savings on later commits as well.
-Only runs on main save a Go cache: every complete push to main, and each
-workflow's daily run and a run dispatched on main, save a new generation, and a
-push to main that skipped its jobs saves none. Every other run, each run of a
-pull request, a run dispatched on another branch and a tag's run, restores
-main's newest generation and saves nothing: what it saved could be restored
-only by the same pull request, branch or tag, and each such generation evicted
-main's caches that every pull request restores. A pull request that changes a
-module checksum or the compiler pin therefore compiles cold on every run until
-it merges. The repository's cache storage holds only a few generations of
-main's caches and evicts the least recently used first, so anything that must
-survive, such as the fuzz corpus, is kept as an artifact instead.
+compiler, platform, dependency checksums and a deliberate cache epoch. A main
+run saves one entry for that identity on an exact miss, restoring an older epoch
+first when one exists. An exact hit skips the post-job save, so ordinary main
+pushes and dispatches do not create another generation. Pull requests, tags and
+other branches restore main's entry and save nothing. This keeps separate
+compiled tests and fuzz caches from being overwritten by the faster packaging
+job. The latest measured main cohort was about 5.8 GB; the stable key avoids
+adding a full cohort on every merge. Confirm the repository-wide budget and
+fuzz reuse from the API after this policy reaches main.
+When source changes without a dependency or compiler change, Go recompiles
+changed packages against the saved snapshot; those new outputs are not added
+to the cache. Measure PR duration and cache usage before deliberately changing
+`CACHE_EPOCH` in `.github/actions/setup-go/action.yml` (for example, from
+`stable-1` to `stable-2`). Make that change on main, then measure the new entry
+set and fuzz restores before treating the older epoch as disposable. If a
+module checksum or compiler pin changes, the new identity likewise seeds on
+the next main run; pull requests changing it compile cold until it reaches
+main. The fuzz corpus remains a retained artifact, independent of cache
+retention.
 
 To measure a change to CI, give `python3 tools/ci_timing.py` the CI and desktop
 run ids of one push (`gh run list` shows them). It prints each job's start,
