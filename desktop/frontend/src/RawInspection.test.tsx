@@ -39,7 +39,8 @@ function rows(total: number, showValues: boolean): InspectionRow[] {
       state: "present",
       start: 1000,
       end: 11000,
-      ...(showValues ? { value: '"escaped-leading-bytes"', value_truncated: true } : {}),
+      // A 2-byte character starts at byte 4096, so the facade returns 4095 bytes.
+      ...(showValues ? { value: '"escaped-leading-bytes"', value_truncated: true, value_shown_bytes: 4095 } : {}),
     },
   ];
   while (all.length < total) {
@@ -144,7 +145,7 @@ test("raw inspection chooses a file natively, pages every row the command report
     .getAllByRole("listitem")
     .find((item) => item.textContent?.startsWith("OBX-5 Observation Value"));
   expect(long?.textContent).toBe(
-    'OBX-5 Observation Value · present · 10000 bytes · "escaped-leading-bytes" · shown in part: the first 4096 of 10000 bytes',
+    'OBX-5 Observation Value · present · 10000 bytes · "escaped-leading-bytes" · shown in part: the first 4095 of 10000 bytes',
   );
   expect(facade.callsTo("InspectRawFile").at(-1)?.args[0]).not.toHaveProperty("expect");
   expect(facade.callsTo("InspectRawFile").at(-1)?.args[0]).toMatchObject({ show_values: true, offset: 0 });

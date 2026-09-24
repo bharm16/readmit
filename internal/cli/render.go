@@ -30,7 +30,7 @@ func render(out io.Writer, inspected *operation.Inspected, showValues bool) erro
 			if row.State != hl7.Omitted {
 				fmt.Fprintf(w, " (%d bytes)", row.End-row.Start)
 				if showValues {
-					value, _ := inspected.Value(row, 0)
+					value, _, _ := inspected.Value(row, 0)
 					fmt.Fprintf(w, " %s", value)
 				}
 			}

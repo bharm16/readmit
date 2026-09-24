@@ -2308,9 +2308,10 @@ changed in between is refused — inspect it again — rather than shown as rows
 two different files. Values are hidden until the person asks for them, and then
 each is the field's bytes as an escaped ASCII string made in Go, exactly as
 `--show-values` prints it, so bytes that are not UTF-8 reach the window escaped.
-A field longer than 4,096 bytes is shown as its escaped first 4,096 bytes and
-says it is shown in part, so one large field cannot carry the file into the
-window; the command prints it whole. The file is opened for reading only and is
+A field longer than 4,096 bytes is shown as an escaped prefix of at most 4,096
+bytes. If the limit falls inside a multi-byte UTF-8 character, the prefix ends
+before that character and the row states the number of bytes actually shown.
+The command prints the value whole. The file is opened for reading only and is
 never changed; the summary names its length and SHA-256. Changing a declaration
 or the values choice clears what was shown, because it belongs to the reading
 it came from.

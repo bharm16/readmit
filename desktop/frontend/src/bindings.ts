@@ -8186,6 +8186,8 @@ export interface InspectionRow {
   value?: string;
   /** The value shows only the field's leading bytes; the command prints it whole. */
   value_truncated?: boolean;
+  /** Actual field bytes returned after backing off a multi-byte character boundary. */
+  value_shown_bytes?: number;
 }
 
 export interface RawInspection {

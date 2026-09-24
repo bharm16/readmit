@@ -10,6 +10,11 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   runs no host command, connects to no host for this preview, and changes no
   CLI behavior, machine output or existing document contract.
 
+- Raw inspection now states the actual number of field bytes shown when its
+  4,096-byte display limit lands inside a multi-byte UTF-8 character (#382).
+  The facade reports that count for each row; inspection and command output
+  retain their existing byte-preserving behavior.
+
 - The license pane's activation-folder choice, installed-entitlement export
   and clock-rollback resolution now have keyboard and cancellation interaction
   coverage plus facade parity with the operation guard (#316). A refused

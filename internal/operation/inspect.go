@@ -60,8 +60,8 @@ func InspectOptions(format, terminator string) (hl7.Options, error) {
 // order the command prints them. Start and End are the half-open byte range
 // in the original file, MLLP offsets included; an omitted field has no bytes
 // and reports neither. Rows carry no value: a caller that shows values asks
-// Inspected.Value for the rows it keeps, and sets Value, and ValueTruncated
-// when it showed the value in part.
+// Inspected.Value for the rows it keeps, and sets Value, ValueTruncated and
+// ValueShownBytes when it shows a field's value.
 type InspectionRow struct {
 	Kind       string         `json:"kind"`
 	Message    int            `json:"message"`
@@ -76,8 +76,9 @@ type InspectionRow struct {
 	End        int            `json:"end"`
 	// Value is the field's bytes as an escaped ASCII string, so no byte of the
 	// file reaches a display unescaped.
-	Value          string `json:"value,omitzero"`
-	ValueTruncated bool   `json:"value_truncated,omitzero"`
+	Value           string `json:"value,omitzero"`
+	ValueTruncated  bool   `json:"value_truncated,omitzero"`
+	ValueShownBytes int    `json:"value_shown_bytes,omitzero"`
 }
 
 // Inspected is one file read whole and parsed under the declared framing and
@@ -149,22 +150,23 @@ func (i *Inspected) Digest() string {
 
 // Value is one field row's bytes as `readmit inspect --show-values` prints
 // them: an escaped ASCII string. A positive limit escapes at most that many
-// leading bytes and reports that the value was cut; the cut never falls inside
-// a character, so what is shown is the start of what the command prints. An
-// omitted field, and any row that is not a field, has no value.
-func (i *Inspected) Value(row InspectionRow, limit int) (string, bool) {
+// leading bytes and reports the actual byte count and whether the value was
+// cut; the cut never falls inside a character, so what is shown is the start
+// of what the command prints. An omitted field, and any row that is not a
+// field, has no value.
+func (i *Inspected) Value(row InspectionRow, limit int) (string, bool, int) {
 	if row.Kind != InspectFieldRow || row.State == hl7.Omitted {
-		return "", false
+		return "", false, 0
 	}
 	field := i.document.Bytes(hl7.Span{Start: row.Start, End: row.End})
 	if limit <= 0 || len(field) <= limit {
-		return strconv.QuoteToASCII(string(field)), false
+		return strconv.QuoteToASCII(string(field)), false, len(field)
 	}
 	end := limit
 	for back := 0; back < utf8.UTFMax-1 && end > 0 && !utf8.RuneStart(field[end]); back++ {
 		end--
 	}
-	return strconv.QuoteToASCII(string(field[:end])), true
+	return strconv.QuoteToASCII(string(field[:end])), true, end
 }
 
 // Rows visits every row the command prints, in its order, until visit

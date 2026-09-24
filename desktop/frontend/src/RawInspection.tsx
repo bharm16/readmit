@@ -14,7 +14,7 @@ import { Report, type Indicators } from "./shell";
 
 
 /** One row as a line: the same facts `readmit inspect` prints, in its order. */
-function RowLine({ row, selection, valueBytes }: { row: InspectionRow; selection: string; valueBytes: number }) {
+function RowLine({ row, selection }: { row: InspectionRow; selection: string }) {
   switch (row.kind) {
     case "message":
       return (
@@ -39,7 +39,7 @@ function RowLine({ row, selection, valueBytes }: { row: InspectionRow; selection
             <>
               {" "}
               · <code className="raw-value">{row.value}</code>
-              {row.value_truncated ? ` · shown in part: the first ${valueBytes} of ${row.end - row.start} bytes` : ""}
+              {row.value_truncated ? ` · shown in part: the first ${row.value_shown_bytes} of ${row.end - row.start} bytes` : ""}
             </>
           ) : null}
         </>
@@ -255,7 +255,7 @@ export function RawInspection({
               <ol className="raw-rows" aria-label="Inspection rows" start={view.offset + 1}>
                 {view.rows.map((row, index) => (
                   <li key={view.offset + index} className={`raw-row raw-row-${row.kind}`}>
-                    <RowLine row={row} selection={view.terminator_selection} valueBytes={view.value_bytes} />
+                    <RowLine row={row} selection={view.terminator_selection} />
                   </li>
                 ))}
               </ol>
