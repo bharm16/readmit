@@ -308,22 +308,32 @@ class Application:
                 time.sleep(0.5)
 
     def fill(self, name, text, *, within=None, timeout=60, settle=15):
-        """Replaces what a field holds, and waits up to settle seconds until
-        the window holds it."""
+        """Replaces one field and verifies its value before continuing.
+
+        Windows can accept every injected key while the UI Automation field
+        remains empty. Retype that field at most twice; never retake a journey.
+        """
         self.step(f"fill {name}")
-        node = self.find("textbox", name, within=within, timeout=timeout)
-        try:
-            self.backend.call("set", id=node["id"], text=text)
-        except Refused as error:
-            raise Refused(f"entering text in {name!r}: {error}") from error
-        deadline = time.monotonic() + settle
-        while True:
+        attempts = 3 if self.system == "windows" else 1
+        for attempt in range(attempts):
+            if attempt:
+                self.step(f"retype {name} (attempt {attempt + 1})")
             node = self.find("textbox", name, within=within, timeout=timeout)
-            if (node.get("value") or "") == text:
-                return
-            if time.monotonic() > deadline:
-                raise Refused(f"the field {name!r} holds {node.get('value')!r}, not what was entered")
-            time.sleep(0.3)
+            try:
+                self.backend.call("set", id=node["id"], text=text)
+            except Refused as error:
+                raise Refused(f"entering text in {name!r} on attempt {attempt + 1}: {error}") from error
+            deadline = time.monotonic() + (min(settle, 2) if attempt < attempts - 1 else settle)
+            while True:
+                node = self.find("textbox", name, within=within, timeout=timeout)
+                if (node.get("value") or "") == text:
+                    return
+                if time.monotonic() > deadline:
+                    break
+                time.sleep(0.3)
+        value_state = "an empty" if not node.get("value") else "a different"
+        raise Refused(f"the field {name!r} still has {value_state} value after {attempts} typing attempts "
+                      f"(focused={node.get('focused')}, enabled={node.get('enabled')})")
 
     def read_out(self, pattern, *, timeout=60):
         """Waits until the window reads out a line holding pattern, and
@@ -672,6 +682,84 @@ def run_journey(journey, system, base, args):
     return record
 
 
+def write_receipt(evidence, receipt):
+    """Keep a complete receipt on disk before temporary evidence is removed."""
+    path = evidence / "receipt.json"
+    pending = evidence / "receipt.json.tmp"
+    with pending.open("w", encoding="utf-8") as output:
+        json.dump(receipt, output, indent=1, ensure_ascii=False)
+        output.write("\n")
+        output.flush()
+        os.fsync(output.fileno())
+    pending.replace(path)
+
+
+def webview2_holders(root):
+    """Report helper PIDs or an explicit diagnostic failure, never command lines."""
+    script = ("$root = $env:READMIT_JOURNEY_ROOT; "
+              "Get-CimInstance Win32_Process -Filter \"Name = 'msedgewebview2.exe'\" -ErrorAction Stop | "
+              "Where-Object { $_.CommandLine -and "
+              "$_.CommandLine.IndexOf($root, [StringComparison]::OrdinalIgnoreCase) -ge 0 } | "
+              "ForEach-Object { $_.ProcessId }")
+    environment = dict(os.environ, READMIT_JOURNEY_ROOT=str(root))
+    try:
+        found = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+                               capture_output=True, text=True, timeout=8, env=environment, check=False)
+    except subprocess.TimeoutExpired:
+        return {"status": "unavailable", "reason": "WebView2 helper query timed out"}
+    except OSError:
+        return {"status": "unavailable", "reason": "PowerShell could not start for WebView2 helper query"}
+    if found.returncode != 0:
+        return {"status": "unavailable", "reason": f"WebView2 helper query exited {found.returncode}"}
+    lines = [line.strip() for line in found.stdout.splitlines() if line.strip()]
+    if any(not line.isdigit() for line in lines):
+        return {"status": "unavailable", "reason": "WebView2 helper query returned an invalid process id"}
+    return {"status": "available", "pids": [int(line) for line in lines]}
+
+
+def cleanup_workspace(root, system, timeout=30):
+    """Wait a bounded time for webview helpers to release their state files."""
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            shutil.rmtree(root)
+            return {"result": "removed"}
+        except OSError as error:
+            if time.monotonic() >= deadline:
+                result = {"result": "incomplete", "reason": str(error), "folder": str(root)}
+                if system == "windows":
+                    result["webview2"] = webview2_holders(root)
+                return result
+            time.sleep(0.5)
+
+
+def run_all(args, system, journeys):
+    """Run each journey once and preserve the result before cleanup."""
+    args.evidence.mkdir(parents=True)
+    receipt = {"tool": "tools/native_journey.py", "platform": f"{system}/{machine()}", "version": args.version,
+               "desktop": str(args.desktop), "journeys": {}}
+    failed = False
+    base = Path(tempfile.mkdtemp(prefix="readmit-native-journey-")).resolve()
+    try:
+        for journey in journeys:
+            record = run_journey(journey, system, base, args)
+            failed = failed or record["result"] != "passed"
+            receipt["journeys"][journey] = record
+            write_receipt(args.evidence, receipt)
+            print(f"{'PASS' if record['result'] == 'passed' else 'FAIL'}: {journey} on {system}/{machine()} "
+                  f"in {record['seconds']}s{'' if record['result'] == 'passed' else ': ' + record['reason']}")
+    finally:
+        # Even a cleanup failure cannot erase a passed journey's receipt.
+        write_receipt(args.evidence, receipt)
+        cleanup = cleanup_workspace(base, system)
+        if cleanup["result"] != "removed":
+            receipt["cleanup"] = cleanup
+            write_receipt(args.evidence, receipt)
+            print(f"temporary journey folder remains: {cleanup['reason']}; WebView2 helpers: "
+                  f"{cleanup.get('webview2', 'not inspected')}", file=sys.stderr)
+    return 1 if failed else 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--desktop", type=Path, required=True, help="the installed application executable")
@@ -689,20 +777,7 @@ def main():
     journeys = args.journey or ["guided-sample", "staged-upgrade"]
     if "staged-upgrade" in journeys and not (args.bridge and args.candidate):
         parser.error("the staged-upgrade journey needs --bridge and --candidate")
-    args.evidence.mkdir(parents=True)
-    receipt = {"tool": "tools/native_journey.py", "platform": f"{system}/{machine()}", "version": args.version,
-               "desktop": str(args.desktop), "journeys": {}}
-    failed = False
-    with tempfile.TemporaryDirectory(prefix="readmit-native-journey-") as directory:
-        base = Path(directory).resolve()
-        for journey in journeys:
-            record = run_journey(journey, system, base, args)
-            failed = failed or record["result"] != "passed"
-            receipt["journeys"][journey] = record
-            print(f"{'PASS' if record['result'] == 'passed' else 'FAIL'}: {journey} on {system}/{machine()} "
-                  f"in {record['seconds']}s{'' if record['result'] == 'passed' else ': ' + record['reason']}")
-    (args.evidence / "receipt.json").write_text(json.dumps(receipt, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
-    sys.exit(1 if failed else 0)
+    sys.exit(run_all(args, system, journeys))
 
 
 if __name__ == "__main__":

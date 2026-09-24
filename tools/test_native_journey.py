@@ -6,12 +6,16 @@ how it reads text a screen reader would read, and when it refuses are checked
 without a desktop session.
 """
 
+from contextlib import redirect_stderr, redirect_stdout
+import io
 import json
 from pathlib import Path
+import shutil
 import sys
 import tempfile
 import textwrap
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).parent))
 import native_journey  # noqa: E402
@@ -217,8 +221,25 @@ class Driver(unittest.TestCase):
     def test_a_field_that_does_not_hold_what_was_entered_is_refused(self):
         tree = [node(0, "Window"), node(1, "Edit", "Expectation name", 0, value="")]
         app = self.application("windows", [tree])
-        with self.assertRaisesRegex(native_journey.Refused, "the field 'Expectation name' holds '', not what was entered"):
-            app.fill("Expectation name", "one-appointment", timeout=1, settle=1)
+        with self.assertRaisesRegex(native_journey.Refused, "the field 'Expectation name' still has an empty value after 3 typing attempts"):
+            app.fill("Expectation name", "one-appointment", timeout=1, settle=0)
+        self.assertEqual(len(self.sent("set")), 3)
+
+    def test_windows_retypes_only_a_field_whose_value_did_not_arrive(self):
+        empty = [node(0, "Window"), node(1, "Edit", "Title", 0, value="", focused=True, enabled=True)]
+        held = [node(0, "Window"), node(1, "Edit", "Title", 0, value="new title", focused=True, enabled=True)]
+        app = self.application("windows", [empty, empty, empty, held])
+        app.fill("Title", "new title", timeout=1, settle=0)
+        self.assertEqual(self.sent("set"), [{"op": "set", "id": 1, "text": "new title"}] * 2)
+        self.assertEqual([step["step"] for step in app.steps], ["fill Title", "retype Title (attempt 2)"])
+
+    def test_failed_windows_typing_reports_focus_and_value_without_entered_text(self):
+        empty = [node(0, "Window"), node(1, "Edit", "Title", 0, value="", focused=True, enabled=True)]
+        app = self.application("windows", [empty])
+        with self.assertRaises(native_journey.Refused) as caught:
+            app.fill("Title", "private entered text", timeout=1, settle=0)
+        self.assertIn("focused=True", str(caught.exception))
+        self.assertNotIn("private entered text", str(caught.exception))
 
     def test_a_backend_refusal_is_the_journey_s_refusal(self):
         app = self.application("darwin", [[node(0, "AXWindow")]])
@@ -250,6 +271,56 @@ class Driver(unittest.TestCase):
         app.process.returncode = 3
         with self.assertRaisesRegex(native_journey.Refused, "the application ended with exit status 3"):
             app.press("Verify and open regression", timeout=5)
+
+    def test_receipt_exists_before_cleanup_even_when_cleanup_fails(self):
+        evidence = self.root / "retained"
+        args = mock.Mock(evidence=evidence, desktop=Path("unused"), version="candidate")
+        passed = {"result": "passed", "seconds": 1, "checkpoints": [], "steps": []}
+        def cleanup(root, _system):
+            receipt = json.loads((evidence / "receipt.json").read_text(encoding="utf-8"))
+            self.assertEqual(receipt["journeys"]["guided-sample"], passed)
+            shutil.rmtree(root)
+            return {"result": "incomplete", "reason": "WinError 32: held file",
+                    "webview2": {"status": "available", "pids": [12]}}
+        with mock.patch.object(native_journey, "run_journey", return_value=passed), \
+             mock.patch.object(native_journey, "cleanup_workspace", side_effect=cleanup), \
+             redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            self.assertEqual(native_journey.run_all(args, "windows", ["guided-sample"]), 0)
+        receipt = json.loads((evidence / "receipt.json").read_text(encoding="utf-8"))
+        self.assertEqual(receipt["cleanup"]["result"], "incomplete")
+
+    def test_failed_journey_still_fails_after_cleanup(self):
+        evidence = self.root / "failed"
+        args = mock.Mock(evidence=evidence, desktop=Path("unused"), version="candidate")
+        failed = {"result": "failed", "reason": "field missing", "seconds": 1, "checkpoints": [], "steps": []}
+        with mock.patch.object(native_journey, "run_journey", return_value=failed) as journey, \
+             mock.patch.object(native_journey, "cleanup_workspace", return_value={"result": "removed"}), \
+             redirect_stdout(io.StringIO()):
+            self.assertEqual(native_journey.run_all(args, "windows", ["guided-sample"]), 1)
+        journey.assert_called_once()
+        self.assertEqual(json.loads((evidence / "receipt.json").read_text())["journeys"]["guided-sample"]["result"], "failed")
+
+    def test_cleanup_retries_a_held_webview_file(self):
+        root = self.root / "temporary"
+        root.mkdir()
+        with mock.patch.object(native_journey.shutil, "rmtree", side_effect=[PermissionError("held"), None]) as remove, \
+             mock.patch.object(native_journey.time, "sleep"):
+            self.assertEqual(native_journey.cleanup_workspace(root, "windows", timeout=1), {"result": "removed"})
+        self.assertEqual(remove.call_count, 2)
+
+    def test_cleanup_reports_the_held_file_and_helper_without_failing_the_journey(self):
+        root = self.root / "temporary"
+        root.mkdir()
+        with mock.patch.object(native_journey.shutil, "rmtree", side_effect=PermissionError("WinError 32: held file")), \
+             mock.patch.object(native_journey, "webview2_holders", return_value={"status": "available", "pids": [12]}):
+            result = native_journey.cleanup_workspace(root, "windows", timeout=0)
+        self.assertEqual(result, {"result": "incomplete", "reason": "WinError 32: held file",
+                                  "folder": str(root), "webview2": {"status": "available", "pids": [12]}})
+
+    def test_webview_helper_query_failure_is_not_reported_as_no_helpers(self):
+        with mock.patch.object(native_journey.subprocess, "run", side_effect=OSError("missing PowerShell")):
+            self.assertEqual(native_journey.webview2_holders(self.root),
+                             {"status": "unavailable", "reason": "PowerShell could not start for WebView2 helper query"})
 
 
 if __name__ == "__main__":

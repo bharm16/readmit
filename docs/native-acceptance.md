@@ -206,11 +206,13 @@ backend per platform in `tools/native/` only reads the tree and acts on it:
   and focuses the control, as a click does. Text reaches the page as key
   presses, because a value set through UI Automation does not reach it as
   input; keys reach only the window in front, so typing brings the window
-  forward the same way and clicks the field should Windows keep another
-  window in front. The folder dialog's Folder field and Select Folder button,
-  and the save dialog's File name field and Save button, are answered with
-  window messages. A pop-up list is expanded and its option selected through its
-  selection pattern, and the window is closed through its window pattern.
+  forward and clicks the field for each attempt. The driver reads the field's
+  actual value afterward and, if it did not arrive, retypes that field at most
+  twice. It never restarts the journey. The folder dialog's Folder field and
+  Select Folder button, and the save dialog's File name field and Save button,
+  are answered with window messages. A pop-up list is expanded and its option
+  selected through its selection pattern, and the window is closed through its
+  window pattern.
 - Linux, amd64 and arm64: AT-SPI under Xvfb on a private session bus, through
   the system Python's bindings. No window manager runs, so keys reach the
   window under the pointer, a field is clicked before it is typed into, the
@@ -259,6 +261,11 @@ accessibility review can cite per platform, and each checkpoint records how
 many buttons in the page have no accessible name. Only the daily and
 dispatched runs publish it for every target; artifacts expire, and the daily
 run on main regenerates them from main's own packages, so cite that run.
+The receipt file's contents are fsynced and named before the journey's temporary
+folder is removed. Cleanup waits up to 30 seconds for a WebView2 helper to
+release its files; if the folder is still held, the receipt retains the path,
+error and matching helper process IDs, or says why the helper query was
+unavailable, without changing a passed journey's result.
 
 What driving the installed packages found:
 
@@ -291,6 +298,12 @@ What driving the installed packages found:
    go-webview2 release handles the refusal, so the shell withholds that focus
    while its window is disabled (#378), and the native journey no longer
    takes a journey again after that exit: every failure fails it at once.
+   In four of the 72 repeated Windows journeys around that fix, the target
+   edit was enabled and UIA-focused at failure but its value remained empty.
+   Explicitly clicking the field before typing and checking its resulting
+   value now permits only a bounded retry of that field (#424). A separate
+   passed take lost its receipt when WebView2 held a file during temporary
+   folder removal; the receipt now precedes bounded cleanup (#424).
 4. How the platforms read the same page differs, and the retained trees record
    it: a stylesheet's capitals are what macOS and Windows read out (region
    names such as `EVIDENCE`, statuses such as `ASSERTION_FAILURE`), Windows

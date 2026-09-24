@@ -9,6 +9,12 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   case's evidence identity changed, the grid suggests a numbered fresh filename
   instead of replacing the old index. No index contract changes.
 
+- The Windows native journey now clicks and verifies each typed field, retyping
+  only that field up to twice if its value does not arrive (#424). A passed
+  journey fsyncs its receipt contents and names the file before removing
+  temporary files; WebView2 cleanup is bounded and any retained folder is
+  reported without changing the result.
+
 - Observation setup now asks before a new source or window name replaces
   unsaved edits; Escape keeps the edits (#414). Its pinned-identity line says
   "not saved" for new defaults or an unsaved capture binding, and shows a
