@@ -212,7 +212,9 @@ are refused rather than escaped, so nothing a rationale holds can rewrite the
 line it is displayed on.
 
 The review directory is created with private permissions where the OS supports
-them, exactly as a diagnosis report is.
+them, and written and synced exactly as a diagnosis report is, `review.md` after
+`review.json`. It must be new and outside both the case and the diagnosis report
+directory, including through symlinks.
 
 ## Provenance, and where it can live
 

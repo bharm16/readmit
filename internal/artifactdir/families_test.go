@@ -1,6 +1,7 @@
 package artifactdir_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json/v2"
 	"fmt"
@@ -17,7 +18,9 @@ import (
 	"github.com/bharm16/readmit/internal/backup"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/correlate"
+	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/durablerun"
+	"github.com/bharm16/readmit/internal/findingreview"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/mllp"
 	"github.com/bharm16/readmit/internal/project"
@@ -228,6 +231,24 @@ func outputWriters(t *testing.T, address, specPath, casePath string, sources der
 	if err != nil {
 		t.Fatal(err)
 	}
+	diagnosis, err := diagnose.Run(correlated, diagnose.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	grouping, err := diagnose.GroupCases(t.Context(), []string{correlated}, diagnose.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	diagnosed := filepath.Join(caseFolder(t), "diagnosis")
+	identity, err := diagnose.WriteReport(diagnosed, diagnosis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	review, err := findingreview.Review(findingreview.Reviewed{Report: diagnosis, Identity: identity, Case: opened, Entry: "case"},
+		findingreview.Decisions{Schema: findingreview.DecisionsSchema, Report: identity}, diagnose.Identity([]byte("no decisions")))
+	if err != nil {
+		t.Fatal(err)
+	}
 	return []outputWriter{{
 		name:  "case",
 		write: func(t *testing.T, output string) error { _, err := writeCase(t, output); return err },
@@ -242,6 +263,31 @@ func outputWriters(t *testing.T, address, specPath, casePath string, sources der
 			return correlate.SaveReview(output, opened, correlation, revision)
 		},
 		open: func(output string) error { _, err := correlate.ReadReview(output, opened, correlation); return err },
+	}, {
+		name:  "diagnosis report",
+		write: func(t *testing.T, output string) error { _, err := diagnose.WriteReport(output, diagnosis); return err },
+		open:  func(output string) error { _, err := diagnose.OpenReport(output, diagnose.Reading{}); return err },
+	}, {
+		name:  "diagnosis grouping",
+		write: func(t *testing.T, output string) error { return diagnose.WriteGroups(t.Context(), output, grouping) },
+		open:  func(output string) error { _, err := diagnose.OpenGroups(output); return err },
+	}, {
+		name: "finding review",
+		write: func(t *testing.T, output string) error {
+			return findingreview.Write(output, review, correlated, diagnosed)
+		},
+		// A review has no reader of its own: what it holds is the record's
+		// own encoding.
+		open: func(output string) error {
+			want, err := findingreview.JSON(review)
+			if err != nil {
+				return err
+			}
+			if got, err := os.ReadFile(filepath.Join(output, "review.json")); err != nil || !bytes.Equal(got, want) {
+				return fmt.Errorf("the review does not hold its record: %v", err)
+			}
+			return nil
+		},
 	}, {
 		name: "run bundle",
 		write: func(t *testing.T, output string) error {
@@ -436,6 +482,53 @@ func TestEveryFamilyRefusesAFolderItCannotSyncBeforeWritingOrSendingAnything(t *
 				t.Fatal("a writer connected before refusing a folder it cannot sync")
 			}
 		})
+	}
+}
+
+// A report directory whose rendering cannot be written is retained with the
+// strict document it already holds and says so in its report's own words, and
+// one whose folder cannot be synced is written in full, kept, and says it is
+// not confirmed against a power loss.
+func TestAReportDirectoryThatCannotBeCompletedIsRetainedAndSaysWhy(t *testing.T) {
+	address, _ := ackPeer(t)
+	specPath, casePath := ackSpec(t, address)
+	reports := map[string]struct{ document, rendering, incomplete, unsynced string }{
+		"diagnosis report":   {"report.json", "report.md", "cannot write diagnosis file; incomplete report retained", "cannot sync diagnosis report directory; the report was written in full but a power loss could still lose it"},
+		"diagnosis grouping": {"report.json", "report.md", "cannot write diagnosis groups file; incomplete report retained", "cannot sync diagnosis groups report directory; the report was written in full but a power loss could still lose it"},
+		"finding review":     {"review.json", "review.md", "cannot write review file; incomplete report retained", "cannot sync review report directory; the review was written in full but a power loss could still lose it"},
+	}
+	found := 0
+	for _, writer := range outputWriters(t, address, specPath, casePath, derivedSources{}) {
+		report, ok := reports[writer.name]
+		if !ok {
+			continue
+		}
+		found++
+		t.Run(writer.name, func(t *testing.T) {
+			folder := caseFolder(t)
+			output := filepath.Join(folder, "output")
+			rendering := filepath.Join(output, report.rendering)
+			observeSyncs(t, func(path string) bool { return path == rendering }, nil)
+			if err := writer.write(t, output); err == nil || err.Error() != report.incomplete {
+				t.Fatalf("an interrupted report answered %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(output, report.document)); err != nil {
+				t.Fatalf("the incomplete report was not retained: %v", err)
+			}
+
+			folder = caseFolder(t)
+			output = filepath.Join(folder, "output")
+			observeSyncs(t, nil, func(directory string) bool { return directory == folder })
+			if err := writer.write(t, output); err == nil || err.Error() != report.unsynced {
+				t.Fatalf("a report whose folder could not be synced answered %v", err)
+			}
+			if err := writer.open(output); err != nil {
+				t.Fatalf("the report written in full was not kept: %v", err)
+			}
+		})
+	}
+	if found != len(reports) {
+		t.Fatalf("%d of %d report writers listed", found, len(reports))
 	}
 }
 

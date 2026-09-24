@@ -143,9 +143,10 @@ func TestTheWindowGroupsTheCasesReadmitDiagnoseGroupsGroups(t *testing.T) {
 
 // Reopening a retained report in the window reads the report.json `readmit
 // diagnose` wrote with the reader `readmit diagnose review` applies: the same
-// identity, the same findings, and the case it was run over. A grouping's
-// report beside it, a directory whose report.json is gone, and a report of
-// another case are refused by both where the review reads them.
+// identity, the same findings, and the case it was run over. A report of
+// another case opens as what it is, and reviewing it over this case is
+// refused by both. Both entry points reopen a report directory through
+// diagnose.OpenReport, whose refusals are tested there.
 func TestTheWindowReopensTheReportReadmitDiagnoseWrote(t *testing.T) {
 	workspace, identity := panelWorkspace(t)
 	for _, diagnosis := range []struct{ entry, output string }{{"acked", "acked-diagnosis"}, {"monday", "monday-diagnosis"}} {
@@ -153,15 +154,8 @@ func TestTheWindowReopensTheReportReadmitDiagnoseWrote(t *testing.T) {
 			t.Fatalf("diagnose %s: %v %s", diagnosis.entry, err, stderr)
 		}
 	}
-	if _, stderr, err := run(t, "diagnose", "groups", filepath.Join(workspace, "monday"), filepath.Join(workspace, "tuesday"), "--output", filepath.Join(workspace, "weekly-groups")); err != nil || stderr != "" {
-		t.Fatalf("diagnose groups: %v %s", err, stderr)
-	}
-	copyTree(t, filepath.Join(workspace, "acked-diagnosis"), filepath.Join(workspace, "emptied-diagnosis"))
-	if err := os.Remove(filepath.Join(workspace, "emptied-diagnosis", "report.json")); err != nil {
-		t.Fatal(err)
-	}
 	reportData := mustRead(t, filepath.Join(workspace, "acked-diagnosis", "report.json"))
-	report, err := findingreview.ParseReport(reportData)
+	report, err := diagnose.ParseReport(reportData)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,29 +188,6 @@ func TestTheWindowReopensTheReportReadmitDiagnoseWrote(t *testing.T) {
 	})
 	if previewed.State != desktop.Completed || previewed.Review == nil {
 		t.Fatalf("the reopened report could not be reviewed: %+v", previewed)
-	}
-
-	// A grouping's report is listed beside the diagnoses, and neither entry
-	// point reads it as one.
-	decisionsFile := writeDocument(t, t.TempDir(), "decisions.json", string(encodeDecisions(t, decisions)))
-	groupsReport := app.OpenDiagnosisReport(workspace, "weekly-groups", 0)
-	if groupsReport.State != desktop.Failed || groupsReport.Diagnosis != nil ||
-		groupsReport.Reason != "diagnosis report declares a contract version this release does not read" {
-		t.Fatalf("the window read a grouping as a diagnosis: %+v", groupsReport)
-	}
-	refusedByCommandLine(t, groupsReport.Reason, "diagnose", "review", filepath.Join(workspace, "weekly-groups"),
-		"--case", filepath.Join(workspace, "acked"), "--decisions", decisionsFile, "--output", filepath.Join(t.TempDir(), "review"))
-
-	// A report directory whose report.json is gone is refused by both.
-	emptied := app.OpenDiagnosisReport(workspace, "emptied-diagnosis", 0)
-	if emptied.State != desktop.Failed || emptied.Diagnosis != nil ||
-		emptied.Reason != "a diagnosis report directory holds report.json as one regular file" {
-		t.Fatalf("the window opened a report directory holding no report: %+v", emptied)
-	}
-	stdout, _, err := run(t, "diagnose", "review", filepath.Join(workspace, "emptied-diagnosis"),
-		"--case", filepath.Join(workspace, "acked"), "--decisions", decisionsFile, "--output", filepath.Join(t.TempDir(), "review"))
-	if err == nil || stdout != "" {
-		t.Fatalf("the command line reviewed a report directory holding no report: %v %s", err, stdout)
 	}
 
 	// Another case's report opens as what it is — run over other evidence —
@@ -268,10 +239,9 @@ func encodeDecisions(t *testing.T, decisions findingreview.Decisions) []byte {
 }
 
 // A preview in the window is the record `readmit diagnose review` writes over
-// the same decisions, and it writes nothing. A report that changed after the
-// window showed it, and decisions recorded against another report, are stale
-// decisions: the window refuses to review the changed report, and the command
-// line refuses those decisions over it.
+// the same decisions, and it writes nothing. A report that changed after it
+// was displayed, and decisions recorded against another report, are refused by
+// diagnose.OpenReport and findingreview.Review, which both entry points call.
 func TestTheWindowPreviewsTheReviewReadmitDiagnoseReviewRecords(t *testing.T) {
 	workspace, identity := panelWorkspace(t)
 	if _, stderr, err := run(t, "diagnose", filepath.Join(workspace, "acked"), "--output", filepath.Join(workspace, "acked-diagnosis")); err != nil || stderr != "" {
@@ -316,29 +286,6 @@ func TestTheWindowPreviewsTheReviewReadmitDiagnoseReviewRecords(t *testing.T) {
 	if cli := mustRead(t, filepath.Join(cliReview, "review.json")); !bytes.Equal(record, cli) {
 		t.Fatalf("the window previewed %s and the command line recorded %s", record, cli)
 	}
-
-	// The report is rewritten on disk after the window showed it — the same
-	// findings, other bytes. The window refuses to review decisions typed
-	// against what it showed, and the command line refuses the decisions
-	// recorded against it.
-	var reformatted jsontext.Value = mustRead(t, reportPath)
-	if err := reformatted.Indent(jsontext.WithIndentPrefix(""), jsontext.WithIndent("\t")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(reportPath, append(reformatted, '\n'), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := findingreview.ParseReport(mustRead(t, reportPath)); err != nil {
-		t.Fatalf("the rewritten report is not a report: %v", err)
-	}
-	changed := app.ReviewFindings(request)
-	if changed.State != desktop.Failed || changed.Review != nil ||
-		changed.Reason != "the displayed diagnosis changed; reopen the report before reviewing" {
-		t.Fatalf("the window reviewed a report that changed since it was shown: %+v", changed)
-	}
-	refusedByCommandLine(t, "these decisions were recorded against a different diagnosis report; finding identifiers name other findings there",
-		"diagnose", "review", filepath.Join(workspace, "acked-diagnosis"), "--case", filepath.Join(workspace, "acked"),
-		"--decisions", filepath.Join(workspace, "decisions.json"), "--output", filepath.Join(t.TempDir(), "review"))
 }
 
 // The decisions editor opens a retained decisions document with the reader

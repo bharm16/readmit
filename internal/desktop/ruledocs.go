@@ -14,11 +14,6 @@ import (
 	"github.com/bharm16/readmit/internal/sequenceanalysis"
 )
 
-// maxDiagnoseConfigBytes is the diagnosis configuration reader's own bound,
-// restated here because the reader states it as a refusal rather than a
-// constant. A larger document is refused by ParseConfig either way.
-const maxDiagnoseConfigBytes = 1 << 20
-
 // This file is the authoring seam for the five declared documents the window
 // offers editors for: correlation rules, a sequence analysis, a normalization
 // policy, a diagnosis configuration and finding decisions. Every open reads
@@ -51,7 +46,7 @@ var (
 	correlationRulesDocument    = ruleDocument[correlate.Rules]{"the correlation rules document", correlate.MaxRulesBytes, correlate.ParseRules}
 	sequenceAnalysisDocument    = ruleDocument[sequenceanalysis.Declaration]{"the sequence analysis declaration", sequenceanalysis.MaxBytes, sequenceanalysis.Parse}
 	normalizationPolicyDocument = ruleDocument[diff.Policy]{"the normalization policy", diff.MaxPolicyBytes, diff.DecodePolicy}
-	diagnoseConfigDocument      = ruleDocument[diagnose.Config]{"the diagnosis configuration", maxDiagnoseConfigBytes, diagnose.ParseConfig}
+	diagnoseConfigDocument      = ruleDocument[diagnose.Config]{"the diagnosis configuration", diagnose.MaxConfigBytes, diagnose.ParseConfig}
 	findingDecisionsDocument    = ruleDocument[findingreview.Decisions]{"the finding decisions document", findingreview.MaxDecisionsBytes, findingreview.ParseDecisions}
 )
 
@@ -88,7 +83,7 @@ func (d ruleDocument[T]) opened(workspace, entry string) (string, string, *T, re
 	if err != nil {
 		return "", "", nil, refusal{Failed, d.what + " could not be canonicalized"}
 	}
-	return string(canonical), digest(data), &parsed, refusal{}
+	return string(canonical), digestOf(data), &parsed, refusal{}
 }
 
 // saved validates the editor's text through the contract's own reader and
@@ -114,7 +109,7 @@ func (d ruleDocument[T]) saved(request RuleDocumentSaveRequest) (string, string,
 		}
 		return "", "", nil, refusal{Failed, err.Error()}
 	}
-	return string(canonical), digest(canonical), &parsed, refusal{}
+	return string(canonical), digestOf(canonical), &parsed, refusal{}
 }
 
 // CorrelationRulesResult carries one authored correlation-rules document.

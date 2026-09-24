@@ -7,7 +7,6 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/diagnose"
-	"github.com/bharm16/readmit/internal/operation"
 	"github.com/spf13/cobra"
 )
 
@@ -24,7 +23,7 @@ func diagnoseCommand() *cobra.Command {
 				if configPath == "" {
 					return usage("diagnosis configuration file cannot be empty")
 				}
-				data, err := readInputFile(configPath, 1<<20)
+				data, err := readInputFile(configPath, diagnose.MaxConfigBytes)
 				if err != nil {
 					return err
 				}
@@ -41,19 +40,14 @@ func diagnoseCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			jsonData, err := diagnose.JSON(report)
-			if err != nil {
-				return errors.New("cannot encode diagnosis report")
-			}
-			markdown := diagnose.Markdown(report)
-			if err := operation.WriteReportDirectory(resolvedOutput, "diagnosis", operation.ReportFile{Name: "report.json", Data: jsonData}, operation.ReportFile{Name: "report.md", Data: markdown}); err != nil {
+			if _, err := diagnose.WriteReport(resolvedOutput, report); err != nil {
 				return err
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Diagnosis complete: %d findings, %d unsupported items. Ruleset: %s. JSON and Markdown reports written.\n", len(report.Findings), len(report.Unsupported), report.Ruleset)
 			return err
 		},
 	}
-	cmd.Flags().StringVar(&output, "output", "", "New directory for report.json and report.md (never overwrite)")
+	cmd.Flags().StringVar(&output, "output", "", "New directory for "+diagnose.ReportName+" and "+diagnose.MarkdownName+" (never overwrite)")
 	cmd.Flags().StringVar(&configPath, "config", "", "Explicit readmit-diagnose-config/v1 JSON configuration selecting the profile, ruleset, rules and namespaces")
 	cmd.AddCommand(diagnoseReviewCommand(), diagnosisGroupsCommand())
 	return cmd

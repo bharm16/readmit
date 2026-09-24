@@ -3,7 +3,9 @@ package diagnose
 import (
 	"bytes"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -13,6 +15,43 @@ func JSON(report Report) ([]byte, error) {
 		return nil, err
 	}
 	return append(data, '\n'), nil
+}
+
+var (
+	findingPattern  = regexp.MustCompile(`^f[0-9]{6}$`)
+	identityPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
+)
+
+// ParseReport reads a retained diagnosis: the one a review is made over, and
+// the one the window reopens. It is the same strict reading every other reader
+// of a versioned document does; readmit-diagnosis/v1 gains no member here and
+// changes no byte.
+func ParseReport(data []byte) (Report, error) {
+	if len(data) > MaxReportBytes {
+		return Report{}, errors.New("diagnosis report exceeds its size limit")
+	}
+	var declared struct {
+		Schema string `json:"schema"`
+	}
+	if json.Unmarshal(data, &declared) != nil {
+		return Report{}, errors.New("invalid diagnosis report")
+	}
+	if declared.Schema != Schema {
+		return Report{}, errors.New("diagnosis report declares a contract version this release does not read")
+	}
+	var report Report
+	if json.Unmarshal(data, &report, json.RejectUnknownMembers(true)) != nil {
+		return Report{}, errors.New("invalid diagnosis report")
+	}
+	for _, finding := range report.Findings {
+		if !findingPattern.MatchString(finding.ID) {
+			return Report{}, errors.New("a diagnosis report names each finding once, as this release writes them")
+		}
+	}
+	if !identityPattern.MatchString(report.CaseIdentity) {
+		return Report{}, errors.New("a diagnosis report names the verified identity of the case it was run over")
+	}
+	return report, nil
 }
 
 // Markdown renders the same report model as JSON, including every finding and
