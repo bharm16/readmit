@@ -2135,7 +2135,9 @@
       "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-correlation-rules/v1", "readmit-transform-plan/v1", "readmit-profile-pack/v1"],
       "outputs": ["readmit-transform-preview/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/transform-plans.journey.tsx", "name": "a transformation plan refused on save is corrected from the keyboard, saved, reopened and previewed as readmit transform previews it, and a plan the decoder refuses is refused in its words"},
+      "parity_test": {"package": "internal/desktop", "name": "TestAPlanSavedInTheWindowIsTheOneReadmitTransformPreviews"},
+      "implemented": true
     },
     {
       "id": "cli.upgrade.check",
@@ -3666,7 +3668,9 @@
       "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-test/v1", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-reset-plan/v1", "readmit-send-policy/v1", "readmit-correlation-rules/v1"],
       "outputs": ["readmit-reduction/v1", "readmit-test/v1", "readmit-job/v1", "readmit-result/v1", "hl7"],
       "prerequisites": ["execute"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/reduction.journey.tsx", "name": "a controlled reduction is previewed, refused where its reset is not authorised, stopped mid-trial, left incomplete by its budget and reduced, as the downstream system and the command line record it"},
+      "parity_test": {"package": "internal/desktop", "name": "TestAReductionRunInTheWindowReachesTheReportTheEngineReaches"},
+      "implemented": true
     },
     {
       "id": "desktop.PreviewReduction",
@@ -3680,7 +3684,9 @@
       "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-test/v1", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-reset-plan/v1", "readmit-send-policy/v1", "readmit-correlation-rules/v1"],
       "outputs": ["readmit-reduction-plan/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/reduction.journey.tsx", "name": "a controlled reduction is previewed, refused where its reset is not authorised, stopped mid-trial, left incomplete by its budget and reduced, as the downstream system and the command line record it"},
+      "parity_test": {"package": "internal/desktop", "name": "TestAReductionPreviewIsThePartitionTheEngineReadsAndWritesNothing"},
+      "implemented": true
     },
     {
       "id": "desktop.OpenTransformPlan",
@@ -3694,7 +3700,9 @@
       "inputs": ["readmit-transform-plan/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/transform-plans.journey.tsx", "name": "a transformation plan refused on save is corrected from the keyboard, saved, reopened and previewed as readmit transform previews it, and a plan the decoder refuses is refused in its words"},
+      "parity_test": {"package": "internal/desktop", "name": "TestAPlanTheDecoderRefusesIsRefusedEverywhereInOneSentence"},
+      "implemented": true
     },
     {
       "id": "desktop.SaveTransformPlan",
@@ -3708,7 +3716,9 @@
       "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-correlation-rules/v1", "readmit-profile-pack/v1"],
       "outputs": ["readmit-transform-plan/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/transform-plans.journey.tsx", "name": "a transformation plan refused on save is corrected from the keyboard, saved, reopened and previewed as readmit transform previews it, and a plan the decoder refuses is refused in its words"},
+      "parity_test": {"package": "internal/desktop", "name": "TestAPlanSavedInTheWindowIsTheOneReadmitTransformPreviews"},
+      "implemented": true
     },
     {
       "id": "desktop.RegisterRevision",
@@ -4074,7 +4084,9 @@
       "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-correlation-rules/v1", "readmit-transform-plan/v1", "readmit-profile-pack/v1"],
       "outputs": ["readmit-transform-preview/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/transform-plans.journey.tsx", "name": "a transformation plan refused on save is corrected from the keyboard, saved, reopened and previewed as readmit transform previews it, and a plan the decoder refuses is refused in its words"},
+      "parity_test": {"package": "internal/desktop", "name": "TestAPlanSavedInTheWindowIsTheOneReadmitTransformPreviews"},
+      "implemented": true
     },
     {
       "id": "desktop.OpenReview",

@@ -80,8 +80,13 @@ step runs:
 `profile` is optional and pins one [profile pack](profile-packs.md) by id and
 version. A different version of the same pack is a different pack.
 
-Nothing in this release **writes** a plan. It is a document somebody authors, the
-way a correlation rules document is, and `readmit transform` only reads one.
+The command line never **writes** a plan: it is a document somebody authors, the
+way a correlation rules document is, and `readmit transform` only reads one. The
+[desktop shell](desktop.md#authoring-saving-and-reopening-a-transformation-plan)
+composes one from these operators, decodes it with this command's reader before
+writing it as a new entry, and pins the rules digest `readmit correlate` reports
+for the rules it names; the document it writes is one this command previews
+unchanged.
 
 ### The five operators
 
@@ -223,7 +228,8 @@ Nothing is uploaded and no network call is made.
 The [desktop shell](desktop.md#previewing-a-transformation) previews the same
 plan over the same evidence, with the rules, the plan and the pinned pack each
 named as one entry of the open workspace. It runs this engine rather than a
-second one, writes nothing either, and shows no value: reading one there is the
+second one, its preview is the document `--format json` prints, it writes
+nothing into evidence either, and it shows no value: reading one there is the
 inspector, exactly as it is here.
 
 ## Bounds
@@ -253,9 +259,10 @@ inspector, exactly as it is here.
   bounded trials or reports a minimal result, and no preview is a minimality
   claim. That is [its own package](reduction.md), which takes a sequence apart
   rather than transforming one and applies none of these operators.
-- Authoring or editing a plan, and undoing a step. A plan reaches this command
-  as a document; there is no editor, no `transform init`, and no retained
-  history of what a plan said before a step was removed from it.
+- Authoring or editing a plan on the command line, and undoing a step. A plan
+  reaches this command as a document; there is no `transform init`, and no
+  retained history of what a plan said before a step was removed from it. The
+  desktop shell's editor writes a new plan entry and never edits one in place.
 - Checking the transformed content against a profile pack beyond the support it
   declares for the version and family the message declares. A v1 pack claims no
   structural or workflow support, so there is no structure to check against.

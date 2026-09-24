@@ -195,6 +195,7 @@ export function EnvironmentPanel({
   initialTab = "target",
   drafts = null,
   onTargetChange,
+  onPlanSaved,
 }: {
   workspace: string;
   targetFile?: string;
@@ -204,6 +205,10 @@ export function EnvironmentPanel({
   initialTab?: "target" | "secrets" | "policy" | "reset";
   drafts?: EditorDraft[] | null;
   onTargetChange?: (target: Target | null) => void;
+  /** A saved reset plan is a new or replaced entry of the folder, so the
+   * window reads its listing again and the controlled reduction's picker
+   * offers it. */
+  onPlanSaved?: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<"target" | "secrets" | "policy" | "reset">(initialTab);
   const [busy, setBusy] = useState(false);
@@ -842,6 +847,7 @@ export function EnvironmentPanel({
         if (res.identity) setPlanWritten({ file, identity: res.identity });
         setFeedback("Fixture reset plan saved.");
         retainer.clear();
+        onPlanSaved?.();
       } else {
         setFeedback(res.reason || "Failed to save reset plan.");
       }

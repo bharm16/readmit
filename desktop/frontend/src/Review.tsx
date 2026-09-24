@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
+  AuthoredTransformPlan,
   Review as ReviewDocument,
   ReviewDecision,
   ReviewResult,
@@ -48,6 +49,7 @@ export function Review({
   planResult,
   reviewResult,
   caseOpen,
+  caseIdentity,
   busy,
   transformProgress,
   planProgress,
@@ -55,6 +57,7 @@ export function Review({
   indicators,
   onPreview,
   onSavePlan,
+  onOpenPlan,
   onReview,
 }: {
   /** The entries of the open workspace that declare each contract this panel
@@ -70,13 +73,26 @@ export function Review({
   /** Whether a case is open. A preview is over one verified case; a review is
    * over a folder, and a workspace holding only a review is read without one. */
   caseOpen: boolean;
+  /** The identity of the case the window verified, or empty. */
+  caseIdentity: string;
   busy: boolean;
   transformProgress: string | null;
   planProgress: string | null;
   reviewProgress: string | null;
   indicators: Indicators;
   onPreview: (rules: string, plan: string, profile: string) => void;
-  onSavePlan: (rules: string, profile: string, steps: TransformStep[], output: string) => void;
+  /** Saves the authored steps as a new plan entry and resolves with the
+   * facade's answer once the listing offers it, or null when nothing was
+   * asked. */
+  onSavePlan: (
+    rules: string,
+    profile: string,
+    steps: TransformStep[],
+    output: string,
+  ) => Promise<TransformPlanResult | null>;
+  /** Reads one plan entry back through the shared decoder and resolves with
+   * the facade's answer, or null when nothing was asked. */
+  onOpenPlan: (entry: string) => Promise<TransformPlanResult | null>;
   onReview: (review: string, approve: string, offset: number) => void;
 }) {
   const [rules, setRules] = useState("");
@@ -91,9 +107,57 @@ export function Review({
   const [stepEntry, setStepEntry] = useState("t000001");
   const [stepPosition, setStepPosition] = useState("1");
   const [authoredSteps, setAuthoredSteps] = useState<TransformStep[]>([]);
+  // The steps as the plan the panel last saved or opened held them, so a
+  // change nobody saved is known before an open would replace it.
+  const [storedSteps, setStoredSteps] = useState<TransformStep[]>([]);
+  // What the plan line below reports: the plan saved or opened last, by the
+  // action that produced it. A refusal is the status line's alone.
+  const [storedPlan, setStoredPlan] = useState<{ action: "saved" | "opened"; plan: AuthoredTransformPlan } | null>(null);
+  const [reopenEntry, setReopenEntry] = useState("");
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const openButton = useRef<HTMLButtonElement>(null);
+  const keep = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (confirming !== null) keep.current?.focus();
+  }, [confirming]);
+
+  // Steps are authored over the case on screen and a save binds them to it,
+  // so another case starts the plan again rather than carrying steps written
+  // against other evidence.
+  useEffect(() => {
+    setAuthoredSteps([]);
+    setStoredSteps([]);
+    setStoredPlan(null);
+    setConfirming(null);
+  }, [caseIdentity]);
+
+  // The window withdraws a plan answer when the case it was about is closed,
+  // and the line naming that plan goes with it.
+  useEffect(() => {
+    if (planResult === null) setStoredPlan(null);
+  }, [planResult]);
 
   const transformation: Transformation | null = transformResult?.transformation ?? null;
   const review: ReviewDocument | null = reviewResult?.review ?? null;
+  const unsaved = JSON.stringify(authoredSteps) !== JSON.stringify(storedSteps);
+  const authoring = busy || !caseOpen;
+
+  const open = async (name: string) => {
+    setStoredPlan(null);
+    const answered = await onOpenPlan(name);
+    const opened = answered?.plan;
+    if (!opened) return;
+    setAuthoredSteps(opened.plan.steps);
+    setStoredSteps(opened.plan.steps);
+    setStoredPlan({ action: "opened", plan: opened });
+    setPlan(name);
+  };
+
+  const keepSteps = () => {
+    setConfirming(null);
+    openButton.current?.focus();
+  };
 
   return (
     <section className="review" aria-label="Review and transform this case">
@@ -115,6 +179,68 @@ export function Review({
       <form
         onSubmit={(event) => {
           event.preventDefault();
+          if (unsaved && authoredSteps.length > 0) {
+            setConfirming(reopenEntry);
+          } else {
+            void open(reopenEntry);
+          }
+        }}
+      >
+        <label htmlFor="transform-reopen">Saved plan to reopen</label>
+        <select
+          id="transform-reopen"
+          value={reopenEntry}
+          disabled={authoring || planEntries.length === 0}
+          onChange={(event) => setReopenEntry(event.target.value)}
+        >
+          <option value="">Choose a plan document of this workspace…</option>
+          {planEntries.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+        <button type="submit" ref={openButton} disabled={authoring || reopenEntry === ""}>
+          Open this plan
+        </button>
+      </form>
+      {confirming !== null ? (
+        <div
+          role="group"
+          aria-label={`Open ${confirming} in place of these steps?`}
+          onKeyDown={(event) => {
+            // Escape answers this question and goes no further: the window's
+            // own Escape cancels a running operation.
+            if (event.key === "Escape" && !event.nativeEvent.isComposing && !busy) {
+              event.preventDefault();
+              event.stopPropagation();
+              keepSteps();
+            }
+          }}
+        >
+          <p className="hint">
+            The steps below are not saved. Opening {confirming} replaces them.
+          </p>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              const name = confirming;
+              setConfirming(null);
+              openButton.current?.focus();
+              void open(name);
+            }}
+          >
+            Replace them with {confirming}
+          </button>
+          <button type="button" ref={keep} disabled={busy} onClick={keepSteps}>
+            Keep these steps
+          </button>
+        </div>
+      ) : null}
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
           const step: TransformStep = { operator };
           if (operator === "rebase-identifiers/v1") step.rule = stepRule;
           if (operator === "shift-dates/v1") step.shift = stepShift;
@@ -132,7 +258,7 @@ export function Review({
         <select
           id="transform-step-operator"
           value={operator}
-          disabled={busy || !caseOpen}
+          disabled={authoring}
           onChange={(event) => setOperator(event.target.value as TransformOperator)}
         >
           <option value="rebase-identifiers/v1">Rebase identifiers of one correlation rule</option>
@@ -144,28 +270,33 @@ export function Review({
         {operator === "rebase-identifiers/v1" ? (
           <>
             <label htmlFor="transform-step-rule">Correlation rule id</label>
-            <input id="transform-step-rule" value={stepRule} onChange={(e) => setStepRule(e.target.value)} />
+            <input id="transform-step-rule" value={stepRule} disabled={authoring} onChange={(e) => setStepRule(e.target.value)} />
           </>
         ) : null}
         {operator === "shift-dates/v1" ? (
           <>
             <label htmlFor="transform-step-shift">Shift duration</label>
-            <input id="transform-step-shift" value={stepShift} onChange={(e) => setStepShift(e.target.value)} />
+            <input id="transform-step-shift" value={stepShift} disabled={authoring} onChange={(e) => setStepShift(e.target.value)} />
           </>
         ) : null}
         {operator === "reorder-occurrence/v1" || operator === "duplicate-occurrence/v1" || operator === "drop-occurrence/v1" ? (
           <>
             <label htmlFor="transform-step-entry">Sequence entry</label>
-            <input id="transform-step-entry" value={stepEntry} onChange={(e) => setStepEntry(e.target.value)} />
+            <input id="transform-step-entry" value={stepEntry} disabled={authoring} onChange={(e) => setStepEntry(e.target.value)} />
           </>
         ) : null}
         {operator === "reorder-occurrence/v1" ? (
           <>
             <label htmlFor="transform-step-position">One-based position</label>
-            <input id="transform-step-position" value={stepPosition} onChange={(e) => setStepPosition(e.target.value)} />
+            <input
+              id="transform-step-position"
+              value={stepPosition}
+              disabled={authoring}
+              onChange={(e) => setStepPosition(e.target.value)}
+            />
           </>
         ) : null}
-        <button type="submit" disabled={busy || !caseOpen}>
+        <button type="submit" disabled={authoring}>
           Add this step
         </button>
       </form>
@@ -177,7 +308,15 @@ export function Review({
               {step.rule ? ` · ${step.rule}` : ""}
               {step.shift ? ` · ${step.shift}` : ""}
               {step.entry ? ` · ${step.entry}` : ""}
-              {step.position ? ` · position ${step.position}` : ""}
+              {step.position ? ` · position ${step.position}` : ""}{" "}
+              <button
+                type="button"
+                disabled={authoring}
+                aria-label={`Remove step ${index + 1}`}
+                onClick={() => setAuthoredSteps((current) => current.filter((_, other) => other !== index))}
+              >
+                Remove
+              </button>
             </li>
           ))}
         </ol>
@@ -185,27 +324,44 @@ export function Review({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          onSavePlan(rules, profile, authoredSteps, planOutput);
+          const steps = authoredSteps;
+          const output = planOutput;
+          setStoredPlan(null);
+          void onSavePlan(rules, profile, steps, output).then((answered) => {
+            const saved = answered?.plan;
+            if (!saved) return;
+            setStoredSteps(steps);
+            setStoredPlan({ action: "saved", plan: saved });
+            setPlanOutput("");
+            setPlan(output);
+          });
         }}
       >
         <label htmlFor="transform-plan-output">New plan document in this workspace</label>
         <input
           id="transform-plan-output"
           value={planOutput}
-          disabled={busy || !caseOpen}
+          disabled={authoring}
           onChange={(event) => setPlanOutput(event.target.value)}
         />
-        <button type="submit" disabled={busy || !caseOpen || rules === "" || planOutput === ""}>
+        <button type="submit" disabled={authoring || rules === "" || planOutput === ""}>
           Save this transformation plan
         </button>
+        {rules === "" ? (
+          <p className="hint">Choose the correlation rules below; a plan pins the rules it preserves.</p>
+        ) : null}
       </form>
       <Report indicators={indicators} progress={planProgress} result={planResult} />
-      {planResult?.plan ? (
+      {storedPlan ? (
         <p className="hint">
-          Saved {planResult.plan.output} · rules digest {planResult.plan.digest}. Select it below to preview.
+          {storedPlan.action === "saved" ? "Saved" : "Opened"} {storedPlan.plan.output} · {storedPlan.plan.plan.steps.length}{" "}
+          {storedPlan.plan.plan.steps.length === 1 ? "step" : "steps"} · rules digest {storedPlan.plan.digest}
+          {storedPlan.plan.plan.profile
+            ? ` · pins profile pack ${storedPlan.plan.plan.profile.id} ${storedPlan.plan.plan.profile.version}`
+            : ""}
+          . It is selected below to preview.
         </p>
       ) : null}
-
 
       <form
         onSubmit={(event) => {
@@ -268,6 +424,12 @@ export function Review({
 
       <Report indicators={indicators} progress={transformProgress} result={transformResult} />
 
+      {transformation ? (
+        <p className="hint">
+          Preview of {transformation.plan} under {transformation.rules}
+          {transformation.profile ? ` with ${transformation.profile}` : ""}.
+        </p>
+      ) : null}
       {transformation ? <Preview transformation={transformation} /> : null}
 
       <form

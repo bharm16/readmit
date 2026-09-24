@@ -1,7 +1,43 @@
-import { useState } from "react";
-import type { ReductionResult } from "./bindings";
+import { useEffect, useRef, useState } from "react";
+import type { ReductionReport, ReductionResult } from "./bindings";
 import { Report, type Indicators } from "./shell";
 import "./reproducer.css";
+
+/** What each outcome of the engine's closed set establishes, in words, and
+ * what the sequence it reports is. Only a reduced outcome carries a
+ * minimality claim; every other one is marked incomplete or undecided here,
+ * beside the engine's own names, so a partial search never reads as a
+ * finished one. */
+const OUTCOMES: Record<string, { reads: string; sequence: string }> = {
+  reduced: {
+    reads: "Reduced: no single group of the declared partition can be removed without losing the chosen failure, as this oracle answered.",
+    sequence: "Retained",
+  },
+  bounded: {
+    reads:
+      "Incomplete: the trial budget ran out. The retained sequence reproduced the failure the last time it was asked, no removal was ruled out, and nothing is claimed minimal.",
+    sequence: "Retained",
+  },
+  not_attempted: {
+    reads: "Not attempted: no group of this partition could be removed, so nothing was reduced.",
+    sequence: "Retained",
+  },
+  undecided: {
+    reads: "Undecided: nothing was established. The sequence below is what the reduction was holding when it stopped, not an answer.",
+    sequence: "Held when it stopped",
+  },
+};
+
+/** How an outcome reads; one this window does not know is named as unknown,
+ * claims nothing and is never read as reduced. */
+function outcomeOf(report: ReductionReport): { reads: string; sequence: string } {
+  return (
+    OUTCOMES[report.outcome] ?? {
+      reads: `Unknown outcome ${report.outcome}: nothing here is claimed.`,
+      sequence: "Held when it stopped",
+    }
+  );
+}
 
 /** Configure and run a controlled reduction against an independent synthetic
  * target. Nothing here invents minimality beyond the engine's own report, and
@@ -14,6 +50,7 @@ export function Reduction({
   policyEntries,
   result,
   busy,
+  reducing,
   progress,
   indicators,
   caseOpen,
@@ -28,6 +65,9 @@ export function Reduction({
   policyEntries: string[];
   result: ReductionResult | null;
   busy: boolean;
+  /** Whether a run this panel started holds the window now: the one thing
+   * Stop can stop. A preview runs to completion and is not stopped. */
+  reducing: boolean;
   progress: string | null;
   indicators: Indicators;
   caseOpen: boolean;
@@ -46,10 +86,26 @@ export function Reduction({
   const [policy, setPolicy] = useState("");
   const [confirmed, setConfirmed] = useState("");
   const [work, setWork] = useState("reduction-work");
+  const runButton = useRef<HTMLButtonElement>(null);
+  const stopButton = useRef<HTMLButtonElement>(null);
 
+  // A run disables everything but Stop, so focus moves there when a run
+  // starts; once it has answered, focus left on the disabled Stop returns to
+  // the control that started it.
+  useEffect(() => {
+    if (reducing) {
+      stopButton.current?.focus();
+    } else if (document.activeElement === stopButton.current) {
+      runButton.current?.focus();
+    }
+  }, [reducing]);
+
+  // The rules select is offered only for a correlation grouping, so rules
+  // chosen before the grouping changed back are never sent.
+  const correlated = grouping === "group-by-correlation/v1";
   const form = (): ReductionForm => ({
     spec,
-    rules,
+    rules: correlated ? rules : "",
     grouping,
     assertions: assertions.split(/[\s,]+/).filter(Boolean),
     trials: Number(trials),
@@ -64,6 +120,9 @@ export function Reduction({
   const view = result?.reduction;
   const preview = view?.preview;
   const report = view?.report;
+  // The plan the engine applied, which names what a preview or report was
+  // about when the form has been changed since.
+  const applied = report?.plan ?? preview?.plan;
 
   return (
     <section className="reproducer" aria-label="Controlled reduction">
@@ -96,7 +155,7 @@ export function Reduction({
           <option value="group-by-correlation/v1">By correlation rules</option>
         </select>
 
-        {grouping === "group-by-correlation/v1" ? (
+        {correlated ? (
           <>
             <label htmlFor="reduction-rules">Correlation rules</label>
             <select id="reduction-rules" value={rules} disabled={busy} onChange={(e) => setRules(e.target.value)}>
@@ -157,16 +216,30 @@ export function Reduction({
         </button>
         <button
           type="button"
+          ref={runButton}
           disabled={busy || !caseOpen || spec === "" || target === "" || resetPlan === "" || assertions === "" || work === ""}
           onClick={() => onStart(form())}
         >
           Run this reduction
         </button>
-        <button type="button" disabled={!busy} onClick={onCancel}>
+        <button type="button" ref={stopButton} disabled={!reducing} onClick={onCancel}>
           Stop reduction
         </button>
       </form>
 
+      {view ? (
+        <p className="hint">
+          {view.report ? "Reduction" : "Preview"} of {view.spec} over {view.case}
+          {view.work ? ` · trials retained in ${view.work}` : ""}
+        </p>
+      ) : null}
+      {applied ? (
+        <p className="hint">
+          {applied.grouping} · holding {applied.signature.assertions.join(" ")} · budget {applied.trials}{" "}
+          {applied.trials === 1 ? "trial" : "trials"} · {applied.confirmations}{" "}
+          {applied.confirmations === 1 ? "confirmation" : "confirmations"}
+        </p>
+      ) : null}
       {view?.boundary ? <p className="hint">{view.boundary}</p> : null}
       {view?.observation ? <p className="hint">{view.observation}</p> : null}
 
@@ -199,23 +272,27 @@ export function Reduction({
 
       {report ? (
         <>
-          <h4>Retained trials</h4>
+          <h4>Outcome</h4>
+          <p>{outcomeOf(report).reads}</p>
           <p>
             Outcome {report.outcome} · minimality {report.minimality}
             {report.reason ? ` · ${report.reason}` : ""}
           </p>
+          <h4>Retained trials</h4>
           <ul>
             {report.trials.map((trial) => (
               <li key={trial.index}>
-                #{trial.index} · {trial.purpose} · reset {trial.reset} · verdict {trial.verdict}
+                #{trial.index} · {trial.purpose} · reset {trial.reset}
+                {trial.reset_reason ? ` (${trial.reset_reason})` : ""} · verdict {trial.verdict}
+                {trial.reason ? ` (${trial.reason})` : ""}
                 {trial.state ? ` · run ${trial.state}` : ""}
                 {trial.removed ? ` · removed ${trial.removed}` : ""}
               </li>
             ))}
           </ul>
           <p>
-            Retained {report.retained.join(" ") || "(none)"} · removed{" "}
-            {report.removed.join(" ") || "(none)"}
+            {outcomeOf(report).sequence}{" "}
+            {report.retained.join(" ") || "(none)"} · removed {report.removed.join(" ") || "(none)"}
           </p>
         </>
       ) : null}
