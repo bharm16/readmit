@@ -183,12 +183,17 @@ export function ObservationPanel({
   const [support, setSupport] = useState<ObservationAdapterSupport[]>([]);
   const [sourceFile, setSourceFile] = useState("observation-source.json");
   const [windowFile, setWindowFile] = useState("observation-window.json");
+  const [sourceFileEntry, setSourceFileEntry] = useState(sourceFile);
+  const [windowFileEntry, setWindowFileEntry] = useState(windowFile);
   const [outputFile, setOutputFile] = useState("observation-completion.json");
   const [snapshotDir, setSnapshotDir] = useState("observation-snapshot");
   const [source, setSource] = useState<ObservationSource>(emptyFileSource());
   const [windowDoc, setWindowDoc] = useState<ObservationWindow>(emptyWindow());
   const [sourceIdentity, setSourceIdentity] = useState("");
   const [windowIdentity, setWindowIdentity] = useState("");
+  const [sourceDirty, setSourceDirty] = useState(false);
+  const [windowDirty, setWindowDirty] = useState(false);
+  const [confirming, setConfirming] = useState<"source" | "window" | null>(null);
   // What the last open, save or validation of each named document said: the
   // identity it was read with, or why it was refused.
   const [sourceCheck, setSourceCheck] = useState<string | null>(null);
@@ -224,7 +229,23 @@ export function ObservationPanel({
   const windowReadKey = useRef("");
   const pendingReads = useRef(0);
   const [reading, setReading] = useState(false);
-  const blocked = busy || reading;
+  const blocked = busy || reading || confirming !== null;
+  const keepEdits = () => {
+    if (confirming === "source") setSourceFileEntry(sourceFile);
+    if (confirming === "window") setWindowFileEntry(windowFile);
+    setConfirming(null);
+  };
+  const replaceEdits = () => {
+    if (confirming === "source") {
+      setSourceIdentity("");
+      setSourceFile(sourceFileEntry);
+    }
+    if (confirming === "window") {
+      setWindowIdentity("");
+      setWindowFile(windowFileEntry);
+    }
+    setConfirming(null);
+  };
   useEffect(() => {
     let cancelled = false;
     const sourceKey = `${workspace}\n${sourceFile}`;
@@ -242,6 +263,7 @@ export function ObservationPanel({
           if (read.source && !refused) {
             setSource(read.source);
             setSourceIdentity(read.identity ?? "");
+            setSourceDirty(false);
             setSourceCheck(null);
           } else {
             setSourceIdentity("");
@@ -257,6 +279,7 @@ export function ObservationPanel({
           if (read.window && !refused) {
             setWindowDoc(read.window);
             setWindowIdentity(read.identity ?? "");
+            setWindowDirty(false);
             setWindowCheck(null);
           } else {
             setWindowIdentity("");
@@ -285,8 +308,10 @@ export function ObservationPanel({
     }).then((res) => {
       if (res.state === "completed" && res.source) {
         setSource(res.source);
-        setSourceIdentity(res.identity ?? "");
+        setSourceIdentity("");
+        setSourceDirty(true);
         setWindowDoc((w) => ({ ...w, source: { ...res.source!.source } }));
+        setWindowDirty(true);
         setNotice("Bound retained capture into a downstream-capture observation source. Nothing was collected.");
       } else {
         setNotice(res.reason ?? "Capture binding refused.");
@@ -311,12 +336,17 @@ export function ObservationPanel({
 
   const updateSource = (next: ObservationSource) => {
     setSource(next);
-    setWindowDoc((w) => ({ ...w, source: { ...next.source } }));
+    setSourceDirty(true);
+    if (next.source.kind !== source.source.kind || next.source.identity !== source.source.identity || next.source.scope !== source.source.scope) {
+      setWindowDoc((w) => ({ ...w, source: { ...next.source } }));
+      setWindowDirty(true);
+    }
     retain("observation-source", next);
   };
 
   const updateWindow = (next: ObservationWindow) => {
     setWindowDoc(next);
+    setWindowDirty(true);
     retain("observation-window", next);
   };
 
@@ -330,7 +360,17 @@ export function ObservationPanel({
   const restoredWindow = draftFor(drafts, "observation-window", workspace);
 
   return (
-    <section className="observation" aria-label="Observation setup">
+    <section
+      className="observation"
+      aria-label="Observation setup"
+      onKeyDown={(event) => {
+        if (confirming && event.key === "Escape" && !event.nativeEvent.isComposing && !busy) {
+          event.preventDefault();
+          event.stopPropagation();
+          keepEdits();
+        }
+      }}
+    >
       <header className="observation-header">
         <h3>Observation sources and windows</h3>
         <button type="button" onClick={onClose} disabled={busy}>
@@ -368,9 +408,48 @@ export function ObservationPanel({
       ) : null}
 
       <label htmlFor="observation-source-file">Source document</label>
-      <input id="observation-source-file" value={sourceFile} onChange={(e) => setSourceFile(e.target.value)} />
+      <input
+        id="observation-source-file"
+        value={sourceFileEntry}
+        disabled={busy || confirming === "window"}
+        onChange={(e) => {
+          const name = e.target.value;
+          setSourceFileEntry(name);
+          if (sourceDirty) setConfirming(name === sourceFile ? null : "source");
+          else {
+            if (name !== sourceFile) setSourceIdentity("");
+            setSourceFile(name);
+          }
+        }}
+      />
       <label htmlFor="observation-window-file">Window document</label>
-      <input id="observation-window-file" value={windowFile} onChange={(e) => setWindowFile(e.target.value)} />
+      <input
+        id="observation-window-file"
+        value={windowFileEntry}
+        disabled={busy || confirming === "source"}
+        onChange={(e) => {
+          const name = e.target.value;
+          setWindowFileEntry(name);
+          if (windowDirty) setConfirming(name === windowFile ? null : "window");
+          else {
+            if (name !== windowFile) setWindowIdentity("");
+            setWindowFile(name);
+          }
+        }}
+      />
+      {confirming ? (
+        <div role="group" aria-label={`Replace ${confirming} document?`}>
+          <p className="hint">
+            The {confirming} document in this editor has unsaved edits. Opening {confirming === "source" ? sourceFileEntry : windowFileEntry} replaces them.
+          </p>
+          <button type="button" disabled={busy || reading || !(confirming === "source" ? sourceFileEntry : windowFileEntry)} onClick={replaceEdits}>
+            Replace {confirming} document
+          </button>
+          <button type="button" disabled={busy || reading} onClick={keepEdits}>
+            Keep {confirming} edits
+          </button>
+        </div>
+      ) : null}
 
       <h4>Source kind</h4>
       <div className="observation-kinds">
@@ -699,6 +778,7 @@ export function ObservationPanel({
                 return;
               }
               setSourceIdentity(savedSource.identity ?? "");
+              setSourceDirty(false);
               if (savedSource.source) setSource(savedSource.source);
               setSourceCheck(documentLine("Source", sourceFile, "saved", savedSource.source?.schema ?? source.schema, savedSource.identity ?? ""));
               const savedWindow = await saveObservationWindow({ workspace, window_file: windowFile, window: windowDoc });
@@ -709,6 +789,7 @@ export function ObservationPanel({
                 return;
               }
               setWindowIdentity(savedWindow.identity ?? "");
+              setWindowDirty(false);
               if (savedWindow.window) setWindowDoc(savedWindow.window);
               setWindowCheck(documentLine("Window", windowFile, "saved", savedWindow.window?.schema ?? windowDoc.schema, savedWindow.identity ?? ""));
               report("completed");
@@ -779,12 +860,10 @@ export function ObservationPanel({
           read. Name another document to save what the editor holds.
         </p>
       ) : null}
-      {sourceIdentity || windowIdentity ? (
-        <p className="hint">
-          Pinned identities — source: <code>{sourceIdentity || "unsaved"}</code>; window:{" "}
-          <code>{windowIdentity || "unsaved"}</code>
-        </p>
-      ) : null}
+      <p className="hint">
+        Pinned identities — source: <code>{sourceFileEntry === sourceFile ? sourceIdentity || "not saved" : "not saved"}</code>; window:{" "}
+        <code>{windowFileEntry === windowFile ? windowIdentity || "not saved" : "not saved"}</code>
+      </p>
 
       <h4>Authorized collection</h4>
       <label htmlFor="observation-output">Completion output</label>

@@ -217,9 +217,9 @@ func TestASourceWithARelativeExportPathIsSavedAndValidatedAsOneIdentity(t *testi
 	if validated.File == nil || validated.File.Path != "exports/appointments.csv" {
 		t.Fatalf("validate answered %+v, not what the document declares", validated.File)
 	}
-	opened, err := operation.OpenOrNewObservationSource(path)
-	if err != nil || opened.Identity() != pinned || opened.File.Path != "exports/appointments.csv" {
-		t.Fatalf("reopened %+v (%v) with identity %q, the save pinned %q", opened.File, err, opened.Identity(), pinned)
+	opened, openedIdentity, err := operation.OpenOrNewObservationSource(path)
+	if err != nil || openedIdentity != pinned || opened.File.Path != "exports/appointments.csv" {
+		t.Fatalf("reopened %+v (%v) with identity %q, the save pinned %q", opened.File, err, openedIdentity, pinned)
 	}
 	if _, again, err := operation.SaveObservationSource(path, saved); err != nil || again != pinned {
 		t.Fatalf("saving the answer again pinned %q (%v), not %q", again, err, pinned)

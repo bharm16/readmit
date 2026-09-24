@@ -18,7 +18,7 @@ import type {
   ObservationWindowResult,
 } from "./bindings";
 
-async function openProject(user: ReturnType<typeof userEvent.setup>) {
+async function openProject(user: ReturnType<typeof userEvent.setup>, defaults = false) {
   const { facade } = await renderApp({
     SelectWorkspace: () =>
       folderChosen(WORKSPACE_ROOT, [
@@ -81,7 +81,7 @@ async function openProject(user: ReturnType<typeof userEvent.setup>) {
           file: { path: "export.csv", max_bytes: 65536 },
           http: null,
         },
-        identity: "source-identity",
+        ...(defaults ? {} : { identity: "source-identity" }),
       }),
     OpenObservationWindow: (): Promise<ObservationWindowResult> =>
       Promise.resolve({
@@ -99,7 +99,7 @@ async function openProject(user: ReturnType<typeof userEvent.setup>) {
             max_samples: 16,
           },
         },
-        identity: "window-identity",
+        ...(defaults ? {} : { identity: "window-identity" }),
       }),
   });
   await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
@@ -267,6 +267,130 @@ async function openObservationSetup(user: ReturnType<typeof userEvent.setup>) {
   return within(await screen.findByRole("region", { name: "Observation setup" }));
 }
 
+test("new observation defaults have no pinned identity until each document is saved", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user, true);
+  facade.reply({
+    SaveObservationSource: (request): Promise<ObservationSourceResult> =>
+      Promise.resolve({ state: "completed", source: request.source!, identity: "saved-source-identity" }),
+    SaveObservationWindow: (request): Promise<ObservationWindowResult> =>
+      Promise.resolve({ state: "completed", window: request.window!, identity: "saved-window-identity" }),
+  });
+  const panel = await openObservationSetup(user);
+  await waitFor(() => expect((panel.getByRole("button", { name: "Save source and window" }) as HTMLButtonElement).disabled).toBe(false));
+  expect(panel.getByText(byContent(/^Pinned identities/)).textContent).toBe(
+    "Pinned identities — source: not saved; window: not saved",
+  );
+  await user.click(panel.getByRole("button", { name: "Save source and window" }));
+  await panel.findByText(/^Saved through shared Go writers/);
+  expect(panel.getByText(byContent(/^Pinned identities/)).textContent).toBe(
+    "Pinned identities — source: saved-source-identity; window: saved-window-identity",
+  );
+});
+
+test("changing a source name asks before replacing unsaved edits, and Escape keeps them", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user);
+  const panel = await openObservationSetup(user);
+  await user.clear(panel.getByLabelText("Export path"));
+  await user.type(panel.getByLabelText("Export path"), "edited.csv");
+  const reads = facade.callsTo("OpenObservationSource").length;
+  await user.clear(panel.getByLabelText("Source document"));
+  await user.type(panel.getByLabelText("Source document"), "other-source.json");
+  expect(panel.getByRole("group", { name: /Replace source document/ })).toBeTruthy();
+  expect(facade.callsTo("OpenObservationSource")).toHaveLength(reads);
+  expect((panel.getByLabelText("Export path") as HTMLInputElement).value).toBe("edited.csv");
+  await user.keyboard("{Escape}");
+  expect(panel.queryByRole("group", { name: /Replace source document/ })).toBeNull();
+  expect((panel.getByLabelText("Source document") as HTMLInputElement).value).toBe("observation-source.json");
+  expect((panel.getByLabelText("Export path") as HTMLInputElement).value).toBe("edited.csv");
+  expect(facade.callsTo("OpenObservationSource")).toHaveLength(reads);
+
+  await user.clear(panel.getByLabelText("Source document"));
+  await user.type(panel.getByLabelText("Source document"), "other-source.json");
+  await user.click(panel.getByRole("button", { name: "Replace source document" }));
+  await waitFor(() => expect(facade.callsTo("OpenObservationSource").length).toBeGreaterThan(reads));
+  await waitFor(() => expect((panel.getByLabelText("Export path") as HTMLInputElement).value).toBe("export.csv"));
+  expect((panel.getByLabelText("Source document") as HTMLInputElement).value).toBe("other-source.json");
+
+  await user.clear(panel.getByLabelText("Export path"));
+  await user.type(panel.getByLabelText("Export path"), "still-edited.csv");
+  facade.reply({
+    OpenObservationSource: (): Promise<ObservationSourceResult> =>
+      Promise.resolve({ state: "failed", reason: "later source version" }),
+  });
+  await user.clear(panel.getByLabelText("Source document"));
+  await user.type(panel.getByLabelText("Source document"), "later-source.json");
+  await user.click(panel.getByRole("button", { name: "Replace source document" }));
+  await panel.findByText("Source document later-source.json not opened: later source version");
+  expect((panel.getByLabelText("Export path") as HTMLInputElement).value).toBe("still-edited.csv");
+  await user.clear(panel.getByLabelText("Source document"));
+  await user.type(panel.getByLabelText("Source document"), "third-source.json");
+  expect(panel.getByRole("group", { name: "Replace source document?" })).toBeTruthy();
+  expect((panel.getByLabelText("Export path") as HTMLInputElement).value).toBe("still-edited.csv");
+});
+
+test("changing a window name asks before replacing unsaved edits, and Keep retains them", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user);
+  const panel = await openObservationSetup(user);
+  await user.clear(panel.getByLabelText("Deadline"));
+  await user.type(panel.getByLabelText("Deadline"), "45s");
+  const reads = facade.callsTo("OpenObservationWindow").length;
+  await user.clear(panel.getByLabelText("Window document"));
+  await user.type(panel.getByLabelText("Window document"), "other-window.json");
+  expect(panel.getByRole("group", { name: /Replace window document/ })).toBeTruthy();
+  expect(facade.callsTo("OpenObservationWindow")).toHaveLength(reads);
+  await user.click(panel.getByRole("button", { name: "Keep window edits" }));
+  expect((panel.getByLabelText("Window document") as HTMLInputElement).value).toBe("observation-window.json");
+  expect((panel.getByLabelText("Deadline") as HTMLInputElement).value).toBe("45s");
+  expect(facade.callsTo("OpenObservationWindow")).toHaveLength(reads);
+
+  facade.reply({
+    OpenObservationWindow: (): Promise<ObservationWindowResult> =>
+      Promise.resolve({ state: "failed", reason: "later window version" }),
+  });
+  await user.clear(panel.getByLabelText("Window document"));
+  await user.type(panel.getByLabelText("Window document"), "later-window.json");
+  await user.click(panel.getByRole("button", { name: "Replace window document" }));
+  await panel.findByText("Window document later-window.json not opened: later window version");
+  expect((panel.getByLabelText("Deadline") as HTMLInputElement).value).toBe("45s");
+  await user.clear(panel.getByLabelText("Window document"));
+  await user.type(panel.getByLabelText("Window document"), "third-window.json");
+  expect(panel.getByRole("group", { name: "Replace window document?" })).toBeTruthy();
+});
+
+test("a newly named document does not show the previous file's identity while its read is pending", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user);
+  const panel = await openObservationSetup(user);
+  await waitFor(() => expect(panel.getByText(byContent(/^Pinned identities/)).textContent).toBe(
+    "Pinned identities — source: source-identity; window: window-identity",
+  ));
+  const reading = facade.park("OpenObservationSource");
+  await user.clear(panel.getByLabelText("Source document"));
+  await user.type(panel.getByLabelText("Source document"), "new-source.json");
+  await waitFor(() => expect(reading.size).toBeGreaterThan(0));
+  expect(panel.getByText(byContent(/^Pinned identities/)).textContent).toBe(
+    "Pinned identities — source: not saved; window: window-identity",
+  );
+  await waitFor(() => {
+    while (reading.size > 0) reading.resolve({ state: "failed", reason: "not found" });
+    expect(panel.getByText("Source document new-source.json not opened: not found")).toBeTruthy();
+  });
+  const windowReading = facade.park("OpenObservationWindow");
+  await user.clear(panel.getByLabelText("Window document"));
+  await user.type(panel.getByLabelText("Window document"), "new-window.json");
+  await waitFor(() => expect(windowReading.size).toBeGreaterThan(0));
+  expect(panel.getByText(byContent(/^Pinned identities/)).textContent).toBe(
+    "Pinned identities — source: not saved; window: not saved",
+  );
+  await waitFor(() => {
+    while (windowReading.size > 0) windowReading.resolve({ state: "failed", reason: "not found" });
+    expect(panel.getByText("Window document new-window.json not opened: not found")).toBeTruthy();
+  });
+});
+
 test("each saved document is validated on its own from the keyboard, with its identity or the reader's refusal", async () => {
   const user = userEvent.setup();
   const { facade } = await openProject(user);
@@ -384,7 +508,7 @@ test("a document the reader refuses is said to be refused on opening, and naming
   expect(
     await panel.findByText("Window document later.json not opened: an observation window must declare readmit-observation-window/v1"),
   ).toBeTruthy();
-  expect(panel.getByText(byContent(/^Pinned identities/)).textContent).toBe("Pinned identities — source: source-identity; window: unsaved");
+  expect(panel.getByText(byContent(/^Pinned identities/)).textContent).toBe("Pinned identities — source: source-identity; window: not saved");
   // The source was not read again, so what was typed into it stands.
   expect(facade.callsTo("OpenObservationSource")).toHaveLength(sourceReads);
   expect((panel.getByLabelText("Export path") as HTMLInputElement).value).toBe("exports/appointments.csv");

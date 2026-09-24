@@ -1,5 +1,11 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Observation setup now asks before a new source or window name replaces
+  unsaved edits; Escape keeps the edits (#414). Its pinned-identity line says
+  "not saved" for new defaults or an unsaved capture binding, and shows a
+  digest only after a document was read or saved. Observation document
+  contracts and command-line behavior are unchanged.
+
 - The packet panel now shows why its native export-destination dialog was
   dismissed or unavailable (#419), as the privacy panel does. Neither answer
   names a new destination. Packet export and existing artifact contracts are

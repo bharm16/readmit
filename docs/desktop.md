@@ -4001,6 +4001,10 @@ explicit authorize action and retain completions through
 `internal/observesource` and `internal/observewindow`. Like `readmit observe
 collect`, a collection reserves a runner instance as well as admitting the
 author, and is refused without one before a source is read.
+Changing a source or window document name when that editor holds unsaved edits
+asks before replacing them; Escape keeps the edits and the original name.
+Pinned identities describe saved or read documents. A new default or a source
+prepared from a capture binding says **not saved** until it is written.
 
 **Save source and window** writes the source, then the window, each through
 its shared writer, and shows the identity each was saved with. A refused source
