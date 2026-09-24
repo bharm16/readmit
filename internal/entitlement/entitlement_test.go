@@ -343,10 +343,11 @@ func TestImportAndExportPreserveTheSignedBytes(t *testing.T) {
 	}
 }
 
-// Renewal replaces the installed document with a later issue of the same
-// organization's entitlement, for the same device. Anything else is refused by
-// name rather than installed.
-func TestRenewalRefusesSupersededForeignAndRebindingDocuments(t *testing.T) {
+// Renewal replaces the installed document with a later issue for the same
+// device; a reissue that no longer binds this device is a transfer and is
+// refused by name. The renewal rules both versions share (superseded, foreign
+// and other-version issues) are the reader's, tested once in reader_test.go.
+func TestRenewalRefusesADocumentThatNoLongerBindsThisDevice(t *testing.T) {
 	trust := testTrust(t, entitlement.KeyActive, time.Time{})
 	root := filepath.Join(t.TempDir(), "entitlement")
 	store, err := entitlement.Import(root, signed(t, testClaims()), trust, "ws-0413", moment(2026, time.September, 19))
@@ -365,25 +366,6 @@ func TestRenewalRefusesSupersededForeignAndRebindingDocuments(t *testing.T) {
 	if store.Claims.Sequence != 2 || !store.Claims.Expires.Equal(moment(2028, time.September, 18)) {
 		t.Fatalf("renewal did not install the later issue: %+v", store.Claims)
 	}
-	reopened, err := entitlement.Open(root)
-	if err != nil || reopened.Claims.Sequence != 2 {
-		t.Fatalf("renewal was not retained: %v", err)
-	}
-
-	if err := store.Renew(signed(t, renewed), trust); !errors.Is(err, entitlement.ErrSuperseded) {
-		t.Fatalf("the installed issue was replaced by an equal one: %v", err)
-	}
-	superseded := testClaims()
-	superseded.Sequence = 1
-	if err := store.Renew(signed(t, superseded), trust); !errors.Is(err, entitlement.ErrSuperseded) {
-		t.Fatalf("an earlier issue replaced a later one: %v", err)
-	}
-	foreign := testClaims()
-	foreign.Sequence = 3
-	foreign.Organization = "other-hospital"
-	if err := store.Renew(signed(t, foreign), trust); !errors.Is(err, entitlement.ErrDifferentOrganization) {
-		t.Fatalf("another organization's entitlement was installed: %v", err)
-	}
 	transferred := testClaims()
 	transferred.Sequence = 3
 	transferred.Scope.Devices = []entitlement.Device{{ID: "ws-0510", Kind: entitlement.KindSeat}}
@@ -395,7 +377,8 @@ func TestRenewalRefusesSupersededForeignAndRebindingDocuments(t *testing.T) {
 
 // A device transfer is the vendor reissuing the entitlement for the new device.
 // The local half is releasing the activation, after which this installation
-// asserts nothing; the new device imports the reissued document.
+// asserts nothing (the reader's rule, tested once in reader_test.go); the new
+// device imports the reissued document.
 func TestDeviceTransferReleasesLocallyAndActivatesElsewhere(t *testing.T) {
 	trust := testTrust(t, entitlement.KeyActive, time.Time{})
 	root := filepath.Join(t.TempDir(), "entitlement")
@@ -406,30 +389,11 @@ func TestDeviceTransferReleasesLocallyAndActivatesElsewhere(t *testing.T) {
 	if err := store.Release(moment(2026, time.November, 1)); err != nil {
 		t.Fatalf("release: %v", err)
 	}
-	if _, err := store.Grant(trust); !errors.Is(err, entitlement.ErrReleased) {
-		t.Fatalf("a released activation still granted: %v", err)
-	}
-	reopened, err := entitlement.Open(root)
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	if reopened.Activation.Released.IsZero() {
-		t.Fatal("release was not retained")
-	}
-	if _, err := reopened.Export(filepath.Join(t.TempDir(), "held.json")); err != nil {
-		t.Fatalf("a released store refused to export its own file: %v", err)
-	}
-	if err := reopened.Release(moment(2026, time.December, 1)); !errors.Is(err, entitlement.ErrReleased) {
-		t.Fatalf("an activation was released twice: %v", err)
-	}
 	reissued := testClaims()
 	reissued.Sequence = 2
 	reissued.Scope.Devices = []entitlement.Device{
 		{ID: "ci-runner-02", Kind: entitlement.KindRunner},
 		{ID: "ws-0510", Kind: entitlement.KindSeat},
-	}
-	if err := reopened.Renew(signed(t, reissued), trust); !errors.Is(err, entitlement.ErrReleased) {
-		t.Fatalf("a released activation was renewed instead of reimported: %v", err)
 	}
 	transferred := filepath.Join(t.TempDir(), "transferred")
 	moved, err := entitlement.Import(transferred, signed(t, reissued), trust, "ws-0510", moment(2026, time.November, 2))

@@ -119,34 +119,6 @@ func TestV2SignatureCoversTheAuthoredCanonicalClaimsAndMatchesTheVector(t *testi
 	}
 }
 
-// Each reader reads its own version and refuses the other by name. A v1
-// signature cannot be replayed under v2, and no reader migrates anything.
-func TestReadersRefuseEachOthersVersions(t *testing.T) {
-	trust := testTrust(t, entitlement.KeyActive, time.Time{})
-	v1, v2 := signed(t, testClaims()), signedV2(t, testClaimsV2())
-	if _, err := entitlement.Verify(v2, trust); !errors.Is(err, entitlement.ErrUnsupportedVersion) {
-		t.Fatalf("the v1 reader read a v2 document: %v", err)
-	}
-	if _, err := entitlement.VerifyV2(v1, trust); !errors.Is(err, entitlement.ErrUnsupportedVersion) {
-		t.Fatalf("the v2 reader read a v1 document: %v", err)
-	}
-	relabelled := strings.Replace(string(v1), "readmit-entitlement/v1", "readmit-entitlement/v2", 1)
-	if _, err := entitlement.VerifyV2([]byte(relabelled), trust); err == nil {
-		t.Fatal("a v1 document relabelled as v2 was accepted")
-	}
-	for _, c := range []struct {
-		data string
-		want string
-	}{{string(v1), entitlement.Schema}, {string(v2), entitlement.SchemaV2}, {`{"schema":"readmit-entitlement/v9"}`, "readmit-entitlement/v9"}} {
-		if version, err := entitlement.DeclaredVersion([]byte(c.data)); err != nil || version != c.want {
-			t.Fatalf("declared version %q %v, want %q", version, err, c.want)
-		}
-	}
-	if _, err := entitlement.DeclaredVersion([]byte("not json")); err == nil {
-		t.Fatal("a malformed document declared a version")
-	}
-}
-
 // One named author works from two assigned devices and from no third. Another
 // author's device is not this author's, and an author the document does not
 // name has no device at all.
@@ -310,6 +282,8 @@ func TestV2VerificationRefusalsAreNamed(t *testing.T) {
 // A v2 store activates one named author on one assigned device. Renewal keeps
 // the assignment; a reissue that moves the device or the author is a transfer,
 // refused here and imported where it now applies. Release is the local half.
+// The rules both versions share (released activations, superseded and foreign
+// issues, other versions) are the reader's, tested once in reader_test.go.
 func TestV2StoreActivatesAuthorAndDeviceAndFollowsReissues(t *testing.T) {
 	trust := testTrust(t, entitlement.KeyActive, time.Time{})
 	root := filepath.Join(t.TempDir(), "entitlement")
@@ -337,22 +311,9 @@ func TestV2StoreActivatesAuthorAndDeviceAndFollowsReissues(t *testing.T) {
 	if store.Activation.Author != "a.nguyen" || store.Activation.Device != "ws-0413" {
 		t.Fatalf("unexpected activation: %+v", store.Activation)
 	}
-	exported := filepath.Join(t.TempDir(), "exported.json")
-	if _, err := store.Export(exported); err != nil {
-		t.Fatalf("export: %v", err)
-	}
-	if data, err := os.ReadFile(exported); err != nil || string(data) != string(document) {
-		t.Fatalf("export did not write the imported bytes: %v", err)
-	}
-	if _, err := entitlement.Open(root); !errors.Is(err, entitlement.ErrUnsupportedVersion) {
-		t.Fatalf("the v1 store reader opened a v2 store: %v", err)
-	}
 	reopened, err := entitlement.OpenV2(root)
 	if err != nil {
 		t.Fatalf("open: %v", err)
-	}
-	if _, err := reopened.Grant(trust); err != nil {
-		t.Fatalf("a reopened store did not verify: %v", err)
 	}
 
 	renewed := testClaimsV2()
@@ -360,15 +321,6 @@ func TestV2StoreActivatesAuthorAndDeviceAndFollowsReissues(t *testing.T) {
 	renewed.Expires = moment(2028, time.September, 18)
 	if err := reopened.Renew(signedV2(t, renewed), trust); err != nil {
 		t.Fatalf("renew: %v", err)
-	}
-	if err := reopened.Renew(signedV2(t, renewed), trust); !errors.Is(err, entitlement.ErrSuperseded) {
-		t.Fatalf("an equal issue replaced the installed one: %v", err)
-	}
-	foreign := renewed
-	foreign.Sequence = 3
-	foreign.Organization = "other-hospital"
-	if err := reopened.Renew(signedV2(t, foreign), trust); !errors.Is(err, entitlement.ErrDifferentOrganization) {
-		t.Fatalf("another organization's entitlement was installed: %v", err)
 	}
 	moved := testClaimsV2()
 	moved.Sequence = 3
@@ -389,18 +341,6 @@ func TestV2StoreActivatesAuthorAndDeviceAndFollowsReissues(t *testing.T) {
 	// Transfer: release here, import the reissue on the device it now names.
 	if err := reopened.Release(moment(2026, time.November, 1)); err != nil {
 		t.Fatalf("release: %v", err)
-	}
-	if _, err := reopened.Grant(trust); !errors.Is(err, entitlement.ErrReleased) {
-		t.Fatalf("a released activation still granted: %v", err)
-	}
-	if err := reopened.Release(moment(2026, time.December, 1)); !errors.Is(err, entitlement.ErrReleased) {
-		t.Fatalf("an activation was released twice: %v", err)
-	}
-	if err := reopened.Renew(signedV2(t, moved), trust); !errors.Is(err, entitlement.ErrReleased) {
-		t.Fatalf("a released activation was renewed: %v", err)
-	}
-	if _, err := reopened.Export(filepath.Join(t.TempDir(), "held.json")); err != nil {
-		t.Fatalf("a released store refused to export: %v", err)
 	}
 	transferred, err := entitlement.ImportV2(filepath.Join(t.TempDir(), "transferred"), signedV2(t, moved), trust, "a.nguyen", "ws-0999", moment(2026, time.November, 2))
 	if err != nil {

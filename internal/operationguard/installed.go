@@ -120,94 +120,14 @@ type InstalledLicense struct {
 	OperationReleased bool
 }
 
-// installedStore is whichever entitlement store version the folder holds; the
-// v1 reader and the v2 reader decide, and neither is migrated into the other.
-type installedStore struct {
-	v1 *entitlement.Store
-	v2 *entitlement.StoreV2
-}
-
-func openInstalledStore(root string) (installedStore, error) {
+// openInstalledStore opens the entitlement store the folder holds through the
+// entitlement reader, which reads it under the version it was written in and
+// migrates neither into the other.
+func openInstalledStore(root string) (entitlement.Installed, error) {
 	if _, err := os.Lstat(root); errors.Is(err, fs.ErrNotExist) {
-		return installedStore{}, ErrNoLicense
+		return entitlement.Installed{}, ErrNoLicense
 	}
-	v1, err := entitlement.Open(root)
-	if err == nil {
-		return installedStore{v1: v1}, nil
-	}
-	if !errors.Is(err, entitlement.ErrUnsupportedVersion) {
-		return installedStore{}, err
-	}
-	v2, err := entitlement.OpenV2(root)
-	if err != nil {
-		return installedStore{}, err
-	}
-	return installedStore{v2: v2}, nil
-}
-
-func (s installedStore) root() string {
-	if s.v2 != nil {
-		return s.v2.Root
-	}
-	return s.v1.Root
-}
-
-func (s installedStore) author() string {
-	if s.v2 != nil {
-		return s.v2.Activation.Author
-	}
-	return ""
-}
-
-func (s installedStore) device() string {
-	if s.v2 != nil {
-		return s.v2.Activation.Device
-	}
-	return s.v1.Activation.Device
-}
-
-func (s installedStore) imported() time.Time {
-	if s.v2 != nil {
-		return s.v2.Activation.Imported
-	}
-	return s.v1.Activation.Imported
-}
-
-func (s installedStore) released() time.Time {
-	if s.v2 != nil {
-		return s.v2.Activation.Released
-	}
-	return s.v1.Activation.Released
-}
-
-func (s installedStore) grant(trust entitlement.Trust) error {
-	if s.v2 != nil {
-		_, err := s.v2.Grant(trust)
-		return err
-	}
-	_, err := s.v1.Grant(trust)
-	return err
-}
-
-func (s installedStore) renew(data []byte, trust entitlement.Trust) error {
-	if s.v2 != nil {
-		return s.v2.Renew(data, trust)
-	}
-	return s.v1.Renew(data, trust)
-}
-
-func (s installedStore) release(at time.Time) error {
-	if s.v2 != nil {
-		return s.v2.Release(at)
-	}
-	return s.v1.Release(at)
-}
-
-func (s installedStore) export(destination string) (string, error) {
-	if s.v2 != nil {
-		return s.v2.Export(destination)
-	}
-	return s.v1.Export(destination)
+	return entitlement.OpenInstalled(root)
 }
 
 // OpenInstalledLicense reads and verifies this computer's license at an
@@ -219,11 +139,11 @@ func OpenInstalledLicense(root string, at time.Time) (InstalledLicense, error) {
 	if err != nil {
 		return InstalledLicense{}, err
 	}
-	data, err := readFile(filepath.Join(store.root(), entitlement.DocumentName))
+	data, err := readFile(filepath.Join(store.Root(), entitlement.DocumentName))
 	if err != nil {
 		return InstalledLicense{}, ErrLicenseUnreadable
 	}
-	trustData, err := readFile(filepath.Join(store.root(), installedTrustName))
+	trustData, err := readFile(filepath.Join(store.Root(), installedTrustName))
 	if err != nil {
 		return InstalledLicense{}, ErrLicenseKeysMissing
 	}
@@ -234,23 +154,23 @@ func OpenInstalledLicense(root string, at time.Time) (InstalledLicense, error) {
 	// An active license is verified for what it was activated as by the
 	// store's own reader, the one `readmit license show` reports through; a
 	// released one is still reported, as released.
-	if store.released().IsZero() {
+	if store.Released().IsZero() {
 		trust, err := entitlement.DecodeTrust(trustData)
 		if err != nil {
 			return InstalledLicense{}, ErrTrustUnreadable
 		}
-		if err := store.grant(trust); err != nil {
+		if _, err := store.Grant(trust); err != nil {
 			return InstalledLicense{}, err
 		}
 	}
 	installed := InstalledLicense{
-		Received: received, Root: store.root(), Author: store.author(), Device: store.device(),
-		Imported: store.imported(), Released: store.released(),
+		Received: received, Root: store.Root(), Author: store.Author(), Device: store.Device(),
+		Imported: store.Imported(), Released: store.Released(),
 	}
-	if store.v2 == nil {
+	if store.V2 == nil {
 		return installed, nil
 	}
-	policyData, err := readFile(filepath.Join(store.root(), installedPolicyName))
+	policyData, err := readFile(filepath.Join(store.Root(), installedPolicyName))
 	if err != nil {
 		return installed, nil
 	}
@@ -319,20 +239,11 @@ func InstallLicense(root string, data, trustData []byte, author, device, authori
 	if err := os.MkdirAll(filepath.Dir(root), 0o700); err != nil {
 		return ErrNoConfigurationDirectory
 	}
-	var stagedRoot string
-	if received.OperationCapable {
-		store, err := entitlement.ImportV2(staging, data, trust, author, device, at)
-		if err != nil {
-			return err
-		}
-		stagedRoot = store.Root
-	} else {
-		store, err := entitlement.Import(staging, data, trust, device, at)
-		if err != nil {
-			return err
-		}
-		stagedRoot = store.Root
+	staged, err := received.signed.Import(staging, trust, author, device, at)
+	if err != nil {
+		return err
 	}
+	stagedRoot := staged.Root()
 	final := filepath.Join(filepath.Dir(stagedRoot), filepath.Base(root))
 	abandon := func(err error) error { os.RemoveAll(stagedRoot); return err }
 	if err := writeNew(filepath.Join(stagedRoot, installedTrustName), trustData); err != nil {
@@ -384,15 +295,15 @@ func setAsideOrFinish(root string, data []byte, author, device string, at time.T
 	if err != nil {
 		return false, ErrLicenseUnreadable
 	}
-	if current.released().IsZero() && operationReleased(current) {
-		if err := current.release(at); err != nil {
+	if current.Released().IsZero() && operationReleased(current) {
+		if err := current.Release(at); err != nil {
 			return false, err
 		}
 	}
-	if current.released().IsZero() {
-		policyPath := filepath.Join(current.root(), installedPolicyName)
-		installed, readErr := readFile(filepath.Join(current.root(), entitlement.DocumentName))
-		if current.v2 != nil && readErr == nil && bytes.Equal(installed, data) && current.author() == author && current.device() == device {
+	if current.Released().IsZero() {
+		policyPath := filepath.Join(current.Root(), installedPolicyName)
+		installed, readErr := readFile(filepath.Join(current.Root(), entitlement.DocumentName))
+		if current.V2 != nil && readErr == nil && bytes.Equal(installed, data) && current.Author() == author && current.Device() == device {
 			if policy, err := readSelectedPolicy(policyPath); err == nil {
 				if _, err := os.Lstat(policy.State); errors.Is(err, fs.ErrNotExist) {
 					return true, Activate(policyPath)
@@ -401,11 +312,11 @@ func setAsideOrFinish(root string, data []byte, author, device string, at time.T
 		}
 		return false, ErrLicenseInstalled
 	}
-	aside := current.root() + ".released-" + current.released().UTC().Format("20060102T150405Z")
+	aside := current.Root() + ".released-" + current.Released().UTC().Format("20060102T150405Z")
 	if _, err := os.Lstat(aside); !errors.Is(err, fs.ErrNotExist) {
 		return false, ErrLicenseRetained
 	}
-	if err := os.Rename(current.root(), aside); err != nil {
+	if err := os.Rename(current.Root(), aside); err != nil {
 		return false, ErrLicenseRetained
 	}
 	return false, nil
@@ -431,7 +342,7 @@ func RenewInstalledLicense(root string, data, trustData []byte) error {
 	if err != nil {
 		return err
 	}
-	installedTrust, err := readFile(filepath.Join(store.root(), installedTrustName))
+	installedTrust, err := readFile(filepath.Join(store.Root(), installedTrustName))
 	if err != nil {
 		return ErrLicenseKeysMissing
 	}
@@ -444,18 +355,18 @@ func RenewInstalledLicense(root string, data, trustData []byte) error {
 		return ErrTrustUnreadable
 	}
 	if trustData == nil || bytes.Equal(trustData, installedTrust) {
-		return store.renew(data, trust)
+		return store.Renew(data, trust)
 	}
 	// The new trust document is written in full beside the installed one
 	// before the renewal and renamed over it after, so a refused renewal
 	// leaves both as they were and a retained interrupted write is reported
 	// before the license changes.
-	path := filepath.Join(store.root(), installedTrustName)
+	path := filepath.Join(store.Root(), installedTrustName)
 	staged := path + incompleteSuffix
 	if err := writeNew(staged, trustData); err != nil {
 		return ErrLicenseRetained
 	}
-	if err := store.renew(data, trust); err != nil {
+	if err := store.Renew(data, trust); err != nil {
 		os.Remove(staged)
 		return err
 	}
@@ -475,11 +386,11 @@ func ReleaseInstalledLicense(root string, at time.Time) error {
 	if err != nil {
 		return err
 	}
-	if !store.released().IsZero() {
+	if !store.Released().IsZero() {
 		return entitlement.ErrReleased
 	}
-	if store.v2 != nil {
-		policyPath := filepath.Join(store.root(), installedPolicyName)
+	if store.V2 != nil {
+		policyPath := filepath.Join(store.Root(), installedPolicyName)
 		if policy, err := readSelectedPolicy(policyPath); err == nil {
 			if _, err := os.Lstat(policy.State); err == nil {
 				// Clock state no reader accepts admits no work and is never
@@ -491,7 +402,7 @@ func ReleaseInstalledLicense(root string, at time.Time) error {
 			}
 		}
 	}
-	return store.release(at)
+	return store.Release(at)
 }
 
 // ExportInstalledLicense writes this computer's license document to a new
@@ -503,16 +414,16 @@ func ExportInstalledLicense(root, destination string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return store.export(destination)
+	return store.Export(destination)
 }
 
 // operationReleased reports whether a v2 license's operation state records a
 // release, whatever its store records.
-func operationReleased(store installedStore) bool {
-	if store.v2 == nil {
+func operationReleased(store entitlement.Installed) bool {
+	if store.V2 == nil {
 		return false
 	}
-	policy, err := readSelectedPolicy(filepath.Join(store.root(), installedPolicyName))
+	policy, err := readSelectedPolicy(filepath.Join(store.Root(), installedPolicyName))
 	if err != nil {
 		return false
 	}
@@ -528,17 +439,19 @@ func operationReleased(store installedStore) bool {
 // license of another version is a different license, never a renewal.
 func RenewsInstalledLicense(root string, data []byte) bool {
 	store, err := openInstalledStore(root)
-	if err != nil || !store.released().IsZero() {
+	if err != nil || !store.Released().IsZero() {
 		return false
 	}
-	version, err := entitlement.DeclaredVersion(data)
-	if err != nil || (version == entitlement.SchemaV2) != (store.v2 != nil) {
+	// A license that names authors never renews one that binds devices, nor
+	// the reverse: each is renewed only by its own version's store.
+	received, err := entitlement.ReadSigned(data)
+	if err != nil || received.NamesAuthors() != (store.V2 != nil) {
 		return false
 	}
-	if store.v2 == nil {
+	if store.V2 == nil {
 		return true
 	}
-	policy, err := readSelectedPolicy(filepath.Join(store.root(), installedPolicyName))
+	policy, err := readSelectedPolicy(filepath.Join(store.Root(), installedPolicyName))
 	if err != nil {
 		return false
 	}
@@ -553,10 +466,7 @@ func InstalledDocumentID(root string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if store.v2 != nil {
-		return store.v2.Claims.ID, nil
-	}
-	return store.v1.Claims.ID, nil
+	return store.ID(), nil
 }
 
 // ReadDocument reads one received document as a regular file, bounded, and

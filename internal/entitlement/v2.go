@@ -242,7 +242,7 @@ func VerifyV2(data []byte, trust Trust) (GrantV2, error) {
 
 // DecodeV2 reads a v2 entitlement document. A v1 document is not a v2 document
 // and is refused here as an unsupported version, exactly as [Decode] refuses a
-// v2 one; a caller that accepts both asks [DeclaredVersion] first.
+// v2 one; a caller that accepts both reads it through [ReadSigned].
 func DecodeV2(data []byte) (DocumentV2, error) {
 	document, err := decode[DocumentV2](data, SchemaV2, documentKind)
 	if err != nil {
@@ -260,23 +260,6 @@ func EncodeV2(document DocumentV2) ([]byte, error) {
 		return nil, err
 	}
 	return encode(document, documentKind)
-}
-
-// DeclaredVersion reports the contract version a document declares, without
-// reading anything else of it. It lets a caller choose the reader for a file it
-// was handed; it accepts nothing, and a version no reader supports is still
-// refused by that reader.
-func DeclaredVersion(data []byte) (string, error) {
-	if len(data) > MaxDocumentBytes {
-		return "", errors.New(documentKind + " exceeds its size limit")
-	}
-	var declared struct {
-		Schema string `json:"schema"`
-	}
-	if err := json.Unmarshal(data, &declared); err != nil {
-		return "", errors.New("invalid " + documentKind)
-	}
-	return declared.Schema, nil
 }
 
 func validateV2(document DocumentV2) error {
