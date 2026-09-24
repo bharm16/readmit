@@ -534,6 +534,10 @@ func (a *App) PreviewCapture(request CaptureRequest) CapturePreviewResult {
 	})
 }
 
+// captureOperation names a capture while it holds the slot, so the capture
+// panel's cancel control stops exactly the collector or listener it started.
+const captureOperation = "capture"
+
 // StartCapture starts a collector or SIU fixture only after explicit authorized
 // action. Stop/cancel uses Cancel through the shared engine.
 func (a *App) StartCapture(request CaptureRequest) CaptureSessionResult {

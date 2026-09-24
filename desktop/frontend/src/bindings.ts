@@ -105,6 +105,7 @@ import type {
   InspectionPathResult,
   InspectionResult,
   InstalledLicenseResult,
+  InterruptibleOperation,
   Kind,
   LicenseActivateRequest,
   LicenseActivationRequest,
@@ -390,11 +391,13 @@ const READ_RETRY_MS = 50;
 
 /** Cancels the named operation. A cancel that names a different operation
  * does nothing, so one panel's cancel control can never stop another panel's
- * work; an empty name cancels whatever is running and is what the window's own
- * cancel command uses. */
-export function cancel(operation: string = ""): void {
+ * work; naming none cancels whatever is running and is what the window's own
+ * cancel command does. A name is one the facade declares for an interruptible
+ * operation (InterruptibleOperation, generated from its Go constants), so a
+ * cancel can never name an operation the facade does not run under it. */
+export function cancel(operation?: InterruptibleOperation): void {
   try {
-    facade().Cancel(operation).catch(() => {
+    facade().Cancel(operation ?? "").catch(() => {
       // A cancel that cannot reach the application has nothing to stop.
     });
   } catch {

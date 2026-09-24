@@ -24,26 +24,26 @@ var profiles = map[string]operationguard.Profile{
 	"StartSuiteRun":             {Name: runOperation, Interruptible: true, Execution: operationguard.Execute},
 	"SendReplay":                {Name: replayOperation, Interruptible: true, Execution: operationguard.Execute},
 	"ReexecuteReviewedEvidence": {Name: reexecutionOperation, Interruptible: true, Execution: operationguard.Execute},
-	"RunPractice":               {Name: "practice", Interruptible: true},
+	"RunPractice":               {Name: practiceOperation, Interruptible: true},
 	"DeriveExportReview":        {Name: privacyOperation, Interruptible: true, Author: true},
 	"ExportDerivedPacket":       {Name: privacyOperation, Interruptible: true},
 	"GenerateSyntheticPacket":   {Name: syntheticPacketOperation, Interruptible: true},
 
 	// The customer runner.
 	"EnrollRunner":     {Name: "runner-enrollment", Author: true},
-	"ExecuteRunnerJob": {Name: "runner", Interruptible: true, Author: true, Execution: operationguard.ExecuteEachJob},
+	"ExecuteRunnerJob": {Name: runnerOperation, Interruptible: true, Author: true, Execution: operationguard.ExecuteEachJob},
 
 	// Sources and capture.
 	"DiagnoseSource": {Name: "source-diagnosis", Interruptible: true, Execution: operationguard.Execute},
 	"CollectSource":  {Name: "collect", Interruptible: true, Author: true, Execution: operationguard.Execute},
-	"StartCapture":   {Name: "capture", Interruptible: true, Author: true, Execution: operationguard.Execute},
+	"StartCapture":   {Name: captureOperation, Interruptible: true, Author: true, Execution: operationguard.Execute},
 
 	// The environment and observation.
 	"CheckTarget":        {Name: targetCheckOperation, Interruptible: true, Execution: operationguard.Execute},
 	"ResetTarget":        {Name: targetResetOperation, Interruptible: true, Author: true, Execution: operationguard.Execute},
 	"EvaluateSendPolicy": {Name: sendPolicyOperation},
 	"PreviewReplay":      {Name: replayPreviewOperation, Interruptible: true},
-	"StartReduction":     {Name: "reduction", Interruptible: true, Execution: operationguard.Execute},
+	"StartReduction":     {Name: reductionOperation, Interruptible: true, Execution: operationguard.Execute},
 	"CollectObservation": {Name: "observation", Interruptible: true, Author: true, Execution: operationguard.Execute},
 
 	// The customer hub. A lifecycle command that only exports takes no
@@ -80,18 +80,18 @@ var profiles = map[string]operationguard.Profile{
 	"OpenProtectedPackage":    {Name: protectOperation, Interruptible: true},
 
 	// Local work a panel names so its own cancel control stops it.
-	"FinalizeCaptureImport": {Name: "import", Interruptible: true, Author: true},
-	"PreviewImport":         {Name: "import", Interruptible: true},
-	"CommitImport":          {Name: "import", Interruptible: true, Author: true},
+	"FinalizeCaptureImport": {Name: importOperation, Interruptible: true, Author: true},
+	"PreviewImport":         {Name: importOperation, Interruptible: true},
+	"CommitImport":          {Name: importOperation, Interruptible: true, Author: true},
 	"GenerateCorpus":        {Name: corpusOperation, Interruptible: true, Author: true},
 	"ScanCorpus":            {Name: corpusOperation, Interruptible: true},
 	"ExplainRun":            {Name: explanationOperation, Interruptible: true},
-	"CompareRuns":           {Name: "run-comparison", Interruptible: true},
+	"CompareRuns":           {Name: runComparisonOperation, Interruptible: true},
 	"AssemblePacket":        {Name: packetOperation, Interruptible: true},
 	"ExportPacketReview":    {Name: packetOperation, Interruptible: true},
 	"PublishSupportSummary": {Name: supportOperation, Interruptible: true},
 	"ImportProfilePackage":  {Name: profileImportOperation, Interruptible: true},
 	"VerifyCIGate":          {Name: ciGateVerifyOperation, Interruptible: true},
 	"CheckScenarioLibrary":  {Name: scenarioCheckOperation, Interruptible: true},
-	"AssessSuiteCoverage":   {Name: "suite-coverage-assessment", Interruptible: true},
+	"AssessSuiteCoverage":   {Name: suiteCoverageOperation, Interruptible: true},
 }

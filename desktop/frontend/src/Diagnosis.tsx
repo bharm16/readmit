@@ -17,6 +17,7 @@ import {
 import { DiagnoseConfigEditor } from "./RulesEditor";
 import { Report, type Indicators } from "./shell";
 import "./diagnosis.css";
+import { useLifecycle } from "./lifecycle";
 
 /** How many findings of a diagnosis one window asks the facade for. It is the
  * facade's own bound. */
@@ -207,7 +208,8 @@ export function Diagnosis({
   const [confirming, setConfirming] = useState<string | null>(null);
   // What the panel itself is waiting on the application for: an open or a
   // save of a decisions document. Its controls wait with it.
-  const [pending, setPending] = useState<string | null>(null);
+  const lifecycle = useLifecycle<string>();
+  const pending = lifecycle.running;
   const busy = windowBusy || pending !== null;
   const keep = useRef<HTMLButtonElement | null>(null);
   const openDecisionsButton = useRef<HTMLButtonElement | null>(null);
@@ -293,9 +295,8 @@ export function Diagnosis({
   const openDecisions = async (name: string) => {
     if (!diagnosis) return;
     const shown = diagnosis.report_sha256;
-    setPending(`Opening ${name}.`);
-    const opened = await openFindingDecisions(workspace, name);
-    setPending(null);
+    const opened = await lifecycle.run(`Opening ${name}.`, () => openFindingDecisions(workspace, name));
+    if (!opened) return;
     setDecisionsResult(opened);
     setDecisionsFrom(name);
     if (opened.state !== "completed" || !opened.decisions) return;
@@ -307,13 +308,14 @@ export function Diagnosis({
   const saveDecisions = async () => {
     if (!diagnosis) return;
     const name = newDecisionsEntry;
-    setPending(`Saving ${name}.`);
-    const saved = await saveFindingDecisions({
-      workspace,
-      document: composeDecisions(diagnosis.report_sha256, decided),
-      output: name,
-    });
-    setPending(null);
+    const saved = await lifecycle.run(`Saving ${name}.`, () =>
+      saveFindingDecisions({
+        workspace,
+        document: composeDecisions(diagnosis.report_sha256, decided),
+        output: name,
+      }),
+    );
+    if (!saved) return;
     setDecisionsResult(saved);
     if (saved.state === "completed" && saved.output) {
       setNewDecisionsEntry("");

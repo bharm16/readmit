@@ -185,6 +185,11 @@ func (a *App) StagePastedContent(request PastedSourceRequest) PastedSourceResult
 	})
 }
 
+// importOperation names an import preview or commit while it holds the slot,
+// so the import and capture panels' cancel controls stop exactly the import
+// they started.
+const importOperation = "import"
+
 // PreviewImport extracts and previews records without writing any evidence.
 func (a *App) PreviewImport(request ImportRequest) ImportPreviewResult {
 	return runNamed[ImportPreviewResult, *ImportPreviewResult](a, profiles["PreviewImport"], func(ctx context.Context) ImportPreviewResult {

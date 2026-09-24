@@ -18,6 +18,7 @@ import {
   type EditorDraftsResult,
   type Artifact,
 } from "./bindings";
+import { useLifecycle } from "./lifecycle";
 
 type Props = {
   project: string;
@@ -32,7 +33,8 @@ export function TeamCollaboration({ project, workspace = "", entries = [], capab
   const [lifecycle, setLifecycle] = useState<HubLifecycleResult | null>(null);
   const [custody, setCustody] = useState<HubResult | null>(null);
   const [drafts, setDrafts] = useState<EditorDraftsResult | null>(null);
-  const [busy, setBusy] = useState(false);
+  const actions = useLifecycle<"working">();
+  const busy = actions.running !== null;
   const [message, setMessage] = useState<string | null>(null);
 
   // A search of the history or of this person's notifications: what to look
@@ -116,13 +118,10 @@ export function TeamCollaboration({ project, workspace = "", entries = [], capab
   }
 
   async function run<T>(work: () => Promise<T>, apply: (value: T) => void) {
-    setBusy(true);
-    setMessage(null);
-    try {
+    await actions.run("working", async () => {
+      setMessage(null);
       apply(await work());
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   return (

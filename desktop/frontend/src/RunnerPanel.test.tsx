@@ -2,8 +2,11 @@ import { expect, test } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RunnerPanel } from "./RunnerPanel";
+import { IndicatorsContext } from "./lifecycle";
 import { installFacade, uninstallFacade, facadeStub, Parked } from "./testkit/wails";
+import { indicatorTable } from "./testkit/fixtures";
 import type {
+  State,
   RunnerEnrollmentResult,
   RunnerInspectResult,
   RunnerExecutionResult,
@@ -22,6 +25,49 @@ function enrollment(result: Partial<RunnerEnrollmentResult>): RunnerEnrollmentRe
 function inspection(result: Partial<RunnerInspectResult>): RunnerInspectResult {
   return { state: "completed", ...result };
 }
+
+// A runner action answers one of six states, and only a failure is a refusal.
+// Busy, cancelled, nothing to show and permission denied each read as
+// themselves, through Status with their own word and shape; a refused
+// admission keeps the sentence its section gives it.
+test("every state a runner action answers reads as itself, and only a failure as a refusal", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade({});
+  const indicators = indicatorTable();
+  render(
+    <IndicatorsContext.Provider value={indicators}>
+      <RunnerPanel />
+    </IndicatorsContext.Provider>,
+  );
+  const save = await screen.findByRole("button", { name: "Save job document" });
+  const others: State[] = ["busy", "cancelled", "empty", "permission_denied"];
+  for (const state of others) {
+    facade.reply({ SaveRunnerJob: () => ({ state, reason: `the job document answered ${state}` }) });
+    await user.click(save);
+    const reason = await screen.findByText(`the job document answered ${state}`);
+    const status = reason.closest("p");
+    expect(status?.getAttribute("role")).toBe("status");
+    expect(status?.className).toBe(`status status-${state}`);
+    expect(within(status as HTMLElement).getByText(indicators.get(state)?.label ?? "")).toBeTruthy();
+    expect(screen.queryByText(/Refused:/)).toBeNull();
+  }
+  facade.reply({ SaveRunnerJob: () => ({ state: "failed", reason: "the job document answered failed" }) });
+  await user.click(save);
+  expect((await screen.findByText("Refused: the job document answered failed")).getAttribute("role")).toBe("alert");
+
+  // An execution the runner cancelled is not refused, and one it did not
+  // admit keeps the section's own sentence.
+  await user.type(screen.getByLabelText("Job document"), "/srv/jobs/nightly-001.json");
+  facade.reply({ ExecuteRunnerJob: () => ({ state: "cancelled", job_id: "nightly-001", reason: "the execution was cancelled" }) });
+  await user.click(screen.getByRole("button", { name: "Execute job" }));
+  const cancelled = (await screen.findByText("the execution was cancelled")).closest("p");
+  expect(cancelled?.className).toBe("status status-cancelled");
+  expect(screen.queryByText(/Refused: the execution was cancelled/)).toBeNull();
+  facade.reply({ ExecuteRunnerJob: () => ({ state: "permission_denied", job_id: "nightly-001", reason: "no runner instance is free" }) });
+  await user.click(screen.getByRole("button", { name: "Execute job" }));
+  expect(await screen.findByText("Not admitted: no runner instance is free")).toBeTruthy();
+  uninstallFacade();
+});
 
 test("enrollment reports the lease the hub granted", async () => {
   const user = userEvent.setup();

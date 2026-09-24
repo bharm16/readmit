@@ -73,10 +73,11 @@ not optional can be null; and a named Go string type that declares constants is
 the union of their values, so a vocabulary the window keys its records by is
 declared once, in Go. Where Go carries a member as a plain string and a panel
 offers a closed set of choices for it — a test's authoring stages, a
-transformation's operators, the kinds of path a chooser picks — the choices are
-the Go constants that name them, generated as a named union from the const
-block that declares them (the `vocabularies` of `desktop/bindgen/names.go`), so
-a choice added there is one the panel must handle. A shape the generator cannot
+transformation's operators, the kinds of path a chooser picks, the interruptible
+operation a cancel names — the choices are the Go constants that name them,
+generated as a named union from the const block that declares them (the
+`vocabularies` of `desktop/bindgen/names.go`), so a choice added there is one
+the panel must handle. A shape the generator cannot
 declare exactly — an embedded struct, a type that marshals itself, a variadic
 method — is refused by name rather than guessed at. A type that decodes itself
 strictly is declared by the shape Go writes; where its reader also refuses a
@@ -91,6 +92,32 @@ answers with then.
 
 On Linux the platform webview is WebKitGTK 4.1, so the build needs
 `-tags production,webkit2_41` and the `libgtk-3-dev` and `libwebkit2gtk-4.1-dev` packages.
+
+### One operation lifecycle
+
+The panels run their operations through one module,
+`frontend/src/lifecycle.tsx`, the way every editor retains its work through the
+draft retainer. While a call runs it holds the panel's controls, and it
+releases them however the call ends, answered, refused or rejected by the
+boundary. An answer the screen has moved past is dropped: one withdrawn because
+an input changed, one a later run of the same operation superseded, or one that
+arrives after its panel is gone. A cancel names the operation by the name the
+facade runs it under (`InterruptibleOperation`, generated from the Go constants
+those names are, each of which the facade's tests hold to an interruptible
+operation it declares), so a cancel naming anything else does not build and one
+panel's cancel cannot reach another panel's work. A running operation hands
+focus to the control it still offers, its cancel, and once it answers focus
+returns to the control that started it unless the person has moved it since; a
+read a panel starts on its own moves focus nowhere. Its `Outcome` draws an
+answer through the status line the window uses everywhere, with its state's
+word and shape and its reason; the environment panel shows every answer that
+did not complete that way and the runner panel every one that is neither a
+failure nor a refused admission, which it words as refusals, while the other
+panels keep their own sentence for each state. The window's own operations, and
+the raw inspection and performance corpus screens, hold the window's one slot:
+while one runs the rest of the window is unavailable rather than answered busy.
+Any other panel's work holds only that panel's controls, and the facade answers
+another panel's call busy.
 
 ## Testing the interface
 
@@ -3632,6 +3659,9 @@ generated and validated in the window, a configured runner's state is displayed,
 and one explicitly pinned job is executed through the same admission the command
 line takes. Local use needs no hub and no runner; the panel stays inert until a
 configuration is selected, and it says so rather than offering a fake flow.
+Only a failure reads as a refusal: a refused admission keeps the sentence its
+step gives it, and an answer that is busy, cancelled, has nothing to show or
+was not permitted is shown as that state, through the window's status line.
 
 ### Generated documents, never hand-authored JSON
 
@@ -3957,7 +3987,8 @@ SHA-256 of the exact bytes the save wrote, the name the file has on disk once it
 refuses shows the reader's own refusal, writes nothing and claims no identity, and keeps what
 was typed to be corrected; a rotation or removal clears the line, because the document it
 named has changed. Every control is disabled while an action runs; once it answers, focus
-returns to the control that started it.
+returns to the control that started it. An action that did not complete shows the state it
+answered — busy, cancelled, permission denied or failed — beside its reason.
 
 ### Persistent environment banner
 

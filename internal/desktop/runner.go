@@ -494,6 +494,10 @@ type RunnerExecutionResult struct {
 
 func (r *RunnerExecutionResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
+// runnerOperation names a runner execution while it holds the slot, so the
+// runner panel's cancel control stops exactly the execution it started.
+const runnerOperation = "runner"
+
 // ExecuteRunnerJob runs one job through the same enrolled path as the
 // command line: the runner admits the job as its own execution, then applies
 // its own lease, duplicate-admission and state-isolation rules, which this

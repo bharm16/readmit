@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import "./raw.css";
 import {
-  cancel,
   chooseCorpusPath,
   corpusProgress,
   generateCorpus,
@@ -20,6 +19,7 @@ import {
   type State,
 } from "./bindings";
 import { Report, type Indicators } from "./shell";
+import { useLifecycle } from "./lifecycle";
 
 /** How often a running generation or scan is asked what it has reached. */
 const PROGRESS_MS = 250;
@@ -265,18 +265,21 @@ export function PerformanceCorpus({
   busy,
   indicators,
   request,
-  onWorking,
 }: {
   busy: boolean;
   indicators: Indicators;
   /** Counts the palette's requests to open this screen. */
   request: number;
-  /** Tells the window while this screen's call holds the facade. */
-  onWorking?: (working: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const toggle = useRef<HTMLButtonElement>(null);
-  const [running, setRunning] = useState<"choosing" | "generate" | "scan" | null>(null);
+  // This screen's calls hold the window's one slot, so the rest of the window
+  // is unavailable meanwhile rather than answered busy; generation and a scan
+  // both run under the facade's corpus operation, which its cancel stops.
+  const { running, run, cancel: stop } = useLifecycle<"choosing" | "generate" | "scan">({
+    window: true,
+    names: { generate: "corpus", scan: "corpus" },
+  });
   const [progress, setProgress] = useState<CorpusProgress | null>(null);
   const [feedback, setFeedback] = useState<{ state: State; reason?: string | undefined } | null>(null);
 
@@ -327,10 +330,6 @@ export function PerformanceCorpus({
     }
   }, [request]);
 
-  useEffect(() => {
-    onWorking?.(running !== null);
-  }, [running, onWorking]);
-
   // While a generation or scan runs, the screen reads what it has reached. The
   // read never waits for the operation, and it stops when the operation ends.
   useEffect(() => {
@@ -353,66 +352,65 @@ export function PerformanceCorpus({
   }, [running]);
 
   async function choose(kind: CorpusPathKind, set: (path: string) => void) {
-    setRunning("choosing");
-    setFeedback(null);
-    try {
+    await run("choosing", async () => {
+      setFeedback(null);
       const answer = await chooseCorpusPath(kind);
       if (answer.state === "completed" && answer.path) {
         set(answer.path);
       } else {
         setFeedback({ state: answer.state, reason: answer.reason });
       }
-    } finally {
-      setRunning(null);
-    }
+    });
   }
 
   async function generate() {
-    setRunning("generate");
-    setFeedback(null);
-    setGenerated(null);
-    setProgress(null);
-    try {
-      setGenerated(
-        await generateCorpus({
-          seed: seed.trim(),
-          base_time: baseTime.trim(),
-          generator_version: generator,
-          profile_version: profile,
-          messages: whole(messages) ?? 0,
-          plan: planOf(generation),
-          folder,
-          corpus_name: corpusName.trim(),
-          manifest_name: manifestName.trim(),
-        }),
-      );
-    } finally {
-      setRunning(null);
+    await run("generate", async () => {
+      setFeedback(null);
+      setGenerated(null);
       setProgress(null);
-    }
+      try {
+        setGenerated(
+          await generateCorpus({
+            seed: seed.trim(),
+            base_time: baseTime.trim(),
+            generator_version: generator,
+            profile_version: profile,
+            messages: whole(messages) ?? 0,
+            plan: planOf(generation),
+            folder,
+            corpus_name: corpusName.trim(),
+            manifest_name: manifestName.trim(),
+          }),
+        );
+      } finally {
+        // The progress read stops with the operation it reads.
+        setProgress(null);
+      }
+    });
   }
 
   async function scan() {
-    setRunning("scan");
-    setFeedback(null);
-    setScanned(null);
-    setProgress(null);
-    try {
-      setScanned(
-        await scanCorpus({
-          file: stream,
-          plan: planOf(scanning),
-          batch_records: whole(batchRecords) ?? 0,
-          batch_bytes: whole(batchBytes) ?? 0,
-          window_offset: whole(windowOffset) ?? 0,
-          window_limit: whole(windowLimit) ?? 0,
-          ...(benchmark ? { report_folder: reportFolder, report_name: reportName.trim() } : {}),
-        }),
-      );
-    } finally {
-      setRunning(null);
+    await run("scan", async () => {
+      setFeedback(null);
+      setScanned(null);
       setProgress(null);
-    }
+      try {
+        setScanned(
+          await scanCorpus({
+            file: stream,
+            plan: planOf(scanning),
+            batch_records: whole(batchRecords) ?? 0,
+            batch_bytes: whole(batchBytes) ?? 0,
+            window_offset: whole(windowOffset) ?? 0,
+            window_limit: whole(windowLimit) ?? 0,
+            ...(benchmark ? { report_folder: reportFolder, report_name: reportName.trim() } : {}),
+          }),
+        );
+      } finally {
+        // The progress read stops with the operation it reads.
+        setProgress(null);
+      }
+    });
   }
 
   const numbersValid =
@@ -509,7 +507,7 @@ export function PerformanceCorpus({
                 Generate corpus
               </button>
               {running === "generate" ? (
-                <button type="button" onClick={() => cancel("corpus")}>
+                <button type="button" onClick={stop}>
                   Cancel generation
                 </button>
               ) : null}
@@ -611,7 +609,7 @@ export function PerformanceCorpus({
                 Scan stream
               </button>
               {running === "scan" ? (
-                <button type="button" onClick={() => cancel("corpus")}>
+                <button type="button" onClick={stop}>
                   Cancel scan
                 </button>
               ) : null}

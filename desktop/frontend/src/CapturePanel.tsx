@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  cancel,
   captureProgress,
   chooseCapturePath,
   collectSource,
@@ -28,6 +27,7 @@ import {
 import type { Indicators } from "./shell";
 import { Status } from "./shell";
 import "./capture.css";
+import { useLifecycle } from "./lifecycle";
 
 type Mode = "source" | "collect" | "listen";
 
@@ -172,6 +172,20 @@ function SourceReview({ file, source }: { file: string; source: EvidenceSource }
   );
 }
 
+/** The panel's operations; each one disables every control while it runs. */
+type CaptureOperation =
+  | "choosing"
+  | "saving-source"
+  | "opening-source"
+  | "opening-policy"
+  | "diagnosing"
+  | "collecting-source"
+  | "previewing"
+  | "listening"
+  | "collecting"
+  | "recovering"
+  | "finalizing";
+
 export function CapturePanel({
   workspace,
   project,
@@ -223,7 +237,16 @@ export function CapturePanel({
   const [clientCA, setClientCA] = useState("");
   const [stagedFolder, setStagedFolder] = useState("");
   const [stagedReceipt, setStagedReceipt] = useState("");
-  const [operation, setOperation] = useState<string | null>(null);
+  // A browser takes focus from a control it disables, so a running capture
+  // hands it to its Cancel control and every action returns it afterwards to
+  // the control that started it. A capture, collecting or listening, runs
+  // under the facade's capture operation, which that Cancel stops.
+  const cancelControl = useRef<HTMLButtonElement>(null);
+  const lifecycle = useLifecycle<CaptureOperation>({
+    names: { collecting: "capture", listening: "capture" },
+    stops: { collecting: cancelControl, listening: cancelControl },
+  });
+  const operation = lifecycle.running;
   const [access, setAccess] = useState<SourceAccessResult | null>(null);
   const [collection, setCollection] = useState<SourceCollectionResult | null>(null);
   const [preview, setPreview] = useState<CapturePreviewResult | null>(null);
@@ -233,27 +256,6 @@ export function CapturePanel({
   const [error, setError] = useState<string | null>(null);
   const locked = busy || operation !== null;
   const serving = operation === "listening" || operation === "collecting";
-  // A browser takes focus from a control it disables, so a running capture
-  // hands it to its Cancel control and every action returns it afterwards to
-  // the control that started it.
-  const returnFocus = useRef<HTMLElement | null>(null);
-  const cancelControl = useRef<HTMLButtonElement>(null);
-
-  function begin(name: string) {
-    returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setOperation(name);
-  }
-
-  useEffect(() => {
-    if (serving) {
-      cancelControl.current?.focus();
-    } else if (operation === null && returnFocus.current) {
-      const origin = returnFocus.current;
-      returnFocus.current = null;
-      if (origin.isConnected) origin.focus();
-    }
-  }, [operation, serving]);
-
   // While a capture runs, the screen reads where it listens: with a port of 0
   // that is the only place the port a sender needs is known. The read never
   // waits for the capture and stops once it answers.
@@ -291,14 +293,11 @@ export function CapturePanel({
 
   async function pick(kind: string, apply: (path: string) => void) {
     setError(null);
-    begin("choosing");
-    try {
+    await lifecycle.run("choosing", async () => {
       const result = await chooseCapturePath(kind);
       if (result.state === "completed" && result.paths?.[0]) apply(result.paths[0]);
       else if (result.state !== "cancelled") setError(result.reason ?? result.state);
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
 
@@ -315,14 +314,11 @@ export function CapturePanel({
 
   async function saveSource() {
     setError(null);
-    begin("saving-source");
-    try {
+    await lifecycle.run("saving-source", async () => {
       const result = await saveSourceRegistration({ workspace, source_file: sourceFile, source });
       if (result.state !== "completed") setError(result.reason ?? result.state);
       else if (openedSource) setOpenedSource({ file: sourceFile, source: result.source ?? source });
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   // Opening a declared document reads it through the command line's own
@@ -339,8 +335,7 @@ export function CapturePanel({
 
   async function openRegistration() {
     setError(null);
-    begin("opening-source");
-    try {
+    await lifecycle.run("opening-source", async () => {
       const file = await chosenFile("source");
       if (!file) return;
       const opened = await readSourceRegistration(workspace, file);
@@ -353,15 +348,12 @@ export function CapturePanel({
       setOpenedSource({ file, source: opened.source });
       setAccess(null);
       setCollection(null);
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function openPolicy() {
     setError(null);
-    begin("opening-policy");
-    try {
+    await lifecycle.run("opening-policy", async () => {
       const file = await chosenFile("policy");
       if (!file) return;
       const opened = await readReceiverPolicy(workspace, file);
@@ -384,9 +376,7 @@ export function CapturePanel({
       setOpenedPolicy({ file, policy: declared });
       setPolicyEdited(false);
       setPreview(null);
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   function editPolicy<T>(set: (value: T) => void) {
@@ -461,21 +451,17 @@ export function CapturePanel({
   async function runDiagnose() {
     setError(null);
     setAccess(null);
-    begin("diagnosing");
-    try {
+    await lifecycle.run("diagnosing", async () => {
       const result = await diagnoseSource({ workspace, source_file: sourceFile, plan: importPlan() });
       setAccess(result);
       if (result.state !== "completed") setError(result.reason ?? result.state);
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function runCollectSource() {
     setError(null);
     setCollection(null);
-    begin("collecting-source");
-    try {
+    await lifecycle.run("collecting-source", async () => {
       const result = await collectSource({
         workspace,
         source_file: sourceFile,
@@ -491,9 +477,7 @@ export function CapturePanel({
         setStagedReceipt(result.receipt_path ?? "");
       }
       if (result.state !== "completed") setError(result.reason ?? result.state);
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   function captureRequest() {
@@ -525,8 +509,7 @@ export function CapturePanel({
   async function runPreview() {
     setError(null);
     setPreview(null);
-    begin("previewing");
-    try {
+    await lifecycle.run("previewing", async () => {
       // Previewing saves what the form describes, except a reopened policy
       // nothing has changed since: that stays the document on disk, byte for
       // byte, and is previewed as it is.
@@ -545,17 +528,14 @@ export function CapturePanel({
       const result = await previewCapture(captureRequest());
       setPreview(result);
       if (result.state !== "completed") setError(captureReason(result.reason ?? result.state, mode));
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function runStart() {
     setError(null);
     setSession(null);
     setListeningOn(null);
-    begin(mode === "listen" ? "listening" : "collecting");
-    try {
+    await lifecycle.run(mode === "listen" ? "listening" : "collecting", async () => {
       const result = await startCapture(captureRequest());
       setSession(result);
       if (result.state !== "completed" && result.state !== "cancelled") {
@@ -564,29 +544,23 @@ export function CapturePanel({
       if (result.case_path && mode === "collect") {
         // Collected case is already a verified case destination from the collector.
       }
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function runJournal() {
     setError(null);
     setJournal(null);
-    begin("recovering");
-    try {
+    await lifecycle.run("recovering", async () => {
       const result = await openCaptureJournal(workspace, journalName);
       setJournal(result);
       if (result.state !== "completed") setError(result.reason ?? result.state);
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function runFinalize() {
     setError(null);
     setFinalized(null);
-    begin("finalizing");
-    try {
+    await lifecycle.run("finalizing", async () => {
       const folder = stagedFolder || "collected";
       const request: Parameters<typeof finalizeCaptureImport>[0] = {
         workspace,
@@ -599,9 +573,7 @@ export function CapturePanel({
       const result = await finalizeCaptureImport(request);
       setFinalized(result);
       if (result.state !== "completed") setError(result.reason ?? result.state);
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   const phase =
@@ -937,7 +909,7 @@ export function CapturePanel({
             <button type="button" disabled={locked || preview?.state !== "completed"} onClick={() => void runStart()}>
               Start collecting
             </button>
-            <button ref={cancelControl} type="button" disabled={operation !== "collecting"} onClick={() => cancel("capture")}>
+            <button ref={cancelControl} type="button" disabled={operation !== "collecting"} onClick={lifecycle.cancel}>
               Cancel
             </button>
             <button type="button" disabled={locked} onClick={() => void runJournal()}>
@@ -990,7 +962,7 @@ export function CapturePanel({
             <button type="button" disabled={locked || preview?.state !== "completed"} onClick={() => void runStart()}>
               Start fixture listener
             </button>
-            <button ref={cancelControl} type="button" disabled={operation !== "listening"} onClick={() => cancel("capture")}>
+            <button ref={cancelControl} type="button" disabled={operation !== "listening"} onClick={lifecycle.cancel}>
               Cancel
             </button>
           </div>

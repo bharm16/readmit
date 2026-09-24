@@ -2,10 +2,12 @@ import { expect, test } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EnvironmentPanel, EnvironmentBanner } from "./EnvironmentPanel";
+import { IndicatorsContext } from "./lifecycle";
 import { installFacade, uninstallFacade } from "./testkit/wails";
-import type { SecretChange, SecretSaveRequest, SendPolicySaveRequest } from "./bindings";
+import type { SecretChange, SecretSaveRequest, SendPolicySaveRequest, State } from "./bindings";
 import {
   WORKSPACE_ROOT,
+  indicatorTable,
   defaultTargetResult,
   defaultTargetCheckResult,
   defaultSecretsResult,
@@ -601,6 +603,38 @@ test("a saved reset plan shows the identity it was written under", async () => {
   expect(screen.getByText(WRITTEN, { selector: "code" })).toBeTruthy();
   expect(screen.getByText("reset-plan.json", { selector: "code" })).toBeTruthy();
   expect(facade.callsTo("SaveResetPlan")).toHaveLength(1);
+  uninstallFacade();
+});
+
+// An action the facade did not complete says which of the six states it
+// answered, with its word and shape, and not only its reason: a busy window, a
+// cancelled check and an account without permission are not failures.
+test("an action that did not complete says which state it answered as well as why", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade(readsAnswered);
+  const indicators = indicatorTable();
+  render(
+    <IndicatorsContext.Provider value={indicators}>
+      <EnvironmentPanel
+        workspace={WORKSPACE_ROOT}
+        targetFile="targets/default.json"
+        secretsFile="secrets.json"
+        policyFile="send-policy.json"
+        planFile="reset-plan.json"
+        initialTab="target"
+      />
+    </IndicatorsContext.Provider>,
+  );
+  const check = await screen.findByRole("button", { name: /Check Target Reachability & TLS/i });
+  await waitFor(() => expect((check as HTMLButtonElement).disabled).toBe(false));
+  const states: State[] = ["empty", "busy", "cancelled", "permission_denied", "failed"];
+  for (const state of states) {
+    facade.reply({ CheckTarget: async () => ({ state, reason: `the check answered ${state}` }) });
+    await user.click(check);
+    const status = (await screen.findByText(`the check answered ${state}`)).closest("p");
+    expect(status?.className).toBe(`status status-${state}`);
+    expect(within(status as HTMLElement).getByText(indicators.get(state)?.label ?? "")).toBeTruthy();
+  }
   uninstallFacade();
 });
 

@@ -11,6 +11,7 @@ import {
   type InstalledLicenseResult, type InstalledLicenseView, type LicenseDocumentView,
   type LicenseExportResult, type LicenseReviewResult,
 } from "./bindings";
+import { useLifecycle } from "./lifecycle";
 
 /** The calendar date an instant falls on, in UTC as the license states it. */
 function day(instant: string | undefined): string {
@@ -59,7 +60,8 @@ function describeTerm(license: InstalledLicenseView): string {
  * onChanged lets the region re-read what the activation changed. */
 export function ComputerLicense({ portal, onChanged }: { portal: string | undefined; onChanged: () => void }) {
   const [status, setStatus] = useState<InstalledLicenseResult | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { running, run } = useLifecycle<"working">();
+  const busy = running !== null;
   const [notice, setNotice] = useState<string | null>(null);
   const [pasting, setPasting] = useState(false);
   const [pasted, setPasted] = useState("");
@@ -87,9 +89,10 @@ export function ComputerLicense({ portal, onChanged }: { portal: string | undefi
 
   async function perform<T>(action: () => Promise<T>, apply: (value: T) => void) {
     if (busy) return;
-    setBusy(true);
-    setNotice(null);
-    try { apply(await action()); } finally { setBusy(false); }
+    await run("working", async () => {
+      setNotice(null);
+      apply(await action());
+    });
   }
 
   const license = status?.state === "completed" ? status.license : undefined;

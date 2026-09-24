@@ -292,6 +292,10 @@ type SuiteCoverageAssessRequest struct {
 	At           string   `json:"at"`
 }
 
+// suiteCoverageOperation names a coverage assessment while it holds the slot,
+// so the suite panel's cancel control stops exactly the assessment it started.
+const suiteCoverageOperation = "suite-coverage-assessment"
+
 // AssessSuiteCoverage reads retained suites only, exactly as `readmit suite
 // coverage` does. Missing evidence is unknown, exclusions never pass, and an
 // expired exclusion stays visible; nothing executes and nothing is sent.

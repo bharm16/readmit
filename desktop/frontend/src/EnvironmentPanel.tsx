@@ -34,8 +34,10 @@ import {
   type ResetAuthority,
   type ResetResult,
   type EditorDraft,
+  type State,
 } from "./bindings";
 import { draftFor, useRetainer, RetentionStatus } from "./drafting";
+import { Outcome, useLifecycle, type Answer } from "./lifecycle";
 
 
 function draftRecord(content: unknown): Record<string, unknown> | null {
@@ -208,6 +210,13 @@ export function EnvironmentBanner({
   );
 }
 
+/** An answer the facade did not complete, as the panel shows it: its state and
+ * its reason, or the panel's own sentence when the facade gave none. An answer
+ * that says completed without what completion carries is a failure. */
+function refused(answer: { state: State; reason?: string }, otherwise: string): Answer {
+  return { state: answer.state === "completed" ? "failed" : answer.state, reason: answer.reason || otherwise };
+}
+
 export function EnvironmentPanel({
   workspace,
   targetFile = "targets/default.json",
@@ -233,8 +242,15 @@ export function EnvironmentPanel({
   onPlanSaved?: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<"target" | "secrets" | "policy" | "reset">(initialTab);
-  const [busy, setBusy] = useState(false);
-  const [feedback, setFeedback] = useState<string | null>(null);
+  // Every control is disabled while an action runs, which takes focus from the
+  // one that started it. Once the action has answered, focus returns there when
+  // nothing else has taken it, so a keyboard user keeps their place after a
+  // refusal as after a success.
+  const actions = useLifecycle<"working">();
+  const busy = actions.running !== null;
+  // The panel's own sentence, or an answer the facade refused, drawn through
+  // Status with its state as well as its reason.
+  const [feedback, setFeedback] = useState<string | Answer | null>(null);
 
   // Target State
   const [currentTargetFile, setCurrentTargetFile] = useState(targetFile);
@@ -330,26 +346,17 @@ export function EnvironmentPanel({
 
   // Load initial data. The four documents are read together, and every form
   // stays disabled until the last read has answered: a read that landed after
-  // a person had started typing would replace what they typed.
-  const pendingReads = useRef(0);
-  const [loadingDocuments, setLoadingDocuments] = useState(false);
-  const beginLoad = useCallback(() => {
-    pendingReads.current += 1;
-    setLoadingDocuments(true);
-  }, []);
-  const endLoad = useCallback(() => {
-    pendingReads.current -= 1;
-    if (pendingReads.current === 0) setLoadingDocuments(false);
-  }, []);
+  // a person had started typing would replace what they typed. Only the
+  // latest read of each document commits what it read.
+  const documents = useLifecycle<"target" | "secrets" | "policy" | "plan">({ background: true });
+  const loadingDocuments = documents.running !== null;
+  const readDocument = documents.run;
+  const withdrawDocument = documents.withdraw;
   // A form is closed while an action runs or a document it shows is being
   // read. The file names stay open while documents are read, because naming
   // another document is what starts a read: closing them would drop the
   // keystrokes of the name being typed.
   const blocked = busy || loadingDocuments;
-  const targetLoad = useRef(0);
-  const secretsLoad = useRef(0);
-  const policyLoad = useRef(0);
-  const planLoad = useRef(0);
   const policyRead = useRef<{ key: string; succeeded: boolean } | null>(null);
   const planRead = useRef<{ key: string; succeeded: boolean } | null>(null);
   const policyDraftPending = useRef(false);
@@ -358,19 +365,15 @@ export function EnvironmentPanel({
   const holdInitialLoad = useRef({ target: false });
 
   const loadTarget = useCallback(async (file: string) => {
-    const token = ++targetLoad.current;
-    beginLoad();
-    try {
+    await readDocument("target", async (current) => {
       const res = await readTarget(workspace, file);
-      if (token !== targetLoad.current) return;
+      if (!current()) return;
       if (res.state === "completed" && res.target) {
         setTarget(res.target);
         if (onTargetChange) onTargetChange(res.target);
       }
-    } finally {
-      endLoad();
-    }
-  }, [workspace, onTargetChange, beginLoad, endLoad]);
+    });
+  }, [workspace, onTargetChange, readDocument]);
 
   const showSecrets = useCallback((document: SecretDocument) => {
     setSecretsDoc(document);
@@ -380,28 +383,22 @@ export function EnvironmentPanel({
   // A document that cannot be read shows why instead of the references of the
   // one read before it, so an edit never starts from another file.
   const loadSecrets = useCallback(async (file: string) => {
-    const token = ++secretsLoad.current;
-    beginLoad();
-    try {
+    await readDocument("secrets", async (current) => {
       const res = await readSecrets(workspace, file);
-      if (token !== secretsLoad.current) return;
+      if (!current()) return;
       if (res.state === "completed" && res.document) {
         showSecrets(res.document);
       } else {
         setSecretsDoc(null);
         setSecretsRefusal(res.reason || "This secret reference document cannot be read.");
       }
-    } finally {
-      endLoad();
-    }
-  }, [workspace, beginLoad, endLoad, showSecrets]);
+    });
+  }, [workspace, readDocument, showSecrets]);
 
   const loadPolicy = useCallback(async (file: string) => {
-    const token = ++policyLoad.current;
-    beginLoad();
-    try {
+    await readDocument("policy", async (current) => {
       const res = await readSendPolicy(workspace, file);
-      if (token !== policyLoad.current) return;
+      if (!current()) return;
       if (res.state === "completed" && res.policy) {
         if (!policyDraftPending.current) setPolicy(res.policy);
         setPolicyReady(true);
@@ -414,17 +411,13 @@ export function EnvironmentPanel({
         policyDraftPending.current = false;
         policyRead.current = { key: `${workspace}\0${file}`, succeeded: false };
       }
-    } finally {
-      endLoad();
-    }
-  }, [workspace, beginLoad, endLoad]);
+    });
+  }, [workspace, readDocument]);
 
   const loadPlan = useCallback(async (file: string) => {
-    const token = ++planLoad.current;
-    beginLoad();
-    try {
+    await readDocument("plan", async (current) => {
       const res = await readResetPlan(workspace, file);
-      if (token !== planLoad.current) return;
+      if (!current()) return;
       if (res.state === "completed" && res.plan) {
         if (!planDraftPending.current) setResetPlan(res.plan);
         setPlanReady(true);
@@ -437,10 +430,8 @@ export function EnvironmentPanel({
         planDraftPending.current = false;
         planRead.current = { key: `${workspace}\0${file}`, succeeded: false };
       }
-    } finally {
-      endLoad();
-    }
-  }, [workspace, beginLoad, endLoad]);
+    });
+  }, [workspace, readDocument]);
 
   useEffect(() => {
     if (adoptedDrafts.current || !drafts) return;
@@ -448,7 +439,7 @@ export function EnvironmentPanel({
     const targetDraft = draftFor(drafts, "environment/target", workspace);
     const targetRecord = draftRecord(targetDraft?.content);
     if (targetRecord?.schema === "readmit-target/v3") {
-      targetLoad.current += 1;
+      withdrawDocument("target");
       holdInitialLoad.current.target = true;
       setTarget(targetRecord as unknown as Target);
       if (targetDraft) retainer.keepId(targetDraft.id);
@@ -473,7 +464,7 @@ export function EnvironmentPanel({
       setPlanReady(planReadState?.key === planKey && planReadState.succeeded);
       if (planDraft) retainer.keepId(planDraft.id);
     }
-  }, [drafts, retainer, workspace, currentPolicyFile, currentPlanFile]);
+  }, [drafts, retainer, workspace, currentPolicyFile, currentPlanFile, withdrawDocument]);
 
   // Each document is read when its own file is named, so typing one name
   // re-reads that document and leaves the other three as they are.
@@ -515,28 +506,10 @@ export function EnvironmentPanel({
     (edit ?? table)?.focus();
   }, [editingName]);
 
-  // Every control is disabled while an action runs, which takes focus from the
-  // one that started it. Once the action has answered, focus returns there when
-  // nothing else has taken it, so a keyboard user keeps their place after a
-  // refusal as after a success.
-  const focusedBeforeBusy = useRef<HTMLElement | null>(null);
-  const beginBusy = useCallback(() => {
-    focusedBeforeBusy.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setBusy(true);
-  }, []);
-  useEffect(() => {
-    if (busy) return;
-    const previous = focusedBeforeBusy.current;
-    focusedBeforeBusy.current = null;
-    const unfocused = document.activeElement === null || document.activeElement === document.body;
-    if (previous?.isConnected && unfocused) previous.focus();
-  }, [busy]);
-
   // Handle Target Save
   async function handleSaveTarget() {
-    beginBusy();
-    setFeedback(null);
-    try {
+    await actions.run("working", async () => {
+      setFeedback(null);
       const res = await saveTarget({
         workspace,
         target_file: currentTargetFile,
@@ -548,20 +521,17 @@ export function EnvironmentPanel({
         setFeedback("Target configuration saved successfully.");
         retainer.clear();
       } else {
-        setFeedback(res.reason || "Failed to save target.");
+        setFeedback(refused(res, "Failed to save target."));
       }
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   // Handle Check Target (deliberate action)
   async function handleCheckTarget() {
-    beginBusy();
-    setFeedback(null);
-    setCheckReport(null);
-    setCheckDecision(null);
-    try {
+    await actions.run("working", async () => {
+      setFeedback(null);
+      setCheckReport(null);
+      setCheckDecision(null);
       const res = await checkTarget({
         workspace,
         target_file: currentTargetFile,
@@ -570,11 +540,9 @@ export function EnvironmentPanel({
       if (res.report) setCheckReport(res.report);
       if (res.decision) setCheckDecision(res.decision);
       if (res.state !== "completed") {
-        setFeedback(res.reason || "Target check reported issues.");
+        setFeedback(refused(res, "Target check reported issues."));
       }
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   // Handle Secret Reference Add
@@ -583,11 +551,10 @@ export function EnvironmentPanel({
       setFeedback("Secret name and locator command are required.");
       return;
     }
-    beginBusy();
-    setFeedback(null);
-    setSecretsWritten(null);
-    const file = currentSecretsFile;
-    try {
+    await actions.run("working", async () => {
+      setFeedback(null);
+      setSecretsWritten(null);
+      const file = currentSecretsFile;
       const ref: SecretReference = {
         name: newSecretName,
         store: newSecretStore,
@@ -618,11 +585,9 @@ export function EnvironmentPanel({
         setFeedback("Secret reference registered successfully.");
         retainer.clear();
       } else {
-        setFeedback(res.reason || "Failed to add secret reference.");
+        setFeedback(refused(res, "Failed to add secret reference."));
       }
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   function openSecretEdit(ref: SecretReference) {
@@ -663,10 +628,9 @@ export function EnvironmentPanel({
     if (!secretEdit) return;
     const name = secretEdit.opened.name;
     const file = currentSecretsFile;
-    beginBusy();
-    setFeedback(null);
-    setSecretsWritten(null);
-    try {
+    await actions.run("working", async () => {
+      setFeedback(null);
+      setSecretsWritten(null);
       const res = await saveSecretReference({
         workspace,
         secrets_file: file,
@@ -682,32 +646,26 @@ export function EnvironmentPanel({
         if (testResult?.name === name) setTestResult(null);
         setFeedback(`Credential reference ${name} updated.`);
       } else {
-        setFeedback(res.reason || "Failed to update credential reference.");
+        setFeedback(refused(res, "Failed to update credential reference."));
       }
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   // Handle Test Secret Reference
   async function handleTestSecret(name: string) {
-    beginBusy();
-    setTestResult(null);
-    try {
+    await actions.run("working", async () => {
+      setTestResult(null);
       const res = await testSecretReference(workspace, currentSecretsFile, name);
       setTestResult(res);
       if (res.state !== "completed") {
-        setFeedback(res.reason || "Secret test failed.");
+        setFeedback(refused(res, "Secret test failed."));
       }
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   // Handle Rotate Secret Reference
   async function handleRotateSecret(name: string) {
-    beginBusy();
-    try {
+    await actions.run("working", async () => {
       const res = await rotateSecretReference(workspace, currentSecretsFile, name);
       if (res.state === "completed" && res.document) {
         showSecrets(res.document);
@@ -715,17 +673,14 @@ export function EnvironmentPanel({
         setSecretsWritten(null);
         setFeedback(`Secret ${name} rotated successfully.`);
       } else {
-        setFeedback(res.reason || "Rotation failed.");
+        setFeedback(refused(res, "Rotation failed."));
       }
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   // Handle Remove Secret Reference
   async function handleRemoveSecret(name: string) {
-    beginBusy();
-    try {
+    await actions.run("working", async () => {
       const res = await removeSecretReference(workspace, currentSecretsFile, name);
       if (res.state === "completed" && res.document) {
         showSecrets(res.document);
@@ -733,27 +688,22 @@ export function EnvironmentPanel({
         if (secretEdit?.opened.name === name) closeSecretEdit(true);
         setFeedback(`Secret ${name} removed.`);
       } else {
-        setFeedback(res.reason || "Failed to remove secret reference.");
+        setFeedback(refused(res, "Failed to remove secret reference."));
       }
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   // Handle Scan Secrets
   async function handleScanSecrets() {
-    beginBusy();
-    setScanResult(null);
-    try {
+    await actions.run("working", async () => {
+      setScanResult(null);
       const res = await scanSecrets({
         workspace,
         secrets_file: currentSecretsFile,
         paths: [currentTargetFile, currentPolicyFile, currentPlanFile],
       });
       setScanResult(res);
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   // Handle Add Policy Destination
@@ -788,11 +738,10 @@ export function EnvironmentPanel({
   // Handle Save Send Policy
   async function handleSavePolicy() {
     if (!policyReady) return;
-    beginBusy();
-    setFeedback(null);
-    setPolicyWritten(null);
-    const file = currentPolicyFile;
-    try {
+    await actions.run("working", async () => {
+      setFeedback(null);
+      setPolicyWritten(null);
+      const file = currentPolicyFile;
       const res = await saveSendPolicy({
         workspace,
         policy_file: file,
@@ -804,18 +753,15 @@ export function EnvironmentPanel({
         setFeedback("Approved-destination policy saved.");
         retainer.clear();
       } else {
-        setFeedback(res.reason || "Failed to save policy.");
+        setFeedback(refused(res, "Failed to save policy."));
       }
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   // Handle Local Policy Evaluation
   async function handleEvaluatePolicy() {
-    beginBusy();
-    setEvalDecision(null);
-    try {
+    await actions.run("working", async () => {
+      setEvalDecision(null);
       const res = await evaluateSendPolicy({
         workspace,
         policy_file: currentPolicyFile,
@@ -827,11 +773,9 @@ export function EnvironmentPanel({
         setEvalDecision(res.decision);
       }
       if (res.state !== "completed") {
-        setFeedback(res.reason || "Evaluation failed.");
+        setFeedback(refused(res, "Evaluation failed."));
       }
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   // Handle Add Reset Action
@@ -881,11 +825,10 @@ export function EnvironmentPanel({
   // Handle Save Reset Plan
   async function handleSavePlan() {
     if (!planReady) return;
-    beginBusy();
-    setFeedback(null);
-    setPlanWritten(null);
-    const file = currentPlanFile;
-    try {
+    await actions.run("working", async () => {
+      setFeedback(null);
+      setPlanWritten(null);
+      const file = currentPlanFile;
       const res = await saveResetPlan({
         workspace,
         plan_file: file,
@@ -898,19 +841,16 @@ export function EnvironmentPanel({
         retainer.clear();
         onPlanSaved?.();
       } else {
-        setFeedback(res.reason || "Failed to save reset plan.");
+        setFeedback(refused(res, "Failed to save reset plan."));
       }
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   // Handle Execute Reset
   async function handleExecuteReset() {
-    beginBusy();
-    setFeedback(null);
-    setResetResult(null);
-    try {
+    await actions.run("working", async () => {
+      setFeedback(null);
+      setResetResult(null);
       const res = await resetTarget({
         workspace,
         target_file: currentTargetFile,
@@ -923,11 +863,9 @@ export function EnvironmentPanel({
         setResetResult(res.result);
       }
       if (res.state !== "completed") {
-        setFeedback(res.reason || "Reset finished with errors or refusals.");
+        setFeedback(refused(res, "Reset finished with errors or refusals."));
       }
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   // A credential the target binds in a document other than the one loaded here,
@@ -949,9 +887,13 @@ export function EnvironmentPanel({
         transport={target.transport}
       />
 
-      {feedback ? (
+      {typeof feedback === "string" ? (
         <div role="status" aria-live="polite" className="report-box">
           <p>{feedback}</p>
+        </div>
+      ) : feedback ? (
+        <div className="report-box">
+          <Outcome result={feedback} />
         </div>
       ) : null}
 

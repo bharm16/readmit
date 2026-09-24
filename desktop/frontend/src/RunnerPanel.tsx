@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import "./runner.css";
 import {
   previewRunnerConfig,
@@ -18,7 +18,6 @@ import {
   inspectCIResults,
   inspectGatePolicy,
   verifyCIGate,
-  cancel,
   type RunnerConfigRequest,
   type RunnerDocumentResult,
   type RunnerGrantRequest,
@@ -37,7 +36,9 @@ import {
   type CIGateStep,
   type CIGateReport,
   type CIGateVerifyResult,
+  type State,
 } from "./bindings";
+import { Outcome, useLifecycle } from "./lifecycle";
 
 const emptyReference = { command: "", arguments: "" };
 
@@ -63,7 +64,31 @@ function Field(props: { label: string; value: string; onChange: (value: string) 
   );
 }
 
-function ResultLine(props: { result: { state: string; reason?: string } | null; done?: string | undefined }) {
+/** An answer that did not complete. A failure reads as the refusal it is, in
+ * the words the section gives it, and so does a refused admission where the
+ * section words that; every other state — busy, cancelled, nothing to show,
+ * permission denied — is drawn through Status with its own word and shape,
+ * never as a refusal. */
+function Refusal(props: {
+  result: { state: State; reason?: string | undefined };
+  refused?: string;
+  denied?: string;
+  unexplained?: string;
+}) {
+  const { result, refused = "Refused: ", denied, unexplained } = props;
+  const prefix = result.state === "failed" ? refused : result.state === "permission_denied" ? denied : undefined;
+  if (prefix === undefined) {
+    return <Outcome result={result} />;
+  }
+  return (
+    <p className="runner-refused" role="alert">
+      {prefix}
+      {result.reason ?? unexplained}
+    </p>
+  );
+}
+
+function ResultLine(props: { result: { state: State; reason?: string | undefined } | null; done?: string | undefined }) {
   if (!props.result) {
     return null;
   }
@@ -74,11 +99,7 @@ function ResultLine(props: { result: { state: string; reason?: string } | null; 
       </p>
     );
   }
-  return (
-    <p className="runner-refused" role="alert">
-      Refused: {props.result.reason ?? "the operation did not run"}
-    </p>
-  );
+  return <Refusal result={props.result} unexplained="the operation did not run" />;
 }
 
 function RunnerSection() {
@@ -120,54 +141,51 @@ function RunnerSection() {
   const [preview, setPreview] = useState<RunnerJobPreviewResult | null>(null);
   const [expected, setExpected] = useState("");
   const [execution, setExecution] = useState<RunnerExecutionResult | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [executing, setExecuting] = useState(false);
+  // Execute is disabled while its job runs, so the focus moves to Cancel, the
+  // one action the running job offers, rather than being left on nothing. The
+  // execution runs under the facade's runner operation, which Cancel stops,
+  // so it can reach only this panel's work and never another panel's.
   const cancelControl = useRef<HTMLButtonElement>(null);
+  const lifecycle = useLifecycle<"working" | "executing">({
+    names: { executing: "runner" },
+    stops: { executing: cancelControl },
+  });
+  const busy = lifecycle.running !== null;
   const [recoveryJob, setRecoveryJob] = useState("");
   const [recovery, setRecovery] = useState<RunnerRecoveryResult | null>(null);
   const [update, setUpdate] = useState({ manifest: "", candidate: "" });
   const [updateCheck, setUpdateCheck] = useState<RunnerUpdateResult | null>(null);
 
   async function handlePreview() {
-    setBusy(true);
-    try {
+    await lifecycle.run("working", async () => {
       const request = {
         ...config,
         key: { command: keyArguments.command, arguments: parseArguments(keyArguments.arguments) },
         token: { command: tokenArguments.command, arguments: parseArguments(tokenArguments.arguments) },
       };
       setDocument(await previewRunnerConfig(request));
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function handleSaveConfig() {
-    setBusy(true);
-    try {
+    await lifecycle.run("working", async () => {
       const request = {
         ...config,
         key: { command: keyArguments.command, arguments: parseArguments(keyArguments.arguments) },
         token: { command: tokenArguments.command, arguments: parseArguments(tokenArguments.arguments) },
       };
       setDocument(await saveRunnerConfig(request));
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function handleSaveGrant() {
-    setBusy(true);
-    try {
+    await lifecycle.run("working", async () => {
       setGrantResult(await saveRunnerGrant(grant));
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function handleInspect(path?: string) {
-    setBusy(true);
-    try {
+    await lifecycle.run("working", async () => {
       const result = await readRunnerConfig(path ?? configPath);
       setInspection(result);
       // A completed re-read invalidates only the enrollment probe's view of
@@ -175,80 +193,50 @@ function RunnerSection() {
       if (result.state === "completed") {
         setEnrollment(null);
       }
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function handleEnroll() {
-    setBusy(true);
-    try {
+    await lifecycle.run("working", async () => {
       setEnrollment(await enrollRunner(configPath));
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function handleSaveJob() {
-    setBusy(true);
-    try {
+    await lifecycle.run("working", async () => {
       setJobResult(await saveRunnerJob({ id: job.id, spec: job.spec, output: job.output }));
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function handlePreflight() {
-    setBusy(true);
-    try {
+    await lifecycle.run("working", async () => {
       const result = await inspectRunnerJob(configPath, jobPath);
       setPreview(result);
       if (result.input_identity) {
         setExpected(result.input_identity);
       }
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function handleExecute() {
-    setBusy(true);
-    setExecuting(true);
-    setExecution(null);
-    try {
+    await lifecycle.run("executing", async () => {
+      setExecution(null);
       setExecution(await executeRunnerJob({ config_path: configPath, job_path: jobPath, expected_identity: expected }));
       void handleInspect();
-    } finally {
-      setBusy(false);
-      setExecuting(false);
-    }
+    });
   }
 
-  // Execute is disabled while its job runs, so the focus moves to Cancel, the
-  // one action the running job offers, rather than being left on nothing.
-  useEffect(() => {
-    if (executing) {
-      cancelControl.current?.focus();
-    }
-  }, [executing]);
-
   async function handleRecovery() {
-    setBusy(true);
-    try {
+    await lifecycle.run("working", async () => {
       setRecovery(await readRunnerRecovery(configPath, recoveryJob));
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function handleVerifyUpdate() {
-    setBusy(true);
-    setUpdateCheck(null);
-    try {
+    await lifecycle.run("working", async () => {
+      setUpdateCheck(null);
       setUpdateCheck(await verifyRunnerUpdate(configPath, update.manifest, update.candidate));
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   // An answer describes the files it checked; naming others withdraws it.
@@ -388,10 +376,7 @@ function RunnerSection() {
             and {enrollment.max_jobs} retained jobs.
           </p>
         ) : (
-          <p className="runner-refused" role="alert">
-            {enrollment.state === "permission_denied" ? "Admission refused: " : "Refused: "}
-            {enrollment.reason}
-          </p>
+          <Refusal result={enrollment} denied="Admission refused: " />
         )
       ) : null}
 
@@ -425,7 +410,7 @@ function RunnerSection() {
           Execute job
         </button>
         {busy ? (
-          <button type="button" ref={cancelControl} onClick={() => cancelRunner()}>
+          <button type="button" ref={cancelControl} onClick={lifecycle.cancel}>
             Cancel
           </button>
         ) : null}
@@ -436,9 +421,7 @@ function RunnerSection() {
             Prepared inputs {preview.input_identity} bind environment {preview.environment}.
           </p>
         ) : (
-          <p className="runner-refused" role="alert">
-            Preflight refused: {preview.reason}
-          </p>
+          <Refusal result={preview} refused="Preflight refused: " />
         )
       ) : null}
       {execution ? (
@@ -452,10 +435,7 @@ function RunnerSection() {
             </p>
           </div>
         ) : (
-          <p className="runner-refused" role="alert">
-            {execution.state === "permission_denied" ? "Not admitted: " : "Refused: "}
-            {execution.reason}
-          </p>
+          <Refusal result={execution} denied="Not admitted: " />
         )
       ) : null}
       <div className="runner-form">
@@ -473,9 +453,7 @@ function RunnerSection() {
             {recovery.not_attempted} not attempted. Recovery never sends.
           </p>
         ) : (
-          <p className="runner-refused" role="alert">
-            Refused: {recovery.reason}
-          </p>
+          <Refusal result={recovery} />
         )
       ) : null}
 
@@ -506,12 +484,6 @@ function RunnerSection() {
       />
     </section>
   );
-}
-
-function cancelRunner(): void {
-  // The runner execution names its operation "runner", so this cancel can
-  // reach only this panel's work and never another panel's.
-  cancel("runner");
 }
 
 function ScheduleRow(props: { entry: ScheduleEntryInput; onChange: (entry: ScheduleEntryInput) => void; onRemove: () => void }) {
@@ -564,15 +536,13 @@ function SchedulesSection() {
   const [entries, setEntries] = useState<ScheduleEntryInput[]>([]);
   const [installedPath, setInstalledPath] = useState("");
   const [preview, setPreview] = useState<SchedulePreviewResult | null>(null);
-  const [busy, setBusy] = useState(false);
+  const lifecycle = useLifecycle<"working">();
+  const busy = lifecycle.running !== null;
 
   async function run(call: () => Promise<SchedulePreviewResult>) {
-    setBusy(true);
-    try {
+    await lifecycle.run("working", async () => {
       setPreview(await call());
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   return (
@@ -635,11 +605,7 @@ function SchedulesSection() {
 function SchedulePreviewView(props: { preview: SchedulePreviewResult }) {
   const { preview } = props;
   if (preview.state !== "completed") {
-    return (
-      <p className="runner-refused" role="alert">
-        Refused: {preview.reason}
-      </p>
-    );
+    return <Refusal result={preview} />;
   }
   return (
     <div className="runner-inspect" role="status">
@@ -692,10 +658,6 @@ const emptyGateStep: CIGateStep = {
   snapshot_directory: "",
 };
 
-/** The name the facade runs a gate verification under, so this panel's
- * cancel reaches exactly that verification. */
-const CI_GATE_VERIFY = "ci-gate-verify";
-
 /** The parts of a readmit-ci-gate/v1 summary, in the order it lists them. */
 const gateParts: { key: keyof CIGateReport; label: string }[] = [
   { key: "approval", label: "approval" },
@@ -717,11 +679,7 @@ function GateVerification(props: { result: CIGateVerifyResult }) {
     );
   }
   if (!gate) {
-    return (
-      <p className="runner-refused" role="alert">
-        Refused: {result.reason ?? "the verification did not run"}
-      </p>
-    );
+    return <Refusal result={result} unexplained="the verification did not run" />;
   }
   const unverified = gateParts.filter((part) => (result.unverified ?? []).includes(part.key)).map((part) => part.label);
   return (
@@ -766,56 +724,42 @@ function CISection() {
   const [policy, setPolicy] = useState<GatePolicyResult | null>(null);
   const [snapshot, setSnapshot] = useState({ directory: "", identity: "" });
   const [verification, setVerification] = useState<CIGateVerifyResult | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [verifying, setVerifying] = useState(false);
+  // Verify is disabled while it reads, so the focus moves to the one action
+  // the running verification offers rather than being left on nothing. The
+  // verification runs under the facade's ci-gate-verify operation, so that
+  // cancel reaches exactly that verification.
   const cancelVerification = useRef<HTMLButtonElement>(null);
+  const lifecycle = useLifecycle<"working" | "verifying">({
+    names: { verifying: "ci-gate-verify" },
+    stops: { verifying: cancelVerification },
+  });
+  const busy = lifecycle.running !== null;
+  const verifying = lifecycle.running === "verifying";
 
   async function handleGenerate() {
-    setBusy(true);
-    try {
+    await lifecycle.run("working", async () => {
       setHandoff(await saveCIHandoff(gated ? { ...request, gate } : request));
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function handleResults() {
-    setBusy(true);
-    try {
+    await lifecycle.run("working", async () => {
       setResults(await inspectCIResults(resultsDirectory));
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function handlePolicy() {
-    setBusy(true);
-    try {
+    await lifecycle.run("working", async () => {
       setPolicy(await inspectGatePolicy(policyPath));
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function handleVerify() {
-    setBusy(true);
-    setVerifying(true);
-    setVerification(null);
-    try {
+    await lifecycle.run("verifying", async () => {
+      setVerification(null);
       setVerification(await verifyCIGate(snapshot.directory, snapshot.identity));
-    } finally {
-      setBusy(false);
-      setVerifying(false);
-    }
+    });
   }
-
-  // Verify is disabled while it reads, so the focus moves to the one action
-  // the running verification offers rather than being left on nothing.
-  useEffect(() => {
-    if (verifying) {
-      cancelVerification.current?.focus();
-    }
-  }, [verifying]);
 
   // A reading shown beside a field names what that field held when it was
   // read. Once the field changes, the reading is withdrawn: an identity left
@@ -913,9 +857,7 @@ function CISection() {
             <pre className="runner-document">{handoff.document}</pre>
           </div>
         ) : (
-          <p className="runner-refused" role="alert">
-            Refused: {handoff.reason}
-          </p>
+          <Refusal result={handoff} />
         )
       ) : null}
 
@@ -948,9 +890,7 @@ function CISection() {
             {results.warning ? <p className="runner-note">{results.warning}</p> : null}
           </div>
         ) : (
-          <p className="runner-refused" role="alert">
-            Refused: {results.reason}
-          </p>
+          <Refusal result={results} />
         )
       ) : null}
       {policy ? (
@@ -964,9 +904,7 @@ function CISection() {
             </p>
           </div>
         ) : (
-          <p className="runner-refused" role="alert">
-            Refused: {policy.reason}
-          </p>
+          <Refusal result={policy} />
         )
       ) : null}
 
@@ -990,7 +928,7 @@ function CISection() {
           Verify retained gate
         </button>
         {verifying ? (
-          <button type="button" ref={cancelVerification} onClick={() => cancel(CI_GATE_VERIFY)}>
+          <button type="button" ref={cancelVerification} onClick={lifecycle.cancel}>
             Cancel verification
           </button>
         ) : null}

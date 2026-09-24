@@ -20,6 +20,7 @@ import {
 } from "./bindings";
 import { RetentionStatus, draftFor, useRetainer } from "./drafting";
 import "./authoring.css";
+import { useLifecycle } from "./lifecycle";
 
 const OPERATORS: AssertionOperator[] = [
   "field_equals",
@@ -258,7 +259,8 @@ export function AssertionSetAuthoring({
   const [importEntry, setImportEntry] = useState("");
   const [document, setDocument] = useState("");
   const [exportOutput, setExportOutput] = useState("");
-  const [pending, setPending] = useState(false);
+  const { running, run } = useLifecycle<"working">();
+  const pending = running !== null;
   const [unsavedClauses, setUnsavedClauses] = useState(false);
   const [confirmingImport, setConfirmingImport] = useState<string | null>(null);
   const [result, setResult] = useState<AssertionSetResult | null>(null);
@@ -310,8 +312,7 @@ export function AssertionSetAuthoring({
   }
 
   async function apply(work: () => Promise<AssertionSetResult>, change?: "clauses" | "import") {
-    setPending(true);
-    try {
+    return run("working", async () => {
       const next = await work();
       setResult(next);
       if (next.set?.draft) {
@@ -327,21 +328,16 @@ export function AssertionSetAuthoring({
         setUnsavedClauses(false);
       }
       return next;
-    } finally {
-      setPending(false);
-    }
+    });
   }
 
   async function applyCanonical(work: () => Promise<CanonicalAssertionResult>) {
-    setPending(true);
-    try {
+    return run("working", async () => {
       const next = await work();
       setCanonical(next);
       if (next.document !== undefined) setDocument(next.document);
       return next;
-    } finally {
-      setPending(false);
-    }
+    });
   }
 
   function buildClause(): AssertionClause {

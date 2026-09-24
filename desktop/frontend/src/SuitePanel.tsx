@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   assessSuiteCoverage,
   approveSuitePromotion,
-  cancel,
   expectationImpact,
   openBaseline,
   openSuite,
@@ -30,6 +29,7 @@ import {
   type SuiteReleasesResult,
 } from "./bindings";
 import { useRetainer, RetentionStatus } from "./drafting";
+import { useLifecycle } from "./lifecycle";
 
 /** One entry of the workspace listing, as the panel's pickers read it. */
 interface Entry {
@@ -62,8 +62,10 @@ export function SuitePanel({
   onSaved?: () => void;
 }) {
   const [tab, setTab] = useState<"suite" | "releases" | "prepare" | "coverage" | "promotion">("suite");
-  const [working, setWorking] = useState(false);
-  const disabled = busy || working;
+  // A coverage assessment runs under the facade's own operation name, so its
+  // cancel stops that assessment and can never reach another panel's work.
+  const { running, run, cancel } = useLifecycle<"working" | "assessing">({ names: { assessing: "suite-coverage-assessment" } });
+  const disabled = busy || running !== null;
 
   const suiteEntries = useMemo(() => entries.filter((entry) => entry.kind === "suite").map((entry) => entry.name), [entries]);
   // The separate pin set the durable-run panels and promotion reviews read.
@@ -149,18 +151,9 @@ export function SuitePanel({
     }
   }, [drafts, retainer, workspace]);
 
-  const perform = useCallback(async (work: () => Promise<void>) => {
-    setWorking(true);
-    try {
-      await work();
-    } finally {
-      setWorking(false);
-    }
-  }, []);
-
   const openEntry = useCallback(
     async (entry: string) => {
-      await perform(async () => {
+      await run("working", async () => {
         const result = await openSuite(workspace, entry);
         setOpened(result);
         setImported(null);
@@ -178,13 +171,13 @@ export function SuitePanel({
         }
       });
     },
-    [perform, retain, workspace],
+    [retain, run, workspace],
   );
 
   // The pasted text is read by the suite reader alone; a refusal leaves the
   // editor holding what it held.
   const importCanonical = useCallback(async () => {
-    await perform(async () => {
+    await run("working", async () => {
       setImported(null);
       const result = await validateSuite(canonical);
       setImported(result);
@@ -197,7 +190,7 @@ export function SuitePanel({
         retain(result.suite, "");
       }
     });
-  }, [canonical, perform, retain]);
+  }, [canonical, retain, run]);
 
   // A row's expected values are typed JSON the Go reader validates; the panel
   // only keeps the text parseable so the document it hands over is honest.
@@ -238,7 +231,7 @@ export function SuitePanel({
     if (!composed || expectedError) {
       return;
     }
-    await perform(async () => {
+    await run("working", async () => {
       setPreview(null);
       setPreview(
         await previewSuite({
@@ -250,14 +243,14 @@ export function SuitePanel({
         }),
       );
     });
-  }, [environment, expectedError, parsedExpected, perform, previewReleases, workspace]);
+  }, [environment, expectedError, parsedExpected, previewReleases, run, workspace]);
 
   const saveRevision = useCallback(async () => {
     const composed = parsedExpected();
     if (!composed || expectedError) {
       return;
     }
-    await perform(async () => {
+    await run("working", async () => {
       const result = await saveSuite({ workspace, document: JSON.stringify(composed), output });
       setSaved(result);
       if (result.state === "completed") {
@@ -271,7 +264,7 @@ export function SuitePanel({
         }
       }
     });
-  }, [expectedError, onSaved, output, parsedExpected, perform, retainer, workspace]);
+  }, [expectedError, onSaved, output, parsedExpected, retainer, run, workspace]);
 
   // --------------------------------------------------------------- releases
   const [sidecarRows, setSidecarRows] = useState<{ test: string; release: string; identity: string }[]>([{ test: "", release: "", identity: "" }]);
@@ -289,7 +282,7 @@ export function SuitePanel({
   const [impact, setImpact] = useState<SuiteImpactResult | null>(null);
 
   const writeSidecar = useCallback(async () => {
-    await perform(async () => {
+    await run("working", async () => {
       const result = await saveSuiteReleases({
         workspace,
         document: JSON.stringify({
@@ -301,13 +294,13 @@ export function SuitePanel({
       setSidecar(result);
       if (result.state === "completed") onSaved?.();
     });
-  }, [onSaved, perform, sidecarOutput, sidecarRows, workspace]);
+  }, [onSaved, run, sidecarOutput, sidecarRows, workspace]);
 
   const readReleaseIdentity = useCallback(
     async (index: number) => {
       const entry = sidecarRows[index]?.release ?? "";
       const earlier = releaseReads[index]?.comparison?.identity;
-      await perform(async () => {
+      await run("working", async () => {
         const result = await openBaseline({
           workspace,
           release: true,
@@ -332,11 +325,11 @@ export function SuitePanel({
         );
       });
     },
-    [perform, releaseReads, sidecarRows, workspace],
+    [releaseReads, run, sidecarRows, workspace],
   );
 
   const runImpact = useCallback(async () => {
-    await perform(async () => {
+    await run("working", async () => {
       setImpact(null);
       setImpact(
         await expectationImpact({
@@ -349,7 +342,7 @@ export function SuitePanel({
         }),
       );
     });
-  }, [impactFrom, impactShow, impactSidecar, impactSuite, impactTo, perform, workspace]);
+  }, [impactFrom, impactShow, impactSidecar, impactSuite, impactTo, run, workspace]);
 
   // The team review of the successor release: the hub's review-request and
   // approval commands name the digest of the exact reviewed bytes, derived
@@ -364,7 +357,7 @@ export function SuitePanel({
 
   const runReleaseReview = useCallback(
     async (kind: "review-request" | "approval") => {
-      await perform(async () => {
+      await run("working", async () => {
         setTeamReview(null);
         setTeamReview(
           await postHubReleaseReview({
@@ -379,7 +372,7 @@ export function SuitePanel({
         );
       });
     },
-    [hubProject, impactTo, perform, teamCommandId, teamRationale, teamRecipient, workspace],
+    [hubProject, impactTo, run, teamCommandId, teamRationale, teamRecipient, workspace],
   );
 
   // ---------------------------------------------------------------- prepare
@@ -390,7 +383,7 @@ export function SuitePanel({
   const [prepared, setPrepared] = useState<SuitePreparedResult | null>(null);
 
   const runPrepare = useCallback(async () => {
-    await perform(async () => {
+    await run("working", async () => {
       setPrepared(null);
       const result = await prepareSuite({
         workspace,
@@ -402,7 +395,7 @@ export function SuitePanel({
       setPrepared(result);
       if (result.state === "completed") onSaved?.();
     });
-  }, [onSaved, perform, prepareEntry, prepareEnvironment, prepareOutput, prepareReleases, workspace]);
+  }, [onSaved, prepareEntry, prepareEnvironment, prepareOutput, prepareReleases, run, workspace]);
 
   // ---------------------------------------------------------------- coverage
   const [coveragePrepared, setCoveragePrepared] = useState("");
@@ -416,7 +409,7 @@ export function SuitePanel({
   const [assessment, setAssessment] = useState<SuiteCoverageResult | null>(null);
 
   const writeCoverage = useCallback(async () => {
-    await perform(async () => {
+    await run("working", async () => {
       setAuthored(null);
       const result = await saveSuiteCoverage({
         workspace,
@@ -430,10 +423,10 @@ export function SuitePanel({
       setAuthored(result);
       if (result.state === "completed") onSaved?.();
     });
-  }, [coverageOutput, coveragePrepared, exclusionRows, onSaved, perform, requirementRows, workspace]);
+  }, [coverageOutput, coveragePrepared, exclusionRows, onSaved, requirementRows, run, workspace]);
 
   const runAssessment = useCallback(async () => {
-    await perform(async () => {
+    await run("assessing", async () => {
       setAssessment(null);
       setAssessment(
         await assessSuiteCoverage({
@@ -445,7 +438,7 @@ export function SuitePanel({
         }),
       );
     });
-  }, [assessPrepared, assessPrevious, assessRequirements, perform, workspace]);
+  }, [assessPrepared, assessPrevious, assessRequirements, run, workspace]);
 
   // --------------------------------------------------------------- promotion
   const [promotionEntry, setPromotionEntry] = useState("");
@@ -459,7 +452,7 @@ export function SuitePanel({
   const [approval, setApproval] = useState<SuitePromotionResult | null>(null);
 
   const runReview = useCallback(async () => {
-    await perform(async () => {
+    await run("working", async () => {
       setReview(null);
       setApproval(null);
       setReview(
@@ -472,10 +465,10 @@ export function SuitePanel({
         }),
       );
     });
-  }, [perform, promotionEntry, promotionEnvironment, promotionReleases, revision, workspace]);
+  }, [promotionEntry, promotionEnvironment, promotionReleases, revision, run, workspace]);
 
   const runApproval = useCallback(async () => {
-    await perform(async () => {
+    await run("working", async () => {
       setApproval(null);
       const result = await approveSuitePromotion({
         workspace,
@@ -491,7 +484,7 @@ export function SuitePanel({
       setApproval(result);
       if (result.state === "completed") onSaved?.();
     });
-  }, [approver, onSaved, perform, promotionEntry, promotionEnvironment, promotionOutput, promotionReleases, rationale, review, revision, workspace]);
+  }, [approver, onSaved, promotionEntry, promotionEnvironment, promotionOutput, promotionReleases, rationale, review, revision, run, workspace]);
 
   return (
     <section className="suite-panel" aria-labelledby="suite-title">
@@ -1084,13 +1077,13 @@ export function SuitePanel({
             </button>
           </div>
         </fieldset>
-        {working ? (
+        {running !== null ? (
           <button
             type="button"
             onClick={() => {
               // The cancel names this panel's assessment, so it can never
               // reach an operation another panel started.
-              cancel("suite-coverage-assessment");
+              cancel();
               setAssessment({ state: "cancelled", reason: "Coverage assessment cancelled. Retained evidence is unchanged; assess again to recover." });
             }}
           >

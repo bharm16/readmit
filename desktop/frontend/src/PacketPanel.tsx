@@ -1,7 +1,6 @@
 import { useState } from "react";
 import {
   assemblePacket,
-  cancel,
   choosePacketExportPath,
   exportPacketReview,
   openPacket,
@@ -16,6 +15,7 @@ import {
   type PacketReviewResult,
 } from "./bindings";
 import { SyntheticPackets } from "./SyntheticPackets";
+import { useLifecycle } from "./lifecycle";
 
 /** The investigation-packet panels: assembly from actual retained evidence,
  * export of the five inert offline renderings, and read-only opening of both
@@ -58,7 +58,10 @@ export function PacketPanel({
   const [preview, setPreview] = useState<PacketPreviewResult | null>(null);
   const [previewFor, setPreviewFor] = useState<PacketRequest | null>(null);
   const [assembled, setAssembled] = useState<PacketResult | null>(null);
-  const [operation, setOperation] = useState<"previewing" | "assembling" | "exporting" | null>(null);
+  const lifecycle = useLifecycle<"previewing" | "assembling" | "exporting">({
+    names: { assembling: "packet", exporting: "packet" },
+  });
+  const operation = lifecycle.running;
   const busy = operation !== null;
 
   const [packetName, setPacketName] = useState("");
@@ -103,73 +106,55 @@ export function PacketPanel({
 
   async function ask() {
     if (busy) return;
-    setOperation("previewing");
-    try {
+    await lifecycle.run("previewing", async () => {
       const answer = await previewPacket(form);
       setPreview(answer);
       setPreviewFor(form);
       setAssembled(null);
       if (answer.preview) setOutput(answer.preview.destination.name);
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function assemble() {
     if (busy || !plan) return;
-    setOperation("assembling");
-    try {
+    await lifecycle.run("assembling", async () => {
       const answer = await assemblePacket(form);
       setAssembled(answer);
       onRefresh();
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function verifySelected() {
     if (!workspace || !packetName) return;
-    setOperation("previewing");
-    try {
+    await lifecycle.run("previewing", async () => {
       setPacket(await openPacket(workspace, packetName));
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function chooseDestination() {
     if (busy) return;
-    setOperation("exporting");
-    try {
+    await lifecycle.run("exporting", async () => {
       const choice = await choosePacketExportPath();
       setDestinationChoice(choice);
       if (choice.state === "completed" && choice.path) setExportDestination(choice.path);
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function seal() {
     if (busy || !workspace || !packetName || !exportDestination) return;
-    setOperation("exporting");
-    try {
+    await lifecycle.run("exporting", async () => {
       const answer = await exportPacketReview({ workspace, packet: packetName, destination: exportDestination });
       setExported(answer);
       onRefresh();
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function openReview(reveal: boolean) {
     if (!workspace || !reviewName) return;
-    setOperation("previewing");
-    try {
+    await lifecycle.run("previewing", async () => {
       setRevealed(reveal);
       setReview(await openPacketReview({ workspace, entry: reviewName, reveal }));
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   return <section aria-labelledby="packets-title">
@@ -218,7 +203,7 @@ export function PacketPanel({
       {canAssemble ? <button disabled={busy} onClick={() => void assemble()}>
         {operation === "assembling" ? "Assembling…" : "Assemble packet"}
       </button> : null}
-      <button disabled={operation !== "assembling" && operation !== "exporting"} onClick={() => cancel("packet")}>Cancel packet work</button>
+      <button disabled={operation !== "assembling" && operation !== "exporting"} onClick={lifecycle.cancel}>Cancel packet work</button>
     </div>
     <div role="status" aria-live="polite">
       {operation === "assembling" ? <p>Assembling. Cancellation stops the copy; a partial destination remains incomplete and cannot be verified as complete.</p> : null}

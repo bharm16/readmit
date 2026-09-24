@@ -8,8 +8,7 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
 import userEvent from "@testing-library/user-event";
 import type { UserEvent } from "@testing-library/user-event";
-import { waitFor } from "@testing-library/react";
-import type { within } from "@testing-library/react";
+import { waitFor, within } from "@testing-library/react";
 import { byContent, enter, Journey, press } from "../testkit/journey";
 import { activateLicense, fillRunnerForm, RUNNER_REFUSED, runnerView, savedAckTest, tabTo } from "./steps";
 import type { RunnerForm } from "./steps";
@@ -105,12 +104,16 @@ test("a runner configuration is refused while the runner would refuse it, previe
   });
   expect(() => journey.readFile("runner/documents/runner.json")).toThrow();
 
-  // Saving is new operator work, refused on a machine whose license is not
-  // activated; the refusal writes nothing.
+  // Saving is new operator work, not permitted on a machine whose license is
+  // not activated, and said as that state rather than as a refusal; it writes
+  // nothing.
   const asked = journey.callsTo("SaveRunnerConfig").length;
   await press(user, view.getByRole("button", { name: "Save configuration" }));
   const unactivated = "operation activation is missing or invalid; select and activate an operation policy";
-  expect(await view.findByText(`Refused: ${unactivated}`)).toBeTruthy();
+  const denied = (await view.findByText(unactivated)).closest("p");
+  expect(denied?.className).toBe("status status-permission_denied");
+  expect(within(denied as HTMLElement).getByText("Permission denied")).toBeTruthy();
+  expect(view.queryByText(`Refused: ${unactivated}`)).toBeNull();
   expect(journey.callsTo("SaveRunnerConfig")[asked]?.result).toEqual({ state: "permission_denied", reason: unactivated });
   expect(() => journey.readFile("runner/documents/runner.json")).toThrow();
 

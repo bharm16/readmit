@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Badge, Report, Status } from "./shell";
 import type { Indicators } from "./shell";
-import { cancel } from "./bindings";
 import type { CaseResult, GuideResult, GuideTrialId, PracticeResult } from "./bindings";
 import "./guided.css";
 
@@ -34,6 +33,7 @@ export function GuidedSample({
   onCreateSample,
   onOpenCase,
   onRun,
+  onCancel,
   onCapture,
 }: {
   result: GuideResult | null;
@@ -46,6 +46,8 @@ export function GuidedSample({
   onCreateSample: () => void;
   onOpenCase: (name: string) => void;
   onRun: (trial: GuideTrialId, output: string) => void;
+  /** Stops the practice run, by the name the facade declares for it. */
+  onCancel: () => void;
   onCapture?: (output: string) => void;
 }) {
   const [folder, setFolder] = useState("");
@@ -139,7 +141,7 @@ export function GuidedSample({
               ? "Run against the fixture as it misbehaves"
               : "Run against the corrected fixture"}
           </button>
-          <button type="button" disabled={!busy} onClick={() => cancel("practice")}>
+          <button type="button" disabled={!busy} onClick={onCancel}>
             Cancel
           </button>
         </div>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { CorrelationDecision, CorrelationReviewRequest, CorrelationReviewResult } from "./bindings";
+import { useLifecycle } from "./lifecycle";
 
 const emptyDecision: CorrelationDecision = { action: "add", link: "", from: "", to: "", actor: "", reason: "" };
 
@@ -29,7 +30,8 @@ export function CorrelationReview({ busy, reviews, context, onReview, onSelect }
   const [output, setOutput] = useState("");
   const [showValues, setShowValues] = useState(false);
   // What this panel is waiting on the application for, said while it runs.
-  const [pending, setPending] = useState<string | null>(null);
+  const lifecycle = useLifecycle<string>();
+  const pending = lifecycle.running;
   const view = result?.view;
   async function run(write: boolean, offset = 0, reveal = showValues) {
     const request: CorrelationReviewRequest = {
@@ -37,9 +39,8 @@ export function CorrelationReview({ busy, reviews, context, onReview, onSelect }
     };
     // Failed reads and submitted changes never leave the old derived view visible.
     setResult(null);
-    setPending(write ? `Saving this decision to ${output}.` : "Reading the selected mapping.");
-    const next = await onReview(request, write);
-    setPending(null);
+    const next = await lifecycle.run(write ? `Saving this decision to ${output}.` : "Reading the selected mapping.", () => onReview(request, write));
+    if (!next) return;
     setResult(next);
     if (next.output) { setPrevious(next.output); setOutput(""); setDecision(emptyDecision); }
   }

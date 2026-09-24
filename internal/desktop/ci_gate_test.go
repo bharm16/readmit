@@ -521,14 +521,3 @@ func treeDigest(t *testing.T, root string) string {
 	}
 	return hex.EncodeToString(sum.Sum(nil))
 }
-
-// The CI panel's cancel names the operation the facade runs a verification
-// under, so it stops exactly that verification and nothing another panel
-// started.
-func TestTheCIPanelCancelsAVerificationByTheNameItRunsUnder(t *testing.T) {
-	source := string(mustReadFile(t, filepath.Join("..", "..", "desktop", "frontend", "src", "RunnerPanel.tsx")))
-	if !strings.Contains(source, `const CI_GATE_VERIFY = "`+desktop.CIGateVerifyOperationForTest+`";`) ||
-		!strings.Contains(source, "cancel(CI_GATE_VERIFY)") {
-		t.Fatalf("the CI panel does not cancel a verification by the name %q", desktop.CIGateVerifyOperationForTest)
-	}
-}

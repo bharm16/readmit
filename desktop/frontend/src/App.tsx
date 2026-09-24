@@ -18,6 +18,7 @@ import { SuitePanel } from "./SuitePanel";
 import { EnvironmentPanel } from "./EnvironmentPanel";
 import { Reduction, type ReductionForm } from "./Reduction";
 import { onRetentionResult, savedId } from "./drafting";
+import { IndicatorsContext, useLifecycle, useWindowBusy } from "./lifecycle";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import {
@@ -163,7 +164,6 @@ const SPLIT_STEP = 5;
  * they start, so Cancel is offered only while an interruptible operation runs:
  * choosing a folder, or grouping the findings of several cases. */
 type Running =
-  | null
   | "workspace"
   | "case"
   | "project"
@@ -198,14 +198,17 @@ export default function App() {
   const [windowState, setWindowState] = useState<State>("busy");
   const [windowReason, setWindowReason] = useState<string | undefined>(undefined);
 
-  const [running, setRunning] = useState<Running>(null);
+  // One operation runs at a time here as well as in the facade, and it holds
+  // the window's one slot: while it runs, the rest of the window is
+  // unavailable rather than answered busy. The practice run and a reduction
+  // are the operations here a panel's own cancel control stops.
+  const { running, run, cancel: cancelRunning } = useLifecycle<Running>({
+    window: true,
+    names: { practice: "practice", reduction: "reduction" },
+  });
   // Each counts the palette's requests to open that screen in the inspector.
   const [rawRequest, setRawRequest] = useState(0);
   const [corpusRequest, setCorpusRequest] = useState(0);
-  // Whether one of those screens' calls holds the facade, so the rest of the
-  // window is unavailable meanwhile rather than answered busy.
-  const [rawWorking, setRawWorking] = useState(false);
-  const [corpusWorking, setCorpusWorking] = useState(false);
   const [workspace, setWorkspace] = useState<WorkspaceResult | null>(null);
   const [evidence, setEvidence] = useState<CaseResult | null>(null);
   const [investigation, setInvestigation] = useState<ProjectOverviewResult | null>(null);
@@ -435,7 +438,10 @@ export default function App() {
     document.documentElement.style.setProperty("--text-scale", String(percent / 100));
   }, [described, scale]);
 
-  const busy = running !== null || rawWorking || corpusWorking;
+  // Whether an operation holds the window's one slot: this window's own, or a
+  // screen's whose call holds the facade, such as the raw inspection and the
+  // performance corpus.
+  const busy = useWindowBusy();
   const root = workspace?.workspace?.root ?? null;
   const opened = workspace?.workspace;
   const overview = investigation?.overview ?? null;
@@ -459,18 +465,6 @@ export default function App() {
     },
     [described, focused, focusRegion],
   );
-
-  // One operation runs at a time here as well as in the facade. The slot is
-  // released whatever happens, including a rejection the boundary did not turn
-  // into a failed result, so nothing can leave the window permanently disabled.
-  const operate = useCallback(async (kind: Exclude<Running, null>, work: () => Promise<void>) => {
-    setRunning(kind);
-    try {
-      await work();
-    } finally {
-      setRunning(null);
-    }
-  }, []);
 
   /** Everything derived from the one verified case lives only while that case
    * is displayed, so one seam clears it when the window's case changes. A
@@ -517,7 +511,7 @@ export default function App() {
     async (operation: () => Promise<WorkspaceResult>) => {
       setOpenNotice(null);
       let opened = false;
-      await operate("workspace", async () => {
+      await run("workspace", async () => {
         const result = await operation();
         if (result.workspace) {
           clearWorkspace();
@@ -535,7 +529,7 @@ export default function App() {
       focusRegion("navigation");
       return opened;
     },
-    [clearWorkspace, focusRegion, operate, refreshGuide, refreshRecent],
+    [clearWorkspace, focusRegion, refreshGuide, refreshRecent, run],
   );
 
   // Forgetting a recent folder writes the list, so it takes its turn like
@@ -543,25 +537,11 @@ export default function App() {
   // including when it refused.
   const forget = useCallback(
     async (folder: string) => {
-      await operate("recent", async () => {
+      await run("recent", async () => {
         setRecent(await forgetWorkspace(folder));
       });
     },
-    [operate],
-  );
-
-  // Reads whose answer can be older than the question: only the response to
-  // the latest request commits, so a late answer to an earlier one is dropped
-  // instead of overwriting what the viewer asked for last.
-  const readTickets = useRef(new Map<string, number>());
-  const currentTicket = useCallback((kind: string) => {
-    const ticket = (readTickets.current.get(kind) ?? 0) + 1;
-    readTickets.current.set(kind, ticket);
-    return ticket;
-  }, []);
-  const isCurrent = useCallback(
-    (kind: string, ticket: number) => readTickets.current.get(kind) === ticket,
-    [],
+    [run],
   );
 
   // One window of the grid at a time. Asking for the next one re-reads the case
@@ -571,26 +551,28 @@ export default function App() {
   // never describe another reading of the case.
   const showGrid = useCallback(
     async (folder: string, name: string, indexName: string, offset: number) => {
-      const ticket = currentTicket("grid");
-      await operate("grid", async () => {
+      // A read whose answer can be older than the question: only the answer
+      // to the latest request commits, so a late answer to an earlier one is
+      // dropped instead of overwriting what the viewer asked for last.
+      await run("grid", async (current) => {
         setGridResult(null);
         setInspectionResult(null);
         setSelectedOccurrence(null);
         const result = await openGrid(folder, name, indexName, offset, GRID_WINDOW);
-        if (isCurrent("grid", ticket)) {
+        if (current()) {
           setGridResult(result);
           setIndexResult(result.index ? { state: result.state, index: result.index } : null);
         }
       });
     },
-    [currentTicket, isCurrent, operate],
+    [run],
   );
 
   const handleBuildIndex = useCallback(
     async (request: BuildIndexRequest) => {
       if (!root) return;
       let builtIndexName: string | null = null;
-      await operate("grid", async () => {
+      await run("grid", async () => {
         request.workspace = root;
         const res = await buildIndex(request);
         setIndexResult(res);
@@ -603,7 +585,7 @@ export default function App() {
         void showGrid(root, request.case, builtIndexName, 0);
       }
     },
-    [operate, root, showGrid],
+    [root, run, showGrid],
   );
 
   // Verifying a case is the same kind of committed navigation. The case and
@@ -615,7 +597,7 @@ export default function App() {
       setCaseNotice(null);
       let autoIndex: string | null = null;
       let outcome: CaseResult | null = null;
-      await operate("case", async () => {
+      await run("case", async () => {
         const result = await openCase(folder, name);
         if (result.case) {
           clearCase();
@@ -637,7 +619,7 @@ export default function App() {
       focusRegion("inspector");
       return outcome;
     },
-    [clearCase, focusRegion, operate, showGrid],
+    [clearCase, focusRegion, run, showGrid],
   );
 
   // An occurrence is selected from the grid or from the sequence, and both name
@@ -662,8 +644,7 @@ export default function App() {
             ? { case: evidence.case.name, identity: evidence.case.identity }
             : null);
       if (!root || !open) return;
-      const ticket = currentTicket("inspect");
-      await operate("inspect", async () => {
+      await run("inspect", async (current) => {
         setSelectedOccurrence(occurrence);
         setInspectionResult(null);
         const result = await inspectOccurrence({
@@ -675,12 +656,12 @@ export default function App() {
           node_offset: nodeOffset,
           byte_offset: byteOffset,
         });
-        if (isCurrent("inspect", ticket)) {
+        if (current()) {
           setInspectionResult(result);
         }
       });
     },
-    [currentTicket, evidence, gridResult, isCurrent, operate, root],
+    [evidence, gridResult, root, run],
   );
 
   // One practice run of the guided sample. It is the one operation in this
@@ -690,13 +671,13 @@ export default function App() {
     async (trial: GuideTrialId, output: string) => {
       if (!root || !guideResult?.guide?.spec) return;
       const spec = guideResult.guide.spec;
-      await operate("practice", async () => {
+      await run("practice", async () => {
         setPracticeResult(null);
         setPracticeResult(await runPractice({ workspace: root, spec, trial, output }));
       });
       await refreshGuide(root);
     },
-    [guideResult, operate, refreshGuide, root],
+    [guideResult, refreshGuide, root, run],
   );
 
   // A suite the suite panel prepared for execution is handed to the durable-run
@@ -717,13 +698,13 @@ export default function App() {
   // never left beside state the project has moved past.
   const readProject = useCallback(
     async (folder: string) => {
-      await operate("project", async () => {
+      await run("project", async () => {
         setInvestigation(null);
         setInvestigation(await openProjectOverview(folder));
       });
       focusRegion("evidence");
     },
-    [focusRegion, operate],
+    [focusRegion, run],
   );
 
   // A new project is a new folder inside the one chosen for it. The window
@@ -736,7 +717,7 @@ export default function App() {
   const startProject = useCallback(
     async (name: string, title: string, owner: string, versions: string[]) => {
       let created = "";
-      await operate("project", async () => {
+      await run("project", async () => {
         const result = await createProject(name, title, owner, versions);
         setInvestigation(result);
         if (result.overview) created = result.overview.root;
@@ -748,7 +729,7 @@ export default function App() {
         setInvestigation(null);
       }
     },
-    [openFolder, operate, readProject, root],
+    [openFolder, readProject, root, run],
   );
 
   // A refused project write — a license that no longer admits it, a change
@@ -765,44 +746,44 @@ export default function App() {
     async (change: SettingsChange) => {
       if (!root) return false;
       let stored = false;
-      await operate("project", async () => {
+      await run("project", async () => {
         const answer = await updateProjectSettings(root, change);
         settleProject(answer);
         stored = answer.state === "completed";
       });
       return stored;
     },
-    [operate, root, settleProject],
+    [root, run, settleProject],
   );
 
   // The editable document is read from disk each time the overview is asked
   // to show it, never kept from an earlier read.
   const readEditable = useCallback(async () => {
     if (!root) return;
-    await operate("project", async () => {
+    await run("project", async () => {
       setEditable(null);
       setEditable(await openRevisions(root));
     });
-  }, [operate, root]);
+  }, [root, run]);
 
   const register = useCallback(
     async (name: string, registration: CaseRegistration) => {
       if (!root) return;
-      await operate("project", async () => {
+      await run("project", async () => {
         settleProject(await registerCase(root, name, registration));
       });
     },
-    [operate, root, settleProject],
+    [root, run, settleProject],
   );
 
   const updateCase = useCallback(
     async (name: string, change: CaseChange) => {
       if (!root) return;
-      await operate("project", async () => {
+      await run("project", async () => {
         settleProject(await updateRegisteredCase(root, name, change));
       });
     },
-    [operate, root, settleProject],
+    [root, run, settleProject],
   );
 
   // A search result opens the thing it found, the way the window already
@@ -872,12 +853,12 @@ export default function App() {
 
   const searchWorkspace = useCallback(
     async (folder: string, wanted: string) => {
-      await operate("search", async () => {
+      await run("search", async () => {
         setFound(null);
         setFound(await search(folder, wanted));
       });
     },
-    [operate],
+    [run],
   );
 
   // A comparison is bound to the identity the window verified for the open
@@ -890,7 +871,7 @@ export default function App() {
     async (right: string, keys: string[], fields: string[], offset: number) => {
       const open = evidence?.case;
       if (!root || !open) return;
-      await operate("comparison", async () => {
+      await run("comparison", async () => {
         setComparisonResult(null);
         const compared = await compare({
           workspace: root,
@@ -908,7 +889,7 @@ export default function App() {
         );
       });
     },
-    [evidence, operate, root],
+    [evidence, root, run],
   );
 
   // A save that wrote a new workspace entry changes what the folder lists, so
@@ -928,7 +909,7 @@ export default function App() {
     async (output: string) => {
       if (!root) return;
       let written = false;
-      await operate("sample", async () => {
+      await run("sample", async () => {
         setSampleCapture(null);
         const result = await captureSample({ workspace: root, output });
         setSampleCapture(result);
@@ -936,7 +917,7 @@ export default function App() {
       });
       if (written) await refreshListing();
     },
-    [operate, refreshListing, root],
+    [refreshListing, root, run],
   );
 
   // An import can register the case it wrote into the open project, and it
@@ -956,7 +937,7 @@ export default function App() {
     async (request: DiagnosisRequest) => {
       const open = evidence?.case;
       if (!root || !open) return;
-      await operate("diagnosis", async () => {
+      await run("diagnosis", async () => {
         setDiagnosisResult(null);
         setFindingReviewResult(null);
         setDiagnosisResult(
@@ -965,7 +946,7 @@ export default function App() {
       });
       await refreshListing();
     },
-    [evidence, operate, refreshListing, root],
+    [evidence, refreshListing, root, run],
   );
 
   // A retained report is read again on every call, including for the next
@@ -973,35 +954,35 @@ export default function App() {
   const openReport = useCallback(
     async (entry: string, offset: number) => {
       if (!root) return;
-      await operate("diagnosis-report", async () => {
+      await run("diagnosis-report", async () => {
         setDiagnosisResult(null);
         setFindingReviewResult(null);
         setDiagnosisResult(await openDiagnosisReport(root, entry, offset));
       });
     },
-    [operate, root],
+    [root, run],
   );
 
   const groupCases = useCallback(
     async (request: GroupDiagnosesRequest) => {
       if (!root) return;
-      await operate("diagnosis-groups", async () => {
+      await run("diagnosis-groups", async () => {
         setDiagnosisGroupsResult(null);
         setDiagnosisGroupsResult(await groupDiagnoses({ ...request, workspace: root }));
       });
     },
-    [operate, root],
+    [root, run],
   );
 
   const openGroupsReport = useCallback(
     async (entry: string, offset: number) => {
       if (!root) return;
-      await operate("diagnosis-groups-report", async () => {
+      await run("diagnosis-groups-report", async () => {
         setDiagnosisGroupsResult(null);
         setDiagnosisGroupsResult(await openDiagnosisGroupsReport(root, entry, offset));
       });
     },
-    [operate, root],
+    [root, run],
   );
 
   // A finding review joins the displayed diagnosis and the analyst's typed
@@ -1011,7 +992,7 @@ export default function App() {
     async (request: FindingReviewRequest, write: boolean) => {
       const open = evidence?.case;
       if (!root || !open) return;
-      await operate("finding-review", async () => {
+      await run("finding-review", async () => {
         setFindingReviewResult(null);
         setFindingReviewResult(
           await (write ? decideFindings : reviewFindings)({
@@ -1026,7 +1007,7 @@ export default function App() {
         await refreshListing();
       }
     },
-    [evidence, operate, refreshListing, root],
+    [evidence, refreshListing, root, run],
   );
 
   // A policy-scoped reading of the same comparison. It never edits the raw
@@ -1036,7 +1017,7 @@ export default function App() {
     async (right: string, policy: string, keys: string[], fields: string[], offset: number) => {
       const open = evidence?.case;
       if (!root || !open) return;
-      await operate("normalize", async () => {
+      await run("normalize", async () => {
         setNormalizeResult(null);
         setNormalizeResult(
           await normalizeCompare({
@@ -1053,7 +1034,7 @@ export default function App() {
         );
       });
     },
-    [evidence, operate, root],
+    [evidence, root, run],
   );
 
   // A sequence is bound to the identity the window verified for the open case,
@@ -1064,7 +1045,7 @@ export default function App() {
     async (rules: string, offset: number, analysis = "") => {
       const open = evidence?.case;
       if (!root || !open) return;
-      await operate("sequence", async () => {
+      await run("sequence", async () => {
         setSequenceResult(null);
         setSequenceResult(
           await openSequence({
@@ -1079,7 +1060,7 @@ export default function App() {
         );
       });
     },
-    [evidence, operate, root],
+    [evidence, root, run],
   );
 
   // Comparing two built revisions reads two finished reproducers and the runs
@@ -1088,7 +1069,7 @@ export default function App() {
   const compareRevisions = useCallback(
     async (left: string, right: string, leftResult: string, rightResult: string) => {
       if (!root) return;
-      await operate("revisions", async () => {
+      await run("revisions", async () => {
         setRevisionResult(null);
         setRevisionResult(
           await compareReproducers({
@@ -1101,7 +1082,7 @@ export default function App() {
         );
       });
     },
-    [operate, root],
+    [root, run],
   );
 
   // A transformation preview is bound to the identity the window verified for
@@ -1112,7 +1093,7 @@ export default function App() {
     async (rules: string, plan: string, profile: string) => {
       const open = evidence?.case;
       if (!root || !open) return;
-      await operate("transformation", async () => {
+      await run("transformation", async () => {
         setTransformResult(null);
         setTransformResult(
           await previewTransformation({
@@ -1126,7 +1107,7 @@ export default function App() {
         );
       });
     },
-    [evidence, operate, root],
+    [evidence, root, run],
   );
 
   // A saved plan is a new entry of the folder, so the listing is read again
@@ -1136,7 +1117,7 @@ export default function App() {
       const open = evidence?.case;
       if (!root || !open) return null;
       const answered: { result: TransformPlanResult | null } = { result: null };
-      await operate("transform-plan", async () => {
+      await run("transform-plan", async () => {
         setPlanResult(null);
         const result = await saveTransformPlan({
           workspace: root,
@@ -1156,7 +1137,7 @@ export default function App() {
       });
       return answered.result;
     },
-    [evidence, operate, root],
+    [evidence, root, run],
   );
 
   // Reopening a plan reads the entry again through the decoder a preview
@@ -1165,7 +1146,7 @@ export default function App() {
     async (entry: string) => {
       if (!root || !evidence?.case) return null;
       const answered: { result: TransformPlanResult | null } = { result: null };
-      await operate("transform-open", async () => {
+      await run("transform-open", async () => {
         setPlanResult(null);
         const result = await openTransformPlan(root, entry);
         setPlanResult(result);
@@ -1173,14 +1154,14 @@ export default function App() {
       });
       return answered.result;
     },
-    [evidence, operate, root],
+    [evidence, root, run],
   );
 
   const runReductionPreview = useCallback(
     async (config: ReductionForm) => {
       const open = evidence?.case;
       if (!root || !open) return;
-      await operate("reduction-preview", async () => {
+      await run("reduction-preview", async () => {
         setReductionResult(null);
         setReductionResult(
           await previewReduction({
@@ -1202,14 +1183,14 @@ export default function App() {
         );
       });
     },
-    [evidence, operate, root],
+    [evidence, root, run],
   );
 
   const runReduction = useCallback(
     async (config: ReductionForm) => {
       const open = evidence?.case;
       if (!root || !open) return;
-      await operate("reduction", async () => {
+      await run("reduction", async () => {
         setReductionResult(null);
         setReductionResult(
           await startReduction({
@@ -1231,7 +1212,7 @@ export default function App() {
         );
       });
     },
-    [evidence, operate, root],
+    [evidence, root, run],
   );
 
   // The project's answer goes back to the reproducer panel as well as to the
@@ -1241,7 +1222,7 @@ export default function App() {
     async (source: string, name: string, parent: string) => {
       if (!root) return null;
       const answered: { result: ProjectOverviewResult | null } = { result: null };
-      await operate("project", async () => {
+      await run("project", async () => {
         const result = await registerRevision({
           workspace: root,
           source,
@@ -1254,7 +1235,7 @@ export default function App() {
       });
       return answered.result;
     },
-    [operate, root, settleProject],
+    [root, run, settleProject],
   );
 
   // A build handed to the revision comparison becomes its later revision; the
@@ -1272,7 +1253,7 @@ export default function App() {
   const readReview = useCallback(
     async (review: string, approve: string, offset: number) => {
       if (!root) return;
-      await operate("review", async () => {
+      await run("review", async () => {
         setReviewResult(null);
         setReviewResult(
           await openReview({
@@ -1285,7 +1266,7 @@ export default function App() {
         );
       });
     },
-    [operate, root],
+    [root, run],
   );
 
   // A reproducer plan is bound to the case the grid verified, so every step
@@ -1330,7 +1311,7 @@ export default function App() {
       const open = gridResult?.grid;
       if (!root || !open) return;
       const plan = reproducerResult?.reproducer?.plan ?? ({ schema: "", case: "", steps: [] } as ReproducerPlan);
-      await operate("reproducer", async () => {
+      await run("reproducer", async () => {
         const result = await work(plan, open);
         // A refused step leaves the plan exactly as it was, so the refusal is
         // shown without replacing the reproducer a person is working on.
@@ -1347,7 +1328,7 @@ export default function App() {
         }
       });
     },
-    [dropReproducerDraft, gridResult, keepReproducerDraft, operate, reproducerResult, root],
+    [dropReproducerDraft, gridResult, keepReproducerDraft, reproducerResult, root, run],
   );
 
   // A test draft is bound to the case the grid verified, so every answer
@@ -1374,7 +1355,7 @@ export default function App() {
           reset: "",
           expectations: [],
         } as TestDraftDocument);
-      await operate("authoring", async () => {
+      await run("authoring", async () => {
         const result = await work(draft, open);
         // A refused answer leaves the draft exactly as it was, so the refusal is
         // shown without replacing the test a person is working on.
@@ -1416,7 +1397,7 @@ export default function App() {
         }
       });
     },
-    [gridResult, operate, refreshGuide, refreshListing, root, testResult],
+    [gridResult, refreshGuide, refreshListing, root, run, testResult],
   );
 
   // Promoting one explicitly confirmed finding answers the existing authoring
@@ -1430,7 +1411,7 @@ export default function App() {
       const promotion = status.promotion;
       const open = evidence?.case;
       if (!promotion || !root || !open) return;
-      await operate("authoring", async () => {
+      await run("authoring", async () => {
         const base = { workspace: root, case: open.name, identity: open.identity };
         const emptyDraft: TestDraftDocument = {
           schema: "",
@@ -1497,7 +1478,7 @@ export default function App() {
       });
       focusRegion("inspector");
     },
-    [evidence, findingReviewResult, focusRegion, operate, root],
+    [evidence, findingReviewResult, focusRegion, root, run],
   );
 
   // A test draft this viewer had not stored comes back only when it names the
@@ -1641,7 +1622,7 @@ export default function App() {
   const changeFilters = useCallback(
     async (work: () => Promise<FiltersResult>) => {
       let stored = false;
-      await operate("filters", async () => {
+      await run("filters", async () => {
         const result = await work();
         setSavedFilters(result);
         stored = result.state === "completed" || result.state === "empty";
@@ -1654,7 +1635,7 @@ export default function App() {
         await showGrid(root, open.case, open.index, 0);
       }
     },
-    [gridResult, operate, root, showGrid],
+    [gridResult, root, run, showGrid],
   );
 
 
@@ -1719,7 +1700,7 @@ export default function App() {
       focusRegion("inspector");
       setCorpusRequest((count) => count + 1);
     },
-    "cancel-operation": () => cancel(""),
+    "cancel-operation": () => cancel(),
     "next-region": () => step(1),
     "previous-region": () => step(-1),
     "go-to-commands": () => focusRegion("commands"),
@@ -1824,7 +1805,7 @@ export default function App() {
           <button
             type="button"
             disabled={running !== "workspace" && running !== "diagnosis-groups"}
-            onClick={() => cancel("")}
+            onClick={() => cancel()}
           >
             Cancel
           </button>
@@ -1926,6 +1907,7 @@ export default function App() {
             if (root) void verifyCase(root, name);
           }}
           onRun={(trial, output) => void practise(trial, output)}
+          onCancel={cancelRunning}
           onCapture={(output) => void importSample(output)}
         />
         <Report
@@ -2457,7 +2439,7 @@ export default function App() {
             onSaved={() => void refreshListing()}
             onReview={async (request, write) => {
               let result: CorrelationReviewResult = { state: "failed", reason: "The review did not run." };
-              await operate("correlation-review", async () => {
+              await run("correlation-review", async () => {
                 result = await (write ? decideCorrelation(request) : openCorrelationReview(request));
               });
               // A recorded decision is a new directory of the open folder, so
@@ -2629,7 +2611,7 @@ export default function App() {
               caseOpen={verified !== null}
               onPreview={(config) => void runReductionPreview(config)}
               onStart={(config) => void runReduction(config)}
-              onCancel={() => cancel("reduction")}
+              onCancel={cancelRunning}
             />
           ) : null}
           </>
@@ -2659,18 +2641,8 @@ export default function App() {
           />
         ) : null}
         {!evidence && !busy ? <p className="hint">Open a case to see what it holds.</p> : null}
-        <RawInspection
-          busy={busy && !rawWorking}
-          indicators={indicators}
-          request={rawRequest}
-          onWorking={setRawWorking}
-        />
-        <PerformanceCorpus
-          busy={busy && !corpusWorking}
-          indicators={indicators}
-          request={corpusRequest}
-          onWorking={setCorpusWorking}
-        />
+        <RawInspection busy={busy} indicators={indicators} request={rawRequest} />
+        <PerformanceCorpus busy={busy} indicators={indicators} request={corpusRequest} />
       </>
     ),
     privacy: (
@@ -2741,7 +2713,7 @@ export default function App() {
   } as CSSProperties;
 
   return (
-    <>
+    <IndicatorsContext.Provider value={indicators}>
       <main className="shell" style={panes}>
         {described.regions.map((region) => (
           <Fragment key={region.id}>
@@ -2785,6 +2757,6 @@ export default function App() {
         onClose={() => setPaletteOpen(false)}
         onRun={(command) => latest.current[command]()}
       />
-    </>
+    </IndicatorsContext.Provider>
   );
 }

@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
-  cancel,
   chooseExplanationInput,
   explainRun,
   type Artifact,
@@ -10,6 +9,7 @@ import {
   type RunExplanationRequest,
   type RunExplanationResult,
 } from "./bindings";
+import { useLifecycle } from "./lifecycle";
 
 /** The run-explanation panel, beside the durable-run panels: one retained run
  * and one assertion set, chosen through the host's dialogs or named as entries
@@ -29,21 +29,20 @@ export function RunExplanation({ workspace, entries, busy }: { workspace: string
     after: "",
     "after-source": "",
   });
-  const [working, setWorking] = useState<"explaining" | "choosing" | null>(null);
   const [result, setResult] = useState<RunExplanationResult | null>(null);
   const [choice, setChoice] = useState<ExplanationChoiceResult | null>(null);
-  const generation = useRef(0);
   const stopControl = useRef<HTMLButtonElement>(null);
-  const disabled = busy || working !== null;
-
   // While the set is re-decided every other control is disabled, so the
   // keyboard's place is the one control that still acts: the cancel.
-  useEffect(() => {
-    if (working === "explaining") stopControl.current?.focus();
-  }, [working]);
+  const lifecycle = useLifecycle<"explaining" | "choosing">({
+    names: { explaining: "run-explanation" },
+    stops: { explaining: stopControl },
+  });
+  const working = lifecycle.running;
+  const disabled = busy || working !== null;
 
   function withdraw() {
-    generation.current++;
+    lifecycle.withdraw();
     setResult(null);
     setChoice(null);
   }
@@ -54,8 +53,7 @@ export function RunExplanation({ workspace, entries, busy }: { workspace: string
   }
 
   async function choose(kind: ExplanationInputKind) {
-    setWorking("choosing");
-    try {
+    await lifecycle.run("choosing", async () => {
       const answer = await chooseExplanationInput(workspace, kind);
       if (answer.state === "completed" && answer.entry) {
         edit(kind, answer.entry);
@@ -63,32 +61,26 @@ export function RunExplanation({ workspace, entries, busy }: { workspace: string
         // A dismissed dialog or a refused choice leaves every input as it was.
         setChoice(answer);
       }
-    } finally {
-      setWorking(null);
-    }
+    });
   }
 
   async function explain(reveal: boolean) {
-    const token = ++generation.current;
-    setWorking("explaining");
-    setResult(null);
-    setChoice(null);
-    try {
+    await lifecycle.run("explaining", async (current) => {
+      setResult(null);
+      setChoice(null);
       const request: RunExplanationRequest = { workspace, run: inputs.run, assertions: inputs.assertions, reveal };
       if (inputs.before) request.before = inputs.before;
       if (inputs["before-source"]) request.before_source = inputs["before-source"];
       if (inputs.after) request.after = inputs.after;
       if (inputs["after-source"]) request.after_source = inputs["after-source"];
       const answer = await explainRun(request);
-      if (generation.current === token) setResult(answer);
-    } finally {
-      setWorking(null);
-    }
+      if (current()) setResult(answer);
+    });
   }
 
   function stop() {
-    generation.current++;
-    cancel("run-explanation");
+    lifecycle.withdraw();
+    lifecycle.cancel();
     setResult({ state: "cancelled", reason: "The explanation was cancelled. It retained nothing; explain again to decide it." });
   }
 

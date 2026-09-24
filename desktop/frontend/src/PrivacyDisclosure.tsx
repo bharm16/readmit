@@ -5,6 +5,7 @@ import {
   type OperationDisclosure,
   type Support,
 } from "./bindings";
+import { useLifecycle } from "./lifecycle";
 
 /** How each closed state word reads. The word carries the meaning; the
  * sentence beside it says what it means here, so neither colour nor icon is
@@ -39,22 +40,22 @@ export function PrivacyDisclosure({
 }) {
   const [states, setStates] = useState<DisclosureState[] | null>(null);
   const [reason, setReason] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  // Reading the states claims no operation slot, so only this section's own
+  // controls wait for it.
+  const { running, run } = useLifecycle<"reading">();
+  const busy = running !== null;
 
   const refresh = useCallback(async () => {
-    setBusy(true);
-    setReason(null);
-    try {
+    await run("reading", async () => {
+      setReason(null);
       const result = await disclosureStatus();
       if (result.states) {
         setStates(result.states);
       } else {
         setReason(result.reason ?? "The connection states could not be read just now.");
       }
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+    });
+  }, [run]);
 
   useEffect(() => {
     void refresh();

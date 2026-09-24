@@ -117,6 +117,10 @@ func (a *App) Guide(workspace string) GuideResult {
 	})
 }
 
+// practiceOperation names a practice run while it holds the slot, so the
+// guided sample's cancel control stops exactly the run it started.
+const practiceOperation = "practice"
+
 // RunPractice executes a saved regression test against the built-in practice
 // receiver and writes the run into one new entry of the open workspace.
 //

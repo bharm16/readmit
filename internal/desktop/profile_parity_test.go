@@ -367,13 +367,3 @@ func workspaceState(t *testing.T, root string) map[string]string {
 	}
 	return state
 }
-
-// The profile panel's cancel names the operation the facade runs an import
-// under, so it stops exactly that import and nothing another panel started.
-func TestTheProfilePanelCancelsAnImportByTheNameItRunsUnder(t *testing.T) {
-	source := read(t, filepath.Join("..", "..", "desktop", "frontend", "src", "ProfileEditor.tsx"))
-	if !strings.Contains(source, `const PROFILE_IMPORT = "`+desktop.ProfileImportOperationForTest+`";`) ||
-		!strings.Contains(source, "cancel(PROFILE_IMPORT)") {
-		t.Fatalf("the profile panel does not cancel the import by the name %q", desktop.ProfileImportOperationForTest)
-	}
-}

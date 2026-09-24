@@ -8,7 +8,6 @@ import {
   retireProtectionControl,
   rotateProtectionControl,
   saveProtectionControl,
-  cancel,
   type Artifact,
   type ProtectionControl,
   type ProtectionControlRequest,
@@ -17,6 +16,7 @@ import {
   type ProtectionPackageResult,
   type ProtectionResult,
 } from "./bindings";
+import { useLifecycle } from "./lifecycle";
 
 /** The protection screen: controls that reference keys readmit never holds,
  * and the encrypted transfer packages written, inspected, opened and discarded
@@ -54,7 +54,10 @@ export function ProtectionPanel({
   const [documentEntry, setDocumentEntry] = useState("");
   const [documentView, setDocumentView] = useState<ProtectionResult | null>(null);
   const [newDocument, setNewDocument] = useState("");
-  const [operation, setOperation] = useState<"reading" | "registering" | "rotating" | "retiring" | "packing" | "discarding" | null>(null);
+  const lifecycle = useLifecycle<"reading" | "registering" | "rotating" | "retiring" | "packing" | "discarding">({
+    names: { packing: "protect" },
+  });
+  const operation = lifecycle.running;
   const busy = operation !== null;
 
   const [newName, setNewName] = useState("");
@@ -125,12 +128,9 @@ export function ProtectionPanel({
     setLastChange(null);
     setConfirming(null);
     if (!workspace || !entry) return;
-    setOperation("reading");
-    try {
+    await lifecycle.run("reading", async () => {
       setDocumentView(await readProtection(workspace, entry));
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function register() {
@@ -145,36 +145,30 @@ export function ProtectionPanel({
       ...(newMaxAge ? { max_age: newMaxAge } : {}),
       ...(newRetain ? { retain: newRetain } : {}),
     };
-    setOperation("registering");
-    try {
+    await lifecycle.run("registering", async () => {
       showChange("register", newName, await saveProtectionControl(request));
       onRefresh();
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function rotate(name: string) {
     if (busy || !workspace || !documentEntry) return;
-    setOperation("rotating");
-    try {
+    await lifecycle.run("rotating", async () => {
       showChange("rotate", name, await rotateProtectionControl(workspace, documentEntry, name));
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function retire(name: string) {
     if (busy || !workspace || !documentEntry) return;
     setConfirming(null);
     setLastChange({ action: "retire", name });
-    setOperation("retiring");
-    try {
-      showChange("retire", name, await retireProtectionControl(workspace, documentEntry, name));
-    } finally {
-      setOperation(null);
-      setReturning(name);
-    }
+    await lifecycle.run("retiring", async () => {
+      try {
+        showChange("retire", name, await retireProtectionControl(workspace, documentEntry, name));
+      } finally {
+        setReturning(name);
+      }
+    });
   }
 
   function keepActive(name: string) {
@@ -184,8 +178,7 @@ export function ProtectionPanel({
 
   async function pack() {
     if (busy || !workspace) return;
-    setOperation("packing");
-    try {
+    await lifecycle.run("packing", async () => {
       setPacked(await packProtectedPackage({
         workspace,
         entry: packDocument || documentEntry,
@@ -194,51 +187,40 @@ export function ProtectionPanel({
         ...(packOutput ? { output: packOutput } : {}),
       }));
       onRefresh();
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function inspect(entry: string) {
     if (!workspace || !entry) return;
-    setOperation("reading");
-    try {
+    await lifecycle.run("reading", async () => {
       setSelectedPackage(entry);
       setOpenResult(null);
       setDiscarded(null);
       setPackageView(await inspectProtectedPackage(workspace, entry));
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function openPackage() {
     if (busy || !workspace || !documentEntry || !selectedPackage) return;
-    setOperation("packing");
-    try {
+    await lifecycle.run("packing", async () => {
       setOpenResult(await openProtectedPackage({
         workspace,
         entry: documentEntry,
         package: selectedPackage,
       }));
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function discard() {
     if (busy || !workspace || !selectedPackage) return;
-    setOperation("discarding");
-    try {
+    await lifecycle.run("discarding", async () => {
       setDiscarded(await discardProtectedPackage({
         workspace,
         package: selectedPackage,
         ...(discardOverride ? { override: true } : {}),
       }));
       onRefresh();
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   return <section aria-labelledby="protection-title">
@@ -400,7 +382,7 @@ export function ProtectionPanel({
       <button disabled={busy || (!packDocument && !documentEntry) || !chosenControl || packSources.length === 0} onClick={() => void pack()}>
         {operation === "packing" ? "Packing…" : "Pack protected package"}
       </button>
-      <button disabled={operation !== "packing"} onClick={() => cancel("protect")}>Cancel packing</button>
+      <button disabled={operation !== "packing"} onClick={lifecycle.cancel}>Cancel packing</button>
       {packed?.reason ? <p>{packed.reason}</p> : null}
       {packed?.package ? <PackageView view={packed.package} limitations={packed.limitations} /> : null}
     </div>

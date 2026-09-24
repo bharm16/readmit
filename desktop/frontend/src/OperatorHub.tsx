@@ -8,6 +8,7 @@ import {
   type HubResult,
   type HubTransferResult,
 } from "./bindings";
+import { useLifecycle } from "./lifecycle";
 
 /** The hub panel's operator-only mode. A hub its operator serves without an
  * access policy is an opaque store of artifacts by SHA-256 digest, reached
@@ -22,7 +23,8 @@ export function OperatorHub() {
   const [status, setStatus] = useState<HubResult | null>(null);
   const [transfer, setTransfer] = useState<{ kind: "read" | "store"; result: HubTransferResult } | null>(null);
   const [digest, setDigest] = useState("");
-  const [busy, setBusy] = useState(false);
+  const { running, run } = useLifecycle<"working">();
+  const busy = running !== null;
   const [message, setMessage] = useState<string | null>(null);
   // The mode is disclosed on demand; closing it hides it and keeps its state.
   const [open, setOpen] = useState(false);
@@ -31,13 +33,10 @@ export function OperatorHub() {
   const configured = Boolean(status?.config_path);
 
   async function act<T>(call: () => Promise<T>, settle: (result: T) => void) {
-    setBusy(true);
-    setMessage(null);
-    try {
+    await run("working", async () => {
+      setMessage(null);
       settle(await call());
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   // Only a completed choice changes what is selected; a dismissed dialog

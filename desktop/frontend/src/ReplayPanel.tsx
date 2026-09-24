@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
-  cancel,
   previewReplay,
   sendReplay,
   type Artifact,
@@ -12,6 +11,7 @@ import {
   type SendPolicyDecision,
 } from "./bindings";
 import { EnvironmentBanner } from "./EnvironmentPanel";
+import { useLifecycle } from "./lifecycle";
 
 /** The replay screen: `readmit replay` beside the verified case. It previews
  * which of the case's messages would be sent to one target configuration and
@@ -52,25 +52,23 @@ export function ReplayPanel({
   const [shifting, setShifting] = useState(false);
   const [shift, setShift] = useState("");
   const [output, setOutput] = useState("");
-  const [working, setWorking] = useState<"previewing" | "sending" | null>(null);
   const [result, setResult] = useState<ReplayResult | null>(null);
   const [sent, setSent] = useState<ReplayResult | null>(null);
   const [approved, setApproved] = useState(false);
-  const generation = useRef(0);
   const stopPreview = useRef<HTMLButtonElement>(null);
   const stopSend = useRef<HTMLButtonElement>(null);
-  const disabled = busy || working !== null;
-
   // While the replay works every other control is disabled, so the keyboard's
   // place is the one control that still acts: its cancel.
-  useEffect(() => {
-    if (working === "previewing") stopPreview.current?.focus();
-    if (working === "sending") stopSend.current?.focus();
-  }, [working]);
+  const lifecycle = useLifecycle<"previewing" | "sending">({
+    names: { previewing: "replay-preview", sending: "replay" },
+    stops: { previewing: stopPreview, sending: stopSend },
+  });
+  const working = lifecycle.running;
+  const disabled = busy || working !== null;
 
   /** Any change of input withdraws the preview and the approval given to it. */
   function withdraw() {
-    generation.current++;
+    lifecycle.withdraw();
     setResult(null);
     setApproved(false);
   }
@@ -101,48 +99,44 @@ export function ReplayPanel({
   }
 
   async function preview(reveal: boolean) {
-    const token = ++generation.current;
-    setWorking("previewing");
-    setResult(null);
-    setApproved(false);
-    if (!reveal) setSent(null);
-    try {
+    await lifecycle.run("previewing", async (current) => {
+      setResult(null);
+      setApproved(false);
+      if (!reveal) setSent(null);
       const answer = await previewReplay(request(reveal));
-      if (generation.current !== token) return;
+      if (!current()) return;
       setResult(answer);
       // The proposed run folder is what a send of this preview writes; naming
       // it here changes nothing the preview identified.
       if (answer.preview) setOutput(answer.preview.destination.name);
-    } finally {
-      setWorking(null);
-    }
+    });
   }
 
   function cancelPreview() {
-    generation.current++;
-    cancel("replay-preview");
+    lifecycle.withdraw();
+    lifecycle.cancel();
     setResult({ state: "cancelled", reason: "The preview was cancelled. Nothing was sent or written; preview again to see what would be sent." });
   }
 
   async function send(plan: ReplayPreview) {
-    setWorking("sending");
-    try {
-      const answer = await sendReplay({
-        replay: { ...request(false), output: plan.destination.name },
-        expected_identity: plan.identity,
-        approved: true,
-      });
-      setSent(answer);
-    } finally {
-      // The approval is spent whatever the send established: the run folder it
-      // named is no longer fresh, so a new send is a new preview and approval.
-      generation.current++;
-      setResult(null);
-      setApproved(false);
-      setOutput("");
-      setWorking(null);
-      onSent?.();
-    }
+    await lifecycle.run("sending", async () => {
+      try {
+        const answer = await sendReplay({
+          replay: { ...request(false), output: plan.destination.name },
+          expected_identity: plan.identity,
+          approved: true,
+        });
+        setSent(answer);
+      } finally {
+        // The approval is spent whatever the send established: the run folder it
+        // named is no longer fresh, so a new send is a new preview and approval.
+        lifecycle.withdraw();
+        setResult(null);
+        setApproved(false);
+        setOutput("");
+        onSent?.();
+      }
+    });
   }
 
   const plan = result?.state === "completed" ? result.preview : undefined;
@@ -366,7 +360,7 @@ export function ReplayPanel({
         </div>
       ) : null}
       <div className="actions">
-        <button type="button" ref={stopSend} disabled={working !== "sending"} onClick={() => cancel("replay")}>
+        <button type="button" ref={stopSend} disabled={working !== "sending"} onClick={lifecycle.cancel}>
           Cancel send
         </button>
       </div>

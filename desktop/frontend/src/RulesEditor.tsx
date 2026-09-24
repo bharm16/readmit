@@ -17,6 +17,7 @@ import {
   type NormalizationPolicyResult,
   type SequenceAnalysisResult,
 } from "./bindings";
+import { useLifecycle } from "./lifecycle";
 
 /** Structured editors for the authored rule and policy documents.
  *
@@ -249,7 +250,8 @@ export function CorrelationRulesEditor({
   const [openedFrom, setOpenedFrom] = useState("");
   // What the editor itself is waiting on the application for: an open or a
   // save of its own. Its controls wait with it, as they do for the window's.
-  const [pending, setPending] = useState<string | null>(null);
+  const lifecycle = useLifecycle<string>();
+  const pending = lifecycle.running;
   const busy = windowBusy || pending !== null;
   const keep = useRef<HTMLButtonElement | null>(null);
   const openButton = useRef<HTMLButtonElement | null>(null);
@@ -275,9 +277,8 @@ export function CorrelationRulesEditor({
   // document that was opened instead of replacing it with whatever the
   // controls held before. A refusal changes nothing on screen but the status.
   const open = async (name: string) => {
-    setPending(`Opening ${name}.`);
-    const opened = await openCorrelationRules(workspace, name);
-    setPending(null);
+    const opened = await lifecycle.run(`Opening ${name}.`, () => openCorrelationRules(workspace, name));
+    if (!opened) return;
     setResult(opened);
     if (opened.state !== "completed" || !opened.rules) return;
     setRules(
@@ -531,9 +532,8 @@ export function CorrelationRulesEditor({
         onOutput={setOutput}
         onSave={() =>
           void (async () => {
-            setPending(`Saving ${output}.`);
-            const saved = await saveCorrelationRules({ workspace, document, output });
-            setPending(null);
+            const saved = await lifecycle.run(`Saving ${output}.`, () => saveCorrelationRules({ workspace, document, output }));
+            if (!saved) return;
             setResult(saved);
             if (saved.state === "completed" && saved.output) {
               setOutput("");
@@ -628,7 +628,8 @@ export function SequenceAnalysisEditor({
   const [openedFrom, setOpenedFrom] = useState("");
   // What the editor itself is waiting on the application for: an open or a
   // save of its own. Its controls wait with it, as they do for the window's.
-  const [pending, setPending] = useState<string | null>(null);
+  const lifecycle = useLifecycle<string>();
+  const pending = lifecycle.running;
   const busy = windowBusy || pending !== null;
   const keep = useRef<HTMLButtonElement | null>(null);
   const openButton = useRef<HTMLButtonElement | null>(null);
@@ -672,9 +673,8 @@ export function SequenceAnalysisEditor({
   // declaration that was opened instead of replacing it with whatever the
   // controls held before. A refusal changes nothing on screen but the status.
   const open = async (name: string) => {
-    setPending(`Opening ${name}.`);
-    const opened = await openSequenceAnalysis(workspace, name);
-    setPending(null);
+    const opened = await lifecycle.run(`Opening ${name}.`, () => openSequenceAnalysis(workspace, name));
+    if (!opened) return;
     setResult(opened);
     if (opened.state !== "completed" || !opened.declaration) return;
     const declared = opened.declaration;
@@ -984,9 +984,8 @@ export function SequenceAnalysisEditor({
         onOutput={setOutput}
         onSave={() =>
           void (async () => {
-            setPending(`Saving ${output}.`);
-            const saved = await saveSequenceAnalysis({ workspace, document, output });
-            setPending(null);
+            const saved = await lifecycle.run(`Saving ${output}.`, () => saveSequenceAnalysis({ workspace, document, output }));
+            if (!saved) return;
             setResult(saved);
             if (saved.state === "completed" && saved.output) {
               setOutput("");
@@ -1067,7 +1066,8 @@ export function NormalizationPolicyEditor({
   const [openedFrom, setOpenedFrom] = useState("");
   // What the editor itself is waiting on the application for: an open or a
   // save of its own. Its controls wait with it, as they do for the window's.
-  const [pending, setPending] = useState<string | null>(null);
+  const lifecycle = useLifecycle<string>();
+  const pending = lifecycle.running;
   const busy = windowBusy || pending !== null;
   const keep = useRef<HTMLButtonElement | null>(null);
   const openButton = useRef<HTMLButtonElement | null>(null);
@@ -1092,9 +1092,8 @@ export function NormalizationPolicyEditor({
   // with whatever the controls held before. A refusal changes nothing on
   // screen but the status.
   const open = async (name: string) => {
-    setPending(`Opening ${name}.`);
-    const opened = await openNormalizationPolicy(workspace, name);
-    setPending(null);
+    const opened = await lifecycle.run(`Opening ${name}.`, () => openNormalizationPolicy(workspace, name));
+    if (!opened) return;
     setResult(opened);
     if (opened.state !== "completed" || !opened.policy) return;
     setRules(
@@ -1268,9 +1267,8 @@ export function NormalizationPolicyEditor({
         onOutput={setOutput}
         onSave={() =>
           void (async () => {
-            setPending(`Saving ${output}.`);
-            const saved = await saveNormalizationPolicy({ workspace, document, output });
-            setPending(null);
+            const saved = await lifecycle.run(`Saving ${output}.`, () => saveNormalizationPolicy({ workspace, document, output }));
+            if (!saved) return;
             setResult(saved);
             if (saved.state === "completed" && saved.output) {
               setOutput("");
@@ -1361,7 +1359,8 @@ export function DiagnoseConfigEditor({
   const [openedFrom, setOpenedFrom] = useState("");
   // What the editor itself is waiting on the application for: an open or a
   // save of its own. Its controls wait with it, as they do for the window's.
-  const [pending, setPending] = useState<string | null>(null);
+  const lifecycle = useLifecycle<string>();
+  const pending = lifecycle.running;
   const busy = windowBusy || pending !== null;
   const keep = useRef<HTMLButtonElement | null>(null);
   const openButton = useRef<HTMLButtonElement | null>(null);
@@ -1394,9 +1393,8 @@ export function DiagnoseConfigEditor({
   // instead of replacing it with whatever the controls held before. A refusal
   // changes nothing on screen but the status.
   const open = async (name: string) => {
-    setPending(`Opening ${name}.`);
-    const opened = await openDiagnoseConfig(workspace, name);
-    setPending(null);
+    const opened = await lifecycle.run(`Opening ${name}.`, () => openDiagnoseConfig(workspace, name));
+    if (!opened) return;
     setResult(opened);
     if (opened.state !== "completed" || !opened.config) return;
     const config = opened.config;
@@ -1597,9 +1595,8 @@ export function DiagnoseConfigEditor({
         onOutput={setOutput}
         onSave={() =>
           void (async () => {
-            setPending(`Saving ${output}.`);
-            const saved = await saveDiagnoseConfig({ workspace, document, output });
-            setPending(null);
+            const saved = await lifecycle.run(`Saving ${output}.`, () => saveDiagnoseConfig({ workspace, document, output }));
+            if (!saved) return;
             setResult(saved);
             if (saved.state === "completed" && saved.output) {
               setOutput("");
