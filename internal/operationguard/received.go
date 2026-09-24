@@ -2,11 +2,13 @@ package operationguard
 
 // The window-facing license-management half of the operation boundary. The
 // desktop facade reaches entitlement documents and runner admission records
-// only through this package, never the entitlement package directly, so the
-// dependency graph keeps stating what it states for the command tree: every
-// production surface uses the same readers, and nothing here issues, signs or
-// gates a read. Everything in this file is license management in the sense the
-// operation contract keeps free: none of it requires an existing activation.
+// only through this package, never the entitlement package directly. A
+// document or store of either version is read here through the entitlement
+// package's one version-aware reader, the one the command tree calls
+// directly, so every production surface uses the same readers, and nothing
+// here issues, signs or gates a read. Everything in this file is license
+// management in the sense the operation contract keeps free: none of it
+// requires an existing activation.
 
 import (
 	"errors"
@@ -67,25 +69,26 @@ type Received struct {
 	KeyStatus        entitlement.KeyStatus
 	OperationCapable bool
 
-	grant entitlement.GrantV2
+	signed   entitlement.Signed
+	verified entitlement.Verified
 }
 
 // Assigned reports whether the verified document assigns a device to a named
 // author, by the entitlement contract's own rule.
 func (r Received) Assigned(author, device string) error {
-	if !r.OperationCapable {
+	if r.verified.V2 == nil {
 		return entitlement.ErrAuthorNotNamed
 	}
-	return r.grant.Assigned(author, device)
+	return r.verified.V2.Assigned(author, device)
 }
 
 // RunnerAuthority reports the capacity the verified document grants to a
 // named customer-controlled authority.
 func (r Received) RunnerAuthority(id string) (Authority, error) {
-	if !r.OperationCapable {
+	if r.verified.V2 == nil {
 		return Authority{}, entitlement.ErrAuthorityNotNamed
 	}
-	return r.grant.Authority(id)
+	return r.verified.V2.Authority(id)
 }
 
 // DocumentSummary is the installed-document fact a renewal orders itself by.
@@ -108,46 +111,45 @@ func ReadDocuments(entitlementPath, trustPath string) (data, trustData []byte, e
 }
 
 // VerifyDocuments verifies received bytes against received trust bytes and
-// reports what the document declares. The v1 and v2 readers decide; nothing
-// is inferred and nothing about the machine is read.
+// reports what the document declares. The entitlement reader decides, by the
+// version the document declares; nothing is inferred and nothing about the
+// machine is read.
 func VerifyDocuments(data, trustData []byte, at time.Time) (Received, error) {
 	trust, err := entitlement.DecodeTrust(trustData)
 	if err != nil {
 		return Received{}, ErrTrustUnreadable
 	}
-	version, err := entitlement.DeclaredVersion(data)
+	signed, err := entitlement.ReadSigned(data)
 	if err != nil {
 		return Received{}, err
 	}
-	if version == entitlement.SchemaV2 {
-		grant, err := entitlement.VerifyV2(data, trust)
-		if err != nil {
-			return Received{}, err
-		}
+	verified, err := signed.Verify(trust)
+	if err != nil {
+		return Received{}, err
+	}
+	if grant := verified.V2; grant != nil {
 		return Received{
-			Version: version, ID: grant.Claims.ID, Organization: grant.Claims.Organization, Plan: grant.Claims.Plan,
+			Version: entitlement.SchemaV2, ID: grant.Claims.ID, Organization: grant.Claims.Organization, Plan: grant.Claims.Plan,
 			Sequence: grant.Claims.Sequence, Issued: grant.Claims.Issued, NotBefore: grant.Claims.NotBefore,
 			Expires: grant.Claims.Expires, GraceDays: grant.Claims.GraceDays, GraceEnds: grant.Claims.GraceEnds(),
 			State: grant.StateAt(at), Seats: grant.Claims.Authors.Seats, DevicesPerSeat: grant.Claims.Authors.DevicesPerSeat,
 			Assignments: grant.Claims.Authors.Assignments, RunnerInstances: grant.Claims.Runners.Instances,
 			Authorities: grant.Claims.Runners.Authorities, Capabilities: grant.Claims.Capabilities,
-			KeyID: grant.KeyID, KeyStatus: grant.KeyStatus, OperationCapable: true, grant: grant,
+			KeyID: grant.KeyID, KeyStatus: grant.KeyStatus, OperationCapable: true, signed: signed, verified: verified,
 		}, nil
 	}
-	grant, err := entitlement.Verify(data, trust)
-	if err != nil {
-		return Received{}, err
-	}
+	grant := verified.V1
 	bound := make([]string, 0, len(grant.Claims.Scope.Devices))
 	for _, device := range grant.Claims.Scope.Devices {
 		bound = append(bound, device.ID)
 	}
 	return Received{
-		Version: version, ID: grant.Claims.ID, Organization: grant.Claims.Organization, Plan: grant.Claims.Plan,
+		Version: entitlement.Schema, ID: grant.Claims.ID, Organization: grant.Claims.Organization, Plan: grant.Claims.Plan,
 		Sequence: grant.Claims.Sequence, Issued: grant.Claims.Issued, NotBefore: grant.Claims.NotBefore,
 		Expires: grant.Claims.Expires, GraceDays: grant.Claims.GraceDays, GraceEnds: grant.Claims.GraceEnds(),
 		State: grant.StateAt(at), Seats: grant.Claims.Scope.Seats, RunnerInstances: grant.Claims.Scope.Runners,
 		Devices: bound, Capabilities: grant.Claims.Capabilities, KeyID: grant.KeyID, KeyStatus: grant.KeyStatus,
+		signed: signed, verified: verified,
 	}, nil
 }
 

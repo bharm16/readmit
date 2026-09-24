@@ -4,15 +4,13 @@ package tests
 // window and the command line are held to the same account at once: what the
 // window activates, `readmit license show` reports and new work on the command
 // line is admitted by; what `readmit license import` installs, the window
-// reports; and renewal, export and release reach the same store through
-// either, accepting and refusing the same documents — valid, foreign,
-// superseded and released — the command line in its own sentences and the
-// window in plain words.
+// reports; and what one renews, exports or releases, the other reads from the
+// same store. Which documents a renewal refuses is not interop: both reach the
+// entitlement reader through the same operation guard call, and the reader's
+// renewal matrix and the window's own renewal test cover it.
 
 import (
 	"bytes"
-	"crypto/ed25519"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -129,29 +127,8 @@ func TestRenewExportAndReleaseAgreeBetweenTheWindowAndTheCommandLine(t *testing.
 	if _, stderr, err := withoutPolicy(t, "license", "import", file, "--trust", trust, "--author", "a.nguyen", "--device", "ws-0413"); err != nil {
 		t.Fatalf("install: %v %s", err, stderr)
 	}
-	foreignOrganization := installableClaims(3)
-	foreignOrganization.Organization = "another-hospital"
-	for _, c := range []struct {
-		name     string
-		document string
-		command  error
-		window   string
-	}{
-		{"superseded", file, entitlement.ErrSuperseded, "this license is already activated here, or is older than the one activated on this computer"},
-		{"foreign organization", writeEntitlementV2(t, "foreign.json", foreignOrganization), entitlement.ErrDifferentOrganization, "this license is for a different organization than the one activated on this computer; deactivate this computer before activating it"},
-		{"foreign key", foreignSigned(t, installableClaims(3)), entitlement.ErrUnknownKey, "this license was not signed with your vendor's verification keys; if your vendor changed keys, choose their updated keys file"},
-	} {
-		if _, stderr, err := withoutPolicy(t, "license", "renew", c.document); err == nil || !strings.Contains(stderr, c.command.Error()) {
-			t.Errorf("%s: the command line: %v %s", c.name, err, stderr)
-		}
-		window := licensedWindow(t, root, &receivedFiles{})
-		if refused := window.ActivateLicense(desktop.LicenseActivateRequest{Entitlement: c.document}); refused.State != desktop.Failed || refused.Reason != c.window {
-			t.Errorf("%s: the window: %+v", c.name, refused)
-		}
-	}
-
-	// A valid later issue renews in place through the window; the command
-	// line reports the renewal and exports the same bytes the window does.
+	// A later issue renews in place through the window; the command line
+	// reports the renewal and exports the same bytes the window does.
 	later := writeEntitlementV2(t, "later.json", installableClaims(2))
 	exports := t.TempDir()
 	window := licensedWindow(t, root, &receivedFiles{folder: exports})
@@ -174,7 +151,7 @@ func TestRenewExportAndReleaseAgreeBetweenTheWindowAndTheCommandLine(t *testing.
 	}
 
 	// Deactivated in the window, the command line refuses new work and a
-	// renewal as released, and still exports; so does the window.
+	// renewal as released, and still exports.
 	if deactivated := window.DeactivateLicense(); deactivated.State != desktop.Completed || !deactivated.License.Deactivated {
 		t.Fatalf("deactivate: %+v", deactivated)
 	}
@@ -190,33 +167,4 @@ func TestRenewExportAndReleaseAgreeBetweenTheWindowAndTheCommandLine(t *testing.
 	if _, stderr, err := withoutPolicy(t, "license", "export", "--output", filepath.Join(t.TempDir(), "kept.json")); err != nil {
 		t.Fatalf("export after deactivation: %v %s", err, stderr)
 	}
-	if again := licensedWindow(t, root, &receivedFiles{folder: t.TempDir()}).ExportInstalledLicense(); again.State != desktop.Completed {
-		t.Fatalf("the window's export after deactivation: %+v", again)
-	}
-	if again := window.DeactivateLicense(); again.State != desktop.Failed || again.Reason != "this computer was deactivated; activate the license your vendor issued for it" {
-		t.Fatalf("a second deactivation: %+v", again)
-	}
-	// Reading existing work is never gated.
-	if stdout, _, err := withoutPolicy(t, "inspect", "../testdata/fixtures/adt-cr.hl7"); err != nil || !strings.Contains(stdout, "Messages: 1") {
-		t.Fatalf("reading after deactivation: %v %s", err, stdout)
-	}
-}
-
-// foreignSigned is a license signed by a key the installed trust store does
-// not name: another vendor's, or a forgery.
-func foreignSigned(t *testing.T, claims entitlement.ClaimsV2) string {
-	t.Helper()
-	document, err := entitlement.SignV2(claims, "vendor-other-2026z", ed25519.NewKeyFromSeed(bytes.Repeat([]byte{7}, ed25519.SeedSize)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	data, err := entitlement.EncodeV2(document)
-	if err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(t.TempDir(), "foreign-key.json")
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	return path
 }

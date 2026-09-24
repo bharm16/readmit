@@ -47,25 +47,18 @@ func licenseVerify() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			version, err := entitlement.DeclaredVersion(data)
+			received, err := entitlement.ReadSigned(data)
 			if err != nil {
 				return err
 			}
-			if version == entitlement.SchemaV2 {
-				grant, err := entitlement.VerifyV2(data, trust)
-				if err != nil {
-					return err
-				}
-				return writeGrantV2(cmd.OutOrStdout(), "Entitlement verified: "+grant.Claims.ID, grant, author, device, require, "")
+			if !received.NamesAuthors() && author != "" {
+				return errV1Author
 			}
-			if author != "" {
-				return errors.New("a v1 entitlement binds devices, not named authors; --author applies to a v2 entitlement")
-			}
-			grant, err := entitlement.Verify(data, trust)
+			verified, err := received.Verify(trust)
 			if err != nil {
 				return err
 			}
-			return writeGrant(cmd.OutOrStdout(), "Entitlement verified: "+grant.Claims.ID, grant, device, require, "")
+			return writeVerified(cmd.OutOrStdout(), "Entitlement verified: ", verified, author, device, require, "")
 		},
 	}
 	command.Flags().StringVar(&trustPath, "trust", "", "Trust store of vendor signing keys to verify against")
@@ -94,31 +87,24 @@ func licenseImport() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			version, err := entitlement.DeclaredVersion(data)
+			received, err := entitlement.ReadSigned(data)
 			if err != nil {
 				return err
 			}
-			if version == entitlement.SchemaV2 && author == "" {
+			if received.NamesAuthors() && author == "" {
 				return usage("license import of a v2 entitlement requires --author with the named author this device is assigned to")
 			}
-			if version != entitlement.SchemaV2 && author != "" {
-				return errors.New("a v1 entitlement binds devices, not named authors; --author applies to a v2 entitlement")
+			if !received.NamesAuthors() && author != "" {
+				return errV1Author
 			}
 			if output == "" {
 				return installLicense(cmd.OutOrStdout(), data, trustPath, trust, author, device)
 			}
-			if version == entitlement.SchemaV2 {
-				store, err := entitlement.ImportV2(output, data, trust, author, device, licenseNow())
-				if err != nil {
-					return err
-				}
-				return storeV2{store}.report(cmd.OutOrStdout(), "Entitlement installed: "+store.Claims.ID, trust, "")
-			}
-			store, err := entitlement.Import(output, data, trust, device, licenseNow())
+			store, err := received.Import(output, trust, author, device, licenseNow())
 			if err != nil {
 				return err
 			}
-			return storeV1{store}.report(cmd.OutOrStdout(), "Entitlement installed: "+store.Claims.ID, trust, "")
+			return reportStore(cmd.OutOrStdout(), "Entitlement installed: ", store, trust, "")
 		},
 	}
 	command.Flags().StringVar(&trustPath, "trust", "", "Trust store of vendor signing keys to verify against")
@@ -147,11 +133,11 @@ func licenseShow() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			store, err := openStore(path)
+			store, err := entitlement.OpenInstalled(path)
 			if err != nil {
 				return err
 			}
-			return store.report(cmd.OutOrStdout(), "Entitlement installed: "+store.id(), trust, require)
+			return reportStore(cmd.OutOrStdout(), "Entitlement installed: ", store, trust, require)
 		},
 	}
 	command.Flags().StringVar(&trustPath, "trust", "", "Trust store of vendor signing keys to verify against")
@@ -182,14 +168,14 @@ func licenseRenew() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			store, err := openStore(path)
+			store, err := entitlement.OpenInstalled(path)
 			if err != nil {
 				return err
 			}
-			if err := store.renew(data, trust); err != nil {
+			if err := store.Renew(data, trust); err != nil {
 				return err
 			}
-			return store.report(cmd.OutOrStdout(), "Entitlement renewed: "+store.id(), trust, "")
+			return reportStore(cmd.OutOrStdout(), "Entitlement renewed: ", store, trust, "")
 		},
 	}
 	command.Flags().StringVar(&trustPath, "trust", "", "Trust store of vendor signing keys to verify against")
@@ -211,16 +197,16 @@ func licenseExport() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			store, err := openStore(path)
+			store, err := entitlement.OpenInstalled(path)
 			if err != nil {
 				return err
 			}
-			if err := store.export(output); err != nil {
+			if _, err := store.Export(output); err != nil {
 				return err
 			}
 			return writeLicense(cmd.OutOrStdout(), func(w io.Writer) {
 				fmt.Fprintf(w, "Entitlement exported: %s\nDocument: %s\nBytes: exactly as received; the exported file verifies because it is the same file\n",
-					store.id(), store.schema())
+					store.ID(), store.Schema())
 			})
 		},
 	}
@@ -246,18 +232,18 @@ func licenseRelease() *cobra.Command {
 					return err
 				}
 			}
-			store, err := openStore(path)
+			store, err := entitlement.OpenInstalled(path)
 			if err != nil {
 				return err
 			}
 			if !installed {
-				if err := store.release(licenseNow()); err != nil {
+				if err := store.Release(licenseNow()); err != nil {
 					return err
 				}
 			}
 			return writeLicense(cmd.OutOrStdout(), func(w io.Writer) {
 				fmt.Fprintf(w, "Activation released: %s\nEntitlement: %s\nReleased: %s\nTransfer: ask the vendor to reissue this entitlement for the new device, then import it there\nLocal record: releasing is recorded here, not proven to the vendor; seat accounting is settled when the vendor reissues\n",
-					store.activated(), store.id(), licenseTimestamp(store.released()))
+					activated(store), store.ID(), licenseTimestamp(store.Released()))
 			})
 		},
 	}
@@ -294,11 +280,40 @@ func readTrust(path string) (entitlement.Trust, error) {
 	return entitlement.DecodeTrust(data)
 }
 
-func activation(store *entitlement.Store) string {
-	if !store.Activation.Released.IsZero() {
-		return "released " + licenseTimestamp(store.Activation.Released)
+// errV1Author refuses a named author for a v1 entitlement, which binds devices
+// and names no authors, before anything is verified.
+var errV1Author = errors.New("a v1 entitlement binds devices, not named authors; --author applies to a v2 entitlement")
+
+// activated names what a store activated as: a device under v1, a named author
+// on a device under v2.
+func activated(store entitlement.Installed) string {
+	if store.V2 != nil {
+		return store.Author() + " on " + store.Device()
 	}
-	return "imported " + licenseTimestamp(store.Activation.Imported)
+	return store.Device()
+}
+
+// reportStore verifies an installed store for what it activated as and writes
+// the grant under its own version's report.
+func reportStore(out io.Writer, action string, store entitlement.Installed, trust entitlement.Trust, require string) error {
+	verified, err := store.Grant(trust)
+	if err != nil {
+		return err
+	}
+	installed := "imported " + licenseTimestamp(store.Imported())
+	if !store.Released().IsZero() {
+		installed = "released " + licenseTimestamp(store.Released())
+	}
+	return writeVerified(out, action, verified, store.Author(), store.Device(), require, installed)
+}
+
+// writeVerified reports one verified entitlement under the report of the
+// version the reader verified it as, headed by the action and its identifier.
+func writeVerified(out io.Writer, action string, verified entitlement.Verified, author, device, require, installed string) error {
+	if grant := verified.V2; grant != nil {
+		return writeGrantV2(out, action+grant.Claims.ID, *grant, author, device, require, installed)
+	}
+	return writeGrant(out, action+verified.V1.Claims.ID, *verified.V1, device, require, installed)
 }
 
 // writeGrant reports one verified entitlement. Every line is data the document
@@ -435,11 +450,11 @@ func installLicense(out io.Writer, data []byte, trustPath string, trust entitlem
 	if err := operationguard.InstallLicense(root, data, trustData, author, device, "", licenseNow()); err != nil {
 		return err
 	}
-	store, err := openStore(root)
+	store, err := entitlement.OpenInstalled(root)
 	if err != nil {
 		return err
 	}
-	return store.report(out, "Entitlement installed: "+store.id(), trust, "")
+	return reportStore(out, "Entitlement installed: ", store, trust, "")
 }
 
 // renewInstalledLicense renews this computer's license in place. A named
@@ -464,9 +479,9 @@ func renewInstalledLicense(out io.Writer, root, received, trustPath string) erro
 	if err != nil {
 		return err
 	}
-	store, err := openStore(root)
+	store, err := entitlement.OpenInstalled(root)
 	if err != nil {
 		return err
 	}
-	return store.report(out, "Entitlement renewed: "+store.id(), trust, "")
+	return reportStore(out, "Entitlement renewed: ", store, trust, "")
 }
