@@ -2,11 +2,11 @@ package cli
 
 import (
 	"bufio"
-	"context"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/sendpolicy"
 	"github.com/spf13/cobra"
@@ -65,20 +65,10 @@ func replayCommand() *cobra.Command {
 				}
 				return nil
 			}
-			// Prepare also rejects production for every caller. Record that
-			// refusal before preparation so it survives as inspectable evidence.
-			if !send || sendpolicy.RefusesEverySend(string(target.Environment().Classification)) {
-				duration, _ := time.ParseDuration(target.ConnectTimeout)
-				decisionCtx, stop := context.WithTimeout(ctx, duration)
-				value := sendpolicy.Decide(decisionCtx, policy, sendpolicy.Request{
-					Address: target.Address, Classification: string(target.Environment().Classification), Explicit: send,
-				}, sendpolicy.SystemResolver)
-				stop()
-				if err := record(value); err != nil {
-					return err
-				}
-			}
-			plan, err := replay.Prepare(args[0], target, options)
+			// Prepare also rejects production for every caller; the shared
+			// operation records that refusal before preparation so it survives
+			// as inspectable evidence, and a preview's decision with it.
+			plan, err := operation.PrepareReplay(ctx, args[0], target, options, policy, send, record, sendpolicy.SystemResolver)
 			if err != nil {
 				return err
 			}

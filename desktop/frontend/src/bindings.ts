@@ -620,6 +620,8 @@ export interface Facade {
   OpenRunEvidence(request: RunEvidenceRequest): Promise<RunEvidenceResult>;
   ExplainRun(request: RunExplanationRequest): Promise<RunExplanationResult>;
   ChooseExplanationInput(workspace: string, kind: ExplanationInputKind): Promise<ExplanationChoiceResult>;
+  PreviewReplay(request: ReplayRequest): Promise<ReplayResult>;
+  SendReplay(request: ReplaySendRequest): Promise<ReplayResult>;
   PreviewPacket(request: PacketRequest): Promise<PacketPreviewResult>;
   AssemblePacket(request: PacketRequest): Promise<PacketResult>;
   OpenPacket(workspace: string, entry: string): Promise<PacketResult>;
@@ -1731,6 +1733,115 @@ export interface ExplanationChoiceResult {
 }
 export function chooseExplanationInput(workspace: string, kind: ExplanationInputKind): Promise<ExplanationChoiceResult> {
   return guard(() => facade().ChooseExplanationInput(workspace, kind), { state: "failed" });
+}
+
+/** The replay screen: `readmit replay` over the verified case. A preview
+ * reads the case, the target configuration and the optional send policy (each
+ * one entry of the open workspace), the selected messages (none selects every
+ * message, in source order) and the named transformations, and sends and
+ * writes nothing. A send is one explicitly approved send of exactly what a
+ * preview showed, pinned by `expected_identity`, into the fresh run folder the
+ * preview named; its send decision is retained beside that folder. */
+export type ReplayTransformationName = "rebase-control-ids" | "shift-timestamps";
+export interface ReplayTransformation {
+  name: ReplayTransformationName;
+  shift?: string;
+}
+export interface ReplayRequest {
+  workspace: string;
+  case: string;
+  identity: string;
+  target: string;
+  policy?: string;
+  messages: string[];
+  transformations: ReplayTransformation[];
+  output?: string;
+  reveal: boolean;
+}
+export interface ReplaySendRequest {
+  replay: ReplayRequest;
+  expected_identity: string;
+  approved: boolean;
+}
+/** One selected message as the command's dry run lists it. */
+export interface ReplayMessage {
+  source: string;
+  outbound: string;
+  wire_bytes: number;
+}
+/** One field a named transformation changes; `old` and `new` are present only
+ * under the deliberate reveal. */
+export interface ReplayChange {
+  transformation: string;
+  source: string;
+  outbound: string;
+  selector: string;
+  old_state: string;
+  new_state: string;
+  old?: string;
+  new?: string;
+}
+/** What one send would do, read out of the plan it would execute. `sendable`
+ * is the backend's answer to whether exactly this would be sent, and
+ * `refusal` says why not. */
+export interface ReplayPreview {
+  case: string;
+  identity: string;
+  source_identity: string;
+  target: RunTargetView;
+  messages: ReplayMessage[];
+  transformations: ReplayTransformation[];
+  changes: ReplayChange[];
+  destination: RunDestination;
+  decision_file: string;
+  admission: RunAdmission;
+  sendable: boolean;
+  refusal?: string;
+  revealed: boolean;
+}
+/** One selected message and what its send established. */
+export interface ReplayOutcome {
+  source: string;
+  outbound: string;
+  outcome: string;
+  delivery: string;
+  sent_bytes: number;
+  received_bytes: number;
+  ack: string;
+  correlation: string;
+  elapsed: string;
+  error_class?: string;
+  error_phase?: string;
+}
+/** One retained run as the command's summary reads it. `uncertain` counts the
+ * deliveries no correlated acknowledgement settled; none is ever sent again. */
+export interface ReplayRun {
+  output: string;
+  decision_file: string;
+  identity: string;
+  schema: string;
+  state: string;
+  contains_source_values: boolean;
+  export_policy: string;
+  successful: boolean;
+  uncertain: number;
+  messages: ReplayOutcome[];
+}
+export interface ReplayResult {
+  state: State;
+  reason?: string;
+  decision?: SendPolicyDecision;
+  preview?: ReplayPreview;
+  run?: ReplayRun;
+}
+export function previewReplay(request: ReplayRequest): Promise<ReplayResult> {
+  return guard(() => facade().PreviewReplay(request), { state: "failed" });
+}
+export function sendReplay(request: ReplaySendRequest): Promise<ReplayResult> {
+  return guard(() => facade().SendReplay(request), {
+    state: "failed",
+    reason: "The desktop connection was interrupted. The run folder and its decision hold whatever was sent; nothing is resent automatically.",
+  });
 }
 
 /** The investigation-packet panels. A packet assembles actual retained

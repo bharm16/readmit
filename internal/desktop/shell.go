@@ -238,9 +238,9 @@ var privacyStatus = Privacy{
 		{
 			ID:            "run",
 			Activity:      "Durable test execution",
-			Destination:   "the test target the executed test or suite names — a nonproduction endpoint a send policy you approved explicitly allows",
-			Data:          "the messages the executed test declares and the acknowledgements they draw; your imported evidence is never a send list",
-			Authorization: "an activated license for new work, an admitted send policy naming the destination, and your explicit Execute action",
+			Destination:   "the test target the executed test or suite names, or the target configuration a replay you previewed names — a nonproduction endpoint a send policy you approved explicitly allows",
+			Data:          "the messages the executed test declares, or the case messages you selected for a replay exactly as its preview showed them, and the acknowledgements they draw; nothing else of your imported evidence is sent",
+			Authorization: "an activated license for new work, an admitted send policy naming the destination, and your explicit Execute action, or your explicit approval of the replay's preview",
 		},
 		{
 			ID:            "runner",
@@ -266,9 +266,9 @@ var privacyStatus = Privacy{
 		{
 			ID:            "environment",
 			Activity:      "Environment checks and fixture resets",
-			Destination:   "the address your recorded named environment names: a connectivity check opens one connection there, with the TLS handshake the target declares, even where a send policy would refuse a send; a fixture reset, including one a controlled reduction performs, opens the one connection its plan needs; evaluating a send policy resolves the host names it approves",
-			Data:          "no HL7 payload for a connectivity check; the typed reset operations your reviewed reset plan declares; the names a send-policy evaluation looks up",
-			Authorization: "a recorded target and your explicit Check, Evaluate or Reset action; a reset also needs an activated license and an admitted send decision for its one connection",
+			Destination:   "the address your recorded named environment names: a connectivity check opens one connection there, with the TLS handshake the target declares, even where a send policy would refuse a send; a fixture reset, including one a controlled reduction performs, opens the one connection its plan needs; evaluating a send policy, or previewing a replay under one, resolves the host names it approves",
+			Data:          "no HL7 payload for a connectivity check; the typed reset operations your reviewed reset plan declares; the names a send-policy evaluation or a replay preview looks up",
+			Authorization: "a recorded target and your explicit Check, Evaluate, Preview replay or Reset action; a reset also needs an activated license and an admitted send decision for its one connection",
 		},
 		{
 			ID:            "hub",
@@ -318,7 +318,6 @@ var supportStatus = Support{
 		"choose the private folder a new local activation is created in",
 		"execute, queue, resume, recover and inspect durable runs",
 		"export the installed entitlement byte for byte",
-		"preview or explicitly send selected case messages",
 		"reexecute reviewed transformed evidence against an explicitly selected authorized target",
 		"resolve an expired clock and restate the high-water",
 		"select a saved test or suite through the host's native file dialog",

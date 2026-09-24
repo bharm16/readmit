@@ -1,5 +1,26 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- A replay screen previews and explicitly sends selected messages of the open
+  case (#304). `readmit replay` had no screen. **Replay selected messages**
+  chooses messages from the case index, a target configuration, an optional
+  send policy and the `rebase-control-ids` and `shift-timestamps`
+  transformations. Its preview is the command's dry run from the same shared
+  preparation, now `operation.PrepareReplay`, with every field a
+  transformation changes and its values only on purpose; it sends and writes
+  nothing. A send needs the person's explicit approval of that exact preview,
+  is admitted as execution as `replay --send` is, is refused if the case,
+  target, policy, selection, transformations or any byte to be sent changed
+  since, and retains the run and `RUN.decision.json` as the command does.
+  Production environments, destinations the policy does not approve and a
+  window without runner authority are refused before anything is sent. Cancel
+  stops at the message in flight; its uncertain delivery is never sent again,
+  and a new send is always a new preview, approval and run folder. Journeys
+  preview and send to the independent downstream system and cancel a send
+  whose acknowledgement is held; Go parity tests hold the preview to the
+  command's dry run line for line, the send to the command's run, decision
+  and wire bytes, and every refusal to its words. `readmit replay`'s output is unchanged, and no
+  `readmit-*` document changes.
+
 - The CI panel adds the reviewed change gate to the workflow it generates and
   verifies retained gate snapshots (#307). Until now the generated workflow
   had no change-gate step and nothing in the application reached
