@@ -31,7 +31,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json/v2"
 	"errors"
 	"io"
 	"os"
@@ -311,7 +310,7 @@ func runContext(path string, run *replay.Run) RunContext {
 		State: run.Manifest.State, ContainsSourceValues: run.Manifest.ContainsSourceValues,
 		ExportPolicy:         run.Manifest.ExportPolicy,
 		SourceBundleIdentity: run.Manifest.SourceBundleIdentity,
-		TargetIdentity:       targetIdentity(run.Manifest.Target),
+		TargetIdentity:       run.Manifest.Target.Identity(),
 		Target:               run.Manifest.Target,
 		StartedAt:            run.Manifest.StartedAt, CompletedAt: run.Manifest.CompletedAt,
 		Transformations: slices.Clone(run.Manifest.Transformations),
@@ -636,19 +635,6 @@ func recordLink(scope assertion.RecordScope, explanation Explanation) Link {
 		}
 	}
 	return link
-}
-
-// targetIdentity is the configuration identity the run was executed under. It
-// is the deterministic encoding of the target record the run itself retained,
-// digested the same way every other configuration identity in readmit is. It
-// identifies configuration, not receiver software and not an authenticated
-// endpoint.
-func targetIdentity(record replay.TargetRecord) string {
-	encoded, err := json.Marshal(record, json.Deterministic(true))
-	if err != nil {
-		return ""
-	}
-	return digest(append(encoded, '\n'))
 }
 
 func digest(data []byte) string {

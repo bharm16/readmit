@@ -11,6 +11,7 @@ import (
 	"github.com/bharm16/readmit/internal/protect"
 	"github.com/bharm16/readmit/internal/redact"
 	"github.com/bharm16/readmit/internal/report"
+	"github.com/bharm16/readmit/internal/runresult"
 	"github.com/bharm16/readmit/internal/sharing"
 )
 
@@ -24,16 +25,14 @@ const maxSchemaSniffBytes = 4096
 // schemaMarkerFiles are the fixed-name records a retained artifact directory
 // holds beside its evidence. They locate what a directory claims to be the
 // same way a project document locates a project: one canonical name, never
-// concluded from an arbitrary file name. A prepared rerun's marker is read by
-// its own reader here; the runnable files it names are not verified by listing.
+// concluded from an arbitrary file name. A durable run and a result are named
+// before these, by the evidence opener's own rule. A prepared rerun's marker is
+// read by its own reader here; the runnable files it names are not verified by
+// listing.
 var schemaMarkerFiles = []struct {
 	name string
 	kind Kind
 }{
-	// A durable run carries its job record beside the journal and the result
-	// directory it retains; a plain result holds only its result record.
-	{"engine.json", JobArtifact},
-	{"result.json", ResultArtifact},
 	{"review.json", ReviewArtifact},
 	{diagnose.ReportName, DiagnosisArtifact},
 	{"machine.json", CorrelationReviewArtifact},
@@ -110,6 +109,15 @@ var declaredSchemas = map[string]Kind{
 func classify(root, name string, isDir bool) (Kind, bool) {
 	path := filepath.Join(root, name)
 	if isDir {
+		// A durable run carries its engine pin beside the journal and the
+		// result directory it retains; a plain result holds only its result
+		// record. Neither is read here.
+		switch runresult.ExecutionFamily(path, runresult.RegularFile) {
+		case runresult.JobFamily:
+			return JobArtifact, true
+		case runresult.ResultFamily:
+			return ResultArtifact, true
+		}
 		for _, marker := range schemaMarkerFiles {
 			if info, err := os.Lstat(filepath.Join(path, marker.name)); err == nil && info.Mode().IsRegular() {
 				// A marker whose own contract declines the directory does not

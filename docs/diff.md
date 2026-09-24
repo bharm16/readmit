@@ -152,6 +152,11 @@ terminal := diff.Terminal(report)
 jsonBytes, err := diff.JSON(report)
 ```
 
+An artifact directory `runresult.OpenEvidence` already opened is handed over as
+`diff.Input{Opened: evidence}` and compared exactly as its directory would be;
+a path is named and opened by the same opener. A durable run directory is
+refused either way.
+
 `ErrKeysRequired` is the one refusal a consumer can act on: two collections with
 no known mapping between them need declared keys, and a consumer that is not a
 command line reports it in its own words rather than repeating an option name.

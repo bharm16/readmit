@@ -81,7 +81,7 @@ func ExecuteObserved(ctx context.Context, plan *Plan, output string, observer re
 	result.InputBundleIdentity = plan.replay.SourceIdentity()
 	target := plan.replay.Target()
 	result.Target = &target
-	result.TargetIdentity = targetIdentity(target)
+	result.TargetIdentity = target.Identity()
 	result.ObservationBoundary = plan.Boundary()
 	result.Assertions = pending(plan.spec)
 	currentSpec, err := readLocal(plan.specPath, MaxSpecBytes)

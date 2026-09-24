@@ -146,6 +146,15 @@ markdown := drift.Markdown(report)
 jsonBytes, err := drift.JSON(report)
 ```
 
+`drift.Compare` is a thin wrapper: each side is opened by
+`runresult.OpenEvidence`, which names a directory's family from the record it
+holds and opens it through that family's verified reader, and the two opened
+values are compared by `drift.CompareOpened(left, right)`. A consumer that has
+already opened and verified both executions — a stability comparison over
+retained runs, for instance — hands those same values to `CompareOpened`, so
+the drift it reports is read from the executions it verified rather than from
+a second opening of their directories.
+
 The package is `internal/drift`. `Report` uses `schema: "readmit-drift/v1"` and
 contains both sides, the four causes in a fixed order, and the attribution. It
 is a new document beside the existing contracts: `readmit-diff/v1`,

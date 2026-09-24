@@ -13,6 +13,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/runresult"
 )
 
 func digest(data []byte) string { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }
@@ -104,7 +105,7 @@ func evidence(durable bool) artifactdir.Layout {
 		AllowDirectory: admit,
 		AllowFile:      admit,
 		AllowEmpty: func(directory string, files map[string][]byte) bool {
-			return durable && directory == "sent" && files["engine.json"] != nil
+			return durable && directory == "sent" && runresult.ExecutionFamilyIn(files, "") == runresult.JobFamily
 		},
 		MaxFiles:     maxFiles,
 		MaxFileBytes: maxFileBytes,

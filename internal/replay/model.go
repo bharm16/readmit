@@ -4,6 +4,7 @@ package replay
 
 import (
 	"bytes"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"time"
@@ -118,6 +119,21 @@ type TargetRecord struct {
 	ConnectTimeout    string `json:"connect_timeout"`
 	MessageTimeout    string `json:"message_timeout"`
 	MaxACKBytes       int    `json:"max_ack_bytes"`
+}
+
+// Identity is the configuration identity of the record: the SHA-256 of its
+// deterministic encoding and a newline. It is the string readmit-result/v1
+// records as target_identity, and the one every reader of a run, a result or
+// a durable run compares, so it is computed here and nowhere else. It
+// identifies configuration, not receiver software and not an authenticated
+// endpoint. A record read from or written under its contract always encodes;
+// one that does not has no identity.
+func (r TargetRecord) Identity() string {
+	encoded, err := json.Marshal(r, json.Deterministic(true))
+	if err != nil {
+		return ""
+	}
+	return digest(append(encoded, '\n'))
 }
 
 // Transformation supports only the named operators documented in docs/replay.md.

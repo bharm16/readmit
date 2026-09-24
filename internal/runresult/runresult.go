@@ -1,12 +1,11 @@
-// Package runresult opens and classifies retained test results and durable run
-// directories. Consumers no longer probe engine.json, join result paths, or
-// restate lifecycle usability and identity checks.
+// Package runresult names and opens retained evidence directories: cases,
+// runs, test results and durable run directories. Consumers no longer probe
+// engine.json or result.json, join result paths, compute target identities,
+// or restate lifecycle usability and identity checks.
 package runresult
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
 	"slices"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
@@ -20,6 +19,8 @@ type Result struct {
 	ResultPath string
 	Durable    bool
 	Lifecycle  durablerun.Summary
+	// Pin is the engine pin a durable run retained.
+	Pin        *Pin
 	Artifact   *testrunner.Artifact
 	Spec       *testrunner.Spec
 	Run        *replay.Run
@@ -35,10 +36,13 @@ func Open(path string) (*Result, error) {
 	}
 	opened := &Result{Path: directory}
 	resultPath := directory
-	if _, err := os.Lstat(filepath.Join(directory, "engine.json")); err == nil {
+	if ExecutionFamily(directory, AnyEntry) == JobFamily {
 		opened.Durable = true
 		opened.Lifecycle, err = durablerun.Open(directory)
 		if err != nil {
+			return nil, err
+		}
+		if opened.Pin, err = readPin(directory); err != nil {
 			return nil, err
 		}
 		if opened.Lifecycle.ResultIdentity == "" {
