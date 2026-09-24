@@ -91,7 +91,7 @@ func readRecipe(cmd *cobra.Command, path, saved string) (importer.Recipe, error)
 }
 
 func importCommand() *cobra.Command {
-	var saved, mapping, output, receipt string
+	var saved, mapping, collection, output, receipt string
 	var files, folders, archives []string
 	var preview bool
 	var declared declaration
@@ -101,6 +101,9 @@ func importCommand() *cobra.Command {
 		Short:       "Import declared files, folders, and archives into a new case bundle",
 		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if collection != "" {
+				return importCollection(cmd, collection, folders, output, receipt)
+			}
 			if preview && (output != "" || receipt != "") {
 				return usage("import previews what would be extracted or writes a case, never both")
 			}
@@ -149,6 +152,7 @@ func importCommand() *cobra.Command {
 	cmd.AddCommand(engineImportCommand())
 	cmd.Flags().StringVar(&mapping, "recipe", "", "Existing readmit-mapping-recipe/v1 JSON file mapping a CSV, JSON, XML, or text envelope")
 	cmd.Flags().StringVar(&saved, "plan", "", "Existing readmit-import-plan/v1 JSON file holding the declarations below")
+	cmd.Flags().StringVar(&collection, "collection", "", "Existing readmit-source-collection/v1 receipt; imports the one --folder it staged under the plan it records")
 	addDeclarationFlags(cmd, &declared, true)
 	cmd.Flags().StringArrayVar(&files, "file", nil, "One declared message file; repeatable")
 	cmd.Flags().StringArrayVar(&folders, "folder", nil, "One declared folder whose regular files are members; repeatable")
@@ -157,6 +161,31 @@ func importCommand() *cobra.Command {
 	cmd.Flags().StringVar(&output, "output", "", "New case bundle directory (never overwrite)")
 	cmd.Flags().StringVar(&receipt, "receipt", "", "New receipt JSON file for the declaration in use (never overwrite)")
 	return cmd
+}
+
+// importCollection imports the folder a source collection staged, under the
+// plan its receipt records. That plan is the declaration, so every other one is
+// refused rather than ignored, and the one container is the folder it staged.
+// The import operation refuses a receipt that does not name its own evidence,
+// a collection that did not complete, and a folder that does not hold exactly
+// what was collected, before anything is written.
+func importCollection(cmd *cobra.Command, collection string, folders []string, output, receipt string) error {
+	flags := cmd.Flags()
+	switch {
+	case flags.Changed("preview"):
+		return usage("import --collection writes a case and has no preview; the collection receipt already records what each staged entry holds")
+	case output == "" || receipt == "":
+		return usage("import --collection requires --output with a new directory and --receipt with a new file")
+	case flags.Changed("plan") || flags.Changed("recipe") || declarationStated(cmd):
+		return usage("import --collection imports under the plan its receipt records, never under --plan, --recipe or a declaration flag")
+	case flags.Changed("file") || flags.Changed("archive") || len(folders) != 1:
+		return usage("import --collection imports the one --folder that collection staged")
+	}
+	b, document, err := operation.ImportCollectionCommit(cmd.Context(), collection, folders[0], output, receipt)
+	if err != nil {
+		return importRefusal(err)
+	}
+	return renderImport(cmd.OutOrStdout(), document, b)
 }
 
 // previewDocument extracts under whichever declaration is in use, through the

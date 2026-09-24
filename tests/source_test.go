@@ -4,6 +4,7 @@ import (
 	"encoding/json/v2"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -109,6 +110,73 @@ func TestSourceCollectStagesEvidenceAndWritesItsReceipt(t *testing.T) {
 	}
 	if strings.Contains(string(data), "MSH|") || strings.Contains(string(data), directory) {
 		t.Fatal("the receipt carries a byte of the evidence or the source path")
+	}
+}
+
+// A staged collection is imported under the plan its own receipt records, so
+// a folder collected under MLLP framing imports without its declarations being
+// repeated, and the import reports the plan it ran under. A declaration beside
+// the receipt is refused rather than ignored, and a collection that did not
+// complete is refused; neither writes a case.
+func TestImportCollectionImportsTheStagedFolderUnderItsOwnPlan(t *testing.T) {
+	framed := "\x0b" + sourceMessage + "\x1c\r"
+	mllp := []string{"--framing", "mllp", "--terminator", "cr", "--encoding", "utf-8", "--direction", "inbound", "--member", ".mllp"}
+	directory, declaration := sourceDeclarations(t, map[string]string{"a.mllp": framed})
+	output := filepath.Join(directory, "collected")
+	receipt := filepath.Join(directory, "collection.json")
+	if _, stderr, err := run(t, append([]string{"source", "collect", declaration, "--output", output, "--receipt", receipt}, mllp...)...); err != nil {
+		t.Fatalf("source collect: %v; stderr=%s", err, stderr)
+	}
+	stdout, stderr, err := run(t, "import", "--collection", receipt, "--folder", output,
+		"--output", filepath.Join(directory, "incident.case"), "--receipt", filepath.Join(directory, "import.json"))
+	if err != nil {
+		t.Fatalf("import --collection: %v; stderr=%s", err, stderr)
+	}
+	for _, expected := range []string{"Framing: mllp", "Extracted sources: 1", "Quarantined occurrences: 0"} {
+		if !strings.Contains(stdout, expected) {
+			t.Fatalf("import summary did not report %q:\n%s", expected, stdout)
+		}
+	}
+	again := filepath.Join(directory, "again.case")
+	collection := []string{"import", "--collection", receipt, "--folder", output}
+	destinations := []string{"--output", again, "--receipt", filepath.Join(directory, "again.json")}
+	for name, misuse := range map[string]struct {
+		arguments []string
+		want      string
+	}{
+		"a declaration flag": {append(slices.Clone(destinations), mllp...), "never under --plan, --recipe or a declaration flag"},
+		"a saved plan":       {append(slices.Clone(destinations), "--plan", receipt), "never under --plan, --recipe or a declaration flag"},
+		"a mapping recipe":   {append(slices.Clone(destinations), "--recipe", receipt), "never under --plan, --recipe or a declaration flag"},
+		"a file":             {append(slices.Clone(destinations), "--file", receipt), "imports the one --folder that collection staged"},
+		"an archive":         {append(slices.Clone(destinations), "--archive", receipt), "imports the one --folder that collection staged"},
+		"a second folder":    {append(slices.Clone(destinations), "--folder", directory), "imports the one --folder that collection staged"},
+		"a preview":          {[]string{"--preview"}, "has no preview"},
+		"no import receipt":  {[]string{"--output", again}, "requires --output with a new directory and --receipt with a new file"},
+	} {
+		_, stderr, err := run(t, append(slices.Clone(collection), misuse.arguments...)...)
+		if code := exitCode(t, err); code != 2 || !strings.Contains(stderr, misuse.want) {
+			t.Fatalf("%s beside --collection: exit %d, stderr %q", name, code, stderr)
+		}
+	}
+	if _, stderr, err := run(t, append([]string{"import", "--collection", receipt}, destinations...)...); exitCode(t, err) != 2 || !strings.Contains(stderr, "imports the one --folder that collection staged") {
+		t.Fatalf("no folder beside --collection: stderr %q", stderr)
+	}
+
+	directory, declaration = sourceDeclarations(t, map[string]string{"a.hl7": sourceMessage, "b.hl7": framed})
+	output, receipt = filepath.Join(directory, "collected"), filepath.Join(directory, "collection.json")
+	if _, _, err := run(t, append([]string{"source", "collect", declaration, "--output", output, "--receipt", receipt}, sourcePlanFlags()...)...); exitCode(t, err) != 2 {
+		t.Fatalf("a collection whose entry contradicts its framing completed: %v", err)
+	}
+	incomplete := filepath.Join(directory, "incident.case")
+	_, stderr, err = run(t, "import", "--collection", receipt, "--folder", output,
+		"--output", incomplete, "--receipt", filepath.Join(directory, "import.json"))
+	if code := exitCode(t, err); code != 1 || !strings.Contains(stderr, "the collection did not complete; what it staged is not the whole of the declared scope, so it is not imported") {
+		t.Fatalf("an incomplete collection: exit %d, stderr %q", code, stderr)
+	}
+	for _, refused := range []string{again, incomplete} {
+		if _, err := os.Lstat(refused); !os.IsNotExist(err) {
+			t.Fatalf("a refused import wrote %s", filepath.Base(refused))
+		}
 	}
 }
 

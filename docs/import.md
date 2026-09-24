@@ -284,6 +284,48 @@ Both documents are encoded deterministically. Neither carries a message value,
 a field value, or any byte of the evidence — only names, sizes, digests, byte
 offsets, and counts.
 
+## Importing a staged collection
+
+A folder [`readmit source collect`](source.md) staged is imported under its own
+collection receipt rather than under a second, independent declaration:
+
+```sh
+readmit source collect exports.json --output collected --receipt collection.json \
+  --framing mllp --terminator cr --encoding utf-8 --direction inbound --member .mllp
+readmit import --collection collection.json --folder collected \
+  --output incident.case --receipt incident-import.json
+```
+
+`--collection FILE` names the `readmit-source-collection/v1` receipt and the one
+`--folder` names the directory that collection staged. The plan the receipt
+records is the declaration, so `--plan`, `--recipe` and every declaration flag
+are refused beside it rather than ignored, as are `--file`, `--archive`, a
+second `--folder` and `--preview`: the receipt already records the records and
+occurrences each staged entry holds, counted by the reader an import uses.
+Before anything is written the import:
+
+1. reads the receipt strictly — every member required at every level, no member
+   its contract does not declare, a later version reported as unsupported — and
+   refuses one whose `identity` is not the digest of the collected entries it
+   records;
+2. refuses a collection whose `status` is not `complete`. What an incomplete
+   collection staged is not the whole of its declared scope, so it never becomes
+   a case that reads as the source;
+3. reads the folder under the recorded plan and refuses it unless it holds every
+   collected entry, under the name it was collected under, with the size and
+   SHA-256 the receipt records, and no other member the plan selects. A file the
+   plan does not select is recorded as excluded, as in any folder, and never
+   reaches the case.
+
+The folder is read once, so the bytes that are verified are the bytes that are
+written, and every refusal writes nothing. The case and its
+`readmit-import-receipt/v1` are then written exactly as for `--folder` under a
+plan: the receipt's `plan` is the collection's, and its folder container lists
+each staged entry with the digest the collection receipt records for it. The
+import receipt has no member that names the collection and gains none; keep the
+collection receipt beside the evidence as the record of where it came from. The
+desktop window's finalize step imports a collection through the same operation.
+
 ## Console output and privacy
 
 The import summary reports the declarations the import ran under and the counts
@@ -364,8 +406,9 @@ limits above.
   already on this machine. Bringing evidence here from an approved
   customer-controlled source — an export directory, or a remote export reached
   through the operator's own read-only transfer program — is
-  [`readmit source collect`](source.md), which stages the original bytes in a
-  directory this command then reads as an ordinary folder container. Collecting
+  [`readmit source collect`](source.md), which stages the original bytes and a
+  receipt that `import --collection` then
+  [imports under the plan it records](#importing-a-staged-collection). Collecting
   from an application interface is not supported; `source` documents the
   read-only contract one would have to satisfy.
 - **No streaming import.** A container is read whole, because an import holds

@@ -391,17 +391,18 @@ func TestFinalizingACaptureAndCommittingAnImportAreOneFlow(t *testing.T) {
 	if err := project.WriteRevisions(workspace, project.Revisions{Schema: project.RevisionsSchema, Revisions: []project.Revision{}, Notes: []project.Note{}}); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Mkdir(filepath.Join(workspace, "export"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "export", "one.hl7"), []byte(sampleImportHL7), 0600); err != nil {
+		t.Fatal(err)
+	}
+	collectStaged(t, workspace)
 	staged := filepath.Join(workspace, "staged")
-	if err := os.Mkdir(staged, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(staged, "one.hl7"), []byte(sampleImportHL7), 0600); err != nil {
-		t.Fatal(err)
-	}
 	app := workspaceApp(t)
 	plan := operation.DefaultImportPlan()
 	finalized := app.FinalizeCaptureImport(desktop.FinalizeCaptureRequest{
-		Workspace: workspace, Project: workspace, Folder: "staged", OutputName: "finalized",
+		Workspace: workspace, Project: workspace, Folder: "staged", CollectionReceipt: "staged.json", OutputName: "finalized",
 		RegisterInProject: true, CaseVersion: "v1",
 	})
 	committed := app.CommitImport(desktop.ImportCommitRequest{
@@ -426,7 +427,7 @@ func TestFinalizingACaptureAndCommittingAnImportAreOneFlow(t *testing.T) {
 	}
 
 	// Both refuse a destination the same way.
-	again := app.FinalizeCaptureImport(desktop.FinalizeCaptureRequest{Workspace: workspace, Folder: "staged", OutputName: "committed"})
+	again := app.FinalizeCaptureImport(desktop.FinalizeCaptureRequest{Workspace: workspace, Folder: "staged", CollectionReceipt: "staged.json", OutputName: "committed"})
 	if again.State != desktop.Failed || again.Reason != operation.ErrImportCaseExists.Error() {
 		t.Fatalf("finalizing into a taken case: %+v", again)
 	}

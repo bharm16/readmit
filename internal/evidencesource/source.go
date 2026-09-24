@@ -50,10 +50,15 @@ const (
 
 const (
 	// MaxSourceBytes bounds the declaration a command reads before decoding it.
-	// The two documents this package writes carry no bound of their own: both
-	// are bounded by the entry count a source may declare, and neither has a
-	// reader in this release to hold one to.
+	// The access diagnosis carries no bound of its own: it is bounded by the
+	// entry count a source may declare, and has no reader in this release to
+	// hold one to.
 	MaxSourceBytes = 64 << 10
+	// MaxCollectionBytes bounds the collection receipt an import reads. A
+	// receipt holds at most MaxEntries entries, each naming one listed entry,
+	// at most the one it repeats, a digest and a bounded reason, which is well
+	// inside this.
+	MaxCollectionBytes = 8 << 20
 
 	// MaxEntries bounds the entries one source may declare. It is the bound one
 	// folder or archive is read under, because a collection stages a folder an

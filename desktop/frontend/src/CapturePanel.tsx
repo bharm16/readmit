@@ -222,6 +222,7 @@ export function CapturePanel({
   const [secretsFile, setSecretsFile] = useState("");
   const [clientCA, setClientCA] = useState("");
   const [stagedFolder, setStagedFolder] = useState("");
+  const [stagedReceipt, setStagedReceipt] = useState("");
   const [operation, setOperation] = useState<string | null>(null);
   const [access, setAccess] = useState<SourceAccessResult | null>(null);
   const [collection, setCollection] = useState<SourceCollectionResult | null>(null);
@@ -483,7 +484,12 @@ export function CapturePanel({
         receipt_name: "collection.json",
       });
       setCollection(result);
-      if (result.output_path) setStagedFolder(result.output_path);
+      // Only a completed collection is finalized: what an incomplete one
+      // staged is not the whole of its scope.
+      if (result.state === "completed" && result.output_path) {
+        setStagedFolder(result.output_path);
+        setStagedReceipt(result.receipt_path ?? "");
+      }
       if (result.state !== "completed") setError(result.reason ?? result.state);
     } finally {
       setOperation(null);
@@ -585,6 +591,7 @@ export function CapturePanel({
       const request: Parameters<typeof finalizeCaptureImport>[0] = {
         workspace,
         folder,
+        collection_receipt: stagedReceipt || "collection.json",
         output_name: "imported-from-capture.case",
         register_in_project: Boolean(project),
       };

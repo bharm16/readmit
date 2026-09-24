@@ -87,8 +87,8 @@ type Totals struct {
 // it staged. It carries names, sizes, digests and counts; no byte of the
 // evidence, no decoded value, no credential and no source address reaches it.
 //
-// Like the access diagnosis it is a written document with no reader in this
-// release. A reader for it is a later contract change, not an addition here.
+// [DecodeCollection] is its reader, which an import of the staged directory
+// goes through: the contract it reads is exactly the one written here.
 type Collection struct {
 	Schema      string    `json:"schema"`
 	Source      Identity  `json:"source"`
@@ -228,14 +228,12 @@ func (c *collector) collect(ctx context.Context, found listing) (Collection, err
 		Status: observewindow.Complete,
 	}
 	c.seen = make(map[string]string, len(found.entries))
-	identity := sha256.New()
-	identity.Write([]byte(CollectionSchema + "\n"))
 	// Entries are collected in the source's own declared order, so a repeat of
 	// the same bytes is always recorded against the entry that was collected
 	// first rather than against whichever one a map happened to visit.
 	for index, declared := range found.entries {
 		if ctx.Err() != nil {
-			return c.stopped(ctx, record, identity, found.entries[index:])
+			return c.stopped(ctx, record, found.entries[index:])
 		}
 		if !c.options.Plan.Selects(declared.name) {
 			record.Entries = append(record.Entries, Entry{
@@ -253,11 +251,6 @@ func (c *collector) collect(ctx context.Context, found listing) (Collection, err
 			record.Totals.Bytes += entry.Size
 			record.Totals.Records += entry.Records
 			record.Totals.Occurrences += entry.Occurrences
-			// The identity is the ADR-0002 scheme in its streaming form: the
-			// entry's own digest stands for its bytes, because a collection
-			// never holds one. No timestamp and no absolute path enters it.
-			writeSized(identity, []byte(entry.Name))
-			writeSized(identity, []byte(entry.SHA256))
 		case Duplicate:
 			record.Totals.Duplicates++
 		default:
@@ -269,13 +262,13 @@ func (c *collector) collect(ctx context.Context, found listing) (Collection, err
 	// A collection is reported as cancelled whatever else it interrupted: an
 	// entry a cancellation stopped is not an entry the source could not read.
 	if ctx.Err() != nil {
-		return c.stopped(ctx, record, identity, nil)
+		return c.stopped(ctx, record, nil)
 	}
 	if record.Totals.Unreadable > 0 {
-		return c.finish(record, identity, observewindow.Failed,
+		return c.finish(record, observewindow.Failed,
 			"the source holds entries this collection could not read; what it staged is not the whole of the declared scope")
 	}
-	return c.finish(record, identity, observewindow.Complete, "")
+	return c.finish(record, observewindow.Complete, "")
 }
 
 // stopped closes a collection the caller ended. Every entry it never reached is
@@ -285,7 +278,7 @@ func (c *collector) collect(ctx context.Context, found listing) (Collection, err
 // A deadline and a cancellation are separate statuses because they are separate
 // facts: running out of time is a timeout, never a negative result about the
 // source, and neither is a collection that completed.
-func (c *collector) stopped(ctx context.Context, record Collection, identity hash.Hash, remaining []listedEntry) (Collection, error) {
+func (c *collector) stopped(ctx context.Context, record Collection, remaining []listedEntry) (Collection, error) {
 	status, reason := observewindow.Cancelled, "the collection was cancelled; what it staged is not the whole of the declared scope"
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		status, reason = observewindow.TimedOut, "the collection ran out of time; what it staged is not the whole of the declared scope"
@@ -297,12 +290,12 @@ func (c *collector) stopped(ctx context.Context, record Collection, identity has
 		})
 		record.Totals.Unreadable++
 	}
-	return c.finish(record, identity, status, reason)
+	return c.finish(record, status, reason)
 }
 
-func (c *collector) finish(record Collection, identity hash.Hash, status observewindow.Status, reason string) (Collection, error) {
+func (c *collector) finish(record Collection, status observewindow.Status, reason string) (Collection, error) {
 	record.Status, record.RunState, record.Reason = status, status.RunState(), reason
-	record.Identity = hex.EncodeToString(identity.Sum(nil))
+	record.Identity = collectionIdentity(record.Entries)
 	if status == observewindow.Complete {
 		return record, nil
 	}
@@ -489,6 +482,24 @@ func sleep(ctx context.Context, wait time.Duration) bool {
 	case <-timer.C:
 		return true
 	}
+}
+
+// collectionIdentity is the digest a receipt names its staged evidence by: the
+// ADR-0002 scheme in its streaming form, over each collected entry's name and
+// digest in the source's declared order, where the entry's own digest stands
+// for its bytes because a collection never holds one. No timestamp and no
+// absolute path enters it. The collection that writes a receipt and the reader
+// that verifies one both compute it here.
+func collectionIdentity(entries []Entry) string {
+	identity := sha256.New()
+	identity.Write([]byte(CollectionSchema + "\n"))
+	for _, entry := range entries {
+		if entry.State == Collected {
+			writeSized(identity, []byte(entry.Name))
+			writeSized(identity, []byte(entry.SHA256))
+		}
+	}
+	return hex.EncodeToString(identity.Sum(nil))
 }
 
 // writeSized hashes one length-prefixed value, which is the framing a case
