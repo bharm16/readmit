@@ -1,5 +1,23 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The diagnosis panel groups findings across cases, reopens retained reports
+  and configurations, previews reviews and keeps finding decisions in their own
+  document (#297). Grouping shows the total and pages the grouping on screen,
+  and the window's Cancel control now stops a grouping as `Escape` did. A
+  reopened report names the case it was run over: one of another case opens
+  none of its evidence in the open case's inspector, where its occurrences used
+  to open the open case's occurrences of the same name. A preview writes nothing,
+  is withdrawn once the decisions change, and no longer offers a test draft that
+  would name no review. The panel opens a retained `readmit-finding-decisions/v1`
+  document onto the findings of the report it names — one about another report
+  is applied to nothing — and saves the decisions on screen as a new entry the
+  command line reviews. The diagnose-configuration editor now loads the opened
+  configuration into its controls, where adding a rule used to drop the opened
+  one, names the entry and the SHA-256 of its bytes, asks before replacing
+  unsaved changes, and shows its open and save running. The facade's
+  diagnosis result gains `case_identity` and its configuration result `sha256`;
+  no `readmit-*` contract, command, flag, exit status or machine output changes.
+
 - The Windows application no longer ends as a host dialog opens (#378). Wails
   hands the window's focus to WebView2 whenever the window receives it, and
   the go-webview2 release it pins ends the process when WebView2 refuses;

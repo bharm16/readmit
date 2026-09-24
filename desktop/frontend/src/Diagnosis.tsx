@@ -1,15 +1,18 @@
-import { useEffect, useState } from "react";
-import type {
-  Diagnosis as DiagnosisView,
-  DiagnosisFinding,
-  DiagnosisGroupsResult,
-  DiagnosisRequest,
-  DiagnosisResult,
-  FindingDecision,
-  FindingReviewRequest,
-  FindingReviewResult,
-  FindingStatus,
-  GroupDiagnosesRequest,
+import { useEffect, useRef, useState } from "react";
+import {
+  openFindingDecisions,
+  saveFindingDecisions,
+  type Diagnosis as DiagnosisView,
+  type DiagnosisFinding,
+  type DiagnosisGroupsResult,
+  type DiagnosisRequest,
+  type DiagnosisResult,
+  type FindingDecision,
+  type FindingDecisionsResult,
+  type FindingReviewRequest,
+  type FindingReviewResult,
+  type FindingStatus,
+  type GroupDiagnosesRequest,
 } from "./bindings";
 import { DiagnoseConfigEditor } from "./RulesEditor";
 import { Report, type Indicators } from "./shell";
@@ -54,6 +57,29 @@ type DecisionDraft = { verdict: string; scope: string; rationale: string };
 
 const EMPTY_DECISION: DecisionDraft = { verdict: "", scope: "finding", rationale: "" };
 
+/** The decisions a document holds as the per-finding controls hold them. A
+ * decision without a scope is not a suppression, so the scope control keeps
+ * its default until one is chosen. */
+function draftsOf(decisions: FindingDecision[]): Record<string, DecisionDraft> {
+  return Object.fromEntries(
+    decisions.map((decision) => [
+      decision.finding,
+      { verdict: decision.verdict, scope: decision.scope ?? "finding", rationale: decision.rationale },
+    ]),
+  );
+}
+
+/** The decisions document the controls compose: the report they were typed
+ * against, by identity, and every decision a person made. The Go reader the
+ * command line applies validates it when it is saved. */
+function composeDecisions(reportSHA256: string, decisions: FindingDecision[]): string {
+  return JSON.stringify(
+    { schema: "readmit-finding-decisions/v1", report_sha256: reportSHA256, decisions },
+    null,
+    2,
+  );
+}
+
 /** The configuration selection: exactly one built-in or one workspace entry. */
 function parseConfig(chosen: string): { builtin: string; config: string } {
   if (chosen.startsWith("builtin:")) return { builtin: chosen.slice("builtin:".length), config: "" };
@@ -85,7 +111,9 @@ function groupFindings(findings: DiagnosisFinding[]): { signature: string; membe
  * to its evidence: opening an occurrence selects it, so the inspector beside
  * this panel reads the original bytes. A finding nobody explicitly confirmed
  * promotes nothing, and an unsupported promotion is shown with its reasons
- * rather than weakened into an implicit expectation. */
+ * rather than weakened into an implicit expectation. A decisions document is
+ * applied only to the report it names, because finding identifiers name other
+ * findings in any other report. */
 export function Diagnosis({
   workspace,
   caseName,
@@ -93,11 +121,13 @@ export function Diagnosis({
   configEntries,
   reportEntries,
   caseEntries,
+  decisionsEntries = [],
   result,
   groupsResult,
   reviewResult,
-  busy,
+  busy: windowBusy,
   progress,
+  groupsProgress = null,
   indicators,
   onRun,
   onOpen,
@@ -119,11 +149,15 @@ export function Diagnosis({
   reportEntries: string[];
   /** The case bundles of the open workspace, for grouping recurring findings. */
   caseEntries: string[];
+  /** The entries of the open workspace declaring the finding-decisions contract. */
+  decisionsEntries?: string[];
   result: DiagnosisResult | null;
   groupsResult: DiagnosisGroupsResult | null;
   reviewResult: FindingReviewResult | null;
   busy: boolean;
   progress: string | null;
+  /** What a grouping running now is doing, shown beside the grouping. */
+  groupsProgress?: string | null;
   indicators: Indicators;
   onRun: (request: DiagnosisRequest) => void;
   onOpen: (entry: string, offset: number) => void;
@@ -136,7 +170,8 @@ export function Diagnosis({
   /** Focuses the interface-profile editor. Diagnosis configurations name the
    * engine's bundled profiles; local interface profiles are managed there. */
   onManageProfiles?: () => void;
-  /** Called after an authored configuration landed, so the pickers offer it. */
+  /** Called after an authored configuration or decisions document landed, so
+   * the pickers offer it. */
   onSaved?: () => void;
 }) {
   const [chosen, setChosen] = useState("");
@@ -144,9 +179,31 @@ export function Diagnosis({
   const [report, setReport] = useState("");
   const [reportEntry, setReportEntry] = useState("");
   const [grouped, setGrouped] = useState<string[]>([]);
+  // The grouping the groups on screen answer, so their next window is of the
+  // same cases under the same configuration whatever the form holds now.
+  const [groupedRequest, setGroupedRequest] = useState<GroupDiagnosesRequest | null>(null);
   const [decisions, setDecisions] = useState<Record<string, DecisionDraft>>({});
   const [reviewOutput, setReviewOutput] = useState("");
   const [decisionsOutput, setDecisionsOutput] = useState("");
+  // The decisions a review was last asked about, so a preview is shown only
+  // while it is still a preview of the decisions on screen.
+  const [reviewedDecisions, setReviewedDecisions] = useState<string | null>(null);
+  // The standalone decisions document: the entry to open, the new entry to
+  // save into, and what the last open or save answered.
+  const [decisionsEntry, setDecisionsEntry] = useState("");
+  const [newDecisionsEntry, setNewDecisionsEntry] = useState("");
+  const [decisionsResult, setDecisionsResult] = useState<FindingDecisionsResult | null>(null);
+  const [decisionsFrom, setDecisionsFrom] = useState("");
+  // Whether the decisions on screen changed since they were last opened,
+  // saved or recorded. Opening a document replaces them, so that asks first.
+  const [unsaved, setUnsaved] = useState(false);
+  const [confirming, setConfirming] = useState<string | null>(null);
+  // What the panel itself is waiting on the application for: an open or a
+  // save of a decisions document. Its controls wait with it.
+  const [pending, setPending] = useState<string | null>(null);
+  const busy = windowBusy || pending !== null;
+  const keep = useRef<HTMLButtonElement | null>(null);
+  const openDecisionsButton = useRef<HTMLButtonElement | null>(null);
 
   const diagnosis: DiagnosisView | null = result?.diagnosis ?? null;
 
@@ -155,13 +212,38 @@ export function Diagnosis({
   const reportIsNew = diagnosis?.report_sha256 ?? "";
   useEffect(() => {
     setDecisions({});
+    setUnsaved(false);
+    setConfirming(null);
+    setDecisionsResult(null);
   }, [reportIsNew]);
 
-  const decide = (finding: string, change: Partial<DecisionDraft>) =>
+  useEffect(() => {
+    if (confirming !== null) keep.current?.focus();
+  }, [confirming]);
+
+  // Once the decisions are saved or recorded there is nothing left to ask about.
+  useEffect(() => {
+    if (!unsaved) setConfirming(null);
+  }, [unsaved]);
+
+  // Recording persists the decisions document too, so nothing is left unsaved.
+  const recorded = reviewResult?.decisions_output ?? "";
+  useEffect(() => {
+    if (recorded !== "") setUnsaved(false);
+  }, [recorded]);
+
+  const decide = (finding: string, change: Partial<DecisionDraft>) => {
     setDecisions((current) => ({
       ...current,
       [finding]: { ...EMPTY_DECISION, ...current[finding], ...change },
     }));
+    setUnsaved(true);
+  };
+
+  const forget = (finding: string) => {
+    setDecisions((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== finding)));
+    setUnsaved(true);
+  };
 
   /** One typed decision per finding a person actually decided about. A finding
    * with no verdict is not in this list, so reviewing records nothing for it. */
@@ -176,6 +258,8 @@ export function Diagnosis({
       if (draft.verdict === "suppressed") decision.scope = draft.scope;
       return [decision];
     });
+  const decided = typedDecisions();
+  const decidedKey = JSON.stringify(decided);
 
   const review = (write: boolean) => {
     if (!diagnosis) return;
@@ -185,17 +269,82 @@ export function Diagnosis({
       identity,
       report,
       report_sha256: diagnosis.report_sha256,
-      decisions: typedDecisions(),
+      decisions: decided,
       offset: 0,
     };
     if (write) {
       request.output = reviewOutput;
       request.decisions_output = decisionsOutput;
     }
+    setReviewedDecisions(decidedKey);
     onReview(request, write);
   };
 
+  // A retained document's decisions become the per-finding decisions only
+  // when it names the report on screen. One recorded against another report
+  // is shown for what it is and applied to nothing.
+  const openDecisions = async (name: string) => {
+    if (!diagnosis) return;
+    const shown = diagnosis.report_sha256;
+    setPending(`Opening ${name}.`);
+    const opened = await openFindingDecisions(workspace, name);
+    setPending(null);
+    setDecisionsResult(opened);
+    setDecisionsFrom(name);
+    if (opened.state !== "completed" || !opened.decisions) return;
+    if (opened.decisions.report_sha256 !== shown) return;
+    setDecisions(draftsOf(opened.decisions.decisions));
+    setUnsaved(false);
+  };
+
+  const saveDecisions = async () => {
+    if (!diagnosis) return;
+    const name = newDecisionsEntry;
+    setPending(`Saving ${name}.`);
+    const saved = await saveFindingDecisions({
+      workspace,
+      document: composeDecisions(diagnosis.report_sha256, decided),
+      output: name,
+    });
+    setPending(null);
+    setDecisionsResult(saved);
+    if (saved.state === "completed" && saved.output) {
+      setNewDecisionsEntry("");
+      setUnsaved(false);
+      onSaved?.();
+    }
+  };
+
+  const keepDecisions = () => {
+    setConfirming(null);
+    openDecisionsButton.current?.focus();
+  };
+
+  /** What the last open or save of a decisions document answered. */
+  const decisionsStatus = (): string => {
+    if (pending !== null) return pending;
+    if (!decisionsResult) return "";
+    if (decisionsResult.reason) return decisionsResult.reason;
+    if (decisionsResult.state !== "completed") return decisionsResult.state;
+    const bytes = decisionsResult.sha256 ?? "";
+    if (decisionsResult.output) return `Saved to ${decisionsResult.output} · exact bytes hash to ${bytes}`;
+    const named = decisionsResult.decisions?.report_sha256 ?? "";
+    if (diagnosis && named !== diagnosis.report_sha256) {
+      return `The decisions in ${decisionsFrom} were recorded against a different diagnosis report (${named}); finding identifiers name other findings there, so none of them is applied to this report.`;
+    }
+    return `Opened ${decisionsFrom} · exact bytes hash to ${bytes}`;
+  };
+
+  // A report of another case names that case's occurrences, which the open
+  // case's inspector must never read as its own.
+  const foreign = diagnosis !== null && diagnosis.case_identity !== identity;
+  const listed = new Set(diagnosis?.findings.map((finding) => finding.id) ?? []);
+  const decidedOutsideWindow = decided.filter((decision) => !listed.has(decision.finding));
+
   const record = reviewResult?.review?.record ?? null;
+  // A recorded review is retained and stays what it is; a preview is shown
+  // only while the decisions on screen are the ones it previewed.
+  const reviewCurrent = Boolean(reviewResult?.output) || reviewedDecisions === decidedKey;
 
   return (
     <section className="diagnosis" aria-label="Diagnosis and finding review">
@@ -318,6 +467,13 @@ export function Diagnosis({
               rules {diagnosis.rules.join(", ")} · report identity {diagnosis.report_sha256}
             </span>
           </p>
+          {foreign ? (
+            <p className="scope">
+              This report was run over other evidence (case identity {diagnosis.case_identity}), not
+              the case open here. Its evidence names that case&apos;s occurrences, so none of it
+              opens in this case&apos;s inspector.
+            </p>
+          ) : null}
           <p className="scope">{diagnosis.window.description}</p>
           <p className="scope">
             {diagnosis.window.occurrences} occurrence
@@ -373,7 +529,7 @@ export function Diagnosis({
                           <li key={`${evidence.occurrence}:${evidence.field}:${index}`}>
                             <button
                               type="button"
-                              disabled={busy}
+                              disabled={busy || foreign}
                               onClick={() => onSelect(evidence.occurrence)}
                             >
                               {evidence.occurrence}
@@ -444,7 +600,11 @@ export function Diagnosis({
                   <li key={`${item.code}:${item.occurrence ?? ""}:${index}`}>
                     {item.occurrence ? (
                       <>
-                        <button type="button" disabled={busy} onClick={() => onSelect(item.occurrence ?? "")}>
+                        <button
+                          type="button"
+                          disabled={busy || foreign}
+                          onClick={() => onSelect(item.occurrence ?? "")}
+                        >
                           {item.occurrence}
                         </button>{" "}
                         ·{" "}
@@ -460,14 +620,132 @@ export function Diagnosis({
 
           <h4>Review these findings</h4>
           <p className="hint">
-            A decision is one person's typed judgment: a verdict and a rationale, and for a
+            A decision is one person&apos;s typed judgment: a verdict and a rationale, and for a
             suppression its scope. Previewing joins them to this exact report and writes nothing;
             recording below persists the decisions document and the review directory, exactly as
-            the command line's own review writes them.
+            the command line&apos;s own review writes them.
           </p>
+          {decidedOutsideWindow.length > 0 ? (
+            <section aria-label="Decisions about findings not listed here">
+              <p className="hint">
+                These decisions are about findings this window of the report does not list. They are
+                part of a review and of a saved decisions document until you forget them.
+              </p>
+              <ul className="findings">
+                {decidedOutsideWindow.map((decision) => (
+                  <li key={decision.finding}>
+                    <span className="occurrence">{decision.finding}</span>
+                    <span className="reason">
+                      {decision.verdict}
+                      {decision.scope ? ` · scope ${decision.scope}` : ""} · {decision.rationale}
+                    </span>
+                    <button type="button" disabled={busy} onClick={() => forget(decision.finding)}>
+                      Forget the decision about {decision.finding}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           <button type="button" disabled={busy} onClick={() => review(false)}>
             Preview the review (writes nothing)
           </button>
+
+          <section aria-label="Finding decisions document">
+            <h5>Finding decisions document</h5>
+            <p className="hint">
+              A decisions document holds what one person decided about this exact report, named by
+              its identity. Opening a retained one puts its decisions on the findings above; saving
+              writes the decisions above as a new entry and records no review.
+            </p>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (unsaved && decided.length > 0) setConfirming(decisionsEntry);
+                else void openDecisions(decisionsEntry);
+              }}
+            >
+              <label htmlFor="diagnosis-decisions-entry">Retained decisions document</label>
+              <select
+                id="diagnosis-decisions-entry"
+                value={decisionsEntry}
+                disabled={busy}
+                onChange={(event) => setDecisionsEntry(event.target.value)}
+              >
+                <option value="">Choose an entry of this workspace…</option>
+                {decisionsEntries.map((entry) => (
+                  <option key={entry} value={entry}>
+                    {entry}
+                  </option>
+                ))}
+              </select>
+              <button type="submit" ref={openDecisionsButton} disabled={busy || decisionsEntry === ""}>
+                Open these decisions
+              </button>
+            </form>
+            {confirming !== null ? (
+              <div
+                role="group"
+                aria-label={`Open ${confirming} in place of these decisions?`}
+                onKeyDown={(event) => {
+                  // Escape answers this question and goes no further: the
+                  // window's own Escape cancels a running operation.
+                  if (event.key === "Escape" && !event.nativeEvent.isComposing && !busy) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    keepDecisions();
+                  }
+                }}
+              >
+                <p className="hint">
+                  The decisions above are not saved. Opening {confirming} replaces them.
+                </p>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    const name = confirming;
+                    setConfirming(null);
+                    openDecisionsButton.current?.focus();
+                    void openDecisions(name);
+                  }}
+                >
+                  Replace them with {confirming}
+                </button>
+                <button type="button" ref={keep} disabled={busy} onClick={keepDecisions}>
+                  Keep these decisions
+                </button>
+              </div>
+            ) : null}
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void saveDecisions();
+              }}
+            >
+              <label htmlFor="diagnosis-decisions-new">New finding-decisions entry</label>
+              <input
+                id="diagnosis-decisions-new"
+                required
+                value={newDecisionsEntry}
+                disabled={busy}
+                onChange={(event) => setNewDecisionsEntry(event.target.value)}
+              />
+              <button type="submit" disabled={busy || newDecisionsEntry === ""}>
+                Save these decisions as a new entry
+              </button>
+            </form>
+            <details>
+              <summary>Exact decisions document (advanced)</summary>
+              <pre>{composeDecisions(diagnosis.report_sha256, decided)}</pre>
+              <p className="hint">
+                This is the text a save sends. The Go reader validates it and writes its canonical
+                form.
+              </p>
+            </details>
+            <p role="status">{decisionsStatus()}</p>
+          </section>
+
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -497,13 +775,20 @@ export function Diagnosis({
         </>
       ) : null}
 
-      {reviewResult && reviewResult.state !== "completed" ? (
+      {reviewResult && !reviewCurrent ? (
+        <p className="hint">
+          The decisions above changed since this review was previewed. Preview again to see what they
+          mean.
+        </p>
+      ) : null}
+
+      {reviewResult && reviewCurrent && reviewResult.state !== "completed" ? (
         <Report indicators={indicators} progress={null} result={reviewResult} />
       ) : null}
 
-      {record ? (
+      {record && reviewCurrent ? (
         <section aria-label="Finding review">
-          <h4>The review</h4>
+          <h4>{reviewResult?.output ? "The review" : "The review, previewed (nothing written)"}</h4>
           <p className="scope">{record.statement}</p>
           <p className="counts">
             <span className="boundary">
@@ -520,10 +805,13 @@ export function Diagnosis({
           <ul className="findings">
             {record.findings.map((status) => {
               const promotion = status.promotion;
-              const draftable =
+              const expressible =
                 status.verdict === "confirmed" &&
                 promotion !== undefined &&
                 promotion.expectations.length > 0;
+              // A draft names the review it was promoted from, so only a
+              // recorded review offers one.
+              const draftable = expressible && Boolean(reviewResult?.output);
               return (
                 <li key={status.finding}>
                   <span className="occurrence">{status.finding}</span>
@@ -567,6 +855,11 @@ export function Diagnosis({
                         >
                           Draft a test from {status.finding}
                         </button>
+                      ) : expressible ? (
+                        <span className="reason">
+                          Record these decisions to draft a test from it: a draft names the review
+                          it was promoted from, and a preview is not retained.
+                        </span>
                       ) : (
                         <span className="reason">
                           Nothing here becomes a test: promotion expresses only what an explicitly
@@ -598,13 +891,15 @@ export function Diagnosis({
         onSubmit={(event) => {
           event.preventDefault();
           const { builtin, config } = parseConfig(chosen);
-          onGroup({
+          const request: GroupDiagnosesRequest = {
             workspace,
             cases: grouped,
             ...(config !== "" ? { config } : {}),
             ...(builtin !== "" ? { builtin } : {}),
             offset: 0,
-          });
+          };
+          setGroupedRequest(request);
+          onGroup(request);
         }}
       >
         <ul className="selection">
@@ -633,12 +928,43 @@ export function Diagnosis({
         </button>
       </form>
 
-      {groupsResult && groupsResult.state !== "completed" ? (
-        <Report indicators={indicators} progress={null} result={groupsResult} />
+      {groupsProgress !== null || (groupsResult && groupsResult.state !== "completed") ? (
+        <Report indicators={indicators} progress={groupsProgress} result={groupsResult} />
       ) : null}
       {groupsResult?.groups ? (
-        <>
+        <section aria-label="Recurring finding groups">
           <p className="scope">{groupsResult.groups.scope}</p>
+          <div className="diagnosis-window">
+            <button
+              type="button"
+              disabled={busy || groupedRequest === null || groupsResult.offset === 0}
+              onClick={() =>
+                groupedRequest &&
+                onGroup({ ...groupedRequest, offset: Math.max(0, groupsResult.offset - DIAGNOSIS_WINDOW) })
+              }
+            >
+              Previous {DIAGNOSIS_WINDOW} groups
+            </button>
+            <span>
+              Groups{" "}
+              {groupsResult.groups.groups.length === 0 ? groupsResult.offset : groupsResult.offset + 1}–
+              {groupsResult.offset + groupsResult.groups.groups.length} of {groupsResult.total} across{" "}
+              {groupsResult.groups.cases.length} case{groupsResult.groups.cases.length === 1 ? "" : "s"}
+            </span>
+            <button
+              type="button"
+              disabled={
+                busy ||
+                groupedRequest === null ||
+                groupsResult.offset + groupsResult.groups.groups.length >= groupsResult.total
+              }
+              onClick={() =>
+                groupedRequest && onGroup({ ...groupedRequest, offset: groupsResult.offset + DIAGNOSIS_WINDOW })
+              }
+            >
+              Next {DIAGNOSIS_WINDOW} groups
+            </button>
+          </div>
           <ul className="findings">
             {groupsResult.groups.groups.map((group) => (
               <li key={group.signature}>
@@ -655,7 +981,7 @@ export function Diagnosis({
               </li>
             ))}
           </ul>
-        </>
+        </section>
       ) : null}
     </section>
   );

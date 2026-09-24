@@ -71,3 +71,12 @@ func GenerateSyntheticPacketWithinForTest(ctx context.Context, request Synthetic
 // SyntheticPacketOperationForTest is the name a synthetic packet's generation
 // holds the slot under, which the synthetic section's cancel must name.
 const SyntheticPacketOperationForTest = syntheticPacketOperation
+
+// GroupDiagnosesWithinForTest is GroupDiagnoses's work under a context the
+// test controls, so a cancellation lands before the first case is evaluated
+// rather than wherever scheduling puts it. The configuration reader, the
+// grouping and every refusal are the production ones; only the operation slot
+// is not taken.
+func GroupDiagnosesWithinForTest(ctx context.Context, request GroupDiagnosesRequest) DiagnosisGroupsResult {
+	return groupDiagnoses(ctx, request)
+}

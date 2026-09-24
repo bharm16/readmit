@@ -1461,6 +1461,7 @@ export function diagnosisResult(
     diagnosis: {
       case: CASE_ENTRY,
       report_sha256: REPORT_SHA256,
+      case_identity: CASE_IDENTITY,
       schema: "readmit-diagnosis/v1",
       profile: "readmit-siu-v1",
       ruleset: "readmit-siu-diagnosis/v1",

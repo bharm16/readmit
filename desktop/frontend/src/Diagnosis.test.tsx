@@ -1,21 +1,28 @@
-// The diagnosis panel, pinned over its typed callbacks: which request a
-// person's act produces and what the panel does with the engine's answer.
-// Domain meaning — what a finding is, what a verdict covers, what a promotion
-// may express — stays with the Go engine and its own tests; nothing here
-// re-decides any of it.
+// The diagnosis panel, pinned first over its typed callbacks — which request a
+// person's act produces and what the panel does with the engine's answer —
+// and then driven through the whole window over the stubbed facade, so every
+// act below also reaches GroupDiagnoses, OpenDiagnosisReport, ReviewFindings,
+// OpenFindingDecisions or SaveFindingDecisions the way the production bindings
+// call them. Domain meaning — what a finding is, what a verdict covers, what a
+// promotion may express, which document a reader accepts — stays with the Go
+// engine and its own tests; nothing here re-decides any of it.
 import { expect, test } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Diagnosis } from "./Diagnosis";
 import type {
+  DiagnosisFindingGroup,
   DiagnosisRequest,
   DiagnosisResult,
   DiagnosisGroupsResult,
+  FindingDecision,
+  FindingDecisionsResult,
   FindingReviewRequest,
   FindingReviewResult,
   FindingStatus,
   GroupDiagnosesRequest,
 } from "./bindings";
+import { renderApp } from "./testkit/app";
 import {
   CASE_ENTRY,
   CASE_IDENTITY,
@@ -24,13 +31,16 @@ import {
   REPORT_ENTRY,
   REPORT_SHA256,
   WORKSPACE_ROOT,
+  caseResult,
   diagnosisFinding,
   diagnosisGroupsResult,
   diagnosisResult,
   findingPromotion,
   findingReviewResult,
   findingStatus,
+  folderChosen,
   indicatorTable,
+  refused,
 } from "./testkit/fixtures";
 
 type Callbacks = {
@@ -130,7 +140,7 @@ test("findings are grouped by signature and every evidence reference opens the o
     screen.getByRole("region", { name: "Findings message.duplicate-control-id · protocol" }),
   ).toBeTruthy();
   // The report identity a review must name is shown, not summarized away.
-  expect(screen.getByText(new RegExp(REPORT_SHA256))).toBeTruthy();
+  expect(screen.getByText(new RegExp(`report identity ${REPORT_SHA256}`))).toBeTruthy();
   // Evidence is a link to the original occurrence, read in the inspector.
   const [evidence] = within(recurring).getAllByRole("button", { name: GRID_OCCURRENCE });
   await user.click(evidence as HTMLElement);
@@ -324,4 +334,493 @@ test("a retained report is reopened by name, and the manage-profiles handoff is 
   expect(opened).toEqual([[REPORT_ENTRY, 0]]);
   await user.click(screen.getByRole("button", { name: "Manage interface profiles…" }));
   expect(managed).toBe(1);
+});
+
+
+// ---------------------------------------------------------------------------
+// The panel driven through the window over the stubbed facade.
+
+const THIRD_CASE = "third-case";
+const MISSING_REPORT = "missing-report";
+const GROUPS_REPORT = "weekly-groups";
+const OTHER_REPORT = "other-case-report";
+const OTHER_IDENTITY = "other-case-identity-fixed-for-tests";
+const DECISIONS = "decisions-1.json";
+const STALE_DECISIONS = "stale-decisions.json";
+const OUTSIDE_DECISIONS = "outside-decisions.json";
+const REFUSED_DECISIONS = "refused-decisions.json";
+const DECISIONS_SHA256 = "decisions-sha256-fixed-for-tests";
+const STALE_REPORT_SHA256 = "stale-report-sha256-fixed-for-tests";
+
+const NO_REPORT = "a diagnosis report directory holds report.json as one regular file";
+const NOT_A_REPORT = "diagnosis report declares a contract version this release does not read";
+const OTHER_EVIDENCE = "this diagnosis was run over different evidence; open the case the report names";
+const CHANGED = "the displayed diagnosis changed; reopen the report before reviewing";
+const UNDECIDED =
+  "a decision confirms, dismisses or suppresses a finding; leaving it undecided is recording no decision at all";
+const DUPLICATE = "diagnosis grouping refuses duplicate case identities";
+const CANCELLED = "the operation was cancelled";
+
+type Stub = Awaited<ReturnType<typeof renderApp>>["facade"];
+type User = ReturnType<typeof userEvent.setup>;
+
+/** Moves focus with Tab from where it is until the control has it, as a
+ * keyboard user does, failing when the control cannot be reached that way. */
+async function tabTo(user: User, control: HTMLElement): Promise<void> {
+  for (let step = 0; step < 200; step++) {
+    if (document.activeElement === control) return;
+    await user.tab();
+  }
+  throw new Error(`${control.textContent ?? ""} is not reachable with Tab`);
+}
+
+/** A workspace holding three cases, three retained report directories, a
+ * grouping's report directory the listing also calls a diagnosis, and four
+ * decisions documents. */
+function workspace() {
+  return folderChosen(WORKSPACE_ROOT, [
+    { name: CASE_ENTRY, kind: "case", schema: "readmit-case/v3", provenance: "imported" },
+    { name: OTHER_CASE_ENTRY, kind: "case", schema: "readmit-case/v3", provenance: "imported" },
+    { name: THIRD_CASE, kind: "case", schema: "readmit-case/v3", provenance: "imported" },
+    { name: REPORT_ENTRY, kind: "diagnosis" },
+    { name: MISSING_REPORT, kind: "diagnosis" },
+    { name: GROUPS_REPORT, kind: "diagnosis" },
+    { name: OTHER_REPORT, kind: "diagnosis" },
+    { name: DECISIONS, kind: "finding-decisions" },
+    { name: STALE_DECISIONS, kind: "finding-decisions" },
+    { name: OUTSIDE_DECISIONS, kind: "finding-decisions" },
+    { name: REFUSED_DECISIONS, kind: "finding-decisions" },
+  ]);
+}
+
+/** Opens the workspace and verifies its first case, as a person does before
+ * the diagnosis panel is offered at all. */
+async function openCase(facade: Stub, user: User) {
+  facade.reply({ SelectWorkspace: () => workspace(), OpenWorkspace: () => workspace(), OpenCase: () => caseResult() });
+  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await screen.findByText(WORKSPACE_ROOT);
+  const listed = screen.getByText(CASE_ENTRY, { selector: ".name" }).closest("li")!;
+  await user.click(within(listed as HTMLElement).getByRole("button", { name: "Verify and open" }));
+  await screen.findByText(CASE_IDENTITY);
+  return within(await screen.findByRole("region", { name: "Diagnosis and finding review" }));
+}
+
+type Panel = Awaited<ReturnType<typeof openCase>>;
+
+/** Two findings of the open case's retained report. */
+const FINDINGS = [
+  diagnosisFinding("f000001", "ack.msa-outcome"),
+  diagnosisFinding("f000002", "ack.err-outcome"),
+];
+
+/** Opens the retained report of the open case, as the panel's own form does. */
+async function openReport(facade: Stub, user: User, panel: Panel, entry = REPORT_ENTRY) {
+  facade.reply({
+    OpenDiagnosisReport: (_workspace, name) =>
+      name === REPORT_ENTRY
+        ? diagnosisResult(FINDINGS)
+        : name === OTHER_REPORT
+          ? diagnosisResult(FINDINGS, { case_identity: OTHER_IDENTITY, report_sha256: STALE_REPORT_SHA256 })
+          : refused(name === MISSING_REPORT ? NO_REPORT : NOT_A_REPORT),
+  });
+  await user.selectOptions(panel.getByLabelText("Retained diagnosis report"), entry);
+  const asked = facade.callsTo("OpenDiagnosisReport").length;
+  await user.click(panel.getByRole("button", { name: "Open this report" }));
+  await waitFor(() => expect(facade.callsTo("OpenDiagnosisReport")).toHaveLength(asked + 1));
+}
+
+/** One group of the recurring findings, numbered so a page reads in order. */
+function group(index: number): DiagnosisFindingGroup {
+  return {
+    signature: `signature-${String(index).padStart(3, "0")}-fixed-for-tests`,
+    rule_id: "siu.booking-not-observed",
+    members: [
+      { case_identity: CASE_IDENTITY, finding_id: "f000001" },
+      { case_identity: OTHER_IDENTITY, finding_id: "f000001" },
+    ],
+    representatives: [{ case_identity: CASE_IDENTITY, finding_id: "f000001" }],
+    occurrences: [],
+  };
+}
+
+/** A window of a grouping of two cases with 201 signatures. */
+function groupsWindow(offset: number): DiagnosisGroupsResult {
+  const window = Array.from({ length: offset === 0 ? 200 : 1 }, (_, index) => group(offset + index + 1));
+  const result = diagnosisGroupsResult(window);
+  result.offset = offset;
+  result.total = 201;
+  result.groups!.cases = [CASE_IDENTITY, OTHER_IDENTITY].map((identity) => ({
+    schema: "readmit-diagnosis/v1",
+    config_sha256: "config-sha256-fixed-for-tests",
+    case_identity: identity,
+    profile: "readmit-siu-v1",
+    ruleset: "readmit-siu-diagnosis/v1",
+    rules: [],
+    window: diagnosisResult([]).diagnosis!.window,
+    findings: [],
+    unsupported: [],
+    scope: "A diagnosis describes the capture window, never a complete lifecycle.",
+  }));
+  return result;
+}
+
+test("recurring findings are grouped through the facade, paged over the grouping on screen from the keyboard, refused in the engine's words, and a grouping cancelled from the window's Cancel or Escape is shown as cancelled with no groups", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp();
+  const panel = await openCase(facade, user);
+  const groups = () => panel.queryByRole("region", { name: "Recurring finding groups" });
+
+  // Grouping reads the configuration chosen above it and the cases checked.
+  facade.reply({ GroupDiagnoses: (request) => groupsWindow(request.offset) });
+  await user.selectOptions(panel.getByLabelText("Configuration"), "builtin:siu");
+  await user.click(panel.getByRole("checkbox", { name: CASE_ENTRY }));
+  await user.click(panel.getByRole("checkbox", { name: OTHER_CASE_ENTRY }));
+  await user.click(panel.getByRole("button", { name: "Group findings across these cases" }));
+  expect(await panel.findByText("Groups 1–200 of 201 across 2 cases")).toBeTruthy();
+  expect(facade.oneCall("GroupDiagnoses")).toEqual([
+    { workspace: WORKSPACE_ROOT, cases: [CASE_ENTRY, OTHER_CASE_ENTRY], builtin: "siu", offset: 0 },
+  ]);
+  const listed = within(groups()!);
+  expect(listed.getByText(/signature signature-001-fixed-for-tests · 2 findings across cases/)).toBeTruthy();
+  expect(listed.getByText(/signature signature-200-fixed-for-tests · 2 findings across cases/)).toBeTruthy();
+  expect(listed.queryByText(/signature signature-201-fixed-for-tests/)).toBeNull();
+
+  // The next window is of the grouping on screen, whatever the form holds.
+  await user.selectOptions(panel.getByLabelText("Configuration"), "builtin:order");
+  await user.click(panel.getByRole("checkbox", { name: THIRD_CASE }));
+  await tabTo(user, panel.getByRole("button", { name: "Next 200 groups" }));
+  await user.keyboard("{Enter}");
+  expect(await panel.findByText("Groups 201–201 of 201 across 2 cases")).toBeTruthy();
+  expect(within(groups()!).getByText(`f000001 of ${CASE_IDENTITY}, f000001 of ${OTHER_IDENTITY}`)).toBeTruthy();
+  expect(facade.callsTo("GroupDiagnoses")[1]?.args).toEqual([
+    { workspace: WORKSPACE_ROOT, cases: [CASE_ENTRY, OTHER_CASE_ENTRY], builtin: "siu", offset: 200 },
+  ]);
+  expect((panel.getByRole("button", { name: "Next 200 groups" }) as HTMLButtonElement).disabled).toBe(true);
+  await user.click(panel.getByRole("button", { name: "Previous 200 groups" }));
+  expect(await panel.findByText("Groups 1–200 of 201 across 2 cases")).toBeTruthy();
+  expect(facade.callsTo("GroupDiagnoses")[2]?.args[0]).toMatchObject({ builtin: "siu", offset: 0 });
+
+  // A grouping the engine refuses is refused in its words, and no group of
+  // the grouping before it stays on screen.
+  facade.reply({ GroupDiagnoses: () => ({ ...refused(DUPLICATE), offset: 0, total: 0 }) });
+  await user.click(panel.getByRole("button", { name: "Group findings across these cases" }));
+  expect(await panel.findByText(DUPLICATE)).toBeTruthy();
+  expect(groups()).toBeNull();
+  expect(facade.callsTo("GroupDiagnoses")[3]?.args[0]).toMatchObject({
+    cases: [CASE_ENTRY, OTHER_CASE_ENTRY, THIRD_CASE],
+    builtin: "order",
+  });
+
+  // A grouping is interruptible: while it runs the window says so, holds the
+  // panel, and offers its own Cancel, which asks the facade to cancel.
+  const running = facade.park("GroupDiagnoses");
+  await user.click(panel.getByRole("button", { name: "Group findings across these cases" }));
+  expect(await panel.findByText("Grouping findings across these cases.")).toBeTruthy();
+  expect((panel.getByRole("button", { name: "Group findings across these cases" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((panel.getByRole("button", { name: "Open this report" }) as HTMLButtonElement).disabled).toBe(true);
+  const cancels = facade.callsTo("Cancel").length;
+  const cancel = screen.getByRole("button", { name: /^Cancel$/ }) as HTMLButtonElement;
+  expect(cancel.disabled).toBe(false);
+  await user.click(cancel);
+  expect(facade.callsTo("Cancel").slice(cancels).map((call) => call.args)).toEqual([[""]]);
+  running.resolve({ state: "cancelled", reason: CANCELLED, offset: 0, total: 0 });
+  expect(await panel.findByText(CANCELLED)).toBeTruthy();
+  expect(panel.queryByText("Grouping findings across these cases.")).toBeNull();
+  expect(groups()).toBeNull();
+  expect(cancel.disabled).toBe(true);
+
+  // Escape reaches the same Cancel while a grouping asked for from the
+  // keyboard runs.
+  panel.getByRole("checkbox", { name: THIRD_CASE }).focus();
+  await tabTo(user, panel.getByRole("button", { name: "Group findings across these cases" }));
+  await user.keyboard("{Enter}");
+  expect(await panel.findByText("Grouping findings across these cases.")).toBeTruthy();
+  await user.keyboard("{Escape}");
+  expect(facade.callsTo("Cancel").slice(cancels).map((call) => call.args)).toEqual([[""], [""]]);
+  running.resolve({ state: "cancelled", reason: CANCELLED, offset: 0, total: 0 });
+  expect(await panel.findByText(CANCELLED)).toBeTruthy();
+  expect(groups()).toBeNull();
+});
+
+test("a retained report is reopened through the facade with the identity a review names, a missing report and a grouping's report are refused leaving no findings, and another case's report opens none of its evidence in this case's inspector", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({ InspectOccurrence: () => refused("not asked for") });
+  const panel = await openCase(facade, user);
+
+  // Reopening is a read the window says it is doing, and it holds the panel.
+  const opening = facade.park("OpenDiagnosisReport");
+  await user.selectOptions(panel.getByLabelText("Retained diagnosis report"), REPORT_ENTRY);
+  await user.click(panel.getByRole("button", { name: "Open this report" }));
+  expect(await panel.findByText("Opening this report.")).toBeTruthy();
+  expect((panel.getByRole("button", { name: "Open this report" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(facade.oneCall("OpenDiagnosisReport")).toEqual([WORKSPACE_ROOT, REPORT_ENTRY, 0]);
+  opening.resolve(diagnosisResult(FINDINGS, { total: 201 }));
+  expect(await panel.findByText(`rules message.duplicate-control-id, ack.msa-outcome · report identity ${REPORT_SHA256}`)).toBeTruthy();
+  expect(panel.getByText("Findings 1–2 of 201")).toBeTruthy();
+  expect(panel.queryByText(/was run over other evidence/)).toBeNull();
+
+  // The next window is of the report opened, from the keyboard.
+  const next = facade.park("OpenDiagnosisReport");
+  await tabTo(user, panel.getByRole("button", { name: "Next 200" }));
+  await user.keyboard("{Enter}");
+  expect(facade.callsTo("OpenDiagnosisReport")[1]?.args).toEqual([WORKSPACE_ROOT, REPORT_ENTRY, 200]);
+  next.resolve(diagnosisResult([diagnosisFinding("f000201")], { offset: 200, total: 201 }));
+  expect(await panel.findByText("Findings 201–201 of 201")).toBeTruthy();
+
+  // Its evidence opens in the inspector of the case it was run over.
+  const [evidence] = panel.getAllByRole("button", { name: GRID_OCCURRENCE });
+  await user.click(evidence!);
+  expect(facade.callsTo("InspectOccurrence").at(-1)?.args[0]).toMatchObject({ occurrence: GRID_OCCURRENCE });
+  const inspected = facade.callsTo("InspectOccurrence").length;
+
+  // A report directory whose report.json is gone, and a grouping's report
+  // the listing calls a diagnosis, are each refused in the reader's words,
+  // and no finding of the report before them stays on screen.
+  for (const [entry, sentence] of [
+    [MISSING_REPORT, NO_REPORT],
+    [GROUPS_REPORT, NOT_A_REPORT],
+  ] as const) {
+    await openReport(facade, user, panel, entry);
+    expect(await panel.findByText(sentence)).toBeTruthy();
+    expect(panel.queryByText(/report identity /)).toBeNull();
+    expect(panel.queryAllByRole("button", { name: GRID_OCCURRENCE })).toHaveLength(0);
+  }
+
+  // A report of another case is shown for what it is: its findings are
+  // listed, and none of its evidence opens in this case's inspector.
+  await openReport(facade, user, panel, OTHER_REPORT);
+  expect(
+    await panel.findByText(
+      `This report was run over other evidence (case identity ${OTHER_IDENTITY}), not the case open here. Its evidence names that case's occurrences, so none of it opens in this case's inspector.`,
+    ),
+  ).toBeTruthy();
+  for (const button of panel.getAllByRole("button", { name: GRID_OCCURRENCE })) {
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    await user.click(button);
+  }
+  expect(facade.callsTo("InspectOccurrence")).toHaveLength(inspected);
+
+  // Reviewing it is the engine's to refuse, and it does, naming the remedy.
+  facade.reply({ ReviewFindings: () => refused(OTHER_EVIDENCE) });
+  await user.click(panel.getByRole("button", { name: "Preview the review (writes nothing)" }));
+  expect(await panel.findByText(OTHER_EVIDENCE)).toBeTruthy();
+  expect(facade.oneCall("ReviewFindings")[0]).toMatchObject({ report: OTHER_REPORT, report_sha256: STALE_REPORT_SHA256 });
+});
+
+test("a review is previewed through the facade from the keyboard and writes nothing, a preview offers no draft, a change to the decisions withdraws it, and a report changed since it was shown is refused", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp();
+  const panel = await openCase(facade, user);
+  await openReport(facade, user, panel);
+  await panel.findByText(/report identity /);
+
+  await user.selectOptions(panel.getByLabelText("Decision", { selector: "#diagnosis-verdict-f000001" }), "confirmed");
+  await user.type(panel.getByLabelText("Rationale"), "the scheduler must keep rejecting");
+  const previewed = [
+    findingStatus("f000001", "confirmed", { rationale: "the scheduler must keep rejecting", promotion: findingPromotion() }),
+    findingStatus("f000002", "not_reviewed"),
+  ];
+  const previewing = facade.park("ReviewFindings");
+  await tabTo(user, panel.getByRole("button", { name: "Preview the review (writes nothing)" }));
+  await user.keyboard("{Enter}");
+  expect(await panel.findByText("Reviewing these findings.")).toBeTruthy();
+  expect(facade.oneCall("ReviewFindings")).toEqual([
+    {
+      workspace: WORKSPACE_ROOT,
+      case: CASE_ENTRY,
+      identity: CASE_IDENTITY,
+      report: REPORT_ENTRY,
+      report_sha256: REPORT_SHA256,
+      decisions: [{ finding: "f000001", verdict: "confirmed", rationale: "the scheduler must keep rejecting" }],
+      offset: 0,
+    },
+  ]);
+  previewing.resolve(findingReviewResult(previewed));
+  const review = within(await panel.findByRole("region", { name: "Finding review" }));
+  expect(review.getByText("The review, previewed (nothing written)")).toBeTruthy();
+  expect(review.getByText(/Confirmed · by an explicit decision/)).toBeTruthy();
+  expect(review.getByText(/Not reviewed · nobody has decided about it/)).toBeTruthy();
+  // Nothing was written, so nothing can name this review as a draft's source.
+  expect(review.queryByRole("button", { name: /^Draft a test from / })).toBeNull();
+  expect(review.getByText(/Record these decisions to draft a test from it/)).toBeTruthy();
+  expect(facade.callsTo("DecideFindings")).toHaveLength(0);
+  expect(facade.callsTo("SaveFindingDecisions")).toHaveLength(0);
+
+  // Changing a decision withdraws a preview of the decisions before it.
+  await user.type(panel.getByLabelText("Rationale"), " again");
+  expect(panel.queryByRole("region", { name: "Finding review" })).toBeNull();
+  expect(panel.getByText("The decisions above changed since this review was previewed. Preview again to see what they mean.")).toBeTruthy();
+
+  // The report changed on disk after it was shown: the preview is refused in
+  // the facade's words, and nothing of the earlier preview returns.
+  facade.reply({ ReviewFindings: () => refused(CHANGED) });
+  await user.click(panel.getByRole("button", { name: "Preview the review (writes nothing)" }));
+  expect(await panel.findByText(CHANGED)).toBeTruthy();
+  expect(panel.queryByRole("region", { name: "Finding review" })).toBeNull();
+
+  // Recording names the review, and only then can a confirmed finding be
+  // drafted from it.
+  facade.reply({
+    DecideFindings: () => findingReviewResult(previewed, {}, { output: "review-1", decisions_output: "decisions-2.json" }),
+  });
+  await user.type(panel.getByLabelText("New finding-review directory"), "review-1");
+  await user.type(panel.getByLabelText("New decisions document"), "decisions-2.json");
+  await user.click(panel.getByRole("button", { name: "Record these finding decisions" }));
+  const recorded = within(await panel.findByRole("region", { name: "Finding review" }));
+  expect(recorded.getByText("The review")).toBeTruthy();
+  expect(recorded.getByRole("button", { name: "Draft a test from f000001" })).toBeTruthy();
+});
+
+/** A retained decisions document as its reader decoded it. */
+function decisionsDocument(report: string, decisions: FindingDecision[], sha256 = DECISIONS_SHA256): FindingDecisionsResult {
+  return {
+    state: "completed",
+    sha256,
+    document: JSON.stringify({ schema: "readmit-finding-decisions/v1", report_sha256: report, decisions }, null, 2),
+    decisions: { schema: "readmit-finding-decisions/v1", report_sha256: report, decisions },
+  };
+}
+
+const RETAINED: FindingDecision[] = [
+  { finding: "f000001", verdict: "confirmed", rationale: "the scheduler must keep rejecting" },
+  { finding: "f000002", verdict: "suppressed", scope: "case", rationale: "the vendor's own wording" },
+];
+
+test("a standalone decisions document is opened into the findings and saved through the facade, one recorded against another report is applied to nothing, an open over unsaved decisions asks first and Escape keeps them, and a refused document or save leaves the decisions", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp();
+  const panel = await openCase(facade, user);
+  await openReport(facade, user, panel);
+  await panel.findByText(/report identity /);
+  const section = within(panel.getByRole("region", { name: "Finding decisions document" }));
+  const verdict = (finding: string) => (panel.getByLabelText("Decision", { selector: `#diagnosis-verdict-${finding}` }) as HTMLSelectElement).value;
+
+  const retained = (_workspace: string, entry: string) =>
+    entry === DECISIONS
+      ? decisionsDocument(REPORT_SHA256, RETAINED)
+      : entry === STALE_DECISIONS
+        ? decisionsDocument(STALE_REPORT_SHA256, [{ finding: "f000001", verdict: "dismissed", rationale: "about another report" }])
+        : entry === OUTSIDE_DECISIONS
+          ? decisionsDocument(REPORT_SHA256, [...RETAINED, { finding: "f000009", verdict: "dismissed", rationale: "not in this window" }])
+          : refused(UNDECIDED);
+
+  // Opening a document about this report puts its decisions on the findings,
+  // and names the entry and the identity of the bytes read.
+  const opening = facade.park("OpenFindingDecisions");
+  await user.selectOptions(section.getByLabelText("Retained decisions document"), DECISIONS);
+  await user.click(section.getByRole("button", { name: "Open these decisions" }));
+  expect(await section.findByText(`Opening ${DECISIONS}.`)).toBeTruthy();
+  expect((section.getByRole("button", { name: "Open these decisions" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((panel.getByRole("button", { name: "Preview the review (writes nothing)" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((panel.getByLabelText("Decision", { selector: "#diagnosis-verdict-f000001" }) as HTMLSelectElement).disabled).toBe(true);
+  // Escape while it reads reaches the window's Cancel; what the facade then
+  // answers is what is shown.
+  const cancels = facade.callsTo("Cancel").length;
+  await user.keyboard("{Escape}");
+  expect(facade.callsTo("Cancel").slice(cancels).map((call) => call.args)).toEqual([[""]]);
+  opening.resolve(retained(WORKSPACE_ROOT, DECISIONS));
+  facade.reply({ OpenFindingDecisions: retained });
+  expect(await section.findByText(`Opened ${DECISIONS} · exact bytes hash to ${DECISIONS_SHA256}`)).toBeTruthy();
+  expect(facade.callsTo("OpenFindingDecisions")[0]?.args).toEqual([WORKSPACE_ROOT, DECISIONS]);
+  expect([verdict("f000001"), verdict("f000002")]).toEqual(["confirmed", "suppressed"]);
+  expect((panel.getByLabelText("Suppression scope") as HTMLSelectElement).value).toBe("case");
+  expect(panel.getAllByLabelText("Rationale").map((field) => (field as HTMLInputElement).value)).toEqual([
+    "the scheduler must keep rejecting",
+    "the vendor's own wording",
+  ]);
+
+  // Opened and unchanged, another document opens without asking. One
+  // recorded against another report is shown for what it is and applied to
+  // nothing.
+  await user.selectOptions(section.getByLabelText("Retained decisions document"), STALE_DECISIONS);
+  await user.click(section.getByRole("button", { name: "Open these decisions" }));
+  expect(
+    await section.findByText(
+      `The decisions in ${STALE_DECISIONS} were recorded against a different diagnosis report (${STALE_REPORT_SHA256}); finding identifiers name other findings there, so none of them is applied to this report.`,
+    ),
+  ).toBeTruthy();
+  expect([verdict("f000001"), verdict("f000002")]).toEqual(["confirmed", "suppressed"]);
+
+  // A changed decision is unsaved: opening another document asks first, and
+  // Escape keeps the decisions, reads nothing and cancels nothing.
+  await user.selectOptions(panel.getByLabelText("Decision", { selector: "#diagnosis-verdict-f000002" }), "dismissed");
+  await user.selectOptions(section.getByLabelText("Retained decisions document"), REFUSED_DECISIONS);
+  await user.click(section.getByRole("button", { name: "Open these decisions" }));
+  const question = within(section.getByRole("group", { name: `Open ${REFUSED_DECISIONS} in place of these decisions?` }));
+  expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep these decisions" }));
+  const opens = facade.callsTo("OpenFindingDecisions").length;
+  const quiet = facade.callsTo("Cancel").length;
+  await user.keyboard("{Escape}");
+  expect(section.queryByRole("group", { name: /^Open / })).toBeNull();
+  expect(document.activeElement).toBe(section.getByRole("button", { name: "Open these decisions" }));
+  expect(facade.callsTo("OpenFindingDecisions")).toHaveLength(opens);
+  expect(facade.callsTo("Cancel")).toHaveLength(quiet);
+  expect(verdict("f000002")).toBe("dismissed");
+
+  // Keep these decisions, pressed, answers the same way.
+  await user.keyboard("{Enter}");
+  await user.click(section.getByRole("button", { name: "Keep these decisions" }));
+  expect(section.queryByRole("group", { name: /^Open / })).toBeNull();
+  expect(facade.callsTo("OpenFindingDecisions")).toHaveLength(opens);
+
+  // Answered the other way, the reader refuses the document in its own words
+  // and the decisions on screen stay.
+  await user.keyboard("{Enter}");
+  await user.click(section.getByRole("button", { name: `Replace them with ${REFUSED_DECISIONS}` }));
+  expect(await section.findByText(UNDECIDED)).toBeTruthy();
+  expect(facade.callsTo("OpenFindingDecisions")).toHaveLength(opens + 1);
+  expect([verdict("f000001"), verdict("f000002")]).toEqual(["confirmed", "dismissed"]);
+
+  // A save the facade refuses writes nothing and leaves them unsaved.
+  facade.reply({ SaveFindingDecisions: () => ({ state: "permission_denied", reason: "no active license admits authoring" }) });
+  await user.type(section.getByLabelText("New finding-decisions entry"), "decisions-3.json{Enter}");
+  expect(await section.findByText("no active license admits authoring")).toBeTruthy();
+  expect((section.getByLabelText("New finding-decisions entry") as HTMLInputElement).value).toBe("decisions-3.json");
+
+  // Saved while the question is open, the decisions are no longer unsaved:
+  // the question is withdrawn. The document is the decisions on screen bound
+  // to this report, the entry and its identity are named, and the listing is
+  // read again.
+  await user.click(section.getByRole("button", { name: "Open these decisions" }));
+  expect(section.getByRole("group", { name: `Open ${REFUSED_DECISIONS} in place of these decisions?` })).toBeTruthy();
+  const saving = facade.park("SaveFindingDecisions");
+  const listings = facade.callsTo("OpenWorkspace").length;
+  await user.click(section.getByRole("button", { name: "Save these decisions as a new entry" }));
+  expect(await section.findByText("Saving decisions-3.json.")).toBeTruthy();
+  expect((section.getByRole("button", { name: "Save these decisions as a new entry" }) as HTMLButtonElement).disabled).toBe(true);
+  const [request] = facade.callsTo("SaveFindingDecisions").at(-1)!.args as [{ workspace: string; document: string; output: string }];
+  expect(request.workspace).toBe(WORKSPACE_ROOT);
+  expect(request.output).toBe("decisions-3.json");
+  const composed = {
+    schema: "readmit-finding-decisions/v1",
+    report_sha256: REPORT_SHA256,
+    decisions: [
+      { finding: "f000001", verdict: "confirmed", rationale: "the scheduler must keep rejecting" },
+      { finding: "f000002", verdict: "dismissed", rationale: "the vendor's own wording" },
+    ],
+  };
+  expect(JSON.parse(request.document)).toEqual(composed);
+  saving.resolve({ state: "completed", output: "decisions-3.json", sha256: "saved-sha256-fixed-for-tests", document: request.document, decisions: composed });
+  facade.reply({ SaveFindingDecisions: () => refused("not asked for") });
+  expect(await section.findByText("Saved to decisions-3.json · exact bytes hash to saved-sha256-fixed-for-tests")).toBeTruthy();
+  expect(section.queryByRole("group", { name: /^Open / })).toBeNull();
+  await waitFor(() => expect(facade.callsTo("OpenWorkspace").length).toBeGreaterThan(listings));
+  expect((section.getByLabelText("New finding-decisions entry") as HTMLInputElement).value).toBe("");
+  await user.selectOptions(section.getByLabelText("Retained decisions document"), OUTSIDE_DECISIONS);
+  await user.click(section.getByRole("button", { name: "Open these decisions" }));
+  expect(section.queryByRole("group", { name: /^Open / })).toBeNull();
+
+  // A decision about a finding this window does not list is shown, part of
+  // the review, until it is forgotten.
+  const outside = within(await panel.findByRole("region", { name: "Decisions about findings not listed here" }));
+  expect(outside.getByText("f000009")).toBeTruthy();
+  facade.reply({ ReviewFindings: () => refused("a decision names a finding this diagnosis report does not hold") });
+  await user.click(panel.getByRole("button", { name: "Preview the review (writes nothing)" }));
+  expect(facade.callsTo("ReviewFindings").at(-1)?.args[0]).toMatchObject({
+    decisions: [...RETAINED, { finding: "f000009", verdict: "dismissed", rationale: "not in this window" }],
+  });
+  await user.click(outside.getByRole("button", { name: "Forget the decision about f000009" }));
+  expect(panel.queryByRole("region", { name: "Decisions about findings not listed here" })).toBeNull();
+  expect(section.getByText(/"finding": "f000002"/)).toBeTruthy();
+  expect(section.queryByText(/"finding": "f000009"/)).toBeNull();
 });

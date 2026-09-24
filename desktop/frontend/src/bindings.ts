@@ -7290,11 +7290,14 @@ export interface DiagnosisUnsupported {
 }
 
 /** One diagnosis report windowed for the panes. Every count is the engine's
- * own, and `report_sha256` is the identity a finding review must name. */
+ * own, and `report_sha256` is the identity a finding review must name.
+ * `case_identity` is the case the report was run over, as the report records
+ * it, so a retained report of another case is never read as the open one's. */
 export interface Diagnosis {
   case: string;
   config?: string;
   report_sha256: string;
+  case_identity: string;
   schema: string;
   profile: string;
   ruleset: string;
@@ -7670,11 +7673,14 @@ export interface DiagnoseConfig {
   namespaces: DiagnoseConfigNamespace[];
 }
 
+/** One authored diagnosis configuration. `sha256` is the digest of the exact
+ * bytes the entry holds, not the configuration identity a report records. */
 export interface DiagnoseConfigResult {
   state: State;
   reason?: string;
   document?: string;
   output?: string;
+  sha256?: string;
   config?: DiagnoseConfig;
 }
 
