@@ -1,5 +1,25 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The profile panel imports profile packages and opens existing local
+  profiles (#295). Its Import Package control was never driven and said only
+  that an import completed, and nothing in the window called `OpenProfile`, so
+  the panel could edit a profile but not open one. An import now runs the
+  import `readmit profile import` performs, into a new directory named in the
+  workspace, and shows what it verified: the profile, the pinned pack, the
+  version seal and its SHA-256, the package's SHA-256, the local origin with
+  its notice on request and the pack's provenance and rights review, and that
+  nothing was activated. A tampered package, an unsupported version and an
+  occupied destination are refused in the command's own words, and a running
+  import can be cancelled; a cancellation after the directory was created
+  says it holds an incomplete import. An Open Profile control reads a profile
+  from the workspace or one of its folders, such as an imported directory,
+  resolves it against the pack it pins, says whether that pack answered, and
+  shows the profile's seal; it never replaces edits that were not stored.
+  Interaction journeys drive both over the real facade, and the command line
+  imports the same packages into byte-identical documents and refuses the
+  same ones. No `readmit-*` document or `readmit` command changes; the
+  window's package results gain the seal and the pack's provenance.
+
 - Building the macOS packages no longer leaves the disk image it created
   attached, and a failed `pkgbuild` now says why (#353). `hdiutil create` can
   return, having succeeded or not, with the image it wrote still attached;

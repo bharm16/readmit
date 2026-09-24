@@ -958,7 +958,9 @@
       "inputs": ["readmit-profile-package/v1"],
       "outputs": ["readmit-profile-package/v1", "readmit-local-profile/v1", "readmit-profile-pack/v1", "readmit-profile-version/v1", "readmit-profile-origin/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/profile-packages.journey.tsx", "name": "a profile package is imported into a new directory, shows what it verified and activated nothing, and the command line accepts and refuses the same packages"},
+      "parity_test": {"package": "internal/desktop", "name": "TestTheWindowImportsAndRefusesTheProfilePackagesTheCommandLineDoes"},
+      "implemented": true
     },
     {
       "id": "cli.project.add",
@@ -4303,7 +4305,9 @@
       "inputs": ["readmit-local-profile/v1", "readmit-profile-pack/v1"],
       "outputs": ["readmit-profile-version/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/profile-packages.journey.tsx", "name": "an existing local profile opened in the profile panel resolves against its pinned pack and shows the seal it was imported with"},
+      "parity_test": {"package": "internal/desktop", "name": "TestAProfileOpenedInTheWindowCarriesTheSealTheCommandLineImported"},
+      "implemented": true
     },
     {
       "id": "desktop.ValidateProfile",
@@ -4397,7 +4401,9 @@
       "inputs": ["readmit-profile-package/v1"],
       "outputs": ["readmit-profile-package/v1", "readmit-local-profile/v1", "readmit-profile-pack/v1", "readmit-profile-version/v1", "readmit-profile-origin/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/profile-packages.journey.tsx", "name": "a profile package is imported into a new directory, shows what it verified and activated nothing, and the command line accepts and refuses the same packages"},
+      "parity_test": {"package": "internal/desktop", "name": "TestTheWindowImportsAndRefusesTheProfilePackagesTheCommandLineDoes"},
+      "implemented": true
     },
     {
       "id": "desktop.InspectProfilePackage",

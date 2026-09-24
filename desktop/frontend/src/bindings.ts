@@ -5409,6 +5409,8 @@ export interface ProfilePackageResult {
   pack?: ProfilePackIdentity;
   profile?: LocalProfileIdentity;
   version?: LocalProfileIdentity;
+  seal?: ProfileVersion;
+  provenance?: ProfilePackProvenance;
   sha256?: string;
   conflict?: string;
   dependency?: string;

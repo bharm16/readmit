@@ -2828,6 +2828,20 @@ The panel provides five functional tabs:
      and support levels across four orthogonal dimensions: lossless parsing,
      dictionary labels, structure validation, and workflow evaluation.
 2. **Constraint Editor**:
+   - Open an existing local profile (`OpenProfile`): one entry of the workspace,
+     or one entry of one of its folders such as `imported-interface/profile.json`
+     a package import wrote. The profile is read by the local-profile reader,
+     resolved against the pack named beside it (or, when none is named, the pack
+     beside the profile that satisfies its pin) and sealed as
+     `readmit profile export` verifies it. The panel states whether the pinned
+     pack answered, with its four support levels, or that no pack offered
+     satisfies the pin and nothing was read from one, and shows the seal's
+     SHA-256. The opened profile becomes what the editor edits; opening changes
+     no file and activates nothing. A named pack the pack reader refuses, and a
+     profile its reader refuses, are refused in the reader's words and replace
+     nothing. While the editor holds edits that were not stored as a revision,
+     opening is refused until they are saved or discarded, so an open never
+     replaces unstored work.
    - Create and edit constraints supported by the local-profile model using
      structured segment and field selectors (`SEG-pos`, e.g. `SCH-1`, `ZPD-2`).
    - Typed controls for usages (`R`, `RE`, `O`, `C`, `X`), conditional requirements
@@ -2857,6 +2871,21 @@ The panel provides five functional tabs:
      and verifies that no patient evidence is included.
    - Package inspection and import: inspects integrity, provenance, rights status,
      dependencies, and potential filename conflicts before unpacking into the workspace.
+   - Import runs `profilepackage.Import`, the import `readmit profile import`
+     performs, into a new directory named by one entry of the open workspace, so
+     both accept and refuse the same packages in the same words: a tampered
+     package, an unsupported contract version, and a directory, file or link
+     already at the name are refused and nothing is written. A completed import
+     shows what it verified — the profile, the pinned pack, the version seal and
+     its SHA-256, the SHA-256 of the package read, the local origin with its
+     license notice on request, and the pack's provenance and rights review —
+     and says nothing was activated: no project, saved-test pin or open editor
+     changes and no message is evaluated. The same five documents are written
+     byte for byte as the command writes them. A running import can be
+     cancelled with **Cancel import** or `Escape`: before its directory exists
+     nothing is written; once it exists the panel says it holds an incomplete
+     import with no `package.json`, which no import resumes into. The
+     destination is a typed name, not a folder dialog.
 5. **Raw Schema JSON**:
    - Direct inspection of the canonical JSON representation according to ADR-0003
      and the JSON schema.

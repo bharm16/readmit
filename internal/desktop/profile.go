@@ -157,19 +157,28 @@ type ProfilePackageImportRequest struct {
 }
 
 // ProfilePackageResult reports package operations, metadata, dependencies and rights.
+// Seal and Provenance are the version seal the package carries and the pinned
+// pack's upstream provenance, reported by inspection and import.
 type ProfilePackageResult struct {
-	State      State                  `json:"state"`
-	Reason     string                 `json:"reason,omitzero"`
-	Output     string                 `json:"output,omitzero"`
-	Origin     *profilepackage.Origin `json:"origin,omitzero"`
-	Pack       *profilepack.Identity  `json:"pack,omitzero"`
-	Profile    *localprofile.Identity `json:"profile,omitzero"`
-	Version    *localprofile.Identity `json:"version,omitzero"`
-	SHA256     string                 `json:"sha256,omitzero"`
-	Conflict   string                 `json:"conflict,omitzero"`
-	Dependency string                 `json:"dependency,omitzero"`
-	Rights     string                 `json:"rights,omitzero"`
+	State      State                   `json:"state"`
+	Reason     string                  `json:"reason,omitzero"`
+	Output     string                  `json:"output,omitzero"`
+	Origin     *profilepackage.Origin  `json:"origin,omitzero"`
+	Pack       *profilepack.Identity   `json:"pack,omitzero"`
+	Profile    *localprofile.Identity  `json:"profile,omitzero"`
+	Version    *localprofile.Identity  `json:"version,omitzero"`
+	Seal       *profileversion.Version `json:"seal,omitzero"`
+	Provenance *profilepack.Provenance `json:"provenance,omitzero"`
+	SHA256     string                  `json:"sha256,omitzero"`
+	Conflict   string                  `json:"conflict,omitzero"`
+	Dependency string                  `json:"dependency,omitzero"`
+	Rights     string                  `json:"rights,omitzero"`
 }
+
+// profileImportOperation names a package import while it holds the slot, so
+// the profile panel's cancel control stops exactly the import it started. It
+// is local work that reaches no destination.
+const profileImportOperation = "profile-import"
 
 func (r *ProfilePackageResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
@@ -249,14 +258,18 @@ func (a *App) OpenProfileLibrary(workspace, directory string) ProfileLibraryResu
 }
 
 // OpenProfile reads an existing local profile from the workspace, resolves against its pack,
-// and computes its canonical seal.
+// and computes its canonical seal. The profile and the pack are each one entry
+// of the workspace or one entry of one of its folders, such as the directory a
+// package was imported into. A named pack must be one the pack reader accepts;
+// with none named, the pinned pack is looked for beside the profile. A pack
+// that is not the pinned one contributes nothing, and the resolution says so.
 func (a *App) OpenProfile(workspace, entry, packEntry string) LocalProfileResult {
 	return run(a, false, false, func(context.Context) LocalProfileResult {
 		root, declined := resolveFolder(workspace)
 		if root == "" {
 			return LocalProfileResult{State: declined.state, Reason: declined.reason}
 		}
-		data, declined := workspaceDocument(root, entry, localprofile.MaxProfileBytes, "the local profile")
+		folder, data, declined := folderDocument(root, entry, localprofile.MaxProfileBytes, "the local profile")
 		if data == nil {
 			return LocalProfileResult{State: declined.state, Reason: declined.reason}
 		}
@@ -264,7 +277,18 @@ func (a *App) OpenProfile(workspace, entry, packEntry string) LocalProfileResult
 		if err != nil {
 			return LocalProfileResult{State: Failed, Reason: err.Error()}
 		}
-		pack := a.findOrReadPack(root, packEntry, profile.Base.Pack)
+		var pack profilepack.Pack
+		if packEntry == "" {
+			pack = a.findOrReadPack(folder, "", profile.Base.Pack)
+		} else {
+			_, packData, declined := folderDocument(root, packEntry, profilepack.MaxPackBytes, "the profile pack")
+			if packData == nil {
+				return LocalProfileResult{State: declined.state, Reason: declined.reason}
+			}
+			if pack, err = profilepack.Decode(packData); err != nil {
+				return LocalProfileResult{State: Failed, Reason: err.Error()}
+			}
+		}
 		resolution := localprofile.Resolve(profile, pack)
 		seal, err := profileversion.Seal(profile)
 		if err != nil {
@@ -515,29 +539,53 @@ func (a *App) ExportProfilePackage(request ProfilePackageExportRequest) ProfileP
 	})
 }
 
-// ImportProfilePackage unpacks a verified package into a new private directory.
+// ImportProfilePackage unpacks a verified package into a new private directory
+// through profilepackage.Import, the import `readmit profile import` performs,
+// so both refuse the same packages in the same words. A completed import
+// reports what the package carried. Nothing is activated: no project, saved
+// test pin or open editor changes, and no message is evaluated. The import can
+// be cancelled from the profile panel; a cancellation after the directory was
+// created says the directory holds an incomplete import.
 func (a *App) ImportProfilePackage(request ProfilePackageImportRequest) ProfilePackageResult {
-	return run(a, true, false, func(ctx context.Context) ProfilePackageResult {
-		root, declined := resolveFolder(request.Workspace)
-		if root == "" {
-			return ProfilePackageResult{State: declined.state, Reason: declined.reason}
-		}
-		data, declined := workspaceDocument(root, request.Package, profilepackage.MaxBytes, "the profile package")
-		if data == nil {
-			return ProfilePackageResult{State: declined.state, Reason: declined.reason}
-		}
-		if err := artifactpath.EntryName(request.Output); err != nil {
-			return ProfilePackageResult{State: Failed, Reason: "output directory must be one regular entry of the open workspace"}
-		}
-		destination := filepath.Join(root, request.Output)
-		if err := profilepackage.Import(ctx, destination, data); err != nil {
-			if errors.Is(err, fs.ErrPermission) {
-				return ProfilePackageResult{State: PermissionDenied, Reason: "this account cannot write into the open workspace"}
-			}
-			return ProfilePackageResult{State: Failed, Reason: err.Error()}
-		}
-		return ProfilePackageResult{State: Completed, Output: request.Output}
+	return runNamed[ProfilePackageResult, *ProfilePackageResult](a, profileImportOperation, true, false, func(ctx context.Context) ProfilePackageResult {
+		return importProfilePackage(ctx, request)
 	})
+}
+
+func importProfilePackage(ctx context.Context, request ProfilePackageImportRequest) ProfilePackageResult {
+	root, declined := resolveFolder(request.Workspace)
+	if root == "" {
+		return ProfilePackageResult{State: declined.state, Reason: declined.reason}
+	}
+	data, declined := workspaceDocument(root, request.Package, profilepackage.MaxBytes, "the profile package")
+	if data == nil {
+		return ProfilePackageResult{State: declined.state, Reason: declined.reason}
+	}
+	if err := artifactpath.EntryName(request.Output); err != nil {
+		return ProfilePackageResult{State: Failed, Reason: "output directory must be one regular entry of the open workspace"}
+	}
+	destination := filepath.Join(root, request.Output)
+	_, occupied := os.Lstat(destination)
+	if err := profilepackage.Import(ctx, destination, data); err != nil {
+		if errors.Is(err, context.Canceled) {
+			// A cancellation can land before Import finds the name taken, so
+			// only a directory that was not there before is its own.
+			if _, statErr := os.Lstat(destination); statErr == nil && occupied != nil {
+				return ProfilePackageResult{State: Cancelled, Reason: "the import was cancelled after " + request.Output + " was created; it holds an incomplete import with no package.json, so review and remove it and import again into a new directory"}
+			}
+			return ProfilePackageResult{State: Cancelled, Reason: "the import was cancelled before anything was written"}
+		}
+		if errors.Is(err, fs.ErrPermission) {
+			return ProfilePackageResult{State: PermissionDenied, Reason: "this account cannot write into the open workspace"}
+		}
+		return ProfilePackageResult{State: Failed, Reason: err.Error()}
+	}
+	result, err := describePackage(data)
+	if err != nil {
+		return ProfilePackageResult{State: Failed, Reason: err.Error()}
+	}
+	result.Output = request.Output
+	return result
 }
 
 // InspectProfilePackage inspects a profile package without unpacking it to disk.
@@ -551,54 +599,89 @@ func (a *App) InspectProfilePackage(workspace, entry string) ProfilePackageResul
 		if data == nil {
 			return ProfilePackageResult{State: declined.state, Reason: declined.reason}
 		}
-		decodedPkg, err := profilepackage.Decode(data)
+		result, err := describePackage(data)
 		if err != nil {
 			return ProfilePackageResult{State: Failed, Reason: err.Error()}
 		}
-		docs, err := decodedPkg.Documents()
-		if err != nil {
-			return ProfilePackageResult{State: Failed, Reason: err.Error()}
-		}
-		origin, err := profilepackage.DecodeOrigin(docs["origin.json"])
-		if err != nil {
-			return ProfilePackageResult{State: Failed, Reason: err.Error()}
-		}
-		prof, err := localprofile.Decode(docs["profile.json"])
-		if err != nil {
-			return ProfilePackageResult{State: Failed, Reason: err.Error()}
-		}
-		pack, err := profilepack.Decode(docs["pack.json"])
-		if err != nil {
-			return ProfilePackageResult{State: Failed, Reason: err.Error()}
-		}
-		ver, err := profileversion.DecodeVersion(docs["version.json"])
-		if err != nil {
-			return ProfilePackageResult{State: Failed, Reason: err.Error()}
-		}
-		sha := sha256.Sum256(data)
-		packId := pack.Identity
-		verId := ver.Profile
-		conflict := ""
-		suggestedDir := filepath.Join(root, "imported-"+prof.Identity.ID)
+		result.Output = entry
+		suggestedDir := filepath.Join(root, "imported-"+result.Profile.ID)
 		if _, err := os.Lstat(suggestedDir); err == nil {
-			conflict = "default import directory 'imported-" + prof.Identity.ID + "' already exists"
+			result.Conflict = "default import directory 'imported-" + result.Profile.ID + "' already exists"
 		}
-		return ProfilePackageResult{
-			State:      Completed,
-			Output:     entry,
-			Origin:     &origin,
-			Profile:    &prof.Identity,
-			Pack:       &packId,
-			Version:    &verId,
-			SHA256:     hex.EncodeToString(sha[:]),
-			Rights:     origin.ReviewReference,
-			Dependency: packId.ID + " " + packId.Version,
-			Conflict:   conflict,
-		}
+		return result
 	})
 }
 
 // Helper methods
+
+// describePackage reports what one package carries once profilepackage.Decode
+// verified it: the profile, the pack it pins with that pack's provenance, the
+// version seal, the local origin, and the SHA-256 of the package bytes read.
+// Inspection and import share it, so what the window shows before an import is
+// what it shows after one.
+func describePackage(data []byte) (ProfilePackageResult, error) {
+	decodedPkg, err := profilepackage.Decode(data)
+	if err != nil {
+		return ProfilePackageResult{}, err
+	}
+	docs, err := decodedPkg.Documents()
+	if err != nil {
+		return ProfilePackageResult{}, err
+	}
+	origin, err := profilepackage.DecodeOrigin(docs["origin.json"])
+	if err != nil {
+		return ProfilePackageResult{}, err
+	}
+	prof, err := localprofile.Decode(docs["profile.json"])
+	if err != nil {
+		return ProfilePackageResult{}, err
+	}
+	pack, err := profilepack.Decode(docs["pack.json"])
+	if err != nil {
+		return ProfilePackageResult{}, err
+	}
+	ver, err := profileversion.DecodeVersion(docs["version.json"])
+	if err != nil {
+		return ProfilePackageResult{}, err
+	}
+	sha := sha256.Sum256(data)
+	packId := pack.Identity
+	verId := ver.Profile
+	provenance := pack.Provenance
+	return ProfilePackageResult{
+		State:      Completed,
+		Origin:     &origin,
+		Profile:    &prof.Identity,
+		Pack:       &packId,
+		Version:    &verId,
+		Seal:       &ver,
+		Provenance: &provenance,
+		SHA256:     hex.EncodeToString(sha[:]),
+		Rights:     origin.ReviewReference,
+		Dependency: packId.ID + " " + packId.Version,
+	}, nil
+}
+
+// folderDocument reads one document named by an entry of the open workspace,
+// or by one entry of one of its folders as `folder/entry`, the shape of a
+// document an import wrote into its new directory, and returns the folder it
+// was read from. The folder must be a real folder, never a symbolic link, so a
+// name cannot leave the workspace, and the entry is read as workspaceDocument
+// reads one.
+func folderDocument(root, name string, limit int, what string) (string, []byte, refusal) {
+	folder, entry, nested := strings.Cut(name, "/")
+	if !nested {
+		folder, entry = root, name
+	} else {
+		path, err := artifactpath.Child(root, folder)
+		if err != nil {
+			return "", nil, refusal{Failed, what + " must be one entry of the open workspace or of one of its folders"}
+		}
+		folder = path
+	}
+	data, declined := workspaceDocument(folder, entry, limit, what)
+	return folder, data, declined
+}
 
 func (a *App) findOrReadPack(root, packEntry string, pinned profilepack.Identity) profilepack.Pack {
 	if root != "" && packEntry != "" {

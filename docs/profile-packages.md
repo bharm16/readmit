@@ -117,6 +117,13 @@ directory; the command never resumes into or overwrites partial output. Review
 and remove an abandoned directory separately. The Go `Import` API observes its
 context between files; no network work is started or resumed.
 
+The desktop application's profile panel imports through the same `Import`
+into a new directory of the open workspace, refuses what this command refuses
+in the same words, shows the verified profile, pin, seal, origin and pack
+provenance, and can open the imported profile against its pinned pack
+([desktop](desktop.md#interface-profile-management)). It activates nothing
+either.
+
 Owner review still covers actual content rights, applicable HL7 incorporation
 terms and any external mapping's accuracy. The graphical profile editor and
 full external conformance acceptance are not delivered by these commands.
