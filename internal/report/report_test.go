@@ -119,6 +119,10 @@ func TestPreparePreservesEvidenceAndOnlyRebindsRunnablePaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	reopened, err := report.ReadPreparation(workspace)
+	if err != nil || !reflect.DeepEqual(reopened, prepared) {
+		t.Fatalf("the prepared folder does not reopen through its own reader: %v, %+v", err, reopened)
+	}
 	if prepared.PacketIdentity != packet.Identity || prepared.HistoricalSpecIdentity != packet.Manifest.SpecIdentity || prepared.InputIdentity != packet.Manifest.InputIdentity {
 		t.Fatal("preparation lost historical identity bindings")
 	}
@@ -152,6 +156,52 @@ func TestPreparePreservesEvidenceAndOnlyRebindsRunnablePaths(t *testing.T) {
 	}
 	if _, err := report.Prepare(dir, workspace, "127.0.0.1:2575"); err == nil {
 		t.Fatal("preparation overwrote a workspace")
+	}
+}
+
+func TestReadPreparationRefusesAnInvalidMarkerWithoutReadingRunnableEvidence(t *testing.T) {
+	packet := filepath.Join(t.TempDir(), "packet")
+	if _, err := report.Create(context.Background(), report.Scenario, packet); err != nil {
+		t.Fatal(err)
+	}
+	prepared := filepath.Join(t.TempDir(), "prepared")
+	if _, err := report.Prepare(packet, prepared, "127.0.0.1:2575"); err != nil {
+		t.Fatal(err)
+	}
+	original := read(t, filepath.Join(prepared, "preparation.json"))
+	for _, trial := range []struct {
+		name string
+		raw  []byte
+		seal bool
+	}{
+		{"unknown top-level member", bytes.Replace(original, []byte(`{"schema":`), []byte(`{"unexpected":true,"schema":`), 1), true},
+		{"unknown nested spec member", bytes.Replace(original, []byte(`"path":"baseline/spec.json"`), []byte(`"path":"baseline/spec.json","unexpected":true`), 1), true},
+		{"future schema", bytes.Replace(original, []byte(`readmit-report-preparation/v1`), []byte(`readmit-report-preparation/v2`), 1), true},
+		{"missing identity", bytes.Replace(original, []byte(`"packet_identity":"`), []byte(`"other_identity":"`), 1), true},
+		{"wrong runnable path", bytes.Replace(original, []byte(`baseline/spec.json`), []byte(`../baseline/spec.json`), 1), true},
+		{"changed document without resealing", append([]byte{}, original...), false},
+	} {
+		t.Run(trial.name, func(t *testing.T) {
+			folder := t.TempDir()
+			data := trial.raw
+			if trial.name == "changed document without resealing" {
+				data = bytes.Replace(data, []byte(`baseline/spec.json`), []byte(`other/spec.json`), 1)
+			}
+			write(t, filepath.Join(folder, "preparation.json"), data)
+			seal := sha(original)
+			if trial.seal {
+				seal = sha(data)
+			}
+			write(t, filepath.Join(folder, "preparation.sha256"), []byte(seal+"\n"))
+			if _, err := report.ReadPreparation(folder); err == nil {
+				t.Fatal("an invalid preparation marker was accepted")
+			}
+		})
+	}
+	withoutSeal := t.TempDir()
+	write(t, filepath.Join(withoutSeal, "preparation.json"), original)
+	if _, err := report.ReadPreparation(withoutSeal); err == nil {
+		t.Fatal("a preparation without its checksum was accepted")
 	}
 }
 

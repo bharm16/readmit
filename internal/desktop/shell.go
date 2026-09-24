@@ -158,6 +158,7 @@ var indicators = []Indicator{
 	{Status: string(PacketArtifact), Symbol: "◍", Label: "Investigation packet"},
 	{Status: string(PortableReviewArtifact), Symbol: "◕", Label: "Portable review"},
 	{Status: string(SyntheticPacketArtifact), Symbol: "◌", Label: "Synthetic demonstration packet"},
+	{Status: string(PreparedRerunArtifact), Symbol: "◔", Label: "Prepared rerun workspace"},
 	{Status: string(UnsupportedArtifact), Symbol: "?", Label: "Unsupported here"},
 
 	{Status: string(project.StatusOpen), Symbol: "◇", Label: "Open"},

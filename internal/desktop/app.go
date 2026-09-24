@@ -113,6 +113,7 @@ const (
 	// committed scenario on built-in fixtures, never a person's own evidence,
 	// and verified only by the synthetic packet section's own verifier.
 	SyntheticPacketArtifact Kind = "synthetic-packet"
+	PreparedRerunArtifact   Kind = "prepared-rerun"
 	// The privacy and protection screens' artifacts: a completed derived export
 	// packet, a verified local support bundle, an encrypted transfer package,
 	// a protection document registering key references readmit never holds, and
@@ -859,11 +860,13 @@ func describe(root string, entry fs.DirEntry) Artifact {
 	// Beyond the cases and the two project documents, the listing names what a
 	// retained artifact declares: a directory holding a fixed-name record, or
 	// a regular file declaring a contract this window offers a picker for.
-	// Classifying verifies nothing — opening the entry is still the
-	// verification step — so an entry named here is a claim the listing makes,
-	// never an admission.
+	// Classifying does not verify referenced evidence. The preparation marker
+	// is read by its own reader, but no runnable file is admitted by listing.
 	if entry.Type().IsRegular() || entry.IsDir() {
 		if kind, known := classify(root, name, entry.IsDir()); known {
+			if kind == PreparedRerunArtifact {
+				return Artifact{Name: name, Kind: kind, Reason: "Use RERUN.md to run the prepared trials; there is no window action for this folder."}
+			}
 			return Artifact{Name: name, Kind: kind}
 		}
 	}

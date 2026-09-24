@@ -2,12 +2,29 @@ package report
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/strictdoc"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
+
+const PreparationSchema = "readmit-report-preparation/v1"
+
+var preparationDocument = strictdoc.Document{
+	MaxBytes:    1 << 20,
+	Schema:      PreparationSchema,
+	Required:    []string{"packet_identity", "historical_spec_identity", "input_identity", "target_sha256", "changed_bindings", "specs"},
+	Invalid:     "invalid report preparation document",
+	TooLarge:    "report preparation document is larger than this release reads",
+	MustDeclare: "report preparation must declare its contract version",
+	Unsupported: errors.New("unsupported report preparation version"),
+	Requires:    "report preparation is missing a required member",
+}
 
 type RunnableSpec struct {
 	Path   string `json:"path"`
@@ -22,6 +39,78 @@ type Preparation struct {
 	TargetSHA256           string         `json:"target_sha256"`
 	ChangedBindings        []string       `json:"changed_bindings"`
 	Specs                  []RunnableSpec `json:"specs"`
+}
+
+// ReadPreparation reads the prepared folder's own bounded, strict marker.
+// It checks the marker's checksum and declarations, not the runnable evidence
+// the marker references; listing a folder is not a verification of its runs.
+func ReadPreparation(directory string) (*Preparation, error) {
+	invalid := errors.New("invalid or changed report preparation")
+	directory, err := artifactpath.Directory(directory)
+	if err != nil {
+		return nil, invalid
+	}
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		return nil, invalid
+	}
+	defer root.Close()
+	raw, err := readPreparationFile(root, directory, "preparation.json", 1<<20)
+	if err != nil {
+		return nil, invalid
+	}
+	seal, err := readPreparationFile(root, directory, "preparation.sha256", 65)
+	if err != nil || string(seal) != digest(raw)+"\n" {
+		return nil, invalid
+	}
+	var document Preparation
+	if err := preparationDocument.Decode(raw, &document); err != nil {
+		return nil, err
+	}
+	if !preparationDigest(document.PacketIdentity) || !preparationDigest(document.HistoricalSpecIdentity) ||
+		!preparationDigest(document.InputIdentity) || !preparationDigest(document.TargetSHA256) ||
+		!slices.Equal(document.ChangedBindings, []string{"input.case", "target", "observation.path"}) || len(document.Specs) != 3 {
+		return nil, invalid
+	}
+	for index, name := range []string{"baseline/spec.json", "post-fix/spec.json", "reintroduced/spec.json"} {
+		if document.Specs[index].Path != name || !preparationDigest(document.Specs[index].SHA256) {
+			return nil, invalid
+		}
+	}
+	return &document, nil
+}
+
+func readPreparationFile(root *os.Root, directory, name string, limit int) ([]byte, error) {
+	info, err := os.Lstat(filepath.Join(directory, name))
+	if err != nil || !info.Mode().IsRegular() || info.Size() > int64(limit) {
+		return nil, errors.New("not a bounded regular preparation file")
+	}
+	file, err := root.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	opened, err := file.Stat()
+	if err != nil || !os.SameFile(info, opened) {
+		return nil, errors.New("preparation file changed while opening")
+	}
+	raw, err := io.ReadAll(io.LimitReader(file, int64(limit)+1))
+	if err != nil || len(raw) > limit {
+		return nil, errors.New("preparation file exceeds its read limit")
+	}
+	return raw, nil
+}
+
+func preparationDigest(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	for _, character := range value {
+		if character < '0' || character > '9' && character < 'a' || character > 'f' {
+			return false
+		}
+	}
+	return true
 }
 
 // Prepare makes an independently identified, writable rerun workspace from a
@@ -57,7 +146,7 @@ func Prepare(packetPath, output, address string) (*Preparation, error) {
 	if err := writeFile(dir, "target.json", targetBytes); err != nil {
 		return nil, err
 	}
-	preparation := &Preparation{Schema: "readmit-report-preparation/v1", PacketIdentity: packet.Identity, HistoricalSpecIdentity: packet.Manifest.SpecIdentity, InputIdentity: packet.Manifest.InputIdentity, TargetSHA256: digest(targetBytes), ChangedBindings: []string{"input.case", "target", "observation.path"}, Specs: []RunnableSpec{}}
+	preparation := &Preparation{Schema: PreparationSchema, PacketIdentity: packet.Identity, HistoricalSpecIdentity: packet.Manifest.SpecIdentity, InputIdentity: packet.Manifest.InputIdentity, TargetSHA256: digest(targetBytes), ChangedBindings: []string{"input.case", "target", "observation.path"}, Specs: []RunnableSpec{}}
 	for _, trial := range []string{"baseline", "post-fix", "reintroduced"} {
 		if os.Mkdir(filepath.Join(dir, trial), 0700) != nil {
 			return nil, errors.New("cannot create runnable trial directory")

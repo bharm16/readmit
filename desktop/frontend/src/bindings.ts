@@ -41,6 +41,7 @@ export type Kind =
   | "packet"
   | "portable-review"
   | "synthetic-packet"
+  | "prepared-rerun"
   | "derived-export"
   | "support"
   | "transfer-package"

@@ -557,6 +557,14 @@ nothing this release reads — a file with no recognizable contract, a symbolic
 link, a folder with no readable manifest or record — is listed as `unsupported`
 with the reason, never hidden and never counted as evidence.
 
+A folder prepared by `readmit report prepare` (or the window's Prepare action)
+is listed as a **prepared rerun workspace** only when its `preparation.json`
+passes the preparation reader and its `preparation.sha256` matches. The listing
+does not verify the runnable specifications or execute them. The window has no
+action for the prepared folder; use its `RERUN.md` instructions to run the
+trials with the matching command-line binary. An incomplete or changed marker
+remains `unsupported` rather than being treated as a runnable preparation.
+
 The operations hold an entry to the listing's rule whichever control named it,
 because a caller can name any entry directly. Every document and folder an
 operation reads by name is an entry of the open workspace unless it is one of
@@ -685,11 +693,13 @@ pickers offer applicable entries instead of every entry labelled unsupported:
 | `packet` | A sealed `readmit-retained-packet/v1` investigation packet |
 | `portable-review` | A sealed `readmit-portable-review/v1` directory of offline renderings |
 | `synthetic-packet` | A sealed `readmit-report/v1` synthetic demonstration packet, never the person's own evidence |
+| `prepared-rerun` | A `readmit-report-preparation/v1` marker and matching checksum; use `RERUN.md` because the window has no action for its runnable trials |
 | `unsupported` | Nothing this release reads, with the reason |
 
 Locating a document by a fixed name or a declared contract is how the listing
-makes its claim; opening the entry is still the verification step, and a claim
-the listing makes is never an admission. The pickers read this classification:
+makes its claim; opening an entry where the window offers an action is still
+the verification step, and a claim the listing makes is never an admission.
+The pickers read this classification:
 the grid offers `index` entries, the sequence offers `rules` and `analysis`
 entries, and the review-and-transform panel offers `rules`, `plan`, `pack` and
 `review` entries. A name is inspectable text beside what the entry declares,
