@@ -83,10 +83,11 @@ func ExportReview(ctx context.Context, source, output string) (*Review, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	dir, err := reserve(output)
+	parent, dir, err := reserve(output)
 	if err != nil {
 		return nil, err
 	}
+	defer parent.Close()
 	if err := copyFiles(nested, "", dir); err != nil {
 		return nil, err
 	}
@@ -126,6 +127,9 @@ func ExportReview(ctx context.Context, source, output string) (*Review, error) {
 		return nil, err
 	}
 	if err := writeFile(dir, "identity.sha256", nested["identity.sha256"]); err != nil {
+		return nil, err
+	}
+	if err := syncEntries(parent, dir, nested); err != nil {
 		return nil, err
 	}
 	return OpenReview(ctx, dir)

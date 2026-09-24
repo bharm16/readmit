@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/diagnose"
@@ -229,9 +230,12 @@ func publish(output string, files map[string][]byte) error {
 	if len(files) > maxPacketFiles {
 		return errors.New("export exceeds file limit")
 	}
-	if err := os.Mkdir(output, 0700); err != nil {
+	parent, root, err := artifactdir.Reserve(output)
+	if err != nil {
 		return errors.New("cannot create export destination")
 	}
+	defer parent.Close()
+	defer root.Close()
 	for _, name := range fileNames(files) {
 		if name == "identity.sha256" {
 			continue
@@ -243,7 +247,16 @@ func publish(output string, files map[string][]byte) error {
 			return err
 		}
 	}
-	return writeFile(output, "identity.sha256", files["identity.sha256"])
+	if err := writeFile(output, "identity.sha256", files["identity.sha256"]); err != nil {
+		return err
+	}
+	// Every directory of the packet, the packet and its entry in the folder
+	// holding it are synced before the export is reported. Every file is by
+	// then, so a failure leaves a packet that may open and says so.
+	if artifactdir.SyncEntries(root, parent, artifactdir.Directories(files)) != nil {
+		return errors.New("cannot sync export packet; the packet was written in full but a power loss could still lose it")
+	}
+	return nil
 }
 
 const rerunInstructions = `# Derived fixture reproducer

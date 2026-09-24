@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
@@ -49,15 +50,20 @@ func readLocal(path string, max int) ([]byte, error) {
 	return data, nil
 }
 
-func reserve(output string, source os.FileInfo) (string, error) {
+// reserve creates the new result directory and returns the folder holding it,
+// opened first: finish syncs that folder last, so one this result cannot open
+// is refused before anything is created or sent. The caller closes it.
+func reserve(output string, source os.FileInfo) (*os.Root, string, error) {
 	output, err := artifactpath.Destination(output, source)
 	if err != nil {
-		return "", err
+		return nil, "", err
 	}
-	if err := os.Mkdir(output, 0700); err != nil {
-		return "", errors.New("cannot create test output; destination must be new")
+	parent, root, err := artifactdir.Reserve(output)
+	if err != nil {
+		return nil, "", errors.New("cannot create test output; destination must be new and parent readable and writable")
 	}
-	return output, nil
+	root.Close()
+	return parent, output, nil
 }
 
 func retain(dir, path string, raw []byte, durability artifactdir.Durability) (*bundle.Payload, error) {
@@ -76,7 +82,7 @@ func retain(dir, path string, raw []byte, durability artifactdir.Durability) (*b
 	return &bundle.Payload{Path: path, Size: len(raw), SHA256: digest(raw)}, nil
 }
 
-func finish(dir string, result Result, durability artifactdir.Durability) (*Artifact, error) {
+func finish(parent *os.Root, dir string, result Result, durability artifactdir.Durability) (*Artifact, error) {
 	data, err := encode(result)
 	if err != nil || len(data) > maxResultBytes {
 		return nil, errors.New("test result exceeds size limit")
@@ -92,7 +98,26 @@ func finish(dir string, result Result, durability artifactdir.Durability) (*Arti
 	if _, err := retain(dir, "identity.sha256", []byte(identity+"\n"), durability); err != nil {
 		return nil, err
 	}
+	// The result is found through its own directory and its entry in the
+	// folder holding it; run/ syncs its own entries. Every file is synced by
+	// now, so a failure here leaves a result that may open and says so.
+	if err := syncEntries(parent, dir, durability); err != nil {
+		return nil, err
+	}
 	return Open(dir)
+}
+
+func syncEntries(parent *os.Root, dir string, durability artifactdir.Durability) error {
+	failed := errors.New("cannot sync test result directory; the result was written in full but a power loss could still lose it")
+	root, err := parent.OpenRoot(filepath.Base(dir))
+	if err != nil {
+		return failed
+	}
+	defer root.Close()
+	if durability.SyncEntries(root, parent, nil) != nil {
+		return failed
+	}
+	return nil
 }
 
 func readDirectory(dir string) (map[string][]byte, error) {

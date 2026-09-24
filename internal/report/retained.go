@@ -99,10 +99,11 @@ func Assemble(ctx context.Context, in RetainedInput, output string) (*RetainedPa
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	dir, err := reserve(output)
+	parent, dir, err := reserve(output)
 	if err != nil {
 		return nil, err
 	}
+	defer parent.Close()
 	if err := copyFiles(files, "", dir); err != nil {
 		return nil, err
 	}
@@ -129,6 +130,9 @@ func Assemble(ctx context.Context, in RetainedInput, output string) (*RetainedPa
 		return nil, err
 	}
 	if err := writeFile(dir, "identity.sha256", []byte(digest(raw)+"\n")); err != nil {
+		return nil, err
+	}
+	if err := syncEntries(parent, dir, files); err != nil {
 		return nil, err
 	}
 	return OpenRetained(ctx, dir)

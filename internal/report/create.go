@@ -34,7 +34,7 @@ func Create(ctx context.Context, scenario, output string) (*Packet, error) {
 	if _, err := testrunner.DecodeSpec(scenarioSpec); err != nil {
 		return nil, errors.New("invalid embedded report scenario")
 	}
-	parent, dir, err := reserveSynced(output)
+	parent, dir, err := reserve(output)
 	if err != nil {
 		return nil, err
 	}

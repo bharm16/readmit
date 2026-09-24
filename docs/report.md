@@ -123,6 +123,15 @@ traversal before refusing output anywhere inside completed immutable evidence.
 Failure may leave incomplete output; a missing completion record never denotes
 a completed packet. There is no overwrite option or in-place migration.
 
+A packet, a prepared rerun workspace, an assembled retained packet and an
+exported review are each reported written only once, after their last file,
+every directory they hold, the output itself and its entry in the folder that
+holds it are synced; each file is synced as it is written. A folder the command
+cannot open is refused before anything is written. Windows flushes every file;
+Go exposes no directory flush there. A failed directory sync comes after the
+last file, so it is reported as output written in full that a power loss could
+still lose, never as incomplete output.
+
 Use the matching released binary to verify and rerun this versioned scenario.
 Future changes to canonical profiles, scenario bytes or packet rendering require
 an explicit supported contract/version; an old packet must not silently change.

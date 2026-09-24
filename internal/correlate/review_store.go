@@ -73,8 +73,10 @@ func ReadReview(path string, opened *bundle.Bundle, report Report) (ReviewRevisi
 }
 
 // SaveReview writes a new owner-readable directory, marking completion last.
-// Failed/interrupted writes stay incomplete and are refused. Retrying requires
-// a new output name; neither source evidence nor a prior revision is replaced.
+// Failed/interrupted writes stay incomplete and are refused; a directory sync
+// that fails after the marker says the review was written in full. Retrying
+// requires a new output name; neither source evidence nor a prior revision is
+// replaced.
 func SaveReview(path string, opened *bundle.Bundle, report Report, r ReviewRevision) error {
 	if _, _, err := Review(opened, report, &r, false); err != nil {
 		return err
@@ -87,6 +89,9 @@ func SaveReview(path string, opened *bundle.Bundle, report Report, r ReviewRevis
 	_, err := artifactdir.Write(path, artifactdir.WriteOptions{Completion: []byte(r.Identity() + "\n")}, files)
 	if errors.Is(err, artifactdir.ErrCreateDirectory) {
 		return errors.New("correlation review destination must be new and its parent readable and writable")
+	}
+	if errors.Is(err, artifactdir.ErrSyncDirectory) {
+		return errors.New("cannot sync correlation review directory; the review was written in full but a power loss could still lose it")
 	}
 	if err != nil {
 		return errors.New("cannot complete correlation review; incomplete directory retained")

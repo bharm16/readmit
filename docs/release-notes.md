@@ -1,5 +1,38 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Run bundles, test results, durable runs and the outputs `synth`,
+  `reproducer`, `redact`, `report prepare`, `report assemble` and `report
+  export` write are now reported written only once the directory entries they
+  are found through are synced as well as their files (#361). Each synced
+  every file but not `payloads/`, its own directory or its entry in the folder
+  holding it, so after a power loss an output already reported written could be
+  missing a name, which its reader refuses, or be missing altogether. Each now
+  syncs every directory it made, itself and that folder after its completion
+  record and before it answers; a folder it cannot open is refused before
+  anything is written into it, and before a run, test or durable run connects.
+  A redaction review also syncs the private state its export reads. A directory
+  sync that fails after the completion record no longer says an incomplete
+  output was retained: every file is written by then and the output opens, so
+  the error says it was written in full but a power loss could still lose it.
+  A durable run's result now syncs its own entries, so the job no longer
+  repeats those syncs; a result it cannot write or sync is now reported beside
+  the summary, as a failed sent prefix is, rather than only recorded as an
+  execution error. Every directory sync goes through one shared seam.
+  Windows keeps flushing every file and no directory, since Go does not expose
+  a directory flush there. Bytes, identities and every contract are unchanged.
+  The added syncs are a fixed cost per output, not per message or payload: 3
+  for a run, 2 more for a result, 2 net for a durable run, 2 for a family or a
+  reproducer, 15 for a redaction review and 27 for its export (including the
+  proof results they keep), and 7 to 13 for a report output. On a loaded macOS
+  development host, where a sync is a full device flush, a directory sync cost
+  up to what a file sync does (median 0.01-3 ms, p90 about 5 ms, beside about
+  4 ms per file). Median write time rose by 8.5 ms (+24%) for a one-message
+  run, 12.6 ms (+23%) for a test result, 13 ms (+10%) for a durable run, 2-13
+  ms (+2-13%) for a family, a reproducer or a prepared workspace, 8-18 ms
+  (+3-6%) for an assembled packet or its review, and 15-34 ms (+4-5%) for a
+  redaction review or export, against -2.7 ms (-4%) for an unchanged case
+  write measured alongside. Windows adds no cost.
+
 - The window inspects retained baselines and released test versions as the
   command line does, and pins a suite to a release and promotes it without the
   terminal (#306). **Inspect retained test version** showed a retained

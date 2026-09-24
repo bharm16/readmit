@@ -94,6 +94,9 @@ func writeBundle(ctx context.Context, path string, b *Bundle, durability artifac
 	if errors.Is(err, artifactdir.ErrCancelled) {
 		return nil, errors.New("bundle write cancelled; any incomplete bundle is retained and refused")
 	}
+	if errors.Is(err, artifactdir.ErrSyncDirectory) {
+		return nil, errors.New("cannot sync bundle directory; the bundle was written in full but a power loss could still lose it")
+	}
 	if err != nil {
 		return nil, errors.New("cannot write bundle; incomplete bundle retained")
 	}

@@ -39,7 +39,14 @@ inside it. All files request mode 0600 and the new directory mode 0700.
   expected value, typed `observed` value or null, and `status` (`passed`, `failed`,
   `not_evaluated`). An execution error leaves every assertion unevaluated.
 
-The completion marker is written last. Identity is SHA-256 of
+The completion marker is written last. The result is reported written only
+once the result directory and its own entry in the folder that holds it are
+synced too, after `run/` synced its own entries; that folder also holds the
+send-policy decision written beside the result. A folder readmit cannot open is
+refused before anything is written or sent. Windows flushes every file and no
+directory. A failed directory sync comes after the marker, so it is reported as
+a result written in full that a power loss could still lose, and that result
+opens. Identity is SHA-256 of
 `readmit-result/v1\n`, then every relative path and content in bytewise sorted path
 order, including all files under `run/` and its own identity marker. Only the root
 `identity.sha256` is excluded. Each path and content has an eight-byte unsigned

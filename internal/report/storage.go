@@ -27,58 +27,35 @@ func encode(value any) ([]byte, error) {
 	return append(data, '\n'), nil
 }
 
-func reserve(output string) (string, error) {
-	output, err := artifactpath.Destination(output)
-	if err != nil {
-		return "", err
-	}
-	if os.Mkdir(output, 0700) != nil {
-		return "", errors.New("cannot create report output; destination must be new")
-	}
-	return output, nil
-}
-
-// reserveSynced is reserve for an output whose directory entries are synced
-// before it is reported complete, the folder holding it among them. That folder
-// is opened first, so one this command cannot open is refused before anything
-// is created, and the output is made inside the folder that will be synced.
-func reserveSynced(output string) (*os.Root, string, error) {
+// reserve creates a new output whose directory entries are synced before it
+// is reported complete, the folder holding it among them. That folder is
+// opened first, so one this command cannot open is refused before anything is
+// created, and the output is made inside the folder that will be synced.
+func reserve(output string) (*os.Root, string, error) {
 	output, err := artifactpath.Destination(output)
 	if err != nil {
 		return nil, "", err
 	}
-	parent, err := os.OpenRoot(filepath.Dir(output))
+	parent, root, err := artifactdir.Reserve(output)
 	if err != nil {
 		return nil, "", errors.New("cannot create report output; destination must be new and parent readable and writable")
 	}
-	if parent.Mkdir(filepath.Base(output), 0700) != nil {
-		parent.Close()
-		return nil, "", errors.New("cannot create report output; destination must be new")
-	}
+	root.Close()
 	return parent, output, nil
 }
 
 // syncEntries syncs every directory naming one of files below dir, dir itself
 // and parent, the folder holding it, once dir's completion record is written.
+// Every file is synced by then, so a failure leaves output that may open and
+// says so.
 func syncEntries(parent *os.Root, dir string, files map[string][]byte) error {
-	failed := errors.New("cannot sync report output; incomplete output retained")
+	failed := errors.New("cannot sync report output; the output was written in full but a power loss could still lose it")
 	root, err := parent.OpenRoot(filepath.Base(dir))
 	if err != nil {
 		return failed
 	}
 	defer root.Close()
-	directories := make(map[string]bool)
-	for name := range files {
-		for directory := path.Dir(name); directory != "."; directory = path.Dir(directory) {
-			directories[directory] = true
-		}
-	}
-	names := make([]string, 0, len(directories))
-	for name := range directories {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	if artifactdir.SyncEntries(root, parent, names) != nil {
+	if artifactdir.SyncEntries(root, parent, artifactdir.Directories(files)) != nil {
 		return failed
 	}
 	return nil

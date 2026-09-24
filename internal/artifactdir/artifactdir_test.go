@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -319,7 +320,8 @@ func TestACaseIsReportedWrittenOnlyOnceEveryDirectoryEntryItDependsOnIsSynced(t 
 }
 
 // A write that cannot sync one of those directories never reports the case
-// written.
+// written. Those syncs follow the completion marker, so the case it left is
+// written in full, and the write says so rather than calling it incomplete.
 func TestACaseWhoseDirectoryEntriesCannotBeSyncedIsNeverReportedWritten(t *testing.T) {
 	for _, failing := range []struct {
 		name      string
@@ -338,8 +340,15 @@ func TestACaseWhoseDirectoryEntriesCannotBeSyncedIsNeverReportedWritten(t *testi
 				}
 				return nil
 			}))
-			if written, err := writeCase(t, filepath.Join(folder, "case")); err == nil {
+			written, err := writeCase(t, filepath.Join(folder, "case"))
+			if err == nil {
 				t.Fatalf("a case whose %s entries were not synced was reported written as %s", failing.name, written.Identity)
+			}
+			if !strings.Contains(err.Error(), "the bundle was written in full but a power loss could still lose it") {
+				t.Fatalf("a case whose %s entries were not synced was not said to be written in full: %v", failing.name, err)
+			}
+			if _, err := bundle.Open(filepath.Join(folder, "case")); err != nil {
+				t.Fatalf("a case said to be written in full does not open: %v", err)
 			}
 		})
 	}

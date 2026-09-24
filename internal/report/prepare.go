@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/bharm16/readmit/internal/testrunner"
 )
@@ -33,12 +34,21 @@ func Prepare(packetPath, output, address string) (*Preparation, error) {
 	if err != nil {
 		return nil, err
 	}
-	dir, err := reserve(output)
+	parent, dir, err := reserve(output)
 	if err != nil {
 		return nil, err
 	}
+	defer parent.Close()
 	if err := copyFiles(packet.files, "reproducer/", filepath.Join(dir, "reproducer")); err != nil {
 		return nil, err
+	}
+	// written names every file below a directory of the workspace, which
+	// syncEntries syncs once the workspace is complete.
+	written := make(map[string][]byte)
+	for name, data := range packet.files {
+		if strings.HasPrefix(name, "reproducer/") {
+			written[name] = data
+		}
 	}
 	targetBytes, err := encode(target(address))
 	if err != nil {
@@ -67,6 +77,7 @@ func Prepare(packetPath, output, address string) (*Preparation, error) {
 		if err := writeFile(dir, name, raw); err != nil {
 			return nil, err
 		}
+		written[name] = raw
 		preparation.Specs = append(preparation.Specs, RunnableSpec{Path: name, SHA256: digest(raw)})
 	}
 	instructions := append([]byte("# Prepared rerun workspace\n\nUse the directory containing the released binary as your working directory in both terminals. Commands below call this prepared workspace rerun; substitute its actual directory name if different. The retained packet is called packet. On Windows PowerShell replace ./readmit with .\\readmit.exe.\n\n"), preparedTrialInstructions(address)...)
@@ -81,6 +92,9 @@ func Prepare(packetPath, output, address string) (*Preparation, error) {
 		return nil, err
 	}
 	if err := writeFile(dir, "preparation.sha256", []byte(digest(raw)+"\n")); err != nil {
+		return nil, err
+	}
+	if err := syncEntries(parent, dir, written); err != nil {
 		return nil, err
 	}
 	return preparation, nil

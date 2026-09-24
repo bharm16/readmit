@@ -20,6 +20,9 @@ import (
 )
 
 type runWriter struct {
+	// parent is the folder holding the run, opened before the run is made in
+	// it and synced once the run is complete.
+	parent     *os.Root
 	root       *os.Root
 	events     *os.File
 	durability artifactdir.Durability
@@ -30,6 +33,7 @@ func (w *runWriter) Close() {
 		_ = w.events.Close()
 	}
 	_ = w.root.Close()
+	_ = w.parent.Close()
 }
 
 func begin(plan *Plan, path string) (*Run, *runWriter, error) {
@@ -62,14 +66,13 @@ func begin(plan *Plan, path string) (*Run, *runWriter, error) {
 	if err != nil || len(manifest)+128 > maxFileBytes || eventReserve > maxFileBytes {
 		return nil, nil, errors.New("replay metadata exceeds run storage limits")
 	}
-	if err := os.Mkdir(path, 0700); err != nil {
-		return nil, nil, errors.New("cannot create run; destination must be new and parent writable")
-	}
-	root, err := os.OpenRoot(path)
+	// The folder holding the run is synced last, so one this run cannot open
+	// is refused here, before anything is created or sent.
+	parent, root, err := artifactdir.Reserve(path)
 	if err != nil {
-		return nil, nil, errors.New("cannot open new run directory")
+		return nil, nil, errors.New("cannot create run; destination must be new and parent readable and writable")
 	}
-	w := &runWriter{root: root, durability: plan.options.Durability}
+	w := &runWriter{parent: parent, root: root, durability: plan.options.Durability}
 	ok := false
 	defer func() {
 		if !ok {
@@ -170,7 +173,17 @@ func (w *runWriter) finish(r *Run) error {
 		files[path] = raw
 	}
 	r.Identity = identityFor(files)
-	return w.writeFile("identity.sha256", []byte(r.Identity+"\n"))
+	if err := w.writeFile("identity.sha256", []byte(r.Identity+"\n")); err != nil {
+		return err
+	}
+	// The run is found through payloads/, its own directory and its entry in
+	// the folder holding it, so it is reported complete only once all three
+	// are synced. Every file is synced by then, so a failure here leaves a run
+	// that may open and says so.
+	if w.durability.SyncEntries(w.root, w.parent, []string{"payloads"}) != nil {
+		return errors.New("cannot sync run directory; the run was written in full but a power loss could still lose it")
+	}
+	return nil
 }
 
 func (w *runWriter) writeFile(path string, data []byte) error {

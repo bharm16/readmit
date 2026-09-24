@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
-	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/exportreview"
@@ -54,9 +54,12 @@ func Create(ctx context.Context, request Request) (*Review, error) {
 	if err != nil || len(localBytes) > maxReviewBytes {
 		return nil, errors.New("private transformation state exceeds limit")
 	}
-	if err := os.Mkdir(private, 0700); err != nil {
+	privateParent, privateRoot, err := artifactdir.Reserve(private)
+	if err != nil {
 		return nil, errors.New("cannot create private redaction state")
 	}
+	defer privateParent.Close()
+	defer privateRoot.Close()
 	if !hasUnresolved(t.findings) {
 		proofDir := filepath.Join(private, "original-proof")
 		proof, err := runProof(ctx, spec, request.CasePath, proofDir, t.policy.RequiredFailures)
@@ -75,9 +78,12 @@ func Create(ctx context.Context, request Request) (*Review, error) {
 	if err := revalidate(t.local); err != nil {
 		return nil, err
 	}
-	if err := os.Mkdir(output, 0700); err != nil {
+	outputParent, outputRoot, err := artifactdir.Reserve(output)
+	if err != nil {
 		return nil, errors.New("cannot create redaction review")
 	}
+	defer outputParent.Close()
+	defer outputRoot.Close()
 	if !hasUnresolved(t.findings) {
 		derived, err := bundle.Write(filepath.Join(output, "case"), inputs, bundle.Provenance{Mode: bundle.Derived, Derivation: "readmit-redact/v1"})
 		if err != nil {
@@ -153,6 +159,19 @@ func Create(ctx context.Context, request Request) (*Review, error) {
 	review.Identity = identity(ReviewSchema, files)
 	if err := writeFile(output, "identity.sha256", []byte(review.Identity+"\n")); err != nil {
 		return nil, err
+	}
+	// Export reads state.json and the original proof results through the
+	// private folder, and the review through its own; each case, result and
+	// run synced its own entries. So original-proof/, each folder and its
+	// entry in the folder holding it are synced before the review is
+	// reported. Every file is by then, so a failure leaves a review that may
+	// open and says so.
+	var proofDirectories []string
+	if _, err := privateRoot.Lstat("original-proof"); err == nil {
+		proofDirectories = []string{"original-proof"}
+	}
+	if artifactdir.SyncEntries(privateRoot, privateParent, proofDirectories) != nil || artifactdir.SyncEntries(outputRoot, outputParent, nil) != nil {
+		return nil, errors.New("cannot sync redaction output; the review and its private state were written in full but a power loss could still lose them")
 	}
 	return review, nil
 }

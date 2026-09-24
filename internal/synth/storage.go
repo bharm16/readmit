@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
-	"os"
 	"path/filepath"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
@@ -49,13 +48,11 @@ func WriteWithDurability(path string, inputs bundle.GeneratorInputs, durability 
 	if err != nil {
 		return nil, err
 	}
-	if err := os.Mkdir(path, 0700); err != nil {
-		return nil, errors.New("cannot create synthetic family; destination must be new and parent writable")
-	}
-	root, err := os.OpenRoot(path)
+	parent, root, err := artifactdir.Reserve(path)
 	if err != nil {
-		return nil, errors.New("cannot open synthetic family; incomplete output retained")
+		return nil, errors.New("cannot create synthetic family; destination must be new and parent readable and writable")
 	}
+	defer parent.Close()
 	defer root.Close()
 	manifest := &Manifest{Schema: "readmit-synth/v1", State: "complete", Generator: inputs}
 	for _, variant := range variants {
@@ -73,6 +70,13 @@ func WriteWithDurability(path string, inputs bundle.GeneratorInputs, durability 
 	}
 	if err := durability.Publish(root, ".family.json.incomplete", "family.json", append(data, '\n')); err != nil {
 		return nil, errors.New("cannot write synthetic family completion record; incomplete output retained")
+	}
+	// Each case synced its own entry in the family. family.json and the
+	// family's own entry in the folder holding it are synced before the family
+	// is reported written; by then every file is, so a failure here leaves a
+	// family that may open and says so.
+	if durability.SyncEntries(root, parent, nil) != nil {
+		return nil, errors.New("cannot sync synthetic family directory; the family was written in full but a power loss could still lose it")
 	}
 	return manifest, nil
 }
