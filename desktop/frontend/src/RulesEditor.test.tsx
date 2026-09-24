@@ -15,6 +15,12 @@ import { installFacade } from "./testkit/wails";
 import type { DiagnoseConfig, DiagnoseConfigResult } from "./bindings";
 import { CASE_IDENTITY, WORKSPACE_ROOT, refused } from "./testkit/fixtures";
 
+function expectEditorHeld(editor: HTMLElement) {
+  const controls = editor.querySelectorAll("button, input, select, textarea");
+  expect(controls.length).toBeGreaterThan(0);
+  for (const control of controls) expect((control as HTMLInputElement).disabled).toBe(true);
+}
+
 test("correlation rules are composed from typed controls and saved as exact JSON", async () => {
   const user = userEvent.setup();
   const facade = installFacade({
@@ -112,6 +118,42 @@ test("a retained rules document opens as the exact text the entry holds", async 
   ).toBeTruthy();
 });
 
+test("correlation rules hold every editor control while opening and saving", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade();
+  const opening = facade.park("OpenCorrelationRules");
+  render(<CorrelationRulesEditor workspace={WORKSPACE_ROOT} entries={["rules.json"]} busy={false} />);
+  const editor = screen.getByRole("region", { name: "Correlation rules editor" });
+  const rules = { schema: "readmit-correlation-rules/v1", rules: [{ id: "ack", operator: "acknowledges", scope: "source" }] } as const;
+
+  await user.selectOptions(screen.getByLabelText("Retained rules document"), "rules.json");
+  await user.click(screen.getByRole("button", { name: "Open this document" }));
+  expect(screen.getByText("Opening rules.json.")).toBeTruthy();
+  expectEditorHeld(editor);
+  await user.click(screen.getByRole("button", { name: "Open this document" }));
+  expect(facade.callsTo("OpenCorrelationRules")).toHaveLength(1);
+
+  opening.resolve({
+    state: "completed",
+    document: JSON.stringify(rules),
+    sha256: "opened-rules-sha256-fixed-for-tests",
+    rules: { ...rules, rules: [...rules.rules] },
+  });
+  expect(await screen.findByText("Opened rules.json · exact bytes hash to opened-rules-sha256-fixed-for-tests")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Remove rule ack" })).toBeTruthy();
+
+  const saving = facade.park("SaveCorrelationRules");
+  await user.type(screen.getByLabelText("New correlation-rules entry"), "revision.json{Enter}");
+  expect(screen.getByText("Saving revision.json.")).toBeTruthy();
+  expectEditorHeld(editor);
+  await user.click(screen.getByRole("button", { name: "Save as a new entry" }));
+  expect(facade.callsTo("SaveCorrelationRules")).toHaveLength(1);
+  const [request] = facade.oneCall("SaveCorrelationRules");
+  saving.resolve({ state: "completed", output: request.output, document: request.document, sha256: "saved-rules-sha256-fixed-for-tests" });
+  expect(await screen.findByText("Saved to revision.json · exact bytes hash to saved-rules-sha256-fixed-for-tests")).toBeTruthy();
+  expect((screen.getByLabelText("Rule ID") as HTMLInputElement).disabled).toBe(false);
+});
+
 test("a sequence analysis is composed against the verified case identity", async () => {
   const user = userEvent.setup();
   const facade = installFacade({
@@ -153,6 +195,42 @@ test("a sequence analysis is composed against the verified case identity", async
     retries: [],
     downstream: [],
   });
+});
+
+test("sequence analysis holds every editor control while opening and saving", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade();
+  const opening = facade.park("OpenSequenceAnalysis");
+  render(<SequenceAnalysisEditor workspace={WORKSPACE_ROOT} caseIdentity={CASE_IDENTITY} entries={["analysis.json"]} busy={false} />);
+  const editor = screen.getByRole("region", { name: "Sequence analysis editor" });
+  const declaration = { schema: "readmit-sequence-analysis/v1", case_identity: CASE_IDENTITY, rules_sha256: "", clock_tolerance_seconds: 0, windows: [], retries: [], downstream: [] };
+
+  await user.selectOptions(screen.getByLabelText("Retained analysis document"), "analysis.json");
+  await user.click(screen.getByRole("button", { name: "Open this document" }));
+  expect(screen.getByText("Opening analysis.json.")).toBeTruthy();
+  expectEditorHeld(editor);
+  await user.click(screen.getByRole("button", { name: "Open this document" }));
+  expect(facade.callsTo("OpenSequenceAnalysis")).toHaveLength(1);
+
+  opening.resolve({
+    state: "completed",
+    document: JSON.stringify(declaration),
+    sha256: "opened-analysis-sha256-fixed-for-tests",
+    declaration,
+  });
+  expect(await screen.findByText("Opened analysis.json · exact bytes hash to opened-analysis-sha256-fixed-for-tests")).toBeTruthy();
+  expect((screen.getByLabelText("Clock comparison tolerance, seconds") as HTMLInputElement).value).toBe("0");
+
+  const saving = facade.park("SaveSequenceAnalysis");
+  await user.type(screen.getByLabelText("New sequence-analysis entry"), "revision.json{Enter}");
+  expect(screen.getByText("Saving revision.json.")).toBeTruthy();
+  expectEditorHeld(editor);
+  await user.click(screen.getByRole("button", { name: "Save as a new entry" }));
+  expect(facade.callsTo("SaveSequenceAnalysis")).toHaveLength(1);
+  const [request] = facade.oneCall("SaveSequenceAnalysis");
+  saving.resolve({ state: "completed", output: request.output, document: request.document, sha256: "saved-analysis-sha256-fixed-for-tests" });
+  expect(await screen.findByText("Saved to revision.json · exact bytes hash to saved-analysis-sha256-fixed-for-tests")).toBeTruthy();
+  expect((screen.getByLabelText("Window source") as HTMLInputElement).disabled).toBe(false);
 });
 
 test("a normalization policy rule is one typed operator over one selector", async () => {
