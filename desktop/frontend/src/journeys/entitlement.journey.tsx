@@ -131,7 +131,7 @@ test("a delivered license is verified, installed and activated without hand-writ
   journey.makeFolder("backups");
   await press(user, evidence.getByRole("button", { name: "Maintain this workspace…" }));
   const maintenance = within(screen.getByLabelText("Project maintenance"));
-  await journey.chooseFolder(journey.path("backups/after-release"), "Choose a new folder for the backup");
+  await journey.nameNewFolder(journey.path("backups/after-release"), "Choose a new folder for the backup");
   await press(user, maintenance.getByRole("button", { name: "Choose backup destination…" }));
   await press(user, maintenance.getByRole("button", { name: "Create verified backup" }));
   expect(await maintenance.findByText("Backup created.", { selector: "p[role=status]" })).toBeTruthy();

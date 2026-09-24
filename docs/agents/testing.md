@@ -53,14 +53,20 @@ unanswered is rejected. The kit's verbs:
   `afterEach` ends it and removes the root.
 - `press(user, button)` presses a control once the window offers it. Pressing
   a disabled control does nothing, so every step after real work uses it.
-- `chooseFolder(path, title)`, `chooseFiles(paths, title)` and
-  `dismissDialog(kind, title)` answer the next host dialog, before the action
-  that opens it. Name the dialog title the facade shows.
-- `writeFile`, `makeFolder` and `provisionLicense` prepare what a person or
-  their vendor put on the machine before the application saw it: exported
-  evidence, a folder for a project, a signed activation folder. A file is
-  private to this account unless `writeFile` is given a mode, such as `0o700`
-  for a program an administrator staged.
+- `chooseFolder(path, title)`, `chooseFiles(paths, title)`,
+  `nameNewFolder(path, title)` and `dismissDialog(kind, title)` answer the next
+  host dialog, before the action that opens it. Name the dialog title the
+  facade shows. Each answers only as the host's dialog can: a folder dialog
+  returns a folder that exists when it is answered, never a file or a folder
+  not there yet; a save dialog, where a person names a new folder a writer
+  will create, returns a name in a folder that exists, which need not exist
+  itself, and creates nothing. Any other answer fails the journey.
+- `writeFile`, `makeFolder`, `makeLink` and `provisionLicense` prepare what a
+  person or their vendor put on the machine before the application saw it:
+  exported evidence, a folder for a project, a symbolic link to a folder, a
+  signed activation folder. A file is private to this account unless
+  `writeFile` is given a mode, such as `0o700` for a program an administrator
+  staged.
   `provisionLicenseIssues(issues)` provisions several activation folders, each
   with its own term (sequence, expiry relative to now such as `-48h`, grace
   days) and all signed with one fresh key, so a later issue installs as the
@@ -227,9 +233,9 @@ on it with `gh workflow run desktop.yml --ref BRANCH`. The journey steps and eve
 tool; the per-platform backends in `tools/native/` only read the tree and act
 on it, so a new step is written once for every platform. `make test-tools`
 checks the driver against a fake backend. Run it locally only on a machine
-where you can give up the keyboard: on macOS it answers folder panels with
-keystrokes, once the application is frontmost, and needs your terminal to hold
-the accessibility permission.
+where you can give up the keyboard: on macOS it answers folder and save panels
+with keystrokes, once the application is frontmost, and needs your terminal to
+hold the accessibility permission.
 The `desktop` aggregate fails the same way if any of them fails, is skipped or is cancelled. Release credentials remain exclusive to
 trusted tag runs; no signing credential reaches any workflow.
 

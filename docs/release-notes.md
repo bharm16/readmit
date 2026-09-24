@@ -1,5 +1,25 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- A new folder the window asks for is now named in the host's save dialog, so
+  it can be written through the installed application (#377). A backup, a
+  restored project, a recovery or rollback archive, a portable review and a
+  support export each asked for their new folder through the host's folder
+  dialog, which returns only a folder that already exists, while each writer
+  creates its destination itself and refuses one that exists; through the
+  installed window every one of those writes was refused. The save dialog
+  takes a new name in a folder the person chooses and creates nothing; the
+  writer creates the folder and still refuses a name that exists, with its
+  reason, writing nothing into it. Dismissing the dialog names nothing and
+  changes nothing. Opening a workspace, importing, choosing a hub
+  configuration, a license folder, a project's parent folder, a backup to
+  verify or restore and a staged package keep the folder dialog. The
+  interaction journeys' scripted dialogs now answer only as a host dialog
+  can: a folder dialog with a folder that exists, a save dialog with a name in
+  a folder that exists, so the journeys would have caught this. The installed
+  window now takes a backup, a rollback archive and a portable review through
+  each platform's own save dialog in the native journeys. No `readmit-*`
+  document, facade result or `readmit` command changes.
+
 - The capture screen completes a SIU fixture listen and reopens responder
   policies and source registrations (#293). A running collector or fixture now
   says where it listens, `Listening on 127.0.0.1:PORT`, once its listener is

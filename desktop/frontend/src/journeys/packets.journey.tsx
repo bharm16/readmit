@@ -104,10 +104,16 @@ test("the failing and fixed runs become a sealed packet, a portable review that 
   expect(verified.stdout).toMatch(new RegExp(`^Retained packet verified: ${packetIdentity}[0-9a-f]{52}\n`));
   const fullPacketIdentity = verified.stdout.replace(/^Retained packet verified: ([0-9a-f]{64})\n[\s\S]*$/, "$1");
 
-  // The portable review: exported into a new folder chosen natively, with its
-  // five offline renderings, and reopened read-only with its report text
-  // hidden until it is revealed on purpose.
-  await journey.chooseFolder(journey.path(PROJECT, "reschedule-review"), "Choose a new folder for the portable review");
+  // The portable review: exported into a new folder named in the host's save
+  // dialog, with its five offline renderings, and reopened read-only with its
+  // report text hidden until it is revealed on purpose.
+  // Dismissing the save dialog names nothing, and nothing can be exported.
+  await journey.dismissDialog("save", "Choose a new folder for the portable review");
+  await press(user, panel.getByRole("button", { name: "Choose destination…" }));
+  await waitFor(() => expect(journey.callsTo("ChoosePacketExportPath").at(-1)?.result).toMatchObject({ state: "cancelled" }));
+  expect(panel.getByText("No destination chosen.")).toBeTruthy();
+  expect((panel.getByRole("button", { name: "Export portable review" }) as HTMLButtonElement).disabled).toBe(true);
+  await journey.nameNewFolder(journey.path(PROJECT, "reschedule-review"), "Choose a new folder for the portable review");
   await press(user, panel.getByRole("button", { name: "Choose destination…" }));
   expect(await panel.findByText(journey.path(PROJECT, "reschedule-review"))).toBeTruthy();
   await press(user, panel.getByRole("button", { name: "Export portable review" }));
@@ -159,7 +165,7 @@ test("the failing and fixed runs become a sealed packet, a portable review that 
   ).toBeTruthy();
   expect(journey.callsTo("PublishSupportSummary").at(-1)?.result).toMatchObject({ state: "failed" });
   await enter(user, support.getByLabelText("Approve by naming the exact preview identity"), identity);
-  await journey.chooseFolder(journey.path(PROJECT, "support-for-vendor"), "Choose a new folder for the reviewed support bundle");
+  await journey.nameNewFolder(journey.path(PROJECT, "support-for-vendor"), "Choose a new folder for the reviewed support bundle");
   await press(user, support.getByRole("button", { name: "Choose destination…" }));
   await waitFor(() =>
     expect((support.getByLabelText("New support folder") as HTMLInputElement).value).toBe(journey.path(PROJECT, "support-for-vendor")),

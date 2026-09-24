@@ -7,7 +7,7 @@
 // declarations; bridge-process.d.ts states its interface.
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createInterface } from "node:readline";
@@ -94,6 +94,14 @@ export function makeFolderInRoot(root, path, mode = 0o777) {
   const target = inside(root, path);
   mkdirSync(target, { recursive: true, mode });
   return target;
+}
+
+/** Creates a symbolic link inside root to a folder inside root. */
+export function linkInRoot(root, path, target) {
+  const link = inside(root, path);
+  mkdirSync(dirname(link), { recursive: true });
+  symlinkSync(inside(root, target), link, "dir");
+  return link;
 }
 
 /** Provisions a signed activation folder inside root with a one-shot run of

@@ -133,8 +133,10 @@ func label(_ element: AXUIElement) -> String {
     return title.isEmpty ? string(element, kAXDescriptionAttribute) : title
 }
 
-/// The folder panel a step opened: a sheet on the window, or a window of its own.
-func panel(_ pid: pid_t, _ title: String, timeout: TimeInterval) -> AXUIElement? {
+/// The folder or save panel a step opened: a sheet on the window, or a window
+/// of its own. A save panel shown as a sheet may carry no title or another one, so
+/// for it the one sheet the window holds is the one the step opened.
+func panel(_ pid: pid_t, _ title: String, timeout: TimeInterval, soleSheet: Bool = false) -> AXUIElement? {
     let deadline = Date().addingTimeInterval(timeout)
     while Date() < deadline {
         for window in windows(pid) {
@@ -143,11 +145,93 @@ func panel(_ pid: pid_t, _ title: String, timeout: TimeInterval) -> AXUIElement?
             // may report in lower case; an unnamed sheet counts only alone.
             let sheets = ((attribute(window, kAXChildrenAttribute) as? [AXUIElement]) ?? []).filter { string($0, kAXRoleAttribute) == kAXSheetRole }
             if let named = sheets.first(where: { label($0).caseInsensitiveCompare(title) == .orderedSame }) { return named }
-            if sheets.count == 1, label(sheets[0]).isEmpty { return sheets[0] }
+            if sheets.count == 1, label(sheets[0]).isEmpty || soleSheet { return sheets[0] }
         }
         Thread.sleep(forTimeInterval: 0.3)
     }
     return nil
+}
+
+func escaped(_ text: String) -> String {
+    text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+}
+
+func isTextField(_ element: AXUIElement) -> Bool {
+    let role = string(element, kAXRoleAttribute)
+    return (role == kAXTextFieldRole || role == kAXComboBoxRole) && string(element, kAXSubroleAttribute) != kAXSearchFieldSubrole
+}
+
+/// The save panel's name field. It holds the keyboard focus when the panel
+/// opens, and AppKit names it by its identifier.
+func nameField(_ pid: pid_t, _ open: AXUIElement) -> AXUIElement? {
+    let fields = descendants(open).filter { string($0, kAXRoleAttribute) == kAXTextFieldRole && string($0, kAXSubroleAttribute) != kAXSearchFieldSubrole }
+    if let named = fields.first(where: { string($0, "AXIdentifier") == "saveAsNameTextField" }) { return named }
+    if let focused = attribute(AXUIElementCreateApplication(pid), kAXFocusedUIElementAttribute), CFGetTypeID(focused) == AXUIElementGetTypeID(),
+       let field = fields.first(where: { CFEqual($0, focused) }) { return field }
+    return fields.first { attribute($0, kAXValueAttribute) is String }
+}
+
+/// Names a new folder in the save panel a step opened, as a person does: the
+/// folder to put it in is gone to by its path after Shift-Command-G, the name
+/// is typed into the name field, and Save is pressed. The panel creates
+/// nothing; the writer it answers creates the folder.
+func nameNewFolder(_ pid: pid_t, _ title: String, _ path: String, _ timeout: TimeInterval) throws {
+    guard let open = panel(pid, title, timeout: timeout, soleSheet: true) else { throw Failure(message: "no save panel titled \(title.debugDescription) opened") }
+    guard let name = nameField(pid, open) else { throw Failure(message: "the save panel offered no name field") }
+    let folder = (path as NSString).deletingLastPathComponent
+    let entry = (path as NSString).lastPathComponent
+    try keystroke(pid, "keystroke \"g\" using {command down, shift down}")
+    // The field Shift-Command-G opens takes the focus from the name field.
+    var field: AXUIElement?
+    let deadline = Date().addingTimeInterval(10)
+    while field == nil && Date() < deadline {
+        field = descendants(open).first { isTextField($0) && !CFEqual($0, name) && (attribute($0, kAXFocusedAttribute) as? Bool ?? false) }
+            ?? descendants(open).first { isTextField($0) && !CFEqual($0, name) && string($0, kAXRoleAttribute) == kAXComboBoxRole }
+        if field == nil { Thread.sleep(forTimeInterval: 0.3) }
+    }
+    guard let field else { throw Failure(message: "the save panel offered no field to type the folder into") }
+    AXUIElementSetAttributeValue(field, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+    try keystroke(pid, "keystroke \"a\" using {command down}")
+    try keystroke(pid, "keystroke \"\(escaped(folder))\"")
+    Thread.sleep(forTimeInterval: 0.5)
+    try keystroke(pid, "key code 36")
+    Thread.sleep(forTimeInterval: 1)
+    AXUIElementSetAttributeValue(name, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+    try keystroke(pid, "keystroke \"a\" using {command down}")
+    try keystroke(pid, "keystroke \"\(escaped(entry))\"")
+    let typed = Date().addingTimeInterval(5)
+    while string(name, kAXValueAttribute) != entry {
+        if Date() > typed { throw Failure(message: "the name field holds \(string(name, kAXValueAttribute).debugDescription), not \(entry.debugDescription)") }
+        Thread.sleep(forTimeInterval: 0.3)
+    }
+    guard let save = descendants(open).first(where: { string($0, kAXRoleAttribute) == kAXButtonRole && label($0) == "Save" }) else {
+        throw Failure(message: "the save panel offered no Save button")
+    }
+    AXUIElementPerformAction(save, kAXPressAction as CFString)
+    let closed = Date().addingTimeInterval(10)
+    while Date() < closed {
+        if panel(pid, title, timeout: 0.1, soleSheet: true) == nil { return }
+        Thread.sleep(forTimeInterval: 0.3)
+    }
+    throw Failure(message: "the save panel stayed open after naming \(path)")
+}
+
+/// Picks an option of a pop-up list as a person does: the list is opened with
+/// its press action, the option's name is typed into the menu it shows, and
+/// Return chooses it. Keys go only to the application once it is frontmost.
+func selectOption(_ pid: pid_t, _ popup: AXUIElement, _ option: String) throws {
+    if string(popup, kAXValueAttribute) == option { return }
+    activate(pid)
+    AXUIElementPerformAction(popup, kAXPressAction as CFString)
+    Thread.sleep(forTimeInterval: 2)
+    try keystroke(pid, "keystroke \"\(escaped(option))\"")
+    Thread.sleep(forTimeInterval: 0.5)
+    try keystroke(pid, "key code 36")
+    let chosen = Date().addingTimeInterval(5)
+    while string(popup, kAXValueAttribute) != option {
+        if Date() > chosen { throw Failure(message: "the pop-up list holds \(string(popup, kAXValueAttribute).debugDescription)") }
+        Thread.sleep(forTimeInterval: 0.3)
+    }
 }
 
 func chooseFolder(_ pid: pid_t, _ title: String, _ path: String, _ timeout: TimeInterval) throws {
@@ -166,8 +250,7 @@ func chooseFolder(_ pid: pid_t, _ title: String, _ path: String, _ timeout: Time
     guard let field else { throw Failure(message: "the panel offered no field to type the folder into") }
     AXUIElementSetAttributeValue(field, kAXFocusedAttribute as CFString, kCFBooleanTrue)
     try keystroke(pid, "keystroke \"a\" using {command down}")
-    let escaped = path.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-    try keystroke(pid, "keystroke \"\(escaped)\"")
+    try keystroke(pid, "keystroke \"\(escaped(path))\"")
     Thread.sleep(forTimeInterval: 0.5)
     try keystroke(pid, "key code 36")
     Thread.sleep(forTimeInterval: 1)
@@ -211,6 +294,12 @@ func handle(_ request: [String: Any]) throws -> [String: Any] {
         return [:]
     case "choose_folder":
         try chooseFolder(pid, request["title"] as? String ?? "", request["path"] as? String ?? "", TimeInterval(request["seconds"] as? Int ?? 60))
+        return [:]
+    case "name_new_folder":
+        try nameNewFolder(pid, request["title"] as? String ?? "", request["path"] as? String ?? "", TimeInterval(request["seconds"] as? Int ?? 60))
+        return [:]
+    case "select":
+        try selectOption(pid, try element(request), request["option"] as? String ?? "")
         return [:]
     case "close":
         guard let window = windows(pid).first, let button = attribute(window, kAXCloseButtonAttribute) else {

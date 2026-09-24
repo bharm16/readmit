@@ -71,10 +71,14 @@ the arguments serialized as the webview serializes them, decoded with
 checked, each call on its own goroutine, and the result or error returned in
 Wails' callback shape. A call Wails would never answer — a name nothing is
 bound under, or a method that panics — is rejected instead, so a journey
-fails rather than hangs. The host's folder and file dialogs are what a journey
-answers, before the action that opens them, the way a person picks a folder.
-A dialog nobody answered, an answer nobody used and a call Wails would have
-rejected each fail the journey rather than passing it quietly. Closing the
+fails rather than hangs. The host's folder, file and save dialogs are what a
+journey answers, before the action that opens them, the way a person picks a
+folder or names a new one. An answer is only one the host's dialog could give:
+a folder dialog returns a folder that exists when it is answered, and a save
+dialog names an entry of a folder that exists, which need not exist itself,
+and creates nothing. A dialog nobody answered, an answer no host dialog could
+give, an answer nobody used and a call Wails would have rejected each fail the
+journey rather than passing it quietly. Closing the
 window ends the process and reopening starts another over the same files, so
 what a journey finds after a reopen was on disk; the command line built from
 the same checkout — the same engine through its own entry point — then reads
@@ -359,7 +363,7 @@ artifacts are never reported as completed.
 | `OpenGrid` | Renders one bounded window of one case through one index of it, and describes that index as `DescribeIndex` does, from the same read. |
 | `BuildIndex` | Builds an index of declared fields and retention choices for a verified case bundle into a new derived artifact, re-reads the workspace and returns the outcome. |
 | `DescribeIndex` | Inspects the index status of a case, reporting whether an index is applicable, stale, expired, damaged, or unsupported. |
-| `ChooseMaintenancePath` | Presents a native folder picker for backup, restore, archive or staged-upgrade destinations. |
+| `ChooseMaintenancePath` | Presents the host's native save dialog to name the new folder a backup, a restored project or a recovery or rollback archive is written into, and its folder dialog for an existing backup or staged-upgrade package folder. |
 | `CreateProjectBackup` | Copies a project into a new verified backup and reports evidence, mutable documents, exclusions and credential references separately. |
 | `VerifyProjectBackup` | Reads a backup whole and reports what it holds without writing. |
 | `RestoreProjectBackup` | Restores a backup into a new destination and rebuilds disposable indexes. |
@@ -402,7 +406,7 @@ artifacts are never reported as completed.
 | `PreviewPacket` | Verifies the exact actual inputs one packet assembly would copy — case, historical specification, current result, optional baseline — and reports each one's state, the observation boundaries, the proposed fresh destination and the packet's limitations before anything is written. |
 | `AssemblePacket` | Assembles customer-local evidence from actual retained runs into one new protected destination through the existing retained-packet operation, and reads the sealed identity back from disk. |
 | `OpenPacket` | Verifies one sealed retained packet of the workspace offline and read-only, exactly as `readmit report verify-retained` does. |
-| `ChoosePacketExportPath` | Presents the host's native folder dialog for the new folder a portable review is sealed into. |
+| `ChoosePacketExportPath` | Presents the host's native save dialog to name the new folder a portable review is sealed into. |
 | `ExportPacketReview` | Seals the packet, byte for byte, beside the five inert offline renderings — offline HTML, PDF, Markdown, strict JSON and JUnit — through the existing export operation. |
 | `OpenPacketReview` | Verifies one portable review offline in read-only mode; the canonical report text is present only under the deliberate reveal, and opening acquires no send or mutation authority. |
 | `Cancel` | Stops the operation that is running now, when it can be interrupted. The caller names the operation it means to cancel, so one panel's cancel control can never stop another panel's work; the window's own cancel command names none and cancels whatever is running. |
@@ -1924,8 +1928,13 @@ starts never makes it active.
 
 The **project maintenance** screen is the graphical path for the same operations
 `readmit backup`, `readmit project archive|delete|quota|migration-preview|recover`
-and `readmit upgrade` already own. Native folder pickers choose backup sources and
-destinations, restore destinations, recovery archives and staged package folders.
+and `readmit upgrade` already own. The host's folder dialog picks an existing
+backup or staged package folder. A new destination — a backup, a restored
+project, a recovery or rollback archive — is named in the host's save dialog: a
+new name in a folder the person chooses, because a folder dialog returns only a
+folder that already exists. Naming it creates nothing; the writer creates the
+folder, and refuses a name that already exists with its reason, writing nothing
+into it. Dismissing either dialog chooses nothing and changes nothing.
 The typed facade calls the shared Go packages; the interface never reimplements
 backup, retirement or upgrade semantics and never holds secret values. As on the
 command line, preserving what already exists needs no license term: backup,
@@ -2350,7 +2359,8 @@ explicitly incomplete; it never verifies, and recovery is a new destination,
 never an overwrite.
 
 **Portable review** exports the packet through the existing export operation
-into a new folder chosen with the host's native dialog. The review is the
+into a new folder named in the host's native save dialog, which the export
+creates. The review is the
 complete packet copied byte for byte beside the five locally rendered offline
 reports — offline HTML, PDF, Markdown, strict JSON and JUnit — with no
 external rendering service, no active content and no network. Sealing a review
@@ -2431,7 +2441,8 @@ directory; moving it anywhere is somebody's separate deliberate act.
 **Support** authors the sharing policy through structured controls, previews
 the value-free summary — the preview is every byte the bundle will hold, and
 no free-form field exists in it to hide anything — and publishes the bundle
-into a natively chosen new folder, or one fresh workspace entry, only under an
+into a new folder named in the host's save dialog, or one fresh workspace
+entry, only under an
 approval naming the exact preview identity, which the publish regenerates and
 re-checks. A stale approval is a
 refusal. The bundle verifies offline, independently of its source, and the

@@ -22,18 +22,21 @@ import (
 	"github.com/bharm16/readmit/internal/testlicense"
 )
 
-// chooser stands in for the host's native folder dialog. before runs while the
-// dialog is notionally open, so a test can cancel or reenter deterministically.
+// chooser stands in for the host's native folder, file and save dialogs.
+// before runs while the dialog is notionally open, so a test can cancel or
+// reenter deterministically; opened records which dialog each title was.
 type chooser struct {
-	folder string
-	files  []string
-	err    error
-	before func()
-	titles []string
+	folder      string
+	files       []string
+	destination string
+	err         error
+	before      func()
+	titles      []string
+	opened      []string
 }
 
 func (c *chooser) ChooseFolder(title string) (string, error) {
-	c.titles = append(c.titles, title)
+	c.titles, c.opened = append(c.titles, title), append(c.opened, "folder")
 	if c.before != nil {
 		c.before()
 	}
@@ -41,11 +44,19 @@ func (c *chooser) ChooseFolder(title string) (string, error) {
 }
 
 func (c *chooser) ChooseFiles(title, filterName, filterPattern string) ([]string, error) {
-	c.titles = append(c.titles, title)
+	c.titles, c.opened = append(c.titles, title), append(c.opened, "files")
 	if c.before != nil {
 		c.before()
 	}
 	return c.files, c.err
+}
+
+func (c *chooser) ChooseDestination(title string) (string, error) {
+	c.titles, c.opened = append(c.titles, title), append(c.opened, "save")
+	if c.before != nil {
+		c.before()
+	}
+	return c.destination, c.err
 }
 
 // activatedApp wires an app over explicit state files and selects the test

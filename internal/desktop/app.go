@@ -241,6 +241,17 @@ type FileChooser interface {
 	ChooseFiles(title, filterName, filterPattern string) ([]string, error)
 }
 
+// DestinationChooser presents the host's native save dialog, in which a person
+// names a new folder: a name that need not exist yet, in a location they
+// choose. A folder dialog returns only a folder that already exists, and every
+// writer a new destination is handed to creates it itself and refuses one that
+// exists, so a new destination is named here and never picked. The dialog
+// creates nothing. An empty path with a nil error means the person dismissed
+// it without naming one.
+type DestinationChooser interface {
+	ChooseDestination(title string) (string, error)
+}
+
 // App runs exactly one operation at a time: a second request reports Busy
 // rather than racing the first, and a finished operation always releases the
 // slot, including after a failure or a cancellation.
@@ -689,6 +700,27 @@ func (a *App) chooseFiles(ctx context.Context, title, filterName, filterPattern 
 		return nil, refusal{Cancelled, "no file was chosen"}
 	}
 	return files, refusal{}
+}
+
+// chooseDestination names a new destination through the host's save dialog.
+// The path it returns is handed to a writer as it is: that writer creates it,
+// and refuses a path that already exists with its own reason.
+func (a *App) chooseDestination(ctx context.Context, title string) (string, refusal) {
+	if ctx.Err() != nil {
+		return "", cancelledRefusal
+	}
+	dc, ok := a.chooser.(DestinationChooser)
+	if !ok {
+		return "", refusal{Failed, "the save dialog is unavailable"}
+	}
+	path, err := dc.ChooseDestination(title)
+	switch {
+	case err != nil:
+		return "", refusal{Failed, "the save dialog is unavailable"}
+	case path == "":
+		return "", refusal{Cancelled, "no new folder was named"}
+	}
+	return path, refusal{}
 }
 
 func (a *App) openWorkspace(ctx context.Context, path string) WorkspaceResult {

@@ -224,26 +224,29 @@ const (
 	migrationGuidanceText = "Supported documents stay unchanged. Indexes rebuild on restore. There is no in-place converter for an unknown schema and no silent rewrite of retained artifacts or historical verdicts. New semantics require a new compatible version."
 )
 
-// ChooseMaintenancePath presents a native folder picker for backup destinations,
-// restore destinations, backup sources, or staged upgrade candidates.
+// ChooseMaintenancePath presents the host's save dialog to name the new folder
+// a backup, a restored project or a recovery or rollback archive is written
+// into, and its folder picker for an existing backup source or staged upgrade
+// candidate.
 func (a *App) ChooseMaintenancePath(kind string) MaintenancePathResult {
 	return run(a, true, false, func(ctx context.Context) MaintenancePathResult {
-		title := "Choose a folder"
+		var choose func(context.Context, string) (string, refusal)
+		var title string
 		switch kind {
 		case "backup-destination":
-			title = "Choose a new folder for the backup"
+			choose, title = a.chooseDestination, "Choose a new folder for the backup"
 		case "restore-destination":
-			title = "Choose a new folder for the restored project"
+			choose, title = a.chooseDestination, "Choose a new folder for the restored project"
 		case "backup-source":
-			title = "Choose the backup folder to verify or restore"
+			choose, title = a.chooseFolder, "Choose the backup folder to verify or restore"
 		case "upgrade-candidate":
-			title = "Choose the staged upgrade package folder"
+			choose, title = a.chooseFolder, "Choose the staged upgrade package folder"
 		case "archive-destination":
-			title = "Choose a new folder for the recovery archive"
+			choose, title = a.chooseDestination, "Choose a new folder for the recovery archive"
 		default:
 			return MaintenancePathResult{State: Failed, Reason: "unknown maintenance path kind"}
 		}
-		folder, declined := a.chooseFolder(ctx, title)
+		folder, declined := choose(ctx, title)
 		if folder == "" {
 			return MaintenancePathResult{State: declined.state, Reason: declined.reason, Kind: kind}
 		}
