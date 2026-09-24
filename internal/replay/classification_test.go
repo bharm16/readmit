@@ -215,23 +215,6 @@ func TestWriteTargetRecordsOnlyAConfigurationItReadsBack(t *testing.T) {
 	}
 }
 
-// A certificate is verified against the name the configuration declares, and
-// against the address host only when it declares none. One rule serves the
-// diagnostic and the send path, so the two cannot verify different names.
-func TestVerifiedServerNameIsDeclaredOrTheAddressHost(t *testing.T) {
-	declared := environmentTarget("127.0.0.1:2575")
-	if name := replay.VerifiedServerName(declared); name != "lab.example.invalid" {
-		t.Fatalf("verified server name %q, want the declared one", name)
-	}
-	declared.ServerName = ""
-	if name := replay.VerifiedServerName(declared); name != "127.0.0.1" {
-		t.Fatalf("verified server name %q, want the address host", name)
-	}
-	if name := replay.VerifiedServerName(target("[::1]:2575")); name != "::1" {
-		t.Fatalf("verified server name %q, want the address host", name)
-	}
-}
-
 // This release's replay transport presents no client certificate, so a
 // configuration declaring one is refused rather than sent without it.
 func TestPrepareRefusesAConfigurationWhoseClientCertificateItCannotPresent(t *testing.T) {

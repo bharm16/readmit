@@ -287,7 +287,7 @@ func (l *databaseLab) prepare(t *testing.T) {
 func (l *databaseLab) open(t *testing.T, user, password, name string, config *tls.Config) *sql.DB {
 	t.Helper()
 	d := Database{Driver: l.driver, Address: l.address, Name: name, Username: user, ServerName: config.ServerName}
-	connector, err := databaseConnector(d, password, l.address, config)
+	connector, err := databaseConnector(d, password, loopbackRoute(t, l.address), config)
 	if err != nil {
 		t.Fatal("cannot configure lab connection")
 	}
@@ -311,7 +311,7 @@ func (l *databaseLab) open(t *testing.T, user, password, name string, config *tl
 func (l *databaseLab) refusedConnection(t *testing.T, user, password, name string, config *tls.Config) {
 	t.Helper()
 	d := Database{Driver: l.driver, Address: l.address, Name: name, Username: user, ServerName: config.ServerName}
-	connector, err := databaseConnector(d, password, l.address, config)
+	connector, err := databaseConnector(d, password, loopbackRoute(t, l.address), config)
 	if err != nil {
 		t.Fatal("cannot configure negative lab connection")
 	}

@@ -26,9 +26,9 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/destination"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/secret"
-	"github.com/bharm16/readmit/internal/transportsecurity"
 )
 
 const (
@@ -109,101 +109,72 @@ type Certificate struct {
 	NotAfter  time.Time
 }
 
-// Diagnose reaches the configured endpoint once and reports what it found.
+// Diagnose reaches the endpoint once, through the route its caller decided,
+// and reports what it found. A check's route reaches the configured address; a
+// reset's reaches only the address its decision checked.
 //
 // An error means the configuration itself cannot be used: a CA file that cannot
 // be read, a client certificate that does not pair with the key its credential
 // reference names, timeouts that are not durations. Failing to reach the
 // endpoint is not an error; it is the named Outcome of a Report.
-func Diagnose(ctx context.Context, target replay.Target) (Report, error) {
+func Diagnose(ctx context.Context, target replay.Target, route destination.Route) (Report, error) {
 	report := Report{Environment: target.Environment()}
 	connect, connectErr := time.ParseDuration(target.ConnectTimeout)
 	window, windowErr := time.ParseDuration(target.MessageTimeout)
 	if connectErr != nil || windowErr != nil || connect <= 0 || window <= 0 {
 		return Report{}, errors.New("the configuration does not declare usable connect and message timeouts")
 	}
-	config, offered, err := clientConfig(ctx, target)
+	security, err := declaredSecurity(ctx, target)
 	if err != nil {
 		return Report{}, err
 	}
-	dialCtx, cancel := context.WithTimeout(ctx, connect)
-	defer cancel()
-	connection, err := (&net.Dialer{}).DialContext(dialCtx, "tcp", target.Address)
-	if err != nil {
-		report.Outcome, report.Phase = classify(err, dialCtx, false), "dial"
+	// The connect timeout covers dialling and TLS setup together, exactly as
+	// it does for a replay to the same endpoint.
+	connection, err := route.Open(ctx, security)
+	var failure *destination.Failure
+	if errors.As(err, &failure) {
+		report.Outcome, report.Phase, report.Peer = outcome(failure.Kind), string(failure.Phase), failure.Peer
+		report.Unverified = describe(failure.Unverified)
 		return report, nil
+	}
+	if err != nil {
+		return Report{}, err
 	}
 	defer connection.Close()
 	// Cancellation interrupts blocked network input the way a replay's does.
 	stop := context.AfterFunc(ctx, func() { _ = connection.Close() })
 	defer stop()
 	report.Peer = connection.RemoteAddr().String()
-	confirm := connection
-	if config != nil {
-		// The connect timeout covers dialling and TLS setup together, exactly
-		// as it does for a replay to the same endpoint.
-		secured := tls.Client(connection, config)
-		if err := secured.HandshakeContext(dialCtx); err != nil {
-			report.Outcome, report.Phase = classify(err, dialCtx, offered.requested), "tls"
-			report.Unverified = unverified(err)
-			return report, nil
-		}
-		report.TLS = status(secured.ConnectionState(), offered)
-		confirm = secured
+	if state, secured := connection.TLS(); secured {
+		report.TLS = status(state, connection)
 	}
-	report.Outcome, report.Phase, report.Unsolicited = confirmQuiet(ctx, confirm, window, offered.requested)
+	report.Outcome, report.Phase, report.Unsolicited = confirmQuiet(ctx, connection, window)
 	return report, nil
 }
 
-// clientConfig builds the TLS client configuration a target declares, or nil
-// for a plain transport. Certificate verification is always on and there is no
-// insecure mode: a diagnosis that skipped verification would report a trust it
-// never established. An explicitly configured CA replaces the system roots.
-func clientConfig(ctx context.Context, target replay.Target) (*tls.Config, *offer, error) {
+// declaredSecurity is the TLS a target declares, or nil for a plain transport.
+// Certificate verification is always on and there is no insecure mode: a
+// diagnosis that skipped verification would report a trust it never
+// established. An explicitly configured CA replaces the system roots.
+func declaredSecurity(ctx context.Context, target replay.Target) (*destination.Security, error) {
 	if target.Transport != "tls" {
-		return nil, &offer{}, nil
+		return nil, nil
 	}
-	// The contract's owner reads the CA member, so a diagnosis applies the same
-	// bound and the same refusal a replay to this endpoint applies.
-	authorities, err := replay.LoadCA(target)
+	// One bound and one refusal apply to the CA member, so a diagnosis
+	// verifies against what a replay to this endpoint verifies against.
+	authorities, err := destination.ReadAuthorities(target.CAFile)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	// The minimum version, the always-on verification and the explicit
-	// authority rule live in one place, so a diagnosis cannot honour settings
-	// the send path of the same configuration ignores.
-	config, err := transportsecurity.ClientConfig(replay.VerifiedServerName(target), authorities)
-	if err != nil {
-		return nil, nil, err
-	}
-	presented := &offer{}
+	security := &destination.Security{ServerName: target.ServerName, Authorities: authorities}
 	if target.ClientCertificate != "" {
 		pair, err := clientCertificate(ctx, target)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
-		presented.certificate = &pair
+		security.Certificate = &pair
 	}
-	// The endpoint's request for a client certificate is observed rather than
-	// assumed: this callback runs only when one was asked for, on the
-	// handshake's own goroutine and before it completes. It is the difference
-	// between "the endpoint refused us" and "the endpoint wanted a certificate
-	// this configuration has not got".
-	config.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
-		presented.requested = true
-		if presented.certificate == nil {
-			return &tls.Certificate{}, nil
-		}
-		return presented.certificate, nil
-	}
-	return config, presented, nil
-}
-
-// offer is what this configuration had to present and what the endpoint asked
-// for. It is written during the handshake and read after it, on one goroutine.
-type offer struct {
-	certificate *tls.Certificate
-	requested   bool
+	return security, nil
 }
 
 // clientCertificate pairs the certificate chain a configuration names with the
@@ -242,7 +213,7 @@ func clientCertificate(ctx context.Context, target replay.Target) (tls.Certifica
 // closed connection and a TLS alert are each named instead. TLS 1.3 completes
 // the client's handshake before the endpoint has judged the client certificate,
 // so a rejected one is reported here rather than at the handshake.
-func confirmQuiet(ctx context.Context, connection net.Conn, window time.Duration, requested bool) (Outcome, string, int) {
+func confirmQuiet(ctx context.Context, connection *destination.Connection, window time.Duration) (Outcome, string, int) {
 	deadline := time.Now().Add(window)
 	if limit, ok := ctx.Deadline(); ok && limit.Before(deadline) {
 		deadline = limit
@@ -258,76 +229,40 @@ func confirmQuiet(ctx context.Context, connection net.Conn, window time.Duration
 	if err == nil || errors.As(err, &expired) && expired.Timeout() && ctx.Err() == nil {
 		return Reachable, "confirm", 0
 	}
-	outcome := classify(err, ctx, requested)
-	if peerAlert(err) {
-		return outcome, "tls", 0
+	kind := connection.Classify(ctx, err)
+	if kind == destination.ClientCertificateRejected || kind == destination.HandshakeRefused {
+		return outcome(kind), "tls", 0
 	}
-	return outcome, "confirm", 0
+	return outcome(kind), "confirm", 0
 }
 
-// classify names one transport or certificate failure. Cancellation and expiry
-// of the caller's own context are decided first, so a deadline that interrupted
-// the work is never reported as the endpoint's answer.
-func classify(err error, ctx context.Context, requested bool) Outcome {
-	if errors.Is(ctx.Err(), context.Canceled) || errors.Is(err, context.Canceled) {
+// outcome is the diagnostic outcome of one failure the destination module
+// named. An endpoint that refused at the TLS layer without asking for a client
+// certificate, and a certificate refused for a reason with no outcome of its
+// own, are a failed handshake; a connection the platform reports reset is a
+// network error, as is anything else readmit cannot name more precisely.
+func outcome(kind destination.Kind) Outcome {
+	switch kind {
+	case destination.Timeout:
+		return Timeout
+	case destination.Cancelled:
 		return Cancelled
-	}
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
-		return Timeout
-	}
-	var hostname x509.HostnameError
-	var invalid x509.CertificateInvalidError
-	var authority x509.UnknownAuthorityError
-	switch {
-	case errors.As(err, &hostname):
-		return HostnameMismatch
-	case errors.As(err, &invalid) && invalid.Reason == x509.Expired:
-		return CertificateExpired
-	case errors.As(err, &authority):
-		return UntrustedAuthority
-	}
-	if peerAlert(err) {
-		if requested {
-			return ClientCertificateRejected
-		}
-		return HandshakeFailed
-	}
-	var expired net.Error
-	switch {
-	case errors.As(err, &expired) && expired.Timeout():
-		return Timeout
-	case replay.RefusedConnection(err):
+	case destination.ConnectionRefused:
 		return ConnectionRefused
-	case errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, net.ErrClosed):
+	case destination.Disconnected:
 		return Disconnected
-	}
-	var verification *tls.CertificateVerificationError
-	if errors.As(err, &verification) {
+	case destination.CertificateExpired:
+		return CertificateExpired
+	case destination.UntrustedAuthority:
+		return UntrustedAuthority
+	case destination.HostnameMismatch:
+		return HostnameMismatch
+	case destination.ClientCertificateRejected:
+		return ClientCertificateRejected
+	case destination.HandshakeRefused, destination.CertificateUnverified:
 		return HandshakeFailed
 	}
 	return NetworkError
-}
-
-// peerAlert reports that the endpoint refused the connection at the TLS layer.
-// crypto/tls surfaces an alert the peer sent as a net.OpError whose operation
-// is "remote error" and keeps its own alert type unexported, so the operation
-// identifies one without matching the text of an error message. An alert this
-// does not recognise falls through to an ordinary network error, never to a
-// reachable endpoint.
-func peerAlert(err error) bool {
-	var operation *net.OpError
-	return errors.As(err, &operation) && operation.Op == "remote error"
-}
-
-// unverified reports the certificates an endpoint presented when verification
-// refused them. crypto/tls carries them on the verification error, so a
-// certificate failure can be diagnosed from the same connection that failed.
-func unverified(err error) []Certificate {
-	var verification *tls.CertificateVerificationError
-	if !errors.As(err, &verification) {
-		return nil
-	}
-	return describe(verification.UnverifiedCertificates)
 }
 
 func describe(certificates []*x509.Certificate) []Certificate {
@@ -343,13 +278,13 @@ func describe(certificates []*x509.Certificate) []Certificate {
 	return described
 }
 
-func status(state tls.ConnectionState, presented *offer) *TLSStatus {
+func status(state tls.ConnectionState, connection *destination.Connection) *TLSStatus {
 	reported := &TLSStatus{
 		Version:                    tls.VersionName(state.Version),
 		CipherSuite:                tls.CipherSuiteName(state.CipherSuite),
 		ServerName:                 state.ServerName,
-		ClientCertificateRequested: presented.requested,
-		ClientCertificatePresented: presented.requested && presented.certificate != nil,
+		ClientCertificateRequested: connection.ClientCertificateRequested(),
+		ClientCertificatePresented: connection.ClientCertificatePresented(),
 		Chain:                      describe(state.PeerCertificates),
 	}
 	return reported

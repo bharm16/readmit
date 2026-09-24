@@ -1,5 +1,13 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- `readmit target reset` now opens its `endpoint_quiet` connection only to the
+  address the approved-destination decision checked (#469). It decided on one
+  name resolution and then dialled the configured name again, so the
+  connection could reach an address the decision never approved. The lookup
+  and the connection now share the configuration's `connect_timeout`, as a
+  send's do. Sends, checks, resets and HTTP and database observations open
+  their connections through one module; their outcomes are otherwise unchanged.
+
 - The digest-pinned default-branch synthetic database lab passed all six native
   Linux/amd64 cells on commit `cea49f96669a18759ba323c38a915886d62430b6`
   (#75). Its exact 94-member-per-cell artifacts are retained separately from

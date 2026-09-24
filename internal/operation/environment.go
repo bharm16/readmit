@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/destination"
 	"github.com/bharm16/readmit/internal/environment"
 	"github.com/bharm16/readmit/internal/exportreview"
 	"github.com/bharm16/readmit/internal/fixturereset"
@@ -92,33 +93,28 @@ func ReadTarget(path string) (replay.Target, error) {
 	return replay.ReadTarget(path)
 }
 
-// DiagnoseTarget checks send policy and reaches the target without sending HL7 payloads.
+// DiagnoseTarget checks send policy and reaches the target without sending HL7
+// payloads. The decision is reported, never enforced: the check reaches the
+// configured address whatever it says.
 func DiagnoseTarget(ctx context.Context, target replay.Target, policy *sendpolicy.Policy, resolver sendpolicy.Resolver) (environment.Report, sendpolicy.Decision, error) {
-	if resolver == nil {
-		resolver = sendpolicy.SystemResolver
-	}
 	duration, err := time.ParseDuration(target.ConnectTimeout)
 	if err != nil || duration <= 0 {
 		duration = 5 * time.Second
 	}
-	decisionCtx, stop := context.WithTimeout(ctx, duration)
-	decision := sendpolicy.Decide(decisionCtx, policy, sendpolicy.Request{
-		Address:        target.Address,
-		Classification: string(target.Environment().Classification),
-		Explicit:       false,
-	}, resolver)
-	stop()
-
-	report, err := environment.Diagnose(ctx, target)
-	return report, decision, err
+	// Only a recorder can fail a decision, and a check's caller retains the
+	// decision it reports afterwards.
+	decision, _ := destination.Decide(ctx, destination.Request{
+		Purpose: destination.Check, Address: target.Address, Classification: string(target.Environment().Classification),
+		Policy: policy, Budget: duration, Resolve: resolver,
+	})
+	route, _ := decision.Route()
+	report, err := environment.Diagnose(ctx, target, route)
+	return report, decision.Decision, err
 }
 
 // ResetEnvironment runs the reviewed reset plan against the target and optionally retains
 // the outcome in outcomePath.
 func ResetEnvironment(ctx context.Context, req fixturereset.Request, outcomePath string, resolver sendpolicy.Resolver) (fixturereset.Result, fixturereset.Plan, error) {
-	if resolver == nil {
-		resolver = sendpolicy.SystemResolver
-	}
 	if outcomePath != "" {
 		if _, err := artifactpath.Destination(outcomePath); err != nil {
 			return fixturereset.Result{}, fixturereset.Plan{}, err

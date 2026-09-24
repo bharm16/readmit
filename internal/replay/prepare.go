@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/destination"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/mllp"
 	"github.com/bharm16/readmit/internal/sendpolicy"
@@ -60,7 +61,7 @@ func Prepare(sourcePath string, target Target, options Options) (*Plan, error) {
 	if target.ClientCertificate != "" {
 		return nil, errors.New("this release's replay transport presents no client certificate, so a configuration declaring one cannot be replayed; readmit target check diagnoses it against the same endpoint")
 	}
-	ca, err := LoadCA(target)
+	ca, err := destination.ReadAuthorities(target.CAFile)
 	if err != nil {
 		return nil, err
 	}

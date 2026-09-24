@@ -3,16 +3,15 @@ package replay
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"errors"
 	"io"
 	"net"
 	"time"
 
+	"github.com/bharm16/readmit/internal/destination"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/mllp"
 	"github.com/bharm16/readmit/internal/sendpolicy"
-	"github.com/bharm16/readmit/internal/transportsecurity"
 )
 
 // Execute is the only replay operation that accesses the network. A new run is
@@ -41,7 +40,7 @@ type Observer interface {
 }
 
 func ExecuteObserved(ctx context.Context, plan *Plan, output string, policy *sendpolicy.Policy, record func(sendpolicy.Decision) error, observer Observer) (*Run, error) {
-	return executeObservedPolicy(ctx, plan, output, policy, record, sendpolicy.SystemResolver, observer)
+	return executeObservedPolicy(ctx, plan, output, policy, record, nil, observer)
 }
 
 func executeWithPolicy(ctx context.Context, plan *Plan, output string, policy *sendpolicy.Policy, record func(sendpolicy.Decision) error, resolve sendpolicy.Resolver) (*Run, error) {
@@ -56,35 +55,21 @@ func executeObservedPolicy(ctx context.Context, plan *Plan, output string, polic
 		return nil, errors.New("a selected send policy requires a decision recorder")
 	}
 	duration, _ := time.ParseDuration(plan.target.ConnectTimeout)
-	deadline := time.Now().Add(duration)
-	decisionCtx, cancel := context.WithDeadline(ctx, deadline)
-	defer cancel()
-	decision := sendpolicy.Decide(decisionCtx, policy, sendpolicy.Request{
-		Address: plan.target.Address, Classification: string(plan.target.Environment().Classification), Explicit: true,
-	}, resolve)
-	remaining := max(time.Duration(0), time.Until(deadline))
-	cancel()
-	// Retain before using the decision, and do not expose a mutable slice shared
-	// with the recorder as the authorization used by the connector.
-	address := ""
-	if decision.Allowed && len(decision.ResolvedAddresses) == 1 {
-		_, port, _ := net.SplitHostPort(plan.target.Address)
-		address = net.JoinHostPort(decision.ResolvedAddresses[0], port)
+	decision, err := destination.Decide(ctx, destination.Request{
+		Purpose: destination.Send, Address: plan.target.Address, Classification: string(plan.target.Environment().Classification),
+		Policy: policy, Budget: duration, Record: record, Resolve: resolve,
+	})
+	if err != nil {
+		return nil, err
 	}
-	if record != nil {
-		if err := record(decision); err != nil {
-			return nil, err
-		}
-	}
-	if !decision.Allowed || address == "" {
+	route, admitted := decision.Route()
+	if !admitted {
 		return nil, errors.New("the send was refused by policy before anything was sent: " + string(decision.Reason))
 	}
+	// File persistence is not network connection time. DNS consumes the
+	// connection budget; recording and reserving evidence do not.
 	return executeObserved(ctx, plan, output, observer, func(ctx context.Context, p *Plan) (net.Conn, *TransportError) {
-		// File persistence is not network connection time. DNS consumes the
-		// connection budget; recording and reserving evidence do not.
-		dialCtx, stop := context.WithTimeout(ctx, remaining)
-		defer stop()
-		return connect(dialCtx, p, address)
+		return connect(ctx, p, route)
 	})
 }
 
@@ -240,39 +225,31 @@ func executeObserved(ctx context.Context, plan *Plan, output string, observer Ob
 	return run, nil
 }
 
-func connect(ctx context.Context, plan *Plan, address string) (net.Conn, *TransportError) {
-	duration, _ := time.ParseDuration(plan.target.ConnectTimeout)
-	dialCtx, cancel := context.WithTimeout(ctx, duration)
-	defer cancel()
-	connection, err := (&net.Dialer{}).DialContext(dialCtx, "tcp", address)
-	if err != nil {
-		return nil, &TransportError{Phase: "dial", Class: errorClass(err, dialCtx)}
+// connect opens the one connection a send makes, to the address its decision
+// checked. One package owns the minimum version, the always-on verification
+// and the explicit authority rule, so a send honours exactly what a diagnosis
+// and a capture of the same configuration honour.
+func connect(ctx context.Context, plan *Plan, route destination.Route) (net.Conn, *TransportError) {
+	var security *destination.Security
+	if plan.target.Transport != "plain" {
+		security = &destination.Security{ServerName: plan.target.ServerName, Authorities: plan.ca}
 	}
-	if plan.target.Transport == "plain" {
+	connection, err := route.Open(ctx, security)
+	if err == nil {
 		return connection, nil
 	}
-	// One package owns the minimum version, the always-on verification and the
-	// explicit authority rule, so a send honours exactly what a diagnosis and a
-	// capture of the same configuration honour.
-	config, err := transportsecurity.ClientConfig(VerifiedServerName(plan.target), plan.ca)
-	if err != nil {
-		_ = connection.Close()
+	var failure *destination.Failure
+	if !errors.As(err, &failure) {
 		return nil, &TransportError{Phase: "tls", Class: "tls_verification"}
 	}
-	secured := tls.Client(connection, config)
-	if err := secured.HandshakeContext(dialCtx); err != nil {
-		_ = secured.Close()
-		class := errorClass(err, dialCtx)
-		if class != "timeout" && class != "cancelled" {
-			class = "tls_handshake"
-			var verification *tls.CertificateVerificationError
-			if errors.As(err, &verification) {
-				class = "tls_verification"
-			}
+	class := transportClass(failure.Kind)
+	if failure.Phase == destination.Handshake && class != "timeout" && class != "cancelled" {
+		class = "tls_handshake"
+		if failure.Kind.Verification() {
+			class = "tls_verification"
 		}
-		return nil, &TransportError{Phase: "tls", Class: class}
 	}
-	return secured, nil
+	return nil, &TransportError{Phase: string(failure.Phase), Class: class}
 }
 
 func writeAll(writer io.Writer, data []byte) (int, error) {
@@ -291,26 +268,21 @@ func writeAll(writer io.Writer, data []byte) (int, error) {
 }
 
 func setFailure(event *Event, phase string, err error, ctx context.Context) {
-	class := errorClass(err, ctx)
+	class := transportClass(destination.Classify(ctx, err))
 	event.TransportError = &TransportError{Phase: phase, Class: class}
 	event.Outcome = outcomeFor(class)
 }
 
-func errorClass(err error, ctx context.Context) string {
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
+// transportClass is the frozen readmit-run/v1 class of one transport failure.
+func transportClass(kind destination.Kind) string {
+	switch kind {
+	case destination.Timeout:
 		return "timeout"
-	}
-	if errors.Is(ctx.Err(), context.Canceled) || errors.Is(err, context.Canceled) {
+	case destination.Cancelled:
 		return "cancelled"
-	}
-	var netErr net.Error
-	if errors.As(err, &netErr) && netErr.Timeout() {
-		return "timeout"
-	}
-	if connectionRefused(err) {
+	case destination.ConnectionRefused:
 		return "connection_refused"
-	}
-	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.ErrShortWrite) || connectionDisconnected(err) || errors.Is(err, net.ErrClosed) {
+	case destination.Disconnected, destination.ConnectionReset:
 		return "disconnect"
 	}
 	return "network"

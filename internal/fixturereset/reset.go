@@ -11,6 +11,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/bharm16/readmit/internal/destination"
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/environment"
 	"github.com/bharm16/readmit/internal/observation"
@@ -172,6 +173,7 @@ func Run(ctx context.Context, request Request, resolve sendpolicy.Resolver) (Res
 	// A name is resolved and a socket opened only when the plan says an action
 	// needs one. A plan that touches no endpoint therefore has no destination
 	// to decide about, and readmit asks nothing of the network for it.
+	var route destination.Route
 	if plan.RequiresConnection() {
 		connect, err := time.ParseDuration(request.Target.ConnectTimeout)
 		if err != nil || connect <= 0 {
@@ -182,15 +184,18 @@ func Run(ctx context.Context, request Request, resolve sendpolicy.Resolver) (Res
 		// refusing is the only decision that lets a connection be opened; a
 		// reset never reaches the explicit-send rule, so it can never be
 		// allowed by one implementation while a send is denied by another.
-		// The lookup is bounded by the configuration's own connect timeout,
-		// exactly as the same decision is bounded for a connectivity check.
-		decide, stop := context.WithTimeout(ctx, connect)
-		decision := sendpolicy.Decide(decide, request.Policy, sendpolicy.Request{
-			Address: request.Target.Address, Classification: string(named.Classification),
-		}, resolve)
-		stop()
+		// The lookup and the connection share the configuration's own connect
+		// timeout, and the connection reaches only the address the decision
+		// checked: the name is never resolved a second time.
+		decision, _ := destination.Decide(ctx, destination.Request{
+			Purpose: destination.ResetCheck, Address: request.Target.Address,
+			Classification: string(named.Classification), Policy: request.Policy,
+			Budget: connect, Resolve: resolve,
+		})
 		result.Decision = decision.Reason
-		if decision.Reason != sendpolicy.SendNotExplicit {
+		var admitted bool
+		route, admitted = decision.Route()
+		if !admitted {
 			return refuse(result, DestinationRefused), plan
 		}
 	}
@@ -203,7 +208,7 @@ func Run(ctx context.Context, request Request, resolve sendpolicy.Resolver) (Res
 			})
 			continue
 		}
-		performed := perform(ctx, request, action)
+		performed := perform(ctx, request, action, route)
 		result.Actions = append(result.Actions, performed)
 		if performed.Outcome != Confirmed {
 			stopped = true
@@ -220,7 +225,7 @@ func Run(ctx context.Context, request Request, resolve sendpolicy.Resolver) (Res
 // switch is the whole of what a plan can cause: there is no default branch that
 // runs something a reviewer did not read, because the reader already refused
 // every operator absent from the reviewed table.
-func perform(ctx context.Context, request Request, action Action) ActionOutcome {
+func perform(ctx context.Context, request Request, action Action, route destination.Route) ActionOutcome {
 	performed := ActionOutcome{ID: action.ID, Operator: action.Operator, Authority: action.Authority}
 	if err := ctx.Err(); err != nil {
 		performed.Outcome, performed.Reason = Cancelled, Interrupted
@@ -236,7 +241,7 @@ func perform(ctx context.Context, request Request, action Action) ActionOutcome 
 	case ObservationEmpty:
 		performed.Outcome, performed.Reason = emptyLedger(request.PlanDirectory, action.Observation)
 	case EndpointQuiet:
-		performed.Outcome, performed.Reason, performed.Diagnosis = quietEndpoint(ctx, request.Target)
+		performed.Outcome, performed.Reason, performed.Diagnosis = quietEndpoint(ctx, request.Target, route)
 	}
 	return performed
 }
@@ -275,18 +280,19 @@ func emptyLedger(directory, name string) (Outcome, Reason) {
 }
 
 // quietEndpoint confirms the environment accepts a connection again and sends
-// nothing unprompted, through the one diagnosis readmit already owns. It sends
-// no HL7 payload: reaching an endpoint is evidence about the transport and
-// never evidence that an application accepted, processed or stored anything,
-// and a reset claims only the former.
+// nothing unprompted, through the one diagnosis readmit already owns, over the
+// route the reset's decision admitted. It sends no HL7 payload: reaching an
+// endpoint is evidence about the transport and never evidence that an
+// application accepted, processed or stored anything, and a reset claims only
+// the former.
 //
 // A refused connection and bytes arriving unprompted are both things readmit
 // established, so they are failures. Everything else that is not reachable
 // leaves the reset merely unconfirmed: a timeout in particular is not a finding
 // about the fixture at all, it is readmit not having established anything, and
 // a certificate that would not verify says nothing about a ledger either way.
-func quietEndpoint(ctx context.Context, target replay.Target) (Outcome, Reason, environment.Outcome) {
-	report, err := environment.Diagnose(ctx, target)
+func quietEndpoint(ctx context.Context, target replay.Target, route destination.Route) (Outcome, Reason, environment.Outcome) {
+	report, err := environment.Diagnose(ctx, target, route)
 	if err != nil {
 		return Refused, EndpointUnusable, ""
 	}

@@ -1,6 +1,6 @@
 //go:build !windows
 
-package replay
+package destination
 
 import (
 	"errors"
@@ -8,6 +8,6 @@ import (
 )
 
 func connectionRefused(err error) bool { return errors.Is(err, syscall.ECONNREFUSED) }
-func connectionDisconnected(err error) bool {
+func connectionReset(err error) bool {
 	return errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNABORTED) || errors.Is(err, syscall.EPIPE)
 }

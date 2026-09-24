@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/bharm16/readmit/internal/destination"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/sendpolicy"
 )
@@ -24,20 +25,17 @@ import (
 // The plan is nil whenever preparation refused. Nothing here opens a
 // connection or writes a run.
 func PrepareReplay(ctx context.Context, casePath string, target replay.Target, options replay.Options, policy *sendpolicy.Policy, send bool, record func(sendpolicy.Decision) error, resolver sendpolicy.Resolver) (*replay.Plan, error) {
-	if resolver == nil {
-		resolver = sendpolicy.SystemResolver
-	}
 	if !send || sendpolicy.RefusesEverySend(string(target.Environment().Classification)) {
+		purpose := destination.Check
+		if send {
+			purpose = destination.Send
+		}
 		duration, _ := time.ParseDuration(target.ConnectTimeout)
-		decisionCtx, stop := context.WithTimeout(ctx, duration)
-		decision := sendpolicy.Decide(decisionCtx, policy, sendpolicy.Request{
-			Address: target.Address, Classification: string(target.Environment().Classification), Explicit: send,
-		}, resolver)
-		stop()
-		if record != nil {
-			if err := record(decision); err != nil {
-				return nil, err
-			}
+		if _, err := destination.Decide(ctx, destination.Request{
+			Purpose: purpose, Address: target.Address, Classification: string(target.Environment().Classification),
+			Policy: policy, Budget: duration, Record: record, Resolve: resolver,
+		}); err != nil {
+			return nil, err
 		}
 	}
 	return replay.Prepare(casePath, target, options)
