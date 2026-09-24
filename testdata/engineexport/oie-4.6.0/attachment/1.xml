@@ -1,0 +1,106 @@
+<message>
+  <messageId>1</messageId>
+  <serverId>54dec7bc-1e42-4613-adfc-0a5e381f9403</serverId>
+  <channelId>4fee6298-1eac-5f72-8154-c6249c63f7c0</channelId>
+  <receivedDate>
+    <time>1790262183706</time>
+    <timezone>Etc/UTC</timezone>
+  </receivedDate>
+  <processed>true</processed>
+  <attachments>
+    <attachment>
+      <id>synthetic-only-attachment</id>
+      <content>U1lOVEhFVElDLU9OTFk=</content>
+      <type>text/plain</type>
+      <encrypt>false</encrypt>
+    </attachment>
+  </attachments>
+  <connectorMessages class="linked-hash-map">
+    <entry>
+      <int>0</int>
+      <connectorMessage>
+        <messageId>1</messageId>
+        <metaDataId>0</metaDataId>
+        <channelId>4fee6298-1eac-5f72-8154-c6249c63f7c0</channelId>
+        <channelName>Readmit synthetic source-attachments</channelName>
+        <connectorName>Source</connectorName>
+        <serverId>54dec7bc-1e42-4613-adfc-0a5e381f9403</serverId>
+        <receivedDate>
+          <time>1790262183706</time>
+          <timezone>Etc/UTC</timezone>
+        </receivedDate>
+        <status>TRANSFORMED</status>
+        <raw>
+          <encrypted>false</encrypted>
+          <channelId>4fee6298-1eac-5f72-8154-c6249c63f7c0</channelId>
+          <messageId>1</messageId>
+          <metaDataId>0</metaDataId>
+          <contentType>RAW</contentType>
+          <content>MSH|^~\&amp;|READMIT|SYNTHETIC|ENGINE|LAB|20260102120000+0000||ADT^A01|SYNTH-35-575347|P|2.5.1
+PID|||SYNTHETIC-ONLY||TEST^PERSON
+</content>
+          <dataType>HL7V2</dataType>
+        </raw>
+        <processedRaw>
+          <encrypted>false</encrypted>
+          <channelId>4fee6298-1eac-5f72-8154-c6249c63f7c0</channelId>
+          <messageId>1</messageId>
+          <metaDataId>0</metaDataId>
+          <contentType>PROCESSED_RAW</contentType>
+          <content>undefined</content>
+          <dataType>HL7V2</dataType>
+        </processedRaw>
+        <encoded>
+          <encrypted>false</encrypted>
+          <channelId>4fee6298-1eac-5f72-8154-c6249c63f7c0</channelId>
+          <messageId>1</messageId>
+          <metaDataId>0</metaDataId>
+          <contentType>ENCODED</contentType>
+          <content>undefined</content>
+          <dataType>HL7V2</dataType>
+        </encoded>
+        <sourceMapContent>
+          <encrypted>false</encrypted>
+          <content class="java.util.Collections$UnmodifiableMap">
+            <m>
+              <entry>
+                <string>destinationSet</string>
+                <linked-hash-set/>
+              </entry>
+            </m>
+          </content>
+        </sourceMapContent>
+        <connectorMapContent>
+          <encrypted>false</encrypted>
+          <content class="map"/>
+        </connectorMapContent>
+        <channelMapContent>
+          <encrypted>false</encrypted>
+          <content class="map"/>
+        </channelMapContent>
+        <responseMapContent>
+          <encrypted>false</encrypted>
+          <content class="map"/>
+        </responseMapContent>
+        <metaDataMap/>
+        <processingErrorContent>
+          <encrypted>false</encrypted>
+        </processingErrorContent>
+        <postProcessorErrorContent>
+          <encrypted>false</encrypted>
+        </postProcessorErrorContent>
+        <responseErrorContent>
+          <encrypted>false</encrypted>
+        </responseErrorContent>
+        <errorCode>0</errorCode>
+        <sendAttempts>1</sendAttempts>
+        <responseDate>
+          <time>1790262183717</time>
+          <timezone>Etc/UTC</timezone>
+        </responseDate>
+        <chainId>0</chainId>
+        <orderId>0</orderId>
+      </connectorMessage>
+    </entry>
+  </connectorMessages>
+</message>

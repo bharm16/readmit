@@ -350,8 +350,10 @@ limits above.
   text-log extraction, including explicit source, direction, channel and
   timestamp mapping, is `--recipe`; see [mapping recipes](mapping.md). A plan
   divides a member by framing alone and reads no value out of it.
-- **No qualified integration-engine matrix.** The finite local adapter below
-  remains unqualified pending actual exports from both selected releases.
+- **No approved independent integration-engine corpus.** The finite local adapter
+  below has been exercised against actual synthetic-message exports from both
+  selected releases. Fixture rights and scope review remain an owner gate before
+  those candidate exports become an approved independent verification corpus.
 - **No collection from a remote source.** An import reads containers that are
   already on this machine. Bringing evidence here from an approved
   customer-controlled source — an export directory, or a remote export reached
@@ -376,17 +378,28 @@ limits above.
   the plan, recipe and engine adapter choices, but its preview and commit still
   use the declared readers and preserve the original containers.
 
-## Engine exports: unqualified local adapter
+## Engine exports: finite tested local adapter
 
 `readmit import engine` is a file-only adapter with explicit declarations. It
-makes no engine connection. **Neither target has passed its real-engine fixture
-matrix.** The names below select a source-model parser; they do not authenticate
-where a file came from or assert compatibility with every export option.
+makes no engine connection. Its source-only structured subset has been exercised
+against original, synthetic-message exports from isolated Mirth 4.5.2 and OIE
+4.6.0 labs. The names below select a parser; they do not authenticate where a
+particular file came from or certify every export option. Fixture redistribution
+and rights review remains with the owner, so the development preview still
+reports each file's self-declared origin as `unqualified`.
 
-| Declared engine/version | Locally implemented | Qualification |
+| Declared engine/version | Tested local subset | Unsupported from actual exports |
 | --- | --- | --- |
-| `mirth` / `4.5.2` | raw fallback; finite message XML source-raw subset | pending actual Mirth exports |
-| `oie` / `4.6.0` | raw fallback; finite message XML source-raw subset | pending actual OIE exports |
+| `mirth` / `4.5.2` | Source-only whole-message XML with explicit unencrypted RAW/HL7V2 content at connector 0; RAW-only file fallback | Destination connector entries, encrypted content, nonempty attachments, absent transformed source stage |
+| `oie` / `4.6.0` | The same source-only and RAW-only options | The same variants |
+
+The byte-exact engine-generated fixture matrix in
+`testdata/engineexport/README.md`
+records both releases, image/tarball/JRE digests, synthetic inputs, channel
+configuration and export options. It includes duplicates, partial and malformed
+source content, time variants, UTF-8/non-ASCII and escaped XML, and two
+destination connectors. This is a finite compatibility test, not a claim that
+the unsupported variants were imported or that either engine is certified.
 
 Save an adapter declaration (all five members required; unknown, duplicate or
 null members and other values are refused):
@@ -411,19 +424,27 @@ An XML channel configuration passed to the XML adapter is refused. Raw fallback
 can retain any bytes as unparsed evidence; that never certifies message content.
 
 The finite XML subset is one or more concatenated `message` elements, each with
-one `connectorMessages/entry`, integer key `0`, one `connectorMessage` whose
-`metaDataId` is `0`, and one `raw` member. That member must explicitly declare
+exactly one `connectorMessages/entry`, integer key `0`, one `connectorMessage`
+whose `metaDataId` is `0`, and one selected `raw` member. That member must
+explicitly declare
 `contentType=RAW`, `dataType=HL7V2`, `encrypted=false`, and scalar `content`.
+The tested exporters also retain separate `processedRaw` and `encoded` source
+stages. Their explicit unencrypted `HL7V2` declarations and known map class
+labels are accepted as **unselected container bytes**; their content is never
+promoted to the extracted source. No destination connector, other content
+stage, direction, timestamp or correlation is inferred from their presence.
 Character entities and CDATA decode to message bytes; literal carriage returns
 inside content are refused because XML parsing would normalize them. `&#13;`
 preserves a carriage return. Unselected metadata stays in the original container
 and is not promoted into observations or correlation. Source stage does not
 prove that a downstream system received or accepted anything.
 
-Unsupported: destination connectors, other stages (including transformed,
-encoded, sent and response content), encryption, nonempty attachments, missing or
+Unsupported: destination connectors, selected stages other than source RAW
+(including transformed, sent and response content), encryption, nonempty
+attachments, missing or
 contradictory required content declarations, class/reference attributes (except
-`connectorMessages class="linked-hash-map"`), namespaces, XML declarations,
+`connectorMessages class="linked-hash-map"` and the tested unselected map-content
+class labels), namespaces, XML declarations,
 comments, processing instructions, DTDs/entities, channel configuration exports,
 and other engine versions. An unsupported or truncated structured file refuses
 the whole import and creates no case. Correct the export options, use explicitly
@@ -465,35 +486,38 @@ Relevant primary files are `server/src/com/mirth/connect/util/messagewriter/Mess
 `donkey/src/main/java/com/mirth/connect/donkey/util/xstream/XStreamSerializer.java`,
 and `donkey/src/main/java/com/mirth/connect/donkey/model/message/{Message,ConnectorMessage,MessageContent}.java`.
 The writer appends CRLF outside its serialized/content output; those bytes stay
-in the retained container. Checked-in tests are hand-authored source-model
-examples, **not exports produced by either engine**, and not lab acceptance.
+in the retained container. The original source-model tests remain labelled
+hand-authored. They now sit beside original exports that both named engines
+actually wrote from the documented synthetic inputs. The lab record in
+`testdata/engineexport/README.md` pins Mirth's image digest, OIE's official
+tarball and Java image digests, the channel setup, export options, input and
+export SHA-256, and the exact Readmit base revision. The actual source-only
+whole-message XML contains `processedRaw`, `encoded` and typed map wrappers
+beside source `raw`; the prior hand-authored subset missed them. No patient
+records or live engine connection were used for import. The fixture rights
+and redistribution review remains an owner gate before those files become an
+approved independent verification corpus.
 
-The owner must provide isolated, authorized Mirth Connect **4.5.2** and Open
-Integration Engine **4.6.0** installations, with pinned installer/image SHA-256
-and platform/runtime versions, and a usable local runtime or disposable lab.
-The development machine's Docker daemon was unavailable during this round; no
-engine lab was started and no real exports were obtained. No patient records
-are needed. Provisioning a lab does not itself complete the matrix.
+To regenerate the finite matrix, use the documented seed and input hashes, a
+source-only channel and a separate two-destination channel, and the recorded
+content-stage, encryption, attachment and filename options. Treat channel
+configuration as configuration, never message evidence. Retain original export
+bytes and digests, engine build/image digests, options, timestamps, exact
+Readmit revision and command, preview and verified case identity together.
+Only actual exporter files are labelled `engine-generated`; credentials stay
+outside fixtures and reports.
 
-For each target, generate deterministic synthetic ADT/SIU messages (retain seed,
-generator revision and exact input digests), run a source-only channel and a
-separate multi-destination/transformation channel, and export messages using
-recorded format, content-stage selection, encryption, charset and file-naming
-options. Retain scrubbed channel configuration and its digest as configuration,
-never as message evidence. Keep original export bytes/digests, engine build/image
-digests, options, timestamps, exact Readmit revision and command, preview and
-verified case identity together. Label fixture origin `engine-generated` only
-when this run actually exists; keep credentials out of fixtures and reports.
-
-The matrix must include duplicates, partial/malformed payloads, absent content,
-multiple messages, source and destination stages, encrypted exports, channel-only
-exports, non-ASCII/entity/CDATA/CRLF cases, missing timestamps/correlation, and
-unsupported options. Compare decoded expected bytes against independent seeded
-inputs and account for every container byte; validate refusals, cancellation,
-retry with new destinations and default output privacy through the CLI. Broaden
-the adapter only from actual retained exports. #35 stays open until the required
-structured mappings and both real-engine matrices pass with rights/provenance
-review. Local process tests interrupt the actual CLI after exclusive output reservation
+The retained matrix includes duplicates, partial/malformed payloads, an absent
+selected stage, multiple messages, source and destination stages, encrypted and
+nonempty-attachment exports, channel-only configurations, non-ASCII text and
+XML entities/CRLF. Neither default exporter emitted CDATA in this run, so that
+syntax remains parser-tested rather than engine-qualified. Missing observation
+time, traffic direction and engine correlation stay unknown. The tests compare
+decoded source bytes against independent seeded inputs, preserve each original
+container byte, and exercise refusals, cancellation, retry with new destinations
+and default output privacy through the CLI. #35 remains open for the owner's
+rights/provenance approval and any broader variant qualification. Local process
+tests interrupt the actual CLI after exclusive output reservation
 using process kill and, on Unix, SIGINT. They verify incomplete-case refusal,
 no completion or payload disclosure, and byte-exact retry at a fresh destination.
 Completed attempts that outrun the signal verify before a bounded retry; they do

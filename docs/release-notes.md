@@ -9,6 +9,14 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   workflow is never a PR or release gate; no SQL Server or Oracle version is
   claimed qualified until the owner dispatches and reviews its evidence.
 
+- `readmit import engine` now reads the source RAW stage of original synthetic
+  Mirth Connect 4.5.2 and OIE 4.6.0 whole-message exports (#35). Their
+  unselected processed/encoded stages and typed map wrappers stay in the
+  original container; destination, encrypted and nonempty-attachment variants
+  still refuse. The finite matrix retains release/configuration/export digests,
+  public CLI results and raw fallback bytes. Per-file origin remains a
+  declaration, not authentication, and fixture rights review is pending.
+
 - Profile validation now refuses an explicitly named pack it cannot read in
   the same words as opening that profile (#394), instead of silently resolving
   against another pack. Discarding unstored profile edits waits for queued

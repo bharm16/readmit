@@ -1,0 +1,96 @@
+<message>
+  <messageId>8</messageId>
+  <serverId>1aa3e0c5-5d8a-486f-bc49-990a54ae077b</serverId>
+  <channelId>7ec31e15-73cb-5815-945e-f229667cc016</channelId>
+  <receivedDate>
+    <time>1790261311518</time>
+    <timezone>Etc/UTC</timezone>
+  </receivedDate>
+  <processed>true</processed>
+  <connectorMessages class="linked-hash-map">
+    <entry>
+      <int>0</int>
+      <connectorMessage>
+        <messageId>8</messageId>
+        <metaDataId>0</metaDataId>
+        <channelId>7ec31e15-73cb-5815-945e-f229667cc016</channelId>
+        <channelName>Readmit synthetic source-a</channelName>
+        <connectorName>Source</connectorName>
+        <serverId>1aa3e0c5-5d8a-486f-bc49-990a54ae077b</serverId>
+        <receivedDate>
+          <time>1790261311518</time>
+          <timezone>Etc/UTC</timezone>
+        </receivedDate>
+        <status>TRANSFORMED</status>
+        <raw>
+          <encrypted>false</encrypted>
+          <channelId>7ec31e15-73cb-5815-945e-f229667cc016</channelId>
+          <messageId>8</messageId>
+          <metaDataId>0</metaDataId>
+          <contentType>RAW</contentType>
+          <content>NOT-AN-HL7-MESSAGE&#xd;</content>
+          <dataType>HL7V2</dataType>
+        </raw>
+        <processedRaw>
+          <encrypted>false</encrypted>
+          <channelId>7ec31e15-73cb-5815-945e-f229667cc016</channelId>
+          <messageId>8</messageId>
+          <metaDataId>0</metaDataId>
+          <contentType>PROCESSED_RAW</contentType>
+          <content>undefined</content>
+          <dataType>HL7V2</dataType>
+        </processedRaw>
+        <encoded>
+          <encrypted>false</encrypted>
+          <channelId>7ec31e15-73cb-5815-945e-f229667cc016</channelId>
+          <messageId>8</messageId>
+          <metaDataId>0</metaDataId>
+          <contentType>ENCODED</contentType>
+          <content>undefined</content>
+          <dataType>HL7V2</dataType>
+        </encoded>
+        <sourceMapContent>
+          <encrypted>false</encrypted>
+          <content class="java.util.Collections$UnmodifiableMap">
+            <m>
+              <entry>
+                <string>destinationSet</string>
+                <linked-hash-set/>
+              </entry>
+            </m>
+          </content>
+        </sourceMapContent>
+        <connectorMapContent>
+          <encrypted>false</encrypted>
+          <content class="map"/>
+        </connectorMapContent>
+        <channelMapContent>
+          <encrypted>false</encrypted>
+          <content class="map"/>
+        </channelMapContent>
+        <responseMapContent>
+          <encrypted>false</encrypted>
+          <content class="map"/>
+        </responseMapContent>
+        <metaDataMap/>
+        <processingErrorContent>
+          <encrypted>false</encrypted>
+        </processingErrorContent>
+        <postProcessorErrorContent>
+          <encrypted>false</encrypted>
+        </postProcessorErrorContent>
+        <responseErrorContent>
+          <encrypted>false</encrypted>
+        </responseErrorContent>
+        <errorCode>0</errorCode>
+        <sendAttempts>1</sendAttempts>
+        <responseDate>
+          <time>1790261311521</time>
+          <timezone>Etc/UTC</timezone>
+        </responseDate>
+        <chainId>0</chainId>
+        <orderId>0</orderId>
+      </connectorMessage>
+    </entry>
+  </connectorMessages>
+</message>

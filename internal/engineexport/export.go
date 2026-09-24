@@ -83,7 +83,7 @@ func Extract(p Plan, data []byte) ([]Record, error) {
 			if t.Name.Local != "message" {
 				return nil, ErrUnsupported
 			}
-			n, err := readNode(d, t, start, 0, &nodes)
+			n, err := readNode(d, t, start, "", 0, &nodes)
 			if err != nil {
 				return nil, err
 			}
@@ -112,15 +112,18 @@ type node struct {
 	start, end, body int
 }
 
-func readNode(d *xml.Decoder, start xml.StartElement, offset, depth int, nodes *int) (*node, error) {
+func readNode(d *xml.Decoder, start xml.StartElement, offset int, parent string, depth int, nodes *int) (*node, error) {
 	*nodes += 1
 	if depth >= 32 || *nodes > 8192 || start.Name.Space != "" {
 		return nil, ErrUnsupported
 	}
-	// XStream's linked map declaration is the only supported attribute. Never
-	// resolve class names, references, entities or executable serialization hooks.
+	// These are the map labels the two tested exporters put on unselected
+	// metadata. They are retained as bytes, never interpreted or instantiated.
+	// All other classes, references and executable serialization hooks refuse.
 	for _, a := range start.Attr {
-		if start.Name.Local != "connectorMessages" || a.Name.Space != "" || a.Name.Local != "class" || a.Value != "linked-hash-map" {
+		if a.Name.Space != "" || a.Name.Local != "class" ||
+			!(start.Name.Local == "connectorMessages" && a.Value == "linked-hash-map" ||
+				start.Name.Local == "content" && allowedMapContentClass(parent, a.Value)) {
 			return nil, ErrUnsupported
 		}
 	}
@@ -134,7 +137,7 @@ func readNode(d *xml.Decoder, start xml.StartElement, offset, depth int, nodes *
 		}
 		switch t := token.(type) {
 		case xml.StartElement:
-			child, err := readNode(d, t, at, depth+1, nodes)
+			child, err := readNode(d, t, at, start.Name.Local, depth+1, nodes)
 			if err != nil {
 				return nil, err
 			}
@@ -149,6 +152,16 @@ func readNode(d *xml.Decoder, start xml.StartElement, offset, depth int, nodes *
 			return nil, ErrUnsupported
 		}
 	}
+}
+
+func allowedMapContentClass(parent, class string) bool {
+	switch parent {
+	case "sourceMapContent":
+		return class == "java.util.Collections$UnmodifiableMap"
+	case "connectorMapContent", "channelMapContent", "responseMapContent":
+		return class == "map"
+	}
+	return false
 }
 func (n *node) child(name string) (*node, error) {
 	var found *node
@@ -198,9 +211,27 @@ func messageRecords(n *node, data []byte) ([]Record, error) {
 		if v, e := c.value("metaDataId"); e != nil || v != "0" {
 			return nil, ErrUnsupported
 		}
+		seenStage := map[string]bool{}
 		for _, child := range c.children {
 			switch child.name {
-			case "processedRaw", "transformed", "encoded", "sent", "response", "responseTransformed", "processedResponse":
+			case "processedRaw", "encoded":
+				// Both engines retain these unselected source stages in their
+				// ordinary whole-message export. They are never extracted as
+				// evidence; accept only their explicit unencrypted HL7V2 form.
+				contentType := "PROCESSED_RAW"
+				if child.name == "encoded" {
+					contentType = "ENCODED"
+				}
+				if seenStage[child.name] {
+					return nil, ErrUnsupported
+				}
+				seenStage[child.name] = true
+				for _, pair := range [][2]string{{"contentType", contentType}, {"dataType", "HL7V2"}, {"encrypted", "false"}} {
+					if value, err := child.value(pair[0]); err != nil || value != pair[1] {
+						return nil, ErrUnsupported
+					}
+				}
+			case "transformed", "sent", "response", "responseTransformed", "processedResponse":
 				return nil, ErrUnsupported
 			}
 		}

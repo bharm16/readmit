@@ -107,13 +107,15 @@ the corpus statement, not the Python parser, is the expectation.
 `quote_ascii` renders only printable ASCII, so a corpus expectation can never
 depend on a guessed rendering of other bytes.
 
-There is no qualified integration-engine export corpus. The selected targets
-are Mirth 4.5.2 and OIE 4.6.0; #35 still requires actual synthetic-message
-exports from isolated instances, with engine/configuration/options provenance.
-The [finite local adapter](import.md#engine-exports-unqualified-local-adapter)
-has hand-authored source-model tests, which do not replace that lab evidence.
-`engine-export-corpus` reports that as a gap, and `tools/verify.py` prints it
-distinctly from a pass.
+The candidate fixture tree at `testdata/engineexport/` retains original
+synthetic-message exports from isolated Mirth 4.5.2 and OIE 4.6.0 instances,
+their engine/configuration/options digests and public-interface tests. The
+[finite local adapter](import.md#engine-exports-finite-tested-local-adapter)
+also keeps its earlier hand-authored source-model tests separately labelled.
+Those candidate exports have not been promoted to this independently approved
+corpus while the owner reviews fixture rights and exact scope.
+`engine-export-corpus` therefore still reports a gap, rather than counting
+candidate tests as an approved independent verification pass.
 
 Mutation testing is evidence that these checks notice altered behavior. It is
 not a coverage measurement, and it makes no claim about behaviors no mutation
