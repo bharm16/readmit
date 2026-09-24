@@ -51,27 +51,29 @@ public static class NativeBackend {
     // What a person types reaches the page as key presses, so the page sees
     // the input events typing makes: select everything the field holds,
     // delete it, then type the text. Keys reach only the window in front, so
-    // the window is brought forward first, as a press does, and should Windows
-    // keep another window in front, the field is clicked, as a person clicks
-    // into a field before typing.
+    // the window is brought forward and the field is clicked before every
+    // attempt. The retained failed trees showed an enabled, UIA-focused Edit
+    // whose value stayed empty; UIA focus alone did not prove the webview took
+    // the key events.
     static void Type(AutomationElement field, string text) {
         var window = Focus(field);
         Thread.Sleep(150);
-        if (window != IntPtr.Zero && GetForegroundWindow() != window) {
-            var bounds = field.Current.BoundingRectangle;
-            var click = new Input[3];
-            for (int index = 0; index < 3; index++) click[index] = new Input { Type = 0 };
-            click[0].Union.Mouse = new MouseInput {
-                X = (int)((bounds.Left + Math.Min(bounds.Width / 2, 40)) * 65535 / GetSystemMetrics(0)),
-                Y = (int)((bounds.Top + bounds.Height / 2) * 65535 / GetSystemMetrics(1)),
-                Flags = MouseMove | MouseAbsolute,
-            };
-            click[1].Union.Mouse = new MouseInput { Flags = MouseDown };
-            click[2].Union.Mouse = new MouseInput { Flags = MouseUp };
-            SendInput(3, click, Marshal.SizeOf(typeof(Input)));
-            Thread.Sleep(300);
-            if (GetForegroundWindow() != window) throw new Failure("the window is not in front, so no keys were sent");
+        var bounds = field.Current.BoundingRectangle;
+        if (bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0) throw new Failure("the field has no clickable bounds");
+        var click = new Input[3];
+        for (int index = 0; index < 3; index++) click[index] = new Input { Type = 0 };
+        click[0].Union.Mouse = new MouseInput {
+            X = (int)((bounds.Left + Math.Min(bounds.Width / 2, 40)) * 65535 / GetSystemMetrics(0)),
+            Y = (int)((bounds.Top + bounds.Height / 2) * 65535 / GetSystemMetrics(1)),
+            Flags = MouseMove | MouseAbsolute,
+        };
+        click[1].Union.Mouse = new MouseInput { Flags = MouseDown };
+        click[2].Union.Mouse = new MouseInput { Flags = MouseUp };
+        if (SendInput(3, click, Marshal.SizeOf(typeof(Input))) != 3) {
+            throw new Failure("the field click was not delivered: " + Marshal.GetLastWin32Error());
         }
+        Thread.Sleep(300);
+        if (window != IntPtr.Zero && GetForegroundWindow() != window) throw new Failure("the window is not in front, so no keys were sent");
         if (!field.Current.HasKeyboardFocus) throw new Failure("the field did not take the keyboard focus, so nothing was typed");
         var keys = new List<Input> {
             Key(Control, 0, 0), Key(LetterA, 0, 0), Key(LetterA, 0, KeyUp), Key(Control, 0, KeyUp),
