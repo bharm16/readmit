@@ -149,6 +149,20 @@ test("a folder this account cannot open is reported as denied, in words and shap
   expect(await screen.findByText("permission_denied")).toBeTruthy();
 });
 
+test("a prepared rerun is named in the workspace and explains why it has no window action", async () => {
+  const user = userEvent.setup();
+  await renderApp({
+    SelectWorkspace: () => folderChosen(WORKSPACE_ROOT, [
+      { name: "prepared-rerun", kind: "prepared-rerun", reason: "Use RERUN.md to run the prepared trials; there is no window action for this folder." },
+    ]),
+  });
+  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  const item = (await screen.findByText("prepared-rerun", { selector: "span.name" })).closest("li")!;
+  expect(within(item).getByText("Prepared rerun workspace")).toBeTruthy();
+  expect(within(item).getByText(/RERUN.md.*no window action/)).toBeTruthy();
+  expect(within(item).queryByRole("button")).toBeNull();
+});
+
 test("a boundary that cannot answer is a fixed failed sentence, never the error's own words", async () => {
   const user = userEvent.setup();
   await renderApp({

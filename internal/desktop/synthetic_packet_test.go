@@ -344,6 +344,41 @@ func TestSyntheticRerunPreparedByTheWindowIsTheCommandLinesPreparation(t *testin
 	}
 }
 
+func TestWorkspaceNamesPreparedRerunsAndExplainsTheirWindowAction(t *testing.T) {
+	workspace := t.TempDir()
+	app := unactivatedWindow(t, &chooser{})
+	packet, _ := generated(t, app, workspace, "packet")
+	destination := filepath.Join(workspace, "prepared-rerun")
+	if prepared := app.PrepareSyntheticRerun(desktop.SyntheticRerunRequest{Packet: packet, Destination: destination, Address: "127.0.0.1:2575"}); prepared.State != desktop.Completed {
+		t.Fatalf("prepare: %+v", prepared)
+	}
+	listed := app.OpenWorkspace(workspace)
+	if listed.State != desktop.Completed || listed.Workspace == nil {
+		t.Fatalf("list prepared workspace: %+v", listed)
+	}
+	var rerun desktop.Artifact
+	for _, artifact := range listed.Workspace.Artifacts {
+		if artifact.Name == "prepared-rerun" {
+			rerun = artifact
+		}
+	}
+	if rerun.Kind != desktop.PreparedRerunArtifact || !strings.Contains(rerun.Reason, "RERUN.md") || !strings.Contains(rerun.Reason, "no window action") {
+		t.Fatalf("the prepared folder had no truthful kind or action reason: %+v", rerun)
+	}
+	// A marker that only looks like a preparation cannot give an unprepared
+	// folder the prepared kind. It must pass the preparation reader itself.
+	marker := filepath.Join(destination, "preparation.json")
+	if err := os.WriteFile(marker, []byte(`{"schema":"readmit-report-preparation/v1","unexpected":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	listed = app.OpenWorkspace(workspace)
+	for _, artifact := range listed.Workspace.Artifacts {
+		if artifact.Name == "prepared-rerun" && artifact.Kind != desktop.UnsupportedArtifact {
+			t.Fatalf("an unreadable preparation was listed as runnable: %+v", artifact)
+		}
+	}
+}
+
 // A cancelled generation answers cancelled, never a failed or completed
 // packet, and whatever it left in the new folder verifies as a packet to
 // neither entry point.

@@ -7,6 +7,12 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   removal leaves the text available for retry. Profile, draft and pack
   contracts, command output and machine output are unchanged.
 
+- Prepared rerun folders from `readmit report prepare` now list as prepared
+  rerun workspaces when their own preparation marker reads correctly (#418).
+  The workspace states that the window has no action for them and points to
+  `RERUN.md`. Incomplete or changed markers remain unsupported; preparation
+  and packet contracts are unchanged.
+
 - Opening a second case in a workspace now offers to build that case's own
   index instead of presenting another case's index as a rebuild (#417). The
   builder starts with the second case's filename and replacement off; the first

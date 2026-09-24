@@ -2022,8 +2022,8 @@ export default function App() {
                     Review reset plan
                   </button>
                 ) : null}
-                {artifact.kind === "unsupported" ? (
-                  <span className="unsupported">{artifact.reason}</span>
+                {artifact.reason ? (
+                  <span className={artifact.kind === "unsupported" ? "unsupported" : "reason"}>{artifact.reason}</span>
                 ) : null}
               </li>
             ))}

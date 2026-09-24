@@ -23,8 +23,9 @@ const maxSchemaSniffBytes = 4096
 
 // schemaMarkerFiles are the fixed-name records a retained artifact directory
 // holds beside its evidence. They locate what a directory claims to be the
-// same way a project document locates a project: one canonical name, decoded
-// only when the entry is opened, never concluded from an arbitrary file name.
+// same way a project document locates a project: one canonical name, never
+// concluded from an arbitrary file name. A prepared rerun's marker is read by
+// its own reader here; the runnable files it names are not verified by listing.
 var schemaMarkerFiles = []struct {
 	name string
 	kind Kind
@@ -45,6 +46,7 @@ var schemaMarkerFiles = []struct {
 	// local support bundle and an encrypted transfer package each carry their
 	// own canonical record the same way.
 	{"manifest.json", PacketArtifact},
+	{"preparation.json", PreparedRerunArtifact},
 	{"export-review.json", DerivedExportArtifact},
 	{"support.json", SupportArtifact},
 	{"transfer.json", TransferPackageArtifact},
@@ -101,7 +103,8 @@ var declaredSchemas = map[string]Kind{
 // regular file declaring a contract within the sniff bound is named as that
 // contract's kind. Both are claims the listing makes and never verifications:
 // opening the entry remains the verification step, and an entry classified
-// here is not admitted anywhere by this alone.
+// here is not admitted anywhere by this alone. A prepared rerun's marker and
+// checksum are read, without verifying or running its referenced evidence.
 func classify(root, name string, isDir bool) (Kind, bool) {
 	path := filepath.Join(root, name)
 	if isDir {
@@ -164,6 +167,11 @@ func refinedMarker(path string, kind Kind) (Kind, bool) {
 			return PortableReviewArtifact, true
 		case ok && schema == report.Schema:
 			return SyntheticPacketArtifact, true
+		}
+		return UnsupportedArtifact, false
+	case PreparedRerunArtifact:
+		if _, err := report.ReadPreparation(filepath.Dir(path)); err == nil {
+			return PreparedRerunArtifact, true
 		}
 		return UnsupportedArtifact, false
 	case DerivedExportArtifact:

@@ -136,6 +136,7 @@ function indicatorFixtures(): Shell["indicators"] {
     "spec",
     "pack",
     "analysis",
+    "prepared-rerun",
     "unsupported",
     "open",
     "investigating",
@@ -145,7 +146,7 @@ function indicatorFixtures(): Shell["indicators"] {
   return statuses.map((status, position) => ({
     status,
     symbol: String.fromCharCode(0x25a0 + position),
-    label: status,
+    label: status === "prepared-rerun" ? "Prepared rerun workspace" : status,
   }));
 }
 
