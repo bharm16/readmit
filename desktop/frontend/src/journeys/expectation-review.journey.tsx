@@ -2,9 +2,9 @@
 // set between people, over the real facade.
 //
 // An engineer has a saved acknowledgement test of an independent downstream
-// system. Their CI runs it with the command line twice: against the system's
-// defect, where the reschedule is refused, and after the fix, where it passes.
-// In the window they ask what the passing run would support. A run whose own
+// system. Their CI runs it with the command line against the system's defect,
+// where the reschedule is refused. They run it again in the window after the
+// fix, and ask what that passing durable run would support. A run whose own
 // expectations failed proposes nothing; asking again withdraws what was on
 // screen; a review they cancel records nothing; and what they finally approve,
 // edit and reject is exactly what the saved test holds. The command line then
@@ -26,7 +26,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { byContent, enter, Journey, press } from "../testkit/journey";
 import { exists } from "./probes.js";
-import { activateLicense, authoring, savedAckTest } from "./steps";
+import { activateLicense, authoring, runOnce, savedAckTest } from "./steps";
 
 let journey: Journey;
 
@@ -80,16 +80,17 @@ test("expectations proposed from a reviewed run are recorded only as a person ap
   const user = userEvent.setup();
   const { downstream } = await savedAckTest(user, journey, "defective");
 
-  // CI runs the saved test with the command line: once against the defect,
-  // once after the fix.
+  // CI runs the saved test with the command line against the defect, then
+  // later runs the reviewed spec against the fixed system.
   const runTest = async (spec: string, output: string) => {
     downstream.reset();
     return journey.commandLine(["--operation-policy", policy(), "test", `${PROJECT}/${spec}`, "--send", "--output", `${PROJECT}/${output}`]);
   };
   expect((await runTest("reschedule-ack-test.json", "unreviewed-run")).code).toBe(1);
   downstream.setMode("fixed");
-  expect((await runTest("reschedule-ack-test.json", "reviewed-run")).code).toBe(0);
-  const reviewedIdentity = journey.readFile(`${PROJECT}/reviewed-run/identity.sha256`).trim();
+  expect(await runOnce(user, downstream, "reviewed-run")).toBe("passed");
+  expect(journey.callsTo("StartDurableRun")).toHaveLength(1);
+  const reviewedIdentity = journey.readFile(`${PROJECT}/reviewed-run/result/identity.sha256`).trim();
 
   const panel = await authoring();
   const decided = () => panel.getAllByRole("button", { name: /^Remove / }).map((button) => button.textContent);
@@ -114,7 +115,7 @@ test("expectations proposed from a reviewed run are recorded only as a person ap
     ["s0002-e000001", "MSA-1", "AA"],
     ["s0002-e000001", "MSA-2", RESCHEDULE_CONTROL],
   ] as const) {
-    expect(proposal(panel, message, position, value).getByText(/ · Not reviewed · read from reviewed-run\//)).toBeTruthy();
+    expect(proposal(panel, message, position, value).getByText(/ · Not reviewed · read from reviewed-run\/result\/run\//)).toBeTruthy();
   }
   expect(decided()).toEqual(["Remove reschedule-accepted"]);
   expect((panel.getByRole("button", { name: "Record these decisions" }) as HTMLButtonElement).disabled).toBe(true);

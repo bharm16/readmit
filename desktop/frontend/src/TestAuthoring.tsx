@@ -621,6 +621,7 @@ export function TestAuthoring({
         }}
       >
         <label htmlFor="authoring-reviewed">Entry holding the reviewed run result</label>
+        <p className="hint">Name the result folder or the durable run folder in this workspace. A durable run must hold a verified, finalized result.</p>
         <input
           id="authoring-reviewed"
           ref={reviewedEntry}

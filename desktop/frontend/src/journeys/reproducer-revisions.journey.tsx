@@ -17,7 +17,7 @@
 // Three revisions are then compared: one that keeps the booking, one that
 // dropped it, and one that also replaces an identifier. The comparison names
 // the booking as a setup dependency that stopped being retained, and, once the
-// command line has run the same test against the two revisions that keep it,
+// same test has run against the two revisions that keep it,
 // says the refused reschedule failed on both — the edit did not stop the
 // revision reproducing the incident. A run of one revision is refused as proof
 // of another, and a revision nobody ran claims nothing.
@@ -39,6 +39,7 @@ import {
   EXPORTED_RESCHEDULE,
   framed,
   licensedProject,
+  runs,
   tabTo,
 } from "./steps";
 
@@ -311,7 +312,7 @@ async function authorRescheduleTest(user: UserEvent, output: string): Promise<vo
   expect(await panel.findByText(new RegExp(`^Written to ${output.replace(/\./g, "\\.")}`))).toBeTruthy();
 }
 
-test("built revisions are compared by lineage, by what they retain and edit, and by what the command line's runs of each decided", async () => {
+test("built revisions are compared by lineage, by what they retain and edit, and by what the retained runs of each decided", async () => {
   const user = userEvent.setup();
   exportFeed();
   const downstream = await journey.startDownstream("downstream/appointments.csv", "defective");
@@ -371,8 +372,8 @@ test("built revisions are compared by lineage, by what they retain and edit, and
   await authorRescheduleTest(user, "edited-test.json");
 
   // The same test, bound to the first revision's derived case — a person's
-  // edit of one member — and each run once by the command line against the
-  // defect. The reschedule is refused both times.
+  // edit of one member. The earlier run uses the command line, and the later
+  // run uses the window's durable execution against the same defect.
   const spec = journey.readFile(`${PROJECT}/edited-test.json`);
   const rebound = spec.replace(/"case":\s*"edited-case"/, '"case": "with-booking-case"');
   expect(rebound).not.toBe(spec);
@@ -386,7 +387,16 @@ test("built revisions are compared by lineage, by what they retain and edit, and
     return ran;
   };
   await runTest("with-booking-test.json", "with-booking-run");
-  await runTest("edited-test.json", "edited-run");
+  downstream.reset();
+  const runPanel = runs();
+  await runPanel.findByRole("option", { name: "edited-test.json (test)" });
+  await user.selectOptions(runPanel.getByLabelText("Saved test or suite"), "edited-test.json");
+  await enter(user, runPanel.getByLabelText("Fresh output folder"), "edited-run");
+  await press(user, runPanel.getByRole("button", { name: "Validate and preflight" }));
+  expect(await runPanel.findByText(byContent(/^Admission: admitted$/))).toBeTruthy();
+  await press(user, runPanel.getByRole("button", { name: "Send and execute once" }));
+  expect(await runPanel.findByText(byContent(/^Run: assertion_failed · Stop reason: assertion_failed$/))).toBeTruthy();
+  expect(journey.callsTo("StartDurableRun")).toHaveLength(1);
 
   // The two revisions that keep the booking, each with its run: the edit is
   // the one difference, and the reschedule's acceptance failed on both sides.
@@ -411,7 +421,7 @@ test("built revisions are compared by lineage, by what they retain and edit, and
 
   // What the window said each run decided is what the command line reads out
   // of the same two result directories.
-  const read = await journey.commandLine(["diff", `${PROJECT}/with-booking-run`, `${PROJECT}/edited-run`, "--key", "MSH-10", "--format", "json"]);
+  const read = await journey.commandLine(["diff", `${PROJECT}/with-booking-run`, `${PROJECT}/edited-run/result`, "--key", "MSH-10", "--format", "json"]);
   expect(read.code).toBe(0);
   const report = JSON.parse(read.stdout) as { left: { identity: string; result_status: string }; right: { identity: string; result_status: string } };
   expect([report.left.result_status, report.right.result_status]).toEqual(["assertion_failure", "assertion_failure"]);

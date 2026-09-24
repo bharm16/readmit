@@ -17,6 +17,7 @@ import (
 
 type Result struct {
 	Path       string
+	ResultPath string
 	Durable    bool
 	Lifecycle  durablerun.Summary
 	Artifact   *testrunner.Artifact
@@ -56,9 +57,21 @@ func Open(path string) (*Result, error) {
 		return nil, errors.New("durable run result identity does not match its lifecycle")
 	}
 	opened.Spec = opened.Artifact.Spec
+	opened.ResultPath = resultPath
 	opened.Run = opened.Artifact.Run
 	opened.Assertions = slices.Clone(opened.Artifact.Result.Assertions)
 	return opened, nil
+}
+
+// OpenWorkspace verifies one retained execution named by a single workspace
+// entry. It accepts a direct result or a durable job through the same readers,
+// while refusing path traversal and symbolic links before either reader runs.
+func OpenWorkspace(root, entry string) (*Result, error) {
+	path, err := artifactpath.Child(root, entry)
+	if err != nil {
+		return nil, err
+	}
+	return Open(path)
 }
 
 // NoRunState is what a report or comparison records when the execution it

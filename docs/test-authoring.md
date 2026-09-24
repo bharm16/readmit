@@ -171,14 +171,17 @@ workspace/
   practice-target.json       the target configuration
   reschedule-test.json       a test that was saved and run
   baseline-result/           readmit-result/v1, the reviewed run
+  window-run/                durable job with a retained result/
 ```
 
-The run is one entry of the open workspace holding a
+The run is one entry of the open workspace: either a
 [`readmit-result/v1` directory](test-result.md), which is what
-`readmit test SPEC --send --output NEW_DIRECTORY` writes. It is opened through
-the reader that verifies a result, not by reading its JSON: the run bundle, the
-observation and the assertions are all re-derived before a single value is read
-out of them.
+`readmit test SPEC --send --output NEW_DIRECTORY` writes, or a durable job the
+window made with a finalized `result/` inside it. The same retained-execution
+reader verifies the result and, for a job, its lifecycle and result identity.
+The run bundle, observation and assertions are re-derived before any proposed
+value is read. Evidence links into a job name its `result/` folder; the review
+still names the job entry the person selected.
 
 ### What is proposed
 
@@ -200,7 +203,7 @@ says which question.
 
 | Refused | Why |
 | --- | --- |
-| An entry that is not a verified result directory | A suggestion is derived from evidence a reader stands behind |
+| An entry without a verified result, or a durable job whose result is missing, uncertain or incomplete | A suggestion is derived from evidence and a finished lifecycle a reader stands behind |
 | A run whose own expectations did not hold | A run under investigation is not a reviewed known-good one; deriving from it would carry the defect it recorded into the test |
 | A run that replayed different evidence | The draft is bound to one case, and the run must have sent that one |
 | A run observed at a different boundary | A boundary decides what a run decided |
@@ -391,7 +394,8 @@ to, so a draft cannot be answered into a spec its own reader would refuse.
   send order and what is covered; it opens no message.
 - **No suggestion that does not name a run.** Nothing proposes an expectation
   from the case alone, from a scenario template, or from a profile; a proposal is
-  read out of one reviewed `readmit-result/v1` directory or it is not made.
+  read out of one reviewed, verified direct result or a durable job's finalized
+  result, or it is not made.
 - **No approving a run that did not pass.** Updating a baseline whose
   expectations no longer hold is not this delivery: such a run is refused, and
   what it recorded is investigated rather than approved.

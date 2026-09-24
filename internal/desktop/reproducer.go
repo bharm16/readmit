@@ -7,6 +7,7 @@ import (
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/reproducer"
+	"github.com/bharm16/readmit/internal/runresult"
 )
 
 // ReproducerRequest is one edit of a reproducer over one verified case.
@@ -257,9 +258,10 @@ func (a *App) compareReproducers(request ReproducerComparisonRequest) Reproducer
 }
 
 // comparedRevision resolves one named revision of the open workspace and the
-// retained run offered as its proof. Both are entries of the workspace, so a
-// comparison can no more reach outside the open folder than any other read
-// here can.
+// retained run offered as its proof. A run entry can be a direct result or a
+// durable job with a verified result, resolved by the same reader as
+// expectation suggestions. The revision engine still verifies the result
+// against that revision's derived case.
 func comparedRevision(root, name, result string) (reproducer.Revision, refusal) {
 	path, err := artifactpath.Child(root, name)
 	if err != nil {
@@ -267,11 +269,17 @@ func comparedRevision(root, name, result string) (reproducer.Revision, refusal) 
 	}
 	revision := reproducer.Revision{Path: path}
 	if result != "" {
-		run, err := artifactpath.Child(root, result)
-		if err != nil {
+		if _, err := artifactpath.Child(root, result); err != nil {
 			return reproducer.Revision{}, refusal{Failed, "a retained run must be named by one directory entry of the open workspace"}
 		}
-		revision.Result = run
+		retained, err := runresult.OpenWorkspace(root, result)
+		if err != nil || retained.Artifact == nil {
+			return reproducer.Revision{}, refusal{Failed, "a retained run of a reproducer revision could not be verified as a complete test result"}
+		}
+		if usable, _ := retained.Usable(); !usable {
+			return reproducer.Revision{}, refusal{Failed, "a retained run of a reproducer revision could not be verified as a complete test result"}
+		}
+		revision.Result = retained.ResultPath
 	}
 	return revision, refusal{}
 }

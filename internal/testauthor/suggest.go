@@ -10,6 +10,7 @@ import (
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/replay"
+	"github.com/bharm16/readmit/internal/runresult"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
@@ -60,8 +61,8 @@ type position struct {
 // the identity of one, so a reviewer can follow a suggestion back to what was
 // read without this package restating what is in it.
 type Origin struct {
-	// Result is the entry of the open workspace holding the run result, and
-	// Identity is the identity that result's own reader records for it.
+	// Result is the entry of the open workspace holding a result or durable
+	// job, and Identity is the verified result identity.
 	Result   string `json:"result"`
 	Identity string `json:"identity"`
 	// Status is the verdict the result records and Boundary is what the run
@@ -75,6 +76,10 @@ type Origin struct {
 	InputIdentity  string `json:"input_identity"`
 	RunIdentity    string `json:"run_identity"`
 	TargetIdentity string `json:"target_identity"`
+	// evidenceEntry locates the verified result inside a durable job while
+	// Result remains the workspace entry the reviewer named.
+	evidenceEntry string
+	durable       bool
 }
 
 // Link names where one suggested value was read, as a position in retained
@@ -245,9 +250,9 @@ func Cover(draft Draft) Coverage {
 // It proposes; it never approves. Nothing here returns a draft, so there is no
 // path from generating a suggestion to recording it as an expectation: that is
 // [Approve], and it needs a decision. The run is opened through the reader
-// `readmit test` verifies a result with, and every value is read exactly as the
-// evaluator reads it, so a suggestion approved unedited is one the same run
-// would decide again.
+// `readmit test` verifies a result with; a durable job is also held to its
+// lifecycle. Every value is read exactly as the evaluator reads it, so a
+// suggestion approved unedited is one the same run would decide again.
 //
 // A proposal this run does not justify is reported as unsupported with the
 // reason, never omitted from the set and never carried as though it were.
@@ -322,14 +327,17 @@ func knownGood(root string, draft Draft, entry string) (*testrunner.Artifact, Or
 	if artifactpath.EntryName(entry) != nil || !printable(entry, MaxEntryBytes) {
 		return nil, Origin{}, errors.New("a reviewed run is named by one entry of the open workspace")
 	}
-	path, err := artifactpath.Child(root, entry)
-	if err != nil {
+	if _, err := artifactpath.Child(root, entry); err != nil {
 		return nil, Origin{}, errors.New("a reviewed run is one directory entry of the open workspace")
 	}
-	artifact, err := testrunner.Open(path)
-	if err != nil {
+	retained, err := runresult.OpenWorkspace(root, entry)
+	if err != nil || retained.Artifact == nil {
 		return nil, Origin{}, errors.New("that entry is not a run result this release verifies")
 	}
+	if usable, _ := retained.Usable(); !usable {
+		return nil, Origin{}, errors.New("that entry is not a run result this release verifies")
+	}
+	artifact := retained.Artifact
 	if artifact.Result.Status != testrunner.Pass {
 		return nil, Origin{}, errors.New("expectations are suggested from a run whose own expectations held; this one did not")
 	}
@@ -344,12 +352,17 @@ func knownGood(root string, draft Draft, entry string) (*testrunner.Artifact, Or
 	}
 	origin := Origin{
 		Result:         entry,
+		evidenceEntry:  entry,
+		durable:        retained.Durable,
 		Identity:       artifact.Identity,
 		Status:         string(artifact.Result.Status),
 		Boundary:       artifact.Result.ObservationBoundary,
 		SpecIdentity:   artifact.Result.SpecIdentity,
 		InputIdentity:  artifact.Result.InputBundleIdentity,
 		TargetIdentity: artifact.Result.TargetIdentity,
+	}
+	if retained.Durable {
+		origin.evidenceEntry += "/result"
 	}
 	if artifact.Result.Run != nil {
 		origin.RunIdentity = artifact.Result.Run.Identity
@@ -405,7 +418,7 @@ func ledgerSuggestion(artifact *testrunner.Artifact, origin Origin, taken map[st
 	suggestion := Suggestion{
 		ID:       identifier("ledger-records", taken),
 		Operator: LedgerCount,
-		Evidence: Link{Artifact: origin.Result},
+		Evidence: Link{Artifact: origin.evidenceEntry},
 	}
 	if artifact.Result.FinalObservation != nil {
 		suggestion.Evidence.Payload = artifact.Result.FinalObservation.Path
@@ -426,7 +439,7 @@ func exactLedgerSuggestion(artifact *testrunner.Artifact, origin Origin, taken m
 	suggestion := Suggestion{
 		ID:       identifier("exact-ledger", taken),
 		Operator: LedgerEquals,
-		Evidence: Link{Artifact: origin.Result},
+		Evidence: Link{Artifact: origin.evidenceEntry},
 	}
 	if artifact.Result.FinalObservation != nil {
 		suggestion.Evidence.Payload = artifact.Result.FinalObservation.Path
@@ -447,12 +460,18 @@ func exactLedgerSuggestion(artifact *testrunner.Artifact, origin Origin, taken m
 // acknowledgement nobody could decode is not evidence that a position was
 // omitted.
 func ackSuggestion(run *replay.Run, event *replay.Event, origin Origin, taken map[string]bool, message string, addressed position) Suggestion {
+	evidenceEntry := origin.evidenceEntry
+	if origin.durable {
+		// Payload paths are relative to the run bundle retained inside the
+		// result, rather than to the job or result directory.
+		evidenceEntry += "/run"
+	}
 	suggestion := Suggestion{
 		ID:       identifier("ack-"+message+"-"+addressed.text, taken),
 		Operator: ACKFieldEquals,
 		Message:  message,
 		Selector: addressed.text,
-		Evidence: Link{Artifact: origin.Result, Message: message, Selector: addressed.text},
+		Evidence: Link{Artifact: evidenceEntry, Message: message, Selector: addressed.text},
 	}
 	if event == nil {
 		return unsupported(suggestion, "that run did not send this occurrence")

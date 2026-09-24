@@ -1,5 +1,13 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Expectation suggestions and reproducer revision comparisons now accept the
+  verified result retained inside a durable run made in the window (#401).
+  A job without a certain, finalized result is refused. Suggestions remain
+  read-only until a person approves one; the review names the job entry and
+  its evidence links locate the retained `result/`. The real-facade journeys
+  run through both panels. Existing result and job formats and all command
+  behavior, output and refusals remain unchanged.
+
 - A remembered operation-policy or commercial-destinations selection that
   cannot be read now appears in the license pane at startup with a reason and
   a way to choose again (#385). The shell leaves the unreadable selection

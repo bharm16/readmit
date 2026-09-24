@@ -153,8 +153,9 @@ func (a *App) saveTest(request TestRequest) TestResult {
 // reviewed, and records nothing.
 //
 // It is the reading half of this flow: the run is opened through the reader
-// `readmit test` verifies a result with, every value is read exactly as the
-// evaluator reads it, and the draft comes back unchanged. A proposal the run
+// `readmit test` verifies a result with, and a durable job's lifecycle is
+// verified as well. Every value is read exactly as the evaluator reads it,
+// and the draft comes back unchanged. A proposal the run
 // does not justify is reported as unsupported with the reason rather than
 // dropped from the set. Nothing here approves anything, and no proposal reaches
 // the draft until ApproveExpectations is given a decision naming it.
