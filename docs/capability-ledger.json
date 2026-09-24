@@ -868,8 +868,8 @@
       "inputs": ["readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3"],
       "outputs": ["readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3"],
       "prerequisites": ["author"],
-      "gui_test": {"file": "desktop/frontend/src/journeys/execution.journey.tsx", "name": "the downstream's exported state is observed through a declared window, and missing, stale and incomplete exports are errors, never an empty result"},
-      "parity_test": {"package": "internal/desktop", "name": "TestObservationFacadeSavesASourceTheSharedReaderReadsBack"},
+      "gui_test": {"file": "desktop/frontend/src/journeys/observation-documents.journey.tsx", "name": "a source and a window saved in observation setup show the identities each validates with on its own, keep the export path as typed, and are the documents the command line validates and collects from"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowsObservationDocumentsAreTheOnesTheCommandLineReads"},
       "implemented": true
     },
     {
@@ -884,8 +884,8 @@
       "inputs": ["readmit-observation-window/v1"],
       "outputs": ["readmit-observation-window/v1"],
       "prerequisites": ["author"],
-      "gui_test": {"file": "desktop/frontend/src/journeys/execution.journey.tsx", "name": "the downstream's exported state is observed through a declared window, and missing, stale and incomplete exports are errors, never an empty result"},
-      "parity_test": {"package": "internal/desktop", "name": "TestObservationFacadeSavePinsIdentity"},
+      "gui_test": {"file": "desktop/frontend/src/journeys/observation-documents.journey.tsx", "name": "a source and a window saved in observation setup show the identities each validates with on its own, keep the export path as typed, and are the documents the command line validates and collects from"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowsObservationDocumentsAreTheOnesTheCommandLineReads"},
       "implemented": true
     },
     {
@@ -916,7 +916,9 @@
       "inputs": ["readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/observation-documents.journey.tsx", "name": "a source and a window saved in observation setup show the identities each validates with on its own, keep the export path as typed, and are the documents the command line validates and collects from"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowsObservationDocumentsAreTheOnesTheCommandLineReads"},
+      "implemented": true
     },
     {
       "id": "desktop.ValidateObservationWindow",
@@ -930,7 +932,9 @@
       "inputs": ["readmit-observation-window/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/observation-documents.journey.tsx", "name": "a source and a window saved in observation setup show the identities each validates with on its own, keep the export path as typed, and are the documents the command line validates and collects from"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowsObservationDocumentsAreTheOnesTheCommandLineReads"},
+      "implemented": true
     },
     {
       "id": "cli.observe.validate",

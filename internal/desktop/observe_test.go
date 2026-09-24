@@ -160,7 +160,10 @@ func TestObservationFacadeSavePinsIdentity(t *testing.T) {
 
 // Saving a source through the facade writes, through the shared writer, the
 // document the shared reader reads back, pins the identity of exactly the
-// bytes written, and answers with what the reader read.
+// bytes written, and answers with the document as it declares itself. A
+// source whose export is relative to its own folder keeps that one identity
+// when it is validated and reopened, and saving the answer again writes the
+// same bytes: the declared path never becomes this machine's absolute one.
 func TestObservationFacadeSavesASourceTheSharedReaderReadsBack(t *testing.T) {
 	app := workspaceApp(t)
 	dir := t.TempDir()
@@ -192,7 +195,55 @@ func TestObservationFacadeSavesASourceTheSharedReaderReadsBack(t *testing.T) {
 		!strings.HasSuffix(read.File.Path, filepath.Join("downstream", "appointments.csv")) {
 		t.Fatalf("the shared reader read %+v", read)
 	}
-	if saved.Source.File == nil || saved.Source.File.Path != read.File.Path {
-		t.Fatalf("the facade answered %+v, not what the reader read", saved.Source)
+	if saved.Source.File == nil || saved.Source.File.Path != "downstream/appointments.csv" {
+		t.Fatalf("the facade answered %+v, not the document it saved", saved.Source)
+	}
+	validated := app.ValidateObservationSource(dir, "new-source.json")
+	if validated.State != desktop.Completed || validated.Identity != saved.Identity {
+		t.Fatalf("validating the saved source reported %+v, the save pinned %s", validated, saved.Identity)
+	}
+	opened := app.OpenObservationSource(dir, "new-source.json")
+	if opened.State != desktop.Completed || opened.Identity != saved.Identity || opened.Source.File.Path != "downstream/appointments.csv" {
+		t.Fatalf("reopening the saved source answered %+v, the save pinned %s", opened, saved.Identity)
+	}
+	again := app.SaveObservationSource(desktop.ObservationSourceRequest{Workspace: dir, SourceFile: "new-source.json", Source: opened.Source})
+	if again.State != desktop.Completed || again.Identity != saved.Identity {
+		t.Fatalf("saving the reopened source again answered %+v", again)
+	}
+	if rewritten, err := os.ReadFile(filepath.Join(dir, "new-source.json")); err != nil || !bytes.Equal(rewritten, written) {
+		t.Fatalf("saving the reopened source again changed the document:\n%s\n%s", written, rewritten)
+	}
+}
+
+// A source or window saved into a retained case is refused by the shared
+// output reservation, and leaves that case exactly as it was: no folder the
+// save would have created is left behind, so the case still verifies as
+// complete, unmodified evidence.
+func TestObservationFacadeRefusesASaveInsideACaseAndLeavesItVerifiable(t *testing.T) {
+	app := newApp(t, &chooser{folder: t.TempDir()})
+	root := sample(t, app).Workspace.Root
+	if opened := app.OpenCase(root, "regression"); opened.State != desktop.Completed {
+		t.Fatalf("the sample case did not open: %+v", opened)
+	}
+	window := app.OpenObservationWindow(root, "observation-window.json")
+	source := app.OpenObservationSource(root, "observation-source.json")
+	if window.State != desktop.Completed || source.State != desktop.Completed {
+		t.Fatalf("new documents did not open: %+v %+v", window, source)
+	}
+	savedSource := app.SaveObservationSource(desktop.ObservationSourceRequest{Workspace: root, SourceFile: "regression/observations/source.json", Source: source.Source})
+	if savedSource.State != desktop.Failed || savedSource.Reason != "cannot write an observation source here" {
+		t.Fatalf("a source inside the case: %+v", savedSource)
+	}
+	savedWindow := app.SaveObservationWindow(desktop.ObservationWindowRequest{Workspace: root, WindowFile: "regression/windows/window.json", Window: window.Window})
+	if savedWindow.State != desktop.Failed || savedWindow.Reason != "cannot write an observation window here" {
+		t.Fatalf("a window inside the case: %+v", savedWindow)
+	}
+	for _, folder := range []string{"observations", "windows"} {
+		if _, err := os.Lstat(filepath.Join(root, "regression", folder)); !os.IsNotExist(err) {
+			t.Fatalf("a refused save left %s inside the case", folder)
+		}
+	}
+	if opened := app.OpenCase(root, "regression"); opened.State != desktop.Completed {
+		t.Fatalf("the case no longer verifies after a refused save: %+v", opened)
 	}
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   observationSupport,
   openObservationSource,
@@ -6,6 +6,8 @@ import {
   saveObservationSource,
   saveObservationWindow,
   validateObservationPair,
+  validateObservationSource,
+  validateObservationWindow,
   collectObservation,
   explainObservation,
   bindCaptureObservation,
@@ -58,6 +60,16 @@ function declared(source: ObservationSource): ObservationSource {
   const v1 = { ...source };
   delete v1.capture;
   return v1;
+}
+
+/** What the panel says about one named document it read or wrote: the
+ * contract and identity it was read with, or why it was refused. */
+function documentLine(kind: "Source" | "Window", file: string, outcome: string, schema: string, identity: string): string {
+  return `${kind} document ${file}: ${outcome} ${schema}, identity ${identity}.`;
+}
+
+function documentRefused(kind: "Source" | "Window", file: string, outcome: string, reason: string | undefined): string {
+  return `${kind} document ${file} ${outcome}: ${reason ?? "no reason was given"}`;
 }
 
 function applyKind(source: ObservationSource, kind: (typeof KINDS)[number]): ObservationSource {
@@ -177,6 +189,14 @@ export function ObservationPanel({
   const [windowDoc, setWindowDoc] = useState<ObservationWindow>(emptyWindow());
   const [sourceIdentity, setSourceIdentity] = useState("");
   const [windowIdentity, setWindowIdentity] = useState("");
+  // What the last open, save or validation of each named document said: the
+  // identity it was read with, or why it was refused.
+  const [sourceCheck, setSourceCheck] = useState<string | null>(null);
+  const [windowCheck, setWindowCheck] = useState<string | null>(null);
+  // A named document the reader refused on opening is never replaced by what
+  // the editor holds: it may be a later version this release cannot read.
+  const [sourceRefused, setSourceRefused] = useState(false);
+  const [windowRefused, setWindowRefused] = useState(false);
   const [authorize, setAuthorize] = useState(false);
   const [summary, setSummary] = useState<ObservationAbsenceSummary | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -193,22 +213,62 @@ export function ObservationPanel({
   }, []);
 
   // Opening the editor never queries: only load local documents / defaults.
+  // Each document is read again only when its own name changes, so naming
+  // the other one never replaces what was typed into this one. A document the
+  // reader refuses is said to be refused rather than shown as a new one. The
+  // editor and its actions stay closed until every read has answered, since a
+  // read that landed after a person had started typing would replace what
+  // they typed; the file names stay open, because naming a document is what
+  // starts a read.
+  const sourceReadKey = useRef("");
+  const windowReadKey = useRef("");
+  const pendingReads = useRef(0);
+  const [reading, setReading] = useState(false);
+  const blocked = busy || reading;
   useEffect(() => {
     let cancelled = false;
+    const sourceKey = `${workspace}\n${sourceFile}`;
+    const windowKey = `${workspace}\n${windowFile}`;
+    pendingReads.current += 1;
+    setReading(true);
     void (async () => {
-      const openedSource = await openObservationSource(workspace, sourceFile);
-      const openedWindow = await openObservationWindow(workspace, windowFile);
-      if (cancelled) return;
-      if (openedSource.state === "completed" && openedSource.source) {
-        setSource(openedSource.source);
-        setSourceIdentity(openedSource.identity ?? "");
-      }
-      if (openedWindow.state === "completed" && openedWindow.window) {
-        setWindowDoc(openedWindow.window);
-        setWindowIdentity(openedWindow.identity ?? "");
-      }
-      if (!captureBinding) {
-        setNotice("Editor opened locally. No database or endpoint was queried.");
+      try {
+        if (sourceReadKey.current !== sourceKey) {
+          const read = await openObservationSource(workspace, sourceFile);
+          if (cancelled) return;
+          sourceReadKey.current = sourceKey;
+          const refused = read.state !== "completed" || !read.source;
+          setSourceRefused(refused);
+          if (read.source && !refused) {
+            setSource(read.source);
+            setSourceIdentity(read.identity ?? "");
+            setSourceCheck(null);
+          } else {
+            setSourceIdentity("");
+            setSourceCheck(documentRefused("Source", sourceFile, "not opened", read.reason));
+          }
+        }
+        if (windowReadKey.current !== windowKey) {
+          const read = await openObservationWindow(workspace, windowFile);
+          if (cancelled) return;
+          windowReadKey.current = windowKey;
+          const refused = read.state !== "completed" || !read.window;
+          setWindowRefused(refused);
+          if (read.window && !refused) {
+            setWindowDoc(read.window);
+            setWindowIdentity(read.identity ?? "");
+            setWindowCheck(null);
+          } else {
+            setWindowIdentity("");
+            setWindowCheck(documentRefused("Window", windowFile, "not opened", read.reason));
+          }
+        }
+        if (!captureBinding) {
+          setNotice("Editor opened locally. No database or endpoint was queried.");
+        }
+      } finally {
+        pendingReads.current -= 1;
+        if (pendingReads.current === 0) setReading(false);
       }
     })();
     return () => {
@@ -318,7 +378,7 @@ export function ObservationPanel({
           <button
             key={kind}
             type="button"
-            disabled={busy}
+            disabled={blocked}
             aria-pressed={source.source.kind === kind}
             onClick={() => updateSource(applyKind(source, kind))}
           >
@@ -329,24 +389,28 @@ export function ObservationPanel({
 
       <label htmlFor="observation-identity">Source identity</label>
       <input
+        disabled={blocked}
         id="observation-identity"
         value={source.source.identity}
         onChange={(e) => updateSource({ ...source, source: { ...source.source, identity: e.target.value } })}
       />
       <label htmlFor="observation-scope">Scope</label>
       <input
+        disabled={blocked}
         id="observation-scope"
         value={source.source.scope}
         onChange={(e) => updateSource({ ...source, source: { ...source.source, scope: e.target.value } })}
       />
       <label htmlFor="observation-freshness">Freshness max age</label>
       <input
+        disabled={blocked}
         id="observation-freshness"
         value={source.freshness.max_age}
         onChange={(e) => updateSource({ ...source, freshness: { max_age: e.target.value } })}
       />
       <label>
         <input
+          disabled={blocked}
           type="checkbox"
           checked={source.enabled}
           onChange={(e) => updateSource({ ...source, enabled: e.target.checked })}
@@ -359,12 +423,14 @@ export function ObservationPanel({
           <h4>File export</h4>
           <label htmlFor="observation-file-path">Export path</label>
           <input
+            disabled={blocked}
             id="observation-file-path"
             value={source.file.path}
             onChange={(e) => updateSource({ ...source, file: { ...source.file!, path: e.target.value } })}
           />
           <label htmlFor="observation-file-max">Max bytes</label>
           <input
+            disabled={blocked}
             id="observation-file-max"
             type="number"
             value={source.file.max_bytes}
@@ -372,6 +438,7 @@ export function ObservationPanel({
           />
           <label htmlFor="observation-record-key">Record key (explicit locator text)</label>
           <input
+            disabled={blocked}
             id="observation-record-key"
             value={(source.extraction?.record_key ?? []).join(".")}
             onChange={(e) =>
@@ -392,24 +459,28 @@ export function ObservationPanel({
           <h4>Approved HTTPS API</h4>
           <label htmlFor="observation-http-url">URL</label>
           <input
+            disabled={blocked}
             id="observation-http-url"
             value={source.http.url}
             onChange={(e) => updateSource({ ...source, http: { ...source.http!, url: e.target.value } })}
           />
           <label htmlFor="observation-http-class">Classification</label>
           <input
+            disabled={blocked}
             id="observation-http-class"
             value={source.http.classification}
             onChange={(e) => updateSource({ ...source, http: { ...source.http!, classification: e.target.value } })}
           />
           <label htmlFor="observation-http-server">Verified server name</label>
           <input
+            disabled={blocked}
             id="observation-http-server"
             value={source.http.server_name}
             onChange={(e) => updateSource({ ...source, http: { ...source.http!, server_name: e.target.value } })}
           />
           <label htmlFor="observation-http-ca">CA file reference</label>
           <input
+            disabled={blocked}
             id="observation-http-ca"
             value={source.http.ca_file}
             onChange={(e) => updateSource({ ...source, http: { ...source.http!, ca_file: e.target.value } })}
@@ -426,18 +497,21 @@ export function ObservationPanel({
           </p>
           <label htmlFor="observation-capture-path">Retained case path</label>
           <input
+            disabled={blocked}
             id="observation-capture-path"
             value={source.capture.path}
             onChange={(e) => updateSource({ ...source, capture: { ...source.capture!, path: e.target.value } })}
           />
           <label htmlFor="observation-capture-key">Record key selector</label>
           <input
+            disabled={blocked}
             id="observation-capture-key"
             value={source.capture.record_key}
             onChange={(e) => updateSource({ ...source, capture: { ...source.capture!, record_key: e.target.value } })}
           />
           <label htmlFor="observation-capture-max">Max occurrences</label>
           <input
+            disabled={blocked}
             id="observation-capture-max"
             type="number"
             value={source.capture.max_occurrences}
@@ -457,6 +531,7 @@ export function ObservationPanel({
           </p>
           <label htmlFor="observation-db-driver">Driver</label>
           <select
+            disabled={blocked}
             id="observation-db-driver"
             value={source.database.driver}
             onChange={(e) => updateSource({ ...source, database: { ...source.database!, driver: e.target.value } })}
@@ -467,6 +542,7 @@ export function ObservationPanel({
           </select>
           <label htmlFor="observation-db-view">Approved view (schema.table or table)</label>
           <input
+            disabled={blocked}
             id="observation-db-view"
             value={source.database.view.join(".")}
             onChange={(e) =>
@@ -478,12 +554,14 @@ export function ObservationPanel({
           />
           <label htmlFor="observation-db-key">Record-key column</label>
           <input
+            disabled={blocked}
             id="observation-db-key"
             value={source.database.record_key}
             onChange={(e) => updateSource({ ...source, database: { ...source.database!, record_key: e.target.value } })}
           />
           <label htmlFor="observation-db-filter-col">Parameter filter column</label>
           <input
+            disabled={blocked}
             id="observation-db-filter-col"
             placeholder="status"
             onBlur={(e) => {
@@ -500,9 +578,10 @@ export function ObservationPanel({
             }}
           />
           <label htmlFor="observation-db-filter-val">Parameter filter value</label>
-          <input id="observation-db-filter-val" placeholder="ready" />
+          <input id="observation-db-filter-val" placeholder="ready" disabled={blocked} />
           <label htmlFor="observation-db-address">Endpoint address</label>
           <input
+            disabled={blocked}
             id="observation-db-address"
             value={source.database.address}
             onChange={(e) => {
@@ -528,6 +607,7 @@ export function ObservationPanel({
       </p>
       <label htmlFor="observation-watermark">Watermark kind</label>
       <select
+        disabled={blocked}
         id="observation-watermark"
         value={windowDoc.watermark.kind}
         onChange={(e) =>
@@ -548,6 +628,7 @@ export function ObservationPanel({
         <>
           <label htmlFor="observation-watermark-pos">Watermark position</label>
           <input
+            disabled={blocked}
             id="observation-watermark-pos"
             value={windowDoc.watermark.position}
             onChange={(e) => updateWindow({ ...windowDoc, watermark: { ...windowDoc.watermark, position: e.target.value } })}
@@ -556,6 +637,7 @@ export function ObservationPanel({
       ) : null}
       <label htmlFor="observation-preexisting">Pre-existing state</label>
       <select
+        disabled={blocked}
         id="observation-preexisting"
         value={windowDoc.pre_existing_state.declaration}
         onChange={(e) =>
@@ -571,12 +653,14 @@ export function ObservationPanel({
       </select>
       <label htmlFor="observation-deadline">Deadline</label>
       <input
+        disabled={blocked}
         id="observation-deadline"
         value={windowDoc.completion.deadline}
         onChange={(e) => updateWindow({ ...windowDoc, completion: { ...windowDoc.completion, deadline: e.target.value } })}
       />
       <label htmlFor="observation-quiet">Quiet period</label>
       <input
+        disabled={blocked}
         id="observation-quiet"
         value={windowDoc.completion.quiet_period}
         onChange={(e) =>
@@ -585,6 +669,7 @@ export function ObservationPanel({
       />
       <label htmlFor="observation-stable">Stable samples</label>
       <input
+        disabled={blocked}
         id="observation-stable"
         type="number"
         value={windowDoc.completion.stable_samples}
@@ -599,25 +684,35 @@ export function ObservationPanel({
       <div className="observation-actions">
         <button
           type="button"
-          disabled={busy}
+          disabled={blocked || sourceRefused || windowRefused}
           onClick={() => {
             void (async () => {
-              const savedSource = await saveObservationSource({ workspace, source_file: sourceFile, source: declared(source) });
-              const savedWindow = await saveObservationWindow({ workspace, window_file: windowFile, window: windowDoc });
-              const saved = savedSource.state === "completed" && savedWindow.state === "completed";
-              report(saved ? "completed" : "failed", savedSource.reason || savedWindow.reason);
-              if (savedSource.identity) setSourceIdentity(savedSource.identity);
-              if (savedWindow.identity) setWindowIdentity(savedWindow.identity);
-              if (savedSource.source) setSource(savedSource.source);
-              if (savedWindow.window) setWindowDoc(savedWindow.window);
               // A collection reads the saved documents, so a save that did not
               // land is said plainly: collecting now would read what was
-              // saved before, not what the editor shows.
-              setNotice(
-                saved
-                  ? "Saved through shared Go writers. Identities pinned for test binding."
-                  : `Not saved: ${savedSource.reason || savedWindow.reason || "the source and window were refused"}. A collection reads the documents saved before.`,
-              );
+              // saved before, not what the editor shows. The pair is saved
+              // source first, and a refused source leaves the window as saved.
+              const savedSource = await saveObservationSource({ workspace, source_file: sourceFile, source: declared(source) });
+              if (savedSource.state !== "completed") {
+                report(savedSource.state, savedSource.reason);
+                setSourceCheck(documentRefused("Source", sourceFile, "not saved", savedSource.reason));
+                setNotice(`Not saved: ${savedSource.reason || "the source was refused"}. A collection reads the documents saved before.`);
+                return;
+              }
+              setSourceIdentity(savedSource.identity ?? "");
+              if (savedSource.source) setSource(savedSource.source);
+              setSourceCheck(documentLine("Source", sourceFile, "saved", savedSource.source?.schema ?? source.schema, savedSource.identity ?? ""));
+              const savedWindow = await saveObservationWindow({ workspace, window_file: windowFile, window: windowDoc });
+              if (savedWindow.state !== "completed") {
+                report(savedWindow.state, savedWindow.reason);
+                setWindowCheck(documentRefused("Window", windowFile, "not saved", savedWindow.reason));
+                setNotice(`Window not saved: ${savedWindow.reason || "the window was refused"}. The source was saved; a collection reads the window saved before.`);
+                return;
+              }
+              setWindowIdentity(savedWindow.identity ?? "");
+              if (savedWindow.window) setWindowDoc(savedWindow.window);
+              setWindowCheck(documentLine("Window", windowFile, "saved", savedWindow.window?.schema ?? windowDoc.schema, savedWindow.identity ?? ""));
+              report("completed");
+              setNotice("Saved through shared Go writers. Identities pinned for test binding.");
             })();
           }}
         >
@@ -625,7 +720,7 @@ export function ObservationPanel({
         </button>
         <button
           type="button"
-          disabled={busy}
+          disabled={blocked}
           onClick={() => {
             void validateObservationPair({ workspace, source_file: sourceFile, window_file: windowFile }).then((res) => {
               report(res.state, res.reason);
@@ -639,8 +734,51 @@ export function ObservationPanel({
         >
           Validate locally
         </button>
+        <button
+          type="button"
+          disabled={blocked}
+          onClick={() => {
+            // The saved document, read as `readmit observe collect` reads a
+            // source; what the editor holds is validated only once it is saved.
+            void validateObservationSource(workspace, sourceFile).then((res) => {
+              report(res.state, res.reason);
+              setSourceCheck(
+                res.state === "completed"
+                  ? `${documentLine("Source", sourceFile, "valid", res.source?.schema ?? "", res.identity ?? "")} Nothing was collected.`
+                  : documentRefused("Source", sourceFile, "refused", res.reason),
+              );
+            });
+          }}
+        >
+          Validate source document
+        </button>
+        <button
+          type="button"
+          disabled={blocked}
+          onClick={() => {
+            // The saved document, read as `readmit observe validate` reads it.
+            void validateObservationWindow(workspace, windowFile).then((res) => {
+              report(res.state, res.reason);
+              setWindowCheck(
+                res.state === "completed"
+                  ? `${documentLine("Window", windowFile, "valid", res.window?.schema ?? "", res.identity ?? "")} Nothing was observed.`
+                  : documentRefused("Window", windowFile, "refused", res.reason),
+              );
+            });
+          }}
+        >
+          Validate window document
+        </button>
       </div>
 
+      {sourceCheck ? <p role="status">{sourceCheck}</p> : null}
+      {windowCheck ? <p role="status">{windowCheck}</p> : null}
+      {sourceRefused || windowRefused ? (
+        <p className="hint">
+          Saving is closed while a named document is refused: the window never replaces a document it could not
+          read. Name another document to save what the editor holds.
+        </p>
+      ) : null}
       {sourceIdentity || windowIdentity ? (
         <p className="hint">
           Pinned identities — source: <code>{sourceIdentity || "unsaved"}</code>; window:{" "}

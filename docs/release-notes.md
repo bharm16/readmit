@@ -1,5 +1,26 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Observation setup validates a saved source and a saved window each on its
+  own, and a source keeps one identity (#294). Validate source document and
+  Validate window document read the named document with the reader the
+  command line uses and show its identity, or the refusal in the command
+  line's words. A source that named its export relative to its own folder was
+  pinned at save with the identity of what it declares, but validated and
+  reopened with the identity of the path resolved on this machine, and the
+  editor then held that absolute path, so saving again rewrote the document
+  with it. Saving, validating and reopening now answer what the document
+  declares and its one identity, the digest of the canonical bytes the window
+  writes; a saved document keeps its bytes, and only the identity reported
+  when validating or reopening a source that declares a relative path
+  changes. A save refused inside a retained case used to create the folder
+  it would have been written into, after which the case no longer verified;
+  it now creates nothing. A refused source no longer lets the window be saved
+  on its own under a "Not saved" notice. A document the reader refuses says so
+  when it is opened and is no longer overwritten by what the editor held
+  before, naming one document no longer reads the other again over what was
+  typed, and the editor stays closed while a document is read. No
+  `readmit-*` document, command, flag, exit status or machine output changes.
+
 - The window explains what a retained run's evidence decided, assertion by
   assertion, as `readmit explain` does (#303). Until now an assertion set
   written in the assertion-set panel could only be re-decided from a terminal.

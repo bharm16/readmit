@@ -890,14 +890,14 @@ async function guard<T extends { state: State; reason?: string }>(
  * already knows, a case, its index and its grid, the guided sample, the
  * project a folder holds and the session to restore. The panels read as they
  * open: the environment's target, credential references, send policy and
- * reset plan, the scenario catalog, and the hub, commercial and disclosure
- * states. The facade runs one operation at a time and answers a call that
- * arrives while another holds the slot busy, having read nothing, and these
- * reads go out together, each on its own as Wails dispatches them, so one can
- * meet another. A read changes nothing, so a busy answer is asked again, a
- * bounded number of times, and is reported busy only when the slot stays
- * held. A write is never asked again: its busy answer is the refusal a second
- * click gets. */
+ * reset plan, the scenario catalog, the observation source and window, and
+ * the hub, commercial and disclosure states. The facade runs one operation at
+ * a time and answers a call that arrives while another holds the slot busy,
+ * having read nothing, and these reads go out together, each on its own as
+ * Wails dispatches them, so one can meet another. A read changes nothing, so
+ * a busy answer is asked again, a bounded number of times, and is reported
+ * busy only when the slot stays held. A write is never asked again: its busy
+ * answer is the refusal a second click gets. */
 async function retryingRead<T extends { state: State; reason?: string }>(
   call: () => Promise<T>,
   fallback: T,
@@ -6438,7 +6438,7 @@ export function observationSupport(): Promise<ObservationSupportResult> {
 }
 
 export function openObservationWindow(workspace: string, windowFile: string): Promise<ObservationWindowResult> {
-  return guard(() => facade().OpenObservationWindow(workspace, windowFile), { state: "failed" });
+  return retryingRead(() => facade().OpenObservationWindow(workspace, windowFile), { state: "failed" });
 }
 
 export function saveObservationWindow(request: ObservationWindowRequest): Promise<ObservationWindowResult> {
@@ -6450,7 +6450,7 @@ export function validateObservationWindow(workspace: string, windowFile: string)
 }
 
 export function openObservationSource(workspace: string, sourceFile: string): Promise<ObservationSourceResult> {
-  return guard(() => facade().OpenObservationSource(workspace, sourceFile), { state: "failed" });
+  return retryingRead(() => facade().OpenObservationSource(workspace, sourceFile), { state: "failed" });
 }
 
 export function saveObservationSource(request: ObservationSourceRequest): Promise<ObservationSourceResult> {

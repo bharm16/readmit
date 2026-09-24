@@ -1,7 +1,10 @@
 package operation_test
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
@@ -177,4 +180,88 @@ func TestMismatchedSourceAndWindowRefuseLocally(t *testing.T) {
 		t.Fatal("mismatched pair was accepted")
 	}
 	_ = source
+}
+
+// A source that names its export relative to its own folder has one identity:
+// the identity of what the document declares, which is the digest of the
+// canonical bytes the save wrote. Saving pins it, validating and reopening the
+// document report it, and saving what the save answered writes the same
+// bytes again, so the declared relative path never becomes this machine's
+// absolute one. The reader the command line collects through still resolves
+// the export beside the document.
+func TestASourceWithARelativeExportPathIsSavedAndValidatedAsOneIdentity(t *testing.T) {
+	declared, err := observesource.DecodeSource([]byte(strings.Replace(observeSourceDocument, `"export.csv"`, `"exports/appointments.csv"`, 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "observations", "source.json")
+	saved, pinned, err := operation.SaveObservationSource(path, declared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	written, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(bytes.TrimSuffix(written, []byte("\n")))
+	if pinned != hex.EncodeToString(sum[:]) {
+		t.Fatalf("the save pinned %s, not the identity of the bytes it wrote", pinned)
+	}
+	if saved.File == nil || saved.File.Path != "exports/appointments.csv" {
+		t.Fatalf("the save answered %+v, not the document it wrote", saved.File)
+	}
+	validated, identity, err := operation.ValidateObservationSource(path)
+	if err != nil || identity != pinned {
+		t.Fatalf("validate reported %q (%v), the save pinned %q", identity, err, pinned)
+	}
+	if validated.File == nil || validated.File.Path != "exports/appointments.csv" {
+		t.Fatalf("validate answered %+v, not what the document declares", validated.File)
+	}
+	opened, err := operation.OpenOrNewObservationSource(path)
+	if err != nil || opened.Identity() != pinned || opened.File.Path != "exports/appointments.csv" {
+		t.Fatalf("reopened %+v (%v) with identity %q, the save pinned %q", opened.File, err, opened.Identity(), pinned)
+	}
+	if _, again, err := operation.SaveObservationSource(path, saved); err != nil || again != pinned {
+		t.Fatalf("saving the answer again pinned %q (%v), not %q", again, err, pinned)
+	}
+	if rewritten, err := os.ReadFile(path); err != nil || !bytes.Equal(rewritten, written) {
+		t.Fatalf("saving the answer again changed the document:\n%s\n%s", written, rewritten)
+	}
+	read, err := observesource.ReadSource(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !filepath.IsAbs(read.File.Path) || !strings.HasSuffix(read.File.Path, filepath.Join("observations", "exports", "appointments.csv")) {
+		t.Fatalf("the collector's reader resolved the export to %s", read.File.Path)
+	}
+}
+
+// A document the writer refuses to place inside retained evidence leaves
+// nothing behind there, not even the folder it would have been written into.
+func TestARefusedSaveInsideRetainedEvidenceCreatesNothing(t *testing.T) {
+	evidence := filepath.Join(t.TempDir(), "incident.case")
+	if err := os.Mkdir(evidence, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(evidence, "identity.sha256"), []byte(strings.Repeat("a", 64)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	source, err := observesource.DecodeSource([]byte(observeSourceDocument))
+	if err != nil {
+		t.Fatal(err)
+	}
+	window, err := observewindow.DecodeWindow([]byte(observeWindowDocument))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := operation.SaveObservationSource(filepath.Join(evidence, "observations", "source.json"), source); err == nil || err.Error() != "cannot write an observation source here" {
+		t.Fatalf("a source inside retained evidence: %v", err)
+	}
+	if _, _, err := operation.SaveObservationWindow(filepath.Join(evidence, "windows", "deep", "window.json"), window); err == nil || err.Error() != "cannot write an observation window here" {
+		t.Fatalf("a window inside retained evidence: %v", err)
+	}
+	entries, err := os.ReadDir(evidence)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("a refused save left %v inside the evidence (%v)", entries, err)
+	}
 }

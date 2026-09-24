@@ -3366,6 +3366,32 @@ explicit authorize action and retain completions through
 collect`, a collection reserves a runner instance as well as admitting the
 author, and is refused without one before a source is read.
 
+**Save source and window** writes the source, then the window, each through
+its shared writer, and shows the identity each was saved with. A refused source
+leaves the window as it was saved, and the panel says which document was not
+saved and why. **Validate source document** and **Validate window document**
+read the saved document the file field names, on its own, with the reader the
+command line reads it with — `readmit observe validate` for a window, and the
+reader `readmit observe collect` reads a source through — and show its identity
+or the reader's refusal in the command line's words. They validate what is
+saved, not what the editor holds, and collect nothing; **Validate locally**
+still checks that the saved pair agrees.
+
+A source's identity is the SHA-256 of what the document declares, in canonical
+form: the digest of the file the window writes, without its final newline. An
+export path, capture path or certificate authority a source names relative to
+its own folder is resolved against that folder only when the source is
+collected, so saving, validating and reopening a source report one identity
+wherever its folder is, and the editor keeps the path as it was typed. A
+document the reader refuses is said to be refused when it is opened rather
+than shown as a new one, and saving stays closed until another document is
+named, so a document the window could not read, such as a later version, is
+never replaced by what the editor holds. Naming one document reads only that
+one again, and the editor stays closed while a document is read, so a read
+that lands late never replaces what was typed. A document saved into retained
+evidence, such as a case folder, is refused and creates nothing there, so the
+case still verifies.
+
 Adapter support and qualification state are listed in the panel. Database
 drivers remain unqualified production claims until #75. Downstream-capture
 sources accept a retained case path; Capture completion hands that path into
