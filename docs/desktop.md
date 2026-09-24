@@ -168,6 +168,26 @@ other failure, and a create that does not finish in ten minutes, is refused the
 first time. A refusal carries what hdiutil wrote, with the temporary staging
 folder named `<payload>` rather than its path on the build machine.
 
+`hdiutil create` attaches the image it writes while it fills it, and can return,
+having succeeded or not, with that image still attached and unmounted, held by
+a helper process that outlives the build. After every create the build detaches
+what is still attached of the path that create wrote, and nothing else: only
+devices that were not attached before the create began and that no other image
+shares, checked again before each detach, as verification does after an attach
+that failed. An image attached before the create, including an earlier build's
+attachment of the same path, is never touched, and neither is any other image,
+whether of the same name in another folder or attached while the create ran.
+As verification does before an attach, the build reads what is attached before
+each create and is refused, before creating anything, when hdiutil cannot
+report it. As after a failed attach, a cleanup that cannot prove what it would
+detach, or whose detach fails, is reported with the image's name and changes
+nothing else: a created image is still packaged and a failed create is still
+refused in hdiutil's words.
+
+The `.pkg` is written by `pkgbuild`, and a `pkgbuild` that fails, or does not
+finish in ten minutes, is refused the same way as a create, with what pkgbuild
+wrote and the staging folder named `<payload>`.
+
 ### Prerequisites and offline handling
 
 Nothing in a package reaches a network, and no package downloads a prerequisite.

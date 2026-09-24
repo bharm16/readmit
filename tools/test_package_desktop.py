@@ -1,12 +1,14 @@
 """Exercise desktop packaging through the tool that builds and verifies it."""
 
 from contextlib import redirect_stderr
+import copy
 import io
 import json
 import os
 from pathlib import Path
 import platform
 import plistlib
+import re
 import stat
 import subprocess
 import sys
@@ -315,31 +317,50 @@ class PackagingTests(unittest.TestCase):
                          "why it refused", "what it had done"):
             self.assertIn(expected, message)
 
-    def build_macos_with(self, create, name="retry-packages"):
-        """Build the macOS packages with `create` standing in for `hdiutil create`.
+    def build_macos_with(self, create, name="retry-packages", images=None, pkgbuild=None, detach_status=0,
+                         output=None):
+        """Build the macOS packages with `create` standing in for `hdiutil create`
+        and `pkgbuild` for pkgbuild, over `images`: the attached images `hdiutil
+        info` reports, which `create` may add to and which a detach of a whole
+        disk removes every image of that disk from, unless it exits `detach_status`.
 
-        It returns what was tried: every attempt's command line, every pause,
-        what the build said on stderr, and the refusal it ended with, if any."""
-        attempts, pauses, said, refused = [], [], io.StringIO(), None
+        It returns what was tried: every attempt's command line, every pkgbuild
+        command line, every pause, every detach with the number of creates run
+        before it, what the build said on stderr, and the refusal it ended with,
+        if any."""
+        images = [] if images is None else images
+        attempts, pkgbuilds, pauses, detached, said, refused = [], [], [], [], io.StringIO(), None
 
         def command(args, **kwargs):
             if args[0] == "pkgbuild":
-                Path(args[-1]).write_bytes(b"an installer package")
-                return subprocess.CompletedProcess(args, 0, "", "")
+                self.assertEqual(kwargs["timeout"], 600, "a pkgbuild that never finishes is still bounded")
+                pkgbuilds.append(list(args))
+                return (pkgbuild or self.installer_built)(args)
+            if args[:2] == ["hdiutil", "info"]:
+                return subprocess.CompletedProcess(args, 0, plistlib.dumps({"images": images}).decode(), "")
+            if args[:2] == ["hdiutil", "detach"]:
+                self.assertEqual(args[2], "-force")
+                detached.append((args[-1], len(attempts)))
+                if detach_status:
+                    return subprocess.CompletedProcess(args, detach_status, "", "hdiutil: detach failed - Resource busy\n")
+                images[:] = [image for image in images if not any(
+                    entity["dev-entry"] == args[-1] or entity["dev-entry"].startswith(args[-1] + "s")
+                    for entity in image["system-entities"])]
+                return subprocess.CompletedProcess(args, 0, f'"{Path(args[-1]).name}" ejected.\n', "")
             self.assertEqual(args[:2], ["hdiutil", "create"])
             self.assertEqual(kwargs["timeout"], 600, "a create that never finishes is still bounded")
             attempts.append(list(args))
             return create(args, len(attempts))
 
-        output = self.work / name
+        output = self.work / name if output is None else output
         with patch.object(packaging.subprocess, "run", side_effect=command), \
                 patch.object(packaging.time, "sleep", side_effect=pauses.append), redirect_stderr(said):
             try:
                 packaging.build(self.declaration, self.binary, "1.2.3", self.target(MACOS), output)
             except packaging.Refused as error:
                 refused = error
-        return SimpleNamespace(output=output, attempts=attempts, pauses=pauses,
-                               said=said.getvalue(), refused=refused)
+        return SimpleNamespace(output=output, attempts=attempts, pkgbuilds=pkgbuilds, pauses=pauses,
+                               detached=detached, said=said.getvalue(), refused=refused)
 
     @staticmethod
     def created(args):
@@ -349,6 +370,31 @@ class PackagingTests(unittest.TestCase):
     @staticmethod
     def busy(args):
         return subprocess.CompletedProcess(args, 1, "", "hdiutil: create failed - Resource busy\n")
+
+    @staticmethod
+    def installer_built(args):
+        Path(args[-1]).write_bytes(b"an installer package")
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    @staticmethod
+    def left_attached(args):
+        """What `hdiutil info` lists for the image a create wrote and left
+        attached: its absolute path, spelled as the create was given it, and,
+        unmounted, the backing disk and the APFS disk synthesized from it."""
+        return {"image-path": os.path.abspath(args[-1]), "system-entities": [
+            {"dev-entry": device} for device in ("/dev/disk8", "/dev/disk8s1", "/dev/disk9", "/dev/disk9s1")]}
+
+    # Images the build did not attach: someone else's, mounted where they opened
+    # it, and one of the same name attached from another folder.
+    OTHERS = (
+        {"image-path": "/Users/someone/Downloads/Other.dmg", "system-entities": [
+            {"dev-entry": "/dev/disk4", "mount-point": "/Volumes/Other"}]},
+        {"image-path": "/Volumes/Share/readmit-desktop_1.2.3_arm64.dmg", "system-entities": [
+            {"dev-entry": "/dev/disk5"}, {"dev-entry": "/dev/disk5s1"}]},
+    )
+
+    def others(self):
+        return copy.deepcopy(list(self.OTHERS))
 
     def test_a_disk_image_whose_staging_volume_was_busy_is_created_again(self):
         """`create -srcfolder` mounts the volume it fills where the system can
@@ -408,6 +454,243 @@ class PackagingTests(unittest.TestCase):
                 if reason == "timeout":
                     # The timeout's own text is the command line, staging path included.
                     self.assertTrue(run.refused.__suppress_context__)
+
+    def test_an_image_its_create_left_attached_is_detached_and_no_other_image_is(self):
+        """hdiutil can return with the image it wrote still attached. Only the
+        devices of the path that create wrote are released: not an image that
+        was attached before, not one of the same name in another folder, and
+        not one someone else attached while the create ran. The output folder
+        is also named relative to the working directory, as CI names it."""
+        self.addCleanup(os.chdir, os.getcwd())
+        os.chdir(self.work)
+        for output in (self.work / "left-attached", Path("left-attached-relative")):
+            with self.subTest(output=str(output)):
+                images, latecomer = self.others(), {"image-path": "/Users/someone/Later.dmg",
+                                                    "system-entities": [{"dev-entry": "/dev/disk10"}]}
+
+                def create(args, attempt):
+                    images.extend([self.left_attached(args), copy.deepcopy(latecomer)])
+                    return self.created(args)
+
+                run = self.build_macos_with(create, images=images, output=output)
+                self.assertIsNone(run.refused)
+                self.assertEqual(run.detached, [("/dev/disk8", 1)], "the backing disk's detach releases its APFS disk")
+                self.assertEqual(images, self.others() + [latecomer], "every other image is attached as it was")
+                self.assertEqual(run.said, "")
+                # The package commands are the ones they were, so the packages,
+                # their names and the manifest recording them are too.
+                staged = run.attempts[0][run.attempts[0].index("-srcfolder") + 1]
+                self.assertEqual(run.attempts, [[
+                    "hdiutil", "create", "-volname", self.declaration["display_name"], "-srcfolder", staged,
+                    "-ov", "-format", "UDZO", str(output / "readmit-desktop_1.2.3_arm64.dmg")]])
+                self.assertEqual(run.pkgbuilds, [[
+                    "pkgbuild", "--root", staged, "--identifier", self.declaration["bundle_identifier"],
+                    "--version", "1.2.3", "--install-location", "/Applications",
+                    str(output / "readmit-desktop_1.2.3_arm64.pkg")]])
+                manifest = json.loads((output / packaging.MANIFEST_NAME).read_bytes())
+                self.assertEqual([(package["name"], package["format"]) for package in manifest["packages"]], [
+                    ("readmit-desktop_1.2.3_arm64.dmg", "dmg"), ("readmit-desktop_1.2.3_arm64.pkg", "pkg")])
+
+    def test_an_earlier_build_s_attachment_of_the_same_path_is_not_this_create_s(self):
+        """A build before this one, into a folder since deleted and made again,
+        can have left the same path attached. That attachment is not this
+        create's: it stays as it is, unreported, and only what this create
+        left is released."""
+        for leaves in (False, True):
+            with self.subTest(leaves=leaves):
+                name = f"again-{leaves}"
+                earlier = {"image-path": str(self.work / name / "readmit-desktop_1.2.3_arm64.dmg"),
+                           "system-entities": [{"dev-entry": "/dev/disk4"}, {"dev-entry": "/dev/disk4s1"}]}
+                images = [copy.deepcopy(earlier)]
+
+                def create(args, attempt):
+                    if leaves:
+                        images.append(self.left_attached(args))
+                    return self.created(args)
+
+                run = self.build_macos_with(create, name=name, images=images)
+                self.assertIsNone(run.refused)
+                self.assertEqual(run.said, "")
+                self.assertEqual(images, [earlier])
+                self.assertEqual(run.detached, [("/dev/disk8", 1)] if leaves else [])
+
+    def test_an_image_a_failed_create_left_attached_is_detached_before_it_is_tried_again_or_refused(self):
+        def timeout(args, attempt):
+            raise subprocess.TimeoutExpired(args, 600, b"", b"")
+
+        for index, (reason, outcome, refusal) in enumerate((
+            ("busy", lambda args, attempt: self.busy(args) if attempt == 1 else self.created(args), None),
+            ("full", lambda args, attempt: subprocess.CompletedProcess(
+                args, 1, "", "hdiutil: create failed - No space left on device\n"), "No space left on device"),
+            ("timeout", timeout, "did not finish in 600 seconds"),
+        )):
+            with self.subTest(reason=reason):
+                images = self.others()
+
+                def create(args, attempt):
+                    if attempt == 1:
+                        images.append(self.left_attached(args))
+                    return outcome(args, attempt)
+
+                run = self.build_macos_with(create, name=f"failed-left-attached-{index}", images=images)
+                self.assertEqual(run.detached, [("/dev/disk8", 1)], "released before anything else is tried")
+                self.assertEqual(images, self.others())
+                if refusal is None:
+                    self.assertIsNone(run.refused)
+                    self.assertEqual(len(run.attempts), 2)
+                else:
+                    self.assertEqual(len(run.attempts), 1)
+                    self.assertIn(refusal, str(run.refused))
+                self.assertNotIn("cleanup", run.said)
+
+    def test_a_build_that_cannot_read_what_is_attached_creates_nothing(self):
+        """Without what was attached before a create, nothing it leaves could be
+        told apart from anyone else's, so the build is refused before creating
+        anything, as verification is refused before an attach."""
+        run = self.build_macos_with(lambda args, attempt: self.created(args), name="uninspected",
+                                    images=["not an image"])
+        self.assertEqual(run.attempts, [])
+        self.assertEqual(run.detached, [])
+        self.assertIn("cannot inspect disk images", str(run.refused))
+        self.assertFalse((run.output / packaging.MANIFEST_NAME).exists())
+
+    def test_what_a_create_left_that_cannot_be_proven_its_own_or_detached_is_reported(self):
+        """Cleanup detaches nothing it cannot attribute, and a cleanup that
+        could not finish is reported, naming the image, as after a failed
+        attach: it never changes what the create did. A created image is still
+        packaged and a failed create is still refused in hdiutil's words."""
+        for mode, expected in (("reused-device", "create cleanup refused: ambiguous device or mount association"),
+                               ("shared-disk", "create cleanup refused: device association changed"),
+                               ("unreadable-inventory", "cannot inspect disk images"),
+                               ("detach-error", "create device did not detach")):
+            for created in (True, False):
+                with self.subTest(mode=mode, created=created):
+                    # A device this machine had before the create, since given to another image.
+                    reused = {"image-path": "/Users/someone/Other.dmg", "system-entities": [{"dev-entry": "/dev/disk8"}]}
+                    shared = {"image-path": "/Users/someone/Other.dmg", "system-entities": [{"dev-entry": "/dev/disk8s3"}]}
+                    images = [reused] if mode == "reused-device" else []
+
+                    def create(args, attempt):
+                        images[:] = [self.left_attached(args)]
+                        if mode == "shared-disk":
+                            images.append(shared)
+                        if mode == "unreadable-inventory":
+                            images.append("not an image")
+                        if created:
+                            return self.created(args)
+                        return subprocess.CompletedProcess(args, 1, "", "hdiutil: create failed - No space left on device\n")
+
+                    run = self.build_macos_with(create, name=f"unproven-{mode}-{created}", images=images,
+                                                detach_status=int(mode == "detach-error"))
+                    self.assertEqual(run.detached, [("/dev/disk8", 1)] if mode == "detach-error" else [])
+                    if mode == "shared-disk":
+                        self.assertIn(shared, images, "another image's device is never detached")
+                    self.assertIn("readmit-desktop_1.2.3_arm64.dmg: " + expected, run.said)
+                    if mode == "detach-error":
+                        self.assertIn("hdiutil: detach failed - Resource busy", run.said)
+                    if created:
+                        self.assertIsNone(run.refused)
+                        self.assertTrue((run.output / packaging.MANIFEST_NAME).is_file())
+                    else:
+                        self.assertIn("No space left on device", str(run.refused))
+                        self.assertNotIn(expected, str(run.refused))
+
+    def test_a_pkgbuild_failure_is_refused_in_its_own_words_without_the_staging_path(self):
+        """A failed pkgbuild reached the log as a CalledProcessError: a status
+        and a command line naming the staging folder, and no reason."""
+        for index, reason in enumerate(("exit", "timeout")):
+            with self.subTest(reason=reason):
+                def pkgbuild(args):
+                    staged = args[args.index("--root") + 1]
+                    stdout = f"pkgbuild: Inferring bundle components from contents of {staged}\n"
+                    stderr = f'pkgbuild: error: Specified root path "{Path(staged).resolve()}" does not exist.\n'
+                    if reason == "timeout":
+                        # run() hands back what was captured so far as bytes.
+                        raise subprocess.TimeoutExpired(args, 600, stdout.encode(), stderr.encode())
+                    return subprocess.CompletedProcess(args, 1, stdout, stderr)
+
+                run = self.build_macos_with(lambda args, attempt: self.created(args), name=f"pkgbuild-{index}",
+                                            pkgbuild=pkgbuild)
+                self.assertEqual(len(run.pkgbuilds), 1, "no retry")
+                message = str(run.refused)
+                staged = run.pkgbuilds[0][run.pkgbuilds[0].index("--root") + 1]
+                outcome = "did not finish in 600 seconds" if reason == "timeout" else "pkgbuild exited 1"
+                for expected in ("readmit-desktop_1.2.3_arm64.pkg was not built", outcome,
+                                 "Inferring bundle components from contents of <payload>",
+                                 'Specified root path "<payload>" does not exist'):
+                    self.assertIn(expected, message)
+                for private in (staged, str(Path(staged).resolve()), "readmit-desktop-package-"):
+                    self.assertNotIn(private, message)
+                self.assertFalse((run.output / packaging.MANIFEST_NAME).exists())
+                if reason == "timeout":
+                    # The timeout's own text is the command line, staging path included.
+                    self.assertTrue(run.refused.__suppress_context__)
+
+    @unittest.skipIf(platform.system() != "Darwin", "pkgbuild is a macOS tool")
+    def test_a_real_pkgbuild_failure_is_refused_in_its_own_words_without_the_staging_path(self):
+        staged = self.work / "payload-never-staged"
+        package = self.work / "readmit-desktop_1.2.3_arm64.pkg"
+        with self.assertRaises(packaging.Refused) as refused:
+            packaging.build_installer_package(self.declaration, staged, package, "1.2.3")
+        message = str(refused.exception)
+        for expected in (f"{package.name} was not built", "pkgbuild exited 1",
+                         'Specified root path "<payload>" does not exist'):
+            self.assertIn(expected, message)
+        for private in (str(staged), str(staged.resolve()), staged.name):
+            self.assertNotIn(private, message)
+        self.assertFalse(package.exists())
+
+    def release_images_under_work(self):
+        """Detach whatever is still attached of an image in this test's own
+        folder, so a failing test leaves nothing attached. Nothing else on the
+        machine is this test's, so nothing else is touched."""
+        work = self.work.resolve()
+        for entry in packaging.attached_images():
+            if Path(entry["image-path"]).resolve().is_relative_to(work):
+                for entity in entry["system-entities"]:
+                    if re.fullmatch(r"/dev/disk[0-9]+", entity.get("dev-entry", "")):
+                        subprocess.run(["hdiutil", "detach", "-force", entity["dev-entry"]],
+                                       capture_output=True, timeout=600)
+
+    @staticmethod
+    def attached_devices(image):
+        return sorted(entity.get("dev-entry", "") for entry in packaging.attached_images()
+                      if Path(entry["image-path"]).resolve() == image.resolve()
+                      for entity in entry["system-entities"])
+
+    @unittest.skipIf(platform.system() != "Darwin", "hdiutil is a macOS tool")
+    def test_a_real_image_its_create_left_attached_is_detached_and_a_bystander_is_not(self):
+        """The helper that leaves a created image attached cannot be made to on
+        demand, so the image each create wrote is attached again at the
+        subprocess boundary: the same inventory entry, its path and unmounted
+        devices. A bystander this test attached itself, which the build did not
+        create, stays attached with the same devices."""
+        self.addCleanup(self.release_images_under_work)
+        source = self.work / "bystander-source"
+        source.mkdir()
+        (source / "fixture.txt").write_text("synthetic fixture")
+        bystander = self.work / "bystander.dmg"
+        packaging.create_disk_image(self.declaration, source, bystander)
+        packaging.run_tool(["hdiutil", "attach", "-nomount", "-readonly", str(bystander)], "attach the bystander")
+        attached = self.attached_devices(bystander)
+        self.assertTrue(attached)
+        original_run, left = packaging.subprocess.run, []
+
+        def leave_attached(args, **kwargs):
+            result = original_run(args, **kwargs)
+            if args[:2] == ["hdiutil", "create"] and result.returncode == 0:
+                original_run(["hdiutil", "attach", "-nomount", "-readonly", args[-1]],
+                             capture_output=True, timeout=600, check=True)
+                left.append(Path(args[-1]))
+            return result
+
+        output = self.work / "left-attached-packages"
+        with patch.object(packaging.subprocess, "run", side_effect=leave_attached):
+            packaging.build(self.declaration, self.binary, "1.2.3", self.target(MACOS), output)
+        self.assertEqual(left, [output / "readmit-desktop_1.2.3_arm64.dmg"])
+        self.assertEqual(self.attached_devices(left[0]), [], "the image the build created is no longer attached")
+        self.assertEqual(self.attached_devices(bystander), attached, "the bystander is attached as it was")
+        packaging.verify(self.declaration, output)
 
     @unittest.skipIf(platform.system() != "Darwin", "hdiutil is a macOS tool")
     def test_a_disk_image_created_again_holds_the_application_it_claims(self):
@@ -560,8 +843,9 @@ class PackagingTests(unittest.TestCase):
         source.mkdir()
         (source / "fixture.txt").write_text("synthetic fixture")
         image = self.work / "fixture.dmg"
-        packaging.run_tool(["hdiutil", "create", "-srcfolder", str(source),
-                            "-format", "UDZO", str(image)], "create test image")
+        # A bare `hdiutil create` can leave the fixture attached (#353); the
+        # tool's own create releases what it leaves.
+        packaging.create_disk_image(self.declaration, source, image)
         original_run = packaging.subprocess.run
         private_image = None
         detached = []
