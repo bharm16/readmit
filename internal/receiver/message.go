@@ -113,7 +113,7 @@ func selected(doc *hl7.Document, path string, required bool, maxBytes int) (stri
 	if err != nil {
 		return "", err
 	}
-	value, err := doc.Select(0, selector)
+	value, err := doc.Read(0, selector, hl7.IgnoreMSH18)
 	if err != nil {
 		return "", err
 	}
@@ -123,11 +123,11 @@ func selected(doc *hl7.Document, path string, required bool, maxBytes int) (stri
 		}
 		return "", fmt.Errorf("%s must have a supported present value", path)
 	}
-	decoded, err := hl7.Decode(doc.Bytes(value.Span), doc.Messages[0].Delimiters)
-	if err != nil || !utf8.Valid(decoded) || len(decoded) > maxBytes || len(decoded) == 0 {
+	text, ok := value.Text()
+	if !ok || len(text) > maxBytes || len(text) == 0 {
 		return "", fmt.Errorf("%s must contain supported UTF-8 text of at most %d bytes", path, maxBytes)
 	}
-	return string(decoded), nil
+	return text, nil
 }
 
 func identifier(doc *hl7.Document, selectors identifierFields, maxBytes int) (observation.Identifier, error) {

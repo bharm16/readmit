@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"time"
-	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
@@ -159,15 +158,14 @@ func captureKey(evidence *bundle.Bundle, event bundle.Event, selector hl7.Select
 	if err != nil {
 		return "", errors.New("a verified occurrence of this capture could not be parsed")
 	}
-	value, err := document.Select(0, selector)
-	if err != nil || value.State != hl7.Present {
+	reading, err := document.Read(0, selector, hl7.IgnoreMSH18)
+	if err != nil || reading.State != hl7.Present {
 		return "", errors.New("an occurrence of this capture does not hold the declared record key")
 	}
-	decoded, err := hl7.Decode(document.Bytes(value.Span), document.Messages[0].Delimiters)
-	if err != nil || !utf8.Valid(decoded) {
+	key, ok := reading.Text()
+	if !ok {
 		return "", errors.New("a record key of this capture does not decode to text")
 	}
-	key := string(decoded)
 	if !printableKey(key) {
 		return "", errRecordKey
 	}

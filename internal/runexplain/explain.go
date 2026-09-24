@@ -37,7 +37,6 @@ import (
 	"os"
 	"slices"
 	"time"
-	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/assertion"
 	"github.com/bharm16/readmit/internal/hl7"
@@ -528,15 +527,13 @@ func runRecordKeys(evidence assertion.Evidence, selector hl7.Selector) map[strin
 	keys := map[string]bool{}
 	for _, side := range []map[string]assertion.Message{evidence.Input, evidence.Observed} {
 		for _, message := range side {
-			value, err := message.Document.Select(message.Index, selector)
-			if err != nil || value.State != hl7.Present {
+			value, err := message.Document.Read(message.Index, selector, hl7.IgnoreMSH18)
+			if err != nil {
 				continue
 			}
-			decoded, err := hl7.Decode(message.Document.Bytes(value.Span), message.Document.Messages[message.Index].Delimiters)
-			if err != nil || !utf8.Valid(decoded) {
-				continue
+			if key, ok := value.Text(); ok {
+				keys[key] = true
 			}
-			keys[string(decoded)] = true
 		}
 	}
 	return keys

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/dictionary"
@@ -162,7 +161,6 @@ func describeValue(view *Inspection, doc *hl7.Document) {
 	}
 	if charset.State == hl7.Omitted || charset.State == hl7.Empty {
 		view.Encoding = "ASCII (default)"
-		declared = []byte("ASCII")
 	}
 	view.Notice = ""
 	if selected.State == hl7.Omitted {
@@ -176,8 +174,7 @@ func describeValue(view *Inspection, doc *hl7.Document) {
 		return
 	}
 	view.Raw = escapeBytes(raw)
-	utf8Encoding := string(declared) == "UNICODE UTF-8"
-	if string(declared) != "ASCII" && !utf8Encoding {
+	if _, readable := doc.CharacterSet(0); !readable {
 		view.DecodeState = "unsupported_encoding"
 		view.Notice = "Character-set transcoding is unsupported; original bytes remain available."
 		return
@@ -191,33 +188,22 @@ func describeValue(view *Inspection, doc *hl7.Document) {
 		view.DecodeState = string(selected.State)
 		return
 	}
-	decoded := raw
-	var err error
-	// MSH-1 and MSH-2 declare delimiters literally, including the escape byte.
-	if selected.Path != "MSH[1]-1" && selected.Path != "MSH[1]-2" && selected.Path != "MSH[1]-1[1]" && selected.Path != "MSH[1]-2[1]" {
-		decoded, err = hl7.Decode(raw, m.Delimiters)
-	}
-	if err != nil {
+	// The inspector holds a value to the character set MSH-18 declares. The
+	// node is a field or a part of one that Navigate returned for this message.
+	reading, _ := doc.ReadNode(0, selected, hl7.EnforceMSH18)
+	decoded, ok := reading.Text()
+	switch {
+	case reading.Reason == hl7.UnsupportedEscape:
 		view.DecodeState = "unsupported_escape"
 		view.Notice = "The selected value contains an unsupported or invalid HL7 escape."
 		return
-	}
-	valid := utf8.Valid(decoded)
-	if !utf8Encoding {
-		for _, b := range decoded {
-			if b >= 128 {
-				valid = false
-				break
-			}
-		}
-	}
-	if !valid {
+	case !ok:
 		view.DecodeState = "invalid_encoding"
 		view.Notice = "The selected bytes do not match the declared character set."
 		return
 	}
 	view.DecodeState = "decoded"
-	quoted := strconv.QuoteToASCII(string(decoded))
+	quoted := strconv.QuoteToASCII(decoded)
 	view.Decoded = strings.NewReplacer("<", `\x3c`, ">", `\x3e`, "&", `\x26`).Replace(quoted[1 : len(quoted)-1])
 }
 

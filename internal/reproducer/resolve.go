@@ -4,7 +4,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"slices"
-	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
@@ -205,17 +204,17 @@ func (s *session) identity(event *bundle.Event, selectors []hl7.Selector) (strin
 	tuple := make([]string, 0, 2*len(selectors))
 	present := false
 	for _, selector := range selectors {
-		value, err := doc.Select(0, selector)
+		value, err := doc.Read(0, selector, hl7.IgnoreMSH18)
 		if err != nil {
 			return "", false
 		}
 		text := ""
 		if value.State == hl7.Present {
-			decoded, err := hl7.Decode(doc.Bytes(value.Span), doc.Messages[0].Delimiters)
-			if err != nil || !utf8.Valid(decoded) {
+			decoded, ok := value.Text()
+			if !ok {
 				return "", false
 			}
-			text, present = string(decoded), true
+			text, present = decoded, true
 		}
 		tuple = append(tuple, string(value.State), text)
 	}
@@ -344,10 +343,10 @@ func (s *session) rewrite(event *bundle.Event, raw []byte, edits []pending) ([]b
 		// MSH-1 and MSH-2 declare the delimiters every other position is split
 		// on. Rewriting one would restate the syntax of the message rather than
 		// change a value in it.
-		if selector.String() == "MSH[1]-1[1]" || selector.String() == "MSH[1]-2[1]" {
+		value, err := doc.Read(0, selector, hl7.IgnoreMSH18)
+		if value.Literal {
 			return nil, nil, errors.New("the delimiter declarations MSH-1 and MSH-2 are not editable")
 		}
-		value, err := doc.Select(0, selector)
 		if err != nil {
 			return nil, nil, errors.New("an edited field selector is not one this release addresses")
 		}

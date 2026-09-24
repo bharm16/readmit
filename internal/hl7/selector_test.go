@@ -43,6 +43,10 @@ func TestSelectorAddressesOccurrencesRepetitionsComponentsAndStates(t *testing.T
 			if err != nil || canonical != s {
 				t.Fatal("canonical selector changed")
 			}
+			rebuilt, err := hl7.NewSelector(s.Parts())
+			if err != nil || rebuilt != s {
+				t.Fatal("selector built from its own parts changed")
+			}
 		})
 	}
 	if !bytes.Equal(doc.Serialize(), raw) {
@@ -72,25 +76,61 @@ func TestSelectorRejectsInvalidPathsWithoutReflectingData(t *testing.T) {
 	}
 }
 
-func TestDecodeEscapesWithoutChangingEvidence(t *testing.T) {
-	delim := hl7.Delimiters{Field: '*', Component: '$', Repetition: '%', Escape: '!', Subcomponent: '?'}
-	got, err := hl7.Decode([]byte("a!F!b!S!c!R!d!T!e!E!f!Xff00!"), delim)
-	if err != nil || !bytes.Equal(got, []byte{'a', '*', 'b', '$', 'c', '%', 'd', '?', 'e', '!', 'f', 255, 0}) {
-		t.Fatalf("got %q %v", got, err)
+func TestSelectorPartsAreACopyAndBuildTheSameSelector(t *testing.T) {
+	s, err := hl7.ParseSelector("PID[2]-3[4].5.6")
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, raw := range []string{"!ZSECRET!", "!X0!", "!Xgg!", "!X!", "!F", "!!"} {
-		if _, err := hl7.Decode([]byte(raw), delim); err == nil || strings.Contains(err.Error(), "SECRET") {
-			t.Fatal("invalid escape accepted or disclosed")
-		}
+	parts := s.Parts()
+	if parts != (hl7.Parts{Segment: "PID", Occurrence: 2, Field: 3, Repetition: 4, Component: 5, Subcomponent: 6}) {
+		t.Fatalf("parts %+v", parts)
 	}
-	raw := []byte("literal\\F\\")
-	got, err = hl7.Decode(raw, hl7.Delimiters{})
-	if err != nil || !bytes.Equal(raw, got) {
-		t.Fatal("undeclared escape decoded")
+	parts.Occurrence = 7
+	if s.String() != "PID[2]-3[4].5.6" {
+		t.Fatal("changing the parts changed the selector")
 	}
-	got[0] = 'x'
-	if raw[0] != 'l' {
-		t.Fatal("decode shared input bytes")
+	moved, err := hl7.NewSelector(parts)
+	if err != nil || moved.String() != "PID[7]-3[4].5.6" {
+		t.Fatalf("got %q %v", moved, err)
+	}
+	defaults, err := hl7.ParseSelector("MSA-1")
+	if err != nil || defaults.Parts() != (hl7.Parts{Segment: "MSA", Occurrence: 1, Field: 1, Repetition: 1}) {
+		t.Fatalf("defaulted parts %+v", defaults.Parts())
+	}
+	if (hl7.Selector{}).Parts() != (hl7.Parts{}) {
+		t.Fatal("the zero selector has positions")
+	}
+}
+
+func TestNewSelectorRefusesWhatTheGrammarRefuses(t *testing.T) {
+	valid := hl7.Parts{Segment: "PID", Occurrence: 1, Field: 3, Repetition: 1}
+	for name, reshape := range map[string]func(*hl7.Parts){
+		"empty segment":                  func(p *hl7.Parts) { p.Segment = "" },
+		"lowercase segment":              func(p *hl7.Parts) { p.Segment = "pid" },
+		"long segment":                   func(p *hl7.Parts) { p.Segment = "SECRET" },
+		"digit first":                    func(p *hl7.Parts) { p.Segment = "1ID" },
+		"zero occurrence":                func(p *hl7.Parts) { p.Occurrence = 0 },
+		"zero field":                     func(p *hl7.Parts) { p.Field = 0 },
+		"zero repetition":                func(p *hl7.Parts) { p.Repetition = 0 },
+		"negative component":             func(p *hl7.Parts) { p.Component = -1 },
+		"negative subcomponent":          func(p *hl7.Parts) { p.Component, p.Subcomponent = 1, -1 },
+		"subcomponent without component": func(p *hl7.Parts) { p.Subcomponent = 1 },
+		"position past the syntax limit": func(p *hl7.Parts) { p.Field = 200001 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			parts := valid
+			reshape(&parts)
+			if _, err := hl7.NewSelector(parts); err == nil || strings.Contains(err.Error(), "SECRET") {
+				t.Fatal("invalid parts accepted or disclosed")
+			}
+		})
+	}
+	s, err := hl7.NewSelector(hl7.Parts{Segment: "ZZ9", Occurrence: 200000, Field: 200000, Repetition: 200000, Component: 200000, Subcomponent: 200000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed, err := hl7.ParseSelector(s.String()); err != nil || parsed != s {
+		t.Fatal("the largest selector does not parse back from its canonical form")
 	}
 }
 

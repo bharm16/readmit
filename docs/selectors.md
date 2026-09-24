@@ -33,8 +33,44 @@ or a later repetition of these fields returns `omitted`.
 
 Selection splits only on declared delimiters outside escape sequences and never
 changes evidence. `Document.Bytes(value.Span)` gives a private copy of the original
-bytes. `hl7.Decode(bytes, delimiters)` separately resolves standard F/S/R/T/E
-separator escapes and X hexadecimal bytes. It rejects unsupported local or
-formatting escapes with a fixed error; it never strips them or guesses. It does not
-transcode character sets, normalize Unicode, or treat explicit null as text.
-Consumers must check state first and choose an explicit encoding policy.
+bytes.
+
+`Selector.Parts()` returns the positions a selector addresses (segment,
+occurrence, field, repetition, component and subcomponent) as a copy.
+`hl7.NewSelector(parts)` builds a selector from positions and refuses exactly
+what `ParseSelector` refuses. Code reads a selector's positions from its parts,
+never by taking `Selector.String()` apart.
+
+## Reading a value as text
+
+Every reader that turns a selected value into text uses one operation,
+`Document.Read(messageIndex, selector, policy)`, so an assertion, a diff, a
+diagnosis and a correlation read the same bytes by the same rule. It returns the
+selected state and, for a present value, either its text or one named reason it
+is not text:
+
+| Reason | What the present bytes hold |
+| --- | --- |
+| `unsupported_escape` | An escape other than the F/S/R/T/E separators and X hexadecimal bytes, or a malformed one |
+| `invalid_utf8` | Decoded bytes that are not valid UTF-8 |
+| `undeclared_character_set` | Under `EnforceMSH18`, bytes outside the character set MSH-18 declares, or any value of a message whose MSH-18 declares a character set readmit does not read |
+
+`Document.ReadNode` reads a field, or a part of one, that `Navigate` returned
+by the same rule; a whole field reads with its repetition separators as written.
+An empty, null or omitted value has its state and no text; explicit null is
+never text. MSH-1 and MSH-2 are read literally, as the delimiter declarations
+they are, escape character included. Every other present value has its standard
+escapes resolved; an unsupported escape is never stripped or guessed. Nothing
+transcodes a character set, normalizes Unicode, trims or folds case.
+
+Every caller names its character-set policy. Under `EnforceMSH18`, ASCII is the
+default (an omitted or empty MSH-18, or `ASCII`) and non-ASCII text requires
+MSH-18 `UNICODE UTF-8`. Any other declaration, an explicit null or more than one
+repetition is a character set readmit does not read. `Document.CharacterSet`
+reports a message's declaration by the same rule. Under `IgnoreMSH18`, any valid
+UTF-8 is text. [Diagnosis](diagnose.md) and the desktop inspector enforce MSH-18.
+Every other reader ignores it: assertions, diff, correlation, explain, finding
+review, the test runner, redaction, the receiver, replay, transform, reproducers
+and capture observation. Replay and finding review also keep decoded bytes that
+are not UTF-8. Each caller maps a reason to its own refusal code, and those codes
+are unchanged.

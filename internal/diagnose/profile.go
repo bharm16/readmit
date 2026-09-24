@@ -285,7 +285,8 @@ func (p profileDefinition) messageTypes() string {
 func (t triggerDefinition) segments() []string {
 	var ids []string
 	add := func(path string) {
-		id, _, _ := strings.Cut(path, "-")
+		selector, _ := hl7.ParseSelector(path) // every profile path was parsed when the profile was read
+		id := selector.Parts().Segment
 		if id != "MSH" && !slices.Contains(ids, id) {
 			ids = append(ids, id)
 		}

@@ -6,11 +6,12 @@ import (
 	"errors"
 )
 
-// Decode resolves the standard separator escapes F/S/R/T/E and X hexadecimal
+// decode resolves the standard separator escapes F/S/R/T/E and X hexadecimal
 // bytes. It does not transcode character sets, interpret local/formatting escapes,
 // or normalize text. Unsupported escapes return a fixed error without raw values.
-// Callers must inspect the selected State separately, especially explicit null.
-func Decode(raw []byte, delimiters Delimiters) ([]byte, error) {
+// Read is the one caller: it inspects the selected State first, reads MSH-1 and
+// MSH-2 literally, and applies the character-set policy afterwards.
+func decode(raw []byte, delimiters Delimiters) ([]byte, error) {
 	if delimiters.Escape == 0 {
 		return bytes.Clone(raw), nil
 	}

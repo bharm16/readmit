@@ -4,7 +4,6 @@ import (
 	"context"
 	"math/big"
 	"regexp"
-	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/hl7"
 )
@@ -345,17 +344,16 @@ func (e Evidence) resolve(ref FieldRef, id string) (FieldValue, error) {
 	if !ok || message.Document == nil || message.Index < 0 || message.Index >= len(message.Document.Messages) {
 		return FieldValue{}, &Error{Class: ErrorUnknownMessage, Assertion: id}
 	}
-	value, err := message.Document.Select(message.Index, ref.selector)
+	reading, err := message.Document.Read(message.Index, ref.selector, hl7.IgnoreMSH18)
 	if err != nil {
 		return FieldValue{}, &Error{Class: ErrorUnreadableValue, Assertion: id}
 	}
-	resolved := FieldValue{State: value.State}
-	if value.State == hl7.Present {
-		decoded, err := hl7.Decode(message.Document.Bytes(value.Span), message.Document.Messages[message.Index].Delimiters)
-		if err != nil || !utf8.Valid(decoded) {
+	resolved := FieldValue{State: reading.State}
+	if reading.State == hl7.Present {
+		text, ok := reading.Text()
+		if !ok {
 			return FieldValue{}, &Error{Class: ErrorUnreadableValue, Assertion: id}
 		}
-		text := string(decoded)
 		resolved.Text = &text
 	}
 	return resolved, nil

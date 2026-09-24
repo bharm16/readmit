@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"slices"
 	"time"
-	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/correlate"
@@ -110,14 +109,13 @@ func (e *engine) declares(id string, selector hl7.Selector, ruleID string) bool 
 			Detail: "nothing decoded this occurrence, so it declares no position to rename; its bytes stay as they are"})
 		return false
 	}
-	value, err := doc.Select(0, selector)
+	value, err := doc.Read(0, selector, hl7.IgnoreMSH18)
 	if err != nil || value.State != hl7.Present {
 		e.note(Unsupported{Code: NoDeclaredValue, Parent: id, Rule: ruleID, Selector: selector.String(),
 			Detail: "this occurrence declares nothing at the position the rule reads"})
 		return false
 	}
-	decoded, err := hl7.Decode(doc.Bytes(value.Span), doc.Messages[0].Delimiters)
-	if err != nil || !utf8.Valid(decoded) {
+	if _, ok := value.Text(); !ok {
 		e.note(Unsupported{Code: NoDeclaredValue, Parent: id, Rule: ruleID, Selector: selector.String(),
 			Detail: "this position carries bytes this release does not decode as text, so no relation over it can be established"})
 		return false

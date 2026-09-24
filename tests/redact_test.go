@@ -107,15 +107,11 @@ func redactField(t *testing.T, b *bundle.Bundle, id, path string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	value, err := doc.Select(0, selector)
-	if err != nil {
-		t.Fatal(err)
+	value, err := doc.Read(0, selector, hl7.IgnoreMSH18)
+	if err != nil || value.Reason == hl7.UnsupportedEscape {
+		t.Fatalf("read %s: %v %s", path, err, value.Reason)
 	}
-	decoded, err := hl7.Decode(doc.Bytes(value.Span), doc.Messages[0].Delimiters)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(decoded)
+	return string(value.Decoded)
 }
 
 func redactOriginalArtifacts(t *testing.T, request redact.Request) []string {
@@ -589,7 +585,7 @@ func TestRedactPublicReviewResidualBecomesALocatedBlockedReview(t *testing.T) {
 }
 
 func TestRedactLiteralMismatchFreeTextRetentionAndUnresolvedScopeCannotBeApproved(t *testing.T) {
-	for _, problem := range []string{"literal-mismatch", "free-text", "overlap", "unknown-patient", "control-replacement"} {
+	for _, problem := range []string{"literal-mismatch", "free-text", "overlap", "unknown-patient", "control-replacement", "delimiter-removal"} {
 		t.Run(problem, func(t *testing.T) {
 			request := redactFixture(t)
 			policy := readStrictDocument[redact.Policy](t, request.PolicyPath)
@@ -614,11 +610,21 @@ func TestRedactLiteralMismatchFreeTextRetentionAndUnresolvedScopeCannotBeApprove
 			case "control-replacement":
 				value := "injected\x01control"
 				policy.Fields = append(policy.Fields, redact.FieldRule{Selector: "PID-6", Policy: redact.Replace, Class: "names", Replacement: &value})
+			case "delimiter-removal":
+				// The delimiter declarations only ever retain exact literals.
+				for i := range policy.Fields {
+					if policy.Fields[i].Selector == "MSH-2" {
+						policy.Fields[i] = redact.FieldRule{Selector: "MSH-2", Policy: redact.Remove, Class: "structural"}
+					}
+				}
 			}
 			redactJSON(t, request.PolicyPath, policy)
 			review, err := redact.Create(context.Background(), request)
 			if err == nil && review.State != "blocked" {
 				t.Fatal("invalid relationship or free text was approved")
+			}
+			if problem == "delimiter-removal" && (err == nil || !strings.Contains(err.Error(), "delimiter declarations")) {
+				t.Fatalf("the delimiter declaration was not refused by name: %v", err)
 			}
 		})
 	}

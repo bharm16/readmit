@@ -177,7 +177,9 @@ func selectedBytes(doc *hl7.Document, path string, required bool) ([]byte, error
 	if err != nil {
 		return nil, err
 	}
-	v, err := doc.Select(0, s)
+	// Replay compares these fields as bytes, so it asks only that their
+	// escapes resolve: neither valid UTF-8 nor MSH-18 is required of them.
+	v, err := doc.Read(0, s, hl7.IgnoreMSH18)
 	if err != nil {
 		return nil, err
 	}
@@ -187,11 +189,10 @@ func selectedBytes(doc *hl7.Document, path string, required bool) ([]byte, error
 		}
 		return nil, errors.New("replay requires present supported control and scope fields")
 	}
-	value, err := hl7.Decode(doc.Bytes(v.Span), doc.Messages[0].Delimiters)
-	if err != nil || len(value) == 0 || len(value) > 1024 {
+	if v.Reason == hl7.UnsupportedEscape || len(v.Decoded) == 0 || len(v.Decoded) > 1024 {
 		return nil, errors.New("replay control and scope fields must have supported escapes and at most 1024 bytes")
 	}
-	return value, nil
+	return v.Decoded, nil
 }
 
 type edit struct {

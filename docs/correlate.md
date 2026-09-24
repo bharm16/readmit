@@ -191,9 +191,11 @@ rule for the same field, and one product should not hold two notions of when
 two control IDs are the same.
 
 Identifier values and authority parts are compared as **decoded UTF-8**,
-through the same `hl7.Decode` that [`diff`](diff.md) and
-[`diagnose`](diagnose.md) use, because comparing an identifier against a
-configured namespace is a comparison of text. A value using an unsupported
+through the same [shared field read](selectors.md#reading-a-value-as-text) that
+[`diff`](diff.md) and [`diagnose`](diagnose.md) use, because comparing an
+identifier against a configured namespace is a comparison of text. Unlike
+`diagnose`, correlation does not hold a value to the character set MSH-18
+declares: any valid UTF-8 is compared. A value using an unsupported
 escape, or decoding to bytes that are not valid UTF-8, is unsupported evidence
 rather than a comparison over bytes nobody can read. There is no Unicode
 normalization, trimming, case folding, timestamp interpretation or character-set

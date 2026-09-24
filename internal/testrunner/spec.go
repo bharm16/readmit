@@ -83,7 +83,10 @@ func (s Spec) Validate() error {
 			ledgerAssertions++
 		case "ack_field_equals":
 			selector, err := hl7.ParseSelector(assertion.Selector)
-			if err != nil || !strings.HasPrefix(selector.String(), "MSA[") && !strings.HasPrefix(selector.String(), "ERR[") || !messages[assertion.Message] || v.Field == nil || v.Count != nil || v.Records != nil {
+			if err != nil {
+				return invalid
+			}
+			if segment := selector.Parts().Segment; segment != "MSA" && segment != "ERR" || !messages[assertion.Message] || v.Field == nil || v.Count != nil || v.Records != nil {
 				return invalid
 			}
 			if v.Field.Validate() != nil {

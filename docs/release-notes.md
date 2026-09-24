@@ -1,5 +1,14 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- An assertion over MSH-2 now decides instead of voiding its whole set as
+  `unreadable_value` (#476). Every reader of a field's text now uses one
+  shared `internal/hl7` read, which takes MSH-1 and MSH-2 literally as the
+  delimiter declarations they are, as `diff` and the inspector already did;
+  MSH-2's own escape character was read as an unterminated escape. Only
+  diagnosis and the inspector hold a value to the character set MSH-18
+  declares, as before. Refusal codes, contracts and command output are
+  otherwise unchanged.
+
 - `readmit target reset` now opens its `endpoint_quiet` connection only to the
   address the approved-destination decision checked (#469). It decided on one
   name resolution and then dialled the configured name again, so the

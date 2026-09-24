@@ -78,8 +78,9 @@ comparison also lists changes in the segment sequence, including segments with
 no fields. Explicit `--field` compares only those selections.
 
 Values retain `present`, `empty`, explicit HL7 `null` (`""`), and `omitted` states.
-Supported escapes are decoded with `hl7.Decode` before comparing UTF-8 values,
-matching assertions. MSH-1/MSH-2 remain literal delimiter declarations. There is
+Supported escapes are decoded through the [shared field read](selectors.md#reading-a-value-as-text)
+before comparing UTF-8 values, matching assertions, and MSH-18 is not enforced.
+MSH-1/MSH-2 remain literal delimiter declarations. There is
 no Unicode normalization, trimming, case folding, timestamp interpretation,
 character-set transcoding, or other repair. Unknown/local escapes and non-UTF-8
 decoded values appear as `uncompared` fields and unsupported evidence, even when

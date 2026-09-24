@@ -12,7 +12,6 @@ import (
 	"slices"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/exportreview"
@@ -135,21 +134,21 @@ func (t *transformer) transformOccurrence(event bundle.Event, raw []byte) ([]byt
 	}
 	for _, rule := range t.policy.Fields {
 		selector, _ := hl7.ParseSelector(rule.Selector)
-		if removed[selector.String()[:3]] {
+		if removed[selector.Parts().Segment] {
 			continue
 		}
-		value, _ := doc.Select(0, selector)
+		value, _ := doc.Read(0, selector, hl7.IgnoreMSH18)
 		if value.State == hl7.Omitted {
 			continue
 		}
 		path := location + "/" + selector.String()
-		if textField(selector.String()) && rule.Policy != Remove && rule.Policy != Replace {
+		if textField(selector) && rule.Policy != Remove && rule.Policy != Replace {
 			if err := t.finding(path, rule.Class, "free-text-or-embedded-payload", "", false); err != nil {
 				return nil, err
 			}
 			continue
 		}
-		if selector.String() == "MSH[1]-1[1]" || selector.String() == "MSH[1]-2[1]" {
+		if value.Literal {
 			if rule.Policy != Retain {
 				return nil, errors.New("delimiter declarations may only retain exact literals")
 			}
@@ -196,7 +195,9 @@ func (t *transformer) transformOccurrence(event bundle.Event, raw []byte) ([]byt
 			if unhandled {
 				path := fmt.Sprintf("%s/%s[%d]-%d", location, segment.ID, counts[segment.ID], field.Number)
 				reason := "unmapped-field"
-				if textField(fmt.Sprintf("%s[%d]-%d[1]", segment.ID, counts[segment.ID], field.Number)) {
+				// The parser admitted the segment identifier and every position.
+				first, _ := hl7.NewSelector(hl7.Parts{Segment: segment.ID, Occurrence: counts[segment.ID], Field: field.Number, Repetition: 1})
+				if textField(first) {
 					reason = "free-text-or-embedded-payload"
 				}
 				if err := t.finding(path, "other-unique-identifiers", reason, "", false); err != nil {
@@ -228,32 +229,27 @@ func (t *transformer) transformOccurrence(event bundle.Event, raw []byte) ([]byt
 	return output, nil
 }
 
-func textField(selector string) bool {
-	parts := strings.SplitN(selector, "-", 2)
-	if len(parts) != 2 {
-		return false
-	}
-	field := strings.SplitN(parts[1], "[", 2)[0]
-	switch selector[:3] {
+func textField(selector hl7.Selector) bool {
+	position := selector.Parts()
+	switch position.Segment {
 	case "NTE":
-		return field == "3"
+		return position.Field == 3
 	case "OBX":
 		// V1 does not assign semantics to the observation's remaining values,
 		// display labels or payload encodings. Require replacement/removal.
-		return field != "1" && field != "2"
+		return position.Field != 1 && position.Field != 2
 	case "MSA":
-		return field != "1" && field != "2"
+		return position.Field != 1 && position.Field != 2
 	case "ERR":
-		if field == "3" {
-			components := strings.Split(parts[1], ".")
-			return len(components) != 2 || components[1] != "1" && components[1] != "3"
+		if position.Field == 3 {
+			return position.Subcomponent != 0 || position.Component != 1 && position.Component != 3
 		}
-		return field != "2" && field != "4"
+		return position.Field != 2 && position.Field != 4
 	}
 	return false
 }
 
-func (t *transformer) applyRule(doc *hl7.Document, value hl7.Value, rule FieldRule) ([]byte, bool, error) {
+func (t *transformer) applyRule(doc *hl7.Document, value hl7.Reading, rule FieldRule) ([]byte, bool, error) {
 	raw := doc.Bytes(value.Span)
 	if rule.Policy == Remove {
 		return nil, true, nil
@@ -267,8 +263,8 @@ func (t *transformer) applyRule(doc *hl7.Document, value hl7.Value, rule FieldRu
 	if value.State == hl7.Empty || value.State == hl7.Null {
 		return raw, true, nil
 	}
-	decoded, err := hl7.Decode(raw, doc.Messages[0].Delimiters)
-	if err != nil || !utf8.Valid(decoded) || len(decoded) > 4096 {
+	decoded, ok := value.Text()
+	if !ok || len(decoded) > 4096 {
 		return raw, false, nil
 	}
 	// Scalar surrogates cannot discard unselected components or repetitions.
@@ -290,8 +286,8 @@ func (t *transformer) applyRule(doc *hl7.Document, value hl7.Value, rule FieldRu
 			return nil, false, errors.New("cannot generate surrogate")
 		}
 		surrogate := "R" + hex.EncodeToString(entropy[:])
-		t.local.Mappings = append(t.local.Mappings, mapping{Key: key, Source: string(decoded), Surrogate: surrogate})
-		t.addTerm(decoded)
+		t.local.Mappings = append(t.local.Mappings, mapping{Key: key, Source: decoded, Surrogate: surrogate})
+		t.addTerm([]byte(decoded))
 		return []byte(surrogate), true, nil
 	}
 	key, err := scopeKey(doc, "patient", t.policy.Patient.Selector, t.policy.Patient.Authority)
@@ -315,7 +311,7 @@ func (t *transformer) applyRule(doc *hl7.Document, value hl7.Value, rule FieldRu
 		}
 		t.local.Shifts = append(t.local.Shifts, shift{PatientKey: key, Days: days})
 	}
-	shifted, ok := shiftDate(string(decoded), days)
+	shifted, ok := shiftDate(decoded, days)
 	return []byte(shifted), ok, nil
 }
 
@@ -323,15 +319,19 @@ func scopeKey(doc *hl7.Document, scope, selector string, authority []string) (st
 	values := []string{scope}
 	for index, path := range append([]string{selector}, authority...) {
 		s, _ := hl7.ParseSelector(path)
-		v, _ := doc.Select(0, s)
+		v, _ := doc.Read(0, s, hl7.IgnoreMSH18)
 		if index == 0 && v.State != hl7.Present || v.State == hl7.Null {
 			return "", errors.New("unknown identifier scope")
 		}
-		decoded, err := hl7.Decode(doc.Bytes(v.Span), doc.Messages[0].Delimiters)
-		if err != nil || !utf8.Valid(decoded) || len(decoded) > 4096 {
-			return "", errors.New("unsupported identifier scope")
+		text := ""
+		if v.State == hl7.Present {
+			decoded, ok := v.Text()
+			if !ok || len(decoded) > 4096 {
+				return "", errors.New("unsupported identifier scope")
+			}
+			text = decoded
 		}
-		values = append(values, string(v.State), string(decoded))
+		values = append(values, string(v.State), text)
 	}
 	data, err := json.Marshal(values, json.Deterministic(true))
 	return string(data), err

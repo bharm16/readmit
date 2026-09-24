@@ -174,8 +174,11 @@ can read as its own type. Each of these is `undecided`:
 Write the presence claim you mean: `field_state` asserts that a field is
 present, and a value operator then asserts what the present value says.
 
-Present bytes are decoded with the shared supported HL7 escape rules before
-comparison, and compared byte for byte. No timezone, Unicode, case,
+Present bytes are read through the [shared field read](selectors.md#reading-a-value-as-text)
+before comparison, and compared byte for byte. MSH-1 and MSH-2 are read
+literally, as the delimiter declarations they are, so an assertion over either
+compares the declared characters; every other value has its supported HL7
+escapes resolved. The character set MSH-18 declares is not enforced. No timezone, Unicode, case,
 whitespace or identifier normalization is implied. An unsupported escape or
 invalid UTF-8 in the observed evidence is an **execution error**, not an
 undecided assertion: those bytes could not be read at all.

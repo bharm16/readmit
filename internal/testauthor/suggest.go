@@ -383,7 +383,7 @@ func checkPositions(requested []string) ([]position, error) {
 		if err != nil {
 			return nil, errors.New("an acknowledgement position is not one this release addresses")
 		}
-		if !strings.HasPrefix(selector.String(), "MSA[") && !strings.HasPrefix(selector.String(), "ERR[") {
+		if segment := selector.Parts().Segment; segment != "MSA" && segment != "ERR" {
 			return nil, errors.New("an acknowledgement expectation addresses an MSA or ERR position")
 		}
 		// A position is proposed as it was written, because that is how the

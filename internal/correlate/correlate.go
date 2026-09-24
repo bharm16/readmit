@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
@@ -38,23 +37,23 @@ type occurrence struct {
 // text: an unsupported escape, or bytes that are not valid UTF-8 once decoded.
 var errUndecodable = errors.New("field does not decode to UTF-8 text")
 
-// decode walks this occurrence's own document once and answers with the
-// selected field's state and its decoded text. Nothing outside this method
-// reaches into the parsed document, so there is one place that knows how a
-// value becomes comparable text.
+// decode reads the selected field through the shared hl7 read and answers
+// with its state and its text. Nothing outside this method reaches into the
+// parsed document. Correlation does not hold a value to the character set
+// MSH-18 declares: any valid UTF-8 is comparable text.
 func (o *occurrence) decode(selector hl7.Selector) (hl7.State, string, error) {
-	value, err := o.doc.Select(0, selector)
+	reading, err := o.doc.Read(0, selector, hl7.IgnoreMSH18)
 	if err != nil {
 		return hl7.Omitted, "", nil
 	}
-	if value.State != hl7.Present {
-		return value.State, "", nil
+	if reading.State != hl7.Present {
+		return reading.State, "", nil
 	}
-	decoded, err := hl7.Decode(o.doc.Bytes(value.Span), o.doc.Messages[0].Delimiters)
-	if err != nil || !utf8.Valid(decoded) {
-		return value.State, "", errUndecodable
+	text, ok := reading.Text()
+	if !ok {
+		return reading.State, "", errUndecodable
 	}
-	return value.State, string(decoded), nil
+	return reading.State, text, nil
 }
 
 // field is one selector as a rule declared it, with the parsed form the engine

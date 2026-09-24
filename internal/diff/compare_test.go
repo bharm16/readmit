@@ -67,13 +67,13 @@ func localTarget(t *testing.T, count int, code string) (replay.Target, func()) {
 				return
 			}
 			selector, _ := hl7.ParseSelector("MSH-10")
-			value, _ := doc.Select(0, selector)
-			id, err := hl7.Decode(doc.Bytes(value.Span), doc.Messages[0].Delimiters)
-			if err != nil {
-				t.Error(err)
+			value, _ := doc.Read(0, selector, hl7.IgnoreMSH18)
+			id, ok := value.Text()
+			if !ok {
+				t.Error("peer request control ID is not text")
 				return
 			}
-			response := []byte("MSH|^~\\&|PEER|FIXTURE|SYNTHETIC|LAB|20260101120000||ACK^S12|SECRET-ACK|P|2.5.1\rMSA|" + code + "|" + string(id) + "\r")
+			response := []byte("MSH|^~\\&|PEER|FIXTURE|SYNTHETIC|LAB|20260101120000||ACK^S12|SECRET-ACK|P|2.5.1\rMSA|" + code + "|" + id + "\r")
 			if code == "malformed" {
 				response = []byte("MSH|BROKEN")
 			}
