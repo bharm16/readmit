@@ -534,18 +534,25 @@ func (a *App) openCase(workspace, name string) CaseResult {
 	if err != nil {
 		return CaseResult{State: Failed, Reason: err.Error()}
 	}
-	counts := opened.Counts()
-	return CaseResult{State: Completed, Case: &Case{
+	return CaseResult{State: Completed, Case: caseView(name, opened)}
+}
+
+// caseView is what the window shows of a case the shared reader accepted,
+// whether it opened it, an import wrote it or a capture sealed it: its name
+// and identity, and counts, never a value.
+func caseView(name string, b *bundle.Bundle) *Case {
+	counts := b.Counts()
+	return &Case{
 		Name:             name,
-		Identity:         opened.Identity,
-		Schema:           opened.Manifest.Schema,
-		Provenance:       string(opened.Manifest.Provenance.Mode),
-		Sources:          len(opened.Manifest.Sources),
-		Occurrences:      len(opened.Events),
+		Identity:         b.Identity,
+		Schema:           b.Manifest.Schema,
+		Provenance:       string(b.Manifest.Provenance.Mode),
+		Sources:          len(b.Manifest.Sources),
+		Occurrences:      len(b.Events),
 		Messages:         counts[bundle.Message],
 		Acknowledgements: counts[bundle.Acknowledgement],
 		Unparsed:         counts[bundle.Unparsed],
-	}}
+	}
 }
 
 // OpenProject reads the project document of a folder. The document is the

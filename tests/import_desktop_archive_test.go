@@ -9,6 +9,7 @@ package tests
 // planted entry name, because a file name can itself be patient data.
 
 import (
+	"archive/zip"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -16,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/importer"
 )
 
 func TestTheWindowsImportRefusesUnsafeArchivesAndWritesNothing(t *testing.T) {
@@ -59,5 +61,41 @@ func TestTheWindowsImportRefusesUnsafeArchivesAndWritesNothing(t *testing.T) {
 				t.Fatal("an entry escaped the archive")
 			}
 		})
+	}
+}
+
+func decodeImportPlan(t *testing.T, path string) importer.Plan {
+	t.Helper()
+	plan, err := importer.DecodePlan(mustRead(t, path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return plan
+}
+
+type namedEntry struct {
+	name    string
+	content string
+}
+
+func writeNamedArchive(t *testing.T, path string, entries []namedEntry) {
+	t.Helper()
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	writer := zip.NewWriter(file)
+	for _, entry := range entries {
+		member, err := writer.Create(entry.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := member.Write([]byte(entry.content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -2,16 +2,15 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"time"
 
-	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/importer"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/spf13/cobra"
 )
 
@@ -119,32 +118,9 @@ func importCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			// The receipt destination is checked before any evidence is
-			// written, so an unusable receipt location cannot leave a case
-			// behind that nothing describes. Exclusive creation still owns the
-			// guarantee; this only refuses the mistake early.
-			if !preview {
-				reserved, err := artifactpath.Destination(receipt)
-				if err != nil {
-					return err
-				}
-				if _, err := os.Lstat(reserved); !os.IsNotExist(err) {
-					return errors.New("the import receipt destination must be a new file")
-				}
-			}
 			ctx := cmd.Context()
-			importedAt := time.Now().UTC()
-			var extraction *importer.Extraction
-			if mapping != "" {
-				extraction, err = importer.ExtractMapped(ctx, recipe, files, folders, archives)
-			} else {
-				extraction, err = importer.Extract(ctx, plan, files, folders, archives)
-			}
-			if err != nil {
-				return err
-			}
 			if preview {
-				encoded, err := previewDocument(plan, recipe, mapping != "", extraction)
+				encoded, err := previewDocument(ctx, plan, recipe, mapping != "", files, folders, archives)
 				if err != nil {
 					return err
 				}
@@ -153,37 +129,19 @@ func importCommand() *cobra.Command {
 				}
 				return nil
 			}
-			if len(extraction.Inputs) == 0 {
-				return errors.New("the declared containers hold no member to import; --preview reports why each entry was excluded")
-			}
-			b, err := bundle.WriteContext(ctx, output, extraction.Inputs, bundle.Provenance{Mode: bundle.Imported, ImportedAt: &importedAt})
-			if err != nil {
-				return err
-			}
+			// The import operation refuses both destinations before anything is
+			// extracted, so an unusable one cannot leave a case behind that
+			// nothing describes.
 			if mapping != "" {
-				document, err := importer.NewMappingReceipt(recipe, extraction, importedAt, b)
+				b, document, err := operation.ImportRecipeCommit(ctx, recipe, files, folders, archives, output, receipt)
 				if err != nil {
-					return err
-				}
-				encoded, err := importer.EncodeMappingReceipt(document)
-				if err != nil {
-					return err
-				}
-				if err := writeImportReceipt(receipt, encoded); err != nil {
-					return err
+					return importRefusal(err)
 				}
 				return renderMapping(cmd.OutOrStdout(), document, b)
 			}
-			document, err := importer.NewReceipt(plan, extraction, importedAt, b)
+			b, document, err := operation.ImportPlanCommit(ctx, plan, files, folders, archives, output, receipt)
 			if err != nil {
-				return err
-			}
-			encoded, err := importer.EncodeReceipt(document)
-			if err != nil {
-				return err
-			}
-			if err := writeImportReceipt(receipt, encoded); err != nil {
-				return err
+				return importRefusal(err)
 			}
 			return renderImport(cmd.OutOrStdout(), document, b)
 		},
@@ -201,24 +159,30 @@ func importCommand() *cobra.Command {
 	return cmd
 }
 
-// previewDocument encodes whichever preview the declarations produced.
-func previewDocument(plan importer.Plan, recipe importer.Recipe, mapped bool, e *importer.Extraction) ([]byte, error) {
+// previewDocument extracts under whichever declaration is in use, through the
+// import operation, and encodes its preview.
+func previewDocument(ctx context.Context, plan importer.Plan, recipe importer.Recipe, mapped bool, files, folders, archives []string) ([]byte, error) {
 	if !mapped {
-		return importer.EncodePreview(importer.NewPreview(plan, e))
+		document, err := operation.ImportPlanPreview(ctx, plan, files, folders, archives)
+		if err != nil {
+			return nil, err
+		}
+		return importer.EncodePreview(document)
 	}
-	document, err := importer.NewMappingPreview(recipe, e)
+	document, err := operation.ImportRecipePreview(ctx, recipe, files, folders, archives)
 	if err != nil {
 		return nil, err
 	}
 	return importer.EncodeMappingPreview(document)
 }
 
-// writeImportReceipt writes the receipt beside the case that was just written.
-// Both diagnostics say the case exists, because by this point it does.
-func writeImportReceipt(path string, encoded []byte) error {
-	return writeNewFile(path, encoded,
-		"the case was written but its receipt was not; the receipt destination must be new and writable",
-		"the case was written but its receipt was not; retry the import with new destinations")
+// importRefusal names the flag that shows why a container held nothing to
+// import; every other refusal is the operation's own.
+func importRefusal(err error) error {
+	if errors.Is(err, operation.ErrImportNoMembers) {
+		return errors.New("the declared containers hold no member to import; --preview reports why each entry was excluded")
+	}
+	return err
 }
 
 // renderImport reports the declarations the import ran under and what it

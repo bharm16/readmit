@@ -2,10 +2,10 @@ package cli
 
 import (
 	"fmt"
-	"github.com/bharm16/readmit/internal/bundle"
+
 	"github.com/bharm16/readmit/internal/engineexport"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/spf13/cobra"
-	"time"
 )
 
 func engineImportCommand() *cobra.Command {
@@ -26,24 +26,14 @@ func engineImportCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		data, err := readInputFile(input, engineexport.MaxBytes)
-		if err != nil {
-			return err
-		}
 		if preview {
-			records, err := engineexport.Extract(plan, data)
+			document, err := operation.ImportEnginePreview(cmd.Context(), plan, input)
 			if err != nil {
 				return err
 			}
-			document := struct {
-				Schema        string                `json:"schema"`
-				Plan          engineexport.Plan     `json:"plan"`
-				Qualification string                `json:"qualification"`
-				Records       []engineexport.Record `json:"records"`
-			}{"readmit-engine-export-preview/v1", plan, "unqualified", records}
 			return writeJSON(cmd, document)
 		}
-		b, err := bundle.WriteEngineExport(cmd.Context(), output, input, data, plan, time.Now().UTC())
+		b, err := operation.ImportEngineCommit(cmd.Context(), plan, input, output)
 		if err != nil {
 			return err
 		}

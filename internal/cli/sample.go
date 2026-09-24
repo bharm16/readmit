@@ -52,7 +52,7 @@ func sampleCommand() *cobra.Command {
 		if b.Identity != "7d266d0a09e92d3322d6346cf16c9dd37c768c02a11f8ea6c41870adc44915df" {
 			return errors.New("sample index requires the frozen seed-zero regression case")
 		}
-		policy, err := declaredPolicy([]string{"SCH-2", "MSH-10"}, "states", indefinite)
+		policy, err := declaredPolicy([]string{"SCH-2", "MSH-10"}, "states", index.Indefinite)
 		if err != nil {
 			return err
 		}

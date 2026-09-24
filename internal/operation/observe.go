@@ -233,19 +233,26 @@ func makeDocumentFolder(path string) {
 	}
 }
 
+// ErrObservationPairMismatch refuses a source and a window that declare
+// different sources. It is decided before anything is collected or written:
+// collecting would only retain a completion saying the source was
+// unsupported, which is a record of the mistake rather than an observation.
+var ErrObservationPairMismatch = errors.New("the observation source and window must declare the same source kind, identity, and scope")
+
 // ValidateObservationPair checks that a source and window agree locally without
-// querying any endpoint or database.
+// querying any endpoint or database. The window is read first, then the
+// source, so a pair with both documents unreadable is refused for the window.
 func ValidateObservationPair(sourcePath, windowPath string) (observesource.Source, observewindow.Window, error) {
-	source, err := observesource.ReadSource(sourcePath)
-	if err != nil {
-		return observesource.Source{}, observewindow.Window{}, err
-	}
 	window, err := observewindow.ReadWindow(windowPath)
 	if err != nil {
 		return observesource.Source{}, observewindow.Window{}, err
 	}
+	source, err := observesource.ReadSource(sourcePath)
+	if err != nil {
+		return observesource.Source{}, observewindow.Window{}, err
+	}
 	if source.Observes != window.Source {
-		return observesource.Source{}, observewindow.Window{}, errors.New("the observation source and window must declare the same source kind, identity, and scope")
+		return observesource.Source{}, observewindow.Window{}, ErrObservationPairMismatch
 	}
 	return source, window, nil
 }
@@ -262,8 +269,11 @@ type ObservationCollectRequest struct {
 	Authorize    bool
 }
 
-// CollectObservation runs one authorized read-only collection through the same
-// collectors the CLI uses. Without Authorize it refuses rather than querying.
+// CollectObservation runs one authorized read-only collection and retains its
+// completion before returning it, so a verdict a caller reports is a verdict
+// that exists on disk. Without Authorize it refuses rather than querying; the
+// command line's invocation is its authorization, the window's is the
+// person's explicit act.
 func CollectObservation(ctx context.Context, request ObservationCollectRequest) (observewindow.Completion, error) {
 	if !request.Authorize {
 		return observewindow.Completion{}, errors.New("collection requires explicit authorization; opening an editor never queries a source")
@@ -298,6 +308,19 @@ func CollectObservation(ctx context.Context, request ObservationCollectRequest) 
 	return observewindow.ReadCompletion(request.OutputPath)
 }
 
+// ErrCompletionUnsupported marks a retained completion its declared window
+// does not support: one that belongs to another window, or that its own
+// samples do not bear out. That is untrustworthy evidence rather than an
+// unreadable file, and errors.Is tells the two apart; the error's text is the
+// window's own reason.
+var ErrCompletionUnsupported = errors.New("the retained completion is not supported by its declared window")
+
+type unsupportedCompletion struct{ reason error }
+
+func (e unsupportedCompletion) Error() string        { return e.reason.Error() }
+func (e unsupportedCompletion) Unwrap() error        { return e.reason }
+func (e unsupportedCompletion) Is(target error) bool { return target == ErrCompletionUnsupported }
+
 // ExplainObservation re-reads a retained completion, optionally against its window.
 func ExplainObservation(completionPath, windowPath string) (observewindow.Completion, error) {
 	completion, err := observewindow.ReadCompletion(completionPath)
@@ -312,7 +335,7 @@ func ExplainObservation(completionPath, windowPath string) (observewindow.Comple
 		return observewindow.Completion{}, err
 	}
 	if err := window.Verify(completion); err != nil {
-		return observewindow.Completion{}, err
+		return observewindow.Completion{}, unsupportedCompletion{err}
 	}
 	return completion, nil
 }

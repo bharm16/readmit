@@ -62,6 +62,8 @@ field set, so an index never quietly accumulates fields nobody chose; there is
 no default form, so values are never stored because storing them was easier; and
 there is no default expiry, so nothing is retained forever because nobody said
 otherwise. `indefinite` is a word an operator types, not the absence of a flag.
+The desktop window's index builder is refused an unstated end by the same rule,
+and sends the word when a person chooses indefinite retention.
 
 ### The three retention forms
 

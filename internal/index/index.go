@@ -70,6 +70,38 @@ var ErrStale = errors.New("index was built from different evidence than this cas
 // ErrExpired reports an index past the retention its own policy declared.
 var ErrExpired = errors.New("the retention declared for this index has ended; rebuild it or delete it")
 
+// Indefinite is the one word that declares an index has no retention end. It
+// is spelled out rather than left to an omitted declaration, so no index is
+// ever kept forever because nobody said otherwise.
+const Indefinite = "indefinite"
+
+// ErrRetentionEndUnstated reports a retention end nobody declared, and
+// ErrRetentionEndInvalid one that is neither an instant nor Indefinite. Every
+// entry point reads the declaration through RetentionEnd, so an unstated end
+// is refused the same way whichever one an operator used.
+var (
+	ErrRetentionEndUnstated = errors.New("index build requires an explicit retention end: an RFC 3339 instant or " + Indefinite)
+	ErrRetentionEndInvalid  = errors.New("a retention end is an RFC 3339 instant or " + Indefinite)
+)
+
+// RetentionEnd reads a declared retention end: an RFC 3339 instant, which it
+// returns in UTC, or Indefinite, for which it returns no instant. An empty
+// declaration is refused, never taken to mean indefinite.
+func RetentionEnd(declared string) (*time.Time, error) {
+	switch declared {
+	case "":
+		return nil, ErrRetentionEndUnstated
+	case Indefinite:
+		return nil, nil
+	}
+	instant, err := time.Parse(time.RFC3339, declared)
+	if err != nil {
+		return nil, ErrRetentionEndInvalid
+	}
+	instant = instant.UTC()
+	return &instant, nil
+}
+
 // Retention is the form a decoded value is retained in. There is deliberately
 // no default: retaining a decoded HL7 field means retaining patient data, so
 // the operator states which of these three an index is worth.

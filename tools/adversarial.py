@@ -31,7 +31,6 @@ CASES = (
         'TestSignedTrialRunsLocallyAndExpiryKeepsEvidenceReadableExportable',
         'TestTheWindowsImportRefusesUnsafeArchivesAndWritesNothing',
         'TestTheWindowRefusesAResetCredentialOnTheObservationReadPath',
-        'TestDesktopImportMatchesCLIOnMixedValidMalformedAndDuplicateEvidence',
     )),
     ('.', './internal/sharing', (
         'TestReportSupportAndPublicCLIRefuseUnsafePathsAndEgress',
@@ -125,7 +124,13 @@ CASES = (
         'TestTextScalesAndThemesAreOfferedAsChoices',
         'TestThePaneSeparatorIsOperableWithAKeyboard',
     )),
-    ('.', './internal/operation', ('TestEditingATargetRefusesAFIFOALinkAndAnOversizedFileWithoutReadingThem',)),
+    ('.', './internal/operation', (
+        'TestEditingATargetRefusesAFIFOALinkAndAnOversizedFileWithoutReadingThem',
+        # Both entry points import through the operation (#464): a mixed
+        # container keeps duplicates distinct and malformed bytes unrepaired,
+        # and duplicate archive names are refused before a case exists.
+        'TestAMixedContainerImportsAsItIsHeld',
+    )),
     ('.', './internal/artifactpath', ('TestFileRefusesNamesAndEntriesThatAreNotOneRegularFile',)),
     ('.', './internal/report', ('TestReviewEscapesHostileEvidenceAndRejectsResealedReports',)),
     ('.', './internal/observesource', (

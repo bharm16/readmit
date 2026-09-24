@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/bharm16/readmit/internal/diagnose"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/spf13/cobra"
 )
 
@@ -59,7 +60,7 @@ func diagnosisGroupsCommand() *cobra.Command {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			if err := writeNewReportDirectory(resolvedOutput, "diagnosis groups", outputFile{"report.json", data}, outputFile{"report.md", markdown}); err != nil {
+			if err := operation.WriteReportDirectory(resolvedOutput, "diagnosis groups", operation.ReportFile{Name: "report.json", Data: data}, operation.ReportFile{Name: "report.md", Data: markdown}); err != nil {
 				return err
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Diagnosis grouping complete: %d cases, %d signatures. Every finding and unsupported item retained; counts apply only to these captures.\n", len(report.Cases), len(report.Groups))

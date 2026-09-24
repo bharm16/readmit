@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/bharm16/readmit/internal/observesource"
 	"github.com/bharm16/readmit/internal/observewindow"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/sendpolicy"
 	"github.com/spf13/cobra"
 )
@@ -39,21 +39,15 @@ func observeCommand() *cobra.Command {
 	var completionJSON bool
 	var declared string
 	explain := &cobra.Command{Use: "explain COMPLETION", Short: "Report whether a retained window completed and what it can support", Annotations: declare(capabilityFree), RunE: func(cmd *cobra.Command, args []string) error {
-		completion, err := observewindow.ReadCompletion(args[0])
+		completion, err := operation.ExplainObservation(args[0], declared)
+		// A completion that belongs to another window, or that its own samples
+		// do not support, is untrustworthy evidence rather than an unreadable
+		// file, so it exits with the observation error status.
+		if errors.Is(err, operation.ErrCompletionUnsupported) {
+			return refusal(err)
+		}
 		if err != nil {
 			return err
-		}
-		if declared != "" {
-			window, err := observewindow.ReadWindow(declared)
-			if err != nil {
-				return err
-			}
-			// A completion that belongs to another window, or that its own
-			// samples do not support, is untrustworthy evidence rather than an
-			// unreadable file, so it exits with the observation error status.
-			if err := window.Verify(completion); err != nil {
-				return refusal(err)
-			}
 		}
 		return reportCompletion(cmd.OutOrStdout(), completion, completionJSON)
 	}}
@@ -79,27 +73,15 @@ func observeCollectCommand() *cobra.Command {
 			if window == "" || output == "" || snapshot == "" {
 				return usage("observe collect requires --window, --out, and --snapshot")
 			}
-			declared, err := observewindow.ReadWindow(window)
-			if err != nil {
-				return err
-			}
-			source, err := observesource.ReadSource(args[0])
-			if err != nil {
-				return err
-			}
-			policy, err := readSendPolicy(policyPath)
-			if err != nil {
-				return err
-			}
-			completion, err := observesource.Collect(cmd.Context(), source, declared, observesource.Options{
-				Snapshot: snapshot, Policy: policy, Resolve: sendpolicy.SystemResolver, Produced: produced,
+			// The operation refuses a source and window that declare different
+			// sources before anything is written, and retains the record
+			// before it is reported, so a verdict a reader saw is a verdict
+			// that exists on disk. Running this command is the authorization.
+			completion, err := operation.CollectObservation(cmd.Context(), operation.ObservationCollectRequest{
+				SourcePath: args[0], WindowPath: window, OutputPath: output, SnapshotPath: snapshot,
+				PolicyPath: policyPath, Produced: produced, Authorize: true,
 			})
 			if err != nil {
-				return err
-			}
-			// The record is retained before anything is reported, so a verdict
-			// a reader saw is a verdict that exists on disk.
-			if err := observewindow.WriteCompletion(output, completion); err != nil {
 				return err
 			}
 			return reportCompletion(cmd.OutOrStdout(), completion, completionJSON)

@@ -235,7 +235,13 @@ rather than inside it — a case bundle directory holds only the files
 [its own contract](case-bundle.md) defines, and the import writes nothing into
 one. Its destination must not exist, must not be inside retained evidence, and
 is checked before the case is written, so a receipt destination that is already
-taken cannot leave a case behind that nothing describes.
+taken cannot leave a case behind that nothing describes. The `--output` case
+directory is checked at the same moment, before any container is read, so a
+taken case is refused as one rather than after extraction. Folders the receipt
+is named in that do not exist yet are created, owner-only, when the receipt is
+written, and never inside retained evidence; an import refused before then
+creates none. The desktop window imports through the same operation, so it
+refuses and creates exactly the same.
 
 ```json
 {

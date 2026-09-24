@@ -264,15 +264,13 @@ func (a *App) buildIndex(ctx context.Context, request BuildIndexRequest) BuildIn
 	if request.Retention == "" {
 		return fail(Failed, "index build requires explicit retention: values, digests, or states")
 	}
-	until := strings.TrimSpace(request.RetainUntil)
-	if until != "" && until != "indefinite" {
-		instant, err := time.Parse(time.RFC3339, until)
-		if err != nil {
-			return fail(Failed, "a retention end is an RFC 3339 instant or indefinite")
-		}
-		utc := instant.UTC()
-		policy.RetainUntil = &utc
+	// An unstated end is refused rather than read as indefinite, by the rule
+	// `readmit index build` refuses it with; the window sends the word.
+	until, err := index.RetentionEnd(strings.TrimSpace(request.RetainUntil))
+	if err != nil {
+		return fail(Failed, err.Error())
 	}
+	policy.RetainUntil = until
 	if err := index.ValidatePolicy(policy); err != nil {
 		return fail(Failed, err.Error())
 	}

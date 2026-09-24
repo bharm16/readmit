@@ -15,11 +15,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// indefinite is the one word that declares an index has no retention end. It is
-// spelled out rather than left to an omitted flag, so no index is ever kept
-// forever because nobody said otherwise.
-const indefinite = "indefinite"
-
 func indexCommand() *cobra.Command {
 	command := &cobra.Command{
 		Use:         "index",
@@ -69,7 +64,7 @@ func indexBuild() *cobra.Command {
 	command.Flags().StringVar(&output, "output", "", "New index file (never overwrite)")
 	command.Flags().StringArrayVar(&fields, "field", nil, "Retain this field selector; repeat for each field")
 	command.Flags().StringVar(&retain, "retain", "", "Retention form: values, digests, or states")
-	command.Flags().StringVar(&until, "retain-until", "", "RFC 3339 instant the index is retained until, or "+indefinite)
+	command.Flags().StringVar(&until, "retain-until", "", "RFC 3339 instant the index is retained until, or "+index.Indefinite)
 	return command
 }
 
@@ -153,8 +148,12 @@ func declaredPolicy(fields []string, retain, until string) (index.Policy, error)
 	if retain == "" {
 		return index.Policy{}, usage("index build requires --retain with values, digests, or states")
 	}
-	if until == "" {
-		return index.Policy{}, usage("index build requires --retain-until with an RFC 3339 instant or %s", indefinite)
+	// The index reads the retention end, so the window is refused an unstated
+	// one exactly as this command is; only the flag that states it is named
+	// here.
+	end, endErr := index.RetentionEnd(until)
+	if errors.Is(endErr, index.ErrRetentionEndUnstated) {
+		return index.Policy{}, usage("index build requires --retain-until with an RFC 3339 instant or %s", index.Indefinite)
 	}
 	policy := index.Policy{Fields: make([]string, 0, len(fields)), Retention: index.Retention(retain)}
 	for _, field := range fields {
@@ -164,14 +163,10 @@ func declaredPolicy(fields []string, retain, until string) (index.Policy, error)
 		}
 		policy.Fields = append(policy.Fields, selector.String())
 	}
-	if until != indefinite {
-		instant, err := time.Parse(time.RFC3339, until)
-		if err != nil {
-			return index.Policy{}, usage("a retention end is an RFC 3339 instant or %s", indefinite)
-		}
-		instant = instant.UTC()
-		policy.RetainUntil = &instant
+	if endErr != nil {
+		return index.Policy{}, usage("%s", endErr)
 	}
+	policy.RetainUntil = end
 	// The declarations are checked here as well as inside the builder, so an
 	// incomplete one is reported before a case is opened rather than after.
 	if err := index.ValidatePolicy(policy); err != nil {
@@ -228,7 +223,7 @@ func indexSummary(w *bufio.Writer, heading string, document index.Document, at t
 		}
 		decoded++
 	}
-	retention := indefinite
+	retention := index.Indefinite
 	state := "active"
 	if document.Policy.RetainUntil != nil {
 		retention = document.Policy.RetainUntil.Format(time.RFC3339)

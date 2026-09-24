@@ -260,9 +260,12 @@ though v1 had always allowed it. Nothing migrates in place, and
 `readmit-observation-window/v1` and `readmit-observation-completion/v1` are
 untouched by either version.
 
-`source` must be the source the window declares. A collector handed a window
-over some other system, scope or kind reports **unsupported**, which is an
-error; it never quietly observes something else and reports zero records.
+`source` must be the source the window declares. `observe collect`, and the
+desktop's observation screen, refuse a source and window that declare different
+sources before anything is read or retained, in the same words: the pair is a
+mistake in the declarations, not an observation. A collector handed such a
+pair any other way reports **unsupported**, which is an error; it never
+quietly observes something else and reports zero records.
 
 `enabled` is stated rather than assumed. A disabled collector reports
 **missing** — no state could be obtained — and that is an execution error. It is

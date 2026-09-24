@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/bharm16/readmit/internal/engineexport"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/importer"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/project"
 )
 
@@ -346,6 +348,87 @@ func TestCommitImportAndProjectRegistration(t *testing.T) {
 	dupRes := app.CommitImport(commitReq)
 	if dupRes.State != desktop.Failed {
 		t.Fatalf("expected failure committing duplicate output name, got: %+v", dupRes)
+	}
+}
+
+// An engine export the window cannot read is refused without naming it, in
+// the words `readmit import engine` refuses it with, when previewing and when
+// committing alike.
+func TestAnUnreadableEngineExportIsRefusedWithoutItsPath(t *testing.T) {
+	workspace := t.TempDir()
+	app := workspaceApp(t)
+	enginePlan := engineexport.Plan{Schema: engineexport.Schema, Engine: "mirth", Version: "4.5.2", Format: "raw", Terminator: "cr"}
+	missing := filepath.Join(workspace, "patient-named-export.dat")
+	preview := app.PreviewImport(desktop.ImportRequest{Workspace: workspace, Mode: "engine", Files: []string{missing}, EnginePlan: &enginePlan})
+	commit := app.CommitImport(desktop.ImportCommitRequest{Workspace: workspace, Mode: "engine", OutputName: "engine-case", Files: []string{missing}, EnginePlan: &enginePlan})
+	for name, answered := range map[string]struct {
+		state  desktop.State
+		reason string
+	}{"preview": {preview.State, preview.Reason}, "commit": {commit.State, commit.Reason}} {
+		if answered.state != desktop.Failed || answered.reason != "input must be a readable regular file" || strings.Contains(answered.reason, "patient-named") {
+			t.Errorf("the %s refused an unreadable export as %+v", name, answered)
+		}
+	}
+	if entries, err := os.ReadDir(workspace); err != nil || len(entries) != 0 {
+		t.Fatalf("a refused engine import wrote into the workspace: %v %v", entries, err)
+	}
+}
+
+// The capture screen's import and the import screen's commit are one flow:
+// the same destinations, the same receipt name when none is given, the same
+// case description and the same registration, over the same staged folder.
+func TestFinalizingACaptureAndCommittingAnImportAreOneFlow(t *testing.T) {
+	workspace := t.TempDir()
+	projDoc := project.Document{
+		Schema:            project.Schema,
+		Settings:          project.Settings{Title: "Test Project", DefaultInterfaceVersion: "v1"},
+		InterfaceVersions: []string{"v1"},
+		Cases:             []project.Case{},
+	}
+	if err := project.WriteDocument(workspace, projDoc); err != nil {
+		t.Fatal(err)
+	}
+	if err := project.WriteRevisions(workspace, project.Revisions{Schema: project.RevisionsSchema, Revisions: []project.Revision{}, Notes: []project.Note{}}); err != nil {
+		t.Fatal(err)
+	}
+	staged := filepath.Join(workspace, "staged")
+	if err := os.Mkdir(staged, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(staged, "one.hl7"), []byte(sampleImportHL7), 0600); err != nil {
+		t.Fatal(err)
+	}
+	app := workspaceApp(t)
+	plan := operation.DefaultImportPlan()
+	finalized := app.FinalizeCaptureImport(desktop.FinalizeCaptureRequest{
+		Workspace: workspace, Project: workspace, Folder: "staged", OutputName: "finalized",
+		RegisterInProject: true, CaseVersion: "v1",
+	})
+	committed := app.CommitImport(desktop.ImportCommitRequest{
+		Workspace: workspace, Project: workspace, Mode: "plan", Plan: &plan, Folders: []string{staged}, OutputName: "committed",
+		RegisterInProject: true, CaseVersion: "v1",
+	})
+	for name, result := range map[string]desktop.ImportCommitResult{"finalized": finalized, "committed": committed} {
+		if result.State != desktop.Completed || !result.Registered || result.Case == nil || result.Case.Name != name ||
+			filepath.Base(result.ReceiptPath) != name+"-receipt.json" {
+			t.Fatalf("%s: %+v", name, result)
+		}
+		if _, err := os.Stat(result.ReceiptPath); err != nil {
+			t.Fatalf("%s wrote no receipt where it said: %v", name, err)
+		}
+		opened := app.OpenCase(workspace, name)
+		if opened.State != desktop.Completed || !reflect.DeepEqual(opened.Case, result.Case) {
+			t.Fatalf("%s described its case as %+v; opening it reads %+v", name, result.Case, opened.Case)
+		}
+	}
+	if last := committed.Project; last == nil || len(last.Cases) != 2 || last.Cases[0].Title != "finalized" || last.Cases[1].Title != "committed" {
+		t.Fatalf("registered: %+v", last)
+	}
+
+	// Both refuse a destination the same way.
+	again := app.FinalizeCaptureImport(desktop.FinalizeCaptureRequest{Workspace: workspace, Folder: "staged", OutputName: "committed"})
+	if again.State != desktop.Failed || again.Reason != operation.ErrImportCaseExists.Error() {
+		t.Fatalf("finalizing into a taken case: %+v", again)
 	}
 }
 

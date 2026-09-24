@@ -196,8 +196,9 @@ skipped. A source it could not list at all is reported as a source it could not
 list — not as a source with no entries.
 
 It writes a `readmit-source-access/v1` document with `--report NEW_FILE`, and
-with `--json` writes it to standard output instead of the summary. It stages
-nothing, collects nothing and modifies nothing.
+with `--json` writes it to standard output instead of the summary. The report
+destination is checked before the source is reached, by the receipt's rule
+below. It stages nothing, collects nothing and modifies nothing else.
 
 ```json
 {
@@ -385,7 +386,9 @@ The receipt is written to the file named by `--receipt`, beside the staged
 evidence rather than inside it. Its destination must not exist, must not be
 inside retained evidence, and is checked before anything is collected, so a
 receipt destination that is already taken cannot leave staged evidence behind
-that nothing describes.
+that nothing describes. Folders it is named in that do not exist yet are
+created, owner-only, when it is written, and never inside retained evidence.
+The desktop window collects through the same operation.
 
 ```json
 {

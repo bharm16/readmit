@@ -249,115 +249,121 @@ func (a *App) PreviewImport(request ImportRequest) ImportPreviewResult {
 // CommitImport commits the extraction to new case and receipt destinations, and registers it if requested.
 func (a *App) CommitImport(request ImportCommitRequest) ImportCommitResult {
 	return runNamed[ImportCommitResult, *ImportCommitResult](a, "import", true, true, func(ctx context.Context) ImportCommitResult {
-		if err := artifactpath.EntryName(request.OutputName); err != nil {
-			return ImportCommitResult{State: Failed, Reason: "the case destination must be one valid directory entry name"}
+		into := importCommit{
+			workspace: request.Workspace, project: request.Project,
+			outputName: request.OutputName, receiptName: request.ReceiptName,
+			register: request.RegisterInProject, title: request.CaseTitle, owner: request.CaseOwner, version: request.CaseVersion,
 		}
-		targetDir := request.Project
-		if targetDir == "" {
-			targetDir = request.Workspace
-		}
-		if targetDir == "" {
-			return ImportCommitResult{State: Failed, Reason: "no target workspace or project provided"}
-		}
-		root, declined := resolveFolder(targetDir)
-		if root == "" {
-			return ImportCommitResult{State: declined.state, Reason: declined.reason}
-		}
-		casePath := filepath.Join(root, request.OutputName)
-
-		receiptName := request.ReceiptName
-		if receiptName == "" {
-			receiptName = request.OutputName + "-receipt.json"
-		}
-		if err := artifactpath.EntryName(receiptName); err != nil {
-			return ImportCommitResult{State: Failed, Reason: "the receipt destination must be one valid file entry name"}
-		}
-		receiptPath := filepath.Join(root, receiptName)
-
-		var b *bundle.Bundle
-		var err error
-
-		switch request.Mode {
-		case "plan":
-			if request.Plan == nil {
-				return ImportCommitResult{State: Failed, Reason: "an import plan is required"}
-			}
-			b, _, err = operation.ImportPlanCommit(ctx, *request.Plan, request.Files, request.Folders, request.Archives, casePath, receiptPath)
-		case "recipe":
-			if request.Recipe == nil {
-				return ImportCommitResult{State: Failed, Reason: "a mapping recipe is required"}
-			}
-			b, _, err = operation.ImportRecipeCommit(ctx, *request.Recipe, request.Files, request.Folders, request.Archives, casePath, receiptPath)
-		case "engine":
-			if request.EnginePlan == nil {
-				return ImportCommitResult{State: Failed, Reason: "an engine export adapter plan is required"}
-			}
-			if len(request.Files) != 1 {
-				return ImportCommitResult{State: Failed, Reason: "engine import requires exactly one input export file"}
-			}
-			b, err = operation.ImportEngineCommit(ctx, *request.EnginePlan, request.Files[0], casePath)
-		default:
-			return ImportCommitResult{State: Failed, Reason: "unsupported import mode"}
-		}
-
-		if err != nil {
-			if ctx.Err() != nil {
-				return ImportCommitResult{State: Cancelled, Reason: cancelledRefusal.reason}
-			}
-			if errors.Is(err, os.ErrPermission) {
-				return ImportCommitResult{State: PermissionDenied, Reason: "this account cannot write case evidence into the selected directory"}
-			}
-			return ImportCommitResult{State: Failed, Reason: err.Error()}
-		}
-
-		counts := b.Counts()
-		c := &Case{
-			Name:             request.OutputName,
-			Identity:         b.Identity,
-			Schema:           b.Manifest.Schema,
-			Provenance:       string(b.Manifest.Provenance.Mode),
-			Sources:          len(b.Manifest.Sources),
-			Occurrences:      len(b.Events),
-			Messages:         counts[bundle.Message],
-			Acknowledgements: counts[bundle.Acknowledgement],
-			Unparsed:         counts[bundle.Unparsed],
-		}
-
-		registered := false
-		var projDoc *project.Document
-		if request.RegisterInProject && request.Project != "" {
-			title := request.CaseTitle
-			if title == "" {
-				title = request.OutputName
-			}
-			reg := operation.CaseRegistration{
-				Title:            title,
-				Owner:            request.CaseOwner,
-				InterfaceVersion: request.CaseVersion,
-			}
-			_, regErr := operation.RegisterCase(request.Project, request.OutputName, reg)
-			if regErr != nil {
-				return ImportCommitResult{
-					State:       Completed,
-					Reason:      "the case and receipt were written, but the case was not registered: " + regErr.Error(),
-					Case:        c,
-					CasePath:    casePath,
-					ReceiptPath: receiptPath,
+		return a.commitImport(ctx, into, func(casePath, receiptPath string) (*bundle.Bundle, error) {
+			switch request.Mode {
+			case "plan":
+				if request.Plan == nil {
+					return nil, errors.New("an import plan is required")
 				}
+				b, _, err := operation.ImportPlanCommit(ctx, *request.Plan, request.Files, request.Folders, request.Archives, casePath, receiptPath)
+				return b, err
+			case "recipe":
+				if request.Recipe == nil {
+					return nil, errors.New("a mapping recipe is required")
+				}
+				b, _, err := operation.ImportRecipeCommit(ctx, *request.Recipe, request.Files, request.Folders, request.Archives, casePath, receiptPath)
+				return b, err
+			case "engine":
+				if request.EnginePlan == nil {
+					return nil, errors.New("an engine export adapter plan is required")
+				}
+				if len(request.Files) != 1 {
+					return nil, errors.New("engine import requires exactly one input export file")
+				}
+				return operation.ImportEngineCommit(ctx, *request.EnginePlan, request.Files[0], casePath)
+			default:
+				return nil, errors.New("unsupported import mode")
 			}
-			registered = true
-			if openedProj, openErr := project.Open(request.Project); openErr == nil {
-				projDoc = &openedProj.Document
-			}
-		}
+		})
+	})
+}
 
+// importCommit is where one import writes its case and receipt, and how the
+// case is registered, whichever screen asked for it.
+type importCommit struct {
+	workspace, project      string
+	outputName, receiptName string
+	register                bool
+	title, owner, version   string
+}
+
+// commitImport is the one import-and-register flow every import screen goes
+// through. It resolves the case and receipt destinations as entries of the
+// project, or of the workspace when no project is named; calls write to
+// import into them through the shared import operation the screen chose;
+// describes the case that was sealed; and registers it on the project when
+// asked. A receipt left unnamed is the case's name followed by -receipt.json.
+func (a *App) commitImport(ctx context.Context, into importCommit, write func(casePath, receiptPath string) (*bundle.Bundle, error)) ImportCommitResult {
+	if err := artifactpath.EntryName(into.outputName); err != nil {
+		return ImportCommitResult{State: Failed, Reason: "the case destination must be one valid directory entry name"}
+	}
+	targetDir := into.project
+	if targetDir == "" {
+		targetDir = into.workspace
+	}
+	if targetDir == "" {
+		return ImportCommitResult{State: Failed, Reason: "no target workspace or project provided"}
+	}
+	root, declined := resolveFolder(targetDir)
+	if root == "" {
+		return ImportCommitResult{State: declined.state, Reason: declined.reason}
+	}
+	casePath := filepath.Join(root, into.outputName)
+	receiptName := into.receiptName
+	if receiptName == "" {
+		receiptName = into.outputName + "-receipt.json"
+	}
+	if err := artifactpath.EntryName(receiptName); err != nil {
+		return ImportCommitResult{State: Failed, Reason: "the receipt destination must be one valid file entry name"}
+	}
+	receiptPath := filepath.Join(root, receiptName)
+
+	b, err := write(casePath, receiptPath)
+	if err != nil {
+		if ctx.Err() != nil {
+			return ImportCommitResult{State: Cancelled, Reason: cancelledRefusal.reason}
+		}
+		if errors.Is(err, os.ErrPermission) {
+			return ImportCommitResult{State: PermissionDenied, Reason: "this account cannot write case evidence into the selected directory"}
+		}
+		return ImportCommitResult{State: Failed, Reason: err.Error()}
+	}
+	c := caseView(into.outputName, b)
+	if !into.register || into.project == "" {
+		return ImportCommitResult{State: Completed, Case: c, CasePath: casePath, ReceiptPath: receiptPath}
+	}
+	title := into.title
+	if title == "" {
+		title = into.outputName
+	}
+	if _, err := operation.RegisterCase(into.project, into.outputName, operation.CaseRegistration{
+		Title:            title,
+		Owner:            into.owner,
+		InterfaceVersion: into.version,
+	}); err != nil {
 		return ImportCommitResult{
 			State:       Completed,
+			Reason:      "the case and receipt were written, but the case was not registered: " + err.Error(),
 			Case:        c,
 			CasePath:    casePath,
 			ReceiptPath: receiptPath,
-			Registered:  registered,
-			Project:     projDoc,
 		}
-	})
+	}
+	var projDoc *project.Document
+	if openedProj, openErr := project.Open(into.project); openErr == nil {
+		projDoc = &openedProj.Document
+	}
+	return ImportCommitResult{
+		State:       Completed,
+		Case:        c,
+		CasePath:    casePath,
+		ReceiptPath: receiptPath,
+		Registered:  true,
+		Project:     projDoc,
+	}
 }
