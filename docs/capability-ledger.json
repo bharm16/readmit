@@ -688,13 +688,15 @@
       "kind": "cli",
       "capability": "Run a controlled SIU test fixture and export its appointment ledger",
       "owner": "bharm16/readmit#293",
-      "screen": "a fixture-receiver screen",
+      "screen": "the capture screen's SIU fixture tab",
       "action": "run a controlled SIU fixture and export its ledger",
       "backend": {"package": "internal/receiver", "name": "Receiver.Serve"},
       "inputs": ["hl7"],
       "outputs": ["readmit-case/v2", "readmit-observation/v1", "hl7"],
       "prerequisites": ["execute"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/capture-listen.journey.tsx", "name": "the SIU fixture listens on the port it chose, completes, is cancelled part way and refuses a wider or taken address, as readmit listen does"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowsFixtureListenIsTheCommandLinesListen"},
+      "implemented": true
     },
     {
       "id": "cli.normalize",
@@ -5643,13 +5645,15 @@
       "kind": "desktop",
       "capability": "read a declarative MLLP responder policy",
       "owner": "bharm16/readmit#293",
-      "screen": "a collection screen",
+      "screen": "the capture screen's MLLP collect tab",
       "action": "reopen a declared responder policy",
       "backend": {"package": "internal/operation", "name": "ReceiverPolicyRead"},
       "inputs": ["readmit-receiver-policy/v1", "readmit-receiver-policy/v2", "readmit-receiver-policy/v3"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/capture-listen.journey.tsx", "name": "a declared source registration and responder policy reopen for review and further editing, read as the command line reads them"},
+      "parity_test": {"package": "tests", "name": "TestAReopenedResponderPolicyIsTheOneTheCommandLineServes"},
+      "implemented": true
     },
     {
       "id": "desktop.ReadSourceRegistration",
@@ -5657,13 +5661,15 @@
       "kind": "desktop",
       "capability": "read a validated evidence-source registration",
       "owner": "bharm16/readmit#293",
-      "screen": "a source screen",
+      "screen": "the capture screen's source tab",
       "action": "reopen a declared source registration",
       "backend": {"package": "internal/operation", "name": "SourceRead"},
       "inputs": ["readmit-source/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/capture-listen.journey.tsx", "name": "a declared source registration and responder policy reopen for review and further editing, read as the command line reads them"},
+      "parity_test": {"package": "tests", "name": "TestAReopenedSourceRegistrationIsTheOneTheCommandLineDiagnoses"},
+      "implemented": true
     },
     {
       "id": "desktop.SaveReceiverPolicy",
@@ -5711,6 +5717,22 @@
       "prerequisites": ["author", "execute"],
       "gui_test": {"file": "desktop/frontend/src/capture.test.tsx", "name": "collect preview, busy, cancel, and journal recovery"},
       "parity_test": {"package": "internal/desktop", "name": "TestDesktopCollectMatchesCLI"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.CaptureProgress",
+      "source": "desktop.App.CaptureProgress",
+      "kind": "desktop",
+      "capability": "read the address a running collector or SIU fixture bound without claiming the operation slot",
+      "owner": "bharm16/readmit#293",
+      "screen": "a capture screen",
+      "action": "show where a running collector or fixture listens",
+      "backend": {"package": "internal/desktop", "name": "App.CaptureProgress"},
+      "inputs": [],
+      "outputs": [],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/journeys/capture-listen.journey.tsx", "name": "the SIU fixture listens on the port it chose, completes, is cancelled part way and refuses a wider or taken address, as readmit listen does"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowsFixtureListenIsTheCommandLinesListen"},
       "implemented": true
     },
     {

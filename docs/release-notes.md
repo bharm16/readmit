@@ -1,5 +1,28 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The capture screen completes a SIU fixture listen and reopens responder
+  policies and source registrations (#293). A running collector or fixture now
+  says where it listens, `Listening on 127.0.0.1:PORT`, once its listener is
+  ready, so a listen at port 0 can be pointed at; before, the port was known
+  only after the listen had ended. A completed or cancelled fixture listen
+  shows the case it sealed and its appointment ledger counted as `readmit
+  listen` prints them, and a stopped capture answers cancelled rather than
+  completed. Cancel holds the focus while a capture runs. The fixture tab
+  listens on loopback only; before, an approval of a nonloopback bind ticked
+  on the collector tab reached the fixture unseen. Open registration… and Open
+  policy… read a declared document with the command line's reader, show every
+  member it declares for review and fill the form for editing, keeping what
+  the form has no control for; a reopened policy nothing has changed since is
+  previewed without being rewritten. A fault policy's approved test endpoints
+  are checked at preview, before anything binds, as `readmit collect` checks
+  them, and `readmit collect` now reads its policy through the window's shared
+  reader with the same output and refusals. Journeys over the real facade and
+  parity tests hold the window to `readmit listen`, `readmit collect`,
+  `readmit collect status` and `readmit source diagnose`. No `readmit-*`
+  document, command, flag, exit status or machine output changes; the window's
+  facade gains `CaptureProgress`, and its capture result gains the ledger
+  counts.
+
 - The runner panel verifies a staged runner update, and journeys drive its
   configuration, grant, job and schedule controls (#313). Verify staged
   update checks a manifest and candidate against the deployment key and

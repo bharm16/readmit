@@ -305,6 +305,12 @@ type App struct {
 	// operation holds. corpusProgress is nil while neither runs.
 	corpusMu       sync.Mutex
 	corpusProgress *CorpusProgress
+
+	// captureMu guards the address a running collector or fixture bound,
+	// which CaptureProgress reads without waiting for the slot StartCapture
+	// holds. captureProgress is nil while nothing listens.
+	captureMu       sync.Mutex
+	captureProgress *CaptureProgress
 }
 
 // New binds the facade to a host folder dialog and to the four files that hold

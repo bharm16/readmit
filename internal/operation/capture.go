@@ -107,9 +107,11 @@ func ReceiverPolicySave(path string, policy collection.Policy) (collection.Polic
 	return ReceiverPolicyRead(path)
 }
 
-// ReceiverPolicyRead opens one declared receiver policy.
+// ReceiverPolicyRead opens one declared receiver policy with the reader
+// `readmit collect --policy` uses, so a policy the window reopens is read and
+// refused exactly as the command line reads and refuses it.
 func ReceiverPolicyRead(path string) (collection.Policy, error) {
-	data, err := readBoundedFile(path, collection.MaxPolicyBytes)
+	data, err := ReadInputFile(path, collection.MaxPolicyBytes)
 	if err != nil {
 		return collection.Policy{}, err
 	}
@@ -163,6 +165,10 @@ type CollectConfig struct {
 	TLSKeyReference    string
 	SecretsFile        string
 	ClientCAPath       string
+	// Listening, when set, is told the address the collector bound once it is
+	// ready to accept, the point at which `readmit collect` prints its
+	// `Listening:` line. A port of 0 is only known from here.
+	Listening func(bound string)
 }
 
 // ListenConfig is what one SIU fixture serve needs after preview and approval.
@@ -175,6 +181,10 @@ type ListenConfig struct {
 	MaxFrameBytes   int
 	IdleTimeout     time.Duration
 	MaxMessages     int
+	// Listening, when set, is told the address the fixture bound once its
+	// initial observation is installed, the point at which `readmit listen`
+	// prints its `Listening:` line. A port of 0 is only known from here.
+	Listening func(bound string)
 }
 
 // PreviewCollect validates a collector configuration without binding a socket.
@@ -184,6 +194,14 @@ func PreviewCollect(cfg CollectConfig) (CapturePreview, error) {
 	}
 	if err := cfg.Policy.Validate(); err != nil {
 		return CapturePreview{}, err
+	}
+	// A fault policy names the test endpoints it may be served at. The address
+	// is held to them before anything binds, as `readmit collect` holds it, so
+	// a collector never listens where its policy did not approve.
+	if cfg.Policy.Faults != nil {
+		if err := cfg.Policy.Faults.ApproveEndpoint(cfg.Address); err != nil {
+			return CapturePreview{}, err
+		}
 	}
 	if cfg.OutputPath == "" {
 		return CapturePreview{}, errors.New("collector requires a new case destination")
@@ -327,6 +345,9 @@ func StartCollect(ctx context.Context, cfg CollectConfig) (CollectResult, error)
 	if err != nil {
 		return CollectResult{}, err
 	}
+	if cfg.Listening != nil {
+		cfg.Listening(bound)
+	}
 	b, serveErr := collector.Serve(ctx, listener)
 	out := CollectResult{BoundAddress: bound, Bundle: b, Journal: collector.Journal()}
 	return out, serveErr
@@ -361,6 +382,9 @@ func StartListen(ctx context.Context, cfg ListenConfig) (ListenResult, error) {
 	})
 	if err != nil {
 		return ListenResult{}, err
+	}
+	if cfg.Listening != nil {
+		cfg.Listening(bound)
 	}
 	b, serveErr := r.Serve(ctx, listener)
 	out := ListenResult{BoundAddress: bound, Bundle: b}

@@ -809,6 +809,7 @@ export interface Facade {
   ReadReceiverPolicy(workspace: string, policyFile: string): Promise<ReceiverPolicyResult>;
   PreviewCapture(request: CaptureRequest): Promise<CapturePreviewResult>;
   StartCapture(request: CaptureRequest): Promise<CaptureSessionResult>;
+  CaptureProgress(): Promise<CaptureProgressResult>;
   OpenCaptureJournal(workspace: string, journalPath: string): Promise<CaptureJournalResult>;
   FinalizeCaptureImport(request: FinalizeCaptureRequest): Promise<ImportCommitResult>;
   ScenarioCatalog(): Promise<ScenarioCatalogResult>;
@@ -6629,6 +6630,31 @@ export interface CaptureSessionResult {
   connections?: number;
   dropped?: number;
   preview?: CapturePreview;
+  ledger?: FixtureLedger;
+}
+
+/** The appointment ledger a fixture listen sealed into its case, counted as
+ * `readmit listen` prints it. */
+export interface FixtureLedger {
+  schema: string;
+  profile: string;
+  mode: string;
+  processed: number;
+  records: number;
+  consistent: boolean;
+}
+
+/** Where a running collector or fixture accepts connections: the address it
+ * bound, the only place a port of 0 becomes a port. */
+export interface CaptureProgress {
+  kind: "listen" | "collect";
+  bound_address: string;
+}
+
+export interface CaptureProgressResult {
+  state: State;
+  reason?: string;
+  progress?: CaptureProgress;
 }
 
 export interface CaptureJournalResult {
@@ -6678,6 +6704,9 @@ export function previewCapture(request: CaptureRequest): Promise<CapturePreviewR
 }
 export function startCapture(request: CaptureRequest): Promise<CaptureSessionResult> {
   return guard(() => facade().StartCapture(request), { state: "failed" });
+}
+export function captureProgress(): Promise<CaptureProgressResult> {
+  return guard(() => facade().CaptureProgress(), { state: "failed" });
 }
 export function openCaptureJournal(workspace: string, journalPath: string): Promise<CaptureJournalResult> {
   return guard(() => facade().OpenCaptureJournal(workspace, journalPath), { state: "failed" });

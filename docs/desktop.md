@@ -112,7 +112,12 @@ document, and its editable document is read as `project show` prints it;
 recent folders are reopened after a restart and forgotten only when confirmed;
 named filters are saved, listed and selected, each drawing what
 `readmit index search` finds; and the guided sample imports the frozen receiver
-fixtures as the case `readmit sample capture` writes. They run in jsdom,
+fixtures as the case `readmit sample capture` writes. The capture screen's SIU
+fixture completes a listen at the port it chose that `readmit timeline` reads
+as the window reported it, is cancelled from the keyboard and refuses a wider or
+taken address; a collector's journal is recovered after a crash as `readmit
+collect status` reads it; and a source registration and a responder policy
+reopen for editing and are read back by the command line. They run in jsdom,
 not the native webview, so they are evidence about the application over real
 files rather than about installed packages. The desktop workflow's shell job
 runs them after the component tests, and a failing journey fails the `desktop`
@@ -3189,6 +3194,7 @@ current bounded authority; there is no arbitrary command console.
 | `SaveReceiverPolicy` / `ReadReceiverPolicy` | Author and reopen declarative `readmit-receiver-policy/v1`–`/v3` responder policies. |
 | `PreviewCapture` | Value-free preview of address, policy, fixture label, credential references, retention and limits without binding. |
 | `StartCapture` | Starts a collector or the separately labelled SIU fixture only on explicit authorized action. |
+| `CaptureProgress` | The address a running collector or fixture bound, read without waiting for it; with port 0 the only place the port is known. |
 | `OpenCaptureJournal` | Read-only recovery of a `readmit-capture-journal/v1`; never sends, resends or resumes. |
 | `FinalizeCaptureImport` | Imports staged collected material into a new verified case and offers exploration. |
 
@@ -3196,11 +3202,42 @@ Start only after preview. Cancel stops through the shared engine. A collector
 and the fixture receiver both run under the `capture` operation name, which is
 the name their Cancel controls send; source collection is a separate operation
 named `collect`, and a cancellation naming one never reaches the other. Stopping
-a collector is its controlled stop, so it answers with the case it sealed.
+a collector or the fixture is its controlled stop, so it answers cancelled with
+the case it sealed from what arrived before the stop.
 Reopening a project never restarts a listener and never fabricates complete
 capture after a crash. On completion the panel offers opening the case, setting
 up an index, and binding the retained case into Observation setup through
 `BindCaptureObservation`.
+
+While a collector or the fixture runs, the status line says where it listens,
+`Listening on 127.0.0.1:PORT`: the address `readmit listen` and `readmit
+collect` print first, read through `CaptureProgress` once the listener is
+ready. Cancel holds the focus while a capture runs, and focus returns to the
+control that started it. A completed or cancelled fixture listen shows the case
+it sealed and its appointment ledger counted as `readmit listen` prints them:
+observation schema, receiver mode, processed occurrences, ledger records and
+consistency. The ledger itself is the observation file the tab names, the one
+`readmit listen --observation` writes. The fixture listens on loopback only:
+the collector tab's approval of a nonloopback bind never reaches it, every
+other address is refused before anything binds, in the command line's words,
+and an address another program holds is refused at the bind.
+
+**Open registration…** and **Open policy…** choose a `readmit-source/v1`
+registration or a `readmit-receiver-policy/v1`–`/v3` responder policy in the
+host's file dialog and read it with the command line's own reader, so a
+document the command line refuses is refused in the same words and opens
+nothing. The opened document is shown for review, every member it declares,
+and fills the form for further editing. Members the form has no control for —
+a transfer program's arguments and credential reference, a second fault step,
+the approved test endpoints — are kept as declared. Saving writes to the file
+the file field names, so a new name saves a copy and leaves the original as it
+was. On the collector tab, Preview saves the policy the form describes to that
+file before previewing it, as it always has; a reopened policy nothing has
+changed since is previewed as it is on disk and never rewritten, and changing
+its enhanced or fault control replaces those members with what the control
+expresses. A fault policy's approved test
+endpoints are checked against the listen address at preview, before anything
+binds, as `readmit collect` checks them.
 
 See [source](source.md), [collect](collect.md) and [listen](listen.md).
 
