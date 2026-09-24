@@ -1,5 +1,12 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Profile validation now refuses an explicitly named pack it cannot read in
+  the same words as opening that profile (#394), instead of silently resolving
+  against another pack. Discarding unstored profile edits waits for queued
+  draft retention and removes the draft before clearing the editor; a refused
+  removal leaves the text available for retry. Profile, draft and pack
+  contracts, command output and machine output are unchanged.
+
 - Opening a second case in a workspace now offers to build that case's own
   index instead of presenting another case's index as a rebuild (#417). The
   builder starts with the second case's filename and replacement off; the first

@@ -106,12 +106,16 @@ func TestValidateAndOpenProfile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	packPath := filepath.Join(root, "pack.json")
+	if err := os.WriteFile(packPath, packDoc, 0600); err != nil {
+		t.Fatal(err)
+	}
 
 	// Validate valid profile
 	valResult := app.ValidateProfile(desktop.ProfileValidateRequest{
 		Workspace: root,
 		Document:  string(validDoc),
-		Pack:      string(packDoc),
+		Pack:      "pack.json",
 	})
 	if valResult.State != desktop.Completed || valResult.Profile == nil || valResult.Seal == nil {
 		t.Fatalf("expected validation to succeed: %+v", valResult)
@@ -128,7 +132,7 @@ func TestValidateAndOpenProfile(t *testing.T) {
 	valRefused := app.ValidateProfile(desktop.ProfileValidateRequest{
 		Workspace: root,
 		Document:  string(refusedDoc),
-		Pack:      string(packDoc),
+		Pack:      "pack.json",
 	})
 	if valRefused.State != desktop.Failed {
 		t.Fatalf("expected invalid profile to fail: %+v", valRefused)
@@ -142,14 +146,67 @@ func TestValidateAndOpenProfile(t *testing.T) {
 	if err := os.WriteFile(localProfilePath, validDoc, 0600); err != nil {
 		t.Fatal(err)
 	}
-	packPath := filepath.Join(root, "pack.json")
-	if err := os.WriteFile(packPath, packDoc, 0600); err != nil {
-		t.Fatal(err)
-	}
-
 	openResult := app.OpenProfile(root, "profile.json", "pack.json")
 	if openResult.State != desktop.Completed || openResult.Profile == nil {
 		t.Fatalf("expected OpenProfile to succeed: %+v", openResult)
+	}
+}
+
+func TestValidateProfileRefusesUnreadableNamedPackLikeOpenProfile(t *testing.T) {
+	app := workspaceApp(t)
+	root := t.TempDir()
+	profile, err := os.ReadFile(filepath.Join("..", "..", "testdata", "fixtures", "local-profile.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pack, err := os.ReadFile(filepath.Join("..", "..", "testdata", "fixtures", "profile-pack.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	refused, err := os.ReadFile(filepath.Join("..", "..", "testdata", "fixtures", "profile-pack-refused.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string][]byte{
+		"profile.json":      profile,
+		"pack.json":         pack,
+		"refused-pack.json": refused,
+	} {
+		if err := os.WriteFile(filepath.Join(root, name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, entry := range []string{"missing-pack.json", "refused-pack.json"} {
+		t.Run(entry, func(t *testing.T) {
+			opened := app.OpenProfile(root, "profile.json", entry)
+			validated := app.ValidateProfile(desktop.ProfileValidateRequest{
+				Workspace: root, Document: string(profile), Pack: entry,
+			})
+			if opened.State != desktop.Failed || opened.Reason == "" {
+				t.Fatalf("OpenProfile did not refuse %s: %+v", entry, opened)
+			}
+			if validated.State != opened.State || validated.Reason != opened.Reason ||
+				validated.Profile != nil || validated.Resolution != nil || validated.Seal != nil {
+				t.Fatalf("ValidateProfile accepted or gave a different refusal for %s: open %+v, validate %+v", entry, opened, validated)
+			}
+		})
+	}
+	validated := app.ValidateProfile(desktop.ProfileValidateRequest{
+		Workspace: root, Document: string(profile), Pack: "pack.json",
+	})
+	if validated.State != desktop.Completed || validated.Resolution == nil || !validated.Resolution.Pinned {
+		t.Fatalf("named readable pack did not resolve the pin: %+v", validated)
+	}
+
+	// With no pack named, validation still works without a workspace: the
+	// document is validated and sealed, but no pack can answer its pin.
+	withoutPack := app.ValidateProfile(desktop.ProfileValidateRequest{
+		Workspace: filepath.Join(root, "missing-workspace"), Document: string(profile),
+	})
+	if withoutPack.State != desktop.Completed || withoutPack.Seal == nil ||
+		withoutPack.Resolution == nil || withoutPack.Resolution.Pinned {
+		t.Fatalf("unnamed-pack validation changed: %+v", withoutPack)
 	}
 }
 
