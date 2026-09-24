@@ -4,23 +4,16 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 
-	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/replay"
-	"github.com/bharm16/readmit/internal/testrunner"
+	"github.com/bharm16/readmit/internal/runresult"
 )
-
-// Both verified case and run readers accept files up to 16 MiB. Schema
-// dispatch must not impose a smaller configuration-file limit on manifests.
-const maxManifestBytes = 16 << 20
 
 type occurrence struct {
 	ref   Reference
@@ -36,31 +29,65 @@ type evidence struct {
 	unsupported []Unsupported
 }
 
+// errDurableRun is how diff refuses a durable run directory, which this report
+// does not compare: the sentence it always gave, because such a directory
+// holds no manifest at its root.
+var errDurableRun = errors.New("cannot read diff artifact manifest")
+
 func open(input Input, boundary Boundary) (*evidence, error) {
-	info, err := os.Stat(input.Path)
-	if err != nil {
-		return nil, errors.New("cannot inspect diff input")
-	}
-	if info.Mode().IsRegular() {
-		return openFile(input, boundary)
-	}
-	if !info.IsDir() {
-		return nil, errors.New("diff input must be a regular file or artifact directory")
+	if input.Opened == nil {
+		info, err := os.Stat(input.Path)
+		if err != nil {
+			return nil, errors.New("cannot inspect diff input")
+		}
+		if info.Mode().IsRegular() {
+			return openFile(input, boundary)
+		}
+		if !info.IsDir() {
+			return nil, errors.New("diff input must be a regular file or artifact directory")
+		}
 	}
 	if input.Format != "" && input.Format != "auto" || input.Terminator != "" && input.Terminator != "auto" {
 		return nil, errors.New("artifact inputs use their recorded parsing declarations")
 	}
-	// Resolve child probes, but let each verified reader enforce its own root
-	// symlink contract against the original path.
-	directory, err := artifactpath.Resolve(input.Path)
+	if input.Opened != nil {
+		return fromEvidence(input.Opened, boundary)
+	}
+	// runresult names the directory by its resolved children, but each
+	// verified reader enforces its own root symlink contract against the
+	// original path. A durable run is refused before it is opened.
+	family, err := runresult.Name(input.Path, "diff")
 	if err != nil {
 		return nil, err
 	}
-	if _, err := os.Lstat(filepath.Join(directory, "result.json")); err == nil {
-		artifact, err := testrunner.Open(input.Path)
+	if family == runresult.JobFamily {
+		return nil, errDurableRun
+	}
+	opened, err := runresult.OpenAs(input.Path, family)
+	if err != nil {
+		return nil, err
+	}
+	return fromEvidence(opened, boundary)
+}
+
+// fromEvidence reads the payloads one opened case, run or result retained.
+func fromEvidence(opened *runresult.Evidence, boundary Boundary) (*evidence, error) {
+	targetIdentity := ""
+	if opened.Target != nil {
+		targetIdentity = opened.Target.Identity
+	}
+	switch opened.Family {
+	case runresult.CaseFamily:
+		return fromCase(opened.Case, boundary)
+	case runresult.RunFamily:
+		e, err := fromRun(opened.Run, boundary)
 		if err != nil {
 			return nil, err
 		}
+		e.summary.TargetIdentity = targetIdentity
+		return e, nil
+	case runresult.ResultFamily:
+		artifact := opened.Artifact
 		if artifact.Run == nil {
 			return &evidence{summary: InputSummary{Kind: "result", Identity: artifact.Identity, ResultStatus: string(artifact.Result.Status), ResultBoundary: artifact.Result.ObservationBoundary, Payloads: "no run evidence"}, unsupported: []Unsupported{{Code: "result_without_run"}}}, nil
 		}
@@ -71,37 +98,10 @@ func open(input Input, boundary Boundary) (*evidence, error) {
 		e.summary.Kind, e.summary.Identity = "result", artifact.Identity
 		e.summary.ResultStatus = string(artifact.Result.Status)
 		e.summary.ResultBoundary = artifact.Result.ObservationBoundary
-		e.summary.TargetIdentity = artifact.Result.TargetIdentity
+		e.summary.TargetIdentity = targetIdentity
 		return e, nil
 	}
-	data, err := readFile(filepath.Join(directory, "manifest.json"), maxManifestBytes)
-	if err != nil {
-		return nil, errors.New("cannot read diff artifact manifest")
-	}
-	var header struct {
-		Schema string `json:"schema"`
-	}
-	if json.Unmarshal(data, &header) != nil {
-		return nil, errors.New("invalid diff artifact manifest")
-	}
-	// Dispatch by contract family — artifactpath owns the family list — while
-	// bundle.Open and replay own version support, including derived-case
-	// versions added independently of diff.
-	switch artifactpath.EvidenceFamily(header.Schema) {
-	case artifactpath.FamilyCase:
-		b, err := bundle.Open(input.Path)
-		if err != nil {
-			return nil, err
-		}
-		return fromCase(b, boundary)
-	case artifactpath.FamilyRun:
-		r, err := replay.Open(input.Path)
-		if err != nil {
-			return nil, err
-		}
-		return fromRun(r, boundary)
-	}
-	return nil, errors.New("unsupported diff artifact contract")
+	return nil, errDurableRun
 }
 
 func openFile(input Input, boundary Boundary) (*evidence, error) {
@@ -155,11 +155,7 @@ func fromCase(b *bundle.Bundle, boundary Boundary) (*evidence, error) {
 }
 
 func fromRun(r *replay.Run, boundary Boundary) (*evidence, error) {
-	targetJSON, err := json.Marshal(r.Manifest.Target, json.Deterministic(true))
-	if err != nil {
-		return nil, errors.New("cannot encode run target identity")
-	}
-	e := &evidence{run: r, summary: InputSummary{Kind: "run", Identity: r.Identity, SourceIdentity: r.Manifest.SourceBundleIdentity, TargetIdentity: digest(append(targetJSON, '\n')), Payloads: "actual sent message bytes"}}
+	e := &evidence{run: r, summary: InputSummary{Kind: "run", Identity: r.Identity, SourceIdentity: r.Manifest.SourceBundleIdentity, Payloads: "actual sent message bytes"}}
 	if boundary == ACKs {
 		e.summary.Payloads = "actual received ACK bytes"
 	}

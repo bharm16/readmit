@@ -114,7 +114,7 @@ func Open(dir string) (*Artifact, error) {
 		if result.TargetIdentity != "" || result.InputBundleIdentity != "" {
 			return nil, invalid
 		}
-	} else if result.TargetIdentity != targetIdentity(*result.Target) || !validDigest(result.InputBundleIdentity) {
+	} else if result.TargetIdentity != result.Target.Identity() || !validDigest(result.InputBundleIdentity) {
 		return nil, invalid
 	}
 	if artifact.Spec == nil {

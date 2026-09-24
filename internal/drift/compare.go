@@ -3,6 +3,8 @@ package drift
 import (
 	"errors"
 	"slices"
+
+	"github.com/bharm16/readmit/internal/runresult"
 )
 
 // record is one side's retained document as the raw comparison sees it: what
@@ -17,8 +19,8 @@ type record struct {
 // report is the thing that gets pasted into a ticket.
 const scope = "Drift names which of four retained records differ: the input, the target configuration, the engine that evaluated it, and the profile it named. It is not a field comparison and does not replace one; which fields differ stays in readmit-diff/v1, whose raw comparison is preserved whatever this says. A cause nothing retained is undeclared and a cause this evidence cannot settle is undecided; neither is a statement that it did not change. No outcome here is a verdict, and no drift is a claim that a result moved because of it."
 
-// Compare reads two artifacts and reports which of the four causes drifted
-// between them.
+// Compare opens two artifact directories and reports which of the four causes
+// drifted between them.
 //
 // Each side is read through the verified reader for what it is, so a manifest
 // that no longer describes the evidence beside it is refused rather than
@@ -28,14 +30,22 @@ func Compare(left, right string) (Report, error) {
 	if left == "" || right == "" {
 		return Report{}, errors.New("a drift comparison names two artifact directories")
 	}
-	l, err := openSide(left)
+	l, err := openArtifact(left)
 	if err != nil {
 		return Report{}, err
 	}
-	r, err := openSide(right)
+	r, err := openArtifact(right)
 	if err != nil {
 		return Report{}, err
 	}
+	return CompareOpened(l, r), nil
+}
+
+// CompareOpened reports which of the four causes drifted between two
+// artifacts already opened by runresult, so a caller holding the evidence it
+// verified compares exactly that evidence rather than opening it again.
+func CompareOpened(left, right *runresult.Evidence) Report {
+	l, r := fromEvidence(left), fromEvidence(right)
 	report := Report{Schema: Schema, Scope: scope, Left: l.report, Right: r.report, Drift: []Drift{
 		compareInput(l, r),
 		compareTarget(l, r),
@@ -43,7 +53,7 @@ func Compare(left, right string) (Report, error) {
 		compareRule(l, r),
 	}}
 	report.Attribution = attribute(report.Drift)
-	return report, nil
+	return report
 }
 
 // nothingToCompare answers the part of every cause that is the same: whether

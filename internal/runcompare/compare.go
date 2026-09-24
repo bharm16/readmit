@@ -90,6 +90,9 @@ type opened struct {
 	view     Execution
 	artifact *testrunner.Artifact
 	path     string
+	// evidence is what drift compares: the execution exactly as it was
+	// verified here, never opened a second time.
+	evidence *runresult.Evidence
 }
 
 func Compare(ctx context.Context, input Input) (Comparison, error) {
@@ -116,13 +119,7 @@ func Compare(ctx context.Context, input Input) (Comparison, error) {
 		}
 		runs = append(runs, run)
 	}
-	d, err := drift.Compare(input.Baseline, input.Current)
-	if err != nil {
-		return Comparison{}, err
-	}
-	if d.Left.Identity != runs[0].view.Identity || d.Right.Identity != runs[1].view.Identity {
-		return Comparison{}, errors.New("retained executions changed during comparison; retry after execution finishes")
-	}
+	d := drift.CompareOpened(runs[0].evidence, runs[1].evidence)
 	result := Comparison{Baseline: runs[0].view, Current: runs[1].view, Repeats: []Execution{}, Drift: d, Approval: "not_selected", Specification: "unknown", Assertions: []AssertionComparison{}, Scope: "Behavior is compared only for unchanged assertion definitions. Drift does not establish causality. Target software revisions and unselected source coverage remain unknown. All retained failures remain visible; nothing here approves a run, sends messages or writes evidence."}
 	a, b := runs[0].artifact, runs[1].artifact
 	var leftAssertions, rightAssertions []testrunner.AssertionResult
@@ -154,6 +151,7 @@ func Compare(ctx context.Context, input Input) (Comparison, error) {
 	for _, r := range runs[2:] {
 		result.Repeats = append(result.Repeats, r.view)
 	}
+	var err error
 	result.Stability, err = stability(ctx, runs)
 	if err != nil {
 		return Comparison{}, err
@@ -186,7 +184,7 @@ func open(path string) (opened, error) {
 		v.Unobserved = job.Planned
 		if job.ResultIdentity == "" {
 			v.Gaps = append(v.Gaps, "no finalized result: assertions and observations are unknown")
-			return opened{view: v, path: retained.Path}, nil
+			return opened{view: v, path: retained.Path, evidence: retained.Evidence()}, nil
 		}
 		if !usable && reason == durablerun.UsabilityUndecided {
 			v.Gaps = append(v.Gaps, "run did not reach a usable terminal state")
@@ -242,7 +240,7 @@ func open(path string) (opened, error) {
 		}
 		v.Assertions = append(v.Assertions, s)
 	}
-	return opened{view: v, artifact: a, path: retained.Path}, nil
+	return opened{view: v, artifact: a, path: retained.Path, evidence: retained.Evidence()}, nil
 }
 func equal(a, b any) bool {
 	left, _ := json.Marshal(a, json.Deterministic(true))
@@ -330,13 +328,7 @@ func stability(ctx context.Context, runs []opened) (Stability, error) {
 			if err := ctx.Err(); err != nil {
 				return Stability{}, err
 			}
-			d, err := drift.Compare(first.path, r.path)
-			if err != nil {
-				return Stability{}, err
-			}
-			if d.Left.Identity != first.view.Identity || d.Right.Identity != r.view.Identity {
-				return Stability{}, errors.New("retained executions changed during comparison")
-			}
+			d := drift.CompareOpened(first.evidence, r.evidence)
 			if d.Attribution.Outcome != drift.NoDeclaredChange || first.artifact == nil || r.artifact == nil || first.artifact.Spec == nil || r.artifact.Spec == nil || !equal(first.artifact.Spec, r.artifact.Spec) || first.artifact.Result.ReceiverMode != r.artifact.Result.ReceiverMode {
 				comparable = false
 			}

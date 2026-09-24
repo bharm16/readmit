@@ -39,6 +39,7 @@ import (
 	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/receiver"
 	"github.com/bharm16/readmit/internal/replay"
+	"github.com/bharm16/readmit/internal/runresult"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
@@ -370,7 +371,7 @@ func savedSpec(root string, entries []os.DirEntry) (string, testrunner.Spec) {
 // or of this one against other evidence, is not this step.
 func verdict(root, name, identity string, saved testrunner.Spec) (observation.Mode, testrunner.Status, bool) {
 	result := filepath.Join(root, name, "result")
-	if info, err := os.Lstat(filepath.Join(result, "result.json")); err != nil || !info.Mode().IsRegular() {
+	if runresult.ExecutionFamily(result, runresult.RegularFile) != runresult.ResultFamily {
 		return "", "", false
 	}
 	artifact, err := testrunner.Open(result)

@@ -208,7 +208,7 @@ func inspectRetained(ctx context.Context, dir string, files map[string][]byte) (
 	if digest(files["spec.json"]) != current.SpecIdentity || !bytes.Equal(files["spec.json"], files[retainedResultPrefix(files, "current")+"/spec.json"]) {
 		return m, nil, invalid
 	}
-	hasBaseline := files["baseline/identity.sha256"] != nil || files["baseline/engine.json"] != nil
+	hasBaseline := files["baseline/identity.sha256"] != nil || runresult.ExecutionFamilyIn(files, "baseline") == runresult.JobFamily
 	allowed := []string{"case/", "current/"}
 	if hasBaseline {
 		baseline, err := inspectRetainedRun(dir, "baseline-case", "baseline")
@@ -325,8 +325,10 @@ must be reconciled at the target before any authorized rerun.
 `)
 }
 
+// retainedResultPrefix is where the execution retained under name keeps its
+// result: inside result/ for a durable run, at name itself for a result.
 func retainedResultPrefix(files map[string][]byte, name string) string {
-	if files[name+"/engine.json"] != nil {
+	if runresult.ExecutionFamilyIn(files, name) == runresult.JobFamily {
 		return name + "/result"
 	}
 	return name

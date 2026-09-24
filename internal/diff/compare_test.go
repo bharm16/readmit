@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -22,6 +23,7 @@ import (
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/mllp"
 	"github.com/bharm16/readmit/internal/replay"
+	"github.com/bharm16/readmit/internal/runresult"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
@@ -369,4 +371,52 @@ func TestDiffAcceptsVerifiedManifestsLargerThanConfigurationFiles(t *testing.T) 
 			t.Fatal("valid large-manifest run lost retained canceled evidence")
 		}
 	})
+}
+
+// An artifact already opened by runresult is compared exactly as its directory
+// is, and a durable run is refused whichever way it is handed over, before
+// anything in it is read.
+func TestOpenedEvidenceComparesAsItsDirectoryDoes(t *testing.T) {
+	native := filepath.Join("..", "..", "testdata", "acceptance", "native-109")
+	for _, pair := range [][2]string{
+		{filepath.Join(native, "baseline"), filepath.Join(native, "baseline", "run")},
+		{filepath.Join(native, "regression"), filepath.Join(native, "regression")},
+	} {
+		fromPaths := compare(t, pair[0], pair[1], diff.Options{Boundary: diff.ACKs, Keys: []string{"MSH-10"}})
+		opened := func(path string) diff.Input {
+			evidence, err := runresult.OpenEvidence(path, "diff")
+			if err != nil {
+				t.Fatal(err)
+			}
+			return diff.Input{Opened: evidence}
+		}
+		fromOpened, err := diff.Compare(opened(pair[0]), opened(pair[1]), diff.Options{Boundary: diff.ACKs, Keys: []string{"MSH-10"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(fromPaths, fromOpened) {
+			t.Fatalf("opened evidence compared differently:\n%+v\n%+v", fromPaths, fromOpened)
+		}
+		if _, err := diff.Compare(diff.Input{Opened: opened(pair[0]).Opened, Format: hl7.Raw}, opened(pair[1]), diff.Options{}); err == nil || err.Error() != "artifact inputs use their recorded parsing declarations" {
+			t.Fatalf("an opened artifact accepted a parsing override: %v", err)
+		}
+	}
+	job := filepath.Join(t.TempDir(), "job")
+	if err := os.Mkdir(job, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(job, "engine.json"), []byte("{not a pin"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	result := filepath.Join(native, "baseline")
+	if _, err := diff.Compare(diff.Input{Path: job}, diff.Input{Path: result}, diff.Options{}); err == nil || err.Error() != "cannot read diff artifact manifest" {
+		t.Fatalf("a durable run directory was compared: %v", err)
+	}
+	opened, err := runresult.OpenEvidence(job, "diff")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := diff.Compare(diff.Input{Opened: opened}, diff.Input{Path: result}, diff.Options{}); err == nil || err.Error() != "cannot read diff artifact manifest" {
+		t.Fatalf("an opened durable run was compared: %v", err)
+	}
 }

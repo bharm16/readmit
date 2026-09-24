@@ -11,14 +11,9 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/bundle"
-	"github.com/bharm16/readmit/internal/replay"
 )
 
 func digest(data []byte) string { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }
-func targetIdentity(target replay.TargetRecord) string {
-	data, _ := encode(target)
-	return digest(data)
-}
 func encode(value any) ([]byte, error) {
 	data, err := json.Marshal(value, json.Deterministic(true))
 	if err != nil {

@@ -3,7 +3,10 @@
 // treats a wire comparison as a test of a receiver's business state.
 package diff
 
-import "github.com/bharm16/readmit/internal/hl7"
+import (
+	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/runresult"
+)
 
 const Schema = "readmit-diff/v1"
 
@@ -21,6 +24,9 @@ type Input struct {
 	Path       string
 	Format     hl7.Format
 	Terminator hl7.Terminator
+	// Opened is an artifact directory runresult's opener already opened,
+	// compared as it was verified instead of opening Path again.
+	Opened *runresult.Evidence
 }
 
 // Options selects an explicit comparison boundary. An empty Fields list visits
