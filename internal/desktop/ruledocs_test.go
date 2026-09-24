@@ -77,6 +77,9 @@ func TestOpeningAuthoredDocumentsReportsTheirCanonicalFormAndExactIdentity(t *te
 	if analysis.State != desktop.Completed || analysis.Declaration == nil || len(analysis.Declaration.Windows) != 1 {
 		t.Fatalf("sequence analysis: %+v", analysis)
 	}
+	if analysis.SHA256 != sha256Of([]byte(docSequenceAnalysis)) {
+		t.Fatalf("the declaration identity is not the digest of the bytes the workspace holds: %s", analysis.SHA256)
+	}
 	// Every document is reported in one canonical form an editor holds, which
 	// is itself a document the same parser accepts.
 	if !strings.HasPrefix(policy.Document, "{\n") || !strings.HasSuffix(policy.Document, "}\n") {

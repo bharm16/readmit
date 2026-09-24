@@ -1,5 +1,34 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The sequence panel's correlation rules, its review of correlation links and
+  its sequence-analysis editor are driven end to end through the facade
+  (#298). Until now no interaction test chose a rules document, so `readmit
+  correlate` had no checked path in the window, and reviewing links and
+  reopening a declaration were untested. Driving them found faults, each fixed
+  with a test. Opening a retained rules document or sequence-analysis
+  declaration loaded only its text, so the next rule or window added through
+  the controls silently dropped what was opened (the correlation and sequence
+  parts of #410); both editors now load what was opened, name the entry and the
+  SHA-256 of its bytes, ask before replacing unsaved work, and say when they are
+  busy, and an opened declaration keeps the case identity it binds to. The
+  rules editor could not compose an identifier rule at all: it had no value
+  selector and labelled the rule's three authority selectors as authority keys.
+  The sequence called the canonical rules digest the rules' "exact bytes",
+  though it is taken over the decoded declarations and differs from the digest
+  of the file the editor names. While a review was read or a decision saved,
+  the sequence said the case was being laid out again, and a saved decision
+  named no directory and was not offered among the retained reviews until the
+  folder was read again. Interaction journeys lay a case out exactly as
+  `readmit correlate` links it and refuse a rules document the command line
+  refuses in its sentence; record accept, reject and an added pair into new
+  review directories whose machine finding is what the command line prints;
+  refuse a decision written over an existing review and a review under rules
+  changed on disk; and reopen, extend and save a declaration after cancelling
+  an open with `Escape`. Go parity tests hold the window to `readmit correlate`,
+  including over the case the native window retained. No `readmit-*` document,
+  command, exit status or machine output changes; the sequence-analysis
+  editor's result now also carries the SHA-256 of the entry's bytes.
+
 - The review-and-transform panel opens, saves and previews transformation
   plans, and the controlled reduction panel previews and runs a bounded
   reduction, with checked evidence (#301). Open this plan reads a plan

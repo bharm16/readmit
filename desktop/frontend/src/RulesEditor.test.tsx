@@ -85,6 +85,10 @@ test("a retained rules document opens as the exact text the entry holds", async 
       state: "completed" as const,
       document: "RETAINED-RULES-DOCUMENT",
       sha256: "rules-sha256-fixed-for-tests",
+      rules: {
+        schema: "readmit-correlation-rules/v1",
+        rules: [{ id: "acknowledgements", operator: "acknowledges", scope: "source" }],
+      },
     }),
   });
   render(
@@ -100,6 +104,12 @@ test("a retained rules document opens as the exact text the entry holds", async 
   expect((screen.getByLabelText("Document JSON") as HTMLTextAreaElement).value).toBe(
     "RETAINED-RULES-DOCUMENT",
   );
+  // The rules it declares are the editor's rules, beside the entry and the
+  // identity of its exact bytes.
+  expect(screen.getByRole("button", { name: "Remove rule acknowledgements" })).toBeTruthy();
+  expect(
+    screen.getByText("Opened correlation-rules-1 · exact bytes hash to rules-sha256-fixed-for-tests"),
+  ).toBeTruthy();
 });
 
 test("a sequence analysis is composed against the verified case identity", async () => {

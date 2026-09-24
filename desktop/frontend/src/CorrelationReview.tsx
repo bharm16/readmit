@@ -28,6 +28,8 @@ export function CorrelationReview({ busy, reviews, context, onReview, onSelect }
   const [decision, setDecision] = useState<CorrelationDecision>(emptyDecision);
   const [output, setOutput] = useState("");
   const [showValues, setShowValues] = useState(false);
+  // What this panel is waiting on the application for, said while it runs.
+  const [pending, setPending] = useState<string | null>(null);
   const view = result?.view;
   async function run(write: boolean, offset = 0, reveal = showValues) {
     const request: CorrelationReviewRequest = {
@@ -35,7 +37,9 @@ export function CorrelationReview({ busy, reviews, context, onReview, onSelect }
     };
     // Failed reads and submitted changes never leave the old derived view visible.
     setResult(null);
+    setPending(write ? `Saving this decision to ${output}.` : "Reading the selected mapping.");
     const next = await onReview(request, write);
+    setPending(null);
     setResult(next);
     if (next.output) { setPrevious(next.output); setOutput(""); setDecision(emptyDecision); }
   }
@@ -51,7 +55,8 @@ export function CorrelationReview({ busy, reviews, context, onReview, onSelect }
       <datalist id="correlation-reviews">{reviews.map(entry => <option key={entry} value={entry} />)}</datalist>
       <button disabled={busy}>Open selected mapping</button>
     </form>
-    <p role="status">{result?.reason ?? (result?.state === "completed" ? "Mapping verified locally." : "")}</p>
+    <p role="status">{pending ?? result?.reason ?? (result?.state !== "completed" ? ""
+      : result.output ? `Saved to ${result.output} · mapping verified locally.` : "Mapping verified locally.")}</p>
     {view ? <>
       <p className="scope">{view.boundary}</p>
       <p>Mapping: <code>{view.mapping}</code></p>

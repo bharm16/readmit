@@ -220,6 +220,13 @@ case identity and the SHA-256 of the exact rules, then:
 - **The boundary sentence** every report carries, which says what a link is and
   what it is not.
 
+The rules digest is taken over the declarations as the reader decoded them, in
+one canonical encoding, rather than over the file's bytes: re-indenting a
+document keeps it, and changing a declaration changes it. It is the digest a
+sequence analysis pins and a desktop correlation review binds to. The desktop's
+rules editor names a document by the SHA-256 of its bytes instead, which names
+the file and is a different value.
+
 A correlation report is never written into a case, is not backed up, and is
 rebuilt by running the command again over the same evidence and the same rules.
 `internal/artifactpath` refuses an output destination inside retained case, run,

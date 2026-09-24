@@ -466,8 +466,9 @@ export function Sequence({
                 ))}
               </ul>
               <p className="hint">
-                Read under the rules in {sequence.rules}, whose exact bytes hash to{" "}
-                {sequence.rules_sha256}.
+                Read under the rules in {sequence.rules}, whose canonical rules SHA-256 is{" "}
+                {sequence.rules_sha256}: the digest readmit correlate reports for them and a
+                sequence analysis names.
               </p>
             </>
           ) : null}

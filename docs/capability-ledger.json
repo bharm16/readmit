@@ -190,7 +190,9 @@
       "inputs": ["readmit-correlation-rules/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5"],
       "outputs": ["readmit-correlation/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/correlation.journey.tsx", "name": "a case is laid out under a chosen correlation-rules document exactly as readmit correlate links it, and a rules document the command line refuses is refused in its sentence, in the sequence and in the editor"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowLinksTheCaseExactlyAsReadmitCorrelateDoes"},
+      "implemented": true
     },
     {
       "id": "cli.diagnose",
@@ -4116,7 +4118,9 @@
       "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-correlation-rules/v1", "readmit-correlation-review/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/correlation.journey.tsx", "name": "a review history is opened from the machine findings and reopened by name, accept, reject and an added pair are recorded with analyst and reason into new directories beside the finding readmit correlate reports, and a refused write and a stale review change nothing"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowReviewsTheLinksReadmitCorrelateReports"},
+      "implemented": true
     },
     {
       "id": "desktop.DecideCorrelation",
@@ -4130,7 +4134,9 @@
       "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-correlation-rules/v1", "readmit-correlation-review/v1"],
       "outputs": ["readmit-correlation-review/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/correlation.journey.tsx", "name": "a review history is opened from the machine findings and reopened by name, accept, reject and an added pair are recorded with analyst and reason into new directories beside the finding readmit correlate reports, and a refused write and a stale review change nothing"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowRecordsCorrelationDecisionsBesideTheReportReadmitCorrelateProduces"},
+      "implemented": true
     },
     {
       "id": "desktop.ChooseHubConfig",
@@ -6185,7 +6191,9 @@
       "inputs": ["readmit-sequence-analysis/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/correlation.journey.tsx", "name": "a retained sequence-analysis declaration is reopened into the editor with the identity of its bytes, extended and saved as a new entry the sequence applies, an open over unsaved work is cancelled with Escape, and a declaration the reader refuses is refused wherever it is read"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowOpensTheSequenceAnalysisTheSequenceApplies"},
+      "implemented": true
     },
     {
       "id": "desktop.PreflightRun",

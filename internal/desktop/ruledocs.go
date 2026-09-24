@@ -118,8 +118,10 @@ func (d ruleDocument[T]) saved(request RuleDocumentSaveRequest) (string, string,
 }
 
 // CorrelationRulesResult carries one authored correlation-rules document.
-// SHA256 is the digest of the exact bytes the entry holds, which is what a
-// SequenceRequest or a CorrelationReviewRequest binds a derived view to.
+// SHA256 is the digest of the exact bytes the entry holds, which names the
+// file an editor opened or saved. It is not the rules digest a sequence or a
+// correlation review binds to: a correlation report's rules_sha256 is computed
+// by the engine over the canonical encoding of the rules it ran.
 type CorrelationRulesResult struct {
 	State    State            `json:"state"`
 	Reason   string           `json:"reason,omitzero"`
@@ -160,11 +162,14 @@ func (a *App) SaveCorrelationRules(request RuleDocumentSaveRequest) CorrelationR
 }
 
 // SequenceAnalysisResult carries one authored sequence-analysis declaration.
+// SHA256 is the digest of the exact bytes the entry holds, which names the
+// file an editor opened or saved.
 type SequenceAnalysisResult struct {
 	State       State                         `json:"state"`
 	Reason      string                        `json:"reason,omitzero"`
 	Document    string                        `json:"document,omitzero"`
 	Output      string                        `json:"output,omitzero"`
+	SHA256      string                        `json:"sha256,omitzero"`
 	Declaration *sequenceanalysis.Declaration `json:"declaration,omitzero"`
 }
 
@@ -176,11 +181,11 @@ func (r *SequenceAnalysisResult) refuse(state State, reason string) {
 // workspace through the same strict parser the sequence itself applies.
 func (a *App) OpenSequenceAnalysis(workspace, entry string) SequenceAnalysisResult {
 	return run(a, false, false, func(context.Context) SequenceAnalysisResult {
-		document, _, declaration, declined := sequenceAnalysisDocument.opened(workspace, entry)
+		document, sha, declaration, declined := sequenceAnalysisDocument.opened(workspace, entry)
 		if declaration == nil {
 			return SequenceAnalysisResult{State: declined.state, Reason: declined.reason}
 		}
-		return SequenceAnalysisResult{State: Completed, Document: document, Declaration: declaration}
+		return SequenceAnalysisResult{State: Completed, Document: document, SHA256: sha, Declaration: declaration}
 	})
 }
 
@@ -188,11 +193,11 @@ func (a *App) OpenSequenceAnalysis(workspace, entry string) SequenceAnalysisResu
 // sequence-analysis declaration into one new entry of the open workspace.
 func (a *App) SaveSequenceAnalysis(request RuleDocumentSaveRequest) SequenceAnalysisResult {
 	return run(a, false, true, func(context.Context) SequenceAnalysisResult {
-		document, _, declaration, declined := sequenceAnalysisDocument.saved(request)
+		document, sha, declaration, declined := sequenceAnalysisDocument.saved(request)
 		if declaration == nil {
 			return SequenceAnalysisResult{State: declined.state, Reason: declined.reason}
 		}
-		return SequenceAnalysisResult{State: Completed, Document: document, Output: request.Output, Declaration: declaration}
+		return SequenceAnalysisResult{State: Completed, Document: document, Output: request.Output, SHA256: sha, Declaration: declaration}
 	})
 }
 
