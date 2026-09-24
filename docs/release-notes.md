@@ -1,5 +1,30 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The synthetic scenario panel's design, library and SIU fixture controls are
+  now driven end to end (#299), and what the window writes is what `readmit
+  scenario preview`, `readmit scenario check-library` and `readmit synth`
+  read and write. A refusal is now shown with its reason instead of being
+  replaced by the name of the action that was refused. The design tab no
+  longer offers a pack entry the local profile binding never read. The SIU
+  fixture tab declares every input the command requires instead of sending a
+  fixed seed and base time; the seed crosses the facade as text, read as the
+  command reads it, so every seed the command accepts can be declared, and the
+  base time is read through the command's declaration. Each case bundle is
+  listed with the identity the command prints. The library tab reads every
+  library with the command's reader, so it no longer writes a library the
+  command refuses or opens one the command would refuse. It reads library and
+  expectations documents up to the command's 4 MiB rather than 256 KiB,
+  creates a new library rather than failing when the named entry was never
+  opened, refuses an export of a library the reader refuses before writing it,
+  and imports only a library named by its absolute path. A fixture check can be
+  cancelled from its control or with `Escape`, removes its private
+  regeneration and passes nothing. Journeys over the real facade cover an
+  unsupported profile, overwrite refusals, a failing fixture check and
+  cancellation, and parity tests hold the window to the command line. No
+  `readmit-*` document or `readmit` command changes; the window's SIU request
+  takes its seed as text and its result gains each case's identity, and
+  `scenariolibrary.Decode` exposes the library reader the check already used.
+
 - The window can forget a recent folder, import the frozen receiver fixtures
   as `readmit sample capture` does, and show a project's editable document as
   recorded (#291). Each recent folder now has a Forget action that asks first;

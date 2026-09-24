@@ -2946,9 +2946,19 @@ existing `readmit-scenario/v1`, `readmit-order-scenario/v1`,
 `readmit-scenario-generator/v1` and `readmit-scenario-library/v1` contracts.
 
 - Create from a supported ADT, SIU, ORM or ORU lifecycle template or a blank
-  supported sequence. A saved local interface profile (#252) selects the family
-  and pins the generator version without silently substituting another workflow;
-  unavailable events remain listed with their refusal reasons.
+  supported sequence. A saved local interface profile (#252), named as a
+  workspace entry, is read with the reader every local profile is read with
+  and pins the lifecycle profile its message family selects and the generator
+  version, without silently substituting another workflow. A profile that
+  reader refuses, such as one naming a family other than ADT, SIU, ORM or ORU,
+  is refused in its words and pins nothing. Unavailable events remain listed
+  with their refusal reasons.
+- Saving writes the scenario's canonical document to a new workspace entry and
+  never replaces one; opening reads an entry back in the same canonical form.
+  A document the scenario reader refuses is refused on save and on open in the
+  words `readmit scenario preview` uses, and the panel keeps the document it
+  held. What the window saves previews on the command line exactly as the
+  document it was saved from.
 - Preview walks the shared Go engine. Identifiers stay masked until deliberate
   local reveal. Generation diagnostics and refused steps never become successful
   validation.
@@ -2959,10 +2969,44 @@ existing `readmit-scenario/v1`, `readmit-order-scenario/v1`,
   inserted from the generator automatically.
 - Library entries can be saved, reopened, versioned, compared, imported and
   exported. Reuse never silently updates a pinned profile or overwrites another
-  revision. Independent expectations remain separately authored.
-- The SIU fixture tab exposes `readmit synth` with the same declared seed, base
-  time, generator version and profile version inputs. The free frozen sample is
-  unchanged.
+  revision. Independent expectations remain separately authored. Every library
+  the panel opens, adds to, exports or imports is read with the reader
+  `readmit scenario check-library` uses, so the window never writes a library
+  the command refuses (a template whose profile is not its plan's, an identity
+  or coverage tag outside the library's names, a seventeenth template) and
+  refuses the others in the command's words, with nothing written. Saving adds
+  a revision to the library entry the panel opened, or creates the named entry
+  as a new library when it was not opened, so an existing entry is never
+  replaced. A comparison names both revisions' plan digests in full, and each
+  template shows the full digest an independent expectations document pins.
+  Export copies the library's exact bytes to a new workspace entry; import
+  copies a library named by its absolute path elsewhere on the machine into a
+  new workspace entry, byte for byte, and refuses a relative path.
+- The fixture check is `readmit scenario check-library`: it reads the library
+  and the expectations up to the command's 4 MiB bound, reports the sentence
+  the command prints when every declared check passes, and fails a mismatch in
+  the checker's words. It is interruptible from its **Cancel check** control
+  or with `Escape`; a cancelled check removes its private regeneration, passes
+  nothing and says so, and the next check starts afresh.
+- The SIU fixture tab is `readmit synth`. The seed, base time, generator
+  version and profile version are each declared, with nothing preselected. The
+  seed crosses the facade as the text typed and is read as the command's flag
+  reads it; the panel offers plain decimal digits only, up to
+  18446744073709551615, because the command reads a leading zero as octal. The
+  base time is read through the command's own declaration. The family is
+  written into a new workspace entry byte for byte as the command writes it
+  from the same inputs, each case bundle is listed with the identity the
+  command prints, and a base time, generator version or profile version the
+  command refuses, or an existing family, is refused in its words. A seed that
+  is not a whole number from 0 to 18446744073709551615 is refused in the
+  window's own words, where the command reports a misuse of its flag. The free
+  frozen sample is unchanged.
+- Every call answers with one state — completed, failed, permission denied,
+  busy or cancelled — and its reason. Controls are disabled while a call runs,
+  and focus returns to the control that started it once it answers. Saving,
+  exporting, importing and generating are new authoring, admitted as the
+  command line admits them; opening, comparing and checking need no
+  activation.
 
 ## Environments, Credential References, Send Policies, and Fixture Reset
 

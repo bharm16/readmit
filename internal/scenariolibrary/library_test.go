@@ -7,6 +7,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"github.com/bharm16/readmit/internal/scenariogen"
 	"github.com/bharm16/readmit/internal/scenariolibrary"
 	"os"
@@ -222,4 +223,67 @@ func TestInterruptedCheckRemovesPrivateStreamsAndCanRetry(t *testing.T) {
 	if err != nil || len(files) != 0 {
 		t.Fatal("retry retained temporary streams")
 	}
+}
+
+// A library read on its own is held to exactly what Check holds the library
+// it is given to: the shipped library decodes, and every library defect Check
+// refuses with a valid oracle, Decode refuses in the same words.
+func TestDecodeRefusesEveryLibraryDefectCheckRefuses(t *testing.T) {
+	l, o := fixtures(t)
+	decoded, err := scenariolibrary.Decode(l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded.Templates) == 0 || decoded.Templates[0].ID != "siu-cancel-book" {
+		t.Fatalf("decoded library: %+v", decoded)
+	}
+	var library scenariolibrary.Library
+	mutated := func(change func(*scenariolibrary.Library)) []byte {
+		t.Helper()
+		if err := json.Unmarshal(l, &library); err != nil {
+			t.Fatal(err)
+		}
+		change(&library)
+		out, err := json.Marshal(library)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	for name, bad := range map[string][]byte{
+		"false profile":       mutated(func(l *scenariolibrary.Library) { l.Templates[0].Profile = "readmit-adt-lifecycle-v1" }),
+		"duplicate version":   mutated(func(l *scenariolibrary.Library) { l.Templates = append(l.Templates, l.Templates[0]) }),
+		"no templates":        mutated(func(l *scenariolibrary.Library) { l.Templates = nil }),
+		"seventeen templates": mutated(func(l *scenariolibrary.Library) { l.Templates = versionedCopies(l.Templates[0], 17) }),
+		"invalid identity":    mutated(func(l *scenariolibrary.Library) { l.Templates[0].ID = "not an id" }),
+		"no coverage":         mutated(func(l *scenariolibrary.Library) { l.Templates[0].Coverage = []string{} }),
+		"duplicate coverage":  mutated(func(l *scenariolibrary.Library) { l.Templates[0].Coverage = []string{"a", "a"} }),
+		"invalid plan": mutated(func(l *scenariolibrary.Library) {
+			l.Templates[0].Plan = jsontext.Value(`{"schema":"readmit-scenario-generator/v1"}`)
+		}),
+		"another schema":       bytes.Replace(l, []byte(`"readmit-scenario-library/v1"`), []byte(`"readmit-scenario-library/v2"`), 1),
+		"unknown member":       bytes.Replace(l, []byte(`"templates": [`), []byte(`"extra": true, "templates": [`), 1),
+		"missing coverage":     bytes.Replace(l, []byte(`"coverage": [`), []byte(`"covered": [`), 1),
+		"larger than 4 MiB":    append(bytes.Repeat([]byte(" "), scenariolibrary.MaxBytes), l...),
+		"not a JSON object":    []byte(`[]`),
+		"null templates array": bytes.Replace(l, []byte(`"templates": [`), []byte(`"templates": null, "x": [`), 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, checked := scenariolibrary.Check(context.Background(), bad, o)
+			_, read := scenariolibrary.Decode(bad)
+			if checked == nil || read == nil || read.Error() != checked.Error() {
+				t.Fatalf("Decode refused %v where Check refused %v", read, checked)
+			}
+		})
+	}
+}
+
+func versionedCopies(template scenariolibrary.Template, count int) []scenariolibrary.Template {
+	templates := make([]scenariolibrary.Template, 0, count)
+	for i := range count {
+		copied := template
+		copied.Version = fmt.Sprint(i + 1)
+		templates = append(templates, copied)
+	}
+	return templates
 }

@@ -1,12 +1,22 @@
 package desktop_test
 
 import (
+	"bytes"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
+	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/localprofile"
+	"github.com/bharm16/readmit/internal/operation"
+	"github.com/bharm16/readmit/internal/scenariolibrary"
+	"github.com/bharm16/readmit/internal/synth"
 )
 
 func TestScenarioCatalogListsUnavailableEventsWithReasons(t *testing.T) {
@@ -256,14 +266,14 @@ func TestGenerateSynthProducesDeclaredFamily(t *testing.T) {
 	app := workspaceApp(t)
 	root := t.TempDir()
 	result := app.GenerateSynth(desktop.SynthGenerateRequest{
-		Workspace: root, OutputName: "siu-family", Seed: 0,
+		Workspace: root, OutputName: "siu-family", Seed: "0",
 		BaseTime: "2026-01-01T12:00:00Z", GeneratorVersion: "readmit-synth-v1", ProfileVersion: "readmit-siu-v1",
 	})
 	if result.State != desktop.Completed || len(result.Cases) == 0 {
 		t.Fatalf("synth: %+v", result)
 	}
 	if got := app.GenerateSynth(desktop.SynthGenerateRequest{
-		Workspace: root, OutputName: "siu-family", Seed: 0,
+		Workspace: root, OutputName: "siu-family", Seed: "0",
 		BaseTime: "2026-01-01T12:00:00Z", GeneratorVersion: "readmit-synth-v1", ProfileVersion: "readmit-siu-v1",
 	}); got.State != desktop.Failed {
 		t.Fatalf("overwrite synth: %+v", got)
@@ -292,5 +302,334 @@ func TestBindScenarioProfileUsesLocalProfileFamilyWithoutSubstitution(t *testing
 	})
 	if bound.State != desktop.Completed || !bound.Available || bound.LifecycleProfile != "readmit-siu-lifecycle-v1" {
 		t.Fatalf("bind: %+v", bound)
+	}
+}
+
+// The window declares every input `readmit synth` requires and reads each the
+// way the command does: the seed as the command's flag library reads an
+// unsigned number, up to 2^64-1, and the base time through the shared
+// declaration. A refused input writes nothing, and a written family reports
+// each case bundle's identity from its completion record.
+func TestGenerateSynthReadsEveryDeclaredInputAsTheCommandDoes(t *testing.T) {
+	app := workspaceApp(t)
+	root := t.TempDir()
+	declared := func(output, seed, base, generator, profile string) desktop.SynthGenerateRequest {
+		return desktop.SynthGenerateRequest{Workspace: root, OutputName: output, Seed: seed, BaseTime: base,
+			GeneratorVersion: generator, ProfileVersion: profile}
+	}
+	const base = "2026-01-01T12:00:00Z"
+	seedRefusal := "the seed must be a whole number from 0 to 18446744073709551615"
+	for name, tc := range map[string]struct {
+		request desktop.SynthGenerateRequest
+		reason  string
+	}{
+		"no seed":                  {declared("refused", "", base, "readmit-synth-v1", "readmit-siu-v1"), seedRefusal},
+		"a negative seed":          {declared("refused", "-1", base, "readmit-synth-v1", "readmit-siu-v1"), seedRefusal},
+		"a seed past 2^64-1":       {declared("refused", "18446744073709551616", base, "readmit-synth-v1", "readmit-siu-v1"), seedRefusal},
+		"a fractional seed":        {declared("refused", "1.5", base, "readmit-synth-v1", "readmit-siu-v1"), seedRefusal},
+		"a base time with no zone": {declared("refused", "0", "2026-01-01T12:00:00", "readmit-synth-v1", "readmit-siu-v1"), operation.ErrBaseTime.Error()},
+		"a fractional base time":   {declared("refused", "0", "2026-01-01T12:00:00.5Z", "readmit-synth-v1", "readmit-siu-v1"), operation.ErrBaseTime.Error()},
+		"an unimplemented generator": {declared("refused", "0", base, "readmit-synth-v2", "readmit-siu-v1"),
+			"unsupported generator version; supported: readmit-synth-v1"},
+		"an unsupported profile": {declared("refused", "0", base, "readmit-synth-v1", "readmit-siu-v2"),
+			"unsupported profile version; supported: readmit-siu-v1"},
+		"no output": {declared("", "0", base, "readmit-synth-v1", "readmit-siu-v1"), "synth requires a new output directory name"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := app.GenerateSynth(tc.request); got.State != desktop.Failed || got.Reason != tc.reason || len(got.Variants) != 0 {
+				t.Fatalf("refusal: %+v, want %q", got, tc.reason)
+			}
+			if entries := entriesOf(t, root); len(entries) != 0 {
+				t.Fatalf("a refused generation wrote %v", entries)
+			}
+		})
+	}
+
+	largest := app.GenerateSynth(declared("largest", "18446744073709551615", "2026-01-01T12:00:00+02:00", "readmit-synth-v1", "readmit-siu-v1"))
+	if largest.State != desktop.Completed || len(largest.Variants) != 3 {
+		t.Fatalf("largest seed: %+v", largest)
+	}
+	var family synth.Manifest
+	if err := json.Unmarshal(mustRead(t, filepath.Join(root, "largest", "family.json")), &family, json.RejectUnknownMembers(true)); err != nil {
+		t.Fatal(err)
+	}
+	if family.Generator.Seed != ^uint64(0) || !family.Generator.BaseTime.Equal(time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)) {
+		t.Fatalf("the family records other inputs than were declared: %+v", family.Generator)
+	}
+	for i, variant := range largest.Variants {
+		recorded := family.Cases[i]
+		if variant.Variant != recorded.Variant || variant.Path != recorded.Path || variant.Identity != recorded.Identity || variant.KnownDefect != recorded.KnownDefect {
+			t.Fatalf("variant %d disagrees with the completion record: %+v vs %+v", i, variant, recorded)
+		}
+	}
+	if largest.Variants[2].Variant != "invalid" || largest.Variants[2].KnownDefect == "" {
+		t.Fatalf("the known-invalid case does not name its defect: %+v", largest.Variants)
+	}
+}
+
+// wideLibrary is the shipped cancel-then-book template regenerated as the
+// widest plan a library holds, eight rows by sixteen variants, with
+// expectations that pin it and cover only its first stream. A check of it
+// writes 128 synced streams before it compares anything, so it is still
+// regenerating when a person cancels it, and it can never pass.
+func wideLibrary(t *testing.T) (library, expectations string) {
+	t.Helper()
+	var shipped scenariolibrary.Library
+	if err := json.Unmarshal([]byte(fixture(t, "scenario-library.json")), &shipped); err != nil {
+		t.Fatal(err)
+	}
+	var plan map[string]jsontext.Value
+	if err := json.Unmarshal(shipped.Templates[0].Plan, &plan); err != nil {
+		t.Fatal(err)
+	}
+	var rows, variants []map[string]jsontext.Value
+	if err := json.Unmarshal(plan["rows"], &rows); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(plan["variants"], &variants); err != nil {
+		t.Fatal(err)
+	}
+	var wideRows, wideVariants []map[string]jsontext.Value
+	for i := range 8 {
+		row := maps.Clone(rows[0])
+		row["id"] = jsontext.Value(fmt.Sprintf(`"row-%d"`, i+1))
+		wideRows = append(wideRows, row)
+	}
+	for i := range 16 {
+		variant := maps.Clone(variants[0])
+		variant["id"] = jsontext.Value(fmt.Sprintf(`"variant-%d"`, i+1))
+		wideVariants = append(wideVariants, variant)
+	}
+	var err error
+	if plan["rows"], err = json.Marshal(wideRows); err != nil {
+		t.Fatal(err)
+	}
+	if plan["variants"], err = json.Marshal(wideVariants); err != nil {
+		t.Fatal(err)
+	}
+	wide := shipped.Templates[0]
+	wide.ID, wide.Coverage = "siu-cancel-book-wide", []string{"wide"}
+	if wide.Plan, err = json.Marshal(plan); err != nil {
+		t.Fatal(err)
+	}
+	digest, err := scenariolibrary.PlanDigest(wide.Plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(scenariolibrary.Library{Schema: shipped.Schema, Templates: []scenariolibrary.Template{wide}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var oracle scenariolibrary.Expectations
+	if err := json.Unmarshal([]byte(fixture(t, "scenario-expectations.json")), &oracle); err != nil {
+		t.Fatal(err)
+	}
+	oracle.Template, oracle.PlanSHA256, oracle.Streams = wide.ID, digest, oracle.Streams[:1]
+	pinned, err := json.Marshal(oracle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(encoded), string(pinned)
+}
+
+// A check cancelled while it regenerates stops there: it answers cancelled,
+// never passed or failed, and removes the private regeneration, and the next
+// check starts afresh. Cancel names the check, so it stops that and nothing
+// else.
+func TestCheckScenarioLibraryCancelledWhileRegeneratingRemovesItsStreams(t *testing.T) {
+	temporary := t.TempDir()
+	t.Setenv("TMPDIR", temporary)
+	app := workspaceApp(t)
+	root := t.TempDir()
+	library, expectations := wideLibrary(t)
+	writeDocument(t, root, "wide-library.json", library)
+	writeDocument(t, root, "wide-expectations.json", expectations)
+
+	answered := make(chan desktop.ScenarioLibraryResult, 1)
+	go func() {
+		answered <- app.CheckScenarioLibrary(desktop.ScenarioLibraryRequest{Workspace: root, Library: "wide-library.json", Expectations: "wide-expectations.json"})
+	}()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		streams, _ := filepath.Glob(filepath.Join(temporary, "readmit-library-*", "generation", "stream-*.mllp"))
+		if len(streams) > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the check never began regenerating")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	app.Cancel("another-operation")
+	app.Cancel("scenario-check")
+	cancelled := <-answered
+	if cancelled.State != desktop.Cancelled || cancelled.Streams != 0 || cancelled.Fields != 0 || cancelled.Target != "" {
+		t.Fatalf("cancelled check: %+v", cancelled)
+	}
+	if left := entriesOf(t, temporary); len(left) != 0 {
+		t.Fatalf("a cancelled check kept its private regeneration: %v", left)
+	}
+	if again := app.CheckScenarioLibrary(desktop.ScenarioLibraryRequest{Workspace: root, Library: "wide-library.json", Expectations: "wide-expectations.json"}); again.State != desktop.Failed ||
+		again.Reason != "oracle must cover every generated stream" {
+		t.Fatalf("a check after the cancelled one: %+v", again)
+	}
+	if left := entriesOf(t, temporary); len(left) != 0 {
+		t.Fatalf("a failed check kept its private regeneration: %v", left)
+	}
+}
+
+// Every library the window opens, saves, exports or imports is read by the
+// reader `readmit scenario check-library` uses, so the window never writes a
+// library the command refuses and refuses the others in the command's words,
+// with nothing written. A library or expectations document past the plan
+// bound but inside the command's 4 MiB is read, as the command reads it.
+func TestScenarioLibraryDocumentsAreHeldToTheCommandsReader(t *testing.T) {
+	app := workspaceApp(t)
+	root := t.TempDir()
+	plan := fixture(t, "scenario-generator.json")
+	writeDocument(t, root, "plan.json", plan)
+	saved := func(request desktop.ScenarioLibraryRequest) desktop.ScenarioLibraryResult {
+		request.Workspace, request.Plan = root, "plan.json"
+		if request.TemplateID == "" {
+			request.TemplateID = "siu-appointment-lifecycle"
+		}
+		if request.Profile == "" {
+			request.Profile = "readmit-siu-lifecycle-v1"
+		}
+		return app.SaveScenarioLibraryEntry(request)
+	}
+	for name, tc := range map[string]struct {
+		request desktop.ScenarioLibraryRequest
+		reason  string
+	}{
+		"a profile the plan does not preview on": {desktop.ScenarioLibraryRequest{Output: "refused.json", TemplateVer: "1", Profile: "readmit-adt-lifecycle-v1"},
+			"template profile differs from plan"},
+		"a template id outside the library's names": {desktop.ScenarioLibraryRequest{Output: "refused.json", TemplateID: "not an id", TemplateVer: "1"},
+			"invalid or duplicate template identity"},
+		"a repeated coverage tag": {desktop.ScenarioLibraryRequest{Output: "refused.json", TemplateVer: "1", Coverage: "baseline, baseline"},
+			"invalid or duplicate coverage tag"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := saved(tc.request); got.State != desktop.Failed || got.Reason != tc.reason {
+				t.Fatalf("save: %+v, want %q", got, tc.reason)
+			}
+			if _, err := os.Stat(filepath.Join(root, "refused.json")); !os.IsNotExist(err) {
+				t.Fatalf("a refused save wrote the library: %v", err)
+			}
+		})
+	}
+
+	// Sixteen revisions fill a library; the seventeenth is refused and the
+	// library keeps the sixteen it had.
+	for version := 1; version <= 16; version++ {
+		library := "full.json"
+		if version == 1 {
+			library = ""
+		}
+		if got := saved(desktop.ScenarioLibraryRequest{Library: library, Output: "full.json", TemplateVer: fmt.Sprint(version)}); got.State != desktop.Completed {
+			t.Fatalf("revision %d: %+v", version, got)
+		}
+	}
+	full := mustRead(t, filepath.Join(root, "full.json"))
+	if got := saved(desktop.ScenarioLibraryRequest{Library: "full.json", Output: "full.json", TemplateVer: "17"}); got.State != desktop.Failed || got.Reason != "library requires 1 to 16 templates" {
+		t.Fatalf("seventeenth revision: %+v", got)
+	}
+	if !bytes.Equal(mustRead(t, filepath.Join(root, "full.json")), full) {
+		t.Fatal("a refused seventeenth revision changed the library")
+	}
+
+	// A library the command refuses is refused on open, export and import,
+	// in the reader's words, and neither export nor import writes it.
+	var shipped scenariolibrary.Library
+	if err := json.Unmarshal([]byte(fixture(t, "scenario-library.json")), &shipped); err != nil {
+		t.Fatal(err)
+	}
+	shipped.Templates[0].Profile = "readmit-adt-lifecycle-v1"
+	falseProfile, err := json.Marshal(shipped)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeDocument(t, root, "false-profile.json", string(falseProfile))
+	outside := filepath.Join(t.TempDir(), "false-profile.json")
+	if err := os.WriteFile(outside, falseProfile, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for name, got := range map[string]desktop.ScenarioLibraryResult{
+		"open":   app.OpenScenarioLibrary(root, "false-profile.json"),
+		"export": app.ExportScenarioLibrary(desktop.ScenarioLibraryRequest{Workspace: root, Library: "false-profile.json", Output: "exported.json"}),
+		"import": app.ImportScenarioLibrary(desktop.ScenarioLibraryRequest{Workspace: root, Library: outside, Output: "imported.json"}),
+		"add to": saved(desktop.ScenarioLibraryRequest{Library: "false-profile.json", Output: "false-profile.json", TemplateVer: "1"}),
+	} {
+		if got.State != desktop.Failed || got.Reason != "template profile differs from plan" {
+			t.Errorf("%s a library the command refuses: %+v", name, got)
+		}
+	}
+	for _, name := range []string{"exported.json", "imported.json"} {
+		if _, err := os.Stat(filepath.Join(root, name)); !os.IsNotExist(err) {
+			t.Errorf("%s was written from a refused library: %v", name, err)
+		}
+	}
+	if !bytes.Equal(mustRead(t, filepath.Join(root, "false-profile.json")), falseProfile) {
+		t.Error("adding to a refused library changed it")
+	}
+
+	// The library to import comes from elsewhere on the machine and is named
+	// by its absolute path; a relative one is refused before it is read.
+	writeDocument(t, root, "shipped-library.json", fixture(t, "scenario-library.json"))
+	if got := app.ImportScenarioLibrary(desktop.ScenarioLibraryRequest{Workspace: root, Library: "shipped-library.json", Output: "imported.json"}); got.State != desktop.Failed ||
+		got.Reason != "the library to import is named by its absolute path" {
+		t.Fatalf("a relative import: %+v", got)
+	}
+
+	// Documents past the plan bound, inside the command's 4 MiB.
+	padding := strings.Repeat(" ", 300<<10)
+	writeDocument(t, root, "padded-library.json", fixture(t, "scenario-library.json")+padding)
+	writeDocument(t, root, "padded-expectations.json", fixture(t, "scenario-expectations.json")+padding)
+	checked := app.CheckScenarioLibrary(desktop.ScenarioLibraryRequest{Workspace: root, Library: "padded-library.json", Expectations: "padded-expectations.json"})
+	if checked.State != desktop.Completed || checked.Streams != 2 || checked.Fields != 11 || checked.Target != "unverified" {
+		t.Fatalf("a check of documents past the plan bound: %+v", checked)
+	}
+}
+
+// Binding reads the local profile with the reader every local profile is read
+// with and pins the lifecycle profile its message family selects. A profile
+// that reader refuses — an unsupported family among them — is refused in its
+// words and pins nothing; nothing is substituted for it.
+func TestBindScenarioProfileRefusesWhatTheLocalProfileReaderRefuses(t *testing.T) {
+	app := workspaceApp(t)
+	root := t.TempDir()
+	profile := fixture(t, "local-profile.json")
+	for name, document := range map[string]string{
+		"an unsupported family": strings.Replace(profile, `"family": "SIU"`, `"family": "MDM"`, 1),
+		"an unknown member":     strings.Replace(profile, `"profile": {`, `"unexpected": true, "profile": {`, 1),
+		"another schema":        strings.Replace(profile, `"readmit-local-profile/v1"`, `"readmit-local-profile/v2"`, 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if document == profile {
+				t.Fatal("the mutation did not apply")
+			}
+			writeDocument(t, root, "refused.json", document)
+			_, want := localprofile.Decode([]byte(document))
+			got := app.BindScenarioProfile(desktop.ScenarioProfileBindRequest{Workspace: root, Entry: "refused.json"})
+			if want == nil || got.State != desktop.Failed || got.Reason != want.Error() || got.LifecycleProfile != "" || got.Available {
+				t.Fatalf("bind: %+v, want the reader's %v", got, want)
+			}
+		})
+	}
+	for family, lifecycle := range map[string]string{
+		"ADT": "readmit-adt-lifecycle-v1", "SIU": "readmit-siu-lifecycle-v1",
+		"ORM": "readmit-orm-lifecycle-v1", "ORU": "readmit-oru-lifecycle-v1",
+	} {
+		document := strings.Replace(profile, `"family": "SIU"`, `"family": "`+family+`"`, 1)
+		decoded, err := localprofile.Decode([]byte(document))
+		if err != nil {
+			t.Fatalf("the %s profile: %v", family, err)
+		}
+		writeDocument(t, root, family+".json", document)
+		got := app.BindScenarioProfile(desktop.ScenarioProfileBindRequest{Workspace: root, Entry: family + ".json"})
+		if got.State != desktop.Completed || !got.Available || got.LifecycleProfile != lifecycle || got.Family != family ||
+			got.ProfileID != decoded.Identity.ID || got.ProfileVersion != decoded.Identity.Version || got.GeneratorVersion != "readmit-scenario-generator-v1" {
+			t.Fatalf("bind %s: %+v", family, got)
+		}
 	}
 }

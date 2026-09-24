@@ -2297,6 +2297,7 @@ export default function App() {
             workspace={root}
             drafts={drafts}
             busy={busy}
+            indicators={indicators}
             onOpenCase={(name) => {
               if (root) void verifyCase(root, name);
             }}

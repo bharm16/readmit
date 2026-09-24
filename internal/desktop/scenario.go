@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -213,22 +214,36 @@ func (r *ScenarioProfileBindResult) refuse(state State, reason string) {
 	r.State, r.Reason = state, reason
 }
 
-// SynthGenerateRequest writes the frozen SIU synthetic family from declared inputs.
+// SynthGenerateRequest writes the frozen SIU synthetic family from declared
+// inputs. The seed crosses the facade as the text a person typed and is read
+// as `readmit synth --seed` reads it, so every seed the command accepts, up to
+// 2^64-1, is one the window can declare exactly.
 type SynthGenerateRequest struct {
 	Workspace        string `json:"workspace"`
 	OutputName       string `json:"output_name"`
-	Seed             uint64 `json:"seed"`
+	Seed             string `json:"seed"`
 	BaseTime         string `json:"base_time"`
 	GeneratorVersion string `json:"generator_version"`
 	ProfileVersion   string `json:"profile_version"`
 }
 
-// SynthGenerateResult reports the written family and case paths.
+// SynthGenerateResult reports the written family and case paths, and each
+// case bundle's identity as `readmit synth` prints it.
 type SynthGenerateResult struct {
-	State      State    `json:"state"`
-	Reason     string   `json:"reason,omitzero"`
-	OutputPath string   `json:"output_path,omitzero"`
-	Cases      []string `json:"cases,omitzero"`
+	State      State              `json:"state"`
+	Reason     string             `json:"reason,omitzero"`
+	OutputPath string             `json:"output_path,omitzero"`
+	Cases      []string           `json:"cases,omitzero"`
+	Variants   []SynthVariantView `json:"variants,omitzero"`
+}
+
+// SynthVariantView is one case bundle of a written family, as the family's
+// readmit-synth/v1 completion record lists it.
+type SynthVariantView struct {
+	Variant     string `json:"variant"`
+	Path        string `json:"path"`
+	Identity    string `json:"identity"`
+	KnownDefect string `json:"known_defect,omitzero"`
 }
 
 func (r *SynthGenerateResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
@@ -280,7 +295,7 @@ func (a *App) BindScenarioProfile(request ScenarioProfileBindRequest) ScenarioPr
 // PreviewScenario walks a designed workflow through the shared engine.
 func (a *App) PreviewScenario(request ScenarioPreviewRequest) ScenarioPreviewResult {
 	return run(a, false, false, func(context.Context) ScenarioPreviewResult {
-		data, err := a.resolveScenarioDocument(request.Workspace, request.Document)
+		data, err := a.resolveScenarioDocument(request.Workspace, request.Document, scenariogen.MaxBytes)
 		if err != nil {
 			return ScenarioPreviewResult{State: Failed, Reason: err.Error()}
 		}
@@ -295,7 +310,7 @@ func (a *App) PreviewScenario(request ScenarioPreviewRequest) ScenarioPreviewRes
 // OpenScenario reads one scenario or order-scenario document from the workspace.
 func (a *App) OpenScenario(workspace, entry string) ScenarioDocumentResult {
 	return run(a, false, false, func(context.Context) ScenarioDocumentResult {
-		data, err := a.resolveScenarioDocument(workspace, entry)
+		data, err := a.resolveScenarioDocument(workspace, entry, scenariogen.MaxBytes)
 		if err != nil {
 			return ScenarioDocumentResult{State: Failed, Reason: err.Error()}
 		}
@@ -347,7 +362,7 @@ func (a *App) GenerateScenario(request ScenarioGenerateRequest) ScenarioGenerate
 		if artifactpath.EntryName(caseName) != nil {
 			return ScenarioGenerateResult{State: Failed, Reason: "case destination must be a new directory entry of the open workspace"}
 		}
-		data, err := a.resolveScenarioDocument(root, request.Document)
+		data, err := a.resolveScenarioDocument(root, request.Document, scenariogen.MaxBytes)
 		if err != nil {
 			data = []byte(request.Document)
 		}
@@ -441,7 +456,7 @@ func (a *App) GenerateScenario(request ScenarioGenerateRequest) ScenarioGenerate
 // OpenScenarioLibrary reads a reusable scenario library document.
 func (a *App) OpenScenarioLibrary(workspace, entry string) ScenarioLibraryResult {
 	return run(a, false, false, func(context.Context) ScenarioLibraryResult {
-		data, err := a.resolveScenarioDocument(workspace, entry)
+		data, err := a.resolveScenarioDocument(workspace, entry, scenariolibrary.MaxBytes)
 		if err != nil {
 			return ScenarioLibraryResult{State: Failed, Reason: err.Error()}
 		}
@@ -462,18 +477,20 @@ func (a *App) SaveScenarioLibraryEntry(request ScenarioLibraryRequest) ScenarioL
 		}
 		var library scenariolibrary.Library
 		if request.Library != "" {
-			existing, err := a.resolveScenarioDocument(root, request.Library)
+			existing, err := a.resolveScenarioDocument(root, request.Library, scenariolibrary.MaxBytes)
 			if err != nil {
 				return ScenarioLibraryResult{State: Failed, Reason: err.Error()}
 			}
-			if err := json.Unmarshal(existing, &library, json.RejectUnknownMembers(true)); err != nil {
-				return ScenarioLibraryResult{State: Failed, Reason: "invalid scenario library document"}
+			// The library is read by the reader `readmit scenario
+			// check-library` reads it with, and refused in its words.
+			if library, err = scenariolibrary.Decode(existing); err != nil {
+				return ScenarioLibraryResult{State: Failed, Reason: err.Error()}
 			}
 		} else {
 			library = scenariolibrary.Library{Schema: "readmit-scenario-library/v1"}
 		}
 		planData := []byte(request.Plan)
-		if decoded, err := a.resolveScenarioDocument(root, request.Plan); err == nil {
+		if decoded, err := a.resolveScenarioDocument(root, request.Plan, scenariogen.MaxBytes); err == nil {
 			planData = decoded
 		}
 		plan, err := scenariogen.Decode(planData)
@@ -513,6 +530,12 @@ func (a *App) SaveScenarioLibraryEntry(request ScenarioLibraryRequest) ScenarioL
 			return ScenarioLibraryResult{State: Failed, Reason: "cannot encode scenario library"}
 		}
 		out = append(out, '\n')
+		// Nothing is written that the command's reader would refuse: a
+		// template whose profile is not its plan's, an identity or coverage
+		// tag outside the library's names, or a seventeenth template.
+		if _, err := scenariolibrary.Decode(out); err != nil {
+			return ScenarioLibraryResult{State: Failed, Reason: err.Error()}
+		}
 		destination := request.Output
 		if destination == "" {
 			destination = request.Library
@@ -538,7 +561,7 @@ func (a *App) SaveScenarioLibraryEntry(request ScenarioLibraryRequest) ScenarioL
 // string for this read-only comparison (not an expectations document path).
 func (a *App) CompareScenarioLibraryEntries(request ScenarioLibraryRequest) ScenarioLibraryResult {
 	return run(a, false, false, func(context.Context) ScenarioLibraryResult {
-		data, err := a.resolveScenarioDocument(request.Workspace, request.Library)
+		data, err := a.resolveScenarioDocument(request.Workspace, request.Library, scenariolibrary.MaxBytes)
 		if err != nil {
 			return ScenarioLibraryResult{State: Failed, Reason: err.Error()}
 		}
@@ -573,21 +596,28 @@ func (a *App) CompareScenarioLibraryEntries(request ScenarioLibraryRequest) Scen
 	})
 }
 
-// CheckScenarioLibrary runs independent fixture expectations against a library pin.
+// scenarioCheckOperation names a fixture check while it holds the slot, so
+// the scenario panel's Cancel stops the check it started and nothing else.
+const scenarioCheckOperation = "scenario-check"
+
+// CheckScenarioLibrary is `readmit scenario check-library`: it reads the
+// library and the independent expectations under the command's 4 MiB bound
+// and runs scenariolibrary.Check on them. It is interruptible; a cancelled
+// check removes its private regeneration and passes nothing.
 func (a *App) CheckScenarioLibrary(request ScenarioLibraryRequest) ScenarioLibraryResult {
-	return run(a, true, false, func(ctx context.Context) ScenarioLibraryResult {
-		library, err := a.resolveScenarioDocument(request.Workspace, request.Library)
+	return runNamed[ScenarioLibraryResult, *ScenarioLibraryResult](a, scenarioCheckOperation, true, false, func(ctx context.Context) ScenarioLibraryResult {
+		library, err := a.resolveScenarioDocument(request.Workspace, request.Library, scenariolibrary.MaxBytes)
 		if err != nil {
 			return ScenarioLibraryResult{State: Failed, Reason: err.Error()}
 		}
-		expectations, err := a.resolveScenarioDocument(request.Workspace, request.Expectations)
+		expectations, err := a.resolveScenarioDocument(request.Workspace, request.Expectations, scenariolibrary.MaxBytes)
 		if err != nil {
 			return ScenarioLibraryResult{State: Failed, Reason: err.Error()}
 		}
 		result, err := scenariolibrary.Check(ctx, library, expectations)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
-				return ScenarioLibraryResult{State: Cancelled, Reason: cancelledRefusal.reason}
+				return ScenarioLibraryResult{State: Cancelled, Reason: "the fixture check was cancelled before it finished; its private regeneration was removed and it passed nothing"}
 			}
 			return ScenarioLibraryResult{State: Failed, Reason: err.Error()}
 		}
@@ -607,9 +637,15 @@ func (a *App) ExportScenarioLibrary(request ScenarioLibraryRequest) ScenarioLibr
 		if root == "" {
 			return ScenarioLibraryResult{State: declined.state, Reason: declined.reason}
 		}
-		data, err := a.resolveScenarioDocument(root, request.Library)
+		data, err := a.resolveScenarioDocument(root, request.Library, scenariolibrary.MaxBytes)
 		if err != nil {
 			return ScenarioLibraryResult{State: Failed, Reason: err.Error()}
+		}
+		// A library the reader refuses is refused before anything is
+		// written, so an export is always a library the command reads.
+		presented := presentLibrary(data)
+		if presented.State != Completed {
+			return presented
 		}
 		if request.Output == "" {
 			return ScenarioLibraryResult{State: Failed, Reason: "export requires a new destination entry"}
@@ -620,7 +656,6 @@ func (a *App) ExportScenarioLibrary(request ScenarioLibraryRequest) ScenarioLibr
 			}
 			return ScenarioLibraryResult{State: Failed, Reason: err.Error()}
 		}
-		presented := presentLibrary(data)
 		presented.Output = request.Output
 		return presented
 	})
@@ -633,6 +668,12 @@ func (a *App) ImportScenarioLibrary(request ScenarioLibraryRequest) ScenarioLibr
 		root, declined := resolveFolder(request.Workspace)
 		if root == "" {
 			return ScenarioLibraryResult{State: declined.state, Reason: declined.reason}
+		}
+		// The library comes from elsewhere on the machine, so it is named by
+		// its absolute path; a relative one would be read from wherever the
+		// application happened to start.
+		if !filepath.IsAbs(request.Library) {
+			return ScenarioLibraryResult{State: Failed, Reason: "the library to import is named by its absolute path"}
 		}
 		data, err := readChosenFile(request.Library, scenariolibrary.MaxBytes)
 		if err != nil {
@@ -666,9 +707,17 @@ func (a *App) GenerateSynth(request SynthGenerateRequest) SynthGenerateResult {
 		if root == "" {
 			return SynthGenerateResult{State: declined.state, Reason: declined.reason}
 		}
-		baseTime, err := time.Parse(time.RFC3339, request.BaseTime)
+		// The command reads --seed as its flag library reads every unsigned
+		// number and --base-time through the shared declaration, so one
+		// spelling is one input in both places and is refused in the same
+		// words.
+		seed, err := strconv.ParseUint(request.Seed, 0, 64)
 		if err != nil {
-			return SynthGenerateResult{State: Failed, Reason: "base time must be an RFC 3339 instant"}
+			return SynthGenerateResult{State: Failed, Reason: "the seed must be a whole number from 0 to " + strconv.FormatUint(^uint64(0), 10)}
+		}
+		baseTime, err := operation.DeclaredBaseTime(request.BaseTime)
+		if err != nil {
+			return SynthGenerateResult{State: Failed, Reason: err.Error()}
 		}
 		if request.OutputName == "" {
 			return SynthGenerateResult{State: Failed, Reason: "synth requires a new output directory name"}
@@ -684,8 +733,8 @@ func (a *App) GenerateSynth(request SynthGenerateRequest) SynthGenerateResult {
 			return SynthGenerateResult{State: Cancelled, Reason: cancelledRefusal.reason}
 		}
 		manifest, err := synth.Write(outputPath, bundle.GeneratorInputs{
-			Seed:             request.Seed,
-			BaseTime:         baseTime.UTC(),
+			Seed:             seed,
+			BaseTime:         baseTime,
 			GeneratorVersion: request.GeneratorVersion,
 			ProfileVersion:   request.ProfileVersion,
 		})
@@ -696,10 +745,12 @@ func (a *App) GenerateSynth(request SynthGenerateRequest) SynthGenerateResult {
 			return SynthGenerateResult{State: Failed, Reason: err.Error()}
 		}
 		cases := make([]string, 0, len(manifest.Cases))
+		variants := make([]SynthVariantView, 0, len(manifest.Cases))
 		for _, item := range manifest.Cases {
 			cases = append(cases, item.Path)
+			variants = append(variants, SynthVariantView{Variant: item.Variant, Path: item.Path, Identity: item.Identity, KnownDefect: item.KnownDefect})
 		}
-		return SynthGenerateResult{State: Completed, OutputPath: outputPath, Cases: cases}
+		return SynthGenerateResult{State: Completed, OutputPath: outputPath, Cases: cases, Variants: variants}
 	})
 }
 
@@ -718,7 +769,11 @@ func lifecycleForFamily(family string) (scenario.ProfileName, bool) {
 	}
 }
 
-func (a *App) resolveScenarioDocument(workspace, fileOrDoc string) ([]byte, error) {
+// resolveScenarioDocument reads a document given inline, by absolute path or
+// as one entry of the workspace. An entry is held to the bound its caller
+// names: a scenario or plan to the generator's, a library or expectations
+// document to the 4 MiB the command's library reader accepts.
+func (a *App) resolveScenarioDocument(workspace, fileOrDoc string, limit int) ([]byte, error) {
 	trimmed := strings.TrimSpace(fileOrDoc)
 	if trimmed == "" {
 		return nil, errors.New("a scenario document is required")
@@ -742,7 +797,7 @@ func (a *App) resolveScenarioDocument(workspace, fileOrDoc string) ([]byte, erro
 	if root == "" {
 		return nil, errors.New(declined.reason)
 	}
-	data, refused := workspaceDocument(root, trimmed, scenariogen.MaxBytes, "the scenario document")
+	data, refused := workspaceDocument(root, trimmed, limit, "the scenario document")
 	if data == nil {
 		return nil, errors.New(refused.reason)
 	}
@@ -828,13 +883,13 @@ func presentScenarioDocument(data []byte) ScenarioDocumentResult {
 	}
 }
 
+// presentLibrary reads a library with the reader `readmit scenario
+// check-library` uses, so the window opens, exports and imports exactly the
+// libraries the command reads and refuses the rest in the command's words.
 func presentLibrary(data []byte) ScenarioLibraryResult {
-	var library scenariolibrary.Library
-	if err := json.Unmarshal(data, &library, json.RejectUnknownMembers(true)); err != nil {
-		return ScenarioLibraryResult{State: Failed, Reason: "invalid scenario library document"}
-	}
-	if library.Schema != "readmit-scenario-library/v1" {
-		return ScenarioLibraryResult{State: Failed, Reason: "unsupported library schema"}
+	library, err := scenariolibrary.Decode(data)
+	if err != nil {
+		return ScenarioLibraryResult{State: Failed, Reason: err.Error()}
 	}
 	views := make([]ScenarioLibraryTemplateView, 0, len(library.Templates))
 	for _, template := range library.Templates {

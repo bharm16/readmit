@@ -1653,7 +1653,9 @@
       "inputs": ["readmit-scenario-library/v1", "readmit-scenario-expectations/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/scenarios.journey.tsx", "name": "library templates are saved, versioned, compared, checked, exported and imported in the window, and scenario check-library reads every library the window wrote as the window did"},
+      "parity_test": {"package": "tests", "name": "TestDesktopScenarioLibraryCheckMatchesTheCommandLine"},
+      "implemented": true
     },
     {
       "id": "cli.scenario.generate",
@@ -1983,7 +1985,9 @@
       "inputs": [],
       "outputs": ["readmit-synth/v1", "readmit-case/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/scenarios.journey.tsx", "name": "SIU fixtures generated in the window are the command line's family byte for byte, and a base time the command refuses or an existing family is refused in its words"},
+      "parity_test": {"package": "tests", "name": "TestDesktopSynthMatchesTheCommandLine"},
+      "implemented": true
     },
     {
       "id": "cli.target.check",
@@ -2151,7 +2155,9 @@
       "inputs": ["readmit-local-profile/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/scenarios.journey.tsx", "name": "a scenario is bound to a local profile, refused an unsupported one, saved, refused an overwrite and reopened in the window, and the command line previews what it saved"},
+      "parity_test": {"package": "internal/desktop", "name": "TestBindScenarioProfileRefusesWhatTheLocalProfileReaderRefuses"},
+      "implemented": true
     },
     {
       "id": "desktop.Cancel",
@@ -2181,7 +2187,9 @@
       "inputs": ["readmit-scenario-library/v1", "readmit-scenario-expectations/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/scenarios.journey.tsx", "name": "library templates are saved, versioned, compared, checked, exported and imported in the window, and scenario check-library reads every library the window wrote as the window did"},
+      "parity_test": {"package": "tests", "name": "TestDesktopScenarioLibraryCheckMatchesTheCommandLine"},
+      "implemented": true
     },
     {
       "id": "desktop.CheckStagedUpgrade",
@@ -2239,7 +2247,9 @@
       "inputs": ["readmit-scenario-library/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/scenarios.journey.tsx", "name": "library templates are saved, versioned, compared, checked, exported and imported in the window, and scenario check-library reads every library the window wrote as the window did"},
+      "parity_test": {"package": "tests", "name": "TestDesktopScenarioLibrariesAreTheCommandLinesLibraries"},
+      "implemented": true
     },
     {
       "id": "desktop.CreateProjectBackup",
@@ -2265,11 +2275,13 @@
       "owner": "bharm16/readmit#299",
       "screen": "the synthetic scenario panel of the inspector region",
       "action": "export a scenario library to a new destination",
-      "backend": {"package": "internal/scenariolibrary", "name": "PlanDigest"},
+      "backend": {"package": "internal/scenariolibrary", "name": "Decode"},
       "inputs": ["readmit-scenario-library/v1"],
       "outputs": ["readmit-scenario-library/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/scenarios.journey.tsx", "name": "library templates are saved, versioned, compared, checked, exported and imported in the window, and scenario check-library reads every library the window wrote as the window did"},
+      "parity_test": {"package": "tests", "name": "TestDesktopScenarioLibrariesAreTheCommandLinesLibraries"},
+      "implemented": true
     },
     {
       "id": "desktop.GenerateScenario",
@@ -2299,7 +2311,9 @@
       "inputs": [],
       "outputs": ["readmit-synth/v1", "readmit-case/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/scenarios.journey.tsx", "name": "SIU fixtures generated in the window are the command line's family byte for byte, and a base time the command refuses or an existing family is refused in its words"},
+      "parity_test": {"package": "tests", "name": "TestDesktopSynthMatchesTheCommandLine"},
+      "implemented": true
     },
     {
       "id": "desktop.ImportScenarioLibrary",
@@ -2309,11 +2323,13 @@
       "owner": "bharm16/readmit#299",
       "screen": "the synthetic scenario panel of the inspector region",
       "action": "import a scenario library into a new workspace entry",
-      "backend": {"package": "internal/scenariolibrary", "name": "PlanDigest"},
+      "backend": {"package": "internal/scenariolibrary", "name": "Decode"},
       "inputs": ["readmit-scenario-library/v1"],
       "outputs": ["readmit-scenario-library/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/scenarios.journey.tsx", "name": "library templates are saved, versioned, compared, checked, exported and imported in the window, and scenario check-library reads every library the window wrote as the window did"},
+      "parity_test": {"package": "tests", "name": "TestDesktopScenarioLibrariesAreTheCommandLinesLibraries"},
+      "implemented": true
     },
     {
       "id": "desktop.InspectProjectQuota",
@@ -2343,7 +2359,9 @@
       "inputs": ["readmit-scenario/v1", "readmit-order-scenario/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/scenarios.journey.tsx", "name": "a scenario is bound to a local profile, refused an unsupported one, saved, refused an overwrite and reopened in the window, and the command line previews what it saved"},
+      "parity_test": {"package": "tests", "name": "TestDesktopScenarioDocumentsMatchTheCommandLine"},
+      "implemented": true
     },
     {
       "id": "desktop.OpenScenarioLibrary",
@@ -2353,11 +2371,13 @@
       "owner": "bharm16/readmit#299",
       "screen": "the synthetic scenario panel of the inspector region",
       "action": "open a reusable scenario library document",
-      "backend": {"package": "internal/scenariolibrary", "name": "PlanDigest"},
+      "backend": {"package": "internal/scenariolibrary", "name": "Decode"},
       "inputs": ["readmit-scenario-library/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/scenarios.journey.tsx", "name": "library templates are saved, versioned, compared, checked, exported and imported in the window, and scenario check-library reads every library the window wrote as the window did"},
+      "parity_test": {"package": "tests", "name": "TestDesktopScenarioLibrariesAreTheCommandLinesLibraries"},
+      "implemented": true
     },
     {
       "id": "desktop.PrepareStagedUpgrade",
@@ -2575,7 +2595,9 @@
       "inputs": ["readmit-scenario/v1", "readmit-order-scenario/v1"],
       "outputs": ["readmit-scenario/v1", "readmit-order-scenario/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/scenarios.journey.tsx", "name": "a scenario is bound to a local profile, refused an unsupported one, saved, refused an overwrite and reopened in the window, and the command line previews what it saved"},
+      "parity_test": {"package": "tests", "name": "TestDesktopScenarioDocumentsMatchTheCommandLine"},
+      "implemented": true
     },
     {
       "id": "desktop.SaveScenarioLibraryEntry",
@@ -2585,11 +2607,13 @@
       "owner": "bharm16/readmit#299",
       "screen": "the synthetic scenario panel of the inspector region",
       "action": "save or version a library template without overwriting another revision",
-      "backend": {"package": "internal/scenariolibrary", "name": "PlanDigest"},
+      "backend": {"package": "internal/scenariolibrary", "name": "Decode"},
       "inputs": ["readmit-scenario-library/v1", "readmit-scenario-generator/v1"],
       "outputs": ["readmit-scenario-library/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/scenarios.journey.tsx", "name": "library templates are saved, versioned, compared, checked, exported and imported in the window, and scenario check-library reads every library the window wrote as the window did"},
+      "parity_test": {"package": "tests", "name": "TestDesktopScenarioLibrariesAreTheCommandLinesLibraries"},
+      "implemented": true
     },
     {
       "id": "desktop.ScenarioCatalog",

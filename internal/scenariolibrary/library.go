@@ -164,6 +164,74 @@ type selection struct {
 	Digest   string
 }
 
+// Decode reads a readmit-scenario-library/v1 document on its own, as Check
+// reads the library it is given: bounded, every member present and none
+// unknown, and every template held to the library rules — its identity, its
+// coverage tags, a valid plan and the profile that plan actually previews on.
+// A library Decode accepts is one Check accepts; which template an oracle
+// selects, and whether it pins that template's plan, is Check's to decide.
+func Decode(data []byte) (Library, error) {
+	var l Library
+	if len(data) > MaxBytes {
+		return Library{}, errors.New("library document exceeds 4 MiB")
+	}
+	if err := strict(data, &l, "schema", "templates"); err != nil {
+		return Library{}, err
+	}
+	if l.Schema != "readmit-scenario-library/v1" {
+		return Library{}, errors.New("unsupported library schema")
+	}
+	if _, err := validTemplates(l); err != nil {
+		return Library{}, err
+	}
+	return l, nil
+}
+
+// validatedTemplate is one template the library rules accept, with its
+// decoded plan and the lifecycle that plan previews.
+type validatedTemplate struct {
+	template Template
+	plan     scenariogen.Plan
+	timeline scenario.Timeline
+}
+
+// validTemplates holds every template of a library to the library rules, in
+// order, and stops at the first it refuses.
+func validTemplates(l Library) ([]validatedTemplate, error) {
+	if len(l.Templates) < 1 || len(l.Templates) > 16 {
+		return nil, errors.New("library requires 1 to 16 templates")
+	}
+	seen := map[string]bool{}
+	accepted := make([]validatedTemplate, 0, len(l.Templates))
+	for _, t := range l.Templates {
+		key := t.ID + "/" + t.Version
+		if !name.MatchString(t.ID) || !name.MatchString(t.Version) || seen[key] {
+			return nil, errors.New("invalid or duplicate template identity")
+		}
+		seen[key] = true
+		if len(t.Coverage) < 1 || len(t.Coverage) > 32 {
+			return nil, errors.New("template requires bounded coverage tags")
+		}
+		tags := map[string]bool{}
+		for _, tag := range t.Coverage {
+			if !name.MatchString(tag) || tags[tag] {
+				return nil, errors.New("invalid or duplicate coverage tag")
+			}
+			tags[tag] = true
+		}
+		p, err := scenariogen.Decode(t.Plan)
+		if err != nil {
+			return nil, errors.New("invalid library generator plan")
+		}
+		timeline, err := scenario.PreviewDocument(p.Template)
+		if err != nil || string(timeline.Profile) != t.Profile {
+			return nil, errors.New("template profile differs from plan")
+		}
+		accepted = append(accepted, validatedTemplate{template: t, plan: p, timeline: timeline})
+	}
+	return accepted, nil
+}
+
 func read(library, oracle []byte) (selection, Expectations, error) {
 	var l Library
 	var e Expectations
@@ -183,41 +251,18 @@ func read(library, oracle []byte) (selection, Expectations, error) {
 	if !name.MatchString(e.ID) || !name.MatchString(e.Version) || !name.MatchString(e.Template) || !name.MatchString(e.TemplateVersion) || len(e.Provenance) == 0 || len(e.Provenance) > 1024 {
 		return fail("invalid expectation identity or provenance")
 	}
-	if len(l.Templates) < 1 || len(l.Templates) > 16 {
-		return fail("library requires 1 to 16 templates")
+	templates, err := validTemplates(l)
+	if err != nil {
+		return fail(err.Error())
 	}
-	seen := map[string]bool{}
 	var selected selection
-	for _, t := range l.Templates {
-		key := t.ID + "/" + t.Version
-		if !name.MatchString(t.ID) || !name.MatchString(t.Version) || seen[key] {
-			return fail("invalid or duplicate template identity")
-		}
-		seen[key] = true
-		if len(t.Coverage) < 1 || len(t.Coverage) > 32 {
-			return fail("template requires bounded coverage tags")
-		}
-		tags := map[string]bool{}
-		for _, tag := range t.Coverage {
-			if !name.MatchString(tag) || tags[tag] {
-				return fail("invalid or duplicate coverage tag")
-			}
-			tags[tag] = true
-		}
-		p, err := scenariogen.Decode(t.Plan)
-		if err != nil {
-			return fail("invalid library generator plan")
-		}
-		timeline, err := scenario.PreviewDocument(p.Template)
-		if err != nil || string(timeline.Profile) != t.Profile {
-			return fail("template profile differs from plan")
-		}
-		if t.ID == e.Template && t.Version == e.TemplateVersion {
-			digest, err := digestPlan(p)
+	for _, t := range templates {
+		if t.template.ID == e.Template && t.template.Version == e.TemplateVersion {
+			digest, err := digestPlan(t.plan)
 			if err != nil {
 				return fail(err.Error())
 			}
-			selected = selection{Template: t, Timeline: timeline, Digest: digest}
+			selected = selection{Template: t.template, Timeline: t.timeline, Digest: digest}
 		}
 	}
 	if selected.Template.ID == "" {
