@@ -2,10 +2,8 @@ package sendpolicy
 
 import (
 	"errors"
-	"os"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
-	"github.com/bharm16/readmit/internal/artifactpath"
 )
 
 // WriteDecision retains a decision in a new, owner-only file outside evidence.
@@ -23,21 +21,17 @@ func WriteDecisionWithDurability(path string, decision Decision, durability arti
 	if err != nil {
 		return err
 	}
-	destination, err := artifactpath.Destination(path)
-	if err != nil {
-		return err
-	}
-	file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return errors.New("cannot create the policy decision file")
-	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = durability.Sync(file)
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		return errors.New("cannot write the policy decision")
-	}
-	return nil
+	document := decisionFile
+	document.Durability = durability
+	return document.Create(path, data)
+}
+
+// decisionFile is how a policy decision is created, through the shared
+// document store. A decision whose write failed is retained incomplete.
+var decisionFile = artifactdir.Document{
+	RetainFailed: true,
+	Errors: artifactdir.DocumentErrors{
+		Create: errors.New("cannot create the policy decision file"),
+		Write:  errors.New("cannot write the policy decision"),
+	},
 }

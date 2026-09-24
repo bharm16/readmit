@@ -2,9 +2,8 @@ package index
 
 import (
 	"errors"
-	"io"
-	"os"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 )
 
@@ -26,42 +25,36 @@ func Write(destination string, document Document) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return "", errors.New("cannot create index; destination must be new and parent writable")
-	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		os.Remove(path)
-		return "", errors.New("cannot write index")
+	if err := indexFile.Create(path, data); err != nil {
+		return "", err
 	}
 	return path, nil
+}
+
+// indexFile is how an index is created and read, through the shared document
+// store. A read follows a link at its name.
+var indexFile = artifactdir.Document{
+	MaxBytes: MaxIndexBytes,
+	Links:    artifactdir.FollowLinks,
+	Refusals: artifactdir.DocumentRefusals{
+		Irregular: errors.New("an index must be a readable regular file"),
+		Open:      errors.New("cannot open index"),
+		Changed:   errors.New("an index must be a regular file"),
+		Read:      errors.New("cannot read index"),
+		Size:      errors.New("index exceeds its size limit"),
+	},
+	Errors: artifactdir.DocumentErrors{
+		Create: errors.New("cannot create index; destination must be new and parent writable"),
+		Write:  errors.New("cannot write index"),
+	},
 }
 
 // Open reads one bounded, regular index file. A file past the size limit is
 // refused before it is decoded rather than read into memory first.
 func Open(path string) (Document, error) {
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return Document{}, errors.New("an index must be a readable regular file")
-	}
-	file, err := os.Open(path)
+	data, err := indexFile.Read(path)
 	if err != nil {
-		return Document{}, errors.New("cannot open index")
-	}
-	opened, statErr := file.Stat()
-	if statErr != nil || !opened.Mode().IsRegular() {
-		file.Close()
-		return Document{}, errors.New("an index must be a regular file")
-	}
-	data, readErr := io.ReadAll(io.LimitReader(file, MaxIndexBytes+1))
-	closeErr := file.Close()
-	if readErr != nil || closeErr != nil {
-		return Document{}, errors.New("cannot read index")
+		return Document{}, err
 	}
 	return Decode(data)
 }

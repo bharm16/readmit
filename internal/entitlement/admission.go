@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 )
 
@@ -286,20 +287,15 @@ func (a *Admissions) settle(instance string, apply func(*Admission) error) error
 // A refused decision leaves the file untouched. An interrupted update is
 // retained and reported rather than overwritten, as the entitlement store's is.
 func (a *Admissions) update(apply func(*AdmissionRecord) error) error {
-	incomplete, err := artifactpath.Destination(a.Path + incompleteSuffix)
-	if err != nil {
-		return err
-	}
-	file, err := os.OpenFile(incomplete, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	replacement, err := admissionFile.Begin(a.Path)
 	if errors.Is(err, fs.ErrExist) {
 		return ErrAdmissionUpdate
 	}
 	if err != nil {
-		return errors.New("cannot create the admission record update")
+		return err
 	}
 	abandon := func(err error) error {
-		file.Close()
-		os.Remove(incomplete)
+		replacement.Abandon()
 		return err
 	}
 	current, err := readAdmissions(a.Path)
@@ -324,21 +320,37 @@ func (a *Admissions) update(apply func(*AdmissionRecord) error) error {
 	if err != nil {
 		return abandon(err)
 	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
+	if err := replacement.Write(data); err != nil {
+		return abandon(err)
 	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		os.Remove(incomplete)
-		return errors.New("cannot write the admission record")
+	if err := replacement.Commit(); err != nil {
+		replacement.Abandon()
+		if errors.Is(err, errAdmissionUnsynced) {
+			// The record on disk is the new one; only its durability is
+			// unconfirmed, so the handle holds what is there.
+			a.Record = record
+		}
+		return err
 	}
-	if err := os.Rename(incomplete, a.Path); err != nil {
-		os.Remove(incomplete)
-		return errors.New("cannot replace the admission record")
-	}
+	replacement.Close()
 	a.Record = record
 	return nil
+}
+
+// errAdmissionUnsynced is an admission record replaced in full whose folder
+// could not be synced afterwards.
+var errAdmissionUnsynced = errors.New("the admission record was replaced but could not be confirmed against a power loss")
+
+// admissionFile is how an admission record is replaced: its update is created
+// exclusively beside it first, so a second updater is refused until this one
+// is renamed into place.
+var admissionFile = artifactdir.Document{
+	Errors: artifactdir.DocumentErrors{
+		Create:  errors.New("cannot create the admission record update"),
+		Write:   errors.New("cannot write the admission record"),
+		Install: errors.New("cannot replace the admission record"),
+		Sync:    errAdmissionUnsynced,
+	},
 }
 
 func capacity(record AdmissionRecord, grant GrantV2, at time.Time) (Capacity, error) {

@@ -2,11 +2,11 @@ package entitlement
 
 import (
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 )
 
@@ -23,8 +23,6 @@ const (
 	// ActivationName holds what this installation decided locally: which device
 	// it activated as, when, and whether it has since released that activation.
 	ActivationName = "activation.json"
-
-	incompleteSuffix = ".incomplete"
 )
 
 // Activation is the local half of an entitlement. It records no evidence, no
@@ -231,73 +229,54 @@ func validateActivation(activation Activation) error {
 	return nil
 }
 
-// write owns exclusive creation: an entitlement file never overwrites one, and
-// a failed write leaves nothing behind for a later one to mistake for evidence
-// of an interrupted replacement.
-func write(path string, data []byte) error {
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return errors.New("cannot create the entitlement file; one of that name is already there and is never replaced")
-	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		os.Remove(path)
-		return errors.New("cannot write the entitlement file")
-	}
-	return nil
-}
-
-// create reserves one new file and writes it. The reservation is resolved
-// before the write and the resolved path is the one actually created, so an
-// alias in the named path cannot place a file somewhere else. It is the one
-// writer every entitlement file goes through.
+// create reserves one new file and writes it through the shared document
+// store: an entitlement file never overwrites one, and a failed write leaves
+// nothing behind for a later one to mistake for evidence of an interrupted
+// replacement. The reservation is resolved before the write and the resolved
+// path is the one actually created, so an alias in the named path cannot place
+// a file somewhere else. It is the one writer every entitlement file goes
+// through.
 func create(destination string, data []byte) (string, error) {
 	path, err := artifactpath.Destination(destination)
 	if err != nil {
 		return "", err
 	}
-	if err := write(path, data); err != nil {
+	if err := storeFile.Create(path, data); err != nil {
 		return "", err
 	}
 	return path, nil
 }
 
-// install replaces one file of the store atomically: it is written in full
-// beside the one already there and renamed over it, so a reader never observes
-// a partial file and a failed write leaves the previous one exactly as it was.
-// The incomplete file must not exist, so an interrupted write is retained and
-// reported rather than overwritten, and the location is reserved again in case
-// the store has since been moved inside retained evidence.
+// install replaces one file of the store atomically through the shared
+// document store: it is written in full beside the one already there and
+// renamed over it, so a reader never observes a partial file and a failed
+// write leaves the previous one exactly as it was. The incomplete file must not
+// exist, so an interrupted write is retained and reported rather than
+// overwritten, and the location is reserved again in case the store has since
+// been moved inside retained evidence.
 func install(root, name string, data []byte) error {
-	incomplete, err := create(filepath.Join(root, name+incompleteSuffix), data)
-	if err != nil {
-		return err
-	}
-	if err := os.Rename(incomplete, filepath.Join(filepath.Dir(incomplete), name)); err != nil {
-		os.Remove(incomplete)
-		return errors.New("cannot replace the entitlement file")
-	}
-	return nil
+	return storeFile.Replace(filepath.Join(root, name), data)
 }
 
 func read(root *os.Root, name string) ([]byte, error) {
-	file, err := root.Open(name)
-	if err != nil {
-		return nil, errors.New("entitlement store is missing a required file")
-	}
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		file.Close()
-		return nil, errors.New("entitlement store files must be regular files")
-	}
-	data, readErr := io.ReadAll(io.LimitReader(file, MaxDocumentBytes+1))
-	closeErr := file.Close()
-	if readErr != nil || closeErr != nil || len(data) > MaxDocumentBytes {
-		return nil, errors.New("cannot read entitlement store file")
-	}
-	return data, nil
+	return storeFile.ReadIn(root, name)
+}
+
+// storeFile is how every file of an entitlement store is written and read,
+// and how an admission record is created and read. A read follows a link only
+// within the store's own folder.
+var storeFile = artifactdir.Document{
+	MaxBytes: MaxDocumentBytes,
+	Links:    artifactdir.FollowLinks,
+	Errors: artifactdir.DocumentErrors{
+		Create:  errors.New("cannot create the entitlement file; one of that name is already there and is never replaced"),
+		Write:   errors.New("cannot write the entitlement file"),
+		Install: errors.New("cannot replace the entitlement file"),
+	},
+	Refusals: artifactdir.DocumentRefusals{
+		Inspect:   errors.New("entitlement store is missing a required file"),
+		Irregular: errors.New("entitlement store files must be regular files"),
+		Open:      errors.New("entitlement store is missing a required file"),
+		Read:      errors.New("cannot read entitlement store file"),
+	},
 }

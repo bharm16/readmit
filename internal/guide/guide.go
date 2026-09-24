@@ -33,6 +33,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/index"
@@ -557,17 +558,11 @@ func write(dir, name string, value any) error {
 // the expected values somebody typed, which are the same local literals the
 // evidence beside them holds.
 func writeNew(destination string, data []byte) error {
-	file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return ErrCannotWrite
-	}
-	_, err = file.Write(data)
-	if err == nil {
-		err = file.Sync()
-	}
-	if closeErr := file.Close(); err != nil || closeErr != nil {
-		os.Remove(destination)
-		return ErrCannotWrite
-	}
-	return nil
+	return practiceFile.Create(destination, data)
+}
+
+// practiceFile is how a practice run's configuration is created, through the
+// shared document store.
+var practiceFile = artifactdir.Document{
+	Errors: artifactdir.DocumentErrors{Destination: ErrCannotWrite, Create: ErrCannotWrite, Write: ErrCannotWrite},
 }

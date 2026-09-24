@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
-	"io"
 	"os"
 	"slices"
 	"strings"
@@ -24,24 +23,20 @@ func encode(value any) ([]byte, error) {
 }
 
 func readLocal(path string, limit int) ([]byte, error) {
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > int64(limit) {
-		return nil, errors.New("redaction input must be a bounded regular file, without symlinks")
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, errors.New("cannot read redaction input")
-	}
-	defer file.Close()
-	info, err = file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("redaction input must be regular")
-	}
-	raw, err := io.ReadAll(io.LimitReader(file, int64(limit)+1))
-	if err != nil || len(raw) > limit {
-		return nil, errors.New("redaction input exceeds read limit")
-	}
-	return raw, nil
+	input := redactionInput
+	input.MaxBytes = limit
+	return input.Read(path)
+}
+
+// redactionInput is how a redaction input is read: never through a link.
+var redactionInput = artifactdir.Document{
+	Refusals: artifactdir.DocumentRefusals{
+		Irregular: errors.New("redaction input must be a bounded regular file, without symlinks"),
+		Open:      errors.New("cannot read redaction input"),
+		Changed:   errors.New("redaction input must be regular"),
+		Read:      errors.New("redaction input exceeds read limit"),
+		Size:      errors.New("redaction input must be a bounded regular file, without symlinks"),
+	},
 }
 
 func destination(path string, protected []string) (string, error) {

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 )
 
@@ -82,20 +83,16 @@ func generateInto(ctx context.Context, file *os.File, inputs Inputs, report func
 }
 
 func writeNew(path string, data []byte) error {
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return causedError{"cannot create the corpus manifest; destination must be new and parent writable", err}
-	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		os.Remove(path)
-		return errors.New("cannot write the corpus manifest")
-	}
-	return nil
+	return manifestFile.Create(path, data)
+}
+
+// manifestFile is how a corpus manifest is created, through the shared
+// document store, which keeps the filesystem's error behind the sentence.
+var manifestFile = artifactdir.Document{
+	Errors: artifactdir.DocumentErrors{
+		Create: errors.New("cannot create the corpus manifest; destination must be new and parent writable"),
+		Write:  errors.New("cannot write the corpus manifest"),
+	},
 }
 
 // Open reads one bounded, regular corpus stream for scanning. The file is left

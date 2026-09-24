@@ -15,6 +15,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/hubprotocol"
 	"github.com/bharm16/readmit/internal/transportsecurity"
@@ -23,8 +24,6 @@ import (
 const (
 	// MaxArtifactBytes is the single artifact size bound (64 MiB), matching the hub.
 	MaxArtifactBytes = 64 << 20
-
-	incompleteSuffix = ".incomplete"
 )
 
 var (
@@ -442,24 +441,19 @@ func (c *Client) UploadArtifact(ctx context.Context, project, sourcePath string)
 	}, nil
 }
 
+// writeAtomic replaces the file at destination through the shared document
+// store, so a reader never observes a partial download and a failed write
+// leaves whatever was there before.
 func writeAtomic(destination string, data []byte) error {
-	incomplete := destination + incompleteSuffix
-	f, err := os.OpenFile(incomplete, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return err
-	}
-	_, writeErr := f.Write(data)
-	if writeErr == nil {
-		writeErr = f.Sync()
-	}
-	closeErr := f.Close()
-	if writeErr != nil || closeErr != nil {
-		os.Remove(incomplete)
-		return errors.New("write failed")
-	}
-	if err := os.Rename(incomplete, destination); err != nil {
-		os.Remove(incomplete)
-		return err
-	}
-	return nil
+	return downloadFile.Replace(destination, data)
+}
+
+// downloadFile is how a downloaded artifact or export is written. A download
+// has always reported a failed creation or rename as the filesystem worded it.
+var downloadFile = artifactdir.Document{
+	Errors: artifactdir.DocumentErrors{
+		Create:  artifactdir.FilesystemReport,
+		Write:   errors.New("write failed"),
+		Install: artifactdir.FilesystemReport,
+	},
 }

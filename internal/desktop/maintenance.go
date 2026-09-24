@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/backup"
 	"github.com/bharm16/readmit/internal/index"
 	"github.com/bharm16/readmit/internal/lifecycle"
@@ -867,10 +868,11 @@ func classOfProjectFile(name, schema string) string {
 	case project.DocumentName, project.RevisionsDocumentName, project.QuotaDocumentName:
 		return BackupClassMutable
 	}
-	if strings.HasPrefix(base, project.DocumentName+".recovery-") ||
-		strings.HasPrefix(base, project.RevisionsDocumentName+".recovery-") ||
-		strings.HasPrefix(base, project.QuotaDocumentName+".recovery-") {
-		return BackupClassMutable
+	if document, _, ok := artifactdir.ParsePreviousName(base); ok {
+		switch document {
+		case project.DocumentName, project.RevisionsDocumentName, project.QuotaDocumentName:
+			return BackupClassMutable
+		}
 	}
 	switch schema {
 	case secret.Schema:

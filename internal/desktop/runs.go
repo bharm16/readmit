@@ -7,12 +7,12 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/engine"
@@ -1110,18 +1110,20 @@ func (rule outputRule) destination(root, requested string) (RunDestination, refu
 	return RunDestination{Name: requested, Fresh: true}, refusal{}
 }
 
-// readBoundedEntry reads one regular file entry up to limit bytes.
+// readBoundedEntry reads one regular file entry within limit bytes through
+// the shared document store: a link at the entry is refused, the opened file
+// must be the one inspected, and what was read is checked against the bound
+// rather than trusting the size the entry reported before it was opened.
 func readBoundedEntry(path string, limit int) ([]byte, error) {
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > int64(limit) {
-		return nil, errors.New("not a bounded regular file")
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	return io.ReadAll(io.LimitReader(file, int64(limit)+1))
+	entry := boundedEntry
+	entry.MaxBytes = limit
+	return entry.Read(path)
+}
+
+// boundedEntry is how a suite or a specification entry of the workspace is
+// read.
+var boundedEntry = artifactdir.Document{
+	Refusals: artifactdir.DocumentRefusals{Irregular: errors.New("not a bounded regular file"), Read: errors.New("not a bounded regular file")},
 }
 
 // digestOf is the SHA-256 of one document's exact bytes, spelled the way

@@ -5,15 +5,14 @@ import (
 	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
-	"io"
 	"net"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/secret"
 )
@@ -38,7 +37,7 @@ func readDeclared(path string) (Target, string, error) {
 	if err != nil {
 		return Target{}, "", errors.New("cannot resolve target configuration")
 	}
-	data, err := readLocal(resolved, MaxTargetBytes)
+	data, err := targetDocument.Read(resolved)
 	if err != nil {
 		return Target{}, "", errors.New("cannot read target configuration")
 	}
@@ -115,9 +114,9 @@ func WriteTarget(path string, t Target) error {
 		return errors.New("cannot encode the target configuration")
 	}
 	data = append(data, '\n')
-	// Both files this writes are reserved by artifactpath, and the file it
-	// renames onto is the destination artifactpath itself returned, so neither
-	// path is derived from the other.
+	// The destination is resolved here only to bind the credential against the
+	// folder the configuration will be read from; the store resolves it again
+	// as it writes.
 	destination, err := artifactpath.Destination(path)
 	if err != nil {
 		return errors.New("cannot write a target configuration here")
@@ -129,28 +128,19 @@ func WriteTarget(path string, t Target) error {
 	if _, err := BindCredential(anchor(t, filepath.Dir(destination))); err != nil {
 		return err
 	}
-	incomplete, err := artifactpath.Destination(path + ".incomplete")
-	if err != nil {
-		return errors.New("cannot write a target configuration here; an interrupted write may be retained beside it")
-	}
-	file, err := os.OpenFile(incomplete, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return errors.New("cannot create the new target configuration; an interrupted write is retained")
-	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		os.Remove(incomplete)
-		return errors.New("cannot write the new target configuration")
-	}
-	if err := os.Rename(incomplete, destination); err != nil {
-		os.Remove(incomplete)
-		return errors.New("cannot replace the target configuration")
-	}
-	return nil
+	return targetDocument.Replace(path, data)
+}
+
+// targetDocument is how a target configuration is written and read.
+var targetDocument = artifactdir.Document{
+	MaxBytes: MaxTargetBytes,
+	Links:    artifactdir.FollowLinks,
+	Errors: artifactdir.DocumentErrors{
+		Destination: errors.New("cannot write a target configuration here"),
+		Create:      errors.New("cannot create the new target configuration; an interrupted write is retained"),
+		Write:       errors.New("cannot write the new target configuration"),
+		Install:     errors.New("cannot replace the target configuration"),
+	},
 }
 
 func validateTarget(t Target) error {
@@ -263,27 +253,6 @@ func targetRecord(t Target, ca []byte) TargetRecord {
 		record.CASHA256 = digest(ca)
 	}
 	return record
-}
-
-func readLocal(path string, maxBytes int) ([]byte, error) {
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("input must be a regular file")
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	info, err = f.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("input must be a regular file")
-	}
-	data, err := io.ReadAll(io.LimitReader(f, int64(maxBytes)+1))
-	if err != nil || len(data) > maxBytes {
-		return nil, errors.New("input cannot be read within size limit")
-	}
-	return data, nil
 }
 
 func digest(data []byte) string { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }

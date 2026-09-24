@@ -4,9 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"io"
-	"os"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
@@ -21,22 +20,9 @@ func Import(root, entry string) ([]byte, error) {
 		return nil, errors.New("a test spec must be one regular entry of the workspace")
 	}
 	path := artifactpath.JoinReference(root, entry)
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > testrunner.MaxSpecBytes {
-		return nil, errors.New("cannot read a bounded regular test spec")
-	}
-	f, err := os.Open(path)
+	data, err := specEntry.Read(path)
 	if err != nil {
-		return nil, errors.New("cannot read test spec")
-	}
-	defer f.Close()
-	opened, err := f.Stat()
-	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(info, opened) {
-		return nil, errors.New("cannot read a regular test spec")
-	}
-	data, err := io.ReadAll(io.LimitReader(f, testrunner.MaxSpecBytes+1))
-	if err != nil {
-		return nil, errors.New("cannot read test spec")
+		return nil, err
 	}
 	if _, err := testrunner.DecodeSpec(data); err != nil {
 		return nil, err
@@ -67,4 +53,17 @@ func Export(root string, data []byte, output string) (Saved, error) {
 	}
 	digest := sha256.Sum256(written)
 	return Saved{Output: output, Identity: hex.EncodeToString(digest[:])}, nil
+}
+
+// specEntry is how a test spec entry of the workspace is read: never through
+// a link, and never past its bound.
+var specEntry = artifactdir.Document{
+	MaxBytes: testrunner.MaxSpecBytes,
+	Refusals: artifactdir.DocumentRefusals{
+		Irregular: errors.New("cannot read a bounded regular test spec"),
+		Open:      errors.New("cannot read test spec"),
+		Changed:   errors.New("cannot read a regular test spec"),
+		Read:      errors.New("cannot read test spec"),
+		Size:      errors.New("cannot read a bounded regular test spec"),
+	},
 }

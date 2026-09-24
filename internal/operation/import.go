@@ -232,21 +232,21 @@ func StagePastedContent(dir, name string, data []byte) (string, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", err
 	}
-	destPath := filepath.Join(dir, name)
-	reserved, err := artifactpath.Destination(destPath)
+	reserved, err := artifactpath.Destination(filepath.Join(dir, name))
 	if err != nil {
 		return "", err
 	}
-	file, err := os.OpenFile(reserved, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-	if err := artifactdir.WriteFileSync(file, data); err != nil {
-		os.Remove(reserved)
+	if err := pastedSource.Create(reserved, data); err != nil {
 		return "", err
 	}
 	return reserved, nil
+}
+
+// pastedSource is how pasted bytes are staged as a new declared source,
+// through the shared document store. Staging has always reported a failed
+// creation or write as the filesystem worded it.
+var pastedSource = artifactdir.Document{
+	Errors: artifactdir.DocumentErrors{Create: artifactdir.FilesystemReport, Write: artifactdir.FilesystemReport},
 }
 
 // checkNewDestination refuses an import before anything is extracted unless

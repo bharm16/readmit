@@ -5,7 +5,6 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -13,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
@@ -805,28 +805,20 @@ func (a *App) resolveScenarioDocument(workspace, fileOrDoc string, limit int) ([
 }
 
 // readChosenFile reads one file a person chose by path under the bound its
-// contract is held to. It must be a regular file once any link is followed,
-// so a FIFO, a device or an oversized file is refused rather than opened and
-// read to its end.
+// contract is held to, through the shared document store. It must be a
+// regular file once any link is followed, so a FIFO, a device or an oversized
+// file is refused rather than opened and read to its end, and a file this
+// account cannot read keeps the filesystem's refusal behind the sentence.
 func readChosenFile(path string, limit int64) ([]byte, error) {
-	outside := errors.New("not a regular file within the bound")
-	info, err := os.Stat(path)
-	switch {
-	case err != nil:
-		return nil, err
-	case !info.Mode().IsRegular() || info.Size() > limit:
-		return nil, outside
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, limit+1))
-	if err == nil && int64(len(data)) > limit {
-		return nil, outside
-	}
-	return data, err
+	chosen := chosenFile
+	chosen.MaxBytes = int(limit)
+	return chosen.Read(path)
+}
+
+// chosenFile is how a file a person chose by path is read.
+var chosenFile = artifactdir.Document{
+	Links:    artifactdir.FollowLinks,
+	Refusals: artifactdir.DocumentRefusals{Irregular: errors.New("not a regular file within the bound")},
 }
 
 func presentTimeline(timeline scenario.Timeline, reveal bool) ScenarioPreviewResult {

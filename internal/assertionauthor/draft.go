@@ -28,6 +28,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/assertion"
 )
@@ -252,20 +253,17 @@ func Export(root string, data []byte, output string) (Saved, error) {
 }
 
 func write(destination string, data []byte) error {
-	file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return ErrCannotWrite
-	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		os.Remove(destination)
-		return errors.New("the assertion set could not be written into the workspace")
-	}
-	return nil
+	return assertionFile.Create(destination, data)
+}
+
+// assertionFile is how an assertion set is created, through the shared
+// document store.
+var assertionFile = artifactdir.Document{
+	Errors: artifactdir.DocumentErrors{
+		Destination: ErrCannotWrite,
+		Create:      ErrCannotWrite,
+		Write:       errors.New("the assertion set could not be written into the workspace"),
+	},
 }
 
 func check(draft Draft) error {

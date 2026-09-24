@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/localprofile"
 	"github.com/bharm16/readmit/internal/profilelibrary"
@@ -756,24 +757,24 @@ func writeWorkspaceEntry(root, name string, data []byte, allowOverwrite ...bool)
 		}
 		return errors.New("cannot write destination file")
 	}
-	file, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		if os.IsExist(err) {
-			return errors.New("cannot create destination; file already exists in workspace")
-		}
-		if errors.Is(err, fs.ErrPermission) {
-			return fs.ErrPermission
-		}
-		return errors.New("cannot create destination file")
+	err = newWorkspaceEntry.Create(dest, data)
+	switch {
+	case errors.Is(err, errEntryUncreated) && errors.Is(err, fs.ErrExist):
+		return errors.New("cannot create destination; file already exists in workspace")
+	case errors.Is(err, errEntryUncreated) && errors.Is(err, fs.ErrPermission):
+		return fs.ErrPermission
 	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		os.Remove(dest)
-		return errors.New("cannot write destination file")
-	}
-	return nil
+	return err
+}
+
+// errEntryUncreated is a new workspace entry that could not be created.
+var errEntryUncreated = errors.New("cannot create destination file")
+
+// newWorkspaceEntry is how a save that never overwrites creates its entry,
+// through the shared document store.
+var newWorkspaceEntry = artifactdir.Document{
+	Errors: artifactdir.DocumentErrors{
+		Create: errEntryUncreated,
+		Write:  errors.New("cannot write destination file"),
+	},
 }

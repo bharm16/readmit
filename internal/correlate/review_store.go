@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 
@@ -15,24 +14,21 @@ import (
 const maxMachineBytes = 32 << 20
 
 func readReviewFile(path string, limit int) ([]byte, error) {
-	before, err := os.Lstat(path)
-	if err != nil || !before.Mode().IsRegular() || before.Size() > int64(limit) {
-		return nil, errors.New("correlation review requires bounded regular files")
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, errors.New("cannot read correlation review")
-	}
-	defer f.Close()
-	after, err := f.Stat()
-	if err != nil || !after.Mode().IsRegular() || !os.SameFile(before, after) {
-		return nil, errors.New("correlation review changed while opening")
-	}
-	data, err := io.ReadAll(io.LimitReader(f, int64(limit)+1))
-	if err != nil || len(data) > limit {
-		return nil, errors.New("cannot read correlation review within its limit")
-	}
-	return data, nil
+	file := reviewFile
+	file.MaxBytes = limit
+	return file.Read(path)
+}
+
+// reviewFile is how a retained correlation review file is read: never
+// through a link, and never past its bound.
+var reviewFile = artifactdir.Document{
+	Refusals: artifactdir.DocumentRefusals{
+		Irregular: errors.New("correlation review requires bounded regular files"),
+		Open:      errors.New("cannot read correlation review"),
+		Changed:   errors.New("correlation review changed while opening"),
+		Read:      errors.New("cannot read correlation review within its limit"),
+		Size:      errors.New("correlation review requires bounded regular files"),
+	},
 }
 
 // ReadReview revalidates both retained documents against the verified evidence

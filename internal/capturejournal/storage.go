@@ -3,10 +3,10 @@ package capturejournal
 import (
 	"encoding/json/v2"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/durablelog"
 	"github.com/bharm16/readmit/internal/durablerun"
@@ -358,22 +358,19 @@ func verify(root *os.Root, frame payload) error {
 }
 
 func readBounded(root *os.Root, name string, limit int) ([]byte, error) {
-	info, err := root.Lstat(name)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > int64(limit) {
-		return nil, errors.New("capture evidence must be a bounded regular file")
-	}
-	file, err := root.Open(name)
-	if err != nil {
-		return nil, errors.New("cannot open capture evidence")
-	}
-	defer file.Close()
-	info, err = file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("invalid capture evidence")
-	}
-	data, err := io.ReadAll(io.LimitReader(file, int64(limit)+1))
-	if err != nil || len(data) > limit {
-		return nil, errors.New("cannot read bounded capture evidence")
-	}
-	return data, nil
+	evidence := captureEvidence
+	evidence.MaxBytes = limit
+	return evidence.ReadIn(root, name)
+}
+
+// captureEvidence is how a retained capture file is read: never through a
+// link, and never past its bound.
+var captureEvidence = artifactdir.Document{
+	Refusals: artifactdir.DocumentRefusals{
+		Irregular: errors.New("capture evidence must be a bounded regular file"),
+		Open:      errors.New("cannot open capture evidence"),
+		Changed:   errors.New("invalid capture evidence"),
+		Read:      errors.New("cannot read bounded capture evidence"),
+		Size:      errors.New("capture evidence must be a bounded regular file"),
+	},
 }

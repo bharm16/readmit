@@ -5,8 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
-	"io"
-	"os"
 	"strings"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
@@ -23,24 +21,21 @@ func encode(value any) ([]byte, error) {
 }
 
 func readLocal(path string, max int) ([]byte, error) {
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > int64(max) {
-		return nil, errors.New("test input must be a bounded regular file")
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, errors.New("cannot open test input")
-	}
-	defer file.Close()
-	info, err = file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("test input must be a regular file")
-	}
-	data, err := io.ReadAll(io.LimitReader(file, int64(max)+1))
-	if err != nil || len(data) > max {
-		return nil, errors.New("cannot read bounded test input")
-	}
-	return data, nil
+	input := testInput
+	input.MaxBytes = max
+	return input.Read(path)
+}
+
+// testInput is how a test input is read, through a link at its name.
+var testInput = artifactdir.Document{
+	Links: artifactdir.FollowLinks,
+	Refusals: artifactdir.DocumentRefusals{
+		Irregular: errors.New("test input must be a bounded regular file"),
+		Open:      errors.New("cannot open test input"),
+		Changed:   errors.New("test input must be a regular file"),
+		Read:      errors.New("cannot read bounded test input"),
+		Size:      errors.New("test input must be a bounded regular file"),
+	},
 }
 
 // resultFamily is a test result: the spec it ran, the observations it read,

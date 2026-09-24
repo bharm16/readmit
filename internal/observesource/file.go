@@ -3,10 +3,10 @@ package observesource
 import (
 	"context"
 	"errors"
-	"io"
 	"os"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/importer"
 	"github.com/bharm16/readmit/internal/observewindow"
 )
@@ -107,27 +107,29 @@ func failure(taken attempt, status observewindow.SampleStatus, note string) atte
 // caller can report a truncated read rather than a failed one.
 var errReadBound = errors.New("read exceeds the declared bound")
 
-// readBounded opens one regular file and reads at most the declared bound. Its
+// errCannotOpenDeclared is a declared file that cannot be opened.
+var errCannotOpenDeclared = errors.New("cannot open the declared file")
+
+// readBounded reads one regular file within the declared bound. Its
 // diagnostics name no path, and the caller names what it was reading, so one
-// bounded read serves the export and the certificate authority alike. Checking
-// the opened descriptor again retains the check, because the path can change
-// underneath it between the first check and the open.
+// bounded read serves the export and the certificate authority alike. The
+// store inspects the name before opening it and checks the opened file is the
+// one inspected, because the path can change underneath it.
 func readBounded(path string, limit int) ([]byte, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, errors.New("cannot open the declared file")
-	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("the declared file is not a regular file")
-	}
-	data, err := io.ReadAll(io.LimitReader(file, int64(limit)+1))
-	if err != nil {
-		return nil, errors.New("cannot read the declared file")
-	}
-	if len(data) > limit {
-		return nil, errReadBound
-	}
-	return data, nil
+	declared := declaredFile
+	declared.MaxBytes = limit
+	return declared.Read(path)
+}
+
+// declaredFile is a file a source declares, such as its export or its
+// certificate authority, read through a link at its name.
+var declaredFile = artifactdir.Document{
+	Links: artifactdir.FollowLinks,
+	Refusals: artifactdir.DocumentRefusals{
+		Inspect:   errCannotOpenDeclared,
+		Irregular: errors.New("the declared file is not a regular file"),
+		Open:      errCannotOpenDeclared,
+		Read:      errors.New("cannot read the declared file"),
+		Size:      errReadBound,
+	},
 }

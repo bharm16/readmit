@@ -9,13 +9,12 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
-	"io"
 	"net/url"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/hubprotocol"
 	"github.com/bharm16/readmit/internal/secret"
@@ -137,20 +136,14 @@ func readConfigFile(path string) ([]byte, error) {
 	if err != nil {
 		return nil, ErrRefused
 	}
-	info, err := os.Stat(resolved)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > MaxConfigBytes {
-		return nil, ErrRefused
-	}
-	file, err := os.Open(resolved)
-	if err != nil {
-		return nil, ErrRefused
-	}
-	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, MaxConfigBytes+1))
-	if err != nil || len(data) > MaxConfigBytes {
-		return nil, ErrRefused
-	}
-	return data, nil
+	return configFile.Read(resolved)
+}
+
+// configFile is how a client configuration file is read.
+var configFile = artifactdir.Document{
+	MaxBytes: MaxConfigBytes,
+	Links:    artifactdir.FollowLinks,
+	Refusals: artifactdir.DocumentRefusals{Irregular: ErrRefused, Read: ErrRefused},
 }
 
 // Validate verifies all parameters of a Config struct.

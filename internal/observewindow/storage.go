@@ -2,9 +2,8 @@ package observewindow
 
 import (
 	"errors"
-	"io"
-	"os"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 )
 
@@ -12,7 +11,7 @@ import (
 // reader here, it accepts a regular file only: a window that came from a pipe
 // or a device is not a document an operator selected.
 func ReadWindow(path string) (Window, error) {
-	data, err := readFile(path, MaxWindowBytes, "observation window")
+	data, err := windowDocument.Read(path)
 	if err != nil {
 		return Window{}, err
 	}
@@ -24,7 +23,7 @@ func ReadWindow(path string) (Window, error) {
 // support the verdict is Window.Verify's job, and a caller holding the declared
 // window is expected to ask.
 func ReadCompletion(path string) (Completion, error) {
-	data, err := readFile(path, MaxCompletionBytes, "observation completion")
+	data, err := completionDocument.Read(path)
 	if err != nil {
 		return Completion{}, err
 	}
@@ -33,41 +32,15 @@ func ReadCompletion(path string) (Completion, error) {
 
 // WriteWindow records one declared observation window. It validates before
 // writing, so a window readmit could not read back is never produced, and it
-// writes the file in full to a new owner-only file renamed onto the destination,
-// so a reader never observes a partial document and a failed write leaves the
-// previous one exactly as it was.
+// replaces the document through the shared document store, so a reader never
+// observes a partial document and a failed write leaves the previous one
+// exactly as it was.
 func WriteWindow(path string, w Window) error {
 	data, err := EncodeWindow(w)
 	if err != nil {
 		return err
 	}
-	data = append(data, '\n')
-	destination, err := artifactpath.Destination(path)
-	if err != nil {
-		return errors.New("cannot write an observation window here")
-	}
-	incomplete, err := artifactpath.Destination(path + ".incomplete")
-	if err != nil {
-		return errors.New("cannot write an observation window here; an interrupted write may be retained beside it")
-	}
-	file, err := os.OpenFile(incomplete, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return errors.New("cannot create the new observation window; an interrupted write is retained")
-	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		os.Remove(incomplete)
-		return errors.New("cannot write the new observation window")
-	}
-	if err := os.Rename(incomplete, destination); err != nil {
-		os.Remove(incomplete)
-		return errors.New("cannot replace the observation window")
-	}
-	return nil
+	return windowDocument.Replace(path, append(data, '\n'))
 }
 
 // WriteCompletion retains one completion at a new destination. A completion is
@@ -83,45 +56,45 @@ func WriteCompletion(path string, c Completion) error {
 	if err != nil {
 		return err
 	}
-	file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return errors.New("cannot create observation completion; destination must be new and writable")
-	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		os.Remove(destination)
-		return errors.New("cannot write observation completion")
-	}
-	return nil
+	return completionDocument.Create(destination, data)
 }
 
-// readFile keeps the limit and the private diagnostic in one place. Checking
-// the mode before opening avoids blocking on a FIFO; checking the opened
-// descriptor again retains the check because the path can change underneath it.
-func readFile(path string, limit int, kind string) ([]byte, error) {
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("an " + kind + " must be a readable regular file")
+// windowDocument and completionDocument are how the two documents are written
+// and read. A document a person names is read through a link at its name, as
+// it always has been, and its diagnostics name what it was reading and no
+// path. The store inspects the name before opening it, so a pipe never blocks
+// the read, and checks the opened file again, because the path can change
+// underneath it.
+var (
+	windowDocument = artifactdir.Document{
+		MaxBytes: MaxWindowBytes,
+		Links:    artifactdir.FollowLinks,
+		Errors: artifactdir.DocumentErrors{
+			Destination: errors.New("cannot write an observation window here"),
+			Create:      errors.New("cannot create the new observation window; an interrupted write is retained"),
+			Write:       errors.New("cannot write the new observation window"),
+			Install:     errors.New("cannot replace the observation window"),
+		},
+		Refusals: refusals("observation window"),
 	}
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, errors.New("cannot open " + kind + " file")
+	completionDocument = artifactdir.Document{
+		MaxBytes: MaxCompletionBytes,
+		Links:    artifactdir.FollowLinks,
+		Errors: artifactdir.DocumentErrors{
+			Create: errors.New("cannot create observation completion; destination must be new and writable"),
+			Write:  errors.New("cannot write observation completion"),
+		},
+		Refusals: refusals("observation completion"),
 	}
-	defer file.Close()
-	info, err = file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("an " + kind + " must be a regular file")
+)
+
+// refusals are the sentences a read of one kind of document reports.
+func refusals(kind string) artifactdir.DocumentRefusals {
+	return artifactdir.DocumentRefusals{
+		Irregular: errors.New("an " + kind + " must be a readable regular file"),
+		Open:      errors.New("cannot open " + kind + " file"),
+		Changed:   errors.New("an " + kind + " must be a regular file"),
+		Read:      errors.New("cannot read " + kind + " file"),
+		Size:      errors.New(kind + " exceeds size limit"),
 	}
-	data, err := io.ReadAll(io.LimitReader(file, int64(limit)+1))
-	if err != nil {
-		return nil, errors.New("cannot read " + kind + " file")
-	}
-	if len(data) > limit {
-		return nil, errors.New(kind + " exceeds size limit")
-	}
-	return data, nil
 }

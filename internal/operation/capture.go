@@ -514,13 +514,13 @@ func listenerTLSConfig(ctx context.Context, cfg CollectConfig) (*tls.Config, err
 	if cfg.TLSCertificatePath == "" || cfg.TLSKeyReference == "" || cfg.SecretsFile == "" {
 		return nil, ErrListenerTLSIncomplete
 	}
-	chain, err := readBoundedFile(cfg.TLSCertificatePath, maxCertificateBytes)
+	chain, err := ReadInputFile(cfg.TLSCertificatePath, maxCertificateBytes)
 	if err != nil {
 		return nil, errors.New("cannot read the configured listener certificate")
 	}
 	var authorities []byte
 	if cfg.ClientCAPath != "" {
-		if authorities, err = readBoundedFile(cfg.ClientCAPath, maxCertificateBytes); err != nil {
+		if authorities, err = ReadInputFile(cfg.ClientCAPath, maxCertificateBytes); err != nil {
 			return nil, errors.New("cannot read the configured client certificate authority")
 		}
 	}

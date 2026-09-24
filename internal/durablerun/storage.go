@@ -95,25 +95,23 @@ func write(job *artifactdir.Writer, name string, b []byte) error {
 	return nil
 }
 func read(root *os.Root, name string, limit int) ([]byte, error) {
-	info, err := root.Lstat(name)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > int64(limit) {
-		return nil, errors.New("durable evidence must be a bounded regular file")
-	}
-	f, err := root.Open(name)
-	if err != nil {
-		return nil, errors.New("cannot open durable evidence")
-	}
-	defer f.Close()
-	info, err = f.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("invalid durable evidence")
-	}
-	b, err := io.ReadAll(io.LimitReader(f, int64(limit)+1))
-	if err != nil || len(b) > limit {
-		return nil, errors.New("cannot read bounded durable evidence")
-	}
-	return b, nil
+	evidence := durableEvidence
+	evidence.MaxBytes = limit
+	return evidence.ReadIn(root, name)
 }
+
+// durableEvidence is how a retained durable run file is read: never through
+// a link, and never past its bound.
+var durableEvidence = artifactdir.Document{
+	Refusals: artifactdir.DocumentRefusals{
+		Irregular: errors.New("durable evidence must be a bounded regular file"),
+		Open:      errors.New("cannot open durable evidence"),
+		Changed:   errors.New("invalid durable evidence"),
+		Read:      errors.New("cannot read bounded durable evidence"),
+		Size:      errors.New("durable evidence must be a bounded regular file"),
+	},
+}
+
 func verify(root *os.Root, p payload) error {
 	if p.Size < 0 || p.Size > 64<<20 {
 		return errors.New("invalid durable payload size")

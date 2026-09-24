@@ -78,8 +78,10 @@ the evidence; moving it anywhere remains a separate deliberate act.
 The document rejects unknown and duplicate members and unknown versions. It is
 written deterministically with controls in one canonical order, is owner-only
 (`0600`), and is replaced atomically: a new file is written in full and renamed
-over the previous one, so a reader never sees a partial document. An interrupted
-write is retained beside it and reported, never reused.
+over the previous one, so a reader never sees a partial document, and the folder
+holding it is synced before the command reports it written, so a power loss
+cannot undo a replacement readmit reported. An interrupted write is retained
+beside it and reported, never reused.
 
 `command` is the **absolute path** of a program that prints the key on standard
 output, and `arguments` select which key. The program is never looked up on

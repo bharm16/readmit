@@ -6,7 +6,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"slices"
 	"strings"
@@ -140,19 +139,9 @@ func Describe(path string) (Manifest, error) {
 		return Manifest{}, errors.New("cannot open bundle directory")
 	}
 	defer root.Close()
-	file, err := root.Open("manifest.json")
+	data, err := manifestFile.ReadIn(root, "manifest.json")
 	if err != nil {
-		return Manifest{}, errors.New("cannot read bundle manifest")
-	}
-	info, statErr := file.Stat()
-	if statErr != nil || !info.Mode().IsRegular() {
-		file.Close()
-		return Manifest{}, errors.New("bundle manifest must be a regular file")
-	}
-	data, readErr := io.ReadAll(io.LimitReader(file, maxFileBytes+1))
-	closeErr := file.Close()
-	if readErr != nil || closeErr != nil || len(data) > maxFileBytes {
-		return Manifest{}, errors.New("cannot read bundle manifest")
+		return Manifest{}, err
 	}
 	var manifest Manifest
 	if err := json.Unmarshal(data, &manifest, json.RejectUnknownMembers(true)); err != nil {
@@ -165,6 +154,19 @@ func Describe(path string) (Manifest, error) {
 		return Manifest{}, err
 	}
 	return manifest, nil
+}
+
+// manifestFile is how Describe reads a bundle's manifest, following a link
+// only within the bundle directory.
+var manifestFile = artifactdir.Document{
+	MaxBytes: maxFileBytes,
+	Links:    artifactdir.FollowLinks,
+	Refusals: artifactdir.DocumentRefusals{
+		Inspect:   errors.New("cannot read bundle manifest"),
+		Irregular: errors.New("bundle manifest must be a regular file"),
+		Open:      errors.New("cannot read bundle manifest"),
+		Read:      errors.New("cannot read bundle manifest"),
+	},
 }
 
 // Open verifies completion, identity, payload hashes, source coverage, and the

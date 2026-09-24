@@ -130,8 +130,9 @@ Redaction's private proofs, [report](report.md) trials and the desktop's
 [practice runs](guided-sample.md#what-a-practice-run-is) run this fixture inside
 their own process and install the snapshot without the sync; see
 [redact](redact.md). An observation write failure prevents AA and fails the
-session. Every rewrite uses a same-directory temporary file and rename; the live
-file is never truncated.
+session. Every rewrite uses a same-directory temporary file and rename, followed
+by a sync of the folder whenever the snapshot itself is synced; the live file is
+never truncated.
 Startup uses a hard link from the synced temporary file to create the first
 snapshot exclusively; a report trial, whose workspace the report removes before
 it answers, links it without the sync. The filesystem must support local hard

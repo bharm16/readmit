@@ -2,11 +2,11 @@ package profileversion
 
 import (
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/localprofile"
 )
 
@@ -46,23 +46,27 @@ func VerifyFolder(directory string, profile localprofile.Profile) error {
 	return nil
 }
 
-// readSeal reads one folder member under the seal contract's own size limit.
-// The file is opened first and measured through that open file, so a member
-// that is not a regular file, or is longer than a seal may be, is passed over
-// before its bytes are held in memory.
+// readSeal reads one folder member under the seal contract's own size limit,
+// through the shared document store: a member that is not a regular file, or
+// says it is longer than a seal may be, is passed over before its bytes are
+// held in memory.
 func readSeal(path string) ([]byte, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() > MaxVersionBytes {
-		return nil, errors.New("not a version seal this release reads")
-	}
-	data, err := io.ReadAll(io.LimitReader(file, MaxVersionBytes+1))
-	if err != nil || len(data) > MaxVersionBytes {
-		return nil, errors.New("not a version seal this release reads")
-	}
-	return data, nil
+	return sealFile.Read(path)
+}
+
+// errNotASeal is a folder member that is not a version seal this release
+// reads.
+var errNotASeal = errors.New("not a version seal this release reads")
+
+// sealFile is how a version seal in a folder is read, through a link at its
+// name. A member that cannot be opened reports the filesystem's own error.
+var sealFile = artifactdir.Document{
+	MaxBytes: MaxVersionBytes,
+	Links:    artifactdir.FollowLinks,
+	Refusals: artifactdir.DocumentRefusals{
+		Inspect:   artifactdir.FilesystemReport,
+		Irregular: errNotASeal,
+		Open:      artifactdir.FilesystemReport,
+		Read:      errNotASeal,
+	},
 }

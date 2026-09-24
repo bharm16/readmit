@@ -20,11 +20,10 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
-	"io"
 	"net"
-	"os"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/destination"
 	"github.com/bharm16/readmit/internal/replay"
@@ -290,31 +289,26 @@ func status(state tls.ConnectionState, connection *destination.Connection) *TLSS
 	return reported
 }
 
-// readBounded reads one bounded regular file the configuration named. It
-// re-checks the opened file rather than trusting the earlier stat, so a path
-// that changed underneath is refused.
+// readBounded reads one bounded regular file the configuration named,
+// through the shared document store, which re-checks the opened file rather
+// than trusting the earlier stat, so a path that changed underneath is
+// refused.
 func readBounded(path string, limit int) ([]byte, error) {
 	resolved, err := artifactpath.Resolve(path)
 	if err != nil {
 		return nil, errors.New("cannot resolve a configured file")
 	}
-	info, err := os.Stat(resolved)
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("a configured file must be a regular file")
-	}
-	file, err := os.Open(resolved)
-	if err != nil {
-		return nil, errors.New("cannot open a configured file")
-	}
-	info, err = file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		file.Close()
-		return nil, errors.New("a configured file must be a regular file")
-	}
-	data, readErr := io.ReadAll(io.LimitReader(file, int64(limit)+1))
-	closeErr := file.Close()
-	if readErr != nil || closeErr != nil || len(data) > limit {
-		return nil, errors.New("a configured file cannot be read within its size limit")
-	}
-	return data, nil
+	file := configuredFile
+	file.MaxBytes = limit
+	return file.Read(resolved)
+}
+
+// configuredFile is how a file a target configuration names is read.
+var configuredFile = artifactdir.Document{
+	Links: artifactdir.FollowLinks,
+	Refusals: artifactdir.DocumentRefusals{
+		Irregular: errors.New("a configured file must be a regular file"),
+		Open:      errors.New("cannot open a configured file"),
+		Read:      errors.New("a configured file cannot be read within its size limit"),
+	},
 }

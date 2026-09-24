@@ -7,7 +7,6 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -214,32 +213,20 @@ func writeScheduleHistory(root *os.Root, h ScheduleHistory) error {
 	if e != nil || len(b) > 8<<20 {
 		return ErrSchedule
 	}
-	// A leftover temporary file is not authority; the committed file is. Never
-	// overwrite through a symlink or reuse another writer's temporary file.
-	name := "history-next"
-	f, e := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if e != nil {
-		return ErrSchedule
-	}
-	defer root.Remove(name)
-	n, e := f.Write(b)
-	if e == nil && n != len(b) {
-		e = io.ErrShortWrite
-	}
-	if e == nil {
-		e = f.Sync()
-	}
-	ce := f.Close()
-	if e != nil || ce != nil {
-		return ErrSchedule
-	}
-	if root.Rename(name, "history.json") != nil {
-		return ErrSchedule
-	}
-	if artifactdir.SyncDirectory(root, ".") != nil {
-		return durablerun.ErrSyncDirectory
-	}
-	return nil
+	return historyFile.ReplaceIn(root, "history.json", b)
+}
+
+// historyFile is how the schedule history is replaced, through the shared
+// document store. A leftover temporary file is not authority; the committed
+// file is. The store never overwrites through a symlink or reuses another
+// writer's temporary file, and removes its own when a write fails.
+var historyFile = artifactdir.Document{
+	Staging: artifactdir.StagingName("history-next"),
+	Errors: artifactdir.DocumentErrors{
+		Create: ErrSchedule,
+		Write:  ErrSchedule,
+		Sync:   durablerun.ErrSyncDirectory,
+	},
 }
 
 // Tick persists occurrence claims before dispatch. It serializes execution and

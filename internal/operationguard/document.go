@@ -5,14 +5,11 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
-	"io"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
-	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/entitlement"
 )
 
@@ -123,38 +120,16 @@ func encode(v any) ([]byte, error) {
 
 // readFile bounds every local control and refuses links/non-regular files.
 func readFile(path string) ([]byte, error) {
-	original, statErr := os.Lstat(path)
-	if statErr != nil || !original.Mode().IsRegular() {
-		return nil, ErrUnavailable
-	}
-	resolved, err := artifactpath.Resolve(path)
-	if err != nil {
-		return nil, ErrUnavailable
-	}
-	root, err := os.OpenRoot(filepath.Dir(resolved))
-	if err != nil {
-		return nil, ErrUnavailable
-	}
-	defer root.Close()
-	info, err := root.Lstat(filepath.Base(resolved))
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, ErrUnavailable
-	}
-	file, err := root.Open(filepath.Base(resolved))
-	if err != nil {
-		return nil, ErrUnavailable
-	}
-	defer file.Close()
-	opened, statErr := file.Stat()
-	if statErr != nil || !os.SameFile(original, opened) {
-		return nil, ErrUnavailable
-	}
-	data, err := io.ReadAll(io.LimitReader(file, entitlement.MaxDocumentBytes+1))
-	if err != nil || len(data) > entitlement.MaxDocumentBytes {
-		return nil, ErrUnavailable
-	}
-	return data, nil
+	return controlFile.Read(path)
 }
+
+// controlFile is how every local control is read: a link at its name is
+// refused, and every refusal is ErrUnavailable.
+var controlFile = artifactdir.Document{
+	MaxBytes: entitlement.MaxDocumentBytes,
+	Refusals: artifactdir.DocumentRefusals{Irregular: ErrUnavailable, Read: ErrUnavailable},
+}
+
 func load(path string) (Policy, entitlement.GrantV2, error) {
 	data, err := readFile(path)
 	if err != nil {
@@ -202,20 +177,17 @@ func Read(path string) (State, error) {
 }
 
 // update serializes processes using an exclusive retained replacement. A crash
-// leaves .incomplete visible and refuses future mutations until recovery.
+// leaves .incomplete visible and refuses future mutations until recovery, and
+// so does a replacement that could not be written or renamed into place.
 func update(path string, apply func(*State) error) (State, error) {
-	destination, err := artifactpath.Destination(path + ".incomplete")
-	if err != nil {
-		return State{}, ErrUnavailable
-	}
-	file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	replacement, err := stateFile.Begin(path)
 	if errors.Is(err, fs.ErrExist) {
 		return State{}, ErrBusy
 	}
 	if err != nil {
-		return State{}, ErrUpdate
+		return State{}, err
 	}
-	abandon := func(err error) (State, error) { file.Close(); os.Remove(destination); return State{}, err }
+	abandon := func(err error) (State, error) { replacement.Abandon(); return State{}, err }
 	current, err := readState(path)
 	if err != nil {
 		return abandon(err)
@@ -227,33 +199,44 @@ func update(path string, apply func(*State) error) (State, error) {
 	if err != nil {
 		return abandon(err)
 	}
-	err = artifactdir.WriteFileSync(file, data)
-	closeErr := file.Close()
-	if err != nil || closeErr != nil {
-		return State{}, ErrUpdate
+	err = replacement.Write(data)
+	if err == nil {
+		err = replacement.Commit()
 	}
-	if err = os.Rename(destination, filepath.Join(filepath.Dir(destination), filepath.Base(path))); err != nil {
-		return State{}, ErrUpdate
+	replacement.Close()
+	if err != nil {
+		return State{}, err
 	}
 	return current, nil
 }
 func create(path string, s State) error {
-	destination, err := artifactpath.Destination(path)
-	if err != nil {
-		return ErrUnavailable
-	}
 	data, err := encode(s)
 	if err != nil {
 		return err
 	}
-	file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return ErrUnavailable
-	}
-	writeErr := artifactdir.WriteFileSync(file, data)
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		return ErrUpdate
-	}
-	return nil
+	return newStateFile.Create(path, data)
 }
+
+// stateFile is how the operation clock is replaced, and newStateFile how it
+// is first published. A clock whose write failed is retained, so it refuses
+// every later mutation until it is recovered.
+var (
+	stateFile = artifactdir.Document{
+		RetainFailed: true,
+		Errors: artifactdir.DocumentErrors{
+			Destination: ErrUnavailable,
+			Create:      ErrUpdate,
+			Write:       ErrUpdate,
+			Sync:        ErrUpdate,
+		},
+	}
+	newStateFile = artifactdir.Document{
+		RetainFailed: true,
+		Errors: artifactdir.DocumentErrors{
+			Destination: ErrUnavailable,
+			Create:      ErrUnavailable,
+			Write:       ErrUpdate,
+			Sync:        ErrUpdate,
+		},
+	}
+)

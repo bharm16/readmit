@@ -108,7 +108,7 @@ func New(config Config) (*Receiver, error) {
 		r.flush = nil
 	}
 	r.snapshot = observation.Snapshot{Schema: observation.Schema, Profile: profile.Name, SessionID: hex.EncodeToString(entropy[:]), Mode: config.Mode, Consistent: true, Processed: []observation.Occurrence{}, Records: []observation.Record{}}
-	if err := observation.CreateWithFlush(config.ObservationPath, r.snapshot, config.Durability.Sync); err != nil {
+	if err := observation.CreateWithDurability(config.ObservationPath, r.snapshot, config.Durability); err != nil {
 		return nil, err
 	}
 	// Case-insensitive filesystems can alias distinct resolved leaf spellings.

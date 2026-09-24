@@ -6,8 +6,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -138,28 +136,24 @@ func Assemble(ctx context.Context, in RetainedInput, output string) (*RetainedPa
 }
 
 func retainedSpec(path string) ([]byte, error) {
-	invalid := errors.New("specification must be a bounded regular file")
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > testrunner.MaxSpecBytes {
-		return nil, invalid
-	}
-	f, err := os.Open(path)
+	raw, err := retainedSpecFile.Read(path)
 	if err != nil {
-		return nil, invalid
-	}
-	defer f.Close()
-	actual, err := f.Stat()
-	if err != nil || !os.SameFile(info, actual) {
-		return nil, invalid
-	}
-	raw, err := io.ReadAll(io.LimitReader(f, testrunner.MaxSpecBytes+1))
-	if err != nil || len(raw) > testrunner.MaxSpecBytes {
-		return nil, invalid
+		return nil, err
 	}
 	if _, err := testrunner.DecodeSpec(raw); err != nil {
 		return nil, errors.New("unsupported retained specification")
 	}
 	return raw, nil
+}
+
+// retainedSpecFile is how a retained specification is read: never through a
+// link, and never past its bound.
+var retainedSpecFile = artifactdir.Document{
+	MaxBytes: testrunner.MaxSpecBytes,
+	Refusals: artifactdir.DocumentRefusals{
+		Irregular: errors.New("specification must be a bounded regular file"),
+		Read:      errors.New("specification must be a bounded regular file"),
+	},
 }
 
 // OpenRetained verifies both hashes and evidence-derived claims offline. It does

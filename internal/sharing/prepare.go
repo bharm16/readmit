@@ -3,7 +3,6 @@ package sharing
 import (
 	"context"
 	"encoding/json/v2"
-	"io"
 	"os"
 	"path/filepath"
 
@@ -27,25 +26,16 @@ type Candidate struct {
 func (c *Candidate) Identity() string { return Digest(c.raw) }
 func (c *Candidate) Bytes() []byte    { return append([]byte(nil), c.raw...) }
 func readPolicy(path string) ([]byte, error) {
-	info, e := os.Lstat(path)
-	if e != nil || !info.Mode().IsRegular() || info.Size() > 4096 {
-		return nil, ErrRefused
-	}
-	f, e := os.Open(path)
-	if e != nil {
-		return nil, ErrRefused
-	}
-	defer f.Close()
-	info, e = f.Stat()
-	if e != nil || !info.Mode().IsRegular() {
-		return nil, ErrRefused
-	}
-	raw, e := io.ReadAll(io.LimitReader(f, 4097))
-	if e != nil || len(raw) > 4096 {
-		return nil, ErrRefused
-	}
-	return raw, nil
+	return policyFile.Read(path)
 }
+
+// policyFile is how a sharing policy is read: never through a link, and
+// never past 4 KiB.
+var policyFile = artifactdir.Document{
+	MaxBytes: 4096,
+	Refusals: artifactdir.DocumentRefusals{Irregular: ErrRefused, Read: ErrRefused},
+}
+
 func Prepare(ctx context.Context, r Request) (*Candidate, error) {
 	if ctx.Err() != nil {
 		return nil, ErrRefused

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/importer"
 	"github.com/bharm16/readmit/internal/observewindow"
@@ -20,24 +21,25 @@ import (
 // here it accepts a regular file only: a declaration that came from a pipe or a
 // device is not a document an operator selected.
 func ReadSource(path string) (Source, error) {
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return Source{}, errors.New("an evidence source declaration must be a readable regular file")
-	}
-	file, err := os.Open(path)
+	data, err := declarationFile.Read(path)
 	if err != nil {
-		return Source{}, errors.New("cannot open the evidence source declaration")
-	}
-	defer file.Close()
-	info, err = file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return Source{}, errors.New("an evidence source declaration must be a regular file")
-	}
-	data, err := io.ReadAll(io.LimitReader(file, MaxSourceBytes+1))
-	if err != nil {
-		return Source{}, errors.New("cannot read the evidence source declaration")
+		return Source{}, err
 	}
 	return Decode(data)
+}
+
+// declarationFile is how an evidence source declaration is read, through a
+// link at its name.
+var declarationFile = artifactdir.Document{
+	MaxBytes: MaxSourceBytes,
+	Links:    artifactdir.FollowLinks,
+	Refusals: artifactdir.DocumentRefusals{
+		Irregular: errors.New("an evidence source declaration must be a readable regular file"),
+		Open:      errors.New("cannot open the evidence source declaration"),
+		Changed:   errors.New("an evidence source declaration must be a regular file"),
+		Read:      errors.New("cannot read the evidence source declaration"),
+		Size:      errors.New("evidence source declaration exceeds its size limit"),
+	},
 }
 
 // CredentialState is what binding a declared credential reference established,

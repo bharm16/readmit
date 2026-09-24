@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 )
 
@@ -112,7 +113,7 @@ func projected(root, name string, data []byte) (Usage, error) {
 	u.Bytes += int64(len(data) - len(old))
 	if !bytes.Equal(old, data) {
 		sum := sha256.Sum256(old)
-		recovery := name + ".recovery-" + hex.EncodeToString(sum[:])
+		recovery := artifactdir.PreviousName(name, hex.EncodeToString(sum[:]))
 		if _, err := os.Lstat(filepath.Join(root, recovery)); errors.Is(err, fs.ErrNotExist) {
 			u.Files++
 			u.Bytes += int64(len(old))
