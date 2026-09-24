@@ -299,7 +299,7 @@ Fixtures and their independently authored intent are described in
 - Decisions: [docs/adr/](docs/adr/)
 - Agent conventions: [docs/agents/](docs/agents/)
 
-Customer-hosted deployment: [artifact hub installation and recovery](hub/README.md).
+Customer-hosted deployment: [artifact hub installation and recovery](hub/README.md). The desktop hub panel also prepares validated, local-only operator handoffs for the hub's maintenance commands; the customer runs them on the host.
 
 Customer-controlled execution: [runner enrollment and operation](docs/customer-runner.md).
 

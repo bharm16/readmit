@@ -401,13 +401,30 @@ func (s *Store) InitializeSchedulePolicy(ctx context.Context, path string) error
 // ScheduleInputIdentity prepares and hashes the exact inputs without credentials
 // or execution. An operator approves this pin in the private schedule policy.
 func ScheduleInputIdentity(spec string) (string, error) {
+	return ScheduleInputIdentityContext(context.Background(), spec)
+}
+
+// ScheduleInputIdentityContext is the same offline reader for an application
+// preview that the operator may cancel. Preparation has bounded reads; a
+// cancellation is observed at each shared reader boundary before an identity
+// can be returned.
+func ScheduleInputIdentityContext(ctx context.Context, spec string) (string, error) {
+	if e := ctx.Err(); e != nil {
+		return "", e
+	}
 	p, e := durablerun.Prepare(spec)
 	if e != nil {
 		return "", ErrSchedule
 	}
+	if e := ctx.Err(); e != nil {
+		return "", e
+	}
 	id, e := p.InputIdentity()
 	if e != nil {
 		return "", ErrSchedule
+	}
+	if e := ctx.Err(); e != nil {
+		return "", e
 	}
 	return id, nil
 }

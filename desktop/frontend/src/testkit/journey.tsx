@@ -27,7 +27,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
 import { inject } from "vitest";
 import App from "../App";
-import type { Facade } from "../bindings";
+import type { Facade, HubAdminFacade } from "../bindings";
 import { startDownstream } from "./downstream.js";
 import { deploymentAuthority } from "./deployment.js";
 import type { DeploymentAuthority } from "./deployment.js";
@@ -182,7 +182,10 @@ export class Journey {
       throw new Error("the application is already running");
     }
     this.bridge = startBridge(this.binary, this.root, options.fileSizeLimit);
-    window.go = { desktop: { App: this.facade(this.bridge) } };
+    window.go = {
+      desktop: { App: this.facade(this.bridge) },
+      hubadmin: { Admin: this.boundFacade(this.bridge, "hubadmin", "Admin") },
+    };
     render(
       <StrictMode>
         <App />
@@ -487,6 +490,10 @@ export class Journey {
    * that serializes its arguments, crosses to the bridge and settles with the
    * Go method's own result, or rejects with Wails' error. */
   private facade(bridge: BridgeProcess): Facade {
+    return this.boundFacade(bridge, "desktop", "App") as Facade;
+  }
+
+  private boundFacade(bridge: BridgeProcess, packageName: "desktop" | "hubadmin", typeName: "App" | "Admin"): Facade & HubAdminFacade {
     const journey = this;
     return new Proxy(
       {},
@@ -501,7 +508,7 @@ export class Journey {
             journey.calls.push(call);
             const reply = await bridge.send({
               op: "call",
-              name: ["desktop", "App", method].join("."),
+              name: [packageName, typeName, method].join("."),
               args: serialized,
             });
             call.settled = true;
@@ -515,7 +522,7 @@ export class Journey {
           };
         },
       },
-    ) as Facade;
+    ) as Facade & HubAdminFacade;
   }
 
   private collect(bridge: BridgeProcess, report: DialogReport): void {

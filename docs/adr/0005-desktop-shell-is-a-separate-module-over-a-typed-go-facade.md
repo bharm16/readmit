@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-09-18
-amended: 2026-09-20
+amended: 2026-09-24
 ---
 
 # The desktop application is a separate module over a typed Go facade
@@ -120,3 +120,23 @@ Every package is an unsigned development preview and is published nowhere.
 Signing, notarization, upgrade and rollback remain decided elsewhere, and a
 supported-platform claim still needs the acceptance in
 [release acceptance](../release-acceptance.md), not a green build.
+
+## Customer-hub host administration (amended 2026-09-24)
+
+The customer-operated hub is a separate Go module that imports the root
+engine. The root `internal/desktop` facade therefore cannot import the hub's
+strict configuration readers and offline functions without reversing that
+module dependency. For local, read-only host administration handoffs only,
+the desktop shell binds a second typed facade, `desktop/hubadmin.Admin`, beside
+`internal/desktop.App`. It calls the hub's own configuration and policy
+readers, `VerifyBackup` and `ScheduleInputIdentityContext`; it never opens the
+hub store, runs a command, writes an artifact or contacts the host. Both
+bindings are declared in the frontend's typed binding layer and served under
+their exact Wails names by the journey bridge. The desktop module alone gains
+the hub import; the released static CLI's module graph is unchanged.
+
+The capability ledger covers every exported method of both bound objects.
+The narrow second facade's parity tests live in `desktop/hubadmin`, where the
+hub module can be imported, and the real-facade journey exercises its
+production binding. Evidence work and every other desktop capability remain
+under `internal/desktop` as this decision originally required.

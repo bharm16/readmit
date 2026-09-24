@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/bharm16/readmit/desktop/hubadmin"
 )
 
 // bound stands in for the facade: the same kinds of method signature, bound
@@ -56,6 +58,22 @@ func TestBoundMethodsAreNamedAsWailsPublishesThem(t *testing.T) {
 	}
 	if len(methods) != 5 {
 		t.Fatalf("bound %d methods, want 5", len(methods))
+	}
+}
+
+func TestHubAdministrationJourneyBindingMatchesTheShellBinding(t *testing.T) {
+	production := bind(new(hubadmin.Admin))
+	bridge, err := newBridge(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"hubadmin.Admin.Preview", "hubadmin.Admin.CancelPreview"} {
+		if _, ok := production[name]; !ok {
+			t.Errorf("shell has no %s binding", name)
+		}
+		if _, ok := bridge.methods[name]; !ok {
+			t.Errorf("journey bridge has no %s binding", name)
+		}
 	}
 }
 

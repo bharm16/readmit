@@ -25,6 +25,13 @@ service. Desktop and CLI continue to work offline without the hub.
 
 ## Build and install
 
+The desktop hub panel can prepare a validated handoff for each host maintenance
+command below. It reads local copies through the same hub readers and computes
+offline backup verification and schedule input identity through the same hub
+functions. The operator still runs each step on this customer-controlled host;
+the desktop never opens the host database or starts a command. See the
+[desktop handoff guide](../docs/desktop.md#hub-host-administration-handoffs).
+
 The separate module pins its toolchain and dependencies in `go.mod`/`go.sum`.
 From `hub/`, with Go 1.27.1:
 

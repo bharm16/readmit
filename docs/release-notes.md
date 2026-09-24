@@ -1,5 +1,15 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The customer hub panel now prepares validated operator handoffs for all
+  seven `readmit-hub` maintenance commands (#317). The desktop reads a local
+  copy of the hub configuration and any required policies through the hub's
+  strict readers, validates Linux host paths, and shows the quoted command,
+  prerequisites, effects and exclusions. A copied backup is verified with the
+  hub's offline verifier, including historical formats, and a local schedule
+  pin is computed by the hub's own input-identity function. The application
+  runs no host command, connects to no host for this preview, and changes no
+  CLI behavior, machine output or existing document contract.
+
 - The license pane's activation-folder choice, installed-entitlement export
   and clock-rollback resolution now have keyboard and cancellation interaction
   coverage plus facade parity with the operation guard (#316). A refused

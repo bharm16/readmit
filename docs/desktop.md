@@ -53,6 +53,9 @@ On Linux the platform webview is WebKitGTK 4.1, so the build needs
 The interface has behavior tests: `npm test` in `desktop/frontend` executes the
 components with Vitest and React Testing Library in a jsdom window, against a
 stub installed at the same `window.go.desktop.App` surface the bindings read.
+The hub administration handoff also tests its separate
+`window.go.hubadmin.Admin` binding, which the production shell and journey
+bridge both expose.
 The stub implements the bindings' exported `Facade` interface, so a test can
 answer only what the real facade publishes and must answer it with the real
 types, and an unanswered call rejects instead of succeeding quietly. Helpers in
@@ -3172,6 +3175,39 @@ The Customer artifact hub panel in the application's privacy pane connects the
 desktop client to an organization-controlled artifact hub. It supports discovery
 and verified transfer of authorized projects and artifacts without background
 synchronization, telemetry, or cloud dependencies.
+
+### Hub host administration handoffs
+
+The **Host administration handoffs** block is closed until opened and prepares each `readmit-hub`
+maintenance step: `migrate`, `check`, `backup`, `verify-backup`, `restore`,
+`schedule-init` and `schedule-pin`. It is separate from the desktop's hub
+client connection. Enter a local copy of the host's `readmit-hub-config/v1`
+file and the clean absolute Linux path where that configuration is installed
+on the hub host. The preview reads the local copy through the hub's strict
+configuration reader, validates the operation's other paths, and shows the
+exact quoted command with its prerequisites, effects and exclusions. It does
+not connect to the hub, open its database, invoke a subprocess, save a draft or
+run the command. The operator reviews and runs the step under the dedicated
+service identity on the customer host.
+
+For backup and restore, the host directory is an absolute Linux path. Backup
+refuses a destination inside the configured artifact root. `verify-backup` and
+`restore` also take an absolute path to a copied backup on this computer and call the
+same offline verifier as the hub binary, accepting historical backup versions
+the binary still accepts and refusing damage. That local result establishes
+hash consistency, not source authenticity. `schedule-init` needs local copies
+and host paths for both operation and schedule policies. The copies pass the
+hub's own strict readers before a handoff is shown. `schedule-pin` takes the
+host's test specification path and a local copy; its displayed input identity
+comes from `hub.ScheduleInputIdentity`, the same function the binary prints.
+Referenced case, target and spec bytes on the host must match those local
+copies before the operator approves a pin. A local preview does not establish
+host availability, permissions, lease admission, author entitlement, backup
+authenticity or a successful restore. Cancel requests the local verification
+to stop; the panel waits for any bounded reader in progress and then discards
+its command. Editing an input also discards an earlier preview.
+See [administrator operations](administration.md) for stopped-service and
+recovery boundaries.
 
 ### Native configuration (`readmit-hub-client/v1`)
 

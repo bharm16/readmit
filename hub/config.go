@@ -10,7 +10,7 @@ import (
 	"errors"
 	"net"
 	"os"
-	"path/filepath"
+	"path"
 )
 
 // Config contains paths and account names only, never credential values.
@@ -52,7 +52,7 @@ func ReadConfig(data []byte) (Config, error) {
 		return c, errors.New("invalid configuration values")
 	}
 	for _, p := range []string{c.Root, c.Socket, c.Certificate, c.Key, c.ClientCA} {
-		if !filepath.IsAbs(p) || filepath.Clean(p) != p {
+		if !path.IsAbs(p) || path.Clean(p) != p {
 			return c, errors.New("paths must be absolute and clean")
 		}
 	}

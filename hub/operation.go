@@ -7,6 +7,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"net/http"
+	"path"
 	"path/filepath"
 
 	"github.com/bharm16/readmit/internal/operationguard"
@@ -30,7 +31,7 @@ type OperationBinding struct {
 
 func ReadOperationPolicy(data []byte) (OperationPolicy, error) {
 	var p OperationPolicy
-	if len(data) > 1<<20 || requireExactMembers(data, "schema", "operation_policy", "bindings") != nil || json.Unmarshal(data, &p, json.RejectUnknownMembers(true)) != nil || p.Schema != "readmit-hub-operation-policy/v1" || !filepath.IsAbs(p.Policy) || len(p.Bindings) > 4096 {
+	if len(data) > 1<<20 || requireExactMembers(data, "schema", "operation_policy", "bindings") != nil || json.Unmarshal(data, &p, json.RejectUnknownMembers(true)) != nil || p.Schema != "readmit-hub-operation-policy/v1" || !path.IsAbs(p.Policy) || len(p.Bindings) > 4096 {
 		return p, errAccess
 	}
 	var raw struct {

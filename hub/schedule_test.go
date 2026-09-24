@@ -393,3 +393,12 @@ func TestScheduleMidnightFoldAndSkippedCivilDay(t *testing.T) {
 	}
 	s.Close()
 }
+
+func TestScheduleInputIdentityContextHonorsCancellationBeforeReading(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	identity, err := ScheduleInputIdentityContext(ctx, "/missing/spec.json")
+	if identity != "" || !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled reader returned identity %q and error %v", identity, err)
+	}
+}

@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/bharm16/readmit/desktop/hubadmin"
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/engine"
 	"github.com/wailsapp/wails/v2"
@@ -168,7 +169,7 @@ func runShell(arguments []string) error {
 		MinHeight:   480,
 		AssetServer: &assetserver.Options{Assets: assets},
 		OnStartup:   startup,
-		Bind:        []any{desktop.NewWithInstalledLicense(folders, recent, filters, session, drafts, operationSelection, license)},
+		Bind:        []any{desktop.NewWithInstalledLicense(folders, recent, filters, session, drafts, operationSelection, license), new(hubadmin.Admin)},
 		// The shell adds no logging of its own, reports no telemetry, no crash
 		// reports and no update checks, and sends nothing to a network. The
 		// window host is held to errors so it emits no routine output either.

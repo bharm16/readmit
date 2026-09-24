@@ -873,7 +873,7 @@ export interface Facade {
 
 declare global {
   interface Window {
-    go?: { desktop?: { App?: Facade } };
+    go?: { desktop?: { App?: Facade }; hubadmin?: { Admin?: HubAdminFacade } };
   }
 }
 
@@ -5038,6 +5038,49 @@ export interface HubDownloadRequest {
 export interface HubUploadRequest {
   project: string;
   source_path: string;
+}
+
+// This separate shell binding can import the customer hub's Go module without
+// pulling its PostgreSQL dependencies into the released command-line module.
+export interface HubAdminRequest {
+  operation: "migrate" | "check" | "backup" | "verify-backup" | "restore" | "schedule-init" | "schedule-pin";
+  config_copy: string;
+  config_path: string;
+  directory: string;
+  local_copy: string;
+  operation_policy_copy: string;
+  operation_policy_path: string;
+  schedule_policy_copy: string;
+  schedule_policy_path: string;
+}
+
+export interface HubAdminResult {
+  state: State;
+  reason?: string;
+  command?: string;
+  prerequisites?: string[];
+  touches?: string[];
+  does_not_touch?: string[];
+  local_result?: string;
+}
+
+export interface HubAdminFacade {
+  Preview(request: HubAdminRequest): Promise<HubAdminResult>;
+  CancelPreview(): Promise<HubAdminResult>;
+}
+
+function hubAdminFacade(): HubAdminFacade {
+  const bound = window.go?.hubadmin?.Admin;
+  if (!bound) throw new NotBound(starting);
+  return bound;
+}
+
+export function previewHubAdministration(request: HubAdminRequest): Promise<HubAdminResult> {
+  return guard(() => hubAdminFacade().Preview(request), { state: "failed" });
+}
+
+export function cancelHubAdministrationPreview(): Promise<HubAdminResult> {
+  return guard(() => hubAdminFacade().CancelPreview(), { state: "failed" });
 }
 
 export function chooseHubConfig(): Promise<HubResult> {
