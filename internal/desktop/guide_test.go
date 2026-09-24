@@ -2,6 +2,7 @@ package desktop_test
 
 import (
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/bharm16/readmit/internal/desktop"
@@ -210,5 +211,82 @@ func TestTheGuidedSampleTakesTheSameOperationSlot(t *testing.T) {
 	}
 	if recovered := second.Guide(root); recovered.State != desktop.Completed {
 		t.Fatalf("the facade stayed busy after its operation finished: %+v", recovered)
+	}
+}
+
+// receiverFixtures copies the two frozen receiver fixtures into a new folder,
+// byte for byte, as a person copies them out of a release archive.
+func receiverFixtures(t *testing.T) string {
+	t.Helper()
+	folder := t.TempDir()
+	for _, name := range []string{"listen-s12.hl7", "listen-s13.hl7"} {
+		writeDocument(t, folder, name, fixture(t, name))
+	}
+	return folder
+}
+
+// The guided sample imports the frozen receiver fixtures as one imported case
+// without activation, through the shared operation the command line runs, and
+// verifies what it wrote through the reader every case is opened with. What
+// it reports is that verified case, and the folder the fixtures came from is
+// left exactly as it was.
+func TestTheGuidedSampleImportsTheFrozenReceiverFixtures(t *testing.T) {
+	fixtures := receiverFixtures(t)
+	root := t.TempDir()
+	host := &chooser{folder: fixtures}
+	unlicensed := desktop.New(host, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"), filepath.Join(t.TempDir(), "drafts.json"))
+	before := bytesUnder(t, fixtures)
+	result := unlicensed.CaptureSample(desktop.SampleCaptureRequest{Workspace: root, Output: "receiver-sample"})
+	if result.State != desktop.Completed || result.Case == nil {
+		t.Fatalf("the sample capture: %+v", result)
+	}
+	if got := result.Case; got.Name != "receiver-sample" || got.Provenance != "imported" || got.Schema != "readmit-case/v1" ||
+		got.Sources != 2 || got.Occurrences != 2 || got.Messages != 2 || got.Acknowledgements != 0 || got.Unparsed != 0 {
+		t.Fatalf("the sample case is not the booking and its reschedule: %+v", got)
+	}
+	if opened := unlicensed.OpenCase(root, "receiver-sample"); opened.State != desktop.Completed || opened.Case.Identity != result.Case.Identity {
+		t.Fatalf("the reported case is not the one the reader verifies: %+v", opened)
+	}
+	if !reflect.DeepEqual(host.titles, []string{"Choose the folder holding the frozen receiver fixtures"}) {
+		t.Fatalf("the fixtures folder was chosen through %v", host.titles)
+	}
+	if after := bytesUnder(t, fixtures); !reflect.DeepEqual(before, after) {
+		t.Fatal("importing the fixtures changed the folder they were read from")
+	}
+}
+
+// Every refusal leaves the workspace as it was: a dismissed dialog, bytes
+// other than the frozen fixtures, a fixture that is not there, a name that is
+// not one new entry, and an entry that already exists. The fixture refusals
+// are the command's own words.
+func TestTheSampleCaptureRefusesAndWritesNothing(t *testing.T) {
+	changed := receiverFixtures(t)
+	writeDocument(t, changed, "listen-s12.hl7", "MSH|^~\\&|CHANGED\r")
+	absent := t.TempDir()
+	for name, test := range map[string]struct {
+		folder, output string
+		state          desktop.State
+		reason         string
+	}{
+		"dismissed dialog": {"", "receiver-sample", desktop.Cancelled, "no folder was chosen"},
+		"changed bytes":    {changed, "receiver-sample", desktop.Failed, "sample requires the unchanged frozen synthetic fixtures"},
+		"missing fixtures": {absent, "receiver-sample", desktop.Failed, "frozen sample fixture unavailable"},
+		"a path":           {receiverFixtures(t), "nested/receiver-sample", desktop.Failed, "the sample case needs one new folder name in the open workspace, never a path"},
+		"no name":          {receiverFixtures(t), "", desktop.Failed, "the sample case needs one new folder name in the open workspace, never a path"},
+		"existing entry":   {receiverFixtures(t), "taken", desktop.Failed, "cannot create bundle; destination must be new and parent readable and writable"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			writeDocument(t, root, "taken", "someone else's file")
+			before := bytesUnder(t, root)
+			app := newApp(t, &chooser{folder: test.folder})
+			result := app.CaptureSample(desktop.SampleCaptureRequest{Workspace: root, Output: test.output})
+			if result.State != test.state || result.Reason != test.reason || result.Case != nil {
+				t.Fatalf("got %+v, want %s %q", result, test.state, test.reason)
+			}
+			if after := bytesUnder(t, root); !reflect.DeepEqual(before, after) {
+				t.Fatalf("a refused sample capture changed the workspace: %v", after)
+			}
+		})
 	}
 }

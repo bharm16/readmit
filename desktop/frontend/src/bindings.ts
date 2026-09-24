@@ -668,6 +668,7 @@ export interface Facade {
   OpenRevisions(path: string): Promise<RevisionsResult>;
   OpenWorkspace(path: string): Promise<WorkspaceResult>;
   RecentWorkspaces(): Promise<RecentResult>;
+  ForgetWorkspace(root: string): Promise<RecentResult>;
   SaveFilter(filter: Filter): Promise<FiltersResult>;
   SaveNote(path: string, note: ProjectNote): Promise<RevisionsResult>;
   Search(path: string, query: string): Promise<SearchResult>;
@@ -708,6 +709,7 @@ export interface Facade {
   Compare(request: CompareRequest): Promise<CompareResult>;
   Guide(workspace: string): Promise<GuideResult>;
   RunPractice(request: PracticeRequest): Promise<PracticeResult>;
+  CaptureSample(request: SampleCaptureRequest): Promise<CaseResult>;
   OpenSequence(request: SequenceRequest): Promise<SequenceResult>;
   PreviewTransformation(request: TransformRequest): Promise<TransformResult>;
   SaveTransformPlan(request: TransformPlanRequest): Promise<TransformPlanResult>;
@@ -1273,6 +1275,12 @@ export function openWorkspace(path: string): Promise<WorkspaceResult> {
 
 export function recentWorkspaces(): Promise<RecentResult> {
   return guard(() => facade().RecentWorkspaces(), { state: "failed", roots: [] });
+}
+
+/** Removes one folder from the recent list and answers the list as it now
+ * stands. The folder itself is left exactly where it is. */
+export function forgetWorkspace(root: string): Promise<RecentResult> {
+  return guard(() => facade().ForgetWorkspace(root), { state: "failed", roots: [] });
 }
 
 export function search(path: string, query: string): Promise<SearchResult> {
@@ -2836,6 +2844,20 @@ export function guide(workspace: string): Promise<GuideResult> {
  * receiver binds in this process; no other host is reachable from it. */
 export function runPractice(request: PracticeRequest): Promise<PracticeResult> {
   return guard(() => facade().RunPractice(request), { state: "failed" });
+}
+
+/** Imports the two frozen receiver fixtures of a folder the person chooses
+ * in the host's dialog as one imported case, a new entry of the open
+ * workspace, exactly as `readmit sample capture` does. Output is that entry. */
+export interface SampleCaptureRequest {
+  workspace: string;
+  output: string;
+}
+
+/** The sample capture needs no activation: it accepts only the pinned
+ * synthetic fixture bytes. What it answers is the case it wrote, verified. */
+export function captureSample(request: SampleCaptureRequest): Promise<CaseResult> {
+  return guard(() => facade().CaptureSample(request), { state: "failed" });
 }
 
 /** How one event of a sequence reached the position it occupies. `unknown` is

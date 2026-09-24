@@ -373,7 +373,10 @@ lists a `project.json` entry as a `project` artifact and a `revisions.json`
 entry as a `revisions` artifact, each with the contract it declares.
 `OpenProject` returns the recorded project document and `OpenRevisions` the
 editable one: the same settings, the same interface versions, the same case and
-revision identities, and the same notes the command line wrote.
+revision identities, and the same notes the command line wrote. The project
+overview shows the editable document on request as `project show` prints it,
+every note with its text and every revision with the identity its parent was
+registered under.
 
 `SaveNote` is the only thing the shell writes into the editable document. It
 replaces one note, so a UI edit reaches working text and nothing else: it

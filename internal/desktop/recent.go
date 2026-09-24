@@ -96,27 +96,73 @@ func (a *App) recordRecent(root string) {
 	writeRecent(a.recentPath, roots)
 }
 
+// ForgetWorkspace removes one folder from the recent workspace list and
+// reports the list as it now stands. Only the entry is forgotten: the folder
+// and everything in it stay exactly where they are, and opening it again
+// records it again. A folder the list no longer holds is refused rather than
+// forgotten quietly, so a window showing a list that has changed since it was
+// read says so and shows the list as it is now. A list this release cannot
+// read is reported and never replaced.
+//
+// It writes one small local file and runs to completion once it starts, so it
+// holds the operation slot but is not interruptible.
+func (a *App) ForgetWorkspace(root string) RecentResult {
+	release, claimed := a.claim("")
+	if !claimed {
+		result := a.RecentWorkspaces()
+		result.State, result.Reason = busyRefusal.state, busyRefusal.reason
+		return result
+	}
+	defer release()
+	listed := a.RecentWorkspaces()
+	if listed.State != Completed && listed.State != Empty {
+		return listed
+	}
+	if !slices.Contains(listed.Roots, root) {
+		listed.State, listed.Reason = Failed, "that folder is not in the recent workspace list any more"
+		return listed
+	}
+	remaining := slices.DeleteFunc(slices.Clone(listed.Roots), func(entry string) bool { return entry == root })
+	if err := writeRecent(a.recentPath, remaining); errors.Is(err, fs.ErrPermission) {
+		listed.State, listed.Reason = PermissionDenied, "this account cannot write the recent workspace list"
+		return listed
+	} else if err != nil {
+		listed.State, listed.Reason = Failed, "the recent workspace list could not be replaced; it is left as it was"
+		return listed
+	}
+	return a.RecentWorkspaces()
+}
+
 // writeRecent installs a complete list or leaves the previous one in place. A
-// reader never observes a partially written list.
-func writeRecent(path string, roots []string) {
+// reader never observes a partially written list. A failure is returned as the
+// filesystem reported it, so a caller can tell a list this account cannot
+// write from any other failure; recording a folder ignores it.
+func writeRecent(path string, roots []string) error {
 	data, err := json.Marshal(recentList{Schema: RecentSchema, Roots: roots}, json.Deterministic(true))
 	if err != nil {
-		return
+		return err
 	}
 	directory := filepath.Dir(path)
 	if err := os.MkdirAll(directory, 0700); err != nil {
-		return
+		return err
 	}
 	file, err := os.CreateTemp(directory, ".recent-*.incomplete")
 	if err != nil {
-		return
+		return err
 	}
 	incomplete := file.Name()
 	_, err = file.Write(append(data, '\n'))
 	if err == nil {
 		err = file.Sync()
 	}
-	if closeErr := file.Close(); err != nil || closeErr != nil || os.Rename(incomplete, path) != nil {
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = os.Rename(incomplete, path)
+	}
+	if err != nil {
 		os.Remove(incomplete)
 	}
+	return err
 }

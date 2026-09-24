@@ -297,3 +297,14 @@ export async function runOnce(user: UserEvent, downstream: Downstream, output: s
   await preflight(user, "reschedule-ack-test.json", output, downstream.address);
   return execute(user);
 }
+
+/** Moves focus with Tab until the control has it, as a keyboard user does,
+ * and fails when the control is not reachable that way at all. */
+export async function tabTo(user: UserEvent, control: HTMLElement): Promise<void> {
+  await whenEnabled(control);
+  for (let step = 0; step < 400; step++) {
+    if (document.activeElement === control) return;
+    await user.tab();
+  }
+  throw new Error(`${control.textContent ?? control.getAttribute("aria-label")} is not reachable with Tab`);
+}

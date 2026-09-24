@@ -344,6 +344,111 @@ func TestRecentStoreIsWrittenCompletelyAndPrivately(t *testing.T) {
 	}
 }
 
+// Forgetting a recent folder removes that one entry and nothing else: the
+// rest of the list keeps its order, the folder and everything in it stay where
+// they are, and opening it again records it again. A folder the list no longer
+// holds is refused and the list as it now stands is reported.
+func TestForgettingARecentFolderRemovesOnlyItsEntry(t *testing.T) {
+	store := filepath.Join(t.TempDir(), "recent.json")
+	app := activatedApp(t, &chooser{}, store, filepath.Join(filepath.Dir(store), "filters.json"), filepath.Join(filepath.Dir(store), "session.json"))
+	var opened []string
+	for range 3 {
+		root := t.TempDir()
+		writeDocument(t, root, "kept.txt", "left exactly where it was")
+		if result := app.OpenWorkspace(root); result.State != desktop.Completed {
+			t.Fatalf("open: %+v", result)
+		}
+		opened = append([]string{resolved(t, root)}, opened...)
+	}
+	forgotten := app.ForgetWorkspace(opened[1])
+	if forgotten.State != desktop.Completed || !reflect.DeepEqual(forgotten.Roots, []string{opened[0], opened[2]}) {
+		t.Fatalf("forgetting the middle folder: %+v, want %v", forgotten, []string{opened[0], opened[2]})
+	}
+	if data, err := os.ReadFile(filepath.Join(opened[1], "kept.txt")); err != nil || string(data) != "left exactly where it was" {
+		t.Fatalf("forgetting a folder reached into it: %q %v", data, err)
+	}
+	if reread := app.RecentWorkspaces(); !reflect.DeepEqual(reread.Roots, forgotten.Roots) {
+		t.Fatalf("the list read back is not the one forgetting reported: %+v", reread)
+	}
+
+	// Asked again, the folder is no longer there to forget.
+	before, err := os.ReadFile(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again := app.ForgetWorkspace(opened[1])
+	if again.State != desktop.Failed || again.Reason != "that folder is not in the recent workspace list any more" || !reflect.DeepEqual(again.Roots, forgotten.Roots) {
+		t.Fatalf("forgetting a folder the list no longer holds: %+v", again)
+	}
+	if after, err := os.ReadFile(store); err != nil || string(after) != string(before) {
+		t.Fatalf("a refused forget rewrote the list: %q", after)
+	}
+
+	// Opening it again records it again, at the front.
+	if result := app.OpenWorkspace(opened[1]); result.State != desktop.Completed {
+		t.Fatalf("reopen: %+v", result)
+	}
+	if reread := app.RecentWorkspaces(); !reflect.DeepEqual(reread.Roots, []string{opened[1], opened[0], opened[2]}) {
+		t.Fatalf("a reopened folder was not recorded again: %+v", reread)
+	}
+
+	// Forgetting the last folder leaves an empty list, not a missing one.
+	for _, root := range []string{opened[1], opened[0], opened[2]} {
+		app.ForgetWorkspace(root)
+	}
+	if empty := app.RecentWorkspaces(); empty.State != desktop.Empty || len(empty.Roots) != 0 {
+		t.Fatalf("a list with every folder forgotten: %+v", empty)
+	}
+}
+
+// A list this release cannot read is reported by forgetting as it is by
+// listing, and is never replaced: the bytes someone else wrote stay.
+func TestForgettingRefusesAListThisReleaseCannotRead(t *testing.T) {
+	for name, contents := range map[string]string{
+		"unknown version": `{"schema":"readmit-desktop-recent/v2","roots":["/tmp"]}`,
+		"not JSON":        "{",
+	} {
+		store := filepath.Join(t.TempDir(), "recent.json")
+		if err := os.WriteFile(store, []byte(contents), 0600); err != nil {
+			t.Fatal(err)
+		}
+		app := activatedApp(t, &chooser{}, store, filepath.Join(filepath.Dir(store), "filters.json"), filepath.Join(filepath.Dir(store), "session.json"))
+		if result := app.ForgetWorkspace("/tmp"); result.State != desktop.Failed || len(result.Roots) != 0 {
+			t.Fatalf("forgetting from an %s list: %+v", name, result)
+		}
+		if data, err := os.ReadFile(store); err != nil || string(data) != contents {
+			t.Fatalf("forgetting replaced an %s list: %q", name, data)
+		}
+	}
+}
+
+// Forgetting writes the list, so it takes the operation slot, as opening a
+// folder that records itself in the list does. A forget that meets a running
+// operation forgets nothing and still reports the list.
+func TestForgettingTakesTheOperationSlot(t *testing.T) {
+	store := filepath.Join(t.TempDir(), "recent.json")
+	root := t.TempDir()
+	dialog, held := make(chan struct{}), make(chan struct{})
+	host := &chooser{folder: root}
+	app := activatedApp(t, host, store, filepath.Join(filepath.Dir(store), "filters.json"), filepath.Join(filepath.Dir(store), "session.json"))
+	if result := app.OpenWorkspace(root); result.State != desktop.Empty {
+		t.Fatalf("open: %+v", result)
+	}
+	host.before = func() { close(held); <-dialog }
+	answered := make(chan desktop.WorkspaceResult, 1)
+	go func() { answered <- app.SelectWorkspace() }()
+	<-held
+	busy := app.ForgetWorkspace(resolved(t, root))
+	close(dialog)
+	<-answered
+	if busy.State != desktop.Busy || busy.Reason != "another operation is already running" || !reflect.DeepEqual(busy.Roots, []string{resolved(t, root)}) {
+		t.Fatalf("a forget that met a running operation: %+v", busy)
+	}
+	if listed := app.RecentWorkspaces(); !reflect.DeepEqual(listed.Roots, []string{resolved(t, root)}) {
+		t.Fatalf("a busy forget forgot the folder anyway: %+v", listed)
+	}
+}
+
 func TestDefaultRecentPathStaysInsideTheUserConfigurationDirectory(t *testing.T) {
 	path, err := desktop.DefaultRecentPath()
 	if err != nil {
