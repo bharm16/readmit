@@ -3551,7 +3551,10 @@ configuration is selected, and it says so rather than offering a fake flow.
   identity the hub binds its journal to, each entry's next occurrences computed
   by the backend's own occurrence function (a nonexistent spring-forward minute
   is marked `dst-gap`, never shifted; an occurrence older than its window is
-  marked `missed`), the serial `serial-skip-missed` discipline, and the exact
+  marked `missed`). Without an anchor, each entry starts on today's date in
+  its own zone, including when that local date differs from UTC; an explicit
+  anchor starts every entry on the chosen date. The preview also shows the
+  serial `serial-skip-missed` discipline and the exact
   fixed notification body an approved route may emit. A pin that the readable
   spec's prepared inputs disagree with refuses to save. Removing an entry is how
   a schedule stops; installing a revision and restarting the hub — which fails
