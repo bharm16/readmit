@@ -252,18 +252,73 @@ func TestSchedulePreviewShowsZoneOccurrenceAndAlertSemantics(t *testing.T) {
 	if result := app.PreviewSchedulePolicy(desktop.SchedulePolicyRequest{Entries: []desktop.ScheduleEntryInput{noRoute}}); result.State != desktop.Failed {
 		t.Fatalf("approved without route: %+v", result)
 	}
-	// An occurrence older than the entry's window is the contract's missed.
-	// The entry fell due an hour ago, so the occurrence is past its window and
-	// the next day's is ahead whatever time of day the test runs; an entry
-	// due at midnight was still inside its window just after midnight UTC.
-	due := time.Now().UTC().Add(-time.Hour)
-	past := scheduleEntry(pin, false)
-	past.Zone = "UTC"
-	past.At = due.Format("15:04")
-	pastPreview := app.PreviewSchedulePolicy(desktop.SchedulePolicyRequest{Anchor: due.AddDate(0, 0, -1).Format("2006-01-02"), Entries: []desktop.ScheduleEntryInput{past}})
-	if pastPreview.State != desktop.Completed || pastPreview.Entries[0].Occurrences[1].State != "missed" || pastPreview.Entries[0].Occurrences[2].State != "scheduled" {
-		t.Fatalf("missed marking: %+v", pastPreview.Entries[0].Occurrences)
+	// An occurrence older than the entry's window is the contract's missed;
+	// one inside it is not, even when it is past. Each preview is taken at a
+	// fixed instant, never at the time the test runs, so it checks both sides
+	// of 00:00 and 01:00 UTC every time. state is what the preview says of
+	// that day's 00:00 occurrence, whose 600-second window ends at 00:10:00.
+	for _, instant := range []struct{ at, state string }{
+		{"2026-09-23T23:59:59Z", "missed"},
+		{"2026-09-24T00:00:00Z", "scheduled"},
+		// When #374's first CI run failed, and its local reproduction.
+		{"2026-09-24T00:00:31Z", "scheduled"},
+		{"2026-09-24T00:02:56Z", "scheduled"},
+		// Exactly the window is not older than it.
+		{"2026-09-24T00:10:00Z", "scheduled"},
+		{"2026-09-24T00:10:01Z", "missed"},
+		{"2026-09-24T00:59:59Z", "missed"},
+		{"2026-09-24T01:00:00Z", "missed"},
+		{"2026-09-24T01:00:31Z", "missed"},
+		{"2026-09-24T01:10:01Z", "missed"},
+		{"2026-09-24T12:00:00Z", "missed"},
+	} {
+		now, err := time.Parse(time.RFC3339, instant.at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		atMidnight := scheduleEntry(pin, false)
+		atMidnight.At = "00:00"
+		occurrences := occurrencesAt(t, app, atMidnight, now, now)
+		if occurrences[1].Day != now.Format("2006-01-02") || occurrences[1].State != instant.state || occurrences[2].State != "scheduled" {
+			t.Fatalf("midnight at %s: %+v", instant.at, occurrences)
+		}
+		// Without an anchor the preview counts from the same instant's day.
+		if unanchored := desktop.PreviewSchedulePolicyAtForTest(app, desktop.SchedulePolicyRequest{Entries: []desktop.ScheduleEntryInput{atMidnight}}, now); unanchored.State != desktop.Completed || unanchored.Entries[0].Occurrences[0].Day != now.Format("2006-01-02") {
+			t.Fatalf("unanchored at %s: %+v", instant.at, unanchored)
+		}
+		dueAnHourEarlier(t, app, pin, now)
 	}
+	// And at every minute of a whole day: whatever the time of day, an entry
+	// due an hour earlier is missed and its next day's occurrence is ahead.
+	first := time.Date(2026, 9, 24, 0, 0, 31, 0, time.UTC)
+	for minute := 0; minute < 24*60; minute++ {
+		dueAnHourEarlier(t, app, pin, first.Add(time.Duration(minute)*time.Minute))
+	}
+}
+
+// dueAnHourEarlier previews, at the instant now, an entry that fell due an
+// hour before it: that occurrence is past its 600-second window and missed,
+// and the next day's is scheduled.
+func dueAnHourEarlier(t *testing.T, app *desktop.App, pin string, now time.Time) {
+	t.Helper()
+	due := now.Add(-time.Hour)
+	entry := scheduleEntry(pin, false)
+	entry.At = due.Format("15:04")
+	occurrences := occurrencesAt(t, app, entry, due, now)
+	if occurrences[1].UTC != due.Truncate(time.Minute).Format(time.RFC3339) || occurrences[1].State != "missed" || occurrences[2].State != "scheduled" {
+		t.Fatalf("missed marking at %s: %+v", now.Format(time.RFC3339), occurrences)
+	}
+}
+
+// occurrencesAt previews one entry at the instant now, counting from the day
+// before day, so the second occurrence is day's own.
+func occurrencesAt(t *testing.T, app *desktop.App, entry desktop.ScheduleEntryInput, day, now time.Time) []desktop.ScheduleOccurrence {
+	t.Helper()
+	preview := desktop.PreviewSchedulePolicyAtForTest(app, desktop.SchedulePolicyRequest{Anchor: day.AddDate(0, 0, -1).Format("2006-01-02"), Entries: []desktop.ScheduleEntryInput{entry}}, now)
+	if preview.State != desktop.Completed || len(preview.Entries) != 1 || len(preview.Entries[0].Occurrences) != 3 {
+		t.Fatalf("preview at %s: %+v", now.Format(time.RFC3339), preview)
+	}
+	return preview.Entries[0].Occurrences
 }
 
 func TestSaveSchedulePolicyWritesRevisionAndRefusesStalePin(t *testing.T) {

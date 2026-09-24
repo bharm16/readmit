@@ -126,12 +126,15 @@ test("a note's text the window called retained survives a kill, and text it had 
 
   // More keystrokes, and the process is killed the moment one of their
   // retentions is in flight — while the window says it is still retaining.
+  // The window says so for as long as a retention is in flight, so the two
+  // are read at one moment: read afterwards, the window can already show the
+  // answer, which may arrive while the test waits to run again.
   const typed = "first pass and the reschedule";
   const typing = user.type(note.getByLabelText("Body"), typed.slice("first pass".length)).catch(() => undefined);
   await waitFor(() => {
     if (!journey.callsTo("SaveEditorDraft").some((call) => !call.settled)) throw new Error("no retention is in flight");
+    expect(note.getByText("Retaining this draft…")).toBeTruthy();
   });
-  expect(note.getByText("Retaining this draft…")).toBeTruthy();
   await journey.crash();
   await typing;
   // The newest text the facade answered as retained before the kill.

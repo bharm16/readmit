@@ -42,3 +42,11 @@ func ImportProfilePackageWithinForTest(ctx context.Context, request ProfilePacka
 // ProfileImportOperationForTest is the name a package import holds the slot
 // under, which the profile panel's cancel must name.
 const ProfileImportOperationForTest = profileImportOperation
+
+// PreviewSchedulePolicyAtForTest is PreviewSchedulePolicy taken at the
+// instant now rather than when the test runs, so a test states which
+// occurrences are missed at a fixed time of day. The slot, the contract's
+// reader and the occurrence function are the production ones.
+func PreviewSchedulePolicyAtForTest(a *App, request SchedulePolicyRequest, now time.Time) SchedulePreviewResult {
+	return a.previewSchedulePolicy(request, now)
+}
