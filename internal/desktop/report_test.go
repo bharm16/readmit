@@ -39,8 +39,9 @@ func packetWorkspace(t *testing.T, app *desktop.App) (root, spec, baseline, curr
 	peer := newAckingPeer(t, "AA")
 	root = ackWorkspace(t, peer.address)
 	writeAckSpec(t, root, "reschedule.json", "AA")
+	identity := preflighted(t, app, desktop.RunPreflightRequest{Workspace: root, Spec: "reschedule.json"})
 	for _, name := range []string{"baseline-run", "current-run"} {
-		executed := app.StartDurableRun(desktop.DurableRunRequest{Workspace: root, Spec: "reschedule.json", Output: name})
+		executed := app.StartDurableRun(desktop.DurableRunRequest{Workspace: root, Spec: "reschedule.json", Output: name, Expected: identity})
 		if executed.State != desktop.Completed || executed.Run == nil || executed.Run.State != durablerun.Passed {
 			t.Fatalf("retained execution %s: %+v", name, executed)
 		}
@@ -588,7 +589,8 @@ func TestPacketOperationsAcquireNoSendOrMutationAuthority(t *testing.T) {
 	}
 	// The same policy-less viewer still cannot send: reading never acquires
 	// execution authority.
-	if executed := viewer.StartDurableRun(desktop.DurableRunRequest{Workspace: root, Spec: spec, Output: "another-run"}); executed.State != desktop.PermissionDenied {
+	identity := preflighted(t, viewer, desktop.RunPreflightRequest{Workspace: root, Spec: spec})
+	if executed := viewer.StartDurableRun(desktop.DurableRunRequest{Workspace: root, Spec: spec, Output: "another-run", Expected: identity}); executed.State != desktop.PermissionDenied {
 		t.Fatalf("opening packets acquired send authority: %+v", executed)
 	}
 }
@@ -600,10 +602,11 @@ func TestPacketCancelNameCannotReachADifferentOperation(t *testing.T) {
 	workspace := ackWorkspace(t, peer.address)
 	writeAckSpec(t, workspace, "reschedule.json", "AA")
 	app := workspaceApp(t)
+	identity := preflighted(t, app, desktop.RunPreflightRequest{Workspace: workspace, Spec: "reschedule.json"})
 
 	done := make(chan desktop.DurableRunResult, 1)
 	go func() {
-		done <- app.StartDurableRun(desktop.DurableRunRequest{Workspace: workspace, Spec: "reschedule.json", Output: "job-001"})
+		done <- app.StartDurableRun(desktop.DurableRunRequest{Workspace: workspace, Spec: "reschedule.json", Output: "job-001", Expected: identity})
 	}()
 	deadline := time.Now().Add(10 * time.Second)
 	for peer.deliveries() == 0 && time.Now().Before(deadline) {

@@ -114,6 +114,17 @@ func ackWorkspace(t *testing.T, address string) string {
 	return workspace
 }
 
+// preflighted is the identity a preflight of the request fixes. Every start
+// names the one its preflight showed, as the run panel does.
+func preflighted(t testing.TB, app *desktop.App, request desktop.RunPreflightRequest) string {
+	t.Helper()
+	preflight := app.PreflightRun(request)
+	if preflight.State != desktop.Completed || preflight.Preflight == nil {
+		t.Fatalf("preflight %s: %+v", request.Spec, preflight)
+	}
+	return preflight.Preflight.Identity
+}
+
 func writeAckSpec(t *testing.T, workspace, name, code string) {
 	t.Helper()
 	value := code
@@ -271,6 +282,71 @@ func TestAChangedSpecAfterPreflightIsRefusedByTheSend(t *testing.T) {
 	}
 	if peer.deliveries() != 0 {
 		t.Fatal("a refused send delivered a message")
+	}
+}
+
+// The preflight pins every input the send would consume, not only the spec: a
+// target configuration edited after the preflight — the spec's bytes
+// unchanged — is refused by the send, and nothing reaches the receiver.
+func TestAChangedTargetConfigurationAfterPreflightIsRefusedByTheSend(t *testing.T) {
+	peer := newAckingPeer(t, "AA")
+	workspace := ackWorkspace(t, peer.address)
+	writeAckSpec(t, workspace, "reschedule.json", "AA")
+	app := workspaceApp(t)
+
+	identity := preflighted(t, app, desktop.RunPreflightRequest{Workspace: workspace, Spec: "reschedule.json"})
+	target := replay.Target{Schema: replay.TargetSchema, TestEndpoint: true, Address: peer.address,
+		Transport: "plain", ConnectTimeout: "2s", MessageTimeout: "3s", MaxACKBytes: 4096}
+	encoded, err := json.Marshal(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "target.json"), encoded, 0600); err != nil {
+		t.Fatal(err)
+	}
+	executed := app.StartDurableRun(desktop.DurableRunRequest{Workspace: workspace, Spec: "reschedule.json", Output: "job-001", Expected: identity})
+	if executed.State != desktop.Failed || executed.Run != nil ||
+		executed.Reason != "the selected test changed after the preflight; preflight it again before executing" {
+		t.Fatalf("a changed target configuration was executed as though nothing changed: %+v", executed)
+	}
+	if _, err := os.Lstat(filepath.Join(workspace, "job-001")); !os.IsNotExist(err) {
+		t.Fatal("a refused send left a run folder behind")
+	}
+	if peer.deliveries() != 0 {
+		t.Fatal("a refused send delivered a message")
+	}
+	// Preflighted again, the edited configuration is what executes.
+	again := preflighted(t, app, desktop.RunPreflightRequest{Workspace: workspace, Spec: "reschedule.json"})
+	if again == identity {
+		t.Fatal("the preflight identity did not change with the target configuration")
+	}
+	if executed := app.StartDurableRun(desktop.DurableRunRequest{Workspace: workspace, Spec: "reschedule.json", Output: "job-001", Expected: again}); executed.State != desktop.Completed || executed.Run == nil {
+		t.Fatalf("the preflighted configuration did not execute: %+v", executed)
+	}
+}
+
+// A suite rewritten after its preflight is refused by the send before its
+// output exists: the suite compiles only the document the preflight
+// identified, checked on the bytes it compiles.
+func TestASuiteRewrittenAfterPreflightIsRefusedByTheSend(t *testing.T) {
+	peer := newAckingPeer(t, "AA")
+	workspace := ackWorkspace(t, peer.address)
+	writeAckSpec(t, workspace, "booking.json", "AA")
+	writeSuite(t, workspace, "nightly.json")
+	app := workspaceApp(t)
+
+	identity := preflighted(t, app, desktop.RunPreflightRequest{Workspace: workspace, Spec: "nightly.json", Environment: "east"})
+	writeSuiteRows(t, workspace, "nightly.json", "one", "two")
+	executed := app.StartSuiteRun(desktop.SuiteRunRequest{Workspace: workspace, Suite: "nightly.json", Environment: "east", Output: "suite-run", Expected: identity})
+	if executed.State != desktop.Failed || executed.Report != nil ||
+		executed.Reason != "the selected suite changed after the preflight; preflight it again before executing" {
+		t.Fatalf("a rewritten suite was executed as though nothing changed: %+v", executed)
+	}
+	if _, err := os.Lstat(filepath.Join(workspace, "suite-run")); !os.IsNotExist(err) {
+		t.Fatal("a refused suite left its output behind")
+	}
+	if peer.deliveries() != 0 {
+		t.Fatal("a refused suite delivered a message")
 	}
 }
 
@@ -453,10 +529,11 @@ func TestACancelActionCannotTargetADifferentOperation(t *testing.T) {
 	workspace := ackWorkspace(t, peer.address)
 	writeAckSpec(t, workspace, "reschedule.json", "AA")
 	app := workspaceApp(t)
+	identity := preflighted(t, app, desktop.RunPreflightRequest{Workspace: workspace, Spec: "reschedule.json"})
 
 	done := make(chan desktop.DurableRunResult, 1)
 	go func() {
-		done <- app.StartDurableRun(desktop.DurableRunRequest{Workspace: workspace, Spec: "reschedule.json", Output: "job-001", Expected: ""})
+		done <- app.StartDurableRun(desktop.DurableRunRequest{Workspace: workspace, Spec: "reschedule.json", Output: "job-001", Expected: identity})
 	}()
 	// The other panel's cancel, pressed while the run holds the slot.
 	deadline := time.Now().Add(10 * time.Second)
@@ -488,10 +565,11 @@ func TestDuplicateClicksCannotStartTwoRuns(t *testing.T) {
 	workspace := ackWorkspace(t, peer.address)
 	writeAckSpec(t, workspace, "reschedule.json", "AA")
 	app := workspaceApp(t)
+	identity := preflighted(t, app, desktop.RunPreflightRequest{Workspace: workspace, Spec: "reschedule.json"})
 
 	done := make(chan desktop.DurableRunResult, 1)
 	go func() {
-		done <- app.StartDurableRun(desktop.DurableRunRequest{Workspace: workspace, Spec: "reschedule.json", Output: "job-001", Expected: ""})
+		done <- app.StartDurableRun(desktop.DurableRunRequest{Workspace: workspace, Spec: "reschedule.json", Output: "job-001", Expected: identity})
 	}()
 	deadline := time.Now().Add(10 * time.Second)
 	for peer.deliveries() == 0 && time.Now().Before(deadline) {
@@ -502,7 +580,7 @@ func TestDuplicateClicksCannotStartTwoRuns(t *testing.T) {
 	}
 	// The exchange is held open, so the first execution still holds the slot:
 	// the duplicate click of the same button is refused busy.
-	second := app.StartDurableRun(desktop.DurableRunRequest{Workspace: workspace, Spec: "reschedule.json", Output: "job-001", Expected: ""})
+	second := app.StartDurableRun(desktop.DurableRunRequest{Workspace: workspace, Spec: "reschedule.json", Output: "job-001", Expected: identity})
 	if second.State != desktop.Busy || second.Run != nil {
 		t.Fatalf("a duplicate click was not refused busy: %+v", second)
 	}
@@ -522,10 +600,11 @@ func TestUncertainDeliveryNeverBecomesAPassInTheEvidenceView(t *testing.T) {
 	peer := newSilentPeer(t)
 	workspace, _, _ := crashFixture(t, peer.address)
 	app := workspaceApp(t)
+	identity := preflighted(t, app, desktop.RunPreflightRequest{Workspace: workspace, Spec: "spec.json"})
 
 	done := make(chan desktop.DurableRunResult, 1)
 	go func() {
-		done <- app.StartDurableRun(desktop.DurableRunRequest{Workspace: workspace, Spec: "spec.json", Output: "job-001", Expected: ""})
+		done <- app.StartDurableRun(desktop.DurableRunRequest{Workspace: workspace, Spec: "spec.json", Output: "job-001", Expected: identity})
 	}()
 	select {
 	case <-peer.received:
@@ -725,7 +804,7 @@ func TestProductionAndCredentialRefusalsHappenBeforeAnySend(t *testing.T) {
 	if unbound.State != desktop.Failed || unbound.Preflight != nil {
 		t.Fatalf("an unbindable credential reference was preflighted: %+v", unbound)
 	}
-	if executed := app.StartDurableRun(desktop.DurableRunRequest{Workspace: credentialed, Spec: "reschedule.json", Output: "job-001", Expected: ""}); executed.State == desktop.Completed {
+	if executed := app.StartDurableRun(desktop.DurableRunRequest{Workspace: credentialed, Spec: "reschedule.json", Output: "job-001", Expected: strings.Repeat("0", 64)}); executed.State == desktop.Completed {
 		t.Fatalf("a credentialed send executed against a broken reference: %+v", executed)
 	}
 	if _, err := os.Lstat(filepath.Join(credentialed, "job-001")); !os.IsNotExist(err) {

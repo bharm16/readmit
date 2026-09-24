@@ -12,6 +12,8 @@ package desktop_test
 // inside the workspace, through `..`, or never having entered it.
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json/v2"
 	"os"
 	"path/filepath"
@@ -81,12 +83,17 @@ func TestChooseRunSpecAcceptsEverySpellingOfTheOpenWorkspace(t *testing.T) {
 	if command.State != executed.Run.State || command.Planned != executed.Run.Planned || command.Recorded != executed.Run.Recorded {
 		t.Fatalf("the command line and the window disagree about the run: %+v vs %+v", command, executed.Run)
 	}
+	raw, err := os.ReadFile(chosen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(raw)
 	for _, entry := range []string{"desktop-run", "cli-run"} {
 		opened := app.OpenRunEvidence(desktop.RunEvidenceRequest{Workspace: root, Entry: entry})
 		if opened.State != desktop.Completed || opened.Evidence == nil {
 			t.Fatalf("%s: %+v", entry, opened)
 		}
-		if opened.Evidence.SpecIdentity != identity || opened.Evidence.Status != string(testrunner.Pass) {
+		if opened.Evidence.SpecIdentity != hex.EncodeToString(sum[:]) || opened.Evidence.Status != string(testrunner.Pass) {
 			t.Fatalf("%s executed a different test or verdict than the chosen entry: %+v", entry, opened.Evidence)
 		}
 	}

@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
-	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -173,7 +171,7 @@ func (a *App) PreviewReplay(request ReplayRequest) ReplayResult {
 		if declined.state != "" {
 			return ReplayResult{State: declined.state, Reason: declined.reason}
 		}
-		destination, declined := replayDestination(inputs.root, request.Output)
+		destination, declined := replayOutput.destination(inputs.root, request.Output)
 		if declined.state != "" {
 			return ReplayResult{State: declined.state, Reason: declined.reason}
 		}
@@ -257,7 +255,7 @@ func (a *App) SendReplay(request ReplaySendRequest) ReplayResult {
 		if declined.state != "" {
 			return ReplayResult{State: declined.state, Reason: declined.reason}
 		}
-		destination, declined := replayDestination(inputs.root, request.Replay.Output)
+		destination, declined := replayOutput.destination(inputs.root, request.Replay.Output)
 		if declined.state != "" {
 			return ReplayResult{State: declined.state, Reason: declined.reason}
 		}
@@ -339,46 +337,16 @@ func replayInputsOf(request ReplayRequest) (replayInputs, refusal) {
 	}, refusal{}
 }
 
-// replayDestination is the run folder a send writes and the decision file it
+// replayOutput is the run folder a send writes and the decision file it
 // retains beside it, both of which must be new entries of the open workspace.
-// Empty proposes the next name free for both, since a refused send retains a
-// decision without a run. A name already taken is reported, not refused: a
-// preview still shows what would be sent, and the send is what refuses.
-func replayDestination(root, requested string) (RunDestination, refusal) {
-	free := func(name string) (bool, error) {
-		for _, entry := range []string{name, name + replayDecisionSuffix} {
-			if _, err := os.Lstat(filepath.Join(root, entry)); err == nil {
-				return false, nil
-			} else if !os.IsNotExist(err) {
-				return false, err
-			}
-		}
-		return true, nil
-	}
-	if requested == "" {
-		for i := 1; i <= 999; i++ {
-			candidate := fmt.Sprintf("replay-%03d", i)
-			fresh, err := free(candidate)
-			if err != nil {
-				return RunDestination{}, probeReadFailure(root)
-			}
-			if fresh {
-				return RunDestination{Name: candidate, Generated: true, Fresh: true}, refusal{}
-			}
-		}
-		return RunDestination{}, refusal{Failed, "the workspace holds more generated replay folders than this release proposes"}
-	}
-	if artifactpath.EntryName(requested) != nil || artifactpath.EntryName(requested+replayDecisionSuffix) != nil {
-		return RunDestination{Name: requested}, refusal{Failed, "a replay's run folder must be one new entry of the open workspace"}
-	}
-	fresh, err := free(requested)
-	if err != nil {
-		return RunDestination{Name: requested}, probeReadFailure(root)
-	}
-	if !fresh {
-		return RunDestination{Name: requested, Reason: "that run folder or the decision file beside it already exists; a send writes both as new entries"}, refusal{}
-	}
-	return RunDestination{Name: requested, Fresh: true}, refusal{}
+// A proposed name is free for both, since a refused send retains a decision
+// without a run. A name already taken is reported, not refused: a preview
+// still shows what would be sent, and the send is what refuses.
+var replayOutput = outputRule{prefix: "replay", beside: replayDecisionSuffix,
+	invalid:     "a replay's run folder must be one new entry of the open workspace",
+	exhausted:   "the workspace holds more generated replay folders than this release proposes",
+	taken:       "that run folder or the decision file beside it already exists; a send writes both as new entries",
+	reportTaken: true,
 }
 
 // replayIdentity is what a send pins itself to: the case the plan was sealed

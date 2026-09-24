@@ -2,7 +2,6 @@ package desktop
 
 import (
 	"context"
-	"encoding/json/v2"
 	"errors"
 	"os"
 	"path/filepath"
@@ -185,9 +184,6 @@ func (a *App) ReexecuteReviewedEvidence(request ReexecutionSendRequest) Reexecut
 		if refused.state != "" {
 			return ReexecutionResult{State: refused.state, Reason: refused.reason}
 		}
-		if preview, err := reexecutionPreview(plan); err != nil || preview.Identity != request.Expected {
-			return ReexecutionResult{State: Failed, Reason: "the reexecution inputs changed after the preview; preview again and authorize the send it shows"}
-		}
 		destination, refused := destinationFor(root, request.Output, "reexecution")
 		if refused.state != "" {
 			return ReexecutionResult{State: refused.state, Reason: refused.reason}
@@ -197,7 +193,10 @@ func (a *App) ReexecuteReviewedEvidence(request ReexecutionSendRequest) Reexecut
 		// read tells a send in flight from one a crash interrupted.
 		a.setRunOutput(output)
 		defer a.setRunOutput("")
-		assessment, err := plan.Execute(ctx, output)
+		assessment, err := plan.ExecutePinned(ctx, output, request.Expected)
+		if errors.Is(err, durablerun.ErrInputsChanged) {
+			return ReexecutionResult{State: Failed, Reason: "the reexecution inputs changed after the preview; preview again and authorize the send it shows"}
+		}
 		var outcome *ReexecutionOutcome
 		if _, statErr := os.Lstat(output); statErr == nil {
 			outcome = &ReexecutionOutcome{Job: destination.Name, Assessment: assessment, Retained: retainedJob(output), Limitations: reexecutionBoundaries}
@@ -269,35 +268,28 @@ func prepareReexecution(ctx context.Context, root string, request ReexecutionReq
 }
 
 // reexecutionPreview projects one prepared execution and pins it: the
-// identity is the digest of everything the preview shows about what a send
-// would do, so a changed review, packet, specification, case or target
-// refuses the send rather than executing inputs nobody reviewed.
+// identity is the operation's own (redact.Reexecution.Identity), so a changed
+// review, packet, specification, case or target refuses the send rather than
+// executing inputs nobody reviewed.
 func reexecutionPreview(plan *redact.Reexecution) (ReexecutionPreview, error) {
 	inputs := plan.PinnedInputs()
 	spec, err := testrunner.DecodeSpec(inputs.Spec)
 	if err != nil {
 		return ReexecutionPreview{}, err
 	}
-	preview := ReexecutionPreview{
+	identity, err := plan.Identity()
+	if err != nil {
+		return ReexecutionPreview{}, err
+	}
+	return ReexecutionPreview{
+		Identity:     identity,
 		Assessment:   plan.Preview(),
 		Target:       targetView(inputs.Configuration),
 		Selected:     selected(inputs.Mappings),
 		InitialState: spec.Setup.InitialState,
 		Reset:        spec.Setup.ResetInstructions,
 		Limitations:  reexecutionBoundaries,
-	}
-	pinned, err := json.Marshal(struct {
-		Assessment   redact.ReexecutionAssessment
-		Target       RunTargetView
-		Selected     []RunSelected
-		InitialState string
-		Reset        string
-	}{preview.Assessment, preview.Target, preview.Selected, preview.InitialState, preview.Reset}, json.Deterministic(true))
-	if err != nil {
-		return ReexecutionPreview{}, err
-	}
-	preview.Identity = digestOf(pinned)
-	return preview, nil
+	}, nil
 }
 
 // retainedJob is the read-only recovery read of the job a send wrote, the one

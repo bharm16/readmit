@@ -19,7 +19,6 @@ import (
 	"github.com/bharm16/readmit/internal/operationguard"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/runexplain"
-	"github.com/bharm16/readmit/internal/runqueue"
 	"github.com/bharm16/readmit/internal/runresult"
 	"github.com/bharm16/readmit/internal/suite"
 	"github.com/bharm16/readmit/internal/testrunner"
@@ -149,10 +148,11 @@ func (a *App) CleanDurableRun(workspace, entry string) CleanRunResult {
 }
 
 // DurableRunRequest is one deliberate execution: the open workspace, the saved
-// spec entry, the fresh output entry it is written into, and the spec identity
-// the preflight fixed. A spec whose bytes no longer hash to Expected is
-// refused rather than executed as though nothing had changed, so a preflight
-// can never go stale in silence.
+// spec entry, the fresh output entry it is written into, and the input
+// identity the preflight fixed. Expected is required: a test whose prepared
+// inputs — the spec, its case and selection, the target configuration and its
+// credential registration — no longer have it is refused rather than executed
+// as though nothing had changed, so a preflight can never go stale in silence.
 type DurableRunRequest struct {
 	Workspace string `json:"workspace"`
 	Spec      string `json:"spec"`
@@ -164,9 +164,18 @@ type DurableRunRequest struct {
 // journal directory. Cancel stops future sends; in-flight effects remain
 // visible. Execution happens only under the operation guard's own admission:
 // an unconfigured, expired or released term refuses here before anything is
-// created, exactly as the preflight said it would.
+// created, exactly as the preflight said it would. A start that names no
+// preflight identity is refused before admission is asked, and the engine
+// executes only the prepared inputs that still have it
+// (durablerun.Prepared.StartPinned).
 func (a *App) StartDurableRun(request DurableRunRequest) DurableRunResult {
-	return runNamed[DurableRunResult, *DurableRunResult](a, profiles["StartDurableRun"], func(ctx context.Context) DurableRunResult {
+	preflighted := func() (DurableRunResult, bool) {
+		if request.Expected == "" {
+			return DurableRunResult{State: Failed, Reason: "preflight the selected test first; a run executes only what its preflight identified. Nothing was sent"}, false
+		}
+		return DurableRunResult{}, true
+	}
+	return runNamedChecked[DurableRunResult, *DurableRunResult](a, profiles["StartDurableRun"], preflighted, func(ctx context.Context) DurableRunResult {
 		root, declined := resolveFolder(request.Workspace)
 		if root == "" {
 			return DurableRunResult{State: declined.state, Reason: declined.reason}
@@ -183,16 +192,16 @@ func (a *App) StartDurableRun(request DurableRunRequest) DurableRunResult {
 		if err != nil {
 			return DurableRunResult{State: Failed, Reason: "the saved test could not be prepared; nothing was sent"}
 		}
-		if request.Expected != "" && digestOf(prepared.PinnedInputs().Spec) != request.Expected {
-			return DurableRunResult{State: Failed, Reason: "the selected test changed after the preflight; preflight it again before executing"}
-		}
 		// The folder this run is writing is named while it executes, so the
 		// progress read can tell a journal this window is still writing from
 		// one a crash left behind, which is the difference between a live
 		// count and an interruption.
 		a.setRunOutput(output)
 		defer a.setRunOutput("")
-		result, err := prepared.Start(ctx, output)
+		result, err := prepared.StartPinned(ctx, output, request.Expected)
+		if errors.Is(err, durablerun.ErrInputsChanged) {
+			return DurableRunResult{State: Failed, Reason: "the selected test changed after the preflight; preflight it again before executing"}
+		}
 		if err != nil {
 			if result.Schema != "" {
 				return DurableRunResult{State: Failed, Run: &result, Reason: "journal persistence failed; recover retained output before any new execution"}
@@ -258,8 +267,10 @@ func (r *RunPreflightResult) refuse(state State, reason string) { r.State, r.Rea
 // RunPreflight is what one execution would do, read out of the exact plan a
 // send would execute. It is a local validation: no network connection is
 // opened, nothing is sent or reset, and no result verdict exists yet. The
-// identity is what execution pins itself to, so a changed input is refused by
-// the send rather than read as the input that was preflighted.
+// identity is the engine's own — a test's prepared input identity, a suite
+// document's identity — and is what execution pins itself to, so a changed
+// input is refused by the send rather than read as the input that was
+// preflighted.
 type RunPreflight struct {
 	Kind         string          `json:"kind"` // "test" or "suite"
 	Spec         string          `json:"spec"`
@@ -391,6 +402,10 @@ func (a *App) preflightTest(ctx context.Context, root string, request RunPreflig
 	if err != nil {
 		return RunPreflightResult{State: Failed, Reason: "the saved test could not be read back"}
 	}
+	identity, err := prepared.InputIdentity()
+	if err != nil {
+		return RunPreflightResult{State: Failed, Reason: "the saved test could not be prepared: its case, target or selection did not verify"}
+	}
 	destination, refused := destinationFor(root, request.Output, "job")
 	if refused.state != "" {
 		return RunPreflightResult{State: refused.state, Reason: refused.reason}
@@ -400,7 +415,7 @@ func (a *App) preflightTest(ctx context.Context, root string, request RunPreflig
 		Spec:         request.Spec,
 		Name:         spec.Name,
 		Schema:       spec.Schema,
-		Identity:     digestOf(inputs.Spec),
+		Identity:     identity,
 		Selected:     selected(inputs.Mappings),
 		Target:       targetView(inputs.Configuration),
 		Boundary:     spec.Observation.Boundary,
@@ -472,7 +487,7 @@ func (a *App) preflightSuite(ctx context.Context, root string, request RunPrefli
 		Spec:        request.Spec,
 		Name:        document.ID,
 		Schema:      suite.Schema,
-		Identity:    digestOf(raw),
+		Identity:    suite.Identity(raw),
 		Selected:    []RunSelected{},
 		Target:      RunTargetView{},
 		Boundary:    "",
@@ -552,7 +567,7 @@ func (a *App) admissionPreview(ctx context.Context) RunAdmission {
 // SuiteRunRequest is one deliberate suite execution: the suite entry, the
 // environment it is executed at, the optional released-expectation references
 // that make it an approved suite, the fresh output entry, and the suite
-// identity the preflight fixed.
+// identity the preflight fixed, which is required.
 type SuiteRunRequest struct {
 	Workspace   string `json:"workspace"`
 	Suite       string `json:"suite"`
@@ -600,9 +615,18 @@ type suiteRunJob struct {
 // same shared resources the command line does. Scheduling, isolation and
 // every refusal are the queue's own; this panel adds no parallelism and
 // relaxes no rule. Cancel stops future jobs; what already ran is retained
-// exactly as the queue retains it.
+// exactly as the queue retains it. A start that names no preflight identity
+// is refused before admission is asked, and the suite compiles only the
+// document that still has it, checked on the bytes it compiles
+// (suite.RunPinned).
 func (a *App) StartSuiteRun(request SuiteRunRequest) SuiteRunResult {
-	return runNamed[SuiteRunResult, *SuiteRunResult](a, profiles["StartSuiteRun"], func(ctx context.Context) SuiteRunResult {
+	preflighted := func() (SuiteRunResult, bool) {
+		if request.Expected == "" {
+			return SuiteRunResult{State: Failed, Reason: "preflight the selected suite first; a suite executes only what its preflight identified. Nothing was sent"}, false
+		}
+		return SuiteRunResult{}, true
+	}
+	return runNamedChecked[SuiteRunResult, *SuiteRunResult](a, profiles["StartSuiteRun"], preflighted, func(ctx context.Context) SuiteRunResult {
 		root, declined := resolveFolder(request.Workspace)
 		if root == "" {
 			return SuiteRunResult{State: declined.state, Reason: declined.reason}
@@ -615,13 +639,6 @@ func (a *App) StartSuiteRun(request SuiteRunRequest) SuiteRunResult {
 		if err != nil {
 			return SuiteRunResult{State: Failed, Reason: "the suite output must be one new entry of the open workspace"}
 		}
-		raw, err := readBoundedEntry(suitePath, suite.MaxBytes)
-		if err != nil {
-			return SuiteRunResult{State: Failed, Reason: "the suite document could not be read; nothing was sent"}
-		}
-		if request.Expected != "" && digestOf(raw) != request.Expected {
-			return SuiteRunResult{State: Failed, Reason: "the selected suite changed after the preflight; preflight it again before executing"}
-		}
 		references := ""
 		if request.References != "" {
 			referencePath, err := artifactpath.File(root, request.References)
@@ -630,12 +647,9 @@ func (a *App) StartSuiteRun(request SuiteRunRequest) SuiteRunResult {
 			}
 			references = referencePath
 		}
-		var report runqueue.Report
-		var runErr error
-		if references != "" {
-			report, runErr = suite.RunApproved(ctx, suitePath, request.Environment, output, references)
-		} else {
-			report, runErr = suite.Run(ctx, suitePath, request.Environment, output)
+		report, runErr := suite.RunPinned(ctx, suitePath, request.Environment, output, references, request.Expected)
+		if errors.Is(runErr, suite.ErrChanged) {
+			return SuiteRunResult{State: Failed, Reason: "the selected suite changed after the preflight; preflight it again before executing"}
 		}
 		if runErr != nil && report.Schema == "" {
 			return SuiteRunResult{State: Failed, Reason: "the suite could not be prepared; nothing was sent"}
@@ -1023,22 +1037,75 @@ func declaredEntryKind(root, name string) Kind {
 // the packet panels propose packet names, so a generated name says what
 // created it.
 func destinationFor(root, requested, prefix string) (RunDestination, refusal) {
+	return outputRule{prefix: prefix,
+		invalid:      "the run folder must be one new entry of the open workspace",
+		exhausted:    "the workspace holds more generated run folders than this release proposes",
+		taken:        "the run folder already exists; execution requires a fresh destination",
+		skipUnprobed: true,
+	}.destination(root, requested)
+}
+
+// outputRule is how one flow names the new entry an execution writes: the
+// prefix a proposed name carries, the suffix of an entry the flow also writes
+// beside its output — which must be new as well — and the flow's own
+// sentences for a name it cannot use. reportTaken answers a name already
+// taken on the destination instead of refusing it, so a preview still shows
+// what would be sent and the send is what refuses. skipUnprobed passes over a
+// proposed name this account cannot probe instead of refusing the workspace,
+// as the run and packet flows always have.
+type outputRule struct {
+	prefix, beside            string
+	invalid, exhausted, taken string
+	reportTaken, skipUnprobed bool
+}
+
+// destination validates requested as a new entry of root under the rule, or
+// proposes the first prefix-NNN free for every entry the flow writes when none
+// was given. A requested entry this account cannot probe is the workspace's
+// refusal, never a name taken.
+func (rule outputRule) destination(root, requested string) (RunDestination, refusal) {
+	entries := func(name string) []string {
+		if rule.beside == "" {
+			return []string{name}
+		}
+		return []string{name, name + rule.beside}
+	}
+	free := func(name string) (bool, error) {
+		for _, entry := range entries(name) {
+			if _, err := os.Lstat(filepath.Join(root, entry)); err == nil {
+				return false, nil
+			} else if !os.IsNotExist(err) {
+				return false, err
+			}
+		}
+		return true, nil
+	}
 	if requested == "" {
 		for i := 1; i <= 999; i++ {
-			candidate := fmt.Sprintf("%s-%03d", prefix, i)
-			if _, err := os.Lstat(filepath.Join(root, candidate)); os.IsNotExist(err) {
+			candidate := fmt.Sprintf("%s-%03d", rule.prefix, i)
+			fresh, err := free(candidate)
+			if err != nil && !rule.skipUnprobed {
+				return RunDestination{}, probeReadFailure(root)
+			}
+			if fresh {
 				return RunDestination{Name: candidate, Generated: true, Fresh: true}, refusal{}
 			}
 		}
-		return RunDestination{}, refusal{Failed, "the workspace holds more generated run folders than this release proposes"}
+		return RunDestination{}, refusal{Failed, rule.exhausted}
 	}
-	if artifactpath.EntryName(requested) != nil {
-		return RunDestination{Name: requested}, refusal{Failed, "the run folder must be one new entry of the open workspace"}
+	for _, entry := range entries(requested) {
+		if artifactpath.EntryName(entry) != nil {
+			return RunDestination{Name: requested}, refusal{Failed, rule.invalid}
+		}
 	}
-	if _, err := os.Lstat(filepath.Join(root, requested)); err == nil {
-		return RunDestination{Name: requested}, refusal{Failed, "the run folder already exists; execution requires a fresh destination"}
-	} else if !os.IsNotExist(err) {
+	fresh, err := free(requested)
+	switch {
+	case err != nil:
 		return RunDestination{Name: requested}, probeReadFailure(root)
+	case !fresh && rule.reportTaken:
+		return RunDestination{Name: requested, Reason: rule.taken}, refusal{}
+	case !fresh:
+		return RunDestination{Name: requested}, refusal{Failed, rule.taken}
 	}
 	return RunDestination{Name: requested, Fresh: true}, refusal{}
 }

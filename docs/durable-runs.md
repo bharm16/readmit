@@ -31,10 +31,13 @@ environment it records, the effective configuration, the observation and reset
 requirements, the pinned engine versions, the deadline, a generated fresh
 output folder and the operation guard's own admission decision — with no
 network connection and no verdict. A changed selection invalidates the
-preflight: execution is bound to the identity the preflight fixed and refuses a
-spec that no longer hashes to it. **Send and execute once** then runs the
-existing durable path above (a suite through the existing durable queue, with
-its declared isolation and no added parallelism); **Cancel run** stops future
+preflight: execution is bound to the identity the preflight fixed — a test's
+prepared inputs (the spec, its case and selection, the target configuration and
+its credential registration), or a suite document's exact bytes, checked on the
+bytes the suite then compiles — and refuses an input that no longer has it, as
+it refuses a start that names no preflight identity. **Send and execute once**
+then runs the existing durable path above (a suite through the existing durable
+queue, with its declared isolation and no added parallelism); **Cancel run** stops future
 sends by naming its own operation, so one panel's cancel can never stop
 another's, and bytes already written can still have affected the receiver.
 While a run executes, the panel polls a read-only progress read of the journal

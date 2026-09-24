@@ -56,6 +56,26 @@ func (p *Reexecution) Preview() ReexecutionAssessment { return p.binding }
 // selected occurrence of the approved derived case. Reading them sends nothing.
 func (p *Reexecution) PinnedInputs() testrunner.PinnedInputs { return p.prepared.PinnedInputs() }
 
+// Identity pins what Execute would do: the assessment binding it records and
+// the durable run's own input identity for the rebound specification, target
+// configuration, credential registration and selection it sends. A preview
+// reports it; a send is authorized only while a fresh preparation still has
+// it. Computing it reads no secret value and sends nothing.
+func (p *Reexecution) Identity() (string, error) {
+	inputs, err := p.prepared.InputIdentity()
+	if err != nil {
+		return "", err
+	}
+	raw, err := json.Marshal(struct {
+		Binding ReexecutionAssessment
+		Inputs  string
+	}{p.binding, inputs}, json.Deterministic(true))
+	if err != nil {
+		return "", err
+	}
+	return digest(raw), nil
+}
+
 func PrepareReexecution(ctx context.Context, request ReexecutionRequest) (*Reexecution, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -136,6 +156,18 @@ func PrepareReexecution(ctx context.Context, request ReexecutionRequest) (*Reexe
 		Criteria: "not-executed", ExternalEquivalence: "declined", Disclosure: "customer-local-only-new-review-required",
 		Reason: "No reexecution yet. Review approval does not authorize disclosure of new execution evidence.",
 	}}, nil
+}
+
+// ExecutePinned is Execute for a send authorized from a preview: it sends only
+// while this preparation still has identity, the Identity the preview
+// reported, and otherwise — or with no identity at all — refuses with
+// durablerun.ErrInputsChanged before any directory is created or byte sent.
+func (p *Reexecution) ExecutePinned(ctx context.Context, output, identity string) (ReexecutionAssessment, error) {
+	current, err := p.Identity()
+	if err != nil || identity == "" || current != identity {
+		return p.binding, durablerun.ErrInputsChanged
+	}
+	return p.Execute(ctx, output)
 }
 
 // Execute performs one authorized send, never setup, reset, retries or resume.

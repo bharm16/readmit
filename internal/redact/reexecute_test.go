@@ -3,6 +3,7 @@ package redact_test
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
@@ -208,6 +209,44 @@ func TestReexecutionRefusesChangedReviewCriteriaSourceAndTargetBeforeSend(t *tes
 				t.Fatal("refusal created execution")
 			}
 		})
+	}
+}
+
+// A pinned send executes only the preparation its preview identified: a
+// rebound specification edited since — still a valid reexecution, but not the
+// one previewed — or no identity at all is refused before the job exists.
+func TestAPinnedReexecutionRefusesAPreparationItsPreviewDidNotIdentify(t *testing.T) {
+	request, root := reexecutionFixture(t, "failure")
+	ctx := context.Background()
+	previewed, err := redact.PrepareReexecution(ctx, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := previewed.Identity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec, err := testrunner.ReadSpec(request.SpecPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec.Setup.ResetInstructions += " Confirm the ledger is empty."
+	raw, err := json.Marshal(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	put(t, request.SpecPath, raw)
+	edited, err := redact.PrepareReexecution(ctx, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, pinned := range map[string]string{"an edited specification": identity, "no identity": ""} {
+		if _, err := edited.ExecutePinned(ctx, filepath.Join(root, "job"), pinned); !errors.Is(err, durablerun.ErrInputsChanged) {
+			t.Fatalf("%s was sent: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "job")); !os.IsNotExist(err) {
+		t.Fatal("a refused send created its job")
 	}
 }
 
