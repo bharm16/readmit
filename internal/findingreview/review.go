@@ -25,7 +25,6 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
@@ -68,7 +67,6 @@ const (
 // Bounds. A document past one of these is refused, never truncated.
 const (
 	MaxDecisionsBytes = 1 << 20
-	MaxReportBytes    = 16 << 20
 	MaxDecisions      = 4096
 	MaxRationaleBytes = 1024
 )
@@ -236,35 +234,4 @@ type Record struct {
 func printable(value string, limit int) bool {
 	return value != "" && len(value) <= limit && utf8.ValidString(value) &&
 		strings.IndexFunc(value, unicode.IsControl) < 0
-}
-
-// ParseReport reads the diagnosis a review is made over. It is the same strict
-// reading every other reader of a versioned document does; readmit-diagnosis/v1
-// gains no member here and changes no byte.
-func ParseReport(data []byte) (diagnose.Report, error) {
-	if len(data) > MaxReportBytes {
-		return diagnose.Report{}, errors.New("diagnosis report exceeds its size limit")
-	}
-	var declared struct {
-		Schema string `json:"schema"`
-	}
-	if json.Unmarshal(data, &declared) != nil {
-		return diagnose.Report{}, errors.New("invalid diagnosis report")
-	}
-	if declared.Schema != diagnose.Schema {
-		return diagnose.Report{}, errors.New("diagnosis report declares a contract version this release does not read")
-	}
-	var report diagnose.Report
-	if json.Unmarshal(data, &report, json.RejectUnknownMembers(true)) != nil {
-		return diagnose.Report{}, errors.New("invalid diagnosis report")
-	}
-	for _, finding := range report.Findings {
-		if !findingPattern.MatchString(finding.ID) {
-			return diagnose.Report{}, errors.New("a diagnosis report names each finding once, as this release writes them")
-		}
-	}
-	if !identityPattern.MatchString(report.CaseIdentity) {
-		return diagnose.Report{}, errors.New("a diagnosis report names the verified identity of the case it was run over")
-	}
-	return report, nil
 }

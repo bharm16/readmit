@@ -79,7 +79,7 @@ func (a *App) ValidateSuite(canonical string) SuiteDocumentResult {
 		if err != nil {
 			return SuiteDocumentResult{State: Failed, Reason: "the suite document could not be canonicalized"}
 		}
-		return SuiteDocumentResult{State: Completed, Document: string(canonicalForm), SHA256: digest(canonicalForm), Suite: &parsed}
+		return SuiteDocumentResult{State: Completed, Document: string(canonicalForm), SHA256: digestOf(canonicalForm), Suite: &parsed}
 	})
 }
 

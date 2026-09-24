@@ -2,15 +2,10 @@ package desktop
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"os"
 	"path/filepath"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/diagnose"
-	"github.com/bharm16/readmit/internal/findingreview"
-	"github.com/bharm16/readmit/internal/operation"
 )
 
 // MaxDiagnosisFindings bounds one window of findings, matching MaxComparisonRows.
@@ -65,21 +60,13 @@ type DiagnosisResult struct {
 
 func (r *DiagnosisResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
-// digest is the identity every derived document is bound to here: the SHA-256
-// of the exact bytes as they sit in the workspace, in the same hexadecimal
-// form the command line reports.
-func digest(data []byte) string {
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
-}
-
 // diagnosisConfig resolves the one configuration a diagnosis runs under: a
 // workspace entry declaring readmit-diagnose-config/v1, or one of the three
 // built-in configurations by name. Exactly one must be chosen — a diagnosis
 // run from the window never gets a configuration nobody selected.
 func diagnosisConfig(root, entry, builtin string) (diagnose.Config, refusal) {
 	if entry != "" {
-		data, declined := workspaceDocument(root, entry, maxDiagnoseConfigBytes, "the diagnosis configuration")
+		data, declined := workspaceDocument(root, entry, diagnose.MaxConfigBytes, "the diagnosis configuration")
 		if data == nil {
 			return diagnose.Config{}, declined
 		}
@@ -126,20 +113,14 @@ func (a *App) RunDiagnosis(request DiagnosisRequest) DiagnosisResult {
 		if err != nil {
 			return failure(err.Error())
 		}
-		jsonData, err := diagnose.JSON(report)
-		if err != nil {
-			return failure("cannot encode diagnosis report")
-		}
 		if artifactpath.EntryName(request.Output) != nil {
 			return failure("a diagnosis is written to one new directory entry of the open workspace")
 		}
-		if err := operation.WriteReportDirectory(filepath.Join(root, request.Output), "diagnosis",
-			operation.ReportFile{Name: "report.json", Data: jsonData},
-			operation.ReportFile{Name: "report.md", Data: diagnose.Markdown(report)},
-		); err != nil {
+		identity, err := diagnose.WriteReport(filepath.Join(root, request.Output), report)
+		if err != nil {
 			return failure(err.Error())
 		}
-		result := windowedDiagnosis(request.Case, request.Config, digest(jsonData), report, request.Offset)
+		result := windowedDiagnosis(request.Case, request.Config, identity, report, request.Offset)
 		result.Output = request.Output
 		return result
 	})
@@ -160,38 +141,27 @@ func (a *App) OpenDiagnosisReport(workspace, entry string, offset int) Diagnosis
 		if root == "" {
 			return DiagnosisResult{State: declined.state, Reason: declined.reason}
 		}
-		data, declined := diagnosisReportDocument(root, entry)
-		if data == nil {
+		dir, retained, declined := retainedDiagnosis(root, entry, "")
+		if dir == "" {
 			return DiagnosisResult{State: declined.state, Reason: declined.reason}
 		}
-		report, err := findingreview.ParseReport(data)
-		if err != nil {
-			return failure(err.Error())
-		}
-		return windowedDiagnosis(entry, "", digest(data), report, offset)
+		return windowedDiagnosis(entry, "", retained.Identity, retained.Report, offset)
 	})
 }
 
-// diagnosisReportDocument reads the report.json of one retained diagnosis
-// report directory, under the same byte bound a review reads it.
-func diagnosisReportDocument(root, entry string) ([]byte, refusal) {
+// retainedDiagnosis reopens one retained diagnosis report directory of the
+// open workspace, and answers where it is. displayed, when set, is the
+// identity the window showed it under.
+func retainedDiagnosis(root, entry, displayed string) (string, diagnose.Retained, refusal) {
 	dir, err := artifactpath.Child(root, entry)
 	if err != nil {
-		return nil, refusal{Failed, "a diagnosis report must be one directory entry of the open workspace"}
+		return "", diagnose.Retained{}, refusal{Failed, "a diagnosis report must be one directory entry of the open workspace"}
 	}
-	path := filepath.Join(dir, "report.json")
-	info, err := os.Lstat(path)
-	switch {
-	case err != nil || !info.Mode().IsRegular():
-		return nil, refusal{Failed, "a diagnosis report directory holds report.json as one regular file"}
-	case info.Size() > findingreview.MaxReportBytes:
-		return nil, refusal{Failed, "the diagnosis report is larger than this release reads"}
-	}
-	data, err := os.ReadFile(path)
+	retained, err := diagnose.OpenReport(dir, diagnose.Reading{Displayed: displayed})
 	if err != nil {
-		return nil, refusal{Failed, "the diagnosis report could not be read"}
+		return "", diagnose.Retained{}, refusal{Failed, err.Error()}
 	}
-	return data, refusal{}
+	return dir, retained, refusal{}
 }
 
 // windowedDiagnosis lays one report out for the panes: the engine's own
@@ -313,19 +283,7 @@ func (a *App) OpenDiagnosisGroupsReport(workspace, entry string, offset int) Dia
 		if err != nil {
 			return DiagnosisGroupsResult{State: Failed, Reason: "a diagnosis grouping report must be one directory entry of the open workspace"}
 		}
-		path := filepath.Join(dir, "report.json")
-		info, err := os.Lstat(path)
-		switch {
-		case err != nil || !info.Mode().IsRegular():
-			return DiagnosisGroupsResult{State: Failed, Reason: "a diagnosis grouping report directory holds report.json as one regular file"}
-		case info.Size() > diagnose.MaxGroupsReportBytes+1:
-			return DiagnosisGroupsResult{State: Failed, Reason: "the diagnosis grouping report is larger than this release reads"}
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return DiagnosisGroupsResult{State: Failed, Reason: "the diagnosis grouping report could not be read"}
-		}
-		report, err := diagnose.ParseGroups(data)
+		report, err := diagnose.OpenGroups(dir)
 		if err != nil {
 			return DiagnosisGroupsResult{State: Failed, Reason: err.Error()}
 		}

@@ -23,7 +23,11 @@ free-text ACK/ERR explanations. The evidence references identify the occurrence,
 field selector, original payload byte offset/length, and field state. Use
 `readmit timeline CASE --show-values` explicitly when authorized to inspect source
 bytes. Reports are created with private file permissions where the OS supports
-those permissions. An interrupted write can leave an incomplete report directory;
+those permissions. `report.md` is written after `report.json`, and both files,
+the report directory and its entry in the folder holding it are synced before
+the report is reported written (on Windows the files are flushed, the
+directories are not); a folder readmit cannot open is refused before anything
+is created. An interrupted write can leave an incomplete report directory;
 rerun into a new directory.
 
 ## Named support boundary

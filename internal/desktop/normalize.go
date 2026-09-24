@@ -109,7 +109,7 @@ func (a *App) normalizeCompare(request NormalizeRequest) NormalizeResult {
 	if err != nil {
 		return NormalizeResult{State: Failed, Reason: refusedComparison(err)}
 	}
-	return windowedNormalization(request, digest(policyData), report)
+	return windowedNormalization(request, digestOf(policyData), report)
 }
 
 // windowedNormalization returns the requested window of one report's

@@ -207,7 +207,7 @@
       "outputs": ["readmit-diagnosis/v1"],
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/App.test.tsx", "name": "case through rules, diagnosis, inspection, review and draft handoff"},
-      "parity_test": {"package": "tests", "name": "TestDesktopDiagnosisAndReviewWriteTheCommandLineBytes"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowOpensTheConfigurationReadmitDiagnoseRuns"},
       "implemented": true
     },
     {
@@ -6147,7 +6147,7 @@
       "outputs": ["readmit-diagnosis-groups/v1"],
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/Diagnosis.test.tsx", "name": "recurring findings are grouped through the facade, paged over the grouping on screen from the keyboard, refused in the engine's words, and a grouping cancelled from the window's Cancel or Escape is shown as cancelled with no groups"},
-      "parity_test": {"package": "tests", "name": "TestDesktopGroupingEncodesTheCommandLineGroupsReport"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowGroupsTheCasesReadmitDiagnoseGroupsGroups"},
       "implemented": true
     },
     {
@@ -6206,7 +6206,7 @@
       "owner": "bharm16/readmit#425",
       "screen": "the diagnosis panel over a verified case",
       "action": "open a retained recurring diagnosis grouping through its separate display reader",
-      "backend": {"package": "internal/diagnose", "name": "ParseGroups"},
+      "backend": {"package": "internal/diagnose", "name": "OpenGroups"},
       "inputs": ["readmit-diagnosis-groups/v1"],
       "outputs": [],
       "prerequisites": [],
@@ -6222,7 +6222,7 @@
       "owner": "bharm16/readmit#297",
       "screen": "the diagnosis panel over a verified case",
       "action": "open one retained diagnosis report directory and report the identity a review must name",
-      "backend": {"package": "internal/findingreview", "name": "ParseReport"},
+      "backend": {"package": "internal/diagnose", "name": "OpenReport"},
       "inputs": ["readmit-diagnosis/v1"],
       "outputs": [],
       "prerequisites": [],
@@ -6403,7 +6403,7 @@
       "outputs": ["readmit-diagnosis/v1"],
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/App.test.tsx", "name": "case through rules, diagnosis, inspection, review and draft handoff"},
-      "parity_test": {"package": "tests", "name": "TestDesktopDiagnosisAndReviewWriteTheCommandLineBytes"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowOpensTheConfigurationReadmitDiagnoseRuns"},
       "implemented": true
     },
     {

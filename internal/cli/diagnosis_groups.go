@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/bharm16/readmit/internal/diagnose"
-	"github.com/bharm16/readmit/internal/operation"
 	"github.com/spf13/cobra"
 )
 
@@ -31,7 +30,7 @@ func diagnosisGroupsCommand() *cobra.Command {
 				if configPath == "" {
 					return usage("diagnosis configuration file cannot be empty")
 				}
-				data, err := readInputFile(configPath, 1<<20)
+				data, err := readInputFile(configPath, diagnose.MaxConfigBytes)
 				if err != nil {
 					return err
 				}
@@ -52,22 +51,14 @@ func diagnosisGroupsCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			data, err := diagnose.GroupsJSON(report)
-			if err != nil {
-				return err
-			}
-			markdown := diagnose.GroupsMarkdown(report)
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			if err := operation.WriteReportDirectory(resolvedOutput, "diagnosis groups", operation.ReportFile{Name: "report.json", Data: data}, operation.ReportFile{Name: "report.md", Data: markdown}); err != nil {
+			if err := diagnose.WriteGroups(ctx, resolvedOutput, report); err != nil {
 				return err
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Diagnosis grouping complete: %d cases, %d signatures. Every finding and unsupported item retained; counts apply only to these captures.\n", len(report.Cases), len(report.Groups))
 			return err
 		},
 	}
-	cmd.Flags().StringVar(&output, "output", "", "New directory for report.json and report.md (never overwrite)")
+	cmd.Flags().StringVar(&output, "output", "", "New directory for "+diagnose.ReportName+" and "+diagnose.MarkdownName+" (never overwrite)")
 	cmd.Flags().StringVar(&configPath, "config", "", "Explicit readmit-diagnose-config/v1 applied independently to every case")
 	return cmd
 }

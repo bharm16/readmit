@@ -1,17 +1,14 @@
 package cli
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/findingreview"
-	"github.com/bharm16/readmit/internal/operation"
 	"github.com/spf13/cobra"
 )
 
@@ -32,11 +29,9 @@ func diagnoseReviewCommand() *cobra.Command {
 			if err != nil {
 				return errors.New("cannot open the diagnosis report directory")
 			}
-			reportData, err := readInputFile(filepath.Join(reportPath, "report.json"), findingreview.MaxReportBytes)
-			if err != nil {
-				return err
-			}
-			report, err := findingreview.ParseReport(reportData)
+			// The report is read as every input file a person names is read, so
+			// it is refused in the same words.
+			retained, err := diagnose.OpenReport(reportPath, diagnose.Reading{ReadFile: readInputFile})
 			if err != nil {
 				return err
 			}
@@ -53,19 +48,11 @@ func diagnoseReviewCommand() *cobra.Command {
 				return err
 			}
 			entry := filepath.Base(filepath.Clean(casePath))
-			record, err := findingreview.Review(findingreview.Reviewed{Report: report, Identity: digestOf(reportData), Case: source, Entry: entry}, decisions, digestOf(decisionsData))
+			record, err := findingreview.Review(findingreview.Reviewed{Report: retained.Report, Identity: retained.Identity, Case: source, Entry: entry}, decisions, diagnose.Identity(decisionsData))
 			if err != nil {
 				return err
 			}
-			resolvedOutput, err := reviewOutputOutsideInputs(casePath, reportPath, output)
-			if err != nil {
-				return err
-			}
-			jsonData, err := findingreview.JSON(record)
-			if err != nil {
-				return errors.New("cannot encode finding review")
-			}
-			if err := operation.WriteReportDirectory(resolvedOutput, "review", operation.ReportFile{Name: "review.json", Data: jsonData}, operation.ReportFile{Name: "review.md", Data: findingreview.Markdown(record)}); err != nil {
+			if err := findingreview.Write(output, record, casePath, reportPath); err != nil {
 				return err
 			}
 			confirmed, promoted, unsupported := reviewCounts(record)
@@ -77,11 +64,6 @@ func diagnoseReviewCommand() *cobra.Command {
 	cmd.Flags().StringVar(&decisionsPath, "decisions", "", "Explicit readmit-finding-decisions/v1 JSON document recording the analyst's verdicts")
 	cmd.Flags().StringVar(&output, "output", "", "New directory for review.json and review.md (never overwrite)")
 	return cmd
-}
-
-func digestOf(data []byte) string {
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
 }
 
 // reviewCounts totals what the review decided, so the one line a person sees
@@ -98,19 +80,4 @@ func reviewCounts(record findingreview.Record) (confirmed, promoted, unsupported
 		unsupported += len(status.Promotion.Unsupported)
 	}
 	return confirmed, promoted, unsupported
-}
-
-// A review directory inside the case would invalidate the verified immutable
-// evidence, and one inside the diagnosis would put a judgment where a machine's
-// findings are. Resolve both and compare filesystem identity, not names.
-func reviewOutputOutsideInputs(casePath, reportPath, output string) (string, error) {
-	caseInfo, err := os.Stat(casePath)
-	if err != nil {
-		return "", errors.New("cannot inspect the reviewed case directory")
-	}
-	reportInfo, err := os.Stat(reportPath)
-	if err != nil {
-		return "", errors.New("cannot inspect the diagnosis report directory")
-	}
-	return artifactpath.Destination(output, caseInfo, reportInfo)
 }

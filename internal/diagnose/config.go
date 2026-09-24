@@ -30,12 +30,16 @@ func OrderConfig() Config {
 	return Config{Schema: ConfigSchema, Profile: OrderProfile, Ruleset: OrderRuleset, Rules: slices.Clone(orderRules), Namespaces: []Namespace{{Key: "READMIT", Namespace: "READMIT"}}}
 }
 
+// MaxConfigBytes bounds a readmit-diagnose-config/v1 document. One past it is
+// refused, never truncated.
+const MaxConfigBytes = 1 << 20
+
 // ParseConfig rejects unknown members, duplicate keys, missing contract versions,
 // and conflicting authority mappings. An unknown profile/rule is valid data and
 // is reported explicitly as unsupported by Run.
 func ParseConfig(data []byte) (Config, error) {
 	var config Config
-	if len(data) > 1<<20 {
+	if len(data) > MaxConfigBytes {
 		return Config{}, errors.New("diagnosis configuration exceeds 1 MiB")
 	}
 	if err := json.Unmarshal(data, &config, json.RejectUnknownMembers(true)); err != nil {

@@ -35,7 +35,7 @@ var schemaMarkerFiles = []struct {
 	{"engine.json", JobArtifact},
 	{"result.json", ResultArtifact},
 	{"review.json", ReviewArtifact},
-	{"report.json", DiagnosisArtifact},
+	{diagnose.ReportName, DiagnosisArtifact},
 	{"machine.json", CorrelationReviewArtifact},
 	// A prepared suite directory retains the suite it compiled beside its
 	// queue and generated specifications.

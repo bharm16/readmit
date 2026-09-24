@@ -139,7 +139,7 @@ func runnerDocumentResult(value any) RunnerDocumentResult {
 	if err != nil {
 		return RunnerDocumentResult{State: Failed, Reason: "the runner document could not be canonicalized"}
 	}
-	return RunnerDocumentResult{State: Completed, Document: string(canonical), SHA256: digest(canonical)}
+	return RunnerDocumentResult{State: Completed, Document: string(canonical), SHA256: digestOf(canonical)}
 }
 
 // RunnerGrantRequest adds or replaces one grant of a readmit-runner-policy/v1

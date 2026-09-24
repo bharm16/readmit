@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/findingreview"
-	"github.com/bharm16/readmit/internal/operation"
 )
 
 // FindingReviewRequest carries the report the decisions were read against,
@@ -79,23 +79,15 @@ func (a *App) reviewFindings(request FindingReviewRequest, write bool) FindingRe
 	if root == "" {
 		return FindingReviewResult{State: declined.state, Reason: declined.reason}
 	}
-	reportData, declined := diagnosisReportDocument(root, request.Report)
-	if reportData == nil {
+	reportDir, retained, declined := retainedDiagnosis(root, request.Report, request.ReportSHA256)
+	if reportDir == "" {
 		return FindingReviewResult{State: declined.state, Reason: declined.reason}
-	}
-	report, err := findingreview.ParseReport(reportData)
-	if err != nil {
-		return failure(err.Error())
-	}
-	reportIdentity := digest(reportData)
-	if request.ReportSHA256 != "" && request.ReportSHA256 != reportIdentity {
-		return failure("the displayed diagnosis changed; reopen the report before reviewing")
 	}
 	// The decisions the panel holds become the same document the command line
 	// reads: encoded deterministically, then read back through the contract's
 	// own strict parser, so every refusal `readmit diagnose review` makes over
 	// a decisions file is made here over the panel's typed decisions.
-	typed := findingreview.Decisions{Schema: findingreview.DecisionsSchema, Report: reportIdentity, Decisions: request.Decisions}
+	typed := findingreview.Decisions{Schema: findingreview.DecisionsSchema, Report: retained.Identity, Decisions: request.Decisions}
 	decisionsData, err := json.Marshal(typed, json.Deterministic(true), jsontext.WithIndent("  "))
 	if err != nil {
 		return failure("cannot encode finding decisions")
@@ -105,7 +97,7 @@ func (a *App) reviewFindings(request FindingReviewRequest, write bool) FindingRe
 	if err != nil {
 		return failure(err.Error())
 	}
-	record, err := findingreview.Review(findingreview.Reviewed{Report: report, Identity: reportIdentity, Case: opened, Entry: request.Case}, decisions, digest(decisionsData))
+	record, err := findingreview.Review(findingreview.Reviewed{Report: retained.Report, Identity: retained.Identity, Case: opened, Entry: request.Case}, decisions, diagnose.Identity(decisionsData))
 	if err != nil {
 		return failure(err.Error())
 	}
@@ -125,14 +117,7 @@ func (a *App) reviewFindings(request FindingReviewRequest, write bool) FindingRe
 		}
 		return failure(err.Error())
 	}
-	jsonData, err := findingreview.JSON(record)
-	if err != nil {
-		return failure("cannot encode finding review")
-	}
-	if err := operation.WriteReportDirectory(filepath.Join(root, request.Output), "review",
-		operation.ReportFile{Name: "review.json", Data: jsonData},
-		operation.ReportFile{Name: "review.md", Data: findingreview.Markdown(record)},
-	); err != nil {
+	if err := findingreview.Write(filepath.Join(root, request.Output), record, artifactpath.JoinReference(root, request.Case), reportDir); err != nil {
 		return failure(err.Error())
 	}
 	result.Output = request.Output

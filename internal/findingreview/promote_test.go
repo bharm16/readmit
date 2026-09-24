@@ -40,27 +40,6 @@ func TestDecisionsReaderRefusesWhatItCannotMean(t *testing.T) {
 	}
 }
 
-func TestReportReaderRefusesADocumentThatIsNotThisDiagnosis(t *testing.T) {
-	path, _ := openCase(t, frame(booking, acknowledgement))
-	report, _ := diagnosed(t, path)
-	data, err := diagnose.JSON(report)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := findingreview.ParseReport(data); err != nil {
-		t.Fatalf("the shipped diagnosis was refused: %v", err)
-	}
-	for name, document := range map[string]string{
-		"unknown version": strings.Replace(string(data), "readmit-diagnosis/v1", "readmit-diagnosis/v2", 1),
-		"unknown member":  strings.Replace(string(data), `"findings":`, `"verdict":"fine","findings":`, 1),
-		"renamed finding": strings.Replace(string(data), `"f000001"`, `"first"`, 1),
-	} {
-		if _, err := findingreview.ParseReport([]byte(document)); err == nil {
-			t.Fatalf("%s was accepted as a diagnosis report", name)
-		}
-	}
-}
-
 func TestAFindingNobodyReviewedIsNeverPromoted(t *testing.T) {
 	path, source := openCase(t, frame(booking, acknowledgement))
 	report, identity := diagnosed(t, path)
