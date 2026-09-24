@@ -1,5 +1,147 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Every single-file document readmit replaces in place now syncs the folder that
+  holds it before the write is reported: protection and secret reference
+  documents, target configurations, observation sources and windows, project,
+  revisions and quota documents, entitlement stores and admission records, the
+  operation clock and policy, the desktop's local documents and recent workspace
+  list, durable observation snapshots, the customer runner's lease and the
+  customer hub's schedule history. Before, only the desktop's local documents,
+  the runner's lease and the schedule history did, so a power loss just after a
+  reported replacement could bring the previous document back. A folder that
+  cannot be synced is now reported as a failure that says the document was
+  written in full but not confirmed. Newly created documents (reports, receipts,
+  baselines, releases, indexes, exports and the like) are synced the same way
+  (#473).
+
+- The desktop's suite preflight and suite run, and packet assembly's
+  specification check, now hold the bytes they read to the entry's bound. A
+  suite or specification entry that held more than its bound while it was read
+  was handed on one byte past it; it is now refused as unreadable (#473).
+
+- Connecting to or diagnosing a customer hub refuses a CA or client certificate
+  file larger than 1 MiB instead of reading only its first MiB, and the customer
+  hub refuses an owner-only policy document that grew past its 1 MiB bound while
+  it was read instead of reading one byte past it (#473).
+
+- Opening, validating and saving a local profile in the desktop application now
+  choose its pack by one rule (#483). A named pack is read where it is named; with
+  none named, the pinned pack is looked for among the open workspace's own
+  entries, for all three. Opening had looked in the folder the profile was opened
+  from, so a profile an import wrote resolved against the pack beside it when
+  opened and against no pack when its document was validated or saved; name that
+  pack, such as `imported-interface/pack.json`, to resolve it. Two different
+  documents in the workspace that both claim the pinned pack id and version are
+  no longer chosen between by name order, and neither answers.
+- Saving a local profile into a workspace whose entries this account cannot list
+  is refused (#483), because whether its version is already sealed with other
+  rules could not be checked. The check had passed silently, so changed rules
+  could be saved beside the seal of their version.
+
+- The desktop's **Send and execute once** now refuses a saved test whose target
+  configuration was edited after its preflight (#460). The preflight identity
+  of a test is now the durable engine's own identity of the inputs it would
+  consume — the spec, its case and selection, the target configuration and its
+  credential registration — where it covered only the spec's bytes, so a
+  changed timeout, address or credential reference is refused with "the
+  selected test changed after the preflight; preflight it again before
+  executing" and nothing is sent. A suite is now compiled only from the bytes
+  its preflight identified, checked on the bytes the suite reads, where the
+  window checked one read of the file and the suite read it again. A test or
+  suite start that names no preflight identity is refused before admission is
+  asked. No contract, persisted byte or command-line output changes.
+
+- `readmit diff`, `readmit drift`, the window's execution comparison and
+  retained investigation packets now name an evidence directory (case, run,
+  result or durable run) and open it through one verified opener (#474), and a
+  target configuration's identity is computed in one place. The execution
+  comparison reports drift from the executions it has just verified instead of
+  opening them a second time, so it no longer refuses with "retained executions
+  changed during comparison". `diff` still refuses a durable run directory with
+  the same message, now also when that directory holds a result or case record
+  beside its engine pin, which before reached that record's reader and was
+  refused there. No contract, identity, persisted byte or report member changes.
+
+- The runner panel no longer shows a busy, cancelled, empty or not-permitted
+  answer as "Refused: …" (#489). Only a failure reads as a refusal, a refused
+  admission keeps the sentence its step already gave it, and every other state
+  is shown as itself, with its word and shape, through the window's status
+  line. The environment panel, which showed only the reason an action gave,
+  now shows the state it answered beside it. Every panel of the window now
+  holds its controls, drops a stale answer, cancels by the name the facade
+  declares and returns focus through one operation lifecycle; work that starts
+  more work keeps its panel's controls held until the last of it has answered.
+
+- `diagnose`, `diagnose groups` and `diagnose review`, and the window's
+  diagnosis and finding review, now write their report directories as every
+  sealed evidence directory is written (#465): the rendering (`report.md`,
+  `review.md`) is written after the strict document, and both files, the
+  directory and its entry in the folder holding it are synced before the report
+  is reported written. Before, each file was synced but no directory was; a
+  directory that cannot be synced is now reported as written in full but not
+  confirmed against a power loss. A folder readmit cannot open is refused
+  before anything is created, in the same "destination must be new and parent
+  writable" sentence as before. No report, review or decisions byte changes.
+
+- Every execution is now admitted through the operation guard's one admitted
+  execution, on the command line, in the desktop window and in the hub's
+  scheduler (#459). The window's suite runs recheck the license before each
+  job, as `readmit suite run` does, so a term that ends part way refuses the
+  jobs not yet started. A connectivity check, fixture reset, observation
+  collection or runner job cancelled while its admission waits now answers
+  cancelled rather than permission denied, and a source diagnosis, source
+  collection, connectivity check, fixture reset and observation collection
+  are bounded by the seven-day execution limit like every other execution. A
+  runner job whose admission could not be released after the job itself
+  failed now reports the release failure beside the job's own, rather than
+  dropping it. The capability ledger's `readmit runner execute` and `runner
+  serve` rows now state the execution admission the runner takes for each
+  job.
+
+- A staged source collection is now imported under its own receipt (#475).
+  `readmit import --collection collection.json --folder collected --output NEW
+  --receipt NEW` reads the `readmit-source-collection/v1` receipt strictly,
+  refuses one whose identity is not the digest of the entries it records,
+  refuses a collection whose status is not `complete`, and imports the staged
+  folder under the plan the receipt records only when the folder holds exactly
+  the collected entries with their recorded digests; `--plan`, `--recipe`, the
+  declaration flags, `--file`, `--archive`, a second `--folder` and `--preview`
+  are refused beside it. The desktop window's "Finalize into a verified case"
+  runs the same operation and its request no longer carries a plan. This fixes
+  the defects of the window's finalize step, which imported a collected folder
+  under its own default plan (raw framing, CR terminators, `.hl7` and `.mllp`
+  members): a folder collected under MLLP framing was refused ("the member's
+  framing bytes contradict the declared framing"), a folder collected with LF
+  terminators was imported with its messages quarantined, a folder collected
+  under other members could lose them, and the finalize operation imported a
+  collection that failed or was cancelled as an ordinary case. No contract
+  gains a member; the import receipt still does not name the collection, so keep
+  the collection receipt beside the evidence.
+
+- Saving a local profile in the desktop application now writes its canonical
+  document (#482): segments by identifier, fields by position and declared sets
+  by id, the bytes its seal is computed over. It wrote segments and fields in
+  the order the editor added them, and returned that as the saved document;
+  the seal still verified, because sealing orders the profile first. Opening
+  and validating a profile answer the same canonical document. Sealing,
+  packaging and the window now write a profile through one `internal/localprofile`
+  operation; existing seals and packages verify unchanged, and a profile saved
+  out of order earlier still opens and seals identically.
+
+- `readmit redact` now refuses two field rules landing on one empty position
+  when either writes into it, such as `PID-3` and `PID-3.1` over an empty
+  `PID-3` (#477). Both used to be written there, one after the other, although
+  overlapping rules are documented as refused. A rule writing into an empty
+  component at the edge of a field another rule names is refused too, whatever
+  order the policy lists them in, and so is a rule overlapping an earlier one
+  that did not apply, which used to leave a blocked review. Rules that all
+  leave one empty position empty are still accepted. A reproducer edit of an
+  empty position at the edge of another edited position is refused as an
+  overlap instead of writing both values. Redaction, reproducers, transform
+  previews and replay now splice values through one shared rewrite, and a
+  preview and a replay shift dates by one definition; contracts and derived
+  bytes are unchanged, and every other refusal keeps its words.
+
 - A backup, and so the recovery archive `project delete` writes before it
   retires a project, is now reported only once its manifest, its completion
   marker and every directory entry naming a stored file are synced (#472).
