@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/report"
 	"github.com/bharm16/readmit/internal/testlicense"
 )
 
@@ -60,6 +61,9 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 	maintenance := func(kind string) func(*desktop.App) any {
 		return func(a *desktop.App) any { return a.ChooseMaintenancePath(kind) }
 	}
+	synthetic := func(kind string) func(*desktop.App) any {
+		return func(a *desktop.App) any { return a.ChooseSyntheticPacketPath(kind) }
+	}
 	dialogs := []dialog{
 		{name: "SelectWorkspace", call: func(a *desktop.App) any { return a.SelectWorkspace() }, opens: "folder", folder: workspace},
 		{name: "CreateSampleWorkspace", call: func(a *desktop.App) any { return a.CreateSampleWorkspace() }, opens: "folder", folder: fresh()},
@@ -82,6 +86,9 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 		{name: "ChooseOperationPolicy", call: func(a *desktop.App) any { return a.ChooseOperationPolicy() }, opens: "folder", folder: filepath.Dir(policy)},
 		{name: "ChooseSupportExportPath", call: func(a *desktop.App) any { return a.ChooseSupportExportPath() }, opens: "save", destination: unnamed()},
 		{name: "ChoosePacketExportPath", call: func(a *desktop.App) any { return a.ChoosePacketExportPath() }, opens: "save", destination: unnamed()},
+		{name: "ChooseSyntheticPacketPath(packet-destination)", call: synthetic("packet-destination"), opens: "save", destination: unnamed()},
+		{name: "ChooseSyntheticPacketPath(rerun-destination)", call: synthetic("rerun-destination"), opens: "save", destination: unnamed()},
+		{name: "ChooseSyntheticPacketPath(packet)", call: synthetic("packet"), opens: "folder", folder: fresh()},
 		{name: "ChooseRunSpec", call: func(a *desktop.App) any { return a.ChooseRunSpec(workspace) }, opens: "files", files: []string{filepath.Join(resolved(t, workspace), "spec.json")}},
 		{name: "ChooseExplanationInput(run)", call: func(a *desktop.App) any { return a.ChooseExplanationInput(workspace, "run") }, opens: "folder", folder: filepath.Join(resolved(t, workspace), "case")},
 		{name: "ChooseExplanationInput(assertions)", call: func(a *desktop.App) any { return a.ChooseExplanationInput(workspace, "assertions") }, opens: "files", files: []string{filepath.Join(resolved(t, workspace), "spec.json")}},
@@ -151,7 +158,8 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 // Every new folder the window asks for is named in the host's save dialog and
 // created only by the writer it is handed to — a backup, a restored project, a
 // recovery archive (a rollback archive is the same kind and writer), a portable
-// review and a support bundle. A name that already exists, which a save dialog
+// review, a support bundle, a synthetic demonstration packet and its runnable
+// copies. A name that already exists, which a save dialog
 // returns once the person confirms replacing it, is handed on unchanged and
 // refused by the writer with its reason, and nothing is written into it.
 func TestEveryNewFolderIsNamedInTheSaveDialogAndCreatedOnlyByItsWriter(t *testing.T) {
@@ -183,6 +191,10 @@ func TestEveryNewFolderIsNamedInTheSaveDialogAndCreatedOnlyByItsWriter(t *testin
 	if summary.State != desktop.Completed || summary.Summary == nil {
 		t.Fatalf("support preview: %+v", summary)
 	}
+	synthetic := filepath.Join(t.TempDir(), "synthetic")
+	if generated := app.GenerateSyntheticPacket(desktop.SyntheticPacketRequest{Scenario: report.Scenario, Destination: synthetic}); generated.State != desktop.Completed {
+		t.Fatalf("the synthetic packet runnable copies are prepared from was not generated: %+v", generated)
+	}
 
 	type destination struct {
 		name   string
@@ -210,6 +222,12 @@ func TestEveryNewFolderIsNamedInTheSaveDialogAndCreatedOnlyByItsWriter(t *testin
 				Policy: "sharing.json", Approval: summary.Summary.Identity, Output: path,
 			})
 		}, "the publication was refused"},
+		{"synthetic packet", func() any { return app.ChooseSyntheticPacketPath("packet-destination") }, func(path string) any {
+			return app.GenerateSyntheticPacket(desktop.SyntheticPacketRequest{Scenario: report.Scenario, Destination: path})
+		}, "destination must be new"},
+		{"runnable copies", func() any { return app.ChooseSyntheticPacketPath("rerun-destination") }, func(path string) any {
+			return app.PrepareSyntheticRerun(desktop.SyntheticRerunRequest{Packet: synthetic, Destination: path, Address: "127.0.0.1:2575"})
+		}, "destination must be new"},
 	} {
 		named := filepath.Join(t.TempDir(), "new-"+strings.ReplaceAll(d.name, " ", "-"))
 		occupied := t.TempDir()
@@ -252,6 +270,8 @@ func TestADismissedSaveDialogDoesNothing(t *testing.T) {
 		func() any { return app.ChooseMaintenancePath("archive-destination") },
 		func() any { return app.ChoosePacketExportPath() },
 		func() any { return app.ChooseSupportExportPath() },
+		func() any { return app.ChooseSyntheticPacketPath("packet-destination") },
+		func() any { return app.ChooseSyntheticPacketPath("rerun-destination") },
 	} {
 		result := call()
 		if state, reason := stateOf(result); state != desktop.Cancelled || reason != "no new folder was named" {

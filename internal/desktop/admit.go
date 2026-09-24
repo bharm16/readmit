@@ -41,10 +41,11 @@ func run[R any, PR interface {
 // a connectivity check, a fixture reset, a send-policy evaluation that
 // resolves names, a source diagnosis or collection, a capture, a send, a
 // practice run, a disclosure review or derived export whose proof sends to
-// its own loopback receivers, an observation, a reduction, runner enrollment
-// and execution, and every hub request and step of a sign-in — starts here,
-// under a name disclosure.go maps to its row, whether or not it is
-// interruptible. Only local work may be unnamed.
+// its own loopback receivers, a synthetic packet's generation, which sends to
+// the built-in receivers it starts on loopback, an observation, a reduction,
+// runner enrollment and execution, and every hub request and step of a
+// sign-in — starts here, under a name disclosure.go maps to its row, whether
+// or not it is interruptible. Only local work may be unnamed.
 //
 // The work's context also carries the observer of operator-declared programs
 // (secret.ObserveDeclaredPrograms), so every program the work runs — a

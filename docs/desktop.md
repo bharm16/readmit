@@ -413,6 +413,10 @@ artifacts are never reported as completed.
 | `ChoosePacketExportPath` | Presents the host's native save dialog to name the new folder a portable review is sealed into. |
 | `ExportPacketReview` | Seals the packet, byte for byte, beside the five inert offline renderings — offline HTML, PDF, Markdown, strict JSON and JUnit — through the existing export operation. |
 | `OpenPacketReview` | Verifies one portable review offline in read-only mode; the canonical report text is present only under the deliberate reveal, and opening acquires no send or mutation authority. |
+| `ChooseSyntheticPacketPath` | Names the new folder a synthetic demonstration packet or its runnable copies are written into in the host's native save dialog, or chooses an existing synthetic packet to verify in the folder dialog. Choosing creates, verifies and contacts nothing. |
+| `GenerateSyntheticPacket` | Generates the committed synthetic scenario into the new folder, exactly as `readmit report --scenario siu-reschedule-v1` does, against fresh built-in defective and fixed receivers on loopback, and reads the sealed packet back through the verifier. |
+| `OpenSyntheticPacket` | Verifies one synthetic packet offline and read-only, exactly as `readmit report verify` does, refusing a changed, incomplete or unsupported one with the verifier's sentence. |
+| `PrepareSyntheticRerun` | Prepares runnable copies of a verified synthetic packet in a new folder outside it on a numeric loopback address, exactly as `readmit report prepare` does; the sealed packet is never edited and no connection is opened. |
 | `Cancel` | Stops the operation that is running now, when it can be interrupted. The caller names the operation it means to cancel, so one panel's cancel control can never stop another panel's work; the window's own cancel command names none and cancels whatever is running. |
 
 Exactly one operation runs at a time. A second request reports `busy` rather
@@ -474,8 +478,10 @@ interruptible operation it started and nothing else, and the privacy status
 reports the activity the name belongs to as active. So every operation that can
 reach a network destination or change a target runs under a name, whether or not
 it can be interrupted: a durable or suite run (`durable-run`), a practice run
-(`practice`) and a disclosure review or derived export whose proof sends to its
-own loopback fixtures (`privacy`) under run; runner enrollment
+(`practice`), a disclosure review or derived export whose proof sends to its
+own loopback fixtures (`privacy`) and a synthetic demonstration packet's
+generation, which sends to the built-in receivers it starts on loopback
+(`synthetic-packet`), under run; runner enrollment
 (`runner-enrollment`) and execution (`runner`) under runner; a source diagnosis
 (`source-diagnosis`), a source collection (`collect`) and a capture (`capture`)
 under capture; a connectivity check (`target-check`), a fixture reset
@@ -589,9 +595,10 @@ reaches nothing an absolute path could not already name. Paths chosen on the
 machine rather than in the workspace are not workspace entries either: what an
 import reads, a scenario document or library named by absolute path, a file
 uploaded to a hub, the operation policy, license, hub, runner and maintenance
-documents and folders, and the destination of an exported review, of a published
-support bundle named by absolute path, of a hub download, of a backup and of a
-staged upgrade.
+documents and folders, the synthetic demonstration packet a person verifies or
+prepares from, and the destination of an exported review, of a published
+support bundle named by absolute path, of a hub download, of a backup, of a
+staged upgrade, of a synthetic packet and of its runnable copies.
 
 A save that may overwrite its output — upgrading one saved test's profile pin,
 and saving a scenario library entry back into the library it was read from —
@@ -641,6 +648,7 @@ pickers offer applicable entries instead of every entry labelled unsupported:
 | `suite-releases` | A `readmit-suite-releases/v1` released-expectation pin set |
 | `packet` | A sealed `readmit-retained-packet/v1` investigation packet |
 | `portable-review` | A sealed `readmit-portable-review/v1` directory of offline renderings |
+| `synthetic-packet` | A sealed `readmit-report/v1` synthetic demonstration packet, never the person's own evidence |
 | `unsupported` | Nothing this release reads, with the reason |
 
 Locating a document by a fixed name or a declared contract is how the listing
@@ -2479,6 +2487,37 @@ approval, not a regression-equivalence claim, and a successfully rendered
 report is not a passing run. See
 [sealed packets and portable reports](report.md) for both contracts' bounds,
 refusals and reader rules.
+
+**Synthetic demonstration packets** sit beside them in a section of their own:
+`readmit report`, `report verify` and `report prepare`, over the same
+operations and readers. Choose new packet folder… names a new folder in the
+host's save dialog; Generate synthetic packet runs the one committed scenario,
+`siu-reschedule-v1`, against fresh built-in defective and fixed receivers this
+window starts on loopback, seals the packet there and reads it back through
+the verifier, so the identity the panel shows begins the one `readmit report
+verify` prints.
+The synthetic messages go nowhere else, and generation, like the command,
+needs no activation: the synthetic walkthrough stays ungated. Cancel
+generation stops the fixture executions and answers cancelled; the partial
+folder never verifies, so the panel lets go of the folder it named and
+generating again needs a new one. Choose a
+synthetic packet… picks an existing packet in the folder dialog, and Verify
+synthetic packet verifies it offline and read-only; a changed, incomplete or
+unsupported packet, a retained investigation packet or any other folder is
+refused in the verifier's own words. From a verified packet, Prepare runnable
+copies writes the case, a loopback target and runnable copies of the
+historical specification for the baseline, post-fix and reintroduced trials
+into a new folder outside the packet, named in the save dialog, on the
+loopback address the section proposes (`127.0.0.1:2575`) or one typed in its
+place; a folder inside the packet and an address that is not numeric loopback
+are refused, and the packet is never edited.
+
+A synthetic packet is never the person's own evidence, and every view says so:
+the listing names it a `synthetic-packet`, the panel labels each packet it
+generated or verified synthetic-only with the packet's own limitations, and
+the prepared copies' case keeps its generated provenance. The retained-packet
+panels never offer one, and opening, exporting or reviewing one as retained
+evidence is refused, as `readmit report verify-retained` refuses it.
 
 ## Privacy review, protected export and support sharing
 

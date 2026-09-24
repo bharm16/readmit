@@ -107,6 +107,11 @@ const (
 	// Both are claims the listing makes, and opening either one verifies it.
 	PacketArtifact         Kind = "packet"
 	PortableReviewArtifact Kind = "portable-review"
+	// A synthetic demonstration packet is a directory whose manifest declares
+	// the readmit-report contract `readmit report` seals: generated from the
+	// committed scenario on built-in fixtures, never a person's own evidence,
+	// and verified only by the synthetic packet section's own verifier.
+	SyntheticPacketArtifact Kind = "synthetic-packet"
 	// The privacy and protection screens' artifacts: a completed derived export
 	// packet, a verified local support bundle, an encrypted transfer package,
 	// a protection document registering key references readmit never holds, and

@@ -58,3 +58,16 @@ func PreviewSchedulePolicyAtForTest(a *App, request SchedulePolicyRequest, now t
 func ExplainRunWithinForTest(ctx context.Context, request RunExplanationRequest) RunExplanationResult {
 	return explainRun(ctx, request)
 }
+
+// GenerateSyntheticPacketWithinForTest is GenerateSyntheticPacket's work under
+// a context the test controls, so a cancellation lands before the fixture
+// executions rather than wherever scheduling puts it. The generator, the
+// verifier and every refusal are the production ones; only the operation slot
+// is not taken.
+func GenerateSyntheticPacketWithinForTest(ctx context.Context, request SyntheticPacketRequest) SyntheticPacketResult {
+	return generateSyntheticPacket(ctx, request)
+}
+
+// SyntheticPacketOperationForTest is the name a synthetic packet's generation
+// holds the slot under, which the synthetic section's cancel must name.
+const SyntheticPacketOperationForTest = syntheticPacketOperation

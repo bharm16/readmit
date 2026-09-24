@@ -134,9 +134,9 @@ func classify(root, name string, isDir bool) (Kind, bool) {
 // diagnosis only when it declares a diagnosis contract, so a directory
 // holding some other report.json stays unsupported here, exactly as before
 // this release read any report.json at all; and manifest.json names a sealed
-// investigation packet or a portable review by the contract it declares, so a
-// synthetic packet or any other manifest this release's packet panels do not
-// open stays unsupported. Every other marker keeps its one
+// investigation packet, a portable review or a synthetic demonstration
+// packet by the contract it declares, so any other manifest this release's
+// packet panels do not open stays unsupported. Every other marker keeps its one
 // kind, and nothing here verifies the directory — opening it still does.
 func refinedMarker(path string, kind Kind) (Kind, bool) {
 	switch kind {
@@ -157,6 +157,8 @@ func refinedMarker(path string, kind Kind) (Kind, bool) {
 			return PacketArtifact, true
 		case ok && schema == report.ReviewSchema:
 			return PortableReviewArtifact, true
+		case ok && schema == report.Schema:
+			return SyntheticPacketArtifact, true
 		}
 		return UnsupportedArtifact, false
 	case DerivedExportArtifact:
