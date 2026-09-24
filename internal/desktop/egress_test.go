@@ -317,6 +317,7 @@ var destinationActivities = map[string]string{
 	"ListHubReviews": "hub", "SearchHubReviews": "hub", "ListHubNotifications": "hub", "SearchHubNotifications": "hub",
 	"PostHubReview": "hub", "PostHubReleaseReview": "hub", "PostHubSupportReview": "hub",
 	"ListHubLifecycle": "hub", "PostHubLifecycle": "hub", "DownloadHubExport": "hub", "ReconcileHubOfflineDraft": "hub",
+	"ConnectOperatorHub": "hub", "ReadOperatorHubArtifact": "hub", "StoreOperatorHubArtifact": "hub",
 }
 
 // operationsRunningDeclaredPrograms is the reviewed inventory of bound
@@ -341,7 +342,7 @@ var destinationActivities = map[string]string{
 var operationsRunningDeclaredPrograms = []string{
 	"TestSecretReference", "RotateSecretReference", "ScanSecrets",
 	"RotateProtectionControl", "PackProtectedPackage", "OpenProtectedPackage",
-	"DiagnoseHub", "ConnectHub", "CompleteHubAuth",
+	"DiagnoseHub", "ConnectHub", "CompleteHubAuth", "ConnectOperatorHub",
 	"EnrollRunner", "ExecuteRunnerJob",
 	"CheckTarget", "ResetTarget", "StartReduction",
 	"DiagnoseSource", "CollectSource", "StartCapture",

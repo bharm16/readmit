@@ -167,3 +167,27 @@
 .hub-message {
   color: var(--danger, #8a1f1f);
 }
+
+.hub-operator-mode {
+  background: color-mix(in srgb, var(--surface) 95%, CanvasText 5%);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+}
+
+.hub-operator h4 button {
+  font-weight: bold;
+}
+
+.hub-operator-read {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.hub-operator-read input {
+  font-family: monospace;
+  min-width: 36ch;
+}

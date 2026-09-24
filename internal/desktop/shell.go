@@ -274,8 +274,8 @@ var privacyStatus = Privacy{
 			ID:            "hub",
 			Activity:      "Customer artifact hub",
 			Destination:   "the customer-controlled hub your configuration names over mutual TLS; sign-in goes to your own identity provider in your browser",
-			Data:          "the artifacts you explicitly upload or download and the project, role and membership facts the hub returns; nothing is uploaded or fetched by itself",
-			Authorization: "an operator-selected hub configuration, the mutual-TLS material it names, and your per-session identity-provider sign-in",
+			Data:          "the artifacts you explicitly upload or download, or store and read by digest in an operator-only hub, and the project, role and membership facts the hub returns; nothing is uploaded or fetched by itself",
+			Authorization: "an operator-selected hub configuration, the mutual-TLS material it names, and your per-session identity-provider sign-in; an operator-only hub admits the client certificate alone",
 		},
 		{
 			ID:            "declared-program",

@@ -81,17 +81,34 @@ func New(ctx context.Context, c Config, s *Session) (*Client, error) {
 		return nil, err
 	}
 
-	caBytes, err := readLocalPEM(c.CA)
+	httpClient, err := mutualTLSClient(ctx, c.Hub, c.CA, c.Certificate, c.Key)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Client{
+		config:     c,
+		session:    s,
+		httpClient: httpClient,
+	}, nil
+}
+
+// mutualTLSClient is the one transport every hub client uses: TLS 1.3 to the
+// hub the configuration names, verified against its CA, presenting the client
+// certificate with the key its reference reads, with no keep-alives and no
+// redirects.
+func mutualTLSClient(ctx context.Context, hub, ca, certificate string, key KeyReference) (*http.Client, error) {
+	caBytes, err := readLocalPEM(ca)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read CA: %w", err)
 	}
 
-	certBytes, err := readLocalPEM(c.Certificate)
+	certBytes, err := readLocalPEM(certificate)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read client certificate: %w", err)
 	}
 
-	keyVal, err := c.Key.Locator().Read(ctx)
+	keyVal, err := key.Locator().Read(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("cannot resolve client key reference: %w", err)
 	}
@@ -101,7 +118,7 @@ func New(ctx context.Context, c Config, s *Session) (*Client, error) {
 		return nil, errors.New("client certificate and private key do not form a pair")
 	}
 
-	u, err := url.Parse(c.Hub)
+	u, err := url.Parse(hub)
 	if err != nil {
 		return nil, err
 	}
@@ -120,28 +137,26 @@ func New(ctx context.Context, c Config, s *Session) (*Client, error) {
 		MaxResponseHeaderBytes: 8192,
 	}
 
-	httpClient := &http.Client{
+	return &http.Client{
 		Transport: tr,
 		Timeout:   30 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return errors.New("redirects are refused by the hub client")
 		},
-	}
-
-	return &Client{
-		config:     c,
-		session:    s,
-		httpClient: httpClient,
 	}, nil
 }
 
 // CheckHealth verifies that the hub is live and ready via its operational probes.
 func (c *Client) CheckHealth(ctx context.Context) error {
-	req, err := http.NewRequestWithContext(ctx, "GET", c.config.Hub+"/health/live", nil)
+	return checkHealth(ctx, c.httpClient, c.config.Hub)
+}
+
+func checkHealth(ctx context.Context, httpClient *http.Client, hub string) error {
+	req, err := http.NewRequestWithContext(ctx, "GET", hub+"/health/live", nil)
 	if err != nil {
 		return err
 	}
-	resp, err := c.httpClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("hub liveness check failed: %w", err)
 	}
@@ -150,11 +165,11 @@ func (c *Client) CheckHealth(ctx context.Context) error {
 		return fmt.Errorf("hub liveness check returned status %d", resp.StatusCode)
 	}
 
-	reqReady, err := http.NewRequestWithContext(ctx, "GET", c.config.Hub+"/health/ready", nil)
+	reqReady, err := http.NewRequestWithContext(ctx, "GET", hub+"/health/ready", nil)
 	if err != nil {
 		return err
 	}
-	respReady, err := c.httpClient.Do(reqReady)
+	respReady, err := httpClient.Do(reqReady)
 	if err != nil {
 		return fmt.Errorf("hub readiness check failed: %w", err)
 	}

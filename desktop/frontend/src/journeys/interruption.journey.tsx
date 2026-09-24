@@ -55,6 +55,9 @@ const STARTS = [
   "PostHubSupportReview",
   "PostHubLifecycle",
   "ReconcileHubOfflineDraft",
+  "ConnectOperatorHub",
+  "ReadOperatorHubArtifact",
+  "StoreOperatorHubArtifact",
 ] as const;
 
 test("a collector started in the capture panel stops when that panel's Cancel is pressed, and reopening after a kill starts nothing", async () => {

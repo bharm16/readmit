@@ -133,6 +133,14 @@ curl --fail --cacert server-ca.pem --cert operator.pem --key operator-key.pem \
 cmp probe.bin received.bin
 ```
 
+The desktop application reaches this store in the hub panel's operator-only
+mode, from an operator's `readmit-hub-operator-client/v1` configuration naming
+the hub, its CA, the client certificate and the key reference. It stores a
+chosen file and reads an artifact by digest into a new file, verifying the
+bytes against the digest. A store is admitted against the installed license
+before this service's own certificate binding admits it; see the
+[desktop guide](../docs/desktop.md#operator-only-hub-readmit-hub-operator-clientv1).
+
 Transfers are bounded at 64 MiB per object, 65,536 retained objects, the declared
 `max_storage_bytes` total, four simultaneous HTTP requests, a 30-second operation
 context and 35-second socket read/write deadlines. Shutdown admits no new
