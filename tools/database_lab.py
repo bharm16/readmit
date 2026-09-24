@@ -23,14 +23,29 @@ import time
 
 
 IMAGES = {
-    ("postgresql", "16"): "postgres:16",
-    ("postgresql", "17"): "postgres:17",
-    ("postgresql", "18"): "postgres:18",
-    ("sqlserver", "2019"): "mcr.microsoft.com/mssql/server:2019-latest",
-    ("sqlserver", "2022"): "mcr.microsoft.com/mssql/server:2022-latest",
-    ("sqlserver", "2025"): "mcr.microsoft.com/mssql/server:2025-latest",
+    ("postgresql", "16"): "postgres@sha256:a3b7f434b2dc57ce85a67e171163eb8ab1a1ebcb39d27484661f26b1dfbe30d6",
+    ("postgresql", "17"): "postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f",
+    ("postgresql", "18"): "postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722",
+    ("sqlserver", "2019"): "mcr.microsoft.com/mssql/server@sha256:ef0b8db33970ecd01bed49c3a84a1d083c435a9891718df619298b67b352e74a",
+    ("sqlserver", "2022"): "mcr.microsoft.com/mssql/server@sha256:4402d880dd4c34bfa7d8705e56a86cd6c88da80a1f6bbbe741f999e76264a090",
+    ("sqlserver", "2025"): "mcr.microsoft.com/mssql/server@sha256:2b5b581621126574f3d1f75e78d3eebe8d05aedb59ad0cfdf9aa42cb0634d726",
+}
+ARM64_POSTGRES_IMAGES = {
+    "16": "postgres@sha256:a3b7f434b2dc57ce85a67e171163eb8ab1a1ebcb39d27484661f26b1dfbe30d6",
+    "17": "postgres@sha256:f4c66b820c6f974249089d3d16d86a3698eae11e8746eb6644b2271031e91232",
+    "18": "postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722",
 }
 SERVER_NAME = "database.lab.invalid"
+
+
+def image_for(engine: str, version: str, docker_arch: str) -> str:
+    if docker_arch not in {"amd64", "x86_64", "arm64", "aarch64"}:
+        raise RuntimeError("database lab requires an identified amd64 or arm64 Docker host")
+    if engine == "sqlserver" and docker_arch not in {"amd64", "x86_64"}:
+        raise RuntimeError("SQL Server lab Docker host is not amd64")
+    if engine == "postgresql" and docker_arch in {"arm64", "aarch64"}:
+        return ARM64_POSTGRES_IMAGES[version]
+    return IMAGES[(engine, version)]
 
 
 def checked(label: str, args: list[str], *, env: dict[str, str] | None = None, timeout: int = 120) -> str:
@@ -65,15 +80,50 @@ def unused_loopback_port() -> int:
         return int(listener.getsockname()[1])
 
 
+def postgres_error_category(message: str) -> str:
+    lowered = message.lower()
+    if "connection refused" in lowered or "could not connect" in lowered or "starting up" in lowered:
+        return "connection"
+    if "password authentication failed" in lowered or "no pg_hba" in lowered or "peer authentication failed" in lowered:
+        return "authentication"
+    if "syntax error" in lowered:
+        return "sql-syntax"
+    if "permission denied" in lowered:
+        return "permission"
+    if "does not exist" in lowered:
+        return "missing-object"
+    return "other"
+
+
+def postgres_psql(name: str, statement: str, label: str) -> str:
+    # Only the variable reference appears in argv. Docker already holds the
+    # generated password in this container's ephemeral environment; psql uses
+    # authenticated loopback TCP rather than assuming local socket trust.
+    command = ["docker", "exec", "-u", "postgres", name, "sh", "-c",
+               'PGPASSWORD="$POSTGRES_PASSWORD" exec psql -h 127.0.0.1 -U lab_owner -d synthetic -v ON_ERROR_STOP=1 -At -c "$1"',
+               "sh", statement]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=10, check=False)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"{label} failed category=connection") from None
+    if result.returncode:
+        category = postgres_error_category(result.stdout + result.stderr)
+        raise RuntimeError(f"{label} failed with exit {result.returncode} category={category}")
+    return result.stdout.strip()
+
+
 def wait_postgres(name: str, *, timeout: int = 90) -> None:
     deadline = time.monotonic() + timeout
+    last_category = "not-attempted"
     while time.monotonic() < deadline:
-        result = subprocess.run(["docker", "exec", "-u", "postgres", name, "pg_isready",
-            "-U", "lab_owner", "-d", "synthetic"], capture_output=True, text=True, timeout=5, check=False)
-        if result.returncode == 0:
-            return
+        try:
+            if postgres_psql(name, "SELECT 1", "authenticated PostgreSQL readiness") == "1":
+                return
+            last_category = "unexpected-answer"
+        except RuntimeError as error:
+            last_category = str(error).rsplit("category=", 1)[-1]
         time.sleep(0.5)
-    raise RuntimeError("synthetic PostgreSQL did not become ready")
+    raise RuntimeError(f"synthetic PostgreSQL did not become authenticated-query ready (last={last_category})")
 
 
 def startup_diagnostic(name: str, *passwords: str) -> None:
@@ -115,8 +165,8 @@ def postgres_tls(name: str, directory: Path, cert: Path, key: Path) -> None:
     docker("own PostgreSQL certificate", "exec", "-u", "0", name, "chown", "postgres:postgres", "/var/lib/postgresql/lab-certs/server.crt", "/var/lib/postgresql/lab-certs/server.key")
     docker("bound PostgreSQL key", "exec", "-u", "0", name, "chmod", "600", "/var/lib/postgresql/lab-certs/server.key")
     for setting in ("ssl = on", "ssl_cert_file = '/var/lib/postgresql/lab-certs/server.crt'", "ssl_key_file = '/var/lib/postgresql/lab-certs/server.key'"):
-        docker("configure PostgreSQL TLS", "exec", "-u", "postgres", name, "psql", "-U", "lab_owner", "-d", "synthetic", "-v", "ON_ERROR_STOP=1", "-c", "ALTER SYSTEM SET " + setting)
-    hba_path = docker("locate PostgreSQL host admission", "exec", "-u", "postgres", name, "psql", "-U", "lab_owner", "-d", "synthetic", "-At", "-c", "SHOW hba_file")
+        postgres_psql(name, "ALTER SYSTEM SET " + setting, "configure PostgreSQL TLS")
+    hba_path = postgres_psql(name, "SHOW hba_file", "locate PostgreSQL host admission")
     hba = directory / "pg_hba.conf"
     docker("read PostgreSQL host admission", "cp", f"{name}:{hba_path}", str(hba))
     original = hba.read_text()
@@ -190,13 +240,13 @@ def cleanup_lab(name: str, network: str, container_created: bool, network_create
 
 
 def run_lab(engine: str, version: str, output: Path) -> None:
-    image = IMAGES[(engine, version)]
     if engine == "sqlserver" and (platform.system() != "Linux" or platform.machine().lower() not in {"x86_64", "amd64"}):
         raise RuntimeError("SQL Server reference lab requires native x86-64 Linux")
     if output.exists():
         raise RuntimeError("lab evidence destination must be new")
     output.mkdir(parents=True, mode=0o700)
-    docker("check Docker", "version", "--format", "{{.Server.Arch}}")
+    docker_arch = docker("check Docker", "info", "--format", "{{.Architecture}}").lower()
+    image = image_for(engine, version, docker_arch)
     docker("pull pinned lab major", "pull", image, timeout=600)
     inspected = json.loads(docker("inspect lab image", "image", "inspect", image))[0]
     architecture = inspected["Architecture"]
@@ -292,8 +342,8 @@ def run_lab(engine: str, version: str, output: Path) -> None:
             if not version_file.is_file():
                 raise RuntimeError("lab test did not retain server version")
             digests = inspected.get("RepoDigests") or []
-            if not digests:
-                raise RuntimeError("the pulled lab image has no retained repository digest")
+            if image not in digests:
+                raise RuntimeError("the pulled lab image does not retain the selected repository digest")
             server_version = " ".join(version_file.read_text().split())
             if (engine == "postgresql" and not server_version.startswith(version + ".")) or \
                     (engine == "sqlserver" and f"SQL Server {version}" not in server_version):

@@ -1,0 +1,1 @@
+{"schema":"readmit-observation-evidence/v1","kind":"database-query","status":"ambiguous","note":"database key was null, unsupported, lossy or outside the correlation-key contract","attempts":1,"retries":0,"http_status":0,"stated_age":"","bytes":0,"records":0}

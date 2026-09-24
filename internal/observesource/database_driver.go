@@ -78,7 +78,11 @@ func databaseConnector(d Database, password string, checked string, config *tls.
 		c.LookupFunc = func(context.Context, string) ([]string, error) { return []string{host}, nil }
 		return stdlib.GetConnector(*c), nil
 	case "sqlserver":
+		// NewConnectorConfig does not populate the parser's default protocol
+		// list. Pin TCP: a nil list yields a nil connection before prelogin, and
+		// no named-pipe or other dialer may bypass the approved address.
 		c := mssql.NewConnectorConfig(msdsn.Config{Host: host, Port: portNumber, Database: d.Name, User: d.Username, Password: password,
+			Protocols:  []string{"tcp"},
 			Encryption: msdsn.EncryptionRequired, TLSConfig: config, HostInCertificateProvided: true, DisableRetry: true,
 			DialTimeout: timeout, AppName: "readmit", Workstation: "readmit", PacketSize: 4096})
 		c.Dialer = dialer

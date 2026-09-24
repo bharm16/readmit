@@ -1,0 +1,1 @@
+{"schema":"readmit-database-read/v1","driver":"postgresql","limits":{"timeout":"30s","max_rows":10000,"max_bytes":3},"key_type":"text","keys":[]}
