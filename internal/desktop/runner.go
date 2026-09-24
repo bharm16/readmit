@@ -816,14 +816,20 @@ func schedulePolicyFrom(request SchedulePolicyRequest) (runnerprotocol.ScheduleP
 // zone, the window's missed-run marking, and the exact notification body an
 // approved schedule may emit. Nothing is written and nothing is sent.
 func (a *App) PreviewSchedulePolicy(request SchedulePolicyRequest) SchedulePreviewResult {
+	return a.previewSchedulePolicy(request, time.Now())
+}
+
+func (a *App) previewSchedulePolicy(request SchedulePolicyRequest, now time.Time) SchedulePreviewResult {
 	return run(a, false, false, func(context.Context) SchedulePreviewResult {
-		return schedulePreview(request)
+		return schedulePreview(request, now)
 	})
 }
 
 // schedulePreview is the computation behind both the preview operation and a
 // save; it holds no operation slot of its own, so a save composes it once.
-func schedulePreview(request SchedulePolicyRequest) SchedulePreviewResult {
+// now is the one instant the whole preview is taken at: the default anchor
+// day and every occurrence's missed marking read it.
+func schedulePreview(request SchedulePolicyRequest, now time.Time) SchedulePreviewResult {
 	policy, declined := schedulePolicyFrom(request)
 	if declined.reason != "" {
 		return SchedulePreviewResult{State: declined.state, Reason: declined.reason}
@@ -836,7 +842,7 @@ func schedulePreview(request SchedulePolicyRequest) SchedulePreviewResult {
 		Alert:       string(runnerprotocol.ScheduleAlert("failed")),
 		AlertStates: runnerprotocol.ScheduleAlertStates(),
 	}
-	today := time.Now().UTC()
+	today := now.UTC()
 	if request.Anchor != "" {
 		anchored, err := time.Parse("2006-01-02", request.Anchor)
 		if err != nil {
@@ -868,7 +874,7 @@ func schedulePreview(request SchedulePolicyRequest) SchedulePreviewResult {
 				occurrence.State = "dst-gap"
 			} else {
 				occurrence.UTC = due.UTC().Format(time.RFC3339)
-				if time.Now().UTC().Sub(due) > time.Duration(policy.Schedules[i].WindowSeconds)*time.Second {
+				if now.Sub(due) > time.Duration(policy.Schedules[i].WindowSeconds)*time.Second {
 					occurrence.State = "missed"
 				}
 			}
@@ -886,7 +892,7 @@ func schedulePreview(request SchedulePolicyRequest) SchedulePreviewResult {
 // explicit actions; this window commits nothing to any host.
 func (a *App) SaveSchedulePolicy(request SchedulePolicyRequest) SchedulePreviewResult {
 	return run(a, false, true, func(context.Context) SchedulePreviewResult {
-		preview := schedulePreview(request)
+		preview := schedulePreview(request, time.Now())
 		if preview.State != Completed {
 			return preview
 		}
@@ -932,7 +938,7 @@ func (a *App) OpenSchedulePolicy(path string) SchedulePreviewResult {
 				Route: schedule.Route, Approved: schedule.Approved,
 			}
 		}
-		return schedulePreview(SchedulePolicyRequest{Entries: entries})
+		return schedulePreview(SchedulePolicyRequest{Entries: entries}, time.Now())
 	})
 }
 
