@@ -1,9 +1,9 @@
 package desktop
 
 import (
-	"io"
-	"os"
+	"errors"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/correlate"
@@ -16,18 +16,9 @@ func analyzeSequence(root, name string, b *bundle.Bundle, links *correlate.Repor
 	if err != nil {
 		return nil, refusal{Failed, "sequence analysis must be one regular workspace file"}
 	}
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > sequenceanalysis.MaxBytes {
-		return nil, refusal{Failed, "sequence analysis must be one regular workspace file of at most 1 MiB"}
-	}
-	file, err := os.Open(path)
+	data, err := sequenceFile.Read(path)
 	if err != nil {
-		return nil, refusal{Failed, "sequence analysis could not be read"}
-	}
-	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, sequenceanalysis.MaxBytes+1))
-	if err != nil {
-		return nil, refusal{Failed, "sequence analysis could not be read"}
+		return nil, refusal{Failed, err.Error()}
 	}
 	declaration, err := sequenceanalysis.Parse(data)
 	if err != nil {
@@ -38,4 +29,15 @@ func analyzeSequence(root, name string, b *bundle.Bundle, links *correlate.Repor
 		return nil, refusal{Failed, err.Error()}
 	}
 	return report, refusal{}
+}
+
+// sequenceFile is how a sequence analysis declaration of the workspace is
+// read: never through a link, and never past its bound.
+var sequenceFile = artifactdir.Document{
+	MaxBytes: sequenceanalysis.MaxBytes,
+	Refusals: artifactdir.DocumentRefusals{
+		Irregular: errors.New("sequence analysis must be one regular workspace file of at most 1 MiB"),
+		Read:      errors.New("sequence analysis could not be read"),
+		Size:      errors.New("sequence analysis must be one regular workspace file of at most 1 MiB"),
+	},
 }

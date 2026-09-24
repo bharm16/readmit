@@ -79,19 +79,16 @@ func Health(root string) (Status, error) {
 	}
 	return s, nil
 }
+
+// persist creates one new runner record, such as a job's claim, through the
+// shared document store.
 func persist(path string, data []byte) error {
 	root, err := os.OpenRoot(filepath.Dir(path))
 	if err != nil {
 		return ErrRefused
 	}
 	defer root.Close()
-	if err := artifactdir.WriteFile(root, filepath.Base(path), data); err != nil {
-		return ErrRefused
-	}
-	if err := artifactdir.SyncDirectory(root, "."); err != nil {
-		return ErrRefused
-	}
-	return nil
+	return runnerFile.CreateIn(root, filepath.Base(path), data)
 }
 
 func syncDirectory(path string) error {
@@ -102,20 +99,36 @@ func syncDirectory(path string) error {
 	defer root.Close()
 	return artifactdir.SyncDirectory(root, ".")
 }
+
+// storeLease replaces the active lease through the shared document store,
+// staged as lease.next.
 func storeLease(active string, lease runnerprotocol.Lease) error {
 	raw, err := json.Marshal(lease)
 	if err != nil {
 		return ErrRefused
 	}
-	tmp := filepath.Join(active, "lease.next")
-	if err = persist(tmp, raw); err != nil {
-		return err
-	}
-	if err = os.Rename(tmp, filepath.Join(active, "lease.json")); err != nil {
+	root, err := os.OpenRoot(active)
+	if err != nil {
 		return ErrRefused
 	}
-	return syncDirectory(active)
+	defer root.Close()
+	return leaseFile.ReplaceIn(root, "lease.json", raw)
 }
+
+// runnerFile is how a runner record is created, and leaseFile how the active
+// lease is replaced. A record whose write failed is retained and refuses the
+// next write, and every failure is ErrRefused.
+var (
+	runnerFile = artifactdir.Document{
+		RetainFailed: true,
+		Errors:       artifactdir.DocumentErrors{Create: ErrRefused, Write: ErrRefused, Sync: ErrRefused},
+	}
+	leaseFile = artifactdir.Document{
+		Staging:      artifactdir.StagingName("lease.next"),
+		RetainFailed: true,
+		Errors:       artifactdir.DocumentErrors{Create: ErrRefused, Write: ErrRefused, Sync: ErrRefused},
+	}
+)
 
 // Run acquires one exclusive environment lease within this configured root. A
 // crash leaves the claim intact. Neither restart nor lease expiry replays work.

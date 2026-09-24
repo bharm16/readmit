@@ -32,11 +32,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"io"
-	"os"
 	"slices"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/assertion"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/observesource"
@@ -225,7 +224,7 @@ func Explain(ctx context.Context, input Input) (Explanation, error) {
 	if input.Run == "" || input.Assertions == "" {
 		return Explanation{}, errors.New("an explanation requires one run bundle and one assertion set")
 	}
-	data, err := readBounded(input.Assertions, maxSetBytes)
+	data, err := assertionSetFile.Read(input.Assertions)
 	if err != nil {
 		return Explanation{}, err
 	}
@@ -642,25 +641,16 @@ func digest(data []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// readBounded reads one authored document under its own contract's bound. A
-// document past the bound is refused rather than truncated, because a prefix
-// of an assertion set is a different set.
-func readBounded(path string, limit int) ([]byte, error) {
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("an assertion set is one readable regular file")
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, errors.New("cannot open the assertion set")
-	}
-	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, int64(limit)+1))
-	if err != nil {
-		return nil, errors.New("cannot read the assertion set")
-	}
-	if len(data) > limit {
-		return nil, errors.New("the assertion set exceeds the size this contract reads")
-	}
-	return data, nil
+// assertionSetFile is how an authored assertion set is read, under its own
+// contract's bound. A document past the bound is refused rather than
+// truncated, because a prefix of an assertion set is a different set.
+var assertionSetFile = artifactdir.Document{
+	MaxBytes: maxSetBytes,
+	Links:    artifactdir.FollowLinks,
+	Refusals: artifactdir.DocumentRefusals{
+		Irregular: errors.New("an assertion set is one readable regular file"),
+		Open:      errors.New("cannot open the assertion set"),
+		Read:      errors.New("cannot read the assertion set"),
+		Size:      errors.New("the assertion set exceeds the size this contract reads"),
+	},
 }

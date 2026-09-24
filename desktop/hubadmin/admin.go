@@ -5,8 +5,6 @@ package hubadmin
 import (
 	"context"
 	"errors"
-	"io"
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -14,6 +12,7 @@ import (
 	"unicode"
 
 	"github.com/bharm16/readmit/hub"
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/desktop"
 )
 
@@ -231,24 +230,16 @@ func localFile(value string, limit int64) ([]byte, error) {
 	if !localPath(value) {
 		return nil, errors.New("absolute local file required")
 	}
-	info, err := os.Lstat(value)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > limit {
-		return nil, errors.New("local file unavailable")
-	}
-	f, err := os.Open(value)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	opened, err := f.Stat()
-	if err != nil || !os.SameFile(info, opened) {
-		return nil, errors.New("local file changed")
-	}
-	data, err := io.ReadAll(io.LimitReader(f, limit+1))
-	if err != nil || int64(len(data)) > limit {
-		return nil, errors.New("local file unavailable")
-	}
-	return data, nil
+	unavailable := errors.New("local file unavailable")
+	return artifactdir.Document{
+		MaxBytes: int(limit),
+		Refusals: artifactdir.DocumentRefusals{
+			Irregular: unavailable,
+			Open:      artifactdir.FilesystemReport,
+			Changed:   errors.New("local file changed"),
+			Read:      unavailable,
+		},
+	}.Read(value)
 }
 
 func quote(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }

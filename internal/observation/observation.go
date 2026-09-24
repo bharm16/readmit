@@ -6,13 +6,11 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"io"
 	"os"
-	"path/filepath"
 	"regexp"
 	"unicode/utf8"
 
-	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/artifactdir"
 )
 
 const (
@@ -149,24 +147,9 @@ func Decode(data []byte) (Snapshot, error) {
 }
 
 func Read(path string) (Snapshot, error) {
-	// Check before opening: opening a FIFO can block before file.Stat is
-	// reachable. Retain the descriptor check because the path can change.
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return Snapshot{}, errors.New("observation must be a regular file")
-	}
-	file, err := os.Open(path)
+	data, err := snapshotFile.Read(path)
 	if err != nil {
-		return Snapshot{}, errors.New("cannot open observation file")
-	}
-	defer file.Close()
-	info, err = file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return Snapshot{}, errors.New("observation must be a regular file")
-	}
-	data, err := io.ReadAll(io.LimitReader(file, MaxBytes+1))
-	if err != nil {
-		return Snapshot{}, errors.New("cannot read observation file")
+		return Snapshot{}, err
 	}
 	return Decode(data)
 }
@@ -175,15 +158,20 @@ func Read(path string) (Snapshot, error) {
 // temporary file avoids both overwriting a stale observation and exposing an
 // empty/partial destination during startup. Temp and destination share a volume.
 func Create(path string, snapshot Snapshot) error {
-	return install(path, snapshot, true, (*os.File).Sync)
+	return CreateWithDurability(path, snapshot, artifactdir.Durable)
 }
 
-// CreateWithFlush is Create, calling flush rather than a plain sync on the
-// complete temporary file before linking it; a nil flush makes no call, as for
-// Install. Only a first snapshot in a throwaway workspace its owner removes
-// before it answers may go unflushed.
-func CreateWithFlush(path string, snapshot Snapshot, flush func(*os.File) error) error {
-	return install(path, snapshot, true, flush)
+// CreateWithDurability is Create with an explicit durability: only a first
+// snapshot in a throwaway workspace its owner removes before it answers may be
+// Scratch, and neither it nor its folder is then flushed.
+func CreateWithDurability(path string, snapshot Snapshot, durability artifactdir.Durability) error {
+	data, err := Encode(snapshot)
+	if err != nil {
+		return err
+	}
+	document := snapshotFile
+	document.Durability = durability
+	return document.Create(path, data)
 }
 
 // Write replaces a snapshot by same-directory rename. Readers see either the
@@ -191,43 +179,43 @@ func CreateWithFlush(path string, snapshot Snapshot, flush func(*os.File) error)
 func Write(path string, snapshot Snapshot) error { return Install(path, snapshot, (*os.File).Sync) }
 
 // Install replaces a snapshot by the same rename as Write, first calling flush
-// on the complete temporary file unless flush is nil. A nil flush is for a live
-// observation read back only by the process writing it, which keeps any copy it
-// retains through its own synced write; such a file is not claimed to survive a
-// system crash.
+// on the complete temporary file unless flush is nil, and then syncing the
+// folder naming it. A nil flush is for a live observation read back only by the
+// process writing it, which keeps any copy it retains through its own synced
+// write; such a file is flushed nowhere and is not claimed to survive a system
+// crash.
 func Install(path string, snapshot Snapshot, flush func(*os.File) error) error {
-	return install(path, snapshot, false, flush)
-}
-
-func install(path string, snapshot Snapshot, create bool, flush func(*os.File) error) error {
-	path, err := artifactpath.Destination(path)
-	if err != nil {
-		return err
-	}
 	data, err := Encode(snapshot)
 	if err != nil {
 		return err
 	}
-	file, err := os.CreateTemp(filepath.Dir(path), ".readmit-observation-*")
-	if err != nil {
-		return errors.New("cannot create temporary observation file")
-	}
-	defer os.Remove(file.Name())
-	_, writeErr := file.Write(data)
-	if writeErr == nil && flush != nil {
-		writeErr = flush(file)
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		return errors.New("cannot write observation file")
-	}
-	if create {
-		err = os.Link(file.Name(), path)
+	document := snapshotFile
+	if flush == nil {
+		document.Durability = artifactdir.Scratch
 	} else {
-		err = os.Rename(file.Name(), path)
+		document.Flush = flush
 	}
-	if err != nil {
-		return errors.New("cannot install observation file; startup destination must be new")
-	}
-	return nil
+	return document.Replace(path, data)
+}
+
+// snapshotFile is how an observation snapshot is created, replaced and read.
+// A replacement is staged under a fresh temporary name, so one a crash left
+// behind never refuses the next, and a first snapshot is linked into place
+// whole. A snapshot a person names is read through a link at its name.
+var snapshotFile = artifactdir.Document{
+	MaxBytes:     MaxBytes,
+	Links:        artifactdir.FollowLinks,
+	Staging:      artifactdir.StagingTemp(".readmit-observation-*"),
+	CreateByLink: true,
+	Errors: artifactdir.DocumentErrors{
+		Create:  errors.New("cannot create temporary observation file"),
+		Write:   errors.New("cannot write observation file"),
+		Install: errors.New("cannot install observation file; startup destination must be new"),
+	},
+	Refusals: artifactdir.DocumentRefusals{
+		Irregular: errors.New("observation must be a regular file"),
+		Open:      errors.New("cannot open observation file"),
+		Read:      errors.New("cannot read observation file"),
+		Size:      errors.New("observation exceeds size limit"),
+	},
 }

@@ -8,13 +8,11 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
-	"io"
-	"os"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
@@ -229,25 +227,21 @@ func Approve(data []byte, previous *Revision, identity, approver, rationale stri
 
 // ReadBytes accepts bounded regular files only and never discloses their paths.
 func ReadBytes(path string, limit int) ([]byte, error) {
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("baseline input must be a readable regular file, not a symlink")
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, errors.New("cannot open baseline input")
-	}
-	defer f.Close()
-	actual, err := f.Stat()
-	if err != nil || !actual.Mode().IsRegular() || !os.SameFile(info, actual) {
-		return nil, errors.New("baseline input changed while opening")
-	}
-	data, err := io.ReadAll(io.LimitReader(f, int64(limit)+1))
-	if err != nil || len(data) > limit {
-		return nil, errors.New("cannot read baseline input within its size limit")
-	}
-	return data, nil
+	input := baselineInput
+	input.MaxBytes = limit
+	return input.Read(path)
 }
+
+// baselineInput is how a baseline input is read: never through a link.
+var baselineInput = artifactdir.Document{
+	Refusals: artifactdir.DocumentRefusals{
+		Irregular: errors.New("baseline input must be a readable regular file, not a symlink"),
+		Open:      errors.New("cannot open baseline input"),
+		Changed:   errors.New("baseline input changed while opening"),
+		Read:      errors.New("cannot read baseline input within its size limit"),
+	},
+}
+
 func Read(path string) (Revision, error) {
 	data, err := ReadBytes(path, MaxBytes)
 	if err != nil {
@@ -263,23 +257,17 @@ func Save(path string, r Revision) error {
 	if err != nil {
 		return err
 	}
-	destination, err := artifactpath.Destination(path)
-	if err != nil {
-		return err
-	}
-	f, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if err != nil {
-		return errors.New("cannot create baseline; destination must be new and writable")
-	}
-	_, writeErr := f.Write(data)
-	if writeErr == nil {
-		writeErr = f.Sync()
-	}
-	closeErr := f.Close()
-	if writeErr != nil || closeErr != nil {
-		return errors.New("cannot finish baseline; incomplete file retained")
-	}
-	return nil
+	return revisionFile.Create(path, data)
+}
+
+// revisionFile is how a baseline revision is created, through the shared
+// document store.
+var revisionFile = artifactdir.Document{
+	RetainFailed: true,
+	Errors: artifactdir.DocumentErrors{
+		Create: errors.New("cannot create baseline; destination must be new and writable"),
+		Write:  errors.New("cannot finish baseline; incomplete file retained"),
+	},
 }
 
 // JSON is the common CLI rendering; encoding escapes controls in opt-in values.

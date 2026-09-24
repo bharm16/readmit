@@ -6,12 +6,12 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
-	"io"
 	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/runnerprotocol"
 	"github.com/bharm16/readmit/internal/secret"
 )
@@ -104,24 +104,11 @@ func (c Config) validate() error {
 	return nil
 }
 func privateRead(path string, limit int64) ([]byte, error) {
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || !privateMode(info.Mode()) || info.Size() > limit {
-		return nil, ErrRefused
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, ErrRefused
-	}
-	defer f.Close()
-	opened, err := f.Stat()
-	if err != nil || !os.SameFile(info, opened) {
-		return nil, ErrRefused
-	}
-	raw, err := io.ReadAll(io.LimitReader(f, limit+1))
-	if err != nil || int64(len(raw)) > limit {
-		return nil, ErrRefused
-	}
-	return raw, nil
+	return artifactdir.Document{
+		MaxBytes:  int(limit),
+		OwnerOnly: runtime.GOOS != "windows",
+		Refusals:  artifactdir.DocumentRefusals{Irregular: ErrRefused, Read: ErrRefused},
+	}.Read(path)
 }
 
 // Windows mode bits do not describe ACLs; the installing administrator owns the

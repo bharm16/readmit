@@ -6,9 +6,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/replay"
@@ -205,24 +205,20 @@ func kind(item *occurrence) string {
 }
 
 func readFile(path string, limit int) ([]byte, error) {
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > int64(limit) {
-		return nil, errors.New("diff input must be a bounded regular file")
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, errors.New("cannot open diff input file")
-	}
-	defer f.Close()
-	info, err = f.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() > int64(limit) {
-		return nil, errors.New("diff input must be a bounded regular file")
-	}
-	data, err := io.ReadAll(io.LimitReader(f, int64(limit)+1))
-	if err != nil || len(data) > limit {
-		return nil, errors.New("cannot read diff input within size limit")
-	}
-	return data, nil
+	input := diffInput
+	input.MaxBytes = limit
+	return input.Read(path)
+}
+
+// diffInput is how a diff input is read, through a link at its name.
+var diffInput = artifactdir.Document{
+	Links: artifactdir.FollowLinks,
+	Refusals: artifactdir.DocumentRefusals{
+		Irregular: errors.New("diff input must be a bounded regular file"),
+		Open:      errors.New("cannot open diff input file"),
+		Read:      errors.New("cannot read diff input within size limit"),
+		Size:      errors.New("diff input must be a bounded regular file"),
+	},
 }
 
 func digest(data []byte) string {

@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
-	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/entitlement"
 )
 
@@ -340,19 +339,31 @@ func RenewInstalledLicense(root string, data, trustData []byte) error {
 	// before the renewal and renamed over it after, so a refused renewal
 	// leaves both as they were and a retained interrupted write is reported
 	// before the license changes.
-	path := filepath.Join(store.Root(), trustName)
-	staged := path + incompleteSuffix
-	if err := writeNew(staged, trustData); err != nil {
+	replacement, err := trustFile.Begin(filepath.Join(store.Root(), trustName))
+	if err != nil {
+		return ErrLicenseRetained
+	}
+	if err := replacement.Write(trustData); err != nil {
+		replacement.Abandon()
 		return ErrLicenseRetained
 	}
 	if err := store.Renew(data, trust); err != nil {
-		os.Remove(staged)
+		replacement.Abandon()
 		return err
 	}
-	if err := os.Rename(staged, path); err != nil {
-		return errors.New("the renewal is installed but its verification keys could not be kept; move the retained keys file into place")
-	}
-	return nil
+	err = replacement.Commit()
+	replacement.Close()
+	return err
+}
+
+// trustFile is how the installed trust document is replaced by a renewal
+// that brings new keys. A replacement installed after the renewal but not
+// renamed into place is retained for the person to move.
+var trustFile = artifactdir.Document{
+	Errors: artifactdir.DocumentErrors{
+		Install: errors.New("the renewal is installed but its verification keys could not be kept; move the retained keys file into place"),
+		Sync:    errors.New("the renewal is installed but its verification keys could not be confirmed against a power loss"),
+	},
 }
 
 // ReleaseInstalledLicense deactivates this computer: the operation state is
@@ -465,29 +476,16 @@ func InstalledTrust(root string) ([]byte, error) {
 const incompleteSuffix = ".incomplete"
 
 // writeNew creates one new private file exclusively and never replaces one. A
-// file it cannot create carries the cause, so a caller can tell a name
-// already taken from a folder it cannot write.
+// file it cannot create carries the cause behind its sentence, so a caller can
+// tell a name already taken from a folder it cannot write.
 func writeNew(path string, data []byte) error {
-	destination, err := artifactpath.Destination(path)
-	if err != nil {
-		return err
-	}
-	file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err != nil {
-		return createError{err}
-	}
-	writeErr := artifactdir.WriteFileSync(file, data)
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		os.Remove(destination)
-		return errors.New("cannot write a file of this computer's license")
-	}
-	return nil
+	return licenseFile.Create(path, data)
 }
 
-// createError is a license file that could not be created, reported in one
-// sentence whatever the cause it carries.
-type createError struct{ cause error }
-
-func (e createError) Error() string { return "cannot create a file of this computer's license" }
-func (e createError) Unwrap() error { return e.cause }
+// licenseFile is how each file of this computer's license is created.
+var licenseFile = artifactdir.Document{
+	Errors: artifactdir.DocumentErrors{
+		Create: errors.New("cannot create a file of this computer's license"),
+		Write:  errors.New("cannot write a file of this computer's license"),
+	},
+}

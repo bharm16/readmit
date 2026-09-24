@@ -290,3 +290,48 @@ func TestRecoveryCopiesAreListedAndRecoveredThroughTheFacade(t *testing.T) {
 		t.Fatalf("a folder that is no project: %+v", none)
 	}
 }
+
+// A backup report lists a recovery copy with the mutable project documents
+// because the document store names it one; a file that only resembles a
+// copy's name is not a recovery copy, and is not listed as one.
+func TestBackupReportListsRecoveryCopiesTheStoreNames(t *testing.T) {
+	app := newApp(t, &chooser{folder: t.TempDir()})
+	root := sampleProject(t, app)
+	original, err := os.ReadFile(filepath.Join(root, project.DocumentName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := project.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renamed := opened.Document
+	renamed.Settings.Title = "Renamed"
+	if err := project.WriteDocument(root, renamed); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(original)
+	recoveryCopy := project.DocumentName + ".recovery-" + hex.EncodeToString(sum[:])
+	resembling := project.DocumentName + ".recovery-not-a-digest"
+	if err := os.WriteFile(filepath.Join(root, resembling), []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	created := app.CreateProjectBackup(desktop.BackupCreateRequest{Project: root, Destination: filepath.Join(t.TempDir(), "project.backup")})
+	if created.State != desktop.Completed || created.Report == nil {
+		t.Fatalf("create: %+v", created)
+	}
+	listed := func(entries []desktop.BackupInventoryEntry, name string) bool {
+		for _, entry := range entries {
+			if entry.Path == name {
+				return true
+			}
+		}
+		return false
+	}
+	if !listed(created.Report.Mutable, recoveryCopy) || listed(created.Report.Other, recoveryCopy) {
+		t.Fatalf("the recovery copy was not listed as a mutable project document: %+v", created.Report)
+	}
+	if listed(created.Report.Mutable, resembling) {
+		t.Fatalf("a file resembling a recovery copy was listed as one: %+v", created.Report)
+	}
+}

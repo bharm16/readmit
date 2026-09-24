@@ -169,20 +169,23 @@ func syncRoot(root *os.Root) error {
 	return artifactdir.SyncDirectory(root, ".")
 }
 
+// backupManifestFile is how a backup's manifest is read: never through a
+// link, and never past 128 MiB.
+var backupManifestFile = artifactdir.Document{
+	MaxBytes: 128 << 20,
+	Refusals: artifactdir.DocumentRefusals{
+		Irregular: errors.New("backup incomplete"),
+		Open:      artifactdir.FilesystemReport,
+		Read:      ErrLimit,
+		Size:      errors.New("backup incomplete"),
+	},
+}
+
 func readBackup(root *os.Root) (backupManifest, error) {
 	var m backupManifest
-	info, err := root.Lstat("manifest.json")
-	if err != nil || !info.Mode().IsRegular() || info.Size() > 128<<20 {
-		return m, errors.New("backup incomplete")
-	}
-	f, err := root.Open("manifest.json")
+	data, err := backupManifestFile.ReadIn(root, "manifest.json")
 	if err != nil {
 		return m, err
-	}
-	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, (128<<20)+1))
-	if err != nil || len(data) > 128<<20 {
-		return m, ErrLimit
 	}
 	var envelope map[string]jsontext.Value
 	if err = json.Unmarshal(data, &envelope); err != nil {

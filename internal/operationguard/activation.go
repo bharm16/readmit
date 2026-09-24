@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/entitlement"
 )
@@ -212,14 +213,34 @@ func activationWriteRefusal(err error) error {
 // renamed over it, as the clock state is updated. A retained replacement is
 // reported, never overwritten.
 func replacePolicy(path string, data []byte) error {
-	staged := path + incompleteSuffix
-	if err := writeNew(staged, data); errors.Is(err, fs.ErrExist) {
+	replacement, err := policyFile.Begin(path)
+	if errors.Is(err, fs.ErrExist) {
 		return ErrPolicyUpdateRetained
-	} else if err != nil {
-		return errors.New("cannot write the operation policy replacement")
 	}
-	if err := os.Rename(staged, path); err != nil {
-		return errors.New("cannot install the operation policy replacement")
+	if err != nil {
+		return err
 	}
-	return nil
+	if err := replacement.Write(data); err != nil {
+		replacement.Abandon()
+		return err
+	}
+	err = replacement.Commit()
+	replacement.Close()
+	return err
 }
+
+// policyFile is how an operation policy is replaced, through the shared
+// document store. A replacement written in full but not renamed into place is
+// retained.
+var policyFile = artifactdir.Document{
+	Errors: artifactdir.DocumentErrors{
+		Destination: errPolicyUnwritten,
+		Create:      errPolicyUnwritten,
+		Write:       errPolicyUnwritten,
+		Install:     errors.New("cannot install the operation policy replacement"),
+		Sync:        errors.New("the operation policy was replaced but could not be confirmed against a power loss"),
+	},
+}
+
+// errPolicyUnwritten is a policy replacement that could not be written.
+var errPolicyUnwritten = errors.New("cannot write the operation policy replacement")

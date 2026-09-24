@@ -4,14 +4,14 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/transportsecurity"
 )
 
@@ -176,14 +176,25 @@ func DiagnosePrerequisites(ctx context.Context, c Config) Prerequisites {
 }
 
 func readLocalPEM(path string) ([]byte, error) {
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() {
+	data, err := localPEM.Read(path)
+	if errors.Is(err, errLocalPEMIrregular) {
 		return nil, fmt.Errorf("must be a regular file: %s", path)
 	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	return io.ReadAll(io.LimitReader(f, 1<<20))
+	return data, err
+}
+
+// errLocalPEMIrregular is a named PEM file that is not a regular file.
+var errLocalPEMIrregular = errors.New("must be a regular file")
+
+// localPEM is how a client configuration's CA or certificate is read, through
+// a link at its name and within 1 MiB.
+var localPEM = artifactdir.Document{
+	MaxBytes: 1 << 20,
+	Links:    artifactdir.FollowLinks,
+	Refusals: artifactdir.DocumentRefusals{
+		Irregular: errLocalPEMIrregular,
+		Open:      artifactdir.FilesystemReport,
+		Read:      artifactdir.FilesystemReport,
+		Size:      errors.New("exceeds 1 MiB"),
+	},
 }

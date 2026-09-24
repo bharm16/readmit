@@ -3,15 +3,16 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/bharm16/readmit/hub"
+	"github.com/bharm16/readmit/internal/artifactdir"
 )
 
 func run() error {
@@ -25,14 +26,14 @@ func run() error {
 	if *configPath == "" || flag.NArg() != 1 {
 		return fmt.Errorf("usage: readmit-hub -config PATH [-directory PATH] migrate|serve|check|backup|verify-backup|restore")
 	}
-	f, err := os.Open(*configPath)
+	unavailable := errors.New("configuration unavailable")
+	data, err := artifactdir.Document{
+		MaxBytes: 16384,
+		Links:    artifactdir.FollowLinks,
+		Refusals: artifactdir.DocumentRefusals{Irregular: unavailable, Read: unavailable, Size: errors.New("configuration too large")},
+	}.Read(*configPath)
 	if err != nil {
-		return fmt.Errorf("configuration unavailable")
-	}
-	data, err := io.ReadAll(io.LimitReader(f, 16385))
-	f.Close()
-	if err != nil {
-		return fmt.Errorf("configuration unavailable")
+		return err
 	}
 	c, err := hub.ReadConfig(data)
 	if err != nil {

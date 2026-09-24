@@ -3,7 +3,6 @@ package reproducer
 import (
 	"encoding/json/v2"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -247,18 +246,5 @@ func encode(value any) ([]byte, error) {
 
 func readDocument(path string, limit int) ([]byte, error) {
 	refused := errors.New("a reproducer is one directory holding a derived case and its manifest")
-	entry, err := os.Lstat(path)
-	if err != nil || !entry.Mode().IsRegular() || entry.Size() > int64(limit) {
-		return nil, refused
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, refused
-	}
-	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, int64(limit)+1))
-	if err != nil || len(data) > limit {
-		return nil, refused
-	}
-	return data, nil
+	return artifactdir.Document{MaxBytes: limit, Refusals: artifactdir.DocumentRefusals{Irregular: refused, Read: refused}}.Read(path)
 }

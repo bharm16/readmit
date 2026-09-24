@@ -2,9 +2,7 @@ package report
 
 import (
 	"errors"
-	"io"
 	"os"
-	"path/filepath"
 	"slices"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
@@ -55,11 +53,11 @@ func ReadPreparation(directory string) (*Preparation, error) {
 		return nil, invalid
 	}
 	defer root.Close()
-	raw, err := readPreparationFile(root, directory, "preparation.json", 1<<20)
+	raw, err := readPreparationFile(root, "preparation.json", 1<<20)
 	if err != nil {
 		return nil, invalid
 	}
-	seal, err := readPreparationFile(root, directory, "preparation.sha256", 65)
+	seal, err := readPreparationFile(root, "preparation.sha256", 65)
 	if err != nil || string(seal) != digest(raw)+"\n" {
 		return nil, invalid
 	}
@@ -80,25 +78,21 @@ func ReadPreparation(directory string) (*Preparation, error) {
 	return &document, nil
 }
 
-func readPreparationFile(root *os.Root, directory, name string, limit int) ([]byte, error) {
-	info, err := os.Lstat(filepath.Join(directory, name))
-	if err != nil || !info.Mode().IsRegular() || info.Size() > int64(limit) {
-		return nil, errors.New("not a bounded regular preparation file")
-	}
-	file, err := root.Open(name)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	opened, err := file.Stat()
-	if err != nil || !os.SameFile(info, opened) {
-		return nil, errors.New("preparation file changed while opening")
-	}
-	raw, err := io.ReadAll(io.LimitReader(file, int64(limit)+1))
-	if err != nil || len(raw) > limit {
-		return nil, errors.New("preparation file exceeds its read limit")
-	}
-	return raw, nil
+func readPreparationFile(root *os.Root, name string, limit int) ([]byte, error) {
+	file := preparationFile
+	file.MaxBytes = limit
+	return file.ReadIn(root, name)
+}
+
+// preparationFile is how a file of a packet preparation is read: never
+// through a link, and never past its bound.
+var preparationFile = artifactdir.Document{
+	Refusals: artifactdir.DocumentRefusals{
+		Irregular: errors.New("not a bounded regular preparation file"),
+		Changed:   errors.New("preparation file changed while opening"),
+		Read:      errors.New("preparation file exceeds its read limit"),
+		Size:      errors.New("not a bounded regular preparation file"),
+	},
 }
 
 func preparationDigest(value string) bool {

@@ -58,8 +58,10 @@ readmit secret scan --secrets secrets.json target.json run-2026-09-18
 The document rejects unknown and duplicate members and unknown versions. It is
 written deterministically with references in one canonical order, is owner-only
 (`0600`), and is replaced atomically: a new file is written in full and renamed
-over the previous one, so a reader never sees a partial document. An interrupted
-write is retained beside it and reported, never reused.
+over the previous one, so a reader never sees a partial document, and the folder
+holding it is synced before the command reports it written, so a power loss
+cannot undo a replacement readmit reported. An interrupted write is retained
+beside it and reported, never reused.
 
 `store` is `os-keychain` or `customer-managed`. It is the operator's declaration
 of where the credential lives, recorded as made. readmit runs the program it was

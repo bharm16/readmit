@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/expectation"
 	"github.com/bharm16/readmit/internal/runqueue"
@@ -23,25 +24,23 @@ type Prepared struct {
 }
 
 func read(path string, max int) ([]byte, error) {
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > int64(max) {
-		return nil, errors.New("suite input must be a bounded regular file")
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, errors.New("cannot open suite input")
-	}
-	defer f.Close()
-	opened, err := f.Stat()
-	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(info, opened) {
-		return nil, errors.New("suite input changed while opening")
-	}
-	raw, err := io.ReadAll(io.LimitReader(f, int64(max)+1))
-	if err != nil || len(raw) > max {
-		return nil, errors.New("cannot read bounded suite input")
-	}
-	return raw, nil
+	input := suiteInput
+	input.MaxBytes = max
+	return input.Read(path)
 }
+
+// suiteInput is how a suite input is read: never through a link, and never
+// past its bound.
+var suiteInput = artifactdir.Document{
+	Refusals: artifactdir.DocumentRefusals{
+		Irregular: errors.New("suite input must be a bounded regular file"),
+		Open:      errors.New("cannot open suite input"),
+		Changed:   errors.New("suite input changed while opening"),
+		Read:      errors.New("cannot read bounded suite input"),
+		Size:      errors.New("suite input must be a bounded regular file"),
+	},
+}
+
 func retain(dir, name string, raw []byte) error {
 	f, err := os.OpenFile(filepath.Join(dir, name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {

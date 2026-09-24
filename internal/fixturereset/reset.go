@@ -6,11 +6,11 @@ import (
 	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
-	"io"
 	"os"
 	"slices"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/destination"
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/environment"
@@ -256,17 +256,13 @@ func perform(ctx context.Context, request Request, action Action, route destinat
 // than failed: readmit established nothing about the fixture either way, and
 // not knowing is not a pass.
 func emptyLedger(directory, name string) (Outcome, Reason) {
-	file, err := os.OpenInRoot(directory, name)
+	root, err := os.OpenRoot(directory)
 	if err != nil {
 		return Unconfirmed, ObservationUnreadable
 	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return Unconfirmed, ObservationUnreadable
-	}
-	data, err := io.ReadAll(io.LimitReader(file, observation.MaxBytes+1))
-	if err != nil || len(data) > observation.MaxBytes {
+	defer root.Close()
+	data, err := artifactdir.Document{MaxBytes: observation.MaxBytes, Links: artifactdir.FollowLinks}.ReadIn(root, name)
+	if err != nil {
 		return Unconfirmed, ObservationUnreadable
 	}
 	snapshot, err := observation.Decode(data)

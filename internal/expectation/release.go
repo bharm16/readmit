@@ -9,11 +9,10 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
-	"os"
 	"regexp"
 	"slices"
 
-	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/baseline"
 	"github.com/bharm16/readmit/internal/profileversion"
 )
@@ -235,23 +234,17 @@ func Save(path string, r Release) error {
 	if err != nil {
 		return err
 	}
-	destination, err := artifactpath.Destination(path)
-	if err != nil {
-		return err
-	}
-	f, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if err != nil {
-		return errors.New("release destination must be new and writable")
-	}
-	_, err = f.Write(raw)
-	if err == nil {
-		err = f.Sync()
-	}
-	closed := f.Close()
-	if err != nil || closed != nil {
-		return errors.New("cannot finish release; incomplete file retained")
-	}
-	return nil
+	return releaseFile.Create(path, raw)
+}
+
+// releaseFile is how a release is created: exclusively, and an interrupted
+// write is retained incomplete for the reader to refuse.
+var releaseFile = artifactdir.Document{
+	RetainFailed: true,
+	Errors: artifactdir.DocumentErrors{
+		Create: errors.New("release destination must be new and writable"),
+		Write:  errors.New("cannot finish release; incomplete file retained"),
+	},
 }
 
 // Inspect retains baseline privacy behavior and includes every pinned profile.

@@ -9,51 +9,10 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 )
-
-// retainPrevious preserves exact previous document bytes before replacement.
-// Copies are content-addressed and never overwritten, including damaged copies.
-func retainPrevious(root, name string, data []byte) error {
-	old, missing, err := readDocument(root, name)
-	if err != nil || missing || bytes.Equal(old, data) {
-		return err
-	}
-	sum := sha256.Sum256(old)
-	recovery := name + ".recovery-" + hex.EncodeToString(sum[:])
-	if info, err := os.Lstat(filepath.Join(root, recovery)); err == nil && !info.Mode().IsRegular() {
-		return errors.New("recovery copy must be a regular file")
-	}
-	retained, absent, err := readDocument(root, recovery)
-	if err != nil {
-		return err
-	}
-	if !absent {
-		if !bytes.Equal(retained, old) {
-			return errors.New("recovery copy is damaged; current document was not changed")
-		}
-		return nil
-	}
-	destination, err := artifactpath.Destination(filepath.Join(root, recovery))
-	if err != nil {
-		return errors.New("cannot retain recovery copy")
-	}
-	f, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if err != nil {
-		return errors.New("cannot retain recovery copy")
-	}
-	_, writeErr := f.Write(old)
-	if writeErr == nil {
-		writeErr = f.Sync()
-	}
-	closeErr := f.Close()
-	if writeErr != nil || closeErr != nil {
-		return errors.New("recovery copy incomplete; current document was not changed")
-	}
-	return nil
-}
 
 // recoverable names the documents a recovery copy is retained for, in the
 // order a listing reports them.
@@ -96,14 +55,14 @@ type RecoveryCopy struct {
 
 // RecoveryCopies lists every recovery copy of the project's documents, by
 // document and then by digest, with what reading each one found. It writes
-// nothing. A file whose name is not a document's name, ".recovery-" and a
-// lowercase SHA-256 is not a copy Recover can select, and is not listed.
+// nothing. The document store names and lists the copies; a file whose name is
+// not one it gives a copy is not a copy Recover can select, and is not listed.
 func RecoveryCopies(path string) ([]RecoveryCopy, error) {
 	root, err := artifactpath.Directory(path)
 	if err != nil {
 		return nil, err
 	}
-	entries, err := os.ReadDir(root)
+	listed, err := artifactdir.ListPrevious(root)
 	if err != nil {
 		return nil, errors.New("cannot list the project directory")
 	}
@@ -113,11 +72,11 @@ func RecoveryCopies(path string) ([]RecoveryCopy, error) {
 		if err != nil || missing {
 			current = nil
 		}
-		for _, entry := range entries {
-			digest, found := strings.CutPrefix(entry.Name(), name+".recovery-")
-			if !found || !lowercaseDigest(digest) {
+		for _, kept := range listed {
+			if kept.Document != name {
 				continue
 			}
+			digest := kept.Digest
 			retained := RecoveryCopy{Document: name, Digest: digest, State: RecoveryUnreadable}
 			data, err := readRecoveryCopy(root, name, digest)
 			switch {
@@ -143,7 +102,7 @@ func Recover(root, name, digest string) error {
 	if !slices.Contains(recoverable, name) {
 		return errors.New("recovery supports project, revisions, and quota documents only")
 	}
-	if !lowercaseDigest(digest) {
+	if !lowercaseDigest(name, digest) {
 		return errors.New("recovery requires a lowercase SHA-256 digest")
 	}
 	physical, err := artifactpath.Directory(root)
@@ -171,21 +130,22 @@ func Recover(root, name, digest string) error {
 	return installWithQuota(root, name, data, name != QuotaDocumentName)
 }
 
-// lowercaseDigest reports whether digest is a SHA-256 in lowercase hex, the
-// only form a recovery copy's name records.
-func lowercaseDigest(digest string) bool {
-	decoded, err := hex.DecodeString(digest)
-	return err == nil && len(decoded) == sha256.Size && hex.EncodeToString(decoded) == digest
+// lowercaseDigest reports whether digest names a recovery copy of the document
+// name, as the document store names one: a lowercase SHA-256.
+func lowercaseDigest(name, digest string) bool {
+	document, _, ok := artifactdir.ParsePreviousName(artifactdir.PreviousName(name, digest))
+	return ok && document == name
 }
 
 // readRecoveryCopy reads one recovery copy and checks its bytes against the
 // digest its name records. A damaged copy's bytes are returned with
 // errDamagedCopy, so a listing can report their length.
 func readRecoveryCopy(root, name, digest string) ([]byte, error) {
-	if info, err := os.Lstat(filepath.Join(root, name+".recovery-"+digest)); err != nil || !info.Mode().IsRegular() {
+	copyName := artifactdir.PreviousName(name, digest)
+	if info, err := os.Lstat(filepath.Join(root, copyName)); err != nil || !info.Mode().IsRegular() {
 		return nil, errors.New("recovery copy must be a regular file")
 	}
-	data, missing, err := readDocument(root, name+".recovery-"+digest)
+	data, missing, err := readDocument(root, copyName)
 	if err != nil {
 		return nil, err
 	}

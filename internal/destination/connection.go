@@ -7,8 +7,8 @@ import (
 	"errors"
 	"io"
 	"net"
-	"os"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 )
 
@@ -27,7 +27,7 @@ func ReadAuthorities(path string) ([]byte, error) {
 	if err != nil {
 		return nil, errors.New("cannot read configured CA certificates")
 	}
-	data, err := readRegular(resolved, maxAuthorityBytes)
+	data, err := authorityFile.Read(resolved)
 	if err != nil {
 		return nil, errors.New("cannot read configured CA certificates")
 	}
@@ -37,27 +37,16 @@ func ReadAuthorities(path string) ([]byte, error) {
 	return data, nil
 }
 
-// readRegular reads one bounded regular file, checking the opened descriptor
-// again because the path can change underneath between the check and the open.
-func readRegular(path string, limit int) ([]byte, error) {
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("input must be a regular file")
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	info, err = file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("input must be a regular file")
-	}
-	data, err := io.ReadAll(io.LimitReader(file, int64(limit)+1))
-	if err != nil || len(data) > limit {
-		return nil, errors.New("input cannot be read within size limit")
-	}
-	return data, nil
+// authorityFile is how a configured certificate authority file is read,
+// through the shared document store, which checks the opened descriptor again
+// because the path can change underneath between the check and the open.
+var authorityFile = artifactdir.Document{
+	MaxBytes: maxAuthorityBytes,
+	Links:    artifactdir.FollowLinks,
+	Refusals: artifactdir.DocumentRefusals{
+		Irregular: errors.New("input must be a regular file"),
+		Read:      errors.New("input cannot be read within size limit"),
+	},
 }
 
 // Open dials the route's address and, when security is present, completes TLS,

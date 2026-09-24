@@ -11,7 +11,6 @@ package project
 import (
 	"encoding/json/v2"
 	"errors"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -515,22 +514,12 @@ func readDocument(root, name string) ([]byte, bool, error) {
 		return nil, false, errors.New("cannot open project directory")
 	}
 	defer opened.Close()
-	file, err := opened.Open(name)
+	data, err := canonicalFile.ReadIn(opened, name)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, true, nil
 	}
 	if err != nil {
-		return nil, false, errors.New("directory holds no readable project document")
-	}
-	info, statErr := file.Stat()
-	if statErr != nil || !info.Mode().IsRegular() {
-		file.Close()
-		return nil, false, errors.New("project document must be a regular file")
-	}
-	data, readErr := io.ReadAll(io.LimitReader(file, maxDocumentBytes+1))
-	closeErr := file.Close()
-	if readErr != nil || closeErr != nil || len(data) > maxDocumentBytes {
-		return nil, false, errors.New("cannot read project document")
+		return nil, false, err
 	}
 	return data, false, nil
 }
@@ -570,10 +559,11 @@ func (d Document) Declares(version string) bool {
 }
 
 // install writes one canonical document beside the one already there and
-// renames it into place. The incomplete file is the writer's own path policy
-// check: it must not exist, so an interrupted write is reported rather than
-// overwritten, and artifactpath refuses the whole location if the project has
-// since been moved inside retained evidence.
+// renames it into place through the shared document store, keeping the bytes
+// it replaces as a recovery copy first. The incomplete file must not exist, so
+// an interrupted write is reported rather than overwritten, and artifactpath
+// refuses the whole location if the project has since been moved inside
+// retained evidence.
 func install(root, name string, data []byte) error {
 	return installWithQuota(root, name, data, true)
 }
@@ -589,26 +579,33 @@ func installWithQuota(root, name string, data []byte, check bool) error {
 			return err
 		}
 	}
-	if err := retainPrevious(root, name, data); err != nil {
-		return err
-	}
-	incomplete, err := artifactpath.Destination(filepath.Join(root, name+incompleteSuffix))
-	if err != nil {
-		return errors.New("cannot write the project document here; an interrupted write may be retained beside it")
-	}
-	file, err := os.OpenFile(incomplete, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return errors.New("cannot create the new project document; an interrupted write is retained")
-	}
-	writeErr := artifactdir.WriteFileSync(file, data)
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		os.Remove(incomplete)
-		return errors.New("cannot write the new project document")
-	}
-	if err := os.Rename(incomplete, filepath.Join(filepath.Dir(incomplete), name)); err != nil {
-		os.Remove(incomplete)
-		return errors.New("cannot replace the project document")
-	}
-	return nil
+	return canonicalFile.Replace(filepath.Join(root, name), data)
+}
+
+// canonicalFile is how every canonical document of a project directory is
+// written and read: project, revisions and quota alike. A read follows a link
+// only within the project directory. Every replacement retains the exact
+// preceding bytes as a recovery copy, named by their digest, before it
+// replaces them; copies are never overwritten, including damaged ones.
+var canonicalFile = artifactdir.Document{
+	MaxBytes: maxDocumentBytes,
+	Links:    artifactdir.FollowLinks,
+	Previous: &artifactdir.Previous{
+		Irregular: errors.New("recovery copy must be a regular file"),
+		Damaged:   errors.New("recovery copy is damaged; current document was not changed"),
+		Create:    errors.New("cannot retain recovery copy"),
+		Write:     errors.New("recovery copy incomplete; current document was not changed"),
+	},
+	Errors: artifactdir.DocumentErrors{
+		Destination: errors.New("cannot write the project document here; an interrupted write may be retained beside it"),
+		Create:      errors.New("cannot create the new project document; an interrupted write is retained"),
+		Write:       errors.New("cannot write the new project document"),
+		Install:     errors.New("cannot replace the project document"),
+	},
+	Refusals: artifactdir.DocumentRefusals{
+		Inspect:   errors.New("directory holds no readable project document"),
+		Irregular: errors.New("project document must be a regular file"),
+		Open:      errors.New("directory holds no readable project document"),
+		Read:      errors.New("cannot read project document"),
+	},
 }

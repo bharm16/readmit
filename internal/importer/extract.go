@@ -18,6 +18,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
@@ -696,23 +697,22 @@ func readArchiveMember(item *zip.File, limit int) ([]byte, error) {
 }
 
 func readRegularFile(path string, limit int) ([]byte, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, errors.New("cannot open a declared import location")
-	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("a declared import file must be a regular file")
-	}
-	data, err := io.ReadAll(io.LimitReader(file, int64(limit)+1))
-	if err != nil {
-		return nil, errors.New("cannot read a declared import location")
-	}
-	if len(data) > limit {
-		return nil, errors.New("a declared import location exceeds its size limit")
-	}
-	return data, nil
+	file := declaredImportFile
+	file.MaxBytes = limit
+	return file.Read(path)
+}
+
+// declaredImportFile is how a declared import file is read, through a link at
+// its name.
+var declaredImportFile = artifactdir.Document{
+	Links: artifactdir.FollowLinks,
+	Refusals: artifactdir.DocumentRefusals{
+		Inspect:   errors.New("cannot open a declared import location"),
+		Irregular: errors.New("a declared import file must be a regular file"),
+		Open:      errors.New("cannot open a declared import location"),
+		Read:      errors.New("cannot read a declared import location"),
+		Size:      errors.New("a declared import location exceeds its size limit"),
+	},
 }
 
 func digest(data []byte) string { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }

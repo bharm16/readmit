@@ -13,7 +13,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -124,7 +123,7 @@ func Collect(roots []string) ([]Source, int, error) {
 	slices.SortFunc(candidates, func(a, b candidate) int { return strings.Compare(a.name, b.name) })
 	sources := make([]Source, 0, len(candidates))
 	for _, entry := range candidates {
-		data, err := readLocal(entry.path, MaxEntryBytes)
+		data, err := readPackageFile(entry.path, MaxEntryBytes)
 		if err != nil {
 			return nil, 0, errors.New("a file to pack could not be read")
 		}
@@ -333,7 +332,7 @@ func ReadPackage(source string) (Package, string, error) {
 	if err != nil {
 		return Package{}, "", errors.New("a transfer package must be a regular directory")
 	}
-	data, err := readLocal(filepath.Join(root, DescriptorName), maxDescriptorSize)
+	data, err := readPackageFile(filepath.Join(root, DescriptorName), maxDescriptorSize)
 	if err != nil {
 		return Package{}, "", errors.New("the transfer package must hold a readable descriptor within its size limit")
 	}
@@ -475,7 +474,7 @@ func seal(aead cipher.AEAD, identity, id string, plaintext []byte) (Entry, []byt
 // truncated or replaced file before any decryption is attempted; it is an
 // integrity check over ciphertext and is not source authentication.
 func openEntry(aead cipher.AEAD, root, identity string, entry Entry) ([]byte, error) {
-	sealed, err := readLocal(filepath.Join(root, entry.ID+entrySuffix), MaxEntryBytes+16)
+	sealed, err := readPackageFile(filepath.Join(root, entry.ID+entrySuffix), MaxEntryBytes+16)
 	if err != nil {
 		return nil, errors.New("a package entry is missing or could not be read")
 	}
@@ -537,29 +536,9 @@ func writeOwnerOnly(path string, data []byte) error {
 	return nil
 }
 
-// readLocal reads one bounded regular file. It re-checks the opened file rather
-// than trusting the earlier stat, so a path that changed underneath is refused.
-// The first check is deliberately os.Lstat rather than os.Stat: a package
-// descriptor or entry that is a symbolic link is refused rather than followed,
-// because a package must be exactly the bytes its directory holds.
-func readLocal(path string, limit int) ([]byte, error) {
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("input must be a regular file")
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, errors.New("cannot open input file")
-	}
-	info, err = file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		file.Close()
-		return nil, errors.New("input must be a regular file")
-	}
-	data, readErr := io.ReadAll(io.LimitReader(file, int64(limit)+1))
-	closeErr := file.Close()
-	if readErr != nil || closeErr != nil || len(data) > limit {
-		return nil, errors.New("input cannot be read within its size limit")
-	}
-	return data, nil
+// readPackageFile reads one bounded regular file of a transfer package, or one
+// named to pack. It refuses a symbolic link at the name rather than following
+// it, because a package must be exactly the bytes its directory holds.
+func readPackageFile(path string, limit int) ([]byte, error) {
+	return artifactdir.Document{MaxBytes: limit}.Read(path)
 }

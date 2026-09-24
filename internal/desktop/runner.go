@@ -5,7 +5,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -15,6 +14,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/customerrunner"
 	"github.com/bharm16/readmit/internal/durablerun"
@@ -684,32 +684,32 @@ func (a *App) runnerAdministrationGate(ctx context.Context, project, action stri
 }
 
 // readPrivateFile applies the one private-file rule the runner and hub
-// configurations are held to: a regular, private, bounded file.
+// configurations are held to: a regular, private, bounded file, read through
+// the shared document store. It mirrors the runner's own rule: Windows ACLs
+// are the administrator's boundary and mode bits do not represent them, so
+// only elsewhere must the file be owner-only.
 func readPrivateFile(path string, limit int64) ([]byte, refusal) {
-	info, err := os.Lstat(path)
-	if errors.Is(err, fs.ErrPermission) {
+	raw, err := artifactdir.Document{
+		MaxBytes:  int(limit),
+		OwnerOnly: runtime.GOOS != "windows",
+		Refusals:  artifactdir.DocumentRefusals{Irregular: errPrivateIrregular, Open: errPrivateUnopened, Read: errPrivateIrregular},
+	}.Read(path)
+	switch {
+	case err == nil:
+		return raw, refusal{}
+	case errors.Is(err, errPrivateUnopened) || errors.Is(err, fs.ErrPermission):
 		return nil, refusal{PermissionDenied, "this account cannot read the selected file"}
 	}
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || !privateFileMode(info.Mode()) || info.Size() > limit {
-		return nil, refusal{Failed, "the selected file must be a private regular file"}
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, refusal{PermissionDenied, "this account cannot read the selected file"}
-	}
-	defer file.Close()
-	raw, err := io.ReadAll(io.LimitReader(file, limit+1))
-	if err != nil || int64(len(raw)) > limit {
-		return nil, refusal{Failed, "the selected file must be a private regular file"}
-	}
-	return raw, refusal{}
+	return nil, refusal{Failed, "the selected file must be a private regular file"}
 }
 
-// privateFileMode mirrors the runner's own rule: Windows ACLs are the
-// administrator's boundary and mode bits do not represent them.
-func privateFileMode(mode os.FileMode) bool {
-	return runtime.GOOS == "windows" || mode.Perm()&0077 == 0
-}
+// errPrivateIrregular and errPrivateUnopened are what reading a private file
+// found: one that is not a private regular file within its bound, and one this
+// account could not open.
+var (
+	errPrivateIrregular = errors.New("the selected file must be a private regular file")
+	errPrivateUnopened  = errors.New("this account cannot read the selected file")
+)
 
 // writePrivateDocument writes one validated operator document as a new
 // private file at an absolute path. An existing destination is refused rather
@@ -727,26 +727,28 @@ func writePrivateDocument(path string, data []byte) refusal {
 		return refusal{Failed, "the destination directory must already exist"}
 	}
 	parent.Close()
-	file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		if os.IsExist(err) {
-			return refusal{Failed, "an existing document is never replaced; choose a new destination"}
-		}
-		if errors.Is(err, fs.ErrPermission) {
-			return refusal{PermissionDenied, "this account cannot write the destination"}
-		}
-		return refusal{Failed, "cannot create the destination file"}
+	err = privateDocument.Create(destination, data)
+	switch {
+	case err == nil:
+		return refusal{}
+	case errors.Is(err, errPrivateUncreated) && errors.Is(err, fs.ErrExist):
+		return refusal{Failed, "an existing document is never replaced; choose a new destination"}
+	case errors.Is(err, errPrivateUncreated) && errors.Is(err, fs.ErrPermission):
+		return refusal{PermissionDenied, "this account cannot write the destination"}
 	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		os.Remove(destination)
-		return refusal{Failed, "cannot write the destination file"}
-	}
-	return refusal{}
+	return refusal{Failed, err.Error()}
+}
+
+// errPrivateUncreated is a private document that could not be created.
+var errPrivateUncreated = errors.New("cannot create the destination file")
+
+// privateDocument is how a private runner document is created, through the
+// shared document store.
+var privateDocument = artifactdir.Document{
+	Errors: artifactdir.DocumentErrors{
+		Create: errPrivateUncreated,
+		Write:  errors.New("cannot write the destination file"),
+	},
 }
 
 // --- Recurring schedules -----------------------------------------------------

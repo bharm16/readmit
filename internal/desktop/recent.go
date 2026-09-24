@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+
+	"github.com/bharm16/readmit/internal/artifactdir"
 )
 
 // RecentSchema is the versioned contract of the recent workspace list. The list
@@ -133,36 +135,30 @@ func (a *App) ForgetWorkspace(root string) RecentResult {
 	return a.RecentWorkspaces()
 }
 
-// writeRecent installs a complete list or leaves the previous one in place. A
-// reader never observes a partially written list. A failure is returned as the
-// filesystem reported it, so a caller can tell a list this account cannot
-// write from any other failure; recording a folder ignores it.
+// writeRecent installs a complete list or leaves the previous one in place,
+// through the shared document store. A reader never observes a partially
+// written list. A failure is returned as the filesystem reported it, so a
+// caller can tell a list this account cannot write from any other failure;
+// recording a folder ignores it.
 func writeRecent(path string, roots []string) error {
 	data, err := json.Marshal(recentList{Schema: RecentSchema, Roots: roots}, json.Deterministic(true))
 	if err != nil {
 		return err
 	}
-	directory := filepath.Dir(path)
-	if err := os.MkdirAll(directory, 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-	file, err := os.CreateTemp(directory, ".recent-*.incomplete")
-	if err != nil {
-		return err
-	}
-	incomplete := file.Name()
-	_, err = file.Write(append(data, '\n'))
-	if err == nil {
-		err = file.Sync()
-	}
-	if closeErr := file.Close(); err == nil {
-		err = closeErr
-	}
-	if err == nil {
-		err = os.Rename(incomplete, path)
-	}
-	if err != nil {
-		os.Remove(incomplete)
-	}
-	return err
+	return recentFile.Replace(path, append(data, '\n'))
+}
+
+// recentFile is how the recent workspace list is replaced. Each replacement
+// is staged under a fresh name, so one a crash left behind never refuses the
+// next.
+var recentFile = artifactdir.Document{
+	Staging: artifactdir.StagingTemp(".recent-*.incomplete"),
+	Errors: artifactdir.DocumentErrors{
+		Create:  artifactdir.FilesystemReport,
+		Write:   artifactdir.FilesystemReport,
+		Install: artifactdir.FilesystemReport,
+	},
 }

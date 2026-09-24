@@ -5,10 +5,9 @@ import (
 	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
-	"io"
-	"os"
 	"path/filepath"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/observewindow"
 )
@@ -79,7 +78,7 @@ func (s Source) Identity() string {
 }
 
 // WriteSource records one declared observation source. It validates before
-// writing and renames an owner-only incomplete file onto the destination, so a
+// writing and replaces the document through the shared document store, so a
 // reader never observes a partial document and a failed write leaves the
 // previous one exactly as it was. Paths are written as declared; ReadSource
 // resolves them against the document's own directory.
@@ -88,33 +87,28 @@ func WriteSource(path string, s Source) error {
 	if err != nil {
 		return err
 	}
-	data = append(data, '\n')
-	destination, err := artifactpath.Destination(path)
-	if err != nil {
-		return errors.New("cannot write an observation source here")
-	}
-	incomplete, err := artifactpath.Destination(path + ".incomplete")
-	if err != nil {
-		return errors.New("cannot write an observation source here; an interrupted write may be retained beside it")
-	}
-	file, err := os.OpenFile(incomplete, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return errors.New("cannot create the new observation source; an interrupted write is retained")
-	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		os.Remove(incomplete)
-		return errors.New("cannot write the new observation source")
-	}
-	if err := os.Rename(incomplete, destination); err != nil {
-		os.Remove(incomplete)
-		return errors.New("cannot replace the observation source")
-	}
-	return nil
+	return sourceDocument.Replace(path, append(data, '\n'))
+}
+
+// sourceDocument is how an observation source document is written and read.
+// A source a person names is read through a link at its name, as it always
+// has been.
+var sourceDocument = artifactdir.Document{
+	MaxBytes: MaxSourceBytes,
+	Links:    artifactdir.FollowLinks,
+	Errors: artifactdir.DocumentErrors{
+		Destination: errors.New("cannot write an observation source here"),
+		Create:      errors.New("cannot create the new observation source; an interrupted write is retained"),
+		Write:       errors.New("cannot write the new observation source"),
+		Install:     errors.New("cannot replace the observation source"),
+	},
+	Refusals: artifactdir.DocumentRefusals{
+		Irregular: errors.New("an observation source must be a readable regular file"),
+		Open:      errors.New("cannot open observation source file"),
+		Changed:   errors.New("an observation source must be a regular file"),
+		Read:      errors.New("cannot read observation source file"),
+		Size:      errors.New("observation source exceeds size limit"),
+	},
 }
 
 // DecodeSource reads one declared observation source exactly as written.
@@ -154,25 +148,9 @@ func ReadSource(path string) (Source, error) {
 // edits and what the source's identity names, so a document declaring a path
 // relative to its own folder keeps one identity wherever that folder is.
 func ReadDeclaredSource(path string) (declared, resolved Source, err error) {
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return Source{}, Source{}, errors.New("an observation source must be a readable regular file")
-	}
-	file, err := os.Open(path)
+	data, err := sourceDocument.Read(path)
 	if err != nil {
-		return Source{}, Source{}, errors.New("cannot open observation source file")
-	}
-	defer file.Close()
-	info, err = file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return Source{}, Source{}, errors.New("an observation source must be a regular file")
-	}
-	data, err := io.ReadAll(io.LimitReader(file, int64(MaxSourceBytes)+1))
-	if err != nil {
-		return Source{}, Source{}, errors.New("cannot read observation source file")
-	}
-	if len(data) > MaxSourceBytes {
-		return Source{}, Source{}, errors.New("observation source exceeds size limit")
+		return Source{}, Source{}, err
 	}
 	source, err := DecodeSource(data)
 	if err != nil {

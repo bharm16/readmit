@@ -36,6 +36,7 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/engine"
@@ -515,16 +516,11 @@ func reviewedName(path string) (string, string, error) {
 }
 
 func readFile(root *os.Root, name string, limit int64) ([]byte, error) {
-	file, err := root.Open(name)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, limit+1))
-	if err != nil || int64(len(data)) > limit {
-		return nil, errors.New("file exceeds its size limit or could not be read")
-	}
-	return data, nil
+	return artifactdir.Document{
+		MaxBytes: int(limit),
+		Links:    artifactdir.FollowLinks,
+		Refusals: artifactdir.DocumentRefusals{Read: errors.New("file exceeds its size limit or could not be read")},
+	}.ReadIn(root, name)
 }
 
 // packageVersion accepts the release identity every package format carries

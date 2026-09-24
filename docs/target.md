@@ -66,7 +66,8 @@ three is evidence for either of the others.
 `set` records a new configuration or edits an existing `readmit-target/v3` one.
 It writes the file in full to a new owner-only file and renames that onto the
 destination, so a reader never sees a partial configuration and a failed write
-leaves the previous one exactly as it was. The configuration is validated before
+leaves the previous one exactly as it was; the folder holding it is synced
+before the command reports it written. The configuration is validated before
 it is written and read back through the same reader every other command uses, so
 what the command reports is what readmit reads.
 

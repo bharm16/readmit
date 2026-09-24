@@ -2,10 +2,10 @@ package operation
 
 import (
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 )
 
@@ -15,55 +15,34 @@ import (
 // same way through it, so a file one entry point refuses the other refuses for
 // the same reason.
 func ReadInputFile(path string, limit int) ([]byte, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, fileError{"input must be a readable regular file", err}
-	}
-	if !info.Mode().IsRegular() {
-		return nil, errors.New("input must be a readable regular file")
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, fileError{"cannot open input file", err}
-	}
-	defer f.Close()
-	info, err = f.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("input must be a regular file")
-	}
-	data, err := io.ReadAll(io.LimitReader(f, int64(limit)+1))
-	if err != nil {
-		return nil, errors.New("cannot read input file")
-	}
-	if len(data) > limit {
-		return nil, errors.New("input exceeds size limit")
-	}
-	return data, nil
+	input := inputFile
+	input.MaxBytes = limit
+	return input.Read(path)
 }
 
-// WriteNewFile creates one new file exclusively at a reserved destination and
-// removes a partial one rather than leaving it behind. The caller supplies the
-// two diagnostics because what a failed creation means differs by command:
-// artifactpath owns where the file may go, and this owns how it is written.
+// inputFile is how every command reads a file a person names: through a link
+// at its name, as it always has, with the filesystem's own error kept behind
+// the sentence so a caller can tell a file this account may not open.
+var inputFile = artifactdir.Document{
+	Links: artifactdir.FollowLinks,
+	Refusals: artifactdir.DocumentRefusals{
+		Irregular: errors.New("input must be a readable regular file"),
+		Open:      errors.New("cannot open input file"),
+		Changed:   errors.New("input must be a regular file"),
+		Read:      errors.New("cannot read input file"),
+		Size:      errors.New("input exceeds size limit"),
+	},
+}
+
+// WriteNewFile creates one new file exclusively at a reserved destination
+// through the shared document store, which removes a partial one rather than
+// leaving it behind. The caller supplies the two diagnostics because what a
+// failed creation means differs by command: artifactpath owns where the file
+// may go, and the store owns how it is written.
 func WriteNewFile(path string, data []byte, cannotCreate, cannotWrite string) error {
-	path, err := artifactpath.Destination(path)
-	if err != nil {
-		return err
-	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return fileError{cannotCreate, err}
-	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		os.Remove(path)
-		return errors.New(cannotWrite)
-	}
-	return nil
+	return artifactdir.Document{
+		Errors: artifactdir.DocumentErrors{Create: errors.New(cannotCreate), Write: errors.New(cannotWrite)},
+	}.Create(path, data)
 }
 
 // checkNewDocument refuses a receipt or report destination that is taken, or

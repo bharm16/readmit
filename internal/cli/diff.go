@@ -2,8 +2,8 @@ package cli
 
 import (
 	"errors"
-	"os"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/diff"
 	"github.com/bharm16/readmit/internal/hl7"
@@ -60,17 +60,15 @@ func diffCommand() *cobra.Command {
 }
 
 func writeDiff(path string, data []byte) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return errors.New("cannot create diff output; destination must be new and parent writable")
-	}
-	_, err = f.Write(data)
-	if err == nil {
-		err = f.Sync()
-	}
-	closeErr := f.Close()
-	if err != nil || closeErr != nil {
-		return errors.New("cannot write diff output; incomplete file retained")
-	}
-	return nil
+	return diffOutput.Create(path, data)
+}
+
+// diffOutput is how a diff report is written to a new file, through the
+// shared document store. An interrupted write is retained incomplete.
+var diffOutput = artifactdir.Document{
+	RetainFailed: true,
+	Errors: artifactdir.DocumentErrors{
+		Create: errors.New("cannot create diff output; destination must be new and parent writable"),
+		Write:  errors.New("cannot write diff output; incomplete file retained"),
+	},
 }

@@ -35,6 +35,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 )
 
@@ -51,10 +52,6 @@ const (
 	// ResolveTimeout bounds one read from a declared store. A provider that has
 	// not answered by then is unavailable; it is never reported as empty.
 	ResolveTimeout = 5 * time.Second
-
-	// incompleteSuffix marks the partial file a replacement document is written
-	// to before it is renamed into place.
-	incompleteSuffix = ".incomplete"
 
 	// MaxReferences bounds one document. A store past the bound is refused
 	// rather than truncated.
@@ -637,69 +634,34 @@ func ReadStore(path string) (Document, error) {
 	return Decode(data)
 }
 
-// readLocal reads one bounded regular file. It re-checks the opened file rather
-// than trusting the earlier stat, so a path that changed underneath is refused.
+// readLocal reads one bounded regular file a person named, through a link at
+// its name. The store re-checks the opened file rather than trusting the
+// earlier stat, so a path that changed underneath is refused.
 func readLocal(path string, limit int) ([]byte, error) {
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("input must be a regular file")
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, errors.New("cannot open input file")
-	}
-	info, err = file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		file.Close()
-		return nil, errors.New("input must be a regular file")
-	}
-	data, readErr := io.ReadAll(io.LimitReader(file, int64(limit)+1))
-	closeErr := file.Close()
-	if readErr != nil || closeErr != nil || len(data) > limit {
-		return nil, errors.New("input cannot be read within its size limit")
-	}
-	return data, nil
+	return artifactdir.Document{MaxBytes: limit, Links: artifactdir.FollowLinks}.Read(path)
 }
 
-// WriteStore replaces the document atomically: it is written in full to a new
-// owner-only file and renamed over the previous one, so a reader never observes
-// a partial document and a failed write leaves the previous one exactly as it
-// was. The incomplete file must not exist, so an interrupted write is reported
-// rather than overwritten.
+// WriteStore replaces the document atomically through the shared document
+// store: it is written in full to a new owner-only file and renamed over the
+// previous one, so a reader never observes a partial document and a failed
+// write leaves the previous one exactly as it was. The incomplete file must
+// not exist, so an interrupted write is reported rather than overwritten.
 func WriteStore(path string, document Document) error {
 	data, err := Encode(document)
 	if err != nil {
 		return err
 	}
-	// Both files this writes are reserved by artifactpath, and the file it
-	// renames onto is the destination artifactpath itself returned. Neither
-	// path is derived from the other, so there is one path policy here.
-	destination, err := artifactpath.Destination(path)
-	if err != nil {
-		return errors.New("cannot write the secret reference document here")
-	}
-	incomplete, err := artifactpath.Destination(path + incompleteSuffix)
-	if err != nil {
-		return errors.New("cannot write the secret reference document here; an interrupted write may be retained beside it")
-	}
-	file, err := os.OpenFile(incomplete, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return errors.New("cannot create the new secret reference document; an interrupted write is retained")
-	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		os.Remove(incomplete)
-		return errors.New("cannot write the new secret reference document")
-	}
-	if err := os.Rename(incomplete, destination); err != nil {
-		os.Remove(incomplete)
-		return errors.New("cannot replace the secret reference document")
-	}
-	return nil
+	return referenceDocument.Replace(path, data)
+}
+
+// referenceDocument is how the secret reference document is written.
+var referenceDocument = artifactdir.Document{
+	Errors: artifactdir.DocumentErrors{
+		Destination: errors.New("cannot write the secret reference document here"),
+		Create:      errors.New("cannot create the new secret reference document; an interrupted write is retained"),
+		Write:       errors.New("cannot write the new secret reference document"),
+		Install:     errors.New("cannot replace the secret reference document"),
+	},
 }
 
 // Collect reads the bounded contents of every regular file the named paths

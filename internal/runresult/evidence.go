@@ -5,11 +5,11 @@ import (
 	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
-	"io"
 	"os"
 	"path"
 	"path/filepath"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/durablerun"
@@ -309,22 +309,19 @@ func readPin(directory string) (*Pin, error) {
 }
 
 func readBounded(path string, limit int) ([]byte, error) {
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > int64(limit) {
-		return nil, errors.New("evidence record must be a bounded regular file")
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, errors.New("cannot open evidence record")
-	}
-	defer f.Close()
-	info, err = f.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() > int64(limit) {
-		return nil, errors.New("evidence record must be a bounded regular file")
-	}
-	data, err := io.ReadAll(io.LimitReader(f, int64(limit)+1))
-	if err != nil || len(data) > limit {
-		return nil, errors.New("cannot read evidence record within size limit")
-	}
-	return data, nil
+	record := evidenceRecord
+	record.MaxBytes = limit
+	return record.Read(path)
+}
+
+// evidenceRecord is how an evidence directory's manifest or engine pin is
+// read, through the shared document store, following a link at its name.
+var evidenceRecord = artifactdir.Document{
+	Links: artifactdir.FollowLinks,
+	Refusals: artifactdir.DocumentRefusals{
+		Irregular: errors.New("evidence record must be a bounded regular file"),
+		Open:      errors.New("cannot open evidence record"),
+		Read:      errors.New("cannot read evidence record within size limit"),
+		Size:      errors.New("evidence record must be a bounded regular file"),
+	},
 }

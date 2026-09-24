@@ -6,7 +6,12 @@
 // record last and syncs every directory entry the artifact is found through,
 // from a whole map of files (Write) or member by member (Create). It also owns
 // bounded, confined reads of a declared layout and the ADR-0002 identity
-// algorithm. Domain packages still own their schemas and semantic validation.
+// algorithm. It is the store every single-file document is created, replaced
+// and read through (Document): exclusive creation, replacement by a staged
+// rename followed by a sync of the folder naming it, optionally keeping the
+// replaced bytes under a digest-addressed name, and a bounded read of one
+// regular file. Domain packages still own their schemas and semantic
+// validation.
 package artifactdir
 
 import (

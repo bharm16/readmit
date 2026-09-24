@@ -56,7 +56,7 @@ func unchanged(t *testing.T, file File, before, label string) {
 	if after := held(t, file.Path); after != before {
 		t.Errorf("%s changed the document:\n%s", label, after)
 	}
-	if _, err := os.Lstat(file.Path + incompleteSuffix); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Lstat(file.Path + ".incomplete"); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("%s left a partial document beside it", label)
 	}
 }
@@ -342,7 +342,7 @@ func TestPackWritesUnderAnActiveControlAndOpenDefaultsToThePackagesOwn(t *testin
 func TestAnInterruptedDocumentWriteIsReportedAndThePreviousDocumentKept(t *testing.T) {
 	file := registered(t, "lab-evidence")
 	before := held(t, file.Path)
-	if err := os.WriteFile(file.Path+incompleteSuffix, []byte("{"), 0600); err != nil {
+	if err := os.WriteFile(file.Path+".incomplete", []byte("{"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv(storeSwitch, "emit")
@@ -352,7 +352,7 @@ func TestAnInterruptedDocumentWriteIsReportedAndThePreviousDocumentKept(t *testi
 	if after := held(t, file.Path); after != before {
 		t.Fatal("a refused write changed the previous document")
 	}
-	if err := os.Remove(file.Path + incompleteSuffix); err != nil {
+	if err := os.Remove(file.Path + ".incomplete"); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := file.Rotate(context.Background(), "lab-evidence", registeredAt.Add(time.Hour)); err != nil {

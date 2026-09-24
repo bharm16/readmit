@@ -6,12 +6,12 @@ import (
 	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/destination"
 	"github.com/bharm16/readmit/internal/environment"
@@ -47,7 +47,7 @@ func OpenOrNewTarget(path string) (replay.Target, error) {
 	var declared struct {
 		Schema string `json:"schema"`
 	}
-	data, err := readBoundedFile(path, replay.MaxTargetBytes)
+	data, err := ReadInputFile(path, replay.MaxTargetBytes)
 	if err == nil && json.Unmarshal(data, &declared) == nil {
 		if declared.Schema != "" && declared.Schema != replay.TargetSchemaV3 {
 			return replay.Target{}, errors.New("that file declares " + declared.Schema + " and target editing records " + replay.TargetSchemaV3 + "; record the named environment in a new file and leave this one as it is")
@@ -68,7 +68,7 @@ func SaveTarget(path string, target replay.Target) (replay.Target, error) {
 		var declared struct {
 			Schema string `json:"schema"`
 		}
-		data, readErr := readBoundedFile(path, replay.MaxTargetBytes)
+		data, readErr := ReadInputFile(path, replay.MaxTargetBytes)
 		if readErr == nil && json.Unmarshal(data, &declared) == nil {
 			if declared.Schema != "" && declared.Schema != replay.TargetSchemaV3 {
 				return replay.Target{}, errors.New("that file declares " + declared.Schema + " and target editing records " + replay.TargetSchemaV3 + "; record the named environment in a new file and leave this one as it is")
@@ -126,22 +126,8 @@ func ResetEnvironment(ctx context.Context, req fixturereset.Request, outcomePath
 		if err != nil {
 			return result, plan, err
 		}
-		dest, err := artifactpath.Destination(outcomePath)
-		if err != nil {
+		if err := resetOutcomeFile.Create(outcomePath, outcome); err != nil {
 			return result, plan, err
-		}
-		file, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-		if err != nil {
-			return result, plan, errors.New("cannot create the reset outcome file; destination must be new and writable")
-		}
-		_, writeErr := file.Write(outcome)
-		if writeErr == nil {
-			writeErr = file.Sync()
-		}
-		closeErr := file.Close()
-		if writeErr != nil || closeErr != nil {
-			os.Remove(dest)
-			return result, plan, errors.New("cannot write the reset outcome")
 		}
 	}
 	return result, plan, nil
@@ -302,7 +288,7 @@ func ReadSendPolicy(path string) (sendpolicy.Policy, error) {
 	if path == "" {
 		return sendpolicy.Policy{}, errors.New("policy path must not be empty")
 	}
-	data, err := readBoundedFile(path, sendpolicy.MaxPolicyBytes)
+	data, err := ReadInputFile(path, sendpolicy.MaxPolicyBytes)
 	if err != nil {
 		return sendpolicy.Policy{}, err
 	}
@@ -354,7 +340,7 @@ func ReadResetPlan(path string) (fixturereset.Plan, error) {
 	if path == "" {
 		return fixturereset.Plan{}, errors.New("plan path must not be empty")
 	}
-	data, err := readBoundedFile(path, fixturereset.MaxPlanBytes)
+	data, err := ReadInputFile(path, fixturereset.MaxPlanBytes)
 	if err != nil {
 		return fixturereset.Plan{}, err
 	}
@@ -397,54 +383,29 @@ func documentIdentity(data []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func readBoundedFile(path string, limit int) ([]byte, error) {
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("input must be a readable regular file")
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, errors.New("cannot open input file")
-	}
-	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, int64(limit)+1))
-	if err != nil {
-		return nil, errors.New("cannot read input file")
-	}
-	if len(data) > limit {
-		return nil, errors.New("input exceeds size limit")
-	}
-	return data, nil
-}
-
+// atomicWrite replaces one policy or plan document through the shared
+// document store, creating its folder first when it is missing.
 func atomicWrite(path string, data []byte) error {
 	if dir := filepath.Dir(path); dir != "" && dir != "." {
 		_ = os.MkdirAll(dir, 0755)
 	}
-	dest, err := artifactpath.Destination(path)
-	if err != nil {
-		return err
-	}
-	incomplete, err := artifactpath.Destination(path + ".incomplete")
-	if err != nil {
-		return errors.New("cannot write file here; an interrupted write may be retained beside it")
-	}
-	file, err := os.OpenFile(incomplete, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return errors.New("cannot create file; an interrupted write is retained")
-	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		os.Remove(incomplete)
-		return errors.New("cannot write file")
-	}
-	if err := os.Rename(incomplete, dest); err != nil {
-		os.Remove(incomplete)
-		return errors.New("cannot replace file")
-	}
-	return nil
+	return policyFile.Replace(path, data)
 }
+
+// policyFile is how a send policy or a reset plan is replaced, and
+// resetOutcomeFile how a reset's outcome is written once.
+var (
+	policyFile = artifactdir.Document{
+		Errors: artifactdir.DocumentErrors{
+			Create:  errors.New("cannot create file; an interrupted write is retained"),
+			Write:   errors.New("cannot write file"),
+			Install: errors.New("cannot replace file"),
+		},
+	}
+	resetOutcomeFile = artifactdir.Document{
+		Errors: artifactdir.DocumentErrors{
+			Create: errors.New("cannot create the reset outcome file; destination must be new and writable"),
+			Write:  errors.New("cannot write the reset outcome"),
+		},
+	}
+)

@@ -1,8 +1,9 @@
 package hub
 
 import (
-	"io"
 	"os"
+
+	"github.com/bharm16/readmit/internal/artifactdir"
 )
 
 // One private-strict-file reader serves every authority document the store
@@ -16,45 +17,22 @@ import (
 // readPrivatePolicy reads one bounded owner-only policy document from a path.
 // The bound is the 1 MiB every root policy document shares.
 func readPrivatePolicy(path string) ([]byte, error) {
-	info, e := os.Lstat(path)
-	if e != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || info.Size() > 1<<20 {
-		return nil, errAccess
-	}
-	f, e := os.Open(path)
-	if e != nil {
-		return nil, errAccess
-	}
-	defer f.Close()
-	opened, e := f.Stat()
-	if e != nil || !os.SameFile(info, opened) {
-		return nil, errAccess
-	}
-	b, e := io.ReadAll(io.LimitReader(f, (1<<20)+1))
-	if e != nil {
-		return nil, errAccess
-	}
-	return b, nil
+	return privatePolicy(1<<20, errAccess).Read(path)
 }
 
 // readPrivatePolicyRoot reads one bounded owner-only policy document from
 // below root. A document wider than limit is refused rather than truncated.
 func readPrivatePolicyRoot(root *os.Root, name string, limit int64) ([]byte, error) {
-	info, e := root.Lstat(name)
-	if e != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || info.Size() > limit {
-		return nil, ErrSchedule
+	return privatePolicy(int(limit), ErrSchedule).ReadIn(root, name)
+}
+
+// privatePolicy is the rule both forms hold, through the shared document
+// store: a regular file no wider than its bound that no one but the operator
+// can read, never through a link, refused with refusal.
+func privatePolicy(limit int, refusal error) artifactdir.Document {
+	return artifactdir.Document{
+		MaxBytes:  limit,
+		OwnerOnly: true,
+		Refusals:  artifactdir.DocumentRefusals{Irregular: refusal, Read: refusal},
 	}
-	f, e := root.Open(name)
-	if e != nil {
-		return nil, ErrSchedule
-	}
-	defer f.Close()
-	opened, e := f.Stat()
-	if e != nil || !os.SameFile(info, opened) {
-		return nil, ErrSchedule
-	}
-	b, e := io.ReadAll(io.LimitReader(f, limit+1))
-	if e != nil || int64(len(b)) > limit {
-		return nil, ErrSchedule
-	}
-	return b, nil
 }

@@ -10,6 +10,7 @@ import (
 	"os"
 	"slices"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/replay"
@@ -343,18 +344,15 @@ func Save(root string, source *bundle.Bundle, draft Draft, output string) (Saved
 // A spec holds expected values a person typed, which are the same customer-local
 // literals the evidence holds, so it is owner-readable.
 func write(destination string, data []byte) error {
-	file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return ErrCannotWrite
-	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		os.Remove(destination)
-		return errors.New("the test spec could not be written into the workspace")
-	}
-	return nil
+	return specFile.Create(destination, data)
+}
+
+// specFile is how a generated spec is created, through the shared document
+// store.
+var specFile = artifactdir.Document{
+	Errors: artifactdir.DocumentErrors{
+		Destination: ErrCannotWrite,
+		Create:      ErrCannotWrite,
+		Write:       errors.New("the test spec could not be written into the workspace"),
+	},
 }

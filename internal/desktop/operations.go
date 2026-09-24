@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -60,21 +59,11 @@ func NewWithOperationSelection(chooser FolderChooser, recent, filters, session, 
 	}
 	return a
 }
+
+// readOperationFile reads one local operation document the way the guard
+// reads its controls: bounded, regular and never through a link.
 func readOperationFile(path string) ([]byte, error) {
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, operationguard.ErrUnavailable
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, operationguard.ErrUnavailable
-	}
-	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, 1<<20+1))
-	if err != nil || len(data) > 1<<20 {
-		return nil, operationguard.ErrUnavailable
-	}
-	return data, nil
+	return operationguard.ReadDocument(path)
 }
 func (a *App) selectedOperation() (*operationguard.Guard, string) {
 	a.operationMu.Lock()

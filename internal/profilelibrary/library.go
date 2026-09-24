@@ -38,13 +38,13 @@ package profilelibrary
 
 import (
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/profilepack"
 )
 
@@ -175,31 +175,26 @@ func FindPinned(directory string, pin profilepack.Identity) profilepack.Pack {
 	return found
 }
 
-// read opens one library member and reads it under the pack contract's own
-// size limit. The file is opened first and measured through that open file, so
-// a member that is not a regular file, or is longer than a pack may be, is
-// refused before its bytes are held in memory rather than after.
+// read reads one library member under the pack contract's own size limit,
+// through the shared document store: a member that is not a regular file, or
+// says it is longer than a pack may be, is refused before its bytes are held
+// in memory rather than after.
 func read(path string) ([]byte, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, errors.New("cannot read a profile library member")
-	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("a profile library member is one regular file")
-	}
-	if info.Size() > profilepack.MaxPackBytes {
-		return nil, errors.New("a profile library member exceeds the 4 MiB a profile pack may be")
-	}
-	data, err := io.ReadAll(io.LimitReader(file, profilepack.MaxPackBytes+1))
-	if err != nil {
-		return nil, errors.New("cannot read a profile library member")
-	}
-	if len(data) > profilepack.MaxPackBytes {
-		return nil, errors.New("a profile library member exceeds the 4 MiB a profile pack may be")
-	}
-	return data, nil
+	return memberFile.Read(path)
+}
+
+// memberFile is how a profile library member is read, through a link at its
+// name.
+var memberFile = artifactdir.Document{
+	MaxBytes: profilepack.MaxPackBytes,
+	Links:    artifactdir.FollowLinks,
+	Refusals: artifactdir.DocumentRefusals{
+		Inspect:   errors.New("cannot read a profile library member"),
+		Irregular: errors.New("a profile library member is one regular file"),
+		Open:      errors.New("cannot read a profile library member"),
+		Read:      errors.New("cannot read a profile library member"),
+		Size:      errors.New("a profile library member exceeds the 4 MiB a profile pack may be"),
+	},
 }
 
 // add holds one more pack, refusing every library that could not answer
