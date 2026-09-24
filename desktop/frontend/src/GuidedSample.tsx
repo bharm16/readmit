@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Badge, Report, Status } from "./shell";
 import type { Indicators } from "./shell";
 import { cancel } from "./bindings";
-import type { GuideResult, GuideTrialId, PracticeResult } from "./bindings";
+import type { CaseResult, GuideResult, GuideTrialId, PracticeResult } from "./bindings";
 import "./guided.css";
 
 /** The folder each run step is offered by default. A person can name another
@@ -12,6 +12,9 @@ const RUN_FOLDER: Record<GuideTrialId, string> = {
   baseline: "baseline-run",
   "post-fix": "post-fix-run",
 };
+
+/** The entry the frozen receiver fixtures are imported into by default. */
+const CAPTURE_FOLDER = "receiver-sample";
 
 /** The guided sample: create the sample, author a test over it, watch it fail
  * against the fixture's defect, then watch the same test pass once the defect is
@@ -24,28 +27,35 @@ const RUN_FOLDER: Record<GuideTrialId, string> = {
 export function GuidedSample({
   result,
   practice,
+  capture,
   busy,
   progress,
   indicators,
   onCreateSample,
   onOpenCase,
   onRun,
+  onCapture,
 }: {
   result: GuideResult | null;
   practice: PracticeResult | null;
+  /** What the last import of the frozen receiver fixtures answered. */
+  capture?: CaseResult | null;
   busy: boolean;
   progress: string | null;
   indicators: Indicators;
   onCreateSample: () => void;
   onOpenCase: (name: string) => void;
   onRun: (trial: GuideTrialId, output: string) => void;
+  onCapture?: (output: string) => void;
 }) {
   const [folder, setFolder] = useState("");
+  const [captureOutput, setCaptureOutput] = useState(CAPTURE_FOLDER);
   const guide = result?.guide ?? null;
   const next = guide?.next ?? null;
   const spec = guide?.spec ?? "";
   const sampleCase = guide?.case ?? "";
   const trial = next === "baseline" || next === "post-fix" ? next : null;
+  const captured = capture?.case ?? null;
   const output = folder || (trial ? RUN_FOLDER[trial] : "");
 
   return (
@@ -139,6 +149,52 @@ export function GuidedSample({
           Every step is done. Both runs are ordinary result evidence in this folder, readable by
           the command line and by this window after it is closed and reopened.
         </p>
+      ) : null}
+      {/* Offered once the folder is a sample workspace, beside its steps: it
+          is part of the sample, and never a step of anyone's own project. */}
+      {guide !== null && next !== "sample" && onCapture ? (
+        <form
+          className="actions sample-capture"
+          aria-label="Import the frozen receiver fixtures"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onCapture(captureOutput.trim());
+          }}
+        >
+          <h4>Import the frozen receiver fixtures</h4>
+          <p className="hint">
+            Imports the two synthetic receiver fixtures readmit ships &mdash; a booking and its
+            reschedule &mdash; as one imported case in this folder, exactly as{" "}
+            <code>readmit sample capture</code> does. It needs no activation, and it accepts those
+            exact bytes and nothing else. You choose the folder holding them in your own folder
+            dialog.
+          </p>
+          <label htmlFor="sample-capture-output">New case folder in this workspace</label>
+          <input
+            id="sample-capture-output"
+            value={captureOutput}
+            disabled={busy}
+            onChange={(event) => setCaptureOutput(event.target.value)}
+          />
+          <button type="submit" disabled={busy || captureOutput.trim() === ""}>
+            Choose the fixtures folder and import…
+          </button>
+        </form>
+      ) : null}
+      {capture && !captured ? (
+        <Status indicator={indicators.get(capture.state)} state={capture.state} reason={capture.reason} />
+      ) : null}
+      {captured ? (
+        <div className="sample-captured" role="status" aria-live="polite">
+          <p>
+            {captured.name}: {captured.provenance} · {captured.schema} · {captured.sources} sources ·{" "}
+            {captured.occurrences} occurrences · {captured.messages} messages
+          </p>
+          <p className="identity">Verified identity {captured.identity}</p>
+          <button type="button" disabled={busy} onClick={() => onOpenCase(captured.name)}>
+            Verify and open {captured.name}
+          </button>
+        </div>
       ) : null}
       {practice?.practice ? (
         <div className="practice" role="status" aria-live="polite">

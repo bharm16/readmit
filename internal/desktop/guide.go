@@ -3,8 +3,12 @@ package desktop
 import (
 	"context"
 	"errors"
+	"path/filepath"
+	"time"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/guide"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
@@ -162,4 +166,48 @@ func (a *App) runPractice(ctx context.Context, request PracticeRequest) Practice
 		Identity: artifact.Identity, SpecIdentity: result.SpecIdentity,
 		Assertions: assertions, ChangedBindings: changedBindings,
 	}}
+}
+
+// SampleCaptureRequest imports the frozen synthetic receiver fixtures into one
+// new entry of the open workspace. The folder they are read from is chosen in
+// the host's own dialog, as `readmit sample capture --fixtures` names it, and
+// Output is the new entry `--output` names.
+type SampleCaptureRequest struct {
+	Workspace string `json:"workspace"`
+	Output    string `json:"output"`
+}
+
+// CaptureSample imports the two frozen receiver fixtures of the chosen folder
+// as one imported case, through the shared operation `readmit sample capture`
+// runs, and verifies what it wrote through the reader every case is opened
+// with. Like the command, it needs no activation: the bytes it accepts are
+// pinned, so it can import nothing but the synthetic fixtures, and any other
+// bytes under their names are refused before a case exists. The folder dialog
+// can be dismissed, so the operation is interruptible until the write starts.
+func (a *App) CaptureSample(request SampleCaptureRequest) CaseResult {
+	return run(a, true, false, func(ctx context.Context) CaseResult {
+		root, declined := resolveFolder(request.Workspace)
+		if root == "" {
+			return declined.evidence()
+		}
+		if artifactpath.EntryName(request.Output) != nil {
+			return CaseResult{State: Failed, Reason: "the sample case needs one new folder name in the open workspace, never a path"}
+		}
+		fixtures, declined := a.chooseFolder(ctx, "Choose the folder holding the frozen receiver fixtures")
+		if fixtures == "" {
+			return declined.evidence()
+		}
+		if ctx.Err() != nil {
+			return cancelledRefusal.evidence()
+		}
+		if _, err := operation.CaptureSample(fixtures, filepath.Join(root, request.Output), time.Now().UTC()); errors.Is(err, operation.ErrSampleFixtureUnavailable) || errors.Is(err, operation.ErrSampleFixtureChanged) {
+			return CaseResult{State: Failed, Reason: err.Error()}
+		} else if err != nil {
+			// A folder this account cannot write is separated from the rest
+			// only after the write has already failed, and the probe never
+			// touches the destination.
+			return probeWriteFailure(root, "this account cannot write into the open workspace", err.Error()).evidence()
+		}
+		return a.openCase(root, request.Output)
+	})
 }

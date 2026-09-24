@@ -102,7 +102,13 @@ renewed and a term in grace still admits work, beside the commercial portal's
 destination. On a real customer hub over a disposable PostgreSQL cluster, two
 people review the same evidence and meet a conflict, a released test version
 is requested and approved by the team, and an enrolled runner executes the
-saved test and a recurring schedule for it is installed. They run in jsdom,
+saved test and a recurring schedule for it is installed. A project's settings
+are stored from the keyboard, refused, cancelled and left alone when another
+release wrote the document, and its editable document is read as `project show`
+prints it; recent folders are reopened after a restart and forgotten only when
+confirmed; named filters are saved, listed and selected, each drawing what
+`readmit index search` finds; and the guided sample imports the frozen receiver
+fixtures as the case `readmit sample capture` writes. They run in jsdom,
 not the native webview, so they are evidence about the application over real
 files rather than about installed packages. The desktop workflow's shell job
 runs them after the component tests, and a failing journey fails the `desktop`
@@ -335,9 +341,10 @@ artifacts are never reported as completed.
 | `UpdateProjectSettings` | Changes the title, defaults and declared interface versions through the shared operation `readmit project settings` runs. Returns the project re-read from disk. |
 | `RegisterCase` | Verifies one case bundle of the project through the shared reader and registers it through the shared operation `readmit project add` runs, inheriting the project defaults the registration leaves unset. Returns the project re-read from disk. |
 | `UpdateRegisteredCase` | Changes the title, owner, status, interface version, tags or linked incidents of one registered case through the shared operation `readmit project update` runs; the recorded evidence facts are out of reach. Returns the project re-read from disk. |
-| `OpenRevisions` | Reads the editable project document: its notes, drafts and recorded revisions. |
+| `OpenRevisions` | Reads the editable project document: its notes, drafts and recorded revisions, each revision with the identity its parent was registered under. |
 | `SaveNote` | Creates or replaces one editable note of a project. |
 | `RecentWorkspaces` | Lists previously opened folders, most recent first. |
+| `ForgetWorkspace` | Removes one folder from the recent list and leaves the folder itself untouched. |
 | `Search` | Finds what one open workspace declares and what its project registers. |
 | `InspectOccurrence` | Verifies the grid identity again and reveals one selected occurrence, its navigable tree, escaped raw/decoded values and bounded hex bytes. |
 | `OpenGrid` | Renders one bounded window of one case through one index of it, and describes that index as `DescribeIndex` does, from the same read. |
@@ -414,7 +421,7 @@ reports; the privacy region below describes it.
 `Cancel` cannot retract bytes an operation has already written. Choosing a
 folder and listing it are interruptible; `OpenCase`, `OpenProject`,
 `OpenRevisions`, `SaveNote`, `Search`, `OpenGrid`, `SaveFilter`,
-`SelectFilter`, `InspectOccurrence`, `Compare`, `EditReproducer`, `UndoReproducer`,
+`SelectFilter`, `ForgetWorkspace`, `InspectOccurrence`, `Compare`, `EditReproducer`, `UndoReproducer`,
 `BuildReproducer`, `CompareReproducers`, `AuthorTest`, `SaveTest`,
 `SuggestExpectations`, `ApproveExpectations`, `PreviewTransformation`,
 `OpenReview` and `RecoverSession` are not, because each runs to completion under
@@ -700,6 +707,14 @@ yet is offered in the registration picker, and a case the project records that
 is open in the inspector carries into the grid, the sequence and the authoring
 panels.
 
+The settings form sends only the members a person changed, as `readmit project
+settings` changes only what its flags name. Enter in a field stores the edit;
+Cancel, or Escape anywhere in the form, discards it, writes nothing and returns
+focus to **Edit settings…**. A refused edit keeps everything typed, the further
+interface version included, beside the project's own sentence for the refusal,
+which is the sentence the command prints; a project document this release
+cannot read is refused and left exactly as written.
+
 Creating a project, changing its settings or declared interface versions,
 registering a case, and changing a title, tag, owner, status or linked
 incident are shared Go operations — the same `internal/operation` and
@@ -719,6 +734,16 @@ editable side of a project: the notes and drafts a person maintains, and the
 recorded lineage of every revision derived from registered evidence.
 `OpenRevisions` returns it exactly as written, and a project that has recorded
 neither reports `empty` rather than a failure.
+
+The project overview reads it on request: **Show the editable document as
+recorded…** reads it from disk each time it is opened and shows every note and
+draft with its text, and every revision's lineage — the operation, the parent
+and the identity the parent was registered under, the value that keeps naming
+the exact evidence a revision came from after the parent's folder is replaced.
+That is what `readmit project show` prints for the same document, and more than
+the overview above it carries, which names each revision's parent but not that
+identity. A document this release cannot read is refused with its reason and
+nothing from an earlier read stands in for it.
 
 `SaveNote` is the only thing the shell writes into a project, and a note is
 working text. It is stored in that editable document, beside the evidence and
@@ -920,6 +945,12 @@ get on the next case, and the one they get when the window is opened again. An
 empty selection applies no filter and excludes nothing. Selecting a name nothing
 saved is refused; saving under a name that already exists replaces exactly that
 filter. Removing a saved filter is not in this release.
+
+The picker lists every saved filter and selects between them, or none, and the
+open grid is drawn again from its first row through the selection; a refused
+save or selection leaves the grid as it was. Enter in any field of the form
+saves the filter and selects it. **Discard the unsaved filter**, or Escape
+anywhere in the form, empties the form without saving and changes no selection.
 
 **A saved filter holds what a person typed to filter by.** A value typed to
 match an HL7 field is the same patient data that field holds, and it does not
@@ -1752,6 +1783,14 @@ the result rather than left to be discovered. See
 [the guided sample](guided-sample.md) for the whole path, what a practice run
 writes, and what none of it establishes.
 
+`CaptureSample` imports the two frozen synthetic receiver fixtures as one
+imported case, a new entry of the open workspace, through the operation
+`readmit sample capture` runs: the folder holding them is chosen in the host's
+dialog, as `--fixtures` names it, and like the command it needs no activation,
+because it accepts the pinned fixture bytes and nothing else. What it answers
+is the case it wrote, verified through the reader every case is opened with.
+The guided panel offers it once the open folder is a sample workspace.
+
 ## Recent workspaces
 
 A workspace that opens is recorded so it can be reopened. The list lives in one
@@ -1769,6 +1808,15 @@ replaced atomically, so a reader never observes a partial list. Unknown members,
 unknown versions and relative paths are rejected; there is no migration and no
 repair. A list this release cannot read is reported and left exactly as written,
 and opening workspaces still works while it stays unreadable.
+
+Each listed folder reopens with one action. **Forget** asks first: **Forget
+it** removes that one entry through `ForgetWorkspace`, and **Keep it** or
+Escape leaves the list as it is. Forgetting touches only the list — the folder
+and everything in it stay where they are, and opening it again records it again.
+A folder the list no longer holds, because another window of the application
+forgot it, is refused and the list as it now stands is shown; a list this
+account cannot replace reports `permission_denied`, and a list this release
+cannot read is refused rather than replaced.
 
 ## Privacy
 

@@ -35,3 +35,24 @@ func TestAPracticeRunSeparatesPermissionFromFailure(t *testing.T) {
 		t.Fatal("a refused practice run left a folder behind")
 	}
 }
+
+// A workspace this account cannot write is a different answer from fixtures
+// the sample refuses, and the window says which.
+func TestTheSampleCaptureSeparatesPermissionFromFailure(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("a privileged account bypasses directory permissions")
+	}
+	root := t.TempDir()
+	app := newApp(t, &chooser{folder: receiverFixtures(t)})
+	if err := os.Chmod(root, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(root, 0700) })
+	result := app.CaptureSample(desktop.SampleCaptureRequest{Workspace: root, Output: "receiver-sample"})
+	if result.State != desktop.PermissionDenied || result.Reason != "this account cannot write into the open workspace" || result.Case != nil {
+		t.Fatalf("an unwritable workspace: %+v", result)
+	}
+	if _, err := os.Lstat(filepath.Join(root, "receiver-sample")); !os.IsNotExist(err) {
+		t.Fatal("a refused sample capture left a folder behind")
+	}
+}

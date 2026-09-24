@@ -1,24 +1,21 @@
 package cli
 
 import (
-	"crypto/sha256"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"time"
 
-	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
-	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/index"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/synth"
 	"github.com/spf13/cobra"
 )
 
 // sampleCommand is the ungated frozen walkthrough, not an admission override.
-// Every byte/seed/profile/selector is pinned here; arbitrary authoring continues
-// through the ordinary gated commands. The fixture bytes checked below are the
-// exact bytes passed to the writer, so a changed file cannot win a re-read race.
+// Every byte/seed/profile/selector is pinned here or, for the capture, in the
+// shared operation the window's guided sample runs too; arbitrary authoring
+// continues through the ordinary gated commands.
 func sampleCommand() *cobra.Command {
 	root := &cobra.Command{Use: "sample", Short: "Prepare only the frozen synthetic walkthrough without activation"}
 	var output, fixtures string
@@ -39,20 +36,7 @@ func sampleCommand() *cobra.Command {
 	}}
 	generate.Flags().StringVar(&output, "output", "", "New frozen family directory")
 	capture := &cobra.Command{Use: "capture", Args: cobra.NoArgs, Annotations: declare(capabilityFree), RunE: func(cmd *cobra.Command, _ []string) error {
-		inputs := []bundle.Input{}
-		for _, fixture := range []struct{ name, hash string }{{"listen-s12.hl7", "cfb563097687c8b1a5a273a68243648f9d25f42ee8a10516ab6df850fca3e521"}, {"listen-s13.hl7", "291757d6252dc5544e29f8958bdf98abac643ae61804852f617f5708f0f408bb"}} {
-			path, err := artifactpath.Resolve(filepath.Join(fixtures, fixture.name))
-			if err != nil {
-				return errors.New("frozen sample fixture unavailable")
-			}
-			data, err := readInputFile(path, 4096)
-			if err != nil || fmt.Sprintf("%x", sha256.Sum256(data)) != fixture.hash {
-				return errors.New("sample requires the unchanged frozen synthetic fixtures")
-			}
-			inputs = append(inputs, bundle.Input{Path: path, Data: data, Options: hl7.Options{Format: hl7.Raw, Terminator: hl7.CR}})
-		}
-		at := time.Now().UTC()
-		b, err := bundle.Write(output, inputs, bundle.Provenance{Mode: bundle.Imported, ImportedAt: &at})
+		b, err := operation.CaptureSample(fixtures, output, time.Now().UTC())
 		if err != nil {
 			return err
 		}

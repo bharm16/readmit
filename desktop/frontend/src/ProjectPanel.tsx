@@ -4,7 +4,7 @@
 // calls into the shared Go operations the command line runs; nothing here
 // decides what a project can hold. The panel shows positions and states —
 // titles, tags, statuses, identities — never evidence content.
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   Artifact,
   CaseChange,
@@ -12,6 +12,7 @@ import type {
   CaseStatus,
   ProjectOverview,
   ProjectOverviewResult,
+  RevisionsResult,
   SettingsChange,
 } from "./bindings";
 import type { Indicators } from "./shell";
@@ -311,24 +312,42 @@ function CreateForm({
 }
 
 /** The settings editor. A field left as it is sends nothing, so a settings
- * edit changes only what it names. */
+ * edit changes only what it names. Cancel, or Escape anywhere in the form,
+ * discards the edit and writes nothing; Enter in a field stores it. A refused
+ * store keeps everything typed, the further version included, beside the
+ * refusal. */
 function SettingsForm({
   overview,
   busy,
   onSave,
+  onCancel,
 }: {
   overview: ProjectOverview;
   busy: boolean;
-  onSave: (change: SettingsChange) => void;
+  onSave: (change: SettingsChange) => Promise<boolean>;
+  onCancel: () => void;
 }) {
   const [title, setTitle] = useState(overview.title);
   const [owner, setOwner] = useState(overview.default_owner ?? "");
   const [version, setVersion] = useState(overview.default_version ?? "");
   const [newVersion, setNewVersion] = useState("");
+  const first = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    first.current?.focus();
+  }, []);
   return (
     <form
       className="project-settings"
       aria-label="Project settings"
+      onKeyDown={(event) => {
+        // Escape discards this edit and goes no further: the window's own
+        // Escape cancels a running operation.
+        if (event.key === "Escape" && !event.nativeEvent.isComposing && !busy) {
+          event.preventDefault();
+          event.stopPropagation();
+          onCancel();
+        }
+      }}
       onSubmit={(event) => {
         event.preventDefault();
         const declared = newVersion.trim();
@@ -347,14 +366,16 @@ function SettingsForm({
         if (declared !== "") {
           change.declare_versions = [declared];
         }
-        onSave(change);
-        setNewVersion("");
+        void onSave(change).then((stored) => {
+          if (stored) setNewVersion("");
+        });
       }}
     >
       <h4>Project settings</h4>
       <label htmlFor="settings-title">Title</label>
       <input
         id="settings-title"
+        ref={first}
         type="text"
         value={title}
         onChange={(event) => setTitle(event.target.value)}
@@ -389,11 +410,65 @@ function SettingsForm({
       <button type="submit" disabled={busy}>
         Store these settings
       </button>
+      <button type="button" disabled={busy} onClick={onCancel}>
+        Cancel
+      </button>
       <p className="hint">
         A declared version is never removed: registered cases still name it. Declared here:{" "}
         {overview.interface_versions.join(", ")}
       </p>
     </form>
+  );
+}
+
+/** The project's editable document exactly as it is recorded, read on request
+ * beside the overview: every note and draft with its text, and every
+ * revision's lineage with the identity its parent was registered under, which
+ * is what names the exact evidence a revision came from even after the
+ * parent's folder is replaced. It is read from disk each time it is opened
+ * and verifies no evidence; the overview above is what re-verifies. */
+function EditableDocument({ result, indicators }: { result: RevisionsResult | null; indicators: Indicators }) {
+  const recorded = result?.revisions ?? null;
+  return (
+    <section className="editable-document" aria-label="Editable project document">
+      {result === null ? null : result.state === "empty" ? (
+        <p className="hint">This project has recorded no notes, drafts or revisions yet.</p>
+      ) : result.state !== "completed" ? (
+        <Report indicators={indicators} progress={null} result={result} />
+      ) : null}
+      {recorded && result?.state === "completed" ? (
+        <>
+          <h5>
+            {recorded.notes.length} {recorded.notes.length === 1 ? "note" : "notes"} as recorded
+          </h5>
+          <ul className="recorded-notes">
+            {recorded.notes.map((note) => (
+              <li key={note.name}>
+                <span className="name">{note.name}</span>
+                <span className="badge">{note.subject ? `about ${note.subject}` : "project draft"}</span>
+                <p className="title">{note.title}</p>
+                <p className="body">{note.body}</p>
+              </li>
+            ))}
+          </ul>
+          <h5>
+            {recorded.revisions.length} {recorded.revisions.length === 1 ? "revision" : "revisions"} with recorded lineage
+          </h5>
+          <ul className="recorded-lineage">
+            {recorded.revisions.map((revision) => (
+              <li key={revision.name}>
+                <span className="name">{revision.name}</span>
+                <span className="badge">
+                  {revision.operation.name} of {revision.operation.parent}
+                </span>
+                <span className="identity">identity {revision.identity}</span>
+                <span className="identity">parent identity {revision.operation.parent_identity}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+    </section>
   );
 }
 
@@ -540,6 +615,7 @@ function RegisterForm({
 export function ProjectPanel({
   root,
   result,
+  editable,
   entries,
   busy,
   progress,
@@ -547,6 +623,7 @@ export function ProjectPanel({
   selectedCase,
   onCreate,
   onUpdateSettings,
+  onReadEditable,
   onRegister,
   onUpdateCase,
   onOpenCase,
@@ -557,15 +634,18 @@ export function ProjectPanel({
 }: {
   root: string | null;
   result: ProjectOverviewResult | null;
+  /** The editable document as the last request to read it answered. */
+  editable: RevisionsResult | null;
   entries: Artifact[];
   busy: boolean;
   progress: string | null;
   indicators: Indicators;
   selectedCase: string | null;
   onCreate: (name: string, title: string, owner: string, versions: string[]) => void;
-  onUpdateSettings: (change: SettingsChange) => void;
+  onUpdateSettings: (change: SettingsChange) => Promise<boolean>;
   onRegister: (name: string, registration: CaseRegistration) => void;
   onUpdateCase: (name: string, change: CaseChange) => void;
+  onReadEditable: () => void;
   onOpenCase: (name: string) => void;
   onStartImport?: () => void;
   onStartCapture?: () => void;
@@ -574,6 +654,13 @@ export function ProjectPanel({
 }) {
   const [creating, setCreating] = useState(false);
   const [editingSettings, setEditingSettings] = useState(false);
+  const [readingDocument, setReadingDocument] = useState(false);
+  const settingsToggle = useRef<HTMLButtonElement | null>(null);
+  // The editable document shown belongs to the folder it was read from, so
+  // another folder starts with it closed rather than open over nothing.
+  useEffect(() => {
+    setReadingDocument(false);
+  }, [root]);
   const overview = result?.overview ?? null;
   const candidates = registrable(overview, entries);
 
@@ -627,11 +714,25 @@ export function ProjectPanel({
             {overview.revisions.length} {overview.revisions.length === 1 ? "revision" : "revisions"} ·{" "}
             {overview.notes.length} {overview.notes.length === 1 ? "note" : "notes"}
           </p>
-          <button type="button" disabled={busy} aria-expanded={editingSettings} onClick={() => setEditingSettings(!editingSettings)}>
+          <button
+            type="button"
+            ref={settingsToggle}
+            disabled={busy}
+            aria-expanded={editingSettings}
+            onClick={() => setEditingSettings(!editingSettings)}
+          >
             {editingSettings ? "Close the settings" : "Edit settings…"}
           </button>
           {editingSettings ? (
-            <SettingsForm overview={overview} busy={busy} onSave={onUpdateSettings} />
+            <SettingsForm
+              overview={overview}
+              busy={busy}
+              onSave={onUpdateSettings}
+              onCancel={() => {
+                setEditingSettings(false);
+                settingsToggle.current?.focus();
+              }}
+            />
           ) : null}
 
           <h4>Registered cases</h4>
@@ -742,6 +843,18 @@ export function ProjectPanel({
               ))}
             </ul>
           )}
+          <button
+            type="button"
+            disabled={busy}
+            aria-expanded={readingDocument}
+            onClick={() => {
+              if (!readingDocument) onReadEditable();
+              setReadingDocument(!readingDocument);
+            }}
+          >
+            {readingDocument ? "Close the editable document" : "Show the editable document as recorded…"}
+          </button>
+          {readingDocument ? <EditableDocument result={editable} indicators={indicators} /> : null}
           {selectedCase ? (
             <p className="hint">
               {selectedCase} is open in the inspector. Continue from its

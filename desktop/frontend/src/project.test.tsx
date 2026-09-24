@@ -249,6 +249,60 @@ test("a refused settings change keeps the project and its controls on screen bes
   expect(facade.callsTo("UpdateProjectSettings")).toHaveLength(1);
 });
 
+test("the editable document shows each note's text and each revision's lineage with the identity its parent was registered under", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openPlainWorkspace(user, true);
+  facade.reply({
+    OpenProjectOverview: () => projectOverviewResult([registeredCase()]),
+    OpenRevisions: () => ({
+      state: "completed" as const,
+      root: WORKSPACE_ROOT,
+      revisions: {
+        schema: "readmit-revisions/v1",
+        notes: [
+          { name: "handover", title: "Handover checklist", body: "Confirm the reschedule reaches the ledger once." },
+          { name: "about-the-case", subject: CASE_ENTRY, title: "Why it doubled", body: "" },
+        ],
+        revisions: [
+          {
+            name: "reduced-case",
+            identity: "revision-identity-fixed-for-tests",
+            schema: "readmit-case/v3",
+            provenance: "derived",
+            operation: { name: "readmit-reproducer/v1", parent: CASE_ENTRY, parent_identity: CASE_IDENTITY },
+          },
+        ],
+      },
+    }),
+  });
+  const evidence = within(screen.getByRole("region", { name: "Evidence" }));
+  await user.click(screen.getByRole("button", { name: "Read the project" }));
+  expect(await evidence.findByRole("heading", { name: "Scheduling investigation" })).toBeTruthy();
+  expect(facade.callsTo("OpenRevisions")).toHaveLength(0);
+
+  await user.click(evidence.getByRole("button", { name: "Show the editable document as recorded…" }));
+  const recorded = within(await evidence.findByRole("region", { name: "Editable project document" }));
+  expect(await recorded.findByText("2 notes as recorded")).toBeTruthy();
+  expect(recorded.getByText("project draft")).toBeTruthy();
+  expect(recorded.getByText(`about ${CASE_ENTRY}`)).toBeTruthy();
+  expect(recorded.getByText("Confirm the reschedule reaches the ledger once.")).toBeTruthy();
+  expect(recorded.getByText("1 revision with recorded lineage")).toBeTruthy();
+  expect(recorded.getByText(`readmit-reproducer/v1 of ${CASE_ENTRY}`)).toBeTruthy();
+  expect(recorded.getByText("identity revision-identity-fixed-for-tests")).toBeTruthy();
+  expect(recorded.getByText(`parent identity ${CASE_IDENTITY}`)).toBeTruthy();
+  expect(facade.oneCall("OpenRevisions")).toEqual([WORKSPACE_ROOT]);
+
+  // Closing it and asking again reads it again; a refusal is shown as the
+  // refusal and nothing from the earlier read stands in for it.
+  await user.click(evidence.getByRole("button", { name: "Close the editable document" }));
+  facade.reply({ OpenRevisions: () => ({ state: "permission_denied" as const, reason: "this account cannot open the chosen folder" }) });
+  await user.click(evidence.getByRole("button", { name: "Show the editable document as recorded…" }));
+  const denied = within(await evidence.findByRole("region", { name: "Editable project document" }));
+  expect(await denied.findByText("this account cannot open the chosen folder")).toBeTruthy();
+  expect(denied.queryByText("Handover checklist")).toBeNull();
+  expect(facade.callsTo("OpenRevisions")).toHaveLength(2);
+});
+
 test("search results open the artifact they matched, not only its name", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp({

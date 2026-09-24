@@ -145,6 +145,29 @@ no host but the loopback port it bound itself. Cancelling it stops future sends;
 whatever it had already written is retained where it was written and is reported
 as cancelled rather than as a verdict.
 
+## Importing the frozen receiver fixtures
+
+Beside the four steps, once the open folder is a sample workspace, the guided
+panel imports the two synthetic receiver fixtures readmit ships —
+`listen-s12.hl7` books one appointment and `listen-s13.hl7` reschedules it — as
+one **imported** case, a new entry of that folder. It is `readmit sample capture` without a terminal: the same shared
+operation, pinned to the same bytes, and like the command it needs no
+activation, because it can import those two files and nothing else.
+
+Choose the new entry's name (`receiver-sample` by default) and then, in your own
+folder dialog, the folder holding the two fixtures — the `testdata/fixtures`
+folder of a release archive, or a copy of it. The folder is what the command's
+`--fixtures` names. Any other bytes under those names are refused before a case
+exists, in the command's own words, and an entry that already exists is never
+written into. What the panel then shows is the case it wrote, verified through
+the reader every case is opened with, and it opens in the inspector with one
+action.
+
+Run from the same folder, `readmit sample capture` writes the same case, byte for
+byte, except for the one thing each import records from the clock: the instant
+it was imported, in the manifest and in each occurrence. Its identity follows
+that instant. This import is not a step of the guided sample and completes none.
+
 ## How progress is known
 
 Every step is read back out of the workspace folder, by the reader that owns the

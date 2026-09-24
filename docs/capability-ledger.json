@@ -1114,8 +1114,8 @@
       "inputs": ["readmit-project/v1"],
       "outputs": ["readmit-project/v1"],
       "prerequisites": ["author"],
-      "gui_test": {"file": "desktop/frontend/src/journeys/entitlement.journey.tsx", "name": "a delivered license is verified, installed and activated without hand-written configuration, and once released admits no new work"},
-      "parity_test": {"package": "tests", "name": "TestProjectSettingsSupplyDefaultsAndDeclareInterfaceVersions"},
+      "gui_test": {"file": "desktop/frontend/src/journeys/project-settings.journey.tsx", "name": "project settings are stored from the keyboard, refused, cancelled and left alone when unreadable, as the command line reads them"},
+      "parity_test": {"package": "tests", "name": "TestProjectSettingsEditedInTheWindowMatchTheCommandLine"},
       "implemented": true
     },
     {
@@ -1601,11 +1601,13 @@
       "owner": "bharm16/readmit#291",
       "screen": "the guided sample panel of the navigation region",
       "action": "import the frozen receiver fixtures as an imported sample case without activation",
-      "backend": {"package": "internal/bundle", "name": "Write"},
+      "backend": {"package": "internal/operation", "name": "CaptureSample"},
       "inputs": ["hl7"],
       "outputs": ["readmit-case/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/sample-capture.journey.tsx", "name": "the frozen receiver fixtures are imported by the guided sample without activation as the command line's case"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowsSampleCaptureIsTheCommandLinesCase"},
+      "implemented": true
     },
     {
       "id": "cli.sample.index",
@@ -3035,7 +3037,9 @@
       "inputs": ["readmit-filters/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/saved-filters.journey.tsx", "name": "named filters are saved from the keyboard, listed and selected, and each regrids exactly what index search finds"},
+      "parity_test": {"package": "tests", "name": "TestSavedFiltersSelectExactlyWhatTheCommandLineIndexSearchFinds"},
+      "implemented": true
     },
     {
       "id": "desktop.OpenCase",
@@ -3174,8 +3178,8 @@
       "inputs": ["readmit-project/v1"],
       "outputs": ["readmit-project/v1"],
       "prerequisites": ["author"],
-      "gui_test": {"file": "desktop/frontend/src/journeys/entitlement.journey.tsx", "name": "a delivered license is verified, installed and activated without hand-written configuration, and once released admits no new work"},
-      "parity_test": {"package": "internal/desktop", "name": "TestUpdateProjectSettingsDeclaresAndApplies"},
+      "gui_test": {"file": "desktop/frontend/src/journeys/project-settings.journey.tsx", "name": "project settings are stored from the keyboard, refused, cancelled and left alone when unreadable, as the command line reads them"},
+      "parity_test": {"package": "tests", "name": "TestProjectSettingsEditedInTheWindowMatchTheCommandLine"},
       "implemented": true
     },
     {
@@ -3286,7 +3290,9 @@
       "inputs": ["readmit-project/v1", "readmit-revisions/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/project-settings.journey.tsx", "name": "the editable project document is read beside the overview as recorded, as project show prints it, and refused when unreadable"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowReadsTheEditableDocumentProjectShowPrints"},
+      "implemented": true
     },
     {
       "id": "desktop.OpenWorkspace",
@@ -3305,6 +3311,22 @@
       "implemented": true
     },
     {
+      "id": "desktop.ForgetWorkspace",
+      "source": "desktop.App.ForgetWorkspace",
+      "kind": "desktop",
+      "capability": "forgetWorkspace application operation",
+      "owner": "bharm16/readmit#291",
+      "screen": "the navigation region's recent list",
+      "action": "forget one previously opened folder while leaving the folder itself untouched",
+      "backend": {"package": "internal/desktop", "name": "App.ForgetWorkspace"},
+      "inputs": ["readmit-desktop-recent/v1"],
+      "outputs": ["readmit-desktop-recent/v1"],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/journeys/recent-folders.journey.tsx", "name": "recent folders are listed, reopened after a restart with the keyboard, and forgotten only when confirmed"},
+      "parity_test": {"package": "internal/desktop", "name": "TestForgettingARecentFolderRemovesOnlyItsEntry"},
+      "implemented": true
+    },
+    {
       "id": "desktop.RecentWorkspaces",
       "source": "desktop.App.RecentWorkspaces",
       "kind": "desktop",
@@ -3316,7 +3338,9 @@
       "inputs": ["readmit-desktop-recent/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/recent-folders.journey.tsx", "name": "recent folders are listed, reopened after a restart with the keyboard, and forgotten only when confirmed"},
+      "parity_test": {"package": "tests", "name": "TestRecentWorkspacesRecordFoldersAndNoEvidence"},
+      "implemented": true
     },
     {
       "id": "desktop.SaveFilter",
@@ -3330,7 +3354,9 @@
       "inputs": ["readmit-filters/v1"],
       "outputs": ["readmit-filters/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/saved-filters.journey.tsx", "name": "named filters are saved from the keyboard, listed and selected, and each regrids exactly what index search finds"},
+      "parity_test": {"package": "tests", "name": "TestDesktopGridRendersExactlyWhatTheCommandLineIndexSearchFinds"},
+      "implemented": true
     },
     {
       "id": "desktop.SaveNote",
@@ -3376,7 +3402,9 @@
       "inputs": ["readmit-filters/v1"],
       "outputs": ["readmit-filters/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/saved-filters.journey.tsx", "name": "named filters are saved from the keyboard, listed and selected, and each regrids exactly what index search finds"},
+      "parity_test": {"package": "tests", "name": "TestSavedFiltersSelectExactlyWhatTheCommandLineIndexSearchFinds"},
+      "implemented": true
     },
     {
       "id": "desktop.SelectWorkspace",
@@ -3798,6 +3826,22 @@
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/App.test.tsx", "name": "the guided sample runs the saved spec against the practice receiver and reads the folder back"},
       "parity_test": {"package": "internal/desktop", "name": "TestTheGuidedSampleIsReadBackFromTheOpenWorkspace"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.CaptureSample",
+      "source": "desktop.App.CaptureSample",
+      "kind": "desktop",
+      "capability": "captureSample application operation",
+      "owner": "bharm16/readmit#291",
+      "screen": "the guided sample panel of the navigation region",
+      "action": "import the frozen receiver fixtures as an imported sample case without activation",
+      "backend": {"package": "internal/operation", "name": "CaptureSample"},
+      "inputs": ["hl7"],
+      "outputs": ["readmit-case/v1"],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/journeys/sample-capture.journey.tsx", "name": "the frozen receiver fixtures are imported by the guided sample without activation as the command line's case"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowsSampleCaptureIsTheCommandLinesCase"},
       "implemented": true
     },
     {

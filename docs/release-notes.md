@@ -1,5 +1,28 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The window can forget a recent folder, import the frozen receiver fixtures
+  as `readmit sample capture` does, and show a project's editable document as
+  recorded (#291). Each recent folder now has a Forget action that asks first;
+  Forget it removes that entry and nothing else, the folder stays where it is,
+  and Keep it or Escape leaves the list alone. A folder another window already
+  forgot is refused and the list as it now stands is shown. The guided sample
+  panel imports the two frozen fixtures from a folder chosen in the host's
+  dialog as one imported case, without activation, through the operation the
+  command now shares with it: the command line writes the same case from the
+  same folder, byte for byte apart from the instant each records as its import
+  time, and refuses any other bytes in the same words. The project overview
+  shows the editable document on request, every note with its text and every
+  revision with the identity its parent was registered under, as `project
+  show` prints it. The settings form gains Cancel, and Escape discards an edit;
+  a refused settings edit keeps what was typed, the further interface version
+  included. The saved-filter form gains Discard the unsaved filter, and Escape
+  does the same. Interaction journeys drive the settings form, the recent list,
+  the saved filters, the editable document and the import from the keyboard,
+  through refusals, cancellation and documents a later release wrote, over the
+  real facade. No `readmit-*` document changes and no command's behaviour or
+  output changes; the window's facade gains `ForgetWorkspace` and
+  `CaptureSample`.
+
 - The profile panel imports profile packages and opens existing local
   profiles (#295). Its Import Package control was never driven and said only
   that an import completed, and nothing in the window called `OpenProfile`, so

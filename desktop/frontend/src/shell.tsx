@@ -331,7 +331,16 @@ export function MessageGrid({
 
   const viewport = useRef<HTMLDivElement | null>(null);
   const body = useRef<HTMLTableSectionElement | null>(null);
+  const filterName = useRef<HTMLInputElement | null>(null);
   const grid = result?.grid ?? null;
+
+  // Discarding an unsaved filter writes nothing and changes no selection: the
+  // form is emptied and the person is back at its first field.
+  const discard = () => {
+    setDraft(emptyDraft);
+    setInvalid(null);
+    filterName.current?.focus();
+  };
 
   useEffect(() => {
     if (caseEvidence && !outputName) {
@@ -806,6 +815,16 @@ export function MessageGrid({
 
       <form
         className="grid-save"
+        aria-label="Save a filter"
+        onKeyDown={(event) => {
+          // Escape discards the unsaved filter and goes no further: the
+          // window's own Escape cancels a running operation.
+          if (event.key === "Escape" && !event.nativeEvent.isComposing && !busy) {
+            event.preventDefault();
+            event.stopPropagation();
+            discard();
+          }
+        }}
         onSubmit={(event) => {
           event.preventDefault();
           const filter = compose(draft);
@@ -821,6 +840,7 @@ export function MessageGrid({
         <label htmlFor="filter-name">Name</label>
         <input
           id="filter-name"
+          ref={filterName}
           type="text"
           value={draft.name}
           onChange={(event) => setDraft({ ...draft, name: event.target.value })}
@@ -927,6 +947,9 @@ export function MessageGrid({
 
         <button type="submit" disabled={busy}>
           Save and select
+        </button>
+        <button type="button" disabled={busy} onClick={discard}>
+          Discard the unsaved filter
         </button>
         {invalid ? <p className="unsupported">{invalid}</p> : null}
         <p className="hint">

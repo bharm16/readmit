@@ -94,6 +94,9 @@ import {
   type BuildIndexRequest,
   type IndexResult,
   recentWorkspaces,
+  forgetWorkspace,
+  openRevisions,
+  captureSample,
   recordView,
   recoverSession,
   type EditorDraft,
@@ -114,6 +117,7 @@ import {
   type ProjectOverviewResult,
   type SettingsChange,
   type RecentResult,
+  type RevisionsResult,
   type RegionId,
   type SearchResult,
   type Shell,
@@ -143,6 +147,7 @@ import { ObservationPanel } from "./ObservationPanel";
 import { MaintenancePanel } from "./MaintenancePanel";
 import { RawInspection } from "./RawInspection";
 import { PerformanceCorpus } from "./PerformanceCorpus";
+import { RecentWorkspaces } from "./RecentWorkspaces";
 import type { CaptureObservationBinding } from "./bindings";
 
 /** The panes never collapse to nothing: either one keeps a usable share of the
@@ -174,7 +179,9 @@ type Running =
   | "review"
   | "diagnosis"
   | "finding-review"
-  | "normalize";
+  | "normalize"
+  | "recent"
+  | "sample";
 
 export default function App() {
   const [described, setDescribed] = useState<Shell | null>(null);
@@ -192,6 +199,7 @@ export default function App() {
   const [workspace, setWorkspace] = useState<WorkspaceResult | null>(null);
   const [evidence, setEvidence] = useState<CaseResult | null>(null);
   const [investigation, setInvestigation] = useState<ProjectOverviewResult | null>(null);
+  const [editable, setEditable] = useState<RevisionsResult | null>(null);
   const [recent, setRecent] = useState<RecentResult | null>(null);
   const [found, setFound] = useState<SearchResult | null>(null);
   const [savedFilters, setSavedFilters] = useState<FiltersResult | null>(null);
@@ -206,6 +214,7 @@ export default function App() {
   const [revisionResult, setRevisionResult] = useState<ReproducerComparisonResult | null>(null);
   const [guideResult, setGuideResult] = useState<GuideResult | null>(null);
   const [practiceResult, setPracticeResult] = useState<PracticeResult | null>(null);
+  const [sampleCapture, setSampleCapture] = useState<CaseResult | null>(null);
   const [sequenceResult, setSequenceResult] = useState<SequenceResult | null>(null);
   const [transformResult, setTransformResult] = useState<TransformResult | null>(null);
   const [planResult, setPlanResult] = useState<TransformPlanResult | null>(null);
@@ -480,6 +489,7 @@ export default function App() {
   const clearWorkspace = useCallback(() => {
     clearCase();
     setInvestigation(null);
+    setEditable(null);
     setFound(null);
   }, [clearCase]);
 
@@ -499,6 +509,7 @@ export default function App() {
           setSelected(null);
           setWorkspace(result);
           setPracticeResult(null);
+          setSampleCapture(null);
           opened = true;
           await refreshGuide(result.workspace.root);
         } else {
@@ -510,6 +521,18 @@ export default function App() {
       return opened;
     },
     [clearWorkspace, focusRegion, operate, refreshGuide, refreshRecent],
+  );
+
+  // Forgetting a recent folder writes the list, so it takes its turn like
+  // every other write; what the list then holds is what the facade answers,
+  // including when it refused.
+  const forget = useCallback(
+    async (folder: string) => {
+      await operate("recent", async () => {
+        setRecent(await forgetWorkspace(folder));
+      });
+    },
+    [operate],
   );
 
   // Reads whose answer can be older than the question: only the response to
@@ -721,15 +744,31 @@ export default function App() {
     setInvestigation((held) => (answer.overview || !held?.overview ? answer : { ...answer, overview: held.overview }));
   }, []);
 
+  // Whether the change was stored, so the form keeps what was typed beside a
+  // refusal and clears only what the project took.
   const editSettings = useCallback(
     async (change: SettingsChange) => {
-      if (!root) return;
+      if (!root) return false;
+      let stored = false;
       await operate("project", async () => {
-        settleProject(await updateProjectSettings(root, change));
+        const answer = await updateProjectSettings(root, change);
+        settleProject(answer);
+        stored = answer.state === "completed";
       });
+      return stored;
     },
     [operate, root, settleProject],
   );
+
+  // The editable document is read from disk each time the overview is asked
+  // to show it, never kept from an earlier read.
+  const readEditable = useCallback(async () => {
+    if (!root) return;
+    await operate("project", async () => {
+      setEditable(null);
+      setEditable(await openRevisions(root));
+    });
+  }, [operate, root]);
 
   const register = useCallback(
     async (name: string, registration: CaseRegistration) => {
@@ -863,6 +902,23 @@ export default function App() {
       setWorkspace(result);
     }
   }, [root]);
+
+  // The guided sample's import of the frozen receiver fixtures writes one new
+  // entry of the open folder, so the listing is read again once it has.
+  const importSample = useCallback(
+    async (output: string) => {
+      if (!root) return;
+      let written = false;
+      await operate("sample", async () => {
+        setSampleCapture(null);
+        const result = await captureSample({ workspace: root, output });
+        setSampleCapture(result);
+        written = result.state === "completed";
+      });
+      if (written) await refreshListing();
+    },
+    [operate, refreshListing, root],
+  );
 
   // An import can register the case it wrote into the open project, and it
   // writes the case and its receipt as new entries of the open folder.
@@ -1786,14 +1842,22 @@ export default function App() {
         <GuidedSample
           result={guideResult}
           practice={practiceResult}
+          capture={sampleCapture}
           busy={busy}
-          progress={running === "practice" ? "Running the saved test against the practice receiver." : null}
+          progress={
+            running === "practice"
+              ? "Running the saved test against the practice receiver."
+              : running === "sample"
+                ? "Importing the frozen receiver fixtures."
+                : null
+          }
           indicators={indicators}
           onCreateSample={actions["create-sample-workspace"]}
           onOpenCase={(name: string) => {
             if (root) void verifyCase(root, name);
           }}
           onRun={(trial, output) => void practise(trial, output)}
+          onCapture={(output) => void importSample(output)}
         />
         <Report
           indicators={indicators}
@@ -1895,23 +1959,13 @@ export default function App() {
             ))}
           </ul>
         ) : null}
-        <h3>Recent workspaces</h3>
-        {recent && recent.state !== "completed" ? (
-          <Status indicator={indicators.get(recent.state)} state={recent.state} reason={recent.reason} />
-        ) : null}
-        <ul className="recent">
-          {(recent?.roots ?? []).map((folder) => (
-            <li key={folder}>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void openFolder(() => openWorkspace(folder))}
-              >
-                {folder}
-              </button>
-            </li>
-          ))}
-        </ul>
+        <RecentWorkspaces
+          recent={recent}
+          busy={busy}
+          indicators={indicators}
+          onReopen={(folder) => void openFolder(() => openWorkspace(folder))}
+          onForget={forget}
+        />
       </>
     ),
     evidence: (
@@ -2042,7 +2096,9 @@ export default function App() {
               indicators={indicators}
               selectedCase={verified?.name ?? null}
               onCreate={(name, title, owner, versions) => void startProject(name, title, owner, versions)}
-              onUpdateSettings={(change) => void editSettings(change)}
+              editable={editable}
+              onUpdateSettings={editSettings}
+              onReadEditable={() => void readEditable()}
               onRegister={(name, registration) => void register(name, registration)}
               onUpdateCase={(name, change) => void updateCase(name, change)}
               onOpenCase={(name: string) => {
