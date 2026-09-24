@@ -6,7 +6,8 @@
 // project changed after the preview, deletes it only after confirming — the
 // source unlinked, the recovery archive kept — and restores the archive into
 // a new folder, which the window reopens with everything the project held.
-// Every folder is chosen through the host's own dialog, and the command line
+// Every folder is chosen through the host's own dialogs — an existing one in
+// its folder dialog, a new one named in its save dialog — and the command line
 // reads every backup, archive and project the window wrote.
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
@@ -43,13 +44,31 @@ async function feedback(text: string) {
   return maintenance().findByText(text, { selector: "p[role=status]" });
 }
 
-/** Chooses a folder through the host's dialog, as the given control asks,
- * and waits for the choice to show beside that control. */
-async function choose(user: UserEvent, scope: ReturnType<typeof within>, control: string, folder: string, title: string) {
-  await journey.chooseFolder(journey.path(folder), title);
+/** Chooses an existing folder through the host's folder dialog, or names a
+ * new one in its save dialog, as the given control asks, and waits for the
+ * choice to show beside that control. */
+async function answer(
+  user: UserEvent,
+  scope: ReturnType<typeof within>,
+  control: string,
+  script: (path: string, title: string) => Promise<void>,
+  folder: string,
+  title: string,
+) {
+  await script(journey.path(folder), title);
   const button = scope.getByRole("button", { name: control });
   await press(user, button);
   await waitFor(() => expect(button.nextElementSibling?.textContent).toBe(journey.path(folder)));
+}
+
+/** Chooses an existing folder through the host's folder dialog. */
+async function choose(user: UserEvent, scope: ReturnType<typeof within>, control: string, folder: string, title: string) {
+  await answer(user, scope, control, (path, asked) => journey.chooseFolder(path, asked), folder, title);
+}
+
+/** Names a new folder in the host's save dialog. */
+async function nameNew(user: UserEvent, scope: ReturnType<typeof within>, control: string, folder: string, title: string) {
+  await answer(user, scope, control, (path, asked) => journey.nameNewFolder(path, asked), folder, title);
 }
 
 test("a project is backed up, held to a quota, reindexed, archived, refused a stale delete, deleted and restored through the window", async () => {
@@ -59,23 +78,33 @@ test("a project is backed up, held to a quota, reindexed, archived, refused a st
   journey.makeFolder("backups");
   await press(user, within(region("Evidence")).getByRole("button", { name: "Maintain this workspace…" }));
 
-  // Dismissing the folder dialog chooses nothing, and nothing can be
-  // backed up without a destination.
+  // Dismissing the save dialog names nothing, and nothing can be backed up
+  // without a destination.
   let backup = await section(user, "Backup", "Create and verify a backup");
-  await journey.dismissDialog("folder", "Choose a new folder for the backup");
+  await journey.dismissDialog("save", "Choose a new folder for the backup");
   await press(user, backup.getByRole("button", { name: "Choose backup destination…" }));
   await waitFor(() => expect(journey.callsTo("ChooseMaintenancePath").at(-1)?.result).toMatchObject({ state: "cancelled" }));
+  expect(await feedback("no new folder was named")).toBeTruthy();
   expect(backup.getByRole("button", { name: "Choose backup destination…" }).nextElementSibling?.textContent).toBe("No destination chosen.");
   expect((backup.getByRole("button", { name: "Create verified backup" }) as HTMLButtonElement).disabled).toBe(true);
 
-  // A verified backup into a new folder, verified again from the folder a
-  // person picks, as the command line verifies it.
-  await choose(user, backup, "Choose backup destination…", "backups/before-cleanup", "Choose a new folder for the backup");
+  // A verified backup into a new folder named in the save dialog, which the
+  // backup creates, verified again from the folder a person picks, as the
+  // command line verifies it.
+  await nameNew(user, backup, "Choose backup destination…", "backups/before-cleanup", "Choose a new folder for the backup");
   await press(user, backup.getByRole("button", { name: "Create verified backup" }));
   expect(await feedback("Backup created.")).toBeTruthy();
   expect(maintenance().getByText(byContent(/^Complete · \d+ files · \d+ bytes · /)).textContent).toMatch(
     new RegExp(`^Complete · \\d+ files · \\d+ bytes · ${journey.path("backups/before-cleanup")}$`),
   );
+  // A name that already exists — a save dialog returns one once the person
+  // confirms replacing it — is refused by the backup with its reason, and the
+  // backup already there is left as it was.
+  const kept = journey.digest("backups/before-cleanup/backup.json");
+  await nameNew(user, backup, "Choose backup destination…", "backups/before-cleanup", "Choose a new folder for the backup");
+  await press(user, backup.getByRole("button", { name: "Create verified backup" }));
+  expect(await feedback("cannot create backup; destination must be new and parent writable")).toBeTruthy();
+  expect(journey.digest("backups/before-cleanup/backup.json")).toBe(kept);
   backup = await section(user, "Backup", "Create and verify a backup");
   await choose(user, backup, "Choose backup to verify…", "backups/before-cleanup", "Choose the backup folder to verify or restore");
   await press(user, backup.getByRole("button", { name: "Verify backup" }));
@@ -124,7 +153,7 @@ test("a project is backed up, held to a quota, reindexed, archived, refused a st
       "Unlinking a project is not forensic secure erasure and does not revoke remote copies. The recovery archive is retained.",
     ),
   ).toBeTruthy();
-  await choose(user, lifecycle, "Choose recovery archive destination…", "backups/archive-kept", "Choose a new folder for the recovery archive");
+  await nameNew(user, lifecycle, "Choose recovery archive destination…", "backups/archive-kept", "Choose a new folder for the recovery archive");
   await press(user, lifecycle.getByRole("button", { name: "Archive (keep source)" }));
   expect(await feedback("Archive created; source kept.")).toBeTruthy();
   expect((await journey.commandLine(["project", "show", PROJECT])).code).toBe(0);
@@ -132,7 +161,7 @@ test("a project is backed up, held to a quota, reindexed, archived, refused a st
   // The project changes after the preview, and the delete that preview
   // allowed is refused: nothing is deleted.
   journey.writeFile(`${PROJECT}/handover-notes.txt`, "Filler identifiers differ between the two systems.\n");
-  await choose(user, lifecycle, "Choose recovery archive destination…", "backups/archive-stale", "Choose a new folder for the recovery archive");
+  await nameNew(user, lifecycle, "Choose recovery archive destination…", "backups/archive-stale", "Choose a new folder for the recovery archive");
   await user.click(lifecycle.getByLabelText(/I understand delete unlinks the source/));
   await press(user, lifecycle.getByRole("button", { name: "Delete after verified archive" }));
   expect(await lifecycle.findByText("the project changed since the retirement preview; nothing was deleted")).toBeTruthy();
@@ -142,7 +171,7 @@ test("a project is backed up, held to a quota, reindexed, archived, refused a st
   // after a verified archive, which is kept.
   lifecycle = await section(user, "Archive and migrate", "Archive, delete and migration");
   await press(user, lifecycle.getByRole("button", { name: "Preview archive or delete" }));
-  await choose(user, lifecycle, "Choose recovery archive destination…", "backups/archive-deleted", "Choose a new folder for the recovery archive");
+  await nameNew(user, lifecycle, "Choose recovery archive destination…", "backups/archive-deleted", "Choose a new folder for the recovery archive");
   await press(user, lifecycle.getByRole("button", { name: "Delete after verified archive" }));
   expect(await lifecycle.findByText("Project unlinked; recovery archive retained. This is not secure erasure.")).toBeTruthy();
   const gone = await journey.commandLine(["project", "show", PROJECT]);
@@ -156,7 +185,7 @@ test("a project is backed up, held to a quota, reindexed, archived, refused a st
   // reopens with the case, the test and the run the project held.
   const restore = await section(user, "Restore", "Restore a backup");
   await choose(user, restore, "Choose backup…", "backups/archive-deleted", "Choose the backup folder to verify or restore");
-  await choose(user, restore, "Choose new restore destination…", "investigations/scheduling-restored", "Choose a new folder for the restored project");
+  await nameNew(user, restore, "Choose new restore destination…", "investigations/scheduling-restored", "Choose a new folder for the restored project");
   await press(user, restore.getByRole("button", { name: "Restore into new destination and reopen" }));
   expect(await within(region("Project navigation")).findByText(journey.path("investigations/scheduling-restored"), { selector: ".root" })).toBeTruthy();
   expect(await within(region("Evidence")).findByText("Reschedule is refused")).toBeTruthy();

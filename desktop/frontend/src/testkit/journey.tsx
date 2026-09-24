@@ -9,15 +9,19 @@
 // Wails would marshal. Where Wails would leave a call unanswered — a name
 // nothing is bound under, a method that panics — the bridge rejects it. What
 // the harness does supply is what the native shell supplies and a person does
-// outside the window: answers to the host's folder and file dialogs, their own
-// files already on disk, and an activation folder their vendor delivered.
+// outside the window: answers to the host's folder, file and save dialogs,
+// their own files already on disk, and an activation folder their vendor
+// delivered. An answer is only one the host's dialog could give: a folder
+// dialog returns a folder that exists, and a save dialog names an entry of a
+// folder that exists, which need not exist itself, and creates nothing.
 // Closing the window ends the process; reopening starts a new one over the same
 // root, so whatever survives a reopen survived on disk.
 //
 // A journey fails at close for anything that would otherwise pass silently: a
 // call Wails would have rejected (the facade returns typed results and never an
 // error, so every rejection is a broken binding), a dialog nobody scripted or
-// answered differently than scripted, and a scripted answer nothing consumed.
+// answered differently than scripted, an answer no host dialog could give, and
+// a scripted answer nothing consumed.
 import { StrictMode } from "react";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
@@ -36,6 +40,7 @@ import {
   copyFixtureInRoot,
   createRoot,
   digestInRoot,
+  linkInRoot,
   makeFolderInRoot,
   pathInRoot,
   provisionInRoot,
@@ -84,8 +89,8 @@ export interface Colleague {
   call<M extends keyof Facade>(method: M, ...args: Parameters<Facade[M]>): Promise<Awaited<ReturnType<Facade[M]>>>;
 }
 
-/** The two host dialogs the facade opens. */
-type DialogKind = "folder" | "files";
+/** The three host dialogs the facade opens. */
+type DialogKind = "folder" | "files" | "save";
 
 interface DialogReport {
   shown: { kind: DialogKind; title: string; problem?: string }[];
@@ -232,9 +237,18 @@ export class Journey {
   }
 
   /** The person picks this folder in the next folder dialog the application
-   * opens. A title, when given, is the dialog that must be the one asking. */
+   * opens. A title, when given, is the dialog that must be the one asking.
+   * The folder must exist when the dialog is answered: a folder dialog
+   * returns nothing else. */
   chooseFolder(folder: string, title?: string): Promise<void> {
     return this.script("folder", [folder], title);
+  }
+
+  /** The person names this new folder in the next save dialog the application
+   * opens: a name typed in a folder that exists, which need not exist itself.
+   * The dialog creates nothing; the writer it is handed to creates it. */
+  nameNewFolder(folder: string, title?: string): Promise<void> {
+    return this.script("save", [folder], title);
   }
 
   /** The person picks these files in the next file dialog. */
@@ -285,6 +299,12 @@ export class Journey {
    * will choose to keep a new project in. */
   makeFolder(relative: string): string {
     return makeFolderInRoot(this.root, relative);
+  }
+
+  /** Creates a symbolic link to a folder inside the root: a shortcut a person
+   * made, which the host's folder dialog can return like any folder. */
+  makeLink(relative: string, target: string): string {
+    return linkInRoot(this.root, relative, target);
   }
 
   /** Creates an empty folder only this account can open, such as the private

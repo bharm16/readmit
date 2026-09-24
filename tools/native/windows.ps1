@@ -35,6 +35,11 @@ public static class NativeBackend {
     [DllImport("user32.dll", SetLastError = true)]
     static extern uint SendInput(uint count, Input[] inputs, int size);
     const uint KeyUp = 0x0002, Unicode = 0x0004;
+    const uint MouseMove = 0x0001, MouseDown = 0x0002, MouseUp = 0x0004, MouseAbsolute = 0x8000;
+    [DllImport("user32.dll")]
+    static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")]
+    static extern int GetSystemMetrics(int index);
     const ushort Control = 0x11, LetterA = 0x41, Delete = 0x2E;
 
     static Input Key(ushort key, ushort scan, uint flags) {
@@ -45,10 +50,28 @@ public static class NativeBackend {
 
     // What a person types reaches the page as key presses, so the page sees
     // the input events typing makes: select everything the field holds,
-    // delete it, then type the text.
+    // delete it, then type the text. Keys reach only the window in front, so
+    // the window is brought forward first, as a press does, and should Windows
+    // keep another window in front, the field is clicked, as a person clicks
+    // into a field before typing.
     static void Type(AutomationElement field, string text) {
-        field.SetFocus();
+        var window = Focus(field);
         Thread.Sleep(150);
+        if (window != IntPtr.Zero && GetForegroundWindow() != window) {
+            var bounds = field.Current.BoundingRectangle;
+            var click = new Input[3];
+            for (int index = 0; index < 3; index++) click[index] = new Input { Type = 0 };
+            click[0].Union.Mouse = new MouseInput {
+                X = (int)((bounds.Left + Math.Min(bounds.Width / 2, 40)) * 65535 / GetSystemMetrics(0)),
+                Y = (int)((bounds.Top + bounds.Height / 2) * 65535 / GetSystemMetrics(1)),
+                Flags = MouseMove | MouseAbsolute,
+            };
+            click[1].Union.Mouse = new MouseInput { Flags = MouseDown };
+            click[2].Union.Mouse = new MouseInput { Flags = MouseUp };
+            SendInput(3, click, Marshal.SizeOf(typeof(Input)));
+            Thread.Sleep(300);
+            if (GetForegroundWindow() != window) throw new Failure("the window is not in front, so no keys were sent");
+        }
         if (!field.Current.HasKeyboardFocus) throw new Failure("the field did not take the keyboard focus, so nothing was typed");
         var keys = new List<Input> {
             Key(Control, 0, 0), Key(LetterA, 0, 0), Key(LetterA, 0, KeyUp), Key(Control, 0, KeyUp),
@@ -134,13 +157,15 @@ public static class NativeBackend {
     // A person's press first brings the window forward and puts the focus on
     // the control; a dialog the press opens then takes the focus from the
     // window rather than finding none to take.
-    static void Focus(AutomationElement element) {
+    static IntPtr Focus(AutomationElement element) {
         var walker = TreeWalker.ControlViewWalker;
         AutomationElement top = element;
         for (var parent = walker.GetParent(top); parent != null && parent != AutomationElement.RootElement; parent = walker.GetParent(parent)) top = parent;
-        if (top.Current.NativeWindowHandle != 0) SetForegroundWindow(new IntPtr(top.Current.NativeWindowHandle));
+        var window = new IntPtr(top.Current.NativeWindowHandle);
+        if (window != IntPtr.Zero) SetForegroundWindow(window);
         try { element.SetFocus(); } catch (InvalidOperationException) { }
         Thread.Sleep(100);
+        return window;
     }
 
     static void Press(AutomationElement element) {
@@ -189,13 +214,40 @@ public static class NativeBackend {
         foreach (AutomationElement candidate in dialog.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ClassNameProperty, "Edit"))) {
             if (candidate.Current.NativeWindowHandle != 0) field = candidate;
         }
+        var button = DialogButton(dialog, "Select Folder");
+        if (field == null || button == null) throw new Failure("the folder dialog offered no Folder field or Select Folder button");
+        EnterAndAccept(pid, title, field, button, path, "the folder dialog stayed open after choosing ");
+    }
+
+    // The host's save dialog is answered as a person answers it: the new
+    // folder's whole path typed into its File name field, then its Save
+    // button. The dialog creates nothing; the writer it answers does.
+    static void NameNewFolder(int pid, string title, string path, double seconds) {
+        var dialog = Dialog(pid, title, seconds);
+        if (dialog == null) throw new Failure("no save dialog titled '" + title + "' opened");
+        AutomationElement field = null;
+        foreach (AutomationElement candidate in dialog.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ClassNameProperty, "Edit"))) {
+            if (candidate.Current.NativeWindowHandle == 0) continue;
+            // 1001 is the control id of the File name field's edit control.
+            if (candidate.Current.AutomationId == "1001") { field = candidate; break; }
+            field = candidate;
+        }
+        var button = DialogButton(dialog, "Save");
+        if (field == null || button == null) throw new Failure("the save dialog offered no File name field or Save button");
+        EnterAndAccept(pid, title, field, button, path, "the save dialog stayed open after naming ");
+    }
+
+    static AutomationElement DialogButton(AutomationElement dialog, string name) {
         AutomationElement button = null;
         foreach (AutomationElement candidate in dialog.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ClassNameProperty, "Button"))) {
-            if (candidate.Current.Name == "Select Folder" && candidate.Current.NativeWindowHandle != 0) button = candidate;
+            if (candidate.Current.Name == name && candidate.Current.NativeWindowHandle != 0) button = candidate;
         }
-        if (field == null || button == null) throw new Failure("the folder dialog offered no Folder field or Select Folder button");
-        // A dialog still initializing can overwrite its Folder field, so the
-        // path is entered and chosen again until the dialog closes.
+        return button;
+    }
+
+    // A dialog still initializing can overwrite its field, so the path is
+    // entered and accepted again until the dialog closes.
+    static void EnterAndAccept(int pid, string title, AutomationElement field, AutomationElement button, string path, string stayed) {
         var fieldWindow = new IntPtr(field.Current.NativeWindowHandle);
         var buttonWindow = new IntPtr(button.Current.NativeWindowHandle);
         DateTime deadline = DateTime.UtcNow.AddSeconds(20);
@@ -208,7 +260,44 @@ public static class NativeBackend {
                 if (Dialog(pid, title, 0) == null) return;
             }
         }
-        throw new Failure("the folder dialog stayed open after choosing " + path);
+        throw new Failure(stayed + path);
+    }
+
+    static string ValueOf(AutomationElement element) {
+        object pattern;
+        return element.TryGetCurrentPattern(ValuePattern.Pattern, out pattern) ? ((ValuePattern)pattern).Current.Value : "";
+    }
+
+    // A pop-up list's option is chosen as a person chooses it: the list is
+    // expanded and the option selected by the name it is announced by.
+    static void Select(int pid, AutomationElement list, string option) {
+        if (ValueOf(list) == option) return;
+        Focus(list);
+        object pattern;
+        var expand = list.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out pattern) ? (ExpandCollapsePattern)pattern : null;
+        if (expand != null) expand.Expand();
+        var named = new AndCondition(new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem), new PropertyCondition(AutomationElement.NameProperty, option));
+        AutomationElement item = null;
+        DateTime deadline = DateTime.UtcNow.AddSeconds(5);
+        while (item == null && DateTime.UtcNow < deadline) {
+            item = list.FindFirst(TreeScope.Descendants, named);
+            if (item == null) {
+                foreach (var window in Windows(pid)) {
+                    try { item = window.FindFirst(TreeScope.Descendants, named); } catch (ElementNotAvailableException) { }
+                    if (item != null) break;
+                }
+            }
+            if (item == null) Thread.Sleep(300);
+        }
+        if (item == null) throw new Failure("the open list offered no option named '" + option + "'");
+        if (!item.TryGetCurrentPattern(SelectionItemPattern.Pattern, out pattern)) throw new Failure("the option '" + option + "' cannot be selected");
+        ((SelectionItemPattern)pattern).Select();
+        try { if (expand != null) expand.Collapse(); } catch (InvalidOperationException) { }
+        deadline = DateTime.UtcNow.AddSeconds(5);
+        while (ValueOf(list) != option) {
+            if (DateTime.UtcNow > deadline) throw new Failure("the pop-up list holds '" + ValueOf(list) + "'");
+            Thread.Sleep(300);
+        }
     }
 
     static object Handle(IDictionary<string, object> request) {
@@ -230,6 +319,10 @@ public static class NativeBackend {
             case "choose_folder":
                 ChooseFolder(pid, (string)request["title"], (string)request["path"], Convert.ToDouble(request["seconds"]));
                 break;
+            case "name_new_folder":
+                NameNewFolder(pid, (string)request["title"], (string)request["path"], Convert.ToDouble(request["seconds"]));
+                break;
+            case "select": Select(pid, Element(request), (string)request["option"]); break;
             case "close": {
                 object pattern;
                 foreach (var window in Windows(pid)) {

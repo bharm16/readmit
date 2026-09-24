@@ -89,7 +89,7 @@ func TestCancelledMaintenancePathAndStaleDelete(t *testing.T) {
 	root := sampleProject(t, app)
 	cancelled := newApp(t, &chooser{}).ChooseMaintenancePath("backup-destination")
 	if cancelled.State != desktop.Cancelled {
-		t.Fatalf("dismissed picker: %+v", cancelled)
+		t.Fatalf("dismissed save dialog: %+v", cancelled)
 	}
 	preview := app.PreviewProjectRetirement(root)
 	if preview.State != desktop.Completed || preview.Preview == nil || preview.Preview.Selection == "" {
@@ -193,12 +193,16 @@ func TestQuotaMigrationAndUpgradeHandoff(t *testing.T) {
 }
 
 func TestChooseMaintenancePathKinds(t *testing.T) {
-	dest := t.TempDir()
-	c := &chooser{folder: dest}
+	existing := t.TempDir()
+	named := filepath.Join(t.TempDir(), "new-folder")
+	c := &chooser{folder: existing, destination: named}
 	app := newApp(t, c)
-	for _, kind := range []string{"backup-destination", "restore-destination", "backup-source", "upgrade-candidate", "archive-destination"} {
+	for kind, want := range map[string]string{
+		"backup-destination": named, "restore-destination": named, "archive-destination": named,
+		"backup-source": existing, "upgrade-candidate": existing,
+	} {
 		result := app.ChooseMaintenancePath(kind)
-		if result.State != desktop.Completed || result.Path != dest || result.Kind != kind {
+		if result.State != desktop.Completed || result.Path != want || result.Kind != kind {
 			t.Fatalf("%s: %+v", kind, result)
 		}
 	}

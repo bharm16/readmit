@@ -71,7 +71,7 @@ function everyStatusReadsAsWords(): void {
 test("a keyboard-only person opens the sample, verifies and inspects a case, moves between regions, resizes and scales, and recovers from refusals", async () => {
   const user = userEvent.setup();
   journey.makeFolder("work");
-  const notAFolder = journey.writeFile("work/notes.txt", "not a workspace");
+  const linked = journey.makeLink("linked-work", "work");
   await journey.launch();
 
   // Ctrl+O opens the host's folder dialog. Dismissing it is a cancellation the
@@ -80,8 +80,8 @@ test("a keyboard-only person opens the sample, verifies and inspects a case, mov
   await journey.dismissDialog("folder", "Open a readmit workspace folder");
   await user.keyboard("{Control>}o{/Control}");
   expect(await navigation.findByText("no folder was chosen")).toBeTruthy();
-  // Choosing a file where a folder is needed is refused with its reason.
-  await journey.chooseFolder(notAFolder, "Open a readmit workspace folder");
+  // Choosing a folder through a symbolic link is refused with its reason.
+  await journey.chooseFolder(linked, "Open a readmit workspace folder");
   await user.keyboard("{Control>}o{/Control}");
   expect(await navigation.findByText("a workspace must be an existing folder that is not a symbolic link")).toBeTruthy();
   everyStatusReadsAsWords();

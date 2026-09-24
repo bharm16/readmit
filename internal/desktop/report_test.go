@@ -432,13 +432,13 @@ func TestPacketExportSealsRenderingsAndReviewsReopenReadOnly(t *testing.T) {
 	root, spec, baseline, current := packetWorkspace(t, app)
 	// The review is exported beside the packet, as an entry of the workspace.
 	destination := filepath.Join(root, "review")
-	app2 := newApp(t, &chooser{folder: destination})
+	app2 := newApp(t, &chooser{destination: destination})
 	assembled := app.AssemblePacket(packetRequest(root, spec, baseline, current))
 	if assembled.State != desktop.Completed || assembled.Packet == nil {
 		t.Fatalf("assemble: %+v", assembled)
 	}
 
-	// The native destination choice is a destination only.
+	// The new folder named natively is a destination only.
 	chosen := app2.ChoosePacketExportPath()
 	if chosen.State != desktop.Completed || chosen.Path != destination {
 		t.Fatalf("choose: %+v", chosen)

@@ -188,26 +188,37 @@ The application runs as installed, with its shell state in a fresh folder.
 Nothing calls its Go facade or runs script in its webview: every step finds a
 control by the role and accessible name a screen reader announces and acts
 through the interface an assistive technology uses, and the host's own folder
-dialogs are answered through that interface too. What each step waits for and
-every expected outcome live once in `tools/native_journey.py`; a small backend
-per platform in `tools/native/` only reads the tree and acts on it:
+and save dialogs are answered through that interface too. What each step waits
+for and every expected outcome live once in `tools/native_journey.py`; a small
+backend per platform in `tools/native/` only reads the tree and acts on it:
 
 - macOS, Apple silicon and Intel: the Accessibility API, from a backend the
   runner compiles with its own Swift compiler. The hosted image grants the
   runner's shell and `osascript` the accessibility permission, which is all
   this needs. A folder panel is answered by typing its path after
   Shift-Command-G through System Events, only while the application is
-  frontmost, and the window is closed with its own close button.
+  frontmost; a save panel by going to the folder that way and typing the new
+  name into its name field, then pressing Save. A pop-up list is opened with
+  its press action and the option's name typed into the menu it shows, then
+  Return. The window is closed with its own close button.
 - Windows: UI Automation from Windows PowerShell's .NET Framework client, in
   the runner's interactive session. A press first brings the window forward
-  and focuses the control, as a click does. Text reaches the page as key presses,
-  because a value set through UI Automation does not reach it as input; the
-  folder dialog's Folder field and Select Folder button are answered with
-  window messages, and the window is closed through its window pattern.
+  and focuses the control, as a click does. Text reaches the page as key
+  presses, because a value set through UI Automation does not reach it as
+  input; keys reach only the window in front, so typing brings the window
+  forward the same way and clicks the field should Windows keep another
+  window in front. The folder dialog's Folder field and Select Folder button,
+  and the save dialog's File name field and Save button, are answered with
+  window messages. A pop-up list is expanded and its option selected through its
+  selection pattern, and the window is closed through its window pattern.
 - Linux, amd64 and arm64: AT-SPI under Xvfb on a private session bus, through
   the system Python's bindings. No window manager runs, so keys reach the
-  window under the pointer, a field is clicked before it is typed into, and
-  closing the window is ending the process.
+  window under the pointer, a field is clicked before it is typed into, the
+  save dialog's name field is given the new folder's whole path before Save
+  is pressed, a pop-up list takes the focus through a click on its label and
+  the option's name is typed, because the bus goes on stating the options the
+  list held when it was first drawn, and closing the window is ending the
+  process.
 
 Two journeys run wherever the native journeys run:
 
@@ -215,16 +226,25 @@ Two journeys run wherever the native journeys run:
    through the host dialog, `regression` verified and opened, every authoring
    stage answered and a new test saved, `assertion_failure` against the
    misbehaving fixture and `pass` against the corrected one, then the window
-   closed and reopened with both verdicts read back. `readmit diff` over the
-   two retained results reports the same.
+   closed and reopened with both verdicts read back. `readmit report
+   assemble` seals the two practice runs into a packet while the window is
+   closed; the reopened window verifies it read-only and exports it as a
+   portable review into a new folder named in the host's save dialog.
+   `readmit diff` over the two retained results reports the same, and
+   `readmit report review` reads the exported review as the review of that
+   packet.
 2. A staged upgrade checked against the real candidate: the vendor's
    activation folder chosen and reported active, a project created through
-   the window, and on its maintenance screen the candidate `desktop-package`
+   the window and backed up into a new folder named in the host's save
+   dialog, and on its maintenance screen the candidate `desktop-package`
    built for this target — its manifest and its packages, staged as the
    workflow publishes them — checked. The window reports
    `installed V → candidate V · signed=false · refused`: the candidate is the
-   build already installed, and it is a development preview. `readmit upgrade
-   check` reports the same plan; `readmit upgrade prepare --approve` takes the
+   build already installed, and it is a development preview. The window then
+   takes the rollback archive into a new folder named in the save dialog, and
+   installing is still refused. `readmit backup verify` verifies the backup
+   and the archive the window wrote; `readmit upgrade check` reports the same
+   plan; `readmit upgrade prepare --approve` takes the
    rollback archive into a new folder, which `readmit backup verify` verifies;
    and a candidate whose package was staged partway, as an interrupted
    download leaves it, is refused before any archive is written.
@@ -248,15 +268,18 @@ What driving the installed packages found:
    Windows candidate could not be checked at all. The build now keeps the debug
    database in its staging folder, and `tools/package_desktop.py verify` refuses
    a packages folder holding anything its manifest does not record.
-2. Not fixed here: every destination the window asks for as "a new folder" —
-   a backup, a restored project, a recovery or rollback archive, a portable
-   review, a support export — is chosen with a folder picker, which on every
-   platform returns only a folder that already exists, while each of those
-   writers requires a folder that does not. Through the installed window those
-   writes are always refused; the staged-upgrade journey shows the rollback
-   archive refused and nothing written into the chosen folder. The jsdom
-   journeys answer those dialogs with a path that does not exist yet, which no
-   host dialog returns.
+2. Every destination the window asks for as "a new folder" — a backup, a
+   restored project, a recovery or rollback archive, a portable review, a
+   support export — was chosen with a folder picker, which on every platform
+   returns only a folder that already exists, while each of those writers
+   requires a folder that does not, so through the installed window those
+   writes were always refused. The jsdom journeys answered those dialogs with
+   a path that did not exist yet, which no host folder dialog returns. Each is
+   now named in the host's save dialog (#377): a new name in a folder that
+   exists, which the writer creates, still refusing a name that exists. The
+   journeys' scripted dialogs now give only what a host dialog gives, and the
+   native journeys take a backup, a rollback archive and a portable review
+   through the installed window.
 3. Not fixed here: on Windows the installed application can end, with exit
    status 1, as a host folder dialog opens. Wails hands the window's focus to
    WebView2 whenever the window gains it, WebView2 can refuse that while the
@@ -275,10 +298,10 @@ What driving the installed packages found:
 
 These two journeys are what the native interaction covers. Importing and
 investigating a person's own evidence, execution against an independent
-downstream system, export and review, collaboration, the CI handoff and the
-commercial and entitlement failure paths still run only in jsdom, against the
-facade the packaged shell binds, and every package is an unsigned development
-preview.
+downstream system, packet assembly through the window, privacy review and
+support export, collaboration, the CI handoff and the commercial and
+entitlement failure paths still run only in jsdom, against the facade the
+packaged shell binds, and every package is an unsigned development preview.
 
 ## Interaction journeys over the real facade
 
@@ -348,22 +371,26 @@ journey fails the `desktop` check. They cover:
 - what an investigation hands on: the failing and fixed runs are assembled
   into a sealed packet after a preview that names every input and states its
   limitations, verified read-only as `readmit report verify-retained` verifies
-  it, exported with its five offline renderings as a portable review that
-  reopens read-only with its report text revealed only on purpose and reads
-  the same through `readmit report review`, and summarized into a value-free
-  support bundle, authored under a sharing policy made in the window and
-  published into a folder chosen natively only under the exact identity its
-  preview showed, which `readmit share verify` verifies; the shipped planted
-  example's privacy review — its captures imported through the window, and its
-  specification, two disclosure policies and inventory placed as the
-  documents the privacy panel selects but does not author — is blocked while
+  it, exported with its five offline renderings, into a new folder named in
+  the host's save dialog once a dismissed one named nothing, as a portable
+  review that reopens read-only with its report text revealed only on purpose
+  and reads the same through `readmit report review`, and summarized into a
+  value-free support bundle, authored under a sharing policy made in the
+  window and published into a new folder named in the save dialog only under
+  the exact identity its preview showed, which `readmit share verify`
+  verifies; the shipped planted example's privacy review — its captures
+  imported through the window, and its specification, two disclosure policies
+  and inventory placed as the documents the privacy panel selects but does
+  not author — is blocked while
   its policy leaves findings unresolved and cannot be exported even under its
   exact identity, the handled review is exported only under its own identity
   with its proof rerun, and `readmit redact` derives the same states and the
   same located findings from the same documents;
-- looking after a project: a dismissed folder dialog that chooses nothing
-  and backs nothing up; a verified backup into a new folder, verified again
-  as `readmit backup verify` verifies it; a quota below what the project
+- looking after a project: a dismissed save dialog that names nothing and
+  backs nothing up; a verified backup into a new folder named in the save
+  dialog, verified again as `readmit backup verify` verifies it; the same name
+  given again refused by the backup with its reason, the backup already there
+  unchanged; a quota below what the project
   holds refused and one it fits within set; the index rebuilt from the case;
   migration and retirement previewed; an archive that keeps the source; a
   delete refused because the project changed after its preview; a confirmed

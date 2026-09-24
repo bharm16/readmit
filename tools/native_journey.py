@@ -7,7 +7,7 @@ the application's Go facade or reaches into its webview: every step finds a
 control by the role and accessible name a screen reader announces, and acts on
 it through the same interface an assistive technology uses — the macOS
 Accessibility API, Windows UI Automation, or AT-SPI on Linux. The host's own
-folder dialogs are answered through that interface too.
+folder and save dialogs are answered through that interface too.
 
 A small backend per platform does the reading and acting (`tools/native/`);
 every decision — what to wait for, what counts as the expected outcome — is
@@ -51,6 +51,7 @@ ROLES = {
     "checkbox": {"darwin": {"AXCheckBox"}, "windows": {"CheckBox"}, "linux": {"check box"}},
     "textbox": {"darwin": {"AXTextField", "AXTextArea"}, "windows": {"Edit"}, "linux": {"entry", "text", "password text"}},
     "region": {"darwin": {"AXGroup"}, "windows": {"Group"}, "linux": {"landmark", "section", "panel", "form"}},
+    "select": {"darwin": {"AXPopUpButton"}, "windows": {"ComboBox"}, "linux": {"combo box"}},
 }
 
 
@@ -341,14 +342,36 @@ class Application:
                 raise Refused(f"the window never read out a line matching {pattern!r}")
             time.sleep(0.5)
 
+    def select(self, name, option, *, within=None, timeout=60):
+        """Picks an option of the pop-up list named name, by the name a screen
+        reader announces for the option, as a person opens the list and picks
+        from it. What the window then offers shows whether it took the choice."""
+        self.step(f"select {option} in {name}")
+        node = self.find("select", name, within=within, timeout=timeout)
+        try:
+            self.backend.call("select", pid=self.process.pid, id=node["id"], option=option)
+        except Refused as error:
+            raise Refused(f"choosing {option!r} in {name!r}: {error}") from error
+
     def choose_folder(self, title, folder):
         """Answers the host's own folder dialog, which the last step opened."""
         self.step(f"choose folder: {title}")
+        self.answer("choose_folder", "the folder dialog", title, folder)
+
+    def name_new_folder(self, title, folder):
+        """Answers the host's own save dialog, which the last step opened, by
+        naming a new folder: a name that does not exist yet, in a folder that
+        does. The dialog creates nothing; the writer it is handed to does."""
+        self.step(f"name new folder: {title}")
+        self.answer("name_new_folder", "the save dialog", title, folder)
+
+    def answer(self, op, dialog, title, folder):
+        """Has the backend answer the host dialog titled title with folder."""
         try:
-            self.backend.call("choose_folder", pid=self.process.pid, title=title, path=str(folder), seconds=90)
+            self.backend.call(op, pid=self.process.pid, title=title, path=str(folder), seconds=90)
         except Refused as error:
             ended = "" if self.process.poll() is None else f" (the application ended with exit status {self.process.returncode})"
-            raise Refused(f"answering the folder dialog {title!r}: {error}{ended}") from error
+            raise Refused(f"answering {dialog} {title!r}: {error}{ended}") from error
 
     def checkpoint(self, name):
         """Retains the tree a screen reader is given at this point."""
@@ -467,6 +490,17 @@ def guided_sample(app, work, command, record):
     app.checkpoint("practice-results")
     record["closed"] = app.close()
 
+    # While the window is closed, the command line assembles the two practice
+    # runs into a sealed packet, as a person does with readmit report assemble.
+    sample = work / "readmit-sample"
+    code, out, err = command_line(command, "report", "assemble", "--case", sample / "regression",
+                                  "--spec", sample / "post-fix-run" / "spec.json", "--current", sample / "post-fix-run" / "result",
+                                  "--baseline", sample / "baseline-run" / "result", "--output", sample / "practice-packet", cwd=work)
+    assembled = re.match(r"Retained packet complete: ([0-9a-f]{64})\n", out)
+    if code != 0 or not assembled:
+        raise Refused(f"readmit report assemble over the practice runs answered {code}: {out.strip()} {err.strip()}")
+    packet = assembled.group(1)
+
     # Reopened, the window reads both verdicts back from the folder.
     app.launch()
     app.press("Reopen where you were", timeout=90)
@@ -474,10 +508,25 @@ def guided_sample(app, work, command, record):
     app.read_out(r"baseline-run ?assertion_failure")
     app.read_out(r"post-fix-run ?pass")
     app.checkpoint("reopened")
+
+    # The packet is verified read-only and exported as a portable review into
+    # a new folder named in the host's save dialog, which the export creates.
+    review = sample / "practice-review"
+    app.select("Packets of this workspace", "practice-packet", within="Investigation packets")
+    app.press("Verify read-only", within="Investigation packets")
+    # A shortened identity and its ellipsis are two text elements, which some
+    # platforms read out with a space between them.
+    app.read_out(rf"Verified: identity {packet[:12]} ?… · contract readmit-retained-packet/v1 · state complete")
+    app.press("Choose destination…", within="Investigation packets")
+    app.name_new_folder("Choose a new folder for the portable review", review)
+    app.read_out(re.escape(str(review)))
+    app.press("Export portable review", within="Investigation packets", timeout=120)
+    record["native_review"] = app.read_out(rf"Review ?practice-review ?sealed: identity [0-9a-f]{{12}} ?… · packet {packet[:12]} ?…",
+                                           timeout=120)
+    app.checkpoint("portable-review")
     app.close()
 
     # The command line reads the same two retained results and agrees.
-    sample = work / "readmit-sample"
     code, out, err = command_line(command, "diff", sample / "baseline-run" / "result", sample / "post-fix-run" / "result",
                                   "--format", "json", cwd=work)
     if code != 0 or err:
@@ -489,7 +538,13 @@ def guided_sample(app, work, command, record):
             raise Refused(f"readmit diff reads the {side} result as {report[side]}")
     if report["summary"]["paired"] != 2 or report["summary"]["unchanged"] != 2:
         raise Refused(f"readmit diff pairs the two runs as {report['summary']}")
-    record["cli"] = "readmit diff: assertion_failure then pass over two unchanged paired messages"
+    # It reads the portable review the window exported, offline, as the
+    # review of the packet it assembled.
+    code, out, err = command_line(command, "report", "review", review, "--format", "json", cwd=work)
+    if code != 0 or document(out, "readmit report review").get("packet_identity") != packet:
+        raise Refused(f"readmit report review over the exported review answered {code}: {out.strip()[:200]} {err.strip()}")
+    record["cli"] = ("readmit diff: assertion_failure then pass over two unchanged paired messages; "
+                     "readmit report review: the exported review of the assembled packet")
 
 
 def staged_upgrade(app, work, command, bridge, candidate, version, record):
@@ -521,7 +576,17 @@ def staged_upgrade(app, work, command, bridge, candidate, version, record):
     project = work / "investigations" / "upgrade-check"
     app.read_out(re.escape(str(project)), timeout=90)
 
+    # The project is backed up into a new folder named in the host's save
+    # dialog, which the backup creates.
     app.press("Maintain this workspace…", within="Evidence")
+    (work / "backups").mkdir()
+    backup = work / "backups" / "before-upgrade"
+    app.press("Choose backup destination…")
+    app.name_new_folder("Choose a new folder for the backup", backup)
+    app.read_out(re.escape(str(backup)))
+    app.press("Create verified backup", timeout=120)
+    record["native_backup"] = app.read_out(r"Backup created\.", timeout=120)
+    app.checkpoint("backup")
     app.press("Staged upgrade", role="tab")
     app.checkpoint("staged-upgrade")
     app.press("Choose staged candidate folder…")
@@ -535,18 +600,22 @@ def staged_upgrade(app, work, command, bridge, candidate, version, record):
     app.checkpoint("staged-upgrade-refused")
     record["window"] = summary
 
-    # A person can pick only a folder that exists; the rollback archive needs
-    # a new one, so the window refuses it and writes nothing.
-    existing = work / "rollback-chosen"
-    existing.mkdir()
+    # The rollback archive is taken into a new folder named in the save
+    # dialog; installing the candidate is still refused.
+    rollback = work / "rollback-window"
     app.press("Administrator approves taking a rollback archive (installing still uses the native installer)", role="checkbox")
     app.press("Choose rollback archive destination…")
-    app.choose_folder("Choose a new folder for the recovery archive", existing)
-    app.press("Prepare rollback archive")
-    record["native_rollback"] = app.read_out(r"destination must be new", timeout=120)
-    if any(existing.iterdir()):
-        raise Refused("a refused rollback archive wrote into the folder a person chose")
+    app.name_new_folder("Choose a new folder for the recovery archive", rollback)
+    app.read_out(re.escape(str(rollback)))
+    app.press("Prepare rollback archive", timeout=120)
+    record["native_rollback"] = app.read_out(
+        r"Rollback point taken\. Installing this candidate is still refused: the staged candidate is the build already running this check",
+        timeout=120)
     app.close()
+    for taken in (backup, rollback):
+        code, out, err = command_line(command, "backup", "verify", taken, cwd=work)
+        if code != 0 or "Complete: yes" not in out:
+            raise Refused(f"what the window wrote into {taken.name} does not verify: {out.strip()} {err.strip()}")
 
     # The command line checks the same candidate against the same project,
     # takes the rollback archive into a new folder and verifies it, and

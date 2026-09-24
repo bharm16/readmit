@@ -673,12 +673,12 @@ func (a *App) PublishSupportSummary(request SupportPublishRequest) SupportPublis
 	})
 }
 
-// ChooseSupportExportPath presents the host's native folder dialog for the new
-// folder a support bundle is published into. The choice is a destination only;
-// choosing it publishes nothing and contacts nothing.
+// ChooseSupportExportPath presents the host's native save dialog to name the
+// new folder a support bundle is published into. The choice is a destination
+// only; naming it creates, publishes and contacts nothing.
 func (a *App) ChooseSupportExportPath() PacketPathResult {
 	return run(a, true, false, func(ctx context.Context) PacketPathResult {
-		folder, declined := a.chooseFolder(ctx, "Choose a new folder for the reviewed support bundle")
+		folder, declined := a.chooseDestination(ctx, "Choose a new folder for the reviewed support bundle")
 		if folder == "" {
 			return PacketPathResult{State: declined.state, Reason: declined.reason}
 		}

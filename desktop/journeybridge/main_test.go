@@ -103,10 +103,11 @@ func TestCallsDecodeAndSettleAsWailsDispatchesThem(t *testing.T) {
 // and recorded, so the journey fails for it instead of passing quietly.
 func TestDialogsAnswerOnlyWhatWasScripted(t *testing.T) {
 	d := &scriptedDialogs{}
-	d.script(answer{kind: "folder", title: "Open a readmit workspace folder", paths: []string{"/chosen"}})
+	chosen := t.TempDir()
+	d.script(answer{kind: "folder", title: "Open a readmit workspace folder", paths: []string{chosen}})
 	d.script(answer{kind: "files"})
-	d.script(answer{kind: "folder", title: "Choose a folder for the new project", paths: []string{"/elsewhere"}})
-	if folder, err := d.ChooseFolder("Open a readmit workspace folder"); folder != "/chosen" || err != nil {
+	d.script(answer{kind: "folder", title: "Choose a folder for the new project", paths: []string{t.TempDir()}})
+	if folder, err := d.ChooseFolder("Open a readmit workspace folder"); folder != chosen || err != nil {
 		t.Fatalf("a scripted folder answered %q, %v", folder, err)
 	}
 	if files, err := d.ChooseFiles("Choose evidence files to import", "", ""); len(files) != 0 || err != nil {
@@ -137,6 +138,81 @@ func TestDialogsAnswerOnlyWhatWasScripted(t *testing.T) {
 	}
 }
 
+// The scripted dialogs give only what the host's dialogs give. A folder dialog
+// returns a folder that exists when it is answered, never a file or a folder
+// that is not there yet; a save dialog names an entry of a folder that exists,
+// which need not exist itself — or may, when the person confirmed replacing
+// it — and creates nothing. An answer no host dialog could give is consumed,
+// refused and recorded, so the journey that scripted it fails.
+func TestDialogsGiveOnlyWhatTheHostDialogsGive(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "notes.txt")
+	if err := os.WriteFile(file, []byte("not a folder"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	named := filepath.Join(root, "new-backup")
+	d := &scriptedDialogs{}
+	for _, a := range []answer{
+		{kind: "folder", paths: []string{root}},
+		{kind: "save", title: "Choose a new folder for the backup", paths: []string{named}},
+		{kind: "save", paths: []string{file}},
+		{kind: "save"},
+		{kind: "folder", paths: []string{named}},
+		{kind: "folder", paths: []string{file}},
+		{kind: "save", paths: []string{filepath.Join(root, "missing", "new-backup")}},
+		{kind: "save", paths: []string{"new-backup"}},
+	} {
+		d.script(a)
+	}
+	if folder, err := d.ChooseFolder("Open a readmit workspace folder"); folder != root || err != nil {
+		t.Fatalf("an existing folder answered %q, %v", folder, err)
+	}
+	if path, err := d.ChooseDestination("Choose a new folder for the backup"); path != named || err != nil {
+		t.Fatalf("a new name in an existing folder answered %q, %v", path, err)
+	}
+	if _, err := os.Lstat(named); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("naming a new folder created something: %v", err)
+	}
+	if path, err := d.ChooseDestination("Choose a new folder for the portable review"); path != file || err != nil {
+		t.Fatalf("an existing entry the person confirmed replacing answered %q, %v", path, err)
+	}
+	if path, err := d.ChooseDestination("Choose a new folder for the portable review"); path != "" || err != nil {
+		t.Fatalf("a dismissed save dialog answered %q, %v", path, err)
+	}
+	for _, impossible := range []func() (string, error){
+		func() (string, error) { return d.ChooseFolder("Choose a folder for the new project") },
+		func() (string, error) { return d.ChooseFolder("Open a readmit workspace folder") },
+		func() (string, error) { return d.ChooseDestination("Choose a new folder for the backup") },
+		func() (string, error) { return d.ChooseDestination("Choose a new folder for the backup") },
+	} {
+		if path, err := impossible(); path != "" || err == nil {
+			t.Fatalf("an answer no host dialog gives was taken: %q, %v", path, err)
+		}
+	}
+	report := d.report()
+	if report.Unanswered != 0 {
+		t.Fatalf("unanswered = %d; an impossible answer is consumed, not left for the next dialog", report.Unanswered)
+	}
+	var problems []string
+	for _, shown := range report.Shown {
+		if shown.Problem != "" {
+			problems = append(problems, shown.Kind+": "+shown.Problem)
+		}
+	}
+	want := []string{
+		"folder: a folder dialog returns only a folder that already exists, and the scripted answer is not one",
+		"folder: a folder dialog returns only a folder that already exists, and the scripted answer is not one",
+		"save: a save dialog names an entry of a folder that already exists, and the scripted answer's folder does not",
+		"save: a save dialog returns an absolute path, and the scripted answer is not one",
+	}
+	if strings.Join(problems, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("recorded problems %q, want %q", problems, want)
+	}
+	if entries, err := os.ReadDir(root); err != nil || len(entries) != 1 {
+		t.Fatalf("the scripted dialogs changed what the root holds: %v, %v", entries, err)
+	}
+}
+
 func TestControlRequestsRefuseMalformedAnswers(t *testing.T) {
 	b := &bridge{methods: bind(&bound{}), dialogs: &scriptedDialogs{}}
 	answers := exchange(t, b,
@@ -146,8 +222,9 @@ func TestControlRequestsRefuseMalformedAnswers(t *testing.T) {
 		`{"id":4,"op":"dialogs"}`,
 		`{"id":5,"op":"dialog","dialog":"folder","titel":"Open a readmit workspace folder","paths":["/x"]}`,
 		`not a request`,
+		`{"id":6,"op":"dialog","dialog":"save","paths":["/a/new","/b/new"]}`,
 	)
-	for id := int64(1); id <= 3; id++ {
+	for _, id := range []int64{1, 2, 3, 6} {
 		if answers[id].Error == nil {
 			t.Errorf("request %d was accepted: %+v", id, answers[id])
 		}

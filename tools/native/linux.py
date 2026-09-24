@@ -228,9 +228,9 @@ def choose_folder(pid, title, path, seconds):
     raise Failure(f"the folder dialog stayed open after choosing {path}")
 
 
-def choose(chooser):
+def choose(chooser, names=("Open", "Select", "_Open")):
     """Presses the chooser's accept button if it is offered; says whether it was."""
-    accept = next((n for n in descendants(chooser) if n.get_role_name() == "push button" and n.get_name() in ("Open", "Select", "_Open")), None)
+    accept = next((n for n in descendants(chooser) if n.get_role_name() == "push button" and n.get_name() in names), None)
     state = states(accept) if accept is not None else None
     if state is None or not state.contains(Atspi.StateType.SENSITIVE):
         return False
@@ -254,6 +254,83 @@ def describe_chooser(chooser, when):
     print(f"chooser {when}: {fields}", file=sys.stderr, flush=True)
 
 
+def name_new_folder(pid, title, path, seconds):
+    """GTK's save dialog is answered as a person answers it: the new folder's
+    whole path entered into its name field, which takes a path, then its Save
+    button. The dialog creates nothing; the writer it answers does."""
+    chooser = dialog(pid, title, seconds)
+    if chooser is None:
+        raise Failure(f"no save dialog titled {title!r} opened")
+    field = None
+    deadline = time.monotonic() + 10
+    while field is None and time.monotonic() < deadline:
+        candidates = []
+        for node in descendants(chooser):
+            try:
+                state = states(node)
+                if node.get_role_name() in ("text", "entry") and node.get_editable_text_iface() is not None \
+                        and state is not None and state.contains(Atspi.StateType.SHOWING):
+                    candidates.append((not state.contains(Atspi.StateType.FOCUSED), node))
+            except gi.repository.GLib.Error:
+                continue
+        # The name field holds the focus when the dialog opens.
+        field = min(candidates, key=lambda pair: pair[0])[1] if candidates else None
+        if field is None:
+            time.sleep(0.3)
+    if field is None:
+        describe_chooser(chooser, "with no name field")
+        raise Failure("the save dialog offered no name field")
+    Atspi.EditableText.set_text_contents(field, path)
+    time.sleep(0.5)
+    describe_chooser(chooser, "after entering the name")
+    choose(chooser, ("Save", "_Save"))
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        time.sleep(0.5)
+        if dialog(pid, title, 0) is None:
+            return
+        describe_chooser(chooser, "still open")
+        choose(chooser, ("Save", "_Save"))
+    raise Failure(f"the save dialog stayed open after naming {path}")
+
+
+def select(combo, option):
+    """Selects an option of a pop-up list as a person does from the keyboard:
+    a click on the list's label gives it the focus without opening it, and the
+    option's name is typed. The bus goes on stating the options a list held
+    when it was first drawn, so the option is chosen by its name rather than
+    from that copy. With no window manager under Xvfb, the click also gives
+    the window the keyboard. Whether the list took the option is what the
+    window offers next, which the caller checks."""
+    parent = combo.get_parent()
+    label = None
+    for index in range(parent.get_child_count() if parent is not None else 0):
+        sibling = parent.get_child_at_index(index)
+        try:
+            if sibling is not None and sibling.get_role_name() == "label" and own_text(sibling, "label") == combo.get_name():
+                label = sibling
+                break
+        except gi.repository.GLib.Error:
+            continue
+    if label is None:
+        raise Failure("the pop-up list has no label to give it the focus through")
+    # A label below the fold is scrolled into view first, as a person scrolls to it.
+    try:
+        Atspi.Component.scroll_to(label, Atspi.ScrollType.ANYWHERE)
+        time.sleep(0.3)
+    except gi.repository.GLib.Error:
+        pass
+    extents = Atspi.Component.get_extents(label, Atspi.CoordType.SCREEN)
+    if extents.width <= 0 or extents.height <= 0:
+        raise Failure("the pop-up list's label is not on the screen")
+    x, y = extents.x + min(extents.width // 2, 40), extents.y + extents.height // 2
+    Atspi.generate_mouse_event(x, y, "abs")
+    Atspi.generate_mouse_event(x, y, "b1c")
+    time.sleep(0.3)
+    Atspi.generate_keyboard_event(0, option, Atspi.KeySynthType.STRING)
+    time.sleep(0.5)
+
+
 def handle(request):
     op = request.get("op")
     pid = request.get("pid")
@@ -274,6 +351,12 @@ def handle(request):
         return {}
     if op == "choose_folder":
         choose_folder(pid, request["title"], request["path"], request.get("seconds", 60))
+        return {}
+    if op == "name_new_folder":
+        name_new_folder(pid, request["title"], request["path"], request.get("seconds", 60))
+        return {}
+    if op == "select":
+        select(element(request), request["option"])
         return {}
     if op == "close":
         # Under Xvfb no window manager owns a close button; the caller ends

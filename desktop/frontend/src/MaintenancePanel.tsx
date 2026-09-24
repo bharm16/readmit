@@ -155,7 +155,7 @@ export function MaintenancePanel({
         </button>
       </div>
       <p className="hint">
-        Native folder pickers and the same Go operations the command line runs. No automatic network
+        Native folder and save dialogs and the same Go operations the command line runs. No automatic network
         check, download, service interruption or elevation happens when this screen opens.
       </p>
       <div className="maintenance-tabs" role="tablist" aria-label="Maintenance sections">

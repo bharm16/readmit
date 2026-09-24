@@ -124,6 +124,39 @@ class Driver(unittest.TestCase):
         app.fill("Expectation name", "one-appointment", timeout=5)
         self.assertEqual(self.sent("set"), [{"op": "set", "id": 1, "text": "one-appointment"}])
 
+    def test_a_new_folder_is_named_in_the_save_dialog_and_an_existing_one_picked_in_the_folder_dialog(self):
+        app = self.application("windows", [[node(0, "Window")]])
+        app.name_new_folder("Choose a new folder for the backup", self.root / "backups" / "before-upgrade")
+        app.choose_folder("Choose the staged upgrade package folder", self.root / "staged")
+        self.assertEqual(self.sent("name_new_folder"), [{"op": "name_new_folder", "pid": 4242, "title": "Choose a new folder for the backup",
+                                                         "path": str(self.root / "backups" / "before-upgrade"), "seconds": 90}])
+        self.assertEqual(self.sent("choose_folder"), [{"op": "choose_folder", "pid": 4242, "title": "Choose the staged upgrade package folder",
+                                                       "path": str(self.root / "staged"), "seconds": 90}])
+        self.assertEqual([step["step"] for step in app.steps],
+                         ["name new folder: Choose a new folder for the backup", "choose folder: Choose the staged upgrade package folder"])
+
+    def test_a_dialog_the_backend_could_not_answer_is_refused_by_its_kind_and_title(self):
+        app = self.application("darwin", [[node(0, "AXWindow")]])
+        app.process.returncode = 1
+        with self.assertRaisesRegex(native_journey.Refused,
+                                    r"answering the save dialog 'Choose a new folder for the portable review': refuse: the element went away "
+                                    r"\(the application ended with exit status 1\)"):
+            app.answer("refuse", "the save dialog", "Choose a new folder for the portable review", self.root / "review")
+
+    def test_an_option_is_picked_from_the_pop_up_list_named_within_its_region(self):
+        tree = [
+            node(0, "frame"),
+            node(1, "section", "Investigation packets", 0),
+            node(2, "combo box", "Case", 1),
+            node(3, "combo box", "Packets of this workspace", 1),
+            node(4, "combo box", "Packets of this workspace", 0),
+        ]
+        app = self.application("linux", [tree])
+        app.select("Packets of this workspace", "practice-packet", within="Investigation packets", timeout=5)
+        self.assertEqual(self.sent("select"), [{"op": "select", "pid": 4242, "id": 3, "option": "practice-packet"}])
+        with self.assertRaisesRegex(native_journey.Refused, "no enabled select named 'Reviews of this workspace'"):
+            app.select("Reviews of this workspace", "practice-review", timeout=1)
+
     def test_a_line_split_across_elements_is_read_as_a_screen_reader_reads_it(self):
         tree = [
             node(0, "AXWindow"),

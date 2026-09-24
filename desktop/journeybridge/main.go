@@ -13,10 +13,11 @@
 // result or error returns in Wails' callback shape. Where Wails would leave a
 // call unanswered — a name nothing is bound under, or a method that panics —
 // the bridge rejects it instead, so a journey fails rather than hangs. The
-// second is the host's native file and folder dialogs, which a journey
+// second is the host's native folder, file and save dialogs, which a journey
 // answers explicitly before the action that opens them — the way a person
-// picks a folder — and which are refused and recorded when no answer was
-// scripted.
+// picks a folder or names a new one — and which are refused and recorded when
+// no answer was scripted, or when the answer is one the host's dialog could
+// never give.
 //
 // The facade is constructed by the same constructor the shell calls, over the
 // same five local state documents, in a state directory under the journey's
@@ -398,11 +399,14 @@ func (b *bridge) call(r request) (settled response) {
 func (b *bridge) control(r request) response {
 	switch r.Op {
 	case "dialog":
-		if r.Dialog != folderDialog && r.Dialog != filesDialog {
-			return response{ID: r.ID, Error: "journeybridge: a dialog answer is for a folder or files dialog"}
+		if r.Dialog != folderDialog && r.Dialog != filesDialog && r.Dialog != saveDialog {
+			return response{ID: r.ID, Error: "journeybridge: a dialog answer is for a folder, files or save dialog"}
 		}
 		if r.Dialog == folderDialog && len(r.Paths) > 1 {
 			return response{ID: r.ID, Error: "journeybridge: a folder dialog chooses one folder"}
+		}
+		if r.Dialog == saveDialog && len(r.Paths) > 1 {
+			return response{ID: r.ID, Error: "journeybridge: a save dialog names one new folder"}
 		}
 		b.dialogs.script(answer{kind: r.Dialog, title: r.Title, paths: r.Paths})
 		return response{ID: r.ID, Result: true}
@@ -412,15 +416,16 @@ func (b *bridge) control(r request) response {
 	return response{ID: r.ID, Error: "journeybridge: unknown request " + r.Op}
 }
 
-// The two host dialogs the facade opens.
+// The three host dialogs the facade opens.
 const (
 	folderDialog = "folder"
 	filesDialog  = "files"
+	saveDialog   = "save"
 )
 
-// answer is one dialog outcome a journey scripted: the paths a person chose,
-// or none for a dialog they dismissed. A title, when given, is the dialog the
-// journey expects to answer.
+// answer is one dialog outcome a journey scripted: the paths a person chose or
+// the new folder they named, or none for a dialog they dismissed. A title,
+// when given, is the dialog the journey expects to answer.
 type answer struct {
 	kind  string
 	title string
@@ -449,6 +454,13 @@ type scriptedDialogs struct {
 	shown   []shown
 }
 
+// The facade finds the file and save dialogs by their interfaces, so a
+// signature that drifted would leave them unavailable rather than fail here.
+var (
+	_ desktop.FileChooser        = (*scriptedDialogs)(nil)
+	_ desktop.DestinationChooser = (*scriptedDialogs)(nil)
+)
+
 func (d *scriptedDialogs) script(a answer) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -462,9 +474,12 @@ func (d *scriptedDialogs) report() dialogReport {
 }
 
 // take consumes the next answer for a dialog of this kind and title. A dialog
-// nobody scripted, or one of another kind or title, is refused the way an
-// unavailable dialog is, and recorded so the journey fails for it.
-func (d *scriptedDialogs) take(kind, title string) ([]string, error) {
+// nobody scripted, one of another kind or title, and an answer the host's
+// dialog could never give are refused the way an unavailable dialog is, and
+// recorded so the journey fails for it. impossible, when given, says why one
+// path is not an answer the host's dialog gives, as it is on disk when
+// answered, or nothing when it is one.
+func (d *scriptedDialogs) take(kind, title string, impossible func(string) string) ([]string, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	record := shown{Kind: kind, Title: title}
@@ -477,21 +492,52 @@ func (d *scriptedDialogs) take(kind, title string) ([]string, error) {
 	case d.answers[0].title != "" && d.answers[0].title != title:
 		problem = "the next scripted answer is for the dialog titled " + d.answers[0].title
 	}
+	var next answer
+	if problem == "" {
+		next = d.answers[0]
+		d.answers = d.answers[1:]
+		for _, path := range next.paths {
+			if problem == "" && impossible != nil {
+				problem = impossible(path)
+			}
+		}
+	}
 	if problem != "" {
 		record.Problem = problem
 		d.shown = append(d.shown, record)
 		return nil, errors.New(problem)
 	}
-	next := d.answers[0]
-	d.answers = d.answers[1:]
 	d.shown = append(d.shown, record)
 	return next.paths, nil
+}
+
+// notAnExistingFolder says why a path is not what the host's folder dialog
+// returns: a folder that exists when the person picks it, never a file or a
+// folder that is not there yet.
+func notAnExistingFolder(path string) string {
+	if info, err := os.Stat(path); err != nil || !info.IsDir() {
+		return "a folder dialog returns only a folder that already exists, and the scripted answer is not one"
+	}
+	return ""
+}
+
+// notNamedInAnExistingFolder says why a path is not what the host's save
+// dialog returns: a name the person typed in a folder that exists, which need
+// not exist itself.
+func notNamedInAnExistingFolder(path string) string {
+	if !filepath.IsAbs(path) {
+		return "a save dialog returns an absolute path, and the scripted answer is not one"
+	}
+	if info, err := os.Stat(filepath.Dir(path)); err != nil || !info.IsDir() {
+		return "a save dialog names an entry of a folder that already exists, and the scripted answer's folder does not"
+	}
+	return ""
 }
 
 // ChooseFolder answers the folder dialog. A dismissed dialog returns an empty
 // folder and no error, as the native dialog does.
 func (d *scriptedDialogs) ChooseFolder(title string) (string, error) {
-	paths, err := d.take(folderDialog, title)
+	paths, err := d.take(folderDialog, title, notAnExistingFolder)
 	if err != nil || len(paths) == 0 {
 		return "", err
 	}
@@ -501,5 +547,17 @@ func (d *scriptedDialogs) ChooseFolder(title string) (string, error) {
 // ChooseFiles answers the file dialog. A dismissed dialog returns no files and
 // no error, as the native dialog does.
 func (d *scriptedDialogs) ChooseFiles(title, _, _ string) ([]string, error) {
-	return d.take(filesDialog, title)
+	return d.take(filesDialog, title, nil)
+}
+
+// ChooseDestination answers the save dialog. The named path is returned as the
+// host's dialog returns it, and nothing is created: the writer it is handed to
+// creates it. A dismissed dialog returns an empty path and no error, as the
+// native dialog does.
+func (d *scriptedDialogs) ChooseDestination(title string) (string, error) {
+	paths, err := d.take(saveDialog, title, notNamedInAnExistingFolder)
+	if err != nil || len(paths) == 0 {
+		return "", err
+	}
+	return paths[0], nil
 }

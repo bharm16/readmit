@@ -404,7 +404,7 @@ func packetRefusal(err error) (State, string) {
 	return Failed, err.Error()
 }
 
-// PacketPathResult is one native folder choice for a portable review.
+// PacketPathResult is one new folder named natively for a portable review.
 type PacketPathResult struct {
 	State  State  `json:"state"`
 	Reason string `json:"reason,omitzero"`
@@ -413,12 +413,12 @@ type PacketPathResult struct {
 
 func (r *PacketPathResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
-// ChoosePacketExportPath presents the host's native folder dialog for the new
-// folder a portable review is sealed into. The choice is a destination only;
-// choosing it exports nothing and contacts nothing.
+// ChoosePacketExportPath presents the host's native save dialog to name the
+// new folder a portable review is sealed into. The choice is a destination
+// only; naming it creates, exports and contacts nothing.
 func (a *App) ChoosePacketExportPath() PacketPathResult {
 	return run(a, true, false, func(ctx context.Context) PacketPathResult {
-		folder, declined := a.chooseFolder(ctx, "Choose a new folder for the portable review")
+		folder, declined := a.chooseDestination(ctx, "Choose a new folder for the portable review")
 		if folder == "" {
 			return PacketPathResult{State: declined.state, Reason: declined.reason}
 		}

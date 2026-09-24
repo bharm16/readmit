@@ -36,13 +36,20 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
-// dialog presents the host's native folder picker. Wails supplies the
-// application context after startup, so it is installed then and read under a
-// mutex rather than assumed to be ready.
+// dialog presents the host's native folder, file and save dialogs. Wails
+// supplies the application context after startup, so it is installed then and
+// read under a mutex rather than assumed to be ready.
 type dialog struct {
 	mu  sync.Mutex
 	ctx context.Context
 }
+
+// The facade finds the file and save dialogs by their interfaces, so a
+// signature that drifted would leave them unavailable rather than fail here.
+var (
+	_ desktop.FileChooser        = (*dialog)(nil)
+	_ desktop.DestinationChooser = (*dialog)(nil)
+)
 
 func (d *dialog) start(ctx context.Context) {
 	d.mu.Lock()
@@ -72,6 +79,21 @@ func (d *dialog) ChooseFiles(title, filterName, filterPattern string) ([]string,
 		filters = []runtime.FileFilter{{DisplayName: filterName, Pattern: filterPattern}}
 	}
 	return runtime.OpenMultipleFilesDialog(ctx, runtime.OpenDialogOptions{Title: title, Filters: filters})
+}
+
+// ChooseDestination presents the host's save dialog, in which a person names a
+// new folder in a location they choose; the host's folder picker returns only a
+// folder that already exists. The dialog creates nothing: the writer the name
+// is handed to creates the folder, and refuses one that already exists. Every
+// host's save dialog lets the person make a folder to put it in.
+func (d *dialog) ChooseDestination(title string) (string, error) {
+	d.mu.Lock()
+	ctx := d.ctx
+	d.mu.Unlock()
+	if ctx == nil {
+		return "", errors.New("the application window is not ready")
+	}
+	return runtime.SaveFileDialog(ctx, runtime.SaveDialogOptions{Title: title, CanCreateDirectories: true})
 }
 
 // reportsVersion reports whether this invocation asks for the build identity
