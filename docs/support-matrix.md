@@ -118,7 +118,7 @@ runner for each target rather than on every older release in the range.
 | Inbound MLLP, plain, TLS or mutual TLS | Implemented (`collect`); loopback bind unless `--approved-bind` | [collect](collect.md) | `TestCollectCapturesOverMutualTLSWithAReferencedKey`, `TestListeningCommandsRestrictNonloopbackBinds` |
 | Outbound MLLP to a recorded nonproduction environment | Implemented (`replay`, `test --send`, `target check`) under a send policy | [replay](replay.md), [target](target.md) | `TestReplayRefusesAProductionClassifiedEnvironment` |
 | **PostgreSQL, SQL Server, Oracle** | `observe collect` implements bounded, parameter-bound, read-only `database-query` sources through the pinned PostgreSQL, SQL Server and Oracle drivers. **Only exact local Linux/arm64 PostgreSQL 16.15, 17.11 and 18.6 image/server cells have retained real-server qualification.** SQL Server 2019/2022/2025 awaits native x86-64 owner-dispatched labs; Oracle 26ai Free/19c remains unqualified. No generic database, ODBC or cross-platform claim follows from the local PostgreSQL runs | [database observations](observe.md#database-queries) | `TestDatabaseQualifiedLab` (opt-in real server), `TestCommittedPostgreSQLQualificationEvidence`, `TestDatabaseCollectionBindsValuesAndRetainsEffectiveBounds` |
-| **Mirth Connect and Open Integration Engine exports** | **Not available.** Adapters selected in [D2](product-decisions.md#d2--integration-engine-exports); no engine format is implemented, named or assumed. A generic envelope may still be mapped with `import --recipe` | [source](source.md#explicitly-not-supported) | — |
+| **Mirth Connect 4.5.2 and Open Integration Engine 4.6.0 exports** | **Limited local file import.** Synthetic engine exports test the source-only unencrypted RAW/HL7V2 XML subset and RAW-only fallback. Destination, encrypted and attachment variants refuse; a declared engine name does not authenticate a file. Fixture rights review is pending | [import](import.md#engine-exports-finite-tested-local-adapter) | `TestEngineImportActualSourceExportsThroughPublicCLI`, `TestEngineImportPublicCLIRefusesActualUnsupportedVariantsWithoutOutput` |
 | Downstream HL7 capture as an observation-window collector | Implemented (`readmit-observation-source/v2` kind `downstream-capture`); reads a sealed case under one declared field selector, and asks the downstream system for no receipt | [observe](observe.md#reading-a-downstream-capture) | `TestObserveCollectBindsDownstreamMessageEvidenceToWhatTheRunProduced`, `TestACaptureObservationNeverReadsFailedCollectionAsAbsence` (package tests in `internal/observesource`) |
 | Scheduling, watching, polling daemons, background services | Not available by design | [source](source.md#explicitly-not-supported), [observe](observe.md#not-in-this-release) | — |
 
@@ -144,7 +144,9 @@ The list is explicit so that nothing has to be inferred from silence.
   platform beyond the exact local Linux/arm64 cells above, or an ODBC bridge.
   The `database-query` path exists in `observe collect`, with the remaining
   server/version gates stated in [database observations](observe.md#qualification-still-required).
-- Mirth Connect or Open Integration Engine export adapters.
+- Other Mirth/OIE versions, destination-stage, encrypted or attachment export
+  mappings, and any engine certification. The finite source-only file adapter
+  above makes no live engine connection.
 - An SSH or SFTP client inside readmit.
 - Collecting from an application interface declared as an evidence source.
 - Desktop packages signed for distribution or notarized, published desktop

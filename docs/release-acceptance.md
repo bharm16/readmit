@@ -27,6 +27,9 @@ test reported as passing.
   remain unsupported. Review applicable HL7 incorporation and terminology rights.
 - [ ] #35: retain real synthetic-message exports from Mirth 4.5.2 and OIE 4.6.0
   with engine digests/options and import results, including unsupported variants.
+  The candidate source-only lab matrix and byte-exact exports are in
+  `testdata/engineexport/`; fixture redistribution/rights approval and any
+  broader supported option remain an owner gate before release acceptance.
 - [ ] #75: test each advertised database/driver/authentication combination,
   SELECT-only grants, TLS verification, parameter binding, cancellation and
   bounds. Local Linux/arm64 PostgreSQL 16.15, 17.11 and 18.6 evidence is

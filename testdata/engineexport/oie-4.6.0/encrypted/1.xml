@@ -1,0 +1,101 @@
+<message>
+  <messageId>1</messageId>
+  <serverId>54dec7bc-1e42-4613-adfc-0a5e381f9403</serverId>
+  <channelId>7ec31e15-73cb-5815-945e-f229667cc016</channelId>
+  <receivedDate>
+    <time>1790261712366</time>
+    <timezone>Etc/UTC</timezone>
+  </receivedDate>
+  <processed>true</processed>
+  <connectorMessages class="linked-hash-map">
+    <entry>
+      <int>0</int>
+      <connectorMessage>
+        <messageId>1</messageId>
+        <metaDataId>0</metaDataId>
+        <channelId>7ec31e15-73cb-5815-945e-f229667cc016</channelId>
+        <channelName>Readmit synthetic source-a</channelName>
+        <connectorName>Source</connectorName>
+        <serverId>54dec7bc-1e42-4613-adfc-0a5e381f9403</serverId>
+        <receivedDate>
+          <time>1790261712366</time>
+          <timezone>Etc/UTC</timezone>
+        </receivedDate>
+        <status>TRANSFORMED</status>
+        <raw>
+          <encrypted>true</encrypted>
+          <channelId>7ec31e15-73cb-5815-945e-f229667cc016</channelId>
+          <messageId>1</messageId>
+          <metaDataId>0</metaDataId>
+          <contentType>RAW</contentType>
+          <content>{alg=AES/CBC/PKCS5Padding,cs=UTF-8,iv=zBWI5YCAXfDFRftS+n0XLA==}jWNoN8U2OVpggtzmMDZ4MRmcpYlVlbqI8RmJOZdFfS8j/ZHNZMnqPxdOellVUOjNlWCbB10wqeof&#xd;
+JCYg32/+ZdIYhCKow3TPblbLyiSDlughnG1S3dHdOZzUUa3k9iLFZC9iByeRzCYmLVrnn+J02rbo&#xd;
+eEBilcK7irqGxDBmk4s=&#xd;
+</content>
+          <dataType>HL7V2</dataType>
+        </raw>
+        <processedRaw>
+          <encrypted>true</encrypted>
+          <channelId>7ec31e15-73cb-5815-945e-f229667cc016</channelId>
+          <messageId>1</messageId>
+          <metaDataId>0</metaDataId>
+          <contentType>PROCESSED_RAW</contentType>
+          <content>{alg=AES/CBC/PKCS5Padding,cs=UTF-8,iv=kReDxvgReJqKgZ8pQ6j0LA==}DxVbq3MS4Okwu+DQsb97AA==&#xd;
+</content>
+          <dataType>HL7V2</dataType>
+        </processedRaw>
+        <encoded>
+          <encrypted>true</encrypted>
+          <channelId>7ec31e15-73cb-5815-945e-f229667cc016</channelId>
+          <messageId>1</messageId>
+          <metaDataId>0</metaDataId>
+          <contentType>ENCODED</contentType>
+          <content>{alg=AES/CBC/PKCS5Padding,cs=UTF-8,iv=HKiBBdlL+u6OC3P6zpa1mg==}vu3vpFzvg/gnoCt3Ayi2Ew==&#xd;
+</content>
+          <dataType>HL7V2</dataType>
+        </encoded>
+        <sourceMapContent>
+          <encrypted>true</encrypted>
+          <content class="string">{alg=AES/CBC/PKCS5Padding,cs=UTF-8,iv=zUQHBdIXuYAdApcBEWlh3Q==}N63/P+l3hBC3JK8jvjyIy4xvs1Vq7yLOLQq6d7SOgUSnFg8noGF4rLzH/jwXtXnujDLDbcPZjmui&#xd;
+sSZL+bFCxWJvkAlCE35L2es3RlW3geQ3SHL/YqAYGucJ6r1ZbmaVPMW9SuQkWW7kUBXxv6lkfgvH&#xd;
+IK6ulMkE+6TNwpYWGAzg2Uh1n6qVBi1uUDz/WFA/p+ZuweiREhI+4isyrMdSJ6tmarYYyDaCdvb7&#xd;
+CJuFnalO6hrVBERBY5O3PRG531ao&#xd;
+</content>
+        </sourceMapContent>
+        <connectorMapContent>
+          <encrypted>true</encrypted>
+          <content class="string">{alg=AES/CBC/PKCS5Padding,cs=UTF-8,iv=V7BxjXvGt0e8n5GPEz6Evg==}RC7/IK4DlO61kDDINhte5w==&#xd;
+</content>
+        </connectorMapContent>
+        <channelMapContent>
+          <encrypted>true</encrypted>
+          <content class="string">{alg=AES/CBC/PKCS5Padding,cs=UTF-8,iv=/Eet8LqzPBwd4AM6CnwljA==}DWwqq9vCylgpsoTTcsKlnw==&#xd;
+</content>
+        </channelMapContent>
+        <responseMapContent>
+          <encrypted>true</encrypted>
+          <content class="string">{alg=AES/CBC/PKCS5Padding,cs=UTF-8,iv=q+4htANNSCekyyEkti6cZw==}6X3nYnqF84wt25Njm6YdFA==&#xd;
+</content>
+        </responseMapContent>
+        <metaDataMap/>
+        <processingErrorContent>
+          <encrypted>false</encrypted>
+        </processingErrorContent>
+        <postProcessorErrorContent>
+          <encrypted>false</encrypted>
+        </postProcessorErrorContent>
+        <responseErrorContent>
+          <encrypted>false</encrypted>
+        </responseErrorContent>
+        <errorCode>0</errorCode>
+        <sendAttempts>1</sendAttempts>
+        <responseDate>
+          <time>1790261712389</time>
+          <timezone>Etc/UTC</timezone>
+        </responseDate>
+        <chainId>0</chainId>
+        <orderId>0</orderId>
+      </connectorMessage>
+    </entry>
+  </connectorMessages>
+</message>

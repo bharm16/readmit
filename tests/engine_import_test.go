@@ -3,15 +3,158 @@ package tests
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
-	"github.com/bharm16/readmit/internal/bundle"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/bharm16/readmit/internal/bundle"
 )
+
+func TestEngineImportActualSourceExportsThroughPublicCLI(t *testing.T) {
+	for _, target := range []struct {
+		engine, version, expectedSHA string
+	}{
+		{"mirth", "4.5.2", "126c628591d15244e4a4459c9f5d98fb1cb15bdb72a5e4d0bb24c97f66ffe125"},
+		{"oie", "4.6.0", "126c628591d15244e4a4459c9f5d98fb1cb15bdb72a5e4d0bb24c97f66ffe125"},
+	} {
+		t.Run(target.engine, func(t *testing.T) {
+			root := t.TempDir()
+			plan := writeDocument(t, root, "adapter.json", fmt.Sprintf(`{"schema":"readmit-engine-export/v1","engine":%q,"version":%q,"format":"message-xml","terminator":"cr"}`, target.engine, target.version))
+			source, err := filepath.Abs(filepath.Join("..", "testdata", "engineexport", target.engine+"-"+target.version, "source", "1.xml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			container, err := os.ReadFile(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			preview, stderr, err := run(t, "import", "engine", "--plan", plan, "--file", source, "--preview")
+			if err != nil || stderr != "" || !strings.Contains(preview, `"stage":"raw"`) || !strings.Contains(preview, `"correlation":"unknown"`) || strings.Contains(preview, "SYNTH-") {
+				t.Fatalf("public preview refused or disclosed values: %v %s %s", err, preview, stderr)
+			}
+			output := filepath.Join(root, "imported")
+			stdout, stderr, err := run(t, "import", "engine", "--plan", plan, "--file", source, "--output", output)
+			if err != nil || stderr != "" || strings.Contains(stdout, "SYNTH-") {
+				t.Fatalf("public import refused or disclosed values: %v %s %s", err, stdout, stderr)
+			}
+			opened, err := bundle.Open(output)
+			if err != nil || opened.Manifest.Schema != "readmit-case/v5" || len(opened.Events) != 1 || opened.Events[0].Direction != bundle.Unknown || opened.Events[0].ObservedAt != nil {
+				t.Fatalf("retained engine evidence or uncertainty changed: %v", err)
+			}
+			original, err := opened.EngineContainer()
+			if err != nil || !bytes.Equal(original, container) {
+				t.Fatal("the imported case lost exact engine export bytes")
+			}
+			payload, err := opened.Raw(opened.Events[0].ID)
+			if err != nil || fmt.Sprintf("%x", sha256.Sum256(payload)) != target.expectedSHA {
+				t.Fatal("the imported source raw bytes differ from the independent synthetic input")
+			}
+			if timeline, stderr, err := run(t, "timeline", output); err != nil || stderr != "" || strings.Contains(timeline, "SYNTH-") {
+				t.Fatalf("public timeline refused or disclosed a value: %v %s %s", err, timeline, stderr)
+			}
+		})
+	}
+}
+
+func TestEngineImportPublicCLIRefusesActualUnsupportedVariantsWithoutOutput(t *testing.T) {
+	for _, target := range []struct{ engine, version, variant, id string }{
+		{"mirth", "4.5.2", "multi", "3"},
+		{"mirth", "4.5.2", "encrypted", "1"},
+		{"mirth", "4.5.2", "attachment", "1"},
+		{"oie", "4.6.0", "multi", "1"},
+		{"oie", "4.6.0", "encrypted", "1"},
+		{"oie", "4.6.0", "attachment", "1"},
+	} {
+		t.Run(target.engine+"/"+target.variant, func(t *testing.T) {
+			root := t.TempDir()
+			plan := writeDocument(t, root, "adapter.json", fmt.Sprintf(`{"schema":"readmit-engine-export/v1","engine":%q,"version":%q,"format":"message-xml","terminator":"cr"}`, target.engine, target.version))
+			source, err := filepath.Abs(filepath.Join("..", "testdata", "engineexport", target.engine+"-"+target.version, target.variant, target.id+".xml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			output := filepath.Join(root, "refused")
+			for _, args := range [][]string{{"--preview"}, {"--output", output}} {
+				command := []string{"import", "engine", "--plan", plan, "--file", source}
+				command = append(command, args...)
+				stdout, stderr, err := run(t, command...)
+				if err == nil || stdout != "" || strings.Contains(stderr, "SYNTH-") {
+					t.Fatalf("unsupported engine variant admitted or disclosed: %v %s %s", err, stdout, stderr)
+				}
+				if _, err := os.Stat(output); !os.IsNotExist(err) {
+					t.Fatal("refused export left a case")
+				}
+			}
+		})
+	}
+}
+
+func TestEngineImportRetainsActualEngineExportsOfMalformedSourceBytes(t *testing.T) {
+	for _, target := range []struct{ engine, version, id, expectedSHA string }{
+		{"mirth", "4.5.2", "7", "8480be4d13bbe63ffb9409cfeb55cde870fa2b2f9e89bbdc83b415f2cbfd1252"},
+		{"mirth", "4.5.2", "8", "5493a43c9b1ec502c1b2bc78fc468a9fbe4e24727ce872d5a03518774272b5e2"},
+		{"oie", "4.6.0", "7", "8480be4d13bbe63ffb9409cfeb55cde870fa2b2f9e89bbdc83b415f2cbfd1252"},
+		{"oie", "4.6.0", "8", "5493a43c9b1ec502c1b2bc78fc468a9fbe4e24727ce872d5a03518774272b5e2"},
+	} {
+		t.Run(target.engine+"/"+target.id, func(t *testing.T) {
+			root := t.TempDir()
+			plan := writeDocument(t, root, "adapter.json", fmt.Sprintf(`{"schema":"readmit-engine-export/v1","engine":%q,"version":%q,"format":"message-xml","terminator":"cr"}`, target.engine, target.version))
+			source, err := filepath.Abs(filepath.Join("..", "testdata", "engineexport", target.engine+"-"+target.version, "negative", target.id+".xml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			output := filepath.Join(root, "case")
+			if stdout, stderr, err := run(t, "import", "engine", "--plan", plan, "--file", source, "--output", output); err != nil || stderr != "" || strings.Contains(stdout, "SYNTH-") {
+				t.Fatalf("malformed source was not retained privately: %v %s %s", err, stdout, stderr)
+			}
+			opened, err := bundle.Open(output)
+			if err != nil || len(opened.Events) != 1 || opened.Events[0].Kind != bundle.Unparsed {
+				t.Fatalf("malformed engine source was not quarantined: %v", err)
+			}
+			raw, err := opened.Raw(opened.Events[0].ID)
+			if err != nil || fmt.Sprintf("%x", sha256.Sum256(raw)) != target.expectedSHA {
+				t.Fatal("quarantine did not retain the malformed source bytes")
+			}
+		})
+	}
+}
+
+func TestEngineImportRawFallbackRetainsExporterAddedSeparatorsWithoutClaimingAStage(t *testing.T) {
+	for _, target := range []struct{ engine, version string }{{"mirth", "4.5.2"}, {"oie", "4.6.0"}} {
+		t.Run(target.engine, func(t *testing.T) {
+			root := t.TempDir()
+			plan := writeDocument(t, root, "adapter.json", fmt.Sprintf(`{"schema":"readmit-engine-export/v1","engine":%q,"version":%q,"format":"raw","terminator":"cr"}`, target.engine, target.version))
+			source, err := filepath.Abs(filepath.Join("..", "testdata", "engineexport", target.engine+"-"+target.version, "raw", "1.xml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			container, err := os.ReadFile(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			preview, stderr, err := run(t, "import", "engine", "--plan", plan, "--file", source, "--preview")
+			if err != nil || stderr != "" || !strings.Contains(preview, `"stage":"unknown"`) || strings.Contains(preview, "SYNTH-") {
+				t.Fatalf("raw fallback preview guessed a stage or disclosed content: %v %s %s", err, preview, stderr)
+			}
+			output := filepath.Join(root, "raw-case")
+			if _, stderr, err := run(t, "import", "engine", "--plan", plan, "--file", source, "--output", output); err != nil || stderr != "" {
+				t.Fatalf("raw fallback import: %v %s", err, stderr)
+			}
+			opened, err := bundle.Open(output)
+			if err != nil || len(opened.Events) != 1 || opened.Events[0].Kind != bundle.Unparsed {
+				t.Fatalf("exporter separators were treated as a complete HL7 message: %v", err)
+			}
+			original, err := opened.EngineContainer()
+			if err != nil || !bytes.Equal(original, container) {
+				t.Fatal("raw fallback changed the engine's bytes")
+			}
+		})
+	}
+}
 
 func TestEngineImportPublicPreviewAndRetainedRawEvidence(t *testing.T) {
 	dir := t.TempDir()

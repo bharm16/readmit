@@ -276,4 +276,4 @@ Local evaluation: [trial issuance, activation and operation clock](license-v2.md
 
 Contextual offline help and recovery codes, with ADT/SIU/ORM/ORU recipes: [workflow help](workflow-help.md).
 
-- [Engine exports](import.md#engine-exports-unqualified-local-adapter): explicit raw/XML subset, retained v5 provenance and pending real-engine acceptance.
+- [Engine exports](import.md#engine-exports-finite-tested-local-adapter): Mirth 4.5.2/OIE 4.6.0 synthetic source-only XML and raw fallback tests, retained v5 provenance, explicit unsupported variants and pending fixture rights review.

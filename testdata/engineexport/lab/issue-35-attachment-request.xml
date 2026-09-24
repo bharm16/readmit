@@ -1,0 +1,3 @@
+<com.mirth.connect.donkey.model.message.RawMessage><rawData>MSH|^~\&amp;|READMIT|SYNTHETIC|ENGINE|LAB|20260102120000+0000||ADT^A01|SYNTH-35-575347|P|2.5.1
+PID|||SYNTHETIC-ONLY||TEST^PERSON
+</rawData><binary>false</binary><attachments><attachment><id>synthetic-only-attachment</id><content>U1lOVEhFVElDLU9OTFk=</content><type>text/plain</type><encrypt>false</encrypt></attachment></attachments></com.mirth.connect.donkey.model.message.RawMessage>

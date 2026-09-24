@@ -42,6 +42,14 @@ The repository also carries an externally authored verification corpus under
 implemented HL7 endpoint. It is repository and CI material and is not shipped in
 the release archives; see its own README in the repository.
 
+The separate `testdata/engineexport` tree holds byte-exact exports actually
+written by isolated Mirth Connect 4.5.2 and Open Integration Engine 4.6.0 labs
+from generated synthetic inputs. It labels its channel configurations and
+inputs separately from message exports, pins release/runtime/options digests,
+and tests the finite source-only adapter plus refused variants. Rights review
+remains pending, so this candidate tree is not yet promoted into the
+independently approved verification corpus.
+
 Additional malformed examples live as explicit literals in tests. Semantic correctness of
 the fixtures is deliberately not an acceptance criterion for syntax inspection.
 
