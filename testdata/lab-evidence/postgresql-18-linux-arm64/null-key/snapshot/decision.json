@@ -1,0 +1,1 @@
+{"schema":"readmit-send-decision/v1","allowed":true,"reason":"approved","address":"127.0.0.1:52344","classification":"nonproduction","explicit_send":true,"policy_selected":true,"approved_destinations":["127.0.0.0/8"],"resolved_addresses":["127.0.0.1"],"decided_at":"2026-09-24T15:02:11.466113Z"}

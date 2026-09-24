@@ -568,4 +568,5 @@ D3 authorizes `database/sql` collectors using pgx/v5 v5.11.0,
 go-mssqldb v1.11.0 and go-ora/v2 v2.9.0. These are pure-Go drivers; the CLI
 keeps all five static targets. See [observation windows](observe.md#database-queries)
 for explicit TLS, bound filters, SELECT-only grants, typed key mapping, retained
-bounds and the still-unqualified server matrix. No database server is embedded.
+bounds, local Linux/arm64 PostgreSQL 16/17/18 lab evidence, and the remaining
+SQL Server/Oracle qualification gates. No database server is embedded.

@@ -722,6 +722,26 @@ observed key state; they do not imply a serializable snapshot across polls.
 
 ### Qualification still required
 
+The opt-in [synthetic database lab](../.github/workflows/database-lab.yml) is
+`workflow_dispatch` only. It is never a pull-request, push, release or required
+check. Six fixed Linux x86-64 jobs run PostgreSQL 16/17/18 and SQL Server
+2019/2022/2025 one container per job, with generated per-run TLS and passwords,
+a setup principal separate from the SELECT-only observation principal, and
+loopback-only published ports. Each job retains its actual image digest and
+server version beside synthetic completion/snapshot evidence for positive,
+empty, ambiguous, permission, bound, cancellation and recovery paths. A
+successful PR containing the workflow is not server qualification: the owner
+must merge it, dispatch it on the default branch, and inspect all six retained
+artifacts before those combinations are advertised. Oracle 26ai Free and 19c
+are deliberately not run in this round and remain unqualified. Workflow
+artifacts expire after 30 days; the owner must preserve the verified safe
+receipts before expiration for a lasting qualification claim.
+
+The runner uses the [official PostgreSQL image](https://hub.docker.com/_/postgres)
+and Microsoft's [Linux TLS configuration](https://learn.microsoft.com/en-us/sql/linux/security/encrypted-connections?view=sql-server-ver17)
+for the SQL Server containers, but the retained lab results, not those setup
+instructions, decide what Readmit can claim.
+
 The pinned drivers are [pgx v5.11.0](https://github.com/jackc/pgx/releases/tag/v5.11.0),
 [go-mssqldb v1.11.0](https://github.com/microsoft/go-mssqldb/releases/tag/v1.11.0)
 and [go-ora/v2 v2.9.0](https://github.com/sijms/go-ora/releases/tag/v2.9.0).
@@ -730,17 +750,39 @@ Upstream connector/TLS APIs are checked against those versions' source;
 and [go-ora's connection options](https://github.com/sijms/go-ora/tree/v2.9.0)
 are configuration references, not proof of this product's compatibility.
 
-No database/server version is yet advertised as qualified. The owner must supply:
+The following **local Linux/arm64 Docker Desktop** PostgreSQL cells passed the
+opt-in synthetic lab with password authentication, a per-run CA and verified
+server name, separate setup and SELECT-only principals, direct write denial,
+and the public `readmit observe collect` path. Their
+[retained completion and snapshot evidence](https://github.com/bharm16/readmit/tree/main/testdata/lab-evidence)
+is part of this checkout; each folder includes a 94-file SHA-256 manifest.
+These are exact image/platform/server-patch claims, not a general PostgreSQL
+claim on all installations or evidence from the workflow's x86-64 runners.
 
-- PostgreSQL **16, 17 and 18** isolated synthetic labs with exact patch/image
-  digests recorded. A local PostgreSQL 14 test is developmental evidence only.
+| Cell | Actual server patch | Retained evidence |
+| --- | --- | --- |
+| PostgreSQL 16, Linux arm64 | 16.15 (Debian 16.15-1.pgdg13+2) | [16 receipt and snapshots](https://github.com/bharm16/readmit/tree/main/testdata/lab-evidence/postgresql-16-linux-arm64) |
+| PostgreSQL 17, Linux arm64 | 17.11 (Debian 17.11-1.pgdg13+2) | [17 receipt and snapshots](https://github.com/bharm16/readmit/tree/main/testdata/lab-evidence/postgresql-17-linux-arm64) |
+| PostgreSQL 18, Linux arm64 | 18.6 (Debian 18.6-1.pgdg13+2) | [18 receipt and snapshots](https://github.com/bharm16/readmit/tree/main/testdata/lab-evidence/postgresql-18-linux-arm64) |
+
+Exact image identities, rather than the mutable major tags alone:
+
+- 16: image ID `sha256:c319f2a8182bcdcbb3297d568e2a9cc9e7da3a624438e14b63921c719817e1b6`; repository digest `postgres@sha256:a3b7f434b2dc57ce85a67e171163eb8ab1a1ebcb39d27484661f26b1dfbe30d6`.
+- 17: image ID `sha256:97432f980da100ebd3e419711efee84e1e97a966d62c035286a07f239ddb4d9c`; repository digest `postgres@sha256:f4c66b820c6f974249089d3d16d86a3698eae11e8746eb6644b2271031e91232`.
+- 18: image ID `sha256:d8a40176c29aa0c7a20a19f85ddddc47f72d8d6789a7a86a21f3713e71fb4ad6`; Docker reported both `postgres@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722` and `postgres@sha256:86c951e05bf56c93d95d397747fb8820ac76cc3bedb78f43abd83eedbe3666ae`. The image ID and both reported digests are retained rather than choosing one silently.
+
+SQL Server 2019/2022/2025 on native x86-64 and Oracle 26ai Free/19c remain
+**unqualified**. The workflow must merge and be dispatched on `main` before
+the SQL Server cells have retained results. Oracle is skipped this round; 19c
+also needs its separately authorized installation. The remaining owner gates:
+
 - SQL Server **2019, 2022 and 2025** on native **x86-64 Linux**, with licensed
   images/installations and exact versions recorded. Apple-Silicon emulation
   cannot substitute for the reference environment.
 - Oracle **26ai Free**, plus a separately **authorized Oracle 19c installation**,
   each with exact patch/image identity. 26ai and a protocol fixture cannot
   establish 19c behavior or rights to run it.
-- A TLS endpoint and trusted CA/name for each lab; separate SELECT-only and
+- A TLS endpoint and trusted CA/name for each remaining lab; separate SELECT-only and
   setup/reset principals; approved views populated only with synthetic keys.
   Register store references locally; never attach values or DSNs to issues.
 - Retained `observe collect` completion/snapshot evidence for populated and
@@ -760,8 +802,9 @@ cluster using an explicitly selected `READMIT_POSTGRES_BIN` directory. It uses
 synthetic data, TLS and a separate view-only principal, verifies write/permission
 denial, exact numeric/timestamp mappings, query timeout and fresh recovery. Its
 loopback-only trust authentication tests grants and transport, **not password
-authentication**. The local run used PostgreSQL 14.19 (Homebrew); all eight D3
-server-version cells remain pending. Example invocation:
+authentication**. Its local run used PostgreSQL 14.19 (Homebrew) and does not
+substitute for the three Linux/arm64 password-authenticated cells above or any
+pending SQL Server/Oracle cell. Example invocation:
 
 ```sh
 READMIT_POSTGRES_BIN=/absolute/path/to/postgresql/bin \
