@@ -1154,7 +1154,10 @@ support absence remains an evaluation refusal of the shared engine.
 structured draft through `assertion.Decode`, the reader
 [`readmit explain`](explain.md) reads a set with, keeping every clause; a set
 that reader refuses is refused in its words, which are the words the command
-prints, and the draft stays as it was. The **Advanced JSON** tab validates
+prints, and the draft stays as it was. If unsaved clauses remain after an edit,
+the panel asks before an import replaces them. Escape
+or **Keep these assertions** leaves those clauses as they were. An empty or
+saved draft imports directly. The **Advanced JSON** tab validates
 pasted text with the same reader and exports those exact bytes to a new entry
 of the workspace, naming the SHA-256 of what was written, which is the set
 identity `readmit explain` prints for it. A name that is already an entry of

@@ -281,6 +281,38 @@ test("an assertion set is imported into the structured draft, an undecodable one
   }
   expect(journey.digest("interface/received-assertions.json")).toBe(receivedDigest);
 
+  // A local edit is retained in the draft. Reimporting the saved set must
+  // ask before replacing it, and Escape leaves both the draft and source file.
+  const editedId = received.assertions.at(0)?.id;
+  if (!editedId) throw new Error("the received assertion set has no clause to edit");
+  await press(user, panel.getByRole("button", { name: `Remove ${editedId}` }));
+  const editedClauses = received.assertions.slice(1).map((clause) => `Remove ${clause.id}`);
+  await waitFor(() => expect(clauses()).toEqual(editedClauses));
+  const importsBeforeQuestion = journey.callsTo("ImportAssertionSet").length;
+  await press(user, panel.getByRole("button", { name: "Import into this draft" }));
+  expect(panel.getByRole("group", { name: "Import received-assertions.json in place of these assertions?" })).toBeTruthy();
+  expect(journey.callsTo("ImportAssertionSet")).toHaveLength(importsBeforeQuestion);
+  await user.keyboard("{Escape}");
+  expect(clauses()).toEqual(editedClauses);
+  expect(journey.callsTo("ImportAssertionSet")).toHaveLength(importsBeforeQuestion);
+  expect(journey.digest("interface/received-assertions.json")).toBe(receivedDigest);
+
+  // Even after explicit confirmation, the reader's refusal cannot replace
+  // the unsaved clauses or alter the source set.
+  await enter(user, panel.getByLabelText("Assertion set entry"), "refused-assertions.json");
+  await press(user, panel.getByRole("button", { name: "Import into this draft" }));
+  const refusedImport = journey.callsTo("ImportAssertionSet").length;
+  await press(user, panel.getByRole("button", { name: "Replace them with refused-assertions.json" }));
+  await waitFor(() => expect(journey.callsTo("ImportAssertionSet")[refusedImport]?.settled).toBe(true));
+  expect(panel.getByText(UNDECODABLE)).toBeTruthy();
+  expect(clauses()).toEqual(editedClauses);
+  expect(journey.digest("interface/received-assertions.json")).toBe(receivedDigest);
+
+  await enter(user, panel.getByLabelText("Assertion set entry"), "received-assertions.json");
+  await press(user, panel.getByRole("button", { name: "Import into this draft" }));
+  await press(user, panel.getByRole("button", { name: "Replace them with received-assertions.json" }));
+  await waitFor(() => expect(clauses()).toEqual(received.assertions.map((clause) => `Remove ${clause.id}`)));
+
   // The advanced path: undecodable text is refused by validation and export
   // alike, and nothing is written.
   await press(user, panel.getByRole("button", { name: "Advanced JSON" }));
