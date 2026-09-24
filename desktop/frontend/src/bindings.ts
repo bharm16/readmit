@@ -69,6 +69,8 @@ export type CommandId =
   | "maintain-workspace"
   | "check-staged-upgrade"
   | "manage-assertions"
+  | "inspect-raw-file"
+  | "performance-corpus"
   | "cancel-operation"
   | "next-region"
   | "previous-region"
@@ -651,6 +653,13 @@ export interface Facade {
   RecoverProjectDocument(request: ProjectRecoverRequest): Promise<ProjectRecoverResult>;
   CheckStagedUpgrade(request: UpgradeCheckRequest): Promise<UpgradeResult>;
   PrepareStagedUpgrade(request: UpgradePrepareRequest): Promise<UpgradeResult>;
+  ChooseInspectionPath(kind: InspectionPathKind): Promise<InspectionPathResult>;
+  InspectRawFile(request: RawInspectionRequest): Promise<RawInspectionResult>;
+  WriteRoundTrip(request: RoundTripRequest): Promise<RoundTripResult>;
+  ChooseCorpusPath(kind: CorpusPathKind): Promise<CorpusPathResult>;
+  GenerateCorpus(request: CorpusGenerateRequest): Promise<CorpusGenerateResult>;
+  ScanCorpus(request: CorpusScanRequest): Promise<CorpusScanResult>;
+  CorpusProgress(): Promise<CorpusProgressResult>;
   CreateProject(name: string, title: string, owner: string, versions: string[]): Promise<ProjectOverviewResult>;
   UpdateProjectSettings(path: string, change: SettingsChange): Promise<ProjectOverviewResult>;
   RegisterCase(path: string, name: string, registration: CaseRegistration): Promise<ProjectOverviewResult>;
@@ -7424,4 +7433,236 @@ export function openFindingDecisions(workspace: string, entry: string): Promise<
 
 export function saveFindingDecisions(request: RuleDocumentSaveRequest): Promise<FindingDecisionsResult> {
   return guard(() => facade().SaveFindingDecisions(request), { state: "failed" });
+}
+
+// Raw inspection and the performance corpus: `readmit inspect`, `readmit
+// corpus generate` and `readmit corpus scan` in the window. The facade reads,
+// parses, generates and scans through the same shared operations the command
+// line runs; these shapes carry positions, states, counts and declarations,
+// and a value only when a person asked to see values, escaped by Go.
+
+export type InspectionPathKind = "file" | "round-trip-folder";
+
+export interface InspectionPathResult {
+  state: State;
+  reason?: string;
+  kind?: string;
+  path?: string;
+}
+
+export type InspectFormat = "auto" | "raw" | "mllp";
+export type InspectTerminator = "auto" | "cr" | "lf" | "crlf";
+
+export interface RawInspectionRequest {
+  file: string;
+  format: InspectFormat;
+  terminator: InspectTerminator;
+  show_values: boolean;
+  offset: number;
+  limit: number;
+  /** The digest earlier pages were read from; a later page of a changed file is refused. */
+  expect?: string;
+}
+
+/** One line of what `readmit inspect` prints: a message, a segment, a field or
+ * one repetition of a repeated field. Start and end are the half-open byte
+ * range in the original file; an omitted field has none. */
+export interface InspectionRow {
+  kind: "message" | "segment" | "field" | "repetition";
+  message: number;
+  segment?: string;
+  field?: number;
+  repetition?: number;
+  label?: string;
+  profile?: string;
+  terminator?: string;
+  state?: string;
+  start: number;
+  end: number;
+  value?: string;
+  /** The value shows only the field's leading bytes; the command prints it whole. */
+  value_truncated?: boolean;
+}
+
+export interface RawInspection {
+  format: string;
+  format_selection: string;
+  terminator_selection: string;
+  messages: number;
+  bytes: number;
+  sha256: string;
+  show_values: boolean;
+  offset: number;
+  /** The most rows one window holds, and the most bytes of one value shown. */
+  limit: number;
+  value_bytes: number;
+  total: number;
+  rows: InspectionRow[];
+}
+
+export interface RawInspectionResult {
+  state: State;
+  reason?: string;
+  inspection?: RawInspection;
+}
+
+export interface RoundTripRequest {
+  file: string;
+  format: InspectFormat;
+  terminator: InspectTerminator;
+  folder: string;
+  name: string;
+}
+
+export interface RoundTripResult {
+  state: State;
+  reason?: string;
+  path?: string;
+  bytes?: number;
+  sha256?: string;
+}
+
+export type CorpusPathKind = "corpus-folder" | "scan-file" | "benchmark-folder";
+
+export interface CorpusPathResult {
+  state: State;
+  reason?: string;
+  kind?: string;
+  path?: string;
+}
+
+export interface CorpusGenerateRequest {
+  /** A decimal string: a seed up to 2^64-1 does not survive a JavaScript number. */
+  seed: string;
+  base_time: string;
+  generator_version: string;
+  profile_version: string;
+  messages: number;
+  plan: ImportPlan;
+  folder: string;
+  corpus_name: string;
+  manifest_name: string;
+}
+
+export interface CorpusManifestView {
+  schema: string;
+  seed: string;
+  base_time: string;
+  generator_version: string;
+  profile_version: string;
+  messages: number;
+  plan: ImportPlan;
+  bytes: number;
+  sha256: string;
+}
+
+export interface CorpusGenerateResult {
+  state: State;
+  reason?: string;
+  corpus?: string;
+  manifest_path?: string;
+  manifest?: CorpusManifestView;
+}
+
+export interface CorpusScanRequest {
+  file: string;
+  plan: ImportPlan;
+  batch_records?: number;
+  batch_bytes?: number;
+  window_offset?: number;
+  window_limit?: number;
+  report_folder?: string;
+  report_name?: string;
+}
+
+export interface CorpusBounds {
+  batch_records: number;
+  batch_bytes: number;
+  record_bytes: number;
+  resident_bound: number;
+}
+
+/** One scanned record as a window renders it: where it began, how large it
+ * was and what the parsing batch found in it. No byte of the stream. */
+export interface ScannedRecord {
+  ordinal: number;
+  offset: number;
+  size: number;
+  occurrences: number;
+  decoded: number;
+  undecodable: number;
+}
+
+export type CaseBounds = "within" | "exceeded" | "not-evaluated";
+
+export interface CorpusScanView {
+  plan: ImportPlan;
+  bytes: number;
+  sha256?: string;
+  records: number;
+  occurrences: number;
+  decoded: number;
+  undecodable: number;
+  batches: number;
+  peak_resident_bytes: number;
+  bounds: CorpusBounds;
+  case_bounds: CaseBounds;
+  exceeded?: string[];
+  window_offset: number;
+  window_limit: number;
+  rows: ScannedRecord[];
+  elapsed_milliseconds: number;
+  targets: string;
+}
+
+export interface CorpusScanResult {
+  state: State;
+  reason?: string;
+  scan?: CorpusScanView;
+  benchmark?: string;
+}
+
+export interface CorpusProgress {
+  operation: "generate" | "scan";
+  messages: number;
+  bytes: number;
+  records: number;
+  occurrences: number;
+  batches: number;
+}
+
+export interface CorpusProgressResult {
+  state: State;
+  reason?: string;
+  progress?: CorpusProgress;
+}
+
+export function chooseInspectionPath(kind: InspectionPathKind): Promise<InspectionPathResult> {
+  return guard(() => facade().ChooseInspectionPath(kind), { state: "failed" });
+}
+
+export function inspectRawFile(request: RawInspectionRequest): Promise<RawInspectionResult> {
+  return guard(() => facade().InspectRawFile(request), { state: "failed" });
+}
+
+export function writeRoundTrip(request: RoundTripRequest): Promise<RoundTripResult> {
+  return guard(() => facade().WriteRoundTrip(request), { state: "failed" });
+}
+
+export function chooseCorpusPath(kind: CorpusPathKind): Promise<CorpusPathResult> {
+  return guard(() => facade().ChooseCorpusPath(kind), { state: "failed" });
+}
+
+export function generateCorpus(request: CorpusGenerateRequest): Promise<CorpusGenerateResult> {
+  return guard(() => facade().GenerateCorpus(request), { state: "failed" });
+}
+
+export function scanCorpus(request: CorpusScanRequest): Promise<CorpusScanResult> {
+  return guard(() => facade().ScanCorpus(request), { state: "failed" });
+}
+
+/** A read of what a running generation or scan has reached. It never waits
+ * for the operation slot, so the screen can read it while the operation runs. */
+export function corpusProgress(): Promise<CorpusProgressResult> {
+  return guard(() => facade().CorpusProgress(), { state: "failed" });
 }

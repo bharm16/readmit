@@ -1809,6 +1809,105 @@ packages, elevates or interrupts a service — installation stays a native
 administrator handoff. Customer-hub administration journeys stay with the hub
 collaboration UI and are not duplicated here.
 
+## Raw inspection and the performance corpus
+
+Two screens in the inspector region look at HL7 files the window does not
+import. Both are collapsed until opened, from their own heading or from the
+palette's **Inspect a raw HL7 file…** and **Generate or scan a performance
+corpus…** commands, which move focus to the inspector and to the screen they
+open. Neither needs a workspace, and neither writes a case, an index or a
+project.
+
+**Raw inspection** is [`readmit inspect`](../README.md) in the window. A person
+chooses exactly one file through the host's file dialog, declares its framing
+(`auto`, `raw` or `mllp`) and segment terminator (`auto`, `cr`, `lf` or
+`crlf`) — the two declarations the command takes, each `auto` meaning
+detected — and inspects it. `InspectRawFile` reads the file whole within the
+parser's 16 MiB bound through the same shared operation the command runs
+(`operation.InspectFile`, over `hl7.Parse` and the bundled field labels), so a
+row the window shows is a line the command prints, in its order: each message
+with its terminator, byte range and label profile, each segment with its byte
+range, each field by position and label with its state and length, and each
+repetition of a repeated field. A labelled field the message omits is shown as
+omitted, and a message whose version the labels do not describe is positional
+only. The window pages the rows 200 at a time, the grid's bound, and the file
+is read again for each page; nothing of it is retained. Every page after the
+first names the digest the rows already shown were read from, and a file that
+changed in between is refused — inspect it again — rather than shown as rows of
+two different files. Values are hidden until the person asks for them, and then
+each is the field's bytes as an escaped ASCII string made in Go, exactly as
+`--show-values` prints it, so bytes that are not UTF-8 reach the window escaped.
+A field longer than 4,096 bytes is shown as its escaped first 4,096 bytes and
+says it is shown in part, so one large field cannot carry the file into the
+window; the command prints it whole. The file is opened for reading only and is
+never changed; the summary names its length and SHA-256. Changing a declaration
+or the values choice clears what was shown, because it belongs to the reading
+it came from.
+
+Inspection has no encoding or direction declaration, because the command has
+none: the parser reads bytes, and an encoding or a direction is a declaration
+of what an import will record, which inspection records nothing of. Those are
+declared where they mean something — an import plan, and the performance
+corpus below.
+
+`WriteRoundTrip` is `--roundtrip`: once the file parses under the
+declarations, its exact bytes are written to one new file of a folder the
+person chose through the host's folder dialog. An existing file — including the
+source itself — is refused with the command's own sentence and left unchanged,
+a file that does not parse writes nothing, and the result names the copy's
+length and digest, which are the source's.
+
+**The performance corpus** is [`readmit corpus generate` and `readmit corpus
+scan`](corpus.md) in the window. Generation takes the four generator inputs,
+the message count and the plan it is framed under from structured controls with
+nothing preselected, as the command has no likely value for any of them. The
+screen takes every number in plain decimal digits: a leading zero, which the
+command's flags read as octal, and a count past what the window can send
+exactly cannot be sent. The seed crosses the facade as the digits typed and is
+read the way the command's flag reads it, so a seed up to 2^64-1 survives and
+the same digits are the same seed.
+`GenerateCorpus` writes the corpus and then its `readmit-corpus/v1` manifest to
+two new files of a folder chosen through the host's dialog, through the same
+`corpus.Write` the command calls, so the same declarations write the same bytes.
+Generation is new authoring and is admitted like the command.
+
+A scan chooses exactly one stream through the host's file dialog and declares
+the full `readmit-import-plan/v1` vocabulary an import declares, optional batch
+bounds, and an optional window of up to 200 records. `ScanCorpus` streams it
+through the shared `operation.ScanCorpus` and `importer.Scan`, holding one read
+window, one record and one parsing batch whatever the stream's length, and
+reports every line the command prints: the counts, the batch bounds, the peak
+held against the resident bound, whether an import of the same bytes would be
+within the case bounds or which ones it is past, the window of rows, the elapsed
+time and the proposed-targets note. With a benchmark asked for, a folder chosen
+through the host's dialog and a new file name are required before the scan
+starts, and the destination is checked to be new and allowed before the stream
+is read; the
+`readmit-benchmark/v1` document is written only when the scan completed. A
+scan needs no activation, as the command needs none. Changing the stream, a
+declaration, a bound, the window or the benchmark choice clears the report
+shown, as changing a generation input clears the corpus reported.
+
+While a generation or a scan runs, `CorpusProgress` answers the counts it has
+reached without waiting for the operation slot, and the screen shows them — the
+same counts `--progress` writes, naming no file. **Cancel generation** and
+**Cancel scan** stop exactly that operation, and `Escape` cancels whatever
+runs. A cancelled generation removes the partial corpus and writes no manifest.
+A cancelled scan answers with the counts it reached, the case bounds not
+evaluated and no benchmark, as the command prints `State: cancelled`.
+
+Every refusal is the command's own sentence: a declaration the bytes
+contradict, a record past its bound, a window or batch past its bound, a
+destination that exists or lies inside retained evidence, a file that is not a
+regular file. A file this account cannot read, and a folder it cannot write,
+are denied rather than failed, told apart by the error the shared operation
+returned rather than by opening anything again, and a scan whose benchmark
+could not be written still reports what it counted. A destination folder whose
+entries this account cannot look at is refused by the same reservation the
+command line's writers use, because it cannot be shown not to be retained
+evidence. While either screen's call holds the facade, the rest of the window
+is unavailable rather than answered busy.
+
 ## Not supported in this release
 
 - Rename, archive, delete or quota operations on a project. The shell creates

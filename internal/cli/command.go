@@ -4,10 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 
-	"github.com/bharm16/readmit/internal/dictionary"
 	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/spf13/cobra"
 )
 
@@ -67,13 +66,11 @@ func rootCommand(version string) (*cobra.Command, *bool) {
 			if cmd.Flags().Changed("roundtrip") && roundtrip == "" {
 				return usage("round-trip destination cannot be empty")
 			}
-			if format != "auto" && format != "raw" && format != "mllp" {
-				return usage("format must be auto, raw, or mllp")
+			options, err := operation.InspectOptions(format, terminator)
+			if err != nil {
+				return usage("%s", err)
 			}
-			if terminator != "auto" && terminator != "cr" && terminator != "lf" && terminator != "crlf" {
-				return usage("terminator must be auto, cr, lf, or crlf")
-			}
-			return inspectFile(cmd.OutOrStdout(), args[0], hl7.Options{Format: hl7.Format(format), Terminator: hl7.Terminator(terminator)}, showValues, roundtrip)
+			return inspectFile(cmd.OutOrStdout(), args[0], options, showValues, roundtrip)
 		},
 	}
 	inspect.Flags().StringVar(&format, "format", "auto", "Input framing: auto, raw, or mllp")
@@ -124,27 +121,15 @@ func rootCommand(version string) (*cobra.Command, *bool) {
 	return root, &ran
 }
 
+// inspectFile is the shared inspection rendered for a terminal. Reading,
+// parsing and the round trip are the operation's, so the desktop facade
+// reports the same file the same way and refuses it for the same reasons.
 func inspectFile(out io.Writer, path string, options hl7.Options, showValues bool, roundtrip string) error {
-	data, err := readInputFile(path, hl7.MaxInputBytes)
+	inspected, err := operation.InspectFile(path, options, roundtrip)
 	if err != nil {
 		return err
 	}
-	doc, err := hl7.Parse(data, options)
-	if err != nil {
-		return err
-	}
-	labels, err := dictionary.Load()
-	if err != nil {
-		return err
-	}
-	if roundtrip != "" {
-		if err := writeNewFile(roundtrip, doc.Serialize(),
-			"cannot create round-trip file; destination must be new and writable",
-			"cannot write round-trip file"); err != nil {
-			return err
-		}
-	}
-	if err := render(out, doc, labels, options, showValues); err != nil {
+	if err := render(out, inspected, showValues); err != nil {
 		return errors.New("cannot write inspection output")
 	}
 	return nil
@@ -159,19 +144,4 @@ func mergeAnnotations(groups ...map[string]string) map[string]string {
 		}
 	}
 	return merged
-}
-
-func selection(value string) string {
-	if value == "" || value == "auto" {
-		return "detected"
-	}
-	return "declared"
-}
-
-func messageLabels(doc *hl7.Document, message hl7.Message, labels *dictionary.Dictionary) map[string]map[int]string {
-	version := doc.Bytes(message.Segments[0].Field(12).Span)
-	if strings.SplitN(string(version), string(message.Delimiters.Component), 2)[0] == labels.HL7Version {
-		return labels.Segments
-	}
-	return nil
 }

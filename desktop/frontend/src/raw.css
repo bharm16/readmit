@@ -1,0 +1,22 @@
+.raw-panel { margin-block: 1rem; }
+.raw-panel h3 button { font: inherit; }
+.raw-panel label { display: block; margin-block: .5rem; }
+.raw-panel input:not([type="checkbox"]), .raw-panel select { display: block; width: min(100%, 36rem); }
+.raw-panel .raw-check input { display: inline; width: auto; margin-inline-end: .4rem; }
+.raw-panel fieldset { margin-block: .6rem; }
+.raw-panel button { margin: .3rem; }
+.raw-choice { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.raw-path, .raw-summary, .raw-facts dd { overflow-wrap: anywhere; }
+.raw-rows { font-family: ui-monospace, monospace; padding-inline-start: 3.5rem; }
+.raw-row { overflow-wrap: anywhere; }
+.raw-row-segment { padding-inline-start: 1rem; }
+.raw-row-field { padding-inline-start: 2rem; }
+.raw-row-repetition { padding-inline-start: 3rem; }
+.raw-value { white-space: pre-wrap; }
+.raw-paging, .raw-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.raw-facts { display: grid; grid-template-columns: max-content 1fr; gap: .2rem 1rem; }
+.raw-facts dt { font-weight: 600; }
+.raw-facts dd { margin: 0; }
+.raw-window { width: 100%; border-collapse: collapse; }
+.raw-window th, .raw-window td { text-align: right; padding: .2rem .4rem; border-bottom: 1px solid currentColor; }
+.raw-part { margin-block: 1rem; }

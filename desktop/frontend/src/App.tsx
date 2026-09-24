@@ -141,6 +141,8 @@ import { ImportPanel } from "./ImportPanel";
 import { CapturePanel } from "./CapturePanel";
 import { ObservationPanel } from "./ObservationPanel";
 import { MaintenancePanel } from "./MaintenancePanel";
+import { RawInspection } from "./RawInspection";
+import { PerformanceCorpus } from "./PerformanceCorpus";
 import type { CaptureObservationBinding } from "./bindings";
 
 /** The panes never collapse to nothing: either one keeps a usable share of the
@@ -180,6 +182,13 @@ export default function App() {
   const [windowReason, setWindowReason] = useState<string | undefined>(undefined);
 
   const [running, setRunning] = useState<Running>(null);
+  // Each counts the palette's requests to open that screen in the inspector.
+  const [rawRequest, setRawRequest] = useState(0);
+  const [corpusRequest, setCorpusRequest] = useState(0);
+  // Whether one of those screens' calls holds the facade, so the rest of the
+  // window is unavailable meanwhile rather than answered busy.
+  const [rawWorking, setRawWorking] = useState(false);
+  const [corpusWorking, setCorpusWorking] = useState(false);
   const [workspace, setWorkspace] = useState<WorkspaceResult | null>(null);
   const [evidence, setEvidence] = useState<CaseResult | null>(null);
   const [investigation, setInvestigation] = useState<ProjectOverviewResult | null>(null);
@@ -405,7 +414,7 @@ export default function App() {
     document.documentElement.style.setProperty("--text-scale", String(percent / 100));
   }, [described, scale]);
 
-  const busy = running !== null;
+  const busy = running !== null || rawWorking || corpusWorking;
   const root = workspace?.workspace?.root ?? null;
   const opened = workspace?.workspace;
   const overview = investigation?.overview ?? null;
@@ -1581,6 +1590,14 @@ export default function App() {
     "manage-assertions": () => {
       focusRegion("inspector");
     },
+    "inspect-raw-file": () => {
+      focusRegion("inspector");
+      setRawRequest((count) => count + 1);
+    },
+    "performance-corpus": () => {
+      focusRegion("inspector");
+      setCorpusRequest((count) => count + 1);
+    },
     "cancel-operation": () => cancel(""),
     "next-region": () => step(1),
     "previous-region": () => step(-1),
@@ -2458,6 +2475,18 @@ export default function App() {
           />
         ) : null}
         {!evidence && !busy ? <p className="hint">Open a case to see what it holds.</p> : null}
+        <RawInspection
+          busy={busy && !rawWorking}
+          indicators={indicators}
+          request={rawRequest}
+          onWorking={setRawWorking}
+        />
+        <PerformanceCorpus
+          busy={busy && !corpusWorking}
+          indicators={indicators}
+          request={corpusRequest}
+          onWorking={setCorpusWorking}
+        />
       </>
     ),
     privacy: (

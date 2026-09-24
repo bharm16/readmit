@@ -3,15 +3,12 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"regexp"
-	"time"
 
 	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/synth"
 	"github.com/spf13/cobra"
 )
-
-var synthBaseTimePattern = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-]([01][0-9]|2[0-3]):[0-5][0-9])$`)
 
 func synthCommand() *cobra.Command {
 	var seed uint64
@@ -27,9 +24,9 @@ func synthCommand() *cobra.Command {
 			if output == "" {
 				return usage("synthetic family destination cannot be empty")
 			}
-			base, err := time.Parse(time.RFC3339, baseTime)
-			if err != nil || !synthBaseTimePattern.MatchString(baseTime) {
-				return usage("base time must be a whole-second RFC3339 timestamp with an explicit timezone")
+			base, err := operation.DeclaredBaseTime(baseTime)
+			if err != nil {
+				return usage("%s", err)
 			}
 			manifest, err := synth.Write(output, bundle.GeneratorInputs{
 				Seed: seed, BaseTime: base, GeneratorVersion: generatorVersion, ProfileVersion: profileVersion,

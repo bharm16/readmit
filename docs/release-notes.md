@@ -21,6 +21,31 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   end as a host folder dialog opens, when WebView2 refuses the focus the
   window hands it; neither is fixed here.
 
+- The window inspects raw HL7 files and generates and scans performance
+  corpora (#290). `readmit inspect`, `readmit corpus generate` and `readmit
+  corpus scan` had no screen: the window could look at HL7 only once it was
+  imported into a case, and nothing in it generated a declared corpus or
+  streamed a file larger than a case may hold. Two screens in the inspector
+  region, opened from the palette or their headings, now do both. Raw
+  inspection chooses one file through the host's dialog, declares its framing
+  and terminator as the command does, and pages every message, segment, field
+  and repetition the command prints, 200 rows at a time, with values only on
+  request and escaped in Go, a field past 4,096 bytes shown in part and saying
+  so, and a page of a file that changed since the earlier pages refused; a
+  byte-identical copy goes to a new file of a chosen folder, and the source is
+  never changed or imported. The corpus
+  screen declares every generator input and plan member through structured
+  controls, writes the corpus and its manifest to two new files of a chosen
+  folder, scans one stream in bounded batches with a window and an optional
+  benchmark, shows the progress counts while either runs, and cancels either;
+  a cancelled scan reports the counts it reached, the case bounds not
+  evaluated and no benchmark. The command line and the window now reach one
+  shared operation for each: the command's inspection, reading, round-trip and
+  benchmark writing moved into `internal/operation` without changing a byte
+  of its output, exit status or refusal. No `readmit-*` document changes and
+  no contract is added; the facade gains `ChooseInspectionPath`,
+  `InspectRawFile`, `WriteRoundTrip`, `ChooseCorpusPath`, `GenerateCorpus`,
+  `ScanCorpus` and `CorpusProgress`.
 - Run bundles, test results, durable runs and the outputs `synth`,
   `reproducer`, `redact`, `report prepare`, `report assemble` and `report
   export` write are now reported written only once the directory entries they

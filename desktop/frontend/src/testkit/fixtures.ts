@@ -166,6 +166,8 @@ export function shellResult(): ShellResult {
       { id: "open-workspace", title: "Open a workspace folder", keys: "Ctrl+O" },
       { id: "maintain-workspace", title: "Maintain this workspace…" },
       { id: "check-staged-upgrade", title: "Check a staged upgrade…" },
+      { id: "inspect-raw-file", title: "Inspect a raw HL7 file…", region: "inspector" },
+      { id: "performance-corpus", title: "Generate or scan a performance corpus…", region: "inspector" },
       { id: "cancel-operation", title: "Cancel the running operation", keys: "Escape" },
     ],
     themes: ["system", "light", "dark"],
@@ -226,7 +228,7 @@ export function shellResult(): ShellResult {
         "Connector support is declared, not qualified.",
         "Database observation is selected and unqualified.",
       ],
-      unavailable: ["generate and stream a declared performance corpus"],
+      unavailable: ["generate reproducible SIU synthetic case bundles from declared inputs"],
     },
   };
   return { state: "completed", shell };
