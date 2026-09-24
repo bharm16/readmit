@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
   bindScenarioProfile,
-  cancel,
   checkScenarioLibrary,
   compareScenarioLibraryEntries,
   exportScenarioLibrary,
@@ -25,6 +24,7 @@ import {
 } from "./bindings";
 import { RetentionStatus, draftFor, useRetainer } from "./drafting";
 import { Report, type Indicators } from "./shell";
+import { useLifecycle } from "./lifecycle";
 import "./scenario.css";
 
 type TabId = "design" | "preview" | "generate" | "library" | "synth" | "raw";
@@ -72,9 +72,6 @@ const PROGRESS: Record<Action, string> = {
   import: "Importing the library.",
   synth: "Generating the SIU family.",
 };
-
-/** The check's operation name, so its Cancel stops that check and nothing else. */
-const CHECK_OPERATION = "scenario-check";
 
 /** A seed is sent as typed and read as the command reads it, so only plain
  * decimal digits are offered: 010 would be octal there. */
@@ -165,13 +162,12 @@ export function ScenarioPanel({
   const [synthProfile, setSynthProfile] = useState("");
   const [synthOutput, setSynthOutput] = useState("siu-family");
   const [synthResult, setSynthResult] = useState<SynthGenerateResult | null>(null);
-  const [running, setRunning] = useState<Action | null>(null);
+  // A check runs under the facade's scenario-check operation, so its Cancel
+  // stops that check and nothing else.
+  const { running, run, cancel } = useLifecycle<Action>({ names: { check: "scenario-check" } });
   const retainer = useRetainer();
   const disabled = busy || running !== null;
   const loaded = useRef<string | null>(null);
-  // The control that started the running action. A browser takes focus from
-  // a control it disables, so focus goes back to it once the action answers.
-  const returnFocus = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (loaded.current === workspace) {
@@ -198,16 +194,6 @@ export function ScenarioPanel({
     });
   }, [workspace, drafts, retainer]);
 
-  useEffect(() => {
-    if (running === null && returnFocus.current) {
-      const origin = returnFocus.current;
-      returnFocus.current = null;
-      if (origin.isConnected) {
-        origin.focus();
-      }
-    }
-  }, [running]);
-
   function persistDocument(next: string) {
     setDocumentText(next);
     retainer.save({
@@ -221,18 +207,8 @@ export function ScenarioPanel({
     });
   }
 
-  const act = async (action: Action, work: () => Promise<void>) => {
-    returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setRunning(action);
-    try {
-      await work();
-    } finally {
-      setRunning(null);
-    }
-  };
-
   const library = (action: LibraryAction, source: string, call: () => Promise<ScenarioLibraryResult>) =>
-    void act(action, async () => {
+    void run(action, async () => {
       setLibraryOutcome(null);
       const result = await call();
       setLibraryOutcome({ action, entry: libraryEntry, source, result });
@@ -304,7 +280,7 @@ export function ScenarioPanel({
             type="button"
             disabled={disabled || profileEntry.trim() === ""}
             onClick={() =>
-              void act("bind", async () => {
+              void run("bind", async () => {
                 setBindResult(null);
                 const result = await bindScenarioProfile({ workspace, entry: profileEntry });
                 setBindResult(result);
@@ -371,7 +347,7 @@ export function ScenarioPanel({
               type="button"
               disabled={disabled || saveOutput.trim() === ""}
               onClick={() =>
-                void act("save", async () => {
+                void run("save", async () => {
                   setDocumentOutcome(null);
                   const result = await saveScenario({ workspace, document: documentText, output: saveOutput });
                   setDocumentOutcome({ action: "save", entry: saveOutput, result });
@@ -391,7 +367,7 @@ export function ScenarioPanel({
               type="button"
               disabled={disabled || openEntry.trim() === ""}
               onClick={() =>
-                void act("open", async () => {
+                void run("open", async () => {
                   setDocumentOutcome(null);
                   const result = await openScenario(workspace, openEntry);
                   setDocumentOutcome({ action: "open", entry: openEntry, result });
@@ -434,7 +410,7 @@ export function ScenarioPanel({
             type="button"
             disabled={disabled}
             onClick={() =>
-              void act("preview", async () => {
+              void run("preview", async () => {
                 const result = await previewScenario({
                   workspace,
                   document: documentText,
@@ -535,7 +511,7 @@ export function ScenarioPanel({
             type="button"
             disabled={disabled}
             onClick={() =>
-              void act("generate", async () => {
+              void run("generate", async () => {
                 const result = await generateScenario({
                   workspace,
                   document: documentText,
@@ -700,7 +676,7 @@ export function ScenarioPanel({
             </button>
           </fieldset>
           {running === "check" ? (
-            <button type="button" onClick={() => cancel(CHECK_OPERATION)}>
+            <button type="button" onClick={cancel}>
               Cancel check
             </button>
           ) : null}
@@ -822,7 +798,7 @@ export function ScenarioPanel({
               type="button"
               disabled={!canSynth}
               onClick={() =>
-                void act("synth", async () => {
+                void run("synth", async () => {
                   setSynthResult(null);
                   setSynthResult(
                     await generateSynth({

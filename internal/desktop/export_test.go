@@ -61,10 +61,6 @@ func ImportProfilePackageWithinForTest(ctx context.Context, request ProfilePacka
 	return importProfilePackage(ctx, request)
 }
 
-// ProfileImportOperationForTest is the name a package import holds the slot
-// under, which the profile panel's cancel must name.
-const ProfileImportOperationForTest = profileImportOperation
-
 // PreviewSchedulePolicyAtForTest is PreviewSchedulePolicy taken at the
 // instant now rather than when the test runs, so a test states which
 // occurrences are missed at a fixed time of day. The slot, the contract's
@@ -111,7 +107,3 @@ func GroupDiagnosesWithinForTest(ctx context.Context, request GroupDiagnosesRequ
 func VerifyCIGateWithinForTest(ctx context.Context, directory, identity string, now time.Time) CIGateVerifyResult {
 	return verifyCIGate(ctx, directory, identity, now)
 }
-
-// CIGateVerifyOperationForTest is the name a gate verification holds the slot
-// under, which the CI panel's cancel must name.
-const CIGateVerifyOperationForTest = ciGateVerifyOperation

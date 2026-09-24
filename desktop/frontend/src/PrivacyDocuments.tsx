@@ -6,6 +6,7 @@ import {
 } from "./bindings";
 import { RetentionStatus, draftFor, useRetainer, type Retention } from "./drafting";
 import "./privacy-documents.css";
+import { useLifecycle } from "./lifecycle";
 
 const classes = [
   "structural", "names", "geography", "dates-and-ages", "telephone-numbers", "fax-numbers",
@@ -81,7 +82,8 @@ export function PrivacyDocuments({ workspace, policyName, inventoryName, drafts,
   const [inventoryOutput, setInventoryOutput] = useState("");
   const [policyReason, setPolicyReason] = useState("");
   const [inventoryReason, setInventoryReason] = useState("");
-  const [busy, setBusy] = useState(false);
+  const lifecycle = useLifecycle<"working">();
+  const busy = lifecycle.running !== null;
   const [policyDirty, setPolicyDirty] = useState(false);
   const [inventoryDirty, setInventoryDirty] = useState(false);
   const [policyWaiting, setPolicyWaiting] = useState(false);
@@ -157,57 +159,48 @@ export function PrivacyDocuments({ workspace, policyName, inventoryName, drafts,
 
   async function discardPolicy() {
     if (busy) return;
-    setBusy(true);
-    policyDropping.current = true;
-    try {
+    await lifecycle.run("working", async () => {
+      policyDropping.current = true;
       if (!await policyRetainer.dropCurrent()) {
         setPolicyReason("The disclosure policy draft could not be discarded; its text remains here.");
         return;
       }
       policyDropping.current = false;
       setPolicyState(freshPolicy()); setPolicyOutput(""); setPolicyReason(""); setPolicyDirty(false); setPolicyWaiting(false);
-    } finally {
-      setBusy(false);
-    }
+    });
   }
   async function discardInventory() {
     if (busy) return;
-    setBusy(true);
-    inventoryDropping.current = true;
-    try {
+    await lifecycle.run("working", async () => {
+      inventoryDropping.current = true;
       if (!await inventoryRetainer.dropCurrent()) {
         setInventoryReason("The original-artifact inventory draft could not be discarded; its text remains here.");
         return;
       }
       inventoryDropping.current = false;
       setInventoryState(freshInventory()); setInventoryOutput(""); setInventoryReason(""); setInventoryDirty(false); setInventoryWaiting(false);
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function openPolicy() {
     if (!workspace || !policyName || busy) return;
-    setBusy(true);
-    try {
+    await lifecycle.run("working", async () => {
       const answer = await readRedactPolicy(workspace, policyName);
       setPolicyReason(answer.policy ? "" : `The selected policy was not opened: ${answer.reason ?? "the reader refused it"}. The current edit remains on screen.`);
       if (answer.policy) { setPolicyState(answer.policy); setPolicyOutput(""); }
-    } finally { setBusy(false); }
+    });
   }
   async function openInventory() {
     if (!workspace || !inventoryName || busy) return;
-    setBusy(true);
-    try {
+    await lifecycle.run("working", async () => {
       const answer = await readRedactInventory(workspace, inventoryName);
       setInventoryReason(answer.inventory ? "" : `The selected inventory was not opened: ${answer.reason ?? "the reader refused it"}. The current edit remains on screen.`);
       if (answer.inventory) { setInventoryState(answer.inventory); setInventoryOutput(""); }
-    } finally { setBusy(false); }
+    });
   }
   async function savePolicy() {
     if (!workspace || !policyOutput || busy) return;
-    setBusy(true);
-    try {
+    await lifecycle.run("working", async () => {
       const answer = await saveRedactPolicy({ workspace, output: policyOutput, policy });
       setPolicyReason(answer.reason ?? (answer.entry ? `Saved disclosure policy ${answer.entry}.` : "The disclosure policy was not saved; the application did not answer."));
       if (answer.entry) {
@@ -221,12 +214,11 @@ export function PrivacyDocuments({ workspace, policyName, inventoryName, drafts,
         }
         onSaved("policy", answer.entry);
       }
-    } finally { setBusy(false); }
+    });
   }
   async function saveInventory() {
     if (!workspace || !inventoryOutput || busy) return;
-    setBusy(true);
-    try {
+    await lifecycle.run("working", async () => {
       const answer = await saveRedactInventory({ workspace, output: inventoryOutput, inventory });
       setInventoryReason(answer.reason ?? (answer.entry ? `Saved original-artifact inventory ${answer.entry}.` : "The original-artifact inventory was not saved; the application did not answer."));
       if (answer.entry) {
@@ -240,7 +232,7 @@ export function PrivacyDocuments({ workspace, policyName, inventoryName, drafts,
         }
         onSaved("inventory", answer.entry);
       }
-    } finally { setBusy(false); }
+    });
   }
 
   // An undefined member in a change clears it: JSON leaves an undefined member

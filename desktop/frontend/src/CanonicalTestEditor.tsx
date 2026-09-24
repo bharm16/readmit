@@ -7,6 +7,7 @@ import {
   type EditorDraft,
 } from "./bindings";
 import { RetentionStatus, draftFor, useRetainer } from "./drafting";
+import { useLifecycle } from "./lifecycle";
 
 /** The full canonical document stays in memory and is retained as it is
  * edited, including clauses the guided draft cannot express and errors the
@@ -26,7 +27,8 @@ export function CanonicalTestEditor({
   const [entry, setEntry] = useState("");
   const [output, setOutput] = useState("");
   const [document, setDocument] = useState("");
-  const [pending, setPending] = useState(false);
+  const { running, run } = useLifecycle<"importing" | "validating" | "exporting">();
+  const pending = running !== null;
   const [result, setResult] = useState<CanonicalTestResult | null>(null);
   const retainer = useRetainer();
   const disabled = busy || pending;
@@ -68,20 +70,17 @@ export function CanonicalTestEditor({
     });
   }
 
-  async function perform(
+  function perform(
+    kind: "importing" | "validating" | "exporting",
     work: () => Promise<CanonicalTestResult>,
-    importing = false,
-  ): Promise<CanonicalTestResult> {
-    setPending(true);
-    try {
+  ): Promise<CanonicalTestResult | undefined> {
+    return run(kind, async () => {
       const next = await work();
       setResult(next);
       // A refusal leaves the previous edit available for correction or discard.
-      if (importing && next.state === "completed") setDocument(next.document ?? "");
+      if (kind === "importing" && next.state === "completed") setDocument(next.document ?? "");
       return next;
-    } finally {
-      setPending(false);
-    }
+    });
   }
 
   // The exported spec is on disk beside the evidence, so the draft has served
@@ -113,7 +112,7 @@ export function CanonicalTestEditor({
       <button
         type="button"
         disabled={disabled || !entry || Boolean(document)}
-        onClick={() => void perform(() => importTest(workspace, entry), true)}
+        onClick={() => void perform("importing", () => importTest(workspace, entry))}
       >
         Import and show values
       </button>
@@ -129,7 +128,7 @@ export function CanonicalTestEditor({
       <button
         type="button"
         disabled={disabled || !document}
-        onClick={() => void perform(() => validateTest(document))}
+        onClick={() => void perform("validating", () => validateTest(document))}
       >
         Validate with the test reader
       </button>
@@ -159,8 +158,8 @@ export function CanonicalTestEditor({
         type="button"
         disabled={disabled || !document || !output}
         onClick={() =>
-          void perform(() => exportTest({ workspace, document, output })).then((next) => {
-            if (next.state === "completed") {
+          void perform("exporting", () => exportTest({ workspace, document, output })).then((next) => {
+            if (next?.state === "completed") {
               exported();
             }
           })

@@ -1,12 +1,12 @@
 import { useState } from "react";
 import {
-  cancel,
   previewReexecution,
   reexecuteReviewedEvidence,
   type ReexecutionPreviewResult,
   type ReexecutionRequest,
   type ReexecutionResult,
 } from "./bindings";
+import { useLifecycle } from "./lifecycle";
 
 /** The reexecution step of the privacy review: `readmit redact reexecute`
  * from the window.
@@ -44,7 +44,8 @@ export function Reexecution({
   const [previewed, setPreviewed] = useState<ReexecutionPreviewResult | null>(null);
   const [authorized, setAuthorized] = useState(false);
   const [sent, setSent] = useState<ReexecutionResult | null>(null);
-  const [operation, setOperation] = useState<"previewing" | "sending" | null>(null);
+  const lifecycle = useLifecycle<"previewing" | "sending">({ names: { sending: "reexecution" } });
+  const operation = lifecycle.running;
   const busy = operation !== null;
 
   // A preview belongs to the exact selections it was prepared from, and an
@@ -72,33 +73,30 @@ export function Reexecution({
   async function preview() {
     if (busy || !workspace) return;
     withdraw();
-    setOperation("previewing");
-    try {
+    await lifecycle.run("previewing", async () => {
       setPreviewed(await previewReexecution(request()));
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function send() {
     const plan = previewed?.preview;
     if (busy || !workspace || !plan || !authorized) return;
-    setOperation("sending");
-    try {
-      setSent(await reexecuteReviewedEvidence({
-        ...request(),
-        output: plan.destination.name,
-        expected_identity: plan.identity,
-        authorize: true,
-      }));
-      onRefresh();
-    } finally {
-      // An attempt, whatever it said, spends the preview and the
-      // authorization: another send needs a new preview and a new decision.
-      setPreviewed(null);
-      setAuthorized(false);
-      setOperation(null);
-    }
+    await lifecycle.run("sending", async () => {
+      try {
+        setSent(await reexecuteReviewedEvidence({
+          ...request(),
+          output: plan.destination.name,
+          expected_identity: plan.identity,
+          authorize: true,
+        }));
+        onRefresh();
+      } finally {
+        // An attempt, whatever it said, spends the preview and the
+        // authorization: another send needs a new preview and a new decision.
+        setPreviewed(null);
+        setAuthorized(false);
+      }
+    });
   }
 
   const plan = previewed?.preview;
@@ -187,7 +185,7 @@ export function Reexecution({
     <button disabled={busy || !plan || !plan.admission.admitted || !authorized} onClick={() => void send()}>
       {operation === "sending" ? "Sending…" : "Send once"}
     </button>
-    <button disabled={operation !== "sending"} onClick={() => cancel("reexecution")}>Cancel reexecution</button>
+    <button disabled={operation !== "sending"} onClick={lifecycle.cancel}>Cancel reexecution</button>
     <div role="status" aria-live="polite">
       {sent?.reason ? <p>{sent.reason}</p> : null}
       {outcome ? <div className="preflight">

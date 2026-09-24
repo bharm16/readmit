@@ -29,6 +29,7 @@ import {
 } from "./bindings";
 import type { Indicators } from "./shell";
 import { Report } from "./shell";
+import { useLifecycle } from "./lifecycle";
 
 type Tab = "backup" | "restore" | "storage" | "lifecycle" | "recovery" | "upgrade";
 
@@ -110,7 +111,8 @@ export function MaintenancePanel({
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<Tab>(initialTab);
-  const [localBusy, setLocalBusy] = useState(false);
+  const { running, run } = useLifecycle<"working">();
+  const localBusy = running !== null;
   const [feedback, setFeedback] = useState<string | null>(null);
   const [backupPath, setBackupPath] = useState("");
   const [backupDestination, setBackupDestination] = useState("");
@@ -138,19 +140,16 @@ export function MaintenancePanel({
   const chosenCopy = copies?.copies?.find((copy) => copyName(copy) === selectedCopy) ?? null;
 
   const pick = useCallback(async (kind: string, setter: (path: string) => void) => {
-    setLocalBusy(true);
-    setFeedback(null);
-    try {
+    await run("working", async () => {
+      setFeedback(null);
       const result = await chooseMaintenancePath(kind);
       if (result.state === "completed" && result.path) {
         setter(result.path);
       } else if (result.reason) {
         setFeedback(result.reason);
       }
-    } finally {
-      setLocalBusy(false);
-    }
-  }, []);
+    });
+  }, [run]);
 
   // A plan and an approval belong to the candidate they were given for, so
   // choosing another withdraws both.
@@ -182,25 +181,19 @@ export function MaintenancePanel({
       setSelectedCopy("");
       return;
     }
-    setLocalBusy(true);
-    try {
+    await run("working", async () => {
       await readCopies(project);
-    } finally {
-      setLocalBusy(false);
-    }
-  }, [project, readCopies]);
+    });
+  }, [project, readCopies, run]);
 
   const refreshQuota = useCallback(async () => {
     if (!project) {
       return;
     }
-    setLocalBusy(true);
-    try {
+    await run("working", async () => {
       setQuota(await inspectProjectQuota(project));
-    } finally {
-      setLocalBusy(false);
-    }
-  }, [project]);
+    });
+  }, [project, run]);
 
   useEffect(() => {
     if (tab === "storage" && project) {
@@ -268,18 +261,15 @@ export function MaintenancePanel({
             disabled={blocked || !project || !backupDestination}
             onClick={() => {
               void (async () => {
-                setLocalBusy(true);
-                setFeedback(null);
-                try {
+                await run("working", async () => {
+                  setFeedback(null);
                   const result = await createProjectBackup({ project: project!, destination: backupDestination });
                   setReport({ tab: "backup", result });
                   if (result.report?.root) {
                     setBackupPath(result.report.root);
                   }
                   setFeedback(result.reason ?? (result.state === "completed" ? "Backup created." : null));
-                } finally {
-                  setLocalBusy(false);
-                }
+                });
               })();
             }}
           >
@@ -294,14 +284,11 @@ export function MaintenancePanel({
             disabled={blocked || !backupPath}
             onClick={() => {
               void (async () => {
-                setLocalBusy(true);
-                try {
+                await run("working", async () => {
                   const result = await verifyProjectBackup(backupPath);
                   setReport({ tab: "backup", result });
                   setFeedback(result.reason ?? (result.state === "completed" ? "Backup verified." : null));
-                } finally {
-                  setLocalBusy(false);
-                }
+                });
               })();
             }}
           >
@@ -326,8 +313,7 @@ export function MaintenancePanel({
             disabled={blocked || !backupPath || !restoreDestination}
             onClick={() => {
               void (async () => {
-                setLocalBusy(true);
-                try {
+                await run("working", async () => {
                   const result = await restoreProjectBackup({ backup: backupPath, destination: restoreDestination });
                   setReport({ tab: "restore", result });
                   if (result.state === "completed" && result.report?.root) {
@@ -336,9 +322,7 @@ export function MaintenancePanel({
                     return;
                   }
                   setFeedback(result.reason ?? null);
-                } finally {
-                  setLocalBusy(false);
-                }
+                });
               })();
             }}
           >
@@ -370,8 +354,7 @@ export function MaintenancePanel({
             disabled={blocked || !project}
             onClick={() => {
               void (async () => {
-                setLocalBusy(true);
-                try {
+                await run("working", async () => {
                   setQuota(
                     await setProjectQuota({
                       project: project!,
@@ -379,9 +362,7 @@ export function MaintenancePanel({
                       max_files: Number(maxFiles),
                     }),
                   );
-                } finally {
-                  setLocalBusy(false);
-                }
+                });
               })();
             }}
           >
@@ -401,12 +382,9 @@ export function MaintenancePanel({
             disabled={blocked || !indexCase || !indexName}
             onClick={() => {
               void (async () => {
-                setLocalBusy(true);
-                try {
+                await run("working", async () => {
                   setIndexResult(await describeIndex(root, indexCase, indexName));
-                } finally {
-                  setLocalBusy(false);
-                }
+                });
               })();
             }}
           >
@@ -417,8 +395,7 @@ export function MaintenancePanel({
             disabled={blocked || !indexCase || !indexName}
             onClick={() => {
               void (async () => {
-                setLocalBusy(true);
-                try {
+                await run("working", async () => {
                   const request: BuildIndexRequest = {
                     workspace: root,
                     case: indexCase,
@@ -432,9 +409,7 @@ export function MaintenancePanel({
                   const built = await buildIndex(request);
                   setFeedback(built.reason ?? (built.state === "completed" ? "Index rebuilt from canonical evidence." : null));
                   setIndexResult(await describeIndex(root, indexCase, indexName));
-                } finally {
-                  setLocalBusy(false);
-                }
+                });
               })();
             }}
           >
@@ -452,14 +427,11 @@ export function MaintenancePanel({
             disabled={blocked || !project}
             onClick={() => {
               void (async () => {
-                setLocalBusy(true);
-                try {
+                await run("working", async () => {
                   const result = await previewProjectMigration(project!);
                   setMigration(result);
                   setFeedback(result.reason ?? null);
-                } finally {
-                  setLocalBusy(false);
-                }
+                });
               })();
             }}
           >
@@ -481,14 +453,11 @@ export function MaintenancePanel({
             disabled={blocked || !project}
             onClick={() => {
               void (async () => {
-                setLocalBusy(true);
-                try {
+                await run("working", async () => {
                   const result = await previewProjectRetirement(project!);
                   showPreview(result.preview ?? null);
                   setFeedback(result.reason ?? null);
-                } finally {
-                  setLocalBusy(false);
-                }
+                });
               })();
             }}
           >
@@ -510,8 +479,7 @@ export function MaintenancePanel({
                 disabled={blocked || !archiveDestination || !preview.selection}
                 onClick={() => {
                   void (async () => {
-                    setLocalBusy(true);
-                    try {
+                    await run("working", async () => {
                       const result = await archiveOrDeleteProject({
                         project: project!,
                         destination: archiveDestination,
@@ -520,9 +488,7 @@ export function MaintenancePanel({
                       });
                       setReport({ tab: "lifecycle", result });
                       setFeedback(result.reason ?? (result.state === "completed" ? "Archive created; source kept." : null));
-                    } finally {
-                      setLocalBusy(false);
-                    }
+                    });
                   })();
                 }}
               >
@@ -542,8 +508,7 @@ export function MaintenancePanel({
                 disabled={blocked || !archiveDestination || !preview.selection || !confirmDelete}
                 onClick={() => {
                   void (async () => {
-                    setLocalBusy(true);
-                    try {
+                    await run("working", async () => {
                       const result = await archiveOrDeleteProject({
                         project: project!,
                         destination: archiveDestination,
@@ -558,9 +523,7 @@ export function MaintenancePanel({
                         // left for that preview to delete.
                         showPreview(null);
                       }
-                    } finally {
-                      setLocalBusy(false);
-                    }
+                    });
                   })();
                 }}
               >
@@ -613,9 +576,8 @@ export function MaintenancePanel({
             onClick={() => {
               if (!chosenCopy) return;
               void (async () => {
-                setLocalBusy(true);
-                setFeedback(null);
-                try {
+                await run("working", async () => {
+                  setFeedback(null);
                   const result = await recoverProjectDocument({
                     project: project!,
                     document: chosenCopy.document,
@@ -633,9 +595,7 @@ export function MaintenancePanel({
                   if (result.state === "completed") {
                     onProjectChanged(project!);
                   }
-                } finally {
-                  setLocalBusy(false);
-                }
+                });
               })();
             }}
           >
@@ -659,14 +619,11 @@ export function MaintenancePanel({
             disabled={blocked || !candidate || !project}
             onClick={() => {
               void (async () => {
-                setLocalBusy(true);
-                try {
+                await run("working", async () => {
                   const result = await checkStagedUpgrade({ candidate, projects: [project!] });
                   setUpgrade(result);
                   setFeedback(result.reason ?? null);
-                } finally {
-                  setLocalBusy(false);
-                }
+                });
               })();
             }}
           >
@@ -720,8 +677,7 @@ export function MaintenancePanel({
             disabled={blocked || !candidate || !project || !rollbackDestination || !approve}
             onClick={() => {
               void (async () => {
-                setLocalBusy(true);
-                try {
+                await run("working", async () => {
                   const result = await prepareStagedUpgrade({
                     project: project!,
                     candidate,
@@ -742,9 +698,7 @@ export function MaintenancePanel({
                       : null,
                   );
                   setFeedback(result.reason ?? (result.state === "completed" ? "Rollback archive taken." : null));
-                } finally {
-                  setLocalBusy(false);
-                }
+                });
               })();
             }}
           >

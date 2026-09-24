@@ -93,6 +93,10 @@ func (a *App) PreviewReduction(request ReductionRequest) ReductionResult {
 	})
 }
 
+// reductionOperation names a controlled reduction while it holds the slot, so
+// the reduction's Stop control stops exactly the reduction it started.
+const reductionOperation = "reduction"
+
 // StartReduction runs one controlled reduction under existing execution and
 // reset authorisation. Cancel stops further trials; retained trial directories
 // are left for recovery and nothing is resent. The report's own outcome names

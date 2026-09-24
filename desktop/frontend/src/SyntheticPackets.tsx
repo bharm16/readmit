@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useRef, useState } from "react";
 import {
-  cancel,
   chooseSyntheticPacketPath,
   generateSyntheticPacket,
   openSyntheticPacket,
@@ -12,6 +11,7 @@ import {
   type SyntheticRerunResult,
   type SyntheticRerunView,
 } from "./bindings";
+import { useLifecycle } from "./lifecycle";
 
 /** The one committed scenario `readmit report --scenario` accepts. */
 const SCENARIO = "siu-reschedule-v1";
@@ -33,7 +33,20 @@ type Operation = "choosing" | "generating" | "verifying" | "preparing";
  * the "synthetic-packet" operation, so a cancel reaches only it; a cancelled
  * or refused generation leaves its folder explicitly incomplete. */
 export function SyntheticPackets({ onRefresh }: { onRefresh: () => void }) {
-  const [operation, setOperation] = useState<Operation | null>(null);
+  // A browser takes focus from a control it disables, so a running
+  // generation hands it to its Cancel control and every action returns it
+  // afterwards to the control that started it — or, when that control has
+  // nothing left to do, such as Generate once its folder is used, to the
+  // chooser that names the next folder.
+  const cancelControl = useRef<HTMLButtonElement>(null);
+  const packetChooser = useRef<HTMLButtonElement>(null);
+  const rerunChooser = useRef<HTMLButtonElement>(null);
+  const lifecycle = useLifecycle<Operation>({
+    names: { generating: "synthetic-packet" },
+    stops: { generating: cancelControl },
+    returns: { generating: packetChooser, preparing: rerunChooser },
+  });
+  const operation = lifecycle.running;
   const busy = operation !== null;
   const [destination, setDestination] = useState("");
   const [packetPath, setPacketPath] = useState("");
@@ -44,40 +57,13 @@ export function SyntheticPackets({ onRefresh }: { onRefresh: () => void }) {
   const [choice, setChoice] = useState<{ kind: SyntheticPacketPathKind; answer: PacketPathResult } | null>(null);
   const verified = packet?.packet ?? null;
 
-  // A browser takes focus from a control it disables, so a running
-  // generation hands it to its Cancel control and every action returns it
-  // afterwards to the control that started it — or, when that control has
-  // nothing left to do, such as Generate once its folder is used, to the
-  // chooser that names the next folder.
-  const returnFocus = useRef<{ origin: HTMLElement | null; next: RefObject<HTMLButtonElement | null> | null } | null>(null);
-  const cancelControl = useRef<HTMLButtonElement>(null);
-  const packetChooser = useRef<HTMLButtonElement>(null);
-  const rerunChooser = useRef<HTMLButtonElement>(null);
-  function begin(name: Operation, next: RefObject<HTMLButtonElement | null> | null = null) {
-    returnFocus.current = { origin: document.activeElement instanceof HTMLElement ? document.activeElement : null, next };
-    setOperation(name);
-  }
-  useEffect(() => {
-    if (operation === "generating") {
-      cancelControl.current?.focus();
-    } else if (operation === null && returnFocus.current) {
-      const { origin, next } = returnFocus.current;
-      returnFocus.current = null;
-      if (origin?.isConnected && !origin.matches(":disabled")) origin.focus();
-      else next?.current?.focus();
-    }
-  }, [operation]);
-
   async function choose(kind: SyntheticPacketPathKind, apply: (path: string) => void) {
     if (busy) return;
-    begin("choosing");
-    try {
+    await lifecycle.run("choosing", async () => {
       const answer = await chooseSyntheticPacketPath(kind);
       setChoice(answer.state === "completed" ? null : { kind, answer });
       if (answer.state === "completed" && answer.path) apply(answer.path);
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   function selectPacket(path: string) {
@@ -89,8 +75,7 @@ export function SyntheticPackets({ onRefresh }: { onRefresh: () => void }) {
 
   async function generate() {
     if (busy || !destination) return;
-    begin("generating", packetChooser);
-    try {
+    await lifecycle.run("generating", async () => {
       const answer = await generateSyntheticPacket({ scenario: SCENARIO, destination });
       setPacket(answer);
       setRerun(null);
@@ -102,33 +87,25 @@ export function SyntheticPackets({ onRefresh }: { onRefresh: () => void }) {
       if (answer.state === "completed") setPacketPath(destination);
       if (answer.state !== "busy") setDestination("");
       onRefresh();
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function verify() {
     if (busy || !packetPath) return;
-    begin("verifying");
-    try {
+    await lifecycle.run("verifying", async () => {
       setPacket(await openSyntheticPacket(packetPath));
       setRerun(null);
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function prepare() {
     if (busy || !packetPath || !rerunDestination || !address) return;
-    begin("preparing", rerunChooser);
-    try {
+    await lifecycle.run("preparing", async () => {
       const answer = await prepareSyntheticRerun({ packet: packetPath, destination: rerunDestination, address });
       setRerun(answer);
       if (answer.state === "completed") setRerunDestination("");
       onRefresh();
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   return <section aria-labelledby="synthetic-packets-title" className="run-history">
@@ -141,7 +118,7 @@ export function SyntheticPackets({ onRefresh }: { onRefresh: () => void }) {
       <button disabled={busy || !destination} onClick={() => void generate()}>
         {operation === "generating" ? "Generating…" : "Generate synthetic packet"}
       </button>
-      <button ref={cancelControl} disabled={operation !== "generating"} onClick={() => cancel("synthetic-packet")}>Cancel generation</button>
+      <button ref={cancelControl} disabled={operation !== "generating"} onClick={lifecycle.cancel}>Cancel generation</button>
     </div>
     <div className="actions">
       <button disabled={busy} onClick={() => void choose("packet", selectPacket)}>Choose a synthetic packet…</button>

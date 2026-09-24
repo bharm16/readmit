@@ -26,6 +26,10 @@ func (r *RunComparisonResult) refuse(state State, reason string) {
 	r.State, r.Reason = state, reason
 }
 
+// runComparisonOperation names a comparison while it holds the slot, so the
+// comparison's cancel control stops exactly the comparison it started.
+const runComparisonOperation = "run-comparison"
+
 // CompareRuns reads only named workspace entries. Cancellation discards the
 // view, never evidence; recovery is a fresh verification of the selected runs.
 func (a *App) CompareRuns(request RunComparisonRequest) RunComparisonResult {

@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import "./hub.css";
 import {
-  cancel,
   chooseHubConfig,
   connectHub,
   disconnectHub,
@@ -22,6 +21,7 @@ import { TeamCollaboration } from "./TeamCollaboration";
 import { OperatorHub } from "./OperatorHub";
 import { HubAdministration } from "./HubAdministration";
 import type { Artifact } from "./bindings";
+import { useLifecycle } from "./lifecycle";
 
 /** The hub panel sits directly above the privacy screens, so the collaboration
  * journeys it hosts can name the open workspace's sharing-policy entries and
@@ -35,7 +35,10 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
   const [transfer, setTransfer] = useState<HubTransferResult | null>(null);
   const [downloadDest, setDownloadDest] = useState("");
   const [uploadSource, setUploadSource] = useState("");
-  const [busy, setBusy] = useState(false);
+  // A sign-in waits for the browser under the facade's hub-sign-in operation,
+  // which its cancel stops.
+  const lifecycle = useLifecycle<"working" | "signing-in">({ names: { "signing-in": "hub-sign-in" } });
+  const busy = lifecycle.running !== null;
   const [message, setMessage] = useState<string | null>(null);
   const [adminOpen, setAdminOpen] = useState(false);
 
@@ -50,9 +53,8 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
   }, []);
 
   async function handleChooseConfig() {
-    setBusy(true);
-    setMessage(null);
-    try {
+    await lifecycle.run("working", async () => {
+      setMessage(null);
       const res = await chooseHubConfig();
       // Only a completed choice changes what is selected. A cancelled one
       // leaves the panel as it was, a remembered configuration's reason
@@ -65,94 +67,77 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
       } else if (res.state !== "cancelled") {
         setMessage(res.reason ?? "The hub configuration was not selected.");
       }
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function handleDiagnose() {
-    setBusy(true);
-    setMessage(null);
-    try {
+    await lifecycle.run("working", async () => {
+      setMessage(null);
       const res = await diagnoseHub();
       setDiagnosis(res);
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function handleConnect() {
-    setBusy(true);
-    setMessage(null);
-    try {
+    await lifecycle.run("working", async () => {
+      setMessage(null);
       const res = await connectHub();
       setStatus(res);
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function handleDisconnect() {
-    setBusy(true);
-    setMessage(null);
-    try {
+    await lifecycle.run("working", async () => {
+      setMessage(null);
       const res = await disconnectHub();
       setStatus(res);
       setDiagnosis(null);
       setArtifacts(null);
       setSelectedProject(null);
       setAuthUrl(null);
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function handleStartAuth() {
-    setBusy(true);
-    setMessage(null);
-    try {
-      const res = await startHubAuth();
-      if (res.state !== "completed" || !res.auth_url) {
-        setMessage(res.reason ?? "Failed to start identity provider authentication.");
-        return;
+    await lifecycle.run("signing-in", async () => {
+      setMessage(null);
+      try {
+        const res = await startHubAuth();
+        if (res.state !== "completed" || !res.auth_url) {
+          setMessage(res.reason ?? "Failed to start identity provider authentication.");
+          return;
+        }
+        setAuthUrl(res.auth_url);
+        // The sign-in holds the application's one operation slot while it
+        // waits for the browser, so the panel stays busy and offers only its
+        // cancel. A sign-in that does not complete keeps the connection as it
+        // was and says why; nothing is retried.
+        const authRes = await completeHubAuth("", "");
+        if (authRes.state === "completed") {
+          setStatus(authRes);
+        } else {
+          setMessage(authRes.reason ?? "Sign-in did not complete.");
+        }
+      } finally {
+        setAuthUrl(null);
       }
-      setAuthUrl(res.auth_url);
-      // The sign-in holds the application's one operation slot while it
-      // waits for the browser, so the panel stays busy and offers only its
-      // cancel. A sign-in that does not complete keeps the connection as it
-      // was and says why; nothing is retried.
-      const authRes = await completeHubAuth("", "");
-      if (authRes.state === "completed") {
-        setStatus(authRes);
-      } else {
-        setMessage(authRes.reason ?? "Sign-in did not complete.");
-      }
-    } finally {
-      setAuthUrl(null);
-      setBusy(false);
-    }
+    });
   }
 
   async function handleRefreshStatus() {
-    setBusy(true);
-    try {
+    await lifecycle.run("working", async () => {
       const res = await hubStatus();
       setStatus(res);
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function handleViewArtifacts(project: string) {
     setSelectedProject(project);
-    setBusy(true);
-    setMessage(null);
-    try {
+    await lifecycle.run("working", async () => {
+      setMessage(null);
       const res = await listHubProjectArtifacts(project);
       setArtifacts(res);
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function handleDownload(digest: string) {
@@ -160,18 +145,15 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
       setMessage("Please specify a destination file path.");
       return;
     }
-    setBusy(true);
-    setMessage(null);
-    try {
+    await lifecycle.run("working", async () => {
+      setMessage(null);
       const res = await downloadHubArtifact({
         project: selectedProject,
         digest,
         destination_path: downloadDest,
       });
       setTransfer(res);
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function handleUpload() {
@@ -179,9 +161,8 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
       setMessage("Please specify a source file path to upload.");
       return;
     }
-    setBusy(true);
-    setMessage(null);
-    try {
+    await lifecycle.run("working", async () => {
+      setMessage(null);
       const res = await uploadHubArtifact({
         project: selectedProject,
         source_path: uploadSource,
@@ -191,9 +172,7 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
         // Refresh project artifacts
         void handleViewArtifacts(selectedProject);
       }
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   const isConnected = status?.connected ?? false;
@@ -291,7 +270,7 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
               <a href={authUrl} target="_blank" rel="noreferrer">
                 Open login window
               </a>{" "}
-              <button type="button" onClick={() => cancel("hub-sign-in")}>
+              <button type="button" onClick={lifecycle.cancel}>
                 Cancel sign-in
               </button>
             </p>

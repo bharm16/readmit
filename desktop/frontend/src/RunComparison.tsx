@@ -1,6 +1,7 @@
-import { useRef, useState } from "react";
-import { cancel, compareRuns, type Artifact, type ExecutionView, type RunComparisonResult } from "./bindings";
+import { useState } from "react";
+import { compareRuns, type Artifact, type ExecutionView, type RunComparisonResult } from "./bindings";
 import "./baseline.css";
+import { useLifecycle } from "./lifecycle";
 
 /** Retained executions of the workspace, offered as the actual entries they
  * are rather than names typed from memory. */
@@ -10,18 +11,17 @@ export function RunComparison({ workspace, busy, entries }: { workspace: string;
  const [current, setCurrent] = useState("");
  const [approval, setApproval] = useState("");
  const [repeats, setRepeats] = useState("");
- const [working, setWorking] = useState(false);
+ const { running, run, withdraw, cancel } = useLifecycle<"comparing">({ names: { comparing: "run-comparison" } });
+ const working = running !== null;
  const [result, setResult] = useState<RunComparisonResult | null>(null);
- const generation = useRef(0);
- function invalidate() { generation.current++; setResult(null); }
+ function invalidate() { withdraw(); setResult(null); }
  async function perform() {
-  const token = ++generation.current;
-  setWorking(true); setResult(null);
-  try {
-   const response = await compareRuns({ workspace, baseline, current, approval,
+  const response = await run("comparing", () => {
+   setResult(null);
+   return compareRuns({ workspace, baseline, current, approval,
     repeats: repeats.split("\n").map(name => name.trim()).filter(Boolean) });
-   if (generation.current === token) setResult(response);
-  } finally { setWorking(false); }
+  });
+  if (response) setResult(response);
  }
  const c = result?.comparison;
  return <section className="baseline-panel" aria-labelledby="run-comparison-title">
@@ -40,7 +40,7 @@ export function RunComparison({ workspace, busy, entries }: { workspace: string;
    <label>Additional retained executions (one directory per line, up to 14)<textarea value={repeats} onChange={e => {setRepeats(e.target.value); invalidate();}} /></label>
    <button disabled={!baseline || !current} onClick={() => void perform()}>Compare executions</button>
   </fieldset>
-  {working ? <button onClick={() => {generation.current++; cancel("run-comparison"); setResult({state:"cancelled",reason:"Comparison cancelled. Retained evidence is unchanged; compare again to recover."});}}>Cancel comparison</button> : <button onClick={invalidate}>Clear comparison</button>}
+  {working ? <button onClick={() => {withdraw(); cancel(); setResult({state:"cancelled",reason:"Comparison cancelled. Retained evidence is unchanged; compare again to recover."});}}>Cancel comparison</button> : <button onClick={invalidate}>Clear comparison</button>}
   <p role="status">{working ? "Verifying retained executions…" : result?.reason ?? result?.state ?? "Choose retained evidence to compare."}</p>
   {c ? <>
    <p>{c.scope}</p>

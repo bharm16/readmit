@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import {
-  cancel,
   chooseImportSources,
   commitImport,
   previewImport,
@@ -20,6 +19,7 @@ import { draftFor, RetentionStatus, useRetainer } from "./drafting";
 import type { Indicators } from "./shell";
 import { Status } from "./shell";
 import "./import.css";
+import { useLifecycle } from "./lifecycle";
 
 export type ImportMode = "plan" | "recipe" | "engine";
 
@@ -119,7 +119,13 @@ export function ImportPanel({
   const [pasteName, setPasteName] = useState("pasted-source.hl7");
   const [pasteContent, setPasteContent] = useState("");
   const [pasteEncoding, setPasteEncoding] = useState("utf-8");
-  const [pasting, setPasting] = useState(false);
+  // Pasting, previewing and committing are unavailable together; a preview
+  // and a commit run under the facade's import operation, which their Cancel
+  // stops.
+  const lifecycle = useLifecycle<"pasting" | "previewing" | "committing">({
+    names: { previewing: "import", committing: "import" },
+  });
+  const pasting = lifecycle.running === "pasting";
   const [pasteNotice, setPasteNotice] = useState<string | null>(null);
 
   // Plan authoring
@@ -178,7 +184,7 @@ export function ImportPanel({
 
   // Preview & Sensitivity reveal
   const [preview, setPreview] = useState<ImportPreviewResult | null>(null);
-  const [previewing, setPreviewing] = useState(false);
+  const previewing = lifecycle.running === "previewing";
   const [revealSensitive, setRevealSensitive] = useState(false);
 
   // Commit
@@ -188,7 +194,7 @@ export function ImportPanel({
   const [caseTitle, setCaseTitle] = useState("");
   const [caseOwner, setCaseOwner] = useState("");
   const [caseVersion, setCaseVersion] = useState("");
-  const [committing, setCommitting] = useState(false);
+  const committing = lifecycle.running === "committing";
   const [commitResult, setCommitResult] = useState<ImportCommitResult | null>(null);
 
   const retainer = useRetainer();
@@ -455,9 +461,8 @@ export function ImportPanel({
       return;
     }
     invalidatePreview();
-    setPasting(true);
-    setPasteNotice(null);
-    try {
+    await lifecycle.run("pasting", async () => {
+      setPasteNotice(null);
       const stageReq: {
         workspace: string;
         project?: string;
@@ -489,9 +494,7 @@ export function ImportPanel({
       } else {
         setPasteNotice(`Staging failed: ${res.reason ?? "unknown error"}`);
       }
-    } finally {
-      setPasting(false);
-    }
+    });
   }
 
   // Combined sources
@@ -601,66 +604,62 @@ export function ImportPanel({
 
   // Preview action
   async function handlePreview() {
-    setPreviewing(true);
-    setPreview(null);
-    setCommitResult(null);
+    await lifecycle.run("previewing", async () => {
+      setPreview(null);
+      setCommitResult(null);
 
-    const req: ImportRequest = {
-      workspace,
-      mode,
-    };
-    if (project) req.project = project;
-    if (allFiles.length > 0) req.files = allFiles;
-    if (folders.length > 0) req.folders = folders;
-    if (archives.length > 0) req.archives = archives;
+      const req: ImportRequest = {
+        workspace,
+        mode,
+      };
+      if (project) req.project = project;
+      if (allFiles.length > 0) req.files = allFiles;
+      if (folders.length > 0) req.folders = folders;
+      if (archives.length > 0) req.archives = archives;
 
-    if (mode === "plan") {
-      req.plan = buildPlan();
-    } else if (mode === "recipe") {
-      req.recipe = buildRecipe();
-    } else if (mode === "engine") {
-      req.engine_plan = buildEnginePlan();
-    }
+      if (mode === "plan") {
+        req.plan = buildPlan();
+      } else if (mode === "recipe") {
+        req.recipe = buildRecipe();
+      } else if (mode === "engine") {
+        req.engine_plan = buildEnginePlan();
+      }
 
-    try {
       const res = await previewImport(req);
       setPreview(res);
-    } finally {
-      setPreviewing(false);
-    }
+    });
   }
 
   // Commit action
   async function handleCommit() {
-    setCommitting(true);
-    setCommitResult(null);
+    await lifecycle.run("committing", async () => {
+      setCommitResult(null);
 
-    const req: ImportCommitRequest = {
-      workspace,
-      mode,
-      output_name: outputName.trim(),
-    };
-    if (project) req.project = project;
-    if (receiptName.trim()) req.receipt_name = receiptName.trim();
-    if (allFiles.length > 0) req.files = allFiles;
-    if (folders.length > 0) req.folders = folders;
-    if (archives.length > 0) req.archives = archives;
-    if (registerInProject) {
-      req.register_in_project = true;
-      if (caseTitle.trim()) req.case_title = caseTitle.trim();
-      if (caseOwner.trim()) req.case_owner = caseOwner.trim();
-      if (caseVersion.trim()) req.case_version = caseVersion.trim();
-    }
+      const req: ImportCommitRequest = {
+        workspace,
+        mode,
+        output_name: outputName.trim(),
+      };
+      if (project) req.project = project;
+      if (receiptName.trim()) req.receipt_name = receiptName.trim();
+      if (allFiles.length > 0) req.files = allFiles;
+      if (folders.length > 0) req.folders = folders;
+      if (archives.length > 0) req.archives = archives;
+      if (registerInProject) {
+        req.register_in_project = true;
+        if (caseTitle.trim()) req.case_title = caseTitle.trim();
+        if (caseOwner.trim()) req.case_owner = caseOwner.trim();
+        if (caseVersion.trim()) req.case_version = caseVersion.trim();
+      }
 
-    if (mode === "plan") {
-      req.plan = buildPlan();
-    } else if (mode === "recipe") {
-      req.recipe = buildRecipe();
-    } else if (mode === "engine") {
-      req.engine_plan = buildEnginePlan();
-    }
+      if (mode === "plan") {
+        req.plan = buildPlan();
+      } else if (mode === "recipe") {
+        req.recipe = buildRecipe();
+      } else if (mode === "engine") {
+        req.engine_plan = buildEnginePlan();
+      }
 
-    try {
       const res = await commitImport(req);
       if (res.state === "completed") {
         // The import is stored: its draft is dropped before the window says
@@ -669,9 +668,7 @@ export function ImportPanel({
         await retainer.dropCurrent();
       }
       setCommitResult(res);
-    } finally {
-      setCommitting(false);
-    }
+    });
   }
 
   const hasSources = allFiles.length > 0 || folders.length > 0 || archives.length > 0;
@@ -1620,7 +1617,7 @@ export function ImportPanel({
             {previewing ? "Extracting preview…" : "Preview extraction"}
           </button>
           {previewing ? (
-            <button type="button" onClick={() => void cancel("import")}>
+            <button type="button" onClick={lifecycle.cancel}>
               Cancel
             </button>
           ) : null}
@@ -1905,7 +1902,7 @@ export function ImportPanel({
             {committing ? "Committing import…" : "Commit import"}
           </button>
           {committing ? (
-            <button type="button" onClick={() => void cancel("import")}>
+            <button type="button" onClick={lifecycle.cancel}>
               Cancel
             </button>
           ) : null}

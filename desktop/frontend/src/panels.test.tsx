@@ -43,6 +43,7 @@ test("the guided sample offers each step out of the folder and runs a new folder
       onCreateSample={() => acts.push("create")}
       onOpenCase={(name) => acts.push(`open:${name}`)}
       onRun={(trial, output) => acts.push(`run:${trial}:${output}`)}
+      onCancel={() => acts.push("cancel")}
     />,
   );
   // The step being performed now is the one marked current.
@@ -66,6 +67,7 @@ test("the run steps offer a new folder and never an existing one by default", as
       onCreateSample={() => undefined}
       onOpenCase={() => undefined}
       onRun={(trial, output) => runs.push(`${trial}:${output}`)}
+      onCancel={() => undefined}
     />,
   );
   expect((screen.getByLabelText("New folder for this run") as HTMLInputElement).value).toBe(

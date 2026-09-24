@@ -11,6 +11,7 @@ import {
   type RoundTripResult,
 } from "./bindings";
 import { Report, type Indicators } from "./shell";
+import { useLifecycle } from "./lifecycle";
 
 
 /** One row as a line: the same facts `readmit inspect` prints, in its order. */
@@ -63,14 +64,11 @@ export function RawInspection({
   busy,
   indicators,
   request,
-  onWorking,
 }: {
   busy: boolean;
   indicators: Indicators;
   /** Counts the palette's requests to open this screen. */
   request: number;
-  /** Tells the window while this screen's call holds the facade. */
-  onWorking?: (working: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const toggle = useRef<HTMLButtonElement>(null);
@@ -87,7 +85,9 @@ export function RawInspection({
   const [folder, setFolder] = useState("");
   const [name, setName] = useState("");
   const [copied, setCopied] = useState<RoundTripResult | null>(null);
-  const [working, setWorking] = useState<"choosing" | "inspecting" | "copying" | null>(null);
+  // This screen's calls hold the window's one slot, so the rest of the window
+  // is unavailable meanwhile rather than answered busy.
+  const { running: working, run } = useLifecycle<"choosing" | "inspecting" | "copying">({ window: true });
   const disabled = busy || working !== null;
 
   useEffect(() => {
@@ -97,10 +97,6 @@ export function RawInspection({
     }
   }, [request]);
 
-  useEffect(() => {
-    onWorking?.(working !== null);
-  }, [working, onWorking]);
-
   // Whatever was shown belongs to the file and declarations it was read under.
   const invalidate = () => {
     setResult(null);
@@ -109,9 +105,8 @@ export function RawInspection({
 
   async function choose(kind: "file" | "round-trip-folder") {
     const report = kind === "file" ? setChosen : setCopyChosen;
-    setWorking("choosing");
-    report(null);
-    try {
+    await run("choosing", async () => {
+      report(null);
       const answer = await chooseInspectionPath(kind);
       if (answer.state === "completed" && answer.path) {
         if (kind === "file") {
@@ -124,17 +119,14 @@ export function RawInspection({
       } else {
         report({ state: answer.state, reason: answer.reason });
       }
-    } finally {
-      setWorking(null);
-    }
+    });
   }
 
   /** Reads one page. A later page names the digest the shown rows were read
    * from, so a file that changed between pages is refused, not mixed. */
   async function inspect(offset: number, expect?: string) {
-    setWorking("inspecting");
-    setChosen(null);
-    try {
+    await run("inspecting", async () => {
+      setChosen(null);
       setResult(
         await inspectRawFile({
           file,
@@ -147,19 +139,14 @@ export function RawInspection({
           ...(expect ? { expect } : {}),
         }),
       );
-    } finally {
-      setWorking(null);
-    }
+    });
   }
 
   async function copy() {
-    setWorking("copying");
-    setCopyChosen(null);
-    try {
+    await run("copying", async () => {
+      setCopyChosen(null);
       setCopied(await writeRoundTrip({ file, format, terminator, folder, name: name.trim() }));
-    } finally {
-      setWorking(null);
-    }
+    });
   }
 
   const view = result?.inspection;

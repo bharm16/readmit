@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  cancel,
   cleanDurableRun,
   chooseRunSpec,
   durableRunProgress,
@@ -20,6 +19,7 @@ import {
   type SuiteRunReport,
 } from "./bindings";
 import { EnvironmentBanner } from "./EnvironmentPanel";
+import { useLifecycle } from "./lifecycle";
 
 // The backend owns entry validation. This narrower check keeps a malformed
 // output name out of the viewer's session before the backend can refuse it.
@@ -72,7 +72,10 @@ export function RunPanel({
   const [resumeOutput, setResumeOutput] = useState("");
   const [resumedTo, setResumedTo] = useState("");
   const [preflight, setPreflight] = useState<RunPreflightResult | null>(null);
-  const [operation, setOperation] = useState<"executing" | "preflighting" | "browsing" | "cleaning" | null>(null);
+  const lifecycle = useLifecycle<"executing" | "preflighting" | "browsing" | "cleaning">({
+    names: { executing: "durable-run" },
+  });
+  const operation = lifecycle.running;
   const busy = operation !== null;
   const [result, setResult] = useState<DurableRunResult | null>(null);
   const [report, setReport] = useState<SuiteRunReport | null>(null);
@@ -82,7 +85,6 @@ export function RunPanel({
   const [history, setHistory] = useState("");
   const [resumeResult, setResumeResult] = useState<ResumeRunResult | null>(null);
   const [cleanResult, setCleanResult] = useState<CleanRunResult | null>(null);
-  const inFlight = useRef(false);
   const poll = useRef<number | null>(null);
 
   useEffect(() => {
@@ -108,105 +110,93 @@ export function RunPanel({
   }
 
   async function ask() {
-    if (inFlight.current) return;
-    inFlight.current = true;
-    setOperation("preflighting");
-    try {
+    if (busy) return;
+    await lifecycle.run("preflighting", async () => {
       const request: RunPreflightRequest = { workspace: workspace ?? "", spec: selected };
       if (environment) request.environment = environment;
       if (output) request.output = output;
       const answer = await preflightRun(request);
       setPreflight(answer);
       setOutput(answer.preflight?.destination.name ?? output);
-    } finally {
-      setOperation(null);
-      inFlight.current = false;
-    }
+    });
   }
 
   async function execute(identity: string, destination: string) {
     // Awaited before the send, so a crash during it finds the session already
     // naming the folder that holds the evidence.
     await onWatch(destination);
-    setOperation("executing");
-    setResult(null);
-    setReport(null);
-    setEvidence(null);
-    setProgress({ state: "completed", progress: { executing: true, phase: "executing", acknowledged: 0, uncertain: 0, not_attempted: 0 } });
-    if (poll.current === null) {
-      poll.current = window.setInterval(() => {
-        void durableRunProgress(workspace ?? "", destination).then((read) => setProgress(read));
-      }, 800);
-    }
-    try {
-      const answer = isSuite
-        ? null
-        : await startDurableRun({ workspace: workspace ?? "", spec: selected, output: destination, expected_identity: identity });
-      let suiteOutcome: Awaited<ReturnType<typeof startSuiteRun>> | null = null;
-      if (isSuite) {
-        suiteOutcome = await startSuiteRun({ workspace: workspace ?? "", suite: selected, environment, output: destination, expected_identity: identity });
+    await lifecycle.run("executing", async () => {
+      setResult(null);
+      setReport(null);
+      setEvidence(null);
+      setProgress({ state: "completed", progress: { executing: true, phase: "executing", acknowledged: 0, uncertain: 0, not_attempted: 0 } });
+      if (poll.current === null) {
+        poll.current = window.setInterval(() => {
+          void durableRunProgress(workspace ?? "", destination).then((read) => setProgress(read));
+        }, 800);
       }
-      if (answer) setResult(answer);
-      if (suiteOutcome) {
-        // The queue's own report is what each job established; the summary
-        // line beside it is the first job that recorded a run, never a blend.
-        if (suiteOutcome.report) setReport(suiteOutcome.report);
-        const firstRun = suiteOutcome.report?.jobs.find((job) => job.run)?.run;
-        const outcome: DurableRunResult = { state: suiteOutcome.state };
-        if (suiteOutcome.reason) outcome.reason = suiteOutcome.reason;
-        if (firstRun) outcome.run = firstRun;
-        setResult(outcome);
+      try {
+        const answer = isSuite
+          ? null
+          : await startDurableRun({ workspace: workspace ?? "", spec: selected, output: destination, expected_identity: identity });
+        let suiteOutcome: Awaited<ReturnType<typeof startSuiteRun>> | null = null;
+        if (isSuite) {
+          suiteOutcome = await startSuiteRun({ workspace: workspace ?? "", suite: selected, environment, output: destination, expected_identity: identity });
+        }
+        if (answer) setResult(answer);
+        if (suiteOutcome) {
+          // The queue's own report is what each job established; the summary
+          // line beside it is the first job that recorded a run, never a blend.
+          if (suiteOutcome.report) setReport(suiteOutcome.report);
+          const firstRun = suiteOutcome.report?.jobs.find((job) => job.run)?.run;
+          const outcome: DurableRunResult = { state: suiteOutcome.state };
+          if (suiteOutcome.reason) outcome.reason = suiteOutcome.reason;
+          if (firstRun) outcome.run = firstRun;
+          setResult(outcome);
+        }
+        onRefresh();
+        const read = await openRunEvidence({ workspace: workspace ?? "", entry: destination, reveal: false });
+        setEvidence(read);
+      } finally {
+        // The progress poll lives exactly as long as the run it reads.
+        if (poll.current !== null) {
+          window.clearInterval(poll.current);
+          poll.current = null;
+        }
       }
-      onRefresh();
-      const read = await openRunEvidence({ workspace: workspace ?? "", entry: destination, reveal: false });
-      setEvidence(read);
-    } finally {
-      if (poll.current !== null) {
-        window.clearInterval(poll.current);
-        poll.current = null;
-      }
-      setOperation(null);
-      const read = await durableRunProgress(workspace ?? "", destination).catch(() => null);
-      if (read) setProgress(read);
-    }
+    });
+    const read = await durableRunProgress(workspace ?? "", destination).catch(() => null);
+    if (read) setProgress(read);
   }
 
   async function browse() {
     if (!workspace) return;
-    setOperation("browsing");
-    try {
+    await lifecycle.run("browsing", async () => {
       const choice = await chooseRunSpec(workspace);
       if (choice.state === "completed" && choice.entry) {
         setSelected(choice.entry);
         invalidate();
       }
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function openHistory(reveal: boolean) {
     if (!history) return;
-    setOperation("preflighting");
-    try {
+    await lifecycle.run("preflighting", async () => {
       setRevealed(reveal);
       const read = await openRunEvidence({ workspace: workspace ?? "", entry: history, reveal });
       setEvidence(read);
       const live = await durableRunProgress(workspace ?? "", history);
       setProgress(live);
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function resumeHistory() {
-    if (!workspace || !history || !selected || !resumeOutput || inFlight.current) return;
-    inFlight.current = true;
+    if (!workspace || !history || !selected || !resumeOutput || busy) return;
     const destination = resumeOutput;
-    setOperation("executing");
-    setResumeResult(null);
-    setCleanResult(null);
-    try {
+    await lifecycle.run("executing", async () => {
+      setResumeResult(null);
+      setCleanResult(null);
       // Record the new folder before the backend may send. If it refuses
       // before creating that folder, restore the retained view we opened.
       if (watchableEntry(destination)) await onWatch(destination);
@@ -220,28 +210,20 @@ export function RunPanel({
       } else {
         await onWatch(history);
       }
-    } finally {
-      setOperation(null);
-      inFlight.current = false;
-    }
+    });
   }
 
   async function cleanHistory() {
-    if (!workspace || !history || inFlight.current) return;
-    inFlight.current = true;
-    setOperation("cleaning");
-    setCleanResult(null);
-    try {
+    if (!workspace || !history || busy) return;
+    await lifecycle.run("cleaning", async () => {
+      setCleanResult(null);
       const answer = await cleanDurableRun(workspace, history);
       setCleanResult(answer);
       if (answer.state === "completed") {
         onRefresh();
         setProgress(await durableRunProgress(workspace, history));
       }
-    } finally {
-      setOperation(null);
-      inFlight.current = false;
-    }
+    });
   }
 
   const canExecute = plan !== null && plan !== undefined && !changed && plan.admission.admitted && plan.destination.fresh && (!isSuite || environment !== "");
@@ -284,7 +266,7 @@ export function RunPanel({
         {operation === "preflighting" ? "Checking…" : "Validate and preflight"}
       </button>
       {canExecute ? <button disabled={busy} onClick={() => void execute(plan!.identity, plan!.destination.name)}>Send and execute once</button> : null}
-      <button disabled={operation !== "executing"} onClick={() => cancel("durable-run")}>Cancel run</button>
+      <button disabled={operation !== "executing"} onClick={lifecycle.cancel}>Cancel run</button>
     </div>
     <div role="status" aria-live="polite">
       {operation === "executing" ? <p>Running. Cancellation stops future sends; a delivery already in flight may remain uncertain.</p> : null}

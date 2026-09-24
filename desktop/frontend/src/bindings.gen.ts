@@ -2485,6 +2485,30 @@ export interface InstalledLicenseView {
   current_format: boolean;
 }
 
+/** internal/desktop.captureOperation, internal/desktop.ciGateVerifyOperation, internal/desktop.corpusOperation, internal/desktop.explanationOperation, internal/desktop.hubSignInOperation, internal/desktop.importOperation, internal/desktop.packetOperation, internal/desktop.practiceOperation, internal/desktop.privacyOperation, internal/desktop.profileImportOperation, internal/desktop.protectOperation, internal/desktop.reductionOperation, internal/desktop.reexecutionOperation, internal/desktop.replayOperation, internal/desktop.replayPreviewOperation, internal/desktop.runComparisonOperation, internal/desktop.runOperation, internal/desktop.runnerOperation, internal/desktop.scenarioCheckOperation, internal/desktop.suiteCoverageOperation, internal/desktop.syntheticPacketOperation */
+export type InterruptibleOperation =
+  | "capture"
+  | "ci-gate-verify"
+  | "corpus"
+  | "run-explanation"
+  | "hub-sign-in"
+  | "import"
+  | "packet"
+  | "practice"
+  | "privacy"
+  | "profile-import"
+  | "protect"
+  | "reduction"
+  | "reexecution"
+  | "replay"
+  | "replay-preview"
+  | "run-comparison"
+  | "durable-run"
+  | "runner"
+  | "scenario-check"
+  | "suite-coverage-assessment"
+  | "synthetic-packet";
+
 /** internal/desktop.Kind */
 export type Kind =
   | "case"

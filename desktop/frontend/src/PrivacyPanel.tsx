@@ -9,7 +9,6 @@ import {
   readSharingPolicy,
   saveSharingPolicy,
   verifySupportBundle,
-  cancel,
   type Artifact,
   type EditorDraft,
   type PacketPathResult,
@@ -28,6 +27,7 @@ import {
 } from "./bindings";
 import { Reexecution } from "./Reexecution";
 import { PrivacyDocuments } from "./PrivacyDocuments";
+import { useLifecycle } from "./lifecycle";
 
 /** The privacy panel: preparation, materialization, review, approval and
  * export, and the value-free support summary beside them.
@@ -78,7 +78,10 @@ export function PrivacyPanel({
   const [policyName, setPolicyName] = useState("");
   const [inventoryName, setInventoryName] = useState("");
   const [derived, setDerived] = useState<PrivacyReviewResult | null>(null);
-  const [operation, setOperation] = useState<"deriving" | "exporting" | "reading" | "previewing" | "publishing" | "choosing" | "verifying" | null>(null);
+  const lifecycle = useLifecycle<"deriving" | "exporting" | "reading" | "previewing" | "publishing" | "choosing" | "verifying">({
+    names: { deriving: "privacy", exporting: "privacy" },
+  });
+  const operation = lifecycle.running;
   const busy = operation !== null;
 
   // Approval and export selections. The approval input holds what the reviewer
@@ -132,8 +135,7 @@ export function PrivacyPanel({
       policy: policyName,
       inventory: inventoryName,
     };
-    setOperation("deriving");
-    try {
+    await lifecycle.run("deriving", async () => {
       const answer = await deriveExportReview(request);
       setDerived(answer);
       onRefresh();
@@ -142,19 +144,14 @@ export function PrivacyPanel({
         setExportPrivate(answer.outcome.private);
         resetApproval();
       }
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function readSelectedReview(entry: string) {
     if (!workspace || !entry) return;
-    setOperation("reading");
-    try {
+    await lifecycle.run("reading", async () => {
       setReviewRead(await openReview({ workspace, review: entry, approve: "", offset: 0, limit: 200 }));
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function exportPacket() {
@@ -166,13 +163,10 @@ export function PrivacyPanel({
       approval,
       ...(exportOutput ? { output: exportOutput } : {}),
     };
-    setOperation("exporting");
-    try {
+    await lifecycle.run("exporting", async () => {
       setExported(await exportDerivedPacket(request));
       onRefresh();
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function authorPolicy() {
@@ -184,8 +178,7 @@ export function PrivacyPanel({
       destinations: policyHub ? ["local-file", "customer-hub-download"] : ["local-file"],
       max_bytes: Number(policyBytes),
     };
-    setOperation("previewing");
-    try {
+    await lifecycle.run("previewing", async () => {
       const answer = await saveSharingPolicy(request);
       setAuthoredPolicy(answer);
       onRefresh();
@@ -194,9 +187,7 @@ export function PrivacyPanel({
         setPolicyView(answer);
         withdrawPreview();
       }
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function selectPolicy(entry: string) {
@@ -204,12 +195,9 @@ export function PrivacyPanel({
     setPolicyView(null);
     withdrawPreview();
     if (workspace && entry) {
-      setOperation("reading");
-      try {
+      await lifecycle.run("reading", async () => {
         setPolicyView(await readSharingPolicy(workspace, entry));
-      } finally {
-        setOperation(null);
-      }
+      });
     }
   }
 
@@ -223,12 +211,9 @@ export function PrivacyPanel({
       policy: selectedPolicy,
       ...(kind === "derived-review" && supportPrivate ? { private: supportPrivate } : {}),
     };
-    setOperation("previewing");
-    try {
+    await lifecycle.run("previewing", async () => {
       setSupportPreview(await previewSupportSummary(request));
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function publish() {
@@ -243,25 +228,19 @@ export function PrivacyPanel({
       ...(kind === "derived-review" && supportPrivate ? { private: supportPrivate } : {}),
       ...(supportOutput ? { output: supportOutput } : {}),
     };
-    setOperation("publishing");
-    try {
+    await lifecycle.run("publishing", async () => {
       setPublished(await publishSupportSummary(request));
       onRefresh();
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function chooseDestination() {
     if (busy) return;
-    setOperation("choosing");
-    try {
+    await lifecycle.run("choosing", async () => {
       const choice = await chooseSupportExportPath();
       setDestinationChoice(choice);
       if (choice.state === "completed" && choice.path) setSupportOutput(choice.path);
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   async function verify(entry: string) {
@@ -269,12 +248,9 @@ export function PrivacyPanel({
     setVerifyEntry(entry);
     setVerified(null);
     if (!workspace || !entry) return;
-    setOperation("verifying");
-    try {
+    await lifecycle.run("verifying", async () => {
       setVerified(await verifySupportBundle(workspace, entry));
-    } finally {
-      setOperation(null);
-    }
+    });
   }
 
   const outcome = derived?.outcome;
@@ -327,7 +303,7 @@ export function PrivacyPanel({
       <button disabled={busy || !caseName || !specName || !policyName || !inventoryName} onClick={() => void derive()}>
         {operation === "deriving" ? "Deriving…" : "Derive review"}
       </button>
-      <button disabled={operation !== "deriving"} onClick={() => cancel("privacy")}>Cancel derivation</button>
+      <button disabled={operation !== "deriving"} onClick={lifecycle.cancel}>Cancel derivation</button>
     </div>
     <div role="status" aria-live="polite">
       {derived?.reason ? <p>{derived.reason}</p> : null}
@@ -363,7 +339,7 @@ export function PrivacyPanel({
       <button disabled={busy || !exportReview || !exportPrivate || approval === ""} onClick={() => void exportPacket()}>
         {operation === "exporting" ? "Exporting…" : "Export packet"}
       </button>
-      <button disabled={operation !== "exporting"} onClick={() => cancel("privacy")}>Cancel export</button>
+      <button disabled={operation !== "exporting"} onClick={lifecycle.cancel}>Cancel export</button>
       {exported?.reason ? <p>{exported.reason}</p> : null}
       {exported?.outcome ? <div className="preflight">
         <p>Packet <strong>{exported.outcome.packet}</strong> generated: {exported.outcome.files} files, identity {exported.outcome.identity.slice(0, 12)}…</p>

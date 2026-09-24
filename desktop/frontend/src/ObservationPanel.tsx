@@ -21,6 +21,7 @@ import {
 import { draftFor, useRetainer, RetentionStatus } from "./drafting";
 import { Report, type Indicators } from "./shell";
 import "./observation.css";
+import { useLifecycle } from "./lifecycle";
 
 const KINDS = ["file-export", "http-api", "downstream-capture", "database-query"] as const;
 
@@ -224,8 +225,8 @@ export function ObservationPanel({
   // starts a read.
   const sourceReadKey = useRef("");
   const windowReadKey = useRef("");
-  const pendingReads = useRef(0);
-  const [reading, setReading] = useState(false);
+  const reads = useLifecycle<"reading">({ background: true });
+  const reading = reads.running !== null;
   const blocked = busy || reading || confirming !== null;
   const keepEdits = () => {
     if (confirming === "source") setSourceFileEntry(sourceFile);
@@ -243,58 +244,50 @@ export function ObservationPanel({
     }
     setConfirming(null);
   };
+  const readDocuments = reads.run;
   useEffect(() => {
-    let cancelled = false;
     const sourceKey = `${workspace}\n${sourceFile}`;
     const windowKey = `${workspace}\n${windowFile}`;
-    pendingReads.current += 1;
-    setReading(true);
-    void (async () => {
-      try {
-        if (sourceReadKey.current !== sourceKey) {
-          const read = await openObservationSource(workspace, sourceFile);
-          if (cancelled) return;
-          sourceReadKey.current = sourceKey;
-          const refused = read.state !== "completed" || !read.source;
-          setSourceRefused(refused);
-          if (read.source && !refused) {
-            setSource(read.source);
-            setSourceIdentity(read.identity ?? "");
-            setSourceDirty(false);
-            setSourceCheck(null);
-          } else {
-            setSourceIdentity("");
-            setSourceCheck(documentRefused("Source", sourceFile, "not opened", read.reason));
-          }
+    // A read another name started since, or one for an editor that is gone,
+    // is not current and commits nothing.
+    void readDocuments("reading", async (current) => {
+      if (sourceReadKey.current !== sourceKey) {
+        const read = await openObservationSource(workspace, sourceFile);
+        if (!current()) return;
+        sourceReadKey.current = sourceKey;
+        const refused = read.state !== "completed" || !read.source;
+        setSourceRefused(refused);
+        if (read.source && !refused) {
+          setSource(read.source);
+          setSourceIdentity(read.identity ?? "");
+          setSourceDirty(false);
+          setSourceCheck(null);
+        } else {
+          setSourceIdentity("");
+          setSourceCheck(documentRefused("Source", sourceFile, "not opened", read.reason));
         }
-        if (windowReadKey.current !== windowKey) {
-          const read = await openObservationWindow(workspace, windowFile);
-          if (cancelled) return;
-          windowReadKey.current = windowKey;
-          const refused = read.state !== "completed" || !read.window;
-          setWindowRefused(refused);
-          if (read.window && !refused) {
-            setWindowDoc(read.window);
-            setWindowIdentity(read.identity ?? "");
-            setWindowDirty(false);
-            setWindowCheck(null);
-          } else {
-            setWindowIdentity("");
-            setWindowCheck(documentRefused("Window", windowFile, "not opened", read.reason));
-          }
-        }
-        if (!captureBinding) {
-          setNotice("Editor opened locally. No database or endpoint was queried.");
-        }
-      } finally {
-        pendingReads.current -= 1;
-        if (pendingReads.current === 0) setReading(false);
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [workspace, sourceFile, windowFile, captureBinding]);
+      if (windowReadKey.current !== windowKey) {
+        const read = await openObservationWindow(workspace, windowFile);
+        if (!current()) return;
+        windowReadKey.current = windowKey;
+        const refused = read.state !== "completed" || !read.window;
+        setWindowRefused(refused);
+        if (read.window && !refused) {
+          setWindowDoc(read.window);
+          setWindowIdentity(read.identity ?? "");
+          setWindowDirty(false);
+          setWindowCheck(null);
+        } else {
+          setWindowIdentity("");
+          setWindowCheck(documentRefused("Window", windowFile, "not opened", read.reason));
+        }
+      }
+      if (!captureBinding) {
+        setNotice("Editor opened locally. No database or endpoint was queried.");
+      }
+    });
+  }, [workspace, sourceFile, windowFile, captureBinding, readDocuments]);
 
   useEffect(() => {
     if (!captureBinding) return;

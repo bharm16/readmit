@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
-  cancel,
   compareProfiles,
   exportProfilePackage,
   importProfilePackage,
@@ -30,6 +29,7 @@ import {
 } from "./bindings";
 import { RetentionStatus, draftFor, useRetainer } from "./drafting";
 import "./profile.css";
+import { useLifecycle } from "./lifecycle";
 
 type TabId = "packs" | "editor" | "compare" | "exchange" | "raw";
 
@@ -43,10 +43,6 @@ const DATA_TYPES = [
   "PT", "RP", "SAD", "SI", "SN", "ST", "TM", "TS", "TX", "VID", "XAD", "XCN",
   "XON", "XPN", "XTN",
 ];
-
-// The name the facade gives a package import while it runs, so this panel's
-// cancel stops exactly the import it started.
-const PROFILE_IMPORT = "profile-import";
 
 // What an import that did not complete is called, by the state it answered.
 function importHeading(state: State): string {
@@ -168,29 +164,24 @@ export function ProfileEditor({
   const [pkgInspectFile, setPkgInspectFile] = useState("package.json");
   const [packageResult, setPackageResult] = useState<ProfilePackageResult | null>(null);
   const [importResult, setImportResult] = useState<ProfilePackageResult | null>(null);
-  const [importing, setImporting] = useState(false);
-
-  const [pending, setPending] = useState(false);
-  const retainer = useRetainer();
-  const disabled = busy || pending;
 
   // A browser takes focus from a control it disables, so once an action
-  // answers focus returns to the control that started it, and a running
-  // import puts focus on its cancel.
+  // answers focus returns to the control that started it — for opening and
+  // importing, the form's own button, whichever field Enter was pressed in —
+  // and a running import puts focus on its cancel. The import runs under the
+  // facade's profile-import operation, which that cancel stops.
   const openButton = useRef<HTMLButtonElement>(null);
   const importButton = useRef<HTMLButtonElement>(null);
   const cancelImportButton = useRef<HTMLButtonElement>(null);
-  const [returnFocus, setReturnFocus] = useState<"open" | "import" | null>(null);
-  useEffect(() => {
-    if (importing) {
-      cancelImportButton.current?.focus();
-    }
-  }, [importing]);
-  useEffect(() => {
-    if (pending || returnFocus === null) return;
-    (returnFocus === "open" ? openButton : importButton).current?.focus();
-    setReturnFocus(null);
-  }, [pending, returnFocus]);
+  const lifecycle = useLifecycle<"working" | "opening" | "importing">({
+    names: { importing: "profile-import" },
+    stops: { importing: cancelImportButton },
+    origins: { opening: openButton, importing: importButton },
+  });
+  const importing = lifecycle.running === "importing";
+  const pending = lifecycle.running !== null;
+  const retainer = useRetainer();
+  const disabled = busy || pending;
 
   // Restore draft on mount for this workspace
   const loaded = useRef<string | null>(null);
@@ -253,38 +244,29 @@ export function ProfileEditor({
   }
 
   async function discardDraft() {
-    setPending(true);
-    try {
+    await lifecycle.run("working", async () => {
       if (!await retainer.dropCurrent()) return;
       const clean = emptyProfile();
       setProfile(clean);
       setRawJson(JSON.stringify(clean, null, 2));
       setProfileResult(null);
-    } finally {
-      setPending(false);
-    }
+    });
   }
 
   // --- Facade Calls ---
 
   async function handleInspectPack() {
-    setPending(true);
-    try {
+    await lifecycle.run("working", async () => {
       const res = await inspectProfilePack(workspace, packEntry);
       setPackResult(res);
-    } finally {
-      setPending(false);
-    }
+    });
   }
 
   async function handleOpenLibrary() {
-    setPending(true);
-    try {
+    await lifecycle.run("working", async () => {
       const res = await openProfileLibrary(workspace, libraryDir);
       setLibraryResult(res);
-    } finally {
-      setPending(false);
-    }
+    });
   }
 
   async function handleOpenProfile(event: FormEvent) {
@@ -298,8 +280,7 @@ export function ProfileEditor({
       return;
     }
     setOpenNotice(null);
-    setPending(true);
-    try {
+    await lifecycle.run("opening", async () => {
       const res = await openProfile(workspace, openEntry, openPack);
       setResultLabel(`Open ${openEntry}`);
       setProfileResult(res);
@@ -307,15 +288,11 @@ export function ProfileEditor({
         setProfile(res.profile);
         setRawJson(res.document ?? JSON.stringify(res.profile, null, 2));
       }
-    } finally {
-      setPending(false);
-      setReturnFocus("open");
-    }
+    });
   }
 
   async function handleValidateProfile() {
-    setPending(true);
-    try {
+    await lifecycle.run("working", async () => {
       const res = await validateProfile({
         workspace,
         document: rawJson,
@@ -323,14 +300,11 @@ export function ProfileEditor({
       });
       setResultLabel("Validation Result");
       setProfileResult(res);
-    } finally {
-      setPending(false);
-    }
+    });
   }
 
   async function handleSaveProfile() {
-    setPending(true);
-    try {
+    await lifecycle.run("working", async () => {
       const res = await saveProfile({
         workspace,
         document: rawJson,
@@ -346,14 +320,11 @@ export function ProfileEditor({
         }
         retainer.clear();
       }
-    } finally {
-      setPending(false);
-    }
+    });
   }
 
   async function handleCompareProfiles() {
-    setPending(true);
-    try {
+    await lifecycle.run("working", async () => {
       const res = await compareProfiles({
         workspace,
         from: compareFrom,
@@ -361,23 +332,21 @@ export function ProfileEditor({
         references: compareRefs,
       });
       setCompareResult(res);
-    } finally {
-      setPending(false);
-    }
+    });
   }
 
   async function handleUpgradePin(test: AssessedTest) {
-    if (!compareResult?.comparison) return;
-    setPending(true);
-    try {
+    const comparison = compareResult?.comparison;
+    if (!comparison) return;
+    await lifecycle.run("working", async () => {
       const res = await upgradeProfilePin({
         workspace,
         references: compareRefs,
         test: test.test,
         was_pin: test.pinned,
         now_pin: {
-          id: compareResult.comparison.profile,
-          version: compareResult.comparison.to,
+          id: comparison.profile,
+          version: comparison.to,
           sha256: profileResult?.seal?.content.sha256 ?? test.pinned.sha256,
         },
         output: compareRefs,
@@ -387,14 +356,11 @@ export function ProfileEditor({
         // Re-run comparison to update impacted tests view
         void handleCompareProfiles();
       }
-    } finally {
-      setPending(false);
-    }
+    });
   }
 
   async function handleExportPackage() {
-    setPending(true);
-    try {
+    await lifecycle.run("working", async () => {
       const res = await exportProfilePackage({
         workspace,
         profile: pkgExportProfile,
@@ -405,38 +371,27 @@ export function ProfileEditor({
         reviewed: pkgExportReviewed,
       });
       setPackageResult(res);
-    } finally {
-      setPending(false);
-    }
+    });
   }
 
   async function handleImportPackage(event: FormEvent) {
     event.preventDefault();
     setImportResult(null);
-    setPending(true);
-    setImporting(true);
-    try {
+    await lifecycle.run("importing", async () => {
       const res = await importProfilePackage({
         workspace,
         package: pkgImportFile,
         output: pkgImportOutput,
       });
       setImportResult(res);
-    } finally {
-      setImporting(false);
-      setPending(false);
-      setReturnFocus("import");
-    }
+    });
   }
 
   async function handleInspectPackage() {
-    setPending(true);
-    try {
+    await lifecycle.run("working", async () => {
       const res = await inspectProfilePackage(workspace, pkgInspectFile);
       setPackageResult(res);
-    } finally {
-      setPending(false);
-    }
+    });
   }
 
   return (
@@ -1376,7 +1331,7 @@ export function ProfileEditor({
               Import Package
             </button>
             {importing && (
-              <button type="button" ref={cancelImportButton} onClick={() => cancel(PROFILE_IMPORT)}>
+              <button type="button" ref={cancelImportButton} onClick={lifecycle.cancel}>
                 Cancel import
               </button>
             )}

@@ -311,6 +311,44 @@ func TestTheInterfaceReachesNoNetworkAndNoBrowserStorage(t *testing.T) {
 	}
 }
 
+// declaredUnion is the values of one union the generated bindings declare.
+func declaredUnion(t *testing.T, bindings, name string) []string {
+	t.Helper()
+	declaration := regexp.MustCompile(`(?m)^export type ` + name + ` =([^;]*);`).FindStringSubmatch(bindings)
+	if declaration == nil {
+		t.Fatalf("%s declares no union %s", generatedBindings, name)
+	}
+	var values []string
+	for _, quoted := range regexp.MustCompile(`"[^"]*"`).FindAllString(declaration[1], -1) {
+		value, err := strconv.Unquote(quoted)
+		if err != nil {
+			t.Fatal(err)
+		}
+		values = append(values, value)
+	}
+	return values
+}
+
+// A panel's cancel names what it stops by one of the names the generated
+// bindings declare for it, InterruptibleOperation, generated from the Go
+// constants those operations run under. Every such name is the name of an
+// interruptible operation the facade declares a profile for, so a cancel
+// naming it reaches that operation, never one that cannot be interrupted or
+// that runs under another name.
+func TestTheWindowCancelsOnlyOperationsTheFacadeInterrupts(t *testing.T) {
+	interruptible := map[string]bool{}
+	for _, profile := range desktop.DeclaredProfilesForTest() {
+		if profile.Interruptible {
+			interruptible[profile.Name] = true
+		}
+	}
+	for _, name := range declaredUnion(t, read(t, generatedBindings), "InterruptibleOperation") {
+		if !interruptible[name] {
+			t.Errorf("a cancel can name %q, which no interruptible operation of the facade runs under", name)
+		}
+	}
+}
+
 // The window's vocabulary is declared once, in Go, as the constants of its
 // named types, and the generated bindings declare each of those types as the
 // union of its constants, so the interface is held to that vocabulary and no
@@ -329,19 +367,7 @@ func TestFrontendBindingsDeclareTheWindowsVocabulary(t *testing.T) {
 	bindings := read(t, generatedBindings)
 	union := func(name string) []string {
 		t.Helper()
-		declaration := regexp.MustCompile(`(?m)^export type ` + name + ` =([^;]*);`).FindStringSubmatch(bindings)
-		if declaration == nil {
-			t.Fatalf("%s declares no union %s", generatedBindings, name)
-		}
-		var values []string
-		for _, quoted := range regexp.MustCompile(`"[^"]*"`).FindAllString(declaration[1], -1) {
-			value, err := strconv.Unquote(quoted)
-			if err != nil {
-				t.Fatal(err)
-			}
-			values = append(values, value)
-		}
-		return values
+		return declaredUnion(t, bindings, name)
 	}
 	exactly := func(kind, name string, described []string) {
 		t.Helper()

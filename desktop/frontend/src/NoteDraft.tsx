@@ -7,6 +7,7 @@ import {
   type RevisionsResult,
 } from "./bindings";
 import { RetentionStatus, draftFor, noteContent, useRetainer } from "./drafting";
+import { useLifecycle } from "./lifecycle";
 
 const empty = { name: "", subject: "", title: "", body: "" };
 
@@ -33,7 +34,8 @@ export function NoteDraft({
   onChanged: () => void;
 }) {
   const [note, setNote] = useState(empty);
-  const [storing, setStoring] = useState(false);
+  const { running, run } = useLifecycle<"storing">();
+  const storing = running !== null;
   const [stored, setStored] = useState<RevisionsResult | null>(null);
   const retainer = useRetainer();
 
@@ -117,8 +119,7 @@ export function NoteDraft({
   }
 
   async function store() {
-    setStoring(true);
-    try {
+    await run("storing", async () => {
       const result = await saveNote(project, note.subject === ""
         ? { name: note.name, title: note.title, body: note.body }
         : { name: note.name, subject: note.subject, title: note.title, body: note.body });
@@ -140,9 +141,7 @@ export function NoteDraft({
       retainer.clear();
       setNote(empty);
       onChanged();
-    } finally {
-      setStoring(false);
-    }
+    });
   }
 
   if (project === "") {

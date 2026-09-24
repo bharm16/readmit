@@ -5,6 +5,7 @@ import {
   type HubAdminRequest,
   type HubAdminResult,
 } from "./bindings";
+import { useLifecycle } from "./lifecycle";
 
 const empty: HubAdminRequest = {
   operation: "migrate",
@@ -33,12 +34,14 @@ const operations: { value: HubAdminRequest["operation"]; label: string }[] = [
 export function HubAdministration() {
   const [request, setRequest] = useState<HubAdminRequest>(empty);
   const [result, setResult] = useState<HubAdminResult | null>(null);
-  const [busy, setBusy] = useState(false);
-  const revision = useRef(0);
+  // A review in flight describes the request it was asked for: changing the
+  // request or cancelling withdraws its answer.
+  const { running, run, withdraw } = useLifecycle<"previewing">();
+  const busy = running !== null;
   const cancellationRequested = useRef(false);
 
   function change<K extends keyof HubAdminRequest>(name: K, value: HubAdminRequest[K]) {
-    revision.current += 1;
+    withdraw();
     setResult(null);
     setRequest((previous) => ({ ...previous, [name]: value }));
   }
@@ -46,20 +49,16 @@ export function HubAdministration() {
   async function preview(event: FormEvent) {
     event.preventDefault();
     if (busy) return;
-    const current = ++revision.current;
     cancellationRequested.current = false;
-    setBusy(true);
-    setResult(null);
-    try {
+    await run("previewing", async (current) => {
+      setResult(null);
       const answer = await previewHubAdministration(request);
-      if (revision.current === current) {
+      if (current()) {
         setResult(cancellationRequested.current && answer.state === "completed"
           ? { state: "cancelled", reason: "handoff review cancelled; no host action was taken" }
           : answer);
       }
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function cancel() {
@@ -70,7 +69,7 @@ export function HubAdministration() {
         ? { state: "busy", reason: "cancellation requested; waiting for the local read to finish" }
         : answer);
     } else {
-      revision.current += 1;
+      withdraw();
       setResult({ state: "cancelled", reason: "handoff review cancelled; no host action was taken" });
     }
   }

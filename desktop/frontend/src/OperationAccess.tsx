@@ -8,6 +8,7 @@ import {
   type CommercialStatusResult, type LicenseExportResult, type LicenseVerifyResult,
   type OperationResult, type RunnerStatusResult,
 } from "./bindings";
+import { useLifecycle } from "./lifecycle";
 
 /** The empty role selections: an unused author/device or authority pair is
  * explicitly empty, exactly as the operation policy contract requires. */
@@ -19,7 +20,8 @@ const NONE = "(none)";
  * issues an entitlement or contacts a service on its own. */
 export function OperationAccess() {
   const [result, setResult] = useState<OperationResult | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { running, run } = useLifecycle<"working">();
+  const busy = running !== null;
   const [notice, setNotice] = useState<string | null>(null);
 
   const [verified, setVerified] = useState<LicenseVerifyResult | null>(null);
@@ -41,9 +43,10 @@ export function OperationAccess() {
 
   async function perform<T>(action: () => Promise<T>, apply: (value: T) => void) {
     if (busy) return;
-    setBusy(true);
-    setNotice(null);
-    try { apply(await action()); } finally { setBusy(false); }
+    await run("working", async () => {
+      setNotice(null);
+      apply(await action());
+    });
   }
 
   function showOperationResult(value: OperationResult) {

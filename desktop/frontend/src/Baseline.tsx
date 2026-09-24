@@ -1,6 +1,7 @@
 import "./baseline.css";
 import { useState } from "react";
 import { approveBaseline, openBaseline, reviewBaseline, type BaselineResult } from "./bindings";
+import { useLifecycle } from "./lifecycle";
 
 /** Local approval is deliberately independent of run completion and session restoration. */
 export function Baseline({ workspace, busy }: { workspace: string; busy: boolean }) {
@@ -15,17 +16,18 @@ export function Baseline({ workspace, busy }: { workspace: string; busy: boolean
   const [output, setOutput] = useState("");
   const [result, setResult] = useState<BaselineResult | null>(null);
   const [inspecting, setInspecting] = useState(false);
-  const [working, setWorking] = useState(false);
+  const { running, run } = useLifecycle<"working">();
+  const working = running !== null;
   const disabled = busy || working;
   const review = result?.comparison;
   async function perform(approve: boolean, inspect = false) {
     setInspecting(inspect);
-    setWorking(true);
     const request = { workspace, spec, previous, show_values: show,
       release: released, release_id: releaseID, profiles: profiles.split("\n").map(p => p.trim()).filter(Boolean),
       review: review?.identity ?? "", approver, rationale, output };
-    try { setResult(await (inspect ? openBaseline(request) : approve ? approveBaseline(request) : reviewBaseline(request))); }
-    finally { setWorking(false); }
+    await run("working", async () => {
+      setResult(await (inspect ? openBaseline(request) : approve ? approveBaseline(request) : reviewBaseline(request)));
+    });
   }
   function invalidate() { setResult(null); }
   return <section className="baseline-panel" aria-labelledby="baseline-title">
