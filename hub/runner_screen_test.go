@@ -358,8 +358,8 @@ func TestRunnerScreenPreparesConfiguresAndExecutesThroughExistingContracts(t *te
 	if blocked := screen.ExecuteRunnerJob(desktop.RunnerExecuteRequest{ConfigPath: configPath, JobPath: heldJob}); blocked.State != desktop.Failed || !strings.Contains(blocked.Reason, "environment leased or recovering") {
 		t.Fatalf("probe lease not enforced: %+v", blocked)
 	}
-	if _, err := os.Stat(filepath.Join(root, "screen-002")); !os.IsNotExist(err) {
-		t.Fatal("job refused by a current lease claimed work", err)
+	if retained, err := customerrunner.Retained(root, "screen-002"); err != nil || retained {
+		t.Fatal("job refused by a current lease claimed work", retained, err)
 	}
 
 	// The project administration authority (#262's lifecycle log) is the

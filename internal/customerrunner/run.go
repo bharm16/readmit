@@ -56,15 +56,11 @@ type Status struct {
 
 func Health(root string) (Status, error) {
 	s := Status{Schema: "readmit-runner-status/v1", State: "idle"}
-	entries, err := entries(root, 10001)
+	jobs, err := Jobs(root)
 	if err != nil {
 		return s, ErrRefused
 	}
-	for _, e := range entries {
-		if e.IsDir() && runnerprotocol.ID(e.Name()) {
-			s.Jobs++
-		}
-	}
+	s.Jobs = len(jobs)
 	if _, err := os.Lstat(filepath.Join(root, ".active")); err == nil {
 		s.State = "recovery_required"
 		raw, err := privateRead(filepath.Join(root, ".active", "lease.json"), 4096)
@@ -120,31 +116,44 @@ func storeLease(active string, lease runnerprotocol.Lease) error {
 // Run acquires one exclusive environment lease within this configured root. A
 // crash leaves the claim intact. Neither restart nor lease expiry replays work.
 func Run(ctx context.Context, c Config, job Job) (durablerun.Summary, error) {
-	return run(ctx, c, job, "")
+	return run(ctx, c, job, nil, remote{c}, hostClock{})
 }
 
 // RunPinned refuses changed prepared inputs before any execution. The same
 // prepared plan whose identity was checked performs the run.
 func RunPinned(ctx context.Context, c Config, job Job, inputIdentity string) (durablerun.Summary, error) {
-	if len(inputIdentity) != 64 {
-		return durablerun.Summary{}, ErrRefused
-	}
-	return run(ctx, c, job, inputIdentity)
+	return run(ctx, c, job, &inputIdentity, remote{c}, hostClock{})
 }
 
 // run is one job, admitted under whatever admission the caller's operation
 // carries in ctx (operationguard.RunJob): its own bounded, settled execution
 // for a runner that serves job after job, or a recheck under an execution
-// its operation already holds. A context that carries none refuses it.
-func run(ctx context.Context, c Config, job Job, inputIdentity string) (summary durablerun.Summary, err error) {
+// its operation already holds. A context that carries none refuses it. A
+// pinned job's inputs are compared with its pin first, before anything is
+// admitted. The hub admits it and the clock times its lease.
+func run(ctx context.Context, c Config, job Job, pin *string, h Hub, clock Clock) (summary durablerun.Summary, err error) {
+	var p Preflight
+	if pin != nil {
+		if ValidateJob(job) != nil {
+			return summary, ErrRefused
+		}
+		if p, err = prepare(job, pin); err != nil {
+			return summary, err
+		}
+	}
 	err = operationguard.RunJob(ctx, func(ctx context.Context) (jobErr error) {
-		summary, jobErr = runAdmitted(ctx, c, job, inputIdentity)
+		summary, jobErr = runAdmitted(ctx, c, job, p, h, clock)
 		return jobErr
 	})
 	return summary, err
 }
 
-func runAdmitted(ctx context.Context, c Config, job Job, inputIdentity string) (durablerun.Summary, error) {
+// runAdmitted holds the environment for one admitted job: the root's
+// exclusive claim, the hub's lease claimed, renewed every second and released,
+// and the job stopped irreversibly when a renewal fails, narrows the grant or
+// does not arrive before the lease expires. Once it holds them it prepares the
+// job, unless its pin already did, and applies the runner's rules (Inspect).
+func runAdmitted(ctx context.Context, c Config, job Job, p Preflight, h Hub, clock Clock) (durablerun.Summary, error) {
 	var zero durablerun.Summary
 	if c.validate() != nil {
 		return zero, ErrRefused
@@ -166,7 +175,7 @@ func runAdmitted(ctx context.Context, c Config, job Job, inputIdentity string) (
 		os.Remove(active)
 	}()
 	instance := strings.ToLower(rand.Text())
-	lease, err := enroll(ctx, c, instance, job.ID)
+	lease, err := claim(ctx, h, clock, instance, job.ID)
 	if err != nil {
 		return zero, err
 	}
@@ -174,32 +183,18 @@ func runAdmitted(ctx context.Context, c Config, job Job, inputIdentity string) (
 	// cancelled with it, but it keeps the context's values: the key and token
 	// commands it runs report themselves to an observer the caller installed
 	// (secret.ObserveDeclaredPrograms), as the enrollment's did.
-	defer func() { admission(context.WithoutCancel(ctx), c, instance, job.ID, "DELETE") }()
-	status, err := Health(c.Root)
-	if err != nil || status.Jobs >= lease.MaxJobs {
+	defer func() { h.Release(context.WithoutCancel(ctx), instance, job.ID) }()
+	jobs, err := Jobs(c.Root)
+	if err != nil || len(jobs) >= lease.MaxJobs {
 		return zero, ErrRefused
 	}
-	plan, err := durablerun.Prepare(job.Spec)
-	if err != nil {
-		return zero, ErrRefused
-	}
-	if inputIdentity != "" {
-		identity, e := plan.InputIdentity()
-		if e != nil || identity != inputIdentity {
-			return zero, ErrRefused
+	if p.prepared == nil {
+		if p, err = prepare(job, nil); err != nil {
+			return zero, err
 		}
 	}
-	bound := false
-	for _, r := range plan.Resources() {
-		if r.Kind == durablerun.EnvironmentResource {
-			bound = r.Name == c.Environment
-			if !bound {
-				return zero, ErrRefused
-			}
-		}
-	}
-	if !bound {
-		return zero, ErrRefused
+	if err = p.bind(c, job.ID); err != nil {
+		return zero, err
 	}
 	dir := filepath.Join(c.Root, job.ID)
 	if os.Mkdir(dir, 0700) != nil {
@@ -208,37 +203,39 @@ func runAdmitted(ctx context.Context, c Config, job Job, inputIdentity string) (
 	if syncDirectory(c.Root) != nil {
 		return zero, ErrRefused
 	}
-	lease, err = enroll(ctx, c, instance, job.ID)
+	lease, err = renew(ctx, h, clock, instance, job.ID)
 	if err != nil {
 		return zero, err
 	}
-	status, err = Health(c.Root)
-	if err != nil || status.Jobs > lease.MaxJobs {
+	jobs, err = Jobs(c.Root)
+	if err != nil || len(jobs) > lease.MaxJobs {
 		return zero, ErrRefused
 	}
-	runCtx, cancel := context.WithTimeout(ctx, time.Duration(lease.MaxSeconds)*time.Second)
+	runCtx, cancel := context.WithDeadline(ctx, clock.Now().Add(time.Duration(lease.MaxSeconds)*time.Second))
 	defer cancel()
 	// This timer runs independently of renewal HTTP and filesystem persistence.
 	// Once it fires cancellation is irreversible, even if a renewal later arrives.
-	expiry := time.AfterFunc(time.Until(lease.Expires), cancel)
+	expiry := clock.AfterFunc(lease.Expires.Sub(clock.Now()), cancel)
 	defer expiry.Stop()
 	raw, _ := json.Marshal(job)
 	if persist(filepath.Join(dir, "claim.json"), raw) != nil || storeLease(active, lease) != nil || runCtx.Err() != nil {
 		return zero, ErrRefused
 	}
 	done := make(chan struct{})
+	ticks, stopTicks := clock.Tick(time.Second)
 	go func() {
 		defer close(done)
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
+		defer stopTicks()
 		for {
 			select {
 			case <-runCtx.Done():
 				return
-			case <-ticker.C:
+			case <-ticks:
 				// Cancellation at the last lease's expiry does not wait for a failed hub.
-				renewCtx, stop := context.WithDeadline(runCtx, lease.Expires)
-				next, e := enroll(renewCtx, c, instance, job.ID)
+				renewCtx, stop := context.WithCancel(runCtx)
+				deadline := clock.AfterFunc(lease.Expires.Sub(clock.Now()), stop)
+				next, e := renew(renewCtx, h, clock, instance, job.ID)
+				deadline.Stop()
 				stop()
 				if e != nil || next.MaxSeconds < lease.MaxSeconds || next.MaxJobs < lease.MaxJobs || storeLease(active, next) != nil {
 					cancel()
@@ -247,12 +244,12 @@ func runAdmitted(ctx context.Context, c Config, job Job, inputIdentity string) (
 				if runCtx.Err() != nil {
 					return
 				}
-				expiry.Reset(time.Until(next.Expires))
+				expiry.Reset(next.Expires.Sub(clock.Now()))
 				lease = next
 			}
 		}
 	}()
-	summary, err := plan.Start(runCtx, filepath.Join(dir, "run"))
+	summary, err := p.prepared.Start(runCtx, RunPath(c.Root, job.ID))
 	cancel()
 	<-done
 	return summary, err
@@ -295,6 +292,36 @@ func Serve(ctx context.Context, c Config, inbox string) error {
 		case <-time.After(time.Second):
 		}
 	}
+}
+
+// Jobs lists the job ids the runner root reserves, in name order: every
+// admitted job's, whatever became of it.
+func Jobs(root string) ([]string, error) {
+	list, err := entries(root, 10001)
+	if err != nil {
+		return nil, ErrRefused
+	}
+	ids := []string{}
+	for _, e := range list {
+		if e.IsDir() && runnerprotocol.ID(e.Name()) {
+			ids = append(ids, e.Name())
+		}
+	}
+	return ids, nil
+}
+
+// RunPath is where the runner root retains job id's durable run, the folder
+// `readmit run status --recovery` reads.
+func RunPath(root, id string) string { return filepath.Join(root, id, "run") }
+
+// Recover reads the durable run the runner root retains for job id, read-only,
+// exactly as `readmit run status --recovery` does. It needs neither the hub
+// nor a credential, and never sends, resumes or resets anything.
+func Recover(root, id string) (durablerun.Recovery, error) {
+	if !runnerprotocol.ID(id) {
+		return durablerun.Recovery{}, ErrRefused
+	}
+	return durablerun.Recover(RunPath(root, id))
 }
 
 // Retained reports whether the runner root already holds id: Run reserves an
