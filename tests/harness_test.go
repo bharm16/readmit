@@ -44,16 +44,42 @@ func testCommand(ctx context.Context, t *testing.T, args ...string) *exec.Cmd {
 
 func run(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
+	return runObserved(t, nil, args...)
+}
+
+// runObserved keeps the ordinary command path while letting a test distinguish
+// signed policy setup from time spent starting and running the executable.
+func runObserved(t *testing.T, observe func(policySetup, process time.Duration), args ...string) (string, string, error) {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	started := time.Now()
 	cmd := testCommand(ctx, t, args...)
+	policySetup := time.Since(started)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	started = time.Now()
 	err := cmd.Run()
+	if observe != nil {
+		observe(policySetup, time.Since(started))
+	}
 	if ctx.Err() != nil {
 		t.Fatal("CLI timed out")
 	}
 	return stdout.String(), stderr.String(), err
+}
+
+func TestObservedRunPreservesCLIResults(t *testing.T) {
+	for _, args := range [][]string{{"--version"}, {"unknown-command"}} {
+		wantOut, wantErr, wantStatus := run(t, args...)
+		observed := false
+		gotOut, gotErr, gotStatus := runObserved(t, func(policySetup, process time.Duration) {
+			observed = true
+		}, args...)
+		if !observed || gotOut != wantOut || gotErr != wantErr || exitCode(t, gotStatus) != exitCode(t, wantStatus) {
+			t.Fatalf("observed command changed result for %q", args[0])
+		}
+	}
 }
 
 // runJSON runs one command whose arguments already select machine-readable
