@@ -2,6 +2,8 @@ package operation_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -128,6 +130,14 @@ func TestSecretOperationsLifecycle(t *testing.T) {
 	if updated.Address != newAddr {
 		t.Fatalf("address not updated: %+v", updated)
 	}
+	// The identity names the bytes the update wrote: the file as it now is.
+	identity, err := operation.SecretsIdentity(doc)
+	if err != nil {
+		t.Fatalf("SecretsIdentity: %v", err)
+	}
+	if want := fileIdentity(t, secretsPath); identity != want {
+		t.Fatalf("SecretsIdentity = %s, the file on disk is %s", identity, want)
+	}
 
 	// 5. RotateSecretReference
 	doc, rotated, err := operation.RotateSecretReference(ctx, secretsPath, "test-ref")
@@ -169,12 +179,15 @@ func TestSendPolicyOperations(t *testing.T) {
 		Schema:               sendpolicy.PolicySchema,
 		ApprovedDestinations: []string{"10.0.0.0/16", "127.0.0.1/32"},
 	}
-	saved, err := operation.SaveSendPolicy(policyPath, policy)
+	saved, identity, err := operation.SaveSendPolicy(policyPath, policy)
 	if err != nil {
 		t.Fatalf("SaveSendPolicy: %v", err)
 	}
 	if len(saved.ApprovedDestinations) != 2 {
 		t.Fatalf("unexpected saved policy: %+v", saved)
+	}
+	if want := fileIdentity(t, policyPath); identity != want {
+		t.Fatalf("SaveSendPolicy identity = %s, the file on disk is %s", identity, want)
 	}
 
 	read, err := operation.ReadSendPolicy(policyPath)
@@ -211,12 +224,15 @@ func TestResetPlanOperations(t *testing.T) {
 			},
 		},
 	}
-	saved, err := operation.SaveResetPlan(planPath, plan)
+	saved, identity, err := operation.SaveResetPlan(planPath, plan)
 	if err != nil {
 		t.Fatalf("SaveResetPlan: %v", err)
 	}
 	if len(saved.Actions) != 1 {
 		t.Fatalf("unexpected saved plan: %+v", saved)
+	}
+	if want := fileIdentity(t, planPath); identity != want {
+		t.Fatalf("SaveResetPlan identity = %s, the file on disk is %s", identity, want)
 	}
 
 	read, err := operation.ReadResetPlan(planPath)
@@ -251,7 +267,22 @@ func TestResetPlanOperations(t *testing.T) {
 	if result.Outcome != fixturereset.Confirmed {
 		t.Fatalf("expected confirmed reset, got %s: %s", result.Outcome, result.Reason)
 	}
+	// The reset reader names the plan it ran by the identity its save returned.
+	if result.PlanSHA256 != identity {
+		t.Fatalf("the reset ran plan %s, the save wrote %s", result.PlanSHA256, identity)
+	}
 	if _, err := os.Stat(outcomePath); err != nil {
 		t.Fatalf("expected outcome file to be created: %v", err)
 	}
+}
+
+// fileIdentity is the SHA-256 of a file's bytes as they are on disk.
+func fileIdentity(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }

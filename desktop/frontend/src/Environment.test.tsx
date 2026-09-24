@@ -1,8 +1,9 @@
 import { expect, test } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EnvironmentPanel, EnvironmentBanner } from "./EnvironmentPanel";
 import { installFacade, uninstallFacade } from "./testkit/wails";
+import type { SecretChange, SecretSaveRequest, SendPolicySaveRequest } from "./bindings";
 import {
   WORKSPACE_ROOT,
   defaultTargetResult,
@@ -367,4 +368,335 @@ test("a target file name is typed in full while documents are read, and naming i
   expect(facade.callsTo("ReadSecrets")).toHaveLength(1);
   expect(facade.callsTo("ReadSendPolicy")).toHaveLength(1);
   expect(facade.callsTo("ReadResetPlan")).toHaveLength(1);
+});
+
+// The identity a save reports: the SHA-256 of the bytes it wrote. The stub
+// answers with a stand-in of the same shape.
+const WRITTEN = "0123456789abcdef".repeat(4);
+
+function renderPanel(initialTab: "target" | "secrets" | "policy" | "reset") {
+  render(
+    <EnvironmentPanel
+      workspace={WORKSPACE_ROOT}
+      targetFile="targets/default.json"
+      secretsFile="secrets.json"
+      policyFile="send-policy.json"
+      planFile="reset-plan.json"
+      initialTab={initialTab}
+    />,
+  );
+}
+
+const readsAnswered = {
+  ReadTarget: async () => defaultTargetResult(),
+  ReadSendPolicy: async () => defaultSendPolicyResult(),
+  ReadSecrets: async () => defaultSecretsResult(),
+  ReadResetPlan: async () => defaultResetPlanResult(),
+};
+
+test("a registered reference is edited through the shared update, and its locator arguments are counted, never shown", async () => {
+  const user = userEvent.setup();
+  const registered = defaultSecretsResult().document?.references[0];
+  if (!registered) throw new Error("fixture secret missing");
+  const facade = installFacade({
+    ...readsAnswered,
+    SaveSecretReference: async (request) => ({
+      state: "completed",
+      secrets_file: request.secrets_file,
+      document: { schema: "readmit-secrets/v1", references: [{ ...request.reference, ...request.change }] },
+      identity: WRITTEN,
+    }),
+  });
+  renderPanel("secrets");
+
+  const row = within((await screen.findByText("mllp-basic-auth")).closest("tr") as HTMLElement);
+  // The locator arguments are counted, as `readmit secret show` counts them.
+  expect(row.getByText(/\(1 locator arguments\)/)).toBeTruthy();
+  expect(screen.queryByText(/named-reference/)).toBeNull();
+
+  await user.click(row.getByRole("button", { name: "Edit mllp-basic-auth" }));
+  const form = within(screen.getByRole("form", { name: "Edit credential reference mllp-basic-auth" }));
+  // One form at a time: the registration's fields are not beside the edit's.
+  expect(screen.queryByRole("button", { name: "Register Secret Reference" })).toBeNull();
+  expect(screen.getAllByLabelText("Target Address Constraint")).toHaveLength(1);
+  // Focus moves into the edit, and the registered arguments are not shown there either.
+  expect(document.activeElement).toBe(form.getByLabelText("Store"));
+  expect(screen.queryByText(/named-reference/)).toBeNull();
+  expect(form.getByText(/Purpose: mllp-endpoint\./)).toBeTruthy();
+
+  await user.selectOptions(form.getByLabelText("Store"), "customer-managed");
+  await user.clear(form.getByLabelText("Target Address Constraint"));
+  await user.type(form.getByLabelText("Target Address Constraint"), "second-peer");
+  await user.clear(form.getByLabelText("Locator Command (Path)"));
+  await user.type(form.getByLabelText("Locator Command (Path)"), "second-locator");
+  await user.clear(form.getByLabelText("Maximum Rotation Age"));
+  await user.click(form.getByLabelText("Replace the 1 registered locator arguments"));
+  await user.type(form.getByLabelText(/Replacement Locator Arguments/), " first reference {Enter}{Enter}second");
+  await user.click(form.getByRole("button", { name: "Save Changes to mllp-basic-auth" }));
+
+  await waitFor(() => expect(facade.callsTo("SaveSecretReference")).toHaveLength(1));
+  const request = facade.callsTo("SaveSecretReference")[0]?.args[0] as SecretSaveRequest;
+  expect(request.is_update).toBe(true);
+  // The update names the reference it was opened on and changes what the
+  // person changed: each argument line trimmed, and a blank line no argument.
+  expect(request.reference).toEqual(registered);
+  const expected: SecretChange = {
+    store: "customer-managed",
+    address: "second-peer",
+    command: "second-locator",
+    max_age: "",
+    arguments: ["first reference", "second"],
+  };
+  expect(request.change).toEqual(expected);
+  expect(await screen.findByText("Credential reference mllp-basic-auth updated.")).toBeTruthy();
+  expect(screen.getByText(`${WRITTEN}`, { selector: "code" })).toBeTruthy();
+  expect(screen.queryByRole("form", { name: /Edit credential reference/ })).toBeNull();
+  // Focus returns to the control that opened the edit.
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Edit mllp-basic-auth" })));
+  uninstallFacade();
+});
+
+test("an edit keeps its registered arguments unless they are replaced, stays open with what was typed when refused, and a cancelled edit writes nothing", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade({
+    ...readsAnswered,
+    SaveSecretReference: async () => ({ state: "failed", reason: "reference address: must be an explicit host and numeric port" }),
+  });
+  renderPanel("secrets");
+  await user.click(await screen.findByRole("button", { name: "Edit mllp-basic-auth" }));
+  const form = within(screen.getByRole("form", { name: "Edit credential reference mllp-basic-auth" }));
+  await user.clear(form.getByLabelText("Target Address Constraint"));
+  await user.type(form.getByLabelText("Target Address Constraint"), "no-port");
+  await user.click(form.getByRole("button", { name: "Save Changes to mllp-basic-auth" }));
+
+  expect(await screen.findByText("reference address: must be an explicit host and numeric port")).toBeTruthy();
+  // Only the member the person changed is sent: the registered arguments and
+  // maximum age are kept as recorded, whatever else changed them meanwhile.
+  const request = facade.callsTo("SaveSecretReference")[0]?.args[0] as SecretSaveRequest;
+  expect(request.change).toEqual({ address: "no-port" });
+  // The refusal is recoverable: the edit is still open with what was typed,
+  // and no identity is claimed for a write that did not happen.
+  expect((form.getByLabelText("Target Address Constraint") as HTMLInputElement).value).toBe("no-port");
+  expect(screen.queryByText(/^Written to /)).toBeNull();
+
+  await user.click(form.getByRole("button", { name: "Cancel Editing" }));
+  expect(screen.getByText("Edit of mllp-basic-auth cancelled; nothing was written.")).toBeTruthy();
+  expect(screen.queryByRole("form", { name: /Edit credential reference/ })).toBeNull();
+  expect(facade.callsTo("SaveSecretReference")).toHaveLength(1);
+  uninstallFacade();
+});
+
+test("an edit is opened, cancelled with Escape and saved with Enter from the keyboard alone", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade({
+    ...readsAnswered,
+    SaveSecretReference: async (request) => ({
+      state: "completed",
+      document: { schema: "readmit-secrets/v1", references: [request.reference] },
+      identity: WRITTEN,
+    }),
+  });
+  renderPanel("secrets");
+  const edit = await screen.findByRole("button", { name: "Edit mllp-basic-auth" });
+  await waitFor(() => expect((edit as HTMLButtonElement).disabled).toBe(false));
+  // Tab reaches the control; Enter opens the edit with focus inside it.
+  for (let step = 0; step < 60 && document.activeElement !== edit; step++) await user.tab();
+  expect(document.activeElement).toBe(edit);
+  await user.keyboard("{Enter}");
+  expect(document.activeElement).toBe(screen.getByLabelText("Store", { selector: "#edit-secret-store" }));
+  // The window's own Escape cancels a running operation; the Escape that
+  // cancels an edit never reaches it.
+  const reachedWindow: string[] = [];
+  const listener = (event: KeyboardEvent) => reachedWindow.push(event.key);
+  window.addEventListener("keydown", listener);
+  await user.keyboard("{Escape}");
+  window.removeEventListener("keydown", listener);
+  expect(reachedWindow).toEqual([]);
+  expect(screen.queryByRole("form", { name: /Edit credential reference/ })).toBeNull();
+  await waitFor(() => expect(document.activeElement).toBe(edit));
+  expect(facade.callsTo("SaveSecretReference")).toHaveLength(0);
+
+  await user.keyboard("{Enter}");
+  await user.tab();
+  expect(document.activeElement).toBe(screen.getByLabelText("Target Address Constraint", { selector: "#edit-secret-address" }));
+  await user.keyboard("{Control>}a{/Control}second-peer{Enter}");
+  await waitFor(() => expect(facade.callsTo("SaveSecretReference")).toHaveLength(1));
+  expect((facade.callsTo("SaveSecretReference")[0]?.args[0] as SecretSaveRequest).change).toEqual({ address: "second-peer" });
+  expect(await screen.findByText("Credential reference mllp-basic-auth updated.")).toBeTruthy();
+  uninstallFacade();
+});
+
+test("a registration sends one locator argument per line and its maximum age, and a duplicate is refused with what was typed kept", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade({
+    ...readsAnswered,
+    SaveSecretReference: async () => ({ state: "failed", reason: "that name is already registered in this store" }),
+  });
+  renderPanel("secrets");
+  await screen.findByText("mllp-basic-auth");
+  await user.type(screen.getByLabelText("Reference Name"), "mllp-basic-auth");
+  await user.type(screen.getByLabelText("Target Address Constraint", { selector: "#secret-address" }), "peer-under-test");
+  await user.type(screen.getByLabelText("Locator Command (Path)", { selector: "#secret-command" }), "locator");
+  await user.type(screen.getByLabelText("Locator Arguments (one per line)"), "named reference{Enter}-w");
+  await user.type(screen.getByLabelText("Maximum Rotation Age", { selector: "#secret-max-age" }), "720h");
+  await user.click(screen.getByRole("button", { name: "Register Secret Reference" }));
+
+  expect(await screen.findByText("that name is already registered in this store")).toBeTruthy();
+  const request = facade.callsTo("SaveSecretReference")[0]?.args[0] as SecretSaveRequest;
+  expect(request.is_update).toBe(false);
+  expect(request.reference.arguments).toEqual(["named reference", "-w"]);
+  expect(request.reference.max_age).toBe("720h");
+  expect((screen.getByLabelText("Reference Name") as HTMLInputElement).value).toBe("mllp-basic-auth");
+  expect(screen.queryByText(/^Written to /)).toBeNull();
+  uninstallFacade();
+});
+
+test("a destination prefix is added with Enter, a refused policy claims no identity, and a saved one shows the identity it was written under", async () => {
+  const user = userEvent.setup();
+  let answer: "refuse" | "save" = "refuse";
+  const facade = installFacade({
+    ...readsAnswered,
+    SaveSendPolicy: async (request) =>
+      answer === "refuse"
+        ? { state: "failed", reason: "every approved destination is one CIDR prefix in canonical masked form, such as 127.0.0.0/8 or 10.1.0.0/16" }
+        : { state: "completed", policy: request.policy, policy_file: request.policy_file, identity: WRITTEN },
+  });
+  renderPanel("policy");
+  await screen.findByText("approved-peer");
+  await user.type(screen.getByLabelText("Approved destination prefix"), "third-peer{Enter}");
+  expect(await screen.findByText("third-peer")).toBeTruthy();
+  expect((screen.getByLabelText("Approved destination prefix") as HTMLInputElement).value).toBe("");
+
+  await user.click(screen.getByRole("button", { name: "Save Approved Send Policy" }));
+  expect(await screen.findByText(/canonical masked form/)).toBeTruthy();
+  expect(screen.queryByText(/^Written to /)).toBeNull();
+  // The refused draft is kept for the person to correct.
+  expect(screen.getByText("third-peer")).toBeTruthy();
+
+  answer = "save";
+  await user.click(screen.getByRole("button", { name: "Save Approved Send Policy" }));
+  expect(await screen.findByText("Approved-destination policy saved.")).toBeTruthy();
+  expect(screen.getByText(WRITTEN, { selector: "code" })).toBeTruthy();
+  const saved = facade.callsTo("SaveSendPolicy")[1]?.args[0] as SendPolicySaveRequest;
+  expect(saved.policy.approved_destinations).toEqual(["approved-peer", "second-peer", "third-peer"]);
+  uninstallFacade();
+});
+
+test("a saved reset plan shows the identity it was written under", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade({
+    ...readsAnswered,
+    SaveResetPlan: async (request) => ({ state: "completed", plan: request.plan, plan_file: request.plan_file, identity: WRITTEN }),
+  });
+  renderPanel("reset");
+  await screen.findByText("Confirm patient database is wiped.");
+  await user.type(screen.getByLabelText("Action ID"), "step-3");
+  await user.type(screen.getByLabelText("Side-Effect & Reset Instructions"), "Confirm the receiver is stopped.");
+  await user.click(screen.getByRole("button", { name: "Add Action to Plan" }));
+  await user.click(screen.getByRole("button", { name: "Save Reset Plan" }));
+  expect(await screen.findByText("Fixture reset plan saved.")).toBeTruthy();
+  expect(screen.getByText(WRITTEN, { selector: "code" })).toBeTruthy();
+  expect(screen.getByText("reset-plan.json", { selector: "code" })).toBeTruthy();
+  expect(facade.callsTo("SaveResetPlan")).toHaveLength(1);
+  uninstallFacade();
+});
+
+test("focus returns to the control that started a save once its refusal answers, after the disabled form took it", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade(readsAnswered);
+  const saving = facade.park("SaveSecretReference");
+  renderPanel("secrets");
+  await user.click(await screen.findByRole("button", { name: "Edit mllp-basic-auth" }));
+  const form = within(screen.getByRole("form", { name: "Edit credential reference mllp-basic-auth" }));
+  const address = form.getByLabelText("Target Address Constraint") as HTMLInputElement;
+  await user.click(address);
+  await user.keyboard("{Control>}a{/Control}no-port{Enter}");
+  await waitFor(() => expect(address.disabled).toBe(true));
+  // A browser moves focus off a control it disables; jsdom neither does that
+  // nor blurs a disabled control, so the test does what the browser does.
+  address.disabled = false;
+  address.blur();
+  address.disabled = true;
+  expect(document.activeElement).toBe(document.body);
+  saving.resolve({ state: "failed", reason: "reference address: must be an explicit host and numeric port" });
+  expect(await screen.findByText("reference address: must be an explicit host and numeric port")).toBeTruthy();
+  await waitFor(() => expect(document.activeElement).toBe(address));
+  // The person keeps typing where they were.
+  await user.keyboard("{Control>}a{/Control}peer-under-test");
+  expect(address.value).toBe("peer-under-test");
+  uninstallFacade();
+});
+
+test("naming another secrets document while an edit is open closes the edit where the person is typing, and every keystroke lands", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade(readsAnswered);
+  renderPanel("secrets");
+  await user.click(await screen.findByRole("button", { name: "Edit mllp-basic-auth" }));
+  expect(screen.getByRole("form", { name: "Edit credential reference mllp-basic-auth" })).toBeTruthy();
+  const file = screen.getByLabelText("Secrets Document File") as HTMLInputElement;
+  await user.click(file);
+  await user.type(file, ".bak");
+  expect(file.value).toBe("secrets.json.bak");
+  expect(document.activeElement).toBe(file);
+  expect(screen.queryByRole("form", { name: /Edit credential reference/ })).toBeNull();
+  await waitFor(() => expect(facade.callsTo("ReadSecrets").at(-1)?.args).toEqual([WORKSPACE_ROOT, "secrets.json.bak"]));
+  uninstallFacade();
+});
+
+test("a secrets document that cannot be read says why instead of showing the references of the one read before it", async () => {
+  const user = userEvent.setup();
+  installFacade({
+    ...readsAnswered,
+    ReadSecrets: async (_workspace, file) =>
+      file === "secrets.json" ? defaultSecretsResult() : { state: "failed", reason: "invalid secret reference document" },
+  });
+  renderPanel("secrets");
+  expect(await screen.findByText("mllp-basic-auth")).toBeTruthy();
+  const file = screen.getByLabelText("Secrets Document File");
+  await user.clear(file);
+  await user.type(file, "notes.json");
+  expect(await screen.findByText("invalid secret reference document")).toBeTruthy();
+  expect(screen.queryByText("mllp-basic-auth")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Edit mllp-basic-auth" })).toBeNull();
+  uninstallFacade();
+});
+
+test("a reference that declares no locator arguments is shown and edited, and a bound reference the document does not list stays visible", async () => {
+  const user = userEvent.setup();
+  const secrets = defaultSecretsResult();
+  const reference = secrets.document?.references[0];
+  if (!secrets.document || !reference) throw new Error("fixture secret missing");
+  // A document may omit the member; the facade then carries no list at all.
+  secrets.document.references[0] = { ...reference, arguments: null as unknown as string[] };
+  const target = defaultTargetResult();
+  if (!target.target) throw new Error("fixture target missing");
+  target.target.credential = { secrets_file: "secrets.json", reference: "unlisted-reference" };
+  installFacade({ ...readsAnswered, ReadSecrets: async () => secrets, ReadTarget: async () => target });
+  renderPanel("target");
+  const bound = (await screen.findByLabelText("Credential Reference")) as HTMLSelectElement;
+  await waitFor(() => expect(bound.selectedOptions[0]?.textContent).toBe("unlisted-reference (not listed in secrets.json)"));
+
+  await user.click(screen.getByRole("button", { name: "Credential References" }));
+  const row = within((await screen.findByText("mllp-basic-auth")).closest("tr") as HTMLElement);
+  expect(row.getByText(/\(0 locator arguments\)/)).toBeTruthy();
+  await user.click(row.getByRole("button", { name: "Edit mllp-basic-auth" }));
+  expect(screen.getByLabelText("Replace the 0 registered locator arguments")).toBeTruthy();
+  uninstallFacade();
+});
+
+test("a target bound to a reference in another secrets document says so rather than showing the loaded document's reference of that name", async () => {
+  const target = defaultTargetResult();
+  if (!target.target) throw new Error("fixture target missing");
+  target.target.credential = { secrets_file: "other-secrets.json", reference: "mllp-basic-auth" };
+  const user = userEvent.setup();
+  let saved: unknown;
+  installFacade({ ...readsAnswered, ReadTarget: async () => target, SaveTarget: async (request) => ((saved = request), target) });
+  renderPanel("target");
+  const bound = (await screen.findByLabelText("Credential Reference")) as HTMLSelectElement;
+  await waitFor(() => expect(bound.selectedOptions[0]?.textContent).toBe("mllp-basic-auth (bound in other-secrets.json)"));
+  // The loaded document's reference of the same name is still a choice of its own.
+  await user.selectOptions(bound, "mllp-basic-auth (mllp-endpoint · os-keychain)");
+  await user.click(screen.getByRole("button", { name: "Save Target Configuration" }));
+  expect(saved).toMatchObject({ target: { credential: { secrets_file: "secrets.json", reference: "mllp-basic-auth" } } });
+  uninstallFacade();
 });

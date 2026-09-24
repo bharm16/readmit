@@ -304,7 +304,6 @@ var supportStatus = Support{
 		"This is an unsigned development preview: the only published candidate is an early prerelease, nothing is signed for distribution or notarized, and packaged acceptance (#109), release acceptance (#153) and accessibility/privacy acceptance (#111) are open. A new screen certifies none of them.",
 	},
 	Unavailable: []string{
-		"add or update credential references without storing secret values",
 		"admit and renew runner instances from the runner host itself",
 		"align two verified collections and report one window of rows",
 		"check a staged upgrade and take its recovery archive",
@@ -366,7 +365,6 @@ var supportStatus = Support{
 		"save a relationship-preserving transform plan with its rules and profile pins",
 		"save a validated scenario document without overwriting another entry",
 		"save or version a library template without overwriting another revision",
-		"save reviewed reset actions and instructions atomically",
 		"search team collaboration notifications",
 		"search team collaboration review history",
 		"select a saved test or suite through the host's native file dialog",

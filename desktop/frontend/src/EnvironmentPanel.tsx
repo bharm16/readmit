@@ -22,6 +22,7 @@ import {
   type SendPolicyDecision,
   type SecretDocument,
   type SecretReference,
+  type SecretChange,
   type SecretStore,
   type SecretPurpose,
   type SecretTestResult,
@@ -68,6 +69,70 @@ function goDurationMs(value: string): number | null {
   const factor = unit ? scale[unit] : undefined;
   if (factor == null || Number.isNaN(amount)) return null;
   return amount * factor;
+}
+
+/** Locator arguments typed one per line. An argument holds no control
+ * character, so a line break never falls inside one and an argument may hold a
+ * space. Each line is trimmed, because the arguments are never shown again to
+ * reveal a stray space, and a blank line is no argument. */
+function argumentLines(text: string): string[] {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+}
+
+/** One document a save replaced atomically, named by the SHA-256 of the exact
+ * bytes the save wrote. */
+interface Written {
+  file: string;
+  identity: string;
+}
+
+function WrittenIdentity({ written }: { written: Written | null }) {
+  if (!written) return null;
+  return (
+    <p className="hint">
+      Written to <code>{written.file}</code> · identity <code>{written.identity}</code>
+    </p>
+  );
+}
+
+/** An edit of one registered reference, opened on the reference as it was
+ * read: the members `readmit secret update` can change. The name and purpose
+ * are what the stored credential is for and are not edited, and the
+ * registered locator arguments are counted, never shown; they are replaced
+ * only when the person chooses to. */
+interface SecretEdit {
+  opened: SecretReference;
+  store: SecretStore;
+  address: string;
+  command: string;
+  maxAge: string;
+  replaceArguments: boolean;
+  replacementArguments: string;
+}
+
+/** The credential choice that keeps a binding the loaded document does not
+ * offer. It is not a reference name: a name never holds a space. */
+const KEEP_BINDING = "(keep the recorded binding)";
+
+/** A document whose reference declares no locator arguments may carry none. */
+function argumentCount(ref: SecretReference): number {
+  return (ref.arguments ?? []).length;
+}
+
+/** What an edit changes: each member the person changed since the edit
+ * opened, and nothing else, as `readmit secret update` changes only what its
+ * flags name. A member someone else changed meanwhile is not written back. */
+function secretChange(edit: SecretEdit): SecretChange {
+  const change: SecretChange = {};
+  if (edit.store !== edit.opened.store) change.store = edit.store;
+  if (edit.address !== edit.opened.address) change.address = edit.address;
+  if (edit.command !== edit.opened.command) change.command = edit.command;
+  if (edit.maxAge !== (edit.opened.max_age ?? "")) change.max_age = edit.maxAge;
+  if (edit.replaceArguments) change.arguments = argumentLines(edit.replacementArguments);
+  return change;
 }
 
 function rotationStatus(ref: SecretReference, now = Date.now()): { label: string; tone: "current" | "overdue" | "not-declared" } {
@@ -163,6 +228,7 @@ export function EnvironmentPanel({
   // Secrets State
   const [currentSecretsFile, setCurrentSecretsFile] = useState(secretsFile);
   const [secretsDoc, setSecretsDoc] = useState<SecretDocument | null>(null);
+  const [secretsRefusal, setSecretsRefusal] = useState<string | null>(null);
   const [newSecretName, setNewSecretName] = useState("");
   const [newSecretStore, setNewSecretStore] = useState<SecretStore>("os-keychain");
   const [newSecretPurpose, setNewSecretPurpose] = useState<SecretPurpose>("mllp-endpoint");
@@ -172,6 +238,14 @@ export function EnvironmentPanel({
   const [newSecretMaxAge, setNewSecretMaxAge] = useState("");
   const [testResult, setTestResult] = useState<SecretTestResult | null>(null);
   const [scanResult, setScanResult] = useState<SecretScanResult | null>(null);
+  const [secretEdit, setSecretEdit] = useState<SecretEdit | null>(null);
+  const [secretsWritten, setSecretsWritten] = useState<Written | null>(null);
+  // Focus moves into an edit when it opens and back to its reference's Edit
+  // control when it is saved or cancelled, or to the table when that reference
+  // is gone, so a keyboard user never loses their place.
+  const editFirstField = useRef<HTMLSelectElement | null>(null);
+  const secretsTable = useRef<HTMLTableElement | null>(null);
+  const returnFocusTo = useRef<string | null>(null);
 
   // Send Policy State
   const [currentPolicyFile, setCurrentPolicyFile] = useState(policyFile);
@@ -184,6 +258,7 @@ export function EnvironmentPanel({
   const [evalClassification, setEvalClassification] = useState<TargetClassification>("nonproduction");
   const [evalExplicit, setEvalExplicit] = useState(true);
   const [evalDecision, setEvalDecision] = useState<SendPolicyDecision | null>(null);
+  const [policyWritten, setPolicyWritten] = useState<Written | null>(null);
 
   // Fixture Reset Plan State
   const [currentPlanFile, setCurrentPlanFile] = useState(planFile);
@@ -198,6 +273,7 @@ export function EnvironmentPanel({
   const [newActionObservation, setNewActionObservation] = useState("");
   const [confirmedActions, setConfirmedActions] = useState<string[]>([]);
   const [resetResult, setResetResult] = useState<ResetResult | null>(null);
+  const [planWritten, setPlanWritten] = useState<Written | null>(null);
 
   // Draft Retainer for active tab
   const retainer = useRetainer();
@@ -247,6 +323,7 @@ export function EnvironmentPanel({
   // keystrokes of the name being typed.
   const blocked = busy || loadingDocuments;
   const targetLoad = useRef(0);
+  const secretsLoad = useRef(0);
   const policyLoad = useRef(0);
   const planLoad = useRef(0);
   const adoptedDrafts = useRef(false);
@@ -267,17 +344,29 @@ export function EnvironmentPanel({
     }
   }, [workspace, onTargetChange, beginLoad, endLoad]);
 
+  const showSecrets = useCallback((document: SecretDocument) => {
+    setSecretsDoc(document);
+    setSecretsRefusal(null);
+  }, []);
+
+  // A document that cannot be read shows why instead of the references of the
+  // one read before it, so an edit never starts from another file.
   const loadSecrets = useCallback(async (file: string) => {
+    const token = ++secretsLoad.current;
     beginLoad();
     try {
       const res = await readSecrets(workspace, file);
+      if (token !== secretsLoad.current) return;
       if (res.state === "completed" && res.document) {
-        setSecretsDoc(res.document);
+        showSecrets(res.document);
+      } else {
+        setSecretsDoc(null);
+        setSecretsRefusal(res.reason || "This secret reference document cannot be read.");
       }
     } finally {
       endLoad();
     }
-  }, [workspace, beginLoad, endLoad]);
+  }, [workspace, beginLoad, endLoad, showSecrets]);
 
   const loadPolicy = useCallback(async (file: string) => {
     const token = ++policyLoad.current;
@@ -354,9 +443,50 @@ export function EnvironmentPanel({
     else void loadPlan(currentPlanFile);
   }, [currentPlanFile, loadPlan]);
 
+  // Another workspace is other documents: an open edit and the identities of
+  // earlier saves belong to the one before it.
+  useEffect(() => {
+    returnFocusTo.current = null;
+    setSecretEdit(null);
+    setSecretsWritten(null);
+    setPolicyWritten(null);
+    setPlanWritten(null);
+  }, [workspace]);
+
+  const editingName = secretEdit?.opened.name ?? null;
+  useEffect(() => {
+    if (editingName !== null) {
+      editFirstField.current?.focus();
+      return;
+    }
+    const name = returnFocusTo.current;
+    returnFocusTo.current = null;
+    if (name === null) return;
+    const table = secretsTable.current;
+    const edit = Array.from(table?.querySelectorAll<HTMLButtonElement>("button[data-edit]") ?? []).find((b) => b.dataset.edit === name);
+    (edit ?? table)?.focus();
+  }, [editingName]);
+
+  // Every control is disabled while an action runs, which takes focus from the
+  // one that started it. Once the action has answered, focus returns there when
+  // nothing else has taken it, so a keyboard user keeps their place after a
+  // refusal as after a success.
+  const focusedBeforeBusy = useRef<HTMLElement | null>(null);
+  const beginBusy = useCallback(() => {
+    focusedBeforeBusy.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setBusy(true);
+  }, []);
+  useEffect(() => {
+    if (busy) return;
+    const previous = focusedBeforeBusy.current;
+    focusedBeforeBusy.current = null;
+    const unfocused = document.activeElement === null || document.activeElement === document.body;
+    if (previous?.isConnected && unfocused) previous.focus();
+  }, [busy]);
+
   // Handle Target Save
   async function handleSaveTarget() {
-    setBusy(true);
+    beginBusy();
     setFeedback(null);
     try {
       const res = await saveTarget({
@@ -379,7 +509,7 @@ export function EnvironmentPanel({
 
   // Handle Check Target (deliberate action)
   async function handleCheckTarget() {
-    setBusy(true);
+    beginBusy();
     setFeedback(null);
     setCheckReport(null);
     setCheckDecision(null);
@@ -405,20 +535,18 @@ export function EnvironmentPanel({
       setFeedback("Secret name and locator command are required.");
       return;
     }
-    setBusy(true);
+    beginBusy();
     setFeedback(null);
+    setSecretsWritten(null);
+    const file = currentSecretsFile;
     try {
-      const args = newSecretArgs
-        .split(" ")
-        .map((s) => s.trim())
-        .filter(Boolean);
       const ref: SecretReference = {
         name: newSecretName,
         store: newSecretStore,
         purpose: newSecretPurpose,
         address: newSecretAddress,
         command: newSecretCommand,
-        arguments: args,
+        arguments: argumentLines(newSecretArgs),
         generation: 1,
         rotated_at: new Date().toISOString(),
       };
@@ -427,12 +555,13 @@ export function EnvironmentPanel({
       }
       const res = await saveSecretReference({
         workspace,
-        secrets_file: currentSecretsFile,
+        secrets_file: file,
         reference: ref,
         is_update: false,
       });
       if (res.state === "completed" && res.document) {
-        setSecretsDoc(res.document);
+        showSecrets(res.document);
+        if (res.identity) setSecretsWritten({ file, identity: res.identity });
         setNewSecretName("");
         setNewSecretCommand("");
         setNewSecretArgs("");
@@ -448,9 +577,73 @@ export function EnvironmentPanel({
     }
   }
 
+  function openSecretEdit(ref: SecretReference) {
+    setFeedback(null);
+    setSecretEdit({
+      opened: ref,
+      store: ref.store,
+      address: ref.address,
+      command: ref.command,
+      maxAge: ref.max_age ?? "",
+      replaceArguments: false,
+      replacementArguments: "",
+    });
+  }
+
+  // Closes the edit. Focus returns to its reference only when the person
+  // finished with it; naming another document closes it where they are typing.
+  function closeSecretEdit(returnFocus: boolean) {
+    returnFocusTo.current = returnFocus && secretEdit ? secretEdit.opened.name : null;
+    setSecretEdit(null);
+  }
+
+  function updateSecretEdit(patch: Partial<SecretEdit>) {
+    setSecretEdit((prev) => (prev ? { ...prev, ...patch } : prev));
+  }
+
+  // Cancelling an edit discards what was typed; nothing is written.
+  function cancelSecretEdit() {
+    if (!secretEdit) return;
+    closeSecretEdit(true);
+    setFeedback(`Edit of ${secretEdit.opened.name} cancelled; nothing was written.`);
+  }
+
+  // Handle Secret Reference Edit, through the same shared update the command
+  // line uses, with only what the person changed. A refusal, one for an edit
+  // that changed nothing included, keeps the edit open with what was typed.
+  async function handleSaveSecretEdit() {
+    if (!secretEdit) return;
+    const name = secretEdit.opened.name;
+    const file = currentSecretsFile;
+    beginBusy();
+    setFeedback(null);
+    setSecretsWritten(null);
+    try {
+      const res = await saveSecretReference({
+        workspace,
+        secrets_file: file,
+        reference: secretEdit.opened,
+        is_update: true,
+        change: secretChange(secretEdit),
+      });
+      if (res.state === "completed" && res.document) {
+        showSecrets(res.document);
+        if (res.identity) setSecretsWritten({ file, identity: res.identity });
+        closeSecretEdit(true);
+        // A test of the locator the edit replaced says nothing about this one.
+        if (testResult?.name === name) setTestResult(null);
+        setFeedback(`Credential reference ${name} updated.`);
+      } else {
+        setFeedback(res.reason || "Failed to update credential reference.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // Handle Test Secret Reference
   async function handleTestSecret(name: string) {
-    setBusy(true);
+    beginBusy();
     setTestResult(null);
     try {
       const res = await testSecretReference(workspace, currentSecretsFile, name);
@@ -465,11 +658,13 @@ export function EnvironmentPanel({
 
   // Handle Rotate Secret Reference
   async function handleRotateSecret(name: string) {
-    setBusy(true);
+    beginBusy();
     try {
       const res = await rotateSecretReference(workspace, currentSecretsFile, name);
       if (res.state === "completed" && res.document) {
-        setSecretsDoc(res.document);
+        showSecrets(res.document);
+        // The document changed after the save the identity line named.
+        setSecretsWritten(null);
         setFeedback(`Secret ${name} rotated successfully.`);
       } else {
         setFeedback(res.reason || "Rotation failed.");
@@ -481,11 +676,13 @@ export function EnvironmentPanel({
 
   // Handle Remove Secret Reference
   async function handleRemoveSecret(name: string) {
-    setBusy(true);
+    beginBusy();
     try {
       const res = await removeSecretReference(workspace, currentSecretsFile, name);
       if (res.state === "completed" && res.document) {
-        setSecretsDoc(res.document);
+        showSecrets(res.document);
+        setSecretsWritten(null);
+        if (secretEdit?.opened.name === name) closeSecretEdit(true);
         setFeedback(`Secret ${name} removed.`);
       } else {
         setFeedback(res.reason || "Failed to remove secret reference.");
@@ -497,7 +694,7 @@ export function EnvironmentPanel({
 
   // Handle Scan Secrets
   async function handleScanSecrets() {
-    setBusy(true);
+    beginBusy();
     setScanResult(null);
     try {
       const res = await scanSecrets({
@@ -540,16 +737,19 @@ export function EnvironmentPanel({
 
   // Handle Save Send Policy
   async function handleSavePolicy() {
-    setBusy(true);
+    beginBusy();
     setFeedback(null);
+    setPolicyWritten(null);
+    const file = currentPolicyFile;
     try {
       const res = await saveSendPolicy({
         workspace,
-        policy_file: currentPolicyFile,
+        policy_file: file,
         policy,
       });
       if (res.state === "completed" && res.policy) {
         setPolicy(res.policy);
+        if (res.identity) setPolicyWritten({ file, identity: res.identity });
         setFeedback("Approved-destination policy saved.");
         retainer.clear();
       } else {
@@ -562,7 +762,7 @@ export function EnvironmentPanel({
 
   // Handle Local Policy Evaluation
   async function handleEvaluatePolicy() {
-    setBusy(true);
+    beginBusy();
     setEvalDecision(null);
     try {
       const res = await evaluateSendPolicy({
@@ -627,16 +827,19 @@ export function EnvironmentPanel({
 
   // Handle Save Reset Plan
   async function handleSavePlan() {
-    setBusy(true);
+    beginBusy();
     setFeedback(null);
+    setPlanWritten(null);
+    const file = currentPlanFile;
     try {
       const res = await saveResetPlan({
         workspace,
-        plan_file: currentPlanFile,
+        plan_file: file,
         plan: resetPlan,
       });
       if (res.state === "completed" && res.plan) {
         setResetPlan(res.plan);
+        if (res.identity) setPlanWritten({ file, identity: res.identity });
         setFeedback("Fixture reset plan saved.");
         retainer.clear();
       } else {
@@ -649,7 +852,7 @@ export function EnvironmentPanel({
 
   // Handle Execute Reset
   async function handleExecuteReset() {
-    setBusy(true);
+    beginBusy();
     setFeedback(null);
     setResetResult(null);
     try {
@@ -671,6 +874,13 @@ export function EnvironmentPanel({
       setBusy(false);
     }
   }
+
+  // A credential the target binds in a document other than the one loaded here,
+  // or under a name that document does not list, is kept as its own choice.
+  const bound = target.credential;
+  const boundInOther = bound !== undefined && bound.secrets_file !== currentSecretsFile;
+  const boundUnlisted =
+    bound !== undefined && !boundInOther && !(secretsDoc?.references ?? []).some((r) => r.name === bound.reference);
 
   return (
     <section className="environment-panel" aria-labelledby="environment-panel-title">
@@ -885,10 +1095,11 @@ export function EnvironmentPanel({
               <label htmlFor="target-secret-ref">Credential Reference</label>
               <select
                 id="target-secret-ref"
-                value={target.credential?.reference || ""}
+                value={boundInOther || boundUnlisted ? KEEP_BINDING : target.credential?.reference || ""}
                 disabled={blocked}
                 onChange={(e) => {
                   const refName = e.target.value;
+                  if (refName === KEEP_BINDING) return;
                   const updated: Target = { ...target };
                   if (refName) {
                     updated.credential = { secrets_file: currentSecretsFile, reference: refName };
@@ -900,6 +1111,14 @@ export function EnvironmentPanel({
                 }}
               >
                 <option value="">None (no client authentication secret)</option>
+                {/* A binding the loaded document does not offer is shown as it is recorded,
+                    so what the screen says is what a save records. */}
+                {bound && (boundInOther || boundUnlisted) ? (
+                  <option value={KEEP_BINDING}>
+                    {bound.reference}
+                    {boundInOther ? ` (bound in ${bound.secrets_file})` : secretsDoc ? ` (not listed in ${currentSecretsFile})` : ""}
+                  </option>
+                ) : null}
                 {(secretsDoc?.references ?? []).map((r) => (
                   <option key={r.name} value={r.name}>
                     {r.name} ({r.purpose} · {r.store})
@@ -968,7 +1187,11 @@ export function EnvironmentPanel({
               id="secrets-file-input"
               value={currentSecretsFile}
               disabled={busy}
-              onChange={(e) => setCurrentSecretsFile(e.target.value)}
+              onChange={(e) => {
+                setCurrentSecretsFile(e.target.value);
+                setSecretsWritten(null);
+                closeSecretEdit(false);
+              }}
             />
           </div>
 
@@ -976,17 +1199,18 @@ export function EnvironmentPanel({
             <h5>Native Store & Customer-Vault Provisioning Handoff</h5>
             <ol>
               <li>Store your credential in your OS keychain (e.g. macOS Keychain, Linux Secret Service) or customer vault.</li>
-              <li>Provide the locator command and argument vector that prints the secret to stdout (e.g. <code>security find-generic-password -s readmit -w</code>).</li>
+              <li>Provide the absolute path of the locator program that prints the secret to stdout and its arguments, one per line (e.g. <code>/usr/bin/security</code> with <code>find-generic-password</code>, <code>-s</code>, <code>readmit</code> and <code>-w</code>).</li>
               <li>Readmit invokes the locator strictly on-demand in memory and clears memory immediately after use.</li>
             </ol>
           </div>
 
-          <table className="environment-table" aria-label="Registered credential references">
+          <table className="environment-table" aria-label="Registered credential references" ref={secretsTable} tabIndex={-1}>
             <thead>
               <tr>
                 <th>Name</th>
                 <th>Purpose</th>
                 <th>Store</th>
+                <th>Address</th>
                 <th>Command Locator</th>
                 <th>Secret Value</th>
                 <th>Rotation Status</th>
@@ -996,7 +1220,7 @@ export function EnvironmentPanel({
             <tbody>
               {(secretsDoc?.references ?? []).length === 0 ? (
                 <tr>
-                  <td colSpan={7}>No credential references registered yet.</td>
+                  <td colSpan={8}>{secretsRefusal ?? "No credential references registered yet."}</td>
                 </tr>
               ) : (
                 (secretsDoc?.references ?? []).map((r) => (
@@ -1004,7 +1228,9 @@ export function EnvironmentPanel({
                     <td><strong>{r.name}</strong></td>
                     <td>{r.purpose}</td>
                     <td>{r.store}</td>
-                    <td><code>{r.command} {r.arguments.join(" ")}</code></td>
+                    <td><code>{r.address}</code></td>
+                    {/* Arguments are counted, never echoed, as `readmit secret show` counts them. */}
+                    <td><code>{r.command}</code> ({argumentCount(r)} locator arguments)</td>
                     <td><span className="report-value">••••••••</span></td>
                     <td>
                       {(() => {
@@ -1037,6 +1263,15 @@ export function EnvironmentPanel({
                         </button>
                         <button
                           type="button"
+                          aria-label={`Edit ${r.name}`}
+                          data-edit={r.name}
+                          disabled={blocked || secretEdit !== null}
+                          onClick={() => openSecretEdit(r)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
                           disabled={blocked}
                           onClick={() => void handleRemoveSecret(r.name)}
                         >
@@ -1058,80 +1293,207 @@ export function EnvironmentPanel({
             </div>
           ) : null}
 
-          <h5>Register New Credential Reference</h5>
-          <div className="environment-form-grid">
-            <div className="environment-field">
-              <label htmlFor="secret-name">Reference Name</label>
-              <input
-                id="secret-name"
-                value={newSecretName}
-                disabled={blocked}
-                onChange={(e) => setNewSecretName(e.target.value)}
-              />
-            </div>
-            <div className="environment-field">
-              <label htmlFor="secret-store">Store</label>
-              <select
-                id="secret-store"
-                value={newSecretStore}
-                disabled={blocked}
-                onChange={(e) => setNewSecretStore(e.target.value as SecretStore)}
-              >
-                <option value="os-keychain">OS Keychain</option>
-                <option value="customer-managed">Customer Managed</option>
-              </select>
-            </div>
-            <div className="environment-field">
-              <label htmlFor="secret-purpose">Purpose</label>
-              <select
-                id="secret-purpose"
-                value={newSecretPurpose}
-                disabled={blocked}
-                onChange={(e) => setNewSecretPurpose(e.target.value as SecretPurpose)}
-              >
-                <option value="mllp-endpoint">MLLP Endpoint</option>
-                <option value="source-endpoint">Evidence Source Endpoint</option>
-              </select>
-            </div>
-            <div className="environment-field">
-              <label htmlFor="secret-address">Target Address Constraint</label>
-              <input
-                id="secret-address"
-                value={newSecretAddress}
-                placeholder="host:port"
-                disabled={blocked}
-                onChange={(e) => setNewSecretAddress(e.target.value)}
-              />
-            </div>
-            <div className="environment-field">
-              <label htmlFor="secret-command">Locator Command (Path)</label>
-              <input
-                id="secret-command"
-                value={newSecretCommand}
-                placeholder="/usr/bin/security"
-                disabled={blocked}
-                onChange={(e) => setNewSecretCommand(e.target.value)}
-              />
-            </div>
-            <div className="environment-field">
-              <label htmlFor="secret-args">Command Arguments (space-separated)</label>
-              <input
-                id="secret-args"
-                value={newSecretArgs}
-                placeholder="find-generic-password -s svc -w"
-                disabled={blocked}
-                onChange={(e) => setNewSecretArgs(e.target.value)}
-              />
-            </div>
-          </div>
+          {secretEdit ? (
+            <form
+              aria-label={`Edit credential reference ${secretEdit.opened.name}`}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void handleSaveSecretEdit();
+              }}
+              onKeyDown={(e) => {
+                // Escape that dismisses an input method's composition is not a
+                // cancellation. Escape that cancels the edit goes no further:
+                // the window's own Escape cancels a running operation.
+                if (e.key === "Escape" && !e.nativeEvent.isComposing && !busy) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  cancelSecretEdit();
+                }
+              }}
+            >
+              <h5>Edit Credential Reference {secretEdit.opened.name}</h5>
+              <p className="hint">
+                Purpose: {secretEdit.opened.purpose}. The name and purpose are what the stored credential is for, so an edit
+                keeps both: a credential for another purpose is a different reference, registered under its own name.
+                The recorded generation and rotation time stay as they are, because re-pointing a reference is not a
+                rotation.
+              </p>
+              <div className="environment-form-grid">
+                <div className="environment-field">
+                  <label htmlFor="edit-secret-store">Store</label>
+                  <select
+                    id="edit-secret-store"
+                    ref={editFirstField}
+                    value={secretEdit.store}
+                    disabled={blocked}
+                    onChange={(e) => updateSecretEdit({ store: e.target.value as SecretStore })}
+                  >
+                    <option value="os-keychain">OS Keychain</option>
+                    <option value="customer-managed">Customer Managed</option>
+                  </select>
+                </div>
+                <div className="environment-field">
+                  <label htmlFor="edit-secret-address">Target Address Constraint</label>
+                  <input
+                    id="edit-secret-address"
+                    value={secretEdit.address}
+                    placeholder="host:port"
+                    disabled={blocked}
+                    onChange={(e) => updateSecretEdit({ address: e.target.value })}
+                  />
+                </div>
+                <div className="environment-field">
+                  <label htmlFor="edit-secret-command">Locator Command (Path)</label>
+                  <input
+                    id="edit-secret-command"
+                    value={secretEdit.command}
+                    disabled={blocked}
+                    onChange={(e) => updateSecretEdit({ command: e.target.value })}
+                  />
+                </div>
+                <div className="environment-field">
+                  <label htmlFor="edit-secret-max-age">Maximum Rotation Age</label>
+                  <input
+                    id="edit-secret-max-age"
+                    value={secretEdit.maxAge}
+                    placeholder="720h, or empty for not declared"
+                    disabled={blocked}
+                    onChange={(e) => updateSecretEdit({ maxAge: e.target.value })}
+                  />
+                </div>
+                <div className="environment-field full-width">
+                  <label htmlFor="edit-secret-replace-args">
+                    <input
+                      id="edit-secret-replace-args"
+                      type="checkbox"
+                      checked={secretEdit.replaceArguments}
+                      disabled={blocked}
+                      onChange={(e) => updateSecretEdit({ replaceArguments: e.target.checked })}
+                    />
+                    Replace the {argumentCount(secretEdit.opened)} registered locator arguments
+                  </label>
+                  <p className="hint">
+                    The registered arguments are counted, never shown: an argument is the one place a credential could
+                    have been put.
+                  </p>
+                </div>
+                {secretEdit.replaceArguments ? (
+                  <div className="environment-field full-width">
+                    <label htmlFor="edit-secret-args">Replacement Locator Arguments (one per line; empty clears them)</label>
+                    <textarea
+                      id="edit-secret-args"
+                      rows={3}
+                      value={secretEdit.replacementArguments}
+                      disabled={blocked}
+                      onChange={(e) => updateSecretEdit({ replacementArguments: e.target.value })}
+                    />
+                  </div>
+                ) : null}
+              </div>
+              <div className="environment-actions">
+                <button type="submit" disabled={blocked}>
+                  Save Changes to {secretEdit.opened.name}
+                </button>
+                <button type="button" disabled={busy} onClick={cancelSecretEdit}>
+                  Cancel Editing
+                </button>
+              </div>
+            </form>
+          ) : null}
+
+          {/* One form at a time: an open edit has the registration's fields. */}
+          {secretEdit ? null : (
+            <>
+              <h5>Register New Credential Reference</h5>
+              <div className="environment-form-grid">
+                <div className="environment-field">
+                  <label htmlFor="secret-name">Reference Name</label>
+                  <input
+                    id="secret-name"
+                    value={newSecretName}
+                    disabled={blocked}
+                    onChange={(e) => setNewSecretName(e.target.value)}
+                  />
+                </div>
+                <div className="environment-field">
+                  <label htmlFor="secret-store">Store</label>
+                  <select
+                    id="secret-store"
+                    value={newSecretStore}
+                    disabled={blocked}
+                    onChange={(e) => setNewSecretStore(e.target.value as SecretStore)}
+                  >
+                    <option value="os-keychain">OS Keychain</option>
+                    <option value="customer-managed">Customer Managed</option>
+                  </select>
+                </div>
+                <div className="environment-field">
+                  <label htmlFor="secret-purpose">Purpose</label>
+                  <select
+                    id="secret-purpose"
+                    value={newSecretPurpose}
+                    disabled={blocked}
+                    onChange={(e) => setNewSecretPurpose(e.target.value as SecretPurpose)}
+                  >
+                    <option value="mllp-endpoint">MLLP Endpoint</option>
+                    <option value="source-endpoint">Evidence Source Endpoint</option>
+                  </select>
+                </div>
+                <div className="environment-field">
+                  <label htmlFor="secret-address">Target Address Constraint</label>
+                  <input
+                    id="secret-address"
+                    value={newSecretAddress}
+                    placeholder="host:port"
+                    disabled={blocked}
+                    onChange={(e) => setNewSecretAddress(e.target.value)}
+                  />
+                </div>
+                <div className="environment-field">
+                  <label htmlFor="secret-command">Locator Command (Path)</label>
+                  <input
+                    id="secret-command"
+                    value={newSecretCommand}
+                    placeholder="/usr/bin/security"
+                    disabled={blocked}
+                    onChange={(e) => setNewSecretCommand(e.target.value)}
+                  />
+                </div>
+                <div className="environment-field">
+                  <label htmlFor="secret-args">Locator Arguments (one per line)</label>
+                  <textarea
+                    id="secret-args"
+                    rows={3}
+                    value={newSecretArgs}
+                    placeholder={"find-generic-password\n-s\nsvc\n-w"}
+                    disabled={blocked}
+                    onChange={(e) => setNewSecretArgs(e.target.value)}
+                  />
+                </div>
+                <div className="environment-field">
+                  <label htmlFor="secret-max-age">Maximum Rotation Age</label>
+                  <input
+                    id="secret-max-age"
+                    value={newSecretMaxAge}
+                    placeholder="720h, or empty for not declared"
+                    disabled={blocked}
+                    onChange={(e) => setNewSecretMaxAge(e.target.value)}
+                  />
+                </div>
+              </div>
+            </>
+          )}
           <div className="environment-actions">
-            <button type="button" disabled={blocked} onClick={() => void handleAddSecret()}>
-              Register Secret Reference
-            </button>
+            {secretEdit ? null : (
+              <button type="button" disabled={blocked} onClick={() => void handleAddSecret()}>
+                Register Secret Reference
+              </button>
+            )}
             <button type="button" disabled={blocked} onClick={() => void handleScanSecrets()}>
               Scan Workspace for Residual Leaks
             </button>
           </div>
+          <WrittenIdentity written={secretsWritten} />
 
           {scanResult?.scan ? (
             <div className="report-box" aria-label="Credential leak scan report">
@@ -1171,7 +1533,10 @@ export function EnvironmentPanel({
               id="policy-file-input"
               value={currentPolicyFile}
               disabled={busy}
-              onChange={(e) => setCurrentPolicyFile(e.target.value)}
+              onChange={(e) => {
+                setCurrentPolicyFile(e.target.value);
+                setPolicyWritten(null);
+              }}
             />
           </div>
 
@@ -1191,23 +1556,32 @@ export function EnvironmentPanel({
             ))}
           </ul>
 
-          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
+          {/* A form, so Enter in the prefix adds it. */}
+          <form
+            style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleAddDestination();
+            }}
+          >
             <input
+              aria-label="Approved destination prefix"
               placeholder="network/prefix"
               value={newDestination}
               disabled={blocked}
               onChange={(e) => setNewDestination(e.target.value)}
             />
-            <button type="button" disabled={blocked || !newDestination} onClick={handleAddDestination}>
+            <button type="submit" disabled={blocked || !newDestination}>
               Add CIDR Prefix
             </button>
-          </div>
+          </form>
 
           <div className="environment-actions" style={{ marginTop: "1rem" }}>
             <button type="button" disabled={blocked} onClick={() => void handleSavePolicy()}>
               Save Approved Send Policy
             </button>
           </div>
+          <WrittenIdentity written={policyWritten} />
 
           <hr style={{ margin: "1.5rem 0", borderColor: "var(--line, #ccc)" }} />
 
@@ -1280,7 +1654,10 @@ export function EnvironmentPanel({
                 id="plan-file-input"
                 value={currentPlanFile}
                 disabled={busy}
-                onChange={(e) => setCurrentPlanFile(e.target.value)}
+                onChange={(e) => {
+                  setCurrentPlanFile(e.target.value);
+                  setPlanWritten(null);
+                }}
               />
             </div>
             <div className="environment-field">
@@ -1408,6 +1785,7 @@ export function EnvironmentPanel({
               Execute Fixture Reset Deliberately
             </button>
           </div>
+          <WrittenIdentity written={planWritten} />
 
           {resetResult ? (
             <div

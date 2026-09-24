@@ -125,12 +125,13 @@ func TestSecretFacadeLifecycle(t *testing.T) {
 	}
 
 	// 4. Update secret reference
-	ref.Address = "127.0.0.1:2576"
+	address := "127.0.0.1:2576"
 	updateResult := app.SaveSecretReference(desktop.SecretSaveRequest{
 		Workspace:   dir,
 		SecretsFile: "secrets.json",
 		Reference:   ref,
 		IsUpdate:    true,
+		Change:      &desktop.SecretChange{Address: &address},
 	})
 	if updateResult.State != desktop.Completed || updateResult.Document == nil {
 		t.Fatalf("SaveSecretReference update failed: %+v", updateResult)
@@ -244,4 +245,173 @@ func TestResetPlanFacade(t *testing.T) {
 	if readResult.Plan.Environment != "staging-mllp" {
 		t.Fatalf("unexpected environment: %s", readResult.Plan.Environment)
 	}
+}
+
+// An edit of a registered credential reference reaches the shared update with
+// exactly the change it names, and is refused for what `readmit secret update`
+// refuses: an unknown name, an invalid member, a change naming nothing and an
+// empty locator argument. A refusal leaves the document byte for byte as it
+// was, and what an edit does not name is kept as recorded.
+func TestSecretReferenceEditRefusesWhatTheCommandRefuses(t *testing.T) {
+	app := workspaceApp(t)
+	dir := t.TempDir()
+	registered := secret.Reference{
+		Name:      "lab-mllp",
+		Store:     secret.OSKeychain,
+		Purpose:   secret.MLLPEndpoint,
+		Address:   "127.0.0.1:2575",
+		Command:   "/usr/bin/security",
+		Arguments: []string{"find-generic-password", "-w"},
+		MaxAge:    "720h",
+	}
+	added := app.SaveSecretReference(desktop.SecretSaveRequest{Workspace: dir, SecretsFile: "secrets.json", Reference: registered})
+	if added.State != desktop.Completed || added.Document == nil {
+		t.Fatalf("SaveSecretReference add: %+v", added)
+	}
+	if want := fileDigest(t, filepath.Join(dir, "secrets.json")); added.Identity != want {
+		t.Fatalf("add identity %q, the file is %s", added.Identity, want)
+	}
+	before := mustRead(t, filepath.Join(dir, "secrets.json"))
+	stored := added.Document.References[0]
+
+	duplicate := app.SaveSecretReference(desktop.SecretSaveRequest{Workspace: dir, SecretsFile: "secrets.json", Reference: registered})
+	if duplicate.State != desktop.Failed || duplicate.Reason != "that name is already registered in this store" || duplicate.Identity != "" {
+		t.Fatalf("a duplicate registration: %+v", duplicate)
+	}
+
+	text := func(value string) *string { return &value }
+	update := func(name string, change *desktop.SecretChange) desktop.SecretsResult {
+		reference := stored
+		reference.Name = name
+		return app.SaveSecretReference(desktop.SecretSaveRequest{Workspace: dir, SecretsFile: "secrets.json", Reference: reference, IsUpdate: true, Change: change})
+	}
+	unknownStore := secret.Store("browser")
+	for _, refused := range []struct {
+		name   string
+		save   func() desktop.SecretsResult
+		reason string
+	}{
+		{"an unknown name", func() desktop.SecretsResult {
+			return update("lab-other", &desktop.SecretChange{Address: text("127.0.0.1:2576")})
+		}, "no credential reference is registered under that name"},
+		{"no change", func() desktop.SecretsResult { return update("lab-mllp", nil) }, "an update requires at least one change"},
+		{"a change naming nothing", func() desktop.SecretsResult { return update("lab-mllp", &desktop.SecretChange{}) }, "an update requires at least one change"},
+		{"an address without a port", func() desktop.SecretsResult {
+			return update("lab-mllp", &desktop.SecretChange{Address: text("127.0.0.1")})
+		}, "reference address: must be an explicit host and numeric port"},
+		{"a command found through PATH", func() desktop.SecretsResult {
+			return update("lab-mllp", &desktop.SecretChange{Command: text("security")})
+		}, "reference command: must be an absolute path, never a name resolved through PATH"},
+		{"an unreadable maximum age", func() desktop.SecretsResult {
+			return update("lab-mllp", &desktop.SecretChange{MaxAge: text("a month")})
+		}, "reference rotation interval: must be a positive duration at most one year"},
+		{"an unknown store", func() desktop.SecretsResult {
+			return update("lab-mllp", &desktop.SecretChange{Store: &unknownStore})
+		}, "reference store: not one of os-keychain, customer-managed"},
+		{"an empty argument", func() desktop.SecretsResult {
+			return update("lab-mllp", &desktop.SecretChange{Arguments: &[]string{"kv", ""}})
+		}, "a locator argument is never empty; an empty list clears them"},
+		{"a change on a registration", func() desktop.SecretsResult {
+			return app.SaveSecretReference(desktop.SecretSaveRequest{Workspace: dir, SecretsFile: "secrets.json",
+				Reference: secret.Reference{Name: "lab-new"}, Change: &desktop.SecretChange{MaxAge: text("720h")}})
+		}, "a change applies only to an update of a registered reference"},
+	} {
+		result := refused.save()
+		if result.State != desktop.Failed || result.Reason != refused.reason || result.Identity != "" || result.Document != nil {
+			t.Errorf("%s: %+v", refused.name, result)
+		}
+		if after := mustRead(t, filepath.Join(dir, "secrets.json")); string(after) != string(before) {
+			t.Fatalf("%s changed the document", refused.name)
+		}
+	}
+
+	// A change of one member keeps every other one as recorded, whatever the
+	// rest of the request carries: an update reads only the reference's name.
+	careless := stored
+	careless.Purpose = secret.SourceEndpoint
+	careless.Address = "127.0.0.1:9"
+	careless.Arguments = nil
+	careless.Generation = 9
+	onlyAge := app.SaveSecretReference(desktop.SecretSaveRequest{Workspace: dir, SecretsFile: "secrets.json", Reference: careless, IsUpdate: true,
+		Change: &desktop.SecretChange{MaxAge: text("2160h")}})
+	if onlyAge.State != desktop.Completed || onlyAge.Document == nil {
+		t.Fatalf("an edit of the maximum age: %+v", onlyAge)
+	}
+	if got := onlyAge.Document.References[0]; got.MaxAge != "2160h" || got.Purpose != secret.MLLPEndpoint || got.Address != stored.Address ||
+		len(got.Arguments) != 2 || got.Generation != stored.Generation {
+		t.Fatalf("an edit of one member changed another: %+v", got)
+	}
+
+	updated := update("lab-mllp", &desktop.SecretChange{
+		Store:     func() *secret.Store { s := secret.CustomerManaged; return &s }(),
+		Address:   text("127.0.0.1:2576"),
+		Command:   text("/opt/vault/bin/vault"),
+		Arguments: &[]string{"kv", "get", "-field=password", "lab/mllp"},
+		MaxAge:    text(""),
+	})
+	if updated.State != desktop.Completed || updated.Document == nil {
+		t.Fatalf("an edit of every member: %+v", updated)
+	}
+	got := updated.Document.References[0]
+	if got.Store != secret.CustomerManaged || got.Address != "127.0.0.1:2576" || got.Command != "/opt/vault/bin/vault" ||
+		len(got.Arguments) != 4 || got.MaxAge != "" || got.Purpose != secret.MLLPEndpoint ||
+		got.Generation != stored.Generation || !got.RotatedAt.Equal(stored.RotatedAt) {
+		t.Fatalf("the edited reference: %+v", got)
+	}
+	if want := fileDigest(t, filepath.Join(dir, "secrets.json")); updated.Identity != want {
+		t.Fatalf("edit identity %q, the file is %s", updated.Identity, want)
+	}
+	cleared := update("lab-mllp", &desktop.SecretChange{Arguments: &[]string{}})
+	if cleared.State != desktop.Completed || len(cleared.Document.References[0].Arguments) != 0 {
+		t.Fatalf("an empty argument list clears them: %+v", cleared)
+	}
+}
+
+// A saved send policy and reset plan report the identity of the bytes the
+// save wrote, and a document the reader refuses is never written.
+func TestSavedEnvironmentDocumentsReportTheirIdentity(t *testing.T) {
+	app := workspaceApp(t)
+	dir := t.TempDir()
+
+	refused := app.SaveSendPolicy(desktop.SendPolicySaveRequest{Workspace: dir, PolicyFile: "send-policy.json", Policy: sendpolicy.Policy{
+		Schema: sendpolicy.PolicySchema, ApprovedDestinations: []string{"10.1.2.3/16"},
+	}})
+	if refused.State != desktop.Failed || refused.Identity != "" ||
+		refused.Reason != "every approved destination is one CIDR prefix in canonical masked form, such as 127.0.0.0/8 or 10.1.0.0/16" {
+		t.Fatalf("a destination that is not a canonical prefix: %+v", refused)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "send-policy.json")); !os.IsNotExist(err) {
+		t.Fatalf("a refused policy was written: %v", err)
+	}
+	policy := app.SaveSendPolicy(desktop.SendPolicySaveRequest{Workspace: dir, PolicyFile: "send-policy.json", Policy: sendpolicy.Policy{
+		Schema: sendpolicy.PolicySchema, ApprovedDestinations: []string{"10.1.0.0/16"},
+	}})
+	if policy.State != desktop.Completed || policy.Identity != fileDigest(t, filepath.Join(dir, "send-policy.json")) {
+		t.Fatalf("SaveSendPolicy: %+v", policy)
+	}
+
+	incomplete := app.SaveResetPlan(desktop.ResetPlanSaveRequest{Workspace: dir, PlanFile: "reset-plan.json", Plan: fixturereset.Plan{
+		Schema: fixturereset.PlanSchema, Environment: "lab-siu",
+		Actions: []fixturereset.Action{{ID: "empty-ledger", Operator: fixturereset.ObservationEmpty, Authority: fixturereset.ReadDeclaredFile, Instructions: "The ledger is empty."}},
+	}})
+	if incomplete.State != desktop.Failed || incomplete.Identity != "" ||
+		incomplete.Reason != "an observation_empty action names one receiver observation file inside the plan's own directory" {
+		t.Fatalf("an observation action without its file: %+v", incomplete)
+	}
+	plan := app.SaveResetPlan(desktop.ResetPlanSaveRequest{Workspace: dir, PlanFile: "reset-plan.json", Plan: fixturereset.Plan{
+		Schema: fixturereset.PlanSchema, Environment: "lab-siu",
+		Actions: []fixturereset.Action{{ID: "stop-listener", Operator: fixturereset.OperatorConfirms, Authority: fixturereset.NoAuthority, Instructions: "Stop the listener."}},
+	}})
+	if plan.State != desktop.Completed || plan.Identity != fileDigest(t, filepath.Join(dir, "reset-plan.json")) {
+		t.Fatalf("SaveResetPlan: %+v", plan)
+	}
+	// Reading reports what the file holds; only a save names bytes it wrote.
+	if read := app.ReadResetPlan(dir, "reset-plan.json"); read.State != desktop.Completed || read.Identity != "" {
+		t.Fatalf("ReadResetPlan: %+v", read)
+	}
+}
+
+func fileDigest(t *testing.T, path string) string {
+	t.Helper()
+	return sha256Of(mustRead(t, path))
 }

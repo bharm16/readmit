@@ -1689,7 +1689,9 @@
       "inputs": ["readmit-secrets/v1"],
       "outputs": ["readmit-secrets/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/environment.journey.tsx", "name": "credential references are registered, refused, edited, cancelled and bound in the window and read unchanged by the command line"},
+      "parity_test": {"package": "tests", "name": "TestCredentialReferencesEditedInTheWindowMatchTheCommandLine"},
+      "implemented": true
     },
     {
       "id": "cli.secret.rotate",
@@ -1751,7 +1753,9 @@
       "inputs": ["readmit-secrets/v1"],
       "outputs": ["readmit-secrets/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/environment.journey.tsx", "name": "credential references are registered, refused, edited, cancelled and bound in the window and read unchanged by the command line"},
+      "parity_test": {"package": "tests", "name": "TestCredentialReferencesEditedInTheWindowMatchTheCommandLine"},
+      "implemented": true
     },
     {
       "id": "cli.share",
@@ -4449,7 +4453,9 @@
       "inputs": ["readmit-reset-plan/v1"],
       "outputs": ["readmit-reset-plan/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/environment.journey.tsx", "name": "a send policy and a reset plan are saved under the identity of their bytes, refused when invalid, and read unchanged by target check and the reset reader"},
+      "parity_test": {"package": "tests", "name": "TestSavedPolicyAndPlanAreReadUnchangedByTheCommandLine"},
+      "implemented": true
     },
     {
       "id": "desktop.SaveSecretReference",
@@ -4463,7 +4469,9 @@
       "inputs": ["readmit-secrets/v1"],
       "outputs": ["readmit-secrets/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/environment.journey.tsx", "name": "credential references are registered, refused, edited, cancelled and bound in the window and read unchanged by the command line"},
+      "parity_test": {"package": "tests", "name": "TestCredentialReferencesEditedInTheWindowMatchTheCommandLine"},
+      "implemented": true
     },
     {
       "id": "desktop.SaveSendPolicy",

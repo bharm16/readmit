@@ -2721,7 +2721,16 @@ existing `readmit-scenario/v1`, `readmit-order-scenario/v1`,
 The desktop application provides first-party visual authoring and inspection for named
 test environments, credential references, approved send policies, and fixture reset plans.
 These capabilities share the Go engine with the CLI, maintaining strict parity with
-`readmit target`, `readmit secret`, `readmit send-policy`, and `readmit fixture-reset`.
+`readmit target`, `readmit secret`, and the policy and plan readers of `readmit target check`
+and `readmit target reset`.
+
+Registering or editing a credential reference and saving a send policy or a reset plan
+replaces the document atomically and then shows `Written to FILE · identity SHA256`: the
+SHA-256 of the exact bytes the save wrote, the name the file has on disk once it is written. A save the reader
+refuses shows the reader's own refusal, writes nothing and claims no identity, and keeps what
+was typed to be corrected; a rotation or removal clears the line, because the document it
+named has changed. Every control is disabled while an action runs; once it answers, focus
+returns to the control that started it.
 
 ### Persistent environment banner
 
@@ -2743,7 +2752,28 @@ Users can inspect, author, save, and diagnose named target configurations:
 
 Readmit does not store credentials in application state, configuration files, logs, or browser storage:
 - References declare native OS keychain (macOS Keychain, Linux Secret Service) or customer-vault locator commands and arguments.
-- Secret values are masked (`••••••••`) across all UI tables and reports.
+- Secret values are masked (`••••••••`) across all UI tables and reports. The locator
+  arguments are counted, never shown, as `readmit secret show` counts them: an argument is
+  the one place a credential could have been put.
+- Registering a reference takes its name, store, purpose, address, locator program, locator
+  arguments (one per line and trimmed, so an argument may hold a space) and an optional
+  maximum rotation age, through the shared operation behind `readmit secret add`, refused for
+  what it refuses: a name already registered, a program named through `PATH`, an address
+  without a port.
+- **Edit** changes a registered reference's store, address, locator program, maximum age and,
+  only when chosen, its locator arguments, through the shared update behind
+  `readmit secret update`. It sends only the members the person changed, as the command
+  changes only what its flags name, so a member the command line changed while the edit was
+  open is kept rather than written back; it is refused for what the command refuses, an edit
+  that changes nothing and an empty locator argument included. The name and purpose are not
+  editable: a credential for another purpose is a different reference. The recorded
+  generation and rotation time are left as they are. The registration form is set aside while
+  an edit is open. Escape or **Cancel Editing** discards the edit and writes nothing; Enter in
+  one of its text fields saves it.
+- A document the panel cannot read shows the reason in place of the references, never the
+  references of a document read before it.
+- A target naming a reference registered for another purpose is refused when it is saved,
+  in the words `readmit target set` uses.
 - Step-by-step native store and customer-vault provisioning handoff instructions guide users on how to store secrets in their native keychain.
 - "Test resolution" executes the locator in memory, verifies stdout output, and clears memory immediately without capturing the secret value.
 - "Rotate" updates the reference generation and timestamp after verifying resolution.
@@ -2752,7 +2782,10 @@ Readmit does not store credentials in application state, configuration files, lo
 ### Approved send policies (`readmit-send-policy/v1`) and local evaluation
 
 All message transmission requires explicit approved-destination policy rules:
-- Users can visually author and save approved CIDR prefix lists (e.g. `127.0.0.1/32`, `10.1.0.0/16`).
+- Users can visually author and save approved CIDR prefix lists (e.g. `127.0.0.1/32`, `10.1.0.0/16`);
+  Enter in the prefix field adds it. A prefix not in canonical masked form, such as
+  `10.1.2.3/16`, is refused on save by the policy reader and nothing is written. The saved
+  policy is the one `readmit target check --policy` reads.
 - Local destination evaluation checks address approval and classification rules without opening a connection; a host name the policy is asked about is resolved to the addresses it names, which the privacy status discloses.
 - Refusal rules strictly enforce that unclassified destinations and production targets reject all sends.
 
@@ -2763,6 +2796,9 @@ Fixture reset plans return nonproduction test fixtures to a declared starting st
 - Reset execution requires explicit human confirmation checkboxes (`--confirm`) for operator confirmation steps. Resets without required human confirmations are stopped and reported as `unconfirmed`. Like `readmit target reset`, a reset reserves a runner instance as well as admitting the author.
 - Arbitrary shell hooks are prohibited.
 - Retained outcomes are written to `readmit-reset-outcome/v1` documents recording per-action statuses and SHA-256 plan digests.
+- A saved plan's identity is the `plan_sha256` that `readmit target reset` and the window's
+  own reset retain for it. A plan the reader refuses, such as an `observation_empty` action
+  without its observation file, is not written.
 
 Contextual offline help and recovery codes, with ADT/SIU/ORM/ORU recipes: [workflow help](workflow-help.md).
 

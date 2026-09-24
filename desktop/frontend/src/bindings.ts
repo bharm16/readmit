@@ -5604,13 +5604,29 @@ export interface SecretsResult {
   reason?: string;
   document?: SecretDocument;
   secrets_file?: string;
+  /** Present only after a registration or an edit: the SHA-256 of the exact
+   * bytes it wrote. */
+  identity?: string;
 }
 
 export interface SecretSaveRequest {
   workspace: string;
   secrets_file: string;
+  /** For an update, only the name is read. */
   reference: SecretReference;
   is_update?: boolean;
+  change?: SecretChange;
+}
+
+/** What one update replaces, as `readmit secret update` replaces what its
+ * flags name: a member left out is kept exactly as recorded, and an empty
+ * argument list clears the locator arguments. */
+export interface SecretChange {
+  store?: SecretStore;
+  address?: string;
+  command?: string;
+  arguments?: string[];
+  max_age?: string;
 }
 
 export interface SecretTestResult {
@@ -5652,6 +5668,8 @@ export interface SendPolicyResult {
   reason?: string;
   policy?: SendPolicy;
   policy_file?: string;
+  /** Present only after a save: the SHA-256 of the exact bytes it wrote. */
+  identity?: string;
 }
 
 export interface SendPolicySaveRequest {
@@ -5679,6 +5697,9 @@ export interface ResetPlanResult {
   reason?: string;
   plan?: ResetPlan;
   plan_file?: string;
+  /** Present only after a save: the SHA-256 of the exact bytes it wrote, the
+   * plan_sha256 a reset of this plan retains. */
+  identity?: string;
 }
 
 export interface ResetPlanSaveRequest {
