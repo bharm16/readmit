@@ -194,8 +194,8 @@ func TestPublicRunnerAndHubProcessesExecuteAndRefuseReuse(t *testing.T) {
 	if output, err = command("runner", "execute", job, "--config", runnerConfig, "--send"); err == nil || !strings.Contains(string(output), "environment leased or recovering") {
 		t.Fatalf("job admitted while the probe's lease was current: %v %s", err, output)
 	}
-	if _, err = os.Stat(filepath.Join(root, "accepted")); !os.IsNotExist(err) {
-		t.Fatal("job refused by a current lease claimed work", err)
+	if retained, err := customerrunner.Retained(root, "accepted"); err != nil || retained {
+		t.Fatal("job refused by a current lease claimed work", retained, err)
 	}
 	time.Sleep(time.Until(probe.Expires))
 	output, err = command("runner", "execute", job, "--config", runnerConfig, "--send")
@@ -214,7 +214,7 @@ func TestPublicRunnerAndHubProcessesExecuteAndRefuseReuse(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("no target bytes")
 	}
-	output, err = command("run", "status", filepath.Join(root, "accepted", "run"))
+	output, err = command("run", "status", customerrunner.RunPath(root, "accepted"))
 	if err != nil || !strings.HasPrefix(string(output), "Run state: passed\n") {
 		t.Fatalf("retained verdict: %v %s", err, output)
 	}
@@ -228,8 +228,8 @@ func TestPublicRunnerAndHubProcessesExecuteAndRefuseReuse(t *testing.T) {
 	if _, err = command("runner", "execute", revoked, "--config", runnerConfig, "--send"); err == nil {
 		t.Fatal("revoked credential executed")
 	}
-	if _, err = os.Stat(filepath.Join(root, "revoked")); !os.IsNotExist(err) {
-		t.Fatal("revoked job claimed work", err)
+	if retained, err := customerrunner.Retained(root, "revoked"); err != nil || retained {
+		t.Fatal("revoked job claimed work", retained, err)
 	}
 	peer.(*net.TCPListener).SetDeadline(time.Now().Add(150 * time.Millisecond))
 	if extra, e := peer.Accept(); e == nil {

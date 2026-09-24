@@ -357,7 +357,7 @@ func TestCustomerRunnerActualTLSExecutionRevocationAndRecovery(t *testing.T) {
 	case <-time.After(8 * time.Second):
 		t.Fatal("revoked runner failed to stop")
 	}
-	recovered, e := durablerun.Recover(filepath.Join(root, "second", "run"))
+	recovered, e := customerrunner.Recover(root, "second")
 	if e != nil || !recovered.Run.DeliveryUncertain || recovered.SafeToRepeat {
 		t.Fatalf("recovery %+v %v", recovered, e)
 	}
@@ -412,19 +412,22 @@ func TestCustomerRunnerActualTLSExecutionRevocationAndRecovery(t *testing.T) {
 	if e != nil || state.State == "idle" {
 		t.Fatal("crash claim disappeared", state, e)
 	}
-	retained, e := durablerun.Recover(filepath.Join(root, "crashed", "run"))
+	retained, e := customerrunner.Recover(root, "crashed")
 	if e != nil || retained.SafeToRepeat || !retained.Run.DeliveryUncertain {
 		t.Fatalf("crash recovery %+v %v", retained, e)
 	}
 	if _, e := runnerJob(t, crash, job); e == nil {
 		t.Fatal("crash auto replay")
 	}
-	// Simulate the documented operator action only after the child is confirmed dead.
-	os.Remove(filepath.Join(root, ".active", "lease.json"))
-	os.Remove(filepath.Join(root, ".active", "lease.next"))
-	os.Remove(filepath.Join(root, ".active"))
+	// The killed runner's claim holds its root until an operator removes it,
+	// which customerrunner's own tests do as documented; the outage runner
+	// serves a root of its own.
 	outage := c
 	outage.Environment = "outage"
+	outage.Root = filepath.Join(dir, "outage-runs")
+	if e := os.Mkdir(outage.Root, 0700); e != nil {
+		t.Fatal(e)
+	}
 	job.ID = "outage"
 	job.Spec = specs["outage"]
 	go func() {

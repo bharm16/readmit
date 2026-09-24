@@ -22,7 +22,60 @@ import (
 // Enroll proves current certificate-bound enrollment and execution scope,
 // approved environment, and exact engine/spec/profile agreement. No secret is saved.
 func Enroll(ctx context.Context, c Config) (runnerprotocol.Lease, error) {
-	return enroll(ctx, c, strings.ToLower(rand.Text()), "enrollment")
+	return claim(ctx, remote{c}, hostClock{}, strings.ToLower(rand.Text()), "enrollment")
+}
+
+// Hub is the admission authority a runner holds its environment under: a
+// claim for one job, its renewal while the job runs, and its release when the
+// job ends. A claim or renewal answers a lease, which the runner holds to its
+// own rule (see claim); any error refuses it, and a refused renewal stops the
+// job. Every build asks the configured hub over mutual TLS; the package's
+// tests hold one in memory.
+type Hub interface {
+	Claim(ctx context.Context, instance, job string) (runnerprotocol.Lease, error)
+	Renew(ctx context.Context, instance, job string) (runnerprotocol.Lease, error)
+	Release(ctx context.Context, instance, job string) error
+}
+
+// remote is the configured hub, asked over the certificate-bound mutual-TLS
+// route. A claim and a renewal are the same request: the hub renews a lease
+// the same instance and job already hold.
+type remote struct{ c Config }
+
+func (h remote) Claim(ctx context.Context, instance, job string) (runnerprotocol.Lease, error) {
+	return admission(ctx, h.c, instance, job, "POST")
+}
+func (h remote) Renew(ctx context.Context, instance, job string) (runnerprotocol.Lease, error) {
+	return admission(ctx, h.c, instance, job, "POST")
+}
+func (h remote) Release(ctx context.Context, instance, job string) error {
+	_, err := admission(ctx, h.c, instance, job, "DELETE")
+	return err
+}
+
+// claim and renew hold every lease the hub answers to the runner's own rule:
+// it must still be current by clock and grant at most ten seconds, whatever
+// the hub believes.
+func claim(ctx context.Context, h Hub, clock Clock, instance, job string) (runnerprotocol.Lease, error) {
+	lease, err := h.Claim(ctx, instance, job)
+	if err != nil {
+		return runnerprotocol.Lease{}, err
+	}
+	return checkLease(clock, lease)
+}
+func renew(ctx context.Context, h Hub, clock Clock, instance, job string) (runnerprotocol.Lease, error) {
+	lease, err := h.Renew(ctx, instance, job)
+	if err != nil {
+		return runnerprotocol.Lease{}, err
+	}
+	return checkLease(clock, lease)
+}
+func checkLease(clock Clock, lease runnerprotocol.Lease) (runnerprotocol.Lease, error) {
+	remaining := lease.Expires.Sub(clock.Now())
+	if remaining <= 0 || remaining > 10*time.Second {
+		return runnerprotocol.Lease{}, ErrRefused
+	}
+	return lease, nil
 }
 
 // ErrHubRefused names the refusal the hub itself answered with, as distinct
@@ -30,9 +83,6 @@ func Enroll(ctx context.Context, c Config) (runnerprotocol.Lease, error) {
 // hub's reasoned answer without matching prose.
 var ErrHubRefused = errors.New("hub refused admission")
 
-func enroll(ctx context.Context, c Config, instance, job string) (runnerprotocol.Lease, error) {
-	return admission(ctx, c, instance, job, "POST")
-}
 func admission(ctx context.Context, c Config, instance, job, method string) (runnerprotocol.Lease, error) {
 	var zero runnerprotocol.Lease
 	if c.validate() != nil {
@@ -97,8 +147,7 @@ func admission(ctx context.Context, c Config, instance, job, method string) (run
 		return zero, ErrRefused
 	}
 	lease, err := runnerprotocol.DecodeLease(data)
-	remaining := time.Until(lease.Expires)
-	if err != nil || remaining <= 0 || remaining > 10*time.Second {
+	if err != nil {
 		return zero, ErrRefused
 	}
 	return lease, nil

@@ -3760,11 +3760,12 @@ capacity, or the hub's own reasoned refusal (a version or environment
 disagreement, a leased environment, exhausted capacity). **Execution** asks the
 existing explicit operation approval and then runs through the runner's own
 lease, quota, state-isolation and duplicate-admission rules, which the panel
-does not widen; a preflighted input identity is bound to the execution, so a
-changed spec is refused before admission. A preflight whose job id the runner
-root on this machine already holds is refused and names the id rather than a
-pin: the runner reserves an id permanently, whatever became of its job, and
-refuses to run it again by its own rule. While a job
+does not widen; the preflight is the runner's own check of the job, and a
+preflighted input identity is bound to the execution, so a changed spec is
+refused before admission. A preflight whose job id the runner root on this
+machine already holds is refused and names the id rather than a pin: the runner
+reserves an id permanently, whatever became of its job, and refuses to run it
+again by its own rule. While a job
 runs, Execute is disabled and the focus moves to Cancel, which names its own
 operation and retains uncertain delivery exactly as `run start` does; the
 result display offers no resend. **Recovery** is a read: acknowledged,

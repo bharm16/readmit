@@ -335,17 +335,14 @@ func (a *App) ReadRunnerConfig(configPath string) RunnerInspectResult {
 
 // retainedRunnerJobs reads every retained job's durable summary read-only.
 func retainedRunnerJobs(root string) []RunnerJobState {
-	entries, err := os.ReadDir(root)
+	ids, err := customerrunner.Jobs(root)
 	if err != nil {
 		return []RunnerJobState{}
 	}
 	jobs := []RunnerJobState{}
-	for _, entry := range entries {
-		if !entry.IsDir() || !runnerprotocol.ID(entry.Name()) || entry.Name() == ".active" {
-			continue
-		}
-		state := RunnerJobState{ID: entry.Name()}
-		recovery, err := durablerun.Recover(filepath.Join(root, entry.Name(), "run"))
+	for _, id := range ids {
+		state := RunnerJobState{ID: id}
+		recovery, err := customerrunner.Recover(root, id)
 		if err != nil {
 			state.Reason = "the retained run could not be read; recovery requires the runner host"
 		} else {
@@ -440,33 +437,28 @@ func (a *App) InspectRunnerJob(configPath, jobPath string) RunnerJobPreviewResul
 		if declined.reason != "" {
 			return RunnerJobPreviewResult{State: declined.state, Reason: declined.reason}
 		}
-		result := RunnerJobPreviewResult{State: Completed, JobID: job.ID, Spec: job.Spec}
-		prepared, err := durablerun.Prepare(job.Spec)
-		if err != nil {
+		// The runner's own preflight answers, the rules execution applies.
+		// Only a root this machine can read answers whether the id is
+		// retained; the runner's own claim at execution stays the rule.
+		preflight, err := customerrunner.Inspect(config, job)
+		switch {
+		case err == nil, errors.Is(err, customerrunner.ErrUnbound):
+			// Inputs that bind no environment preview as they always have,
+			// naming none; execution refuses them.
+			return RunnerJobPreviewResult{State: Completed, JobID: job.ID, Spec: job.Spec, InputIdentity: preflight.InputIdentity, Environment: preflight.Environment}
+		case errors.Is(err, customerrunner.ErrUnprepared):
 			return RunnerJobPreviewResult{State: Failed, Reason: "the job's spec could not be prepared; nothing was read from the hub and nothing was sent"}
-		}
-		identity, err := prepared.InputIdentity()
-		if err != nil {
+		case errors.Is(err, customerrunner.ErrNoIdentity):
 			return RunnerJobPreviewResult{State: Failed, Reason: "the prepared inputs have no identity; nothing was sent"}
-		}
-		result.InputIdentity = identity
-		for _, resource := range prepared.Resources() {
-			if resource.Kind == durablerun.EnvironmentResource {
-				result.Environment = resource.Name
-				if resource.Name != config.Environment {
-					return RunnerJobPreviewResult{State: Failed, JobID: job.ID, Spec: job.Spec, InputIdentity: identity,
-						Reason: fmt.Sprintf("the prepared inputs bind environment %s; this runner is configured for %s", resource.Name, config.Environment)}
-				}
-			}
-		}
-		// Only a root this machine can read answers here; one it cannot read
-		// decides nothing, and the runner's own claim at execution stays the
-		// rule either way.
-		if retained, err := customerrunner.Retained(config.Root, job.ID); err == nil && retained {
+		case errors.Is(err, customerrunner.ErrOtherEnvironment):
+			return RunnerJobPreviewResult{State: Failed, JobID: job.ID, Spec: job.Spec, InputIdentity: preflight.InputIdentity,
+				Reason: fmt.Sprintf("the prepared inputs bind environment %s; this runner is configured for %s", preflight.Environment, config.Environment)}
+		case errors.Is(err, customerrunner.ErrRetained):
 			return RunnerJobPreviewResult{State: Failed, JobID: job.ID, Spec: job.Spec,
 				Reason: fmt.Sprintf("job id %s is already retained in this runner's root and never runs again; read its recovery, and save a new job document with a new job id once receiver state is established", job.ID)}
+		default:
+			return RunnerJobPreviewResult{State: Failed, JobID: job.ID, Spec: job.Spec, Reason: err.Error()}
 		}
-		return result
 	})
 }
 
@@ -523,24 +515,23 @@ func (a *App) ExecuteRunnerJob(request RunnerExecuteRequest) RunnerExecutionResu
 			return RunnerExecutionResult{State: declined.state, Reason: declined.reason}
 		}
 		out.JobID = job.ID
-		if request.Expected != "" {
-			prepared, err := durablerun.Prepare(job.Spec)
-			if err != nil {
-				return RunnerExecutionResult{State: Failed, JobID: job.ID, Reason: "the job's spec could not be prepared; nothing was admitted and nothing was sent"}
-			}
-			identity, err := prepared.InputIdentity()
-			if err != nil || identity != request.Expected {
-				return RunnerExecutionResult{State: Failed, JobID: job.ID, Reason: "the job changed after the preflight; preflight it again before executing"}
-			}
-		}
 		var summary durablerun.Summary
 		var err error
 		if request.Expected != "" {
+			// The runner compares a pinned job's inputs with its pin before
+			// anything is admitted; the window names those refusals in its own
+			// words.
 			summary, err = customerrunner.RunPinned(ctx, config, job, request.Expected)
+			switch {
+			case errors.Is(err, customerrunner.ErrUnprepared):
+				return RunnerExecutionResult{State: Failed, JobID: job.ID, Reason: "the job's spec could not be prepared; nothing was admitted and nothing was sent"}
+			case errors.Is(err, customerrunner.ErrNoIdentity), errors.Is(err, customerrunner.ErrChanged):
+				return RunnerExecutionResult{State: Failed, JobID: job.ID, Reason: "the job changed after the preflight; preflight it again before executing"}
+			}
 		} else {
 			summary, err = customerrunner.Run(ctx, config, job)
 		}
-		out.Output = filepath.Join(config.Root, job.ID, "run")
+		out.Output = customerrunner.RunPath(config.Root, job.ID)
 		if summary.Schema != "" {
 			retained := summary
 			out.Summary = &retained
@@ -592,7 +583,7 @@ func (a *App) ReadRunnerRecovery(configPath, jobID string) RunnerRecoveryResult 
 		if !runnerprotocol.ID(jobID) {
 			return RunnerRecoveryResult{State: Failed, Reason: "a retained job is named by its configured job id"}
 		}
-		recovery, err := durablerun.Recover(filepath.Join(config.Root, jobID, "run"))
+		recovery, err := customerrunner.Recover(config.Root, jobID)
 		if err != nil {
 			return RunnerRecoveryResult{State: Failed, JobID: jobID, Reason: "the retained run could not be read on this machine"}
 		}
