@@ -1,5 +1,10 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Schedule previews without an explicit anchor now start on each entry's
+  current local day (#397). Entries east and west of UTC show the run the hub
+  will evaluate around local and UTC midnight, including an already missed
+  window. Explicit anchors and `readmit-hub-schedules/v1` remain unchanged.
+
 - License export from a selected operation policy now names the resolved
   destination folder, including when the chosen folder is reached through a
   linked parent (#393). The exported document remains byte for byte identical;

@@ -1,6 +1,7 @@
 package desktop_test
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
@@ -296,6 +297,63 @@ func TestSchedulePreviewShowsZoneOccurrenceAndAlertSemantics(t *testing.T) {
 	}
 }
 
+func TestSchedulePreviewWithoutAnchorStartsOnEachEntryLocalDay(t *testing.T) {
+	app := workspaceApp(t)
+	for _, tc := range []struct {
+		name, zone, now, day, due, state string
+	}{
+		{"west-before-utc-midnight", "America/Los_Angeles", "2026-09-23T23:59:00Z", "2026-09-23", "2026-09-24T06:00:00Z", "scheduled"},
+		{"west-after-utc-midnight", "America/Los_Angeles", "2026-09-24T01:00:00Z", "2026-09-23", "2026-09-24T06:00:00Z", "scheduled"},
+		{"west-before-local-midnight", "America/Los_Angeles", "2026-09-24T06:59:00Z", "2026-09-23", "2026-09-24T06:00:00Z", "missed"},
+		{"west-after-local-midnight", "America/Los_Angeles", "2026-09-24T07:01:00Z", "2026-09-24", "2026-09-25T06:00:00Z", "scheduled"},
+		{"east-before-local-midnight", "Asia/Tokyo", "2026-09-23T14:59:00Z", "2026-09-23", "2026-09-23T14:00:00Z", "missed"},
+		{"east-after-local-midnight", "Asia/Tokyo", "2026-09-23T15:01:00Z", "2026-09-24", "2026-09-24T14:00:00Z", "scheduled"},
+		{"east-before-utc-midnight", "Asia/Tokyo", "2026-09-23T23:59:00Z", "2026-09-24", "2026-09-24T14:00:00Z", "scheduled"},
+		{"east-after-utc-midnight", "Asia/Tokyo", "2026-09-24T00:01:00Z", "2026-09-24", "2026-09-24T14:00:00Z", "scheduled"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now, err := time.Parse(time.RFC3339, tc.now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			entry := scheduleEntry(strings.Repeat("a", 64), false)
+			entry.Zone, entry.At = tc.zone, "23:00"
+			preview := desktop.PreviewSchedulePolicyAtForTest(app, desktop.SchedulePolicyRequest{Entries: []desktop.ScheduleEntryInput{entry}}, now)
+			if preview.State != desktop.Completed || len(preview.Entries) != 1 || len(preview.Entries[0].Occurrences) != 3 {
+				t.Fatalf("preview at %s: %+v", tc.now, preview)
+			}
+			first := preview.Entries[0].Occurrences[0]
+			if first.Day != tc.day || first.UTC != tc.due || first.State != tc.state {
+				t.Fatalf("first occurrence at %s: %+v, want day %s, due %s, state %s", tc.now, first, tc.day, tc.due, tc.state)
+			}
+		})
+	}
+	// One preview can contain entries on different local days at the same
+	// instant; there is no policy-wide default day.
+	now := time.Date(2026, 9, 24, 1, 0, 0, 0, time.UTC)
+	west := scheduleEntry(strings.Repeat("a", 64), false)
+	west.Zone, west.At = "America/Los_Angeles", "23:00"
+	east := west
+	east.ID, east.Zone = "east", "Asia/Tokyo"
+	mixed := desktop.PreviewSchedulePolicyAtForTest(app, desktop.SchedulePolicyRequest{Entries: []desktop.ScheduleEntryInput{west, east}}, now)
+	if mixed.State != desktop.Completed || len(mixed.Entries) != 2 || mixed.Entries[0].Occurrences[0].Day != "2026-09-23" || mixed.Entries[1].Occurrences[0].Day != "2026-09-24" {
+		t.Fatalf("mixed-zone preview: %+v", mixed)
+	}
+
+	// The explicit anchor is a civil day chosen by the operator, regardless
+	// of the entry's zone or the instant at which the preview is taken.
+	entry := scheduleEntry(strings.Repeat("a", 64), false)
+	entry.Zone, entry.At = "America/Los_Angeles", "23:00"
+	anchored := desktop.PreviewSchedulePolicyAtForTest(app, desktop.SchedulePolicyRequest{Anchor: "2026-09-24", Entries: []desktop.ScheduleEntryInput{entry}}, now)
+	if anchored.State != desktop.Completed || len(anchored.Entries) != 1 || len(anchored.Entries[0].Occurrences) != 3 {
+		t.Fatalf("anchored preview: %+v", anchored)
+	}
+	first := anchored.Entries[0].Occurrences[0]
+	if first.Day != "2026-09-24" || first.UTC != "2026-09-25T06:00:00Z" || first.State != "scheduled" {
+		t.Fatalf("anchored first occurrence: %+v", first)
+	}
+}
+
 // dueAnHourEarlier previews, at the instant now, an entry that fell due an
 // hour before it: that occurrence is past its 600-second window and missed,
 // and the next day's is scheduled.
@@ -330,6 +388,23 @@ func TestSaveSchedulePolicyWritesRevisionAndRefusesStalePin(t *testing.T) {
 	result := app.SaveSchedulePolicy(request)
 	if result.State != desktop.Completed {
 		t.Fatalf("save: %+v", result)
+	}
+	withoutAnchor, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	anchored := request
+	anchored.Output = filepath.Join(t.TempDir(), "anchored-schedules.json")
+	anchored.Anchor = "2026-09-24"
+	if result := app.SaveSchedulePolicy(anchored); result.State != desktop.Completed {
+		t.Fatalf("anchored save: %+v", result)
+	}
+	withAnchor, err := os.ReadFile(anchored.Output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(withoutAnchor, withAnchor) {
+		t.Fatal("a display-only anchor changed readmit-hub-schedules/v1 bytes")
 	}
 	reopened := app.OpenSchedulePolicy(output)
 	if reopened.State != desktop.Completed || reopened.Identity != result.Identity || len(reopened.Entries) != 1 {

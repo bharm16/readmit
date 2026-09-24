@@ -762,7 +762,7 @@ type ScheduleEntryInput struct {
 // SchedulePolicyRequest is one revision of the schedule policy. Concurrency
 // is not an input: the contract defines serial-skip-missed and nothing else.
 // Anchor is display-only: the day the preview counts occurrences from, which
-// defaults to today; it never changes what a save writes.
+// defaults to each entry's current local day; it never changes what a save writes.
 type SchedulePolicyRequest struct {
 	Output  string               `json:"output"`
 	Anchor  string               `json:"anchor"`
@@ -841,8 +841,8 @@ func (a *App) previewSchedulePolicy(request SchedulePolicyRequest, now time.Time
 
 // schedulePreview is the computation behind both the preview operation and a
 // save; it holds no operation slot of its own, so a save composes it once.
-// now is the one instant the whole preview is taken at: the default anchor
-// day and every occurrence's missed marking read it.
+// now is the one instant the whole preview is taken at: each entry's default
+// local day and every occurrence's missed marking read it.
 func schedulePreview(request SchedulePolicyRequest, now time.Time) SchedulePreviewResult {
 	policy, declined := schedulePolicyFrom(request)
 	if declined.reason != "" {
@@ -856,15 +856,23 @@ func schedulePreview(request SchedulePolicyRequest, now time.Time) SchedulePrevi
 		Alert:       string(runnerprotocol.ScheduleAlert("failed")),
 		AlertStates: runnerprotocol.ScheduleAlertStates(),
 	}
-	today := now.UTC()
+	var anchor time.Time
 	if request.Anchor != "" {
 		anchored, err := time.Parse("2006-01-02", request.Anchor)
 		if err != nil {
 			return SchedulePreviewResult{State: Failed, Reason: "the preview anchor is one day in 2006-01-02 form"}
 		}
-		today = anchored
+		anchor = anchored
 	}
 	for i, entry := range request.Entries {
+		startDay := anchor
+		if request.Anchor == "" {
+			// DecodeSchedules has already validated this zone. Use the same
+			// local civil day from which the hub's scheduler starts its scan.
+			loc, _ := time.LoadLocation(policy.Schedules[i].Zone)
+			year, month, day := now.In(loc).Date()
+			startDay = time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+		}
 		view := ScheduleEntryView{Entry: entry, PinState: "unreadable"}
 		if prepared, err := durablerun.Prepare(entry.Spec); err == nil {
 			if pin, err := prepared.InputIdentity(); err == nil {
@@ -882,7 +890,7 @@ func schedulePreview(request SchedulePolicyRequest, now time.Time) SchedulePrevi
 			view.Notification = "disabled: notifications require an approved route"
 		}
 		for dayOffset := 0; dayOffset < 3; dayOffset++ {
-			day := today.In(time.UTC).AddDate(0, 0, dayOffset).Format("2006-01-02")
+			day := startDay.AddDate(0, 0, dayOffset).Format("2006-01-02")
 			occurrence := ScheduleOccurrence{Day: day, State: "scheduled"}
 			if due, exists := runnerprotocol.DailyOccurrence(day, policy.Schedules[i].At, policy.Schedules[i].Zone); !exists {
 				occurrence.State = "dst-gap"
