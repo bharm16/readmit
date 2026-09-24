@@ -354,7 +354,7 @@ func TestListingDistinguishesWhatWorkspaceEntriesDeclare(t *testing.T) {
 		"diagnose.config.json":   desktop.DiagnoseConfigArtifact,
 		"verdicts.json":          desktop.DecisionsArtifact,
 		"diagnosis-out":          desktop.DiagnosisArtifact,
-		"groups-out":             desktop.DiagnosisArtifact,
+		"groups-out":             desktop.DiagnosisGroupsArtifact,
 		"finding-review-out":     desktop.FindingReviewArtifact,
 		"correlation-review-out": desktop.CorrelationReviewArtifact,
 		"other-report":           desktop.UnsupportedArtifact,

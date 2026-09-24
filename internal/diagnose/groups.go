@@ -14,10 +14,12 @@ import (
 
 const GroupsSchema = "readmit-diagnosis-groups/v1"
 const MaxGroupCases = 16
+const MaxGroupsReportBytes = 64 << 20
 
 // GroupsReport is a derived presentation. Cases retain the complete unchanged
 // diagnoses; grouping never substitutes a representative for a member.
-// This is an output-only contract, not an accepted input or evidence artifact.
+// This is an output-only evaluation contract: a saved copy can be reopened for
+// display, but cannot be used as an input diagnosis or evidence artifact.
 type GroupsReport struct {
 	Schema string         `json:"schema"`
 	Scope  string         `json:"scope"`
@@ -68,23 +70,34 @@ type groupAccumulator struct {
 // Equal signatures mean the same diagnostic shape, never the same root cause.
 // Cancellation is checked between bounded case evaluations and while grouping.
 func GroupCases(ctx context.Context, paths []string, config Config) (GroupsReport, error) {
+	report, _, err := GroupCasesWithIdentities(ctx, paths, config)
+	return report, err
+}
+
+// GroupCasesWithIdentities also returns the verified identities in input order.
+// A caller that knows the workspace entry for each input can label a live
+// grouping without opening the case a second time. These identities are never
+// members of the readmit-diagnosis-groups/v1 document beyond its Cases.
+func GroupCasesWithIdentities(ctx context.Context, paths []string, config Config) (GroupsReport, []string, error) {
 	if len(paths) == 0 || len(paths) > MaxGroupCases {
-		return GroupsReport{}, errors.New("diagnosis grouping requires 1 to 16 cases")
+		return GroupsReport{}, nil, errors.New("diagnosis grouping requires 1 to 16 cases")
 	}
 	result := GroupsReport{Schema: GroupsSchema, Scope: "Counts describe findings and distinct case-local occurrences in these selected captures only, never population-wide rates. Equal signatures describe diagnostic shape, not a shared root cause. Representatives are the first finding in each case for that signature; every finding and unsupported item remains in Cases. Windows can overlap, and identical occurrences in different cases are not independent events.", Cases: []Report{}, Groups: []FindingGroup{}}
+	identities := make([]string, 0, len(paths))
 	seen := map[string]bool{}
 	for _, path := range paths {
 		if err := ctx.Err(); err != nil {
-			return GroupsReport{}, err
+			return GroupsReport{}, nil, err
 		}
 		report, err := Run(path, config)
 		if err != nil {
-			return GroupsReport{}, err
+			return GroupsReport{}, nil, err
 		}
 		if seen[report.CaseIdentity] {
-			return GroupsReport{}, errors.New("diagnosis grouping refuses duplicate case identities")
+			return GroupsReport{}, nil, errors.New("diagnosis grouping refuses duplicate case identities")
 		}
 		seen[report.CaseIdentity] = true
+		identities = append(identities, report.CaseIdentity)
 		result.Cases = append(result.Cases, report)
 	}
 	slices.SortFunc(result.Cases, func(a, b Report) int { return cmp.Compare(a.CaseIdentity, b.CaseIdentity) })
@@ -92,7 +105,7 @@ func GroupCases(ctx context.Context, paths []string, config Config) (GroupsRepor
 	for _, report := range result.Cases {
 		for _, finding := range report.Findings {
 			if err := ctx.Err(); err != nil {
-				return GroupsReport{}, err
+				return GroupsReport{}, nil, err
 			}
 			shape := findingSignature{Config: report.ConfigSHA256, Rule: finding.RuleID, Profile: finding.Profile, Ruleset: finding.Ruleset, Classification: finding.Classification, Summary: finding.Summary, Evidence: []fieldState{}}
 			for _, e := range finding.Evidence {
@@ -100,7 +113,7 @@ func GroupCases(ctx context.Context, paths []string, config Config) (GroupsRepor
 			}
 			encoded, err := json.Marshal(shape, json.Deterministic(true))
 			if err != nil {
-				return GroupsReport{}, errors.New("cannot encode diagnosis signature")
+				return GroupsReport{}, nil, errors.New("cannot encode diagnosis signature")
 			}
 			digest := sha256.Sum256(encoded)
 			signature := hex.EncodeToString(digest[:])
@@ -127,9 +140,9 @@ func GroupCases(ctx context.Context, paths []string, config Config) (GroupsRepor
 		}
 	}
 	if err := ctx.Err(); err != nil {
-		return GroupsReport{}, err
+		return GroupsReport{}, nil, err
 	}
-	return result, nil
+	return result, identities, nil
 }
 
 func GroupsJSON(report GroupsReport) ([]byte, error) {
@@ -137,10 +150,73 @@ func GroupsJSON(report GroupsReport) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(data) > 64<<20 {
+	if len(data) > MaxGroupsReportBytes {
 		return nil, errors.New("grouped diagnosis exceeds 64 MiB; select fewer cases")
 	}
 	return append(data, '\n'), nil
+}
+
+// ParseGroups reads a retained grouping for display. It does not make a
+// grouping eligible for finding review: that operation still reads only one
+// readmit-diagnosis/v1 report through its separate reader.
+func ParseGroups(data []byte) (GroupsReport, error) {
+	// GroupsJSON checks the encoded payload before appending one newline.
+	if len(data) > MaxGroupsReportBytes+1 {
+		return GroupsReport{}, errors.New("grouped diagnosis exceeds 64 MiB; select fewer cases")
+	}
+	var declared struct {
+		Schema string `json:"schema"`
+	}
+	if json.Unmarshal(data, &declared) != nil {
+		return GroupsReport{}, errors.New("invalid diagnosis grouping report")
+	}
+	if declared.Schema != GroupsSchema {
+		return GroupsReport{}, errors.New("diagnosis grouping report declares a contract version this release does not read")
+	}
+	var report GroupsReport
+	if json.Unmarshal(data, &report, json.RejectUnknownMembers(true)) != nil ||
+		len(report.Cases) == 0 || len(report.Cases) > MaxGroupCases || report.Groups == nil || report.Scope == "" {
+		return GroupsReport{}, errors.New("invalid diagnosis grouping report")
+	}
+	findings := make(map[FindingReference]bool)
+	cases := make(map[string]bool)
+	for _, c := range report.Cases {
+		if c.Schema != Schema || c.CaseIdentity == "" || cases[c.CaseIdentity] {
+			return GroupsReport{}, errors.New("invalid diagnosis grouping report")
+		}
+		cases[c.CaseIdentity] = true
+		for _, finding := range c.Findings {
+			ref := FindingReference{CaseIdentity: c.CaseIdentity, FindingID: finding.ID}
+			if finding.ID == "" || findings[ref] {
+				return GroupsReport{}, errors.New("invalid diagnosis grouping report")
+			}
+			findings[ref] = true
+		}
+	}
+	for _, group := range report.Groups {
+		if group.Signature == "" || group.RuleID == "" || len(group.Members) == 0 ||
+			group.Representatives == nil || group.Occurrences == nil {
+			return GroupsReport{}, errors.New("invalid diagnosis grouping report")
+		}
+		members := make(map[FindingReference]bool)
+		for _, ref := range group.Members {
+			if !findings[ref] || members[ref] {
+				return GroupsReport{}, errors.New("invalid diagnosis grouping report")
+			}
+			members[ref] = true
+		}
+		for _, ref := range group.Representatives {
+			if !members[ref] {
+				return GroupsReport{}, errors.New("invalid diagnosis grouping report")
+			}
+		}
+		for _, ref := range group.Occurrences {
+			if !cases[ref.CaseIdentity] || ref.Occurrence == "" {
+				return GroupsReport{}, errors.New("invalid diagnosis grouping report")
+			}
+		}
+	}
+	return report, nil
 }
 
 // GroupsMarkdown puts representatives together for comparison, then includes

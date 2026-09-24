@@ -58,6 +58,7 @@ import {
   decideCorrelation,
   runDiagnosis,
   openDiagnosisReport,
+  openDiagnosisGroupsReport,
   groupDiagnoses,
   reviewFindings,
   decideFindings,
@@ -187,6 +188,7 @@ type Running =
   | "diagnosis"
   | "diagnosis-report"
   | "diagnosis-groups"
+  | "diagnosis-groups-report"
   | "finding-review"
   | "normalize"
   | "recent"
@@ -987,6 +989,17 @@ export default function App() {
       await operate("diagnosis-groups", async () => {
         setDiagnosisGroupsResult(null);
         setDiagnosisGroupsResult(await groupDiagnoses({ ...request, workspace: root }));
+      });
+    },
+    [operate, root],
+  );
+
+  const openGroupsReport = useCallback(
+    async (entry: string, offset: number) => {
+      if (!root) return;
+      await operate("diagnosis-groups-report", async () => {
+        setDiagnosisGroupsResult(null);
+        setDiagnosisGroupsResult(await openDiagnosisGroupsReport(root, entry, offset));
       });
     },
     [operate, root],
@@ -2481,6 +2494,9 @@ export default function App() {
             reportEntries={(opened?.artifacts ?? [])
               .filter((artifact) => artifact.kind === "diagnosis")
               .map((artifact) => artifact.name)}
+            groupsReportEntries={(opened?.artifacts ?? [])
+              .filter((artifact) => artifact.kind === "diagnosis-groups")
+              .map((artifact) => artifact.name)}
             caseEntries={(opened?.artifacts ?? [])
               .filter((artifact) => artifact.kind === "case")
               .map((artifact) => artifact.name)}
@@ -2500,11 +2516,18 @@ export default function App() {
                     ? "Reviewing these findings."
                     : null
             }
-            groupsProgress={running === "diagnosis-groups" ? "Grouping findings across these cases." : null}
+            groupsProgress={
+              running === "diagnosis-groups"
+                ? "Grouping findings across these cases."
+                : running === "diagnosis-groups-report"
+                  ? "Opening this grouping report."
+                  : null
+            }
             indicators={indicators}
             onRun={(request) => void diagnose(request)}
             onOpen={(entry, offset) => void openReport(entry, offset)}
             onGroup={(request) => void groupCases(request)}
+            onOpenGroups={(entry, offset) => void openGroupsReport(entry, offset)}
             onReview={(request, write) => void reviewDiagnosisFindings(request, write)}
             onSelect={(occurrence) => void inspect(occurrence, "", 0, -1)}
             onPromote={(status, reviewEntry, reportSHA256) =>

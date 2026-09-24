@@ -200,7 +200,7 @@ func TestEveryStatusIsDistinguishableWithoutColour(t *testing.T) {
 		desktop.PlanArtifact, desktop.SpecArtifact, desktop.PackArtifact,
 		desktop.ProfileArtifact, desktop.PackageArtifact,
 		desktop.AnalysisArtifact, desktop.SecretArtifact, desktop.PolicyArtifact,
-		desktop.ResetArtifact, desktop.DiagnosisArtifact, desktop.FindingReviewArtifact,
+		desktop.ResetArtifact, desktop.DiagnosisArtifact, desktop.DiagnosisGroupsArtifact, desktop.FindingReviewArtifact,
 		desktop.CorrelationReviewArtifact, desktop.NormalizationArtifact,
 		desktop.DiagnoseConfigArtifact, desktop.DecisionsArtifact,
 		desktop.PacketArtifact, desktop.PortableReviewArtifact, desktop.SyntheticPacketArtifact,

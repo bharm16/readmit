@@ -30,6 +30,7 @@ export type Kind =
   | "policy"
   | "reset"
   | "diagnosis"
+  | "diagnosis-groups"
   | "finding-review"
   | "correlation-review"
   | "normalization-policy"
@@ -855,6 +856,7 @@ export interface Facade {
   CommitImport(request: ImportCommitRequest): Promise<ImportCommitResult>;
   RunDiagnosis(request: DiagnosisRequest): Promise<DiagnosisResult>;
   OpenDiagnosisReport(workspace: string, entry: string, offset: number): Promise<DiagnosisResult>;
+  OpenDiagnosisGroupsReport(workspace: string, entry: string, offset: number): Promise<DiagnosisGroupsResult>;
   GroupDiagnoses(request: GroupDiagnosesRequest): Promise<DiagnosisGroupsResult>;
   ReviewFindings(request: FindingReviewRequest): Promise<FindingReviewResult>;
   DecideFindings(request: FindingReviewRequest): Promise<FindingReviewResult>;
@@ -7728,6 +7730,7 @@ export interface DiagnosisGroupsResult {
   offset: number;
   total: number;
   groups?: DiagnosisGroups;
+  case_entries?: Record<string, string>;
 }
 
 /** One person's judgment about one finding. The rationale is required for
@@ -8072,6 +8075,16 @@ export function openDiagnosisReport(
   offset: number,
 ): Promise<DiagnosisResult> {
   return guard(() => facade().OpenDiagnosisReport(workspace, entry, offset), { state: "failed" });
+}
+
+/** Reads a retained grouping through its separate strict display reader.
+ * It cannot be used as one diagnosis in a finding review. */
+export function openDiagnosisGroupsReport(
+  workspace: string,
+  entry: string,
+  offset: number,
+): Promise<DiagnosisGroupsResult> {
+  return guard(() => facade().OpenDiagnosisGroupsReport(workspace, entry, offset), { state: "failed", offset: 0, total: 0 });
 }
 
 /** Re-evaluates the selected cases under one configuration and groups equal

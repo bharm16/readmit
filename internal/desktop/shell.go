@@ -148,6 +148,7 @@ var indicators = []Indicator{
 	{Status: string(PolicyArtifact), Symbol: "◖", Label: "Send policy"},
 	{Status: string(ResetArtifact), Symbol: "↺", Label: "Fixture reset"},
 	{Status: string(DiagnosisArtifact), Symbol: "⊞", Label: "Diagnosis report"},
+	{Status: string(DiagnosisGroupsArtifact), Symbol: "⊕", Label: "Diagnosis grouping report"},
 	{Status: string(FindingReviewArtifact), Symbol: "⊟", Label: "Finding review"},
 	{Status: string(CorrelationReviewArtifact), Symbol: "⊠", Label: "Correlation review"},
 	{Status: string(NormalizationArtifact), Symbol: "⊡", Label: "Normalization policy"},

@@ -239,11 +239,12 @@ type GroupDiagnosesRequest struct {
 // group list is windowed by the request's offset; Cases keeps every complete
 // unchanged diagnosis, exactly as the engine's own contract requires.
 type DiagnosisGroupsResult struct {
-	State  State                  `json:"state"`
-	Reason string                 `json:"reason,omitzero"`
-	Offset int                    `json:"offset"`
-	Total  int                    `json:"total"`
-	Groups *diagnose.GroupsReport `json:"groups,omitzero"`
+	State       State                  `json:"state"`
+	Reason      string                 `json:"reason,omitzero"`
+	Offset      int                    `json:"offset"`
+	Total       int                    `json:"total"`
+	Groups      *diagnose.GroupsReport `json:"groups,omitzero"`
+	CaseEntries map[string]string      `json:"case_entries,omitzero"`
 }
 
 func (r *DiagnosisGroupsResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
@@ -281,15 +282,60 @@ func groupDiagnoses(ctx context.Context, request GroupDiagnosesRequest) Diagnosi
 		}
 		paths = append(paths, path)
 	}
-	report, err := diagnose.GroupCases(ctx, paths, config)
+	report, identities, err := diagnose.GroupCasesWithIdentities(ctx, paths, config)
 	if err != nil {
 		if ctx.Err() != nil {
 			return DiagnosisGroupsResult{State: Cancelled, Reason: cancelledRefusal.reason}
 		}
 		return failure(err.Error())
 	}
+	entries := make(map[string]string, len(identities))
+	for i, identity := range identities {
+		entries[identity] = request.Cases[i]
+	}
+	return windowedDiagnosisGroups(report, request.Offset, entries)
+}
+
+// OpenDiagnosisGroupsReport reads a retained grouping through its own strict
+// reader. Groupings are presentation artifacts, never single diagnoses or
+// finding-review inputs. No case is re-read to guess an entry name from a
+// retained report's identities.
+func (a *App) OpenDiagnosisGroupsReport(workspace, entry string, offset int) DiagnosisGroupsResult {
+	return run(a, false, false, func(context.Context) DiagnosisGroupsResult {
+		if offset < 0 {
+			return DiagnosisGroupsResult{State: Failed, Reason: "a grouping window cannot begin before its first group"}
+		}
+		root, declined := resolveFolder(workspace)
+		if root == "" {
+			return DiagnosisGroupsResult{State: declined.state, Reason: declined.reason}
+		}
+		dir, err := artifactpath.Child(root, entry)
+		if err != nil {
+			return DiagnosisGroupsResult{State: Failed, Reason: "a diagnosis grouping report must be one directory entry of the open workspace"}
+		}
+		path := filepath.Join(dir, "report.json")
+		info, err := os.Lstat(path)
+		switch {
+		case err != nil || !info.Mode().IsRegular():
+			return DiagnosisGroupsResult{State: Failed, Reason: "a diagnosis grouping report directory holds report.json as one regular file"}
+		case info.Size() > diagnose.MaxGroupsReportBytes+1:
+			return DiagnosisGroupsResult{State: Failed, Reason: "the diagnosis grouping report is larger than this release reads"}
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return DiagnosisGroupsResult{State: Failed, Reason: "the diagnosis grouping report could not be read"}
+		}
+		report, err := diagnose.ParseGroups(data)
+		if err != nil {
+			return DiagnosisGroupsResult{State: Failed, Reason: err.Error()}
+		}
+		return windowedDiagnosisGroups(report, offset, nil)
+	})
+}
+
+func windowedDiagnosisGroups(report diagnose.GroupsReport, offset int, entries map[string]string) DiagnosisGroupsResult {
 	total := len(report.Groups)
-	start := min(request.Offset, total)
+	start := min(offset, total)
 	report.Groups = report.Groups[start : start+min(MaxDiagnosisFindings, total-start)]
-	return DiagnosisGroupsResult{State: Completed, Offset: request.Offset, Total: total, Groups: &report}
+	return DiagnosisGroupsResult{State: Completed, Offset: offset, Total: total, Groups: &report, CaseEntries: entries}
 }

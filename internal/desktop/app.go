@@ -81,13 +81,14 @@ const (
 	SecretArtifact    Kind = "secret"
 	PolicyArtifact    Kind = "policy"
 	ResetArtifact     Kind = "reset"
-	// A diagnosis report directory holds report.json beside report.md; a
-	// finding review directory holds review.json declaring the finding-review
-	// contract; a correlation review directory holds the machine mapping
+	// Diagnosis and diagnosis grouping report directories hold report.json
+	// beside report.md. A finding review directory holds review.json declaring
+	// the finding-review contract; a correlation review directory holds the machine mapping
 	// beside the decisions that were made over it. The three flat documents
 	// are the authored configurations the diagnosis and comparison panels
 	// offer pickers for.
 	DiagnosisArtifact         Kind = "diagnosis"
+	DiagnosisGroupsArtifact   Kind = "diagnosis-groups"
 	FindingReviewArtifact     Kind = "finding-review"
 	CorrelationReviewArtifact Kind = "correlation-review"
 	NormalizationArtifact     Kind = "normalization-policy"
