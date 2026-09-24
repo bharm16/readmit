@@ -11,12 +11,15 @@ import { renderApp } from "./testkit/app";
 import type {
   CaptureJournalResult,
   CapturePreviewResult,
+  CaptureProgressResult,
   CaptureSessionResult,
   ObservationCaptureBindRequest,
   ObservationSourceResult,
   ObservationSupportResult,
   ObservationWindowResult,
   PathChoiceResult,
+  ReceiverPolicy,
+  ReceiverPolicyResult,
   SourceAccessResult,
   SourceCollectionResult,
   SourceRegistrationResult,
@@ -414,4 +417,311 @@ test("finalized capture offers observation binding into Observation setup", asyn
   expect(
     await screen.findByText(/downstream-capture observation source|Bound retained capture|Nothing was collected/i),
   ).toBeTruthy();
+});
+
+function capturePanel(): HTMLElement {
+  return screen.getByRole("heading", { name: "Capture and collect evidence" }).closest("section")!;
+}
+
+async function tabTo(user: ReturnType<typeof userEvent.setup>, target: HTMLElement) {
+  for (let step = 0; step < 120 && document.activeElement !== target; step++) await user.tab();
+  expect(document.activeElement).toBe(target);
+}
+
+const fixturePreview: CapturePreviewResult = {
+  state: "completed",
+  phase: "previewing",
+  preview: {
+    kind: "listen",
+    address: "declared-address",
+    approved_bind: false,
+    fixture_mode: "defective",
+    fixture_label: "built-in synthetic SIU fixture (readmit-siu-v1)",
+    transport: "plain",
+    client_certificate: false,
+    max_frame_bytes: 1048576,
+    idle_timeout: "30s",
+    journal_enabled: false,
+  },
+};
+
+test("a running fixture listener shows where it listens, is cancelled from the keyboard and shows the ledger it sealed", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user);
+  await user.click(screen.getByRole("button", { name: "Capture or collect evidence…" }));
+  await user.click(screen.getByRole("tab", { name: "SIU fixture" }));
+  const panel = within(capturePanel());
+  await user.selectOptions(panel.getByLabelText("Mode"), "defective");
+  const progress: CaptureProgressResult[] = [{ state: "empty" }];
+  facade.reply({
+    PreviewCapture: () => fixturePreview,
+    CaptureProgress: () => progress[progress.length - 1]!,
+  });
+  const started = facade.park("StartCapture");
+  await user.click(panel.getByRole("button", { name: "Preview fixture" }));
+  const start = panel.getByRole("button", { name: "Start fixture listener" });
+  await waitFor(() => expect((start as HTMLButtonElement).disabled).toBe(false));
+  await user.click(start);
+  // Until the fixture has bound, the window names no port; once it has, the
+  // port is the one a sender is pointed at, and Cancel holds the focus.
+  expect(await panel.findByText(/Phase: listening/)).toBeTruthy();
+  expect(panel.queryByText(/Listening on/)).toBeNull();
+  progress.push({ state: "completed", progress: { kind: "listen", bound_address: "bound-loopback-port" } });
+  expect(await panel.findByText("Phase: listening · Listening on bound-loopback-port")).toBeTruthy();
+  const stop = panel.getByRole("button", { name: "Cancel" });
+  await waitFor(() => expect(document.activeElement).toBe(stop));
+  await user.keyboard("{Enter}");
+  expect(facade.oneCall("Cancel")).toEqual(["capture"]);
+  const [request] = facade.oneCall("StartCapture");
+  expect(request).toMatchObject({ kind: "listen", fixture_mode: "defective", approved_bind: false });
+
+  started.resolve({
+    state: "cancelled",
+    reason: "the operation was cancelled",
+    phase: "stopped",
+    bound_address: "bound-loopback-port",
+    case_path: "capture.case",
+    observation_path: "observation.json",
+    received: 1,
+    connections: 1,
+    case: {
+      name: "capture.case",
+      identity: "sha256:2222",
+      schema: "readmit-case/v2",
+      provenance: "recorded",
+      sources: 1,
+      occurrences: 2,
+      messages: 1,
+      acknowledgements: 1,
+      unparsed: 0,
+    },
+    ledger: {
+      schema: "readmit-observation/v1",
+      profile: "readmit-siu-v1",
+      mode: "defective",
+      processed: 1,
+      records: 1,
+      consistent: true,
+    },
+  } satisfies CaptureSessionResult);
+  expect(await panel.findByText("the operation was cancelled")).toBeTruthy();
+  expect(panel.getByText(/Phase: stopped · Received: 1/)).toBeTruthy();
+  expect(panel.queryByText(/Listening on/)).toBeNull();
+  expect(panel.getByText("Case sealed: capture.case · 1 messages · 1 sources")).toBeTruthy();
+  expect(
+    panel.getByText(
+      "Appointment ledger observation.json: readmit-observation/v1 · Receiver mode: defective · Processed occurrences: 1 · Ledger records: 1 · Consistent: true",
+    ),
+  ).toBeTruthy();
+  // Focus is back on the control that started the listen.
+  await waitFor(() => expect(document.activeElement).toBe(start));
+});
+
+test("the fixture tab listens on loopback only and never carries the collector tab's bind approval", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user);
+  await user.click(screen.getByRole("button", { name: "Capture or collect evidence…" }));
+  const panel = within(capturePanel());
+  // An approval ticked for the collector stays with the collector.
+  await user.click(screen.getByRole("tab", { name: "MLLP collect" }));
+  await user.click(panel.getByLabelText("Approved nonloopback bind"));
+  expect((panel.getByLabelText("Approved nonloopback bind") as HTMLInputElement).checked).toBe(true);
+  await user.click(screen.getByRole("tab", { name: "SIU fixture" }));
+  expect(panel.queryByLabelText("Approved nonloopback bind")).toBeNull();
+
+  const refusal = "accepting connections from beyond this machine is opt-in: pass --approved-bind to bind a nonloopback address";
+  facade.reply({ PreviewCapture: () => ({ state: "failed", reason: refusal, phase: "failed" }) });
+  await user.clear(panel.getByLabelText("Listen address"));
+  await user.type(panel.getByLabelText("Listen address"), "0.0.0.0:0");
+  await user.click(panel.getByRole("button", { name: "Preview fixture" }));
+  expect(await panel.findByText(refusal)).toBeTruthy();
+  expect(facade.oneCall("PreviewCapture")[0]).toMatchObject({ kind: "listen", address: "0.0.0.0:0", approved_bind: false });
+  expect((panel.getByRole("button", { name: "Start fixture listener" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(facade.callsTo("StartCapture")).toHaveLength(0);
+});
+
+const declaredPolicy: ReceiverPolicy = {
+  schema: "readmit-receiver-policy/v3",
+  name: "faulting-sink",
+  source_label: "downstream-test-endpoint",
+  acknowledgement: { operator: "original-mode-fixed-code", code: "AE" },
+  accepted_message_types: { operator: "message-type-in", values: ["SIU^S12", "SIU^S13"] },
+  enhanced_acknowledgement: {
+    operator: "unsupported",
+    accept_code: "",
+    application_code: "",
+    application_delivery: "",
+    application_endpoint: "",
+    approved_transport: false,
+  },
+  faults: {
+    environment_class: "nonproduction",
+    approved_test_endpoints: ["approved-test-endpoint"],
+    steps: [
+      { message: 1, stage: "application", action: "delay", delay_ms: 25 },
+      { message: 3, stage: "application", action: "reject", delay_ms: 0 },
+    ],
+  },
+};
+
+test("a declared responder policy reopens for review, is previewed as it is and keeps what the form cannot show once edited", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user);
+  await user.click(screen.getByRole("button", { name: "Capture or collect evidence…" }));
+  await user.click(screen.getByRole("tab", { name: "MLLP collect" }));
+  const panel = within(capturePanel());
+  const open = panel.getByRole("button", { name: "Open policy…" });
+
+  // A dismissed dialog opens nothing.
+  facade.reply({ ChooseCapturePath: (): PathChoiceResult => ({ state: "cancelled", reason: "no file was chosen" }) });
+  await tabTo(user, open);
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(facade.callsTo("ChooseCapturePath")).toHaveLength(1));
+  expect(facade.callsTo("ChooseCapturePath")[0]?.args).toEqual(["policy"]);
+  expect(facade.callsTo("ReadReceiverPolicy")).toHaveLength(0);
+  expect(panel.queryByRole("definition", { name: "Opened responder policy" })).toBeNull();
+
+  // From the keyboard, the chosen document opens for review and fills the form.
+  facade.reply({
+    ChooseCapturePath: (): PathChoiceResult => ({ state: "completed", kind: "policy", paths: ["policies/faulting.json"] }),
+    ReadReceiverPolicy: (): ReceiverPolicyResult => ({ state: "completed", policy: declaredPolicy, policy_file: "policies/faulting.json" }),
+  });
+  await tabTo(user, open);
+  await user.keyboard("{Enter}");
+  const review = within(await panel.findByLabelText("Opened responder policy"));
+  expect(facade.oneCall("ReadReceiverPolicy")[1]).toBe("policies/faulting.json");
+  expect(review.getByText("readmit-receiver-policy/v3")).toBeTruthy();
+  expect(review.getByText("original-mode-fixed-code AE")).toBeTruthy();
+  expect(review.getByText("message-type-in: SIU^S12, SIU^S13")).toBeTruthy();
+  expect(review.getByText("unsupported")).toBeTruthy();
+  expect(
+    review.getByText("nonproduction · approved approved-test-endpoint · message 1 application delay 25 ms; message 3 application reject"),
+  ).toBeTruthy();
+  expect((panel.getByLabelText("Policy file") as HTMLInputElement).value).toBe("policies/faulting.json");
+  expect((panel.getByLabelText("Policy name") as HTMLInputElement).value).toBe("faulting-sink");
+  expect((panel.getByLabelText("Acknowledgement code") as HTMLSelectElement).value).toBe("AE");
+  expect((panel.getByLabelText("Controlled fault (v3 synthetic)") as HTMLSelectElement).value).toBe("delay");
+  expect((panel.getByLabelText("Fault delay (ms)") as HTMLInputElement).value).toBe("25");
+  await waitFor(() => expect(document.activeElement).toBe(open));
+
+  // Previewing what was opened previews the document on disk and rewrites nothing.
+  facade.reply({ PreviewCapture: (): CapturePreviewResult => ({ state: "failed", reason: "fault endpoint is not an explicitly approved test endpoint" }) });
+  await user.click(panel.getByRole("button", { name: "Preview collector" }));
+  expect(await panel.findByText("fault endpoint is not an explicitly approved test endpoint")).toBeTruthy();
+  expect(facade.callsTo("SaveReceiverPolicy")).toHaveLength(0);
+  expect(facade.oneCall("PreviewCapture")[0]).toMatchObject({ kind: "collect", policy_file: "policies/faulting.json" });
+
+  // An edit is saved over the same document, keeping both fault steps and
+  // the approved endpoint the form never showed.
+  const saves: ReceiverPolicy[] = [];
+  facade.reply({
+    SaveReceiverPolicy: (request): ReceiverPolicyResult => {
+      saves.push(request.policy);
+      return { state: "completed", policy: request.policy, policy_file: request.policy_file };
+    },
+  });
+  await user.clear(panel.getByLabelText("Source label"));
+  await user.type(panel.getByLabelText("Source label"), "scheduling-archive");
+  await user.click(panel.getByRole("button", { name: "Preview collector" }));
+  await waitFor(() => expect(saves).toHaveLength(1));
+  expect(saves[0]).toEqual({ ...declaredPolicy, source_label: "scheduling-archive" });
+  expect(facade.callsTo("SaveReceiverPolicy")[0]?.args[0]).toMatchObject({ policy_file: "policies/faulting.json" });
+  expect(await review.findByText("scheduling-archive")).toBeTruthy();
+
+  // A document the reader refuses is shown refused and leaves the form and
+  // the review as they were.
+  facade.reply({ ReadReceiverPolicy: (): ReceiverPolicyResult => ({ state: "failed", reason: "invalid receiver policy JSON" }) });
+  await user.click(open);
+  expect(await panel.findByText("invalid receiver policy JSON")).toBeTruthy();
+  expect((panel.getByLabelText("Source label") as HTMLInputElement).value).toBe("scheduling-archive");
+  expect(review.getByText("scheduling-archive")).toBeTruthy();
+});
+
+test("a declared source registration reopens for review and is saved with every member it declares", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user);
+  await user.click(screen.getByRole("button", { name: "Capture or collect evidence…" }));
+  const panel = within(capturePanel());
+  const declared = {
+    schema: "readmit-source/v1",
+    name: "scheduling-sftp",
+    kind: "transfer",
+    scope: "appointments",
+    quota: { max_entries: 64, max_entry_bytes: 4194304, max_total_bytes: 33554432 },
+    retry: { attempts: 2, backoff: "250ms" },
+    address: "declared-source-address",
+    classification: "nonproduction",
+    command: "declared-transfer-program",
+    arguments: ["--path", "appointments"],
+    secrets_file: "declared-store",
+    credential: "declared-reference",
+  };
+  const saved: SourceRegistrationResult[] = [];
+  facade.reply({
+    ChooseCapturePath: (): PathChoiceResult => ({ state: "completed", kind: "source", paths: ["sources/sftp.json"] }),
+    ReadSourceRegistration: (): SourceRegistrationResult => ({ state: "completed", source: declared, source_file: "sources/sftp.json" }),
+    SaveSourceRegistration: (request): SourceRegistrationResult => {
+      const answer = { state: "completed" as const, source: request.source, source_file: request.source_file };
+      saved.push(answer);
+      return answer;
+    },
+  });
+  const open = panel.getByRole("button", { name: "Open registration…" });
+  await tabTo(user, open);
+  await user.keyboard("{Enter}");
+  const review = within(await panel.findByLabelText("Opened source registration"));
+  expect(facade.oneCall("ChooseCapturePath")).toEqual(["source"]);
+  expect(facade.oneCall("ReadSourceRegistration")[1]).toBe("sources/sftp.json");
+  expect(review.getByText("64 entries, 4194304 bytes per entry, 33554432 bytes in total")).toBeTruthy();
+  expect(review.getByText("2 attempts, backoff 250ms")).toBeTruthy();
+  expect(review.getByText("declared-source-address (nonproduction)")).toBeTruthy();
+  expect(review.getByText("declared-transfer-program --path appointments")).toBeTruthy();
+  expect(review.getByText("declared-reference in declared-store")).toBeTruthy();
+  expect((panel.getByLabelText("Registration file") as HTMLInputElement).value).toBe("sources/sftp.json");
+  expect((panel.getByLabelText("Kind") as HTMLSelectElement).value).toBe("transfer");
+  expect((panel.getByLabelText("Scope") as HTMLInputElement).value).toBe("appointments");
+  await waitFor(() => expect(document.activeElement).toBe(open));
+
+  await user.clear(panel.getByLabelText("Scope"));
+  await user.type(panel.getByLabelText("Scope"), "referrals");
+  await user.click(panel.getByRole("button", { name: "Save registration" }));
+  await waitFor(() => expect(saved).toHaveLength(1));
+  expect(facade.oneCall("SaveSourceRegistration")[0]).toEqual({
+    workspace: WORKSPACE_ROOT,
+    source_file: "sources/sftp.json",
+    source: { ...declared, scope: "referrals" },
+  });
+  expect(await review.findByText("referrals")).toBeTruthy();
+
+  facade.reply({
+    ReadSourceRegistration: (): SourceRegistrationResult => ({ state: "failed", reason: "unsupported evidence source schema version" }),
+  });
+  await user.click(open);
+  expect(await panel.findByText("unsupported evidence source schema version")).toBeTruthy();
+  expect((panel.getByLabelText("Scope") as HTMLInputElement).value).toBe("referrals");
+  expect(review.getByText("referrals")).toBeTruthy();
+
+  // An api source is declarable and reopens as the kind it declares, which
+  // the kind control names rather than showing another.
+  facade.reply({
+    ReadSourceRegistration: (): SourceRegistrationResult => ({
+      state: "completed",
+      source_file: "sources/api.json",
+      source: {
+        schema: "readmit-source/v1",
+        name: "scheduling-api",
+        kind: "api",
+        scope: "appointments",
+        quota: declared.quota,
+        retry: declared.retry,
+        address: "declared-api-address",
+        classification: "nonproduction",
+      },
+    }),
+  });
+  await user.click(open);
+  expect(await review.findByText("scheduling-api")).toBeTruthy();
+  const kind = panel.getByLabelText("Kind") as HTMLSelectElement;
+  expect(kind.value).toBe("api");
+  expect(kind.selectedOptions[0]?.textContent).toBe("api (declared; not collected in this release)");
 });

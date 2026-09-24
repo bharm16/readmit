@@ -410,7 +410,7 @@ func (a *App) ReadReceiverPolicy(workspace, policyFile string) ReceiverPolicyRes
 		}
 		policy, err := operation.ReceiverPolicyRead(path)
 		if err != nil {
-			return ReceiverPolicyResult{State: Failed, Reason: err.Error()}
+			return ReceiverPolicyResult{State: refusalState(err), Reason: err.Error()}
 		}
 		return ReceiverPolicyResult{State: Completed, Policy: &policy, PolicyFile: policyFile}
 	})
@@ -466,9 +466,67 @@ type CaptureSessionResult struct {
 	Connections     int                       `json:"connections,omitzero"`
 	Dropped         int                       `json:"dropped,omitzero"`
 	Preview         *operation.CapturePreview `json:"preview,omitzero"`
+	Ledger          *FixtureLedger            `json:"ledger,omitzero"`
 }
 
 func (r *CaptureSessionResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
+// FixtureLedger is the appointment ledger a fixture listen sealed into its
+// case, counted as `readmit listen` and `readmit timeline` print it: the
+// receiver's testimony, never a verdict, and never one of its values.
+type FixtureLedger struct {
+	Schema     string `json:"schema"`
+	Profile    string `json:"profile"`
+	Mode       string `json:"mode"`
+	Processed  int    `json:"processed"`
+	Records    int    `json:"records"`
+	Consistent bool   `json:"consistent"`
+}
+
+// CaptureProgress is where a running collector or fixture accepts
+// connections: the address it bound, which is the only place a port of 0
+// becomes a port a sender can be pointed at.
+type CaptureProgress struct {
+	Kind         string `json:"kind"`
+	BoundAddress string `json:"bound_address"`
+}
+
+// CaptureProgressResult is Empty while nothing listens, and Completed with the
+// bound address while a collector or fixture is ready to accept.
+type CaptureProgressResult struct {
+	State    State            `json:"state"`
+	Reason   string           `json:"reason,omitzero"`
+	Progress *CaptureProgress `json:"progress,omitzero"`
+}
+
+func (r *CaptureProgressResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
+// CaptureProgress reads where the running capture listens. It does not claim
+// the operation slot, so the screen can read it while StartCapture holds the
+// slot, and it starts, binds and changes nothing.
+func (a *App) CaptureProgress() CaptureProgressResult {
+	a.captureMu.Lock()
+	defer a.captureMu.Unlock()
+	if a.captureProgress == nil {
+		return CaptureProgressResult{State: Empty}
+	}
+	listening := *a.captureProgress
+	return CaptureProgressResult{State: Completed, Progress: &listening}
+}
+
+func (a *App) reportCaptureProgress(kind string) func(bound string) {
+	return func(bound string) {
+		a.captureMu.Lock()
+		defer a.captureMu.Unlock()
+		a.captureProgress = &CaptureProgress{Kind: kind, BoundAddress: bound}
+	}
+}
+
+func (a *App) endCaptureProgress() {
+	a.captureMu.Lock()
+	defer a.captureMu.Unlock()
+	a.captureProgress = nil
+}
 
 // CaptureJournalResult recovers a retained capture journal read-only.
 type CaptureJournalResult struct {
@@ -526,6 +584,7 @@ func (a *App) StartCapture(request CaptureRequest) CaptureSessionResult {
 		}
 		bounded, cancel := context.WithTimeout(ctx, operationguard.MaxDuration)
 		defer cancel()
+		defer a.endCaptureProgress()
 
 		preview, err := a.capturePreview(request)
 		if err != nil {
@@ -547,6 +606,7 @@ func (a *App) StartCapture(request CaptureRequest) CaptureSessionResult {
 				ObservationPath: filepath.Join(root, obsName),
 				MaxFrameBytes:   request.MaxFrameBytes,
 				MaxMessages:     request.MaxMessages,
+				Listening:       a.reportCaptureProgress("listen"),
 			}
 			if request.IdleTimeout != "" {
 				if d, err := time.ParseDuration(request.IdleTimeout); err == nil {
@@ -569,6 +629,7 @@ func (a *App) StartCapture(request CaptureRequest) CaptureSessionResult {
 			if err != nil {
 				return CaptureSessionResult{State: Failed, Reason: err.Error(), Phase: CaptureFailed, Preview: &preview}
 			}
+			cfg.Listening = a.reportCaptureProgress("collect")
 			result, serveErr := operation.StartCollect(bounded, cfg)
 			out = CaptureSessionResult{
 				BoundAddress: result.BoundAddress,
@@ -605,12 +666,19 @@ func (a *App) finishCapture(ctx context.Context, out CaptureSessionResult, b *bu
 			Unparsed:         counts[bundle.Unparsed],
 		}
 		out.Connections = len(b.Manifest.Sources)
+		if snapshot := b.Observation; snapshot != nil {
+			out.Ledger = &FixtureLedger{
+				Schema: snapshot.Schema, Profile: snapshot.Profile, Mode: string(snapshot.Mode),
+				Processed: len(snapshot.Processed), Records: len(snapshot.Records), Consistent: snapshot.Consistent,
+			}
+		}
 	}
+	// A person's cancellation is answered as one even when the serve finalized
+	// in an orderly way, as a fixture's and a collector's controlled stops do:
+	// the case sealed what arrived before it, not what was declared. Reaching
+	// the bound on an admitted execution is not a cancellation.
 	switch {
-	case serveErr == nil:
-		out.State = Completed
-		out.Phase = CaptureStopped
-	case ctx.Err() != nil:
+	case errors.Is(ctx.Err(), context.Canceled):
 		out.State = Cancelled
 		out.Reason = cancelledRefusal.reason
 		if b != nil {
@@ -618,6 +686,16 @@ func (a *App) finishCapture(ctx context.Context, out CaptureSessionResult, b *bu
 		} else {
 			out.Phase = CaptureStopping
 		}
+	case ctx.Err() != nil:
+		out.State = Failed
+		out.Reason = "the capture stopped at the longest an admitted execution may run"
+		out.Phase = CaptureFailed
+		if b != nil {
+			out.Phase = CaptureStopped
+		}
+	case serveErr == nil:
+		out.State = Completed
+		out.Phase = CaptureStopped
 	default:
 		out.State = Failed
 		out.Reason = serveErr.Error()

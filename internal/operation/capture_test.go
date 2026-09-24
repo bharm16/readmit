@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -294,17 +295,50 @@ func TestStartListenCancellationLeavesNoInventedCompletion(t *testing.T) {
 	}
 }
 
+const faultPolicy = `{"schema":"readmit-receiver-policy/v3","name":"fault-sink","source_label":"synthetic-test","acknowledgement":{"operator":"original-mode-fixed-code","code":"AA"},"accepted_message_types":{"operator":"any-message-type","values":[]},"enhanced_acknowledgement":{"operator":"enhanced-mode-fixed-codes","accept_code":"CA","application_code":"AA","application_delivery":"same-connection","application_endpoint":"","approved_transport":false},"faults":{"environment_class":"nonproduction","approved_test_endpoints":["APPROVED"],"steps":[{"message":1,"stage":"application","action":"delay","delay_ms":50}]}}`
+
 func TestStartCollectRefusesFaultPolicyWithMultiConnection(t *testing.T) {
-	policy, err := collection.DecodePolicy([]byte(`{"schema":"readmit-receiver-policy/v3","name":"fault-sink","source_label":"synthetic-test","acknowledgement":{"operator":"original-mode-fixed-code","code":"AA"},"accepted_message_types":{"operator":"any-message-type","values":[]},"enhanced_acknowledgement":{"operator":"enhanced-mode-fixed-codes","accept_code":"CA","application_code":"AA","application_delivery":"same-connection","application_endpoint":"","approved_transport":false},"faults":{"environment_class":"nonproduction","approved_test_endpoints":["127.0.0.1:2575"],"steps":[{"message":1,"stage":"application","action":"delay","delay_ms":50}]}}`))
+	reserved, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved := reserved.Addr().String()
+	reserved.Close()
+	policy, err := collection.DecodePolicy([]byte(strings.Replace(faultPolicy, "APPROVED", approved, 1)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, err = operation.StartCollect(context.Background(), operation.CollectConfig{
-		Address: "127.0.0.1:0", Policy: policy, OutputPath: filepath.Join(t.TempDir(), "case"),
+		Address: approved, Policy: policy, OutputPath: filepath.Join(t.TempDir(), "case"),
 		MaxFrameBytes: 1 << 20, IdleTimeout: time.Second, MaxMessages: 1, MaxConnections: 2,
 	})
-	if err == nil {
-		t.Fatal("expected fault+multi-connection refusal")
+	if err == nil || !strings.Contains(err.Error(), "requires one connection at a time") {
+		t.Fatalf("expected fault+multi-connection refusal, got %v", err)
+	}
+}
+
+// A fault policy approves the endpoints it may be served at, and the address
+// is held to them before anything binds, as `readmit collect` holds it: an
+// address the policy did not approve, including port 0, never listens.
+func TestPreviewCollectHoldsAFaultPolicyToItsApprovedEndpoints(t *testing.T) {
+	policy, err := collection.DecodePolicy([]byte(strings.Replace(faultPolicy, "APPROVED", "127.0.0.1:2575", 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, address := range []string{"127.0.0.1:0", "127.0.0.1:2576", "127.0.0.2:2575"} {
+		_, err := operation.PreviewCollect(operation.CollectConfig{Address: address, Policy: policy, OutputPath: "case"})
+		if err == nil || policy.Faults.ApproveEndpoint(address) == nil || err.Error() != policy.Faults.ApproveEndpoint(address).Error() {
+			t.Errorf("preview at %s: %v", address, err)
+		}
+		result, err := operation.StartCollect(context.Background(), operation.CollectConfig{
+			Address: address, Policy: policy, OutputPath: filepath.Join(t.TempDir(), "case"), MaxMessages: 1, IdleTimeout: time.Second,
+		})
+		if err == nil || result.BoundAddress != "" {
+			t.Errorf("start at %s bound %q: %v", address, result.BoundAddress, err)
+		}
+	}
+	if _, err := operation.PreviewCollect(operation.CollectConfig{Address: "127.0.0.1:2575", Policy: policy, OutputPath: "case"}); err != nil {
+		t.Fatalf("the approved endpoint was refused: %v", err)
 	}
 }
 

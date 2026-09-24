@@ -10,6 +10,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/capturejournal"
 	"github.com/bharm16/readmit/internal/collection"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/receiver"
 	"github.com/bharm16/readmit/internal/secret"
 	"github.com/bharm16/readmit/internal/sendpolicy"
@@ -53,11 +54,8 @@ func collectCommand() *cobra.Command {
 			if policyPath == "" {
 				return usage("collect requires --policy with a receiver policy file")
 			}
-			data, err := readInputFile(policyPath, collection.MaxPolicyBytes)
-			if err != nil {
-				return err
-			}
-			config.Policy, err = collection.DecodePolicy(data)
+			var err error
+			config.Policy, err = operation.ReceiverPolicyRead(policyPath)
 			if err != nil {
 				return err
 			}

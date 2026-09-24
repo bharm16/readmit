@@ -467,4 +467,7 @@ Nothing is uploaded. A `directory` source accesses no network at all, and a
 - **No case bundle.** A collection stages bytes and a receipt.
   [`import`](import.md) turns them into evidence, so there is one ingestion path
   into a case rather than two.
-- **No desktop surface.** This is a command-line interface in this release.
+- **No desktop-only source behaviour.** The desktop capture screen saves,
+  reopens, diagnoses and collects a registration through these same operations
+  and reader, and adds none of its own; see
+  [capture, collect and listen](desktop.md#capture-collect-and-listen).

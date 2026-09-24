@@ -1,12 +1,15 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   cancel,
+  captureProgress,
   chooseCapturePath,
   collectSource,
   diagnoseSource,
   finalizeCaptureImport,
   openCaptureJournal,
   previewCapture,
+  readReceiverPolicy,
+  readSourceRegistration,
   saveReceiverPolicy,
   saveSourceRegistration,
   startCapture,
@@ -48,6 +51,116 @@ function defaultPolicy(): ReceiverPolicy {
   };
 }
 
+/** How often a running capture's bound address is read until it is known. */
+const PROGRESS_MS = 200;
+
+type FaultAction = "none" | "delay" | "reject" | "missing-response" | "disconnect" | "malformed-ack";
+
+// What the enhanced and fault controls show for a declared policy. The
+// controls express one enhanced rule and one fault step; a reopened document
+// keeps whatever else it declares until one of them is changed.
+const declaresEnhanced = (p: ReceiverPolicy) => p.enhanced_acknowledgement?.operator === "enhanced-mode-fixed-codes";
+const declaredFault = (p: ReceiverPolicy): FaultAction => (p.faults?.steps[0]?.action as FaultAction | undefined) ?? "none";
+const declaredDelay = (p: ReceiverPolicy) => p.faults?.steps[0]?.delay_ms ?? 50;
+
+/** The enhanced acknowledgement as `readmit collect` names it on start. */
+function enhancedSummary(p: ReceiverPolicy): string {
+  const rule = p.enhanced_acknowledgement;
+  if (!rule || !declaresEnhanced(p)) return "unsupported";
+  return `${rule.operator} ${rule.accept_code} ${rule.application_code} ${rule.application_delivery}`;
+}
+
+/** A reopened responder policy, every member as the saved document declares it. */
+function PolicyReview({ file, policy }: { file: string; policy: ReceiverPolicy }) {
+  const types = policy.accepted_message_types;
+  return (
+    <dl className="capture-preview" aria-label="Opened responder policy">
+      <dt>File</dt>
+      <dd>{file}</dd>
+      <dt>Schema</dt>
+      <dd>{policy.schema}</dd>
+      <dt>Name</dt>
+      <dd>{policy.name}</dd>
+      <dt>Source label</dt>
+      <dd>{policy.source_label}</dd>
+      <dt>Acknowledgement</dt>
+      <dd>
+        {policy.acknowledgement.operator} {policy.acknowledgement.code}
+      </dd>
+      <dt>Accepted message types</dt>
+      <dd>{types.values.length ? `${types.operator}: ${types.values.join(", ")}` : types.operator}</dd>
+      <dt>Enhanced acknowledgement</dt>
+      <dd>{enhancedSummary(policy)}</dd>
+      {policy.faults ? (
+        <>
+          <dt>Faults</dt>
+          <dd>
+            {policy.faults.environment_class} · approved {policy.faults.approved_test_endpoints.join(", ")} ·{" "}
+            {policy.faults.steps
+              .map((step) => `message ${step.message} ${step.stage} ${step.action}${step.delay_ms ? ` ${step.delay_ms} ms` : ""}`)
+              .join("; ")}
+          </dd>
+        </>
+      ) : null}
+    </dl>
+  );
+}
+
+/** A reopened source registration, every member its kind declares. */
+function SourceReview({ file, source }: { file: string; source: EvidenceSource }) {
+  return (
+    <dl className="capture-preview" aria-label="Opened source registration">
+      <dt>File</dt>
+      <dd>{file}</dd>
+      <dt>Schema</dt>
+      <dd>{source.schema}</dd>
+      <dt>Name</dt>
+      <dd>{source.name}</dd>
+      <dt>Kind</dt>
+      <dd>{source.kind}</dd>
+      <dt>Scope</dt>
+      <dd>{source.scope}</dd>
+      <dt>Quota</dt>
+      <dd>
+        {source.quota.max_entries} entries, {source.quota.max_entry_bytes} bytes per entry, {source.quota.max_total_bytes}{" "}
+        bytes in total
+      </dd>
+      <dt>Retry</dt>
+      <dd>
+        {source.retry.attempts} attempts, backoff {source.retry.backoff}
+      </dd>
+      {source.root ? (
+        <>
+          <dt>Export folder</dt>
+          <dd>{source.root}</dd>
+        </>
+      ) : null}
+      {source.address ? (
+        <>
+          <dt>Address</dt>
+          <dd>
+            {source.address} ({source.classification})
+          </dd>
+        </>
+      ) : null}
+      {source.command ? (
+        <>
+          <dt>Transfer program</dt>
+          <dd>{[source.command, ...(source.arguments ?? [])].join(" ")}</dd>
+        </>
+      ) : null}
+      {source.credential ? (
+        <>
+          <dt>Credential reference</dt>
+          <dd>
+            {source.credential} in {source.secrets_file}
+          </dd>
+        </>
+      ) : null}
+    </dl>
+  );
+}
+
 export function CapturePanel({
   workspace,
   project,
@@ -76,10 +189,14 @@ export function CapturePanel({
   const [policyFile, setPolicyFile] = useState("receiver-policy.json");
   const [policy, setPolicy] = useState<ReceiverPolicy>(defaultPolicy);
   const [enhanced, setEnhanced] = useState(false);
-  const [faultAction, setFaultAction] = useState<
-    "none" | "delay" | "reject" | "missing-response" | "disconnect" | "malformed-ack"
-  >("none");
+  const [faultAction, setFaultAction] = useState<FaultAction>("none");
   const [faultDelayMs, setFaultDelayMs] = useState(50);
+  // The documents reopened from disk, as they were read or last saved, and
+  // whether a policy control changed since.
+  const [openedSource, setOpenedSource] = useState<{ file: string; source: EvidenceSource } | null>(null);
+  const [openedPolicy, setOpenedPolicy] = useState<{ file: string; policy: ReceiverPolicy } | null>(null);
+  const [policyEdited, setPolicyEdited] = useState(false);
+  const [listeningOn, setListeningOn] = useState<string | null>(null);
   const [address, setAddress] = useState("127.0.0.1:0");
   const [approvedBind, setApprovedBind] = useState(false);
   const [outputName, setOutputName] = useState("capture.case");
@@ -102,6 +219,49 @@ export function CapturePanel({
   const [finalized, setFinalized] = useState<ImportCommitResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const locked = busy || operation !== null;
+  const serving = operation === "listening" || operation === "collecting";
+  // A browser takes focus from a control it disables, so a running capture
+  // hands it to its Cancel control and every action returns it afterwards to
+  // the control that started it.
+  const returnFocus = useRef<HTMLElement | null>(null);
+  const cancelControl = useRef<HTMLButtonElement>(null);
+
+  function begin(name: string) {
+    returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setOperation(name);
+  }
+
+  useEffect(() => {
+    if (serving) {
+      cancelControl.current?.focus();
+    } else if (operation === null && returnFocus.current) {
+      const origin = returnFocus.current;
+      returnFocus.current = null;
+      if (origin.isConnected) origin.focus();
+    }
+  }, [operation, serving]);
+
+  // While a capture runs, the screen reads where it listens: with a port of 0
+  // that is the only place the port a sender needs is known. The read never
+  // waits for the capture and stops once it answers.
+  useEffect(() => {
+    if (!serving) return;
+    let stopped = false;
+    const poll = async () => {
+      const answer = await captureProgress();
+      if (!stopped && answer.state === "completed" && answer.progress) {
+        stopped = true;
+        clearInterval(timer);
+        setListeningOn(answer.progress.bound_address);
+      }
+    };
+    const timer = setInterval(() => void poll(), PROGRESS_MS);
+    void poll();
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [serving]);
 
   function observationBinding(caseName: string): CaptureObservationBinding {
     return {
@@ -118,7 +278,7 @@ export function CapturePanel({
 
   async function pick(kind: string, apply: (path: string) => void) {
     setError(null);
-    setOperation("choosing");
+    begin("choosing");
     try {
       const result = await chooseCapturePath(kind);
       if (result.state === "completed" && result.paths?.[0]) apply(result.paths[0]);
@@ -142,19 +302,141 @@ export function CapturePanel({
 
   async function saveSource() {
     setError(null);
-    setOperation("saving-source");
+    begin("saving-source");
     try {
       const result = await saveSourceRegistration({ workspace, source_file: sourceFile, source });
       if (result.state !== "completed") setError(result.reason ?? result.state);
+      else if (openedSource) setOpenedSource({ file: sourceFile, source: result.source ?? source });
     } finally {
       setOperation(null);
     }
   }
 
+  // Opening a declared document reads it through the command line's own
+  // reader and fills the form with it; what the form does not show is kept as
+  // declared. A dismissed dialog opens nothing, and a refused document leaves
+  // the form as it was.
+  async function chosenFile(kind: "source" | "policy"): Promise<string | null> {
+    const chosen = await chooseCapturePath(kind);
+    const file = chosen.paths?.[0];
+    if (chosen.state === "completed" && file) return file;
+    if (chosen.state !== "cancelled") setError(chosen.reason ?? chosen.state);
+    return null;
+  }
+
+  async function openRegistration() {
+    setError(null);
+    begin("opening-source");
+    try {
+      const file = await chosenFile("source");
+      if (!file) return;
+      const opened = await readSourceRegistration(workspace, file);
+      if (opened.state !== "completed" || !opened.source) {
+        setError(opened.reason ?? opened.state);
+        return;
+      }
+      setSource(opened.source);
+      setSourceFile(file);
+      setOpenedSource({ file, source: opened.source });
+      setAccess(null);
+      setCollection(null);
+    } finally {
+      setOperation(null);
+    }
+  }
+
+  async function openPolicy() {
+    setError(null);
+    begin("opening-policy");
+    try {
+      const file = await chosenFile("policy");
+      if (!file) return;
+      const opened = await readReceiverPolicy(workspace, file);
+      if (opened.state !== "completed" || !opened.policy) {
+        setError(opened.reason ?? opened.state);
+        return;
+      }
+      const declared = opened.policy;
+      setPolicy(declared);
+      setEnhanced(declaresEnhanced(declared));
+      setFaultAction(declaredFault(declared));
+      setFaultDelayMs(declaredDelay(declared));
+      setPolicyFile(file);
+      setOpenedPolicy({ file, policy: declared });
+      setPolicyEdited(false);
+      setPreview(null);
+    } finally {
+      setOperation(null);
+    }
+  }
+
+  function editPolicy<T>(set: (value: T) => void) {
+    return (value: T) => {
+      set(value);
+      setPolicyEdited(true);
+    };
+  }
+
+  /** The policy the form describes. A reopened document keeps the enhanced
+   * rule and faults it declares while those controls still show what it
+   * declared, including its approved test endpoints; changing one of them
+   * replaces them with what the controls express. */
+  function policyToSave(): ReceiverPolicy {
+    const base = {
+      name: policy.name,
+      source_label: policy.source_label,
+      acknowledgement: policy.acknowledgement,
+      accepted_message_types: policy.accepted_message_types,
+    };
+    const declared = openedPolicy?.policy;
+    if (
+      declared &&
+      enhanced === declaresEnhanced(declared) &&
+      faultAction === declaredFault(declared) &&
+      (faultAction === "none" || faultDelayMs === declaredDelay(declared))
+    ) {
+      const kept: ReceiverPolicy = { schema: declared.schema, ...base };
+      if (declared.enhanced_acknowledgement) kept.enhanced_acknowledgement = declared.enhanced_acknowledgement;
+      if (declared.faults) kept.faults = declared.faults;
+      return kept;
+    }
+    const schema = enhanced ? "readmit-receiver-policy/v2" : "readmit-receiver-policy/v1";
+    const toSave: ReceiverPolicy = { schema, ...base };
+    if (enhanced) {
+      toSave.enhanced_acknowledgement = {
+        operator: "enhanced-mode-fixed-codes",
+        accept_code: "CA",
+        application_code: "AA",
+        application_delivery: "same-connection",
+        application_endpoint: "",
+        approved_transport: false,
+      };
+    }
+    if (faultAction !== "none") {
+      toSave.schema = "readmit-receiver-policy/v3";
+      if (!toSave.enhanced_acknowledgement) {
+        toSave.enhanced_acknowledgement = {
+          operator: "unsupported",
+          accept_code: "",
+          application_code: "",
+          application_delivery: "",
+          application_endpoint: "",
+          approved_transport: false,
+        };
+      }
+      toSave.faults = {
+        environment_class: "nonproduction",
+        approved_test_endpoints: [address],
+        steps: [{ message: 1, stage: "application", action: faultAction, delay_ms: faultDelayMs }],
+      };
+    }
+    return toSave;
+  }
+
   async function runDiagnose() {
     setError(null);
     setAccess(null);
-    setOperation("diagnosing");
+    begin("diagnosing");
     try {
       const result = await diagnoseSource({ workspace, source_file: sourceFile, plan: importPlan() });
       setAccess(result);
@@ -167,7 +449,7 @@ export function CapturePanel({
   async function runCollectSource() {
     setError(null);
     setCollection(null);
-    setOperation("collecting-source");
+    begin("collecting-source");
     try {
       const result = await collectSource({
         workspace,
@@ -189,7 +471,9 @@ export function CapturePanel({
       workspace,
       kind: mode === "listen" ? "listen" : "collect",
       address,
-      approved_bind: approvedBind,
+      // The fixture listens on loopback only: the collector's approval of a
+      // nonloopback bind never reaches it.
+      approved_bind: mode === "collect" && approvedBind,
       output_name: outputName,
       max_messages: maxMessages,
       max_connections: maxConnections,
@@ -211,49 +495,21 @@ export function CapturePanel({
   async function runPreview() {
     setError(null);
     setPreview(null);
-    setOperation("previewing");
+    begin("previewing");
     try {
-      if (mode === "collect") {
-        const schema = enhanced ? "readmit-receiver-policy/v2" : "readmit-receiver-policy/v1";
-        const toSave: ReceiverPolicy = {
-          schema,
-          name: policy.name,
-          source_label: policy.source_label,
-          acknowledgement: policy.acknowledgement,
-          accepted_message_types: policy.accepted_message_types,
-        };
-        if (enhanced) {
-          toSave.enhanced_acknowledgement = {
-            operator: "enhanced-mode-fixed-codes",
-            accept_code: "CA",
-            application_code: "AA",
-            application_delivery: "same-connection",
-            application_endpoint: "",
-            approved_transport: false,
-          };
-        }
-        if (faultAction !== "none") {
-          toSave.schema = "readmit-receiver-policy/v3";
-          if (!toSave.enhanced_acknowledgement) {
-            toSave.enhanced_acknowledgement = {
-              operator: "unsupported",
-              accept_code: "",
-              application_code: "",
-              application_delivery: "",
-              application_endpoint: "",
-              approved_transport: false,
-            };
-          }
-          toSave.faults = {
-            environment_class: "nonproduction",
-            approved_test_endpoints: [address],
-            steps: [{ message: 1, stage: "application", action: faultAction, delay_ms: faultDelayMs }],
-          };
-        }
+      // Previewing saves what the form describes, except a reopened policy
+      // nothing has changed since: that stays the document on disk, byte for
+      // byte, and is previewed as it is.
+      if (mode === "collect" && !(openedPolicy && openedPolicy.file === policyFile && !policyEdited)) {
+        const toSave = policyToSave();
         const saved = await saveReceiverPolicy({ workspace, policy_file: policyFile, policy: toSave });
         if (saved.state !== "completed") {
           setError(saved.reason ?? saved.state);
           return;
+        }
+        if (openedPolicy) {
+          setOpenedPolicy({ file: policyFile, policy: saved.policy ?? toSave });
+          setPolicyEdited(false);
         }
       }
       const result = await previewCapture(captureRequest());
@@ -267,7 +523,8 @@ export function CapturePanel({
   async function runStart() {
     setError(null);
     setSession(null);
-    setOperation(mode === "listen" ? "listening" : "collecting");
+    setListeningOn(null);
+    begin(mode === "listen" ? "listening" : "collecting");
     try {
       const result = await startCapture(captureRequest());
       setSession(result);
@@ -285,7 +542,7 @@ export function CapturePanel({
   async function runJournal() {
     setError(null);
     setJournal(null);
-    setOperation("recovering");
+    begin("recovering");
     try {
       const result = await openCaptureJournal(workspace, journalName);
       setJournal(result);
@@ -298,7 +555,7 @@ export function CapturePanel({
   async function runFinalize() {
     setError(null);
     setFinalized(null);
-    setOperation("finalizing");
+    begin("finalizing");
     try {
       const folder = stagedFolder || "collected";
       const request: Parameters<typeof finalizeCaptureImport>[0] = {
@@ -353,19 +610,29 @@ export function CapturePanel({
       </div>
       <p role="status" aria-live="polite" className="capture-phase">
         Phase: {phase}
+        {serving && listeningOn ? ` · Listening on ${listeningOn}` : null}
         {session?.received != null ? ` · Received: ${session.received}` : null}
         {session?.connections != null ? ` · Connections: ${session.connections}` : null}
         {journal?.journal ? ` · Journal received: ${journal.journal.received}` : null}
       </p>
       {error ? <Status indicator={indicators.get("failed")} state="failed" reason={error} /> : null}
+      {session?.state === "cancelled" && !serving ? (
+        <Status indicator={indicators.get("cancelled")} state="cancelled" reason={session.reason} />
+      ) : null}
 
       {mode === "source" ? (
         <div className="capture-section">
           <h3>Approved source</h3>
-          <label>
-            Registration file
-            <input value={sourceFile} disabled={locked} onChange={(e) => setSourceFile(e.target.value)} />
-          </label>
+          <div className="capture-row">
+            <label>
+              Registration file
+              <input value={sourceFile} disabled={locked} onChange={(e) => setSourceFile(e.target.value)} />
+            </label>
+            <button type="button" disabled={locked} onClick={() => void openRegistration()}>
+              Open registration…
+            </button>
+          </div>
+          {openedSource ? <SourceReview file={openedSource.file} source={openedSource.source} /> : null}
           <label>
             Name
             <input
@@ -383,6 +650,7 @@ export function CapturePanel({
             >
               <option value="directory">directory (local export)</option>
               <option value="transfer">transfer (customer program)</option>
+              {source.kind === "api" ? <option value="api">api (declared; not collected in this release)</option> : null}
             </select>
           </label>
           <label>
@@ -492,16 +760,22 @@ export function CapturePanel({
       {mode === "collect" ? (
         <div className="capture-section">
           <h3>MLLP collector</h3>
-          <label>
-            Policy file
-            <input value={policyFile} disabled={locked} onChange={(e) => setPolicyFile(e.target.value)} />
-          </label>
+          <div className="capture-row">
+            <label>
+              Policy file
+              <input value={policyFile} disabled={locked} onChange={(e) => setPolicyFile(e.target.value)} />
+            </label>
+            <button type="button" disabled={locked} onClick={() => void openPolicy()}>
+              Open policy…
+            </button>
+          </div>
+          {openedPolicy ? <PolicyReview file={openedPolicy.file} policy={openedPolicy.policy} /> : null}
           <label>
             Policy name
             <input
               value={policy.name}
               disabled={locked}
-              onChange={(e) => setPolicy({ ...policy, name: e.target.value })}
+              onChange={(e) => editPolicy(setPolicy)({ ...policy, name: e.target.value })}
             />
           </label>
           <label>
@@ -509,7 +783,7 @@ export function CapturePanel({
             <input
               value={policy.source_label}
               disabled={locked}
-              onChange={(e) => setPolicy({ ...policy, source_label: e.target.value })}
+              onChange={(e) => editPolicy(setPolicy)({ ...policy, source_label: e.target.value })}
             />
           </label>
           <label>
@@ -518,7 +792,7 @@ export function CapturePanel({
               value={policy.acknowledgement.code}
               disabled={locked}
               onChange={(e) =>
-                setPolicy({
+                editPolicy(setPolicy)({
                   ...policy,
                   acknowledgement: { ...policy.acknowledgement, code: e.target.value },
                 })
@@ -530,12 +804,12 @@ export function CapturePanel({
             </select>
           </label>
           <label>
-            <input type="checkbox" checked={enhanced} disabled={locked} onChange={(e) => setEnhanced(e.target.checked)} />
+            <input type="checkbox" checked={enhanced} disabled={locked} onChange={(e) => editPolicy(setEnhanced)(e.target.checked)} />
             Enhanced acknowledgement (v2)
           </label>
           <label>
             Controlled fault (v3 synthetic)
-            <select value={faultAction} disabled={locked} onChange={(e) => setFaultAction(e.target.value as typeof faultAction)}>
+            <select value={faultAction} disabled={locked} onChange={(e) => editPolicy(setFaultAction)(e.target.value as FaultAction)}>
               <option value="none">none</option>
               <option value="delay">delay</option>
               <option value="reject">reject</option>
@@ -547,7 +821,7 @@ export function CapturePanel({
           {faultAction === "delay" ? (
             <label>
               Fault delay (ms)
-              <input type="number" value={faultDelayMs} disabled={locked} onChange={(e) => setFaultDelayMs(Number(e.target.value))} />
+              <input type="number" value={faultDelayMs} disabled={locked} onChange={(e) => editPolicy(setFaultDelayMs)(Number(e.target.value))} />
             </label>
           ) : null}
           <label>
@@ -627,7 +901,7 @@ export function CapturePanel({
             <button type="button" disabled={locked || preview?.state !== "completed"} onClick={() => void runStart()}>
               Start collecting
             </button>
-            <button type="button" disabled={operation !== "collecting"} onClick={() => cancel("capture")}>
+            <button ref={cancelControl} type="button" disabled={operation !== "collecting"} onClick={() => cancel("capture")}>
               Cancel
             </button>
             <button type="button" disabled={locked} onClick={() => void runJournal()}>
@@ -680,7 +954,7 @@ export function CapturePanel({
             <button type="button" disabled={locked || preview?.state !== "completed"} onClick={() => void runStart()}>
               Start fixture listener
             </button>
-            <button type="button" disabled={operation !== "listening"} onClick={() => cancel("capture")}>
+            <button ref={cancelControl} type="button" disabled={operation !== "listening"} onClick={() => cancel("capture")}>
               Cancel
             </button>
           </div>
@@ -730,6 +1004,13 @@ export function CapturePanel({
       {session?.case ? (
         <p>
           Case sealed: {session.case.name} · {session.case.messages} messages · {session.case.sources} sources
+        </p>
+      ) : null}
+      {session?.ledger ? (
+        <p>
+          {`Appointment ledger ${session.observation_path ?? ""}: ${session.ledger.schema} · ` +
+            `Receiver mode: ${session.ledger.mode} · Processed occurrences: ${session.ledger.processed} · ` +
+            `Ledger records: ${session.ledger.records} · Consistent: ${String(session.ledger.consistent)}`}
         </p>
       ) : null}
       {journal?.journal ? (
