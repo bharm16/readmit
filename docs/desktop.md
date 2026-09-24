@@ -748,9 +748,10 @@ incident are shared Go operations — the same `internal/operation` and
 folder chooser and a typed form; it decides nothing a project should refuse.
 Every successful write returns the project re-read from disk, so what the
 window shows is what is stored, and a refused write leaves the project
-exactly as it was. Registering a revision is still a command-line operation,
-because it is a statement about verified lineage rather than an edit; a
-revision registered there is navigable here.
+exactly as it was. A revision is registered from the reproducer panel after a
+build, through the operation `readmit project revise` runs (see
+[building a reproducer](#building-a-reproducer)), and a revision registered on
+the command line is navigable here as well.
 
 ## Notes and the editable project document
 
@@ -771,15 +772,17 @@ the overview above it carries, which names each revision's parent but not that
 identity. A document this release cannot read is refused with its reason and
 nothing from an earlier read stands in for it.
 
-`SaveNote` is the only thing the shell writes into a project, and a note is
-working text. It is stored in that editable document, beside the evidence and
+`SaveNote` writes a note into a project, and a note is working text. It is
+stored in that editable document, beside the evidence and
 never inside it, so a UI edit cannot overwrite an import, a finalized run, a
 result, a review or a report: the same output policy that refuses every other
 write into retained evidence refuses this one. Writing a note under a name that
 already exists replaces exactly that note; a note that names a subject must name
 a case or revision the project registers, and one that does not is a draft.
-Registering a revision is a command-line operation, because it is a statement
-about verified evidence rather than an edit. A project folder this account
+The only other thing the window records there is a revision's lineage, which
+is a statement about verified evidence rather than an edit: it is recorded by
+the operation `readmit project revise` runs, after both the revision and its
+parent are verified again. A project folder this account
 cannot write reports `permission_denied`, and a project that already holds as
 many notes as this release stores reports the refusal rather than dropping one.
 See [interface investigation projects](project.md).
@@ -1017,6 +1020,38 @@ and where the new bytes landed. Reading a value is still
 the window while it is being edited, is never placed in browser storage, and is
 written nowhere except into the manifest of a reproducer that was built.
 
+**Discard this plan** abandons a plan that is not wanted. It drops the plan and
+the unstored draft kept for it, so an interruption does not bring it back,
+writes nothing, and returns focus to the occurrences, where a new plan starts; a
+reproducer already written stays where it is. A step and a build cannot be
+cancelled once they start: each runs to completion under the case reader's own
+bounds. An edit names the retained occurrence the list shows as chosen, and
+once that occurrence is dropped or undone out of the plan the list chooses none
+and the edit controls wait for one, so no edit is sent for an occurrence that
+is not on screen.
+
+After a build, **Register this revision** places the derived case in a new entry
+of the project and records its lineage to the open case through the operation
+`readmit project revise` runs: the documented copy and `project revise` in one
+act. The panel says the build is registered only once the project has recorded
+it. A refusal is shown beside the build. A name already in the workspace is
+refused before anything is copied; a registration the project refuses, such as
+one naming a parent it does not register or derived evidence it already holds,
+is refused in the sentence `readmit project revise` prints for it. The name
+typed stays, and the copy placed for the attempt is removed again, so the
+workspace is exactly as it was and the name can be used once the refusal is
+dealt with. A registration belongs to the build it registered, and a later
+build is offered for registration itself. Once the project records it, focus
+moves to **Open the registered revision**; that and **Create a test from this
+revision** open the revision as a case, and a test draft for the original case
+is never retargeted.
+
+**Compare this build with another revision** hands the build to **Reproducer
+revisions** as the later revision, clears the run named for whatever was there
+before, withdraws the comparison on screen and moves focus to the earlier
+revision, which only the person can name. A comparison reads two builds; the
+copy a registration places holds no manifest to compare.
+
 A reproducer is derived testing data, not a redaction and not an approval to
 share. See [extracting and editing a reproducer](reproducer.md) for both
 contracts, the two dependency relations, every refusal, the bounds, and how to
@@ -1037,7 +1072,12 @@ a verdict that moved, or one no execution reached. A run counts as proof of a
 revision only when it was executed against that revision's derived case, and a
 revision nobody has run yet claims nothing rather than reading as one that
 passed. There is no overall verdict here: which expectation carries the incident
-is a person's judgement.
+is a person's judgement. Every run that was named is shown as its reader read it,
+including the one run of a pair that claims nothing because the other revision
+has none. A run is named by one entry of the workspace, such as the result
+directory `readmit test --send --output` writes; a durable run of the window
+keeps its result inside its job folder, which is not one entry, so it is not
+offered as proof here.
 
 This compares plans and manifests, never messages. The two derived cases are not
 compared byte for byte, because where one revision edits a position the other

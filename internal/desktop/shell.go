@@ -317,7 +317,6 @@ var supportStatus = Support{
 		"admit and renew runner instances from the runner host itself",
 		"check a staged upgrade and take its recovery archive",
 		"choose the private folder a new local activation is created in",
-		"compare two built revisions and what their runs decided",
 		"execute, queue, resume, recover and inspect durable runs",
 		"export the installed entitlement byte for byte",
 		"group findings from selected cases by signature without hiding any finding",
@@ -330,8 +329,6 @@ var supportStatus = Support{
 		"preview partition, pinned groups and the bounded-minimality boundary without sending",
 		"recover a selected project document recovery copy",
 		"reexecute reviewed transformed evidence against an explicitly selected authorized target",
-		"register a built revision's lineage in the project",
-		"remove the last step and resolve what remains",
 		"reopen a saved diagnosis configuration",
 		"reopen a saved finding-decisions document",
 		"reopen a saved sequence-analysis declaration",
@@ -345,7 +342,6 @@ var supportStatus = Support{
 		"select an absolute policy path explicitly",
 		"select the operation policy through the native chooser",
 		"stop a control writing new packages while it still opens what it wrote",
-		"write the reproducer as a new derived case folder and offer register/compare/test handoffs",
 	},
 }
 

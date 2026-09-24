@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReproducerComparisonResult } from "./bindings";
 import { Report, type Indicators } from "./shell";
 import "./reproducer.css";
@@ -40,6 +40,14 @@ const OUTCOME: Record<string, string> = {
   not_evaluated: "No execution reached this expectation",
 };
 
+/** A build the reproducer panel handed over to be compared, as the later
+ * revision. Each hand-over carries a new serial, so handing the same build
+ * over again still takes effect. */
+export interface ComparisonSeed {
+  later: string;
+  serial: number;
+}
+
 function describe(table: Record<string, string>, key: string): string {
   return table[key] ?? key;
 }
@@ -53,6 +61,7 @@ function describe(table: Record<string, string>, key: string): string {
  * nowhere, so nothing here can show them. */
 export function RevisionComparison({
   entries,
+  seed,
   result,
   busy,
   progress,
@@ -60,6 +69,7 @@ export function RevisionComparison({
   onCompare,
 }: {
   entries: string[];
+  seed?: ComparisonSeed | null;
   result: ReproducerComparisonResult | null;
   busy: boolean;
   progress: string | null;
@@ -70,6 +80,17 @@ export function RevisionComparison({
   const [right, setRight] = useState("");
   const [leftResult, setLeftResult] = useState("");
   const [rightResult, setRightResult] = useState("");
+  const earlier = useRef<HTMLInputElement>(null);
+
+  // A handed-over build becomes the later revision. The run named for the
+  // later revision before was a run of something else, so it is cleared, and
+  // focus moves to the earlier revision, which only the person can name.
+  useEffect(() => {
+    if (!seed) return;
+    setRight(seed.later);
+    setRightResult("");
+    earlier.current?.focus();
+  }, [seed]);
 
   const comparison = result?.comparison;
 
@@ -97,6 +118,7 @@ export function RevisionComparison({
         <label htmlFor="revision-left">Earlier revision</label>
         <input
           id="revision-left"
+          ref={earlier}
           list="revision-entries"
           value={left}
           onChange={(event) => setLeft(event.target.value)}
@@ -210,15 +232,23 @@ export function RevisionComparison({
 
           <h4>Proof from retained runs</h4>
           <p className="proof">{describe(PROOF, comparison.proof.state)}</p>
-          {comparison.proof.left && comparison.proof.right ? (
+          {/* Every run that was named is shown as the engine read it, including
+              the one run of a pair that claims nothing because the other
+              revision has none. */}
+          {comparison.proof.left || comparison.proof.right ? (
             <ul className="proof-sides">
-              {[comparison.proof.left, comparison.proof.right].map((side, index) => (
-                <li key={index === 0 ? "left" : "right"}>
-                  {index === 0 ? "Earlier" : "Later"} run · {side.status}
-                  {side.error_class ? ` · ${side.error_class}` : ""} · executed against{" "}
-                  <span className="identity">{side.case}</span>
-                </li>
-              ))}
+              {([
+                ["Earlier", comparison.proof.left],
+                ["Later", comparison.proof.right],
+              ] as const).map(([label, side]) =>
+                side ? (
+                  <li key={label}>
+                    {label} run · {side.status}
+                    {side.error_class ? ` · ${side.error_class}` : ""} · executed against{" "}
+                    <span className="identity">{side.case}</span>
+                  </li>
+                ) : null,
+              )}
             </ul>
           ) : null}
           {comparison.proof.assertions.length ? (

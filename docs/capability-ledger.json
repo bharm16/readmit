@@ -1122,7 +1122,9 @@
       "inputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5"],
       "outputs": ["readmit-revisions/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/reproducer-revisions.journey.tsx", "name": "a reproducer plan is edited, undone and abandoned, refused where it cannot be written, and registered as the revision project show reads"},
+      "parity_test": {"package": "internal/desktop", "name": "TestARevisionBuiltAndRegisteredInTheWindowIsTheOneProjectReviseRecords"},
+      "implemented": true
     },
     {
       "id": "cli.project.settings",
@@ -3600,7 +3602,9 @@
       "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-reproducer-plan/v1"],
       "outputs": ["readmit-reproducer-plan/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/reproducer-revisions.journey.tsx", "name": "a reproducer plan is edited, undone and abandoned, refused where it cannot be written, and registered as the revision project show reads"},
+      "parity_test": {"package": "internal/desktop", "name": "TestAnUndoneStepBuildsWhatThePlanWithoutItBuilds"},
+      "implemented": true
     },
     {
       "id": "desktop.BuildReproducer",
@@ -3614,7 +3618,9 @@
       "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-reproducer-plan/v1"],
       "outputs": ["readmit-case/v3", "readmit-reproducer/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/reproducer-revisions.journey.tsx", "name": "a reproducer plan is edited, undone and abandoned, refused where it cannot be written, and registered as the revision project show reads"},
+      "parity_test": {"package": "internal/desktop", "name": "TestARevisionBuiltAndRegisteredInTheWindowIsTheOneProjectReviseRecords"},
+      "implemented": true
     },
     {
       "id": "desktop.StartReduction",
@@ -3684,7 +3690,9 @@
       "inputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5"],
       "outputs": ["readmit-revisions/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/reproducer-revisions.journey.tsx", "name": "a reproducer plan is edited, undone and abandoned, refused where it cannot be written, and registered as the revision project show reads"},
+      "parity_test": {"package": "internal/desktop", "name": "TestARefusedRegistrationIsRefusedInTheCommandLinesWordsAndLeavesNothingBehind"},
+      "implemented": true
     },
     {
       "id": "desktop.CompareReproducers",
@@ -3698,7 +3706,9 @@
       "inputs": ["readmit-reproducer/v1", "readmit-case/v3", "readmit-result/v1", "readmit-run/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/reproducer-revisions.journey.tsx", "name": "built revisions are compared by lineage, by what they retain and edit, and by what the command line's runs of each decided"},
+      "parity_test": {"package": "tests", "name": "TestRevisionProofIsWhatTheCommandLineReadsFromEachRun"},
+      "implemented": true
     },
     {
       "id": "desktop.ImportTest",

@@ -1,5 +1,31 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The reproducer panel's build, undo, register and compare controls are
+  driven end to end (#300); no test pressed them through the facade before,
+  and pressing them showed several faults. A registration was reported as done
+  the moment it was asked for, so a refused one read as registered while the
+  refusal went to the project overview; the panel now says a build is
+  registered only once the project recorded it, and shows a refusal beside
+  the build. That registration was also shown
+  beside every later build. Compare build with this revision compared a
+  build with its registered copy, which holds no manifest, so it was always
+  refused; Compare this build with another revision now hands the build
+  to the revision comparison as the later revision. A registration the
+  project refused left the copy it had placed, so the same name was refused
+  on the next attempt; the copy is now removed and the workspace is left as
+  it was. An edit can no longer name an occurrence that is not retained, a
+  new Discard this plan control abandons a plan and its unstored draft without
+  writing anything, and the revision comparison now shows the one run it read
+  when the other revision has none. Two interaction journeys cover an edit and
+  its undo, a discarded plan, refused, occupied and stale builds, a revision
+  registered in the window that `readmit project show` reads as the window
+  reports it, refused registrations, and three revisions compared by lineage,
+  retention, edits and what the command line's runs of each decided. Go
+  parity tests hold registration to `readmit project revise`, byte for byte
+  and in the same words, an undone step to the plan without it, and the proof
+  to what `readmit diff` reads from each run. No `readmit-*` document,
+  command, bound method or machine output changes.
+
 - The packet panels generate, verify and prepare synthetic demonstration
   packets (#308). `readmit report`, `report verify` and `report prepare` had
   no screen, and the listing called a synthetic packet unsupported. A section

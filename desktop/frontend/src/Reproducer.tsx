@@ -1,7 +1,16 @@
-import { useState } from "react";
-import type { GridRow, ReproducerResult, ReproducerStep } from "./bindings";
+import { useEffect, useRef, useState } from "react";
+import type { GridRow, ReproducerResult, ReproducerStep, State } from "./bindings";
 import { Report, type Indicators } from "./shell";
 import "./reproducer.css";
+
+/** What the project answered when one build was registered. It belongs to that
+ * build alone, so a later build never shows it. */
+interface Registration {
+  output: string;
+  name: string;
+  state: State;
+  reason?: string | undefined;
+}
 
 /** How every reason a dependency step reports reads in the window. The engine
  * names the reason; this maps it to a sentence and never decides one. */
@@ -56,13 +65,21 @@ export function Reproducer({
   restoredDraft?: boolean;
   /** The open case this plan was authored against; used as the revision parent. */
   parentCase?: string;
+  /** Drops the plan and the unstored draft retained for it. */
   onDiscardDraft?: () => void;
   onStep: (step: ReproducerStep) => void;
   onUndo: () => void;
   onBuild: (output: string) => void;
-  onRegister?: (source: string, name: string, parent: string) => void;
+  /** Registers a build and answers with what the project said, or null when
+   * nothing was asked. */
+  onRegister?: (
+    source: string,
+    name: string,
+    parent: string,
+  ) => Promise<{ state: State; reason?: string | undefined } | null>;
   onOpenRevision?: (name: string) => void;
-  onCompareRevision?: (built: string, registered: string) => void;
+  /** Hands a build to the revision comparison as the later revision. */
+  onCompareRevision?: (built: string) => void;
   onCreateTest?: (name: string) => void;
 }) {
   const [identity, setIdentity] = useState("SCH-2.1 SCH-2.2");
@@ -71,13 +88,43 @@ export function Reproducer({
   const [value, setValue] = useState("");
   const [output, setOutput] = useState("");
   const [revisionName, setRevisionName] = useState("");
-  const [registeredAs, setRegisteredAs] = useState("");
+  const [registration, setRegistration] = useState<Registration | null>(null);
+  const selection = useRef<HTMLUListElement>(null);
+  const opener = useRef<HTMLButtonElement>(null);
+  const answered = useRef(false);
 
   const view = result?.reproducer;
   const plan = view?.plan;
   const resolution = view?.resolution;
   const retained = new Map((resolution?.occurrences ?? []).map((entry) => [entry.parent, entry]));
   const editable = resolution?.occurrences ?? [];
+  // An edit names the occurrence the list shows as chosen, and none when the
+  // one chosen earlier is no longer retained, so a step never carries an
+  // occurrence that is not on screen.
+  const chosen = editable.some((entry) => entry.parent === occurrence) ? occurrence : "";
+  // A registration is shown beside the build it registered and no other.
+  const registered = registration && view?.output === registration.output ? registration : null;
+
+  const register = async () => {
+    if (!onRegister || !parentCase || !view?.output) return;
+    const built = view.output;
+    const name = revisionName;
+    const answer = await onRegister(built, name, parentCase);
+    if (answer) {
+      answered.current = true;
+      setRegistration({ output: built, name, state: answer.state, reason: answer.reason });
+    }
+  };
+
+  // A registration the project recorded replaces the form it was asked from,
+  // so focus moves to the first thing a person can do with the revision
+  // rather than being lost with the form.
+  useEffect(() => {
+    if (answered.current && registered?.state === "completed") {
+      opener.current?.focus();
+    }
+    answered.current = false;
+  }, [registered]);
 
   return (
     <section className="reproducer" aria-label="Reproducer editor">
@@ -104,7 +151,7 @@ export function Reproducer({
       ) : null}
 
       <h4>Occurrences in this window</h4>
-      <ul className="selection">
+      <ul className="selection" ref={selection}>
         {rows.map((row) => {
           const entry = retained.get(row.id);
           return (
@@ -163,13 +210,13 @@ export function Reproducer({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          onStep({ operator: "set-field/v1", occurrence, selector, value });
+          onStep({ operator: "set-field/v1", occurrence: chosen, selector, value });
         }}
       >
         <label htmlFor="reproducer-occurrence">Retained occurrence</label>
         <select
           id="reproducer-occurrence"
-          value={occurrence}
+          value={chosen}
           onChange={(event) => setOccurrence(event.target.value)}
         >
           <option value="">Choose a retained occurrence</option>
@@ -209,13 +256,13 @@ export function Reproducer({
           value={value}
           onChange={(event) => setValue(event.target.value)}
         />
-        <button type="submit" disabled={busy}>
+        <button type="submit" disabled={busy || !chosen}>
           Replace this value
         </button>
         <button
           type="button"
-          disabled={busy}
-          onClick={() => onStep({ operator: "clear-field/v1", occurrence, selector })}
+          disabled={busy || !chosen}
+          onClick={() => onStep({ operator: "clear-field/v1", occurrence: chosen, selector })}
         >
           Leave this position empty
         </button>
@@ -262,6 +309,22 @@ export function Reproducer({
       <button type="button" disabled={busy || !plan?.steps.length} onClick={onUndo}>
         Undo the last step
       </button>
+      {/* Abandoning a plan writes nothing and drops the unstored draft kept for
+          it, so an interruption does not bring it back. A reproducer already
+          written stays where it is. Focus returns to the occurrences, where a
+          new plan starts. */}
+      {onDiscardDraft && !restoredDraft && plan?.steps.length ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            onDiscardDraft();
+            selection.current?.querySelector("button")?.focus();
+          }}
+        >
+          Discard this plan
+        </button>
+      ) : null}
 
       <h4>Write this revision</h4>
       <form
@@ -289,59 +352,64 @@ export function Reproducer({
             here to place the derived case beside the project evidence. The build
             folder stays available for comparison.
           </p>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (!onRegister || !parentCase || !view.output) return;
-              onRegister(view.output, revisionName, parentCase);
-              setRegisteredAs(revisionName);
-            }}
+          {/* A comparison reads two builds, never a registered copy, so this
+              hands the build itself to the revision comparison. */}
+          <button
+            type="button"
+            disabled={busy || !onCompareRevision}
+            onClick={() => onCompareRevision?.(view.output!)}
           >
-            <label htmlFor="reproducer-revision-name">
-              New project entry for the derived case
-            </label>
-            <input
-              id="reproducer-revision-name"
-              value={revisionName}
-              placeholder={`${view.output}-case`}
-              onChange={(event) => setRevisionName(event.target.value)}
-            />
-            <button
-              type="submit"
-              disabled={busy || !onRegister || !parentCase || revisionName === ""}
-            >
-              Register this revision
-            </button>
-          </form>
-          {registeredAs ? (
+            Compare this build with another revision
+          </button>
+          {registered?.state === "completed" ? (
             <div className="handoffs" aria-label="Revision handoffs">
               <p>
-                Registered as {registeredAs}. Choose an explicit next step — an
+                Registered as {registered.name}. Choose an explicit next step — an
                 existing test draft for the original case is not retargeted.
               </p>
               <button
                 type="button"
+                ref={opener}
                 disabled={busy || !onOpenRevision}
-                onClick={() => onOpenRevision?.(registeredAs)}
+                onClick={() => onOpenRevision?.(registered.name)}
               >
                 Open the registered revision
               </button>
               <button
                 type="button"
-                disabled={busy || !onCompareRevision || !view.output}
-                onClick={() => onCompareRevision?.(view.output!, registeredAs)}
-              >
-                Compare build with this revision
-              </button>
-              <button
-                type="button"
                 disabled={busy || !onCreateTest}
-                onClick={() => onCreateTest?.(registeredAs)}
+                onClick={() => onCreateTest?.(registered.name)}
               >
                 Create a test from this revision
               </button>
             </div>
-          ) : null}
+          ) : (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void register();
+              }}
+            >
+              <label htmlFor="reproducer-revision-name">
+                New project entry for the derived case
+              </label>
+              <input
+                id="reproducer-revision-name"
+                value={revisionName}
+                placeholder={`${view.output}-case`}
+                onChange={(event) => setRevisionName(event.target.value)}
+              />
+              <button
+                type="submit"
+                disabled={busy || !onRegister || !parentCase || revisionName === ""}
+              >
+                Register this revision
+              </button>
+              {/* The project's own sentence for a refused registration, beside
+                  the name that was typed, which stays for the next attempt. */}
+              <Report indicators={indicators} progress={null} result={registered} />
+            </form>
+          )}
         </div>
       ) : null}
     </section>

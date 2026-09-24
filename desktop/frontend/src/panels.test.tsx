@@ -424,22 +424,25 @@ test("after a build the reproducer offers register and handoff actions", async (
       onStep={() => undefined}
       onUndo={() => undefined}
       onBuild={() => undefined}
-      onRegister={(source, name, parent) => acts.push(`register:${source}:${name}:${parent}`)}
+      onRegister={async (source, name, parent) => {
+        acts.push(`register:${source}:${name}:${parent}`);
+        return { state: "completed" as const };
+      }}
       onOpenRevision={(name) => acts.push(`open:${name}`)}
-      onCompareRevision={(built, registered) => acts.push(`compare:${built}:${registered}`)}
+      onCompareRevision={(built) => acts.push(`compare:${built}`)}
       onCreateTest={(name) => acts.push(`test:${name}`)}
     />,
   );
   await user.type(screen.getByLabelText("New project entry for the derived case"), "incident-revision");
   await user.click(screen.getByRole("button", { name: "Register this revision" }));
   expect(acts).toEqual([`register:incident-reproducer:incident-revision:${CASE_ENTRY}`]);
-  await user.click(screen.getByRole("button", { name: "Open the registered revision" }));
-  await user.click(screen.getByRole("button", { name: "Compare build with this revision" }));
+  await user.click(await screen.findByRole("button", { name: "Open the registered revision" }));
+  await user.click(screen.getByRole("button", { name: "Compare this build with another revision" }));
   await user.click(screen.getByRole("button", { name: "Create a test from this revision" }));
   expect(acts).toEqual([
     `register:incident-reproducer:incident-revision:${CASE_ENTRY}`,
     "open:incident-revision",
-    "compare:incident-reproducer:incident-revision",
+    "compare:incident-reproducer",
     "test:incident-revision",
   ]);
   // Existing props remain optional for callers that have not built yet.
