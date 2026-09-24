@@ -223,6 +223,12 @@ func TestGroupDiagnosesGroupsEqualSignaturesAcrossSelectedCases(t *testing.T) {
 	if len(result.Groups.Cases) != 2 || result.Total == 0 || result.Total != len(result.Groups.Groups) {
 		t.Fatalf("the grouping does not carry both complete diagnoses and its own counts: %+v", result)
 	}
+	for _, report := range result.Groups.Cases {
+		entry := result.CaseEntries[report.CaseIdentity]
+		if entry != "acked" && entry != "acked-again" {
+			t.Fatalf("the evaluated case lost its workspace entry: %q", entry)
+		}
+	}
 	for _, group := range result.Groups.Groups {
 		if len(group.Members) != 2 {
 			t.Fatalf("the same fixture twice did not group by signature: %+v", group)
@@ -244,6 +250,55 @@ func TestGroupDiagnosesGroupsEqualSignaturesAcrossSelectedCases(t *testing.T) {
 		if strings.Contains(string(encoded), private) {
 			t.Fatalf("the grouping disclosed %q", private)
 		}
+	}
+}
+
+func TestRetainedDiagnosisGroupsOpenThroughTheirOwnReader(t *testing.T) {
+	app, root, _ := diagnosisWorkspace(t)
+	grouped, err := diagnose.GroupCases(context.Background(), []string{filepath.Join(root, "acked")}, diagnose.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := diagnose.GroupsJSON(grouped)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "groups-out"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "groups-out", "report.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	listed := app.OpenWorkspace(root)
+	if listed.Workspace == nil {
+		t.Fatalf("workspace did not open: %+v", listed)
+	}
+	for _, artifact := range listed.Workspace.Artifacts {
+		if artifact.Name == "groups-out" && artifact.Kind != desktop.DiagnosisGroupsArtifact {
+			t.Fatalf("grouping was listed as %q", artifact.Kind)
+		}
+	}
+	opened := app.OpenDiagnosisGroupsReport(root, "groups-out", 0)
+	if opened.State != desktop.Completed || opened.Groups == nil || opened.Total != len(grouped.Groups) {
+		t.Fatalf("retained grouping did not open: %+v", opened)
+	}
+	if len(opened.CaseEntries) != 0 {
+		t.Fatalf("a saved report invented workspace labels: %+v", opened.CaseEntries)
+	}
+	if got := app.OpenDiagnosisReport(root, "groups-out", 0); got.State != desktop.Failed || got.Diagnosis != nil {
+		t.Fatalf("grouping opened as one diagnosis: %+v", got)
+	}
+	if got := app.OpenDiagnosisGroupsReport(root, "groups-out", -1); got.State != desktop.Failed || got.Groups != nil {
+		t.Fatalf("negative grouping offset was accepted: %+v", got)
+	}
+	if got := app.OpenDiagnosisGroupsReport(root, "acked", 0); got.State != desktop.Failed || got.Groups != nil {
+		t.Fatalf("case bundle opened as a grouping: %+v", got)
+	}
+	if err := os.WriteFile(filepath.Join(root, "groups-out", "report.json"), []byte(`{"schema":"readmit-diagnosis-groups/v1","unexpected":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := app.OpenDiagnosisGroupsReport(root, "groups-out", 0); got.State != desktop.Failed || got.Groups != nil {
+		t.Fatalf("an unknown member opened as a grouping: %+v", got)
 	}
 }
 

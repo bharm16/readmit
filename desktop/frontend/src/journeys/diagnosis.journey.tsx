@@ -14,8 +14,8 @@
 // The window groups the three days exactly as `readmit diagnose groups` does:
 // the two reschedules are one recurring shape of two findings, Wednesday's
 // rejection two shapes of one. It reopens Wednesday's report under the identity
-// of its bytes, refuses the grouping's report the listing names beside it in
-// the words `readmit diagnose review` refuses it in, and shows Monday's report
+// of its bytes, opens the retained grouping through its own reader while
+// `readmit diagnose review` still refuses it, and shows Monday's report
 // as another case's without opening its evidence in Wednesday's inspector. A
 // review is previewed and writes nothing; the person's decisions are saved as
 // their own document, which the command line reviews; the colleague's
@@ -174,6 +174,16 @@ async function openReport(user: UserEvent, panel: Panel, entry: string): Promise
   await waitFor(() => expect(journey.callsTo("OpenDiagnosisReport")[asked]?.settled).toBe(true));
 }
 
+/** Opens a retained grouping through its own picker and display reader. */
+async function openGroupReport(user: UserEvent, panel: Panel, entry: string): Promise<void> {
+  const picker = panel.getByLabelText("Retained grouping report");
+  await within(picker).findByRole("option", { name: entry });
+  await user.selectOptions(await whenEnabled(picker), entry);
+  const asked = journey.callsTo("OpenDiagnosisGroupsReport").length;
+  await press(user, panel.getByRole("button", { name: "Open this grouping" }));
+  await waitFor(() => expect(journey.callsTo("OpenDiagnosisGroupsReport")[asked]?.settled).toBe(true));
+}
+
 /** Previews the review of the decisions on screen from the keyboard and waits
  * for the facade's answer. */
 async function preview(user: UserEvent, panel: Panel): Promise<void> {
@@ -194,7 +204,7 @@ function listedFindings(panel: Panel): string[] {
     });
 }
 
-test("findings recurring across captured cases are grouped exactly as readmit diagnose groups groups them, a retained report is reopened under the identity of its bytes, and a grouping's report or another case's report is never read as this case's diagnosis", async () => {
+test("findings recurring across captured cases name their entries and match readmit diagnose groups, retained groupings open separately, and a grouping never becomes one case's diagnosis", async () => {
   const user = userEvent.setup();
   journey.provisionLicense("vendor-delivered-license");
   await captureWeek();
@@ -216,10 +226,16 @@ test("findings recurring across captured cases are grouped exactly as readmit di
   // A group lists its members case by case in the order of the cases'
   // identities, as the grouping orders the cases themselves.
   const reschedules = [identities.monday, identities.tuesday].sort();
+  const entriesByIdentity: Record<string, string> = {
+    [identities.monday]: "monday",
+    [identities.tuesday]: "tuesday",
+    [identities.wednesday]: "wednesday",
+  };
+  const named = (identity: string) => `${entriesByIdentity[identity]} (${identity})`;
   const expected = [
-    `${BOOKING_NOT_OBSERVED} 2: f000001 of ${reschedules[0]}, f000001 of ${reschedules[1]}`,
-    `${ACK_OUTCOME} 1: f000001 of ${identities.wednesday}`,
-    `${ACK_ERROR} 1: f000002 of ${identities.wednesday}`,
+    `${BOOKING_NOT_OBSERVED} 2: f000001 of ${named(reschedules[0]!)}, f000001 of ${named(reschedules[1]!)}`,
+    `${ACK_OUTCOME} 1: f000001 of ${named(identities.wednesday)}`,
+    `${ACK_ERROR} 1: f000002 of ${named(identities.wednesday)}`,
   ];
   const groups = within(panel.getByRole("region", { name: "Recurring finding groups" }));
   const drawn = groups.getAllByRole("listitem").map((item: HTMLElement) => {
@@ -232,7 +248,7 @@ test("findings recurring across captured cases are grouped exactly as readmit di
   const reported = cli.groups.map((group) => ({
     rule: group.rule_id,
     signature: group.signature,
-    line: `${group.rule_id} ${group.members.length}: ${group.members.map((member) => `${member.finding_id} of ${member.case_identity}`).join(", ")}`,
+    line: `${group.rule_id} ${group.members.length}: ${group.members.map((member) => `${member.finding_id} of ${named(member.case_identity)}`).join(", ")}`,
   }));
   expect(drawn).toEqual(reported);
   expect([...drawn.map((group) => group.line)].sort()).toEqual([...expected].sort());
@@ -252,8 +268,8 @@ test("findings recurring across captured cases are grouped exactly as readmit di
   await press(user, panel.getAllByRole("button", { name: "s0001-e000002" })[0]!);
   await waitFor(() => expect(journey.callsTo("InspectOccurrence")).toHaveLength(inspected + 1));
 
-  // The grouping's report is listed as a diagnosis beside the others, and it
-  // is refused as one in the words `readmit diagnose review` refuses it in.
+  // The grouping has its own picker and reader. The single-report picker does
+  // not offer it, and the command line still refuses it for finding review.
   journey.writeFile(
     "clinic/wednesday-decisions.json",
     JSON.stringify({
@@ -262,9 +278,12 @@ test("findings recurring across captured cases are grouped exactly as readmit di
       decisions: [{ finding: "f000001", verdict: "confirmed", rationale: "the receiver must keep rejecting this booking" }],
     }),
   );
-  await openReport(user, panel, "weekly-groups");
-  expect(await panel.findByText(NOT_A_REPORT)).toBeTruthy();
-  expect(panel.queryByText(/report identity /)).toBeNull();
+  expect(within(panel.getByLabelText("Retained diagnosis report")).queryByRole("option", { name: "weekly-groups" })).toBeNull();
+  await openGroupReport(user, panel, "weekly-groups");
+  expect(await panel.findByText("Groups 1–3 of 3 across 3 cases")).toBeTruthy();
+  expect(journey.callsTo("OpenDiagnosisReport").at(-1)?.args[1]).toBe("wednesday-diagnosis");
+  const retained = within(panel.getByRole("region", { name: "Recurring finding groups" }));
+  expect(retained.getByText(`f000001 of ${reschedules[0]}, f000001 of ${reschedules[1]}`)).toBeTruthy();
   await refusedByCommandLine(
     ["--operation-policy", operationPolicy(), "diagnose", "review", "clinic/weekly-groups", "--case", "clinic/wednesday", "--decisions", "clinic/wednesday-decisions.json", "--output", "weekly-review"],
     NOT_A_REPORT,

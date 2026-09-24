@@ -56,6 +56,31 @@ func TestGroupsRetainEveryFindingAndRepresentativeCase(t *testing.T) {
 	}
 }
 
+func TestGroupingDisplayReaderKeepsItsOwnStrictContract(t *testing.T) {
+	a := writeCase(t, fixture(t, "diagnose-reschedule.hl7"))
+	grouped, identities, err := diagnose.GroupCasesWithIdentities(context.Background(), []string{a}, diagnose.DefaultConfig())
+	if err != nil || len(identities) != 1 || identities[0] != grouped.Cases[0].CaseIdentity {
+		t.Fatalf("input identity was not retained alongside its evaluated case: %v %+v", err, identities)
+	}
+	data, err := diagnose.GroupsJSON(grouped)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := diagnose.ParseGroups(data)
+	if err != nil || !reflect.DeepEqual(parsed, grouped) {
+		t.Fatalf("the grouping reader refused its own output: %v", err)
+	}
+	for _, altered := range [][]byte{
+		bytes.Replace(data, []byte(diagnose.GroupsSchema), []byte("readmit-diagnosis/v1"), 1),
+		bytes.Replace(data, []byte(`"schema":"`+diagnose.GroupsSchema+`"`), []byte(`"schema":"`+diagnose.GroupsSchema+`","unknown":true`), 1),
+		bytes.Replace(data, []byte(`"case_identity":"`+identities[0]+`"`), []byte(`"case_identity":"different"`), 1),
+	} {
+		if _, err := diagnose.ParseGroups(altered); err == nil {
+			t.Fatal("a grouping with a wrong contract, unknown member or broken member identity was accepted")
+		}
+	}
+}
+
 func TestGroupsRefuseDuplicateUnreadableCancelledAndOverLimit(t *testing.T) {
 	a := writeCase(t, fixture(t, "diagnose-reschedule.hl7"))
 	for _, paths := range [][]string{nil, {a, a}, {a, "missing-private-path"}, make([]string, 17)} {

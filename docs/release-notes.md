@@ -15,6 +15,13 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   temporary files; WebView2 cleanup is bounded and any retained folder is
   reported without changing the result.
 
+- A retained diagnosis grouping now lists under its own kind and opens in the
+  grouping view through its own reader (#425). The single-diagnosis picker
+  offers only single reports. Live group members show the workspace case entry
+  beside the case identity already evaluated; retained groups show identities
+  without re-reading cases. Existing `readmit-*` documents and CLI output are
+  unchanged.
+
 - Observation setup now asks before a new source or window name replaces
   unsaved edits; Escape keeps the edits (#414). Its pinned-identity line says
   "not saved" for new defaults or an unsaved capture binding, and shows a

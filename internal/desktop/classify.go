@@ -147,10 +147,15 @@ func refinedMarker(path string, kind Kind) (Kind, bool) {
 		return ReviewArtifact, true
 	case DiagnosisArtifact:
 		schema, ok := sniffSchema(path)
-		if !ok || (schema != diagnose.Schema && schema != diagnose.GroupsSchema) {
-			return UnsupportedArtifact, false
+		if ok {
+			switch schema {
+			case diagnose.Schema:
+				return DiagnosisArtifact, true
+			case diagnose.GroupsSchema:
+				return DiagnosisGroupsArtifact, true
+			}
 		}
-		return DiagnosisArtifact, true
+		return UnsupportedArtifact, false
 	case PacketArtifact:
 		switch schema, ok := sniffSchema(path); {
 		case ok && schema == report.RetainedSchema:

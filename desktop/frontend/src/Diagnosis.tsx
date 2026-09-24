@@ -120,6 +120,7 @@ export function Diagnosis({
   identity,
   configEntries,
   reportEntries,
+  groupsReportEntries,
   caseEntries,
   decisionsEntries = [],
   result,
@@ -132,6 +133,7 @@ export function Diagnosis({
   onRun,
   onOpen,
   onGroup,
+  onOpenGroups,
   onReview,
   onSelect,
   onPromote,
@@ -147,6 +149,8 @@ export function Diagnosis({
   configEntries: string[];
   /** The retained diagnosis report directories of the open workspace. */
   reportEntries: string[];
+  /** Retained grouping report directories, opened with their own reader. */
+  groupsReportEntries: string[];
   /** The case bundles of the open workspace, for grouping recurring findings. */
   caseEntries: string[];
   /** The entries of the open workspace declaring the finding-decisions contract. */
@@ -162,6 +166,7 @@ export function Diagnosis({
   onRun: (request: DiagnosisRequest) => void;
   onOpen: (entry: string, offset: number) => void;
   onGroup: (request: GroupDiagnosesRequest) => void;
+  onOpenGroups: (entry: string, offset: number) => void;
   onReview: (request: FindingReviewRequest, write: boolean) => void;
   onSelect: (occurrence: string) => void;
   /** Drafts a regression test from one explicitly confirmed finding's
@@ -179,6 +184,8 @@ export function Diagnosis({
   const [report, setReport] = useState("");
   const [reportEntry, setReportEntry] = useState("");
   const [grouped, setGrouped] = useState<string[]>([]);
+  const [groupsReportEntry, setGroupsReportEntry] = useState("");
+  const [openedGroupsEntry, setOpenedGroupsEntry] = useState("");
   // The grouping the groups on screen answer, so their next window is of the
   // same cases under the same configuration whatever the form holds now.
   const [groupedRequest, setGroupedRequest] = useState<GroupDiagnosesRequest | null>(null);
@@ -899,6 +906,7 @@ export function Diagnosis({
             offset: 0,
           };
           setGroupedRequest(request);
+          setOpenedGroupsEntry("");
           onGroup(request);
         }}
       >
@@ -928,6 +936,33 @@ export function Diagnosis({
         </button>
       </form>
 
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          setGroupedRequest(null);
+          setOpenedGroupsEntry(groupsReportEntry);
+          onOpenGroups(groupsReportEntry, 0);
+        }}
+      >
+        <label htmlFor="diagnosis-groups-report">Retained grouping report</label>
+        <select
+          id="diagnosis-groups-report"
+          value={groupsReportEntry}
+          disabled={busy || groupsReportEntries.length === 0}
+          onChange={(event) => setGroupsReportEntry(event.target.value)}
+        >
+          <option value="">Choose a retained grouping…</option>
+          {groupsReportEntries.map((entry) => (
+            <option key={entry} value={entry}>
+              {entry}
+            </option>
+          ))}
+        </select>
+        <button type="submit" disabled={busy || groupsReportEntry === ""}>
+          Open this grouping
+        </button>
+      </form>
+
       {groupsProgress !== null || (groupsResult && groupsResult.state !== "completed") ? (
         <Report indicators={indicators} progress={groupsProgress} result={groupsResult} />
       ) : null}
@@ -937,11 +972,12 @@ export function Diagnosis({
           <div className="diagnosis-window">
             <button
               type="button"
-              disabled={busy || groupedRequest === null || groupsResult.offset === 0}
-              onClick={() =>
-                groupedRequest &&
-                onGroup({ ...groupedRequest, offset: Math.max(0, groupsResult.offset - DIAGNOSIS_WINDOW) })
-              }
+              disabled={busy || (groupedRequest === null && openedGroupsEntry === "") || groupsResult.offset === 0}
+              onClick={() => {
+                const offset = Math.max(0, groupsResult.offset - DIAGNOSIS_WINDOW);
+                if (groupedRequest) onGroup({ ...groupedRequest, offset });
+                else if (openedGroupsEntry) onOpenGroups(openedGroupsEntry, offset);
+              }}
             >
               Previous {DIAGNOSIS_WINDOW} groups
             </button>
@@ -955,12 +991,14 @@ export function Diagnosis({
               type="button"
               disabled={
                 busy ||
-                groupedRequest === null ||
+                (groupedRequest === null && openedGroupsEntry === "") ||
                 groupsResult.offset + groupsResult.groups.groups.length >= groupsResult.total
               }
-              onClick={() =>
-                groupedRequest && onGroup({ ...groupedRequest, offset: groupsResult.offset + DIAGNOSIS_WINDOW })
-              }
+              onClick={() => {
+                const offset = groupsResult.offset + DIAGNOSIS_WINDOW;
+                if (groupedRequest) onGroup({ ...groupedRequest, offset });
+                else if (openedGroupsEntry) onOpenGroups(openedGroupsEntry, offset);
+              }}
             >
               Next {DIAGNOSIS_WINDOW} groups
             </button>
@@ -975,7 +1013,10 @@ export function Diagnosis({
                 </span>
                 <span className="reason">
                   {group.members
-                    .map((member) => `${member.finding_id} of ${member.case_identity}`)
+                    .map((member) => {
+                      const entry = groupsResult.case_entries?.[member.case_identity];
+                      return `${member.finding_id} of ${entry ? `${entry} (${member.case_identity})` : member.case_identity}`;
+                    })
                     .join(", ")}
                 </span>
               </li>

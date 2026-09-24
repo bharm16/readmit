@@ -222,7 +222,7 @@
       "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-diagnose-config/v1"],
       "outputs": ["readmit-diagnosis-groups/v1"],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/journeys/diagnosis.journey.tsx", "name": "findings recurring across captured cases are grouped exactly as readmit diagnose groups groups them, a retained report is reopened under the identity of its bytes, and a grouping's report or another case's report is never read as this case's diagnosis"},
+      "gui_test": {"file": "desktop/frontend/src/journeys/diagnosis.journey.tsx", "name": "findings recurring across captured cases name their entries and match readmit diagnose groups, retained groupings open separately, and a grouping never becomes one case's diagnosis"},
       "parity_test": {"package": "tests", "name": "TestTheWindowGroupsTheCasesReadmitDiagnoseGroupsGroups"},
       "implemented": true
     },
@@ -6199,6 +6199,22 @@
       "implemented": true
     },
     {
+      "id": "desktop.OpenDiagnosisGroupsReport",
+      "source": "desktop.App.OpenDiagnosisGroupsReport",
+      "kind": "desktop",
+      "capability": "openDiagnosisGroupsReport application operation",
+      "owner": "bharm16/readmit#425",
+      "screen": "the diagnosis panel over a verified case",
+      "action": "open a retained recurring diagnosis grouping through its separate display reader",
+      "backend": {"package": "internal/diagnose", "name": "ParseGroups"},
+      "inputs": ["readmit-diagnosis-groups/v1"],
+      "outputs": [],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/Diagnosis.test.tsx", "name": "a grouping has its own picker and reader, and its member labels use the facade's case entries"},
+      "parity_test": {"package": "internal/desktop", "name": "TestRetainedDiagnosisGroupsOpenThroughTheirOwnReader"},
+      "implemented": true
+    },
+    {
       "id": "desktop.OpenDiagnosisReport",
       "source": "desktop.App.OpenDiagnosisReport",
       "kind": "desktop",
@@ -6210,7 +6226,7 @@
       "inputs": ["readmit-diagnosis/v1"],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/journeys/diagnosis.journey.tsx", "name": "findings recurring across captured cases are grouped exactly as readmit diagnose groups groups them, a retained report is reopened under the identity of its bytes, and a grouping's report or another case's report is never read as this case's diagnosis"},
+      "gui_test": {"file": "desktop/frontend/src/journeys/diagnosis.journey.tsx", "name": "findings recurring across captured cases name their entries and match readmit diagnose groups, retained groupings open separately, and a grouping never becomes one case's diagnosis"},
       "parity_test": {"package": "tests", "name": "TestTheWindowReopensTheReportReadmitDiagnoseWrote"},
       "implemented": true
     },

@@ -47,6 +47,7 @@ type Callbacks = {
   onRun?: (request: DiagnosisRequest) => void;
   onOpen?: (entry: string, offset: number) => void;
   onGroup?: (request: GroupDiagnosesRequest) => void;
+  onOpenGroups?: (entry: string, offset: number) => void;
   onReview?: (request: FindingReviewRequest, write: boolean) => void;
   onSelect?: (occurrence: string) => void;
   onPromote?: (status: FindingStatus, reviewEntry: string, reportSHA256: string) => void;
@@ -66,6 +67,7 @@ function renderPanel(
       identity={CASE_IDENTITY}
       configEntries={["diagnose-config-1"]}
       reportEntries={[REPORT_ENTRY]}
+      groupsReportEntries={["weekly-groups"]}
       caseEntries={[CASE_ENTRY, OTHER_CASE_ENTRY]}
       result={result}
       groupsResult={groupsResult}
@@ -76,6 +78,7 @@ function renderPanel(
       onRun={callbacks.onRun ?? (() => undefined)}
       onOpen={callbacks.onOpen ?? (() => undefined)}
       onGroup={callbacks.onGroup ?? (() => undefined)}
+      onOpenGroups={callbacks.onOpenGroups ?? (() => undefined)}
       onReview={callbacks.onReview ?? (() => undefined)}
       onSelect={callbacks.onSelect ?? (() => undefined)}
       onPromote={callbacks.onPromote ?? (() => undefined)}
@@ -287,9 +290,10 @@ test("grouping recurring findings re-evaluates the selected cases under the chos
       identity={CASE_IDENTITY}
       configEntries={[]}
       reportEntries={[]}
+      groupsReportEntries={[]}
       caseEntries={[CASE_ENTRY, OTHER_CASE_ENTRY]}
       result={null}
-      groupsResult={diagnosisGroupsResult([
+      groupsResult={{ ...diagnosisGroupsResult([
         {
           signature: "signature-fixed-for-tests",
           rule_id: "ack.msa-outcome",
@@ -300,7 +304,7 @@ test("grouping recurring findings re-evaluates the selected cases under the chos
           representatives: [{ case_identity: CASE_IDENTITY, finding_id: "f000001" }],
           occurrences: [],
         },
-      ])}
+      ]), case_entries: { [CASE_IDENTITY]: CASE_ENTRY } }}
       reviewResult={null}
       busy={false}
       progress={null}
@@ -308,6 +312,7 @@ test("grouping recurring findings re-evaluates the selected cases under the chos
       onRun={() => undefined}
       onOpen={() => undefined}
       onGroup={() => undefined}
+      onOpenGroups={() => undefined}
       onReview={() => undefined}
       onSelect={() => undefined}
       onPromote={() => undefined}
@@ -317,6 +322,7 @@ test("grouping recurring findings re-evaluates the selected cases under the chos
     screen.getByText("Equal signatures mean the same diagnostic shape, never the same root cause."),
   ).toBeTruthy();
   expect(screen.getByText(/signature signature-fixed-for-tests · 2 findings across cases/)).toBeTruthy();
+  expect(screen.getByText(`${CASE_ENTRY} (${CASE_IDENTITY})`, { exact: false })).toBeTruthy();
 });
 
 test("a retained report is reopened by name, and the manage-profiles handoff is offered", async () => {
@@ -374,8 +380,8 @@ async function tabTo(user: User, control: HTMLElement): Promise<void> {
   throw new Error(`${control.textContent ?? ""} is not reachable with Tab`);
 }
 
-/** A workspace holding three cases, three retained report directories, a
- * grouping's report directory the listing also calls a diagnosis, and four
+/** A workspace holding three cases, three retained single reports, a
+ * grouping report of its own kind, and four
  * decisions documents. */
 function workspace() {
   return folderChosen(WORKSPACE_ROOT, [
@@ -384,7 +390,7 @@ function workspace() {
     { name: THIRD_CASE, kind: "case", schema: "readmit-case/v3", provenance: "imported" },
     { name: REPORT_ENTRY, kind: "diagnosis" },
     { name: MISSING_REPORT, kind: "diagnosis" },
-    { name: GROUPS_REPORT, kind: "diagnosis" },
+    { name: GROUPS_REPORT, kind: "diagnosis-groups" },
     { name: OTHER_REPORT, kind: "diagnosis" },
     { name: DECISIONS, kind: "finding-decisions" },
     { name: STALE_DECISIONS, kind: "finding-decisions" },
@@ -449,6 +455,7 @@ function groupsWindow(offset: number): DiagnosisGroupsResult {
   const result = diagnosisGroupsResult(window);
   result.offset = offset;
   result.total = 201;
+  result.case_entries = { [CASE_IDENTITY]: CASE_ENTRY, [OTHER_IDENTITY]: OTHER_CASE_ENTRY };
   result.groups!.cases = [CASE_IDENTITY, OTHER_IDENTITY].map((identity) => ({
     schema: "readmit-diagnosis/v1",
     config_sha256: "config-sha256-fixed-for-tests",
@@ -463,6 +470,29 @@ function groupsWindow(offset: number): DiagnosisGroupsResult {
   }));
   return result;
 }
+
+test("a grouping has its own picker and reader, and its member labels use the facade's case entries", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp();
+  const panel = await openCase(facade, user);
+  const singles = panel.getByLabelText("Retained diagnosis report") as HTMLSelectElement;
+  const groupings = panel.getByLabelText("Retained grouping report") as HTMLSelectElement;
+  expect(within(singles).queryByRole("option", { name: GROUPS_REPORT })).toBeNull();
+  expect(within(groupings).getByRole("option", { name: GROUPS_REPORT })).toBeTruthy();
+
+  facade.reply({ OpenDiagnosisGroupsReport: (_workspace, _entry, offset) => groupsWindow(offset) });
+  await user.selectOptions(groupings, GROUPS_REPORT);
+  await user.click(panel.getByRole("button", { name: "Open this grouping" }));
+  expect(facade.oneCall("OpenDiagnosisGroupsReport")).toEqual([WORKSPACE_ROOT, GROUPS_REPORT, 0]);
+  const listed = within(await panel.findByRole("region", { name: "Recurring finding groups" }));
+  expect(listed.getAllByText(`${CASE_ENTRY} (${CASE_IDENTITY})`, { exact: false })).toHaveLength(200);
+  expect(listed.getAllByText(`${OTHER_CASE_ENTRY} (${OTHER_IDENTITY})`, { exact: false })).toHaveLength(200);
+  expect(facade.callsTo("OpenDiagnosisReport")).toHaveLength(0);
+
+  await user.click(listed.getByRole("button", { name: "Next 200 groups" }));
+  expect(facade.callsTo("OpenDiagnosisGroupsReport")[1]?.args).toEqual([WORKSPACE_ROOT, GROUPS_REPORT, 200]);
+  expect(await panel.findByText("Groups 201–201 of 201 across 2 cases")).toBeTruthy();
+});
 
 test("recurring findings are grouped through the facade, paged over the grouping on screen from the keyboard, refused in the engine's words, and a grouping cancelled from the window's Cancel or Escape is shown as cancelled with no groups", async () => {
   const user = userEvent.setup();
@@ -491,7 +521,7 @@ test("recurring findings are grouped through the facade, paged over the grouping
   await tabTo(user, panel.getByRole("button", { name: "Next 200 groups" }));
   await user.keyboard("{Enter}");
   expect(await panel.findByText("Groups 201–201 of 201 across 2 cases")).toBeTruthy();
-  expect(within(groups()!).getByText(`f000001 of ${CASE_IDENTITY}, f000001 of ${OTHER_IDENTITY}`)).toBeTruthy();
+  expect(within(groups()!).getByText(`f000001 of ${CASE_ENTRY} (${CASE_IDENTITY}), f000001 of ${OTHER_CASE_ENTRY} (${OTHER_IDENTITY})`)).toBeTruthy();
   expect(facade.callsTo("GroupDiagnoses")[1]?.args).toEqual([
     { workspace: WORKSPACE_ROOT, cases: [CASE_ENTRY, OTHER_CASE_ENTRY], builtin: "siu", offset: 200 },
   ]);
@@ -573,12 +603,10 @@ test("a retained report is reopened through the facade with the identity a revie
   expect(facade.callsTo("InspectOccurrence").at(-1)?.args[0]).toMatchObject({ occurrence: GRID_OCCURRENCE });
   const inspected = facade.callsTo("InspectOccurrence").length;
 
-  // A report directory whose report.json is gone, and a grouping's report
-  // the listing calls a diagnosis, are each refused in the reader's words,
-  // and no finding of the report before them stays on screen.
+  // A report directory whose report.json is gone is refused in the reader's
+  // words, and no finding of the report before it stays on screen.
   for (const [entry, sentence] of [
     [MISSING_REPORT, NO_REPORT],
-    [GROUPS_REPORT, NOT_A_REPORT],
   ] as const) {
     await openReport(facade, user, panel, entry);
     expect(await panel.findByText(sentence)).toBeTruthy();

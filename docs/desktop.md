@@ -1371,9 +1371,10 @@ inspector can open the original bytes.
 `readmit diagnose review` applies and names it by the SHA-256 of those bytes,
 the identity a review must name; the window says "Opening this report." while
 it reads. A report directory whose `report.json` is gone is refused. The
-listing calls a grouping's report directory a diagnosis too, because it holds a
-`report.json`; opening one is refused in the reader's sentence, as `readmit
-diagnose review` refuses it. A report of another case opens for what it is: the
+listing distinguishes a `readmit-diagnosis-groups/v1` directory from a single
+diagnosis. It is offered in the grouping report picker and opens through its
+own strict display reader; it cannot be used as one diagnosis for finding
+review. A report of another case opens for what it is: the
 panel names the case identity it was run over and opens none of its evidence in
 this case's inspector, and reviewing it over this case is refused by the engine,
 naming the case to open.
@@ -1385,7 +1386,10 @@ does, writing nothing. The groups are shown 200 at a time with their total, and
 the next window is of the grouping on screen, whatever the form holds by then.
 A grouping reads several cases and is interruptible: while it runs the window
 says so, and its Cancel control and `Escape` stop it; a cancelled grouping is
-shown as cancelled, with no groups.
+shown as cancelled, with no groups. When the live grouping has already
+evaluated a case from the open workspace, each member names that case's entry
+beside its identity. A reopened grouping names identities from its retained
+report without re-reading cases to guess their workspace entries.
 
 **Finding review** records confirm, dismiss and scoped suppression decisions
 with a required rationale, writes `readmit-finding-decisions/v1` and a
