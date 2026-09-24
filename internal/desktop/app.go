@@ -265,11 +265,13 @@ type App struct {
 	operationGuard         *operationguard.Guard
 	operationPolicy        string
 	operationSelectionPath string
-	chooser                FolderChooser
-	recentPath             string
-	filtersPath            string
-	sessionPath            string
-	draftsPath             string
+	// operationRestoreRefusal remains visible until a policy is chosen again.
+	operationRestoreRefusal string
+	chooser                 FolderChooser
+	recentPath              string
+	filtersPath             string
+	sessionPath             string
+	draftsPath              string
 
 	// licenseRoot is where this computer's license lives, the folder the
 	// command line reads it from too; empty when the shell was given none.
@@ -297,6 +299,8 @@ type App struct {
 	commercialMu            sync.Mutex
 	commercialSelectionPath string
 	commercialConfigPath    string
+	// commercialRestoreRefusal remains visible until destinations are chosen again.
+	commercialRestoreRefusal string
 
 	mu sync.Mutex
 	// running, operation and runOutput are the identity of the one operation
@@ -338,11 +342,10 @@ type App struct {
 	captureProgress *CaptureProgress
 }
 
-// New binds the facade to a host folder dialog and to the four files that hold
-// this viewer's local shell state: the workspaces they opened recently, the
-// filters they saved, the working session they have not stored, and the editor
-// drafts they have not stored. Each is named explicitly rather than derived
-// from another, and none holds evidence.
+// New binds the facade to a host folder dialog and four of the shell's seven
+// local documents: recent workspaces, saved filters, working session and editor
+// drafts. NewWithOperationSelection adds the operation, commercial and hub
+// selection documents. None holds evidence.
 func New(chooser FolderChooser, recentPath, filtersPath, sessionPath, draftsPath string) *App {
 	return &App{operationGuard: operationguard.New(""), chooser: chooser, recentPath: recentPath, filtersPath: filtersPath, sessionPath: sessionPath, draftsPath: draftsPath}
 }

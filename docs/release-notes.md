@@ -1,5 +1,11 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- A remembered operation-policy or commercial-destinations selection that
+  cannot be read now appears in the license pane at startup with a reason and
+  a way to choose again (#385). The shell leaves the unreadable selection
+  untouched until that explicit choice. Its documentation now names all seven
+  local documents. No `readmit-*` contract, CLI output or evidence changes.
+
 - Schedule previews without an explicit anchor now start on each entry's
   current local day (#397). Entries east and west of UTC show the run the hub
   will evaluate around local and UTC midnight, including an already missed

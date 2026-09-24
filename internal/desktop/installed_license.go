@@ -112,13 +112,14 @@ type LicenseActivateRequest struct {
 }
 
 // NewWithInstalledLicense is the shell as it runs: NewWithOperationSelection
-// plus this computer's license. When no activation folder was selected
-// explicitly before, new work in the window is admitted through this
-// computer's license, the one the command line uses.
+// plus this computer's license. When no activation folder selection exists,
+// new work in the window is admitted through this computer's license, the one
+// the command line uses. An unreadable selection is reported, not hidden by
+// falling back to the installed license.
 func NewWithInstalledLicense(chooser FolderChooser, recent, filters, session, drafts, selection, license string) *App {
 	a := NewWithOperationSelection(chooser, recent, filters, session, drafts, selection)
 	a.licenseRoot = license
-	if license != "" && a.operationPolicy == "" {
+	if license != "" && a.operationPolicy == "" && a.operationRestoreRefusal == "" {
 		policy := operationguard.InstalledPolicyIn(license)
 		if _, err := os.Lstat(policy); err == nil {
 			a.operationPolicy = policy

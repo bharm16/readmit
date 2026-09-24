@@ -93,6 +93,32 @@ test("the free paths stay free and unactivated licensed work is refused by name"
   expect(facade.callsTo("OperationStatus").length).toBe(2);
 });
 
+test("unreadable remembered operation and commercial selections stay visible until chosen again", async () => {
+  const user = userEvent.setup();
+  const operationRefusal = "the remembered operation selection cannot be read; choose an activation folder again";
+  const commercialRefusal = "the remembered commercial selection cannot be read; choose a destinations file again";
+  let recovered = false;
+  const facade = installFacade(quiet({
+    OperationStatus: () => recovered ? activeStatus() : { state: "failed", selected: false, reason: operationRefusal },
+    CommercialStatus: () => ({ state: "failed", reason: commercialRefusal }),
+    ChooseOperationPolicy: () => { recovered = true; return { state: "completed", selected: true }; },
+    ChooseCommercialDestinations: () => ({ state: "completed", environment: "sandbox", portal: PORTAL }),
+  }));
+  render(<OperationAccess />);
+
+  expect(await screen.findByText(operationRefusal)).toBeTruthy();
+  expect(await screen.findByText(commercialRefusal)).toBeTruthy();
+  expect(screen.queryByRole("link", { name: "Open the commercial portal in your browser" })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Select a supplied activation folder…" }));
+  expect(await screen.findByText(/License: active/)).toBeTruthy();
+  expect(screen.queryByText(operationRefusal)).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Choose the commercial destinations file…" }));
+  expect(await screen.findByRole("link", { name: "Open the commercial portal in your browser" })).toBeTruthy();
+  expect(screen.queryByText(commercialRefusal)).toBeNull();
+  expect(facade.callsTo("OperationStatus")).toHaveLength(2);
+  expect(facade.callsTo("CommercialStatus")).toHaveLength(1);
+});
+
 test("a received license is verified, configured, created and activated without hand-authored JSON", async () => {
   const user = userEvent.setup();
   const created: unknown[] = [];
