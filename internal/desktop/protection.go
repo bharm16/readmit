@@ -84,13 +84,10 @@ func (r *ProtectionResult) refuse(state State, reason string) { r.State, r.Reaso
 
 // protectionView projects one readable document. An absent entry is the empty
 // document the first registration would write, never an error.
-func protectionView(entry string, document protect.Document, found bool) *ProtectionDocument {
+func protectionView(entry string, document protect.Document) *ProtectionDocument {
 	view := &ProtectionDocument{
 		Entry: entry, Schema: protect.Schema, Controls: []ProtectionControl{},
 		Limitations: protectionLimitations,
-	}
-	if !found {
-		return view
 	}
 	now := time.Now()
 	for _, control := range document.Controls {
@@ -104,47 +101,32 @@ func protectionView(entry string, document protect.Document, found bool) *Protec
 	return view
 }
 
-// protectionEntryPath resolves the workspace entry one protection document is
+// protectionEntryFile resolves the workspace entry one protection document is
 // read and written at. The document is data the operator declared, so it is
-// read again on every operation rather than held anywhere.
-func protectionEntryPath(workspace, entry string) (string, string, refusal) {
+// read again on every operation rather than held anywhere. An absent entry is
+// the empty document the first registration writes, so every operation here
+// reads it that way, and one that declares another contract is reported, never
+// replaced.
+func protectionEntryFile(workspace, entry string) (string, protect.File, refusal) {
 	root, declined := resolveFolder(workspace)
 	if root == "" {
-		return "", "", declined
+		return "", protect.File{}, declined
 	}
 	if entry == "" {
-		return "", "", refusal{Failed, "name the protection document entry this screen reads and writes"}
+		return "", protect.File{}, refusal{Failed, "name the protection document entry this screen reads and writes"}
 	}
 	path, err := runEntryPath(root, entry)
 	if err != nil {
-		return "", "", refusal{Failed, "the protection document must be one entry of the open workspace"}
+		return "", protect.File{}, refusal{Failed, "the protection document must be one entry of the open workspace"}
 	}
 	// An absent entry is where the first document is written; one that exists
 	// is read, so it is held to the rule every read entry is.
 	if _, err := artifactpath.File(root, entry); err != nil {
 		if _, err := os.Lstat(path); !errors.Is(err, fs.ErrNotExist) {
-			return "", "", refusal{Failed, "the protection document must be one regular file of the open workspace, never a symbolic link"}
+			return "", protect.File{}, refusal{Failed, "the protection document must be one regular file of the open workspace, never a symbolic link"}
 		}
 	}
-	return root, path, refusal{}
-}
-
-// readProtectionDocument reads the document at one resolved path, answering the
-// same way `protect register` does when no document exists yet: an absent entry
-// starts the first one, and an entry that exists but declares another contract
-// is reported, never replaced.
-func readProtectionDocument(path string) (protect.Document, bool, refusal) {
-	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
-		return protect.Document{Schema: protect.Schema}, false, refusal{}
-	}
-	document, err := protect.ReadDocument(path)
-	if errors.Is(err, engine.ErrUnsupportedVersion) {
-		return protect.Document{}, false, refusal{Failed, "the protection document was written by a version this release cannot read"}
-	}
-	if err != nil {
-		return protect.Document{}, false, refusal{Failed, err.Error()}
-	}
-	return document, true, refusal{}
+	return root, protect.File{Path: path, AbsentIsEmpty: true}, refusal{}
 }
 
 // ReadProtection reads one protection document of the open workspace and shows
@@ -152,15 +134,15 @@ func readProtectionDocument(path string) (protect.Document, bool, refusal) {
 // no key and contacts nothing: this is the `protect show` of the window.
 func (a *App) ReadProtection(workspace, entry string) ProtectionResult {
 	return run(a, false, false, func(context.Context) ProtectionResult {
-		_, path, declined := protectionEntryPath(workspace, entry)
+		_, file, declined := protectionEntryFile(workspace, entry)
 		if declined.state != "" {
 			return ProtectionResult{State: declined.state, Reason: declined.reason}
 		}
-		document, found, declined := readProtectionDocument(path)
-		if declined.state != "" {
-			return ProtectionResult{State: declined.state, Reason: declined.reason}
+		document, err := file.Read()
+		if err != nil {
+			return ProtectionResult{State: Failed, Reason: err.Error()}
 		}
-		return ProtectionResult{State: Completed, Entry: entry, Document: protectionView(entry, document, found)}
+		return ProtectionResult{State: Completed, Entry: entry, Document: protectionView(entry, document)}
 	})
 }
 
@@ -188,31 +170,22 @@ type ProtectionControlRequest struct {
 // a verified property.
 func (a *App) SaveProtectionControl(request ProtectionControlRequest) ProtectionResult {
 	return run(a, false, true, func(context.Context) ProtectionResult {
-		_, path, declined := protectionEntryPath(request.Workspace, request.Entry)
+		_, file, declined := protectionEntryFile(request.Workspace, request.Entry)
 		if declined.state != "" {
 			return ProtectionResult{State: declined.state, Reason: declined.reason}
 		}
-		document, _, declined := readProtectionDocument(path)
-		if declined.state != "" {
-			return ProtectionResult{State: declined.state, Reason: declined.reason}
-		}
-		updated, _, err := protect.Register(document, protect.Control{
-			Name:       request.Name,
-			Storage:    protect.Storage(request.Storage),
-			Command:    request.Command,
-			Arguments:  request.Arguments,
-			Generation: 1,
-			RotatedAt:  time.Now().UTC().Truncate(time.Second),
-			MaxAge:     request.MaxAge,
-			Retain:     request.Retain,
-		})
+		updated, _, err := file.Register(protect.Control{
+			Name:      request.Name,
+			Storage:   protect.Storage(request.Storage),
+			Command:   request.Command,
+			Arguments: request.Arguments,
+			MaxAge:    request.MaxAge,
+			Retain:    request.Retain,
+		}, time.Now())
 		if err != nil {
 			return ProtectionResult{State: Failed, Reason: err.Error()}
 		}
-		if err := protect.WriteDocument(path, updated); err != nil {
-			return ProtectionResult{State: Failed, Reason: err.Error()}
-		}
-		return ProtectionResult{State: Completed, Entry: request.Entry, Document: protectionView(request.Entry, updated, true)}
+		return ProtectionResult{State: Completed, Entry: request.Entry, Document: protectionView(request.Entry, updated)}
 	})
 }
 
@@ -223,32 +196,18 @@ func (a *App) SaveProtectionControl(request ProtectionControlRequest) Protection
 // previous key, so a recorded rotation is an assertion, not a verification.
 func (a *App) RotateProtectionControl(workspace, entry, name string) ProtectionResult {
 	return runNamed[ProtectionResult, *ProtectionResult](a, protectOperation, true, true, func(ctx context.Context) ProtectionResult {
-		_, path, declined := protectionEntryPath(workspace, entry)
+		_, file, declined := protectionEntryFile(workspace, entry)
 		if declined.state != "" {
 			return ProtectionResult{State: declined.state, Reason: declined.reason}
 		}
-		document, found, declined := readProtectionDocument(path)
-		if declined.state != "" {
-			return ProtectionResult{State: declined.state, Reason: declined.reason}
-		}
-		control, err := protect.Find(document, name)
+		updated, _, err := file.Rotate(ctx, name, time.Now())
 		if err != nil {
-			return ProtectionResult{State: Failed, Reason: err.Error()}
-		}
-		if _, err := protect.ReadKey(ctx, control); err != nil {
-			if ctx.Err() != nil {
+			if protect.StepOf(err) == protect.KeyStep && ctx.Err() != nil {
 				return ProtectionResult{State: Cancelled, Reason: "the rotation was cancelled; the recorded rotation is unchanged"}
 			}
-			return ProtectionResult{State: Failed, Reason: "the key did not resolve from its declared store; the recorded rotation is unchanged"}
-		}
-		updated, _, err := protect.Rotate(document, name, time.Now())
-		if err != nil {
 			return ProtectionResult{State: Failed, Reason: err.Error()}
 		}
-		if err := protect.WriteDocument(path, updated); err != nil {
-			return ProtectionResult{State: Failed, Reason: err.Error()}
-		}
-		return ProtectionResult{State: Completed, Entry: entry, Document: protectionView(entry, updated, found)}
+		return ProtectionResult{State: Completed, Entry: entry, Document: protectionView(entry, updated)}
 	})
 }
 
@@ -257,22 +216,15 @@ func (a *App) RotateProtectionControl(workspace, entry, name string) ProtectionR
 // view the result carries states what that does not establish.
 func (a *App) RetireProtectionControl(workspace, entry, name string) ProtectionResult {
 	return run(a, false, true, func(context.Context) ProtectionResult {
-		_, path, declined := protectionEntryPath(workspace, entry)
+		_, file, declined := protectionEntryFile(workspace, entry)
 		if declined.state != "" {
 			return ProtectionResult{State: declined.state, Reason: declined.reason}
 		}
-		document, found, declined := readProtectionDocument(path)
-		if declined.state != "" {
-			return ProtectionResult{State: declined.state, Reason: declined.reason}
-		}
-		updated, _, err := protect.Retire(document, name)
+		updated, _, err := file.Retire(name)
 		if err != nil {
 			return ProtectionResult{State: Failed, Reason: err.Error()}
 		}
-		if err := protect.WriteDocument(path, updated); err != nil {
-			return ProtectionResult{State: Failed, Reason: err.Error()}
-		}
-		return ProtectionResult{State: Completed, Entry: entry, Document: protectionView(entry, updated, found)}
+		return ProtectionResult{State: Completed, Entry: entry, Document: protectionView(entry, updated)}
 	})
 }
 
@@ -347,20 +299,12 @@ func packageView(entry string, descriptor protect.Package, now time.Time, notRea
 // looking like one.
 func (a *App) PackProtectedPackage(request ProtectionPackRequest) ProtectionPackageResult {
 	return runNamed[ProtectionPackageResult, *ProtectionPackageResult](a, protectOperation, true, false, func(ctx context.Context) ProtectionPackageResult {
-		root, path, declined := protectionEntryPath(request.Workspace, request.Entry)
+		root, file, declined := protectionEntryFile(request.Workspace, request.Entry)
 		if declined.state != "" {
 			return ProtectionPackageResult{State: declined.state, Reason: declined.reason}
 		}
 		if request.Control == "" || len(request.Sources) == 0 {
 			return ProtectionPackageResult{State: Failed, Reason: "select the control to write under and at least one entry to pack"}
-		}
-		document, _, declined := readProtectionDocument(path)
-		if declined.state != "" {
-			return ProtectionPackageResult{State: declined.state, Reason: declined.reason}
-		}
-		control, err := protect.Writable(document, request.Control)
-		if err != nil {
-			return ProtectionPackageResult{State: Failed, Reason: err.Error()}
 		}
 		sources := make([]string, 0, len(request.Sources))
 		for _, name := range request.Sources {
@@ -373,17 +317,19 @@ func (a *App) PackProtectedPackage(request ProtectionPackRequest) ProtectionPack
 			}
 			sources = append(sources, path)
 		}
-		collected, notRead, err := protect.Collect(sources)
-		if err != nil {
-			return ProtectionPackageResult{State: Failed, Reason: "the entries to pack exceed what one package of this release holds, or could not be read"}
-		}
 		destination, refused := destinationFor(root, request.Output, "protected")
 		if refused.state != "" {
 			return ProtectionPackageResult{State: refused.state, Reason: refused.reason}
 		}
-		descriptor, err := protect.Pack(ctx, control, collected, notRead, filepath.Join(root, destination.Name), time.Now())
+		descriptor, notRead, err := file.Pack(ctx, request.Control, sources, filepath.Join(root, destination.Name), time.Now())
 		if err != nil {
-			return packRefusal(err)
+			switch protect.StepOf(err) {
+			case protect.SourcesStep:
+				return ProtectionPackageResult{State: Failed, Reason: "the entries to pack exceed what one package of this release holds, or could not be read"}
+			case protect.PackageStep:
+				return packRefusal(err)
+			}
+			return ProtectionPackageResult{State: Failed, Reason: err.Error()}
 		}
 		return ProtectionPackageResult{State: Completed, Package: packageView(destination.Name, descriptor, time.Now(), notRead), Limitations: protectionLimitations}
 	})
@@ -448,7 +394,7 @@ type ProtectionOpenRequest struct {
 // result says so.
 func (a *App) OpenProtectedPackage(request ProtectionOpenRequest) ProtectionPackageResult {
 	return runNamed[ProtectionPackageResult, *ProtectionPackageResult](a, protectOperation, true, false, func(ctx context.Context) ProtectionPackageResult {
-		root, path, declined := protectionEntryPath(request.Workspace, request.Entry)
+		root, file, declined := protectionEntryFile(request.Workspace, request.Entry)
 		if declined.state != "" {
 			return ProtectionPackageResult{State: declined.state, Reason: declined.reason}
 		}
@@ -456,28 +402,15 @@ func (a *App) OpenProtectedPackage(request ProtectionOpenRequest) ProtectionPack
 		if err != nil {
 			return ProtectionPackageResult{State: Failed, Reason: "the transfer package must be one entry of the open workspace"}
 		}
-		document, _, declined := readProtectionDocument(path)
-		if declined.state != "" {
-			return ProtectionPackageResult{State: declined.state, Reason: declined.reason}
-		}
-		name := request.Control
-		if name == "" {
-			descriptor, _, err := protect.ReadPackage(packagePath)
-			if err != nil {
-				return ProtectionPackageResult{State: Failed, Reason: "this directory is not a transfer package this release opens"}
-			}
-			name = descriptor.Control
-		}
-		control, err := protect.Find(document, name)
-		if err != nil {
-			return ProtectionPackageResult{State: Failed, Reason: err.Error()}
-		}
 		destination, refused := destinationFor(root, request.Output, "opened")
 		if refused.state != "" {
 			return ProtectionPackageResult{State: refused.state, Reason: refused.reason}
 		}
-		descriptor, index, err := protect.Open(ctx, control, packagePath, filepath.Join(root, destination.Name))
+		descriptor, index, err := file.Open(ctx, request.Control, packagePath, filepath.Join(root, destination.Name))
 		if err != nil {
+			if protect.StepOf(err) == protect.DescriptorStep {
+				return ProtectionPackageResult{State: Failed, Reason: "this directory is not a transfer package this release opens"}
+			}
 			state, reason := openRefusal(err)
 			return ProtectionPackageResult{State: state, Reason: reason}
 		}

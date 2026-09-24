@@ -315,14 +315,16 @@ func Writable(document Document, name string) (Control, error) {
 // records the same bytes wherever it was written.
 func stamp(at time.Time) time.Time { return at.UTC().Truncate(time.Second) }
 
-// Register adds a new control in sorted order and returns it as stored. The
-// document it is given is not modified.
-func Register(document Document, entry Control) (Document, Control, error) {
+// register adds a new control in sorted order and returns it as stored: active,
+// at generation 1, rotated at the given instant. The document it is given is not
+// modified.
+func register(document Document, entry Control, at time.Time) (Document, Control, error) {
 	if _, err := Find(document, entry.Name); err == nil {
 		return Document{}, Control{}, errors.New("that name is already registered in this protection document")
 	}
 	entry.State = Active
-	entry.RotatedAt = stamp(entry.RotatedAt)
+	entry.Generation = 1
+	entry.RotatedAt = stamp(at)
 	updated := document
 	updated.Controls = slices.Clip(slices.Clone(document.Controls))
 	updated.Controls = append(updated.Controls, entry)
@@ -333,15 +335,16 @@ func Register(document Document, entry Control) (Document, Control, error) {
 	return updated, entry, nil
 }
 
-// Rotate records that the operator replaced the key behind a control in its own
+// rotate records that the operator replaced the key behind a control in its own
 // store. It bumps the generation and stamps the time; it writes nothing to any
 // store, because readmit holds read access to a key and nothing more. readmit
 // does not read a previous key and so cannot verify that one was replaced.
+// [File.Rotate] is the only caller, and it asks the declared store first.
 //
 // Packages written under an earlier generation keep their recorded generation.
 // Whether an earlier package still opens depends entirely on whether the
 // operator kept the earlier key; readmit neither holds nor destroys it.
-func Rotate(document Document, name string, at time.Time) (Document, Control, error) {
+func rotate(document Document, name string, at time.Time) (Document, Control, error) {
 	return amend(document, name, func(entry *Control) error {
 		entry.Generation++
 		entry.RotatedAt = stamp(at)
@@ -349,8 +352,8 @@ func Rotate(document Document, name string, at time.Time) (Document, Control, er
 	})
 }
 
-// Retire marks a control as writing no further packages.
-func Retire(document Document, name string) (Document, Control, error) {
+// retire marks a control as writing no further packages.
+func retire(document Document, name string) (Document, Control, error) {
 	return amend(document, name, func(entry *Control) error {
 		if entry.State == Retired {
 			return errors.New("the protection control is already retired")

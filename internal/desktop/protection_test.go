@@ -63,7 +63,8 @@ func protectionDocument(t *testing.T, app *desktop.App, program string) (string,
 // The control screen's lifecycle: registering a control is a reference, so the
 // view shows the mask and counts the locator arguments instead of echoing
 // them; a rotation is recorded only when the declared store answers; and a
-// rotation whose store does not answer records nothing.
+// rotation whose store does not answer records nothing, in the sentence
+// `protect rotate` prints.
 func TestProtectionControlsAreReferencesAndRotationsRequireTheStore(t *testing.T) {
 	app := workspaceApp(t)
 	root, entry := protectionDocument(t, app, keyProgram(t, "test-only-not-a-real-key-4f8c1d2e6b0a9357", ""))
@@ -88,10 +89,28 @@ func TestProtectionControlsAreReferencesAndRotationsRequireTheStore(t *testing.T
 	if rotated.State != desktop.Completed || rotated.Document == nil || rotated.Document.Controls[0].Generation != 2 {
 		t.Fatalf("a rotation the store answered for was not recorded: %+v", rotated)
 	}
-	// A rotation whose store does not answer records nothing, and says why.
+	// A rotation for a control nobody registered records nothing.
 	refused := app.RotateProtectionControl(root, entry, "no-such-control")
 	if refused.State != desktop.Failed || refused.Document != nil {
 		t.Fatalf("a rotation for an unknown control was recorded: %+v", refused)
+	}
+	// A rotation whose store does not answer records nothing, and says why.
+	gone := keyProgram(t, "unused", "")
+	if saved := app.SaveProtectionControl(desktop.ProtectionControlRequest{
+		Workspace: root, Entry: entry, Name: "unanswered", Storage: "none-declared", Command: gone, Arguments: []string{"k"},
+	}); saved.State != desktop.Completed {
+		t.Fatalf("the second control was not registered: %+v", saved)
+	}
+	if err := os.Remove(gone); err != nil {
+		t.Fatal(err)
+	}
+	unanswered := app.RotateProtectionControl(root, entry, "unanswered")
+	if unanswered.State != desktop.Failed || unanswered.Document != nil ||
+		unanswered.Reason != "the key did not resolve from its declared store; the recorded rotation is unchanged" {
+		t.Fatalf("a rotation whose store did not answer was recorded: %+v", unanswered)
+	}
+	if shown := app.ReadProtection(root, entry); shown.Document == nil || shown.Document.Controls[1].Generation != 1 {
+		t.Fatalf("a rotation whose store did not answer changed the record: %+v", shown.Document)
 	}
 	// Retirement stops new packages; the view shows the retired state.
 	retired := app.RetireProtectionControl(root, entry, "lab-evidence")
@@ -211,6 +230,48 @@ func TestProtectionRefusesAMissingKeyARetiredControlAndAnOverrideGatedDiscard(t 
 	}
 	if _, err := os.Lstat(filepath.Join(root, "transfer")); !os.IsNotExist(err) {
 		t.Fatal("the discarded package is still there")
+	}
+}
+
+// Each part of a pack or an open refuses in the window's sentence for that
+// part: entries no package can record, a package that cannot be written, and a
+// folder that is not a package when the package's own control is asked for.
+// Every other refusal is the operation's own sentence, and none leaves an
+// output behind.
+func TestProtectionNamesWhichPartOfAPackOrAnOpenRefused(t *testing.T) {
+	app := workspaceApp(t)
+	root, entry := protectionDocument(t, app, keyProgram(t, "test-only-not-a-real-key-4f8c1d2e6b0a9357", ""))
+	// A name holding a backslash is one file on this system and no path a
+	// package can record, and an empty folder is nothing to pack.
+	if err := os.MkdirAll(filepath.Join(root, "unrecordable"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeDocument(t, filepath.Join(root, "unrecordable"), `back\slash.txt`, "synthetic")
+	if err := os.Mkdir(filepath.Join(root, "empty"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	pack := func(control, source string) desktop.ProtectionPackageResult {
+		return app.PackProtectedPackage(desktop.ProtectionPackRequest{Workspace: root, Entry: entry, Control: control, Sources: []string{source}, Output: "refused"})
+	}
+	open := func(control string) desktop.ProtectionPackageResult {
+		return app.OpenProtectedPackage(desktop.ProtectionOpenRequest{Workspace: root, Entry: entry, Control: control, Package: "empty", Output: "refused"})
+	}
+	for label, refused := range map[string]struct {
+		result desktop.ProtectionPackageResult
+		reason string
+	}{
+		"entries no package can record":                        {pack("lab-evidence", "unrecordable"), "the entries to pack exceed what one package of this release holds, or could not be read"},
+		"a package that cannot be written":                     {pack("lab-evidence", "empty"), "the key did not resolve from its declared store, or the package could not be written; a package that cannot be completed is removed"},
+		"a control nobody registered":                          {pack("never-registered", "evidence.txt"), "no protection control is registered under that name"},
+		"a folder that is not a package under its own control": {open(""), "this directory is not a transfer package this release opens"},
+		"a folder that is not a package under a named control": {open("lab-evidence"), "the transfer package must hold a readable descriptor within its size limit"},
+	} {
+		if refused.result.State != desktop.Failed || refused.result.Reason != refused.reason || refused.result.Package != nil {
+			t.Errorf("%s: %+v", label, refused.result)
+		}
+	}
+	if _, err := os.Lstat(filepath.Join(root, "refused")); !os.IsNotExist(err) {
+		t.Fatal("a refused pack or open left its output behind")
 	}
 }
 
