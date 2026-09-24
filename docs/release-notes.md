@@ -1,5 +1,10 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- License export from a selected operation policy now names the resolved
+  destination folder, including when the chosen folder is reached through a
+  linked parent (#393). The exported document remains byte for byte identical;
+  command-line and machine-readable command output are unchanged.
+
 - The customer hub panel now prepares validated operator handoffs for all
   seven `readmit-hub` maintenance commands (#317). The desktop reads a local
   copy of the hub configuration and any required policies through the hub's

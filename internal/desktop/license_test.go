@@ -580,6 +580,46 @@ func TestExportLicenseDocumentWritesExactBytesAndNeverOverwrites(t *testing.T) {
 	}
 }
 
+func TestExportLicenseDocumentNamesResolvedDestinationThroughFolderLink(t *testing.T) {
+	signer := newSigning(t)
+	document := signer.document(t, claims(1, time.Now().UTC().Add(30*24*time.Hour)))
+	entitlementPath, trustPath := writeReceived(t, "received", document, signer.trustBytes(t))
+	selection := filepath.Join(t.TempDir(), "operations.json")
+	app := freshApp(t, &queueChooser{}, selection)
+	if created := app.CreateLicenseActivation(desktop.LicenseActivationRequest{Entitlement: entitlementPath, Trust: trustPath, Author: "alice", Device: "laptop", Folder: t.TempDir()}); created.State != desktop.Completed {
+		t.Fatal(created)
+	}
+
+	parent := t.TempDir()
+	target := filepath.Join(parent, "target")
+	if err := os.Mkdir(target, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(parent, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symbolic links unavailable: %v", err)
+	}
+	folder := filepath.Join(link, "exports")
+	if err := os.Mkdir(folder, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	resolvedTarget, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := filepath.Join(resolvedTarget, "exports", "ENT-0002.json")
+	exported := freshApp(t, &queueChooser{folders: []string{folder}}, selection).ExportLicenseDocument()
+	if exported.State != desktop.Completed || exported.Path != expected {
+		t.Fatalf("export did not name the resolved destination %q: %+v", expected, exported)
+	}
+	if written := mustRead(t, expected); !slices.Equal(written, document) {
+		t.Fatal("the exported document did not land in the link's target byte for byte")
+	}
+	if refused := freshApp(t, &queueChooser{folders: []string{link}}, selection).ExportLicenseDocument(); refused.State != desktop.Failed || refused.Path != "" {
+		t.Fatalf("a chosen folder that is itself a symlink was accepted: %+v", refused)
+	}
+}
+
 func TestRunnerAdmissionAdministrationShowsAndSettles(t *testing.T) {
 	signer := newSigning(t)
 	document := signer.document(t, claims(1, time.Now().UTC().Add(30*24*time.Hour)))

@@ -598,7 +598,8 @@ func (a *App) ExportLicenseDocument() LicenseExportResult {
 		if folder == "" {
 			return declined.licenseExport()
 		}
-		if _, err = artifactpath.Directory(folder); err != nil {
+		folder, err = artifactpath.Directory(folder)
+		if err != nil {
 			return LicenseExportResult{State: Failed, Reason: "choose an existing folder that is not a symbolic link"}
 		}
 		destination := filepath.Join(folder, document.ID+".json")
