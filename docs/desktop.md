@@ -418,6 +418,8 @@ artifacts are never reported as completed.
 | `ApproveExpectations` | Records what a person decided about those proposals and reports the draft their approvals produced. |
 | `OpenCorrelationReview` | Rebuilds an explicitly selected human mapping over verified findings; refuses stale dependent mapping identities. |
 | `DecideCorrelation` | Saves an explicit accept, reject or added pair with a local analyst and reason in a new immutable review directory. |
+| `OpenCorrelationRules` | Reads one correlation-rules entry through the reader `readmit correlate` applies and reports its rules and authorities and the SHA-256 of its exact bytes. |
+| `OpenSequenceAnalysis` | Reads one sequence-analysis entry through the reader the sequence applies and reports what it declares and the SHA-256 of its exact bytes. |
 | `StartDurableRun` | Sends once with an explicit operator action into a fresh workspace entry, under the identity the preflight fixed; a changed test is refused rather than executed. Cancel stops future sends; in-flight effects remain visible. |
 | `OpenDurableRun` | Recovers one retained run folder read-only; never sends, resumes or resets. |
 | `PreflightRun` | Validates a saved test or suite locally and reports exactly what one execution would do: selected input, target and environment, effective configuration, observation and reset requirements, pinned versions, deadline, a generated fresh destination and the operation guard's admission decision. No network, no verdict. |
@@ -463,7 +465,9 @@ reports; the privacy region below describes it.
 folder and listing it are interruptible; `OpenCase`, `OpenProject`,
 `OpenRevisions`, `SaveNote`, `Search`, `OpenGrid`, `SaveFilter`,
 `SelectFilter`, `ForgetWorkspace`, `InspectOccurrence`, `Compare`, `NormalizeCompare`,
-`OpenNormalizationPolicy`, `EditReproducer`, `UndoReproducer`,
+`OpenNormalizationPolicy`, `OpenSequence`, `OpenCorrelationRules`,
+`OpenSequenceAnalysis`, `OpenCorrelationReview`, `DecideCorrelation`,
+`EditReproducer`, `UndoReproducer`,
 `BuildReproducer`, `CompareReproducers`, `AuthorTest`, `SaveTest`,
 `SuggestExpectations`, `ApproveExpectations`, `PreviewTransformation`,
 `SaveTransformPlan`, `OpenTransformPlan`, `PreviewReduction`, `OpenReview` and
@@ -1412,9 +1416,15 @@ records explicit human decisions without changing it.
 Naming a rules document is optional and there is no default rule set, for the
 reason [there is none on the command line](correlate.md#there-is-no-default-rule-set):
 asked without one, the sequence shows what the evidence itself recorded and
-says that no rule was applied. A rules document is an ordinary file of the open
-workspace, so the panel offers the workspace's files and the rules reader
-refuses the ones that are not one.
+says that no rule was applied. The **Correlation rules** picker offers the
+entries of the open workspace that declare `readmit-correlation-rules/v1`; one
+the rules reader refuses is refused in `readmit correlate`'s own sentence, and
+nothing is laid out beside the refusal. The rules applied are listed with the
+counts the report gives each one and with the canonical rules SHA-256 the
+report carries: the digest `readmit correlate` reports, taken over the
+declarations as the reader decoded them rather than over the file's bytes, so
+re-indenting a document keeps it and changing a declaration changes it. It is
+the digest a sequence analysis pins and a correlation review binds to.
 
 A sequence writes nothing at all, is bound to the identity the window verified
 for the open case, and re-reads the case and the rules for every window, for the
@@ -1495,10 +1505,44 @@ beside this sequence accepts, rejects or adds links with a local analyst and
 reason. Its separate reviewed mapping labels additions `manual` and retains
 original collisions. See [explicit correlation review](correlate.md#explicit-human-correlation-review)
 for its immutable history, stale-result invalidation and privacy boundary.
+While a mapping is read or a decision is saved the panel says so and the
+window's controls wait; a saved decision names the directory it was written
+to, the next decision continues from it, and the folder is read again so the
+retained reviews offer it. A decision that is refused, such as one written over
+an existing directory, leaves no mapping beside the refusal and keeps the
+decision in the form, and a review under rules changed on disk since the
+sequence was laid out is refused until the case is laid out again.
 
 A very large link is drawn as a window over its membership, with how many
 occurrences it holds beside it, so a rule that put thousands of occurrences
 together never appears as the handful of identifiers drawn beside one event.
+
+### Authoring rules and a sequence analysis
+
+**Author correlation rules and sequence analysis** holds two editors that
+compose documents from typed controls and save each as a new entry, never over
+an existing one. A correlation rule is one operator over one scope; an
+`identifier` rule also names its value selector and the three selectors of its
+assigning authority, and an authority mapping is added beside the rules.
+**Open this document** reads a retained rules document or sequence-analysis
+declaration through the same strict reader the sequence applies: once it is
+accepted, what it declares becomes the editor's own, so a rule, window, retry or
+downstream expectation added next extends that document, and the window names
+the entry beside the SHA-256 of the bytes it read. That digest names the file,
+and for rules it is not the canonical digest a sequence reports. An opened
+declaration keeps the case identity it binds to, and the editor says when that
+is not the open case's, which a sequence of the open case refuses. A document
+the reader refuses leaves the editor as it was, and while an open or a save
+runs the editor says so and its controls wait. Opening a document while the
+editor holds work changed since it was last opened or saved asks first:
+**Replace them with** or **Replace it with** the chosen entry reads it, and
+**Keep these rules**, **Keep this declaration** or `Escape` reads nothing and
+returns to the open control. Saving withdraws the question.
+
+Laying a case out, opening a rules document, a declaration or a review, and
+saving a decision each run to completion once they start, within their readers'
+bounds. The window's `Escape` does not interrupt one; what it answers is what is
+shown.
 
 ### Positions, not values
 

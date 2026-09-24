@@ -173,6 +173,7 @@ type CorrelationRuleDraft = {
   operator: CorrelationOperator;
   scope: CorrelationScope;
   sources: string;
+  value: string;
   authority: string;
 };
 
@@ -181,6 +182,7 @@ const EMPTY_CORRELATION_RULE: CorrelationRuleDraft = {
   operator: "control-id",
   scope: "source",
   sources: "",
+  value: "",
   authority: "",
 };
 
@@ -204,6 +206,7 @@ function composeCorrelationRules(
         operator: rule.operator,
         scope: rule.scope,
         ...(terms(rule.sources).length > 0 ? { sources: terms(rule.sources) } : {}),
+        ...(rule.value !== "" ? { value: rule.value } : {}),
         ...(terms(rule.authority).length > 0 ? { authority: terms(rule.authority) } : {}),
       })),
     },
@@ -213,11 +216,12 @@ function composeCorrelationRules(
 }
 
 /** Authoring the correlation rules a sequence and a correlation review read.
- * A rule is one typed operator over one declared scope; nothing implicit. */
+ * A rule is one typed operator over one declared scope; nothing implicit.
+ * Opening a retained document shows its rules and authorities here. */
 export function CorrelationRulesEditor({
   workspace,
   entries,
-  busy,
+  busy: windowBusy,
   onSaved,
 }: {
   workspace: string;
@@ -235,11 +239,66 @@ export function CorrelationRulesEditor({
   const [entry, setEntry] = useState("");
   const [output, setOutput] = useState("");
   const [result, setResult] = useState<CorrelationRulesResult | null>(null);
+  // Whether the rules on screen were changed since they were last opened or
+  // saved. Opening another document replaces them, so that asks first.
+  const [unsaved, setUnsaved] = useState(false);
+  // The retained document whose opening waits for the person's answer.
+  const [confirming, setConfirming] = useState<string | null>(null);
+  // The entry the rules on screen were opened from, named beside the identity
+  // of its exact bytes.
+  const [openedFrom, setOpenedFrom] = useState("");
+  // What the editor itself is waiting on the application for: an open or a
+  // save of its own. Its controls wait with it, as they do for the window's.
+  const [pending, setPending] = useState<string | null>(null);
+  const busy = windowBusy || pending !== null;
+  const keep = useRef<HTMLButtonElement | null>(null);
+  const openButton = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (confirming !== null) keep.current?.focus();
+  }, [confirming]);
+
+  // Once the rules are saved there is nothing left to ask about.
+  useEffect(() => {
+    if (!unsaved) setConfirming(null);
+  }, [unsaved]);
 
   const recompose = (nextRules: CorrelationRuleDraft[], nextAuthorities: CorrelationAuthority[]) => {
     setRules(nextRules);
     setAuthorities(nextAuthorities);
     setDocument(composeCorrelationRules(nextRules, nextAuthorities));
+    setUnsaved(true);
+  };
+
+  // An accepted document's rules and authorities, as the Go reader decoded
+  // them, become the controls' own, so adding or removing one edits the
+  // document that was opened instead of replacing it with whatever the
+  // controls held before. A refusal changes nothing on screen but the status.
+  const open = async (name: string) => {
+    setPending(`Opening ${name}.`);
+    const opened = await openCorrelationRules(workspace, name);
+    setPending(null);
+    setResult(opened);
+    if (opened.state !== "completed" || !opened.rules) return;
+    setRules(
+      opened.rules.rules.map((rule) => ({
+        id: rule.id,
+        operator: rule.operator,
+        scope: rule.scope,
+        sources: (rule.sources ?? []).join(" "),
+        value: rule.value ?? "",
+        authority: (rule.authority ?? []).join(" "),
+      })),
+    );
+    setAuthorities(opened.rules.authorities ?? []);
+    if (opened.document) setDocument(opened.document);
+    setUnsaved(false);
+    setOpenedFrom(name);
+  };
+
+  const keepRules = () => {
+    setConfirming(null);
+    openButton.current?.focus();
   };
 
   return (
@@ -248,7 +307,8 @@ export function CorrelationRulesEditor({
       <p className="hint">
         A rule declares how two occurrences may be linked: one operator, one scope, and the sources
         or assigning authorities it applies to. The engine applies them; nothing is inferred beyond
-        what a rule declares.
+        what a rule declares. Opening a retained document shows its rules here; saving writes a new
+        entry beside it.
       </p>
       <OpenForm
         idPrefix="correlation-rules"
@@ -257,14 +317,43 @@ export function CorrelationRulesEditor({
         entries={entries}
         entry={entry}
         onEntry={setEntry}
-        onOpen={() =>
-          void (async () => {
-            const opened = await openCorrelationRules(workspace, entry);
-            setResult(opened);
-            if (opened.document) setDocument(opened.document);
-          })()
-        }
+        openButton={openButton}
+        onOpen={() => (unsaved ? setConfirming(entry) : void open(entry))}
       />
+      {confirming !== null ? (
+        <div
+          role="group"
+          aria-label={`Open ${confirming} in place of these rules?`}
+          onKeyDown={(event) => {
+            // Escape answers this question and goes no further: the window's
+            // own Escape cancels a running operation.
+            if (event.key === "Escape" && !event.nativeEvent.isComposing && !busy) {
+              event.preventDefault();
+              event.stopPropagation();
+              keepRules();
+            }
+          }}
+        >
+          <p className="hint">
+            The rules in this editor are not saved. Opening {confirming} replaces them.
+          </p>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              const name = confirming;
+              setConfirming(null);
+              openButton.current?.focus();
+              void open(name);
+            }}
+          >
+            Replace them with {confirming}
+          </button>
+          <button type="button" ref={keep} disabled={busy} onClick={keepRules}>
+            Keep these rules
+          </button>
+        </div>
+      ) : null}
       <ul className="selection">
         {rules.map((rule, index) => (
           <li key={`${rule.id}:${index}`}>
@@ -272,8 +361,9 @@ export function CorrelationRulesEditor({
             <span className="reason">
               {rule.operator} · {rule.scope}
               {terms(rule.sources).length > 0 ? ` · sources ${terms(rule.sources).join(", ")}` : ""}
+              {rule.value !== "" ? ` · value ${rule.value}` : ""}
               {terms(rule.authority).length > 0
-                ? ` · authorities ${terms(rule.authority).join(", ")}`
+                ? ` · authority ${terms(rule.authority).join(", ")}`
                 : ""}
             </span>
             <button
@@ -338,9 +428,21 @@ export function CorrelationRulesEditor({
           disabled={busy}
           onChange={(event) => setDraft({ ...draft, sources: event.target.value })}
         />
-        <label htmlFor="correlation-rule-authority">Authority keys, separated by spaces</label>
+        <label htmlFor="correlation-rule-value">Identifier value selector</label>
+        <input
+          id="correlation-rule-value"
+          placeholder="PID-3.1"
+          value={draft.value}
+          disabled={busy}
+          onChange={(event) => setDraft({ ...draft, value: event.target.value })}
+        />
+        <label htmlFor="correlation-rule-authority">
+          Assigning authority selectors (namespace, universal ID, universal ID type), separated by
+          spaces
+        </label>
         <input
           id="correlation-rule-authority"
+          placeholder="PID-3.4.1 PID-3.4.2 PID-3.4.3"
           value={draft.authority}
           disabled={busy}
           onChange={(event) => setDraft({ ...draft, authority: event.target.value })}
@@ -416,7 +518,10 @@ export function CorrelationRulesEditor({
         idPrefix="correlation-rules"
         busy={busy}
         document={document}
-        onDocument={setDocument}
+        onDocument={(value) => {
+          setDocument(value);
+          setUnsaved(true);
+        }}
       />
       <SaveForm
         idPrefix="correlation-rules"
@@ -426,16 +531,21 @@ export function CorrelationRulesEditor({
         onOutput={setOutput}
         onSave={() =>
           void (async () => {
+            setPending(`Saving ${output}.`);
             const saved = await saveCorrelationRules({ workspace, document, output });
+            setPending(null);
             setResult(saved);
             if (saved.state === "completed" && saved.output) {
               setOutput("");
+              setUnsaved(false);
               onSaved?.();
             }
           })()
         }
       />
-      <p role="status">{outcome(result, "Accepted by the shared correlation-rules reader.")}</p>
+      <p role="status">
+        {pending ?? outcome(result, `Opened ${openedFrom} · exact bytes hash to ${result?.sha256 ?? ""}`)}
+      </p>
     </section>
   );
 }
@@ -474,12 +584,13 @@ function composeSequenceAnalysis(
 /** Authoring the sequence-analysis declaration a sequence reads: the observed
  * windows an operator declares, retries, downstream expectations and the
  * clock-comparison tolerance. Coverage is the operator's claim, never the
- * evidence's. */
+ * evidence's. Opening a retained declaration shows what it declares here,
+ * including the case identity it binds to. */
 export function SequenceAnalysisEditor({
   workspace,
   caseIdentity,
   entries,
-  busy,
+  busy: windowBusy,
   onSaved,
 }: {
   workspace: string;
@@ -502,6 +613,34 @@ export function SequenceAnalysisEditor({
   const [entry, setEntry] = useState("");
   const [output, setOutput] = useState("");
   const [result, setResult] = useState<SequenceAnalysisResult | null>(null);
+  // The case identity an opened declaration binds to. It stays the one the
+  // declaration names, so extending a declaration never rebinds it to the
+  // open case; before anything is opened, the open case's identity is used.
+  const [boundIdentity, setBoundIdentity] = useState<string | null>(null);
+  const bindsTo = boundIdentity ?? caseIdentity;
+  // Whether the declaration on screen was changed since it was last opened or
+  // saved. Opening another one replaces it, so that asks first.
+  const [unsaved, setUnsaved] = useState(false);
+  // The retained declaration whose opening waits for the person's answer.
+  const [confirming, setConfirming] = useState<string | null>(null);
+  // The entry the declaration on screen was opened from, named beside the
+  // identity of its exact bytes.
+  const [openedFrom, setOpenedFrom] = useState("");
+  // What the editor itself is waiting on the application for: an open or a
+  // save of its own. Its controls wait with it, as they do for the window's.
+  const [pending, setPending] = useState<string | null>(null);
+  const busy = windowBusy || pending !== null;
+  const keep = useRef<HTMLButtonElement | null>(null);
+  const openButton = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (confirming !== null) keep.current?.focus();
+  }, [confirming]);
+
+  // Once the declaration is saved there is nothing left to ask about.
+  useEffect(() => {
+    if (!unsaved) setConfirming(null);
+  }, [unsaved]);
 
   const recompose = (
     nextRulesSHA: string,
@@ -517,7 +656,7 @@ export function SequenceAnalysisEditor({
     setDownstream(nextDownstream);
     setDocument(
       composeSequenceAnalysis(
-        caseIdentity,
+        bindsTo,
         nextRulesSHA,
         nextTolerance,
         nextWindows,
@@ -525,16 +664,51 @@ export function SequenceAnalysisEditor({
         nextDownstream,
       ),
     );
+    setUnsaved(true);
+  };
+
+  // An accepted declaration, as the Go reader decoded it, becomes the
+  // controls' own, so a window, retry or expectation added next extends the
+  // declaration that was opened instead of replacing it with whatever the
+  // controls held before. A refusal changes nothing on screen but the status.
+  const open = async (name: string) => {
+    setPending(`Opening ${name}.`);
+    const opened = await openSequenceAnalysis(workspace, name);
+    setPending(null);
+    setResult(opened);
+    if (opened.state !== "completed" || !opened.declaration) return;
+    const declared = opened.declaration;
+    setBoundIdentity(declared.case_identity);
+    setRulesSHA(declared.rules_sha256);
+    setTolerance(String(declared.clock_tolerance_seconds));
+    setWindows(declared.windows.map((window) => ({ ...window })));
+    setRetries(declared.retries.map((retry) => ({ ...retry })));
+    setDownstream(declared.downstream.map((expected) => ({ ...expected })));
+    if (opened.document) setDocument(opened.document);
+    setUnsaved(false);
+    setOpenedFrom(name);
+  };
+
+  const keepDeclaration = () => {
+    setConfirming(null);
+    openButton.current?.focus();
   };
 
   return (
     <section aria-label="Sequence analysis editor">
       <h5>Sequence analysis</h5>
       <p className="hint">
-        This declaration binds to the verified case identity {caseIdentity || "of the open case"}.
+        This declaration binds to the verified case identity {bindsTo || "of the open case"}.
         A window is an operator's statement of what a capture covered; declaring one never changes
-        what the evidence recorded.
+        what the evidence recorded. Opening a retained declaration shows what it declares here;
+        saving writes a new entry beside it.
       </p>
+      {bindsTo !== "" && caseIdentity !== "" && bindsTo !== caseIdentity ? (
+        <p className="hint">
+          The open case's identity is {caseIdentity}. Laying the open case out under this
+          declaration is refused, because it binds to another case.
+        </p>
+      ) : null}
       <OpenForm
         idPrefix="sequence-analysis"
         label="Retained analysis document"
@@ -542,15 +716,46 @@ export function SequenceAnalysisEditor({
         entries={entries}
         entry={entry}
         onEntry={setEntry}
-        onOpen={() =>
-          void (async () => {
-            const opened = await openSequenceAnalysis(workspace, entry);
-            setResult(opened);
-            if (opened.document) setDocument(opened.document);
-          })()
-        }
+        openButton={openButton}
+        onOpen={() => (unsaved ? setConfirming(entry) : void open(entry))}
       />
-      <label htmlFor="sequence-analysis-rules-sha">Correlation rules SHA-256 this analysis names</label>
+      {confirming !== null ? (
+        <div
+          role="group"
+          aria-label={`Open ${confirming} in place of this declaration?`}
+          onKeyDown={(event) => {
+            // Escape answers this question and goes no further: the window's
+            // own Escape cancels a running operation.
+            if (event.key === "Escape" && !event.nativeEvent.isComposing && !busy) {
+              event.preventDefault();
+              event.stopPropagation();
+              keepDeclaration();
+            }
+          }}
+        >
+          <p className="hint">
+            The declaration in this editor is not saved. Opening {confirming} replaces it.
+          </p>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              const name = confirming;
+              setConfirming(null);
+              openButton.current?.focus();
+              void open(name);
+            }}
+          >
+            Replace it with {confirming}
+          </button>
+          <button type="button" ref={keep} disabled={busy} onClick={keepDeclaration}>
+            Keep this declaration
+          </button>
+        </div>
+      ) : null}
+      <label htmlFor="sequence-analysis-rules-sha">
+        Canonical correlation rules SHA-256 this analysis names, as the sequence reports it
+      </label>
       <input
         id="sequence-analysis-rules-sha"
         value={rulesSHA}
@@ -766,7 +971,10 @@ export function SequenceAnalysisEditor({
         idPrefix="sequence-analysis"
         busy={busy}
         document={document}
-        onDocument={setDocument}
+        onDocument={(value) => {
+          setDocument(value);
+          setUnsaved(true);
+        }}
       />
       <SaveForm
         idPrefix="sequence-analysis"
@@ -776,16 +984,21 @@ export function SequenceAnalysisEditor({
         onOutput={setOutput}
         onSave={() =>
           void (async () => {
+            setPending(`Saving ${output}.`);
             const saved = await saveSequenceAnalysis({ workspace, document, output });
+            setPending(null);
             setResult(saved);
             if (saved.state === "completed" && saved.output) {
               setOutput("");
+              setUnsaved(false);
               onSaved?.();
             }
           })()
         }
       />
-      <p role="status">{outcome(result, "Accepted by the shared sequence-analysis reader.")}</p>
+      <p role="status">
+        {pending ?? outcome(result, `Opened ${openedFrom} · exact bytes hash to ${result?.sha256 ?? ""}`)}
+      </p>
     </section>
   );
 }

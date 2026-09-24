@@ -7627,8 +7627,10 @@ export interface CorrelationRulesDocument {
 }
 
 /** One authored correlation-rules document. `sha256` is the digest of the
- * exact bytes the entry holds, which is what a sequence or a correlation
- * review binds a derived view to. */
+ * exact bytes the entry holds, which names the file an editor opened or
+ * saved. It is not the rules digest a sequence or a correlation review binds
+ * to: a sequence's `rules_sha256` is the engine's digest of the canonical
+ * rules it ran, as `readmit correlate` reports it. */
 export interface CorrelationRulesResult {
   state: State;
   reason?: string;
@@ -7669,11 +7671,15 @@ export interface SequenceAnalysisDeclaration {
   downstream: AnalysisDownstreamDeclaration[];
 }
 
+/** One authored sequence-analysis declaration. `sha256` is the digest of the
+ * exact bytes the entry holds, which names the file an editor opened or
+ * saved. */
 export interface SequenceAnalysisResult {
   state: State;
   reason?: string;
   document?: string;
   output?: string;
+  sha256?: string;
   declaration?: SequenceAnalysisDeclaration;
 }
 

@@ -176,6 +176,7 @@ type Running =
   | "revisions"
   | "practice"
   | "sequence"
+  | "correlation-review"
   | "transformation"
   | "transform-plan"
   | "transform-open"
@@ -2443,9 +2444,12 @@ export default function App() {
             onSaved={() => void refreshListing()}
             onReview={async (request, write) => {
               let result: CorrelationReviewResult = { state: "failed", reason: "The review did not run." };
-              await operate("sequence", async () => {
+              await operate("correlation-review", async () => {
                 result = await (write ? decideCorrelation(request) : openCorrelationReview(request));
               });
+              // A recorded decision is a new directory of the open folder, so
+              // the listing is read again and the retained reviews offer it.
+              if (write && result.state === "completed") await refreshListing();
               return result;
             }}
             rulesEntries={(opened?.artifacts ?? [])
