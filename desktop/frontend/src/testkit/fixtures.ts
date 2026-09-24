@@ -53,6 +53,9 @@ import type {
   ReproducerResolution,
   ReproducerResult,
   RunState,
+  ScenarioCatalogResult,
+  ScenarioPreviewResult,
+  TestRunnerStatus,
   TestDraftDocument,
   TestResult,
   TestResolution,
@@ -468,7 +471,7 @@ export function guideResult(next: GuideStepId | undefined, done: number): GuideR
 }
 
 /** What one practice run produced: statuses and a verdict, no values. */
-export function practiceResult(trial: "baseline" | "post-fix", status: string): PracticeResult {
+export function practiceResult(trial: "baseline" | "post-fix", status: TestRunnerStatus): PracticeResult {
   return {
     state: "completed",
     practice: {
@@ -943,7 +946,7 @@ export function canonicalResult(
 }
 
 /** The indicator table panels are given, the way App builds it from Shell. */
-export function indicatorTable(): Map<StatusValue, Shell["indicators"][number]> {
+export function indicatorTable(): Map<string, Shell["indicators"][number]> {
   const shell = shellResult().shell;
   return new Map(shell ? shell.indicators.map((indicator) => [indicator.status, indicator]) : []);
 }
@@ -1023,9 +1026,12 @@ export function indexDetailsFixture(overrides: Partial<IndexDetails> = {}): Inde
     index_name: INDEX_ENTRY,
     case_name: CASE_ENTRY,
     identity: CASE_IDENTITY,
+    schema: "readmit-index/v1",
+    provenance: "captured",
     retention: "states",
     retention_state: "active",
     fields: ["PID-3", "MSH-10"],
+    sources: 1,
     records: 100,
     decoded: 98,
     undecodable: 2,
@@ -1181,7 +1187,7 @@ export function defaultTargetCheckResult(overrides: Partial<TargetCheckResult> =
     state: "completed",
     report: {
       name: "staging-mllp",
-      classification: "isolated_testing",
+      classification: "nonproduction",
       peer: "peer-under-test",
       outcome: "connected",
       phase: "established",
@@ -1190,9 +1196,9 @@ export function defaultTargetCheckResult(overrides: Partial<TargetCheckResult> =
     decision: {
       schema: "readmit-send-decision/v1",
       allowed: true,
-      reason: "address matches approved destination list",
+      reason: "approved",
       address: "peer-under-test",
-      classification: "isolated_testing",
+      classification: "nonproduction",
       explicit_send: true,
       policy_selected: true,
       approved_destinations: ["approved-peer"],
@@ -1269,9 +1275,9 @@ export function defaultSendPolicyEvalResult(overrides: Partial<SendPolicyEvalRes
     decision: {
       schema: "readmit-send-decision/v1",
       allowed: true,
-      reason: "address matches approved destination list",
+      reason: "approved",
       address: "peer-under-test",
-      classification: "isolated_testing",
+      classification: "nonproduction",
       explicit_send: true,
       policy_selected: true,
       approved_destinations: ["approved-peer"],
@@ -1314,11 +1320,11 @@ export function defaultTargetResetResult(overrides: Partial<TargetResetResult> =
     state: "completed",
     result: {
       schema: "readmit-reset-outcome/v1",
-      state: "completed",
-      outcome: "succeeded",
-      reason: "all reset actions executed successfully",
+      state: "passed",
+      outcome: "confirmed",
+      reason: "every_action_confirmed",
       environment: "staging-mllp",
-      classification: "isolated_testing",
+      classification: "nonproduction",
       plan_sha256: "abc123def456",
       actions: [
         {
@@ -1326,14 +1332,14 @@ export function defaultTargetResetResult(overrides: Partial<TargetResetResult> =
           operator: "operator_confirms",
           authority: "none",
           outcome: "confirmed",
-          reason: "operator confirmed",
+          reason: "operator_confirmed",
         },
         {
           id: "step-2",
           operator: "observation_empty",
           authority: "read_declared_file",
-          outcome: "observed",
-          reason: "file empty",
+          outcome: "confirmed",
+          reason: "ledger_empty",
         },
       ],
       attempted_at: "2026-09-21T12:00:00Z",
@@ -1342,9 +1348,9 @@ export function defaultTargetResetResult(overrides: Partial<TargetResetResult> =
   };
 }
 
-export function scenarioCatalogFixture() {
+export function scenarioCatalogFixture(): ScenarioCatalogResult {
   return {
-    state: "completed" as const,
+    state: "completed",
     catalog: {
       generator_version: "readmit-scenario-generator-v1",
       profiles: [
@@ -1375,9 +1381,9 @@ export function scenarioCatalogFixture() {
   };
 }
 
-export function scenarioPreviewFixture(options: { reveal?: boolean } = {}) {
+export function scenarioPreviewFixture(options: { reveal?: boolean } = {}): ScenarioPreviewResult {
   return {
-    state: "completed" as const,
+    state: "completed",
     scenario: "siu-draft",
     version: "1",
     profile: "readmit-siu-lifecycle-v1",
@@ -1893,7 +1899,15 @@ export function suiteImpactResult(): SuiteImpactResult {
       schema: "readmit-expectation-impact/v1",
       from: SUITE_RELEASE_IDENTITY,
       to: "successor-identity-fixed-for-tests",
-      comparison: { schema: "readmit-test/v1", identity: SUITE_IDENTITY, revision: 2, parent: SUITE_RELEASE_IDENTITY, values_shown: false, changes: [{ part: "assertion[ack].expected", kind: "changed" }] },
+      comparison: {
+        schema: "readmit-expectation-review/v1",
+        identity: SUITE_IDENTITY,
+        id: "successor",
+        revision: 2,
+        parent: SUITE_RELEASE_IDENTITY,
+        baseline: { schema: "readmit-baseline-review/v1", identity: SUITE_IDENTITY, revision: 2, parent: SUITE_RELEASE_IDENTITY, values_shown: false, changes: [{ part: "assertion[ack].expected", kind: "changed" }] },
+        profiles: [{ part: "profile:local-siu", kind: "added" }],
+      },
       tests: [{ test: "booking", rows: 1, pinned: SUITE_RELEASE_IDENTITY, state: "affected" }],
     },
   };

@@ -3,6 +3,7 @@ package desktop_test
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -23,6 +24,8 @@ import (
 const (
 	frontendDirectory = "../../desktop/frontend/src"
 	stylesFile        = frontendDirectory + "/styles.css"
+	// generatedBindings is what desktop/bindgen writes from the Go types.
+	generatedBindings = frontendDirectory + "/bindings.gen.ts"
 )
 
 func shell(t *testing.T) desktop.Shell {
@@ -67,9 +70,9 @@ func frontend(t *testing.T) string {
 // read the evidence, inspect one case, and check what stays on the machine.
 // Focus moves in that order, which is the order the window renders.
 func TestFocusOrderFollowsTheInvestigationJourney(t *testing.T) {
-	journey := []string{"commands", "navigation", "evidence", "inspector", "privacy"}
+	journey := []desktop.RegionID{"commands", "navigation", "evidence", "inspector", "privacy"}
 	regions := shell(t).Regions
-	ordered := make([]string, 0, len(regions))
+	ordered := make([]desktop.RegionID, 0, len(regions))
 	for _, region := range regions {
 		if region.Label == "" {
 			t.Errorf("region %q has no accessible name", region.ID)
@@ -103,8 +106,8 @@ func TestFocusOrderFollowsTheInvestigationJourney(t *testing.T) {
 // named by a command, and the palette that lists those commands has a key.
 func TestEveryRegionIsReachableFromTheCommandPalette(t *testing.T) {
 	described := shell(t)
-	targeted := make(map[string]bool)
-	identifiers := make(map[string]bool)
+	targeted := make(map[desktop.RegionID]bool)
+	identifiers := make(map[desktop.CommandID]bool)
 	for _, command := range described.Commands {
 		if command.ID == "" || command.Title == "" {
 			t.Errorf("command %+v cannot be listed or run", command)
@@ -308,35 +311,74 @@ func TestTheInterfaceReachesNoNetworkAndNoBrowserStorage(t *testing.T) {
 	}
 }
 
-// The window's vocabulary is declared once, in Go, and the bindings repeat it as
-// closed types so the interface can be held to it. This test is what requires
-// them to: a region, command, theme, status or match kind the facade declares
-// and the bindings do not is caught here, not by the frontend build. The build
-// adds only what the two records prove — an element for every region and an
-// action for every command. A status declared without an indicator compiles
-// either way, because the interface falls back to the plain status word, so it
-// is TestEveryStatusIsDistinguishableWithoutColour that requires one.
+// The window's vocabulary is declared once, in Go, as the constants of its
+// named types, and the generated bindings declare each of those types as the
+// union of its constants, so the interface is held to that vocabulary and no
+// other. This test holds the description the window renders to the same
+// constants, in both directions: a region, command or theme described with a
+// value that is not a declared constant would be missing from its union, and
+// the records keyed by the union would not require an element or an action
+// for it. A status is an operation state, an artifact kind or a registered case
+// status, each its own union. The build adds only what the two records prove —
+// an element for every region and an action for every command. A status
+// declared without an indicator compiles either way, because the interface
+// falls back to the plain status word, so it is
+// TestEveryStatusIsDistinguishableWithoutColour that requires one.
 func TestFrontendBindingsDeclareTheWindowsVocabulary(t *testing.T) {
 	described := shell(t)
-	bindings := read(t, bindingsFile)
-	declared := func(kind, value string) {
-		if !strings.Contains(bindings, `"`+value+`"`) {
-			t.Errorf("%s %q has no typed declaration in %s", kind, value, bindingsFile)
+	bindings := read(t, generatedBindings)
+	union := func(name string) []string {
+		t.Helper()
+		declaration := regexp.MustCompile(`(?m)^export type ` + name + ` =([^;]*);`).FindStringSubmatch(bindings)
+		if declaration == nil {
+			t.Fatalf("%s declares no union %s", generatedBindings, name)
+		}
+		var values []string
+		for _, quoted := range regexp.MustCompile(`"[^"]*"`).FindAllString(declaration[1], -1) {
+			value, err := strconv.Unquote(quoted)
+			if err != nil {
+				t.Fatal(err)
+			}
+			values = append(values, value)
+		}
+		return values
+	}
+	exactly := func(kind, name string, described []string) {
+		t.Helper()
+		declared := union(name)
+		for _, value := range described {
+			if !slices.Contains(declared, value) {
+				t.Errorf("%s %q is described but %s does not declare it", kind, value, name)
+			}
+		}
+		for _, value := range declared {
+			if !slices.Contains(described, value) {
+				t.Errorf("%s declares %s %q, which the window does not describe", name, kind, value)
+			}
 		}
 	}
+	var regions, commands, themes []string
 	for _, region := range described.Regions {
-		declared("region", region.ID)
+		regions = append(regions, string(region.ID))
 	}
 	for _, command := range described.Commands {
-		declared("command", command.ID)
+		commands = append(commands, string(command.ID))
 	}
 	for _, theme := range described.Themes {
-		declared("theme", theme)
+		themes = append(themes, string(theme))
 	}
+	exactly("region", "RegionId", regions)
+	exactly("command", "CommandId", commands)
+	exactly("theme", "Theme", themes)
+	statuses := slices.Concat(union("State"), union("Kind"), union("CaseStatus"))
 	for _, indicator := range described.Indicators {
-		declared("status", indicator.Status)
+		if !slices.Contains(statuses, indicator.Status) {
+			t.Errorf("status %q is neither an operation state, an artifact kind nor a case status the bindings declare", indicator.Status)
+		}
 	}
 	for _, kind := range []desktop.MatchKind{desktop.ArtifactMatch, desktop.RegisteredMatch} {
-		declared("match kind", string(kind))
+		if !slices.Contains(union("MatchKind"), string(kind)) {
+			t.Errorf("match kind %q has no declaration in %s", kind, generatedBindings)
+		}
 	}
 }

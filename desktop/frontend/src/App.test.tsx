@@ -496,7 +496,7 @@ test("the guided sample runs the saved spec against the practice receiver and re
   const { facade } = await renderApp({
     SelectWorkspace: () => folderWithCase(),
     Guide: () => guideResult("baseline", 2),
-    RunPractice: () => practiceResult("baseline", "assertion_failed"),
+    RunPractice: () => practiceResult("baseline", "assertion_failure"),
   });
   await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
   const run = await screen.findByRole("button", {
@@ -513,7 +513,7 @@ test("the guided sample runs the saved spec against the practice receiver and re
     trial: "baseline",
     output: "baseline-run",
   });
-  expect((await screen.findAllByText(/assertion_failed/)).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText(/assertion_failure/)).length).toBeGreaterThan(0);
   // What the folder now holds is read back rather than inferred from the call.
   expect(facade.callsTo("Guide").length).toBeGreaterThan(before);
 });

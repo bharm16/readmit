@@ -69,7 +69,7 @@ test("choosing the guided sample creates the real sample workspace", async () =>
 test("the license state is stated with its own next action", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp({
-    OperationStatus: () => ({ state: "empty", selected: false }),
+    OperationStatus: () => ({ state: "empty", selected: false, author_seats: 0, runner_instances: 0 }),
   });
   const region = within(firstRunRegion());
   expect(await region.findByText(/none activated on this machine/i)).toBeTruthy();

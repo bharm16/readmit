@@ -473,7 +473,7 @@ func TestEverySaveThatReplacesADocumentLeavesTheFileALinkLedToUnchanged(t *testi
 			}},
 		{name: "UpdateRegisteredCase", file: project.DocumentName, linkRefusal: projectUnread, create: createProject,
 			replace: func(app *desktop.App, folder, _ string) saved {
-				status := "resolved"
+				status := project.StatusResolved
 				result := app.UpdateRegisteredCase(folder, "regression", desktop.CaseChange{Status: &status})
 				return saved{result.State, result.Reason, nil}
 			}},

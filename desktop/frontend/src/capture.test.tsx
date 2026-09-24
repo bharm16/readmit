@@ -13,6 +13,7 @@ import type {
   CapturePreviewResult,
   CaptureProgressResult,
   CaptureSessionResult,
+  EvidenceSource,
   ObservationCaptureBindRequest,
   ObservationSourceResult,
   ObservationSupportResult,
@@ -730,7 +731,7 @@ test("a declared source registration reopens for review and is saved with every 
   const { facade } = await openProject(user);
   await user.click(screen.getByRole("button", { name: "Capture or collect evidence…" }));
   const panel = within(capturePanel());
-  const declared = {
+  const declared: EvidenceSource = {
     schema: "readmit-source/v1",
     name: "scheduling-sftp",
     kind: "transfer",

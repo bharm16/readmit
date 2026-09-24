@@ -67,7 +67,7 @@ function activeStatus() {
 
 function quiet(extra: FacadeHandlers = {}): FacadeHandlers {
   return {
-    OperationStatus: () => ({ state: "failed", reason: "operation activation is missing or invalid; select and activate an operation policy", selected: false }),
+    OperationStatus: () => ({ state: "failed", reason: "operation activation is missing or invalid; select and activate an operation policy", selected: false, author_seats: 0, runner_instances: 0 }),
     CommercialStatus: () => ({ state: "empty", reason: "the commercial portal destination is not configured; choose the operator-supplied destinations file" }),
     LicenseStatus: () => ({ state: "empty", reason: "no license is activated on this computer" }),
     ...extra,
@@ -99,9 +99,9 @@ test("unreadable remembered operation and commercial selections stay visible unt
   const commercialRefusal = "the remembered commercial selection cannot be read; choose a destinations file again";
   let recovered = false;
   const facade = installFacade(quiet({
-    OperationStatus: () => recovered ? activeStatus() : { state: "failed", selected: false, reason: operationRefusal },
+    OperationStatus: () => recovered ? activeStatus() : { state: "failed", selected: false, author_seats: 0, runner_instances: 0, reason: operationRefusal },
     CommercialStatus: () => ({ state: "failed", reason: commercialRefusal }),
-    ChooseOperationPolicy: () => { recovered = true; return { state: "completed", selected: true }; },
+    ChooseOperationPolicy: () => { recovered = true; return { state: "completed", selected: true, author_seats: 0, runner_instances: 0 }; },
     ChooseCommercialDestinations: () => ({ state: "completed", environment: "sandbox", portal: PORTAL }),
   }));
   render(<OperationAccess />);
@@ -127,7 +127,7 @@ test("a received license is verified, configured, created and activated without 
     ChooseLicenseFolder: () => ({ state: "completed" as const, folder: ACTIVATION_FOLDER }),
     CreateLicenseActivation: async (request) => {
       created.push(request);
-      return { state: "completed" as const, selected: true, reason: "the local activation is created; activate it to admit licensed work" };
+      return { state: "completed" as const, selected: true, author_seats: 0, runner_instances: 0, reason: "the local activation is created; activate it to admit licensed work" };
     },
     ActivateOperations: () => activeStatus(),
   });
@@ -244,8 +244,8 @@ test("activation folder choice, export and clock recovery retain status on refus
     VerifyLicenseDocument: () => receivedLicense(),
     ChooseLicenseFolder: () => ({ state: "failed" as const, reason: "choose an existing folder that is not a symbolic link" }),
     ExportLicenseDocument: () => ({ state: "failed" as const, reason: "the destination folder already holds a file with this name" }),
-    ResolveOperationClock: () => ({ state: "failed" as const, selected: true, reason: "local UTC time is still behind the recorded high-water" }),
-    RenewLicenseDocument: () => ({ state: "failed" as const, selected: true, reason: "the later issue does not assign this device" }),
+    ResolveOperationClock: () => ({ state: "failed" as const, selected: true, author_seats: 0, runner_instances: 0, reason: "local UTC time is still behind the recorded high-water" }),
+    RenewLicenseDocument: () => ({ state: "failed" as const, selected: true, author_seats: 0, runner_instances: 0, reason: "the later issue does not assign this device" }),
   }));
   render(<OperationAccess />);
   expect(await screen.findByText(/Clock correction requires explicit resolution/)).toBeTruthy();
@@ -292,7 +292,7 @@ test("a supplied activation folder can be chosen from the keyboard and cancellat
   const user = userEvent.setup();
   const facade = installFacade(quiet({
     OperationStatus: () => activeStatus(),
-    ChooseOperationPolicy: () => ({ state: "cancelled" as const, selected: true, reason: "no folder was chosen" }),
+    ChooseOperationPolicy: () => ({ state: "cancelled" as const, selected: true, author_seats: 0, runner_instances: 0, reason: "no folder was chosen" }),
   }));
   render(<OperationAccess />);
   await screen.findByText(/License: active/);
@@ -302,7 +302,7 @@ test("a supplied activation folder can be chosen from the keyboard and cancellat
   expect(await screen.findByText("no folder was chosen")).toBeTruthy();
   expect(screen.getByText(/License: active/)).toBeTruthy();
   facade.reply({
-    ChooseOperationPolicy: () => ({ state: "completed", selected: true }),
+    ChooseOperationPolicy: () => ({ state: "completed", selected: true, author_seats: 0, runner_instances: 0 }),
     OperationStatus: () => ({ ...activeStatus(), term: "grace" }),
   });
   await user.click(choice);

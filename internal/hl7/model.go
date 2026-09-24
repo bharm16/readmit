@@ -32,6 +32,9 @@ const (
 	Empty   State = "empty"
 	Null    State = "null"
 	Omitted State = "omitted"
+	// NoState is the zero State. It names no decoded state, where a document
+	// states a value in place of one, as a filter's value predicate does.
+	NoState State = ""
 )
 
 type Field struct {

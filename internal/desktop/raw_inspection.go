@@ -107,19 +107,25 @@ type RoundTripResult struct {
 
 func (r *RoundTripResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
+// The paths ChooseInspectionPath chooses.
+const (
+	inspectionFile  = "file"
+	roundTripFolder = "round-trip-folder"
+)
+
 // ChooseInspectionPath presents the host's native dialog for the file to
 // inspect ("file") or the folder a byte-identical copy is written into
 // ("round-trip-folder"). Choosing reads and writes nothing.
 func (a *App) ChooseInspectionPath(kind string) InspectionPathResult {
 	return run(a, true, false, func(ctx context.Context) InspectionPathResult {
 		switch kind {
-		case "file":
+		case inspectionFile:
 			path, declined := a.chooseOneFile(ctx, "Choose the HL7 file to inspect")
 			if path == "" {
 				return InspectionPathResult{State: declined.state, Reason: declined.reason, Kind: kind}
 			}
 			return InspectionPathResult{State: Completed, Kind: kind, Path: path}
-		case "round-trip-folder":
+		case roundTripFolder:
 			folder, declined := a.chooseFolder(ctx, "Choose the folder for the byte-identical copy")
 			if folder == "" {
 				return InspectionPathResult{State: declined.state, Reason: declined.reason, Kind: kind}

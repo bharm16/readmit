@@ -16,8 +16,10 @@ import {
   type EditorDraft,
   type Field,
   type LocalProfile,
+  type LocalProfileConditionOperator,
   type LocalProfileResolution,
   type LocalProfileResult,
+  type LocalProfileUsage,
   type ProfileCompareResult,
   type ProfileLibraryResult,
   type ProfilePackageResult,
@@ -758,7 +760,7 @@ export function ProfileEditor({
                                   const updated = [...seg.fields];
                                   const nextFld: Field = {
                                     ...fld,
-                                    usage: e.target.value,
+                                    usage: e.target.value as LocalProfileUsage,
                                   };
                                   if (e.target.value === "C") {
                                     nextFld.condition = fld.condition ?? { segment: seg.id, position: 1, operator: "present" };
@@ -790,7 +792,7 @@ export function ProfileEditor({
                                       const cond: Condition = {
                                         segment: fld.condition?.segment ?? seg.id,
                                         position: fld.condition?.position ?? 1,
-                                        operator: e.target.value,
+                                        operator: e.target.value as LocalProfileConditionOperator,
                                       };
                                       if (e.target.value === "value_in") {
                                         cond.values = fld.condition?.values ?? ["VAL"];

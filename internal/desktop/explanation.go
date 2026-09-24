@@ -329,16 +329,26 @@ func (r *ExplanationChoiceResult) refuse(state State, reason string) {
 // outsideTheWorkspace is how a choice outside the open workspace is refused.
 const outsideTheWorkspace = "an explanation reads entries of the open workspace; advanced selection cannot reach outside it"
 
+// The inputs an explanation is chosen natively for.
+const (
+	runInput          = "run"
+	assertionsInput   = "assertions"
+	beforeInput       = "before"
+	beforeSourceInput = "before-source"
+	afterInput        = "after"
+	afterSourceInput  = "after-source"
+)
+
 // explanationDialogs are the inputs an explanation is chosen natively for,
 // each with the title its dialog shows. A run is a folder; everything else is
 // one document.
 var explanationDialogs = map[string]string{
-	"run":           "Choose a retained run to explain",
-	"assertions":    "Choose the assertion set to re-decide",
-	"before":        "Choose the completion record of the observation before the run",
-	"before-source": "Choose the observation source the observation before the run read",
-	"after":         "Choose the completion record of the observation after the run",
-	"after-source":  "Choose the observation source the observation after the run read",
+	runInput:          "Choose a retained run to explain",
+	assertionsInput:   "Choose the assertion set to re-decide",
+	beforeInput:       "Choose the completion record of the observation before the run",
+	beforeSourceInput: "Choose the observation source the observation before the run read",
+	afterInput:        "Choose the completion record of the observation after the run",
+	afterSourceInput:  "Choose the observation source the observation after the run read",
 }
 
 // ChooseExplanationInput is the native selection of one input of an
@@ -361,7 +371,7 @@ func (a *App) ChooseExplanationInput(workspace, kind string) ExplanationChoiceRe
 			return ExplanationChoiceResult{State: declined.state, Reason: declined.reason}
 		}
 		var chosen string
-		if kind == "run" {
+		if kind == runInput {
 			folder, declined := a.chooseFolder(ctx, title)
 			if folder == "" {
 				return ExplanationChoiceResult{State: declined.state, Reason: declined.reason}
@@ -387,12 +397,12 @@ func (a *App) ChooseExplanationInput(workspace, kind string) ExplanationChoiceRe
 			// A run may be one job of a suite execution, chosen inside the
 			// `runs` folder that retains it.
 			relative, err := filepath.Rel(root, folder)
-			if kind != "run" || err != nil || !filepath.IsLocal(relative) {
+			if kind != runInput || err != nil || !filepath.IsLocal(relative) {
 				return ExplanationChoiceResult{State: Failed, Reason: outsideTheWorkspace}
 			}
 			entry = filepath.ToSlash(relative) + "/" + name
 		}
-		if kind == "run" {
+		if kind == runInput {
 			if _, err := retainedRunFolder(root, entry); err != nil {
 				return ExplanationChoiceResult{State: Failed, Reason: notARetainedRun}
 			}

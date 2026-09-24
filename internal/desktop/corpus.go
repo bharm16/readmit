@@ -160,6 +160,13 @@ type CorpusProgressResult struct {
 
 func (r *CorpusProgressResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
+// The paths ChooseCorpusPath chooses.
+const (
+	corpusFolderPath    = "corpus-folder"
+	scanFilePath        = "scan-file"
+	benchmarkFolderPath = "benchmark-folder"
+)
+
 // ChooseCorpusPath presents the host's native dialog for the folder a new
 // corpus and manifest are written into ("corpus-folder"), the one stream to
 // scan ("scan-file"), or the folder a new benchmark is written into
@@ -169,11 +176,11 @@ func (a *App) ChooseCorpusPath(kind string) CorpusPathResult {
 		var path string
 		var declined refusal
 		switch kind {
-		case "corpus-folder":
+		case corpusFolderPath:
 			path, declined = a.chooseFolder(ctx, "Choose the folder for the new corpus and its manifest")
-		case "scan-file":
+		case scanFilePath:
 			path, declined = a.chooseOneFile(ctx, "Choose the stream to scan")
-		case "benchmark-folder":
+		case benchmarkFolderPath:
 			path, declined = a.chooseFolder(ctx, "Choose the folder for the new benchmark")
 		default:
 			return CorpusPathResult{State: Failed, Reason: "unknown corpus path kind"}

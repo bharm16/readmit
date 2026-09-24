@@ -18,6 +18,7 @@ import {
   type BaselineResult,
   type EditorDraft,
   type HubReviewsResult,
+  type RunQueueIsolation,
   type SuiteDocument,
   type SuiteDocumentResult,
   type SuiteExclusionDeclaration,
@@ -773,7 +774,7 @@ export function SuitePanel({
                   </tr>
                 </thead>
                 <tbody>
-                  {impact.impact.comparison.changes.map((change, index) => (
+                  {[...impact.impact.comparison.baseline.changes, ...impact.impact.comparison.profiles].map((change, index) => (
                     <tr key={index}>
                       <th>{change.part}</th>
                       <td>{change.kind}</td>
@@ -1513,7 +1514,7 @@ function SuiteEditor({
               <select
                 value={test.isolation}
                 onChange={(event) =>
-                  onChange({ ...document, tests: document.tests.map((held, at) => (at === testIndex ? { ...held, isolation: event.target.value } : held)) })
+                  onChange({ ...document, tests: document.tests.map((held, at) => (at === testIndex ? { ...held, isolation: event.target.value as RunQueueIsolation } : held)) })
                 }
               >
                 <option value="shared">shared (holds the environment)</option>

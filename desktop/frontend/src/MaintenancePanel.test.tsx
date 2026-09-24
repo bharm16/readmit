@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { expect, test } from "vitest";
+import type { UpgradeOutcome, UpgradePlan, UpgradeStaging } from "./bindings";
 import { MaintenancePanel } from "./MaintenancePanel";
 import { installFacade, type FacadeHandlers } from "./testkit/wails";
 import { WORKSPACE_ROOT } from "./testkit/fixtures";
@@ -145,6 +146,7 @@ function handlers(extra: FacadeHandlers = {}): FacadeHandlers {
         state: "completed",
         reason: "Rollback point taken. Installing this candidate is still refused.",
         view: {
+          plan: null,
           installer_handoff: "use the platform installer",
           offline: "This check is offline.",
           signing_deferred: "Signing gates stay outside this screen.",
@@ -619,7 +621,7 @@ test("a project with no recovery copies, and one whose copies cannot be listed, 
   expect(isDisabled(reopened.getByRole("button", { name: "Recover the selected copy" }))).toBe(true);
 });
 
-function stagedPlan(candidate: string, staged: string, state: string) {
+function stagedPlan(candidate: string, staged: UpgradeStaging, state: UpgradeOutcome): UpgradePlan {
   return {
     schema: "readmit-upgrade-plan/v1",
     installed: "dev",

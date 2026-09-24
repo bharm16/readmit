@@ -249,7 +249,7 @@ export function ScenarioPanel({
   const seedDeclared = synthSeed.trim() !== "";
   const seedPlain = PLAIN_SEED.test(synthSeed.trim());
   const canSynth = seedPlain && synthBase.trim() !== "" && synthGenerator !== "" && synthProfile !== "" && synthOutput.trim() !== "";
-  const profileNames = catalog?.profiles.map((profile) => profile.name) ?? [];
+  const profileNames: string[] = catalog?.profiles.map((profile) => profile.name) ?? [];
   if (!profileNames.includes(templateProfile)) {
     profileNames.unshift(templateProfile);
   }

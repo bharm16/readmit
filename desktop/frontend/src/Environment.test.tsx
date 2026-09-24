@@ -193,8 +193,11 @@ test("EnvironmentPanel authors fixture reset plan and executes with deliberate c
   await user.click(executeBtn);
 
   expect(facade.callsTo("ResetTarget").length).toBe(1);
-  expect(await screen.findByText(/Reset Outcome: succeeded/i)).toBeTruthy();
-  expect(screen.getByText(/all reset actions executed successfully/i)).toBeTruthy();
+  expect(await screen.findByText(/Reset Outcome: confirmed/i)).toBeTruthy();
+  expect(screen.getByText(/every_action_confirmed/i)).toBeTruthy();
+  // A reset that passed reads as passed: its state is a run state, never an
+  // operation state.
+  expect(screen.getByLabelText("Fixture reset execution outcome").classList.contains("passed")).toBe(true);
 
   uninstallFacade();
 });

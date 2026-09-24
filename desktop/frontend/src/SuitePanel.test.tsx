@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SuitePanel } from "./SuitePanel";
 import { installFacade, uninstallFacade, type FacadeStub } from "./testkit/wails";
@@ -369,6 +369,11 @@ test("release references are authored and impact reports affected tests", async 
   await user.click(screen.getByRole("button", { name: "Report impact" }));
   expect(await screen.findByText("affected")).toBeTruthy();
   expect(screen.getByText("booking")).toBeTruthy();
+  // The comparison is the expectation release's: its specification changes
+  // and its profile changes are listed together.
+  const changes = within(screen.getByRole("table", { name: "Exact specification and profile changes" }));
+  expect(changes.getByText("assertion[ack].expected")).toBeTruthy();
+  expect(changes.getByText("profile:local-siu")).toBeTruthy();
   uninstallFacade();
 });
 

@@ -37,7 +37,7 @@ type Match struct {
 	Name       string    `json:"name"`
 	Label      string    `json:"label"`
 	Field      string    `json:"field"`
-	Region     string    `json:"region"`
+	Region     RegionID  `json:"region"`
 	Occurrence string    `json:"occurrence,omitzero"`
 	Selector   string    `json:"selector,omitzero"`
 }

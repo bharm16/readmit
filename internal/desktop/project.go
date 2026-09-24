@@ -20,17 +20,17 @@ import (
 // evidence facts are reported exactly as recorded, whatever the verification
 // found; the state says which of them still hold.
 type RegisteredCase struct {
-	Name             string   `json:"name"`
-	Identity         string   `json:"identity"`
-	Schema           string   `json:"schema"`
-	Provenance       string   `json:"provenance"`
-	InterfaceVersion string   `json:"interface_version"`
-	Title            string   `json:"title"`
-	Status           string   `json:"status"`
-	Owner            string   `json:"owner,omitzero"`
-	Tags             []string `json:"tags"`
-	Incidents        []string `json:"incidents"`
-	Evidence         string   `json:"evidence"`
+	Name             string         `json:"name"`
+	Identity         string         `json:"identity"`
+	Schema           string         `json:"schema"`
+	Provenance       string         `json:"provenance"`
+	InterfaceVersion string         `json:"interface_version"`
+	Title            string         `json:"title"`
+	Status           project.Status `json:"status"`
+	Owner            string         `json:"owner,omitzero"`
+	Tags             []string       `json:"tags"`
+	Incidents        []string       `json:"incidents"`
+	Evidence         string         `json:"evidence"`
 }
 
 // RegisteredRevision is one registered revision of the project overview, with
@@ -107,7 +107,7 @@ func (a *App) readOverview(path string) ProjectOverviewResult {
 			Provenance:       entry.Provenance,
 			InterfaceVersion: entry.InterfaceVersion,
 			Title:            entry.Title,
-			Status:           string(entry.Status),
+			Status:           entry.Status,
 			Owner:            entry.Owner,
 			Tags:             orEmpty(entry.Tags),
 			Incidents:        orEmpty(entry.Incidents),
@@ -258,12 +258,12 @@ func (a *App) UpdateProjectSettings(path string, change SettingsChange) ProjectO
 // A member left empty inherits the project default, exactly as an absent flag
 // does on the command line. The evidence facts are never taken from here.
 type CaseRegistration struct {
-	Title            string   `json:"title,omitzero"`
-	Owner            string   `json:"owner,omitzero"`
-	Status           string   `json:"status,omitzero"`
-	InterfaceVersion string   `json:"interface_version,omitzero"`
-	Tags             []string `json:"tags,omitzero"`
-	Incidents        []string `json:"incidents,omitzero"`
+	Title            string         `json:"title,omitzero"`
+	Owner            string         `json:"owner,omitzero"`
+	Status           project.Status `json:"status,omitzero"`
+	InterfaceVersion string         `json:"interface_version,omitzero"`
+	Tags             []string       `json:"tags,omitzero"`
+	Incidents        []string       `json:"incidents,omitzero"`
 }
 
 // RegisterCase registers one case of the project through the shared operation
@@ -277,7 +277,7 @@ func (a *App) RegisterCase(path, name string, registration CaseRegistration) Pro
 		if _, err := operation.RegisterCase(path, name, operation.CaseRegistration{
 			Title:            registration.Title,
 			Owner:            registration.Owner,
-			Status:           project.Status(registration.Status),
+			Status:           registration.Status,
 			InterfaceVersion: registration.InterfaceVersion,
 			Tags:             registration.Tags,
 			Incidents:        registration.Incidents,
@@ -292,12 +292,12 @@ func (a *App) RegisterCase(path, name string, registration CaseRegistration) Pro
 // null is left exactly as it was, so changing a status does not restate the
 // tags. No member can reach the recorded evidence facts.
 type CaseChange struct {
-	Title            *string   `json:"title,omitzero"`
-	Owner            *string   `json:"owner,omitzero"`
-	Status           *string   `json:"status,omitzero"`
-	InterfaceVersion *string   `json:"interface_version,omitzero"`
-	Tags             *[]string `json:"tags,omitzero"`
-	Incidents        *[]string `json:"incidents,omitzero"`
+	Title            *string         `json:"title,omitzero"`
+	Owner            *string         `json:"owner,omitzero"`
+	Status           *project.Status `json:"status,omitzero"`
+	InterfaceVersion *string         `json:"interface_version,omitzero"`
+	Tags             *[]string       `json:"tags,omitzero"`
+	Incidents        *[]string       `json:"incidents,omitzero"`
 }
 
 // UpdateRegisteredCase changes the title, owner, status, interface version,
@@ -305,15 +305,10 @@ type CaseChange struct {
 // `readmit project update` runs, and returns the project re-read from disk.
 func (a *App) UpdateRegisteredCase(path, name string, change CaseChange) ProjectOverviewResult {
 	return run(a, false, true, func(context.Context) ProjectOverviewResult {
-		var status *project.Status
-		if change.Status != nil {
-			value := project.Status(*change.Status)
-			status = &value
-		}
 		if _, err := operation.UpdateRegisteredCase(path, name, operation.CaseChange{
 			Title:            change.Title,
 			Owner:            change.Owner,
-			Status:           status,
+			Status:           change.Status,
 			InterfaceVersion: change.InterfaceVersion,
 			Tags:             change.Tags,
 			Incidents:        change.Incidents,

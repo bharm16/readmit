@@ -23,10 +23,11 @@ import type {
   Indicator,
   OccurrenceKind,
   State,
-  StatusValue,
 } from "./bindings";
 
-export type Indicators = Map<StatusValue, Indicator>;
+/** Each indicator by the status it names. Go names a status as a string, and a
+ * status without an indicator reads as its plain word. */
+export type Indicators = Map<string, Indicator>;
 
 /** Every status carries its own word and its own shape. Colour is decoration on
  * top of both, never the difference between two of them. The shape is marked
