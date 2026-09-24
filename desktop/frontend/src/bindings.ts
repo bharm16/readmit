@@ -6864,13 +6864,23 @@ export interface ScenarioProfileBindResult {
   available?: boolean;
 }
 
+/** The seed is the text a person typed, read as `readmit synth --seed`
+ * reads it, so every seed the command accepts can be declared exactly. */
 export interface SynthGenerateRequest {
   workspace: string;
   output_name: string;
-  seed: number;
+  seed: string;
   base_time: string;
   generator_version: string;
   profile_version: string;
+}
+
+/** One case bundle of a written SIU family, as its completion record lists it. */
+export interface SynthVariantView {
+  variant: string;
+  path: string;
+  identity: string;
+  known_defect?: string;
 }
 
 export interface SynthGenerateResult {
@@ -6878,6 +6888,7 @@ export interface SynthGenerateResult {
   reason?: string;
   output_path?: string;
   cases?: string[];
+  variants?: SynthVariantView[];
 }
 
 export function scenarioCatalog(): Promise<ScenarioCatalogResult> {

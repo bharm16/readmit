@@ -7,6 +7,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import { connect, createServer } from "node:net";
 import { loadavg } from "node:os";
+import { join, relative } from "node:path";
 
 export async function freeLoopbackAddress() {
   const server = createServer();
@@ -49,6 +50,18 @@ export function entries(folder) {
 
 export function exists(path) {
   return existsSync(path);
+}
+
+export function namesIn(folder) {
+  return existsSync(folder) ? readdirSync(folder).sort() : [];
+}
+
+export function filesUnder(folder) {
+  if (!existsSync(folder)) return [];
+  return readdirSync(folder, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => relative(folder, join(entry.parentPath, entry.name)).split("\\").join("/"))
+    .sort();
 }
 
 export function hostLoad() {

@@ -17,6 +17,11 @@ export function accepts(address: string): Promise<boolean>;
 export function entries(folder: string): number;
 /** Whether a path exists. */
 export function exists(path: string): boolean;
+/** The names directly in a folder, sorted; none when it does not exist yet. */
+export function namesIn(folder: string): string[];
+/** Every file below a folder by its path relative to it, with forward
+ * slashes, sorted; none when it does not exist yet. */
+export function filesUnder(folder: string): string[];
 /** The host's one, five and fifteen minute load averages. */
 export function hostLoad(): string;
 /** Whether READMIT_PERFORMANCE=1 asked for the opt-in window measurements. */

@@ -606,7 +606,7 @@ func TestEveryGeneratedCollectedOrCapturedOutputIsOneNewEntryOfTheWorkspace(t *t
 		return desktop.ScenarioGenerateRequest{Workspace: root, Document: "plan.json", OutputName: output, CaseName: caseName}
 	}
 	synthesize := func(output string) desktop.SynthGenerateRequest {
-		return desktop.SynthGenerateRequest{Workspace: root, OutputName: output, Seed: 0, BaseTime: "2026-01-01T12:00:00Z",
+		return desktop.SynthGenerateRequest{Workspace: root, OutputName: output, Seed: "0", BaseTime: "2026-01-01T12:00:00Z",
 			GeneratorVersion: "readmit-synth-v1", ProfileVersion: "readmit-siu-v1"}
 	}
 	collect := func(output, receipt string) desktop.SourceWorkRequest {
