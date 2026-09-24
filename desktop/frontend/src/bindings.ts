@@ -47,6 +47,8 @@ export type Kind =
   | "transfer-package"
   | "protection"
   | "sharing-policy"
+  | "redact-policy"
+  | "redact-inventory"
   | "unsupported";
 
 /** The status of one registered case, maintained by a person. */
@@ -738,6 +740,10 @@ export interface Facade {
   OpenReview(request: ReviewRequest): Promise<ReviewResult>;
   DeriveExportReview(request: PrivacyReviewRequest): Promise<PrivacyReviewResult>;
   ExportDerivedPacket(request: PrivacyExportRequest): Promise<PrivacyExportResult>;
+  SaveRedactPolicy(request: RedactPolicyRequest): Promise<RedactPolicyResult>;
+  ReadRedactPolicy(workspace: string, entry: string): Promise<RedactPolicyResult>;
+  SaveRedactInventory(request: RedactInventoryRequest): Promise<RedactInventoryResult>;
+  ReadRedactInventory(workspace: string, entry: string): Promise<RedactInventoryResult>;
   SaveSharingPolicy(request: SupportPolicyRequest): Promise<SupportPolicyResult>;
   ReadSharingPolicy(workspace: string, entry: string): Promise<SupportPolicyResult>;
   PreviewSupportSummary(request: SupportRequest): Promise<SupportPreviewResult>;
@@ -3923,6 +3929,58 @@ export interface PrivacyReviewResult {
   state: State;
   reason?: string;
   outcome?: PrivacyReviewOutcome;
+}
+
+export interface RedactFieldRule {
+  selector: string;
+  policy: string;
+  class: string;
+  scope?: string | undefined;
+  authority?: string[] | undefined;
+  replacement?: string | undefined;
+  allowed?: string[] | undefined;
+}
+
+export interface RedactSpecBinding {
+  location: string;
+  occurrence?: string | undefined;
+  selector?: string | undefined;
+  constant?: string | undefined;
+}
+
+export interface RedactPolicy {
+  schema: "readmit-redact-policy/v1";
+  patient: { selector: string; authority: string[] };
+  fields: RedactFieldRule[];
+  remove_segments: string[];
+  packet_policies: string[];
+  spec_bindings: RedactSpecBinding[];
+  required_failures: number[];
+}
+
+export interface RedactInventory {
+  schema: "readmit-redact-inventory/v1";
+  complete: boolean;
+  artifacts: { kind: string; path: string }[];
+  residual_values: string[];
+}
+
+export interface RedactPolicyRequest { workspace: string; output: string; policy: RedactPolicy }
+export interface RedactInventoryRequest { workspace: string; output: string; inventory: RedactInventory }
+export interface RedactPolicyResult { state: State; reason?: string; entry?: string; policy?: RedactPolicy }
+export interface RedactInventoryResult { state: State; reason?: string; entry?: string; inventory?: RedactInventory }
+
+export function saveRedactPolicy(request: RedactPolicyRequest): Promise<RedactPolicyResult> {
+  return guard(() => facade().SaveRedactPolicy(request), { state: "failed" });
+}
+export function readRedactPolicy(workspace: string, entry: string): Promise<RedactPolicyResult> {
+  return guard(() => facade().ReadRedactPolicy(workspace, entry), { state: "failed" });
+}
+export function saveRedactInventory(request: RedactInventoryRequest): Promise<RedactInventoryResult> {
+  return guard(() => facade().SaveRedactInventory(request), { state: "failed" });
+}
+export function readRedactInventory(workspace: string, entry: string): Promise<RedactInventoryResult> {
+  return guard(() => facade().ReadRedactInventory(workspace, entry), { state: "failed" });
 }
 
 /** Runs the existing redaction operation over the selected entries and writes

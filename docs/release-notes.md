@@ -13,6 +13,12 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   `RERUN.md`. Incomplete or changed markers remain unsupported; preparation
   and packet contracts are unchanged.
 
+- The privacy panel now authors and reopens disclosure policies and
+  original-artifact inventories through structured controls (#343). The shared
+  `readmit redact` readers validate each new canonical document; the workspace
+  lists them by kind. No evidence values are supplied by the form, and existing
+  redaction contracts and fail-closed review gates are unchanged.
+
 - Opening a second case in a workspace now offers to build that case's own
   index instead of presenting another case's index as a rebuild (#417). The
   builder starts with the second case's filename and replacement off; the first

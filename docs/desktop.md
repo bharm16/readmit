@@ -2515,12 +2515,9 @@ is unavailable rather than answered busy.
   directory entries, and verification is bounded by the case reader's own
   limits. Long-running work, and the progress reporting it needs, arrives with
   the operations that have it.
-- Authoring a correlation rules document or a redaction policy in the window
-  (rules authoring is owned by the sequence panel). A transformation plan is
-  authored in Review and transform through the same typed operators
-  `readmit transform` previews; a redaction policy and an original-artifact
-  inventory still reach the window as documents somebody wrote beside the
-  evidence.
+- Authoring a correlation rules document in the window (rules authoring is
+  owned by the sequence panel). A transformation plan is authored in Review
+  and transform through the same typed operators `readmit transform` previews.
 - Retaining an approval, and approving an incomplete review. The privacy
   screen derives an export review and exports the reviewed packet through the
   same gates the command line uses, but the window records no approval: an
@@ -2927,9 +2924,18 @@ same bytes.
 **Preparation** selects four entries of the open workspace — the case, the
 original specification, the disclosure policy and the complete
 original-artifact inventory — and runs the existing redaction operation into a
-fresh review entry and a separate private local-state entry. A policy or an
-inventory is a document somebody authored beside the evidence; the window
-authors none. A blocked review is the normal first answer, and its blockers
+fresh review entry and a separate private local-state entry. The policy and
+inventory can be authored through structured controls in the privacy panel.
+Each save writes a new canonical entry only after the same strict reader used
+by `readmit redact` accepts it; an existing entry can be reopened and saved
+under a new name. The panel lists the two documents by their declared kinds,
+while opening and derivation still verify them. The form starts with no field
+rules, known values or artifact paths, and never decides which values are
+sensitive. Unfinished edits use the bounded local editor-draft store and show
+whether the latest change was retained; saving a canonical document drops its
+working draft. An inventory draft can contain the known residual values the
+operator entered and stays customer-local with the inventory. A blocked review
+is the normal first answer, and its blockers
 are the whole inventory: every surface the export could include — the named
 fields, the free text and embedded payloads, the unknown segments, the source
 filenames and metadata, the specification literals, the retained runs and

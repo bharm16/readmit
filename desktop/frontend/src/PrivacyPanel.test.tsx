@@ -38,14 +38,27 @@ const CHOSEN_FOLDER = `${WORKSPACE_ROOT}/support-for-vendor`;
 const ENTRIES: Artifact[] = [
   { name: CASE_ENTRY, kind: "case", schema: "readmit-case/v3", provenance: "imported" },
   { name: SPEC_ENTRY, kind: "spec" },
-  { name: POLICY_ENTRY, kind: "unsupported", reason: "not a case bundle this release supports" },
-  { name: INVENTORY_ENTRY, kind: "unsupported", reason: "not a case bundle this release supports" },
+  { name: POLICY_ENTRY, kind: "redact-policy", schema: "readmit-redact-policy/v1" },
+  { name: INVENTORY_ENTRY, kind: "redact-inventory", schema: "readmit-redact-inventory/v1" },
+  { name: "other.json", kind: "unsupported", reason: "unsupported contract" },
   { name: REVIEW_ENTRY, kind: "review" },
   { name: PRIVATE_ENTRY, kind: "unsupported", reason: "not a case bundle this release supports" },
   { name: SHARING_ENTRY, kind: "sharing-policy" },
   { name: REFUSED_SHARING_ENTRY, kind: "sharing-policy" },
   { name: BUNDLE_ENTRY, kind: "support" },
 ];
+
+test("the disclosure pickers list declared policy and inventory kinds, not unrelated JSON", () => {
+  renderPanel();
+  const policies = within(screen.getByLabelText("Disclosure policy"));
+  const inventories = within(screen.getByLabelText("Original-artifact inventory"));
+  expect(policies.getByRole("option", { name: POLICY_ENTRY })).toBeTruthy();
+  expect(policies.queryByRole("option", { name: INVENTORY_ENTRY })).toBeNull();
+  expect(policies.queryByRole("option", { name: "other.json" })).toBeNull();
+  expect(inventories.getByRole("option", { name: INVENTORY_ENTRY })).toBeTruthy();
+  expect(inventories.queryByRole("option", { name: POLICY_ENTRY })).toBeNull();
+  expect(inventories.queryByRole("option", { name: "other.json" })).toBeNull();
+});
 
 function renderPanel(handlers: FacadeHandlers = {}, entries: Artifact[] = ENTRIES) {
   const events: string[] = [];

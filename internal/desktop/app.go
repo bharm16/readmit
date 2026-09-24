@@ -125,6 +125,8 @@ const (
 	TransferPackageArtifact Kind = "transfer-package"
 	ProtectionArtifact      Kind = "protection"
 	SharingPolicyArtifact   Kind = "sharing-policy"
+	RedactPolicyArtifact    Kind = "redact-policy"
+	RedactInventoryArtifact Kind = "redact-inventory"
 	UnsupportedArtifact     Kind = "unsupported"
 )
 

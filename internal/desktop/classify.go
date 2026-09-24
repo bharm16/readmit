@@ -95,6 +95,8 @@ var declaredSchemas = map[string]Kind{
 	// reader.
 	"readmit-protection/v1":     ProtectionArtifact,
 	"readmit-sharing-policy/v1": SharingPolicyArtifact,
+	redact.PolicySchema:         RedactPolicyArtifact,
+	redact.InventorySchema:      RedactInventoryArtifact,
 }
 
 // classify reports what one workspace entry declares, beyond what the case

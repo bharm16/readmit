@@ -223,7 +223,7 @@ func prepare(request Request) (*transformer, *bundle.Bundle, testrunner.Spec, st
 	if err != nil || input.Identity != source.Identity {
 		return fail(errors.New("spec input must match the reviewed case"))
 	}
-	inventory, err := decodeInventory(values["inventory"])
+	inventory, err := DecodeInventory(values["inventory"])
 	if err != nil {
 		return fail(err)
 	}
