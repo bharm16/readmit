@@ -81,12 +81,13 @@ test("the free paths stay free and unactivated licensed work is refused by name"
   render(<OperationAccess />);
   expect(await screen.findByText(/Try the guided synthetic sample without a license/)).toBeTruthy();
   // Nothing is activated: the reason says so and activation is offered, but
-  // the pane made only the two quiet reads it owns.
-  expect(screen.getByText(/operation activation is missing or invalid/)).toBeTruthy();
+  // the pane made only the two quiet reads it owns. The reason arrives with
+  // the status read's answer, after the pane's own text has drawn.
+  expect(await screen.findByText(/operation activation is missing or invalid/)).toBeTruthy();
   expect(facade.callsTo("OperationStatus").length).toBe(1);
   expect(facade.callsTo("CommercialStatus").length).toBe(1);
   // The commercial prerequisite is visible and offers no navigation.
-  expect(screen.getByText(/the commercial portal destination is not configured/)).toBeTruthy();
+  expect(await screen.findByText(/the commercial portal destination is not configured/)).toBeTruthy();
   expect(screen.queryByRole("link", { name: /Open the commercial portal/ })).toBeNull();
   await user.click(screen.getByRole("button", { name: "Refresh local status" }));
   expect(facade.callsTo("OperationStatus").length).toBe(2);

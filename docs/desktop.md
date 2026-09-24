@@ -429,6 +429,8 @@ artifacts are never reported as completed.
 | `ChooseRunSpec` | Presents the host's native file dialog for a saved test or suite, kept to one entry of the open workspace. |
 | `ExplainRun` | Re-decides one assertion set against the evidence one retained run of the workspace kept, exactly as `readmit explain` does given the run bundle that run retained, with values and record keys present only under a deliberate reveal. Needs no admission, sends nothing and writes nothing. |
 | `ChooseExplanationInput` | Presents the host's folder dialog for the retained run and its file dialog for the assertion set and an observation's two documents, each kept to one entry of the open workspace, or for a run to one job of a suite execution's runs. |
+| `PreviewReplay` | Reports what one `readmit replay` of the verified case would send, from the shared preparation the command uses: the selected messages and their wire bytes, every field a named transformation changes (values only under a deliberate reveal), the target, the send decision a preview reaches, a fresh run folder and the operation guard's admission. Sends nothing and writes nothing. |
+| `SendReplay` | Sends what one approved preview showed, once, under the identity that preview fixed, into the fresh run folder it named, and retains the send decision beside it before any connection opens. Refused without approval, when anything the preview identified changed, and wherever the command refuses. Cancel stops at the message in flight; nothing is ever sent again. |
 | `PreviewPacket` | Verifies the exact actual inputs one packet assembly would copy — case, historical specification, current result, optional baseline — and reports each one's state, the observation boundaries, the proposed fresh destination and the packet's limitations before anything is written. |
 | `AssemblePacket` | Assembles customer-local evidence from actual retained runs into one new protected destination through the existing retained-packet operation, and reads the sealed identity back from disk. |
 | `OpenPacket` | Verifies one sealed retained packet of the workspace offline and read-only, exactly as `readmit report verify-retained` does. |
@@ -506,13 +508,14 @@ it can be interrupted: a durable or suite run (`durable-run`), a practice run
 (`practice`), a disclosure review or derived export whose proof sends to its
 own loopback fixtures (`privacy`) and a synthetic demonstration packet's
 generation, which sends to the built-in receivers it starts on loopback
-(`synthetic-packet`), under run; runner enrollment
+(`synthetic-packet`) and a replay's send (`replay`), under run; runner enrollment
 (`runner-enrollment`) and execution (`runner`) under runner; a source diagnosis
 (`source-diagnosis`), a source collection (`collect`) and a capture (`capture`)
 under capture; a connectivity check (`target-check`), a fixture reset
 (`target-reset`), a send-policy evaluation that resolves a host name
-(`send-policy-evaluation`) and a controlled reduction (`reduction`) under the
-environment; an observation (`observation`) under observe; and every hub request
+(`send-policy-evaluation`), a replay preview, which resolves the target's host
+name when a send policy is selected (`replay-preview`), and a controlled
+reduction (`reduction`) under the environment; an observation (`observation`) under observe; and every hub request
 (`hub`), the start of a sign-in (`hub-sign-in-start`) and the sign-in itself
 (`hub-sign-in`) under the hub. Only local work may run unnamed. The facade's
 tests enumerate the bound operations that can reach a destination from the
@@ -2695,6 +2698,74 @@ control is disabled and the keyboard lands on **Cancel explanation**, which
 names the panel's own operation, `run-explanation`, and drops the answer; the
 explanation retained nothing, so explaining again decides what it would have.
 While another operation holds the slot, an explanation reports `busy`.
+
+## Replaying selected case messages
+
+**Replay selected messages**, beside the open case, is
+[`readmit replay`](replay.md) in the window. It previews which messages of the
+verified case would be sent to one target configuration and how the named
+transformations change them, and sends them once only after the person
+approves that exact preview. Both halves go through
+`operation.PrepareReplay`, the preparation the command itself runs, and a send
+goes through `replay.ExecuteWithPolicy`, so the window holds no send decision
+of its own.
+
+Messages are chosen from the case index's window of the grid, `Replay` or `Do
+not replay` for each message occurrence; acknowledgements and unparsed
+occurrences are never offered. With none chosen every message of the case is
+replayed, and a replay always sends in source order whatever order the choices
+were made in. The target configuration and the optional send policy are named
+as entries of the open workspace, typed or picked from the target
+configurations and send policies the listing offers, so a document saved in the
+environment panel a moment ago can be named before the listing is read again.
+The two transformations are
+`rebase-control-ids` and `shift-timestamps` with its explicit shift, exactly as
+the command names them.
+
+**Preview replay** (`App.PreviewReplay`) is the command's dry run: the target
+and the environment it records, the send decision the policy reaches without a
+send being requested — including the one name lookup a policy decision needs
+for a named host — the message count, the transformations, every message with
+the bytes it would put on the wire, every field a transformation changes by
+position and decoded state, the fresh run folder and the decision file a send
+would write beside it, and the operation guard's own admission. The values a
+transformation changes are hidden until **Reveal changed values** is pressed.
+The preview opens no connection and writes nothing: the command retains a
+preview's decision only because `--decision` names a file, and the window shows
+the same decision without retaining it. A case, target or policy the command
+refuses is refused in the command's words beside the decision it reached, and
+shows no plan. Whether the preview may be sent is the backend's answer: a
+destination the policy refuses, a window without runner authority and a run
+folder already taken are each shown as the reason no send is offered.
+
+The send needs the person's explicit approval of that preview — a checkbox
+naming the message count and the destination, then **Send once** — and
+`App.SendReplay` refuses without it before anything is admitted. The send is
+admitted as execution exactly as `readmit replay --send` is, reads and prepares
+every input again, and is refused if anything the preview identified changed:
+the case, the target configuration and its CA, the send policy, the selection,
+the transformations or any byte a message would put on the wire. The policy is
+decided again at the point of the send and the decision is retained as
+`RUN.decision.json` beside the run folder before any connection opens,
+including a denial, exactly as the command's default retains it; a production
+environment is refused and its refusal retained in the same place. The run is
+`readmit-run/v1`, unchanged, and holds the values that were sent. The panel
+shows the run's identity and every message's outcome, delivery, bytes,
+acknowledgement and transport error, as the command's summary prints them.
+
+Changing any input withdraws the preview and its approval, and a send spends
+the approval whatever it established: the run folder it named is no longer
+fresh, so a new send is always a new preview, a new approval and a new folder.
+While a replay works the keyboard lands on its cancel. **Cancel preview** names
+`replay-preview` and drops the late answer; **Cancel send** names `replay` and
+stops at the message in flight, which is recorded as cancelled with its
+delivery uncertain, while every later message is recorded as not attempted; a
+send cancelled while its policy decision waits on a name lookup sends nothing
+and keeps the decision it had reached beside the run folder. An
+uncertain delivery is never sent again — not when its acknowledgement arrives
+late, not by reopening the window and not by any control here — and nothing
+about a replay is retained in the working session or the draft store, so a
+restart has nothing to resume.
 
 ## Investigation packets and portable reports
 

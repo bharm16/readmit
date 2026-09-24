@@ -329,3 +329,13 @@ to 96 MiB. Limits are checked before delivery so a later size limit cannot disca
 already-sent evidence.
 
 See [run bundle format](run-bundle.md) for the verified read API and mapping.
+
+## In the desktop application
+
+The application's **Replay selected messages** panel is this command over the
+open case, through the same preparation and the same send: its preview is the
+dry run above, a send needs the person's explicit approval of that exact
+preview, retains the run and `RUN.decision.json` exactly as `--send` without
+`--decision` does, and is refused if anything the preview showed has changed.
+A preview's decision is shown there and not retained. See
+[replaying selected case messages](desktop.md#replaying-selected-case-messages).

@@ -200,6 +200,12 @@ func (p *Plan) Mappings() []Mapping {
 	}
 	return result
 }
+
+// Changes returns private copies of every field the named transformations
+// changed, in send order: the records a run's manifest retains, before
+// anything is sent.
+func (p *Plan) Changes() []Change { return cloneChanges(p.changes) }
+
 func (p *Plan) Outbound(id string) ([]byte, error) {
 	for _, message := range p.messages {
 		if message.mapping.OutboundOccurrence == id {

@@ -10,6 +10,7 @@ import { NoteDraft } from "./NoteDraft";
 import { Recovery, RetainedDrafts } from "./Recovery";
 import { RunPanel } from "./RunPanel";
 import { RunExplanation } from "./RunExplanation";
+import { ReplayPanel } from "./ReplayPanel";
 import { PacketPanel } from "./PacketPanel";
 import { PrivacyPanel } from "./PrivacyPanel";
 import { ProtectionPanel } from "./ProtectionPanel";
@@ -2610,6 +2611,18 @@ export default function App() {
             />
           ) : null}
           </>
+        ) : null}
+        {verified && root ? (
+          <ReplayPanel
+            key={"replay-" + root + verified.identity}
+            workspace={root}
+            caseName={verified.name}
+            identity={verified.identity}
+            rows={gridResult?.grid?.case === verified.name && gridResult.grid.identity === verified.identity ? gridResult.grid.rows : []}
+            entries={opened?.artifacts ?? []}
+            busy={busy}
+            onSent={() => void refreshListing()}
+          />
         ) : null}
         {opened ? (
           <EnvironmentPanel

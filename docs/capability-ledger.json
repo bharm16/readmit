@@ -1366,7 +1366,9 @@
       "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-send-policy/v1"],
       "outputs": ["readmit-run/v1", "readmit-send-decision/v1", "hl7"],
       "prerequisites": ["execute-if-send"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/replay.journey.tsx", "name": "selected case messages are previewed as readmit replay previews them and sent to an independent downstream system once, only after explicit approval"},
+      "parity_test": {"package": "internal/desktop", "name": "TestTheWindowPreviewsAndSendsAReplayExactlyAsReadmitReplayDoes"},
+      "implemented": true
     },
     {
       "id": "cli.report",
@@ -6197,6 +6199,38 @@
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/journeys/run-explanation.journey.tsx", "name": "a retained run is explained assertion by assertion as the command line re-decides it, passing, failing, unobserved, of another version, stale and unsupported, and nothing is sent"},
       "parity_test": {"package": "internal/desktop", "name": "TestChooseExplanationInputKinds"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.PreviewReplay",
+      "source": "desktop.App.PreviewReplay",
+      "kind": "desktop",
+      "capability": "previewReplay application operation",
+      "owner": "bharm16/readmit#304",
+      "screen": "the replay screen beside the verified case",
+      "action": "preview selected case messages, their transformations and the send decision against a target without sending",
+      "backend": {"package": "internal/operation", "name": "PrepareReplay"},
+      "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-send-policy/v1"],
+      "outputs": [],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/ReplayPanel.test.tsx", "name": "a preview names every message, change and refusal, and a changed input withdraws it and its approval"},
+      "parity_test": {"package": "internal/desktop", "name": "TestTheWindowPreviewsAndSendsAReplayExactlyAsReadmitReplayDoes"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.SendReplay",
+      "source": "desktop.App.SendReplay",
+      "kind": "desktop",
+      "capability": "sendReplay application operation",
+      "owner": "bharm16/readmit#304",
+      "screen": "the replay screen beside the verified case",
+      "action": "send the messages an approved replay preview showed once and retain the run and its send decision",
+      "backend": {"package": "internal/replay", "name": "ExecuteWithPolicy"},
+      "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-send-policy/v1"],
+      "outputs": ["readmit-run/v1", "readmit-send-decision/v1", "hl7"],
+      "prerequisites": ["execute"],
+      "gui_test": {"file": "desktop/frontend/src/ReplayPanel.test.tsx", "name": "a send happens only after explicit approval, is cancelled from the keyboard and is never offered again after an uncertain delivery"},
+      "parity_test": {"package": "internal/desktop", "name": "TestTheWindowPreviewsAndSendsAReplayExactlyAsReadmitReplayDoes"},
       "implemented": true
     },
     {
