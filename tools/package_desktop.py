@@ -328,13 +328,12 @@ def application_bundle(declaration, binary, version, output):
 
 
 def run_on_payload(command, staged, refusal):
-    """Run hdiutil or pkgbuild over the staged payload, in the tool's own words.
+    """Run hdiutil, pkgbuild or WiX over staged payload, in the tool's own words.
 
-    The staging folder is the one path outside the build that either tool is
-    given, a temporary directory on the build machine, so what the tool wrote
-    is carried with that folder named `<payload>`. It returns the result and
-    how the tool exited with what it wrote; a tool that does not finish in ten
-    minutes is refused as `refusal`.
+    The staging folder is a temporary directory on the build machine, so what
+    the tool wrote is carried with that folder named `<payload>`. It returns
+    the result and how the tool exited with what it wrote; a tool that does not
+    finish in ten minutes is refused as `refusal`.
     """
     def wrote(stderr, stdout):
         streams = []
@@ -438,7 +437,7 @@ def build_msi(declaration, binary, version, target, output):
         (staged / "readmit-desktop.exe").write_bytes(binary.read_bytes())
         stage_legal_material(staged)
         legal_source = wix_legal_material(staged)
-        subprocess.run([
+        result, failure = run_on_payload([
             "wix", "build", "-nologo", "-arch", target["package_architecture"],
             "-d", f"Version={numeric_version(version)}",
             "-d", f"DisplayName={declaration['display_name']}",
@@ -454,7 +453,9 @@ def build_msi(declaration, binary, version, target, output):
             # and the output holds only what the manifest records.
             "-pdb", str(staged / f"{name}.wixpdb"),
             "-o", str(output / name), str(WIX_SOURCE), str(legal_source),
-        ], check=True, capture_output=True, timeout=900)
+        ], staged, f"{name} was not built")
+        if result.returncode != 0:
+            raise Refused(f"{name} was not built: {failure}")
     return [(name, "msi")]
 
 

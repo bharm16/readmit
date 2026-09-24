@@ -221,6 +221,9 @@ refused in hdiutil's words.
 The `.pkg` is written by `pkgbuild`, and a `pkgbuild` that fails, or does not
 finish in ten minutes, is refused the same way as a create, with what pkgbuild
 wrote and the staging folder named `<payload>`.
+The Windows `.msi` is written by `wix build`. A failed build or one that does
+not finish in ten minutes is refused with what WiX wrote and the same staging
+folder redaction.
 
 ### Prerequisites and offline handling
 
