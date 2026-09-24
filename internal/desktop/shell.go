@@ -318,7 +318,6 @@ var supportStatus = Support{
 		"choose the private folder a new local activation is created in",
 		"compare two built revisions and what their runs decided",
 		"execute, queue, resume, recover and inspect durable runs",
-		"explain what a run's evidence decided assertion by assertion",
 		"export the installed entitlement byte for byte",
 		"generate, verify and prepare runnable copies of synthetic demonstration packets",
 		"group findings from selected cases by signature without hiding any finding",

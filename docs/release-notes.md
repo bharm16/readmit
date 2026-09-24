@@ -1,5 +1,29 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The window explains what a retained run's evidence decided, assertion by
+  assertion, as `readmit explain` does (#303). Until now an assertion set
+  written in the assertion-set panel could only be re-decided from a terminal.
+  A new **Explain a retained run** panel beside the durable-run panels takes a
+  durable run, a result, a run bundle or a suite job and an assertion set,
+  chosen through the host's dialogs or typed as entries of the workspace, and,
+  for a set about observed records, a completion record and the source it
+  read. It re-decides the set through the operation the command renders and
+  shows the verdict or the execution error, the counts, the identities, each
+  message's payloads and each assertion's outcome, reading, expectation and
+  evidence in the command's own words: undecided, skipped and unevaluated
+  assertions are never shown as passes, and values stay hidden until
+  revealed. What the command refuses, the panel refuses in the same sentence,
+  including a set or run of a later contract version, a stale observation and
+  a file export whose records cannot be derived again. It needs no admission,
+  sends nothing and writes nothing, and its cancel names its own operation.
+  The command's per-assertion wording moved into `internal/runexplain` so both
+  entry points share it; its output is unchanged byte for byte. An interaction
+  journey explains the window's own runs of an independent downstream system
+  against the command line; Go parity tests hold every line the window shows
+  to what `readmit explain` prints over the runs the native window retained in
+  September. No `readmit-*` document, command, exit status or machine output
+  changes; two bound methods are added.
+
 - The comparison panel's Compare, its normalization preview and its policy
   editor's Open are driven end to end through the facade (#296); until now a
   test only called the panel's own callbacks. The label of the editor's

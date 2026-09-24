@@ -9,6 +9,7 @@ import { Baseline } from "./Baseline";
 import { NoteDraft } from "./NoteDraft";
 import { Recovery, RetainedDrafts } from "./Recovery";
 import { RunPanel } from "./RunPanel";
+import { RunExplanation } from "./RunExplanation";
 import { PacketPanel } from "./PacketPanel";
 import { PrivacyPanel } from "./PrivacyPanel";
 import { ProtectionPanel } from "./ProtectionPanel";
@@ -2086,6 +2087,7 @@ export default function App() {
               onOpenLicense={() => focusRegion("privacy")}
               {...(runSpecPath ? { initialSpec: runSpecPath } : {})}
             />
+            {root ? <RunExplanation key={"explain-" + root} workspace={root} entries={opened?.artifacts ?? []} busy={busy} /> : null}
             <PacketPanel
               workspace={root}
               entries={opened?.artifacts ?? []}

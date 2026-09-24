@@ -405,6 +405,8 @@ artifacts are never reported as completed.
 | `DurableRunProgress` | Reads one run folder's recovery counts read-only while it executes, without claiming the operation slot. |
 | `OpenRunEvidence` | Reopens one retained execution read-only through the result, recovery and engine-pin readers, with per-assertion evidence links and values present only under a deliberate reveal. |
 | `ChooseRunSpec` | Presents the host's native file dialog for a saved test or suite, kept to one entry of the open workspace. |
+| `ExplainRun` | Re-decides one assertion set against the evidence one retained run of the workspace kept, exactly as `readmit explain` does given the run bundle that run retained, with values and record keys present only under a deliberate reveal. Needs no admission, sends nothing and writes nothing. |
+| `ChooseExplanationInput` | Presents the host's folder dialog for the retained run and its file dialog for the assertion set and an observation's two documents, each kept to one entry of the open workspace, or for a run to one job of a suite execution's runs. |
 | `PreviewPacket` | Verifies the exact actual inputs one packet assembly would copy — case, historical specification, current result, optional baseline — and reports each one's state, the observation boundaries, the proposed fresh destination and the packet's limitations before anything is written. |
 | `AssemblePacket` | Assembles customer-local evidence from actual retained runs into one new protected destination through the existing retained-packet operation, and reads the sealed identity back from disk. |
 | `OpenPacket` | Verifies one sealed retained packet of the workspace offline and read-only, exactly as `readmit report verify-retained` does. |
@@ -2357,6 +2359,65 @@ resumes, resets or resends anything, and executing again is always a fresh
 preflight and a fresh destination. See
 [durable local runs](durable-runs.md) for the retained contracts.
 
+## Explaining a retained run
+
+**Explain a retained run**, beside the durable-run panels, is
+[`readmit explain`](explain.md) in the window: it re-decides one
+`readmit-assertion-set/v1` document against the evidence one run retained and
+shows, assertion by assertion, what the evidence decided. `App.ExplainRun`
+assembles it through `runexplain.Explain`, the operation the command renders:
+the run bundle is opened through the verifying replay reader, the set through
+the assertion reader and any observation through its own two readers, and the
+set is evaluated again. It needs no license admission, opens nothing beyond
+the entries it names and the capture an observation source among them
+declares, sends nothing and writes nothing, and nothing it shows is kept.
+
+The retained run and the set are chosen through the host's dialogs
+(`App.ChooseExplanationInput`) or typed as entries; the run field offers the
+workspace's retained `job` and `result` entries. Each input is one entry of
+the open workspace under the rule `ChooseRunSpec` keeps: the dialog's folder
+is compared with the workspace as the filesystem resolves both, and the entry
+is never a symbolic link. A run entry is a durable run, whose run bundle is
+`result/run` inside it, a result, whose bundle is `run/`, a run bundle itself,
+such as a `readmit replay` output, or one job of a suite execution's runs
+(`suite-output/runs/job`), which the dialog chooses inside the workspace's own
+`runs` folder. The panel names the bundle it resolved, which is the path the
+command is given for the same explanation. A durable run that never finalized
+its result, and a result without its run, are refused as having retained no
+run bundle; the run history still opens them. A set that asks about observed
+records is explained with the completion record and the observation source
+that observation read, which **Observed records** discloses and which are
+supplied together.
+
+What the panel shows is the command's reading in the command's words, from the
+same code: the verdict, or `none` with the execution error's class and the
+assertion it was asking about; the counts; the set's name, contract and
+identity, which is the SHA-256 of its bytes; the run's contract, state,
+identity, input case identity, target configuration identity and timings; each
+message with its outcome, delivery, acknowledgement and whether each payload
+is evidence an assertion may read; each observation with what it settled on
+and what binds it to this run; and one row per assertion with its operator,
+outcome, what it reads, its condition, what was expected, what was observed
+and the retained payload or capture each value was read from, named within the
+workspace. `passed`, `failed`, `undecided`, `skipped` and *not evaluated* are
+each drawn as that word, and none of the last three is ever a pass. Expected
+and observed values and observed record keys are hidden until **Reveal
+expected and observed values** is pressed, and **Hide values** reads the run
+again with them hidden.
+
+A refusal is the sentence the command prints after `readmit: ` for the same
+evidence — a set or a run of a contract version this release does not read, a
+set past its bound, records the set asks about with no observation supplied,
+an observation it never asks about, half an observation, a source whose
+records cannot be derived again, a stale observation, a capture that no longer
+holds what was observed, an observation recorded beside another run — and it
+decides nothing: no verdict and no table stand beside it. Changing any input
+withdraws the explanation on screen. While the set is re-decided every other
+control is disabled and the keyboard lands on **Cancel explanation**, which
+names the panel's own operation, `run-explanation`, and drops the answer; the
+explanation retained nothing, so explaining again decides what it would have.
+While another operation holds the slot, an explanation reports `busy`.
+
 ## Investigation packets and portable reports
 
 The **Investigation packets** panel is where an investigation's actual
@@ -2555,8 +2616,9 @@ sixteen-execution bound fail without exposing paths or values in diagnostics.
 
 Raw replay bundles without test results, assertion-set re-evaluation, suite
 aggregation, export renderings and automatic baseline selection are unsupported
-by this panel. `readmit explain` continues to handle the separate assertion-set
-contract. This adds no member to any retained evidence or approval contract.
+by this panel. `readmit explain` and the
+[run-explanation panel](#explaining-a-retained-run) handle the separate
+assertion-set contract. This adds no member to any retained evidence or approval contract.
 
 ## Explaining sequence uncertainty
 

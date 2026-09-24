@@ -269,9 +269,14 @@ func TestRunEvidenceReadsRefuseEveryEntryThatLeavesTheWorkspace(t *testing.T) {
 		if run := app.StartSuiteRun(desktop.SuiteRunRequest{Workspace: folder, Suite: "nightly.json", Environment: "east", Output: "suite-run"}); run.State != desktop.Completed {
 			t.Fatalf("suite run in %s: %+v", folder, run)
 		}
+		writeDocument(t, folder, "booking-assertions.json", bookingSet)
 		for _, entry := range []string{"run", "suite-run/runs/booking-one"} {
 			if opened := app.OpenRunEvidence(desktop.RunEvidenceRequest{Workspace: folder, Entry: entry}); opened.State != desktop.Completed {
 				t.Fatalf("%s in %s does not reopen, so it cannot show a refusal: %+v", entry, folder, opened)
+			}
+			if explained := app.ExplainRun(desktop.RunExplanationRequest{Workspace: folder, Run: entry, Assertions: "booking-assertions.json"}); explained.State != desktop.Completed ||
+				explained.Explanation.Bundle != entry+"/result/run" || explained.Explanation.Verdict != "pass" {
+				t.Fatalf("%s in %s does not explain, so it cannot show a refusal: %+v", entry, folder, explained)
 			}
 		}
 	}
@@ -306,6 +311,10 @@ func TestRunEvidenceReadsRefuseEveryEntryThatLeavesTheWorkspace(t *testing.T) {
 	refusesEveryEntry(t, []confinedMember{
 		{"OpenRunEvidence", []string{"a retained execution is named by one workspace entry, or one job inside a suite execution's runs"}, named, func(entry string) refused {
 			result := app.OpenRunEvidence(desktop.RunEvidenceRequest{Workspace: root, Entry: entry})
+			return refused{result.State, result.Reason}
+		}},
+		{"ExplainRun", []string{notARun}, named, func(entry string) refused {
+			result := app.ExplainRun(desktop.RunExplanationRequest{Workspace: root, Run: entry, Assertions: "booking-assertions.json"})
 			return refused{result.State, result.Reason}
 		}},
 		{"DurableRunProgress", []string{"a run is named by one workspace entry, or one job inside a suite execution's runs"}, named, func(entry string) refused {
@@ -349,6 +358,11 @@ func TestRunEvidenceReadsRefuseEveryEntryThatLeavesTheWorkspace(t *testing.T) {
 		}
 		if read := answeredWithin(t, "DurableRunProgress with "+how, func() desktop.RunProgressResult { return app.DurableRunProgress(root, entry) }); read.State != desktop.Failed || read.Progress != nil {
 			t.Errorf("DurableRunProgress with %s: %+v, want a refusal", how, read)
+		}
+		if explained := answeredWithin(t, "ExplainRun with "+how, func() desktop.RunExplanationResult {
+			return app.ExplainRun(desktop.RunExplanationRequest{Workspace: root, Run: entry, Assertions: "booking-assertions.json"})
+		}); explained.State != desktop.Failed || explained.Reason != notARun {
+			t.Errorf("ExplainRun with %s: %+v, want the refusal %q", how, explained, notARun)
 		}
 	}
 	if peer.deliveries() != delivered {

@@ -240,6 +240,17 @@ A completion and its source are supplied together. The completion says what an
 observation settled on and only the source says where those records can be read
 again, so half of one explains nothing and is refused.
 
+## In the application
+
+The desktop application's **Explain a retained run** panel is this
+explanation for a retained run of the open workspace. It re-decides a set
+against the run bundle a durable run, a result or a replay retained, through
+the same `internal/runexplain` operation, and says what the evidence decided in
+the words above. Values are hidden there until they are revealed on purpose,
+as `--show-values` does here, and what this command refuses the panel refuses
+in the same sentence. See
+[the desktop shell](desktop.md#explaining-a-retained-run).
+
 ## Not in this release
 
 - **No retained artifact.** This command writes no file, and there is no

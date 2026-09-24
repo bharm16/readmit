@@ -83,6 +83,8 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 		{name: "ChooseSupportExportPath", call: func(a *desktop.App) any { return a.ChooseSupportExportPath() }, opens: "save", destination: unnamed()},
 		{name: "ChoosePacketExportPath", call: func(a *desktop.App) any { return a.ChoosePacketExportPath() }, opens: "save", destination: unnamed()},
 		{name: "ChooseRunSpec", call: func(a *desktop.App) any { return a.ChooseRunSpec(workspace) }, opens: "files", files: []string{filepath.Join(resolved(t, workspace), "spec.json")}},
+		{name: "ChooseExplanationInput(run)", call: func(a *desktop.App) any { return a.ChooseExplanationInput(workspace, "run") }, opens: "folder", folder: filepath.Join(resolved(t, workspace), "case")},
+		{name: "ChooseExplanationInput(assertions)", call: func(a *desktop.App) any { return a.ChooseExplanationInput(workspace, "assertions") }, opens: "files", files: []string{filepath.Join(resolved(t, workspace), "spec.json")}},
 		{name: "ChooseInspectionPath", call: func(a *desktop.App) any { return a.ChooseInspectionPath("file") }, opens: "files", files: []string{filepath.Join(resolved(t, workspace), "spec.json")}},
 		{name: "ChooseCorpusPath", call: func(a *desktop.App) any { return a.ChooseCorpusPath("corpus-folder") }, opens: "folder", folder: fresh()},
 	}
