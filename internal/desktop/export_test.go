@@ -50,3 +50,11 @@ const ProfileImportOperationForTest = profileImportOperation
 func PreviewSchedulePolicyAtForTest(a *App, request SchedulePolicyRequest, now time.Time) SchedulePreviewResult {
 	return a.previewSchedulePolicy(request, now)
 }
+
+// ExplainRunWithinForTest is ExplainRun's work under a context the test
+// controls, so a cancellation lands before the evidence is read rather than
+// wherever scheduling puts it. The readers, the evaluation and every refusal
+// are the production ones; only the operation slot is not taken.
+func ExplainRunWithinForTest(ctx context.Context, request RunExplanationRequest) RunExplanationResult {
+	return explainRun(ctx, request)
+}

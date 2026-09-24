@@ -346,7 +346,9 @@
       "inputs": ["readmit-run/v1", "readmit-assertion-set/v1", "readmit-observation-completion/v1", "readmit-observation-source/v2"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/run-explanation.journey.tsx", "name": "a retained run is explained assertion by assertion as the command line re-decides it, passing, failing, unobserved, of another version, stale and unsupported, and nothing is sent"},
+      "parity_test": {"package": "internal/desktop", "name": "TestTheWindowReDecidesARetainedRunAsReadmitExplainDoes"},
+      "implemented": true
     },
     {
       "id": "cli.import",
@@ -5981,6 +5983,38 @@
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "run history opens retained evidence read-only and reveals values only on purpose"},
       "parity_test": {"package": "internal/desktop", "name": "TestTheRunJourneyFromPreflightToLinkedAssertionEvidence"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.ExplainRun",
+      "source": "desktop.App.ExplainRun",
+      "kind": "desktop",
+      "capability": "explainRun application operation",
+      "owner": "bharm16/readmit#303",
+      "screen": "the run-explanation panel beside the durable-run panels of the evidence region",
+      "action": "explain what a run's evidence decided assertion by assertion",
+      "backend": {"package": "internal/runexplain", "name": "Explain"},
+      "inputs": ["readmit-run/v1", "readmit-assertion-set/v1", "readmit-observation-completion/v1", "readmit-observation-source/v2"],
+      "outputs": [],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/journeys/run-explanation.journey.tsx", "name": "a retained run is explained assertion by assertion as the command line re-decides it, passing, failing, unobserved, of another version, stale and unsupported, and nothing is sent"},
+      "parity_test": {"package": "internal/desktop", "name": "TestTheWindowReDecidesARetainedRunAsReadmitExplainDoes"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.ChooseExplanationInput",
+      "source": "desktop.App.ChooseExplanationInput",
+      "kind": "desktop",
+      "capability": "chooseExplanationInput application operation",
+      "owner": "bharm16/readmit#303",
+      "screen": "the run-explanation panel beside the durable-run panels of the evidence region",
+      "action": "choose the retained run, assertion set and observation documents an explanation reads through the host's dialogs",
+      "backend": {"package": "internal/desktop", "name": "App.ChooseExplanationInput"},
+      "inputs": [],
+      "outputs": [],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/journeys/run-explanation.journey.tsx", "name": "a retained run is explained assertion by assertion as the command line re-decides it, passing, failing, unobserved, of another version, stale and unsupported, and nothing is sent"},
+      "parity_test": {"package": "internal/desktop", "name": "TestChooseExplanationInputKinds"},
       "implemented": true
     },
     {

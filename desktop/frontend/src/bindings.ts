@@ -617,6 +617,8 @@ export interface Facade {
   StartSuiteRun(request: SuiteRunRequest): Promise<SuiteRunResult>;
   DurableRunProgress(workspace: string, entry: string): Promise<RunProgressResult>;
   OpenRunEvidence(request: RunEvidenceRequest): Promise<RunEvidenceResult>;
+  ExplainRun(request: RunExplanationRequest): Promise<RunExplanationResult>;
+  ChooseExplanationInput(workspace: string, kind: ExplanationInputKind): Promise<ExplanationChoiceResult>;
   PreviewPacket(request: PacketRequest): Promise<PacketPreviewResult>;
   AssemblePacket(request: PacketRequest): Promise<PacketResult>;
   OpenPacket(workspace: string, entry: string): Promise<PacketResult>;
@@ -1588,6 +1590,116 @@ export interface RunEvidenceResult {
 }
 export function openRunEvidence(request: RunEvidenceRequest): Promise<RunEvidenceResult> {
   return guard(() => facade().OpenRunEvidence(request), { state: "failed" });
+}
+
+/** One explanation of a retained run: the assertion set re-decided against
+ * the evidence the run retained, exactly as `readmit explain` re-decides it
+ * given the run bundle that run retained. Every input is an entry of the open
+ * workspace; a completion record and its observation source are supplied
+ * together, only for a scope the set asks about. Values and record keys are
+ * present only under the deliberate reveal. */
+export interface RunExplanationRequest {
+  workspace: string;
+  run: string;
+  assertions: string;
+  before?: string;
+  before_source?: string;
+  after?: string;
+  after_source?: string;
+  reveal: boolean;
+}
+export interface ExplainedMessage {
+  source: string;
+  outbound: string;
+  outcome: string;
+  delivery: string;
+  ack_code?: string;
+  ack_correlation?: string;
+  elapsed: string;
+  input: string;
+  observed: string;
+}
+export interface ExplainedObservation {
+  scope: string;
+  status: string;
+  schema: string;
+  source_schema: string;
+  window: string;
+  source_kind: string;
+  source_identity: string;
+  source_scope: string;
+  records: number;
+  correlations: string;
+  capture: string;
+  keys: string;
+}
+/** One assertion, in the words the command prints. An absent outcome is an
+ * assertion no evaluation reached. */
+export interface ExplainedAssertion {
+  id: string;
+  operator: string;
+  outcome?: string;
+  reads: string;
+  condition?: string;
+  expected: string;
+  observed: string;
+  evidence: string[];
+}
+/** A verdict and an execution error are exclusive: an execution error names
+ * its class and the assertion it was asking about, and decides nothing. */
+export interface RunExplanation {
+  run: string;
+  bundle: string;
+  verdict?: string;
+  error_class?: string;
+  error_assertion?: string;
+  declared: number;
+  passed: number;
+  failed: number;
+  undecided: number;
+  skipped: number;
+  set_name: string;
+  set_schema: string;
+  set_identity: string;
+  run_schema: string;
+  run_state: string;
+  run_identity: string;
+  source_identity: string;
+  contains_source_values: boolean;
+  export_policy: string;
+  target: string;
+  transport: string;
+  target_identity: string;
+  started_at: string;
+  completed_at: string;
+  elapsed: string;
+  messages: ExplainedMessage[];
+  observations: ExplainedObservation[];
+  assertions: ExplainedAssertion[];
+  revealed: boolean;
+}
+export interface RunExplanationResult {
+  state: State;
+  reason?: string;
+  explanation?: RunExplanation;
+}
+export function explainRun(request: RunExplanationRequest): Promise<RunExplanationResult> {
+  return guard(() => facade().ExplainRun(request), { state: "failed" });
+}
+
+/** The inputs an explanation is chosen for through the host's dialogs: the
+ * retained run's folder, and the assertion set and an observation's two
+ * documents. Each must be one entry of the open workspace; a dismissed dialog
+ * is a cancellation. */
+export type ExplanationInputKind = "run" | "assertions" | "before" | "before-source" | "after" | "after-source";
+export interface ExplanationChoiceResult {
+  state: State;
+  reason?: string;
+  kind?: ExplanationInputKind;
+  entry?: string;
+}
+export function chooseExplanationInput(workspace: string, kind: ExplanationInputKind): Promise<ExplanationChoiceResult> {
+  return guard(() => facade().ChooseExplanationInput(workspace, kind), { state: "failed" });
 }
 
 /** The investigation-packet panels. A packet assembles actual retained
