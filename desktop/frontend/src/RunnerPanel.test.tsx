@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RunnerPanel } from "./RunnerPanel";
 import { installFacade, uninstallFacade, facadeStub, Parked } from "./testkit/wails";
@@ -11,6 +11,7 @@ import type {
   SchedulePreviewResult,
   CIHandoffResult,
   CIInspectResult,
+  CIGateVerifyResult,
   GatePolicyResult,
 } from "./bindings";
 
@@ -348,6 +349,217 @@ test("the CI handoff is generated in-app and results are inspected in-app", asyn
   await user.click(screen.getByRole("button", { name: /Inspect gate policy/ }));
   expect(await screen.findByText("e".repeat(64))).toBeTruthy();
   expect(await screen.findByText(/approves nothing/i)).toBeTruthy();
+  uninstallFacade();
+});
+
+/** The CI tab of a freshly rendered panel. */
+async function ciTab(user: ReturnType<typeof userEvent.setup>) {
+  render(<RunnerPanel />);
+  await user.click(await screen.findByRole("tab", { name: "CI handoff" }));
+}
+
+const GATE_STEP = {
+  releases: "/srv/readmit/releases.json",
+  promotion: "/srv/readmit/promotion.json",
+  promotion_identity: "a".repeat(64),
+  revision: "fixture-build-7",
+  baseline: "/var/lib/readmit-ci/baseline",
+  policy: "/srv/readmit/gate-policy.json",
+  policy_identity: "b".repeat(64),
+  snapshot_directory: "/var/lib/readmit-ci/gate-1",
+};
+
+test("the reviewed change-gate step is added to the handoff only when asked for, with every reviewed pin, and a refusal is shown", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade({
+    SaveCIHandoff: async () => ({ state: "failed", reason: "the reviewed gate policy identity is its full 64-character lowercase SHA-256 identity" }),
+  });
+  await ciTab(user);
+  // Without the step, the handoff asks for no gate and no gate field is offered.
+  expect(screen.queryByLabelText("Reviewed gate policy identity")).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Generate handoff" }));
+  expect(facade.callsTo("SaveCIHandoff")[0]?.args[0]).not.toHaveProperty("gate");
+
+  // The step is chosen from the keyboard: the checkbox follows the handoff
+  // destination, and Space checks it.
+  await user.click(screen.getByLabelText("Handoff destination"));
+  await user.tab();
+  const step = screen.getByRole("checkbox", { name: /Add the reviewed change-gate step after the suite/ });
+  expect(document.activeElement).toBe(step);
+  await user.keyboard(" ");
+  expect((step as HTMLInputElement).checked).toBe(true);
+  expect(screen.getByText(/never replaces the suite's exit status/)).toBeTruthy();
+  const fields: [string, string][] = [
+    ["Release references", GATE_STEP.releases],
+    ["Promotion approval", GATE_STEP.promotion],
+    ["Promotion approval identity", GATE_STEP.promotion_identity],
+    ["Target revision (operator-declared)", GATE_STEP.revision],
+    ["Reviewed baseline run directory", GATE_STEP.baseline],
+    ["Reviewed gate policy", GATE_STEP.policy],
+    ["Reviewed gate policy identity", "B".repeat(64)],
+    ["Gate snapshot directory (fresh per invocation)", GATE_STEP.snapshot_directory],
+  ];
+  for (const [label, value] of fields) {
+    await user.type(screen.getByLabelText(label), value);
+  }
+  await user.click(screen.getByRole("button", { name: "Generate handoff" }));
+  expect(facade.callsTo("SaveCIHandoff")[1]?.args[0]).toMatchObject({ gate: { ...GATE_STEP, policy_identity: "B".repeat(64) } });
+  expect((await screen.findByRole("alert")).textContent).toBe(
+    "Refused: the reviewed gate policy identity is its full 64-character lowercase SHA-256 identity",
+  );
+
+  // Corrected, the handoff is saved and shown as written.
+  facade.reply({
+    SaveCIHandoff: async () => ({
+      state: "completed",
+      output: "/srv/readmit/handoff.sh",
+      document: '#!/bin/sh\n"$READMIT_BIN" suite gate "$RUN_DIRECTORY" --baseline "$BASELINE_DIRECTORY"\n',
+    }),
+  });
+  await user.clear(screen.getByLabelText("Reviewed gate policy identity"));
+  await user.type(screen.getByLabelText("Reviewed gate policy identity"), GATE_STEP.policy_identity);
+  await user.click(screen.getByRole("button", { name: "Generate handoff" }));
+  expect(facade.callsTo("SaveCIHandoff")[2]?.args[0]).toMatchObject({ gate: GATE_STEP });
+  expect(await screen.findByText("Saved to /srv/readmit/handoff.sh. Install it as the customer administrator.")).toBeTruthy();
+  expect(screen.queryByRole("alert")).toBeNull();
+
+  // Unchecked, the next handoff asks for no gate again, whatever was typed.
+  await user.click(step);
+  expect(screen.queryByLabelText("Reviewed gate policy identity")).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Generate handoff" }));
+  expect(facade.callsTo("SaveCIHandoff")[3]?.args[0]).not.toHaveProperty("gate");
+  uninstallFacade();
+});
+
+test("a retained change gate is verified against its pinned identity, and what could not be verified is named", async () => {
+  const user = userEvent.setup();
+  const passed: CIGateVerifyResult = {
+    state: "completed",
+    gate: {
+      schema: "readmit-ci-gate/v1",
+      state: "passed",
+      exit_code: 0,
+      approval: "passed",
+      pins: "passed",
+      coverage: "passed",
+      baseline: "passed",
+      retention: "retained",
+      target_revision: "operator_asserted",
+    },
+  };
+  const tampered: CIGateVerifyResult = {
+    state: "failed",
+    reason: "the retained change gate could not be verified against this identity; an unknown gate is never a pass",
+    gate: {
+      schema: "readmit-ci-gate/v1",
+      state: "unknown",
+      exit_code: 2,
+      approval: "unknown",
+      pins: "unknown",
+      coverage: "unknown",
+      baseline: "unknown",
+      retention: "unknown",
+      target_revision: "unknown",
+    },
+    unverified: ["approval", "pins", "coverage", "baseline", "retention", "target_revision"],
+  };
+  const facade = installFacade({ VerifyCIGate: async () => passed });
+  await ciTab(user);
+  const verify = screen.getByRole("button", { name: "Verify retained gate" }) as HTMLButtonElement;
+  expect(verify.disabled).toBe(true);
+  await user.type(screen.getByLabelText("Retained gate snapshot"), "/var/lib/readmit-ci/gate-1");
+  expect(verify.disabled).toBe(true);
+  await user.type(screen.getByLabelText("Pinned gate policy identity"), GATE_STEP.policy_identity);
+  await user.click(verify);
+  expect(facade.oneCall("VerifyCIGate")).toEqual(["/var/lib/readmit-ci/gate-1", GATE_STEP.policy_identity]);
+  const verified = await screen.findByRole("status");
+  expect(within(verified).getByText((_, element) => element?.textContent === "Retained change gate: passed (exit 0).")).toBeTruthy();
+  expect(
+    within(verified).getByText(
+      "Approval passed · Pins passed · Coverage passed · Baseline passed · Retention retained · Target revision operator_asserted",
+    ),
+  ).toBeTruthy();
+  expect(within(verified).queryByText(/Not verified/)).toBeNull();
+  expect(within(verified).getByText(/nothing was sent or rerun/)).toBeTruthy();
+
+  // Another snapshot is another question: the reading of the first is withdrawn.
+  await user.clear(screen.getByLabelText("Retained gate snapshot"));
+  expect(screen.queryByText(/Retained change gate:/)).toBeNull();
+  await user.type(screen.getByLabelText("Retained gate snapshot"), "/var/lib/readmit-ci/gate-2");
+  facade.reply({ VerifyCIGate: async () => tampered });
+  await user.click(verify);
+  const refused = await screen.findByRole("alert");
+  expect(within(refused).getByText((_, element) => element?.textContent === "Retained change gate: unknown (exit 2).")).toBeTruthy();
+  expect(within(refused).getByText("Not verified: approval, pins, coverage, baseline, retention, target revision.")).toBeTruthy();
+  expect(within(refused).getByText(/an unknown gate is never a pass/)).toBeTruthy();
+  expect(screen.queryByText(/nothing was sent or rerun/)).toBeNull();
+
+  // A pin the facade refuses before reading anything is shown as refused.
+  facade.reply({
+    VerifyCIGate: async () => ({ state: "failed", reason: "the pinned gate policy identity is its full 64-character lowercase SHA-256 identity" }),
+  });
+  await user.type(screen.getByLabelText("Pinned gate policy identity"), "0");
+  await user.click(verify);
+  expect((await screen.findByRole("alert")).textContent).toBe(
+    "Refused: the pinned gate policy identity is its full 64-character lowercase SHA-256 identity",
+  );
+  expect(facade.callsTo("VerifyCIGate")).toHaveLength(3);
+  uninstallFacade();
+});
+
+test("a running verification takes the focus to its Cancel, and Enter there cancels it without a verdict", async () => {
+  const user = userEvent.setup();
+  const parked = new Parked();
+  const facade = installFacade({
+    Cancel: async () => {},
+    VerifyCIGate: () => parked.arrive() as Promise<CIGateVerifyResult>,
+  });
+  await ciTab(user);
+  await user.type(screen.getByLabelText("Retained gate snapshot"), "/var/lib/readmit-ci/gate-1");
+  await user.type(screen.getByLabelText("Pinned gate policy identity"), GATE_STEP.policy_identity);
+  await user.tab();
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Verify retained gate" }));
+  await user.keyboard("{Enter}");
+  const cancelControl = await screen.findByRole("button", { name: "Cancel verification" });
+  expect(document.activeElement).toBe(cancelControl);
+  expect(screen.getByText("Verifying the retained snapshot…")).toBeTruthy();
+  expect((screen.getByRole("button", { name: "Generate handoff" }) as HTMLButtonElement).disabled).toBe(true);
+  // The snapshot and its pin hold still while they are verified.
+  expect((screen.getByLabelText("Retained gate snapshot") as HTMLInputElement).disabled).toBe(true);
+  expect((screen.getByLabelText("Pinned gate policy identity") as HTMLInputElement).disabled).toBe(true);
+  await user.keyboard("{Enter}");
+  // The cancel names the verification, so it can stop nothing another panel started.
+  expect(facade.oneCall("Cancel")).toEqual(["ci-gate-verify"]);
+  parked.resolve({ state: "cancelled", reason: "the verification was cancelled before it reached a verdict; nothing was changed" });
+  // Cancelled is its own state: neither a refusal nor a verdict.
+  expect(await screen.findByText("Cancelled: the verification was cancelled before it reached a verdict; nothing was changed")).toBeTruthy();
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Cancel verification" })).toBeNull();
+  expect(screen.queryByText(/Retained change gate:/)).toBeNull();
+  expect(facade.callsTo("VerifyCIGate")).toHaveLength(1);
+  uninstallFacade();
+});
+
+test("a gate policy's identity and a directory's results are withdrawn once another path is typed", async () => {
+  const user = userEvent.setup();
+  installFacade({
+    InspectCIResults: async () => ({ state: "completed", ci: { schema: "readmit-suite-ci/v1", state: "passed", exit_code: 0 } }),
+    InspectGatePolicy: async () => ({ state: "completed", identity: "e".repeat(64), environment: "lab", engine: "engine-v1", specifications: 1, retain_until: "2036-01-01T00:00:00Z" }),
+  });
+  await ciTab(user);
+  await user.type(screen.getByLabelText("Gate policy file"), "/srv/readmit/gate-policy.json");
+  await user.click(screen.getByRole("button", { name: "Inspect gate policy" }));
+  expect(await screen.findByText("e".repeat(64))).toBeTruthy();
+  // The identity shown beside the path it was read from is one a person pins;
+  // beside another path it would be pinned by mistake.
+  await user.type(screen.getByLabelText("Gate policy file"), ".next");
+  expect(screen.queryByText("e".repeat(64))).toBeNull();
+
+  await user.type(screen.getByLabelText("CI output directory"), "/var/lib/readmit-ci/run-1");
+  await user.click(screen.getByRole("button", { name: "Inspect CI results" }));
+  expect(await screen.findByText((_, element) => element?.tagName === "P" && element.textContent === "Suite gate: passed (exit 0).")).toBeTruthy();
+  await user.type(screen.getByLabelText("CI output directory"), "0");
+  expect(screen.queryByText(/Suite gate:/)).toBeNull();
   uninstallFacade();
 });
 

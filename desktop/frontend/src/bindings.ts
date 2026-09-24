@@ -791,6 +791,7 @@ export interface Facade {
   SaveCIHandoff(request: CIHandoffRequest): Promise<CIHandoffResult>;
   InspectCIResults(directory: string): Promise<CIInspectResult>;
   InspectGatePolicy(path: string): Promise<GatePolicyResult>;
+  VerifyCIGate(directory: string, identity: string): Promise<CIGateVerifyResult>;
   SaveTarget(request: TargetSaveRequest): Promise<TargetResult>;
   ReadTarget(workspace: string, targetFile: string): Promise<TargetResult>;
   CheckTarget(request: TargetCheckRequest): Promise<TargetCheckResult>;
@@ -5263,6 +5264,21 @@ export interface CIHandoffRequest {
   run_directory: string;
   coverage_file: string;
   output: string;
+  /** The reviewed change gate run after the suite; absent, the workflow has none. */
+  gate?: CIGateStep;
+}
+
+/** The reviewed change-gate step a handoff adds after `suite ci`. Every path
+ * names the agent's filesystem, as the six variables do. */
+export interface CIGateStep {
+  releases: string;
+  promotion: string;
+  promotion_identity: string;
+  revision: string;
+  baseline: string;
+  policy: string;
+  policy_identity: string;
+  snapshot_directory: string;
 }
 
 export interface CIHandoffResult {
@@ -5284,6 +5300,30 @@ export interface CIInspectResult {
   ci?: CIResultsView;
   gate?: CIResultsView;
   warning?: string;
+}
+
+/** One readmit-ci-gate/v1 summary, as `readmit suite gate` and
+ * `readmit suite verify-gate` print it: fixed vocabulary only. */
+export interface CIGateReport {
+  schema: string;
+  state: string;
+  exit_code: number;
+  approval: string;
+  pins: string;
+  coverage: string;
+  baseline: string;
+  retention: string;
+  target_revision: string;
+}
+
+/** A retained change-gate snapshot's verification: the summary
+ * `readmit suite verify-gate` prints for it, and the parts of that summary
+ * that stayed unknown. An unknown gate is failed, never completed. */
+export interface CIGateVerifyResult {
+  state: State;
+  reason?: string;
+  gate?: CIGateReport;
+  unverified?: string[];
 }
 
 export interface GatePolicyResult {
@@ -5362,6 +5402,10 @@ export function inspectCIResults(directory: string): Promise<CIInspectResult> {
 
 export function inspectGatePolicy(path: string): Promise<GatePolicyResult> {
   return guard(() => facade().InspectGatePolicy(path), { state: "failed" });
+}
+
+export function verifyCIGate(directory: string, identity: string): Promise<CIGateVerifyResult> {
+  return guard(() => facade().VerifyCIGate(directory, identity), { state: "failed" });
 }
 
 // --- Interface Profile Management (readmit-local-profile/v1, readmit-profile-pack/v1, etc.) ---

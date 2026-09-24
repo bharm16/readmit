@@ -80,3 +80,16 @@ const SyntheticPacketOperationForTest = syntheticPacketOperation
 func GroupDiagnosesWithinForTest(ctx context.Context, request GroupDiagnosesRequest) DiagnosisGroupsResult {
 	return groupDiagnoses(ctx, request)
 }
+
+// VerifyCIGateWithinForTest is VerifyCIGate's work under a context the test
+// controls and at the instant now, so a cancellation lands before the
+// snapshot is read and a retention end is reached without waiting for it.
+// The reader, the verification and every refusal are the production ones;
+// only the operation slot is not taken.
+func VerifyCIGateWithinForTest(ctx context.Context, directory, identity string, now time.Time) CIGateVerifyResult {
+	return verifyCIGate(ctx, directory, identity, now)
+}
+
+// CIGateVerifyOperationForTest is the name a gate verification holds the slot
+// under, which the CI panel's cancel must name.
+const CIGateVerifyOperationForTest = ciGateVerifyOperation

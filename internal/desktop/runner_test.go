@@ -381,6 +381,11 @@ func TestCIHandoffGeneratesTheDocumentedWorkflows(t *testing.T) {
 		if !strings.Contains(result.Document, "No checkout, upload, retry") {
 			t.Fatalf("%s lost the custody statement: %s", integration, result.Document)
 		}
+		// Without a requested change gate the workflow is the one it always
+		// was: no gate step and no promotion.
+		if strings.Contains(workflow, "suite gate") || strings.Contains(workflow, "--promotion") || strings.Count(workflow, `"$READMIT_BIN"`) != 1 {
+			t.Fatalf("%s gained a step nobody asked for: %s", integration, workflow)
+		}
 	}
 	refusals := []func(*desktop.CIHandoffRequest){
 		func(r *desktop.CIHandoffRequest) { r.Integration = "gitlab" },
@@ -395,6 +400,109 @@ func TestCIHandoffGeneratesTheDocumentedWorkflows(t *testing.T) {
 		if result := app.SaveCIHandoff(request); result.State != desktop.Failed {
 			t.Fatalf("case %d accepted: %+v", i, result)
 		}
+	}
+}
+
+// gatedHandoff is a complete handoff form with the reviewed change gate.
+func gatedHandoff(output string) desktop.CIHandoffRequest {
+	return desktop.CIHandoffRequest{
+		Integration: "posix", Binary: "/opt/readmit/readmit", OperationPolicy: "/etc/readmit/operation-policy.json",
+		SuiteFile: "/srv/readmit/suite.json", Environment: "lab", RunDirectory: "/var/lib/readmit-ci/run-1",
+		CoverageFile: "/srv/readmit/coverage.json", Output: output,
+		Gate: &desktop.CIGateStep{
+			Releases: "/srv/readmit/releases.json", Promotion: "/srv/readmit/promotion.json",
+			PromotionIdentity: strings.Repeat("a", 64), Revision: "fixture build 7",
+			Baseline: "/var/lib/readmit-ci/baseline", Policy: "/srv/readmit/gate-policy.json",
+			PolicyIdentity: strings.Repeat("b", 64), SnapshotDirectory: "/var/lib/readmit-ci/gate-1",
+		},
+	}
+}
+
+// A handoff is validated before it is written: a value that would end the
+// checklist's comment line and put the rest of itself into the workflow the
+// agent runs, an incomplete or malformed gate step, and a snapshot directory
+// the gate could not retain are each refused, and nothing is written.
+func TestCIHandoffRefusesAHandoffBeforeWritingIt(t *testing.T) {
+	app := workspaceApp(t)
+	gated := gatedHandoff(filepath.Join(t.TempDir(), "handoff.sh"))
+	if result := app.SaveCIHandoff(gated); result.State != desktop.Completed {
+		t.Fatalf("complete gated handoff: %+v", result)
+	}
+	for name, change := range map[string]func(*desktop.CIHandoffRequest){
+		"binary line break": func(r *desktop.CIHandoffRequest) {
+			r.Binary = "/opt/readmit/readmit\nrm -rf ~"
+		},
+		"run directory tab":       func(r *desktop.CIHandoffRequest) { r.RunDirectory = "/var/lib/readmit-ci/run\t1" },
+		"coverage carriage":       func(r *desktop.CIHandoffRequest) { r.CoverageFile = "/srv/readmit/coverage.json\rexit 0" },
+		"releases missing":        func(r *desktop.CIHandoffRequest) { r.Gate.Releases = "" },
+		"promotion relative":      func(r *desktop.CIHandoffRequest) { r.Gate.Promotion = "promotion.json" },
+		"promotion identity":      func(r *desktop.CIHandoffRequest) { r.Gate.PromotionIdentity = strings.Repeat("A", 64) },
+		"revision blank":          func(r *desktop.CIHandoffRequest) { r.Gate.Revision = "  " },
+		"revision line break":     func(r *desktop.CIHandoffRequest) { r.Gate.Revision = "v7\nexit 0" },
+		"revision too long":       func(r *desktop.CIHandoffRequest) { r.Gate.Revision = strings.Repeat("r", 257) },
+		"baseline uncleaned":      func(r *desktop.CIHandoffRequest) { r.Gate.Baseline = "/var/lib/readmit-ci/../baseline" },
+		"policy line break":       func(r *desktop.CIHandoffRequest) { r.Gate.Policy = "/srv/readmit/gate-policy.json\nexit 0" },
+		"policy identity short":   func(r *desktop.CIHandoffRequest) { r.Gate.PolicyIdentity = strings.Repeat("b", 63) },
+		"snapshot missing":        func(r *desktop.CIHandoffRequest) { r.Gate.SnapshotDirectory = "" },
+		"snapshot inside the run": func(r *desktop.CIHandoffRequest) { r.Gate.SnapshotDirectory = "/var/lib/readmit-ci/run-1/gate" },
+		"snapshot is the baseline": func(r *desktop.CIHandoffRequest) {
+			r.Gate.SnapshotDirectory = r.Gate.Baseline
+		},
+		"baseline is the run":     func(r *desktop.CIHandoffRequest) { r.Gate.Baseline = r.RunDirectory },
+		"run inside the baseline": func(r *desktop.CIHandoffRequest) { r.RunDirectory = "/var/lib/readmit-ci/baseline/next" },
+		"baseline inside the snapshot": func(r *desktop.CIHandoffRequest) {
+			r.Gate.Baseline = "/var/lib/readmit-ci/gate-1/baseline"
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			request := gatedHandoff(filepath.Join(t.TempDir(), "handoff.sh"))
+			change(&request)
+			result := app.SaveCIHandoff(request)
+			if result.State != desktop.Failed || result.Reason == "" || result.Document != "" {
+				t.Fatalf("accepted: %+v", result)
+			}
+			if _, err := os.Lstat(request.Output); !os.IsNotExist(err) {
+				t.Fatalf("a refused handoff was written: %v", err)
+			}
+		})
+	}
+}
+
+// The refusal names the first field the form asks for that is wrong, in the
+// form's order, however many are wrong.
+func TestCIHandoffNamesTheFirstFieldInTheFormsOrder(t *testing.T) {
+	app := workspaceApp(t)
+	request := gatedHandoff(filepath.Join(t.TempDir(), "handoff.sh"))
+	request.OperationPolicy, request.CoverageFile, request.Gate.Policy = "policy.json", "coverage.json", "gate.json"
+	for range 8 {
+		if result := app.SaveCIHandoff(request); result.Reason != "the activated operation policy must be a cleaned absolute path on the agent" {
+			t.Fatalf("refusal: %+v", result)
+		}
+	}
+}
+
+// Verifying a retained gate refuses a snapshot or an identity it could not
+// have been asked about before it reads anything, and a snapshot it cannot
+// read is unknown, with every part named as not verified.
+func TestVerifyCIGateRefusesBeforeReadingAndNamesWhatItCouldNotVerify(t *testing.T) {
+	app := workspaceApp(t)
+	pin := strings.Repeat("c", 64)
+	for name, call := range map[string][2]string{
+		"relative snapshot":   {"retained", pin},
+		"uncleaned snapshot":  {"/var/lib/readmit-ci/../gate", pin},
+		"line break":          {"/var/lib/readmit-ci/gate\n", pin},
+		"short identity":      {"/var/lib/readmit-ci/gate", pin[:63]},
+		"uppercase identity":  {"/var/lib/readmit-ci/gate", strings.ToUpper(pin)},
+		"identity whitespace": {"/var/lib/readmit-ci/gate", " " + pin[1:]},
+	} {
+		if result := app.VerifyCIGate(call[0], call[1]); result.State != desktop.Failed || result.Gate != nil || result.Reason == "" {
+			t.Fatalf("%s: %+v", name, result)
+		}
+	}
+	result := app.VerifyCIGate(filepath.Join(t.TempDir(), "absent"), pin)
+	if result.State != desktop.Failed || result.Gate == nil || result.Gate.State != "unknown" || result.Gate.ExitCode != 2 ||
+		strings.Join(result.Unverified, ",") != "approval,pins,coverage,baseline,retention,target_revision" || !strings.Contains(result.Reason, "never a pass") {
+		t.Fatalf("absent snapshot: %+v %+v", result, result.Gate)
 	}
 }
 

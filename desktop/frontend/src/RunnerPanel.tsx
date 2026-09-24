@@ -17,6 +17,7 @@ import {
   saveCIHandoff,
   inspectCIResults,
   inspectGatePolicy,
+  verifyCIGate,
   cancel,
   type RunnerConfigRequest,
   type RunnerDocumentResult,
@@ -33,6 +34,9 @@ import {
   type CIHandoffResult,
   type CIInspectResult,
   type GatePolicyResult,
+  type CIGateStep,
+  type CIGateReport,
+  type CIGateVerifyResult,
 } from "./bindings";
 
 const emptyReference = { command: "", arguments: "" };
@@ -44,7 +48,7 @@ function parseArguments(value: string): string[] {
     .filter((line) => line.length > 0);
 }
 
-function Field(props: { label: string; value: string; onChange: (value: string) => void; placeholder?: string }) {
+function Field(props: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; disabled?: boolean }) {
   return (
     <label className="runner-field">
       <span>{props.label}</span>
@@ -52,6 +56,7 @@ function Field(props: { label: string; value: string; onChange: (value: string) 
         type="text"
         value={props.value}
         placeholder={props.placeholder}
+        disabled={props.disabled}
         onChange={(event) => props.onChange(event.target.value)}
       />
     </label>
@@ -676,6 +681,71 @@ function SchedulePreviewView(props: { preview: SchedulePreviewResult }) {
   );
 }
 
+const emptyGateStep: CIGateStep = {
+  releases: "",
+  promotion: "",
+  promotion_identity: "",
+  revision: "",
+  baseline: "",
+  policy: "",
+  policy_identity: "",
+  snapshot_directory: "",
+};
+
+/** The name the facade runs a gate verification under, so this panel's
+ * cancel reaches exactly that verification. */
+const CI_GATE_VERIFY = "ci-gate-verify";
+
+/** The parts of a readmit-ci-gate/v1 summary, in the order it lists them. */
+const gateParts: { key: keyof CIGateReport; label: string }[] = [
+  { key: "approval", label: "approval" },
+  { key: "pins", label: "pins" },
+  { key: "coverage", label: "coverage" },
+  { key: "baseline", label: "baseline" },
+  { key: "retention", label: "retention" },
+  { key: "target_revision", label: "target revision" },
+];
+
+function GateVerification(props: { result: CIGateVerifyResult }) {
+  const { result } = props;
+  const gate = result.gate;
+  if (result.state === "cancelled") {
+    return (
+      <p className="runner-note" role="status">
+        Cancelled: {result.reason ?? "the verification was cancelled"}
+      </p>
+    );
+  }
+  if (!gate) {
+    return (
+      <p className="runner-refused" role="alert">
+        Refused: {result.reason ?? "the verification did not run"}
+      </p>
+    );
+  }
+  const unverified = gateParts.filter((part) => (result.unverified ?? []).includes(part.key)).map((part) => part.label);
+  return (
+    <div className="runner-inspect" role={gate.state === "passed" ? "status" : "alert"}>
+      <p>
+        Retained change gate: <strong>{gate.state}</strong> (exit {gate.exit_code}).
+      </p>
+      <p>
+        {gateParts.map((part) => `${part.label[0]!.toUpperCase()}${part.label.slice(1)} ${gate[part.key]}`).join(" · ")}
+      </p>
+      {unverified.length > 0 ? <p>Not verified: {unverified.join(", ")}.</p> : null}
+      {result.state === "completed" ? (
+        <p className="runner-note">
+          Every retained byte matched the snapshot&apos;s manifest and its assessment was repeated at
+          the instant it was retained. The target revision is the operator&apos;s assumption, not an
+          attestation; nothing was sent or rerun.
+        </p>
+      ) : (
+        <p className="runner-refused">{result.reason}</p>
+      )}
+    </div>
+  );
+}
+
 function CISection() {
   const [request, setRequest] = useState<CIHandoffRequest>({
     integration: "posix",
@@ -687,17 +757,23 @@ function CISection() {
     coverage_file: "",
     output: "",
   });
+  const [gated, setGated] = useState(false);
+  const [gate, setGate] = useState<CIGateStep>(emptyGateStep);
   const [handoff, setHandoff] = useState<CIHandoffResult | null>(null);
   const [resultsDirectory, setResultsDirectory] = useState("");
   const [results, setResults] = useState<CIInspectResult | null>(null);
   const [policyPath, setPolicyPath] = useState("");
   const [policy, setPolicy] = useState<GatePolicyResult | null>(null);
+  const [snapshot, setSnapshot] = useState({ directory: "", identity: "" });
+  const [verification, setVerification] = useState<CIGateVerifyResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const cancelVerification = useRef<HTMLButtonElement>(null);
 
   async function handleGenerate() {
     setBusy(true);
     try {
-      setHandoff(await saveCIHandoff(request));
+      setHandoff(await saveCIHandoff(gated ? { ...request, gate } : request));
     } finally {
       setBusy(false);
     }
@@ -719,6 +795,44 @@ function CISection() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleVerify() {
+    setBusy(true);
+    setVerifying(true);
+    setVerification(null);
+    try {
+      setVerification(await verifyCIGate(snapshot.directory, snapshot.identity));
+    } finally {
+      setBusy(false);
+      setVerifying(false);
+    }
+  }
+
+  // Verify is disabled while it reads, so the focus moves to the one action
+  // the running verification offers rather than being left on nothing.
+  useEffect(() => {
+    if (verifying) {
+      cancelVerification.current?.focus();
+    }
+  }, [verifying]);
+
+  // A reading shown beside a field names what that field held when it was
+  // read. Once the field changes, the reading is withdrawn: an identity left
+  // beside another policy's path is one a person could pin by mistake. The
+  // fields hold still while the section works, so a reading always answers
+  // what they show.
+  function changeResultsDirectory(value: string) {
+    setResultsDirectory(value);
+    setResults(null);
+  }
+  function changePolicyPath(value: string) {
+    setPolicyPath(value);
+    setPolicy(null);
+  }
+  function changeSnapshot(change: Partial<typeof snapshot>) {
+    setSnapshot({ ...snapshot, ...change });
+    setVerification(null);
   }
 
   return (
@@ -746,6 +860,47 @@ function CISection() {
         <Field label="Coverage declaration" value={request.coverage_file} onChange={(coverage_file) => setRequest({ ...request, coverage_file })} />
         <Field label="Handoff destination" value={request.output} onChange={(output) => setRequest({ ...request, output })} />
       </div>
+      <fieldset className="runner-gate-step">
+        <legend>Reviewed change gate</legend>
+        <label className="runner-field">
+          <span>
+            <input type="checkbox" checked={gated} onChange={(event) => setGated(event.target.checked)} /> Add the
+            reviewed change-gate step after the suite
+          </span>
+        </label>
+        {gated ? (
+          <>
+            <p className="runner-note">
+              The step runs <code>readmit suite gate</code> after <code>suite ci</code>, even when the
+              suite failed, and never replaces the suite&apos;s exit status. The suite then runs with
+              the approved promotion the gate policy pins. Pin the identity reviewed for the policy;
+              the workflow never computes one.
+            </p>
+            <div className="runner-form">
+              <Field label="Release references" value={gate.releases} onChange={(releases) => setGate({ ...gate, releases })} />
+              <Field label="Promotion approval" value={gate.promotion} onChange={(promotion) => setGate({ ...gate, promotion })} />
+              <Field
+                label="Promotion approval identity"
+                value={gate.promotion_identity}
+                onChange={(promotion_identity) => setGate({ ...gate, promotion_identity })}
+              />
+              <Field label="Target revision (operator-declared)" value={gate.revision} onChange={(revision) => setGate({ ...gate, revision })} />
+              <Field label="Reviewed baseline run directory" value={gate.baseline} onChange={(baseline) => setGate({ ...gate, baseline })} />
+              <Field label="Reviewed gate policy" value={gate.policy} onChange={(policy) => setGate({ ...gate, policy })} />
+              <Field
+                label="Reviewed gate policy identity"
+                value={gate.policy_identity}
+                onChange={(policy_identity) => setGate({ ...gate, policy_identity })}
+              />
+              <Field
+                label="Gate snapshot directory (fresh per invocation)"
+                value={gate.snapshot_directory}
+                onChange={(snapshot_directory) => setGate({ ...gate, snapshot_directory })}
+              />
+            </div>
+          </>
+        ) : null}
+      </fieldset>
       <div className="runner-actions">
         <button type="button" disabled={busy} onClick={() => void handleGenerate()}>
           Generate handoff
@@ -766,8 +921,8 @@ function CISection() {
 
       <h4>Retained CI results and gate policy</h4>
       <div className="runner-form">
-        <Field label="CI output directory" value={resultsDirectory} onChange={setResultsDirectory} />
-        <Field label="Gate policy file" value={policyPath} onChange={setPolicyPath} />
+        <Field label="CI output directory" value={resultsDirectory} onChange={changeResultsDirectory} disabled={busy} />
+        <Field label="Gate policy file" value={policyPath} onChange={changePolicyPath} disabled={busy} />
       </div>
       <div className="runner-actions">
         <button type="button" disabled={busy || resultsDirectory === ""} onClick={() => void handleResults()}>
@@ -814,6 +969,38 @@ function CISection() {
           </p>
         )
       ) : null}
+
+      <h4>Verify a retained change gate</h4>
+      <p className="runner-note">
+        Verification reads only the retained snapshot, as <code>readmit suite verify-gate</code>{" "}
+        does: every retained byte is checked against the snapshot&apos;s manifest and the assessment
+        is repeated at the instant it was retained, against the identity pinned for its policy.
+        Nothing is sent, rerun or changed, and an unknown gate is never a pass.
+      </p>
+      <div className="runner-form">
+        <Field label="Retained gate snapshot" value={snapshot.directory} onChange={(directory) => changeSnapshot({ directory })} disabled={busy} />
+        <Field label="Pinned gate policy identity" value={snapshot.identity} onChange={(identity) => changeSnapshot({ identity })} disabled={busy} />
+      </div>
+      <div className="runner-actions">
+        <button
+          type="button"
+          disabled={busy || snapshot.directory === "" || snapshot.identity === ""}
+          onClick={() => void handleVerify()}
+        >
+          Verify retained gate
+        </button>
+        {verifying ? (
+          <button type="button" ref={cancelVerification} onClick={() => cancel(CI_GATE_VERIFY)}>
+            Cancel verification
+          </button>
+        ) : null}
+      </div>
+      {verifying ? (
+        <p className="runner-note" role="status">
+          Verifying the retained snapshot…
+        </p>
+      ) : null}
+      {verification ? <GateVerification result={verification} /> : null}
     </section>
   );
 }

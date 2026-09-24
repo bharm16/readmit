@@ -95,10 +95,12 @@ privately; recovery never sends. Preserve interrupted directories and their
 journals through agent replacement. A runner lease expiry is not proof that
 repeating a send is safe.
 
-The desktop application generates these workflow files from structured inputs
-and inspects retained `ci.json`, `gate.json` and gate-policy identities in-app;
-it never commits to a repository, authorizes a third-party service or uploads
-anything. See [the desktop shell](desktop.md#customer-runners-recurring-schedules-and-ci-handoffs).
+The desktop application generates these workflow files from structured inputs,
+with the [reviewed change gate](#the-change-gate-in-a-generated-workflow) when
+it is asked for, inspects retained `ci.json`, `gate.json` and gate-policy
+identities in-app, and verifies a retained gate snapshot as
+`readmit suite verify-gate` does; it never commits to a repository, authorizes a
+third-party service or uploads anything. See [the desktop shell](desktop.md#customer-runners-recurring-schedules-and-ci-handoffs).
 
 ## Generic CI (POSIX shell)
 
@@ -267,3 +269,60 @@ No raw snapshots, manifests, policies, approval labels or hashes belong in publi
 CI logs or hosted artifact uploads. Only synthetic or explicitly authorized data
 may enter hosted CI. Real provider protection, customer custody/backup recovery,
 approved accounts and external-system acceptance remain installation gates.
+
+### The change gate in a generated workflow
+
+A gated workflow runs the change gate as the step after `suite ci`. The gate
+assesses a run only when it retained the approved promotion the policy pins, so
+`suite ci` also takes the release references, the promotion approval, its full
+identity and the operator's target revision. The reviewed baseline must be a
+run of the same suite retained with that same promotion, because the gate checks
+the promotion in both runs. The customer provisions eight more
+non-secret variables beside the six: `RELEASES_FILE`, `PROMOTION_FILE`,
+`PROMOTION_IDENTITY`, `TARGET_REVISION`, `BASELINE_DIRECTORY` (the privately
+reviewed baseline run), `GATE_POLICY`, `GATE_POLICY_IDENTITY` (the identity
+reviewed and pinned for that policy) and `GATE_DIRECTORY`, a new path on the
+persistent private volume for this one invocation, outside both runs. The gate
+needs no operation policy: assessing retained evidence is not licensed work.
+
+```sh
+"$READMIT_BIN" --operation-policy "$OPERATION_POLICY" suite ci "$SUITE_FILE" --environment "$SUITE_ENVIRONMENT" --output "$RUN_DIRECTORY" --requirements "$COVERAGE_FILE" --releases "$RELEASES_FILE" --promotion "$PROMOTION_FILE" --promotion-identity "$PROMOTION_IDENTITY" --revision "$TARGET_REVISION" --send --deadline 5m
+execution=$?
+"$READMIT_BIN" suite gate "$RUN_DIRECTORY" --baseline "$BASELINE_DIRECTORY" --policy "$GATE_POLICY" --policy-identity "$GATE_POLICY_IDENTITY" --output "$GATE_DIRECTORY"
+gate=$?
+if [ "$execution" -ne 0 ]; then
+  exit "$execution"
+fi
+exit "$gate"
+```
+
+The gate runs even when execution failed, so a failed run is still retained,
+and the script exits with the execution's status whenever execution failed: a
+retention exit never replaces it. GitHub Actions runs the gate as a second step
+of the same job, after the suite unless the workflow was cancelled:
+
+```yaml
+      - name: Retain the reviewed change gate
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          "$READMIT_BIN" suite gate "$RUN_DIRECTORY" --baseline "$BASELINE_DIRECTORY" --policy "$GATE_POLICY" --policy-identity "$GATE_POLICY_IDENTITY" --output "$GATE_DIRECTORY"
+```
+
+Azure DevOps runs it as the next step whether the suite passed or failed:
+
+```yaml
+  - bash: |
+      "$READMIT_BIN" suite gate "$RUN_DIRECTORY" --baseline "$BASELINE_DIRECTORY" --policy "$GATE_POLICY" --policy-identity "$GATE_POLICY_IDENTITY" --output "$GATE_DIRECTORY"
+    displayName: Retain the reviewed change gate
+    condition: succeededOrFailed()
+    timeoutInMinutes: 10
+```
+
+In both, each step fails the job on its own exit, so the gate's result is
+reported beside the suite's and never in place of it. The desktop application
+validates the fourteen variables before it writes any of these files, refusing
+a value that would break the checklist's comment lines, an identity that is not
+a full SHA-256 identity, and a run, baseline and snapshot directory that are not
+three separate folders. The workflow uses the pinned identity as provisioned;
+it never computes one.

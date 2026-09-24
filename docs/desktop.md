@@ -3397,9 +3397,25 @@ configuration is selected, and it says so rather than offering a fake flow.
   supported integrations (POSIX shell, GitHub Actions, Azure DevOps) with the
   six non-secret path/selection variables validated. The generated file's
   checklist lines are comments; the workflow itself is env-var driven and
-  discloses nothing customer-specific. The application never commits to a
-  repository, authorizes a third-party service or uploads anything; a trusted
-  customer-owned self-hosted agent and installation remain the customer's.
+  discloses nothing customer-specific. A value holding a line break or another
+  control character is refused, because it would end its comment line and put
+  the rest of itself into the workflow the agent runs. Asked for, the
+  **reviewed change gate** adds the documented
+  [gate step](customer-ci.md#the-change-gate-in-a-generated-workflow) after
+  the suite: `suite ci` then retains the approved promotion (release
+  references, approval, its full identity and the operator's target revision),
+  and the unchanged `readmit suite gate` retains a snapshot of the run against
+  the reviewed baseline under the gate policy and the identity pinned for it.
+  The gate runs even when the suite failed and never replaces the suite's exit
+  status: the POSIX script exits with the suite's status when it failed, and
+  GitHub Actions and Azure DevOps run the gate as its own step. The eight
+  further variables are validated before anything is written — both
+  identities are full SHA-256 identities, and the run, the baseline and the
+  snapshot are three separate folders — and the workflow uses the pinned
+  identity as provisioned, never computing one. The application never commits
+  to a repository, authorizes a third-party service or uploads anything; a
+  trusted customer-owned self-hosted agent and installation remain the
+  customer's.
 - **Installation handoffs**: the shipped native service unit
   (`runner/readmit-runner.service`) and container image definition
   (`runner/Dockerfile`) consume the configuration the panel writes; provisioning
@@ -3462,9 +3478,29 @@ aggregate and, when present, the `readmit-ci-gate/v1` change-gate summary,
 through their strict readers; a missing summary is reported, never a pass. A
 reviewed `readmit-ci-gate-policy/v1` file is read for its canonical identity —
 the identity the customer pins independently in protected configuration — and
-reading a policy approves nothing. GUI-prepared suites and CI artifacts execute
+reading a policy approves nothing. Typing another directory or policy path
+withdraws the reading shown beside it, so an identity is never left beside a
+path it was not read from. GUI-prepared suites and CI artifacts execute
 through the unchanged command-line contracts with equivalent verdicts, which the
 differential tests prove against a real hub and the actual CLI executable.
+
+**Verify a retained change gate** checks one retained snapshot against the
+policy identity pinned for it through `suite.VerifyGate`, the operation
+`readmit suite verify-gate` runs: every retained byte is checked against the
+snapshot's `readmit-ci-retention/v1` manifest and the assessment is repeated at
+the instant the snapshot was retained, with retention expiry judged by this
+machine's clock. The window shows the `readmit-ci-gate/v1` summary the command
+prints for the same snapshot and identity, each part's verdict, and every part
+not verified. An unknown gate is refused, never a pass, and the refusal says
+which it is: a snapshot that was tampered with, one retained under another
+policy and a folder that is not a snapshot could not be verified at all; an
+intact snapshot whose retained verdict is unknown matches its manifest but
+still passes nothing; and a snapshot past its retention end is refused as
+expired with nothing deleted. Verification reads only the snapshot and never
+sends, reruns or changes a byte. The focus moves to its **Cancel
+verification** control, which stops exactly that verification by the name it
+runs under (as `Escape` stops the window's one operation) and reaches no
+verdict; a cancelled verification is shown as cancelled, not refused.
 
 ## Interface profile management
 
