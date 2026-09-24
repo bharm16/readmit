@@ -388,8 +388,8 @@ func TestRawInspectionShowsALongValueInPartAndSaysSo(t *testing.T) {
 		t.Fatalf("the long field was not the one row shown in part: %+v", cut)
 	}
 	want := strconv.QuoteToASCII(string(long[:desktop.MaxInspectionValueBytes]))
-	if cut[0].Value != want || !strings.Contains(stdout, strings.TrimSuffix(want, `"`)) {
-		t.Fatalf("the value was not the escaped first %d bytes of the field", desktop.MaxInspectionValueBytes)
+	if cut[0].ValueShownBytes != desktop.MaxInspectionValueBytes || cut[0].Value != want || !strings.Contains(stdout, strings.TrimSuffix(want, `"`)) {
+		t.Fatalf("the value was not the escaped first %d bytes of the field: %+v", desktop.MaxInspectionValueBytes, cut[0])
 	}
 
 	// A character the bound would split is left out whole, so what is shown
@@ -403,13 +403,15 @@ func TestRawInspectionShowsALongValueInPartAndSaysSo(t *testing.T) {
 	}
 	result = app.InspectRawFile(desktop.RawInspectionRequest{File: path, Format: "auto", Terminator: "auto", ShowValues: true})
 	var shown string
+	var shownBytes int
 	for _, row := range result.Inspection.Rows {
 		if row.ValueTruncated {
 			shown = row.Value
+			shownBytes = row.ValueShownBytes
 		}
 	}
-	if shown == "" || strings.Contains(shown, `\x`) || !strings.Contains(stdout, strings.TrimSuffix(shown, `"`)) || strings.Contains(shown, `\u00e9`) {
-		t.Fatalf("a value cut inside a character: %q", shown)
+	if shownBytes != desktop.MaxInspectionValueBytes-1 || shown != strconv.QuoteToASCII(string(text[:shownBytes])) || strings.Contains(shown, `\x`) || !strings.Contains(stdout, strings.TrimSuffix(shown, `"`)) || strings.Contains(shown, `\u00e9`) {
+		t.Fatalf("a value cut inside the 4096th byte: shown %d bytes, value %q", shownBytes, shown)
 	}
 }
 

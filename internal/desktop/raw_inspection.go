@@ -54,9 +54,11 @@ type RawInspectionRequest struct {
 
 // RawInspection is what `readmit inspect` reports about the file, one window
 // of its rows at a time. Total counts every row the command prints; Rows are
-// the ones from Offset, at most Limit of them, and a value is cut at
-// ValueBytes bytes. Bytes and SHA256 are the length and digest of the bytes
-// read, so a person can see the source was read and not changed.
+// the ones from Offset, at most Limit of them, and a value is cut at or before
+// ValueBytes bytes. Each row's ValueShownBytes is the actual byte count after
+// respecting a UTF-8 character boundary. Bytes and SHA256 are the length and
+// digest of the bytes read, so a person can see the source was read and not
+// changed.
 type RawInspection struct {
 	Format              string                    `json:"format"`
 	FormatSelection     string                    `json:"format_selection"`
@@ -173,7 +175,7 @@ func (a *App) InspectRawFile(request RawInspectionRequest) RawInspectionResult {
 		inspected.Rows(func(row operation.InspectionRow) bool {
 			if view.Total >= request.Offset && len(view.Rows) < limit {
 				if request.ShowValues {
-					row.Value, row.ValueTruncated = inspected.Value(row, MaxInspectionValueBytes)
+					row.Value, row.ValueTruncated, row.ValueShownBytes = inspected.Value(row, MaxInspectionValueBytes)
 				}
 				view.Rows = append(view.Rows, row)
 			}
