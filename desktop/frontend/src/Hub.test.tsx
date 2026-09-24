@@ -380,3 +380,92 @@ test("HubPanel shows a remembered configuration that no longer validates and rec
 
   uninstallFacade();
 });
+
+// A chosen configuration the application cannot remember (#364) is refused,
+// like any other refused choice, and the panel says why beside the selection
+// the application kept: the configuration already selected stays shown and
+// usable, and choosing again is the way back. Nothing is refreshed on the
+// person's behalf.
+test.each([
+  [
+    "a chosen one cannot be remembered",
+    "cannot retain the hub configuration selection, so the selection is unchanged; choose a hub configuration again",
+  ],
+  ["a chosen folder holds no configuration", "the chosen folder does not contain hub-client.json"],
+])("HubPanel keeps the selected configuration and says why when %s", async (_, refused) => {
+  const user = userEvent.setup();
+  const selected: HubResult = {
+    state: "completed",
+    connected: false,
+    authenticated: false,
+    config_path: "/etc/readmit/hub-client.json",
+    hub_url: "https://hub.customer.example:8443",
+  };
+  const facade = installFacade({
+    HubStatus: async () => selected,
+    ChooseHubConfig: async () => ({ state: "failed", connected: false, authenticated: false, reason: refused }),
+  });
+
+  render(<HubPanel />);
+  expect(await screen.findByText("Configuration: /etc/readmit/hub-client.json")).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: /Choose hub configuration…/i }));
+  expect(await screen.findByText(refused)).toBeTruthy();
+  expect(screen.getByText("Configuration: /etc/readmit/hub-client.json")).toBeTruthy();
+  expect(screen.queryByText(/No configuration file selected/)).toBeNull();
+  expect(screen.getByRole("button", { name: /Diagnose prerequisites/i }).hasAttribute("disabled")).toBe(false);
+  expect(screen.getByRole("button", { name: /Connect to hub/i }).hasAttribute("disabled")).toBe(false);
+  expect(screen.getByRole("button", { name: /Choose hub configuration…/i }).hasAttribute("disabled")).toBe(false);
+
+  // Choosing again reaches the application, and a choice it remembers
+  // replaces what was selected and the refusal with it.
+  facade.reply({
+    ChooseHubConfig: async () => ({ ...selected, config_path: "/etc/readmit/replacement/hub-client.json" }),
+  });
+  await user.click(screen.getByRole("button", { name: /Choose hub configuration…/i }));
+  expect(await screen.findByText("Configuration: /etc/readmit/replacement/hub-client.json")).toBeTruthy();
+  expect(screen.queryByText(refused)).toBeNull();
+  expect(facade.calls.map((call) => call.method)).toEqual(["HubStatus", "ChooseHubConfig", "ChooseHubConfig"]);
+
+  uninstallFacade();
+});
+
+// Cancelling a new choice while a remembered configuration no longer
+// validates (#364) leaves the panel as it was: the configuration and why it
+// cannot be used stay shown, without refreshing, and choosing again is still
+// the way back.
+test("HubPanel keeps a remembered configuration's reason when choosing another is cancelled", async () => {
+  const user = userEvent.setup();
+  const stale =
+    "the remembered hub configuration is no longer there; choose a hub configuration again";
+  const facade = installFacade({
+    HubStatus: async () => ({
+      state: "failed",
+      connected: false,
+      authenticated: false,
+      config_path: "/etc/readmit/hub-client.json",
+      reason: stale,
+    }),
+    ChooseHubConfig: async () => ({
+      state: "cancelled",
+      connected: false,
+      authenticated: false,
+      reason: "no configuration file was chosen",
+    }),
+  });
+
+  render(<HubPanel />);
+  expect(await screen.findByText(stale)).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: /Choose hub configuration…/i }));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: /Choose hub configuration…/i }).hasAttribute("disabled")).toBe(false),
+  );
+  expect(facade.callsTo("ChooseHubConfig").length).toBe(1);
+  expect(screen.getByText(stale)).toBeTruthy();
+  expect(screen.getByText("Configuration: /etc/readmit/hub-client.json")).toBeTruthy();
+  expect(screen.queryByText("no configuration file was chosen")).toBeNull();
+  expect(screen.getByRole("button", { name: /Diagnose prerequisites/i }).hasAttribute("disabled")).toBe(true);
+  expect(screen.getByRole("button", { name: /Connect to hub/i }).hasAttribute("disabled")).toBe(true);
+  expect(facade.callsTo("HubStatus").length).toBe(1);
+
+  uninstallFacade();
+});

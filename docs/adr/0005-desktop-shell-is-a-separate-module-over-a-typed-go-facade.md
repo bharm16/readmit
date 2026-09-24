@@ -56,14 +56,18 @@ static build stand unchanged. Nothing here is added to the release archives.
 - Every new desktop capability is a facade method backed by an internal package.
   A capability the frontend cannot express as a typed call does not belong in the
   frontend.
-- The shell keeps four bounded, versioned local documents: recent folder paths
+- The shell keeps seven bounded, versioned local documents: recent folder paths
   (`readmit-desktop-recent/v1`), saved filters with the active selection
   (`readmit-filters/v1`), the working session a viewer has not stored
   (`readmit-desktop-session/v1`) — the workspace, case, region and run they had
-  open, and the note drafts they had typed — and the editor draft store
+  open, and the note drafts they had typed — the editor draft store
   (`readmit-desktop-drafts/v1`) holding every editor's unstored work under
-  internal identities. Saved field terms and a
-  retained draft can contain patient data typed by the operator. All four files
+  internal identities, and the paths of three operator-supplied files the
+  person selected: the operation policy
+  (`readmit-desktop-operation-selection/v1`), the commercial destinations
+  (`readmit-desktop-commercial-selection/v1`) and the customer hub
+  configuration (`readmit-desktop-hub-selection/v1`). Saved field terms and a
+  retained draft can contain patient data typed by the operator. All seven files
   are owner-readable, replaced atomically, and kept
   outside evidence; unreadable documents are reported rather than overwritten.
   No evidence read from a case is persisted in shell state. No document is

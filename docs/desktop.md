@@ -2504,6 +2504,15 @@ diagnoses nor connects to it; when the selection itself cannot be read, the
 panel says so. Choosing a configuration again recovers, and it is what the next
 window restores.
 
+A chosen configuration is remembered before it is selected, so a choice whose
+selection cannot be written is refused and changes nothing, as the operation
+and commercial selections are: the panel keeps the configuration it had, or the
+reason a remembered one could not be restored, and says why beside it, and
+choosing again once the selection can be written recovers. Every other refused
+choice, such as a file that does not validate or a folder without
+`hub-client.json`, likewise keeps what was selected and says why. Cancelling a
+choice leaves the panel as it was.
+
 ### Prerequisite diagnostics
 
 Before connecting or upon selecting a configuration, the **Run diagnostics** action

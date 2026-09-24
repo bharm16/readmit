@@ -1,5 +1,20 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- A customer hub configuration the window cannot remember is no longer shown
+  as selected (#364). Choosing one ignored a failure to write
+  `readmit-desktop-hub-selection/v1`, so the panel showed the configuration
+  selected while the next window would restore the previous one or none. The
+  choice is now refused and changes nothing, as the operation and commercial
+  selections are: the panel keeps the configuration it had, or the reason a
+  remembered one could not be restored, and says why, and choosing again once
+  the selection can be written recovers. The panel now keeps what was selected
+  beside every refused choice, where it used to show no configuration while
+  one was still selected. Cancelling a new choice while a remembered
+  configuration could not be restored no longer hides the reason until the
+  status is refreshed. ADR-0005 now counts the seven local documents
+  the shell keeps, the three selections among them. No contract, facade method
+  or `readmit` command changes.
+
 - The window can now edit a registered credential reference, and each
   environment document it saves names itself (#292). The credential reference
   panel always registered and never updated, so `readmit secret update` had no

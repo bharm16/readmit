@@ -12,6 +12,7 @@ import (
 	"encoding/json/v2"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -187,6 +188,100 @@ func TestARememberedHubSelectionThatNoLongerValidatesIsShownUntilChosenAgain(t *
 				t.Fatalf("choosing again did not recover: %+v", status)
 			}
 			if status := freshApp(t, &queueChooser{}, selection).HubStatus(); status.State != desktop.Completed || status.ConfigPath != chosen {
+				t.Fatalf("the next window did not restore the configuration chosen again: %+v", status)
+			}
+		})
+	}
+	if n := hub.accepted.Load(); n != 0 {
+		t.Fatalf("the hub received %d connections; nothing here reaches it", n)
+	}
+}
+
+// A choice this window cannot remember is refused and changes nothing, as the
+// operation and commercial selections refuse theirs (#364): the window keeps
+// the configuration it had, or the reason a remembered one could not be
+// restored, and the next window restores what it did before. The refusal says
+// how to recover, and choosing again once the selection can be written does.
+// The failure is injected as an interrupted write retained beside the
+// remembered selection, which a replacement never reuses, and it is kept.
+func TestAHubChoiceThatCannotBeRememberedIsRefusedAndChangesNothing(t *testing.T) {
+	hub := newCountingEndpoint(t, false)
+	const refused = "cannot retain the hub configuration selection, so the selection is unchanged; choose a hub configuration again"
+	for _, c := range []struct {
+		name string
+		// selected reports whether an earlier window selected a
+		// configuration, and removed whether it was then removed, so this
+		// window shows why it could not be restored.
+		selected, removed bool
+		// shown is what this window's hub status says before the choice.
+		shown desktop.State
+	}{
+		{"nothing was selected", false, false, desktop.Empty},
+		{"a configuration was selected", true, false, desktop.Completed},
+		{"a remembered configuration was removed", true, true, desktop.Failed},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			selection := filepath.Join(t.TempDir(), "operations.json")
+			remembered := filepath.Join(filepath.Dir(selection), "hub.json")
+			if c.selected {
+				earlierConfig := writeHubClientConfig(t, t.TempDir(), "https://"+hub.address)
+				if result := freshApp(t, &queueChooser{}, selection).SelectHubConfig(earlierConfig); result.State != desktop.Completed {
+					t.Fatalf("select: %+v", result)
+				}
+				if c.removed {
+					if err := os.Remove(earlierConfig); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			rememberedBefore, rememberedErr := os.ReadFile(remembered)
+
+			chosen := writeHubClientConfig(t, t.TempDir(), "https://"+hub.address)
+			app := freshApp(t, &queueChooser{folders: []string{filepath.Dir(chosen), filepath.Dir(chosen)}}, selection)
+			before := app.HubStatus()
+			if before.State != c.shown {
+				t.Fatalf("before the choice the hub status is %+v, want %s", before, c.shown)
+			}
+			interrupted := remembered + ".incomplete"
+			if err := os.WriteFile(interrupted, []byte("interrupted"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			result := app.ChooseHubConfig()
+			if result.State != desktop.Failed || result.Reason != refused {
+				t.Fatalf("a choice that cannot be remembered was not refused: %+v", result)
+			}
+			if result.ConfigPath != "" || result.HubURL != "" || result.Connected {
+				t.Fatalf("the refusal reports the refused configuration as selected: %+v", result)
+			}
+			// The window says what it said before: the same selection, or the
+			// same reason, and nothing about the refused choice.
+			if after := app.HubStatus(); !reflect.DeepEqual(after, before) {
+				t.Fatalf("a refused choice changed the hub status from %+v to %+v", before, after)
+			}
+			// What was remembered is left as it was, and so is the interrupted
+			// write that stood in the way.
+			rememberedAfter, err := os.ReadFile(remembered)
+			if (err == nil) != (rememberedErr == nil) || string(rememberedAfter) != string(rememberedBefore) {
+				t.Fatalf("a refused choice changed the remembered selection from %q (%v) to %q (%v)", rememberedBefore, rememberedErr, rememberedAfter, err)
+			}
+			if kept := mustRead(t, interrupted); string(kept) != "interrupted" {
+				t.Fatalf("the interrupted write was reused: %q", kept)
+			}
+			// The next window restores what this one had, not the refused choice.
+			if next := freshApp(t, &queueChooser{}, selection).HubStatus(); !reflect.DeepEqual(next, before) {
+				t.Fatalf("the next window restored %+v, want %+v", next, before)
+			}
+
+			// Once the selection can be written, choosing again recovers, and it
+			// is what the next window restores.
+			if err := os.Remove(interrupted); err != nil {
+				t.Fatal(err)
+			}
+			if result := app.ChooseHubConfig(); result.State != desktop.Completed || result.ConfigPath != chosen {
+				t.Fatalf("choosing again: %+v", result)
+			}
+			if status := freshApp(t, &queueChooser{}, selection).HubStatus(); status.State != desktop.Completed || status.ConfigPath != chosen || status.Reason != "" {
 				t.Fatalf("the next window did not restore the configuration chosen again: %+v", status)
 			}
 		})
