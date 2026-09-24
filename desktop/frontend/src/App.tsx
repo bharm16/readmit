@@ -2683,6 +2683,7 @@ export default function App() {
           <PrivacyPanel
             workspace={root}
             entries={opened?.artifacts ?? []}
+            drafts={drafts}
             onRefresh={() => void refreshListing()}
           />
         ) : null}

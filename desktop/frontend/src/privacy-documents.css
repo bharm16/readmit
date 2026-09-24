@@ -1,0 +1,53 @@
+.privacy-documents {
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  display: grid;
+  gap: 0.6rem;
+  margin: 1rem 0;
+  padding: 1rem;
+}
+
+.privacy-documents h5,
+.privacy-documents h6 {
+  margin: 0.8rem 0 0;
+}
+
+.privacy-documents label {
+  display: block;
+}
+
+.privacy-documents input:not([type="checkbox"]),
+.privacy-documents select,
+.privacy-documents textarea {
+  box-sizing: border-box;
+  max-width: 42rem;
+  width: 100%;
+}
+
+.privacy-documents textarea {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  color: inherit;
+  font: inherit;
+  min-height: 3rem;
+  padding: 0.35rem 0.7rem;
+}
+
+.privacy-documents .preflight {
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.8rem;
+}
+
+.privacy-documents .preflight > div,
+.privacy-documents > div:not(.preflight):not(.retention) {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.privacy-documents button {
+  justify-self: start;
+}

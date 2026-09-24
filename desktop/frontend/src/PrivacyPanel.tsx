@@ -11,6 +11,7 @@ import {
   verifySupportBundle,
   cancel,
   type Artifact,
+  type EditorDraft,
   type PacketPathResult,
   type Review as ReviewDocument,
   type ReviewResult,
@@ -26,6 +27,7 @@ import {
   type SupportRequest,
 } from "./bindings";
 import { Reexecution } from "./Reexecution";
+import { PrivacyDocuments } from "./PrivacyDocuments";
 
 /** The privacy panel: preparation, materialization, review, approval and
  * export, and the value-free support summary beside them.
@@ -46,10 +48,12 @@ import { Reexecution } from "./Reexecution";
 export function PrivacyPanel({
   workspace,
   entries,
+  drafts,
   onRefresh,
 }: {
   workspace: string | null;
   entries: Artifact[];
+  drafts?: EditorDraft[] | null;
   onRefresh: () => void;
 }) {
   const cases = entries.filter((artifact) => artifact.kind === "case").map((artifact) => artifact.name);
@@ -59,14 +63,8 @@ export function PrivacyPanel({
   const portables = entries.filter((artifact) => artifact.kind === "portable-review").map((artifact) => artifact.name);
   const sealedPackets = entries.filter((artifact) => artifact.kind === "packet").map((artifact) => artifact.name);
   const bundles = entries.filter((artifact) => artifact.kind === "support").map((artifact) => artifact.name);
-  // A redaction policy and an inventory are documents somebody authored beside
-  // the evidence; the window authors none and the listing recognizes neither
-  // contract, so their pickers offer the workspace's unrecognized JSON
-  // documents and the operations' own decoders refuse a wrong one. Picking
-  // decides nothing: the decoder is the gate.
-  const documents = entries
-    .filter((artifact) => artifact.kind === "unsupported" && artifact.name.endsWith(".json"))
-    .map((artifact) => artifact.name);
+  const disclosurePolicies = entries.filter((artifact) => artifact.kind === "redact-policy").map((artifact) => artifact.name);
+  const originalInventories = entries.filter((artifact) => artifact.kind === "redact-inventory").map((artifact) => artifact.name);
   // One support source picker over the three source kinds the share operation
   // takes. A workspace entry name is unique, so the kind of the selected
   // source is the kind the listing reported for it.
@@ -292,6 +290,14 @@ export function PrivacyPanel({
       regression-equivalence claim is made: every result declines one explicitly.
     </p>
 
+    <PrivacyDocuments workspace={workspace} policyName={policyName} inventoryName={inventoryName} drafts={drafts}
+      onSaved={(kind, entry) => {
+        if (kind === "policy") setPolicyName(entry);
+        else setInventoryName(entry);
+        setDerived(null);
+        onRefresh();
+      }} />
+
     <div className="actions">
       <h4>Derive a disclosure review</h4>
       <label htmlFor="privacy-case">Case</label>
@@ -310,13 +316,13 @@ export function PrivacyPanel({
       <select id="privacy-policy" value={policyName} disabled={busy}
         onChange={(e) => { setPolicyName(e.target.value); setDerived(null); }}>
         <option value="">Select the policy document…</option>
-        {documents.map((name) => <option key={name} value={name}>{name}</option>)}
+        {disclosurePolicies.map((name) => <option key={name} value={name}>{name}</option>)}
       </select>
       <label htmlFor="privacy-inventory">Original-artifact inventory</label>
       <select id="privacy-inventory" value={inventoryName} disabled={busy}
         onChange={(e) => { setInventoryName(e.target.value); setDerived(null); }}>
         <option value="">Select the inventory…</option>
-        {documents.map((name) => <option key={name} value={name}>{name}</option>)}
+        {originalInventories.map((name) => <option key={name} value={name}>{name}</option>)}
       </select>
       <button disabled={busy || !caseName || !specName || !policyName || !inventoryName} onClick={() => void derive()}>
         {operation === "deriving" ? "Deriving…" : "Derive review"}

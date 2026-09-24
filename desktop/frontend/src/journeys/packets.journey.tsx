@@ -24,6 +24,7 @@ import type { UserEvent } from "@testing-library/user-event";
 import { byContent, enter, Journey, press, region } from "../testkit/journey";
 import { freeLoopbackAddress } from "./probes.js";
 import { activateLicense, createProject, runOnce, runs, savedAckTest, tabTo } from "./steps";
+import type { RedactInventory, RedactPolicy } from "../bindings";
 
 let journey: Journey;
 
@@ -272,9 +273,7 @@ test("the failing and fixed runs become a sealed packet, a portable review that 
 });
 
 /** The shipped planted example, byte for byte: every value in it is invented.
- * The two captures are the person's own evidence; the specification, the two
- * disclosure policies and the inventory are the documents the privacy panel
- * selects but does not author. */
+ * This older journey also proves existing hand-written documents still derive. */
 function placePlantedExample(project: string) {
   journey.placeFixture("redact-booking.mllp", "captures/redact-booking.mllp");
   journey.placeFixture("redact-reschedule.mllp", "captures/redact-reschedule.mllp");
@@ -283,6 +282,120 @@ function placePlantedExample(project: string) {
   journey.placeFixture("redact-policy-blocked.json", `${project}/blocked-policy.json`);
   journey.placeFixture("redact-inventory.json", `${project}/inventory.json`);
 }
+
+test("a policy and inventory authored in the window derive a ready review and the command line accepts their documents", async () => {
+  const user = userEvent.setup();
+  await journey.launch();
+  await activateLicense(user, journey);
+  await createProject(user, journey, "reviews", "authored-review", "Authored disclosure review");
+  const project = "reviews/authored-review";
+  journey.placeFixture("redact-booking.mllp", "captures/redact-booking.mllp");
+  journey.placeFixture("redact-reschedule.mllp", "captures/redact-reschedule.mllp");
+  journey.placeFixture("redact-spec.json", `${project}/spec.json`);
+  // These shipped synthetic examples are input to the test operator. They are
+  // outside the project: only actions in the window write its two documents.
+  journey.placeFixture("redact-policy.json", "templates/policy.json");
+  journey.placeFixture("redact-inventory.json", "templates/inventory.json");
+  const policy = JSON.parse(journey.readFile("templates/policy.json")) as RedactPolicy;
+  const inventory = JSON.parse(journey.readFile("templates/inventory.json")) as RedactInventory;
+  await importCaptures(user, "original.case");
+  const panel = privacy();
+
+  await enter(user, panel.getByLabelText("New disclosure policy document"), "authored-policy.json");
+  await press(user, panel.getByRole("button", { name: "Save disclosure policy" }));
+  expect(await panel.findByText("invalid redaction policy; only explicit named policies are supported")).toBeTruthy();
+  await enter(user, panel.getByLabelText("Patient identifier selector"), policy.patient.selector);
+  for (const [index, selector] of policy.patient.authority.entries()) {
+    await press(user, panel.getByRole("button", { name: "Add patient authority selector" }));
+    await enter(user, panel.getByLabelText(`Authority selector ${index + 1}`), selector);
+  }
+  for (const [index, rule] of policy.fields.entries()) {
+    await press(user, panel.getByRole("button", { name: "Add field rule" }));
+    await enter(user, panel.getByLabelText(`Field selector ${index + 1}`), rule.selector);
+    await user.selectOptions(panel.getByLabelText(`Field class ${index + 1}`), rule.class);
+    await user.selectOptions(panel.getByLabelText(`Field policy ${index + 1}`), rule.policy);
+    if (rule.policy === "scoped-surrogate/v1") {
+      await enter(user, panel.getByLabelText(`Surrogate scope ${index + 1}`), rule.scope ?? "");
+      for (const [at, selector] of (rule.authority ?? []).entries()) {
+        await press(user, panel.getByRole("button", { name: `Add rule authority selector ${index + 1}` }));
+        await enter(user, panel.getByLabelText(`Rule authority selector ${index + 1}.${at + 1}`), selector);
+      }
+    }
+    if (rule.policy === "replace-field/v1") {
+      await enter(user, panel.getByLabelText(`Replacement ${index + 1}`), rule.replacement ?? "");
+    }
+    if (rule.policy === "retain-literal/v1") {
+      for (const [at, value] of (rule.allowed ?? []).entries()) {
+        await press(user, panel.getByRole("button", { name: `Add allowed literal ${index + 1}` }));
+        await enter(user, panel.getByLabelText(`Allowed literal ${index + 1}.${at + 1}`), value);
+      }
+    }
+  }
+  for (const [index, segment] of policy.remove_segments.entries()) {
+    await press(user, panel.getByRole("button", { name: "Add segment" }));
+    await enter(user, panel.getByLabelText(`Segment ${index + 1}`), segment);
+  }
+  for (const name of policy.packet_policies) {
+    await user.click(panel.getByRole("checkbox", { name }));
+  }
+  for (const [index, item] of policy.spec_bindings.entries()) {
+    await press(user, panel.getByRole("button", { name: "Add literal binding" }));
+    await enter(user, panel.getByLabelText(`Binding location ${index + 1}`), item.location);
+    if (item.constant !== undefined) {
+      await user.selectOptions(panel.getByLabelText(`Binding source ${index + 1}`), "constant");
+      await user.selectOptions(panel.getByLabelText(`Protocol code ${index + 1}`), item.constant);
+    } else {
+      await enter(user, panel.getByLabelText(`Source occurrence ${index + 1}`), item.occurrence ?? "");
+      await enter(user, panel.getByLabelText(`Source selector ${index + 1}`), item.selector ?? "");
+    }
+  }
+  for (const [index, position] of policy.required_failures.entries()) {
+    await press(user, panel.getByRole("button", { name: "Add required failure" }));
+    await enter(user, panel.getByLabelText(`Assertion position ${index + 1}`), String(position));
+  }
+  await press(user, panel.getByRole("button", { name: "Save disclosure policy" }));
+  expect(await panel.findByText("Saved disclosure policy authored-policy.json.")).toBeTruthy();
+  await panel.findByRole("option", { name: "authored-policy.json" });
+
+  await user.click(panel.getByRole("checkbox", { name: "I declare this inventory complete for the original artifacts in scope" }));
+  for (const [index, artifact] of inventory.artifacts.entries()) {
+    await press(user, panel.getByRole("button", { name: "Add original artifact" }));
+    await user.selectOptions(panel.getByLabelText(`Artifact kind ${index + 1}`), artifact.kind);
+    await enter(user, panel.getByLabelText(`Artifact path ${index + 1}`), artifact.path);
+  }
+  for (const [index, value] of inventory.residual_values.entries()) {
+    await press(user, panel.getByRole("button", { name: "Add known value" }));
+    await enter(user, panel.getByLabelText(`Known value ${index + 1}`), value);
+  }
+  await enter(user, panel.getByLabelText("New original-artifact inventory document"), "authored-inventory.json");
+  await press(user, panel.getByRole("button", { name: "Save original-artifact inventory" }));
+  expect(await panel.findByText("Saved original-artifact inventory authored-inventory.json.")).toBeTruthy();
+  await panel.findByRole("option", { name: "authored-inventory.json" });
+
+  await user.selectOptions(panel.getByLabelText("Case"), "original.case");
+  await user.selectOptions(panel.getByLabelText("Original specification"), "spec.json");
+  await user.selectOptions(panel.getByLabelText("Disclosure policy"), "authored-policy.json");
+  await user.selectOptions(panel.getByLabelText("Original-artifact inventory"), "authored-inventory.json");
+  await press(user, panel.getByRole("button", { name: "Derive review" }));
+  expect(await line(panel, /^Review review-\d+ · ready-for-approval/)).toBeTruthy();
+  const windowIdentity = (await line(panel, /^Identity an approval must name: /)).replace("Identity an approval must name: ", "");
+  const cli = await journey.commandLine([
+    "--operation-policy", journey.path("vendor-delivered-license", "operation-policy.json"),
+    "redact", `${project}/original.case`, "--spec", `${project}/spec.json`,
+    "--policy", `${project}/authored-policy.json`, "--inventory", `${project}/authored-inventory.json`,
+    "--local-state", `${project}/cli-private`, "--output", `${project}/cli-review`,
+  ]);
+  expect(cli.code).toBe(0);
+  expect(JSON.parse(journey.readFile(`${project}/cli-review/review.json`)).state).toBe("ready-for-approval");
+  const exported = await journey.commandLine([
+    "redact", "export", `${project}/review-001`, "--local-state", `${project}/review-private-001`,
+    "--approve", windowIdentity, "--output", `${project}/cli-export-of-window-review`,
+  ]);
+  expect(exported.code).toBe(0);
+  expect(JSON.parse(journey.readFile(`${project}/cli-export-of-window-review/export-review.json`)).approved_review_identity).toBe(windowIdentity);
+  expect(journey.callsTo("SaveRedactPolicy")).toHaveLength(2);
+  expect(journey.callsTo("SaveRedactInventory")).toHaveLength(1);
+});
 
 /** Imports the two MLLP captures into the open project as one registered
  * case, with the framing the capture used. */

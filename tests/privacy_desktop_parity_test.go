@@ -21,6 +21,7 @@ import (
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/protect"
+	"github.com/bharm16/readmit/internal/redact"
 	"github.com/bharm16/readmit/internal/sharing"
 )
 
@@ -58,6 +59,106 @@ func privacyParityWorkspace(t *testing.T) string {
 		}
 	}
 	return workspace
+}
+
+// Authoring in the window writes the exact strict contracts the command line
+// reads. Independent derivations have fresh random surrogates, so their review
+// identities differ; the CLI instead exports the retained window review under
+// that review's own exact identity.
+func TestWindowAuthoredDisclosureDocumentsReachTheCommandLine(t *testing.T) {
+	workspace := privacyParityWorkspace(t)
+	app := desktopApp(t, workspace)
+	readPolicy := app.ReadRedactPolicy(workspace, "policy.json")
+	readInventory := app.ReadRedactInventory(workspace, "inventory.json")
+	if readPolicy.Policy == nil || readInventory.Inventory == nil {
+		t.Fatalf("existing documents did not reopen: policy=%+v inventory=%+v", readPolicy, readInventory)
+	}
+	if result := app.SaveRedactPolicy(desktop.RedactPolicyRequest{Workspace: workspace, Output: "authored-policy.json", Policy: *readPolicy.Policy}); result.State != desktop.Completed {
+		t.Fatalf("save policy: %+v", result)
+	}
+	if result := app.SaveRedactInventory(desktop.RedactInventoryRequest{Workspace: workspace, Output: "authored-inventory.json", Inventory: *readInventory.Inventory}); result.State != desktop.Completed {
+		t.Fatalf("save inventory: %+v", result)
+	}
+	for entry, decode := range map[string]func([]byte) error{
+		"authored-policy.json":    func(raw []byte) error { _, err := redact.DecodePolicy(raw); return err },
+		"authored-inventory.json": func(raw []byte) error { _, err := redact.DecodeInventory(raw); return err },
+	} {
+		raw, err := os.ReadFile(filepath.Join(workspace, entry))
+		if err != nil || decode(raw) != nil {
+			t.Fatalf("the shared reader refused %s: read=%v decode=%v", entry, err, decode(raw))
+		}
+	}
+	window := app.DeriveExportReview(desktop.PrivacyReviewRequest{
+		Workspace: workspace, Case: "original.case", Spec: "spec.json",
+		Policy: "authored-policy.json", Inventory: "authored-inventory.json",
+		Output: "window-review", LocalState: "window-private",
+	})
+	if window.State != desktop.Completed || window.Outcome == nil || window.Outcome.State != "ready-for-approval" {
+		t.Fatalf("window could not derive from authored documents: %+v", window)
+	}
+	windowReview, err := redact.OpenReview(filepath.Join(workspace, "window-review"))
+	if err != nil || windowReview.Identity != window.Outcome.Identity || windowReview.State != "ready-for-approval" {
+		t.Fatalf("window review identity did not verify against its own bytes: %+v %v", windowReview, err)
+	}
+	stdout, stderr, err := run(t, "redact", filepath.Join(workspace, "original.case"),
+		"--spec", filepath.Join(workspace, "spec.json"),
+		"--policy", filepath.Join(workspace, "authored-policy.json"),
+		"--inventory", filepath.Join(workspace, "authored-inventory.json"),
+		"--local-state", filepath.Join(workspace, "cli-private"),
+		"--output", filepath.Join(workspace, "cli-review"))
+	if err != nil || !strings.Contains(stdout, "ready for explicit approval") {
+		t.Fatalf("CLI did not accept the same documents: err=%v stdout=%s stderr=%s", err, stdout, stderr)
+	}
+	opened, err := redact.OpenReview(filepath.Join(workspace, "cli-review"))
+	if err != nil || opened.Identity == "" || opened.State != "ready-for-approval" || len(opened.RequiredFailures) != 2 {
+		t.Fatalf("CLI review disagreed with window readiness: %+v %v", opened, err)
+	}
+	_, _, err = run(t, "redact", "export", filepath.Join(workspace, "window-review"),
+		"--local-state", filepath.Join(workspace, "window-private"),
+		"--approve", window.Outcome.Identity,
+		"--output", filepath.Join(workspace, "cli-export-window-review"))
+	if err != nil {
+		t.Fatalf("CLI refused the exact window review identity: %v", err)
+	}
+	export, err := redact.OpenExport(filepath.Join(workspace, "cli-export-window-review"))
+	if err != nil || export.ApprovedReview != window.Outcome.Identity {
+		t.Fatalf("CLI export did not retain the window review identity: %+v %v", export, err)
+	}
+}
+
+func TestWindowAndCommandLineRefuseUnsupportedDisclosureDocuments(t *testing.T) {
+	for _, invalid := range []struct {
+		entry string
+		doc   string
+	}{
+		{"policy.json", `{"schema":"readmit-redact-policy/v2"}`},
+		{"inventory.json", `{"schema":"readmit-redact-inventory/v2"}`},
+	} {
+		t.Run(invalid.entry, func(t *testing.T) {
+			workspace := privacyParityWorkspace(t)
+			if err := os.WriteFile(filepath.Join(workspace, invalid.entry), []byte(invalid.doc), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			app := desktopApp(t, workspace)
+			window := app.DeriveExportReview(desktop.PrivacyReviewRequest{
+				Workspace: workspace, Case: "original.case", Spec: "spec.json",
+				Policy: "policy.json", Inventory: "inventory.json",
+				Output: "window-review", LocalState: "window-private",
+			})
+			if window.State != desktop.Failed || window.Outcome != nil || window.Reason == "" {
+				t.Fatalf("window accepted or failed to explain unsupported document: %+v", window)
+			}
+			_, stderr, err := run(t, "redact", filepath.Join(workspace, "original.case"),
+				"--spec", filepath.Join(workspace, "spec.json"),
+				"--policy", filepath.Join(workspace, "policy.json"),
+				"--inventory", filepath.Join(workspace, "inventory.json"),
+				"--local-state", filepath.Join(workspace, "cli-private"),
+				"--output", filepath.Join(workspace, "cli-review"))
+			if err == nil || !strings.Contains(stderr, window.Reason) {
+				t.Fatalf("CLI refusal disagreed with the window: err=%v window=%q stderr=%q", err, window.Reason, stderr)
+			}
+		})
+	}
 }
 
 // The review the window derives is the review the command line approves: the

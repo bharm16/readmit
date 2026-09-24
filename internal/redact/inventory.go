@@ -12,7 +12,8 @@ import (
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
-func decodeInventory(raw []byte) (Inventory, error) {
+// DecodeInventory is the same strict reader used by Create and document authoring.
+func DecodeInventory(raw []byte) (Inventory, error) {
 	var inventory Inventory
 	var required struct {
 		Artifacts      *[]OriginalArtifact `json:"artifacts"`

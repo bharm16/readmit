@@ -208,8 +208,10 @@ have now. It records no approval and never reads the private
 directory. The same shell's [privacy panel](desktop.md#privacy-review-protected-export-and-support-sharing)
 derives a review and exports a packet through `Create` and `Export` — these
 operations, with the same fail-closed gates and the same refusals, driven by a
-review identity a person types in fresh; the panel retains no approval, authors
-no policy, and performs no re-execution while preparing an export.
+review identity a person types in fresh. The panel authors new policy and
+inventory documents through structured controls and reopens existing documents
+through these same readers. It retains no approval and performs no
+re-execution while preparing an export.
 
 `redact.OpenReview` and `redact.OpenExport` are verified offline Go readers.
 `OpenExport` applies the same review contract to embedded reviews, binds each
