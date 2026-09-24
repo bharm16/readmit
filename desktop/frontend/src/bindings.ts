@@ -770,6 +770,11 @@ export interface Facade {
   SaveHubOfflineDraft(request: HubOfflineDraftRequest): Promise<EditorDraftsResult>;
   ReconcileHubOfflineDraft(request: HubLifecycleCommandRequest): Promise<HubLifecycleResult>;
   ExplainHubCustody(): Promise<HubResult>;
+  ChooseOperatorHubConfig(): Promise<HubResult>;
+  ConnectOperatorHub(): Promise<HubResult>;
+  DisconnectOperatorHub(): Promise<HubResult>;
+  ReadOperatorHubArtifact(digest: string): Promise<HubTransferResult>;
+  StoreOperatorHubArtifact(): Promise<HubTransferResult>;
   PreviewRunnerConfig(request: RunnerConfigRequest): Promise<RunnerDocumentResult>;
   SaveRunnerConfig(request: RunnerConfigRequest): Promise<RunnerDocumentResult>;
   SaveRunnerGrant(request: RunnerGrantRequest): Promise<RunnerDocumentResult>;
@@ -4839,6 +4844,29 @@ export function downloadHubArtifact(request: HubDownloadRequest): Promise<HubTra
 
 export function uploadHubArtifact(request: HubUploadRequest): Promise<HubTransferResult> {
   return guard(() => facade().UploadHubArtifact(request), { state: "failed" });
+}
+
+// The hub panel's operator-only mode: an operator-only hub's artifact store,
+// read and stored by digest with the client certificate alone. Its selection
+// and connection last for this window only.
+export function chooseOperatorHubConfig(): Promise<HubResult> {
+  return guard(() => facade().ChooseOperatorHubConfig(), { state: "failed", connected: false, authenticated: false });
+}
+
+export function connectOperatorHub(): Promise<HubResult> {
+  return guard(() => facade().ConnectOperatorHub(), { state: "failed", connected: false, authenticated: false });
+}
+
+export function disconnectOperatorHub(): Promise<HubResult> {
+  return guard(() => facade().DisconnectOperatorHub(), { state: "failed", connected: false, authenticated: false });
+}
+
+export function readOperatorHubArtifact(digest: string): Promise<HubTransferResult> {
+  return guard(() => facade().ReadOperatorHubArtifact(digest), { state: "failed" });
+}
+
+export function storeOperatorHubArtifact(): Promise<HubTransferResult> {
+  return guard(() => facade().StoreOperatorHubArtifact(), { state: "failed" });
 }
 
 export interface HubReviewEventView {

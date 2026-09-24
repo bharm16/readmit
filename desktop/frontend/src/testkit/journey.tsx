@@ -32,7 +32,7 @@ import { startDownstream } from "./downstream.js";
 import { deploymentAuthority } from "./deployment.js";
 import type { DeploymentAuthority } from "./deployment.js";
 import { startHub } from "./hub.js";
-import type { Hub, HubGrant } from "./hub.js";
+import type { Hub, HubGrant, HubMode } from "./hub.js";
 import type { Downstream, DownstreamMode } from "./downstream.js";
 import {
   backdateInRoot,
@@ -355,9 +355,11 @@ export class Journey {
   /** Starts a real customer hub for the project, as its operator runs it:
    * the checkout's readmit-hub over mutual TLS on loopback, its store in a
    * disposable PostgreSQL cluster inside the root, its own license, and a
-   * customer identity provider for the people it grants roles. It stops
-   * when the journey ends. */
-  async startHub(project: string, grants: HubGrant[]): Promise<Hub> {
+   * customer identity provider for the people it grants roles. In
+   * "operator" mode it is served operator-only, its operation policy binding
+   * the client certificate to its licensed author. It stops when the journey
+   * ends. */
+  async startHub(project: string, grants: HubGrant[], mode: HubMode = "team"): Promise<Hub> {
     const licensePolicy = `${this.provisionLicense("hub-operator/license")}/operation-policy.json`;
     const hub = await startHub({
       hubBinary: inject("journeyHub"),
@@ -368,6 +370,7 @@ export class Journey {
       project,
       grants,
       licensePolicy,
+      mode,
     });
     this.hubs.push(hub);
     return hub;

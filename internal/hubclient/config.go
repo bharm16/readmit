@@ -1,6 +1,8 @@
 // Package hubclient provides a narrow, typed Go client for connecting to a
 // customer-controlled artifact hub, authenticating with a customer IdP over
-// mTLS, discovering authorized projects, and transferring artifacts.
+// mTLS, discovering authorized projects, and transferring artifacts. The same
+// transport reaches an operator-only hub's artifact store with the client
+// certificate alone (OperatorClient).
 package hubclient
 
 import (
@@ -134,24 +136,33 @@ func DecodeConfig(data []byte) (Config, error) {
 
 // ReadConfig reads a hub client configuration file from disk strictly.
 func ReadConfig(path string) (Config, error) {
+	data, err := readConfigFile(path)
+	if err != nil {
+		return Config{}, err
+	}
+	return DecodeConfig(data)
+}
+
+// readConfigFile reads one regular configuration file within its bound.
+func readConfigFile(path string) ([]byte, error) {
 	resolved, err := artifactpath.Resolve(path)
 	if err != nil {
-		return Config{}, ErrRefused
+		return nil, ErrRefused
 	}
 	info, err := os.Stat(resolved)
 	if err != nil || !info.Mode().IsRegular() || info.Size() > MaxConfigBytes {
-		return Config{}, ErrRefused
+		return nil, ErrRefused
 	}
 	file, err := os.Open(resolved)
 	if err != nil {
-		return Config{}, ErrRefused
+		return nil, ErrRefused
 	}
 	defer file.Close()
 	data, err := io.ReadAll(io.LimitReader(file, MaxConfigBytes+1))
 	if err != nil || len(data) > MaxConfigBytes {
-		return Config{}, ErrRefused
+		return nil, ErrRefused
 	}
-	return DecodeConfig(data)
+	return data, nil
 }
 
 // Validate verifies all parameters of a Config struct.
@@ -159,18 +170,8 @@ func Validate(c Config) error {
 	if c.Schema != Schema {
 		return ErrUnsupportedVersion
 	}
-	u, err := url.Parse(c.Hub)
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
-		return errors.New("hub endpoint must be a valid https URL with host and optional port")
-	}
-	if !filepath.IsAbs(c.CA) || filepath.Clean(c.CA) != c.CA {
-		return errors.New("ca must be a cleaned absolute file path")
-	}
-	if !filepath.IsAbs(c.Certificate) || filepath.Clean(c.Certificate) != c.Certificate {
-		return errors.New("certificate must be a cleaned absolute file path")
-	}
-	if err := c.Key.Locator().Validate(); err != nil {
-		return errors.New("key reference: " + err.Error())
+	if err := validateIdentity(c.Hub, c.CA, c.Certificate, c.Key); err != nil {
+		return err
 	}
 	if err := validateIdP(c.IdP); err != nil {
 		return err
@@ -190,6 +191,25 @@ func Validate(c Config) error {
 			return errors.New("duplicate project configured: " + p)
 		}
 		seen[p] = true
+	}
+	return nil
+}
+
+// validateIdentity holds the hub endpoint and the mutual-TLS client identity
+// every hub client configuration names to one set of rules.
+func validateIdentity(hub, ca, certificate string, key KeyReference) error {
+	u, err := url.Parse(hub)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
+		return errors.New("hub endpoint must be a valid https URL with host and optional port")
+	}
+	if !filepath.IsAbs(ca) || filepath.Clean(ca) != ca {
+		return errors.New("ca must be a cleaned absolute file path")
+	}
+	if !filepath.IsAbs(certificate) || filepath.Clean(certificate) != certificate {
+		return errors.New("certificate must be a cleaned absolute file path")
+	}
+	if err := key.Locator().Validate(); err != nil {
+		return errors.New("key reference: " + err.Error())
 	}
 	return nil
 }

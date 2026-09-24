@@ -123,7 +123,13 @@ unanswered is rejected. The kit's verbs:
   five-minute session unless a lifetime in seconds is given), issues a
   runner token (`runnerToken(subject)`), runs the binary's operator operations
   with the service stopped (`operate`) and restarts it with further policies
-  (`restart`). It needs `READMIT_POSTGRES_BIN` naming a PostgreSQL
+  (`restart`). `startHub(project, grants, "operator")` serves it
+  operator-only instead, without its access policy, its operation policy
+  binding the client certificate to the licensed author, and names the
+  operator-only configuration a window chooses (`operatorConfig`);
+  `serveAs("team")` and `serveAs("operator")` restart it in the mode its
+  operator chooses, and once it has served team mode its store stays
+  team-enabled. It needs `READMIT_POSTGRES_BIN` naming a PostgreSQL
   installation's `bin` folder; without one the hub is not built,
   `Journey.hubAvailable` is false and a hub journey calls `context.skip()`.
   CI's `hub-journeys` job runs the hub journeys with PostgreSQL 16, beside

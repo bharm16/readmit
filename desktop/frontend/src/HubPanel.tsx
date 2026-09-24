@@ -19,6 +19,7 @@ import {
   type HubCheckItem,
 } from "./bindings";
 import { TeamCollaboration } from "./TeamCollaboration";
+import { OperatorHub } from "./OperatorHub";
 import type { Artifact } from "./bindings";
 
 /** The hub panel sits directly above the privacy screens, so the collaboration
@@ -437,6 +438,8 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
           )}
         </div>
       ) : null}
+
+      <OperatorHub />
 
       {isAuthenticated && selectedProject ? (
         <TeamCollaboration

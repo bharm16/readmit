@@ -11,6 +11,9 @@ export interface Hub {
   address: string;
   /** The folder holding the hub-client.json a person's window selects. */
   clientConfigFolder: string;
+  /** The operator-only configuration (hub-operator.json) naming the same
+   * client identity, which an operator's window chooses. */
+  operatorConfig: string;
   /** The operator's certificate authority, and the client identity's
    * certificate and key, as files a runner configuration names. */
   certificateAuthority: string;
@@ -30,8 +33,15 @@ export interface Hub {
   issueCode(subject: string): string;
   /** Restarts the hub with further serve flags, as its operator would. */
   restart(extra: string[]): Promise<void>;
+  /** Restarts the hub serving team mode, with its access policy, or
+   * operator-only, without. Once served as a team hub its store stays
+   * team-enabled. */
+  serveAs(mode: HubMode): Promise<void>;
   stop(): Promise<void>;
 }
+
+/** How the hub's operator serves it: with its access policy, or operator-only. */
+export type HubMode = "team" | "operator";
 
 export function startHub(options: {
   hubBinary: string;
@@ -42,4 +52,5 @@ export function startHub(options: {
   project: string;
   grants: HubGrant[];
   licensePolicy: string;
+  mode?: HubMode;
 }): Promise<Hub>;

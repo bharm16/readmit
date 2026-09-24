@@ -254,31 +254,38 @@ func slotDisclosure(activity slotActivity, holder string) DisclosureState {
 
 // hubDisclosure answers for the customer artifact hub: active while one of its
 // operations holds the slot, and otherwise from the hub's own connection
-// objects — no configuration, a configuration without a connection, or a live
-// connection with or without a current sign-in session. With no configuration
-// a hub operation refuses before it reaches anything, so it is not active.
+// objects — no configuration, a configuration without a connection, a live
+// connection with or without a current sign-in session, or a live connection
+// to an operator-only hub, which has no sign-in. With no configuration of
+// either mode a hub operation refuses before it reaches anything, so it is
+// not active.
 func (a *App) hubDisclosure(holder string) DisclosureState {
 	a.hubMu.Lock()
 	cfg := a.hubConfig
 	client := a.hubClient
 	session := a.hubSession
+	operatorCfg := a.hubOperatorConfig
+	operatorClient := a.hubOperatorClient
 	a.hubMu.Unlock()
 	active, operating := holding(hubOperations, holder)
 	switch {
-	case cfg == nil:
+	case cfg == nil && operatorCfg == nil:
 		return DisclosureState{ID: "hub", State: disclosureNotConfigured,
 			Detail: "No hub configuration is selected. Every hub operation is unavailable and nothing is connected."}
 	case operating:
 		return DisclosureState{ID: "hub", State: disclosureActive, Detail: active}
-	case client == nil:
-		return DisclosureState{ID: "hub", State: disclosureOffline,
-			Detail: "A hub configuration is selected; not connected. Connecting is a deliberate action."}
-	case session != nil && !session.IsExpired(time.Now()):
+	case client != nil && session != nil && !session.IsExpired(time.Now()):
 		return DisclosureState{ID: "hub", State: disclosureConnected,
 			Detail: "Connected to the configured hub, with a current sign-in session."}
-	default:
+	case client != nil:
 		return DisclosureState{ID: "hub", State: disclosureConnected,
 			Detail: "Connected to the configured hub; not signed in."}
+	case operatorClient != nil:
+		return DisclosureState{ID: "hub", State: disclosureConnected,
+			Detail: "Connected to the operator-only hub with its client certificate alone; it has no sign-in."}
+	default:
+		return DisclosureState{ID: "hub", State: disclosureOffline,
+			Detail: "A hub configuration is selected; not connected. Connecting is a deliberate action."}
 	}
 }
 

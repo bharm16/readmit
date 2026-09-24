@@ -549,3 +549,140 @@ test(
     expect(journey.readFile("downloads/support.json")).toBe(summary);
   },
 );
+
+/** The hub panel's operator-only mode, opened from its disclosure. */
+async function operatorMode(user: UserEvent) {
+  const section = hubPanel().getByRole("region", { name: "Operator-only hub" });
+  const disclosure = within(section).getByRole("button", { name: "Operator-only hub" });
+  if (disclosure.getAttribute("aria-expanded") !== "true") await press(user, disclosure);
+  return within(section);
+}
+
+test(
+  "an operator stores and reads artifacts by digest on a real operator-only hub: an unlicensed store, a damaged stored copy, a stopped hub, a hub switched to team mode and a disconnection are each reported, never retried",
+  async (context) => {
+    // A real hub needs a PostgreSQL installation to create its cluster from.
+    if (!Journey.hubAvailable) context.skip();
+    const user = userEvent.setup();
+    const hub = await journey.startHub("operator-store", [], "operator");
+    const probe = "Synthetic operator-only hub probe.\n";
+    journey.writeFile("handover/probe.txt", probe);
+    journey.writeFile("handover/second-probe.txt", "A second synthetic operator-only hub probe.\n");
+    const digest = journey.digest("handover/probe.txt");
+    journey.makeFolder("received");
+    await journey.launch();
+    const operator = await operatorMode(user);
+    const choose = operator.getByRole("button", { name: "Choose operator-only hub configuration…" });
+    const configTitle = "Choose the operator-only hub configuration";
+    const storeTitle = "Choose the file to store in the operator-only hub";
+    const saveTitle = "Name the file to save the artifact as";
+    const outcome = () => operator.getByText(/^(Store|Read):/).textContent;
+    const readAs = async (address: string, name: string) => {
+      await enter(user, operator.getByLabelText("Artifact digest (SHA-256)"), address);
+      await journey.nameNewFolder(journey.path(`received/${name}`), saveTitle);
+      const asked = journey.callsTo("ReadOperatorHubArtifact").length;
+      await press(user, operator.getByRole("button", { name: "Read and save…" }));
+      await waitFor(() => expect(journey.callsTo("ReadOperatorHubArtifact")[asked]?.settled).toBe(true));
+      return journey.callsTo("ReadOperatorHubArtifact")[asked]?.result;
+    };
+    const store = async (file: string) => {
+      await journey.chooseFiles([journey.path(file)], storeTitle);
+      const asked = journey.callsTo("StoreOperatorHubArtifact").length;
+      await press(user, operator.getByRole("button", { name: "Store a file…" }));
+      await waitFor(() => expect(journey.callsTo("StoreOperatorHubArtifact")[asked]?.settled).toBe(true));
+      return journey.callsTo("StoreOperatorHubArtifact")[asked]?.result;
+    };
+
+    // A dismissed dialog chooses nothing, and a team hub's configuration is
+    // not an operator-only one.
+    await journey.dismissDialog("files", configTitle);
+    await press(user, choose);
+    await waitFor(() => expect(journey.callsTo("ChooseOperatorHubConfig").at(-1)?.result).toMatchObject({ state: "cancelled" }));
+    expect(operator.getByText("No operator-only hub configuration chosen.")).toBeTruthy();
+    await journey.chooseFiles([`${hub.clientConfigFolder}/hub-client.json`], configTitle);
+    await press(user, choose);
+    expect(await operator.findByText("not an operator-only hub configuration this release reads")).toBeTruthy();
+
+    // The operator's configuration is chosen, and connecting is its own act.
+    await journey.chooseFiles([hub.operatorConfig], configTitle);
+    await press(user, choose);
+    expect(await operator.findByText(`Operator-only configuration: ${hub.operatorConfig}`)).toBeTruthy();
+    await press(user, operator.getByRole("button", { name: "Connect to operator-only hub" }));
+    expect(await operator.findByText(`Connected to operator-only hub (https://${hub.address})`)).toBeTruthy();
+
+    // With no license activated on this machine, storing is refused by the
+    // window's own admission before any dialog opens.
+    await press(user, operator.getByRole("button", { name: "Store a file…" }));
+    expect(await operator.findByText("operation activation is missing or invalid; select and activate an operation policy")).toBeTruthy();
+    expect(outcome()).toBe("Store: permission_denied");
+
+    // Activated, the file is stored under its digest, and read back byte for
+    // byte into a new file named in the save dialog, with the custody notice.
+    await activateLicense(user, journey);
+    expect(await store("handover/probe.txt")).toMatchObject({ state: "completed", digest, size: probe.length });
+    expect(outcome()).toBe(`Store: completed (${probe.length} bytes)`);
+    expect(operator.getByText(digest)).toBeTruthy();
+    expect(await readAs(digest, "probe.txt")).toMatchObject({ state: "completed", digest });
+    expect(operator.getByText(byContent(/^Saved as: .*received\/probe\.txt$/))).toBeTruthy();
+    expect(operator.getAllByText("Downloaded copies remain under local custody and cannot be revoked.").length).toBeGreaterThan(0);
+    expect(journey.readFile("received/probe.txt")).toBe(probe);
+
+    // A digest typed in capitals is not the whole lowercase digest: it is
+    // refused before any dialog opens, and stays in the field to correct.
+    await enter(user, operator.getByLabelText("Artifact digest (SHA-256)"), digest.toUpperCase());
+    await press(user, operator.getByRole("button", { name: "Read and save…" }));
+    expect(await operator.findByText("an artifact is named by its whole SHA-256 digest: 64 lowercase hexadecimal characters")).toBeTruthy();
+    expect(outcome()).toBe("Read: failed");
+
+    // A digest the hub does not hold, and a stored copy damaged on the
+    // hub's disk, which the hub refuses to serve: nothing is written.
+    expect(await readAs("0".repeat(64), "absent.txt")).toMatchObject({ state: "failed" });
+    expect(
+      operator.getByText(
+        "the hub holds no artifact under this digest, or does not offer the operator-only artifact store; a hub serving team mode reads evidence only through a signed-in project",
+      ),
+    ).toBeTruthy();
+    expect(() => journey.readFile("received/absent.txt")).toThrow();
+    journey.changeFile(`hub-operator/artifacts/${digest}`, "Synthetic operator-only hub probe, damaged.\n");
+    expect(await readAs(digest, "damaged.txt")).toMatchObject({ state: "failed" });
+    expect(
+      operator.getByText("the hub could not serve the artifact: it is busy, its storage or metadata is unavailable, or its stored copy no longer matches its digest"),
+    ).toBeTruthy();
+    expect(() => journey.readFile("received/damaged.txt")).toThrow();
+
+    // The operator stops the service: nothing reaches it, and once it is
+    // back the next store answers.
+    await hub.operate(["migrate"]);
+    expect(await readAs(digest, "stopped.txt")).toMatchObject({ state: "failed", reason: "the hub could not be reached; nothing was sent" });
+    expect(() => journey.readFile("received/stopped.txt")).toThrow();
+    await hub.serveAs("operator");
+    expect(await store("handover/second-probe.txt")).toMatchObject({ state: "completed", digest: journey.digest("handover/second-probe.txt") });
+
+    // Served as a team hub, it offers no operator-only store; served
+    // operator-only again once it has served team mode, it refuses both.
+    await hub.serveAs("team");
+    expect(await store("handover/probe.txt")).toMatchObject({
+      state: "failed",
+      reason: "the hub does not offer the operator-only artifact store; a hub serving team mode stores evidence only through a signed-in project",
+    });
+    expect(await readAs(digest, "team.txt")).toMatchObject({ state: "failed" });
+    await hub.serveAs("operator");
+    expect(await readAs(digest, "closed.txt")).toMatchObject({
+      state: "permission_denied",
+      reason: "the hub refused operator-only access; a hub that has served team mode reads and stores evidence only through a signed-in project",
+    });
+    expect(outcome()).toBe("Read: permission_denied");
+    expect(await store("handover/probe.txt")).toMatchObject({ state: "permission_denied" });
+    for (const name of ["team.txt", "closed.txt"]) expect(() => journey.readFile(`received/${name}`)).toThrow();
+
+    // Disconnecting ends the connection and keeps the custody notice.
+    await press(user, operator.getByRole("button", { name: "Disconnect from operator-only hub" }));
+    expect(await operator.findByText("Not connected")).toBeTruthy();
+    expect(operator.queryByRole("button", { name: "Store a file…" })).toBeNull();
+    expect(journey.callsTo("DisconnectOperatorHub").at(-1)?.result).toMatchObject({
+      connected: false,
+      custody_warning: "Downloaded copies remain under local custody and cannot be revoked.",
+    });
+    expect(operator.getByRole("note").textContent).toBe("Custody Notice: Downloaded copies remain under local custody and cannot be revoked.");
+  },
+);

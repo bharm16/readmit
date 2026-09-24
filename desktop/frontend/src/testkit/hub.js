@@ -142,8 +142,12 @@ function probe(address, identity) {
   });
 }
 
-/** Starts a real hub inside root: see this file's opening comment. */
-export async function startHub({ hubBinary, bridgeBinary, postgresBin, root, folder, project, grants, licensePolicy }) {
+/** Starts a real hub inside root: see this file's opening comment. In
+ * "operator" mode the hub is served operator-only, without its access policy:
+ * an opaque artifact store any client of its authority reaches with the client
+ * certificate alone, whose operation policy binds that certificate to the
+ * licensed author, as its operator does. */
+export async function startHub({ hubBinary, bridgeBinary, postgresBin, root, folder, project, grants, licensePolicy, mode = "team" }) {
   const dir = pathInRoot(root, folder);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   // Every process here sees the journey's isolated environment: an empty
@@ -210,10 +214,15 @@ export async function startHub({ hubBinary, bridgeBinary, postgresBin, root, fol
     });
     const access = { schema: "readmit-hub-access/v1", issuer: ISSUER, audience: AUDIENCE, clients: [CLIENT], keys: [provider.key], grants: grants.map((grant) => ({ project, subject: grant.subject, role: grant.role })), tokens: [] };
     const accessPath = writeJSON(join(dir, "access.json"), access);
+    // Operator-only, the certificate itself is the author's identity.
+    const bindings =
+      mode === "operator"
+        ? [{ issuer: "mutual-tls", subject: certificateDigest, certificate_sha256: certificateDigest, author: "test-author", device: "test-device" }]
+        : grants.map((grant) => ({ issuer: ISSUER, subject: grant.subject, certificate_sha256: certificateDigest, author: "test-author", device: "test-device" }));
     const operation = writeJSON(join(dir, "hub-operation.json"), {
       schema: "readmit-hub-operation-policy/v1",
       operation_policy: licensePolicy,
-      bindings: grants.map((grant) => ({ issuer: ISSUER, subject: grant.subject, certificate_sha256: certificateDigest, author: "test-author", device: "test-device" })),
+      bindings,
     });
     const clientFolder = join(dir, "client");
     mkdirSync(clientFolder, { recursive: true });
@@ -233,11 +242,22 @@ export async function startHub({ hubBinary, bridgeBinary, postgresBin, root, fol
       },
       projects: [project],
     });
+    // The operator-only configuration names the same client identity and no
+    // identity provider or project, which an operator-only hub has none of.
+    const operatorConfig = writeJSON(join(clientFolder, "hub-operator.json"), {
+      schema: "readmit-hub-operator-client/v1",
+      hub: `https://${address}`,
+      ca: join(dir, "ca.pem"),
+      certificate: join(dir, "client.pem"),
+      key: { command: "/bin/cat", arguments: [join(dir, "client-key.pem")] },
+    });
     execFileSync(hubBinary, ["-config", config, "migrate"], quiet);
 
     let log = "";
+    let team = mode !== "operator";
     const serve = async (extra) => {
-      const child = spawn(hubBinary, ["-operation-policy", operation, "-config", config, "-access-policy", accessPath, ...extra, "serve"], {
+      const access = team ? ["-access-policy", accessPath] : [];
+      const child = spawn(hubBinary, ["-operation-policy", operation, "-config", config, ...access, ...extra, "serve"], {
         env: environment,
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -280,6 +300,7 @@ export async function startHub({ hubBinary, bridgeBinary, postgresBin, root, fol
     return {
       address,
       clientConfigFolder: clientFolder,
+      operatorConfig,
       certificateAuthority: join(dir, "ca.pem"),
       clientCertificate: join(dir, "client.pem"),
       clientKey: join(dir, "client-key.pem"),
@@ -343,6 +364,14 @@ export async function startHub({ hubBinary, bridgeBinary, postgresBin, root, fol
       async restart(extra) {
         await stopHub();
         hubProcess = await serve(extra);
+      },
+      /** Restarts the hub in the mode its operator chooses: "team" serves it
+       * with its access policy, which marks its store team-enabled for good,
+       * and "operator" serves it without. */
+      async serveAs(next) {
+        await stopHub();
+        team = next === "team";
+        hubProcess = await serve([]);
       },
       async stop() {
         await stopHub();

@@ -3046,6 +3046,93 @@ Users can list and transfer authorized project artifacts:
 - Logging out clears the in-memory session and active client credentials immediately.
 - Re-authenticating never automatically replays pending transfers or writes; any operation interrupted by session loss must be re-initiated deliberately by the user.
 
+### Operator-only hub (`readmit-hub-operator-client/v1`)
+
+A hub its operator serves without an access policy (`serve` without
+`-access-policy`, the [hub's](../hub/README.md) operator-only mode) is
+an opaque store of artifacts by SHA-256 digest: `GET` and `PUT
+/v1/artifacts/{digest}` over mutual TLS, with no identity provider, no project
+and no sign-in, so the team mode above cannot reach it. The hub panel's
+**Operator-only hub** section, closed until it is opened, is the panel's mode
+for such a hub. It uses the same `internal/hubclient` transport as the team
+mode: TLS 1.3 verified against the configured CA, the client certificate with
+the key its reference reads, no keep-alives and no redirects. It adds no
+route, protocol or background transfer: nothing is read or stored until the
+person asks. Every client of the hub's certificate authority can read and store
+every artifact in it, which is why the hub's guide says not to issue
+operator-only certificates to ordinary users.
+
+The mode's configuration is its own strict contract, because an operator-only
+hub has none of the identity-provider and project members a
+`readmit-hub-client/v1` document requires:
+
+```json
+{"schema":"readmit-hub-operator-client/v1","hub":"https://hub.example:8443","ca":"/etc/readmit/hub-ca.pem","certificate":"/etc/readmit/operator.pem","key":{"command":"/usr/bin/security","arguments":["find-generic-password","-s","readmit-hub-operator","-w"]}}
+```
+
+It has exactly these five members, none of them null. `hub` is an `https`
+address with a host and an optional port. `ca` and `certificate` are cleaned
+absolute paths. `key` is exactly the absolute program that prints the client
+key and its arguments ([ADR-0006](adr/0006-credentials-are-referenced-never-stored.md)).
+A team hub's configuration, and any document with an unknown, duplicated or
+missing member, is refused.
+
+- **Choose operator-only hub configuration…** opens the host's file dialog
+  (*Choose the operator-only hub configuration*) and reads that one file. It
+  reaches no hub. A dismissed dialog changes nothing. A refused file, or more
+  than one file, is refused with the reason and keeps what was chosen. The
+  choice lasts while the window is open and is never remembered, so no shell
+  document is added and the team mode's selection
+  (`readmit-desktop-hub-selection/v1`) is untouched. Choosing again ends the
+  previous connection.
+- **Connect to operator-only hub** resolves the client key through its
+  reference and checks the hub's two health probes. Both of the hub's modes
+  answer them, so connecting reads and stores nothing. The custody notice is
+  shown from then on.
+- **Store a file…** is authoring. This computer's license admits the author
+  first, the same admission publishing to a team hub takes, and without it the
+  store is refused before any dialog opens. The person then chooses one file
+  in the file dialog (*Choose the file to store in the operator-only hub*),
+  and the window stores exactly its bytes under their SHA-256 digest. A file
+  over 64 MiB is refused before anything is sent. The hub admits the store
+  again: its operation policy has to bind the verified client certificate
+  (`issuer: "mutual-tls"`) to a signed author. The result shows the digest
+  and size. The hub keeps one immutable
+  object per digest, so storing the same file again is safe and never replaces
+  anything.
+- **Read and save…** reads the artifact named by the digest the person types
+  into a new file they name in the host's save dialog (*Name the file to save
+  the artifact as*). The following are refused before anything is asked of the
+  hub:
+  - a digest that is not 64 lowercase hexadecimal characters, before any
+    dialog opens;
+  - a dismissed save dialog;
+  - a name already taken, even if the host's dialog offered to replace it;
+  - a name inside evidence.
+
+  The bytes are written only after they hash to the digest asked for. They
+  are written whole, owner-only and exclusively, with the custody notice.
+  Reading is not authoring and needs no license.
+- **Disconnect from operator-only hub** ends the connection and keeps the
+  custody notice: copies already saved stay under local custody.
+
+Each read or store is asked once and never retried. What the hub answers is
+reported for what it means:
+
+| The hub's answer | Store | Read |
+| --- | --- | --- |
+| 403 | Permission denied. The hub's operation policy binds no author to this certificate, or the hub has served team mode. | Permission denied. The hub has served team mode, and its operator-only store stays closed from then on. |
+| 404 | Failed. The hub serves team mode, which offers no operator-only store. | Failed. The hub holds no artifact under the digest, or it serves team mode. The two cannot be told apart, so the reason names both. |
+| 422 | Failed. What the hub received did not match the digest, or it already holds a damaged copy under that digest, which storing again cannot replace. | — |
+| 413 | Failed. The hub's declared capacity would be exceeded. | — |
+| 503 | Failed. The hub is busy, or its storage or metadata is unavailable; storing again is safe. | Failed. The hub is busy, its storage or metadata is unavailable, or its stored copy no longer matches its digest. |
+| Unreachable, or its certificate does not verify | Failed. Nothing was sent. | Failed. Nothing was sent. |
+| No answer | Failed with transfer state `uncertain`, never completed. The hub may have stored the bytes; storing the same file again, or reading its digest, settles it. | Failed. Nothing is kept. |
+
+Bytes that do not hash to their digest are never written. The privacy status
+reports the hub row active while a request reaches the hub. While the window
+is connected in this mode and not to a team hub, the row reads *connected* to
+the operator-only hub, which has no sign-in.
 
 ### Team reviews, conflicts and project administration
 

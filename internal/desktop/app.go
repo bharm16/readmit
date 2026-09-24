@@ -285,6 +285,11 @@ type App struct {
 	// hubRestoreRefusal says why the selection an earlier session remembered
 	// could not be restored, until a configuration is selected again.
 	hubRestoreRefusal string
+	// The hub panel's operator-only mode: its configuration and connection,
+	// held for this window only and never remembered.
+	hubOperatorConfigPath string
+	hubOperatorConfig     *hubclient.OperatorConfig
+	hubOperatorClient     *hubclient.OperatorClient
 
 	// commercialMu guards the retained commercial destinations selection: a
 	// local path the operator chose, read again for each status. It is never

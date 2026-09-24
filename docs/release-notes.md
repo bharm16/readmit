@@ -1,5 +1,28 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The window reads and stores artifacts of an operator-only hub (#312). A hub
+  served without an access policy offers only `GET` and `PUT
+  /v1/artifacts/{digest}` under mutual TLS, while the hub panel required team
+  mode and sign-in, so an operator-only deployment had no path through the
+  window at all. The panel gains an **Operator-only hub** mode, which uses the
+  same `internal/hubclient` transport. The person chooses the operator's
+  configuration in the file dialog and connects deliberately. A chosen file is
+  stored under its SHA-256 digest once this computer's license admits the
+  author and the hub's own certificate binding admits the store. An artifact
+  named by its digest is read into a new file named in the save dialog, written
+  owner-only only after its bytes hash to that digest, with the custody notice.
+  A hub that has served team mode, a digest the hub does not hold, a damaged
+  stored copy, a refused admission, a stopped hub and an answer that never
+  arrived are each reported as what they mean, and are never retried; an
+  unanswered store is uncertain, never completed. The configuration is a new
+  strict contract, `readmit-hub-operator-client/v1`: the hub's address and the
+  client identity's references, with no identity provider or projects. The
+  selection is not remembered, so no shell document is added. An interaction
+  journey drives the mode against a real operator-only hub, and a hub-module
+  test drives the facade against the hub's own handler over PostgreSQL. No
+  existing `readmit-*` document, command, hub route or machine output changes;
+  five bound methods are added.
+
 - The diagnosis panel groups findings across cases, reopens retained reports
   and configurations, previews reviews and keeps finding decisions in their own
   document (#297). Grouping shows the total and pages the grouping on screen,
