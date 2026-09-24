@@ -9,6 +9,9 @@ complete specification comparison, operator/selector/occurrence changes, local
 approver and rationale. A passing run never creates an approval. The desktop
 Regression baseline panel offers **Release a test version with profile pins**
 for the same workflow, including historical inspection and cancel-before-write.
+Inspecting a retained release shows its full release identity as
+`readmit expectation show` prints it, and the Suites and releases panel's
+**Read identity** fills a release reference from the release entry itself.
 
 ```sh
 readmit expectation review candidate.json --id booking \

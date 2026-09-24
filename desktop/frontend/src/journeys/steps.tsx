@@ -239,6 +239,28 @@ export async function finishAckTest(user: UserEvent, output: string): Promise<vo
   expect(written.textContent).toMatch(/spec identity [0-9a-f]{64}\./);
 }
 
+/** Releases the saved acknowledgement test as its first immutable test
+ * version, pinning no profile, from the Regression baseline panel: the
+ * reviewed local decision under an approver label and rationale, saved to a
+ * new entry. */
+export async function releaseSavedTest(
+  user: UserEvent,
+  release: { id: string; approver: string; rationale: string; output: string },
+): Promise<void> {
+  const panel = within(region("Regression baseline"));
+  const releasing = panel.getByLabelText("Release a test version with profile pins") as HTMLInputElement;
+  if (!releasing.checked) await press(user, releasing);
+  await enter(user, panel.getByLabelText("Stable test identity"), release.id);
+  await enter(user, panel.getByLabelText("Candidate specification in this workspace"), "reschedule-ack-test.json");
+  await press(user, panel.getByRole("button", { name: "Review test and profile changes" }));
+  expect(await panel.findByText("Proposed revision 1. First baseline; every expectation is new.")).toBeTruthy();
+  await enter(user, panel.getByLabelText("Local approver"), release.approver);
+  await enter(user, panel.getByLabelText("Approval rationale"), release.rationale);
+  await enter(user, panel.getByLabelText("New released test filename"), release.output);
+  await press(user, panel.getByRole("button", { name: "Release this exact test version" }));
+  expect(await panel.findByText(`Approved and saved ${release.output}.`)).toBeTruthy();
+}
+
 /** The durable-run panel of the open workspace. */
 export function runs() {
   return panelOf("Durable test runs");

@@ -10,13 +10,18 @@
 // the same outcome. The same suite, with a coverage declaration, is handed to
 // CI as the documented POSIX workflow; an automation agent runs the file the
 // application wrote, and the application reads back the gate it recorded.
+// The saved test, approved as a baseline and released as a test version, is
+// inspected as `readmit baseline show` and `readmit expectation show` print
+// it; the suite is pinned to that release by the identity the window reads
+// and reviewed and approved for promotion without the terminal, as the
+// command line reviews and approves it.
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UserEvent } from "@testing-library/user-event";
 import { byContent, enter, Journey, press, region, whenEnabled } from "../testkit/journey";
 import type { Downstream } from "../testkit/downstream.js";
-import { EXPORTED_BOOKING, EXPORTED_RESCHEDULE, runs, savedAckTest } from "./steps";
+import { EXPORTED_BOOKING, EXPORTED_RESCHEDULE, releaseSavedTest, runs, savedAckTest } from "./steps";
 
 let journey: Journey;
 
@@ -359,4 +364,276 @@ test("a suite handed to CI runs as the workflow the application wrote, and its g
   }
   const status = await journey.commandLine(["run", "status", `ci-runs/fixed/runs/${JOB}`, "--json"]);
   expect(JSON.parse(status.stdout)).toMatchObject({ schema: "readmit-job/v1", state: "passed" });
+});
+
+const TEMPLATE = "reschedule-ack-test.json";
+const APPROVER = "Local reviewer";
+
+/** The Regression baseline panel of the open workspace. */
+function baselines() {
+  return within(region("Regression baseline"));
+}
+
+/** Each row of a table the window drew: its header and cells, as text. */
+function drawnRows(table: HTMLElement): string[][] {
+  return Array.from(table.querySelectorAll("tbody tr")).map((row) =>
+    Array.from(row.querySelectorAll("th, td")).map((cell) => cell.textContent ?? ""),
+  );
+}
+
+/** The inspection a `readmit ... show` command printed. */
+interface Printed {
+  id?: string;
+  identity?: string;
+  parent?: string;
+  approver: string;
+  rationale: string;
+  profile_count?: number;
+  baseline: { identity: string; revision: number; parent: string; values_shown: boolean; changes: { part: string; kind: string; before?: string; after?: string }[] };
+}
+
+/** Runs `readmit baseline show` or `readmit expectation show` over one
+ * retained entry of the project, as a person checks the window's reading. */
+async function printed(command: "baseline" | "expectation", entry: string, values = false) {
+  return journey.commandLine([command, "show", `${PROJECT}/${entry}`, ...(values ? ["--show-values"] : [])]);
+}
+
+/** The rows the command line's inspection lists, as the window draws them:
+ * a hidden value is Hidden, a revealed absent one is Absent. */
+function printedRows(inspection: Printed): string[][] {
+  const shown = (value: string | undefined) => value ?? (inspection.baseline.values_shown ? "Absent" : "Hidden");
+  return inspection.baseline.changes.map((change) => [change.part, change.kind, shown(change.before), shown(change.after)]);
+}
+
+/** The saved test's first released version, as the person releases it. */
+const RELEASE = {
+  id: "reschedule",
+  approver: APPROVER,
+  rationale: "Reviewed the reschedule acknowledgement",
+  output: "reschedule-release-1.json",
+};
+
+/** Reviews the saved acknowledgement test and approves it as a first
+ * baseline revision into a new entry. */
+async function approveSavedBaseline(user: UserEvent, output: string) {
+  const panel = baselines();
+  await enter(user, panel.getByLabelText("Candidate specification in this workspace"), TEMPLATE);
+  await press(user, panel.getByRole("button", { name: "Review baseline changes" }));
+  expect(await panel.findByText("Proposed revision 1. First baseline; every expectation is new.")).toBeTruthy();
+  await enter(user, panel.getByLabelText("Local approver"), APPROVER);
+  await enter(user, panel.getByLabelText("Approval rationale"), "Reviewed the downstream acknowledgement");
+  await enter(user, panel.getByLabelText("New baseline filename"), output);
+  await press(user, panel.getByRole("button", { name: "Approve this exact baseline revision" }));
+  expect(await panel.findByText(`Approved and saved ${output}.`)).toBeTruthy();
+}
+
+/** Inspects one retained entry through the panel's inspect control. */
+async function inspectRetained(user: UserEvent, entry: string, release: boolean) {
+  const panel = baselines();
+  await enter(user, panel.getByLabelText(release ? "Previous released test (empty for first revision)" : "Previous baseline (empty for first revision)"), entry);
+  await press(user, panel.getByRole("button", { name: release ? "Inspect retained test version" : "Inspect retained baseline" }));
+}
+
+/** Holds the command line to refusing with the reason the scenario expects,
+ * and returns it for the window to show. */
+function refused(run: { code: number | null; stderr: string }, reason: string): string {
+  expect(run.code).not.toBe(0);
+  expect(run.stderr).toBe(`readmit: ${reason}\n`);
+  return reason;
+}
+
+test("a retained baseline and a released test version show what the command line shows, and a missing or unsupported one is refused alike", async () => {
+  const user = userEvent.setup();
+  const { downstream } = await savedAckTest(user, journey, "defective");
+  const panel = baselines();
+
+  // The saved test approved as a first baseline and inspected: the window
+  // shows the retained revision, its approved identity and the local
+  // approval exactly as `readmit baseline show` prints them, values hidden
+  // until they are revealed.
+  await approveSavedBaseline(user, "reschedule-baseline-1.json");
+  await inspectRetained(user, "reschedule-baseline-1.json", false);
+  const baseline = JSON.parse((await printed("baseline", "reschedule-baseline-1.json")).stdout) as Printed;
+  expect(baseline).toMatchObject({ approver: APPROVER, rationale: "Reviewed the downstream acknowledgement", baseline: { revision: 1, parent: "" } });
+  expect(await panel.findByText("Retained revision 1. First baseline; every expectation is new.")).toBeTruthy();
+  expect(panel.getByText(byContent(new RegExp(`^Approved review identity: ${baseline.baseline.identity}$`)))).toBeTruthy();
+  expect(panel.getByText(`Local approver: ${APPROVER}. Rationale: Reviewed the downstream acknowledgement`)).toBeTruthy();
+  const retained = () => panel.getByRole("table", { name: "Retained expectations and configuration" });
+  expect(drawnRows(retained())).toEqual(printedRows(baseline));
+  await user.click(panel.getByLabelText(/Reveal exact expected values/));
+  await press(user, panel.getByRole("button", { name: "Inspect retained baseline" }));
+  await panel.findByRole("table", { name: "Retained expectations and configuration" });
+  const revealed = JSON.parse((await printed("baseline", "reschedule-baseline-1.json", true)).stdout) as Printed;
+  expect(drawnRows(retained())).toEqual(printedRows(revealed));
+  expect(printedRows(revealed).some((row) => row[3]?.includes('"AA"'))).toBe(true);
+  await user.click(panel.getByLabelText(/Reveal exact expected values/));
+
+  // A revision never approved, and one of a version this release cannot
+  // read, are refused with the reason the command line gives for the same
+  // file, and no retained view is left beside the refusal.
+  await inspectRetained(user, "reschedule-baseline-2.json", false);
+  const missing = refused(await printed("baseline", "reschedule-baseline-2.json"), "baseline input must be a readable regular file, not a symlink");
+  expect(await panel.findByText(missing)).toBeTruthy();
+  expect(panel.queryByRole("table")).toBeNull();
+  journey.writeFile(
+    `${PROJECT}/reschedule-baseline-v2.json`,
+    journey.readFile(`${PROJECT}/reschedule-baseline-1.json`).replace('"readmit-baseline/v1"', '"readmit-baseline/v2"'),
+  );
+  await inspectRetained(user, "reschedule-baseline-v2.json", false);
+  const unsupported = refused(await printed("baseline", "reschedule-baseline-v2.json"), "invalid baseline revision or changed approval commitment");
+  expect(await panel.findByText(unsupported)).toBeTruthy();
+
+  // The same test released as a test version: the window shows its stable
+  // test identity and full release identity, the identity a suite's release
+  // references pin, as `readmit expectation show` prints them.
+  await releaseSavedTest(user, RELEASE);
+  await inspectRetained(user, "reschedule-release-1.json", true);
+  const release = JSON.parse((await printed("expectation", "reschedule-release-1.json")).stdout) as Printed;
+  expect(release).toMatchObject({ id: RELEASE.id, parent: "", approver: APPROVER, rationale: RELEASE.rationale, profile_count: 0 });
+  expect(await panel.findByText(byContent(new RegExp(`^Test reschedule\\. Release identity: ${release.identity}$`)))).toBeTruthy();
+  expect(panel.getByText(`Local approver: ${APPROVER}. Rationale: ${RELEASE.rationale}`)).toBeTruthy();
+  expect(drawnRows(retained())).toEqual(printedRows(release));
+  // Nothing was pinned, so no profile row is drawn.
+  expect(drawnRows(retained()).filter((row) => row[1] === "pinned")).toHaveLength(0);
+
+  // Reviewing its successor and cancelling writes nothing, and the retained
+  // release reads back unchanged.
+  await enter(user, panel.getByLabelText("Candidate specification in this workspace"), TEMPLATE);
+  await press(user, panel.getByRole("button", { name: "Review test and profile changes" }));
+  expect(await panel.findByText(`Proposed revision 2. Parent identity: ${release.identity}`)).toBeTruthy();
+  await enter(user, panel.getByLabelText("New released test filename"), "reschedule-release-2.json");
+  await press(user, panel.getByRole("button", { name: "Cancel review" }));
+  expect(panel.queryByText(/Proposed revision/)).toBeNull();
+  expect(() => journey.readFile(`${PROJECT}/reschedule-release-2.json`)).toThrow();
+  expect(journey.callsTo("ApproveBaseline")).toHaveLength(2);
+  await press(user, panel.getByRole("button", { name: "Inspect retained test version" }));
+  expect(await panel.findByText(byContent(new RegExp(`^Test reschedule\\. Release identity: ${release.identity}$`)))).toBeTruthy();
+
+  // A release of a version this release cannot read is refused alike.
+  journey.writeFile(
+    `${PROJECT}/reschedule-release-v2.json`,
+    journey.readFile(`${PROJECT}/reschedule-release-1.json`).replace('"readmit-test-release/v1"', '"readmit-test-release/v2"'),
+  );
+  await inspectRetained(user, "reschedule-release-v2.json", true);
+  expect(
+    await panel.findByText(refused(await printed("expectation", "reschedule-release-v2.json"), "invalid release schema or test identity")),
+  ).toBeTruthy();
+  expect(panel.queryByRole("table")).toBeNull();
+  expect(downstream.received()).toHaveLength(0);
+});
+
+test("a suite pinned to the release identity the window reads is reviewed and approved for promotion without the terminal, as the command line reviews and approves it", async () => {
+  const user = userEvent.setup();
+  const { downstream } = await savedAckTest(user, journey, "defective");
+  await releaseSavedTest(user, RELEASE);
+  await authorSuite(user);
+
+  // The expert import reads pasted text with the suite reader: a version
+  // this release cannot read is refused with the reason `readmit suite
+  // prepare` gives the same bytes, and the editor keeps the suite it held;
+  // the saved suite's own text loads without being saved again.
+  const editor = await suiteView(user, "Suite");
+  await user.click(editor.getByText("Import canonical JSON (expert)"));
+  const saved = journey.readFile(`${PROJECT}/${SUITE}`);
+  const unreadable = saved.replace('"readmit-suite/v1"', '"readmit-suite/v2"');
+  const pasted = editor.getByLabelText("Canonical suite JSON");
+  await user.clear(pasted);
+  await user.click(pasted);
+  await user.paste(unreadable);
+  await press(user, editor.getByRole("button", { name: "Validate and load" }));
+  journey.writeFile(`${PROJECT}/unreadable-suite.json`, unreadable);
+  const refusal = refused(
+    await journey.commandLine([
+      "--operation-policy",
+      journey.path("vendor-delivered-license", "operation-policy.json"),
+      "suite",
+      "prepare",
+      `${PROJECT}/unreadable-suite.json`,
+      "--environment",
+      "downstream",
+      "--output",
+      `${PROJECT}/unreadable-prepared`,
+    ]),
+    "invalid suite declarations or references",
+  );
+  expect((await editor.findByRole("alert")).textContent).toBe(refusal);
+  expect((editor.getByLabelText("Suite id") as HTMLInputElement).value).toBe("reschedule-regression");
+  await user.clear(pasted);
+  await user.click(pasted);
+  await user.paste(saved);
+  await press(user, editor.getByRole("button", { name: "Validate and load" }));
+  expect(await editor.findByText("Validated and loaded into the editor; nothing was saved.")).toBeTruthy();
+  expect((editor.getByLabelText("Suite id") as HTMLInputElement).value).toBe("reschedule-regression");
+
+  // The suite's one test is pinned to the release: the window reads the
+  // full release identity from the retained release — the identity
+  // `readmit expectation show` prints — and saves the references.
+  const releases = await suiteView(user, "Releases and impact");
+  await enter(user, releases.getByLabelText("Test 1"), "reschedule-accepted");
+  await enter(user, releases.getByLabelText("Release entry 1"), "reschedule-release-1.json");
+  await press(user, releases.getByRole("button", { name: "Read identity of release entry 1" }));
+  expect(await releases.findByText(`Test reschedule, revision 1, local approver ${APPROVER}.`)).toBeTruthy();
+  const release = JSON.parse((await printed("expectation", "reschedule-release-1.json")).stdout) as Printed;
+  expect((releases.getByLabelText("Release identity 1") as HTMLInputElement).value).toBe(release.identity);
+  await enter(user, releases.getByLabelText("New sidecar entry"), "releases.json");
+  await press(user, releases.getByRole("button", { name: "Save release references" }));
+  expect(await releases.findByText("Saved releases.json.")).toBeTruthy();
+  expect(JSON.parse(journey.readFile(`${PROJECT}/releases.json`))).toEqual({
+    schema: "readmit-suite-releases/v1",
+    tests: [{ test: "reschedule-accepted", release: "reschedule-release-1.json", identity: release.identity }],
+  });
+
+  // Promotion review: the exact suite and references bytes, the declared
+  // environment and the operator's revision assumption, with the identity
+  // `readmit suite review-promotion` reports for the same inputs.
+  const promotion = await suiteView(user, "Promotion");
+  await promotion.findAllByRole("option", { name: "releases.json" });
+  await user.selectOptions(promotion.getByLabelText("Suite entry"), SUITE);
+  await enter(user, promotion.getByLabelText("Environment"), "downstream");
+  await user.selectOptions(promotion.getByLabelText("Release references"), "releases.json");
+  await enter(user, promotion.getByLabelText("Target revision (operator-declared)"), "fixture-build-7");
+  await press(user, promotion.getByRole("button", { name: "Review promotion" }));
+  const reviewed = await promotion.findByText(
+    byContent(
+      new RegExp(
+        `^Review identity ([0-9a-f]{64}): suite ${journey.digest(`${PROJECT}/${SUITE}`)}, releases ${journey.digest(`${PROJECT}/releases.json`)}, environment downstream, revision assumption fixture-build-7\\.$`,
+      ),
+    ),
+  );
+  const reviewIdentity = (reviewed.textContent ?? "").replace(/^Review identity ([0-9a-f]{64}):.*$/, "$1");
+  const promotionArgs = [`${PROJECT}/${SUITE}`, "--environment", "downstream", "--releases", `${PROJECT}/releases.json`, "--revision", "fixture-build-7"];
+  const cliReview = await journey.commandLine(["suite", "review-promotion", ...promotionArgs]);
+  expect(cliReview.code).toBe(0);
+  expect((JSON.parse(cliReview.stdout) as { identity: string }).identity).toBe(reviewIdentity);
+  expect(within(promotion.getByRole("table", { name: "Every job commitment this approval would bind" })).getByText(JOB)).toBeTruthy();
+
+  // Approval: a local decision under a typed label, saved to a new entry;
+  // the command line approving the same review with the same label and
+  // rationale writes the same approval under the same identity.
+  await enter(user, promotion.getByLabelText("Local approver"), APPROVER);
+  await enter(user, promotion.getByLabelText("Approval rationale"), "Reviewed the downstream mapping and isolation");
+  await enter(user, promotion.getByLabelText("New approval entry"), "downstream-promotion.json");
+  await press(user, promotion.getByRole("button", { name: "Approve this exact promotion" }));
+  const approved = await promotion.findByText(byContent(/^Approved and saved downstream-promotion\.json\. Approval identity: [0-9a-f]{64}$/));
+  const approvalIdentity = (approved.textContent ?? "").replace(/^.*Approval identity: /, "");
+  const cliApproval = await journey.commandLine([
+    "--operation-policy",
+    journey.path("vendor-delivered-license", "operation-policy.json"),
+    "suite",
+    "approve-promotion",
+    ...promotionArgs,
+    "--review",
+    reviewIdentity,
+    "--approver",
+    APPROVER,
+    "--rationale",
+    "Reviewed the downstream mapping and isolation",
+    "--output",
+    `${PROJECT}/cli-promotion.json`,
+  ]);
+  expect(cliApproval.code).toBe(0);
+  expect(cliApproval.stdout.trim()).toBe(approvalIdentity);
+  expect(journey.readFile(`${PROJECT}/downstream-promotion.json`)).toBe(journey.readFile(`${PROJECT}/cli-promotion.json`));
+  // Review and approval sent nothing.
+  expect(downstream.received()).toHaveLength(0);
 });

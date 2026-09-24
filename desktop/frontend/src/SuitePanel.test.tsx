@@ -10,6 +10,7 @@ import {
   SUITE_IDENTITY,
   SUITE_OCCURRENCE,
   SUITE_PREPARED,
+  SUITE_RELEASE_IDENTITY,
   SUITE_REVIEW_IDENTITY,
   SUITE_TEMPLATE,
   WORKSPACE_ROOT,
@@ -24,7 +25,7 @@ import {
   suitePromotionReview,
   suiteReleasesResult,
 } from "./testkit/fixtures";
-import type { HubReleaseReviewRequest } from "./bindings";
+import type { BaselineRequest, HubReleaseReviewRequest } from "./bindings";
 
 const entries = suiteArtifacts();
 
@@ -368,6 +369,161 @@ test("release references are authored and impact reports affected tests", async 
   await user.click(screen.getByRole("button", { name: "Report impact" }));
   expect(await screen.findByText("affected")).toBeTruthy();
   expect(screen.getByText("booking")).toBeTruthy();
+  uninstallFacade();
+});
+
+// A reference pins the full identity of the release its entry holds: the
+// window reads it from the retained release through the release reader
+// instead of taking a typed hash, and a release the reader refuses leaves
+// the row as it was.
+test("a release reference takes its full identity from the retained release, and a refused read changes nothing", async () => {
+  const user = userEvent.setup();
+  const retained = {
+    state: "completed" as const,
+    comparison: {
+      schema: "readmit-expectation-inspection/v1",
+      identity: SUITE_RELEASE_IDENTITY,
+      revision: 1,
+      parent: "",
+      values_shown: false,
+      changes: [],
+    },
+    previous_approver: "Local reviewer",
+    previous_rationale: "Reviewed synthetic rejection",
+    release_id: "booking",
+  };
+  const facade = suiteFacade({
+    OpenBaseline: (request: BaselineRequest) =>
+      request.previous === "booking-1.json"
+        ? retained
+        : { state: "failed" as const, reason: "baseline input must be a readable regular file, not a symlink" },
+    SaveSuiteReleases: () => suiteReleasesResult(),
+  });
+  render(<SuitePanel workspace={WORKSPACE_ROOT} busy={false} entries={entries} drafts={[]} />);
+  await user.click(screen.getByRole("button", { name: "Releases and impact" }));
+  const read = () => screen.getByRole("button", { name: "Read identity of release entry 1" }) as HTMLButtonElement;
+  const entry = screen.getByLabelText("Release entry 1");
+  const identity = () => (screen.getByLabelText("Release identity 1") as HTMLInputElement).value;
+  // Nothing is read until the row names a release entry.
+  expect(read().disabled).toBe(true);
+  await user.type(screen.getByLabelText("Test 1"), "booking");
+  await user.type(entry, "booking-9.json");
+  await user.click(read());
+  expect(await screen.findByText("baseline input must be a readable regular file, not a symlink")).toBeTruthy();
+  expect(identity()).toBe("");
+  // A folder this account cannot open is refused as denied, not read.
+  facade.reply({ OpenBaseline: () => ({ state: "permission_denied" as const, reason: "this account cannot open the chosen folder" }) });
+  await user.click(read());
+  expect(await screen.findByText("this account cannot open the chosen folder")).toBeTruthy();
+  expect(identity()).toBe("");
+  facade.reply({
+    OpenBaseline: (request: BaselineRequest) =>
+      request.previous === "booking-1.json"
+        ? retained
+        : { state: "failed" as const, reason: "baseline input must be a readable regular file, not a symlink" },
+  });
+
+  // Correcting the entry clears the refusal; from the entry, past the
+  // identity field, the read is one Enter.
+  await user.clear(entry);
+  await user.type(entry, "booking-1.json");
+  expect(screen.queryByText(/readable regular file/)).toBeNull();
+  await user.tab();
+  await user.tab();
+  expect(document.activeElement).toBe(read());
+  await user.keyboard("{Enter}");
+  expect(await screen.findByText("Test booking, revision 1, local approver Local reviewer.")).toBeTruthy();
+  expect(identity()).toBe(SUITE_RELEASE_IDENTITY);
+  expect(facade.callsTo("OpenBaseline").at(-1)?.args[0]).toMatchObject({
+    workspace: WORKSPACE_ROOT,
+    release: true,
+    previous: "booking-1.json",
+    show_values: false,
+  });
+
+  // Naming another entry drops the identity read from this one.
+  await user.type(entry, "x");
+  expect(identity()).toBe("");
+  expect(screen.queryByText(/local approver Local reviewer/)).toBeNull();
+
+  // Reading again holds the panel until the release has been read.
+  await user.clear(entry);
+  await user.type(entry, "booking-1.json");
+  const reading = facade.park("OpenBaseline");
+  await user.click(read());
+  await waitFor(() => expect(reading.size).toBe(1));
+  expect(read().matches(":disabled")).toBe(true);
+  reading.resolve(retained);
+  expect(await screen.findByText("Test booking, revision 1, local approver Local reviewer.")).toBeTruthy();
+  expect(identity()).toBe(SUITE_RELEASE_IDENTITY);
+
+  // The same entry, changed on disk and refused when read again, keeps no
+  // identity the earlier read filled in.
+  facade.reply({ OpenBaseline: () => ({ state: "failed" as const, reason: "changed expectation review commitment" }) });
+  await user.click(read());
+  expect(await screen.findByText("changed expectation review commitment")).toBeTruthy();
+  expect(identity()).toBe("");
+  facade.reply({ OpenBaseline: () => retained });
+  await user.click(read());
+  expect(await screen.findByText("Test booking, revision 1, local approver Local reviewer.")).toBeTruthy();
+  expect(identity()).toBe(SUITE_RELEASE_IDENTITY);
+
+  // The saved references pin exactly the identity the release declares.
+  await user.type(screen.getByLabelText("New sidecar entry"), "releases.json");
+  await user.click(screen.getByRole("button", { name: "Save release references" }));
+  const sidecar = JSON.parse(facade.oneCall("SaveSuiteReleases")[0].document) as { tests: unknown[] };
+  expect(sidecar.tests).toEqual([{ test: "booking", release: "booking-1.json", identity: SUITE_RELEASE_IDENTITY }]);
+  uninstallFacade();
+});
+
+// The expert import reads pasted text with the suite reader before anything
+// reaches the editor: a text the reader refuses is refused with its reason and
+// the editor keeps what it held; an accepted one loads without being saved.
+// Abandoning a pasted import calls nothing.
+test("pasted canonical suite JSON is validated before it loads, and an invalid suite leaves the editor as it was", async () => {
+  const user = userEvent.setup();
+  const facade = suiteFacade({
+    ValidateSuite: (canonical: string) =>
+      canonical.includes('"readmit-suite/v1"')
+        ? suiteDocumentResult()
+        : { state: "failed" as const, reason: "invalid suite JSON or size" },
+  });
+  render(<SuitePanel workspace={WORKSPACE_ROOT} busy={false} entries={entries} drafts={[]} />);
+  await user.click(screen.getByRole("button", { name: "New suite" }));
+  await user.type(screen.getByLabelText("Suite id"), "draft-suite");
+  await user.click(screen.getByText("Import canonical JSON (expert)"));
+  const pasted = screen.getByLabelText("Canonical suite JSON");
+  const load = () => screen.getByRole("button", { name: "Validate and load" }) as HTMLButtonElement;
+  expect(load().disabled).toBe(true);
+
+  // A version this release cannot read is refused; the draft stays.
+  await user.click(pasted);
+  await user.paste('{"schema":"readmit-suite/v2"}');
+  await user.click(load());
+  expect(await screen.findByText("invalid suite JSON or size")).toBeTruthy();
+  expect(facade.oneCall("ValidateSuite")[0]).toBe('{"schema":"readmit-suite/v2"}');
+  expect((screen.getByLabelText("Suite id") as HTMLInputElement).value).toBe("draft-suite");
+
+  // Abandoning the pasted text calls nothing and leaves the draft.
+  await user.clear(pasted);
+  expect(screen.queryByText("invalid suite JSON or size")).toBeNull();
+  expect(load().disabled).toBe(true);
+  expect(facade.callsTo("ValidateSuite")).toHaveLength(1);
+
+  // A suite the reader accepts is validated from the keyboard, holds the
+  // panel while it is read, and loads without being saved.
+  await user.click(pasted);
+  await user.paste(JSON.stringify(suiteDocument()));
+  const validating = facade.park("ValidateSuite");
+  await user.tab();
+  expect(document.activeElement).toBe(load());
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(validating.size).toBe(1));
+  expect(load().matches(":disabled")).toBe(true);
+  validating.resolve(suiteDocumentResult());
+  expect(await screen.findByText("Validated and loaded into the editor; nothing was saved.")).toBeTruthy();
+  expect(await screen.findByDisplayValue("nightly")).toBeTruthy();
+  expect(facade.callsTo("SaveSuite")).toHaveLength(0);
   uninstallFacade();
 });
 

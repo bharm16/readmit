@@ -17,7 +17,7 @@ import userEvent from "@testing-library/user-event";
 import type { UserEvent } from "@testing-library/user-event";
 import { byContent, enter, Journey, press, region } from "../testkit/journey";
 import type { Hub } from "../testkit/hub.js";
-import { activateLicense, savedAckTest } from "./steps";
+import { activateLicense, releaseSavedTest, savedAckTest } from "./steps";
 
 let journey: Journey;
 
@@ -163,16 +163,12 @@ test(
     await signIn(user, hub, "analyst");
 
     // The saved test is released as an immutable version, reviewed locally.
-    const baseline = within(region("Inspector").querySelector("section.baseline-panel") as HTMLElement);
-    await user.click(baseline.getByLabelText("Release a test version with profile pins"));
-    await enter(user, baseline.getByLabelText("Stable test identity"), "reschedule-accepted");
-    await enter(user, baseline.getByLabelText("Candidate specification in this workspace"), "reschedule-ack-test.json");
-    await press(user, baseline.getByRole("button", { name: "Review test and profile changes" }));
-    await enter(user, await baseline.findByLabelText("Local approver"), "analyst");
-    await enter(user, baseline.getByLabelText("Approval rationale"), "Reschedule acknowledgement expectation for release.");
-    await enter(user, baseline.getByLabelText("New released test filename"), "reschedule-release-1.json");
-    await press(user, baseline.getByRole("button", { name: "Release this exact test version" }));
-    expect(await baseline.findByText("Approved and saved reschedule-release-1.json.")).toBeTruthy();
+    await releaseSavedTest(user, {
+      id: "reschedule-accepted",
+      approver: "analyst",
+      rationale: "Reschedule acknowledgement expectation for release.",
+      output: "reschedule-release-1.json",
+    });
 
     // The team review is requested through the hub session, naming the exact
     // released bytes rather than a typed value.
