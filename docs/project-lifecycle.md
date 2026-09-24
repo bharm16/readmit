@@ -43,7 +43,9 @@ other documents, delete evidence, or rewrite identities. Inspect `project show`
 afterward and choose coherent project/revision versions when recovering both.
 Recovering an older registration document can leave newer evidence unregistered;
 the evidence remains on disk. Recovery copies are not an edit journal and record
-neither authors nor times.
+neither authors nor times. The desktop application's project maintenance screen
+lists each copy with the state reading it found and recovers a selected one
+through the same operation ([desktop](desktop.md#project-maintenance-backup-and-staged-upgrades)).
 
 ## Retained-file quotas
 

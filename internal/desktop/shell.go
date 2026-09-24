@@ -315,7 +315,6 @@ var supportStatus = Support{
 	},
 	Unavailable: []string{
 		"admit and renew runner instances from the runner host itself",
-		"check a staged upgrade and take its recovery archive",
 		"choose the private folder a new local activation is created in",
 		"execute, queue, resume, recover and inspect durable runs",
 		"export the installed entitlement byte for byte",
@@ -327,7 +326,6 @@ var supportStatus = Support{
 		"preview a relationship-preserving transform plan against a verified case, writing nothing into evidence",
 		"preview or explicitly send selected case messages",
 		"preview partition, pinned groups and the bounded-minimality boundary without sending",
-		"recover a selected project document recovery copy",
 		"reexecute reviewed transformed evidence against an explicitly selected authorized target",
 		"reopen a saved diagnosis configuration",
 		"reopen a saved finding-decisions document",

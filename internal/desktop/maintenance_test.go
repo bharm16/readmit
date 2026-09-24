@@ -1,6 +1,8 @@
 package desktop_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
@@ -209,5 +211,82 @@ func TestChooseMaintenancePathKinds(t *testing.T) {
 	unknown := app.ChooseMaintenancePath("network-update")
 	if unknown.State != desktop.Failed {
 		t.Fatalf("unknown kind: %+v", unknown)
+	}
+}
+
+// The recovery copies a project retained are listed through the reader
+// RecoverProjectDocument restores them with, and one is recovered: the
+// project reads its earlier settings again and the document it replaced is
+// listed as another copy. A damaged copy is listed as damaged and refused in
+// the words the command line refuses it with, changing nothing, and a folder
+// that is no project lists nothing.
+func TestRecoveryCopiesAreListedAndRecoveredThroughTheFacade(t *testing.T) {
+	app := newApp(t, &chooser{folder: t.TempDir()})
+	root := sampleProject(t, app)
+	if listed := app.ListProjectRecoveryCopies(root); listed.State != desktop.Empty || len(listed.Copies) != 0 {
+		t.Fatalf("a project nothing replaced: %+v", listed)
+	}
+	original, err := os.ReadFile(filepath.Join(root, project.DocumentName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := project.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	title := opened.Document.Settings.Title
+	renamed := opened.Document
+	renamed.Settings.Title = "Renamed by mistake"
+	if err := project.WriteDocument(root, renamed); err != nil {
+		t.Fatal(err)
+	}
+	listed := app.ListProjectRecoveryCopies(root)
+	sum := sha256.Sum256(original)
+	want := desktop.ProjectRecoveryCopy{Document: project.DocumentName, Digest: hex.EncodeToString(sum[:]), Size: int64(len(original)), State: "readable"}
+	if listed.State != desktop.Completed || len(listed.Copies) != 1 || listed.Copies[0] != want {
+		t.Fatalf("listed %+v, want %+v", listed, want)
+	}
+
+	recovered := app.RecoverProjectDocument(desktop.ProjectRecoverRequest{Project: root, Document: project.DocumentName, Digest: want.Digest})
+	if recovered.State != desktop.Completed {
+		t.Fatalf("recover: %+v", recovered)
+	}
+	if overview := app.OpenProjectOverview(root); overview.Overview == nil || overview.Overview.Title != title {
+		t.Fatalf("the recovered project reads %+v, want the title %q", overview, title)
+	}
+	listed = app.ListProjectRecoveryCopies(root)
+	if listed.State != desktop.Completed || len(listed.Copies) != 2 {
+		t.Fatalf("after recovery: %+v", listed)
+	}
+	for _, retained := range listed.Copies {
+		if retained.Current != (retained.Digest == want.Digest) || retained.State != "readable" {
+			t.Fatalf("after recovery the copies read %+v", listed.Copies)
+		}
+	}
+
+	if err := os.WriteFile(filepath.Join(root, project.DocumentName+".recovery-"+want.Digest), []byte("damaged"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	current, err := os.ReadFile(filepath.Join(root, project.DocumentName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed = app.ListProjectRecoveryCopies(root)
+	damaged := false
+	for _, retained := range listed.Copies {
+		damaged = damaged || retained.Digest == want.Digest && retained.State == "damaged" && !retained.Current
+	}
+	if !damaged {
+		t.Fatalf("a damaged copy was not listed as damaged: %+v", listed)
+	}
+	refused := app.RecoverProjectDocument(desktop.ProjectRecoverRequest{Project: root, Document: project.DocumentName, Digest: want.Digest})
+	if refused.State != desktop.Failed || refused.Reason != "recovery copy is damaged" {
+		t.Fatalf("recovering a damaged copy: %+v", refused)
+	}
+	if after, err := os.ReadFile(filepath.Join(root, project.DocumentName)); err != nil || string(after) != string(current) {
+		t.Fatal("a refused recovery changed the current document")
+	}
+	if none := app.ListProjectRecoveryCopies(t.TempDir()); none.State != desktop.Failed || len(none.Copies) != 0 {
+		t.Fatalf("a folder that is no project: %+v", none)
 	}
 }

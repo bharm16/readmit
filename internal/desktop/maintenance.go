@@ -166,6 +166,29 @@ type ProjectArchiveRequest struct {
 	Confirm     bool   `json:"confirm,omitzero"`
 }
 
+// ProjectRecoveryCopy is one retained earlier version of a project document:
+// the document it was retained for, the SHA-256 its name records, its length,
+// what reading it found (readable, damaged or unreadable) and whether it holds
+// the document as it stands.
+type ProjectRecoveryCopy struct {
+	Document string `json:"document"`
+	Digest   string `json:"digest"`
+	Size     int64  `json:"size"`
+	State    string `json:"state"`
+	Current  bool   `json:"current,omitzero"`
+}
+
+// ProjectRecoveryCopiesResult lists a project's recovery copies.
+type ProjectRecoveryCopiesResult struct {
+	State  State                 `json:"state"`
+	Reason string                `json:"reason,omitzero"`
+	Copies []ProjectRecoveryCopy `json:"copies,omitzero"`
+}
+
+func (r *ProjectRecoveryCopiesResult) refuse(state State, reason string) {
+	r.State, r.Reason = state, reason
+}
+
 // ProjectRecoverRequest restores one retained recovery copy by digest.
 type ProjectRecoverRequest struct {
 	Project  string `json:"project"`
@@ -492,6 +515,37 @@ func (a *App) RecoverProjectDocument(request ProjectRecoverRequest) ProjectRecov
 			return ProjectRecoverResult{State: Failed, Reason: err.Error()}
 		}
 		return ProjectRecoverResult{State: Completed, Root: root}
+	})
+}
+
+// ListProjectRecoveryCopies lists the recovery copies of the project's
+// documents through the reader RecoverProjectDocument restores them with, so
+// a person selects a copy by what it is rather than by a file name. It writes
+// nothing; a project nothing replaced yet is empty.
+func (a *App) ListProjectRecoveryCopies(path string) ProjectRecoveryCopiesResult {
+	return run(a, false, false, func(context.Context) ProjectRecoveryCopiesResult {
+		root, declined := resolveProjectPath(path)
+		if root == "" {
+			return ProjectRecoveryCopiesResult{State: declined.state, Reason: declined.reason}
+		}
+		copies, err := project.RecoveryCopies(root)
+		if err != nil {
+			return ProjectRecoveryCopiesResult{State: Failed, Reason: err.Error()}
+		}
+		result := ProjectRecoveryCopiesResult{State: Completed, Copies: make([]ProjectRecoveryCopy, 0, len(copies))}
+		if len(copies) == 0 {
+			result.State = Empty
+		}
+		for _, retained := range copies {
+			result.Copies = append(result.Copies, ProjectRecoveryCopy{
+				Document: retained.Document,
+				Digest:   retained.Digest,
+				Size:     retained.Size,
+				State:    string(retained.State),
+				Current:  retained.Current,
+			})
+		}
+		return result
 	})
 }
 

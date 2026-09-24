@@ -17,7 +17,9 @@
 // answers explicitly before the action that opens them — the way a person
 // picks a folder or names a new one — and which are refused and recorded when
 // no answer was scripted, or when the answer is one the host's dialog could
-// never give.
+// never give. Run with -file-size-limit, the running application's disk is
+// full past that size, in the one way a test can make it full portably: the
+// process's own file size limit.
 //
 // The facade is constructed by the same constructor the shell calls, over the
 // same five local state documents, in a state directory under the journey's
@@ -94,6 +96,7 @@ func main() {
 	var issues issueFlags
 	flag.Var(&issues, "issue", "provision an activation folder inside root for one term, as FOLDER,SEQUENCE,EXPIRES,GRACE_DAYS; repeated issues share one signing key; then exit")
 	certificates := flag.String("hub-certificates", "", "write a synthetic certificate authority and a loopback hub's server and client certificates into this folder inside root, then exit")
+	fileSizeLimit := flag.Int64("file-size-limit", 0, "refuse every write that would make one file larger than this many bytes once the application is running, the way a full disk refuses it")
 	flag.Parse()
 	if *certificates != "" {
 		if err := hubCertificates(*root, *certificates); err != nil {
@@ -133,6 +136,12 @@ func main() {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "journeybridge:", err)
 		os.Exit(2)
+	}
+	if *fileSizeLimit > 0 {
+		if err := limitFileSize(*fileSizeLimit); err != nil {
+			fmt.Fprintln(os.Stderr, "journeybridge:", err)
+			os.Exit(2)
+		}
 	}
 	b.serve(os.Stdin, protocol)
 	// Standard input closed: the window closed. Calls still running are

@@ -50,7 +50,10 @@ unanswered is rejected. The kit's verbs:
 
 - `Journey.create()` owns a new temporary root; `launch()` starts the
   application over it and mounts the production window; `dispose()` in
-  `afterEach` ends it and removes the root.
+  `afterEach` ends it and removes the root. `launch({ fileSizeLimit })` runs
+  the application on a full disk: the bridge lowers its own file size limit
+  once it has started, so any write that would make one file larger than that
+  many bytes is refused, and launching again without it gives the disk room.
 - `press(user, button)` presses a control once the window offers it. Pressing
   a disabled control does nothing, so every step after real work uses it.
 - `chooseFolder(path, title)`, `chooseFiles(paths, title)`,

@@ -372,6 +372,7 @@ artifacts are never reported as completed.
 | `InspectProjectQuota` / `SetProjectQuota` | Reports or declares retained-file quota and explains that indexes are disposable. |
 | `PreviewProjectMigration` | Previews supported schemas without rewriting retained artifacts. |
 | `PreviewProjectRetirement` / `ArchiveOrDeleteProject` | Previews archive/delete effects with a selection token; delete requires confirmation and a matching selection. |
+| `ListProjectRecoveryCopies` | Lists the recovery copies of a project's documents by the file each is retained in, with its length, whether its bytes are still the ones its name records and its document's reader accepts it, and whether it is the document as it stands. Writes nothing. |
 | `RecoverProjectDocument` | Restores one selected recovery copy and retains the current document bytes. |
 | `CheckStagedUpgrade` / `PrepareStagedUpgrade` | Reviews a staged candidate offline and, with administrator approval, takes a rollback archive. Installation stays a native handoff. |
 | `Filters` | Lists the filters this viewer saved and the one selected now. |
@@ -2036,10 +2037,41 @@ reference documents and protection key references. Indexes remain disposable and
 are rebuilt through the existing `BuildIndex` / `DescribeIndex` controls rather
 than a second search path. Archive and delete require a retirement preview whose
 selection token must still match; cancellation or a stale selection deletes
-nothing. Opening Settings or the upgrade tab never contacts a network, downloads
-packages, elevates or interrupts a service — installation stays a native
-administrator handoff. Customer-hub administration journeys stay with the hub
-collaboration UI and are not duplicated here.
+nothing. The delete's confirmation belongs to the preview it was given beside:
+a new preview needs it given again, and a completed delete withdraws the
+preview of the project it removed. Each new folder is named for the one writer
+that asked for it — a backup, a restore, a recovery archive or a rollback
+archive — and is never offered to another, and each section shows only the
+report of its own last action.
+
+**Recovery copies** lists every copy `readmit project recover` can select —
+`project.json`, `revisions.json` or `quota.json`, `.recovery-` and the SHA-256
+of the bytes it kept — with its length and what reading it found: `readable`,
+`damaged` when its bytes no longer hash to its name, or `unreadable` when it is
+not a regular file or its document's reader refuses it. The copy holding the
+document as it stands is marked so. Only a readable copy that is not the
+current document can be selected, and **Recover the selected copy** restores it
+through the operation the command runs: the document it replaces is kept as
+another copy, the other documents are not rewound, and evidence and indexes are
+not rewritten. A copy that changed after it was listed is refused in the
+command's words, and the list is read again after every recovery, restored or
+refused. Copies record neither authors nor times, and the list claims neither.
+The screen reaches a project the window has opened; a project whose
+`project.json` this release cannot read is recovered with `readmit project
+recover`.
+
+The **Staged upgrade** section shows the plan `readmit upgrade check` prints:
+both build identities, whether the candidate is signed for distribution, each
+staged package's state (`intact`, `altered` or `absent`), each reviewed
+project's readability and the first refusal. Choosing another candidate
+withdraws the plan and the administrator's approval shown for the previous
+one. With the approval, **Prepare rollback archive** takes the archive
+`readmit upgrade prepare` takes, holding the same backup document, and still
+states that installing an unsigned candidate is refused. Opening Settings or
+the upgrade tab never contacts a network, downloads packages, elevates or
+interrupts a service — installation stays a native administrator handoff.
+Customer-hub administration journeys stay with the hub collaboration UI and
+are not duplicated here.
 
 ## Raw inspection and the performance corpus
 
