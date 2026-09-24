@@ -2768,7 +2768,7 @@ export interface LocalProfileResolution {
   profile: LocalProfileIdentity;
   base: LocalProfileBase;
   pinned: boolean;
-  support: LocalProfileSupport;
+  support: ProfilePackOutcomes;
   segments: LocalProfileResolvedSegment[];
   findings: LocalProfileFinding[];
 }
@@ -2815,14 +2815,6 @@ export interface LocalProfileResult {
   profile?: LocalProfile;
   resolution?: LocalProfileResolution;
   seal?: ProfileVersion;
-}
-
-/** internal/localprofile.Support */
-export interface LocalProfileSupport {
-  parse: ProfilePackOutcome;
-  labels: ProfilePackOutcome;
-  structural: ProfilePackOutcome;
-  workflow: ProfilePackOutcome;
 }
 
 /** internal/localprofile.TerminologySet */
@@ -3817,6 +3809,14 @@ export interface ProfilePackLicense {
 
 /** internal/profilepack.Outcome */
 export type ProfilePackOutcome = "supported" | "untested" | "unsupported" | "unknown";
+
+/** internal/profilepack.Outcomes */
+export interface ProfilePackOutcomes {
+  parse: ProfilePackOutcome;
+  labels: ProfilePackOutcome;
+  structural: ProfilePackOutcome;
+  workflow: ProfilePackOutcome;
+}
 
 /** internal/profilepack.Provenance */
 export interface ProfilePackProvenance {

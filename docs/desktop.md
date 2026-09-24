@@ -77,13 +77,15 @@ transformation's operators, the kinds of path a chooser picks, the interruptible
 operation a cancel names — the choices are the Go constants that name them,
 generated as a named union from the const block that declares them (the
 `vocabularies` of `desktop/bindgen/names.go`), so a choice added there is one
-the panel must handle. A shape the generator cannot
-declare exactly — an embedded struct, a type that marshals itself, a variadic
-method — is refused by name rather than guessed at. A type that decodes itself
-strictly is declared by the shape Go writes; where its reader also refuses a
-member by the document's version, as an observation source's reader refuses
-the capture transport in a v1 source, the panel that sends it leaves that
-member out.
+the panel must handle. An untagged embedded struct's members are declared as
+the embedding struct's own, in its place, as `encoding/json` promotes them. A
+shape the generator cannot declare exactly — an embedded pointer or tagged
+embedded field, a member declared twice through an embedded struct, a type that
+marshals itself, a variadic method — is refused by name rather than guessed at.
+A type that decodes itself strictly is declared by the shape Go writes; where
+its reader also refuses a member by the document's version, as an observation
+source's reader refuses the capture transport in a v1 source, the panel that
+sends it leaves that member out.
 
 `bindings.ts` re-exports those declarations and holds only the call policy Go
 cannot express: which reads are asked again while the facade is busy, the fixed
@@ -3833,7 +3835,9 @@ The panel provides five functional tabs:
      or one entry of one of its folders such as `imported-interface/profile.json`
      a package import wrote. The profile is read by the local-profile reader,
      resolved against the pack named beside it (or, when none is named, the pack
-     beside the profile that satisfies its pin) and sealed as
+     among the workspace's own entries that satisfies its pin, as validating and
+     saving choose it; the pack an import wrote beside a profile answers when it
+     is named, such as `imported-interface/pack.json`) and sealed as
      `readmit profile export` verifies it. The panel states whether the pinned
      pack answered, with its four support levels, or that no pack offered
      satisfies the pin and nothing was read from one, and shows the seal's
@@ -3857,10 +3861,18 @@ The panel provides five functional tabs:
      entry is named, validation reads that exact entry as opening does; a
      missing or refused pack stops validation in the reader's words, without
      presenting a seal or resolution against another pack. With no pack named,
-     validation may look for the pack the profile pins in the workspace.
+     validation looks for the pack the profile pins among the workspace's own
+     entries, exactly as opening and saving do, so one profile resolves the same
+     way however it reached the editor. Two different packs there that both
+     claim the pinned id and version are a choice nothing can make, and neither
+     answers.
    - Computes canonical profile version seals ([`readmit-profile-version/v1`](profile-versions.md))
      and enforces immutability: saving an approved profile revision requires
      bumping the version; approved profiles are never mutated or overwritten in place.
+     Every version seal among the workspace's own entries is checked through
+     `profileversion.VerifyFolder`, and a workspace whose entries cannot be
+     listed refuses the save, because whether the version is already sealed
+     could not be checked.
      Opening, validating and saving answer the profile's
      [canonical document](local-profiles.md#the-canonical-document), and saving
      writes it, whatever order the editor added segments and fields in: the

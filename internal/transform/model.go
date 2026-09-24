@@ -216,13 +216,10 @@ type Relation struct {
 // the pinned pack says about it. Only a supported outcome passes; an unknown,
 // untested or unsupported one is reported as the reason it is not a verdict.
 type Combination struct {
-	Version    string              `json:"version"`
-	Family     string              `json:"family"`
-	Entries    int                 `json:"entries"`
-	Parse      profilepack.Outcome `json:"parse"`
-	Labels     profilepack.Outcome `json:"labels"`
-	Structural profilepack.Outcome `json:"structural"`
-	Workflow   profilepack.Outcome `json:"workflow"`
+	Version string `json:"version"`
+	Family  string `json:"family"`
+	Entries int    `json:"entries"`
+	profilepack.Outcomes
 }
 
 // Unsupported is a position the transformation did not reach and a relation it

@@ -5,7 +5,9 @@ import (
 	"encoding/json/v2"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -511,5 +513,76 @@ func TestProfilePackageExportImportInspect(t *testing.T) {
 	})
 	if conflictResult.State != desktop.Failed {
 		t.Fatalf("expected conflicting import to fail: %+v", conflictResult)
+	}
+}
+
+// TestOpenValidateAndSaveResolveAProfileAgainstOnePack is the #452 class of
+// divergence closed for good: opening a profile, validating its document and
+// saving it choose the pack by one rule, so the same profile in the same
+// workspace resolves identically through all three. A named pack is read where
+// it is named; with none named, the pinned pack is looked for among the open
+// workspace's own entries, never in the folder the profile happens to be
+// opened from, so a profile an import wrote resolves the same way opened as its
+// document does in the editor. Before, opening found the pack beside the
+// imported profile and validating and saving its document did not.
+func TestOpenValidateAndSaveResolveAProfileAgainstOnePack(t *testing.T) {
+	app := workspaceApp(t)
+	root := t.TempDir()
+	document := fixture(t, "local-profile.json")
+	if err := os.Mkdir(filepath.Join(root, "imported"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeDocument(t, root, filepath.Join("imported", "profile.json"), document)
+	writeDocument(t, root, filepath.Join("imported", "pack.json"), fixture(t, "profile-pack.json"))
+	writeDocument(t, root, "adt-pack.json", fixture(t, "profile-pack-adt.json"))
+
+	saves := 0
+	resolved := func(pack string) []desktop.LocalProfileResult {
+		t.Helper()
+		results := []desktop.LocalProfileResult{
+			app.OpenProfile(root, "imported/profile.json", pack),
+			app.ValidateProfile(desktop.ProfileValidateRequest{Workspace: root, Document: document, Pack: pack}),
+		}
+		if pack == "" {
+			saves++
+			name := "saved-" + strconv.Itoa(saves) + ".json"
+			results = append(results, app.SaveProfile(desktop.ProfileSaveRequest{Workspace: root, Document: document, Output: name}))
+		}
+		for _, result := range results {
+			if result.State != desktop.Completed || result.Resolution == nil || result.Seal == nil {
+				t.Fatalf("pack %q: %+v", pack, result)
+			}
+			if !reflect.DeepEqual(result.Resolution, results[0].Resolution) || *result.Seal != *results[0].Seal {
+				t.Fatalf("pack %q: opening, validating and saving resolved differently:\n%+v\n%+v", pack, results[0].Resolution, result.Resolution)
+			}
+		}
+		return results
+	}
+
+	// The pinned pack is only beside the imported profile, and nobody named
+	// it: no pack among the workspace's own entries answers, for all three.
+	if resolved("")[0].Resolution.Pinned {
+		t.Fatal("the pack beside the imported profile answered with none named")
+	}
+	// Named, it answers opening and validating alike.
+	if !resolved("imported/pack.json")[0].Resolution.Pinned {
+		t.Fatal("the named pinned pack did not answer")
+	}
+	// A pack that is not the pinned one is read for nothing by either.
+	if resolved("adt-pack.json")[0].Resolution.Pinned {
+		t.Fatal("a pack the profile does not pin answered")
+	}
+
+	// The pinned pack among the workspace's own entries answers all three.
+	writeDocument(t, root, "profile-pack.json", fixture(t, "profile-pack.json"))
+	if !resolved("")[0].Resolution.Pinned {
+		t.Fatal("the workspace's pinned pack did not answer")
+	}
+
+	// A second, different document claiming the pinned id and version leaves
+	// nothing to choose by, so all three resolve against no pack.
+	writeDocument(t, root, "another-siu.json", strings.Replace(fixture(t, "profile-pack.json"), `"hl7_version": "2.4"`, `"hl7_version": "2.6"`, 1))
+	if resolved("")[0].Resolution.Pinned {
+		t.Fatal("one of two different packs claiming the pin was chosen")
 	}
 }

@@ -81,6 +81,15 @@ err = sealed.Verify(profile)                 // refuses a profile that changed u
 document, err := sealed.Encode()             // the bytes DecodeVersion accepts
 ```
 
+`profileversion.VerifyFolder(folder, profile)` holds a profile about to be
+saved into a folder to every seal already there: each version seal among the
+folder's own regular `*.json` entries that records the profile's id and version
+must verify it, so changed rules are never saved beside the seal of their
+version. A folder that cannot be listed is refused, because a check that could
+not look has not found the version unsealed; anything that is not a seal of
+this version, a member that cannot be read, a subdirectory and a symbolic link
+are passed over. The desktop application's profile panel saves through it.
+
 A profile whose canonical document would exceed the 4 MiB a local profile reader
 accepts is refused rather than sealed. Indentation makes a canonical document
 longer than the compact bytes a reader may have been handed, so a profile a

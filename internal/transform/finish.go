@@ -230,10 +230,7 @@ func (e *engine) combinations(derived map[string][]byte, pack profilepack.Pack) 
 		if at < 0 {
 			combinations = append(combinations, Combination{
 				Version: combination.Version, Family: combination.Family,
-				Parse:      pack.Support(combination.Version, combination.Family, profilepack.LevelParse),
-				Labels:     pack.Support(combination.Version, combination.Family, profilepack.LevelLabels),
-				Structural: pack.Support(combination.Version, combination.Family, profilepack.LevelStructural),
-				Workflow:   pack.Support(combination.Version, combination.Family, profilepack.LevelWorkflow),
+				Outcomes: pack.Outcomes(combination.Version, combination.Family),
 			})
 			at = len(combinations) - 1
 		}

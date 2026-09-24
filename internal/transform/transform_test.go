@@ -452,6 +452,15 @@ func TestProfileValidationReportsDeclaredSupportAndNeverPassesUnknown(t *testing
 	if declared.Entries != 1 {
 		t.Fatalf("the entries of a combination were not counted: %+v", declared)
 	}
+	// The four levels are the one profilepack.Outcomes type, and the preview
+	// still writes them as the row's own members, in the contract's order.
+	written, err := json.Marshal(declared, json.Deterministic(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(written) != `{"version":"2.5.1","family":"SIU","entries":1,"parse":"supported","labels":"supported","structural":"unsupported","workflow":"unsupported"}` {
+		t.Fatalf("the preview's profile row is written as %s", written)
+	}
 	if _, reported := codes(preview)[transform.UnverifiedCombination]; reported {
 		t.Fatalf("a combination the pack declares supported was recorded as unverified: %+v", preview.Unsupported)
 	}

@@ -39,13 +39,10 @@ type ProfileLibraryEntry struct {
 
 // ProfileLibraryRow reports one published combination of the support matrix.
 type ProfileLibraryRow struct {
-	HL7Version string               `json:"hl7_version"`
-	Family     string               `json:"family"`
-	Parse      profilepack.Outcome  `json:"parse"`
-	Labels     profilepack.Outcome  `json:"labels"`
-	Structural profilepack.Outcome  `json:"structural"`
-	Workflow   profilepack.Outcome  `json:"workflow"`
-	Pack       profilepack.Identity `json:"pack"`
+	HL7Version string `json:"hl7_version"`
+	Family     string `json:"family"`
+	profilepack.Outcomes
+	Pack profilepack.Identity `json:"pack"`
 }
 
 // ProfileLibraryResult reports what a profile library directory publishes
@@ -202,7 +199,7 @@ func (a *App) InspectProfilePack(workspace, entry string) ProfilePackResult {
 			Pack:       &id,
 			Provenance: &prov,
 			Coverage:   pack.Coverage,
-			Bundleable: prov.RightsReview.Status == "approved",
+			Bundleable: pack.Bundleable() == nil,
 		}
 	})
 }
@@ -239,10 +236,7 @@ func (a *App) OpenProfileLibrary(workspace, directory string) ProfileLibraryResu
 			matrix = append(matrix, ProfileLibraryRow{
 				HL7Version: r.HL7Version,
 				Family:     r.Family,
-				Parse:      r.Parse,
-				Labels:     r.Labels,
-				Structural: r.Structural,
-				Workflow:   r.Workflow,
+				Outcomes:   r.Outcomes,
 				Pack:       r.Pack,
 			})
 		}
@@ -258,16 +252,18 @@ func (a *App) OpenProfileLibrary(workspace, directory string) ProfileLibraryResu
 // OpenProfile reads an existing local profile from the workspace, resolves against its pack,
 // and computes its canonical seal. The profile and the pack are each one entry
 // of the workspace or one entry of one of its folders, such as the directory a
-// package was imported into. A named pack must be one the pack reader accepts;
-// with none named, the pinned pack is looked for beside the profile. A pack
-// that is not the pinned one contributes nothing, and the resolution says so.
+// package was imported into. The pack is chosen as validating and saving
+// choose it (profilePack): a named pack must be one the pack reader accepts,
+// and with none named the pinned pack is looked for among the workspace's own
+// entries. A pack that is not the pinned one contributes nothing, and the
+// resolution says so.
 func (a *App) OpenProfile(workspace, entry, packEntry string) LocalProfileResult {
 	return run(a, false, false, func(context.Context) LocalProfileResult {
 		root, declined := resolveFolder(workspace)
 		if root == "" {
 			return LocalProfileResult{State: declined.state, Reason: declined.reason}
 		}
-		folder, data, declined := folderDocument(root, entry, localprofile.MaxProfileBytes, "the local profile")
+		data, declined := folderDocument(root, entry, localprofile.MaxProfileBytes, "the local profile")
 		if data == nil {
 			return LocalProfileResult{State: declined.state, Reason: declined.reason}
 		}
@@ -275,15 +271,9 @@ func (a *App) OpenProfile(workspace, entry, packEntry string) LocalProfileResult
 		if err != nil {
 			return LocalProfileResult{State: Failed, Reason: err.Error()}
 		}
-		var pack profilepack.Pack
-		if packEntry == "" {
-			pack = a.findPinnedPack(folder, profile.Base.Pack)
-		} else {
-			var declined refusal
-			pack, declined = readNamedProfilePack(root, packEntry)
-			if declined.state != "" {
-				return LocalProfileResult{State: declined.state, Reason: declined.reason}
-			}
+		pack, declined := profilePack(root, packEntry, profile.Base.Pack)
+		if declined.state != "" {
+			return LocalProfileResult{State: declined.state, Reason: declined.reason}
 		}
 		resolution := localprofile.Resolve(profile, pack)
 		seal, err := profileversion.Seal(profile)
@@ -315,14 +305,9 @@ func (a *App) ValidateProfile(request ProfileValidateRequest) LocalProfileResult
 		if err != nil {
 			return LocalProfileResult{State: Failed, Reason: err.Error()}
 		}
-		var pack profilepack.Pack
-		if request.Pack == "" {
-			pack = a.findPinnedPack(root, profile.Base.Pack)
-		} else {
-			pack, declined = readNamedProfilePack(root, request.Pack)
-			if declined.state != "" {
-				return LocalProfileResult{State: declined.state, Reason: declined.reason}
-			}
+		pack, declined := profilePack(root, request.Pack, profile.Base.Pack)
+		if declined.state != "" {
+			return LocalProfileResult{State: declined.state, Reason: declined.reason}
 		}
 		resolution := localprofile.Resolve(profile, pack)
 		seal, err := profileversion.Seal(profile)
@@ -344,7 +329,9 @@ func (a *App) ValidateProfile(request ProfileValidateRequest) LocalProfileResult
 }
 
 // SaveProfile saves a canonical profile revision and optionally its seal. It never mutates
-// an existing approved profile.
+// an existing approved profile. Saving names no pack, so the profile is resolved
+// against the pack among the workspace's own entries that satisfies its pin, as
+// opening and validating resolve it with none named.
 func (a *App) SaveProfile(request ProfileSaveRequest) LocalProfileResult {
 	return run(a, false, true, func(context.Context) LocalProfileResult {
 		root, declined := resolveFolder(request.Workspace)
@@ -389,7 +376,7 @@ func (a *App) SaveProfile(request ProfileSaveRequest) LocalProfileResult {
 			}
 		}
 
-		resolution := localprofile.Resolve(profile, a.findPinnedPack(root, profile.Base.Pack))
+		resolution := localprofile.Resolve(profile, profilelibrary.FindPinned(root, profile.Base.Pack))
 		return LocalProfileResult{
 			State:      Completed,
 			Document:   string(canonicalDoc),
@@ -670,27 +657,36 @@ func describePackage(data []byte) (ProfilePackageResult, error) {
 
 // folderDocument reads one document named by an entry of the open workspace,
 // or by one entry of one of its folders as `folder/entry`, the shape of a
-// document an import wrote into its new directory, and returns the folder it
-// was read from. The folder must be a real folder, never a symbolic link, so a
-// name cannot leave the workspace, and the entry is read as workspaceDocument
-// reads one.
-func folderDocument(root, name string, limit int, what string) (string, []byte, refusal) {
+// document an import wrote into its new directory. The folder must be a real
+// folder, never a symbolic link, so a name cannot leave the workspace, and the
+// entry is read as workspaceDocument reads one.
+func folderDocument(root, name string, limit int, what string) ([]byte, refusal) {
 	folder, entry, nested := strings.Cut(name, "/")
 	if !nested {
 		folder, entry = root, name
 	} else {
 		path, err := artifactpath.Child(root, folder)
 		if err != nil {
-			return "", nil, refusal{Failed, what + " must be one entry of the open workspace or of one of its folders"}
+			return nil, refusal{Failed, what + " must be one entry of the open workspace or of one of its folders"}
 		}
 		folder = path
 	}
-	data, declined := workspaceDocument(folder, entry, limit, what)
-	return folder, data, declined
+	return workspaceDocument(folder, entry, limit, what)
 }
 
-func readNamedProfilePack(root, entry string) (profilepack.Pack, refusal) {
-	_, data, declined := folderDocument(root, entry, profilepack.MaxPackBytes, "the profile pack")
+// profilePack is the pack a profile is resolved against, chosen by one rule
+// for opening, validating and saving, so the three never choose differently
+// for the same profile: the pack named, read as folderDocument reads one and
+// refused in the pack reader's words; or, with none named, the pack among the
+// open workspace's own entries that satisfies the profile's pin, as
+// profilelibrary.FindPinned finds it, which is nothing when there is no
+// workspace. A pack beside a profile in one of the workspace's folders answers
+// when it is named.
+func profilePack(root, named string, pin profilepack.Identity) (profilepack.Pack, refusal) {
+	if named == "" {
+		return profilelibrary.FindPinned(root, pin), refusal{}
+	}
+	data, declined := folderDocument(root, named, profilepack.MaxPackBytes, "the profile pack")
 	if data == nil {
 		return profilepack.Pack{}, declined
 	}
@@ -701,27 +697,10 @@ func readNamedProfilePack(root, entry string) (profilepack.Pack, refusal) {
 	return pack, refusal{}
 }
 
-func (a *App) findPinnedPack(root string, pinned profilepack.Identity) profilepack.Pack {
-	if root != "" && pinned.ID != "" {
-		entries, err := os.ReadDir(root)
-		if err == nil {
-			for _, entry := range entries {
-				if !entry.Type().IsRegular() || !strings.HasSuffix(entry.Name(), ".json") {
-					continue
-				}
-				if data, declined := workspaceDocument(root, entry.Name(), profilepack.MaxPackBytes, "the profile pack"); data != nil && declined.state == "" {
-					if pack, err := profilepack.Decode(data); err == nil {
-						if pack.Satisfies(pinned) == nil {
-							return pack
-						}
-					}
-				}
-			}
-		}
-	}
-	return profilepack.Pack{}
-}
-
+// checkProfileImmutability refuses a destination that is not one new entry of
+// the open workspace, then holds the profile to every version seal the
+// workspace holds, through profileversion.VerifyFolder, which refuses a
+// workspace it cannot list.
 func (a *App) checkProfileImmutability(root string, profile localprofile.Profile, outputName string) error {
 	if err := artifactpath.EntryName(outputName); err != nil {
 		return errors.New("a profile is written to one regular entry of the open workspace")
@@ -730,26 +709,7 @@ func (a *App) checkProfileImmutability(root string, profile localprofile.Profile
 	if _, err := os.Lstat(destPath); err == nil {
 		return errors.New("cannot overwrite existing profile; approved profiles are immutable, save as a new revision")
 	}
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return nil
-	}
-	for _, entry := range entries {
-		if !entry.Type().IsRegular() || !strings.HasSuffix(entry.Name(), ".json") {
-			continue
-		}
-		data, declined := workspaceDocument(root, entry.Name(), profileversion.MaxVersionBytes, "the version seal")
-		if data != nil && declined.state == "" {
-			if seal, err := profileversion.DecodeVersion(data); err == nil {
-				if seal.Profile.ID == profile.Identity.ID && seal.Profile.Version == profile.Identity.Version {
-					if err := seal.Verify(profile); err != nil {
-						return errors.New("profile version " + profile.Identity.Version + " is already sealed with different content; increment version to save changes")
-					}
-				}
-			}
-		}
-	}
-	return nil
+	return profileversion.VerifyFolder(root, profile)
 }
 
 func (a *App) resolveProfileDoc(root, fileOrDoc string) (localprofile.Profile, error) {

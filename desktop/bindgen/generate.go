@@ -402,13 +402,48 @@ func (g *generator) declare(t reflect.Type) (string, error) {
 	return name, nil
 }
 
-// members declares a struct's JSON members, in field order.
+// members declares a struct's JSON members, in field order. A member two
+// fields would declare, whether declared directly or promoted from an embedded
+// struct, is refused: encoding/json keeps one of them by rules bindgen does not
+// model.
 func (g *generator) members(t reflect.Type) ([]string, error) {
-	var members []string
+	fields, err := g.fields(t)
+	if err != nil {
+		return nil, err
+	}
+	declared := make(map[string]bool, len(fields))
+	members := make([]string, 0, len(fields))
+	for _, f := range fields {
+		if declared[f.name] {
+			return nil, fmt.Errorf("%s declares the member %q twice; encoding/json keeps only one: rename one", goName(t), f.name)
+		}
+		declared[f.name] = true
+		members = append(members, f.decl)
+	}
+	return members, nil
+}
+
+// jsonField is one JSON member of a struct: its name on the wire and its
+// declaration.
+type jsonField struct{ name, decl string }
+
+// fields lists a struct's JSON members in field order. An untagged embedded
+// struct's members are the embedding struct's own, in its place, as
+// encoding/json promotes them; any other embedded field is refused.
+func (g *generator) fields(t reflect.Type) ([]jsonField, error) {
+	var fields []jsonField
 	for i := range t.NumField() {
 		field := t.Field(i)
 		if field.Anonymous {
-			return nil, fmt.Errorf("%s embeds %s; encoding/json promotes its members, which bindgen does not model: name the member", goName(t), field.Type)
+			if _, tagged := field.Tag.Lookup("json"); tagged || field.Type.Kind() != reflect.Struct || !field.IsExported() {
+				return nil, fmt.Errorf("%s embeds %s; bindgen promotes the members of an untagged embedded struct and nothing else: name the member", goName(t), field.Type)
+			}
+			promoted, err := g.fields(field.Type)
+			if err != nil {
+				return nil, err
+			}
+			fields = append(fields, promoted...)
+			continue
 		}
 		if !field.IsExported() {
 			continue
@@ -444,9 +479,9 @@ func (g *generator) members(t reflect.Type) ([]string, error) {
 		if optional {
 			mark = "?"
 		}
-		members = append(members, member(name)+mark+": "+expr)
+		fields = append(fields, jsonField{name: name, decl: member(name) + mark + ": " + expr})
 	}
-	return members, nil
+	return fields, nil
 }
 
 // member is a JSON member name as a TypeScript property name.

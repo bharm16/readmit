@@ -19,9 +19,11 @@
 // is Upgrade, which names the test, the version it is on and the version it is
 // moved to, and refuses all three when they do not hold.
 //
-// Nothing here evaluates a message, opens a file, or produces a verdict. An
-// assessment states that the contract a saved test was written against changed;
-// it does not state that the test's result changed, because no message is
+// Nothing here evaluates a message or produces a verdict, and the one thing
+// that opens files is VerifyFolder, which reads the version seals one folder
+// holds before a profile is saved into it. An assessment states that the
+// contract a saved test was written against changed; it does not state that
+// the test's result changed, because no message is
 // evaluated against a local profile in this release and a claim about a verdict
 // would be one nothing could stand behind.
 package profileversion

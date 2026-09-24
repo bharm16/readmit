@@ -57,6 +57,48 @@ func (p Pack) Satisfies(pin Identity) error {
 	return nil
 }
 
+// Bundleable reports whether this pack may be bundled with a release: its
+// publisher recorded an approved rights review of its exact content. It checks
+// what was written down; it cannot establish that the review happened or what
+// it covered. A pending review is readable and not bundleable, and a pack that
+// did not come through Decode is neither.
+func (p Pack) Bundleable() error {
+	if !p.decoded || p.Provenance.RightsReview.Status != ReviewApproved {
+		return errors.New("the pack " + p.Identity.ID + " records no approved rights review, so it is readable and not bundleable")
+	}
+	return nil
+}
+
+// Outcomes is a pack's answer about one combination at all four levels, each
+// level answered separately: the one type every consumer that reports all four
+// carries, so no consumer declares the levels again.
+type Outcomes struct {
+	Parse      Outcome `json:"parse"`
+	Labels     Outcome `json:"labels"`
+	Structural Outcome `json:"structural"`
+	Workflow   Outcome `json:"workflow"`
+}
+
+// Covered reports whether the pack that answered declares the combination at
+// all. A pack declares every level of a combination it covers and none of one
+// it does not, so the parse level answers for all four.
+func (o Outcomes) Covered() bool {
+	return o.Parse == OutcomeSupported || o.Parse == OutcomeUntested || o.Parse == OutcomeUnsupported
+}
+
+// Outcomes answers all four levels of one combination at once, each exactly as
+// Support answers it alone. Nothing is borrowed between levels: a combination
+// the pack does not declare, and a pack that did not come through Decode, are
+// unknown at every level.
+func (p Pack) Outcomes(version, family string) Outcomes {
+	return Outcomes{
+		Parse:      p.Support(version, family, LevelParse),
+		Labels:     p.Support(version, family, LevelLabels),
+		Structural: p.Support(version, family, LevelStructural),
+		Workflow:   p.Support(version, family, LevelWorkflow),
+	}
+}
+
 // outcomes maps what a pack declares onto the answer a consumer receives.
 var outcomes = map[Support]Outcome{
 	Supported:   OutcomeSupported,
