@@ -11,13 +11,17 @@ import (
 	"github.com/bharm16/readmit/internal/observewindow"
 )
 
-// Keep the three independently retained local lab runs readable. Their
-// manifests bind the files, and the production readers still refuse any
-// corrupted completion or typed database result.
-func TestCommittedPostgreSQLQualificationEvidence(t *testing.T) {
-	for _, major := range []string{"16", "17", "18"} {
-		t.Run(major, func(t *testing.T) {
-			root := filepath.Join("..", "..", "testdata", "lab-evidence", "postgresql-"+major+"-linux-arm64")
+// Keep local PostgreSQL proof and the six-cell hosted discovery run readable.
+// Discovery evidence is not a claim that the final digest-pinned main workflow
+// passed; it binds these exact bytes and the production readers' decisions.
+func TestCommittedDatabaseQualificationEvidence(t *testing.T) {
+	for _, cell := range []string{
+		"postgresql-16-linux-arm64", "postgresql-17-linux-arm64", "postgresql-18-linux-arm64",
+		"postgresql-16-linux-amd64", "postgresql-17-linux-amd64", "postgresql-18-linux-amd64",
+		"sqlserver-2019-linux-amd64", "sqlserver-2022-linux-amd64", "sqlserver-2025-linux-amd64",
+	} {
+		t.Run(cell, func(t *testing.T) {
+			root := filepath.Join("..", "..", "testdata", "lab-evidence", cell)
 			manifest, err := os.ReadFile(filepath.Join(root, "sha256sums.txt"))
 			if err != nil {
 				t.Fatal("missing lab evidence manifest")
@@ -58,6 +62,27 @@ func TestCommittedPostgreSQLQualificationEvidence(t *testing.T) {
 				if !seen[required] {
 					t.Fatalf("lab evidence lacks %s", required)
 				}
+			}
+			if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+				if walkErr != nil {
+					return walkErr
+				}
+				if entry.IsDir() {
+					return nil
+				}
+				if !entry.Type().IsRegular() {
+					t.Fatal("lab evidence member is not a regular file")
+				}
+				name, err := filepath.Rel(root, path)
+				if err != nil {
+					return err
+				}
+				if name != "sha256sums.txt" && !seen[filepath.ToSlash(name)] {
+					t.Fatal("unlisted lab evidence member")
+				}
+				return nil
+			}); err != nil {
+				t.Fatal("cannot inspect complete lab evidence tree")
 			}
 		})
 	}

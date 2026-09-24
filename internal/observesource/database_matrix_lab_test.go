@@ -7,6 +7,7 @@ package observesource
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
@@ -152,9 +153,19 @@ func (l *databaseLab) cliPublicRead(t *testing.T) {
 	if err := os.Mkdir(root, 0700); err != nil {
 		t.Fatal("cannot retain public read")
 	}
+	// Compile outside the assertion boundary. A cold hosted module cache can
+	// write `go: downloading` to go run's stderr before the command starts;
+	// runtime stderr must still be empty for the public collect operation.
+	binary := filepath.Join(t.TempDir(), "readmit-lab")
+	buildCtx, stopBuild := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer stopBuild()
+	build := exec.CommandContext(buildCtx, "go", "build", "-o", binary, "../../cmd/readmit")
+	if err := build.Run(); err != nil || buildCtx.Err() != nil {
+		t.Fatal("cannot build private lab command")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", "../../cmd/readmit", "--operation-policy", testlicense.New(t),
+	cmd := exec.CommandContext(ctx, binary, "--operation-policy", testlicense.New(t),
 		"observe", "collect", source, "--window", window, "--policy", policy,
 		"--out", filepath.Join(root, "completion.json"), "--snapshot", filepath.Join(root, "snapshot"), "--json")
 	var stdout, stderr bytes.Buffer
@@ -167,8 +178,21 @@ func (l *databaseLab) cliPublicRead(t *testing.T) {
 		t.Fatal("public observe collect retained a different decision")
 	}
 	raw, err := observewindow.EncodeCompletion(completed)
-	if err != nil || !bytes.Equal(bytes.TrimSpace(stdout.Bytes()), bytes.TrimSpace(raw)) || stderr.Len() != 0 {
-		t.Fatal("public observe collect output disagreed with retained completion")
+	stdoutBytes := bytes.TrimSpace(stdout.Bytes())
+	expectedBytes := bytes.TrimSpace(raw)
+	stdoutMatch := err == nil && bytes.Equal(stdoutBytes, expectedBytes)
+	stderrClass := "empty"
+	if stderr.Len() > 0 {
+		stderrClass = "other"
+		if bytes.Contains(stderr.Bytes(), []byte("go: downloading")) {
+			stderrClass = "go-module-download"
+		}
+	}
+	if err != nil || !stdoutMatch || stderr.Len() != 0 {
+		stdoutDigest := sha256.Sum256(stdoutBytes)
+		expectedDigest := sha256.Sum256(expectedBytes)
+		t.Fatalf("public observe collect comparison: encode_error=%t stdout_match=%t stdout_len=%d expected_len=%d stdout_sha256=%x expected_sha256=%x stderr_len=%d stderr_class=%s",
+			err != nil, stdoutMatch, len(stdoutBytes), len(expectedBytes), stdoutDigest, expectedDigest, stderr.Len(), stderrClass)
 	}
 }
 

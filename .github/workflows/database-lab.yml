@@ -5,6 +5,20 @@ name: Synthetic database qualification
 # before the owner can dispatch SQL Server on native x86-64 Linux.
 on:
   workflow_dispatch:
+    inputs:
+      cell:
+        description: Run the full matrix or one exact engine/version cell
+        type: choice
+        required: true
+        default: all
+        options:
+          - all
+          - postgresql-16
+          - postgresql-17
+          - postgresql-18
+          - sqlserver-2019
+          - sqlserver-2022
+          - sqlserver-2025
 
 permissions:
   contents: read
@@ -36,20 +50,34 @@ jobs:
           - engine: sqlserver
             version: '2025'
     steps:
+      - name: Select requested matrix cell
+        id: select
+        env:
+          REQUESTED_CELL: ${{ inputs.cell }}
+          MATRIX_CELL: ${{ matrix.engine }}-${{ matrix.version }}
+        run: |
+          if [[ "$REQUESTED_CELL" == all || "$REQUESTED_CELL" == "$MATRIX_CELL" ]]; then
+            echo 'selected=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'selected=false' >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        if: steps.select.outputs.selected == 'true'
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-go
+        if: steps.select.outputs.selected == 'true'
         with:
           cache-scope: database-lab-${{ matrix.engine }}-${{ matrix.version }}
       - name: Qualify one synthetic TLS and least-privilege database
+        if: steps.select.outputs.selected == 'true'
         run: >-
           python3 tools/database_lab.py
           --engine ${{ matrix.engine }}
           --version ${{ matrix.version }}
           --output "$RUNNER_TEMP/database-lab-evidence"
       - name: Retain exact image/version and observation evidence
-        if: always()
+        if: ${{ always() && steps.select.outputs.selected == 'true' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: database-lab-${{ matrix.engine }}-${{ matrix.version }}

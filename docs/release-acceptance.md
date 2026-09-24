@@ -33,9 +33,11 @@ test reported as passing.
 - [ ] #75: test each advertised database/driver/authentication combination,
   SELECT-only grants, TLS verification, parameter binding, cancellation and
   bounds. Local Linux/arm64 PostgreSQL 16.15, 17.11 and 18.6 evidence is
-  retained; the native x86-64 SQL Server matrix still requires owner-dispatched
-  evidence, and separately authorized Oracle 19c tests are required for that
-  claim. Oracle 26ai Free does not prove 19c.
+  retained. Six native Linux/amd64 branch-discovery cells have retained
+  candidate evidence, including SQL Server 2019/2022/2025; those SQL Server
+  claims still require a successful digest-pinned default-branch dispatch and
+  evidence review. Separately authorized Oracle 19c tests are required for
+  that claim. Oracle 26ai Free does not prove 19c.
 - [ ] #77: integrate downstream (#73), file/API (#74) and database (#75)
   observations in the guided authoring flow, beyond generic adapter fixtures.
 - [ ] #86/#87: prove locks, isolation, bounded admission, cancellation, disk-full

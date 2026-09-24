@@ -1,5 +1,17 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The SQL Server database-observation connector now selects TCP explicitly
+  (#75). The pinned driver did not infer a protocol from the typed connector
+  configuration, so its first prelogin could panic on a nil connection. A
+  closed-endpoint regression verifies a bounded refusal instead. The manual
+  lab builds its private command before checking runtime stderr and waits for
+  an authenticated PostgreSQL query before configuring TLS; failed hosted
+  runs remain failed evidence, not SQL Server qualification. A successful
+  six-cell branch discovery run retained synthetic Linux/amd64 receipts and
+  exact image digests for PostgreSQL 16/17/18 and SQL Server 2019/2022/2025.
+  The manual workflow now pins those digests; SQL Server qualification still
+  needs a successful pinned default-branch run and evidence review.
+
 - A manually dispatched synthetic database lab now defines the finite D3
   PostgreSQL 16/17/18 and native x86-64 SQL Server 2019/2022/2025 test matrix
   (#75). It generates TLS and credentials per run, tests a separate SELECT-only
