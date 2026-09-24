@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
-	"os"
 	"time"
 
 	"github.com/bharm16/readmit/internal/protect"
@@ -38,24 +36,19 @@ func protectRegister() *cobra.Command {
 		Short:       "Register a protection control whose key stays in an OS or customer-managed store",
 		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			document, err := openOrEmptyProtection(file)
+			protection, err := protectionFile(file)
 			if err != nil {
 				return err
 			}
-			updated, stored, err := protect.Register(document, protect.Control{
-				Name:       name,
-				Storage:    protect.Storage(storage),
-				Command:    program,
-				Arguments:  arguments,
-				Generation: 1,
-				RotatedAt:  time.Now().UTC().Truncate(time.Second),
-				MaxAge:     maxAge,
-				Retain:     retain,
-			})
+			_, stored, err := protection.Register(protect.Control{
+				Name:      name,
+				Storage:   protect.Storage(storage),
+				Command:   program,
+				Arguments: arguments,
+				MaxAge:    maxAge,
+				Retain:    retain,
+			}, time.Now())
 			if err != nil {
-				return err
-			}
-			if err := protect.WriteDocument(file, updated); err != nil {
 				return err
 			}
 			return writeControl(cmd.OutOrStdout(), "Protection control registered: "+stored.Name, stored)
@@ -79,26 +72,15 @@ func protectRotate() *cobra.Command {
 		Short:       "Record that the key behind a control was replaced in its own store",
 		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			document, err := readProtection(file)
+			protection, err := protectionFile(file)
 			if err != nil {
 				return err
 			}
-			entry, err := protect.Find(document, name)
+			// The declared store answers for the control before protect records
+			// anything, so a rotation is never recorded against a key readmit
+			// cannot read.
+			_, stored, err := protection.Rotate(cmd.Context(), name, time.Now())
 			if err != nil {
-				return err
-			}
-			// The store must answer for this control before a generation is
-			// recorded, so a rotation is never recorded against a key readmit
-			// cannot read. The material itself is discarded here, and readmit
-			// never read the previous key, so this records an assertion.
-			if _, err := protect.ReadKey(cmd.Context(), entry); err != nil {
-				return errors.New("the key did not resolve from its declared store; the recorded rotation is unchanged")
-			}
-			updated, stored, err := protect.Rotate(document, name, time.Now())
-			if err != nil {
-				return err
-			}
-			if err := protect.WriteDocument(file, updated); err != nil {
 				return err
 			}
 			return writeControl(cmd.OutOrStdout(), "Key rotation recorded: "+stored.Name, stored)
@@ -117,15 +99,12 @@ func protectRetire() *cobra.Command {
 		Short:       "Stop a control writing new packages; it still opens the packages it wrote",
 		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			document, err := readProtection(file)
+			protection, err := protectionFile(file)
 			if err != nil {
 				return err
 			}
-			updated, stored, err := protect.Retire(document, name)
+			_, stored, err := protection.Retire(name)
 			if err != nil {
-				return err
-			}
-			if err := protect.WriteDocument(file, updated); err != nil {
 				return err
 			}
 			return writeControl(cmd.OutOrStdout(), "Protection control retired: "+stored.Name, stored)
@@ -144,7 +123,11 @@ func protectShow() *cobra.Command {
 		Short:       "Show every registered control, its declared storage, rotation and retention, with the key masked",
 		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			document, err := readProtection(file)
+			protection, err := protectionFile(file)
+			if err != nil {
+				return err
+			}
+			document, err := protection.Read()
 			if err != nil {
 				return err
 			}
@@ -178,26 +161,18 @@ func protectPack() *cobra.Command {
 			if output == "" {
 				return usage("protect pack requires --output naming a new directory")
 			}
-			document, err := readProtection(file)
+			protection, err := protectionFile(file)
 			if err != nil {
 				return err
 			}
-			entry, err := protect.Writable(document, name)
-			if err != nil {
-				return err
-			}
-			sources, notRead, err := protect.Collect(args)
-			if err != nil {
-				return err
-			}
-			descriptor, err := protect.Pack(cmd.Context(), entry, sources, notRead, output, time.Now())
+			descriptor, notRead, err := protection.Pack(cmd.Context(), name, args, output, time.Now())
 			if err != nil {
 				return err
 			}
 			return writeLines(cmd.OutOrStdout(), func(w io.Writer) {
 				fmt.Fprintf(w, "Encrypted transfer package written\n")
 				writePackageLines(w, descriptor, time.Now())
-				fmt.Fprintf(w, "Files packed: %d\nEntries not read: %d\n", len(sources), notRead)
+				fmt.Fprintf(w, "Files packed: %d\nEntries not read: %d\n", len(descriptor.Entries), notRead)
 				fmt.Fprintf(w, "Limitations: %s\n", protect.Limitations)
 			})
 		},
@@ -219,24 +194,13 @@ func protectOpen() *cobra.Command {
 			if source == "" || output == "" {
 				return usage("protect open requires --package and --output")
 			}
-			document, err := readProtection(file)
+			protection, err := protectionFile(file)
 			if err != nil {
 				return err
 			}
-			if name == "" {
-				// A package names the control that wrote it, so the operator
-				// need not repeat it. Naming a different one is still refused.
-				descriptor, _, err := protect.ReadPackage(source)
-				if err != nil {
-					return err
-				}
-				name = descriptor.Control
-			}
-			entry, err := protect.Find(document, name)
-			if err != nil {
-				return err
-			}
-			descriptor, index, err := protect.Open(cmd.Context(), entry, source, output)
+			// Without --name the package's own control opens it; naming a
+			// different one is refused.
+			descriptor, index, err := protection.Open(cmd.Context(), name, source, output)
 			if err != nil {
 				return err
 			}
@@ -315,24 +279,13 @@ func protectionFlag(command *cobra.Command, file *string) {
 	command.Flags().StringVar(file, "protection", "", "Protection document holding the registered controls")
 }
 
-func readProtection(path string) (protect.Document, error) {
+// protectionFile names the protection document a subcommand reads and writes.
+// Every subcommand but register refuses a file that does not exist.
+func protectionFile(path string) (protect.File, error) {
 	if path == "" {
-		return protect.Document{}, usage("protect requires --protection naming a protection document")
+		return protect.File{}, usage("protect requires --protection naming a protection document")
 	}
-	return protect.ReadDocument(path)
-}
-
-// openOrEmptyProtection reads an existing document, or starts the first one. A
-// path that exists but cannot be read as this contract is reported, never
-// replaced.
-func openOrEmptyProtection(path string) (protect.Document, error) {
-	if path == "" {
-		return protect.Document{}, usage("protect requires --protection naming a protection document")
-	}
-	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
-		return protect.Document{Schema: protect.Schema}, nil
-	}
-	return protect.ReadDocument(path)
+	return protect.File{Path: path}, nil
 }
 
 func writeControl(out io.Writer, headline string, entry protect.Control) error {

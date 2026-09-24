@@ -183,54 +183,6 @@ func TestRotationAndRetentionNeverReportAnUndeclaredStateAsPassing(t *testing.T)
 	}
 }
 
-func TestControlLifecycleRegistersRotatesAndRetiresWithoutHoldingAKey(t *testing.T) {
-	document := Document{Schema: Schema}
-	document, stored, err := Register(document, control(t, "lab-evidence", testOnlyKey))
-	if err != nil {
-		t.Fatalf("register: %v", err)
-	}
-	if stored.Generation != 1 || stored.State != Active {
-		t.Fatalf("a new control is %s at generation %d", stored.State, stored.Generation)
-	}
-	if _, _, err := Register(document, control(t, "lab-evidence", testOnlyKey)); err == nil {
-		t.Error("a name was registered twice")
-	}
-	rotated, entry, err := Rotate(document, "lab-evidence", time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC))
-	if err != nil || entry.Generation != 2 {
-		t.Fatalf("rotate: %v generation=%d", err, entry.Generation)
-	}
-	if document.Controls[0].Generation != 1 {
-		t.Error("rotate modified the document it was given")
-	}
-	retired, entry, err := Retire(rotated, "lab-evidence")
-	if err != nil || entry.State != Retired {
-		t.Fatalf("retire: %v state=%s", err, entry.State)
-	}
-	if _, _, err := Retire(retired, "lab-evidence"); err == nil {
-		t.Error("a retired control was retired again")
-	}
-	if _, err := Writable(retired, "lab-evidence"); err == nil {
-		t.Error("a retired control accepted a new package")
-	}
-	if _, err := Find(retired, "lab-evidence"); err != nil {
-		t.Error("a retired control is no longer readable")
-	}
-	for _, name := range []string{"missing", ""} {
-		if _, _, err := Rotate(retired, name, time.Now()); err == nil {
-			t.Errorf("rotating %q was accepted", name)
-		}
-	}
-	// A registered control carries a locator, never key material. The encoded
-	// document must not hold the bytes the declared store answers with.
-	encoded, err := Encode(retired)
-	if err != nil {
-		t.Fatalf("encode: %v", err)
-	}
-	if strings.Contains(string(encoded), testOnlyKey) {
-		t.Fatal("the protection document holds key material")
-	}
-}
-
 func FuzzDecodeDocument(f *testing.F) {
 	f.Add(goldenDocument)
 	f.Add(`{"schema":"readmit-protection/v1","controls":[]}`)

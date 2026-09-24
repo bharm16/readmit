@@ -510,45 +510,6 @@ func TestPackAndOpenStopWhenTheCallerCancels(t *testing.T) {
 	}
 }
 
-// An interrupted document write is retained beside the document and reported,
-// never reused, and the previous document is left exactly as it was.
-func TestWriteDocumentReportsAnInterruptedWriteAndKeepsThePrevious(t *testing.T) {
-	root := t.TempDir()
-	path := filepath.Join(root, "protection.json")
-	document := Document{Schema: Schema, Controls: []Control{goldenControl()}}
-	if err := WriteDocument(path, document); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-	before, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path+incompleteSuffix, []byte("{"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	rotated, _, err := Rotate(document, "lab-evidence", time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := WriteDocument(path, rotated); err == nil {
-		t.Fatal("a retained interrupted write was reused")
-	}
-	after, err := os.ReadFile(path)
-	if err != nil || string(after) != string(before) {
-		t.Fatal("a refused write changed the previous document")
-	}
-	if err := os.Remove(path + incompleteSuffix); err != nil {
-		t.Fatal(err)
-	}
-	if err := WriteDocument(path, rotated); err != nil {
-		t.Fatalf("write after clearing the interrupted file: %v", err)
-	}
-	reopened, err := ReadDocument(path)
-	if err != nil || reopened.Controls[0].Generation != 3 {
-		t.Fatalf("reopened %+v (%v)", reopened, err)
-	}
-}
-
 // A package this release did not write can name one packed file inside another.
 // The index reader refuses it, so an open creates nothing rather than failing
 // part way through writing a tree it cannot finish. The documents below are

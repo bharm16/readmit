@@ -12,8 +12,8 @@ import (
 // before it is renamed into place.
 const incompleteSuffix = ".incomplete"
 
-// ReadDocument reads one bounded, regular protection document.
-func ReadDocument(path string) (Document, error) {
+// readDocument reads one bounded, regular protection document.
+func readDocument(path string) (Document, error) {
 	resolved, err := artifactpath.Resolve(path)
 	if err != nil {
 		return Document{}, errors.New("cannot resolve the protection document")
@@ -25,12 +25,13 @@ func ReadDocument(path string) (Document, error) {
 	return Decode(data)
 }
 
-// WriteDocument replaces the document atomically, the way a secret reference
+// writeDocument replaces the document atomically, the way a secret reference
 // document is replaced: written in full to a new owner-only file and renamed
 // over the previous one, so a reader never observes a partial document and a
 // failed write leaves the previous one exactly as it was. The incomplete file
 // must not exist, so an interrupted write is reported rather than overwritten.
-func WriteDocument(path string, document Document) error {
+// [File] is its only caller, so a document changes only through File.
+func writeDocument(path string, document Document) error {
 	data, err := Encode(document)
 	if err != nil {
 		return err

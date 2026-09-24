@@ -1,17 +1,17 @@
 package tests
 
-// The window's Retire is `readmit protect retire`: the same state change of the
-// same protection document, written as the same bytes. What a retired control
-// still does — open the packages it wrote — and what it no longer does — write
-// a new one — is the protect operation's own decision at both entry points,
-// refused in the same sentence, and a retirement that cannot happen changes
-// nothing either entry point reads.
+// The window and `readmit protect` change a protection document through the one
+// protect.File, so what a retirement writes and which retirements are refused
+// are protect's own, tested at its interface. What remains here is the document
+// the two share on disk: a control the window retired is one the command line,
+// reading the window's document, writes no new package under — refused in the
+// window's own sentence — still opens the package it wrote under, and refuses
+// to retire again, leaving the document as the window wrote it.
 
 import (
 	"encoding/json/v2"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/bharm16/readmit/internal/desktop"
@@ -43,9 +43,7 @@ func protectionDocumentBytes(t *testing.T) string {
 func TestTheWindowRetiresAControlExactlyAsReadmitProtectRetireDoes(t *testing.T) {
 	t.Setenv(providerSwitch, "emit")
 	workspace := t.TempDir()
-	written := protectionDocumentBytes(t)
-	windowDocument := writeDocument(t, workspace, "protection.json", written)
-	commandDocument := writeDocument(t, t.TempDir(), "protection.json", written)
+	windowDocument := writeDocument(t, workspace, "protection.json", protectionDocumentBytes(t))
 	evidenceBytes := "synthetic retained evidence bytes\n"
 	writeDocument(t, workspace, "evidence.txt", evidenceBytes)
 	app := desktopApp(t, workspace)
@@ -59,9 +57,8 @@ func TestTheWindowRetiresAControlExactlyAsReadmitProtectRetireDoes(t *testing.T)
 		t.Fatalf("the active control did not write its package: %+v", before)
 	}
 
-	// The window retires it in the workspace's document, and the command line
-	// retires it in a copy of the same bytes. Both write the same document:
-	// the one control retired, everything else as it was.
+	// The window retires it in the workspace's document: the one control
+	// retired, everything else as it was.
 	retired := app.RetireProtectionControl(workspace, "protection.json", "lab-evidence")
 	if retired.State != desktop.Completed || retired.Document == nil || len(retired.Document.Controls) != 2 {
 		t.Fatalf("the window did not retire the control: %+v", retired)
@@ -75,29 +72,6 @@ func TestTheWindowRetiresAControlExactlyAsReadmitProtectRetireDoes(t *testing.T)
 	}
 	if shown["archive-2025"].State != "active" || shown["archive-2025"].Generation != 3 {
 		t.Fatalf("retiring one control changed another: %+v", shown["archive-2025"])
-	}
-	stdout, stderr, err := run(t, "protect", "retire", "--protection", commandDocument, "--name", "lab-evidence")
-	if err != nil || stderr != "" {
-		t.Fatalf("protect retire: %v %s", err, stderr)
-	}
-	if !strings.HasPrefix(stdout, "Protection control retired: lab-evidence\n") || !strings.Contains(stdout, "state=retired generation=1") {
-		t.Fatalf("protect retire reported:\n%s", stdout)
-	}
-	windowBytes := mustRead(t, windowDocument)
-	if commandBytes := mustRead(t, commandDocument); string(windowBytes) != string(commandBytes) {
-		t.Fatalf("the two entry points wrote different documents:\n%s\n%s", windowBytes, commandBytes)
-	}
-	original, err := protect.Decode([]byte(written))
-	if err != nil {
-		t.Fatal(err)
-	}
-	decoded, err := protect.Decode(windowBytes)
-	if err != nil {
-		t.Fatal(err)
-	}
-	original.Controls[1].State = protect.Retired
-	if encodedOriginal, encodedDecoded := mustEncode(t, original), mustEncode(t, decoded); encodedOriginal != encodedDecoded {
-		t.Fatalf("retirement changed more than the control's state:\n%s\n%s", encodedOriginal, encodedDecoded)
 	}
 
 	// Neither entry point writes a new package under the retired control, and
@@ -139,36 +113,17 @@ func TestTheWindowRetiresAControlExactlyAsReadmitProtectRetireDoes(t *testing.T)
 		}
 	}
 
-	// A second retirement, a control nobody registered and a document from a
-	// later release are refused by both entry points in the same sentence, and
-	// neither changes a byte of the document it was given.
-	writeDocument(t, workspace, "later.json", `{"schema":"readmit-protection/v2","controls":[]}`+"\n")
-	for _, refused := range []struct {
-		entry, name, sentence string
-	}{
-		{"protection.json", "lab-evidence", "the protection control is already retired"},
-		{"protection.json", "never-registered", "no protection control is registered under that name"},
-		{"later.json", "lab-evidence", "unsupported protection document version"},
-	} {
-		document := filepath.Join(workspace, refused.entry)
-		held := mustRead(t, document)
-		if answer := app.RetireProtectionControl(workspace, refused.entry, refused.name); answer.State != desktop.Failed || answer.Reason != refused.sentence || answer.Document != nil {
-			t.Errorf("the window retired %s in %s: %+v", refused.name, refused.entry, answer)
-		}
-		if _, stderr, err := run(t, "protect", "retire", "--protection", document, "--name", refused.name); exitCode(t, err) != 1 || stderr != "readmit: "+refused.sentence+"\n" {
-			t.Errorf("protect retire %s in %s: %v %q", refused.name, refused.entry, err, stderr)
-		}
-		if after := mustRead(t, document); string(after) != string(held) {
-			t.Errorf("a refused retirement of %s changed %s:\n%s", refused.name, refused.entry, after)
-		}
+	// A second retirement is refused by both entry points in the same
+	// sentence, and neither changes a byte of the document the window wrote.
+	const again = "the protection control is already retired"
+	held := mustRead(t, windowDocument)
+	if answer := app.RetireProtectionControl(workspace, "protection.json", "lab-evidence"); answer.State != desktop.Failed || answer.Reason != again || answer.Document != nil {
+		t.Errorf("the window retired the control again: %+v", answer)
 	}
-}
-
-func mustEncode(t *testing.T, document protect.Document) string {
-	t.Helper()
-	raw, err := protect.Encode(document)
-	if err != nil {
-		t.Fatal(err)
+	if _, stderr, err := run(t, "protect", "retire", "--protection", windowDocument, "--name", "lab-evidence"); exitCode(t, err) != 1 || stderr != "readmit: "+again+"\n" {
+		t.Errorf("protect retire of the window's retired control: %v %q", err, stderr)
 	}
-	return string(raw)
+	if after := mustRead(t, windowDocument); string(after) != string(held) {
+		t.Errorf("a refused retirement changed the window's document:\n%s", after)
+	}
 }
