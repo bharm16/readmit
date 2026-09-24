@@ -282,7 +282,7 @@ func TestRoundTripWritesTheCommandsByteIdenticalCopy(t *testing.T) {
 		t.Fatalf("inspect --roundtrip: %v %s", err, stderr)
 	}
 	result := app.WriteRoundTrip(desktop.RoundTripRequest{File: source, Format: "mllp", Terminator: "auto", Folder: folder, Name: "window.mllp"})
-	if result.State != desktop.Completed || result.Path != filepath.Join(folder, "window.mllp") || result.SHA256 != before.digest || int64(result.Bytes) != before.info.Size() {
+	if result.State != desktop.Completed || result.Path != filepath.Join(resolved(t, folder), "window.mllp") || result.SHA256 != before.digest || int64(result.Bytes) != before.info.Size() {
 		t.Fatalf("round trip: %+v", result)
 	}
 	original, _ := os.ReadFile(source)
