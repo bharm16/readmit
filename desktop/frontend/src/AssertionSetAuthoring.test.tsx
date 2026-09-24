@@ -16,6 +16,14 @@ const emptyDraft = (): AssertionSetDraftDocument => ({
   assertions: [],
 });
 
+const stateClause = (id: string): AssertionSetDraftDocument["assertions"][number] => ({
+  id,
+  operator: "field_state",
+  subject: { field: { scope: "observed", message: "s0001-e000001", selector: "MSA-1" } },
+  when: null,
+  expected: { state: "present" },
+});
+
 function setResult(
   draft: AssertionSetDraftDocument,
   extra: Partial<NonNullable<AssertionSetResult["set"]>> = {},
@@ -142,6 +150,104 @@ test("selecting an inspected field does not auto-add an assertion", async () => 
   expect(facade.callsTo("AuthorAssertionSet").length).toBe(0);
   expect((screen.getByLabelText("Selector") as HTMLInputElement).value).toBe("PID-5.1");
 
+  uninstallFacade();
+});
+
+test("import asks before replacing unsaved clauses, Escape and refusal keep them, and a saved draft imports directly", async () => {
+  const user = userEvent.setup();
+  const imported: AssertionSetDraftDocument = {
+    schema: "readmit-assertion-set-draft/v1",
+    name: "Received expectations",
+    assertions: [stateClause("first"), stateClause("second")],
+  };
+  const refused = "the operator record_count reads a collection subject";
+  const facade = installFacade({
+    AuthorAssertionSet: async (request) =>
+      setResult({ ...request.draft, assertions: request.assertions ?? request.draft.assertions }),
+    ImportAssertionSet: async (_workspace, entry) =>
+      entry === "refused.json" ? { state: "failed", reason: refused } : setResult(imported),
+    SaveAssertionSet: async (request) => setResult(request.draft, { output: request.output ?? "saved.json", identity: "saved" }),
+    SaveEditorDraft: async () => ({ state: "completed", drafts: [] }),
+    DiscardEditorDraft: async () => ({ state: "completed", drafts: [] }),
+  });
+  render(<AssertionSetAuthoring workspace={WORKSPACE_ROOT} drafts={[]} busy={false} inspected={null} />);
+  const entry = screen.getByLabelText("Assertion set entry");
+  const clauses = () => screen.queryAllByRole("button", { name: /^Remove / }).map((button) => button.textContent);
+
+  await user.type(entry, "received.json{Enter}");
+  await waitFor(() => expect(clauses()).toEqual(["Remove first", "Remove second"]));
+  expect(facade.callsTo("ImportAssertionSet")).toHaveLength(1);
+
+  await user.click(screen.getByRole("button", { name: "Remove first" }));
+  await waitFor(() => expect(clauses()).toEqual(["Remove second"]));
+  await user.clear(entry);
+  await user.type(entry, "another.json{Enter}");
+  expect(screen.getByRole("group", { name: "Import another.json in place of these assertions?" })).toBeTruthy();
+  expect(facade.callsTo("ImportAssertionSet")).toHaveLength(1);
+  await user.keyboard("{Escape}");
+  expect(clauses()).toEqual(["Remove second"]);
+  expect(facade.callsTo("ImportAssertionSet")).toHaveLength(1);
+
+  await user.click(screen.getByRole("button", { name: "Import into this draft" }));
+  await user.click(screen.getByRole("button", { name: "Keep these assertions" }));
+  expect(clauses()).toEqual(["Remove second"]);
+  expect(facade.callsTo("ImportAssertionSet")).toHaveLength(1);
+
+  await user.clear(entry);
+  await user.type(entry, "refused.json{Enter}");
+  await user.click(screen.getByRole("button", { name: "Replace them with refused.json" }));
+  expect(await screen.findByText(refused)).toBeTruthy();
+  expect(clauses()).toEqual(["Remove second"]);
+
+  await user.type(screen.getByLabelText("New assertion set entry in this workspace"), "saved.json");
+  await user.click(screen.getByRole("button", { name: "Write the assertion set" }));
+  expect(await screen.findByText(/Written to saved.json/)).toBeTruthy();
+  await user.clear(entry);
+  await user.type(entry, "another.json{Enter}");
+  await waitFor(() => expect(clauses()).toEqual(["Remove first", "Remove second"]));
+  expect(screen.queryByRole("group", { name: /in place of these assertions/ })).toBeNull();
+  expect(facade.callsTo("ImportAssertionSet").map((call) => call.args[1])).toEqual([
+    "received.json", "refused.json", "another.json",
+  ]);
+
+  await user.click(screen.getByRole("button", { name: "Remove first" }));
+  await user.click(screen.getByRole("button", { name: "Remove second" }));
+  await waitFor(() => expect(clauses()).toEqual([]));
+  await user.click(screen.getByRole("button", { name: "Import into this draft" }));
+  await waitFor(() => expect(clauses()).toEqual(["Remove first", "Remove second"]));
+  expect(screen.queryByRole("group", { name: /in place of these assertions/ })).toBeNull();
+  expect(facade.callsTo("ImportAssertionSet")).toHaveLength(4);
+  uninstallFacade();
+});
+
+test("a retained clause is protected from import after reopening its draft", async () => {
+  const user = userEvent.setup();
+  const held: AssertionSetDraftDocument = {
+    schema: "readmit-assertion-set-draft/v1",
+    name: "Still editing",
+    assertions: [stateClause("keep-this")],
+  };
+  const facade = installFacade({
+    ImportAssertionSet: async () => setResult(emptyDraft()),
+    SaveEditorDraft: async () => ({ state: "completed", drafts: [] }),
+    DiscardEditorDraft: async () => ({ state: "completed", drafts: [] }),
+  });
+  render(<AssertionSetAuthoring workspace={WORKSPACE_ROOT} drafts={[{
+    id: "draft-1",
+    kind: "assertion-set-draft",
+    workspace: WORKSPACE_ROOT,
+    case: "",
+    identity: "",
+    content_schema: "readmit-assertion-set-draft/v1",
+    content: held,
+  }]} busy={false} inspected={null} />);
+
+  expect(await screen.findByRole("button", { name: "Remove keep-this" })).toBeTruthy();
+  await user.type(screen.getByLabelText("Assertion set entry"), "another.json{Enter}");
+  expect(screen.getByRole("group", { name: "Import another.json in place of these assertions?" })).toBeTruthy();
+  expect(facade.callsTo("ImportAssertionSet")).toHaveLength(0);
+  await user.click(screen.getByRole("button", { name: "Keep these assertions" }));
+  expect(screen.getByRole("button", { name: "Remove keep-this" })).toBeTruthy();
   uninstallFacade();
 });
 

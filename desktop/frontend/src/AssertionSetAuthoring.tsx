@@ -259,11 +259,23 @@ export function AssertionSetAuthoring({
   const [document, setDocument] = useState("");
   const [exportOutput, setExportOutput] = useState("");
   const [pending, setPending] = useState(false);
+  const [unsavedClauses, setUnsavedClauses] = useState(false);
+  const [confirmingImport, setConfirmingImport] = useState<string | null>(null);
   const [result, setResult] = useState<AssertionSetResult | null>(null);
   const [canonical, setCanonical] = useState<CanonicalAssertionResult | null>(null);
   const retainer = useRetainer();
   const disabled = busy || pending;
   const kind = subjectKind(operator);
+  const keepImport = useRef<HTMLButtonElement | null>(null);
+  const importButton = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (confirmingImport !== null) keepImport.current?.focus();
+  }, [confirmingImport]);
+
+  useEffect(() => {
+    if (!unsavedClauses) setConfirmingImport(null);
+  }, [unsavedClauses]);
 
   const loaded = useRef<string | null>(null);
   useEffect(() => {
@@ -274,6 +286,7 @@ export function AssertionSetAuthoring({
       const restored = held.content as AssertionSetDraftDocument;
       setDraft(restored);
       setName(restored.name);
+      setUnsavedClauses(restored.assertions.length > 0);
       retainer.keepId(held.id);
     }
   }, [workspace, drafts, retainer]);
@@ -296,7 +309,7 @@ export function AssertionSetAuthoring({
     });
   }
 
-  async function apply(work: () => Promise<AssertionSetResult>) {
+  async function apply(work: () => Promise<AssertionSetResult>, change?: "clauses" | "import") {
     setPending(true);
     try {
       const next = await work();
@@ -304,11 +317,14 @@ export function AssertionSetAuthoring({
       if (next.set?.draft) {
         retain(next.set.draft);
         setName(next.set.draft.name);
+        if (change === "clauses") setUnsavedClauses(true);
+        if (change === "import") setUnsavedClauses(false);
       }
       if (next.set?.output) {
         const id = retainer.currentId();
         if (id !== "") retainer.drop(id);
         retainer.clear();
+        setUnsavedClauses(false);
       }
       return next;
     } finally {
@@ -432,8 +448,9 @@ export function AssertionSetAuthoring({
                   disabled={disabled}
                   onClick={() => {
                     const assertions = draft.assertions.filter((other) => other.id !== clause.id);
-                    void apply(() =>
-                      authorAssertionSet({ workspace, draft, assertions }),
+                    void apply(
+                      () => authorAssertionSet({ workspace, draft, assertions }),
+                      "clauses",
                     );
                   }}
                 >
@@ -447,12 +464,13 @@ export function AssertionSetAuthoring({
             onSubmit={(event) => {
               event.preventDefault();
               const clause = buildClause();
-              void apply(() =>
-                authorAssertionSet({
+              void apply(
+                () => authorAssertionSet({
                   workspace,
                   draft,
                   assertions: [...draft.assertions, clause],
                 }),
+                "clauses",
               );
             }}
           >
@@ -745,7 +763,8 @@ export function AssertionSetAuthoring({
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              void apply(() => importAssertionSet(workspace, importEntry));
+              if (unsavedClauses && draft.assertions.length > 0) setConfirmingImport(importEntry);
+              else void apply(() => importAssertionSet(workspace, importEntry), "import");
             }}
           >
             <label htmlFor="assertion-import">Assertion set entry</label>
@@ -754,10 +773,51 @@ export function AssertionSetAuthoring({
               value={importEntry}
               onChange={(event) => setImportEntry(event.target.value)}
             />
-            <button type="submit" disabled={disabled || !importEntry}>
+            <button type="submit" ref={importButton} disabled={disabled || !importEntry}>
               Import into this draft
             </button>
           </form>
+          {confirmingImport !== null ? (
+            <div
+              role="group"
+              aria-label={`Import ${confirmingImport} in place of these assertions?`}
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && !event.nativeEvent.isComposing && !disabled) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setConfirmingImport(null);
+                  importButton.current?.focus();
+                }
+              }}
+            >
+              <p className="hint">
+                These assertions are not saved. Importing {confirmingImport} replaces them.
+              </p>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => {
+                  const entry = confirmingImport;
+                  setConfirmingImport(null);
+                  importButton.current?.focus();
+                  void apply(() => importAssertionSet(workspace, entry), "import");
+                }}
+              >
+                Replace them with {confirmingImport}
+              </button>
+              <button
+                type="button"
+                ref={keepImport}
+                disabled={disabled}
+                onClick={() => {
+                  setConfirmingImport(null);
+                  importButton.current?.focus();
+                }}
+              >
+                Keep these assertions
+              </button>
+            </div>
+          ) : null}
 
           <h4>Save this assertion set</h4>
           <form

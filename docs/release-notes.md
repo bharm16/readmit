@@ -15,6 +15,11 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   digest only after a document was read or saved. Observation document
   contracts and command-line behavior are unchanged.
 
+- Importing an assertion set now asks before replacing unsaved clauses (#402).
+  Escape, Keep, and a reader refusal preserve those clauses; an empty or saved
+  draft still imports directly. The assertion-set contract and command-line
+  behavior are unchanged.
+
 - The packet panel now shows why its native export-destination dialog was
   dismissed or unavailable (#419), as the privacy panel does. Neither answer
   names a new destination. Packet export and existing artifact contracts are
