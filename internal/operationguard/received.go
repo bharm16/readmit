@@ -91,6 +91,23 @@ func (r Received) RunnerAuthority(id string) (Authority, error) {
 	return r.verified.V2.Authority(id)
 }
 
+// selects reports whether the verified document assigns the selected device
+// to the selected author and names the selected runner authority. A role left
+// explicitly empty selects nothing and is not checked.
+func (r Received) selects(author, device, authority string) error {
+	if author != "" {
+		if err := r.Assigned(author, device); err != nil {
+			return err
+		}
+	}
+	if authority != "" {
+		if _, err := r.RunnerAuthority(authority); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // DocumentSummary is the installed-document fact a renewal orders itself by.
 type DocumentSummary struct {
 	ID           string

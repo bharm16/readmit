@@ -99,7 +99,7 @@ func (a *App) ChooseOperationPolicy() OperationResult {
 		if folder == "" {
 			return OperationResult{State: declined.state, Reason: declined.reason}
 		}
-		return a.SelectOperationPolicy(filepath.Join(folder, "operation-policy.json"))
+		return a.SelectOperationPolicy(operationguard.ActivationPolicyIn(folder))
 	})
 }
 

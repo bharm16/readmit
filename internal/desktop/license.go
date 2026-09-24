@@ -18,24 +18,11 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"slices"
-	"strconv"
 	"time"
 
-	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/operationguard"
-)
-
-// The fixed names of the private activation folder the pane creates. They are
-// this application's own layout inside a folder the operator chose; the
-// operation contract itself only requires the absolute paths the policy names.
-const (
-	activationEntitlementName = "entitlement.json"
-	activationTrustName       = "trust.json"
-	activationPolicyName      = "operation-policy.json"
-	activationStateName       = "clock.json"
-	activationAdmissionsName  = "admissions.json"
 )
 
 // The commercial destinations contract is operator-supplied configuration for
@@ -50,7 +37,6 @@ const (
 )
 
 var errRetainedSelection = errors.New("cannot retain operation policy selection")
-var errRetainedPolicyUpdate = errors.New("an interrupted operation policy update is retained beside the policy; recover it outside this application")
 
 // LicenseAssignmentView is one named author and the devices the issuer
 // assigned to that person.
@@ -209,35 +195,14 @@ func readSelectedPolicy(path string) (operationguard.Policy, error) {
 	return operationguard.DecodePolicy(data)
 }
 
-// createPrivateFile writes one new private file exclusively. An existing file
-// is refused, never replaced.
-func createPrivateFile(path string, data []byte) error {
-	destination, err := artifactpath.Destination(path)
-	if err != nil {
-		return err
+// activationRefusal reports what creating or renewing an activation folder
+// refused. A failed write is told apart from a folder this account cannot
+// write; every other refusal is the operation guard's own sentence.
+func activationRefusal(folder string, err error) OperationResult {
+	if errors.Is(err, operationguard.ErrActivationWrite) {
+		return probeWriteFailure(folder, "this account cannot create the activation files in the chosen folder", err.Error()).operation()
 	}
-	file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err != nil {
-		return err
-	}
-	writeErr := artifactdir.WriteFileSync(file, data)
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		os.Remove(destination)
-		return errors.New("cannot write the file")
-	}
-	return nil
-}
-
-// privateWriteRefusal separates a folder this account cannot write from other
-// creation refusals, including an already occupied name.
-func privateWriteRefusal(folder string, err error) refusal {
-	if errors.Is(err, fs.ErrExist) {
-		return refusal{Failed, "the chosen folder already holds activation files; choose a new empty folder"}
-	}
-	return probeWriteFailure(folder,
-		"this account cannot create the activation files in the chosen folder",
-		"the activation files could not be created in the chosen folder; an interrupted attempt may be retained")
+	return OperationResult{State: Failed, Reason: err.Error()}
 }
 
 // retainOperationPolicy persists an explicit policy selection and installs the
@@ -264,32 +229,6 @@ func (a *App) installOperationPolicy(path string) {
 	defer a.operationMu.Unlock()
 	a.operationPolicy = path
 	a.operationGuard = operationguard.New(path)
-}
-
-// replacePolicyFile replaces the operation policy atomically through an
-// exclusive retained replacement, mirroring the guard's own state updates.
-func replacePolicyFile(path string, data []byte) error {
-	destination, err := artifactpath.Destination(path + incompleteSuffix)
-	if err != nil {
-		return err
-	}
-	file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if errors.Is(err, fs.ErrExist) {
-		return errRetainedPolicyUpdate
-	}
-	if err != nil {
-		return err
-	}
-	writeErr := artifactdir.WriteFileSync(file, data)
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		os.Remove(destination)
-		return errors.New("cannot write the operation policy replacement")
-	}
-	if err = os.Rename(destination, path); err != nil {
-		return errors.New("cannot install the operation policy replacement")
-	}
-	return nil
 }
 
 // VerifyLicenseDocument verifies one received entitlement against a trust
@@ -370,11 +309,12 @@ func (a *App) ChooseLicenseFolder() LicenseFolderResult {
 }
 
 // CreateLicenseActivation writes the local activation configuration the
-// operator would otherwise hand-author: the received documents, and one
-// operation policy naming the role selections the person made from what the
-// document itself assigns. It verifies the documents again at creation, never
-// overwrites an occupied folder, and never activates: activation stays the
-// separate explicit action it is on the command line.
+// operator would otherwise hand-author, through the operation guard's
+// activation-folder creation: the received documents, and one operation policy
+// naming the role selections the person made from what the document itself
+// assigns. It verifies the documents again at creation, never overwrites an
+// occupied folder, and never activates: activation stays the separate
+// explicit action it is on the command line.
 func (a *App) CreateLicenseActivation(request LicenseActivationRequest) OperationResult {
 	return run(a, false, false, func(context.Context) OperationResult {
 		if !filepath.IsAbs(request.Entitlement) || !filepath.IsAbs(request.Trust) || !filepath.IsAbs(request.Folder) {
@@ -392,53 +332,11 @@ func (a *App) CreateLicenseActivation(request LicenseActivationRequest) Operatio
 		}
 		// The documents are verified again at the moment of creation: what was
 		// verified a moment ago is never assumed to still be there.
-		received, err := operationguard.VerifyDocuments(data, trustData, time.Now().UTC().Truncate(time.Second))
+		policy, err := operationguard.CreateActivation(request.Folder, data, trustData, request.Author, request.Device, request.Authority, time.Now().UTC().Truncate(time.Second))
 		if err != nil {
-			return OperationResult{State: Failed, Reason: err.Error()}
+			return activationRefusal(request.Folder, err)
 		}
-		if !received.OperationCapable {
-			return OperationResult{State: Failed, Reason: "this license is in an earlier format that lists licensed computers and cannot activate new work here; ask your vendor for a license in the current format"}
-		}
-		if request.Author != "" {
-			if err = received.Assigned(request.Author, request.Device); err != nil {
-				return OperationResult{State: Failed, Reason: err.Error()}
-			}
-		}
-		if request.Authority != "" {
-			if _, err = received.RunnerAuthority(request.Authority); err != nil {
-				return OperationResult{State: Failed, Reason: err.Error()}
-			}
-		}
-		for _, name := range []string{activationEntitlementName, activationTrustName, activationPolicyName, activationStateName, activationAdmissionsName} {
-			if _, err := os.Lstat(filepath.Join(request.Folder, name)); err == nil {
-				return OperationResult{State: Failed, Reason: "the chosen folder already holds activation files; choose a new empty folder"}
-			}
-		}
-		policy := operationguard.Policy{
-			Schema:      operationguard.PolicySchema,
-			Entitlement: filepath.Join(request.Folder, activationEntitlementName),
-			Trust:       filepath.Join(request.Folder, activationTrustName),
-			State:       filepath.Join(request.Folder, activationStateName),
-			Author:      request.Author,
-			Device:      request.Device,
-			Authority:   request.Authority,
-		}
-		if request.Authority != "" {
-			policy.Admissions = filepath.Join(request.Folder, activationAdmissionsName)
-		}
-		encoded, err := operationguard.EncodePolicy(policy)
-		if err != nil {
-			return OperationResult{State: Failed, Reason: operationguard.ErrUnavailable.Error()}
-		}
-		for _, file := range []struct {
-			name string
-			data []byte
-		}{{activationEntitlementName, data}, {activationTrustName, trustData}, {activationPolicyName, encoded}} {
-			if err = createPrivateFile(filepath.Join(request.Folder, file.name), file.data); err != nil {
-				return privateWriteRefusal(request.Folder, err).operation()
-			}
-		}
-		if err = a.retainOperationPolicy(filepath.Join(request.Folder, activationPolicyName)); err != nil {
+		if err = a.retainOperationPolicy(policy); err != nil {
 			return OperationResult{State: Failed, Reason: errRetainedSelection.Error()}
 		}
 		return OperationResult{State: Completed, Selected: true, Reason: "the local activation is created; activate it to admit licensed work"}
@@ -450,10 +348,11 @@ func (r refusal) operation() OperationResult {
 }
 
 // RenewLicenseDocument installs one later issue of the installed entitlement,
-// chosen through a native file dialog and verified against the same trust
-// store. It refuses a transfer — a reissue that no longer assigns this
-// device to this author, or no longer names the configured runner authority —
-// and never rewrites the retained clock state.
+// chosen through a native file dialog, through the operation guard's
+// activation-folder renewal: verified against the same trust store, it refuses
+// a transfer — a reissue that no longer assigns this device to this author, or
+// no longer names the configured runner authority — and never rewrites the
+// retained clock state.
 func (a *App) RenewLicenseDocument() OperationResult {
 	return run(a, true, false, func(ctx context.Context) OperationResult {
 		_, path := a.selectedOperation()
@@ -474,72 +373,12 @@ func (a *App) RenewLicenseDocument() OperationResult {
 		if !filepath.IsAbs(files[0]) {
 			return OperationResult{State: Failed, Reason: "select an absolute path for the received document"}
 		}
-		data, trustData, err := operationguard.ReadDocuments(files[0], policy.Trust)
+		data, err := operationguard.ReadDocument(files[0])
 		if err != nil {
 			return OperationResult{State: Failed, Reason: operationguard.ErrUnavailable.Error()}
 		}
-		received, err := operationguard.VerifyDocuments(data, trustData, time.Now().UTC().Truncate(time.Second))
-		if err != nil {
-			return OperationResult{State: Failed, Reason: err.Error()}
-		}
-		if !received.OperationCapable {
-			return OperationResult{State: Failed, Reason: "a later issue must be a license in the current format"}
-		}
-		installed, err := readOperationFile(policy.Entitlement)
-		if err != nil {
-			return OperationResult{State: Failed, Reason: operationguard.ErrUnavailable.Error()}
-		}
-		current, err := operationguard.DecodeInstalled(installed)
-		if err != nil {
-			return OperationResult{State: Failed, Reason: err.Error()}
-		}
-		if received.Organization != current.Organization {
-			return OperationResult{State: Failed, Reason: operationguard.ErrDifferentOrganization.Error()}
-		}
-		// A released activation is not renewed in place: a new explicitly
-		// created activation is the separate record the contract promises.
-		if state, stateErr := operationguard.Read(path); stateErr == nil {
-			if state.Released {
-				return OperationResult{State: Failed, Reason: "this local activation was released; create a new activation folder for the new document"}
-			}
-			if received.Sequence <= state.Sequence {
-				return OperationResult{State: Failed, Reason: operationguard.ErrSuperseded.Error()}
-			}
-		} else if !errors.Is(stateErr, operationguard.ErrUnavailable) {
-			return OperationResult{State: Failed, Reason: stateErr.Error()}
-		}
-		if received.Sequence <= current.Sequence {
-			return OperationResult{State: Failed, Reason: operationguard.ErrSuperseded.Error()}
-		}
-		if policy.Author != "" {
-			if err = received.Assigned(policy.Author, policy.Device); err != nil {
-				return OperationResult{State: Failed, Reason: err.Error()}
-			}
-		}
-		if policy.Authority != "" {
-			if _, err = received.RunnerAuthority(policy.Authority); err != nil {
-				return OperationResult{State: Failed, Reason: err.Error()}
-			}
-		}
-		name := "entitlement-" + received.ID + "-" + strconv.Itoa(received.Sequence) + ".json"
-		destination := filepath.Join(filepath.Dir(policy.Entitlement), name)
-		if existing, readErr := readOperationFile(destination); readErr == nil {
-			// A retry of the same interrupted renewal may find the document
-			// already written; only the exact same issue continues.
-			if !slices.Equal(existing, data) {
-				return OperationResult{State: Failed, Reason: "the activation folder already holds a different document under this name"}
-			}
-		} else if err = createPrivateFile(destination, data); err != nil {
-			return privateWriteRefusal(filepath.Dir(policy.Entitlement), err).operation()
-		}
-		next := policy
-		next.Entitlement = destination
-		encoded, err := operationguard.EncodePolicy(next)
-		if err != nil {
-			return OperationResult{State: Failed, Reason: operationguard.ErrUnavailable.Error()}
-		}
-		if err = replacePolicyFile(path, encoded); err != nil {
-			return OperationResult{State: Failed, Reason: err.Error()}
+		if err = operationguard.RenewActivation(path, data, time.Now().UTC().Truncate(time.Second)); err != nil {
+			return activationRefusal(filepath.Dir(policy.Entitlement), err)
 		}
 		a.installOperationPolicy(path)
 		if status := a.OperationStatus(); status.State == Completed {
@@ -604,7 +443,7 @@ func (a *App) ExportLicenseDocument() LicenseExportResult {
 			return LicenseExportResult{State: Failed, Reason: "choose an existing folder that is not a symbolic link"}
 		}
 		destination := filepath.Join(folder, document.ID+".json")
-		if err = createPrivateFile(destination, data); err != nil {
+		if err = operation.WriteNewFile(destination, data, "cannot create the file", "cannot write the file"); err != nil {
 			if errors.Is(err, fs.ErrExist) {
 				return LicenseExportResult{State: Failed, Reason: "the destination folder already holds a file with this name; choose a different folder"}
 			}

@@ -25,15 +25,6 @@ import (
 	"github.com/bharm16/readmit/internal/entitlement"
 )
 
-// The fixed names inside this computer's license folder. The signed document
-// and the activation record keep the entitlement store's own names.
-const (
-	installedTrustName      = "trust.json"
-	installedPolicyName     = "operation-policy.json"
-	installedStateName      = "clock.json"
-	installedAdmissionsName = "admissions.json"
-)
-
 var (
 	// ErrNoLicense names a computer with nothing installed yet.
 	ErrNoLicense = errors.New("no license is installed on this computer")
@@ -79,10 +70,10 @@ func InstalledPolicy() string {
 }
 
 // InstalledPolicyIn is the operation policy inside a license folder.
-func InstalledPolicyIn(root string) string { return filepath.Join(root, installedPolicyName) }
+func InstalledPolicyIn(root string) string { return filepath.Join(root, policyName) }
 
 // InstalledTrustIn is the trust document kept inside a license folder.
-func InstalledTrustIn(root string) string { return filepath.Join(root, installedTrustName) }
+func InstalledTrustIn(root string) string { return filepath.Join(root, trustName) }
 
 // The store refusals a person meets on this computer's license, re-exported
 // so a caller can say them in its own words without importing the
@@ -143,7 +134,7 @@ func OpenInstalledLicense(root string, at time.Time) (InstalledLicense, error) {
 	if err != nil {
 		return InstalledLicense{}, ErrLicenseUnreadable
 	}
-	trustData, err := readFile(filepath.Join(store.Root(), installedTrustName))
+	trustData, err := readFile(filepath.Join(store.Root(), trustName))
 	if err != nil {
 		return InstalledLicense{}, ErrLicenseKeysMissing
 	}
@@ -170,7 +161,7 @@ func OpenInstalledLicense(root string, at time.Time) (InstalledLicense, error) {
 	if store.V2 == nil {
 		return installed, nil
 	}
-	policyData, err := readFile(filepath.Join(store.Root(), installedPolicyName))
+	policyData, err := readFile(filepath.Join(store.Root(), policyName))
 	if err != nil {
 		return installed, nil
 	}
@@ -246,31 +237,19 @@ func InstallLicense(root string, data, trustData []byte, author, device, authori
 	stagedRoot := staged.Root()
 	final := filepath.Join(filepath.Dir(stagedRoot), filepath.Base(root))
 	abandon := func(err error) error { os.RemoveAll(stagedRoot); return err }
-	if err := writeNew(filepath.Join(stagedRoot, installedTrustName), trustData); err != nil {
+	if err := writeNew(filepath.Join(stagedRoot, trustName), trustData); err != nil {
 		return abandon(err)
 	}
 	var policyPath string
 	if received.OperationCapable {
-		policy := Policy{
-			Schema:      PolicySchema,
-			Entitlement: filepath.Join(final, entitlement.DocumentName),
-			Trust:       filepath.Join(final, installedTrustName),
-			State:       filepath.Join(final, installedStateName),
-			Author:      author,
-			Device:      device,
-			Authority:   authority,
-		}
-		if authority != "" {
-			policy.Admissions = filepath.Join(final, installedAdmissionsName)
-		}
-		encoded, err := EncodePolicy(policy)
+		encoded, err := EncodePolicy(folderPolicy(final, author, device, authority))
 		if err != nil {
 			return abandon(err)
 		}
-		if err := writeNew(filepath.Join(stagedRoot, installedPolicyName), encoded); err != nil {
+		if err := writeNew(filepath.Join(stagedRoot, policyName), encoded); err != nil {
 			return abandon(err)
 		}
-		policyPath = filepath.Join(final, installedPolicyName)
+		policyPath = filepath.Join(final, policyName)
 	}
 	if err := os.Rename(stagedRoot, final); err != nil {
 		return abandon(errors.New("cannot install this computer's license"))
@@ -301,7 +280,7 @@ func setAsideOrFinish(root string, data []byte, author, device string, at time.T
 		}
 	}
 	if current.Released().IsZero() {
-		policyPath := filepath.Join(current.Root(), installedPolicyName)
+		policyPath := filepath.Join(current.Root(), policyName)
 		installed, readErr := readFile(filepath.Join(current.Root(), entitlement.DocumentName))
 		if current.V2 != nil && readErr == nil && bytes.Equal(installed, data) && current.Author() == author && current.Device() == device {
 			if policy, err := readSelectedPolicy(policyPath); err == nil {
@@ -342,7 +321,7 @@ func RenewInstalledLicense(root string, data, trustData []byte) error {
 	if err != nil {
 		return err
 	}
-	installedTrust, err := readFile(filepath.Join(store.Root(), installedTrustName))
+	installedTrust, err := readFile(filepath.Join(store.Root(), trustName))
 	if err != nil {
 		return ErrLicenseKeysMissing
 	}
@@ -361,7 +340,7 @@ func RenewInstalledLicense(root string, data, trustData []byte) error {
 	// before the renewal and renamed over it after, so a refused renewal
 	// leaves both as they were and a retained interrupted write is reported
 	// before the license changes.
-	path := filepath.Join(store.Root(), installedTrustName)
+	path := filepath.Join(store.Root(), trustName)
 	staged := path + incompleteSuffix
 	if err := writeNew(staged, trustData); err != nil {
 		return ErrLicenseRetained
@@ -390,7 +369,7 @@ func ReleaseInstalledLicense(root string, at time.Time) error {
 		return entitlement.ErrReleased
 	}
 	if store.V2 != nil {
-		policyPath := filepath.Join(store.Root(), installedPolicyName)
+		policyPath := filepath.Join(store.Root(), policyName)
 		if policy, err := readSelectedPolicy(policyPath); err == nil {
 			if _, err := os.Lstat(policy.State); err == nil {
 				// Clock state no reader accepts admits no work and is never
@@ -423,7 +402,7 @@ func operationReleased(store entitlement.Installed) bool {
 	if store.V2 == nil {
 		return false
 	}
-	policy, err := readSelectedPolicy(filepath.Join(store.Root(), installedPolicyName))
+	policy, err := readSelectedPolicy(filepath.Join(store.Root(), policyName))
 	if err != nil {
 		return false
 	}
@@ -451,7 +430,7 @@ func RenewsInstalledLicense(root string, data []byte) bool {
 	if store.V2 == nil {
 		return true
 	}
-	policy, err := readSelectedPolicy(filepath.Join(store.Root(), installedPolicyName))
+	policy, err := readSelectedPolicy(filepath.Join(store.Root(), policyName))
 	if err != nil {
 		return false
 	}
@@ -476,7 +455,7 @@ func ReadDocument(path string) ([]byte, error) { return readFile(path) }
 // InstalledTrust returns the trust document installed beside this computer's
 // license, the one renewals and pasted licenses are verified against.
 func InstalledTrust(root string) ([]byte, error) {
-	data, err := readFile(filepath.Join(root, installedTrustName))
+	data, err := readFile(filepath.Join(root, trustName))
 	if err != nil {
 		return nil, ErrLicenseKeysMissing
 	}
@@ -485,7 +464,9 @@ func InstalledTrust(root string) ([]byte, error) {
 
 const incompleteSuffix = ".incomplete"
 
-// writeNew creates one new private file exclusively and never replaces one.
+// writeNew creates one new private file exclusively and never replaces one. A
+// file it cannot create carries the cause, so a caller can tell a name
+// already taken from a folder it cannot write.
 func writeNew(path string, data []byte) error {
 	destination, err := artifactpath.Destination(path)
 	if err != nil {
@@ -493,7 +474,7 @@ func writeNew(path string, data []byte) error {
 	}
 	file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		return errors.New("cannot create a file of this computer's license")
+		return createError{err}
 	}
 	writeErr := artifactdir.WriteFileSync(file, data)
 	closeErr := file.Close()
@@ -503,3 +484,10 @@ func writeNew(path string, data []byte) error {
 	}
 	return nil
 }
+
+// createError is a license file that could not be created, reported in one
+// sentence whatever the cause it carries.
+type createError struct{ cause error }
+
+func (e createError) Error() string { return "cannot create a file of this computer's license" }
+func (e createError) Unwrap() error { return e.cause }
