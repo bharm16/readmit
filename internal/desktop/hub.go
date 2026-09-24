@@ -145,15 +145,6 @@ type HubUploadRequest struct {
 	SourcePath string `json:"source_path"`
 }
 
-// DefaultHubSelectionPath returns the path to the hub configuration selection file.
-func DefaultHubSelectionPath() (string, error) {
-	root, err := os.UserConfigDir()
-	if err != nil {
-		return "", errors.New("cannot locate hub selection directory")
-	}
-	return filepath.Join(root, "readmit", "hub.json"), nil
-}
-
 // restoreHubSelection retains the configuration an earlier session selected.
 // Restoring reads the selection and the configuration it names, two local
 // files, and nothing else: it connects to no hub, starts no sign-in and renews
@@ -248,11 +239,13 @@ func (a *App) selectHubConfig(path string) HubResult {
 	a.hubMu.Lock()
 	defer a.hubMu.Unlock()
 
-	// Persist selection
+	// The selection is remembered before it is made, so a choice this window
+	// cannot remember is refused and changes nothing: the window never says a
+	// configuration is selected that the next one will not restore.
 	if a.hubSelectionPath != "" {
 		encoded, err := json.Marshal(hubSelection{Schema: hubSelectionSchema, Config: path})
-		if err == nil {
-			writeShellDocument(a.hubSelectionPath, append(encoded, '\n'))
+		if err != nil || writeShellDocument(a.hubSelectionPath, append(encoded, '\n')) != nil {
+			return HubResult{State: Failed, Reason: "cannot retain the hub configuration selection, so the selection is unchanged; choose a hub configuration again"}
 		}
 	}
 

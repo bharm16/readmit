@@ -51,9 +51,17 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
     setMessage(null);
     try {
       const res = await chooseHubConfig();
-      setStatus(res);
-      setDiagnosis(null);
-      setArtifacts(null);
+      // Only a completed choice changes what is selected. A cancelled one
+      // leaves the panel as it was, a remembered configuration's reason
+      // included, and a refused one says why beside the selection the
+      // application kept.
+      if (res.state === "completed") {
+        setStatus(res);
+        setDiagnosis(null);
+        setArtifacts(null);
+      } else if (res.state !== "cancelled") {
+        setMessage(res.reason ?? "The hub configuration was not selected.");
+      }
     } finally {
       setBusy(false);
     }
