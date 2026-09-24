@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { GridRow, ReproducerResult, ReproducerStep, State } from "./bindings";
+import type { GridRow, Reproducer as ReproducerDraft, ReproducerResolution, ReproducerResult, ReproducerStep, State } from "./bindings";
 import { Report, type Indicators } from "./shell";
 import "./reproducer.css";
 
@@ -29,6 +29,12 @@ function describe(reason: string): string {
   return REASONS[reason] ?? reason;
 }
 
+/** What the panel shows: the facade's answer, or a plan restored from the draft
+ * store that the facade has not resolved yet, which has no resolution. */
+export type ReproducerView = Omit<ReproducerResult, "reproducer"> & {
+  reproducer?: Omit<ReproducerDraft, "resolution"> & { resolution?: ReproducerResolution };
+};
+
 /** The reproducer editor. It selects occurrences of the open grid, asks the
  * engine for the setup dependencies they need, edits supported fields, and
  * writes a separate revision.
@@ -57,7 +63,7 @@ export function Reproducer({
   onCreateTest,
 }: {
   rows: GridRow[];
-  result: ReproducerResult | null;
+  result: ReproducerView | null;
   inspected: { occurrence: string; path: string } | null;
   busy: boolean;
   progress: string | null;

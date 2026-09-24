@@ -126,7 +126,6 @@ import {
   type SearchResult,
   type Shell,
   type State,
-  type StatusValue,
   type Theme,
   type WorkspaceResult,
 } from "./bindings";
@@ -135,13 +134,13 @@ import { Review, REVIEW_WINDOW } from "./Review";
 import { GuidedSample } from "./GuidedSample";
 import { Sequence, SEQUENCE_WINDOW } from "./Sequence";
 import { Inspector } from "./Inspector";
-import { Reproducer } from "./Reproducer";
+import { Reproducer, type ReproducerView } from "./Reproducer";
 import { RevisionComparison, type ComparisonSeed } from "./RevisionComparison";
 import { AssertionSetAuthoring } from "./AssertionSetAuthoring";
 import { CanonicalTestEditor } from "./CanonicalTestEditor";
 import { ProfileEditor } from "./ProfileEditor";
 import { ScenarioPanel } from "./ScenarioPanel";
-import { TestAuthoring, type PromotionProvenance } from "./TestAuthoring";
+import { TestAuthoring, type PromotionProvenance, type TestView } from "./TestAuthoring";
 import { Diagnosis } from "./Diagnosis";
 import { Badge, GRID_WINDOW, MessageGrid, Palette, Report, Separator, Status } from "./shell";
 import { Breadcrumbs, ProjectPanel } from "./ProjectPanel";
@@ -218,8 +217,8 @@ export default function App() {
   const [selectedOccurrence, setSelectedOccurrence] = useState<string | null>(null);
   const [gridResult, setGridResult] = useState<GridResult | null>(null);
   const [indexResult, setIndexResult] = useState<IndexResult | null>(null);
-  const [reproducerResult, setReproducerResult] = useState<ReproducerResult | null>(null);
-  const [testResult, setTestResult] = useState<TestResult | null>(null);
+  const [reproducerResult, setReproducerResult] = useState<ReproducerView | null>(null);
+  const [testResult, setTestResult] = useState<TestView | null>(null);
   const [runSpecPath, setRunSpecPath] = useState<string | undefined>(undefined);
   const [comparisonResult, setComparisonResult] = useState<CompareResult | null>(null);
   const [revisionResult, setRevisionResult] = useState<ReproducerComparisonResult | null>(null);
@@ -276,7 +275,7 @@ export default function App() {
   const searchField = useRef<HTMLInputElement | null>(null);
 
   const indicators = useMemo(() => {
-    const table = new Map<StatusValue, Indicator>();
+    const table = new Map<string, Indicator>();
     for (const indicator of described?.indicators ?? []) {
       table.set(indicator.status, indicator);
     }

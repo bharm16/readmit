@@ -89,25 +89,25 @@ func (r refusal) gridOf(details *IndexDetails) GridResult {
 
 // IndexDetails describes what one index retains of one case, and its health.
 type IndexDetails struct {
-	IndexName      string     `json:"index_name"`
-	CaseName       string     `json:"case_name"`
-	Identity       string     `json:"identity"`
-	Schema         string     `json:"schema"`
-	Provenance     string     `json:"provenance"`
-	Retention      string     `json:"retention"`
-	RetainUntil    *time.Time `json:"retain_until,omitzero"`
-	RetentionState string     `json:"retention_state"`
-	Fields         []string   `json:"fields"`
-	Sources        int        `json:"sources"`
-	Records        int        `json:"records"`
-	Decoded        int        `json:"decoded"`
-	Undecodable    int        `json:"undecodable"`
-	BuiltAt        time.Time  `json:"built_at"`
-	Applicable     bool       `json:"applicable"`
-	Stale          bool       `json:"stale,omitzero"`
-	Damaged        bool       `json:"damaged,omitzero"`
-	Expired        bool       `json:"expired,omitzero"`
-	Unsupported    bool       `json:"unsupported,omitzero"`
+	IndexName      string          `json:"index_name"`
+	CaseName       string          `json:"case_name"`
+	Identity       string          `json:"identity"`
+	Schema         string          `json:"schema"`
+	Provenance     string          `json:"provenance"`
+	Retention      index.Retention `json:"retention"`
+	RetainUntil    *time.Time      `json:"retain_until,omitzero"`
+	RetentionState string          `json:"retention_state"`
+	Fields         []string        `json:"fields"`
+	Sources        int             `json:"sources"`
+	Records        int             `json:"records"`
+	Decoded        int             `json:"decoded"`
+	Undecodable    int             `json:"undecodable"`
+	BuiltAt        time.Time       `json:"built_at"`
+	Applicable     bool            `json:"applicable"`
+	Stale          bool            `json:"stale,omitzero"`
+	Damaged        bool            `json:"damaged,omitzero"`
+	Expired        bool            `json:"expired,omitzero"`
+	Unsupported    bool            `json:"unsupported,omitzero"`
 }
 
 // IndexResult carries one state and the described index when available.
@@ -129,14 +129,14 @@ func (r refusal) indexResultOf(details *IndexDetails) IndexResult {
 
 // BuildIndexRequest declares what one new index of a case retains.
 type BuildIndexRequest struct {
-	Workspace   string   `json:"workspace"`
-	Case        string   `json:"case"`
-	Identity    string   `json:"identity,omitzero"`
-	Output      string   `json:"output"`
-	Fields      []string `json:"fields"`
-	Retention   string   `json:"retention"`
-	RetainUntil string   `json:"retain_until"`
-	Replace     bool     `json:"replace,omitzero"`
+	Workspace   string          `json:"workspace"`
+	Case        string          `json:"case"`
+	Identity    string          `json:"identity,omitzero"`
+	Output      string          `json:"output"`
+	Fields      []string        `json:"fields"`
+	Retention   index.Retention `json:"retention"`
+	RetainUntil string          `json:"retain_until"`
+	Replace     bool            `json:"replace,omitzero"`
 }
 
 // BuildIndexResult carries one state and the newly built index.
@@ -252,7 +252,7 @@ func (a *App) buildIndex(ctx context.Context, request BuildIndexRequest) BuildIn
 	}
 	policy := index.Policy{
 		Fields:    make([]string, 0, len(request.Fields)),
-		Retention: index.Retention(request.Retention),
+		Retention: request.Retention,
 	}
 	for _, field := range request.Fields {
 		sel, err := hl7.ParseSelector(field)
@@ -483,7 +483,7 @@ func indexDetails(name string, doc index.Document, opened *bundle.Bundle, at tim
 		Identity:       doc.Case.Identity,
 		Schema:         doc.Schema,
 		Provenance:     doc.Case.Provenance,
-		Retention:      string(doc.Policy.Retention),
+		Retention:      doc.Policy.Retention,
 		RetainUntil:    doc.Policy.RetainUntil,
 		RetentionState: retentionState,
 		Fields:         doc.Policy.Fields,

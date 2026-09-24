@@ -150,7 +150,7 @@ test("plan authoring, extraction preview with deliberate reveal toggle, and inva
       },
       containers: [
         {
-          kind: "case",
+          kind: "file",
           path: "batch-feed.hl7",
           size: 1024,
           sha256: "abc123",
@@ -159,7 +159,7 @@ test("plan authoring, extraction preview with deliberate reveal toggle, and inva
               name: "batch-feed.hl7",
               size: 1024,
               sha256: "abc123",
-              state: "completed",
+              state: "included",
               records: [
                 { source_id: "src-01", offset: 0, size: 512, occurrences: 1 },
                 { source_id: "src-02", offset: 512, size: 512, occurrences: 1 },
@@ -322,8 +322,9 @@ test("recipe mapping authoring, preview, commit to project, and navigation into 
           mappings: [
             {
               source_id: "src-001",
-              state: "completed",
+              state: "mapped",
               payload_size: 240,
+              observed_at: null,
               source: "interface-engine",
               direction: "inbound",
               channel: "unknown",
@@ -422,11 +423,11 @@ test("every member of every declared source has its own row in the extraction pr
   await user.click(screen.getByRole("button", { name: "Select Files…" }));
   await screen.findByText(/reschedule\.mllp/);
   const container = (path: string, size: number): ImportContainer => ({
-    kind: "unsupported",
+    kind: "file",
     path,
     size,
     sha256: "",
-    members: [{ name: path, size, sha256: "", state: "completed", records: [] }],
+    members: [{ name: path, size, sha256: "", state: "included", records: [] }],
   });
   facade.reply({
     PreviewImport: (): Promise<ImportPreviewResult> =>

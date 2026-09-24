@@ -111,7 +111,7 @@ function reviewed(overrides: Partial<CorrelationReviewView> = {}): CorrelationRe
       { id: "l000002", linkage: "inferred", rule: "same-booking", status: "unreviewed", occurrences: [occurrence(GRID_OCCURRENCE), occurrence("occ-000003")], total_occurrences: 2 },
     ],
     collisions: [
-      { finding: { rule: "same-booking", reason: "duplicate_control_id", occurrences: [occurrence(NEXT_OCCURRENCE), occurrence("occ-000003")] }, total_occurrences: 2 },
+      { finding: { rule: "same-booking", operator: "identifier", reason: "duplicate_control_id", occurrences: [occurrence(NEXT_OCCURRENCE), occurrence("occ-000003")] }, total_occurrences: 2 },
     ],
     history: [],
     ...overrides,

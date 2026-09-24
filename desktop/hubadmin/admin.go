@@ -14,6 +14,7 @@ import (
 	"unicode"
 
 	"github.com/bharm16/readmit/hub"
+	"github.com/bharm16/readmit/internal/desktop"
 )
 
 // Request separates a host path in the reviewed Linux command from the local
@@ -30,14 +31,16 @@ type Request struct {
 	SchedulePolicyPath  string `json:"schedule_policy_path"`
 }
 
+// Result carries one operation state, the facade's own, like every result the
+// window reads.
 type Result struct {
-	State         string   `json:"state"`
-	Reason        string   `json:"reason,omitzero"`
-	Command       string   `json:"command,omitzero"`
-	Prerequisites []string `json:"prerequisites,omitzero"`
-	Touches       []string `json:"touches,omitzero"`
-	DoesNotTouch  []string `json:"does_not_touch,omitzero"`
-	LocalResult   string   `json:"local_result,omitzero"`
+	State         desktop.State `json:"state"`
+	Reason        string        `json:"reason,omitzero"`
+	Command       string        `json:"command,omitzero"`
+	Prerequisites []string      `json:"prerequisites,omitzero"`
+	Touches       []string      `json:"touches,omitzero"`
+	DoesNotTouch  []string      `json:"does_not_touch,omitzero"`
+	LocalResult   string        `json:"local_result,omitzero"`
 }
 
 // Admin owns only a cancellable local preview. No method executes the command.

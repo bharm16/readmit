@@ -41,9 +41,53 @@ when the guard is not in place, so a Wails release that changes that class
 fails every installed startup check instead of bringing the exit back.
 
 The interface is bundled into `frontend/dist` and embedded in the executable, so
-`npm run build` must run before `go build`. `npm run build` type-checks first: a
-binding that no longer matches the facade fails there. The desktop build is not
-part of the release archives and is unsigned.
+`npm run build` must run before `go build`. `npm run build` type-checks first:
+every panel and the test kit are checked against the generated declarations of
+the facade, below. The type check cannot see Go; what holds those declarations
+to the Go types is the generator's own test. The desktop build is not part of
+the release archives and is unsigned.
+
+### Typed bindings
+
+The frontend's declarations of both bound objects — `Facade` for
+`internal/desktop.App` and `HubAdminFacade` for `desktop/hubadmin.Admin` — and
+of every request and result type they carry are generated from the Go types
+into `frontend/src/bindings.gen.ts` by `desktop/bindgen`, a Go program in this
+module that adds no dependency:
+
+```sh
+cd desktop && go run ./bindgen
+```
+
+Run it after changing a facade method or any Go type one reaches, and commit
+the file with the change; resolve a rebase conflict in it by running it again,
+never by hand. `TestGeneratedBindingsAreCurrent` in `desktop/bindgen`, which
+the desktop workflow's shell job runs, fails while the committed file differs
+from what the Go types declare, in either direction: a method or member Go has
+and the file lacks, one the file declares and Go does not — a request member
+Wails' `encoding/json` would drop without a word — and a member whose
+optionality or vocabulary differs. Each declaration follows what
+`encoding/json` puts on the wire: a member is named by its `json` tag and is
+optional exactly when the tag says `omitempty` or `omitzero`; a pointer that is
+not optional can be null; and a named Go string type that declares constants is
+the union of their values, so a vocabulary the window keys its records by is
+declared once, in Go. Where Go carries a member as a plain string and a panel
+offers a closed set of choices for it — a test's authoring stages, a
+transformation's operators, the kinds of path a chooser picks — the choices are
+the Go constants that name them, generated as a named union from the const
+block that declares them (the `vocabularies` of `desktop/bindgen/names.go`), so
+a choice added there is one the panel must handle. A shape the generator cannot
+declare exactly — an embedded struct, a type that marshals itself, a variadic
+method — is refused by name rather than guessed at. A type that decodes itself
+strictly is declared by the shape Go writes; where its reader also refuses a
+member by the document's version, as an observation source's reader refuses
+the capture transport in a v1 source, the panel that sends it leaves that
+member out.
+
+`bindings.ts` re-exports those declarations and holds only the call policy Go
+cannot express: which reads are asked again while the facade is busy, the fixed
+sentences a call that never reached Go reports, and the fallback each call
+answers with then.
 
 On Linux the platform webview is WebKitGTK 4.1, so the build needs
 `-tags production,webkit2_41` and the `libgtk-3-dev` and `libwebkit2gtk-4.1-dev` packages.
@@ -1961,9 +2005,12 @@ earlier request after a newer one was asked is dropped rather than shown.
 `Shell` is the window's description of itself, and the interface renders it
 rather than keeping a second copy that can drift from the facade. It carries the
 regions, how every status reads, the commands, the appearance choices and the
-privacy status. The bindings repeat that vocabulary as closed TypeScript types
-and a facade test requires them to, so a region, command, theme, status or match
-kind the facade declares and the bindings do not is a failing test. What the
+privacy status. The generated bindings declare that vocabulary as closed
+TypeScript types, each the union of the constants Go declares of it, and a
+facade test holds the description to the same constants in both directions, so
+a region, command or theme described with a value that is not a declared
+constant, or a status or match kind the bindings do not declare, is a failing
+test. What the
 frontend type check adds on top of that is narrower than it sounds, and worth
 stating exactly: a region entered as nothing and a command with no action fail
 the build, because the records holding them are keyed by the declared

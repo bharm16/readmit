@@ -29,6 +29,13 @@ import (
 // reports it with the run activity while it holds the slot.
 const syntheticPacketOperation = "synthetic-packet"
 
+// The folders ChooseSyntheticPacketPath names.
+const (
+	packetDestination = "packet-destination"
+	packetFolder      = "packet"
+	rerunDestination  = "rerun-destination"
+)
+
 // ChooseSyntheticPacketPath names a folder for the synthetic packet section:
 // a new folder for a packet ("packet-destination") or for its runnable copies
 // ("rerun-destination") in the host's save dialog, or an existing packet to
@@ -39,11 +46,11 @@ func (a *App) ChooseSyntheticPacketPath(kind string) PacketPathResult {
 		var choose func(context.Context, string) (string, refusal)
 		var title string
 		switch kind {
-		case "packet-destination":
+		case packetDestination:
 			choose, title = a.chooseDestination, "Choose a new folder for the synthetic demonstration packet"
-		case "packet":
+		case packetFolder:
 			choose, title = a.chooseFolder, "Choose a synthetic demonstration packet to verify"
-		case "rerun-destination":
+		case rerunDestination:
 			choose, title = a.chooseDestination, "Choose a new folder for the runnable copies"
 		default:
 			return PacketPathResult{State: Failed, Reason: "unknown synthetic packet folder kind"}

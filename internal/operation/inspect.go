@@ -42,14 +42,29 @@ var (
 	ErrInspectTerminator = errors.New("terminator must be auto, cr, lf, or crlf")
 )
 
+// The framings an inspection is declared under; auto detects it from the file.
+const (
+	autoFormat = "auto"
+	rawFormat  = string(hl7.Raw)
+	mllpFormat = string(hl7.MLLP)
+)
+
+// The segment terminators an inspection is declared under; auto detects it.
+const (
+	autoTerminator = "auto"
+	crTerminator   = string(hl7.CR)
+	lfTerminator   = string(hl7.LF)
+	crlfTerminator = string(hl7.CRLF)
+)
+
 // InspectOptions checks the framing and terminator an inspection is declared
 // under, each either named or auto, and returns the parser's options. The
 // command line and the desktop facade both declare through it.
 func InspectOptions(format, terminator string) (hl7.Options, error) {
-	if format != "auto" && format != "raw" && format != "mllp" {
+	if format != autoFormat && format != rawFormat && format != mllpFormat {
 		return hl7.Options{}, ErrInspectFormat
 	}
-	if terminator != "auto" && terminator != "cr" && terminator != "lf" && terminator != "crlf" {
+	if terminator != autoTerminator && terminator != crTerminator && terminator != lfTerminator && terminator != crlfTerminator {
 		return hl7.Options{}, ErrInspectTerminator
 	}
 	return hl7.Options{Format: hl7.Format(format), Terminator: hl7.Terminator(terminator)}, nil

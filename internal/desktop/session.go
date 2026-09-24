@@ -423,7 +423,7 @@ func validateView(view View) error {
 	if view.Case != "" && view.Workspace == "" {
 		return errors.New("a recorded case names the workspace it is an entry of")
 	}
-	if view.Region != "" && !slices.ContainsFunc(regions, func(region Region) bool { return region.ID == view.Region }) {
+	if view.Region != "" && !slices.ContainsFunc(regions, func(region Region) bool { return string(region.ID) == view.Region }) {
 		return errors.New("a recorded region must be one the window declares")
 	}
 	return nil

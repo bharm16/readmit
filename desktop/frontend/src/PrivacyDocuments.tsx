@@ -23,6 +23,9 @@ function freshPolicy(): RedactPolicy {
 function freshInventory(): RedactInventory {
   return { schema: "readmit-redact-inventory/v1", complete: false, artifacts: [], residual_values: [] };
 }
+/** A change to some members of a document row. */
+type Change<T> = { [K in keyof T]?: T[K] | undefined };
+
 function replaceAt<T>(rows: T[], index: number, value: T): T[] {
   return rows.map((row, at) => at === index ? value : row);
 }
@@ -240,11 +243,13 @@ export function PrivacyDocuments({ workspace, policyName, inventoryName, drafts,
     } finally { setBusy(false); }
   }
 
-  function field(index: number, update: Partial<RedactFieldRule>) {
-    updatePolicy({ ...policy, fields: replaceAt(policy.fields, index, { ...policy.fields[index]!, ...update }) });
+  // An undefined member in a change clears it: JSON leaves an undefined member
+  // out, exactly as Go leaves out an optional member it does not hold.
+  function field(index: number, update: Change<RedactFieldRule>) {
+    updatePolicy({ ...policy, fields: replaceAt(policy.fields, index, { ...policy.fields[index]!, ...update } as RedactFieldRule) });
   }
-  function binding(index: number, update: Partial<RedactSpecBinding>) {
-    updatePolicy({ ...policy, spec_bindings: replaceAt(policy.spec_bindings, index, { ...policy.spec_bindings[index]!, ...update }) });
+  function binding(index: number, update: Change<RedactSpecBinding>) {
+    updatePolicy({ ...policy, spec_bindings: replaceAt(policy.spec_bindings, index, { ...policy.spec_bindings[index]!, ...update } as RedactSpecBinding) });
   }
 
   return <div className="privacy-documents">

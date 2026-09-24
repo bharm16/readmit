@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UserEvent } from "@testing-library/user-event";
 import { expect, test } from "vitest";
-import type { CorpusScanView, CorpusGenerateRequest } from "./bindings";
+import type { CorpusScanView, CorpusGenerateRequest, ImportPlan } from "./bindings";
 import { PerformanceCorpus } from "./PerformanceCorpus";
 import { renderApp } from "./testkit/app";
 import { WORKSPACE_ROOT } from "./testkit/fixtures";
@@ -13,7 +13,7 @@ const STREAM = `${WORKSPACE_ROOT}/corpora/corpus.mllp`;
 const DIGEST = "a".repeat(64);
 const TARGETS = "engineering targets, not measurements or customer requirements";
 
-const plan = {
+const plan: ImportPlan = {
   schema: "readmit-import-plan/v1",
   framing: "mllp",
   terminator: "cr",

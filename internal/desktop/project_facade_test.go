@@ -173,7 +173,7 @@ func TestUpdateRegisteredCaseChangesOnlyWhatItNames(t *testing.T) {
 	writeCase(t, root, "incident-4821", framed("MSH|^~\\&|Scheduling|Acme|EHR|Acme|20260101120000||SIU^S12|1|P|2.5.1\r"))
 	app.RegisterCase(root, "incident-4821", desktop.CaseRegistration{Title: "Duplicate appointment", Tags: []string{"scheduling"}})
 
-	status := "investigating"
+	status := project.StatusInvestigating
 	result := app.UpdateRegisteredCase(root, "incident-4821", desktop.CaseChange{Status: &status})
 	if result.State != desktop.Completed || result.Overview == nil {
 		t.Fatalf("update case: %+v", result)
@@ -189,7 +189,7 @@ func TestUpdateRegisteredCaseChangesOnlyWhatItNames(t *testing.T) {
 		t.Fatalf("a metadata edit changed what the evidence is: %+v", updated)
 	}
 	// An unknown status is refused in the project's own words.
-	ended := "ended"
+	ended := project.Status("ended")
 	if refused := app.UpdateRegisteredCase(root, "incident-4821", desktop.CaseChange{Status: &ended}); refused.State != desktop.Failed || !strings.Contains(refused.Reason, "status") {
 		t.Fatalf("an unknown status change was not refused by name: %+v", refused)
 	}

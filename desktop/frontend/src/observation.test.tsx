@@ -80,6 +80,7 @@ async function openProject(user: ReturnType<typeof userEvent.setup>, defaults = 
           },
           file: { path: "export.csv", max_bytes: 65536 },
           http: null,
+          capture: null,
         },
         ...(defaults ? {} : { identity: "source-identity" }),
       }),
@@ -245,6 +246,38 @@ test("a v1 source the facade answered with every transport member is saved again
     await screen.findByText(/^Not saved: the source document could not be written\. A collection reads the documents saved before\./),
   ).toBeTruthy();
   expect(screen.queryByText(/^Saved through shared Go writers/)).toBeNull();
+});
+
+// The facade's reader refuses a transport member a source's contract does not
+// declare: a database member outside v3, and a capture member in v1. A source
+// switched to another kind and back is sent with only its own contract's.
+test("a source switched between kinds is saved with only the transports its contract declares", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user);
+  const saved: ObservationSourceRequest[] = [];
+  facade.reply({
+    SaveObservationSource: (request): Promise<ObservationSourceResult> => {
+      saved.push(request);
+      return Promise.resolve({ state: "completed", source: request.source!, identity: "source-identity" });
+    },
+    SaveObservationWindow: (request): Promise<ObservationWindowResult> =>
+      Promise.resolve({ state: "completed", window: request.window!, identity: "window-identity" }),
+  });
+  const panel = await openObservationSetup(user);
+  await user.click(panel.getByRole("button", { name: "http-api" }));
+  await user.click(panel.getByRole("button", { name: "file-export" }));
+  await user.click(panel.getByRole("button", { name: "Save source and window" }));
+  await waitFor(() => expect(saved).toHaveLength(1));
+  expect(saved[0]?.source?.schema).toBe("readmit-observation-source/v1");
+  expect(saved[0]?.source && "database" in saved[0].source).toBe(false);
+  expect(saved[0]?.source && "capture" in saved[0].source).toBe(false);
+
+  await user.click(panel.getByRole("button", { name: "downstream-capture" }));
+  await user.click(panel.getByRole("button", { name: "Save source and window" }));
+  await waitFor(() => expect(saved).toHaveLength(2));
+  expect(saved[1]?.source?.schema).toBe("readmit-observation-source/v2");
+  expect(saved[1]?.source?.capture).not.toBeNull();
+  expect(saved[1]?.source && "database" in saved[1].source).toBe(false);
 });
 
 /** The innermost element whose whole text matches: a line the panel composes

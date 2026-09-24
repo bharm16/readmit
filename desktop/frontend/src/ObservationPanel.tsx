@@ -48,6 +48,7 @@ function emptyFileSource(): ObservationSource {
     },
     file: { path: "export.csv", max_bytes: 65536 },
     http: null,
+    capture: null,
   };
 }
 
@@ -57,9 +58,8 @@ function emptyFileSource(): ObservationSource {
  * a member v1 never had, so a v1 source is saved without it. */
 function declared(source: ObservationSource): ObservationSource {
   if (source.schema !== "readmit-observation-source/v1") return source;
-  const v1 = { ...source };
-  delete v1.capture;
-  return v1;
+  const { capture: _, ...v1 } = source;
+  return v1 as ObservationSource;
 }
 
 /** What the panel says about one named document it read or wrote: the
@@ -91,7 +91,6 @@ function applyKind(source: ObservationSource, kind: (typeof KINDS)[number]): Obs
       file: { path: "export.csv", max_bytes: 65536 },
       http: null,
       capture: null,
-      database: null,
     };
   }
   if (kind === "http-api") {
@@ -116,7 +115,6 @@ function applyKind(source: ObservationSource, kind: (typeof KINDS)[number]): Obs
         credential: null,
       },
       capture: null,
-      database: null,
     };
   }
   if (kind === "downstream-capture") {
@@ -127,7 +125,6 @@ function applyKind(source: ObservationSource, kind: (typeof KINDS)[number]): Obs
       file: null,
       http: null,
       capture: { path: "downstream.case", kinds: ["message"], record_key: "SCH-1.1", max_occurrences: 100 },
-      database: null,
     };
   }
   return {

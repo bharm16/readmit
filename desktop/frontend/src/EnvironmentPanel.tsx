@@ -1873,7 +1873,7 @@ export function EnvironmentPanel({
 
           {resetResult ? (
             <div
-              className={`outcome-card ${resetResult.state === "completed" ? "passed" : "failed"}`}
+              className={`outcome-card ${resetResult.state === "passed" ? "passed" : "failed"}`}
               aria-label="Fixture reset execution outcome"
             >
               <h5>Reset Outcome: {resetResult.outcome}</h5>

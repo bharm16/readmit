@@ -18,6 +18,15 @@ includes TypeScript checking. Run the frontend behavior tests with `npm test`
 in the same directory: Vitest in run mode, deterministic and offline. The
 desktop module is a separate Go build.
 
+The frontend's declarations of both bound facades and every type they carry,
+`desktop/frontend/src/bindings.gen.ts`, are generated from the Go types. After
+changing a facade method or any Go type one reaches, run `go run ./bindgen` in
+`desktop` and commit the file; `go test ./bindgen` there fails while it differs
+from what the Go types declare, in either direction, optionality included.
+Resolve a rebase conflict in that file by rebasing the Go changes and running
+the generator again, never by editing it; hand-written call policy lives in
+`bindings.ts`.
+
 The frontend tests live beside the components and go through
 `desktop/frontend/src/testkit`, which installs a stub of the bindings'
 exported `Facade` interface at the exact `window.go.desktop.App` surface the

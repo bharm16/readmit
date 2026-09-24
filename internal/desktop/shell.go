@@ -9,8 +9,8 @@ import "github.com/bharm16/readmit/internal/project"
 // The window renders this order rather than one of its own, so what a person
 // tabs through and what an assistive technology announces cannot diverge.
 type Region struct {
-	ID    string `json:"id"`
-	Label string `json:"label"`
+	ID    RegionID `json:"id"`
+	Label string   `json:"label"`
 }
 
 // Indicator is how one status is told apart without colour. Status is an
@@ -28,10 +28,10 @@ type Indicator struct {
 // present, is the region the command moves focus to, so every region has a way
 // in that does not depend on a pointer.
 type Command struct {
-	ID     string `json:"id"`
-	Title  string `json:"title"`
-	Keys   string `json:"keys,omitzero"`
-	Region string `json:"region,omitzero"`
+	ID     CommandID `json:"id"`
+	Title  string    `json:"title"`
+	Keys   string    `json:"keys,omitzero"`
+	Region RegionID  `json:"region,omitzero"`
 }
 
 // OperationDisclosure is one deliberately configurable activity of this build
@@ -81,7 +81,7 @@ type Shell struct {
 	Regions    []Region    `json:"regions"`
 	Indicators []Indicator `json:"indicators"`
 	Commands   []Command   `json:"commands"`
-	Themes     []string    `json:"themes"`
+	Themes     []Theme     `json:"themes"`
 	TextScales []int       `json:"text_scales"`
 	Privacy    Privacy     `json:"privacy"`
 	Support    Support     `json:"support"`
@@ -98,14 +98,16 @@ type ShellResult struct {
 	Shell  *Shell `json:"shell,omitzero"`
 }
 
-// Region identifiers. A command names one of these to move focus to it, and a
-// search match names the one that reveals what was found.
+// RegionID identifies a region. A command names one to move focus to it, and
+// a search match names the one that reveals what was found.
+type RegionID string
+
 const (
-	CommandsRegion   = "commands"
-	NavigationRegion = "navigation"
-	EvidenceRegion   = "evidence"
-	InspectorRegion  = "inspector"
-	PrivacyRegion    = "privacy"
+	CommandsRegion   RegionID = "commands"
+	NavigationRegion RegionID = "navigation"
+	EvidenceRegion   RegionID = "evidence"
+	InspectorRegion  RegionID = "inspector"
+	PrivacyRegion    RegionID = "privacy"
 )
 
 // regions are declared in focus order. Adding one adds a step to the journey.
@@ -167,40 +169,78 @@ var indicators = []Indicator{
 	{Status: string(project.StatusClosed), Symbol: "▮", Label: "Closed"},
 }
 
+// CommandID identifies one command of the palette.
+type CommandID string
+
+const (
+	CommandPaletteCommand        CommandID = "command-palette"
+	SearchWorkspaceCommand       CommandID = "search-workspace"
+	OpenWorkspaceCommand         CommandID = "open-workspace"
+	CreateSampleWorkspaceCommand CommandID = "create-sample-workspace"
+	OpenProjectCommand           CommandID = "open-project"
+	ManageProfilesCommand        CommandID = "manage-profiles"
+	ManageScenariosCommand       CommandID = "manage-scenarios"
+	MaintainWorkspaceCommand     CommandID = "maintain-workspace"
+	CheckStagedUpgradeCommand    CommandID = "check-staged-upgrade"
+	ManageAssertionsCommand      CommandID = "manage-assertions"
+	InspectRawFileCommand        CommandID = "inspect-raw-file"
+	PerformanceCorpusCommand     CommandID = "performance-corpus"
+	CancelOperationCommand       CommandID = "cancel-operation"
+	NextRegionCommand            CommandID = "next-region"
+	PreviousRegionCommand        CommandID = "previous-region"
+	GoToCommandsCommand          CommandID = "go-to-commands"
+	GoToNavigationCommand        CommandID = "go-to-navigation"
+	GoToEvidenceCommand          CommandID = "go-to-evidence"
+	GoToInspectorCommand         CommandID = "go-to-inspector"
+	GoToPrivacyCommand           CommandID = "go-to-privacy"
+	LargerTextCommand            CommandID = "larger-text"
+	SmallerTextCommand           CommandID = "smaller-text"
+	SwitchThemeCommand           CommandID = "switch-theme"
+)
+
 // commands are everything the window can be asked to do, in the order the
 // palette lists them. Ctrl is written for the shortcut key; the platform
 // command key is accepted wherever it is shown.
 var commands = []Command{
-	{ID: "command-palette", Title: "Command palette", Keys: "Ctrl+K", Region: CommandsRegion},
-	{ID: "search-workspace", Title: "Search this workspace", Keys: "Ctrl+F", Region: CommandsRegion},
-	{ID: "open-workspace", Title: "Open a workspace folder…", Keys: "Ctrl+O", Region: NavigationRegion},
-	{ID: "create-sample-workspace", Title: "Create the sample workspace…", Region: NavigationRegion},
-	{ID: "open-project", Title: "Open the project of this workspace", Region: EvidenceRegion},
-	{ID: "manage-profiles", Title: "Manage interface profiles…", Region: InspectorRegion},
-	{ID: "manage-scenarios", Title: "Design synthetic scenarios…", Keys: "Ctrl+Shift+S", Region: InspectorRegion},
-	{ID: "maintain-workspace", Title: "Maintain this workspace…", Region: EvidenceRegion},
-	{ID: "check-staged-upgrade", Title: "Check a staged upgrade…", Region: EvidenceRegion},
-	{ID: "manage-assertions", Title: "Author assertion sets…", Keys: "Ctrl+Shift+A", Region: InspectorRegion},
-	{ID: "inspect-raw-file", Title: "Inspect a raw HL7 file…", Region: InspectorRegion},
-	{ID: "performance-corpus", Title: "Generate or scan a performance corpus…", Region: InspectorRegion},
-	{ID: "cancel-operation", Title: "Cancel the running operation", Keys: "Escape"},
-	{ID: "next-region", Title: "Go to the next region", Keys: "F6"},
-	{ID: "previous-region", Title: "Go to the previous region", Keys: "Shift+F6"},
-	{ID: "go-to-commands", Title: "Go to commands and search", Region: CommandsRegion},
-	{ID: "go-to-navigation", Title: "Go to project navigation", Region: NavigationRegion},
-	{ID: "go-to-evidence", Title: "Go to evidence", Region: EvidenceRegion},
-	{ID: "go-to-inspector", Title: "Go to the inspector", Region: InspectorRegion},
-	{ID: "go-to-privacy", Title: "Go to the privacy status", Region: PrivacyRegion},
-	{ID: "larger-text", Title: "Larger text", Keys: "Ctrl+="},
-	{ID: "smaller-text", Title: "Smaller text", Keys: "Ctrl+-"},
-	{ID: "switch-theme", Title: "Switch between system, light and dark"},
+	{ID: CommandPaletteCommand, Title: "Command palette", Keys: "Ctrl+K", Region: CommandsRegion},
+	{ID: SearchWorkspaceCommand, Title: "Search this workspace", Keys: "Ctrl+F", Region: CommandsRegion},
+	{ID: OpenWorkspaceCommand, Title: "Open a workspace folder…", Keys: "Ctrl+O", Region: NavigationRegion},
+	{ID: CreateSampleWorkspaceCommand, Title: "Create the sample workspace…", Region: NavigationRegion},
+	{ID: OpenProjectCommand, Title: "Open the project of this workspace", Region: EvidenceRegion},
+	{ID: ManageProfilesCommand, Title: "Manage interface profiles…", Region: InspectorRegion},
+	{ID: ManageScenariosCommand, Title: "Design synthetic scenarios…", Keys: "Ctrl+Shift+S", Region: InspectorRegion},
+	{ID: MaintainWorkspaceCommand, Title: "Maintain this workspace…", Region: EvidenceRegion},
+	{ID: CheckStagedUpgradeCommand, Title: "Check a staged upgrade…", Region: EvidenceRegion},
+	{ID: ManageAssertionsCommand, Title: "Author assertion sets…", Keys: "Ctrl+Shift+A", Region: InspectorRegion},
+	{ID: InspectRawFileCommand, Title: "Inspect a raw HL7 file…", Region: InspectorRegion},
+	{ID: PerformanceCorpusCommand, Title: "Generate or scan a performance corpus…", Region: InspectorRegion},
+	{ID: CancelOperationCommand, Title: "Cancel the running operation", Keys: "Escape"},
+	{ID: NextRegionCommand, Title: "Go to the next region", Keys: "F6"},
+	{ID: PreviousRegionCommand, Title: "Go to the previous region", Keys: "Shift+F6"},
+	{ID: GoToCommandsCommand, Title: "Go to commands and search", Region: CommandsRegion},
+	{ID: GoToNavigationCommand, Title: "Go to project navigation", Region: NavigationRegion},
+	{ID: GoToEvidenceCommand, Title: "Go to evidence", Region: EvidenceRegion},
+	{ID: GoToInspectorCommand, Title: "Go to the inspector", Region: InspectorRegion},
+	{ID: GoToPrivacyCommand, Title: "Go to the privacy status", Region: PrivacyRegion},
+	{ID: LargerTextCommand, Title: "Larger text", Keys: "Ctrl+="},
+	{ID: SmallerTextCommand, Title: "Smaller text", Keys: "Ctrl+-"},
+	{ID: SwitchThemeCommand, Title: "Switch between system, light and dark"},
 }
+
+// Theme is one appearance the window offers.
+type Theme string
+
+const (
+	SystemTheme Theme = "system"
+	LightTheme  Theme = "light"
+	DarkTheme   Theme = "dark"
+)
 
 // themes and textScales are the appearance choices offered. Text scales to
 // twice its size, and neither choice is written anywhere: both follow the
 // system until they are changed, and start from the system again next launch.
 var (
-	themes     = []string{"system", "light", "dark"}
+	themes     = []Theme{SystemTheme, LightTheme, DarkTheme}
 	textScales = []int{100, 125, 150, 200}
 )
 

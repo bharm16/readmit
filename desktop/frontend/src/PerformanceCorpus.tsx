@@ -6,11 +6,16 @@ import {
   corpusProgress,
   generateCorpus,
   scanCorpus,
+  type BundleDirection,
   type CorpusGenerateResult,
   type CorpusPathKind,
   type CorpusProgress,
   type CorpusScanResult,
   type CorpusScanView,
+  type HL7Terminator,
+  type ImportBoundary,
+  type ImportEncoding,
+  type ImportFraming,
   type ImportPlan,
   type State,
 } from "./bindings";
@@ -45,17 +50,19 @@ function complete(declared: Declared): boolean {
   );
 }
 
+// A complete declaration holds only the values its choices offer, which are
+// the import plan's own.
 function planOf(declared: Declared): ImportPlan {
   const plan: ImportPlan = {
     schema: "readmit-import-plan/v1",
-    framing: declared.framing,
-    terminator: declared.terminator,
-    encoding: declared.encoding,
-    direction: declared.direction,
+    framing: declared.framing as ImportFraming,
+    terminator: declared.terminator as HL7Terminator,
+    encoding: declared.encoding as ImportEncoding,
+    direction: declared.direction as BundleDirection,
     members: [],
   };
   if (declared.framing === "batch") {
-    plan.batch_boundary = declared.boundary;
+    plan.batch_boundary = declared.boundary as ImportBoundary;
   }
   return plan;
 }

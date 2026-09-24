@@ -18,7 +18,9 @@ import {
   type CapturePreviewResult,
   type CaptureSessionResult,
   type EvidenceSource,
+  type EvidenceSourceKind,
   type ImportCommitResult,
+  type ImportPlan,
   type ReceiverPolicy,
   type SourceAccessResult,
   type SourceCollectionResult,
@@ -299,7 +301,7 @@ export function CapturePanel({
   }
 
 
-  function importPlan() {
+  function importPlan(): ImportPlan {
     return {
       schema: "readmit-import-plan/v1",
       framing: planFraming,
@@ -668,7 +670,7 @@ export function CapturePanel({
             <select
               value={source.kind}
               disabled={locked}
-              onChange={(e) => setSource({ ...source, kind: e.target.value })}
+              onChange={(e) => setSource({ ...source, kind: e.target.value as EvidenceSourceKind })}
             >
               <option value="directory">directory (local export)</option>
               <option value="transfer">transfer (customer program)</option>

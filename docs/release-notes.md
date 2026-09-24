@@ -1,5 +1,17 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The desktop window's typed bindings are now generated from the Go facade
+  (#488), so a request or result member, its optionality or a vocabulary value
+  can no longer differ between the window and the engine. Generating them found
+  three defects the hand-written copy hid, now fixed: an observation source
+  whose kind was chosen in the window could not be saved unless it was a
+  database query, because the window sent a database member only a v3 source
+  declares and then reported that the application did not answer; reporting an
+  expectation release's impact in the suite panel left the window blank,
+  because it read the changes from a member the engine never sends, and now
+  lists the release's specification and profile changes; and a fixture reset
+  that passed was drawn as failed.
+
 - An assertion over MSH-2 now decides instead of voiding its whole set as
   `unreadable_value` (#476). Every reader of a field's text now uses one
   shared `internal/hl7` read, which takes MSH-1 and MSH-2 literally as the

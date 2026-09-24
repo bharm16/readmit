@@ -9,6 +9,8 @@ import type {
   TestDecision,
   TestExpectation,
   TestExpectationOperator,
+  TestDraft,
+  TestResolution,
   TestResult,
   TestReview,
   TestStage,
@@ -83,6 +85,12 @@ const blankRecord = (index: number): ObservationRecord => ({
   appointment_start: "",
 });
 
+/** What the panel shows: the facade's answer, or a draft restored from the
+ * draft store that the facade has not resolved yet, which has no resolution. */
+export type TestView = Omit<TestResult, "test"> & {
+  test?: Omit<TestDraft, "resolution"> & { resolution?: TestResolution };
+};
+
 /** The guided test authoring panel. It answers one stage at a time over the
  * case the grid verified, and writes the result as a readmit-test/v1 spec.
  *
@@ -107,7 +115,7 @@ export function TestAuthoring({
   onApprove,
 }: {
   rows: GridRow[];
-  result: TestResult | null;
+  result: TestView | null;
   inspected: { occurrence: string; path: string } | null;
   busy: boolean;
   progress: string | null;

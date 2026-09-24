@@ -12,7 +12,7 @@
 import { expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
-import type { ReductionReport, ReductionRequest, ReductionResult, ReductionTrial } from "./bindings";
+import type { ReductionPlan, ReductionReport, ReductionRequest, ReductionResult, ReductionTrial } from "./bindings";
 import { renderApp } from "./testkit/app";
 import {
   CASE_ENTRY,
@@ -42,7 +42,7 @@ function listing() {
   ]);
 }
 
-const plan = {
+const plan: ReductionPlan = {
   schema: "readmit-reduction-plan/v1",
   case: CASE_IDENTITY,
   grouping: "group-per-occurrence/v1",

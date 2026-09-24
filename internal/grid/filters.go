@@ -310,7 +310,7 @@ func validatePredicate(predicate FieldPredicate) error {
 		if !printable(predicate.Term, MaxTermBytes) {
 			return errors.New("a value predicate looks for bounded printable text")
 		}
-		if predicate.State != "" {
+		if predicate.State != hl7.NoState {
 			return errors.New("a value predicate compares a value, not a decoded state")
 		}
 	case index.State:
