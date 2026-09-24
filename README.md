@@ -66,6 +66,7 @@ authoritative.
 | `capture`, `timeline` | Capture files into a verified case; reopen it with independent times | [case bundles](docs/case-bundle.md) |
 | `import` | Guided import of files, folders and ZIP archives under a declared plan; `import engine` reads a supported integration-engine export | [import](docs/import.md) |
 | `import --recipe` | Map CSV, JSON, XML and timestamped text envelopes holding HL7 | [mapping](docs/mapping.md) |
+| `import --collection` | Import a staged source collection under the plan its receipt records | [import](docs/import.md#importing-a-staged-collection) |
 | `source collect`, `source diagnose` | Collect from an approved customer-controlled source; report the access actually available | [source](docs/source.md) |
 | `index build`, `index show`, `index search` | Derived, disposable search index of one case | [index](docs/index.md) |
 | `corpus generate`, `corpus scan` | Reproducible performance corpus and bounded streaming scan | [corpus](docs/corpus.md) |

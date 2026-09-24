@@ -14,6 +14,7 @@ import (
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/engineexport"
+	"github.com/bharm16/readmit/internal/evidencesource"
 	"github.com/bharm16/readmit/internal/importer"
 )
 
@@ -58,6 +59,37 @@ func ImportPlanCommit(ctx context.Context, plan importer.Plan, files, folders, a
 	if err := plan.Validate(); err != nil {
 		return nil, importer.Receipt{}, err
 	}
+	return commitUnderPlan(ctx, plan, files, folders, archives, outputDir, receiptPath, nil)
+}
+
+// ImportCollectionCommit imports the folder one source collection staged,
+// under the plan its receipt records, into a new case and import receipt. The
+// receipt is read strictly and must name its own evidence; a collection that
+// did not complete is refused before anything is read from the folder, because
+// what it staged is not the whole of its scope; and the folder must hold
+// exactly the entries the collection collected, with the bytes it recorded, or
+// nothing is written.
+func ImportCollectionCommit(ctx context.Context, collectionPath, folder, outputDir, receiptPath string) (*bundle.Bundle, importer.Receipt, error) {
+	data, err := ReadInputFile(collectionPath, evidencesource.MaxCollectionBytes)
+	if err != nil {
+		return nil, importer.Receipt{}, err
+	}
+	collection, err := evidencesource.DecodeCollection(data)
+	if err != nil {
+		return nil, importer.Receipt{}, err
+	}
+	if err := collection.Importable(); err != nil {
+		return nil, importer.Receipt{}, err
+	}
+	return commitUnderPlan(ctx, collection.Plan, nil, []string{folder}, nil, outputDir, receiptPath, func(extraction *importer.Extraction) error {
+		return collection.VerifyStaged(extraction.Containers[0])
+	})
+}
+
+// commitUnderPlan is one plan-driven import once its declaration is valid.
+// Admit, when set, is shown the extraction before anything is written, and a
+// refusal from it writes nothing.
+func commitUnderPlan(ctx context.Context, plan importer.Plan, files, folders, archives []string, outputDir, receiptPath string, admit func(*importer.Extraction) error) (*bundle.Bundle, importer.Receipt, error) {
 	if err := checkNewDestination(outputDir, receiptPath); err != nil {
 		return nil, importer.Receipt{}, err
 	}
@@ -65,6 +97,11 @@ func ImportPlanCommit(ctx context.Context, plan importer.Plan, files, folders, a
 	extraction, err := importer.Extract(ctx, plan, files, folders, archives)
 	if err != nil {
 		return nil, importer.Receipt{}, err
+	}
+	if admit != nil {
+		if err := admit(extraction); err != nil {
+			return nil, importer.Receipt{}, err
+		}
 	}
 	if len(extraction.Inputs) == 0 {
 		return nil, importer.Receipt{}, ErrImportNoMembers

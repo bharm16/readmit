@@ -7,16 +7,17 @@ Commands that create or run work use the [explicit license setup](license-v2.md#
 controls and an operator explicitly approved: an export directory this machine
 can already open, or a remote export reached by running the customer's own
 read-only transfer program. It stages the original bytes in a new directory with
-a receipt of what it did, and [`import`](import.md) turns that directory into a
-[case bundle](case-bundle.md).
+a receipt of what it did, and [`import --collection`](import.md#importing-a-staged-collection)
+turns that directory into a [case bundle](case-bundle.md) under the plan the
+receipt records.
 
 ```sh
 readmit source diagnose exports.json \
   --framing mllp --terminator cr --encoding utf-8 --direction inbound --member .mllp
 readmit source collect exports.json --output collected --receipt collection.json \
   --framing mllp --terminator cr --encoding utf-8 --direction inbound --member .mllp
-readmit import --folder collected --output incident.case --receipt import.json \
-  --framing mllp --terminator cr --encoding utf-8 --direction inbound --member .mllp
+readmit import --collection collection.json --folder collected \
+  --output incident.case --receipt import.json
 ```
 
 | Subcommand | What it does |
@@ -433,6 +434,20 @@ writing anything, use [`readmit corpus scan`](corpus.md).
 A collection that did not complete keeps what it staged — bytes that were read
 are evidence — and its `status` is what says they are not the whole of the scope.
 
+## Importing the collection
+
+`readmit import --collection collection.json --folder collected --output
+NEW_DIRECTORY --receipt NEW_FILE` is the handoff from a collection to evidence.
+It reads this receipt strictly, as the contract above declares it: every member
+is required, a member the contract does not declare is refused, and a receipt
+whose `identity` is not the digest of the collected entries it records is
+refused. It refuses a collection whose `status` is not `complete`, and imports
+the staged folder under the `plan` the receipt records only when the folder
+holds exactly the collected entries with the sizes and digests recorded for
+them. Nothing is imported under a plan the collection did not run under, and
+[import](import.md#importing-a-staged-collection) describes each refusal. The
+desktop window's finalize step runs the same operation.
+
 ## Console output and privacy
 
 Both summaries report counts, the declarations the person made and the statuses
@@ -468,9 +483,9 @@ Nothing is uploaded. A `directory` source accesses no network at all, and a
   second collection is a second directory beside the first, because original
   evidence is immutable and a collection is never rewritten in place.
 - **No case bundle.** A collection stages bytes and a receipt.
-  [`import`](import.md) turns them into evidence, so there is one ingestion path
-  into a case rather than two.
+  [`import --collection`](import.md#importing-a-staged-collection) turns them
+  into evidence, so there is one ingestion path into a case rather than two.
 - **No desktop-only source behaviour.** The desktop capture screen saves,
-  reopens, diagnoses and collects a registration through these same operations
-  and reader, and adds none of its own; see
+  reopens, diagnoses and collects a registration, and finalizes a collection,
+  through these same operations and readers, and adds none of its own; see
   [capture, collect and listen](desktop.md#capture-collect-and-listen).

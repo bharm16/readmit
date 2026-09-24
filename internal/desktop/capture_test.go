@@ -327,16 +327,12 @@ func TestPreviewListenLabelsSyntheticFixture(t *testing.T) {
 func TestFinalizeCaptureImportOffersExploration(t *testing.T) {
 	app := workspaceApp(t)
 	root := t.TempDir()
-	staged := filepath.Join(root, "staged")
-	if err := os.Mkdir(staged, 0700); err != nil {
-		t.Fatal(err)
-	}
-	payload := []byte("MSH|^~\\&|SEND|FAC|RECV|FAC|20260101120000||ADT^A01|MSG001|P|2.5.1\rPID|||1||DOE^JOHN\r")
-	if err := os.WriteFile(filepath.Join(staged, "one.hl7"), payload, 0600); err != nil {
-		t.Fatal(err)
+	plan := collectionPlan(importer.RawFraming, hl7.CR, ".hl7")
+	if collected := collectThroughWindow(t, app, root, plan, map[string]string{"one.hl7": collectedMessage("\r")}); collected.State != desktop.Completed {
+		t.Fatalf("collect: %+v", collected)
 	}
 	result := app.FinalizeCaptureImport(desktop.FinalizeCaptureRequest{
-		Workspace: root, Folder: "staged", OutputName: "imported.case",
+		Workspace: root, Folder: "collected", CollectionReceipt: "collection.json", OutputName: "imported.case",
 	})
 	if result.State != desktop.Completed || result.Case == nil {
 		t.Fatalf("finalize: %+v", result)

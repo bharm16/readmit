@@ -620,14 +620,13 @@ func TestEveryGeneratedCollectedOrCapturedOutputIsOneNewEntryOfTheWorkspace(t *t
 	root, outside := besideWorkspace(t)
 	writeDocument(t, root, "plan.json", fixture(t, "scenario-generator.json"))
 	payload := "MSH|^~\\&|SEND|FAC|RECV|FAC|20260101120000||ADT^A01|MSG001|P|2.5.1\rPID|||1||DOE^JOHN\r"
-	for _, folder := range []string{"export", "staged", "folder"} {
+	for _, folder := range []string{"export", "folder"} {
 		if err := os.Mkdir(filepath.Join(root, folder), 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, folder := range []string{"export", "staged"} {
-		writeDocument(t, filepath.Join(root, folder), "one.hl7", payload)
-	}
+	writeDocument(t, filepath.Join(root, "export"), "one.hl7", payload)
+	collectStaged(t, root)
 	source := evidencesource.Source{
 		Schema: evidencesource.Schema, Name: "exports", Kind: evidencesource.Directory,
 		Scope: "appointments", Root: filepath.Join(root, "export"),
@@ -668,7 +667,7 @@ func TestEveryGeneratedCollectedOrCapturedOutputIsOneNewEntryOfTheWorkspace(t *t
 			FixtureMode: "fixed", OutputName: output, ObservationName: observation, MaxMessages: 1, IdleTimeout: "1s"}
 	}
 	finalize := func(output, receipt string) desktop.FinalizeCaptureRequest {
-		return desktop.FinalizeCaptureRequest{Workspace: root, Folder: "staged", OutputName: output, ReceiptName: receipt}
+		return desktop.FinalizeCaptureRequest{Workspace: root, Folder: "staged", CollectionReceipt: "staged.json", OutputName: output, ReceiptName: receipt}
 	}
 	names := map[string]string{
 		"a `..` escape":                                       filepath.Join("..", "outside", "fresh"),

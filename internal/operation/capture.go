@@ -489,8 +489,9 @@ func CaptureJournalStatus(path string) (capturejournal.Summary, error) {
 	return capturejournal.Open(path)
 }
 
-// DefaultImportPlan is the framing a collected folder is imported under when
-// the operator kept the source collect plan's declarations.
+// DefaultImportPlan is the plan the window diagnoses and collects a source
+// under when its request declares none. A collected folder is never imported
+// under it: an import of one reads the plan its collection receipt records.
 func DefaultImportPlan() importer.Plan {
 	return importer.Plan{
 		Schema:     importer.PlanSchema,

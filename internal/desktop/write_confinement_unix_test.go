@@ -135,12 +135,11 @@ func TestEveryNewEntryIsWrittenIntoAWorkspaceOrProjectThatIsNotALink(t *testing.
 	app := workspaceApp(t)
 	root, outside := besideWorkspace(t)
 	for _, folder := range []string{root, outside} {
-		for _, name := range []string{"export", "staged"} {
-			if err := os.Mkdir(filepath.Join(folder, name), 0o700); err != nil {
-				t.Fatal(err)
-			}
-			writeDocument(t, filepath.Join(folder, name), "one.hl7", sampleImportHL7)
+		if err := os.Mkdir(filepath.Join(folder, "export"), 0o700); err != nil {
+			t.Fatal(err)
 		}
+		writeDocument(t, filepath.Join(folder, "export"), "one.hl7", sampleImportHL7)
+		collectStaged(t, folder)
 	}
 	parent := filepath.Dir(root)
 	linked := filepath.Join(parent, "linked")
@@ -178,7 +177,7 @@ func TestEveryNewEntryIsWrittenIntoAWorkspaceOrProjectThatIsNotALink(t *testing.
 	}
 	finalize := func(workspace, project string) refused {
 		result := app.FinalizeCaptureImport(desktop.FinalizeCaptureRequest{Workspace: workspace, Project: project, Folder: "staged",
-			OutputName: "fresh-finalized", ReceiptName: "fresh-finalized.json"})
+			CollectionReceipt: "staged.json", OutputName: "fresh-finalized", ReceiptName: "fresh-finalized.json"})
 		return refused{result.State, result.Reason}
 	}
 	commit := func(workspace, project string) refused {

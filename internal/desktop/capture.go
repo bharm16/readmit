@@ -701,34 +701,38 @@ func (a *App) OpenCaptureJournal(workspace, journalPath string) CaptureJournalRe
 	})
 }
 
-// FinalizeCaptureImport imports a collected folder into a new verified case and
-// optionally registers it on the project, then offers exploration binding.
+// FinalizeCaptureRequest names a staged source collection — the folder it
+// staged and the receipt it wrote beside it — and the case it becomes. It
+// carries no plan: the collection is imported under the plan its receipt
+// records.
 type FinalizeCaptureRequest struct {
-	Workspace         string         `json:"workspace"`
-	Project           string         `json:"project,omitzero"`
-	Folder            string         `json:"folder"`
-	OutputName        string         `json:"output_name"`
-	ReceiptName       string         `json:"receipt_name,omitzero"`
-	Plan              *importer.Plan `json:"plan,omitzero"`
-	RegisterInProject bool           `json:"register_in_project,omitzero"`
-	CaseTitle         string         `json:"case_title,omitzero"`
-	CaseOwner         string         `json:"case_owner,omitzero"`
-	CaseVersion       string         `json:"case_version,omitzero"`
+	Workspace         string `json:"workspace"`
+	Project           string `json:"project,omitzero"`
+	Folder            string `json:"folder"`
+	CollectionReceipt string `json:"collection_receipt"`
+	OutputName        string `json:"output_name"`
+	ReceiptName       string `json:"receipt_name,omitzero"`
+	RegisterInProject bool   `json:"register_in_project,omitzero"`
+	CaseTitle         string `json:"case_title,omitzero"`
+	CaseOwner         string `json:"case_owner,omitzero"`
+	CaseVersion       string `json:"case_version,omitzero"`
 }
 
-// FinalizeCaptureImport commits staged collected material through the shared
-// import operation, under the default plan unless the request declares one,
-// and registers the case on the project when asked, by the same flow
-// CommitImport uses.
+// FinalizeCaptureImport imports a staged collection into a new verified case
+// through the operation `readmit import --collection` uses: under the plan its
+// receipt records, and only when the receipt says the collection completed
+// and the folder holds exactly what it staged. It registers the case on the
+// project when asked, by the same flow CommitImport uses, and then offers
+// exploration binding.
 func (a *App) FinalizeCaptureImport(request FinalizeCaptureRequest) ImportCommitResult {
 	return runNamed[ImportCommitResult, *ImportCommitResult](a, "import", true, true, func(ctx context.Context) ImportCommitResult {
 		folder, ref := resolveWorkspacePath(request.Workspace, request.Folder)
 		if folder == "" {
 			return ImportCommitResult{State: ref.state, Reason: ref.reason}
 		}
-		plan := operation.DefaultImportPlan()
-		if request.Plan != nil {
-			plan = *request.Plan
+		collection, ref := resolveWorkspacePath(request.Workspace, request.CollectionReceipt)
+		if collection == "" {
+			return ImportCommitResult{State: ref.state, Reason: ref.reason}
 		}
 		into := importCommit{
 			workspace: request.Workspace, project: request.Project,
@@ -736,7 +740,7 @@ func (a *App) FinalizeCaptureImport(request FinalizeCaptureRequest) ImportCommit
 			register: request.RegisterInProject, title: request.CaseTitle, owner: request.CaseOwner, version: request.CaseVersion,
 		}
 		return a.commitImport(ctx, into, func(casePath, receiptPath string) (*bundle.Bundle, error) {
-			b, _, err := operation.ImportPlanCommit(ctx, plan, nil, []string{folder}, nil, casePath, receiptPath)
+			b, _, err := operation.ImportCollectionCommit(ctx, collection, folder, casePath, receiptPath)
 			return b, err
 		})
 	})

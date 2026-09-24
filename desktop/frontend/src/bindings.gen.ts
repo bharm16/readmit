@@ -1574,9 +1574,9 @@ export interface FinalizeCaptureRequest {
   workspace: string;
   project?: string;
   folder: string;
+  collection_receipt: string;
   output_name: string;
   receipt_name?: string;
-  plan?: ImportPlan;
   register_in_project?: boolean;
   case_title?: string;
   case_owner?: string;

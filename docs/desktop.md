@@ -4042,7 +4042,7 @@ current bounded authority; there is no arbitrary command console.
 | `StartCapture` | Starts a collector or the separately labelled SIU fixture only on explicit authorized action. |
 | `CaptureProgress` | The address a running collector or fixture bound, read without waiting for it; with port 0 the only place the port is known. |
 | `OpenCaptureJournal` | Read-only recovery of a `readmit-capture-journal/v1`; never sends, resends or resumes. |
-| `FinalizeCaptureImport` | Imports staged collected material into a new verified case and offers exploration, through the same import-and-register flow as `CommitImport`; an unnamed receipt is the case name followed by `-receipt.json`, as it is there. |
+| `FinalizeCaptureImport` | Imports a staged collection, named by its folder and its collection receipt, into a new verified case and offers exploration. It runs the operation `readmit import --collection` runs — under the plan the receipt records, refusing a collection that did not complete or a folder that does not hold what it staged — through the same import-and-register flow as `CommitImport`; an unnamed receipt is the case name followed by `-receipt.json`, as it is there. |
 
 Start only after preview. Cancel stops through the shared engine. A collector
 and the fixture receiver both run under the `capture` operation name, which is

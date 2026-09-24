@@ -287,8 +287,47 @@ test("source collect finalize offers exploration", async () => {
   expect(await screen.findByText(/Collected: 1 \/ 1/)).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "Finalize into a verified case…" }));
   expect(await screen.findByRole("heading", { name: "Import completed" })).toBeTruthy();
+  // The staged folder is finalized with the receipt it was collected under,
+  // which records its plan; the request carries none of its own.
+  const [finalize] = facade.oneCall("FinalizeCaptureImport");
+  expect(finalize.folder).toBe("collected");
+  expect(finalize.collection_receipt).toBe("collection.json");
+  expect("plan" in finalize).toBe(false);
   await user.click(screen.getByRole("button", { name: "Open this case" }));
   expect(facade.oneCall("OpenCase")[1]).toBe("imported-from-capture.case");
+});
+
+test("a collection that did not complete is not offered to finalize", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user);
+  await user.click(screen.getByRole("button", { name: "Capture or collect evidence…" }));
+  facade.reply({
+    CollectSource: (): Promise<SourceCollectionResult> =>
+      Promise.resolve({
+        state: "failed",
+        reason: "the source holds entries this collection could not read; what it staged is not the whole of the declared scope",
+        output_path: "collected",
+        receipt_path: "collection.json",
+        collection: {
+          schema: "readmit-source-collection/v1",
+          status: "failed",
+          declared: 2,
+          collected: 1,
+          duplicates: 0,
+          excluded: 0,
+          unreadable: 1,
+          not_read: 0,
+          bytes: 120,
+          records: 1,
+          occurrences: 1,
+        },
+      }),
+  });
+  await user.click(screen.getByRole("button", { name: "Collect into workspace" }));
+  expect(await screen.findByText(/Collected: 1 \/ 2/)).toBeTruthy();
+  expect(screen.getByText(/what it staged is not the whole of the declared scope/)).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Finalize into a verified case…" })).toBeNull();
+  expect(facade.callsTo("FinalizeCaptureImport")).toHaveLength(0);
 });
 
 test("finalized capture offers observation binding into Observation setup", async () => {
