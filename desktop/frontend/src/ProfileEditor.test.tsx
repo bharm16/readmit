@@ -207,6 +207,26 @@ test("validates profile through Go backend and displays resolution findings and 
   expect(screen.getByText("e96a3350b728a78d063cf99afddeec3854d393682039ed4348fbc89057c55054")).toBeDefined();
 });
 
+test("validation shows the named pack reader's refusal without a seal or resolution", async () => {
+  const user = userEvent.setup();
+  const reason = "the profile pack must be one regular file of the open workspace";
+  const facade = renderEditor();
+
+  await user.click(screen.getByRole("button", { name: "Validate with Engine" }));
+  expect(await screen.findByRole("heading", { name: "Validation Result: completed" })).toBeTruthy();
+  facade.reply({ ValidateProfile: () => ({ state: "failed", reason }) });
+  await user.click(screen.getByRole("button", { name: "Validate with Engine" }));
+  expect(await screen.findByRole("heading", { name: "Validation Result: failed" })).toBeTruthy();
+  expect(screen.getByText(reason)).toBeTruthy();
+  expect(screen.queryByText(/Sealed Version:/)).toBeNull();
+  expect(screen.queryByText(/Resolved against the pinned pack/)).toBeNull();
+  expect(facade.callsTo("ValidateProfile").at(-1)?.args).toEqual([{
+    workspace: WORKSPACE_ROOT,
+    document: expect.any(String),
+    pack: "profile-pack.json",
+  }]);
+});
+
 test("saves profile revision and displays refusal on immutability failure", async () => {
   const user = userEvent.setup();
   renderEditor({
@@ -292,6 +312,95 @@ test("retains draft edits in draft store and allows discarding", async () => {
     const calls = facade.callsTo("SaveEditorDraft");
     expect(calls.length).toBeGreaterThan(0);
   });
+});
+
+test("discard waits for a delayed retention and cancels queued saves before clearing the draft", async () => {
+  const user = userEvent.setup();
+  let held: EditorDraft[] = [];
+  const facade = renderEditor({
+    DiscardEditorDraft: (id) => {
+      held = held.filter((draft) => draft.id !== id);
+      return { state: "completed", drafts: held };
+    },
+  });
+  const retaining = facade.park("SaveEditorDraft");
+
+  await user.type(screen.getByLabelText("Profile ID"), "-edited");
+  expect(retaining.size).toBe(1);
+  expect(facade.callsTo("SaveEditorDraft")).toHaveLength(1);
+  await user.click(screen.getByRole("tab", { name: "Canonical JSON" }));
+  await user.click(screen.getByRole("button", { name: "Discard Unstored Edits" }));
+  expect(facade.callsTo("DiscardEditorDraft")).toHaveLength(0);
+
+  const sent = facade.oneCall("SaveEditorDraft")[0] as EditorDraft;
+  held = [{ ...sent, id: "profile-draft-1" }];
+  retaining.resolve({ state: "completed", drafts: held });
+  await waitFor(() => expect(facade.oneCall("DiscardEditorDraft")).toEqual(["profile-draft-1"]));
+  expect(held).toEqual([]);
+  expect(facade.callsTo("SaveEditorDraft")).toHaveLength(1);
+  expect((screen.getByLabelText("Raw Canonical JSON") as HTMLTextAreaElement).value).toContain('"id": "local-siu-profile"');
+});
+
+test("a refused draft discard keeps the edits and their identity for a retry", async () => {
+  const user = userEvent.setup();
+  const reason = "the draft store could not be written";
+  let refuse = true;
+  let held: EditorDraft[] = [];
+  const facade = renderEditor({
+    SaveEditorDraft: (draft) => {
+      held = [{ ...draft, id: "profile-draft-1" }];
+      return { state: "completed", drafts: held };
+    },
+    DiscardEditorDraft: (id) => {
+      if (refuse) return { state: "failed", reason, drafts: held };
+      held = held.filter((draft) => draft.id !== id);
+      return { state: "completed", drafts: held };
+    },
+  });
+
+  await user.type(screen.getByLabelText("Profile ID"), "x");
+  expect(await screen.findByText("Retained. It will come back if this window stops.")).toBeTruthy();
+  await user.click(screen.getByRole("tab", { name: "Canonical JSON" }));
+  await user.click(screen.getByRole("button", { name: "Discard Unstored Edits" }));
+  expect(await screen.findByText(reason)).toBeTruthy();
+  expect((screen.getByLabelText("Raw Canonical JSON") as HTMLTextAreaElement).value).toContain('"id": "local-siu-profilex"');
+  expect(held).toHaveLength(1);
+
+  refuse = false;
+  await user.click(screen.getByRole("button", { name: "Discard Unstored Edits" }));
+  await waitFor(() => expect(held).toEqual([]));
+  expect(facade.callsTo("DiscardEditorDraft").map((call) => call.args[0])).toEqual([
+    "profile-draft-1", "profile-draft-1",
+  ]);
+  expect((screen.getByLabelText("Raw Canonical JSON") as HTMLTextAreaElement).value).toContain('"id": "local-siu-profile"');
+});
+
+test("after a delayed save and refused discard, Retry retains the newest queued profile text", async () => {
+  const user = userEvent.setup();
+  const reason = "the draft store could not be written";
+  let held: EditorDraft[] = [];
+  const facade = renderEditor({
+    DiscardEditorDraft: () => ({ state: "failed", reason, drafts: held }),
+  });
+  const retaining = facade.park("SaveEditorDraft");
+
+  await user.type(screen.getByLabelText("Profile ID"), "xy");
+  expect(retaining.size).toBe(1);
+  await user.click(screen.getByRole("tab", { name: "Canonical JSON" }));
+  await user.click(screen.getByRole("button", { name: "Discard Unstored Edits" }));
+  const first = facade.oneCall("SaveEditorDraft")[0] as EditorDraft;
+  held = [{ ...first, id: "profile-draft-1" }];
+  retaining.resolve({ state: "completed", drafts: held });
+  expect(await screen.findByText(reason)).toBeTruthy();
+  expect(facade.callsTo("SaveEditorDraft")).toHaveLength(1);
+
+  await user.click(screen.getByRole("button", { name: "Retain it again" }));
+  await waitFor(() => expect(facade.callsTo("SaveEditorDraft")).toHaveLength(2));
+  const retried = facade.callsTo("SaveEditorDraft")[1]?.args[0] as EditorDraft;
+  expect(retried.id).toBe("profile-draft-1");
+  expect(JSON.parse(retried.content as string).profile.id).toBe("local-siu-profilexy");
+  retaining.resolve({ state: "completed", drafts: [{ ...retried, id: "profile-draft-1" }] });
+  expect(await screen.findByText("Retained. It will come back if this window stops.")).toBeTruthy();
 });
 
 /** A completed import as the facade reports one: what the package carried,

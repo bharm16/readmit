@@ -250,16 +250,17 @@ export function ProfileEditor({
     });
   }
 
-  function discardDraft() {
-    const id = retainer.currentId();
-    if (id !== "") {
-      retainer.drop(id);
+  async function discardDraft() {
+    setPending(true);
+    try {
+      if (!await retainer.dropCurrent()) return;
+      const clean = emptyProfile();
+      setProfile(clean);
+      setRawJson(JSON.stringify(clean, null, 2));
+      setProfileResult(null);
+    } finally {
+      setPending(false);
     }
-    retainer.clear();
-    const clean = emptyProfile();
-    setProfile(clean);
-    setRawJson(JSON.stringify(clean, null, 2));
-    setProfileResult(null);
   }
 
   // --- Facade Calls ---
@@ -1538,7 +1539,7 @@ export function ProfileEditor({
             <button
               type="button"
               disabled={disabled}
-              onClick={() => discardDraft()}
+              onClick={() => void discardDraft()}
             >
               Discard Unstored Edits
             </button>

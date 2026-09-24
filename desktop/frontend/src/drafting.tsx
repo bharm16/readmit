@@ -54,7 +54,7 @@ export function useRetainer(): {
   retention: Retention;
   save: (draft: EditorDraft) => void;
   drop: (id: string) => void;
-  dropCurrent: () => Promise<void>;
+  dropCurrent: () => Promise<boolean>;
   retry: () => void;
   keepAsNew: () => void;
   clear: () => void;
@@ -137,9 +137,11 @@ export function useRetainer(): {
   // when a keystroke is queued would still be empty for every keystroke typed
   // before the first answer, each minting a draft of its own.
   const enqueue = useCallback((saved: EditorDraft, id: string | null) => {
+    // Retry after a refused discard must use the newest text, even if its
+    // retention was queued behind an older in-flight write and then cancelled.
+    last.current = { ...saved, id: id ?? knownId.current };
     if (conflicted.current) {
       // The newest text is what a decision will keep; nothing is sent.
-      last.current = { ...saved, id: id ?? knownId.current };
       return;
     }
     setRetention({ state: "saving" });
@@ -154,7 +156,6 @@ export function useRetainer(): {
         if (conflicted.current) {
           // An earlier retention found the identity gone while this one was
           // queued; the person decides before anything more is written.
-          last.current = { ...saved, id: id ?? knownId.current };
           return;
         }
         // The identity held when the write is sent continues this editor's
@@ -162,7 +163,6 @@ export function useRetainer(): {
         // can serve several, and one never continues another's.
         const continued = mintedFor.current === null || mintedFor.current === scope(saved) ? knownId.current : "";
         const sent = { ...saved, id: id ?? continued };
-        last.current = sent;
         try {
           apply(sent, await saveEditorDraft(sent));
         } catch {
@@ -180,30 +180,31 @@ export function useRetainer(): {
     enqueue(draft, draft.id === "" ? null : draft.id);
   }, [enqueue]);
 
-  const discard = useCallback(async (id: string) => {
+  const discard = useCallback(async (id: string): Promise<boolean> => {
     try {
       const result = await discardEditorDraft(id);
-      if (knownId.current === id) {
-        knownId.current = "";
-      }
-      seenIds.current.delete(id);
       notify(result, "discard");
       if (result.state === "completed" || result.state === "empty") {
+        if (knownId.current === id) knownId.current = "";
+        seenIds.current.delete(id);
         setRetention({ state: "idle" });
+        return true;
       } else {
         setRetention(
           result.reason
             ? { state: "not-retained", reason: result.reason }
             : { state: "not-retained" },
         );
+        return false;
       }
     } catch {
       setRetention({ state: "not-retained", reason: "the application did not answer" });
+      return false;
     }
   }, []);
 
   const drop = useCallback((id: string) => {
-    chainRef.current = chainRef.current.then(() => discard(id));
+    chainRef.current = chainRef.current.then(async () => { await discard(id); });
   }, [discard]);
 
   // The editor's work was stored where it belongs. Every retention still
@@ -211,20 +212,22 @@ export function useRetainer(): {
   // this editor's draft is retained under once the write in flight has
   // landed, including one that write is minting, is dropped. Nothing is left
   // to keep as new or write again. Resolves when the store answered, so an
-  // editor can say the work is stored only once no draft offers it back.
-  const dropCurrent = useCallback((): Promise<void> => {
+  // editor can say the work is stored only once no draft offers it back. A
+  // refusal keeps the identity for another discard attempt and returns false.
+  const dropCurrent = useCallback((): Promise<boolean> => {
     generation.current += 1;
-    const dropped = chainRef.current.then(async () => {
-      last.current = null;
-      conflicted.current = false;
+    const dropped = chainRef.current.then(async (): Promise<boolean> => {
       const id = knownId.current;
       if (id !== "") {
-        await discard(id);
+        if (!await discard(id)) return false;
       } else {
         setRetention({ state: "idle" });
       }
+      last.current = null;
+      conflicted.current = false;
+      return true;
     });
-    chainRef.current = dropped;
+    chainRef.current = dropped.then(() => {});
     return dropped;
   }, [discard]);
 

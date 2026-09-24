@@ -279,14 +279,12 @@ func (a *App) OpenProfile(workspace, entry, packEntry string) LocalProfileResult
 		}
 		var pack profilepack.Pack
 		if packEntry == "" {
-			pack = a.findOrReadPack(folder, "", profile.Base.Pack)
+			pack = a.findPinnedPack(folder, profile.Base.Pack)
 		} else {
-			_, packData, declined := folderDocument(root, packEntry, profilepack.MaxPackBytes, "the profile pack")
-			if packData == nil {
+			var declined refusal
+			pack, declined = readNamedProfilePack(root, packEntry)
+			if declined.state != "" {
 				return LocalProfileResult{State: declined.state, Reason: declined.reason}
-			}
-			if pack, err = profilepack.Decode(packData); err != nil {
-				return LocalProfileResult{State: Failed, Reason: err.Error()}
 			}
 		}
 		resolution := localprofile.Resolve(profile, pack)
@@ -311,12 +309,23 @@ func (a *App) OpenProfile(workspace, entry, packEntry string) LocalProfileResult
 // ValidateProfile checks a local profile document strictly through Go and resolves it against a pack.
 func (a *App) ValidateProfile(request ProfileValidateRequest) LocalProfileResult {
 	return run(a, false, false, func(context.Context) LocalProfileResult {
-		root, _ := resolveFolder(request.Workspace)
+		root, declined := resolveFolder(request.Workspace)
+		if root == "" && request.Pack != "" {
+			return LocalProfileResult{State: declined.state, Reason: declined.reason}
+		}
 		profile, err := localprofile.Decode([]byte(request.Document))
 		if err != nil {
 			return LocalProfileResult{State: Failed, Reason: err.Error()}
 		}
-		pack := a.findOrReadPack(root, request.Pack, profile.Base.Pack)
+		var pack profilepack.Pack
+		if request.Pack == "" {
+			pack = a.findPinnedPack(root, profile.Base.Pack)
+		} else {
+			pack, declined = readNamedProfilePack(root, request.Pack)
+			if declined.state != "" {
+				return LocalProfileResult{State: declined.state, Reason: declined.reason}
+			}
+		}
 		resolution := localprofile.Resolve(profile, pack)
 		seal, err := profileversion.Seal(profile)
 		if err != nil {
@@ -383,7 +392,7 @@ func (a *App) SaveProfile(request ProfileSaveRequest) LocalProfileResult {
 			}
 		}
 
-		resolution := localprofile.Resolve(profile, a.findOrReadPack(root, "", profile.Base.Pack))
+		resolution := localprofile.Resolve(profile, a.findPinnedPack(root, profile.Base.Pack))
 		return LocalProfileResult{
 			State:      Completed,
 			Document:   string(canonicalDoc),
@@ -683,14 +692,19 @@ func folderDocument(root, name string, limit int, what string) (string, []byte, 
 	return folder, data, declined
 }
 
-func (a *App) findOrReadPack(root, packEntry string, pinned profilepack.Identity) profilepack.Pack {
-	if root != "" && packEntry != "" {
-		if data, declined := workspaceDocument(root, packEntry, profilepack.MaxPackBytes, "the profile pack"); data != nil && declined.state == "" {
-			if pack, err := profilepack.Decode(data); err == nil {
-				return pack
-			}
-		}
+func readNamedProfilePack(root, entry string) (profilepack.Pack, refusal) {
+	_, data, declined := folderDocument(root, entry, profilepack.MaxPackBytes, "the profile pack")
+	if data == nil {
+		return profilepack.Pack{}, declined
 	}
+	pack, err := profilepack.Decode(data)
+	if err != nil {
+		return profilepack.Pack{}, refusal{Failed, err.Error()}
+	}
+	return pack, refusal{}
+}
+
+func (a *App) findPinnedPack(root string, pinned profilepack.Identity) profilepack.Pack {
 	if root != "" && pinned.ID != "" {
 		entries, err := os.ReadDir(root)
 		if err == nil {

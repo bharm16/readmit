@@ -3738,7 +3738,11 @@ The panel provides five functional tabs:
      kind `local-profile`), preserving in-progress edits across view switching and
      unexpected interruptions.
    - Validates live through Go, displaying resolved rule origins (`profile`,
-     `overridden`, `local`, `undeclared`) and conformance findings.
+     `overridden`, `local`, `undeclared`) and conformance findings. When a pack
+     entry is named, validation reads that exact entry as opening does; a
+     missing or refused pack stops validation in the reader's words, without
+     presenting a seal or resolution against another pack. With no pack named,
+     validation may look for the pack the profile pins in the workspace.
    - Computes canonical profile version seals ([`readmit-profile-version/v1`](profile-versions.md))
      and enforces immutability: saving an approved profile revision requires
      bumping the version; approved profiles are never mutated or overwritten in place.
@@ -3775,6 +3779,10 @@ The panel provides five functional tabs:
 5. **Raw Schema JSON**:
    - Direct inspection of the canonical JSON representation according to ADR-0003
      and the JSON schema.
+   - **Discard Unstored Edits** waits for an in-flight draft retention, cancels
+     queued retentions and removes the retained draft before resetting the
+     editor, so a late save cannot restore discarded text. If removal is
+     refused, the editor keeps its text and draft identity for another attempt.
 
 ## Synthetic scenario authoring
 

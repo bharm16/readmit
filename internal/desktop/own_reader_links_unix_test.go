@@ -347,7 +347,7 @@ func TestProfileAndScenarioReadersRefuseALinkToADocumentOfTheirKind(t *testing.T
 			result := app.OpenProfile(root, "local-profile.json", entry)
 			return refused{result.State, result.Reason}
 		}},
-		{"ValidateProfile(Pack)", "pack.document", fallsBack, func(entry string) refused {
+		{"ValidateProfile(Pack)", "pack.document", notOneRegularFile("the profile pack"), func(entry string) refused {
 			result := app.ValidateProfile(desktop.ProfileValidateRequest{Workspace: root, Document: profile, Pack: entry})
 			return refused{result.State, result.Reason}
 		}},
