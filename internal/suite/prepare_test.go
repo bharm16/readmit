@@ -2,6 +2,7 @@ package suite_test
 
 import (
 	"encoding/json/v2"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -179,5 +180,41 @@ func TestSuiteBindsLedgerObservationWithoutEditingExpectations(t *testing.T) {
 	generated, e := testrunner.ReadSpec(filepath.Join(prepared.Directory, "booking-one.json"))
 	if e != nil || generated.Observation.Path != filepath.Join(dir, "east-observation.json") || *generated.Assertions[0].Expected.Count != 1 {
 		t.Fatalf("%+v %v", generated, e)
+	}
+}
+
+// A pinned run compiles only the suite document it was pinned to, checked on
+// the bytes it then compiles, so nothing can change between the check and the
+// read: a document rewritten since its identity was taken, or no identity at
+// all, is refused before the output exists, and the unchanged document runs.
+func TestAPinnedSuiteRunRefusesADocumentThatChangedSinceItsIdentity(t *testing.T) {
+	dir, doc := fixture(t, "127.0.0.1:1")
+	path := filepath.Join(dir, "suite.json")
+	original, e := os.ReadFile(path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	identity := suite.Identity(original)
+	doc.Parallelism++
+	write(t, path, doc)
+	out := filepath.Join(dir, "out")
+	for name, pinned := range map[string]string{"a rewritten suite": identity, "no identity": ""} {
+		if _, e := suite.RunPinned(t.Context(), path, "east", out, "", pinned); !errors.Is(e, suite.ErrChanged) {
+			t.Fatalf("%s was run: %v", name, e)
+		}
+		if _, e := os.Lstat(out); !os.IsNotExist(e) {
+			t.Fatalf("%s created its output", name)
+		}
+	}
+	if e := os.WriteFile(path, original, 0600); e != nil {
+		t.Fatal(e)
+	}
+	report, e := suite.RunPinned(t.Context(), path, "east", out, "", identity)
+	if e != nil || report.Schema == "" || len(report.Jobs) != 1 {
+		t.Fatalf("the pinned suite did not run: %+v %v", report, e)
+	}
+	retained, e := os.ReadFile(filepath.Join(out, "suite.json"))
+	if e != nil || string(retained) != string(original) {
+		t.Fatalf("the suite retained other bytes than it was pinned to: %v", e)
 	}
 }

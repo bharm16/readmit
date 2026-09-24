@@ -158,6 +158,10 @@ func TestRunOperationsRefuseEveryEntryThatIsNotOneRegularFileOfTheWorkspace(t *t
 	}
 	listed, before := entriesOf(t, root), bytesUnder(t, outside)
 
+	// Every start names the identity its preflight fixed, so what refuses it
+	// is the entry it names.
+	test := preflighted(t, app, desktop.RunPreflightRequest{Workspace: root, Spec: "booking.json"})
+	nightly := preflighted(t, app, desktop.RunPreflightRequest{Workspace: root, Spec: "nightly.json", Environment: "east"})
 	saved := []string{"the saved test must be one regular entry of the open workspace"}
 	members := []confinedMember{
 		{"PreflightRun(Spec) of a saved test", saved, hostileDocuments(root, outside, "booking.json"), func(entry string) refused {
@@ -169,15 +173,15 @@ func TestRunOperationsRefuseEveryEntryThatIsNotOneRegularFileOfTheWorkspace(t *t
 			return refused{result.State, result.Reason}
 		}},
 		{"StartDurableRun(Spec)", saved, hostileDocuments(root, outside, "booking.json"), func(entry string) refused {
-			result := app.StartDurableRun(desktop.DurableRunRequest{Workspace: root, Spec: entry, Output: "fresh-run"})
+			result := app.StartDurableRun(desktop.DurableRunRequest{Workspace: root, Spec: entry, Output: "fresh-run", Expected: test})
 			return refused{result.State, result.Reason}
 		}},
 		{"StartSuiteRun(Suite)", []string{"the suite must be one regular entry of the open workspace"}, hostileDocuments(root, outside, "nightly.json"), func(entry string) refused {
-			result := app.StartSuiteRun(desktop.SuiteRunRequest{Workspace: root, Suite: entry, Environment: "east", Output: "fresh-run"})
+			result := app.StartSuiteRun(desktop.SuiteRunRequest{Workspace: root, Suite: entry, Environment: "east", Output: "fresh-run", Expected: nightly})
 			return refused{result.State, result.Reason}
 		}},
 		{"StartSuiteRun(References)", []string{"released references must be one regular entry of the open workspace"}, hostileDocuments(root, outside, "booking.json"), func(entry string) refused {
-			result := app.StartSuiteRun(desktop.SuiteRunRequest{Workspace: root, Suite: "nightly.json", Environment: "east", References: entry, Output: "fresh-run"})
+			result := app.StartSuiteRun(desktop.SuiteRunRequest{Workspace: root, Suite: "nightly.json", Environment: "east", References: entry, Output: "fresh-run", Expected: nightly})
 			return refused{result.State, result.Reason}
 		}},
 		{"PreviewPacket(Spec)", []string{"the specification must be one entry of the open workspace"}, hostileDocuments(root, outside, "booking.json"), func(entry string) refused {
@@ -230,11 +234,11 @@ func TestRunOperationsRefuseEveryEntryThatIsNotOneRegularFileOfTheWorkspace(t *t
 				return refused{result.State, result.Reason}
 			},
 			"StartDurableRun(Output)": func() refused {
-				result := app.StartDurableRun(desktop.DurableRunRequest{Workspace: root, Spec: "booking.json", Output: output})
+				result := app.StartDurableRun(desktop.DurableRunRequest{Workspace: root, Spec: "booking.json", Output: output, Expected: test})
 				return refused{result.State, result.Reason}
 			},
 			"StartSuiteRun(Output)": func() refused {
-				result := app.StartSuiteRun(desktop.SuiteRunRequest{Workspace: root, Suite: "nightly.json", Environment: "east", Output: output})
+				result := app.StartSuiteRun(desktop.SuiteRunRequest{Workspace: root, Suite: "nightly.json", Environment: "east", Output: output, Expected: nightly})
 				return refused{result.State, result.Reason}
 			},
 		} {
@@ -263,10 +267,12 @@ func TestRunEvidenceReadsRefuseEveryEntryThatLeavesTheWorkspace(t *testing.T) {
 	root, outside := confinementWorkspaces(t, peer.address)
 	app := workspaceApp(t)
 	for _, folder := range []string{root, outside} {
-		if run := app.StartDurableRun(desktop.DurableRunRequest{Workspace: folder, Spec: "booking.json", Output: "run"}); run.State != desktop.Completed {
+		test := preflighted(t, app, desktop.RunPreflightRequest{Workspace: folder, Spec: "booking.json"})
+		if run := app.StartDurableRun(desktop.DurableRunRequest{Workspace: folder, Spec: "booking.json", Output: "run", Expected: test}); run.State != desktop.Completed {
 			t.Fatalf("run in %s: %+v", folder, run)
 		}
-		if run := app.StartSuiteRun(desktop.SuiteRunRequest{Workspace: folder, Suite: "nightly.json", Environment: "east", Output: "suite-run"}); run.State != desktop.Completed {
+		nightly := preflighted(t, app, desktop.RunPreflightRequest{Workspace: folder, Spec: "nightly.json", Environment: "east"})
+		if run := app.StartSuiteRun(desktop.SuiteRunRequest{Workspace: folder, Suite: "nightly.json", Environment: "east", Output: "suite-run", Expected: nightly}); run.State != desktop.Completed {
 			t.Fatalf("suite run in %s: %+v", folder, run)
 		}
 		writeDocument(t, folder, "booking-assertions.json", bookingSet)

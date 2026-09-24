@@ -254,7 +254,8 @@ func TestControlledCrashRestoresUnstoredWorkAndKeepsTheSendUncertain(t *testing.
 
 	// Executing again is a deliberate act that needs a new output. The retained
 	// run is never reused, so no recovery path can turn into a resend.
-	if reused := restarted.StartDurableRun(desktop.DurableRunRequest{Workspace: workspace, Spec: "spec.json", Output: "job"}); reused.State != desktop.Failed {
+	identity := preflighted(t, restarted, desktop.RunPreflightRequest{Workspace: workspace, Spec: "spec.json"})
+	if reused := restarted.StartDurableRun(desktop.DurableRunRequest{Workspace: workspace, Spec: "spec.json", Output: "job", Expected: identity}); reused.State != desktop.Failed {
 		t.Fatalf("an interrupted run was executed again in place: %+v", reused)
 	}
 	if accepted, frames = peer.counts(); accepted != 1 || frames != 1 {
@@ -345,7 +346,8 @@ func crashChildRun(t *testing.T) {
 	if retained.State != desktop.Completed {
 		t.Fatalf("child could not retain its draft: %+v", retained)
 	}
-	app.StartDurableRun(desktop.DurableRunRequest{Workspace: workspace, Spec: "spec.json", Output: "job"})
+	identity := preflighted(t, app, desktop.RunPreflightRequest{Workspace: workspace, Spec: "spec.json"})
+	app.StartDurableRun(desktop.DurableRunRequest{Workspace: workspace, Spec: "spec.json", Output: "job", Expected: identity})
 }
 
 // Cancelling is not the same interruption as a crash, and recovery must not
@@ -362,9 +364,10 @@ func TestRecoveringACancelledRunKeepsItsStopReasonAndUncertainty(t *testing.T) {
 	if recorded := app.RecordView(desktop.View{Workspace: workspace, Region: "evidence", Run: output}); recorded.State != desktop.Completed {
 		t.Fatalf("record view: %+v", recorded)
 	}
+	identity := preflighted(t, app, desktop.RunPreflightRequest{Workspace: workspace, Spec: "spec.json"})
 	executed := make(chan desktop.DurableRunResult, 1)
 	go func() {
-		executed <- app.StartDurableRun(desktop.DurableRunRequest{Workspace: workspace, Spec: "spec.json", Output: "job"})
+		executed <- app.StartDurableRun(desktop.DurableRunRequest{Workspace: workspace, Spec: "spec.json", Output: "job", Expected: identity})
 	}()
 	select {
 	case <-peer.received:

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,7 +20,7 @@ func TestUnactivatedDesktopRetainsSampleReadsButRefusesAuthoring(t *testing.T) {
 	if sample.State != desktop.Completed {
 		t.Fatal(sample)
 	}
-	if result := app.StartDurableRun(desktop.DurableRunRequest{Workspace: "absent", Spec: "absent", Output: "absent"}); result.State != desktop.PermissionDenied {
+	if result := app.StartDurableRun(desktop.DurableRunRequest{Workspace: "absent", Spec: "absent", Output: "absent", Expected: strings.Repeat("0", 64)}); result.State != desktop.PermissionDenied {
 		t.Fatal(result)
 	}
 	if result := app.SaveNote("absent", project.Note{}); result.State != desktop.PermissionDenied {
@@ -98,11 +99,14 @@ func TestACancellationDuringExecutionAdmissionIsCancelledNotDenied(t *testing.T)
 		t.Fatal(result)
 	}
 	root := t.TempDir()
-	// A send and a reexecution refuse a request that is not authorized
-	// before they ask for admission; every other operation asks first.
+	// A send and a reexecution refuse a request that is not authorized, and a
+	// run or suite start one that names no preflight identity, before they ask
+	// for admission; every other operation asks first.
 	requests := map[string]any{
 		"SendReplay":                desktop.ReplaySendRequest{Approved: true, Expected: "previewed", Replay: desktop.ReplayRequest{Workspace: root, Output: "run"}},
 		"ReexecuteReviewedEvidence": desktop.ReexecutionSendRequest{Workspace: root, Authorize: true, Expected: "previewed"},
+		"StartDurableRun":           desktop.DurableRunRequest{Workspace: root, Expected: "preflighted"},
+		"StartSuiteRun":             desktop.SuiteRunRequest{Workspace: root, Expected: "preflighted"},
 	}
 	type operation struct {
 		method, name string

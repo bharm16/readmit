@@ -65,7 +65,7 @@ func retain(dir, name string, raw []byte) error {
 // A failed preparation removes only its own new configuration directory; once
 // returned, the directory is retained and every run creates separate evidence.
 func Prepare(path, environment, output string) (prepared Prepared, err error) {
-	return prepare(path, environment, output, "")
+	return prepare(path, environment, output, "", "")
 }
 
 // PrepareApproved verifies an explicit pin for every template before expanding rows.
@@ -73,12 +73,20 @@ func PrepareApproved(path, environment, output, references string) (Prepared, er
 	if references == "" {
 		return Prepared{}, errors.New("released suite requires references")
 	}
-	return prepare(path, environment, output, references)
+	return prepare(path, environment, output, references, "")
 }
-func prepare(path, environment, output, references string) (prepared Prepared, err error) {
+
+// prepare compiles the suite at path. A non-empty identity pins it: the
+// document read here, once, is the one compiled, and it must have that
+// identity, so a document rewritten after a preview is refused before the
+// output exists.
+func prepare(path, environment, output, references, identity string) (prepared Prepared, err error) {
 	raw, err := read(path, MaxBytes)
 	if err != nil {
 		return prepared, err
+	}
+	if identity != "" && Identity(raw) != identity {
+		return prepared, ErrChanged
 	}
 	resolved, err := artifactpath.Resolve(path)
 	if err != nil {
@@ -238,17 +246,39 @@ func prepare(path, environment, output, references string) (prepared Prepared, e
 // Run expands one selected environment and delegates every scheduling and send
 // decision to runqueue. Existing output is refused, never resumed or resent.
 func Run(ctx context.Context, path, environment, output string) (runqueue.Report, error) {
-	return run(ctx, path, environment, output, "")
+	return run(ctx, path, environment, output, "", "")
 }
 
 func RunApproved(ctx context.Context, path, environment, output, references string) (runqueue.Report, error) {
 	if references == "" {
 		return runqueue.Report{}, errors.New("released suite requires references")
 	}
-	return run(ctx, path, environment, output, references)
+	return run(ctx, path, environment, output, references, "")
 }
-func run(ctx context.Context, path, environment, output, references string) (runqueue.Report, error) {
-	prepared, err := prepare(path, environment, output, references)
+
+// Identity is the identity of one suite document: the SHA-256 of its exact
+// bytes, as a promotion review records the suite it reviewed. A preview reports
+// it, and RunPinned executes only a document that still has it.
+func Identity(raw []byte) string { return promotionHash(raw) }
+
+// ErrChanged refuses a pinned run whose suite document no longer has the
+// identity it was pinned to.
+var ErrChanged = errors.New("the suite differs from the identity it was pinned to")
+
+// RunPinned is Run — or RunApproved, when references are given — for a caller
+// that previewed the suite: it executes only while the document at path still
+// has identity, checked on the bytes it then compiles, so there is no gap
+// between the check and the read. An empty or different identity refuses with
+// ErrChanged before the output is created or anything is sent.
+func RunPinned(ctx context.Context, path, environment, output, references, identity string) (runqueue.Report, error) {
+	if identity == "" {
+		return runqueue.Report{}, ErrChanged
+	}
+	return run(ctx, path, environment, output, references, identity)
+}
+
+func run(ctx context.Context, path, environment, output, references, identity string) (runqueue.Report, error) {
+	prepared, err := prepare(path, environment, output, references, identity)
 	if err != nil {
 		return runqueue.Report{}, err
 	}

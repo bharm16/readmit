@@ -74,6 +74,58 @@ func TestCancelledBeforeSendIsDurableAndNeverPasses(t *testing.T) {
 	}
 }
 
+// A pinned start executes only prepared inputs that still have the identity a
+// preview reported: a target configuration edited since — the spec's bytes
+// unchanged — or no identity at all is refused before the job exists, and the
+// unchanged inputs execute under the identity they had.
+func TestAPinnedStartRefusesInputsThatChangedSinceTheirIdentity(t *testing.T) {
+	address, received := peer(t, "AA")
+	spec, out := setup(t, address)
+	previewed, err := durablerun.Prepare(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := previewed.InputIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(filepath.Dir(spec), "target.json")
+	original, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, bytes.Replace(original, []byte(`"300ms"`), []byte(`"400ms"`), 1), 0600); err != nil {
+		t.Fatal(err)
+	}
+	edited, err := durablerun.Prepare(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, pinned := range map[string]string{"an edited target configuration": identity, "no identity": ""} {
+		if _, err := edited.StartPinned(context.Background(), out, pinned); !errors.Is(err, durablerun.ErrInputsChanged) {
+			t.Fatalf("%s was started: %v", name, err)
+		}
+	}
+	if _, err := os.Lstat(out); !os.IsNotExist(err) {
+		t.Fatal("a refused start created its job")
+	}
+	select {
+	case <-received:
+		t.Fatal("a refused start sent")
+	default:
+	}
+	if err := os.WriteFile(target, original, 0600); err != nil {
+		t.Fatal(err)
+	}
+	unchanged, err := durablerun.Prepare(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary, err := unchanged.StartPinned(context.Background(), out, identity); err != nil || summary.State != durablerun.Passed {
+		t.Fatalf("the previewed inputs did not execute: %+v %v", summary, err)
+	}
+}
+
 func peer(t *testing.T, code string) (string, <-chan struct{}) {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -276,7 +328,11 @@ func TestCLIAndDesktopExposeTheSameLifecycle(t *testing.T) {
 	}
 	address, received := peer(t, "")
 	spec, out = setup(t, address)
-	request := desktop.DurableRunRequest{Workspace: filepath.Dir(spec), Spec: filepath.Base(spec), Output: filepath.Base(out)}
+	preflight := app.PreflightRun(desktop.RunPreflightRequest{Workspace: filepath.Dir(spec), Spec: filepath.Base(spec)})
+	if preflight.State != desktop.Completed || preflight.Preflight == nil {
+		t.Fatalf("%+v", preflight)
+	}
+	request := desktop.DurableRunRequest{Workspace: filepath.Dir(spec), Spec: filepath.Base(spec), Output: filepath.Base(out), Expected: preflight.Preflight.Identity}
 	done := make(chan desktop.DurableRunResult, 1)
 	go func() { done <- app.StartDurableRun(request) }()
 	select {

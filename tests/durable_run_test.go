@@ -242,7 +242,11 @@ func TestDesktopAndCommandLineRunOneEngineAndRefuseVersionsItDoesNotRead(t *test
 	shellSpec, shellDir := durableSpec(t, durablePeer(t, "AA"))
 	shellJob := filepath.Join(shellDir, "job")
 	app := desktopApp(t, t.TempDir())
-	if started := app.StartDurableRun(desktop.DurableRunRequest{Workspace: filepath.Dir(shellSpec), Spec: filepath.Base(shellSpec), Output: filepath.Base(shellJob)}); started.State != desktop.Completed || started.Run == nil || started.Run.State != durablerun.Passed {
+	preflight := app.PreflightRun(desktop.RunPreflightRequest{Workspace: filepath.Dir(shellSpec), Spec: filepath.Base(shellSpec)})
+	if preflight.State != desktop.Completed || preflight.Preflight == nil {
+		t.Fatalf("%+v", preflight)
+	}
+	if started := app.StartDurableRun(desktop.DurableRunRequest{Workspace: filepath.Dir(shellSpec), Spec: filepath.Base(shellSpec), Output: filepath.Base(shellJob), Expected: preflight.Preflight.Identity}); started.State != desktop.Completed || started.Run == nil || started.Run.State != durablerun.Passed {
 		t.Fatalf("%+v", started)
 	}
 

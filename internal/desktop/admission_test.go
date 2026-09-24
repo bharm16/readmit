@@ -212,9 +212,10 @@ func TestASuiteRunRechecksItsAdmissionBeforeEachJob(t *testing.T) {
 	writeSuiteRows(t, workspace, "nightly.json", "one", "two")
 	policy := testlicense.New(t)
 	app := windowWith(t, policy)
+	identity := preflighted(t, app, desktop.RunPreflightRequest{Workspace: workspace, Spec: "nightly.json", Environment: "east"})
 	answered := make(chan desktop.SuiteRunResult, 1)
 	go func() {
-		answered <- app.StartSuiteRun(desktop.SuiteRunRequest{Workspace: workspace, Suite: "nightly.json", Environment: "east", Output: "suite-run"})
+		answered <- app.StartSuiteRun(desktop.SuiteRunRequest{Workspace: workspace, Suite: "nightly.json", Environment: "east", Output: "suite-run", Expected: identity})
 	}()
 	for peer.deliveries() == 0 {
 		select {
@@ -243,10 +244,11 @@ func TestASuiteRunRechecksItsAdmissionBeforeEachJob(t *testing.T) {
 	}
 }
 
-// A send nobody approved is refused as the request it is, but only once the
-// operation holds the slot and before admission is asked, as every send has
-// been: while another operation runs it is busy, and afterwards it is refused
-// with its own reason even where nothing could have admitted it.
+// A send nobody approved, or a start that names no preflight identity, is
+// refused as the request it is, but only once the operation holds the slot and
+// before admission is asked, as every send has been: while another operation
+// runs it is busy, and afterwards it is refused with its own reason even where
+// nothing could have admitted it.
 func TestAnUnapprovedSendIsRefusedWhileItHoldsTheSlotBeforeAdmission(t *testing.T) {
 	app := windowWith(t, "")
 	sends := map[string]func() (desktop.State, string){
@@ -255,6 +257,12 @@ func TestAnUnapprovedSendIsRefusedWhileItHoldsTheSlotBeforeAdmission(t *testing.
 		},
 		"ReexecuteReviewedEvidence": func() (desktop.State, string) {
 			return stateOf(app.ReexecuteReviewedEvidence(desktop.ReexecutionSendRequest{}))
+		},
+		"StartDurableRun": func() (desktop.State, string) {
+			return stateOf(app.StartDurableRun(desktop.DurableRunRequest{Workspace: t.TempDir(), Spec: "spec.json", Output: "run"}))
+		},
+		"StartSuiteRun": func() (desktop.State, string) {
+			return stateOf(app.StartSuiteRun(desktop.SuiteRunRequest{Workspace: t.TempDir(), Suite: "nightly.json", Environment: "east", Output: "run"}))
 		},
 	}
 	release, held := desktop.HoldSlotForTest(app, "another-operation")
@@ -270,6 +278,14 @@ func TestAnUnapprovedSendIsRefusedWhileItHoldsTheSlotBeforeAdmission(t *testing.
 	for name, send := range sends {
 		if state, reason := send(); state != desktop.Failed || strings.Contains(reason, operationguard.ErrUnavailable.Error()) {
 			t.Errorf("%s without approval answered %s %q, want its own refusal before admission", name, state, reason)
+		}
+	}
+	for name, want := range map[string]string{
+		"StartDurableRun": "preflight the selected test first; a run executes only what its preflight identified. Nothing was sent",
+		"StartSuiteRun":   "preflight the selected suite first; a suite executes only what its preflight identified. Nothing was sent",
+	} {
+		if _, reason := sends[name](); reason != want {
+			t.Errorf("%s without a preflight identity answered %q, want %q", name, reason, want)
 		}
 	}
 }

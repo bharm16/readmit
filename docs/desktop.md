@@ -470,12 +470,12 @@ artifacts are never reported as completed.
 | `DecideCorrelation` | Saves an explicit accept, reject or added pair with a local analyst and reason in a new immutable review directory. |
 | `OpenCorrelationRules` | Reads one correlation-rules entry through the reader `readmit correlate` applies and reports its rules and authorities and the SHA-256 of its exact bytes. |
 | `OpenSequenceAnalysis` | Reads one sequence-analysis entry through the reader the sequence applies and reports what it declares and the SHA-256 of its exact bytes. |
-| `StartDurableRun` | Sends once with an explicit operator action into a fresh workspace entry, under the identity the preflight fixed; a changed test is refused rather than executed. Cancel stops future sends; in-flight effects remain visible. |
+| `StartDurableRun` | Sends once with an explicit operator action into a fresh workspace entry, under the identity the preflight fixed; a start naming no preflight identity, and a test whose spec, case, selection, target configuration or credential registration changed since, are refused rather than executed. Cancel stops future sends; in-flight effects remain visible. |
 | `ResumeDurableRun` | Explicitly repeats only never-attempted work from a completed retained job into a new workspace entry through the command's shared operation; refuses after any send or changed plan. |
 | `CleanDurableRun` | Verifies a retained job and removes only its stale lease after completion; evidence stays in place. |
 | `OpenDurableRun` | Recovers one retained run folder read-only; never sends, resumes or resets. |
 | `PreflightRun` | Validates a saved test or suite locally and reports exactly what one execution would do: selected input, target and environment, effective configuration, observation and reset requirements, pinned versions, deadline, a generated fresh destination and the operation guard's admission decision. No network, no verdict. |
-| `StartSuiteRun` | Executes one suite environment through the existing durable queue into a fresh destination, reporting each job's admission and its own durable summary. |
+| `StartSuiteRun` | Executes one suite environment through the existing durable queue into a fresh destination, under the suite identity the preflight fixed, reporting each job's admission and its own durable summary; a start naming no preflight identity, and a suite rewritten since, are refused rather than executed. |
 | `DurableRunProgress` | Reads one run folder's recovery counts read-only while it executes, without claiming the operation slot. |
 | `OpenRunEvidence` | Reopens one retained execution read-only through the result, recovery and engine-pin readers, with per-assertion evidence links and values present only under a deliberate reveal. |
 | `ChooseRunSpec` | Presents the host's native file dialog for a saved test or suite, kept to one entry of the open workspace. |
@@ -2709,15 +2709,20 @@ workspace entry name, which the facade validates before the shared operation.
 
 **Validate and preflight** is local validation with no network connection, no
 send and no result verdict. It reads the exact plan a send would execute and
-reports: the selected input and the identity of its exact bytes, the target
-configuration and the environment it records (never a credential value — a
-target names a reference), the effective timeouts and limits, the observation
-boundary and reset requirement, the engine/spec/profile pin, the deadline an
-execution is bounded by, the generated destination, and the operation guard's
-own admission decision — the same decision a send would get. A selection that
-changes withdraws the preflight, and **Send and execute once** executes only
-under the identity the preflight fixed: a test rewritten after the preflight is
-refused by the send rather than executed as though nothing had changed.
+reports: the selected input and the identity execution pins itself to (for a
+test, its prepared inputs: the spec, its case and selection, the target
+configuration and its credential registration; for a suite, the exact bytes of
+the suite document), the target configuration and the environment it records
+(never a credential value — a target names a reference), the effective
+timeouts and limits, the observation boundary and reset requirement, the
+engine/spec/profile pin, the deadline an execution is bounded by, the
+generated destination, and the operation guard's own admission decision — the
+same decision a send would get. A selection that changes withdraws the
+preflight, and **Send and execute once** executes only under the identity the
+preflight fixed: a test rewritten, or its target configuration edited, after
+the preflight is refused by the send rather than executed as though nothing had
+changed, and a suite is compiled only from the bytes the preflight identified.
+A start that names no preflight identity is refused before admission is asked.
 
 Execution is the existing durable path (a suite runs through the existing
 durable queue with its declared isolation; this panel adds no parallelism).

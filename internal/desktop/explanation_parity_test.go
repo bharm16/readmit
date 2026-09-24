@@ -136,7 +136,9 @@ func explanationWorkspace(t *testing.T) (string, *ackingPeer) {
 	peer := newAckingPeer(t, "AA")
 	durable := ackWorkspace(t, peer.address)
 	writeAckSpec(t, durable, "booking-test.json", "AA")
-	if started := workspaceApp(t).StartDurableRun(desktop.DurableRunRequest{Workspace: durable, Spec: "booking-test.json", Output: "job-001"}); started.State != desktop.Completed {
+	runner := workspaceApp(t)
+	identity := preflighted(t, runner, desktop.RunPreflightRequest{Workspace: durable, Spec: "booking-test.json"})
+	if started := runner.StartDurableRun(desktop.DurableRunRequest{Workspace: durable, Spec: "booking-test.json", Output: "job-001", Expected: identity}); started.State != desktop.Completed {
 		t.Fatalf("the window's durable run did not finish: %+v", started)
 	}
 	copyEntry(t, filepath.Join(durable, "job-001"), filepath.Join(root, "job-001"))
