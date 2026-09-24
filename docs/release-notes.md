@@ -1,5 +1,15 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The desktop collector now authors valid controlled-fault policies from each
+  fault control (#407): selecting a fault supplies an explicit test port, and
+  opening a saved fault policy fills an untouched address from its approved
+  endpoint. Timed faults retain a bounded positive delay, and untimed faults
+  declare zero. The shared reader still refuses port zero and invalid delays
+  before saving a policy.
+  A nonloopback bind refusal points to the window's approval control, while
+  command-line wording and receiver policy contracts remain unchanged. The
+  import and mapping documentation now describes the existing desktop forms.
+
 - Expectation suggestions and reproducer revision comparisons now accept the
   verified result retained inside a durable run made in the window (#401).
   A job without a certain, finalized result is refused. Suggestions remain

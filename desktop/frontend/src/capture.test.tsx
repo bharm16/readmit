@@ -534,10 +534,75 @@ test("the fixture tab listens on loopback only and never carries the collector t
   await user.clear(panel.getByLabelText("Listen address"));
   await user.type(panel.getByLabelText("Listen address"), "0.0.0.0:0");
   await user.click(panel.getByRole("button", { name: "Preview fixture" }));
-  expect(await panel.findByText(refusal)).toBeTruthy();
+  expect(await panel.findByText("Choose a loopback listen address for the SIU fixture.")).toBeTruthy();
   expect(facade.oneCall("PreviewCapture")[0]).toMatchObject({ kind: "listen", address: "0.0.0.0:0", approved_bind: false });
   expect((panel.getByRole("button", { name: "Start fixture listener" }) as HTMLButtonElement).disabled).toBe(true);
   expect(facade.callsTo("StartCapture")).toHaveLength(0);
+});
+
+test.each([
+  ["delay", 50],
+  ["missing-response", 50],
+  ["reject", 0],
+  ["disconnect", 0],
+  ["malformed-ack", 0],
+] as const)("the collector builds the required %s fault fields from its controls", async (action, delay) => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user);
+  await user.click(screen.getByRole("button", { name: "Capture or collect evidence…" }));
+  await user.click(screen.getByRole("tab", { name: "MLLP collect" }));
+  const panel = within(capturePanel());
+  facade.reply({
+    SaveReceiverPolicy: (request): ReceiverPolicyResult => ({ state: "completed", policy: request.policy, policy_file: request.policy_file }),
+    PreviewCapture: (): CapturePreviewResult => ({ state: "completed", phase: "previewing" }),
+  });
+
+  await user.selectOptions(panel.getByLabelText("Controlled fault (v3 synthetic)"), action);
+  expect((panel.getByLabelText("Listen address") as HTMLInputElement).value).toBe("127.0.0.1:2575");
+  await user.click(panel.getByRole("button", { name: "Preview collector" }));
+  await waitFor(() => expect(facade.callsTo("SaveReceiverPolicy")).toHaveLength(1));
+  expect(facade.oneCall("SaveReceiverPolicy")[0]).toMatchObject({
+    policy: {
+      schema: "readmit-receiver-policy/v3",
+      faults: {
+        environment_class: "nonproduction",
+        approved_test_endpoints: ["127.0.0.1:2575"],
+        steps: [{ message: 1, stage: "application", action, delay_ms: delay }],
+      },
+    },
+  });
+  expect(facade.callsTo("PreviewCapture")).toHaveLength(1);
+});
+
+test("a reader refusal at port zero stops preview, and a collector bind refusal names its checkbox", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user);
+  await user.click(screen.getByRole("button", { name: "Capture or collect evidence…" }));
+  await user.click(screen.getByRole("tab", { name: "MLLP collect" }));
+  const panel = within(capturePanel());
+  await user.selectOptions(panel.getByLabelText("Controlled fault (v3 synthetic)"), "reject");
+  await user.clear(panel.getByLabelText("Listen address"));
+  await user.type(panel.getByLabelText("Listen address"), "127.0.0.1:0");
+  facade.reply({
+    SaveReceiverPolicy: (): ReceiverPolicyResult => ({ state: "failed", reason: "fault endpoints must be literal unicast IP addresses and nonzero ports" }),
+  });
+  await user.click(panel.getByRole("button", { name: "Preview collector" }));
+  expect(await panel.findByText("fault endpoints must be literal unicast IP addresses and nonzero ports")).toBeTruthy();
+  expect(facade.callsTo("SaveReceiverPolicy")).toHaveLength(1);
+  expect(facade.callsTo("PreviewCapture")).toHaveLength(0);
+
+  await user.clear(panel.getByLabelText("Listen address"));
+  await user.type(panel.getByLabelText("Listen address"), "192.0.2.1:2575");
+  facade.reply({
+    SaveReceiverPolicy: (request): ReceiverPolicyResult => ({ state: "completed", policy: request.policy, policy_file: request.policy_file }),
+    PreviewCapture: (): CapturePreviewResult => ({
+      state: "failed",
+      reason: "accepting connections from beyond this machine is opt-in: pass --approved-bind to bind a nonloopback address",
+    }),
+  });
+  await user.click(panel.getByRole("button", { name: "Preview collector" }));
+  expect(await panel.findByText("To bind beyond this machine, select Approved nonloopback bind in this window.")).toBeTruthy();
+  expect(facade.oneCall("PreviewCapture")[0]).toMatchObject({ approved_bind: false });
 });
 
 const declaredPolicy: ReceiverPolicy = {
@@ -556,13 +621,35 @@ const declaredPolicy: ReceiverPolicy = {
   },
   faults: {
     environment_class: "nonproduction",
-    approved_test_endpoints: ["approved-test-endpoint"],
+    approved_test_endpoints: ["127.0.0.1:2575"],
     steps: [
       { message: 1, stage: "application", action: "delay", delay_ms: 25 },
       { message: 3, stage: "application", action: "reject", delay_ms: 0 },
     ],
   },
 };
+
+test("fault selection and opening a policy preserve an address the operator entered", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user);
+  await user.click(screen.getByRole("button", { name: "Capture or collect evidence…" }));
+  await user.click(screen.getByRole("tab", { name: "MLLP collect" }));
+  const panel = within(capturePanel());
+  await user.clear(panel.getByLabelText("Listen address"));
+  await user.type(panel.getByLabelText("Listen address"), "127.0.0.1:42");
+  await user.selectOptions(panel.getByLabelText("Controlled fault (v3 synthetic)"), "reject");
+  expect((panel.getByLabelText("Listen address") as HTMLInputElement).value).toBe("127.0.0.1:42");
+
+  await user.clear(panel.getByLabelText("Listen address"));
+  await user.type(panel.getByLabelText("Listen address"), "127.0.0.1:0");
+  facade.reply({
+    ChooseCapturePath: (): PathChoiceResult => ({ state: "completed", kind: "policy", paths: ["policies/faulting.json"] }),
+    ReadReceiverPolicy: (): ReceiverPolicyResult => ({ state: "completed", policy: declaredPolicy, policy_file: "policies/faulting.json" }),
+  });
+  await user.click(panel.getByRole("button", { name: "Open policy…" }));
+  await panel.findByLabelText("Opened responder policy");
+  expect((panel.getByLabelText("Listen address") as HTMLInputElement).value).toBe("127.0.0.1:0");
+});
 
 test("a declared responder policy reopens for review, is previewed as it is and keeps what the form cannot show once edited", async () => {
   const user = userEvent.setup();
@@ -595,21 +682,22 @@ test("a declared responder policy reopens for review, is previewed as it is and 
   expect(review.getByText("message-type-in: SIU^S12, SIU^S13")).toBeTruthy();
   expect(review.getByText("unsupported")).toBeTruthy();
   expect(
-    review.getByText("nonproduction · approved approved-test-endpoint · message 1 application delay 25 ms; message 3 application reject"),
+    review.getByText("nonproduction · approved 127.0.0.1:2575 · message 1 application delay 25 ms; message 3 application reject"),
   ).toBeTruthy();
   expect((panel.getByLabelText("Policy file") as HTMLInputElement).value).toBe("policies/faulting.json");
   expect((panel.getByLabelText("Policy name") as HTMLInputElement).value).toBe("faulting-sink");
   expect((panel.getByLabelText("Acknowledgement code") as HTMLSelectElement).value).toBe("AE");
   expect((panel.getByLabelText("Controlled fault (v3 synthetic)") as HTMLSelectElement).value).toBe("delay");
   expect((panel.getByLabelText("Fault delay (ms)") as HTMLInputElement).value).toBe("25");
+  expect((panel.getByLabelText("Listen address") as HTMLInputElement).value).toBe("127.0.0.1:2575");
   await waitFor(() => expect(document.activeElement).toBe(open));
 
   // Previewing what was opened previews the document on disk and rewrites nothing.
-  facade.reply({ PreviewCapture: (): CapturePreviewResult => ({ state: "failed", reason: "fault endpoint is not an explicitly approved test endpoint" }) });
+  facade.reply({ PreviewCapture: (): CapturePreviewResult => ({ state: "completed", phase: "previewing" }) });
   await user.click(panel.getByRole("button", { name: "Preview collector" }));
-  expect(await panel.findByText("fault endpoint is not an explicitly approved test endpoint")).toBeTruthy();
+  await waitFor(() => expect((panel.getByRole("button", { name: "Start collecting" }) as HTMLButtonElement).disabled).toBe(false));
   expect(facade.callsTo("SaveReceiverPolicy")).toHaveLength(0);
-  expect(facade.oneCall("PreviewCapture")[0]).toMatchObject({ kind: "collect", policy_file: "policies/faulting.json" });
+  expect(facade.oneCall("PreviewCapture")[0]).toMatchObject({ kind: "collect", address: "127.0.0.1:2575", policy_file: "policies/faulting.json" });
 
   // An edit is saved over the same document, keeping both fault steps and
   // the approved endpoint the form never showed.

@@ -62,6 +62,15 @@ type FaultAction = "none" | "delay" | "reject" | "missing-response" | "disconnec
 const declaresEnhanced = (p: ReceiverPolicy) => p.enhanced_acknowledgement?.operator === "enhanced-mode-fixed-codes";
 const declaredFault = (p: ReceiverPolicy): FaultAction => (p.faults?.steps[0]?.action as FaultAction | undefined) ?? "none";
 const declaredDelay = (p: ReceiverPolicy) => p.faults?.steps[0]?.delay_ms ?? 50;
+const waitsForFault = (action: FaultAction) => action === "delay" || action === "missing-response";
+const nonloopbackRefusal = "accepting connections from beyond this machine is opt-in: pass --approved-bind to bind a nonloopback address";
+
+function captureReason(reason: string, mode: Mode): string {
+  if (reason !== nonloopbackRefusal) return reason;
+  return mode === "collect"
+    ? "To bind beyond this machine, select Approved nonloopback bind in this window."
+    : "Choose a loopback listen address for the SIU fixture.";
+}
 
 /** The enhanced acknowledgement as `readmit collect` names it on start. */
 function enhancedSummary(p: ReceiverPolicy): string {
@@ -198,6 +207,7 @@ export function CapturePanel({
   const [policyEdited, setPolicyEdited] = useState(false);
   const [listeningOn, setListeningOn] = useState<string | null>(null);
   const [address, setAddress] = useState("127.0.0.1:0");
+  const [addressEdited, setAddressEdited] = useState(false);
   const [approvedBind, setApprovedBind] = useState(false);
   const [outputName, setOutputName] = useState("capture.case");
   const [journalName, setJournalName] = useState("capture.journal");
@@ -361,6 +371,12 @@ export function CapturePanel({
       setEnhanced(declaresEnhanced(declared));
       setFaultAction(declaredFault(declared));
       setFaultDelayMs(declaredDelay(declared));
+      // A saved fault policy names its exact test endpoints. Fill an untouched
+      // ephemeral-port default from that declaration so its first preview can
+      // use the policy the person just chose; preserve any address they set.
+      if (!addressEdited && address === "127.0.0.1:0" && declared.faults?.approved_test_endpoints[0]) {
+        setAddress(declared.faults.approved_test_endpoints[0]);
+      }
       setPolicyFile(file);
       setOpenedPolicy({ file, policy: declared });
       setPolicyEdited(false);
@@ -377,6 +393,17 @@ export function CapturePanel({
     };
   }
 
+  function editAddress(value: string) {
+    setAddress(value);
+    setAddressEdited(true);
+  }
+
+  function keepsDeclaredPolicyControls(): boolean {
+    const declared = openedPolicy?.policy;
+    return !!declared && enhanced === declaresEnhanced(declared) && faultAction === declaredFault(declared) &&
+      (faultAction === "none" || faultDelayMs === declaredDelay(declared));
+  }
+
   /** The policy the form describes. A reopened document keeps the enhanced
    * rule and faults it declares while those controls still show what it
    * declared, including its approved test endpoints; changing one of them
@@ -389,12 +416,7 @@ export function CapturePanel({
       accepted_message_types: policy.accepted_message_types,
     };
     const declared = openedPolicy?.policy;
-    if (
-      declared &&
-      enhanced === declaresEnhanced(declared) &&
-      faultAction === declaredFault(declared) &&
-      (faultAction === "none" || faultDelayMs === declaredDelay(declared))
-    ) {
+    if (declared && keepsDeclaredPolicyControls()) {
       const kept: ReceiverPolicy = { schema: declared.schema, ...base };
       if (declared.enhanced_acknowledgement) kept.enhanced_acknowledgement = declared.enhanced_acknowledgement;
       if (declared.faults) kept.faults = declared.faults;
@@ -427,7 +449,7 @@ export function CapturePanel({
       toSave.faults = {
         environment_class: "nonproduction",
         approved_test_endpoints: [address],
-        steps: [{ message: 1, stage: "application", action: faultAction, delay_ms: faultDelayMs }],
+        steps: [{ message: 1, stage: "application", action: faultAction, delay_ms: waitsForFault(faultAction) ? faultDelayMs : 0 }],
       };
     }
     return toSave;
@@ -514,7 +536,7 @@ export function CapturePanel({
       }
       const result = await previewCapture(captureRequest());
       setPreview(result);
-      if (result.state !== "completed") setError(result.reason ?? result.state);
+      if (result.state !== "completed") setError(captureReason(result.reason ?? result.state, mode));
     } finally {
       setOperation(null);
     }
@@ -529,7 +551,7 @@ export function CapturePanel({
       const result = await startCapture(captureRequest());
       setSession(result);
       if (result.state !== "completed" && result.state !== "cancelled") {
-        setError(result.reason ?? result.state);
+        setError(captureReason(result.reason ?? result.state, mode));
       }
       if (result.case_path && mode === "collect") {
         // Collected case is already a verified case destination from the collector.
@@ -809,7 +831,12 @@ export function CapturePanel({
           </label>
           <label>
             Controlled fault (v3 synthetic)
-            <select value={faultAction} disabled={locked} onChange={(e) => editPolicy(setFaultAction)(e.target.value as FaultAction)}>
+            <select value={faultAction} disabled={locked} onChange={(e) => {
+              const action = e.target.value as FaultAction;
+              editPolicy(setFaultAction)(action);
+              if (action !== "none" && !addressEdited && address === "127.0.0.1:0") setAddress("127.0.0.1:2575");
+              if (waitsForFault(action) && faultDelayMs === 0) setFaultDelayMs(50);
+            }}>
               <option value="none">none</option>
               <option value="delay">delay</option>
               <option value="reject">reject</option>
@@ -818,15 +845,15 @@ export function CapturePanel({
               <option value="disconnect">disconnect</option>
             </select>
           </label>
-          {faultAction === "delay" ? (
+          {waitsForFault(faultAction) ? (
             <label>
               Fault delay (ms)
-              <input type="number" value={faultDelayMs} disabled={locked} onChange={(e) => editPolicy(setFaultDelayMs)(Number(e.target.value))} />
+              <input type="number" min="1" max="30000" value={faultDelayMs} disabled={locked} onChange={(e) => editPolicy(setFaultDelayMs)(Number(e.target.value))} />
             </label>
           ) : null}
           <label>
             Listen address
-            <input value={address} disabled={locked} onChange={(e) => setAddress(e.target.value)} />
+            <input value={address} disabled={locked} onChange={(e) => editAddress(e.target.value)} />
           </label>
           <label>
             <input
@@ -928,7 +955,7 @@ export function CapturePanel({
           </label>
           <label>
             Listen address
-            <input value={address} disabled={locked} onChange={(e) => setAddress(e.target.value)} />
+            <input value={address} disabled={locked} onChange={(e) => editAddress(e.target.value)} />
           </label>
           <label>
             Case output name
