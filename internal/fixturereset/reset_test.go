@@ -249,6 +249,42 @@ func TestRunRefusesADestinationTheSendDecisionDenies(t *testing.T) {
 	}
 }
 
+// TestRunConnectsOnlyToTheAddressItsDecisionChecked is the allowed-hostname
+// path. The name is resolved once, by the decision, and the one connection the
+// reset opens reaches the address that decision approved. The name belongs to a
+// reserved domain nothing outside this test resolves, so a second lookup of it
+// could only fail: a reset that dialled the configured name again would reach
+// nothing, and a reset that reached the fixture reached it at the checked address.
+func TestRunConnectsOnlyToTheAddressItsDecisionChecked(t *testing.T) {
+	quietAction := `{"id":"endpoint-quiet","operator":"endpoint_quiet","authority":"connect_approved_target","instructions":"x"}`
+	address := endpoint(t, quiet)
+	_, port, _ := net.SplitHostPort(address)
+	configuration := target(net.JoinHostPort("lab.example.invalid", port))
+	configuration.ApprovedTransport = true
+	approved := sendpolicy.Policy{Schema: sendpolicy.PolicySchema, ApprovedDestinations: []string{"127.0.0.0/8"}}
+	resolutions := 0
+	resolve := func(_ context.Context, host string) ([]netip.Addr, error) {
+		resolutions++
+		if host != "lab.example.invalid" {
+			t.Errorf("the decision resolved %q rather than the configured name", host)
+		}
+		return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, nil
+	}
+	result, _ := Run(t.Context(), Request{
+		Target: configuration, PlanBytes: []byte(planWith(quietAction)), PlanDirectory: planDirectory(t, nil),
+		Policy: &approved,
+	}, resolve)
+	if result.State != durablerun.Passed || result.Decision != sendpolicy.SendNotExplicit {
+		t.Fatalf("an approved name reaching a quiet fixture must confirm the reset: %+v", result)
+	}
+	if len(result.Actions) != 1 || result.Actions[0].Diagnosis != environment.Reachable {
+		t.Fatalf("the connection must reach the checked address: %+v", result.Actions)
+	}
+	if resolutions != 1 {
+		t.Fatalf("the name was resolved %d times; the decision resolves it once and nothing resolves it again", resolutions)
+	}
+}
+
 // TestRunReportsAFixtureThatDidNotReset separates what readmit established from
 // what it did not: a ledger that still holds a record is a failure, and a file
 // it could not read as an observation leaves the reset merely unconfirmed.

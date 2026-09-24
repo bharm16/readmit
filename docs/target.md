@@ -272,6 +272,9 @@ other reason — an unrecorded class, a name that does not resolve, a name
 resolving to several addresses, an address no approved destination contains, a
 destination no policy authorized — refuses the reset, and the reason is retained
 in the outcome. Select the policy with `--policy FILE`, exactly as `check` does.
+The connection `endpoint_quiet` opens reaches only the address that decision
+checked: the configured name is never resolved a second time, and the lookup
+and the connection share the configuration's `connect_timeout`, as a send's do.
 
 ### A failed reset is an execution error
 

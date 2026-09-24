@@ -2,7 +2,6 @@ package replay
 
 import (
 	"crypto/sha256"
-	"crypto/x509"
 	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
@@ -83,18 +82,6 @@ func anchor(t Target, directory string) Target {
 		t.Credential.SecretsFile = artifactpath.JoinReference(directory, t.Credential.SecretsFile)
 	}
 	return t
-}
-
-// VerifiedServerName is the name a target's certificate is verified against:
-// the server name it declares, or the host of its address when it declares
-// none. One function owns the rule, so a diagnosis and a replay reading the
-// same configuration verify the same name rather than two different ones.
-func VerifiedServerName(t Target) string {
-	if t.ServerName != "" {
-		return t.ServerName
-	}
-	host, _, _ := net.SplitHostPort(t.Address)
-	return host
 }
 
 // BindCredential returns the secret reference a target declares, bound to this
@@ -270,28 +257,6 @@ func environmentName(name string) error {
 	return nil
 }
 
-// LoadCA returns the bytes of the explicitly configured CA file a target
-// declares, or nothing when it declares none and the system roots apply. The
-// contract's owner reads the member so every caller applies one bound and one
-// refusal to it.
-func LoadCA(t Target) ([]byte, error) {
-	if t.CAFile == "" {
-		return nil, nil
-	}
-	path, err := artifactpath.Resolve(t.CAFile)
-	if err != nil {
-		return nil, errors.New("cannot read configured CA certificates")
-	}
-	data, err := readLocal(path, 1<<20)
-	if err != nil {
-		return nil, errors.New("cannot read configured CA certificates")
-	}
-	if !x509.NewCertPool().AppendCertsFromPEM(data) {
-		return nil, errors.New("configured CA file contains no certificates")
-	}
-	return data, nil
-}
-
 func targetRecord(t Target, ca []byte) TargetRecord {
 	record := TargetRecord{Address: t.Address, Transport: t.Transport, TestEndpoint: t.TestEndpoint, ApprovedTransport: t.ApprovedTransport, ConnectTimeout: t.ConnectTimeout, MessageTimeout: t.MessageTimeout, MaxACKBytes: t.MaxACKBytes}
 	if len(ca) > 0 {
@@ -322,9 +287,3 @@ func readLocal(path string, maxBytes int) ([]byte, error) {
 }
 
 func digest(data []byte) string { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }
-
-// RefusedConnection reports whether err is this platform's connection-refused
-// error. It is exported so a diagnostic reaching the same endpoints names a
-// refusal exactly as a replay does, rather than keeping a second copy of the
-// platform detail that Winsock and POSIX disagree on.
-func RefusedConnection(err error) bool { return connectionRefused(err) }

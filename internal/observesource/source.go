@@ -58,7 +58,6 @@ import (
 	"github.com/bharm16/readmit/internal/importer"
 	"github.com/bharm16/readmit/internal/observewindow"
 	"github.com/bharm16/readmit/internal/secret"
-	"github.com/bharm16/readmit/internal/sendpolicy"
 )
 
 // Schema is the contract a declared observation source carries. It is a
@@ -745,20 +744,6 @@ func (h HTTP) BindCredential() (secret.Locator, string, error) {
 		return secret.Locator{}, "", err
 	}
 	return h.Credential.Locator(), h.Credential.Header, nil
-}
-
-// PolicyRequest is the question this endpoint asks internal/sendpolicy before
-// anything is opened. An observation reads rather than sends, and it goes
-// through the same one rule anyway: a class nobody recorded, a name resolving
-// to several addresses and an address outside every approved destination each
-// refuse the read. Labelling an endpoint a test endpoint is not proof it is
-// safe to reach.
-func (h HTTP) PolicyRequest() (sendpolicy.Request, error) {
-	endpoint, err := h.Endpoint()
-	if err != nil {
-		return sendpolicy.Request{}, err
-	}
-	return sendpolicy.Request{Address: endpoint, Classification: h.Classification, Explicit: true}, nil
 }
 
 // headerName holds a request header to the token characters HTTP allows, so a

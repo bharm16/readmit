@@ -6,20 +6,19 @@ import (
 	"database/sql"
 	"encoding/json/v2"
 	"errors"
-	"net"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/bharm16/readmit/internal/destination"
 	"github.com/bharm16/readmit/internal/observewindow"
 	"github.com/bharm16/readmit/internal/secret"
-	"github.com/bharm16/readmit/internal/sendpolicy"
 )
 
 type databaseReader struct {
 	declaration Database
-	checked     string
+	route       destination.Route
 	tls         *tls.Config
 	db          *sql.DB
 	maxAge      time.Duration
@@ -33,25 +32,26 @@ func (r *databaseReader) close() {
 
 func newDatabaseReader(ctx context.Context, d Database, retained *snapshot, options Options, maxAge time.Duration) (reader, error) {
 	timeout, _ := time.ParseDuration(d.limits().Timeout)
-	bounded, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	resolve := options.Resolve
-	if resolve == nil {
-		resolve = sendpolicy.SystemResolver
-	}
-	decision := sendpolicy.Decide(bounded, options.Policy, sendpolicy.Request{Address: d.Address, Classification: d.Classification, Explicit: true}, resolve)
-	if err := retained.retainDecision(decision); err != nil {
-		return nil, err
-	}
-	if !decision.Allowed || len(decision.ResolvedAddresses) != 1 {
-		return nil, errors.New("database observation refused by destination policy")
-	}
-	_, port, _ := net.SplitHostPort(d.Address)
-	config, err := (HTTP{CAFile: d.CAFile, ServerName: d.ServerName}).tlsConfig(d.Address)
+	decision, err := destination.Decide(ctx, destination.Request{
+		Purpose: destination.Observe, Address: d.Address, Classification: d.Classification,
+		Policy: options.Policy, Budget: timeout, Record: retained.retainDecision, Resolve: options.Resolve,
+	})
 	if err != nil {
 		return nil, err
 	}
-	return &databaseReader{declaration: d, checked: net.JoinHostPort(decision.ResolvedAddresses[0], port), tls: config, maxAge: maxAge}, nil
+	route, admitted := decision.Route()
+	if !admitted {
+		return nil, errors.New("database observation refused by destination policy")
+	}
+	ca, err := authorities(d.CAFile)
+	if err != nil {
+		return nil, err
+	}
+	config, err := route.ClientConfig(destination.Security{ServerName: d.ServerName, Authorities: ca})
+	if err != nil {
+		return nil, err
+	}
+	return &databaseReader{declaration: d, route: route, tls: config, maxAge: maxAge}, nil
 }
 
 // databaseQuery has a fixed SELECT shape. Values always travel separately as
@@ -122,7 +122,7 @@ func (r *databaseReader) read(ctx context.Context) attempt {
 		if err != nil {
 			return databaseFailure(taken, metadata, observewindow.SampleFailed, "database credential could not be resolved")
 		}
-		r.db, err = openDatabase(d, string(value.Expose()), r.checked, r.tls)
+		r.db, err = openDatabase(d, string(value.Expose()), r.route, r.tls)
 		if err != nil {
 			return databaseFailure(taken, metadata, observewindow.SampleFailed, "database connector could not be configured")
 		}

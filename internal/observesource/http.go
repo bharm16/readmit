@@ -2,18 +2,15 @@ package observesource
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"io"
-	"net"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/bharm16/readmit/internal/destination"
 	"github.com/bharm16/readmit/internal/observewindow"
 	"github.com/bharm16/readmit/internal/secret"
-	"github.com/bharm16/readmit/internal/sendpolicy"
-	"github.com/bharm16/readmit/internal/transportsecurity"
 )
 
 // newReader opens the one reader the declared source kind names. A file export
@@ -69,49 +66,40 @@ func newHTTPReader(ctx context.Context, source Source, retained *snapshot, optio
 	if err != nil {
 		return nil, err
 	}
-	request, err := endpoint.PolicyRequest()
-	if err != nil {
-		return nil, err
-	}
-	resolve := options.Resolve
-	if resolve == nil {
-		resolve = sendpolicy.SystemResolver
-	}
 	timeout, err := boundedDuration(endpoint.Timeout, maxTimeout)
 	if err != nil {
 		return nil, errors.New("an http timeout is a positive duration of at most five minutes")
 	}
-	decisionCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	decision := sendpolicy.Decide(decisionCtx, options.Policy, request, resolve)
 	// The decision is retained before it is acted on, and a failure to retain
 	// it stops the collection: a destination check nobody can read afterwards
 	// is not evidence that one was made.
-	if err := retained.retainDecision(decision); err != nil {
+	decision, err := destination.Decide(ctx, destination.Request{
+		Purpose: destination.Observe, Address: address, Classification: endpoint.Classification,
+		Policy: options.Policy, Budget: timeout, Record: retained.retainDecision, Resolve: options.Resolve,
+	})
+	if err != nil {
 		return nil, err
 	}
-	if !decision.Allowed || len(decision.ResolvedAddresses) != 1 {
+	route, admitted := decision.Route()
+	if !admitted {
 		return nil, errors.New("the observation was refused by policy before anything was opened: " + string(decision.Reason))
 	}
-	_, port, err := net.SplitHostPort(address)
-	if err != nil {
-		return nil, errors.New("an http endpoint names one explicit host and numeric port")
-	}
-	// The connection uses the exact address the policy checked, never a fresh
-	// resolution of the configured name. TLS still verifies the configured
-	// server name against the certificate the endpoint presents.
-	checked := net.JoinHostPort(decision.ResolvedAddresses[0], port)
-	config, err := endpoint.tlsConfig(address)
+	ca, err := authorities(endpoint.CAFile)
 	if err != nil {
 		return nil, err
 	}
-	transport := &http.Transport{
-		Proxy:           nil,
-		TLSClientConfig: config,
-		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-			return (&net.Dialer{}).DialContext(ctx, network, checked)
-		},
+	// The rule itself belongs to internal/transportsecurity, which every path
+	// readmit negotiates TLS on shares: TLS 1.2 is the floor, certificate
+	// verification is always on, there is no insecure mode, and an explicitly
+	// configured certificate authority replaces the platform roots. The
+	// connection uses the exact address the policy checked, never a fresh
+	// resolution of the configured name, and TLS still verifies the configured
+	// server name against the certificate the endpoint presents.
+	config, err := route.ClientConfig(destination.Security{ServerName: endpoint.ServerName, Authorities: ca})
+	if err != nil {
+		return nil, err
 	}
+	transport := &http.Transport{Proxy: nil, TLSClientConfig: config, DialContext: route.DialContext}
 	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}}
@@ -119,30 +107,17 @@ func newHTTPReader(ctx context.Context, source Source, retained *snapshot, optio
 		header: header, locator: locator, maxAge: maxAge, timeout: timeout}, nil
 }
 
-// tlsConfig is the client configuration this endpoint is read under. The rule
-// itself belongs to internal/transportsecurity, which every path readmit
-// negotiates TLS on shares: TLS 1.2 is the floor, certificate verification is
-// always on, there is no insecure mode, and an explicitly configured
-// certificate authority replaces the platform roots. This decides only which
-// name is verified and reads the authority the source declared.
-func (h HTTP) tlsConfig(address string) (*tls.Config, error) {
-	name := h.ServerName
-	if name == "" {
-		host, _, err := net.SplitHostPort(address)
-		if err != nil {
-			return nil, errors.New("an http endpoint names one explicit host and numeric port")
-		}
-		name = host
+// authorities reads the certificate authority a source declares, or nothing
+// when it declares none and the platform roots apply.
+func authorities(caFile string) ([]byte, error) {
+	if caFile == "" {
+		return nil, nil
 	}
-	var authorities []byte
-	if h.CAFile != "" {
-		read, err := readBounded(h.CAFile, MaxCABytes)
-		if err != nil {
-			return nil, errors.New("cannot read the configured CA certificates")
-		}
-		authorities = read
+	read, err := readBounded(caFile, MaxCABytes)
+	if err != nil {
+		return nil, errors.New("cannot read the configured CA certificates")
 	}
-	return transportsecurity.ClientConfig(name, authorities)
+	return read, nil
 }
 
 // read takes one bounded read of the endpoint, retrying only what is safe to

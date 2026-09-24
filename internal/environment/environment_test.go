@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bharm16/readmit/internal/destination"
 	"github.com/bharm16/readmit/internal/environment"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/secret"
@@ -213,9 +214,24 @@ func tlsTarget(address, caFile string) replay.Target {
 	return config
 }
 
+// checked is the route a connectivity check takes: the configured address,
+// whatever the send decision says about it.
+func checked(t *testing.T, config replay.Target) destination.Route {
+	t.Helper()
+	budget, _ := time.ParseDuration(config.ConnectTimeout)
+	decision, err := destination.Decide(t.Context(), destination.Request{
+		Purpose: destination.Check, Address: config.Address, Budget: budget,
+	})
+	route, admitted := decision.Route()
+	if err != nil || !admitted {
+		t.Fatalf("a check is admitted to the configured address: %v", err)
+	}
+	return route
+}
+
 func diagnose(t *testing.T, config replay.Target) environment.Report {
 	t.Helper()
-	report, err := environment.Diagnose(t.Context(), config)
+	report, err := environment.Diagnose(t.Context(), config, checked(t, config))
 	if err != nil {
 		t.Fatalf("diagnose: %v", err)
 	}
@@ -365,6 +381,11 @@ func TestDiagnoseReportsTheCertificateItCouldNotVerify(t *testing.T) {
 	if len(report.Unverified) == 0 {
 		t.Fatal("a certificate failure reported no certificate to diagnose")
 	}
+	// The connection was established before verification refused it, so the
+	// address it reached is reported beside the refusal.
+	if report.Peer != address {
+		t.Fatalf("a certificate failure reported reaching %q, want %q", report.Peer, address)
+	}
 	presented := report.Unverified[0]
 	if !presented.NotAfter.Equal(expiry) || presented.Subject == "" || presented.Issuer == "" {
 		t.Fatalf("the refused certificate was reported as %+v, want the expiry %s", presented, expiry)
@@ -376,7 +397,8 @@ func TestDiagnoseReportsCancellationRatherThanReachability(t *testing.T) {
 	address := endpoint(t, drain(&atomic.Int64{}))
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	report, err := environment.Diagnose(ctx, plainTarget(address))
+	config := plainTarget(address)
+	report, err := environment.Diagnose(ctx, config, checked(t, config))
 	if err != nil {
 		t.Fatalf("diagnose: %v", err)
 	}
@@ -416,11 +438,11 @@ func TestDiagnoseReportsAnAbsentClassificationAsUnclassified(t *testing.T) {
 func TestDiagnoseRefusesAConfigurationItCannotUse(t *testing.T) {
 	directory := t.TempDir()
 	config := tlsTarget("127.0.0.1:1", filepath.Join(directory, "absent.pem"))
-	if _, err := environment.Diagnose(t.Context(), config); err == nil {
+	if _, err := environment.Diagnose(t.Context(), config, checked(t, config)); err == nil {
 		t.Fatal("a CA file that is not there was accepted")
 	}
 	config = tlsTarget("127.0.0.1:1", write(t, directory, "empty.pem", []byte("not a certificate\n")))
-	if _, err := environment.Diagnose(t.Context(), config); err == nil {
+	if _, err := environment.Diagnose(t.Context(), config, checked(t, config)); err == nil {
 		t.Fatal("a CA file holding no certificate was accepted")
 	}
 }
@@ -503,7 +525,7 @@ func TestDiagnosePresentsTheClientCertificateItsCredentialNames(t *testing.T) {
 	other := ca.issue(t, "readmit-test-only-other", from, until, x509.ExtKeyUsageClientAuth)
 	mismatched := config
 	mismatched.ClientCertificate = write(t, directory, "other.pem", other.certificate)
-	if _, err := environment.Diagnose(t.Context(), mismatched); err == nil {
+	if _, err := environment.Diagnose(t.Context(), mismatched, checked(t, mismatched)); err == nil {
 		t.Fatal("a client certificate that does not pair with its key was accepted")
 	}
 }

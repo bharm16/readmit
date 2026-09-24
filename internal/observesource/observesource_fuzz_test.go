@@ -86,13 +86,8 @@ func FuzzObservationSourceDocument(f *testing.F) {
 		}
 		// An accepted endpoint names one host and numeric port readmit can
 		// decide against a policy, reached over TLS and never in the clear.
-		address, err := source.HTTP.Endpoint()
-		if err != nil || !strings.HasPrefix(source.HTTP.URL, "https://") {
+		if _, err := source.HTTP.Endpoint(); err != nil || !strings.HasPrefix(source.HTTP.URL, "https://") {
 			t.Fatalf("accepted an endpoint readmit cannot reach safely: %q, %v", source.HTTP.URL, err)
-		}
-		request, err := source.HTTP.PolicyRequest()
-		if err != nil || request.Address != address {
-			t.Fatalf("an accepted endpoint asks the policy about %q rather than %q: %v", request.Address, address, err)
 		}
 		// A credential is bound to this endpoint before any value is read, and
 		// binding never reads one.

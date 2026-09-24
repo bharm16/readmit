@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/bharm16/readmit/internal/destination"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	mssql "github.com/microsoft/go-mssqldb"
@@ -20,20 +21,15 @@ import (
 	"github.com/sijms/go-ora/v2/configurations"
 )
 
-// databaseDialer pins every network connection (including driver redirection)
-// to the one endpoint the destination policy approved. No DNS re-resolution or
-// failover can widen the destination decision.
-type databaseDialer struct{ address string }
-
-func (d databaseDialer) DialContext(ctx context.Context, network, _ string) (net.Conn, error) {
-	return (&net.Dialer{}).DialContext(ctx, "tcp", d.address)
-}
-
-func databaseConnector(d Database, password string, checked string, config *tls.Config) (driver.Connector, error) {
+// databaseConnector configures one driver to reach only the route's address.
+// The route is every network connection's dialer, including any redirection a
+// driver attempts, so no DNS re-resolution or failover can widen the
+// destination decision.
+func databaseConnector(d Database, password string, route destination.Route, config *tls.Config) (driver.Connector, error) {
+	checked := route.Address()
 	host, port, _ := net.SplitHostPort(checked)
 	portNumber, _ := strconv.ParseUint(port, 10, 16)
 	timeout, _ := time.ParseDuration(d.limits().Timeout)
-	dialer := databaseDialer{checked}
 	switch d.Driver {
 	case "postgresql":
 		// All connection fields are explicit, overriding ambient PG* connection
@@ -72,7 +68,7 @@ func databaseConnector(d Database, password string, checked string, config *tls.
 		c.TLSConfig = config
 		c.Fallbacks = nil
 		c.RuntimeParams = map[string]string{"application_name": "readmit"}
-		c.DialFunc = dialer.DialContext
+		c.DialFunc = route.DialContext
 		c.ConnectTimeout = timeout
 		c.DefaultQueryExecMode = pgx.QueryExecModeExec
 		c.LookupFunc = func(context.Context, string) ([]string, error) { return []string{host}, nil }
@@ -85,7 +81,7 @@ func databaseConnector(d Database, password string, checked string, config *tls.
 			Protocols:  []string{"tcp"},
 			Encryption: msdsn.EncryptionRequired, TLSConfig: config, HostInCertificateProvided: true, DisableRetry: true,
 			DialTimeout: timeout, AppName: "readmit", Workstation: "readmit", PacketSize: 4096})
-		c.Dialer = dialer
+		c.Dialer = route
 		return c, nil
 	case "oracle":
 		u := url.URL{Scheme: "oracle", Host: net.JoinHostPort(d.ServerName, port), Path: "/" + d.Name, User: url.UserPassword(d.Username, password)}
@@ -102,7 +98,7 @@ func databaseConnector(d Database, password string, checked string, config *tls.
 			}
 			return state.PeerCertificates[0].VerifyHostname(d.ServerName)
 		}
-		c.Dialer = dialer
+		c.Dialer = route
 		// The upstream default populates operating-system user, host, process and
 		// executable metadata. Use fixed client labels instead.
 		c.ClientInfo.HostName = "readmit"
@@ -116,8 +112,8 @@ func databaseConnector(d Database, password string, checked string, config *tls.
 	return nil, errors.New("unsupported database connector")
 }
 
-func openDatabase(d Database, password, checked string, config *tls.Config) (*sql.DB, error) {
-	connector, err := databaseConnector(d, password, checked, config)
+func openDatabase(d Database, password string, route destination.Route, config *tls.Config) (*sql.DB, error) {
+	connector, err := databaseConnector(d, password, route, config)
 	if err != nil {
 		return nil, err
 	}
