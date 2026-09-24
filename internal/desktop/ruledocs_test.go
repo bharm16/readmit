@@ -63,6 +63,9 @@ func TestOpeningAuthoredDocumentsReportsTheirCanonicalFormAndExactIdentity(t *te
 	if config.State != desktop.Completed || config.Config == nil || config.Config.Profile != "readmit-siu-v1" {
 		t.Fatalf("diagnose config: %+v", config)
 	}
+	if config.SHA256 != sha256Of([]byte(docDiagnoseConfig)) {
+		t.Fatalf("the configuration identity is not the digest of the bytes the workspace holds: %s", config.SHA256)
+	}
 	decisions := app.OpenFindingDecisions(root, "verdicts.json")
 	if decisions.State != desktop.Completed || decisions.Decisions == nil || len(decisions.Decisions.Decisions) != 1 {
 		t.Fatalf("finding decisions: %+v", decisions)
@@ -152,8 +155,19 @@ func TestSavingAnAuthoredDocumentWritesOneCanonicalNewEntry(t *testing.T) {
 	if got := app.SaveSequenceAnalysis(desktop.RuleDocumentSaveRequest{Workspace: root, Document: docSequenceAnalysis, Output: "analysis.json"}); got.State != desktop.Completed {
 		t.Fatalf("save sequence analysis: %+v", got)
 	}
-	if got := app.SaveDiagnoseConfig(desktop.RuleDocumentSaveRequest{Workspace: root, Document: docDiagnoseConfig, Output: "config.json"}); got.State != desktop.Completed {
-		t.Fatalf("save diagnose config: %+v", got)
+	config := app.SaveDiagnoseConfig(desktop.RuleDocumentSaveRequest{Workspace: root, Document: docDiagnoseConfig, Output: "config.json"})
+	if config.State != desktop.Completed {
+		t.Fatalf("save diagnose config: %+v", config)
+	}
+	writtenConfig, err := os.ReadFile(filepath.Join(root, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(writtenConfig) != config.Document || config.SHA256 != sha256Of(writtenConfig) {
+		t.Fatalf("the reported configuration and identity are not the entry that was written: %q %s", writtenConfig, config.SHA256)
+	}
+	if reopened := app.OpenDiagnoseConfig(root, "config.json"); reopened.SHA256 != config.SHA256 || reopened.Document != config.Document {
+		t.Fatalf("a saved configuration does not reopen as itself: %+v", reopened)
 	}
 	decisions := app.SaveFindingDecisions(desktop.RuleDocumentSaveRequest{Workspace: root, Document: docFindingDecisions, Output: "verdicts.json"})
 	if decisions.State != desktop.Completed {

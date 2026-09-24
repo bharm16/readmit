@@ -32,11 +32,14 @@ type DiagnosisRequest struct {
 }
 
 // Diagnosis is one report windowed for the panes. Every count is the
-// engine's own; a window can never read as the whole of it.
+// engine's own; a window can never read as the whole of it. CaseIdentity is
+// the identity of the case the report was run over, as the report records it,
+// so a retained report of another case is never read as the open case's.
 type Diagnosis struct {
 	Case         string                 `json:"case"`
 	Config       string                 `json:"config,omitzero"`
 	ReportSHA256 string                 `json:"report_sha256"`
+	CaseIdentity string                 `json:"case_identity"`
 	Schema       string                 `json:"schema"`
 	Profile      string                 `json:"profile"`
 	Ruleset      string                 `json:"ruleset"`
@@ -197,7 +200,7 @@ func windowedDiagnosis(caseName, config, reportSHA256 string, report diagnose.Re
 	start := min(offset, len(report.Findings))
 	described := &Diagnosis{
 		Case: caseName, Config: config, ReportSHA256: reportSHA256,
-		Schema: report.Schema, Profile: report.Profile, Ruleset: report.Ruleset,
+		CaseIdentity: report.CaseIdentity, Schema: report.Schema, Profile: report.Profile, Ruleset: report.Ruleset,
 		Rules: report.Rules, Window: report.Window, Scope: report.Scope,
 		NoFindings: report.NoFindings,
 		Offset:     offset, Total: len(report.Findings),
@@ -251,38 +254,42 @@ func (r *DiagnosisGroupsResult) refuse(state State, reason string) { r.State, r.
 // view and never touches evidence.
 func (a *App) GroupDiagnoses(request GroupDiagnosesRequest) DiagnosisGroupsResult {
 	return run(a, true, false, func(ctx context.Context) DiagnosisGroupsResult {
-		failure := func(reason string) DiagnosisGroupsResult {
-			return DiagnosisGroupsResult{State: Failed, Reason: reason}
-		}
-		if request.Offset < 0 {
-			return failure("a grouping window cannot begin before its first group")
-		}
-		root, declined := resolveFolder(request.Workspace)
-		if root == "" {
-			return DiagnosisGroupsResult{State: declined.state, Reason: declined.reason}
-		}
-		config, declined := diagnosisConfig(root, request.Config, request.Builtin)
-		if declined.reason != "" {
-			return DiagnosisGroupsResult{State: declined.state, Reason: declined.reason}
-		}
-		paths := make([]string, 0, len(request.Cases))
-		for _, name := range request.Cases {
-			path, err := artifactpath.Child(root, name)
-			if err != nil {
-				return failure("every grouped case must be named by one directory entry of the open workspace")
-			}
-			paths = append(paths, path)
-		}
-		report, err := diagnose.GroupCases(ctx, paths, config)
-		if err != nil {
-			if ctx.Err() != nil {
-				return DiagnosisGroupsResult{State: Cancelled, Reason: cancelledRefusal.reason}
-			}
-			return failure(err.Error())
-		}
-		total := len(report.Groups)
-		start := min(request.Offset, total)
-		report.Groups = report.Groups[start : start+min(MaxDiagnosisFindings, total-start)]
-		return DiagnosisGroupsResult{State: Completed, Offset: request.Offset, Total: total, Groups: &report}
+		return groupDiagnoses(ctx, request)
 	})
+}
+
+func groupDiagnoses(ctx context.Context, request GroupDiagnosesRequest) DiagnosisGroupsResult {
+	failure := func(reason string) DiagnosisGroupsResult {
+		return DiagnosisGroupsResult{State: Failed, Reason: reason}
+	}
+	if request.Offset < 0 {
+		return failure("a grouping window cannot begin before its first group")
+	}
+	root, declined := resolveFolder(request.Workspace)
+	if root == "" {
+		return DiagnosisGroupsResult{State: declined.state, Reason: declined.reason}
+	}
+	config, declined := diagnosisConfig(root, request.Config, request.Builtin)
+	if declined.reason != "" {
+		return DiagnosisGroupsResult{State: declined.state, Reason: declined.reason}
+	}
+	paths := make([]string, 0, len(request.Cases))
+	for _, name := range request.Cases {
+		path, err := artifactpath.Child(root, name)
+		if err != nil {
+			return failure("every grouped case must be named by one directory entry of the open workspace")
+		}
+		paths = append(paths, path)
+	}
+	report, err := diagnose.GroupCases(ctx, paths, config)
+	if err != nil {
+		if ctx.Err() != nil {
+			return DiagnosisGroupsResult{State: Cancelled, Reason: cancelledRefusal.reason}
+		}
+		return failure(err.Error())
+	}
+	total := len(report.Groups)
+	start := min(request.Offset, total)
+	report.Groups = report.Groups[start : start+min(MaxDiagnosisFindings, total-start)]
+	return DiagnosisGroupsResult{State: Completed, Offset: request.Offset, Total: total, Groups: &report}
 }

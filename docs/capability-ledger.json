@@ -220,7 +220,9 @@
       "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-diagnose-config/v1"],
       "outputs": ["readmit-diagnosis-groups/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/diagnosis.journey.tsx", "name": "findings recurring across captured cases are grouped exactly as readmit diagnose groups groups them, a retained report is reopened under the identity of its bytes, and a grouping's report or another case's report is never read as this case's diagnosis"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowGroupsTheCasesReadmitDiagnoseGroupsGroups"},
+      "implemented": true
     },
     {
       "id": "cli.diagnose.review",
@@ -5927,7 +5929,9 @@
       "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-diagnose-config/v1"],
       "outputs": ["readmit-diagnosis-groups/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/Diagnosis.test.tsx", "name": "recurring findings are grouped through the facade, paged over the grouping on screen from the keyboard, refused in the engine's words, and a grouping cancelled from the window's Cancel or Escape is shown as cancelled with no groups"},
+      "parity_test": {"package": "tests", "name": "TestDesktopGroupingEncodesTheCommandLineGroupsReport"},
+      "implemented": true
     },
     {
       "id": "desktop.NormalizeCompare",
@@ -5973,7 +5977,9 @@
       "inputs": ["readmit-diagnose-config/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/diagnosis.journey.tsx", "name": "a retained diagnose configuration opens into the editor under the identity of its bytes, is extended and saved as a new entry, a diagnosis under it reports the rule this release lacks exactly as readmit diagnose does, and configurations the reader cannot read are refused as the command line refuses them"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowOpensTheConfigurationReadmitDiagnoseRuns"},
+      "implemented": true
     },
     {
       "id": "desktop.OpenDiagnosisReport",
@@ -5987,7 +5993,9 @@
       "inputs": ["readmit-diagnosis/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/diagnosis.journey.tsx", "name": "findings recurring across captured cases are grouped exactly as readmit diagnose groups groups them, a retained report is reopened under the identity of its bytes, and a grouping's report or another case's report is never read as this case's diagnosis"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowReopensTheReportReadmitDiagnoseWrote"},
+      "implemented": true
     },
     {
       "id": "desktop.OpenFindingDecisions",
@@ -6001,7 +6009,9 @@
       "inputs": ["readmit-finding-decisions/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/Diagnosis.test.tsx", "name": "a standalone decisions document is opened into the findings and saved through the facade, one recorded against another report is applied to nothing, an open over unsaved decisions asks first and Escape keeps them, and a refused document or save leaves the decisions"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowOpensAndSavesTheDecisionsReadmitDiagnoseReviewReads"},
+      "implemented": true
     },
     {
       "id": "desktop.OpenNormalizationPolicy",
@@ -6109,7 +6119,9 @@
       "inputs": ["readmit-diagnosis/v1", "readmit-finding-decisions/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5"],
       "outputs": ["readmit-finding-review/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/diagnosis.journey.tsx", "name": "a review is previewed without writing anything, decisions are saved as their own document the command line reviews, and decisions about another report or about a report changed on disk are applied to nothing"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowPreviewsTheReviewReadmitDiagnoseReviewRecords"},
+      "implemented": true
     },
     {
       "id": "desktop.RunDiagnosis",
@@ -6171,7 +6183,9 @@
       "inputs": ["readmit-finding-decisions/v1"],
       "outputs": ["readmit-finding-decisions/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/diagnosis.journey.tsx", "name": "a review is previewed without writing anything, decisions are saved as their own document the command line reviews, and decisions about another report or about a report changed on disk are applied to nothing"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowOpensAndSavesTheDecisionsReadmitDiagnoseReviewReads"},
+      "implemented": true
     },
     {
       "id": "desktop.SaveNormalizationPolicy",

@@ -449,7 +449,9 @@ window, field states and original payload byte spans. Use those occurrence IDs i
 `timeline CASE --show-values` only when authorized to inspect values. All complete
 case diagnoses follow the comparison, including every individual finding,
 unsupported item and no-findings disclaimer. A representative never replaces or
-suppresses another finding. The desktop has no diagnosis-group panel in this release.
+suppresses another finding. The application's diagnosis panel groups the cases a
+person checks the same way and writes nothing
+([desktop](desktop.md#diagnosis-and-finding-review)).
 
 A signature hashes the configuration digest, rule ID, profile, ruleset version,
 classification, fixed diagnostic summary and ordered field/state evidence shape.

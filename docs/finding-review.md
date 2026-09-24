@@ -57,6 +57,13 @@ identifiers are positions in one report; the same identifier in another
 diagnosis names another finding. A decisions file applied to a report it was
 not read against is refused rather than silently reattached.
 
+In the application's [diagnosis panel](desktop.md#diagnosis-and-finding-review)
+the decisions are typed on the findings of the report on screen and can be saved
+as a document of their own through this reader. A retained document is opened
+back onto the findings only when it names the report on screen; one that names
+another report is shown for what it is and applied to nothing, exactly because
+of this binding.
+
 **The outcome boundary is not asked**, because there is nothing to choose. A
 diagnosis reads a captured case and observes no appointment ledger, so the only
 expectation it can support is one about an acknowledgement, and

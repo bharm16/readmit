@@ -1111,11 +1111,13 @@ function composeDiagnoseConfig(
 
 /** Authoring the diagnose configuration a diagnosis runs under: which bundled
  * profile and ruleset, which of its rules, and the assigning authorities the
- * identifier rules may use. */
+ * identifier rules may use. Opening a retained configuration shows what it
+ * declares here, including a profile and ruleset pair the engine does not
+ * bundle, which its reader accepts and a diagnosis reports as unsupported. */
 export function DiagnoseConfigEditor({
   workspace,
   entries,
-  busy,
+  busy: windowBusy,
   onSaved,
 }: {
   workspace: string;
@@ -1133,6 +1135,32 @@ export function DiagnoseConfigEditor({
   const [entry, setEntry] = useState("");
   const [output, setOutput] = useState("");
   const [result, setResult] = useState<DiagnoseConfigResult | null>(null);
+  // The profile and ruleset an opened configuration named when they are not
+  // one of the bundled pairs, so the picker can show what was opened.
+  const [openedPair, setOpenedPair] = useState<{ profile: string; ruleset: string } | null>(null);
+  // Whether the configuration on screen was changed since it was last opened
+  // or saved. Opening another one replaces it, so that asks first.
+  const [unsaved, setUnsaved] = useState(false);
+  // The retained configuration whose opening waits for the person's answer.
+  const [confirming, setConfirming] = useState<string | null>(null);
+  // The entry the configuration on screen was opened from, named beside the
+  // identity of its exact bytes.
+  const [openedFrom, setOpenedFrom] = useState("");
+  // What the editor itself is waiting on the application for: an open or a
+  // save of its own. Its controls wait with it, as they do for the window's.
+  const [pending, setPending] = useState<string | null>(null);
+  const busy = windowBusy || pending !== null;
+  const keep = useRef<HTMLButtonElement | null>(null);
+  const openButton = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (confirming !== null) keep.current?.focus();
+  }, [confirming]);
+
+  // Once the configuration is saved there is nothing left to ask about.
+  useEffect(() => {
+    if (!unsaved) setConfirming(null);
+  }, [unsaved]);
 
   const recompose = (
     nextProfile: string,
@@ -1145,7 +1173,42 @@ export function DiagnoseConfigEditor({
     setRules(nextRules);
     setNamespaces(nextNamespaces);
     setDocument(composeDiagnoseConfig(nextProfile, nextRuleset, nextRules, nextNamespaces));
+    setUnsaved(true);
   };
+
+  // An accepted configuration's declarations become the controls' own, so a
+  // namespace or rule added next extends the configuration that was opened
+  // instead of replacing it with whatever the controls held before. A refusal
+  // changes nothing on screen but the status.
+  const open = async (name: string) => {
+    setPending(`Opening ${name}.`);
+    const opened = await openDiagnoseConfig(workspace, name);
+    setPending(null);
+    setResult(opened);
+    if (opened.state !== "completed" || !opened.config) return;
+    const config = opened.config;
+    const bundled = BUILTIN_CONFIGS.some(
+      (pair) => pair.profile === config.profile && pair.ruleset === config.ruleset,
+    );
+    setOpenedPair(bundled ? null : { profile: config.profile, ruleset: config.ruleset });
+    setProfile(config.profile);
+    setRuleset(config.ruleset);
+    setRules(config.rules.join(" "));
+    setNamespaces(config.namespaces);
+    if (opened.document) setDocument(opened.document);
+    setUnsaved(false);
+    setOpenedFrom(name);
+  };
+
+  const keepConfiguration = () => {
+    setConfirming(null);
+    openButton.current?.focus();
+  };
+
+  const pairs = openedPair ? [...BUILTIN_CONFIGS, openedPair] : BUILTIN_CONFIGS;
+  const selected = BUILTIN_CONFIGS.some((pair) => pair.profile === profile && pair.ruleset === ruleset)
+    ? profile
+    : "opened";
 
   return (
     <section aria-label="Diagnose configuration editor">
@@ -1153,7 +1216,8 @@ export function DiagnoseConfigEditor({
       <p className="hint">
         A configuration names one bundled profile and ruleset and the rule identifiers a diagnosis
         evaluates. The profile vocabulary is the engine's own; local interface profiles are managed
-        separately.
+        separately. Opening a retained configuration shows what it declares here; saving writes a
+        new entry beside it.
       </p>
       <OpenForm
         idPrefix="diagnose-config"
@@ -1162,31 +1226,66 @@ export function DiagnoseConfigEditor({
         entries={entries}
         entry={entry}
         onEntry={setEntry}
-        onOpen={() =>
-          void (async () => {
-            const opened = await openDiagnoseConfig(workspace, entry);
-            setResult(opened);
-            if (opened.document) setDocument(opened.document);
-          })()
-        }
+        openButton={openButton}
+        onOpen={() => (unsaved ? setConfirming(entry) : void open(entry))}
       />
+      {confirming !== null ? (
+        <div
+          role="group"
+          aria-label={`Open ${confirming} in place of this configuration?`}
+          onKeyDown={(event) => {
+            // Escape answers this question and goes no further: the window's
+            // own Escape cancels a running operation.
+            if (event.key === "Escape" && !event.nativeEvent.isComposing && !busy) {
+              event.preventDefault();
+              event.stopPropagation();
+              keepConfiguration();
+            }
+          }}
+        >
+          <p className="hint">
+            The configuration in this editor is not saved. Opening {confirming} replaces it.
+          </p>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              const name = confirming;
+              setConfirming(null);
+              openButton.current?.focus();
+              void open(name);
+            }}
+          >
+            Replace it with {confirming}
+          </button>
+          <button type="button" ref={keep} disabled={busy} onClick={keepConfiguration}>
+            Keep this configuration
+          </button>
+        </div>
+      ) : null}
       <label htmlFor="diagnose-config-profile">Bundled profile and ruleset</label>
       <select
         id="diagnose-config-profile"
-        value={profile}
+        value={selected}
         disabled={busy}
         onChange={(event) => {
           const chosen =
-            BUILTIN_CONFIGS.find((config) => config.profile === event.target.value) ??
-            BUILTIN_CONFIGS[0];
+            event.target.value === "opened"
+              ? openedPair
+              : (BUILTIN_CONFIGS.find((config) => config.profile === event.target.value) ??
+                BUILTIN_CONFIGS[0]);
           if (chosen) recompose(chosen.profile, chosen.ruleset, rules, namespaces);
         }}
       >
-        {BUILTIN_CONFIGS.map((config) => (
-          <option key={config.profile} value={config.profile}>
-            {config.profile} · {config.ruleset}
-          </option>
-        ))}
+        {pairs.map((config) => {
+          const bundled = config !== openedPair;
+          return (
+            <option key={bundled ? config.profile : "opened"} value={bundled ? config.profile : "opened"}>
+              {config.profile} · {config.ruleset}
+              {bundled ? "" : " (as opened; not bundled)"}
+            </option>
+          );
+        })}
       </select>
       <p className="hint">Ruleset: {ruleset}</p>
       <label htmlFor="diagnose-config-rules">Rule identifiers, separated by spaces</label>
@@ -1272,7 +1371,10 @@ export function DiagnoseConfigEditor({
         idPrefix="diagnose-config"
         busy={busy}
         document={document}
-        onDocument={setDocument}
+        onDocument={(value) => {
+          setDocument(value);
+          setUnsaved(true);
+        }}
       />
       <SaveForm
         idPrefix="diagnose-config"
@@ -1282,16 +1384,21 @@ export function DiagnoseConfigEditor({
         onOutput={setOutput}
         onSave={() =>
           void (async () => {
+            setPending(`Saving ${output}.`);
             const saved = await saveDiagnoseConfig({ workspace, document, output });
+            setPending(null);
             setResult(saved);
             if (saved.state === "completed" && saved.output) {
               setOutput("");
+              setUnsaved(false);
               onSaved?.();
             }
           })()
         }
       />
-      <p role="status">{outcome(result, "Accepted by the shared diagnose-config reader.")}</p>
+      <p role="status">
+        {pending ?? outcome(result, `Opened ${openedFrom} · exact bytes hash to ${result?.sha256 ?? ""}`)}
+      </p>
     </section>
   );
 }

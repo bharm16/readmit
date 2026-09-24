@@ -236,14 +236,16 @@ func (a *App) SaveNormalizationPolicy(request RuleDocumentSaveRequest) Normaliza
 	})
 }
 
-// DiagnoseConfigResult carries one authored diagnosis configuration. The
-// identity a report binds to is the report's own ConfigSHA256, computed by the
-// engine over the configuration it ran, so none is restated here.
+// DiagnoseConfigResult carries one authored diagnosis configuration. SHA256
+// is the digest of the exact bytes the entry holds, which names the file an
+// editor opened or saved. It is not the identity a report records: a report's
+// config_sha256 is computed by the engine over the configuration it ran.
 type DiagnoseConfigResult struct {
 	State    State            `json:"state"`
 	Reason   string           `json:"reason,omitzero"`
 	Document string           `json:"document,omitzero"`
 	Output   string           `json:"output,omitzero"`
+	SHA256   string           `json:"sha256,omitzero"`
 	Config   *diagnose.Config `json:"config,omitzero"`
 }
 
@@ -253,11 +255,11 @@ func (r *DiagnoseConfigResult) refuse(state State, reason string) { r.State, r.R
 // through the same strict parser `readmit diagnose --config` applies.
 func (a *App) OpenDiagnoseConfig(workspace, entry string) DiagnoseConfigResult {
 	return run(a, false, false, func(context.Context) DiagnoseConfigResult {
-		document, _, config, declined := diagnoseConfigDocument.opened(workspace, entry)
+		document, sha, config, declined := diagnoseConfigDocument.opened(workspace, entry)
 		if config == nil {
 			return DiagnoseConfigResult{State: declined.state, Reason: declined.reason}
 		}
-		return DiagnoseConfigResult{State: Completed, Document: document, Config: config}
+		return DiagnoseConfigResult{State: Completed, Document: document, SHA256: sha, Config: config}
 	})
 }
 
@@ -265,11 +267,11 @@ func (a *App) OpenDiagnoseConfig(workspace, entry string) DiagnoseConfigResult {
 // diagnosis configuration into one new entry of the open workspace.
 func (a *App) SaveDiagnoseConfig(request RuleDocumentSaveRequest) DiagnoseConfigResult {
 	return run(a, false, true, func(context.Context) DiagnoseConfigResult {
-		document, _, config, declined := diagnoseConfigDocument.saved(request)
+		document, sha, config, declined := diagnoseConfigDocument.saved(request)
 		if config == nil {
 			return DiagnoseConfigResult{State: declined.state, Reason: declined.reason}
 		}
-		return DiagnoseConfigResult{State: Completed, Document: document, Output: request.Output, Config: config}
+		return DiagnoseConfigResult{State: Completed, Document: document, Output: request.Output, SHA256: sha, Config: config}
 	})
 }
 

@@ -158,7 +158,8 @@ const MAX_SPLIT = 80;
 const SPLIT_STEP = 5;
 
 /** Verifying a case, reading a project and searching all run to completion once
- * they start, so Cancel is offered only while an interruptible operation runs. */
+ * they start, so Cancel is offered only while an interruptible operation runs:
+ * choosing a folder, or grouping the findings of several cases. */
 type Running =
   | null
   | "workspace"
@@ -179,6 +180,8 @@ type Running =
   | "reduction"
   | "review"
   | "diagnosis"
+  | "diagnosis-report"
+  | "diagnosis-groups"
   | "finding-review"
   | "normalize"
   | "recent"
@@ -962,7 +965,7 @@ export default function App() {
   const openReport = useCallback(
     async (entry: string, offset: number) => {
       if (!root) return;
-      await operate("diagnosis", async () => {
+      await operate("diagnosis-report", async () => {
         setDiagnosisResult(null);
         setFindingReviewResult(null);
         setDiagnosisResult(await openDiagnosisReport(root, entry, offset));
@@ -974,7 +977,7 @@ export default function App() {
   const groupCases = useCallback(
     async (request: GroupDiagnosesRequest) => {
       if (!root) return;
-      await operate("diagnosis", async () => {
+      await operate("diagnosis-groups", async () => {
         setDiagnosisGroupsResult(null);
         setDiagnosisGroupsResult(await groupDiagnoses({ ...request, workspace: root }));
       });
@@ -1777,7 +1780,11 @@ export default function App() {
           <button type="button" onClick={actions["command-palette"]}>
             Commands (Ctrl+K)
           </button>
-          <button type="button" disabled={running !== "workspace"} onClick={() => cancel("")}>
+          <button
+            type="button"
+            disabled={running !== "workspace" && running !== "diagnosis-groups"}
+            onClick={() => cancel("")}
+          >
             Cancel
           </button>
         </div>
@@ -2445,6 +2452,9 @@ export default function App() {
             caseEntries={(opened?.artifacts ?? [])
               .filter((artifact) => artifact.kind === "case")
               .map((artifact) => artifact.name)}
+            decisionsEntries={(opened?.artifacts ?? [])
+              .filter((artifact) => artifact.kind === "finding-decisions")
+              .map((artifact) => artifact.name)}
             result={diagnosisResult}
             groupsResult={diagnosisGroupsResult}
             reviewResult={findingReviewResult}
@@ -2452,10 +2462,13 @@ export default function App() {
             progress={
               running === "diagnosis"
                 ? "Running this diagnosis."
-                : running === "finding-review"
-                  ? "Reviewing these findings."
-                  : null
+                : running === "diagnosis-report"
+                  ? "Opening this report."
+                  : running === "finding-review"
+                    ? "Reviewing these findings."
+                    : null
             }
+            groupsProgress={running === "diagnosis-groups" ? "Grouping findings across these cases." : null}
             indicators={indicators}
             onRun={(request) => void diagnose(request)}
             onOpen={(entry, offset) => void openReport(entry, offset)}

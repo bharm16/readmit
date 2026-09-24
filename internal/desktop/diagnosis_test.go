@@ -1,6 +1,7 @@
 package desktop_test
 
 import (
+	"context"
 	"encoding/json/v2"
 	"os"
 	"path/filepath"
@@ -174,6 +175,11 @@ func TestOpeningARetainedDiagnosisReportsTheIdentityAReviewMustName(t *testing.T
 	if opened.Diagnosis.ReportSHA256 != ran.Diagnosis.ReportSHA256 || opened.Diagnosis.Total != ran.Diagnosis.Total {
 		t.Fatalf("reopening reported a different diagnosis: %+v", opened.Diagnosis)
 	}
+	// Both name the case the report was run over, so the window can tell a
+	// report of this case from a retained report of another one.
+	if ran.Diagnosis.CaseIdentity != identity || opened.Diagnosis.CaseIdentity != identity {
+		t.Fatalf("the diagnosis does not name the case it was run over: %s %s", ran.Diagnosis.CaseIdentity, opened.Diagnosis.CaseIdentity)
+	}
 	// A window past the last finding is empty, with every count retained.
 	past := app.OpenDiagnosisReport(root, "diagnosis-out", opened.Diagnosis.Total)
 	if past.State != desktop.Empty || past.Diagnosis == nil || past.Diagnosis.Total != opened.Diagnosis.Total {
@@ -238,5 +244,32 @@ func TestGroupDiagnosesGroupsEqualSignaturesAcrossSelectedCases(t *testing.T) {
 		if strings.Contains(string(encoded), private) {
 			t.Fatalf("the grouping disclosed %q", private)
 		}
+	}
+}
+
+// A grouping reads several cases and is interruptible: cancelled before its
+// first case is evaluated, it answers cancelled — not failed, and with no
+// groups — and grouping again groups.
+func TestACancelledGroupingGroupsNothingAndGroupingAgainGroups(t *testing.T) {
+	_, root, _ := diagnosisWorkspace(t)
+	wire, err := os.ReadFile(filepath.Join("..", "..", "testdata", "fixtures", "diagnose-acknowledged.mllp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeInputs(t, root, "acked-again", []bundle.Input{{
+		Path:    "SYNTHETIC-FIXTURE-TWO",
+		Data:    wire,
+		Options: hl7.Options{Format: hl7.MLLP, Terminator: hl7.CR},
+	}})
+	request := desktop.GroupDiagnosesRequest{Workspace: root, Cases: []string{"acked", "acked-again"}, Builtin: "siu"}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	cancelled := desktop.GroupDiagnosesWithinForTest(ctx, request)
+	if cancelled.State != desktop.Cancelled || cancelled.Groups != nil || cancelled.Reason == "" || cancelled.Total != 0 {
+		t.Fatalf("a cancelled grouping was not reported as cancelled: %+v", cancelled)
+	}
+	grouped := desktop.GroupDiagnosesWithinForTest(context.Background(), request)
+	if grouped.State != desktop.Completed || grouped.Groups == nil || len(grouped.Groups.Cases) != 2 {
+		t.Fatalf("grouping again did not group: %+v", grouped)
 	}
 }
