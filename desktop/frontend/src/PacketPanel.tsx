@@ -14,6 +14,7 @@ import {
   type PacketResult,
   type PacketReviewResult,
 } from "./bindings";
+import { SyntheticPackets } from "./SyntheticPackets";
 
 /** The investigation-packet panels: assembly from actual retained evidence,
  * export of the five inert offline renderings, and read-only opening of both
@@ -29,7 +30,9 @@ import {
  * work; a cancelled or refused write leaves its destination explicitly
  * incomplete. Opening a packet or a review is read-only and acquires no send
  * or mutation authority, and a sealed or rendered report is never a passing
- * run, a disclosure approval, or a regression-equivalence claim. */
+ * run, a disclosure approval, or a regression-equivalence claim. The
+ * synthetic demonstration packets sit beside them in a section of their own,
+ * never among the person's own evidence. */
 export function PacketPanel({
   workspace,
   entries,
@@ -285,6 +288,8 @@ export function PacketPanel({
       {review?.reason ? <p>{review.reason}</p> : null}
       {review?.review ? <PacketReviewDetails view={review.review} /> : null}
     </div>
+
+    <SyntheticPackets onRefresh={onRefresh} />
   </section>;
 }
 

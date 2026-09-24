@@ -39,6 +39,7 @@ export type Kind =
   | "suite-releases"
   | "packet"
   | "portable-review"
+  | "synthetic-packet"
   | "derived-export"
   | "support"
   | "transfer-package"
@@ -625,6 +626,10 @@ export interface Facade {
   ChoosePacketExportPath(): Promise<PacketPathResult>;
   ExportPacketReview(request: PacketExportRequest): Promise<PacketExportResult>;
   OpenPacketReview(request: PacketReviewRequest): Promise<PacketReviewResult>;
+  ChooseSyntheticPacketPath(kind: SyntheticPacketPathKind): Promise<PacketPathResult>;
+  GenerateSyntheticPacket(request: SyntheticPacketRequest): Promise<SyntheticPacketResult>;
+  OpenSyntheticPacket(path: string): Promise<SyntheticPacketResult>;
+  PrepareSyntheticRerun(request: SyntheticRerunRequest): Promise<SyntheticRerunResult>;
   RecoverSession(): Promise<RecoveryResult>;
   RecordView(view: View): Promise<SessionResult>;
   SaveDraft(draft: Draft): Promise<SessionResult>;
@@ -1879,6 +1884,94 @@ export interface PacketReviewResult {
 }
 export function openPacketReview(request: PacketReviewRequest): Promise<PacketReviewResult> {
   return guard(() => facade().OpenPacketReview(request), { state: "failed" });
+}
+
+/** The synthetic demonstration packets: `readmit report`, `report verify` and
+ * `report prepare` in the packet panels. A synthetic packet is generated from
+ * the one committed scenario on built-in fixtures started on loopback, and is
+ * never the person's own evidence; every view carries the packet's own
+ * synthetic-only provenance and limitations. A new packet or rerun folder is
+ * named in the host's save dialog, an existing packet is chosen in the folder
+ * dialog, and choosing creates, verifies and contacts nothing. */
+export type SyntheticPacketPathKind = "packet-destination" | "packet" | "rerun-destination";
+export function chooseSyntheticPacketPath(kind: SyntheticPacketPathKind): Promise<PacketPathResult> {
+  return guard(() => facade().ChooseSyntheticPacketPath(kind), { state: "failed" });
+}
+export interface SyntheticPacketRequest {
+  scenario: string;
+  destination: string;
+}
+/** One of the packet's two fixture executions, as its verified manifest labels it. */
+export interface SyntheticRunView {
+  path: string;
+  receiver_mode: string;
+  receiver: string;
+  status: string;
+  ledger_count: number;
+  result_identity: string;
+}
+/** A verified synthetic packet read back from disk. */
+export interface SyntheticPacketView {
+  folder: string;
+  identity: string;
+  schema: string;
+  state: string;
+  scenario: string;
+  provenance: string;
+  input_identity: string;
+  spec_identity: string;
+  observation_boundary: string;
+  input_changed: boolean;
+  receiver_behavior_changed: boolean;
+  runs: SyntheticRunView[];
+  files: number;
+  limitations: string[];
+}
+export interface SyntheticPacketResult {
+  state: State;
+  reason?: string;
+  packet?: SyntheticPacketView;
+}
+/** Generates the committed scenario into a new folder, running it against
+ * fresh built-in defective and fixed receivers on loopback, and reads the
+ * sealed packet back through the verifier. */
+export function generateSyntheticPacket(request: SyntheticPacketRequest): Promise<SyntheticPacketResult> {
+  return guard(() => facade().GenerateSyntheticPacket(request), { state: "failed" });
+}
+/** Verifies one synthetic packet offline and read-only. */
+export function openSyntheticPacket(path: string): Promise<SyntheticPacketResult> {
+  return guard(() => facade().OpenSyntheticPacket(path), { state: "failed" });
+}
+export interface SyntheticRerunRequest {
+  packet: string;
+  destination: string;
+  address: string;
+}
+export interface SyntheticRunnableSpec {
+  path: string;
+  sha256: string;
+}
+/** The preparation of runnable copies outside a verified packet: not a seal
+ * and not a verdict. */
+export interface SyntheticRerunView {
+  folder: string;
+  address: string;
+  packet_identity: string;
+  historical_spec_identity: string;
+  input_identity: string;
+  target_sha256: string;
+  changed_bindings: string[];
+  specs: SyntheticRunnableSpec[];
+}
+export interface SyntheticRerunResult {
+  state: State;
+  reason?: string;
+  rerun?: SyntheticRerunView;
+}
+/** Prepares runnable copies of a verified packet in a new folder outside it,
+ * offline; the sealed packet is never edited. */
+export function prepareSyntheticRerun(request: SyntheticRerunRequest): Promise<SyntheticRerunResult> {
+  return guard(() => facade().PrepareSyntheticRerun(request), { state: "failed" });
 }
 
 /** Deliberately reveals one occurrence, with values escaped by the Go engine. */

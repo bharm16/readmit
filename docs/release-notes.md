@@ -1,5 +1,24 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The packet panels generate, verify and prepare synthetic demonstration
+  packets (#308). `readmit report`, `report verify` and `report prepare` had
+  no screen, and the listing called a synthetic packet unsupported. A section
+  of the investigation-packet panels now generates the committed
+  `siu-reschedule-v1` scenario into a new folder named in the save dialog,
+  against fresh built-in receivers the window starts on loopback, and reads
+  the packet back under the identity `readmit report verify` then prints;
+  verifies a packet chosen in the folder dialog offline and read-only; and
+  prepares runnable copies into a new folder outside it, byte for byte what
+  `report prepare` writes. A changed, incomplete or unsupported packet, a folder
+  inside the packet and an address that is not numeric loopback are refused
+  in the commands' own words. Like the commands, none of it needs an
+  activation. A synthetic packet is labelled synthetic in every view and
+  listed as a `synthetic-packet`, never as the person's own evidence, and the
+  retained-packet panels refuse it. The facade gains
+  `ChooseSyntheticPacketPath`, `GenerateSyntheticPacket`,
+  `OpenSyntheticPacket` and `PrepareSyntheticRerun`; no `readmit-*` contract,
+  command, flag, exit status or machine output changes.
+
 - Observation setup validates a saved source and a saved window each on its
   own, and a source keeps one identity (#294). Validate source document and
   Validate window document read the named document with the reader the

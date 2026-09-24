@@ -156,6 +156,7 @@ var indicators = []Indicator{
 	{Status: string(SuiteArtifact), Symbol: "◫", Label: "Suite management"},
 	{Status: string(PacketArtifact), Symbol: "◍", Label: "Investigation packet"},
 	{Status: string(PortableReviewArtifact), Symbol: "◕", Label: "Portable review"},
+	{Status: string(SyntheticPacketArtifact), Symbol: "◌", Label: "Synthetic demonstration packet"},
 	{Status: string(UnsupportedArtifact), Symbol: "?", Label: "Unsupported here"},
 
 	{Status: string(project.StatusOpen), Symbol: "◇", Label: "Open"},
@@ -319,7 +320,6 @@ var supportStatus = Support{
 		"compare two built revisions and what their runs decided",
 		"execute, queue, resume, recover and inspect durable runs",
 		"export the installed entitlement byte for byte",
-		"generate, verify and prepare runnable copies of synthetic demonstration packets",
 		"group findings from selected cases by signature without hiding any finding",
 		"join a diagnosis with analyst decisions and report every verdict, basis, scope and promotion without writing",
 		"link case occurrences under declared source, session and authority rules",

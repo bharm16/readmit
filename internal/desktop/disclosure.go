@@ -125,6 +125,7 @@ var slotActivities = []slotActivity{
 			{runOperation, "A durable run is executing now; it sends only to the target its preflight named, and the run panel holds its progress."},
 			{"practice", "The guided sample's practice run is executing now; it sends only to the built-in fixture receiver it started on loopback in this process."},
 			{privacyOperation, "A disclosure review or derived export is in progress now; its proof sends synthetic fixture messages only to built-in receivers it starts on loopback in this process."},
+			{syntheticPacketOperation, "A synthetic demonstration packet is being generated now; it sends the scenario's synthetic messages only to built-in receivers it starts on loopback in this process."},
 		},
 		idle: "No run is in progress. A run sends only while it executes; selecting, preflighting and reading history connect to nothing.",
 	},

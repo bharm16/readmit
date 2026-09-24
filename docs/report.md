@@ -183,6 +183,14 @@ invalid contract, unsupported mode, corrupt input or I/O failure. Default consol
 output includes identities, counts and fixed labels; it does not echo source
 values, selected paths or endpoints.
 
+In the desktop shell the same three operations are the synthetic section of
+the investigation-packet panels: it generates into a new folder named in the
+host's save dialog, verifies a packet chosen in the folder dialog offline and
+read-only, and prepares runnable copies into a new folder outside it, refusing
+what these commands refuse in their words. Every view labels the packet
+synthetic and never presents it as the person's own evidence. See
+[the desktop shell](desktop.md#investigation-packets-and-portable-reports).
+
 ## Packets from actual retained runs
 
 `report assemble` copies explicitly supplied evidence. It generates no case,

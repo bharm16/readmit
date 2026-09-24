@@ -1370,7 +1370,9 @@
       "inputs": [],
       "outputs": ["readmit-report/v1", "readmit-case/v1", "readmit-test/v1", "readmit-result/v1", "readmit-target/v1", "readmit-diagnosis/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/synthetic-packets.journey.tsx", "name": "a synthetic demonstration packet is generated into a new folder, verified as readmit report verify verifies it, prepared into runnable copies outside it and refused once changed, labelled synthetic throughout"},
+      "parity_test": {"package": "internal/desktop", "name": "TestSyntheticPacketGeneratedByTheWindowIsTheOneReadmitReportVerifies"},
+      "implemented": true
     },
     {
       "id": "cli.report.assemble",
@@ -1416,7 +1418,9 @@
       "inputs": ["readmit-report/v1"],
       "outputs": ["readmit-report-preparation/v1", "readmit-test/v1", "readmit-target/v1", "readmit-case/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/synthetic-packets.journey.tsx", "name": "a synthetic demonstration packet is generated into a new folder, verified as readmit report verify verifies it, prepared into runnable copies outside it and refused once changed, labelled synthetic throughout"},
+      "parity_test": {"package": "internal/desktop", "name": "TestSyntheticRerunPreparedByTheWindowIsTheCommandLinesPreparation"},
+      "implemented": true
     },
     {
       "id": "cli.report.review",
@@ -1446,7 +1450,9 @@
       "inputs": ["readmit-report/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/synthetic-packets.journey.tsx", "name": "a synthetic demonstration packet is generated into a new folder, verified as readmit report verify verifies it, prepared into runnable copies outside it and refused once changed, labelled synthetic throughout"},
+      "parity_test": {"package": "internal/desktop", "name": "TestSyntheticPacketsChangedIncompleteOrUnsupportedAreRefusedByTheWindowAndTheCommandLine"},
+      "implemented": true
     },
     {
       "id": "cli.report.verify-retained",
@@ -6445,6 +6451,70 @@
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/PacketPanel.test.tsx", "name": "a portable review opens read-only and reveals the report text only on purpose"},
       "parity_test": {"package": "internal/desktop", "name": "TestPacketExportSealsRenderingsAndReviewsReopenReadOnly"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.ChooseSyntheticPacketPath",
+      "source": "desktop.App.ChooseSyntheticPacketPath",
+      "kind": "desktop",
+      "capability": "name a new folder for a synthetic packet or its runnable copies in the native save dialog, or choose an existing synthetic packet in the folder dialog",
+      "owner": "bharm16/readmit#308",
+      "screen": "the investigation-packet panels of the evidence region",
+      "action": "name the new folder a synthetic packet or its runnable copies are written into, or choose the synthetic packet to verify",
+      "backend": {"package": "internal/desktop", "name": "App.ChooseSyntheticPacketPath"},
+      "inputs": [],
+      "outputs": [],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/journeys/synthetic-packets.journey.tsx", "name": "a synthetic demonstration packet is generated into a new folder, verified as readmit report verify verifies it, prepared into runnable copies outside it and refused once changed, labelled synthetic throughout"},
+      "parity_test": {"package": "internal/desktop", "name": "TestChooseSyntheticPacketPathKinds"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.GenerateSyntheticPacket",
+      "source": "desktop.App.GenerateSyntheticPacket",
+      "kind": "desktop",
+      "capability": "Generate a sealed synthetic packet from fresh built-in loopback fixtures into a new folder and read it back verified",
+      "owner": "bharm16/readmit#308",
+      "screen": "the investigation-packet panels of the evidence region",
+      "action": "generate the committed synthetic scenario into a new folder named in the save dialog, labelled synthetic and never presented as the person's own evidence",
+      "backend": {"package": "internal/report", "name": "Create"},
+      "inputs": [],
+      "outputs": ["readmit-report/v1", "readmit-case/v1", "readmit-test/v1", "readmit-result/v1", "readmit-target/v1", "readmit-diagnosis/v1"],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/journeys/synthetic-packets.journey.tsx", "name": "a synthetic demonstration packet is generated into a new folder, verified as readmit report verify verifies it, prepared into runnable copies outside it and refused once changed, labelled synthetic throughout"},
+      "parity_test": {"package": "internal/desktop", "name": "TestSyntheticPacketGeneratedByTheWindowIsTheOneReadmitReportVerifies"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.OpenSyntheticPacket",
+      "source": "desktop.App.OpenSyntheticPacket",
+      "kind": "desktop",
+      "capability": "Verify a complete synthetic packet offline and read-only",
+      "owner": "bharm16/readmit#308",
+      "screen": "the investigation-packet panels of the evidence region",
+      "action": "verify one synthetic packet offline and read-only through the verifier readmit report verify uses, refusing a changed, incomplete or unsupported one",
+      "backend": {"package": "internal/report", "name": "Open"},
+      "inputs": ["readmit-report/v1"],
+      "outputs": [],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/journeys/synthetic-packets.journey.tsx", "name": "a synthetic demonstration packet is generated into a new folder, verified as readmit report verify verifies it, prepared into runnable copies outside it and refused once changed, labelled synthetic throughout"},
+      "parity_test": {"package": "internal/desktop", "name": "TestSyntheticPacketsChangedIncompleteOrUnsupportedAreRefusedByTheWindowAndTheCommandLine"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.PrepareSyntheticRerun",
+      "source": "desktop.App.PrepareSyntheticRerun",
+      "kind": "desktop",
+      "capability": "Prepare runnable copies outside a verified synthetic packet",
+      "owner": "bharm16/readmit#308",
+      "screen": "the investigation-packet panels of the evidence region",
+      "action": "prepare runnable copies of a verified synthetic packet in a new folder outside it on a numeric loopback address, never editing the packet",
+      "backend": {"package": "internal/report", "name": "Prepare"},
+      "inputs": ["readmit-report/v1"],
+      "outputs": ["readmit-report-preparation/v1", "readmit-test/v1", "readmit-target/v1", "readmit-case/v1"],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/journeys/synthetic-packets.journey.tsx", "name": "a synthetic demonstration packet is generated into a new folder, verified as readmit report verify verifies it, prepared into runnable copies outside it and refused once changed, labelled synthetic throughout"},
+      "parity_test": {"package": "internal/desktop", "name": "TestSyntheticRerunPreparedByTheWindowIsTheCommandLinesPreparation"},
       "implemented": true
     },
     {
