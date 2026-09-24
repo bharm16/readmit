@@ -78,7 +78,7 @@ func TestCorpusGenerationWritesTheCommandsCorpusAndManifestBytes(t *testing.T) {
 			if result.State != desktop.Completed || result.Manifest == nil {
 				t.Fatalf("GenerateCorpus: %+v", result)
 			}
-			if result.Corpus != filepath.Join(windowDir, "corpus") || result.ManifestPath != filepath.Join(windowDir, "corpus.json") {
+			if result.Corpus != filepath.Join(resolved(t, windowDir), "corpus") || result.ManifestPath != filepath.Join(resolved(t, windowDir), "corpus.json") {
 				t.Fatalf("GenerateCorpus wrote elsewhere: %+v", result)
 			}
 			for _, name := range []string{"corpus", "corpus.json"} {
@@ -310,7 +310,7 @@ func TestCorpusScanMatchesTheScanCommand(t *testing.T) {
 		request := scan.request
 		request.File, request.ReportFolder, request.ReportName = path, reports, "window.json"
 		result := app.ScanCorpus(request)
-		if result.State != desktop.Completed || result.Scan == nil || result.Benchmark != filepath.Join(reports, "window.json") {
+		if result.State != desktop.Completed || result.Scan == nil || result.Benchmark != filepath.Join(resolved(t, reports), "window.json") {
 			t.Fatalf("%s: ScanCorpus: %+v", label, result)
 		}
 		if scan.file == "mixed" && (result.Scan.Undecodable != 1 || result.Scan.Decoded != 2) {
