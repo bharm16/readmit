@@ -2,9 +2,7 @@ package transform
 
 import (
 	"errors"
-	"fmt"
 	"slices"
-	"time"
 
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/correlate"
@@ -173,8 +171,7 @@ func (e *engine) place(id string, selector hl7.Selector, ruleID string, group in
 		return placement{}, errors.New("a rename names a position this occurrence does not declare")
 	}
 	return placement{
-		selector: selector, span: value.Span, state: value.State,
-		value:    fmt.Appendf(nil, surrogateValueFormat, group),
+		edit:     hl7.Edit{Selector: selector, Value: hl7.Surrogate(group)},
 		operator: RebaseIdentifiers, rule: ruleID, group: group,
 	}, nil
 }
@@ -184,10 +181,11 @@ func (e *engine) place(id string, selector hl7.Selector, ruleID string, group in
 // between them — and the duration of an appointment, whose two endpoints move
 // together — are exactly what they were.
 //
-// The supported positions are the ones `readmit replay --shift` already moves:
-// MSH-7 and both appointment endpoints of every SCH occurrence and repetition,
-// as whole seconds with an optional numeric offset. A timestamp outside that is
-// refused rather than shifted into a form this release cannot read back.
+// The positions, layouts and year bounds are the ones `readmit replay --shift`
+// moves by, because both ask [hl7.Document.ShiftTimestamps]: MSH-7 and both
+// appointment endpoints of every SCH occurrence and repetition, as whole
+// seconds with an optional numeric offset. A timestamp outside that is refused
+// rather than shifted into a form this release cannot read back.
 func (e *engine) shiftedTimes(id string) ([]placement, error) {
 	doc := e.docs[id]
 	if doc == nil {
@@ -195,53 +193,18 @@ func (e *engine) shiftedTimes(id string) ([]placement, error) {
 			Detail: "nothing decoded this occurrence, so it declares no timestamp to shift; its bytes stay as they are"})
 		return nil, nil
 	}
-	paths := []string{"MSH-7"}
-	appointments := 0
-	for _, segment := range doc.Messages[0].Segments {
-		if segment.ID != "SCH" {
-			continue
-		}
-		appointments++
-		for repetition := range segment.Field(11).Repetitions {
-			paths = append(paths,
-				fmt.Sprintf("SCH[%d]-11[%d].4", appointments, repetition+1),
-				fmt.Sprintf("SCH[%d]-11[%d].5", appointments, repetition+1))
-		}
+	edits, err := doc.ShiftTimestamps(0, e.shift)
+	switch {
+	case errors.Is(err, hl7.ErrShiftTimestamp):
+		return nil, errors.New("a date shift moves whole-second MSH-7 and SCH-11.4/5 timestamps with an optional numeric offset; this occurrence declares one it cannot move")
+	case errors.Is(err, hl7.ErrShiftYear):
+		return nil, errors.New("this date shift moves a timestamp outside the supported year range")
+	case err != nil:
+		return nil, errors.New("a shifted position is not one this release addresses")
 	}
-	placements := make([]placement, 0, len(paths))
-	for _, path := range paths {
-		selector, err := hl7.ParseSelector(path)
-		if err != nil {
-			return nil, errors.New("a shifted position is not one this release addresses")
-		}
-		value, err := doc.Select(0, selector)
-		if err != nil || value.State != hl7.Present {
-			continue
-		}
-		shifted, err := shift(string(doc.Bytes(value.Span)), e.shift)
-		if err != nil {
-			return nil, err
-		}
-		placements = append(placements, placement{
-			selector: selector, span: value.Span, state: value.State,
-			value: []byte(shifted), operator: ShiftDates,
-		})
+	placements := make([]placement, 0, len(edits))
+	for _, edit := range edits {
+		placements = append(placements, placement{edit: edit, operator: ShiftDates})
 	}
 	return placements, nil
-}
-
-func shift(value string, by time.Duration) (string, error) {
-	layout := timestampLayout
-	if len(value) == len(timestampOffsetLayout) {
-		layout = timestampOffsetLayout
-	}
-	parsed, err := time.Parse(layout, value)
-	if err != nil || parsed.Format(layout) != value {
-		return "", errors.New("a date shift moves whole-second MSH-7 and SCH-11.4/5 timestamps with an optional numeric offset; this occurrence declares one it cannot move")
-	}
-	moved := parsed.Add(by)
-	if moved.Year() < 1 || moved.Year() > 9999 {
-		return "", errors.New("this date shift moves a timestamp outside the supported year range")
-	}
-	return moved.Format(layout), nil
 }

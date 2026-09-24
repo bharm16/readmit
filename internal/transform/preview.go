@@ -20,22 +20,14 @@ const boundaryStatement = "A preview states what this plan would do to the seque
 	"establish that they describe one encounter. A supported profile outcome is the pinned pack's own " +
 	"declaration, not a conformance verdict, and unknown, untested and unsupported never pass."
 
-// standard is the only delimiter declaration a position is rewritten under. An
-// occurrence declaring other delimiters is refused rather than rewritten
-// against an assumption, exactly as the reproducer editor refuses one.
-var standard = hl7.Delimiters{Field: '|', Component: '^', Repetition: '~', Escape: '\\', Subcomponent: '&'}
-
 // controlIDSelector is the position a control-id rename rewrites, and
 // acknowledgedSelector the reference a matched acknowledgement declares about
 // it. A rename that moves one without the other strands the acknowledgement,
 // which is the relation this package exists to keep.
 const (
-	controlIDSelector     = "MSH-10"
-	acknowledgedSelector  = "MSA-2"
-	entryNameFormat       = "t%06d"
-	surrogateValueFormat  = "READMIT%06d"
-	timestampLayout       = "20060102150405"
-	timestampOffsetLayout = timestampLayout + "-0700"
+	controlIDSelector    = "MSH-10"
+	acknowledgedSelector = "MSA-2"
+	entryNameFormat      = "t%06d"
 )
 
 // Run reports what one plan means over one verified case under one declared set
@@ -205,15 +197,14 @@ func (e *engine) indexOf(entry string) (int, error) {
 }
 
 // placement is one position the transformation rewrites in one parent
-// occurrence: where it is, what it was, and the bytes that replace it.
+// occurrence, the operator and relation that put it there, and, once it has
+// landed, the state the position had.
 type placement struct {
-	selector hl7.Selector
-	span     hl7.Span
-	state    hl7.State
-	value    []byte
+	edit     hl7.Edit
 	operator string
 	rule     string
 	group    int
+	state    hl7.State
 }
 
 func (e *engine) note(item Unsupported) {

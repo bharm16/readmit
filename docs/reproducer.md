@@ -133,7 +133,7 @@ release cannot read back is refused rather than written.
 | `MSH-1` and `MSH-2` | They declare the delimiters every other position is split on |
 | An occurrence nothing decoded | Its bytes are retained exactly as they are and it has no field tree |
 | An occurrence this reproducer does not retain | An edit names something the reproducer holds |
-| The same position of one occurrence twice, or two edits over the same or overlapping bytes | A plan says once what it does to a position |
+| The same position of one occurrence twice, two edits over the same or overlapping bytes, or an edit of an empty position at the edge of or inside another edit's position | A plan says once what it does to a position |
 | Any occurrence declaring other delimiters | The occurrence is retained unchanged; rewriting it would assume what its separators mean |
 
 Clearing a position that held an explicit HL7 null removes those two bytes and

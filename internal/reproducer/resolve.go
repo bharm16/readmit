@@ -9,11 +9,6 @@ import (
 	"github.com/bharm16/readmit/internal/hl7"
 )
 
-// standard is the only delimiter declaration a field edit is performed under.
-// An occurrence declaring other delimiters is refused rather than rewritten
-// against an assumption, exactly as `redact` refuses one.
-var standard = hl7.Delimiters{Field: '|', Component: '^', Repetition: '~', Escape: '\\', Subcomponent: '&'}
-
 // Resolve reports what one plan means over one verified case: which occurrences
 // it retains and why, where every edit lands, and everything a dependency step
 // reached and could not settle.
@@ -26,16 +21,6 @@ func Resolve(source *bundle.Bundle, plan Plan) (Resolution, error) {
 		return Resolution{}, err
 	}
 	return resolved.resolution, nil
-}
-
-// pending is one edit before its bytes are placed: the position it addresses in
-// the parent occurrence and the bytes that replace it.
-type pending struct {
-	step     Step
-	span     hl7.Span
-	state    hl7.State
-	value    []byte
-	selector hl7.Selector
 }
 
 // resolved is a resolution plus the derived bytes it implies, so a build writes
@@ -51,7 +36,7 @@ type session struct {
 	events   map[string]*bundle.Event
 	position map[string]int
 	reasons  map[string]Retained
-	edits    map[string][]pending
+	edits    map[string][]Step
 	unsolved []Unresolved
 }
 
@@ -67,7 +52,7 @@ func resolve(source *bundle.Bundle, plan Plan) (*resolved, error) {
 		events:   make(map[string]*bundle.Event, len(source.Events)),
 		position: make(map[string]int, len(source.Events)),
 		reasons:  make(map[string]Retained),
-		edits:    make(map[string][]pending),
+		edits:    make(map[string][]Step),
 	}
 	for i := range source.Events {
 		s.events[source.Events[i].ID] = &source.Events[i]
@@ -239,11 +224,11 @@ func (s *session) edit(step Step) error {
 		return errors.New("an occurrence nothing decoded has no field to edit; its bytes are retained exactly as they are")
 	}
 	for _, existing := range s.edits[step.Occurrence] {
-		if existing.step.Selector == step.Selector {
+		if existing.Selector == step.Selector {
 			return errors.New("a plan edits each position of an occurrence once")
 		}
 	}
-	s.edits[step.Occurrence] = append(s.edits[step.Occurrence], pending{step: step})
+	s.edits[step.Occurrence] = append(s.edits[step.Occurrence], step)
 	return nil
 }
 
@@ -324,75 +309,49 @@ func (s *session) finish() (*resolved, error) {
 	return result, nil
 }
 
-// rewrite splices one occurrence's edits into its bytes and reports where each
-// one landed in the result. The original bytes are never changed: this produces
-// a new occurrence beside them.
-func (s *session) rewrite(event *bundle.Event, raw []byte, edits []pending) ([]byte, []Edit, error) {
+// rewrite splices one occurrence's edits into its bytes through the shared
+// occurrence rewrite, which refuses what cannot mean one thing and reads the
+// result back, and reports where each one landed in the result. The original
+// bytes are never changed: this produces a new occurrence beside them.
+func (s *session) rewrite(event *bundle.Event, raw []byte, edits []Step) ([]byte, []Edit, error) {
 	doc, err := hl7.Parse(raw, s.options(event))
 	if err != nil {
 		return nil, nil, errors.New("a retained occurrence could not be decoded consistently with its case")
 	}
-	if doc.Messages[0].Delimiters != standard {
+	changes := make([]hl7.Edit, len(edits))
+	for i, edit := range edits {
+		selector, err := hl7.ParseSelector(edit.Selector)
+		if err != nil {
+			return nil, nil, errors.New("an edited field selector is not one this release addresses")
+		}
+		changes[i].Selector = selector
+		if edit.Operator == SetField {
+			changes[i].Value = []byte(edit.Value)
+		}
+	}
+	rewritten, err := doc.Rewrite(0, changes, hl7.StandardDelimiters)
+	switch {
+	case errors.Is(err, hl7.ErrUnstandardDelimiters):
 		return nil, nil, errors.New("this release edits only the standard HL7 delimiter declaration")
-	}
-	for i := range edits {
-		selector, err := hl7.ParseSelector(edits[i].step.Selector)
-		if err != nil {
-			return nil, nil, errors.New("an edited field selector is not one this release addresses")
-		}
-		// MSH-1 and MSH-2 declare the delimiters every other position is split
-		// on. Rewriting one would restate the syntax of the message rather than
-		// change a value in it.
-		value, err := doc.Read(0, selector, hl7.IgnoreMSH18)
-		if value.Literal {
-			return nil, nil, errors.New("the delimiter declarations MSH-1 and MSH-2 are not editable")
-		}
-		if err != nil {
-			return nil, nil, errors.New("an edited field selector is not one this release addresses")
-		}
-		if value.State == hl7.Omitted {
-			return nil, nil, errors.New("this release edits a position the message declares; an omitted position carries no bytes to replace")
-		}
-		edits[i].selector, edits[i].span, edits[i].state = selector, value.Span, value.State
-		if edits[i].step.Operator == SetField {
-			edits[i].value = []byte(edits[i].step.Value)
-		}
-	}
-	slices.SortFunc(edits, func(a, b pending) int {
-		if a.span.Start != b.span.Start {
-			return a.span.Start - b.span.Start
-		}
-		return a.span.End - b.span.End
-	})
-	var output []byte
-	placed := make([]Edit, 0, len(edits))
-	position, delta := 0, 0
-	previous := hl7.Span{Start: -1, End: -1}
-	for _, change := range edits {
-		// Two selectors naming one position are the same edit written twice.
-		// A field with a single component, and every position below an empty
-		// or explicit-null ancestor, address the ancestor's own bytes: the
-		// selectors differ and the position does not, so applying both would
-		// splice two values where the message declares one.
-		if change.span.Start < position || change.span == previous {
-			return nil, nil, errors.New("two edits of one occurrence address the same or overlapping bytes")
-		}
-		previous = change.span
-		output = append(output, raw[position:change.span.Start]...)
-		output = append(output, change.value...)
-		placed = append(placed, Edit{
-			Parent: event.ID, Selector: change.selector.String(), Operator: change.step.Operator,
-			State: change.state, Offset: change.span.Start + delta, Length: len(change.value),
-		})
-		delta += len(change.value) - (change.span.End - change.span.Start)
-		position = change.span.End
-	}
-	output = append(output, raw[position:]...)
-	if len(output) > bundle.MaxSourceBytes {
+	case errors.Is(err, hl7.ErrDelimiterDeclaration):
+		return nil, nil, errors.New("the delimiter declarations MSH-1 and MSH-2 are not editable")
+	case errors.Is(err, hl7.ErrOmittedPosition):
+		return nil, nil, errors.New("this release edits a position the message declares; an omitted position carries no bytes to replace")
+	case errors.Is(err, hl7.ErrOverlappingEdits):
+		return nil, nil, errors.New("two edits of one occurrence address the same or overlapping bytes")
+	case errors.Is(err, hl7.ErrRewriteTooLarge):
 		return nil, nil, errors.New("an edited occurrence exceeds the 16 MiB occurrence limit")
-	}
-	if _, err := hl7.Parse(output, s.options(event)); err != nil {
+	case errors.Is(err, hl7.ErrUnreadableRewrite):
 		return nil, nil, errors.New("these edits produce syntax this release cannot read back")
+	case err != nil:
+		return nil, nil, errors.New("an edited field selector is not one this release addresses")
 	}
-	return output, placed, nil
+	placed := make([]Edit, 0, len(rewritten.Placed))
+	for _, landed := range rewritten.Placed {
+		placed = append(placed, Edit{
+			Parent: event.ID, Selector: changes[landed.Edit].Selector.String(), Operator: edits[landed.Edit].Operator,
+			State: landed.State, Offset: landed.Result.Start, Length: landed.Result.End - landed.Result.Start,
+		})
+	}
+	return rewritten.Bytes, placed, nil
 }

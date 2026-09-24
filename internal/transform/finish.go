@@ -4,7 +4,6 @@ import (
 	"errors"
 	"slices"
 
-	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/correlate"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/profilepack"
@@ -28,11 +27,11 @@ func (e *engine) finish(plan Plan, pack profilepack.Pack) (Preview, error) {
 	}
 	derived := make(map[string][]byte, len(retained))
 	for _, id := range retained {
-		rewritten, err := e.rewrite(id, placements[id])
+		rewritten, landed, err := e.rewrite(id, placements[id])
 		if err != nil {
 			return Preview{}, err
 		}
-		derived[id] = rewritten
+		derived[id], placements[id] = rewritten, landed
 	}
 	// The relations and the declared support are resolved before the preview is
 	// assembled, because both of them report what they could not settle.
@@ -58,7 +57,7 @@ func (e *engine) finish(plan Plan, pack profilepack.Pack) (Preview, error) {
 		for _, placed := range placements[entry.Parent] {
 			preview.Changes = append(preview.Changes, Change{
 				Entry: entry.ID, Parent: entry.Parent, Operator: placed.operator, Rule: placed.rule,
-				Selector: placed.selector.String(), State: placed.state, Group: placed.group, Length: len(placed.value),
+				Selector: placed.edit.Selector.String(), State: placed.state, Group: placed.group, Length: len(placed.edit.Value),
 			})
 		}
 		if entry.Copy {
@@ -119,53 +118,51 @@ func (e *engine) placed(retained []string) (map[string][]placement, error) {
 	return placements, nil
 }
 
-// rewrite splices one occurrence's placements into its bytes and reads the
-// result back. The case is never changed: this produces bytes beside it that
-// exist only long enough to establish that the transformation is readable.
+// rewrite splices one occurrence's placements into its bytes through the
+// shared occurrence rewrite and reads the result back. The case is never
+// changed: this produces bytes beside it that exist only long enough to
+// establish that the transformation is readable. The placements come back in
+// byte order, each with the state of the position it replaced.
 //
-// Two placements addressing one position are refused, and so are two addressing
-// overlapping bytes. A field with a single component, and every position below
-// an empty or explicit-null ancestor, resolve to the ancestor's own span: the
-// selectors differ and the position does not, so applying both would splice two
-// values where the message declares one place to put them.
-func (e *engine) rewrite(id string, placements []placement) ([]byte, error) {
+// Two placements addressing one position are refused, and so are two meeting
+// anywhere in the bytes. A field with a single component, and every position
+// below an empty or explicit-null ancestor, resolve to the ancestor's own span:
+// the selectors differ and the position does not, so applying both would
+// splice two values where the message declares one place to put them.
+func (e *engine) rewrite(id string, placements []placement) ([]byte, []placement, error) {
 	raw := e.raws[id]
 	if len(placements) == 0 {
-		return raw, nil
+		return raw, placements, nil
 	}
 	doc := e.docs[id]
 	if doc == nil {
-		return nil, errors.New("a transformation names an occurrence nothing decoded")
+		return nil, nil, errors.New("a transformation names an occurrence nothing decoded")
 	}
-	if doc.Messages[0].Delimiters != standard {
-		return nil, errors.New("this release transforms only the standard HL7 delimiter declaration")
+	edits := make([]hl7.Edit, len(placements))
+	for i, placed := range placements {
+		edits[i] = placed.edit
 	}
-	slices.SortStableFunc(placements, func(a, b placement) int {
-		if a.span.Start != b.span.Start {
-			return a.span.Start - b.span.Start
-		}
-		return a.span.End - b.span.End
-	})
-	var output []byte
-	position := 0
-	previous := hl7.Span{Start: -1, End: -1}
-	for _, placed := range placements {
-		if placed.span.Start < position || placed.span == previous {
-			return nil, errors.New("two changes of one occurrence address the same or overlapping bytes")
-		}
-		previous = placed.span
-		output = append(output, raw[position:placed.span.Start]...)
-		output = append(output, placed.value...)
-		position = placed.span.End
+	rewritten, err := doc.Rewrite(0, edits, hl7.StandardDelimiters)
+	switch {
+	case errors.Is(err, hl7.ErrUnstandardDelimiters):
+		return nil, nil, errors.New("this release transforms only the standard HL7 delimiter declaration")
+	case errors.Is(err, hl7.ErrOverlappingEdits):
+		return nil, nil, errors.New("two changes of one occurrence address the same or overlapping bytes")
+	case errors.Is(err, hl7.ErrRewriteTooLarge):
+		return nil, nil, errors.New("a transformed occurrence exceeds the 16 MiB occurrence limit")
+	// A rename of MSH-1 or MSH-2 never read back; the refusal keeps its words.
+	case errors.Is(err, hl7.ErrUnreadableRewrite), errors.Is(err, hl7.ErrDelimiterDeclaration):
+		return nil, nil, errors.New("these changes produce syntax this release cannot read back")
+	case err != nil:
+		return nil, nil, err
 	}
-	output = append(output, raw[position:]...)
-	if len(output) > bundle.MaxSourceBytes {
-		return nil, errors.New("a transformed occurrence exceeds the 16 MiB occurrence limit")
+	landed := make([]placement, 0, len(placements))
+	for _, at := range rewritten.Placed {
+		placed := placements[at.Edit]
+		placed.state = at.State
+		landed = append(landed, placed)
 	}
-	if _, err := hl7.Parse(output, e.options(e.events[id])); err != nil {
-		return nil, errors.New("these changes produce syntax this release cannot read back")
-	}
-	return output, nil
+	return rewritten.Bytes, landed, nil
 }
 
 // preserved reports what the edited sequence did to every relation the declared

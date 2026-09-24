@@ -284,15 +284,16 @@ func TestEditsAreRefusedWhereThisReleaseCannotApplyThem(t *testing.T) {
 		return reproducer.Step{Operator: operator, Occurrence: occurrence, Selector: selector, Value: value}
 	}
 	for name, steps := range map[string][]reproducer.Step{
-		"an occurrence the reproducer does not retain": {selected, edit(reproducer.SetField, "s0001-e000002", "PID-3.1", "MRN")},
-		"an occurrence this case does not hold":        {selectOne("s0003-e000001")},
-		"an occurrence nothing decoded":                {selectOne("s0002-e000008"), edit(reproducer.SetField, "s0002-e000008", "PID-3.1", "MRN")},
-		"the same position twice":                      {selected, edit(reproducer.SetField, "s0001-e000001", "PID-3.1", "A"), edit(reproducer.SetField, "s0001-e000001", "PID[1]-3[1].1", "B")},
-		"an omitted position":                          {selected, edit(reproducer.SetField, "s0001-e000001", "PID-99", "MRN")},
-		"the field delimiter declaration":              {selected, edit(reproducer.SetField, "s0001-e000001", "MSH-1", "X")},
-		"the encoding character declaration":           {selected, edit(reproducer.SetField, "s0001-e000001", "MSH-2", "X")},
-		"overlapping positions":                        {selected, edit(reproducer.SetField, "s0001-e000001", "PID-3", "A"), edit(reproducer.SetField, "s0001-e000001", "PID-3.2", "B")},
-		"selecting the same occurrence twice":          {selected, selected},
+		"an occurrence the reproducer does not retain":   {selected, edit(reproducer.SetField, "s0001-e000002", "PID-3.1", "MRN")},
+		"an occurrence this case does not hold":          {selectOne("s0003-e000001")},
+		"an occurrence nothing decoded":                  {selectOne("s0002-e000008"), edit(reproducer.SetField, "s0002-e000008", "PID-3.1", "MRN")},
+		"the same position twice":                        {selected, edit(reproducer.SetField, "s0001-e000001", "PID-3.1", "A"), edit(reproducer.SetField, "s0001-e000001", "PID[1]-3[1].1", "B")},
+		"an omitted position":                            {selected, edit(reproducer.SetField, "s0001-e000001", "PID-99", "MRN")},
+		"the field delimiter declaration":                {selected, edit(reproducer.SetField, "s0001-e000001", "MSH-1", "X")},
+		"the encoding character declaration":             {selected, edit(reproducer.SetField, "s0001-e000001", "MSH-2", "X")},
+		"overlapping positions":                          {selected, edit(reproducer.SetField, "s0001-e000001", "PID-3", "A"), edit(reproducer.SetField, "s0001-e000001", "PID-3.2", "B")},
+		"an empty position at the edge of an edited one": {selected, edit(reproducer.SetField, "s0001-e000001", "SCH-11.1", "A"), edit(reproducer.SetField, "s0001-e000001", "SCH-11", "B")},
+		"selecting the same occurrence twice":            {selected, selected},
 	} {
 		if _, err := reproducer.Resolve(source, plan(t, source.Identity, steps...)); err == nil {
 			t.Errorf("the editor applied something it cannot: %s", name)

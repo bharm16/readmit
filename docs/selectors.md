@@ -74,3 +74,39 @@ review, the test runner, redaction, the receiver, replay, transform, reproducers
 and capture observation. Replay and finding review also keep decoded bytes that
 are not UTF-8. Each caller maps a reason to its own refusal code, and those codes
 are unchanged.
+
+## Rewriting a value
+
+Every writer that splices new bytes into an occurrence uses one operation,
+`Document.Rewrite(messageIndex, edits, policy)`, so redaction, a reproducer, a
+transform preview and a replay place a value by the same rule. An edit names a
+position by selector and the bytes that replace it (none clears it to empty),
+or removes the whole segment occurrence a selector is in, terminator included.
+The result is new bytes beside the source, which never changes, those bytes
+read back the way the source was parsed, and where each edit landed: the state
+the position had, the bytes it replaced and the bytes it wrote. A rewrite is
+refused, by one named reason, when:
+
+| Refused | Why |
+| --- | --- |
+| The message declares delimiters other than `\|^~\&`, under the standard policy | A value checked against those separators would be written under others |
+| An edit of `MSH-1` or `MSH-2`, even with its own bytes, or removing MSH | They declare the delimiters every other position is split on |
+| An `omitted` position, or a segment the message does not hold | There are no bytes to replace |
+| Two edits of one position, or two edits meeting anywhere in the bytes | A field with one component, and every position below an empty or null ancestor, resolve to the ancestor's own span; an empty position at the start, inside or at the end of another edit's bytes is part of that edit's position |
+| A result larger than 16 MiB | The bound every input is held to |
+| A result that does not read back | What cannot be parsed again is never written |
+
+Every caller names its delimiter policy. Redaction, reproducers and transform
+previews rewrite only the standard declaration; replay rewrites under whatever
+the message declares, because it writes only `READMIT` surrogates, letters and
+digits no declaration can split, and shifted timestamps punctuated exactly as
+the ones they replace. Each caller keeps its own refusal message for each
+reason.
+
+A date shift is defined once for the transform preview and replay:
+`hl7.ParseShift` holds the duration to nonzero whole seconds within ten 365-day
+years, and `Document.ShiftTimestamps` moves MSH-7 and both appointment endpoints,
+SCH-11.4 and SCH-11.5, of every SCH occurrence and SCH-11 repetition. Only a
+present value moves; each must be a whole-second timestamp, with an optional
+numeric offset, that stays within years 1 to 9999. The `READMIT` and six-digit
+surrogate both of them write is `hl7.Surrogate`.

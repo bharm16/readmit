@@ -80,10 +80,14 @@ type Document struct {
 	Format   Format
 	Messages []Message
 	source   []byte
+	// options are the ones the source was parsed with, so a rewrite reads its
+	// result back exactly as the source was read.
+	options Options
 }
 
 // Serialize returns the original evidence, not a reconstruction of its views.
-// There is deliberately no editing API: modifying a view cannot rewrite evidence.
+// Nothing edits a parsed document: modifying a view cannot rewrite evidence,
+// and Rewrite writes new bytes beside it.
 func (d *Document) Serialize() []byte { return bytes.Clone(d.source) }
 
 // Bytes returns a copy so callers cannot mutate the underlying evidence.

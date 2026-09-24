@@ -120,7 +120,6 @@ const (
 const (
 	MaxSteps   = 256
 	MaxEntries = 1024
-	MaxShift   = 10 * 365 * 24 * 60 * 60 // seconds
 	// MaxPlanBytes bounds the plan document a reader decodes.
 	MaxPlanBytes = 256 << 10
 

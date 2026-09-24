@@ -45,3 +45,11 @@ func TestEncodeJoinsFieldsTerminatesSegmentsAndPreservesDeclaredEmpties(t *testi
 		t.Fatalf("Frame = %v", framed)
 	}
 }
+
+func TestSurrogateIsReadmitAndSixDigits(t *testing.T) {
+	for n, want := range map[int]string{1: "READMIT000001", 42: "READMIT000042", 999999: "READMIT999999"} {
+		if got := string(hl7.Surrogate(n)); got != want {
+			t.Fatalf("Surrogate(%d) = %q", n, got)
+		}
+	}
+}

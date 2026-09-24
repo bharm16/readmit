@@ -107,7 +107,14 @@ Every field rule has a checklist `class` or `structural`. Classes label the
 operator's declared coverage; they are not an automatic detector. Selectors follow
 [the shared grammar](selectors.md), including explicit repetitions/components.
 A selector without a repetition addresses the first repetition only. Other
-populated repetitions remain unresolved. Overlapping rules are rejected.
+populated repetitions remain unresolved. Overlapping rules are rejected,
+whatever order the policy lists them in and whether or not each one applied:
+two rules over the same or overlapping bytes, a rule whose empty position lies
+inside or at the edge of another rule's position, and two rules landing on one
+empty position when either writes into it. A field with one component, and
+every position below an empty or null ancestor, resolve to the ancestor's own
+position, so `PID-3` and `PID-3.1` over an empty `PID-3` name one position.
+Rules that all leave one empty position empty agree and are not refused.
 Empty positions carry no identifying bytes; explicit null remains a separate state.
 V1 conservatively treats OBX values beyond its set ID/type and MSA values beyond
 its code/control reference as potentially textual: retain-literal is unavailable

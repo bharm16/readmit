@@ -1,6 +1,7 @@
 package hl7
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
@@ -16,6 +17,13 @@ const TimestampLayout = "20060102150405-0700"
 // timezone variant — formats TimestampLayout itself and says why.
 func Time(value time.Time) string {
 	return value.UTC().Format(TimestampLayout)
+}
+
+// Surrogate is the value readmit writes in place of the n-th identifier it
+// renames: READMIT and n in six digits. The transform preview and a replay
+// both write this one form, each numbering its own renames.
+func Surrogate(n int) []byte {
+	return fmt.Appendf(nil, "READMIT%06d", n)
 }
 
 // Encode joins a segment table into one unframed HL7 message: fields joined
