@@ -341,7 +341,6 @@ var supportStatus = Support{
 		"select a saved test or suite through the host's native file dialog",
 		"select an absolute policy path explicitly",
 		"select the operation policy through the native chooser",
-		"stop a control writing new packages while it still opens what it wrote",
 	},
 }
 

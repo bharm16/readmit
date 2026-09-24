@@ -1266,7 +1266,9 @@
       "inputs": ["readmit-protection/v1"],
       "outputs": ["readmit-protection/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/protection.journey.tsx", "name": "a control is retired only once the person confirms it, writes no new package afterwards and still opens the package it wrote, exactly as readmit protect retire decides"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowRetiresAControlExactlyAsReadmitProtectRetireDoes"},
+      "implemented": true
     },
     {
       "id": "cli.protect.rotate",
@@ -1830,7 +1832,7 @@
       "outputs": [],
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/journeys/packets.journey.tsx", "name": "the failing and fixed runs become a sealed packet, a portable review that reopens read-only, and a reviewed support summary"},
-      "parity_test": {"package": "tests", "name": "TestDesktopAndCommandLinePrepareAndPublishTheSameSupportSummary"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowRefusesTheSupportBundlesReadmitShareVerifyRefuses"},
       "implemented": true
     },
     {
@@ -6699,7 +6701,9 @@
       "inputs": ["readmit-protection/v1"],
       "outputs": ["readmit-protection/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/protection.journey.tsx", "name": "a control is retired only once the person confirms it, writes no new package afterwards and still opens the package it wrote, exactly as readmit protect retire decides"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowRetiresAControlExactlyAsReadmitProtectRetireDoes"},
+      "implemented": true
     },
     {
       "id": "desktop.PackProtectedPackage",

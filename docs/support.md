@@ -38,9 +38,11 @@ The [desktop shell](desktop.md#privacy-review-protected-export-and-support-shari
 prepares the same summaries from its privacy panel: the policy is authored
 through structured controls, the preview shows every summary byte before
 anything is written, publication requires the exact preview identity over the
-current sources, and the bundle is written into a new local directory. It is
-the same share operation, with the same refusals and the same no-upload
-boundary.
+current sources, and the bundle is written into a new local directory named in
+the host's save dialog, or one new workspace entry; a directory that already
+exists is refused. The window verifies a bundle offline through the reader
+`share verify` runs and refuses the same bundles. It is the same share
+operation, with the same refusals and the same no-upload boundary.
 
 `portable-review` and `derived-review` inputs follow the same
 [sharing boundary](redact.md#reviewed-support-diagnostics-and-sharing-policy);

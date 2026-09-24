@@ -21,6 +21,7 @@ import (
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/protect"
+	"github.com/bharm16/readmit/internal/sharing"
 )
 
 // privacyParityWorkspace is one workspace both entry points read: the planted
@@ -263,6 +264,144 @@ func TestDesktopAndCommandLinePrepareAndPublishTheSameSupportSummary(t *testing.
 	}
 	if !strings.Contains(verifyStdout, preview.Summary.Identity) {
 		t.Fatalf("the verified bundle is not the published summary: %s", verifyStdout)
+	}
+}
+
+// A support bundle is what `share verify` verifies, and nothing else is. Every
+// bundle the window published and something then changed — its summary edited
+// in place, the same edit with the identity marker recomputed to match, a
+// member removed, a member added — is refused by the window's offline
+// verification and by `readmit share verify` alike, and neither shows an
+// identity for it. A destination that already exists, which the host's save
+// dialog returns once a person confirms replacing it, is refused by both
+// publishers with nothing written into it, and a sharing policy the contract's
+// own decoder refuses is refused by the window's reader and by `readmit share`.
+func TestTheWindowRefusesTheSupportBundlesReadmitShareVerifyRefuses(t *testing.T) {
+	workspace := privacyParityWorkspace(t)
+	app := desktopApp(t, workspace)
+	if outcome := app.DeriveExportReview(desktop.PrivacyReviewRequest{
+		Workspace: workspace, Case: "original.case", Spec: "spec.json",
+		Policy: "policy.json", Inventory: "inventory.json",
+		Output: "review", LocalState: "private",
+	}); outcome.State != desktop.Completed || outcome.Outcome == nil || outcome.Outcome.State != "ready-for-approval" {
+		t.Fatalf("the derivation was refused: %+v", outcome)
+	}
+	writeDocument(t, workspace, "sharing.json", `{"schema":"readmit-sharing-policy/v1","support":true,"destinations":["local-file"],"max_bytes":4096}`+"\n")
+	source := supportSource{workspace: workspace}
+	preview := app.PreviewSupportSummary(source.request("sharing.json"))
+	if preview.State != desktop.Completed || preview.Summary == nil {
+		t.Fatalf("the summary was not prepared: %+v", preview)
+	}
+	identity := preview.Summary.Identity
+	const refused = "readmit: sharing refused; source, policy, destination or exact approval unavailable\n"
+	const windowRefusal = "this directory is not a complete support bundle this release verifies; a bundle missing, holding or hiding anything beyond its three members is refused"
+
+	// A folder that already exists receives nothing from either publisher.
+	occupied := t.TempDir()
+	if published := app.PublishSupportSummary(source.publish(identity, occupied)); published.State != desktop.Failed || published.Outcome != nil ||
+		published.Reason != "the publication was refused; an incomplete directory has no completion marker and recovery is a new destination with a fresh review" {
+		t.Fatalf("the window published into an existing folder: %+v", published)
+	}
+	if stdout, stderr, err := run(t, "share", filepath.Join(workspace, "review"), "--kind", "derived-review",
+		"--local-state", filepath.Join(workspace, "private"), "--policy", filepath.Join(workspace, "sharing.json"),
+		"--approve", identity, "--output", occupied); exitCode(t, err) != 1 || stdout != "" || !strings.HasSuffix(stderr, refused) {
+		t.Fatalf("share published into an existing folder: %v %q %q", err, stdout, stderr)
+	}
+	if entries, err := os.ReadDir(occupied); err != nil || len(entries) != 0 {
+		t.Fatalf("a refused destination was written into: %v %v", entries, err)
+	}
+
+	// Each change is made to a bundle of its own, which both entry points
+	// verified to the preview's identity before it was changed.
+	flip := func(t *testing.T, bundle string) []byte {
+		t.Helper()
+		raw := mustRead(t, filepath.Join(bundle, "support.json"))
+		at := strings.Index(string(raw), `"input_commitment":"`)
+		if at < 0 {
+			t.Fatalf("the published summary holds no input commitment: %s", raw)
+		}
+		at += len(`"input_commitment":"`)
+		if raw[at] == '0' {
+			raw[at] = '1'
+		} else {
+			raw[at] = '0'
+		}
+		if err := os.WriteFile(filepath.Join(bundle, "support.json"), raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return raw
+	}
+	for _, change := range []struct {
+		name  string
+		apply func(t *testing.T, bundle string)
+	}{
+		{"summary-edited", func(t *testing.T, bundle string) { flip(t, bundle) }},
+		{"identity-recomputed", func(t *testing.T, bundle string) {
+			changed := flip(t, bundle)
+			writeDocument(t, bundle, "identity.sha256", sharing.Digest(changed)+"\n")
+		}},
+		{"member-removed", func(t *testing.T, bundle string) {
+			if err := os.Remove(filepath.Join(bundle, "event.json")); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"member-added", func(t *testing.T, bundle string) {
+			writeDocument(t, bundle, "notes.txt", "a note beside the summary\n")
+		}},
+	} {
+		entry := "support-" + change.name
+		if published := app.PublishSupportSummary(source.publish(identity, entry)); published.State != desktop.Completed || published.Outcome == nil {
+			t.Fatalf("%s: the bundle was not published: %+v", change.name, published)
+		}
+		bundle := filepath.Join(workspace, entry)
+		if verified := app.VerifySupportBundle(workspace, entry); verified.State != desktop.Completed || verified.Summary == nil || verified.Summary.Identity != identity {
+			t.Fatalf("%s: the published bundle did not verify to its identity: %+v", change.name, verified)
+		}
+		if stdout, stderr, err := run(t, "share", "verify", bundle); err != nil || stderr != "" || !strings.Contains(stdout, "Verified support identity: "+identity+"\n") {
+			t.Fatalf("%s: share verify of the published bundle: %v %s %s", change.name, err, stdout, stderr)
+		}
+		change.apply(t, bundle)
+		if verified := app.VerifySupportBundle(workspace, entry); verified.State != desktop.Failed || verified.Summary != nil || verified.Reason != windowRefusal {
+			t.Errorf("%s: the window verified a changed bundle: %+v", change.name, verified)
+		}
+		if stdout, stderr, err := run(t, "share", "verify", bundle); exitCode(t, err) != 1 || stdout != "" || stderr != refused {
+			t.Errorf("%s: share verify of a changed bundle: %v %q %q", change.name, err, stdout, stderr)
+		}
+	}
+
+	// A policy declaring the sharing contract with a member it does not have is
+	// refused by the contract's decoder, so the window's reader refuses it,
+	// the window prepares nothing under it, and neither does the command line.
+	extended := writeDocument(t, workspace, "extended-sharing.json",
+		`{"schema":"readmit-sharing-policy/v1","support":true,"destinations":["local-file"],"max_bytes":4096,"recipient":"vendor"}`+"\n")
+	if _, err := sharing.DecodePolicy(mustRead(t, extended)); err == nil {
+		t.Fatal("the sharing contract's decoder accepted an unknown member")
+	}
+	if read := app.ReadSharingPolicy(workspace, "extended-sharing.json"); read.State != desktop.Failed || read.Policy != nil ||
+		read.Reason != "that entry is not a sharing policy this release prepares with" {
+		t.Fatalf("the window read a policy the decoder refuses: %+v", read)
+	}
+	if prepared := app.PreviewSupportSummary(source.request("extended-sharing.json")); prepared.State != desktop.Failed || prepared.Summary != nil {
+		t.Fatalf("the window prepared a summary under a refused policy: %+v", prepared)
+	}
+	if stdout, stderr, err := run(t, "share", filepath.Join(workspace, "review"), "--kind", "derived-review",
+		"--local-state", filepath.Join(workspace, "private"), "--policy", extended); exitCode(t, err) != 1 || stdout != "" || !strings.HasSuffix(stderr, refused) {
+		t.Fatalf("share prepared a summary under a refused policy: %v %q %q", err, stdout, stderr)
+	}
+}
+
+// supportSource is the derived review and private linkage one parity
+// workspace summarizes, as the window's requests name them.
+type supportSource struct{ workspace string }
+
+func (s supportSource) request(policy string) desktop.SupportRequest {
+	return desktop.SupportRequest{Workspace: s.workspace, Source: "review", Kind: "derived-review", Private: "private", Policy: policy}
+}
+
+func (s supportSource) publish(approval, output string) desktop.SupportPublishRequest {
+	return desktop.SupportPublishRequest{
+		Workspace: s.workspace, Source: "review", Kind: "derived-review", Private: "private",
+		Policy: "sharing.json", Approval: approval, Output: output,
 	}
 }
 

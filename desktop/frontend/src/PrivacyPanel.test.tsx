@@ -2,14 +2,16 @@
 // workspace's actual documents and reports its blockers and its identity; the
 // packet is exported only under an approval naming that exact identity; and
 // the value-free support summary is previewed, published under the exact
-// preview identity, and verified offline. The approval inputs are cleared when
-// the selection changes, so no approval survives the bytes it named, and
-// nothing here ever shows a value.
+// preview identity into a folder named in the host's save dialog, and verified
+// offline, again on request. The approval inputs are cleared when the
+// selection changes, so no approval survives the bytes it named; a refused
+// policy, a dismissed dialog and a refused bundle each say so; and nothing
+// here ever shows a value.
 import { expect, test } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PrivacyPanel } from "./PrivacyPanel";
-import { installFacade } from "./testkit/wails";
+import { facadeStub, installFacade } from "./testkit/wails";
 import type { FacadeHandlers } from "./testkit/wails";
 import type { Artifact } from "./bindings";
 import {
@@ -29,6 +31,9 @@ const INVENTORY_ENTRY = "inventory.json";
 const REVIEW_ENTRY = "review";
 const PRIVATE_ENTRY = "review-private";
 const SHARING_ENTRY = "sharing.json";
+const REFUSED_SHARING_ENTRY = "extended-sharing.json";
+const BUNDLE_ENTRY = "support-001";
+const CHOSEN_FOLDER = `${WORKSPACE_ROOT}/support-for-vendor`;
 
 const ENTRIES: Artifact[] = [
   { name: CASE_ENTRY, kind: "case", schema: "readmit-case/v3", provenance: "imported" },
@@ -38,6 +43,8 @@ const ENTRIES: Artifact[] = [
   { name: REVIEW_ENTRY, kind: "review" },
   { name: PRIVATE_ENTRY, kind: "unsupported", reason: "not a case bundle this release supports" },
   { name: SHARING_ENTRY, kind: "sharing-policy" },
+  { name: REFUSED_SHARING_ENTRY, kind: "sharing-policy" },
+  { name: BUNDLE_ENTRY, kind: "support" },
 ];
 
 function renderPanel(handlers: FacadeHandlers = {}, entries: Artifact[] = ENTRIES) {
@@ -246,4 +253,209 @@ test("the sharing policy is authored through structured controls and the summary
   await waitFor(() => expect(screen.getByText(/support\.json, event\.json, identity\.sha256/)).toBeTruthy());
   expect(published).toEqual(["stale", PRIVACY_SUMMARY_IDENTITY]);
   expect(screen.getByText(/Exporting a file is not uploading it/)).toBeTruthy();
+});
+
+/** Moves focus with Tab from where it is until the control has it, as a
+ * keyboard user does, failing when the control cannot be reached that way. */
+async function tabTo(user: ReturnType<typeof userEvent.setup>, control: HTMLElement): Promise<void> {
+  for (let step = 0; step < 50; step++) {
+    if (document.activeElement === control) return;
+    await user.tab();
+  }
+  throw new Error(`${control.textContent ?? ""} is not reachable with Tab`);
+}
+
+/** Selects the sharing policy and the derived review with its private state,
+ * and previews the summary they produce. */
+async function previewSummary(user: ReturnType<typeof userEvent.setup>) {
+  await user.selectOptions(screen.getByLabelText("Sharing policy"), SHARING_ENTRY);
+  await screen.findByText(/Support allowed · local-file · 4096 bytes/);
+  await user.selectOptions(screen.getByLabelText("Source to summarize"), REVIEW_ENTRY);
+  await user.type(screen.getByLabelText("Its private local state (bound, never copied)"), PRIVATE_ENTRY);
+  await user.click(screen.getByRole("button", { name: "Preview summary" }));
+  await screen.findByText(PRIVACY_SUMMARY_IDENTITY);
+}
+
+const supportHandlers: FacadeHandlers = {
+  ReadSharingPolicy: (_workspace, entry) =>
+    entry === SHARING_ENTRY
+      ? supportPolicyResult()
+      : { state: "failed" as const, reason: "that entry is not a sharing policy this release prepares with" },
+  PreviewSupportSummary: () => supportPreviewResult(),
+};
+
+test("the publish destination is named in the host's save dialog; a dismissed or unavailable dialog says so and names nothing, and the named folder is where the bundle is published", async () => {
+  const user = userEvent.setup();
+  const answers = [
+    { state: "cancelled" as const, reason: "no new folder was named" },
+    { state: "failed" as const, reason: "the save dialog is unavailable" },
+    { state: "completed" as const, path: CHOSEN_FOLDER },
+  ];
+  renderPanel({
+    ...supportHandlers,
+    PublishSupportSummary: (request) => {
+      expect(request.output).toBe(CHOSEN_FOLDER);
+      expect(request.approval).toBe(PRIVACY_SUMMARY_IDENTITY);
+      return {
+        state: "completed" as const,
+        outcome: {
+          bundle: "support-for-vendor",
+          identity: PRIVACY_SUMMARY_IDENTITY,
+          files: ["support.json", "event.json", "identity.sha256"],
+          exclusions: [],
+          no_upload: "Publishing this bundle wrote a local directory. Exporting a file is not uploading it.",
+          limitations: [],
+        },
+      };
+    },
+  });
+  await previewSummary(user);
+  await user.type(screen.getByLabelText(/Approve by naming the exact preview identity/), PRIVACY_SUMMARY_IDENTITY);
+  const output = screen.getByLabelText("New support folder") as HTMLInputElement;
+  const choose = screen.getByRole("button", { name: "Choose destination…" });
+
+  // While the dialog is open the panel waits for it, and says nothing else is
+  // running: no other control claims to be authoring, preparing or publishing.
+  const dialog = facadeStub().park("ChooseSupportExportPath");
+  await user.click(output);
+  await tabTo(user, choose);
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(dialog.size).toBe(1));
+  for (const name of ["Save sharing policy", "Preview summary", "Publish support bundle", "Choose destination…"]) {
+    expect((screen.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
+  }
+  expect(screen.queryByText(/^(Authoring|Preparing|Publishing)…$/)).toBeNull();
+
+  // Dismissed, the dialog names nothing and the panel says so.
+  dialog.resolve(answers[0]);
+  expect(await screen.findByText("no new folder was named")).toBeTruthy();
+  expect(output.value).toBe("");
+
+  // A host without a working save dialog says so, and still names nothing.
+  facadeStub().reply({ ChooseSupportExportPath: () => answers[1]! });
+  await tabTo(user, choose);
+  await user.keyboard("{Enter}");
+  expect(await screen.findByText("the save dialog is unavailable")).toBeTruthy();
+  expect(screen.queryByText("no new folder was named")).toBeNull();
+  expect(output.value).toBe("");
+
+  // A named folder becomes the destination, and the bundle is published there.
+  facadeStub().reply({ ChooseSupportExportPath: () => answers[2]! });
+  await tabTo(user, choose);
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(output.value).toBe(CHOSEN_FOLDER));
+  expect(screen.queryByText("the save dialog is unavailable")).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Publish support bundle" }));
+  expect(await screen.findByText(/^Bundle/)).toBeTruthy();
+  expect(facadeStub().callsTo("ChooseSupportExportPath")).toHaveLength(3);
+  expect(facadeStub().callsTo("PublishSupportSummary")).toHaveLength(1);
+});
+
+test("a publication into a destination that already exists is refused with the writer's reason, and a new folder is then accepted", async () => {
+  const user = userEvent.setup();
+  const outputs: string[] = [];
+  renderPanel({
+    ...supportHandlers,
+    ChooseSupportExportPath: () => ({ state: "completed" as const, path: CHOSEN_FOLDER }),
+    PublishSupportSummary: (request) => {
+      outputs.push(request.output ?? "");
+      if (request.output === CHOSEN_FOLDER) {
+        return {
+          state: "failed" as const,
+          reason: "the publication was refused; an incomplete directory has no completion marker and recovery is a new destination with a fresh review",
+        };
+      }
+      return {
+        state: "completed" as const,
+        outcome: {
+          bundle: "support-002",
+          identity: PRIVACY_SUMMARY_IDENTITY,
+          files: ["support.json", "event.json", "identity.sha256"],
+          exclusions: [],
+          no_upload: "Publishing this bundle wrote a local directory.",
+          limitations: [],
+        },
+      };
+    },
+  });
+  await previewSummary(user);
+  await user.type(screen.getByLabelText(/Approve by naming the exact preview identity/), PRIVACY_SUMMARY_IDENTITY);
+  await user.click(screen.getByRole("button", { name: "Choose destination…" }));
+  await waitFor(() => expect((screen.getByLabelText("New support folder") as HTMLInputElement).value).toBe(CHOSEN_FOLDER));
+  await user.click(screen.getByRole("button", { name: "Publish support bundle" }));
+  expect(await screen.findByText(/^the publication was refused; .* recovery is a new destination with a fresh review$/)).toBeTruthy();
+  expect(screen.queryByText(/^Bundle/)).toBeNull();
+  await user.clear(screen.getByLabelText("New support folder"));
+  await user.type(screen.getByLabelText("New support folder"), "support-002");
+  await user.click(screen.getByRole("button", { name: "Publish support bundle" }));
+  expect(await screen.findByText(/^Bundle/)).toBeTruthy();
+  expect(screen.queryByText(/^the publication was refused/)).toBeNull();
+  expect(outputs).toEqual([CHOSEN_FOLDER, "support-002"]);
+});
+
+test("a bundle is verified offline, a bundle changed since is refused when verified again, and the picker keeps the bundle each answer is about", async () => {
+  const user = userEvent.setup();
+  renderPanel({
+    VerifySupportBundle: (workspace, entry) => {
+      expect([workspace, entry]).toEqual([WORKSPACE_ROOT, BUNDLE_ENTRY]);
+      return supportPreviewResult();
+    },
+  });
+  const picker = screen.getByLabelText("Verify a support bundle") as HTMLSelectElement;
+  const again = screen.getByRole("button", { name: "Verify again" }) as HTMLButtonElement;
+  expect(again.disabled).toBe(true);
+  await user.selectOptions(picker, BUNDLE_ENTRY);
+  const verifiedLine = `Verified bundle identity: ${PRIVACY_SUMMARY_IDENTITY} — integrity only, not authentication or authorization.`;
+  expect(await screen.findByText((_content, element) => element?.tagName === "P" && element.textContent === verifiedLine)).toBeTruthy();
+  expect(picker.value).toBe(BUNDLE_ENTRY);
+
+  // Changed on disk since, the same bundle is read again from the keyboard
+  // and refused; the identity it verified to before is withdrawn.
+  const refusal =
+    "this directory is not a complete support bundle this release verifies; a bundle missing, holding or hiding anything beyond its three members is refused";
+  const verifying = facadeStub().park("VerifySupportBundle");
+  await tabTo(user, again);
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(verifying.size).toBe(1));
+  expect(screen.queryByText(/^Verified bundle identity/)).toBeNull();
+  expect(picker.disabled).toBe(true);
+  expect(screen.queryByText(/^Publishing…$/)).toBeNull();
+  verifying.resolve({ state: "failed", reason: refusal });
+  expect(await screen.findByText(refusal)).toBeTruthy();
+  expect(screen.queryByText(PRIVACY_SUMMARY_IDENTITY)).toBeNull();
+  expect(picker.value).toBe(BUNDLE_ENTRY);
+  expect(facadeStub().callsTo("VerifySupportBundle")).toHaveLength(2);
+});
+
+test("a sharing policy the decoder refuses is named as refused, and another policy withdraws the preview and the approval typed against it", async () => {
+  const user = userEvent.setup();
+  renderPanel({
+    ...supportHandlers,
+    SaveSharingPolicy: (request) => supportPolicyResult({ entry: request.output, max_bytes: request.max_bytes }),
+  });
+  await previewSummary(user);
+  const approval = screen.getByLabelText(/Approve by naming the exact preview identity/) as HTMLInputElement;
+  await user.type(approval, PRIVACY_SUMMARY_IDENTITY);
+
+  await user.selectOptions(screen.getByLabelText("Sharing policy"), REFUSED_SHARING_ENTRY);
+  expect(await screen.findByText("that entry is not a sharing policy this release prepares with")).toBeTruthy();
+  expect(screen.queryByText(/Support allowed/)).toBeNull();
+  expect(screen.queryByText(PRIVACY_SUMMARY_IDENTITY)).toBeNull();
+  expect(approval.value).toBe("");
+  expect(approval.disabled).toBe(true);
+
+  // A policy saved here is the policy selected, and the panel shows it as it
+  // was written, not the reading of the policy selected before it.
+  await user.selectOptions(screen.getByLabelText("Sharing policy"), SHARING_ENTRY);
+  await screen.findByText(/Support allowed · local-file · 4096 bytes/);
+  await user.click(screen.getByRole("button", { name: "Preview summary" }));
+  await screen.findByText(PRIVACY_SUMMARY_IDENTITY);
+  await user.type(screen.getByLabelText("New policy document"), "sharing-2.json");
+  await user.clear(screen.getByLabelText("Byte bound"));
+  await user.type(screen.getByLabelText("Byte bound"), "2048");
+  await user.click(screen.getByRole("button", { name: "Save sharing policy" }));
+  expect(await screen.findByText(/^Support allowed · local-file · 2048 bytes\.$/)).toBeTruthy();
+  expect(screen.queryByText(/4096 bytes\.$/)).toBeNull();
+  expect(screen.queryByText(PRIVACY_SUMMARY_IDENTITY)).toBeNull();
+  expect(within(screen.getByLabelText("Sharing policy")).getAllByRole("option")).toHaveLength(3);
 });

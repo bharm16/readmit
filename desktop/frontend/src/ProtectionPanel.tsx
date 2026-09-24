@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   discardProtectedPackage,
   inspectProtectedPackage,
@@ -48,9 +48,12 @@ export function ProtectionPanel({
     .filter((artifact) => artifact.kind !== "unsupported")
     .map((artifact) => artifact.name);
 
-  // Control lifecycle.
+  // Control lifecycle. The document on screen is what the facade last answered
+  // for it: the read, or the document a registration, rotation or retirement
+  // then wrote. A refusal leaves it as it was.
   const [documentEntry, setDocumentEntry] = useState("");
   const [documentView, setDocumentView] = useState<ProtectionResult | null>(null);
+  const [newDocument, setNewDocument] = useState("");
   const [operation, setOperation] = useState<"reading" | "registering" | "rotating" | "retiring" | "packing" | "discarding" | null>(null);
   const busy = operation !== null;
 
@@ -61,7 +64,17 @@ export function ProtectionPanel({
   const [newArguments, setNewArguments] = useState<string[]>([]);
   const [newMaxAge, setNewMaxAge] = useState("");
   const [newRetain, setNewRetain] = useState("");
-  const [registered, setRegistered] = useState<ProtectionResult | null>(null);
+  // The last change to one control and, once the facade answered, its answer.
+  const [lastChange, setLastChange] = useState<{ action: ControlAction; name: string; result?: ProtectionResult } | null>(null);
+  // Retiring cannot be undone, so it asks first. The one control whose
+  // retirement is waiting for the person's answer, and where focus goes once
+  // the window has answered: back to the Retire control a kept control still
+  // offers, or to the panel's heading once there is none.
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [returning, setReturning] = useState<string | null>(null);
+  const heading = useRef<HTMLHeadingElement | null>(null);
+  const keep = useRef<HTMLButtonElement | null>(null);
+  const retireControls = useRef(new Map<string, HTMLButtonElement>());
 
   // Package work.
   const [packDocument, setPackDocument] = useState("");
@@ -75,12 +88,42 @@ export function ProtectionPanel({
   const [discardOverride, setDiscardOverride] = useState(false);
   const [discarded, setDiscarded] = useState<ProtectionDiscardResult | null>(null);
 
-  const controls: ProtectionControl[] = documentView?.document?.controls ?? registered?.document?.controls ?? [];
+  const controls: ProtectionControl[] = documentView?.document?.controls ?? [];
+  // Only an active control writes a package, so a control retired since it was
+  // chosen is no longer the one a pack would name.
+  const writable = controls.filter((control) => control.state === "active");
+  const chosenControl = writable.some((control) => control.name === packControl) ? packControl : "";
+
+  // A question about a control the document no longer holds active has
+  // nothing left to ask.
+  const confirmable = confirming !== null && writable.some((control) => control.name === confirming);
+  useEffect(() => {
+    if (confirming !== null && !confirmable) setConfirming(null);
+  }, [confirming, confirmable]);
+
+  useEffect(() => {
+    if (confirming !== null) keep.current?.focus();
+  }, [confirming]);
+
+  useEffect(() => {
+    if (returning === null || busy) return;
+    const control = retireControls.current.get(returning);
+    (control && !control.disabled ? control : heading.current)?.focus();
+    setReturning(null);
+  }, [busy, returning, documentView]);
+
+  /** Records what the facade answered for one control, and shows the document
+   * it wrote in place of the one it replaced. */
+  function showChange(action: ControlAction, name: string, result: ProtectionResult) {
+    setLastChange({ action, name, result });
+    if (result.document) setDocumentView(result);
+  }
 
   async function show(entry: string) {
     setDocumentEntry(entry);
     setDocumentView(null);
-    setRegistered(null);
+    setLastChange(null);
+    setConfirming(null);
     if (!workspace || !entry) return;
     setOperation("reading");
     try {
@@ -104,8 +147,7 @@ export function ProtectionPanel({
     };
     setOperation("registering");
     try {
-      const answer = await saveProtectionControl(request);
-      setRegistered(answer);
+      showChange("register", newName, await saveProtectionControl(request));
       onRefresh();
     } finally {
       setOperation(null);
@@ -116,7 +158,7 @@ export function ProtectionPanel({
     if (busy || !workspace || !documentEntry) return;
     setOperation("rotating");
     try {
-      setRegistered(await rotateProtectionControl(workspace, documentEntry, name));
+      showChange("rotate", name, await rotateProtectionControl(workspace, documentEntry, name));
     } finally {
       setOperation(null);
     }
@@ -124,12 +166,20 @@ export function ProtectionPanel({
 
   async function retire(name: string) {
     if (busy || !workspace || !documentEntry) return;
+    setConfirming(null);
+    setLastChange({ action: "retire", name });
     setOperation("retiring");
     try {
-      setRegistered(await retireProtectionControl(workspace, documentEntry, name));
+      showChange("retire", name, await retireProtectionControl(workspace, documentEntry, name));
     } finally {
       setOperation(null);
+      setReturning(name);
     }
+  }
+
+  function keepActive(name: string) {
+    setConfirming(null);
+    setReturning(name);
   }
 
   async function pack() {
@@ -139,7 +189,7 @@ export function ProtectionPanel({
       setPacked(await packProtectedPackage({
         workspace,
         entry: packDocument || documentEntry,
-        control: packControl,
+        control: chosenControl,
         sources: packSources,
         ...(packOutput ? { output: packOutput } : {}),
       }));
@@ -192,7 +242,7 @@ export function ProtectionPanel({
   }
 
   return <section aria-labelledby="protection-title">
-    <h3 id="protection-title">Protection</h3>
+    <h3 id="protection-title" ref={heading} tabIndex={-1}>Protection</h3>
     <p>
       Encrypt evidence into transfer packages under a control whose key stays in an operating system or
       customer-managed store. readmit holds no key material: a control registers a reference, and the key
@@ -206,10 +256,18 @@ export function ProtectionPanel({
       <label htmlFor="protection-document">Document entry</label>
       <select id="protection-document" value={documentEntry} disabled={busy}
         onChange={(e) => void show(e.target.value)}>
-        <option value="">Select or name a protection document…</option>
+        <option value="">Select a protection document…</option>
         {documents.map((name) => <option key={name} value={name}>{name}</option>)}
+        {documentEntry && !documents.includes(documentEntry) ? <option value={documentEntry}>{documentEntry}</option> : null}
       </select>
+      <label htmlFor="protection-new-document">New protection document</label>
+      <input id="protection-new-document" value={newDocument} disabled={busy} placeholder="protection.json"
+        onChange={(e) => setNewDocument(e.target.value)} />
+      <button type="button" disabled={busy || newDocument === ""} onClick={() => { void show(newDocument); setNewDocument(""); }}>
+        Use this document
+      </button>
       {documentView?.reason ? <p>{documentView.reason}</p> : null}
+      {documentView?.document && controls.length === 0 ? <p>No control is registered in {documentView.document.entry} yet. Registering the first one writes it.</p> : null}
       {controls.length > 0 ? <div className="review-scroll">
         <table>
           <caption>Every registered control. The key is masked because it was never read here, and the
@@ -236,7 +294,38 @@ export function ProtectionPanel({
               <td>{control.retain || "not declared"}</td>
               <td>{control.key} · {control.locator_arguments} locator arguments</td>
               <td>
-                <button disabled={busy || control.state !== "active"} onClick={() => void retire(control.name)}>Retire</button>
+                {confirming === control.name ? (
+                  <span
+                    role="group"
+                    aria-label={`Retire ${control.name}?`}
+                    onKeyDown={(event) => {
+                      // Escape answers this question and goes no further: the
+                      // window's own Escape cancels a running operation.
+                      if (event.key === "Escape" && !event.nativeEvent.isComposing && !busy) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        keepActive(control.name);
+                      }
+                    }}
+                  >
+                    <span className="hint"> Retire {control.name}? It writes no new package and still opens the packages it wrote. No command makes a retired control active again.</span>
+                    <button type="button" disabled={busy} onClick={() => void retire(control.name)}>Retire it</button>
+                    <button type="button" ref={keep} disabled={busy} onClick={() => keepActive(control.name)}>Keep it active</button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    aria-label={`Retire ${control.name}`}
+                    disabled={busy || control.state !== "active"}
+                    ref={(button) => {
+                      if (button) retireControls.current.set(control.name, button);
+                      else retireControls.current.delete(control.name);
+                    }}
+                    onClick={() => setConfirming(control.name)}
+                  >
+                    Retire
+                  </button>
+                )}
                 <button disabled={busy} onClick={() => void rotate(control.name)}>
                   {operation === "rotating" ? "Rotating…" : "Record rotation"}
                 </button>
@@ -245,6 +334,9 @@ export function ProtectionPanel({
           </tbody>
         </table>
       </div> : null}
+      <div role="status" aria-live="polite">
+        {lastChange && lastChange.action !== "register" ? <ControlChange action={lastChange.action} name={lastChange.name} result={lastChange.result} /> : null}
+      </div>
       {documentView?.document ? <ul>{documentView.document.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}</ul> : null}
 
       <h4>Register a control</h4>
@@ -273,8 +365,8 @@ export function ProtectionPanel({
       <button disabled={busy || !documentEntry || !newName || !newCommand} onClick={() => void register()}>
         {operation === "registering" ? "Registering…" : "Register this control"}
       </button>
-      {registered?.reason ? <p>{registered.reason}</p> : null}
-      {registered?.document ? <p>Registered. Registering a reference proves nothing about the store behind it: a rotation the store answers for is what records a generation.</p> : null}
+      {lastChange?.action === "register" && lastChange.result?.reason ? <p>{lastChange.result.reason}</p> : null}
+      {lastChange?.action === "register" && lastChange.result?.document ? <p>Registered. Registering a reference proves nothing about the store behind it: a rotation the store answers for is what records a generation.</p> : null}
     </div>
 
     <div className="actions">
@@ -286,10 +378,10 @@ export function ProtectionPanel({
         {documents.map((name) => <option key={name} value={name}>{name}</option>)}
       </select>
       <label htmlFor="protection-pack-control">Control</label>
-      <select id="protection-pack-control" value={packControl} disabled={busy}
+      <select id="protection-pack-control" value={chosenControl} disabled={busy}
         onChange={(e) => setPackControl(e.target.value)}>
         <option value="">Select a control…</option>
-        {controls.filter((control) => control.state === "active").map((control) => (
+        {writable.map((control) => (
           <option key={control.name} value={control.name}>{control.name}</option>
         ))}
       </select>
@@ -305,7 +397,7 @@ export function ProtectionPanel({
       <label htmlFor="protection-pack-output">New package folder</label>
       <input id="protection-pack-output" value={packOutput} disabled={busy} placeholder="generated at pack"
         onChange={(e) => setPackOutput(e.target.value)} />
-      <button disabled={busy || (!packDocument && !documentEntry) || !packControl || packSources.length === 0} onClick={() => void pack()}>
+      <button disabled={busy || (!packDocument && !documentEntry) || !chosenControl || packSources.length === 0} onClick={() => void pack()}>
         {operation === "packing" ? "Packing…" : "Pack protected package"}
       </button>
       <button disabled={operation !== "packing"} onClick={() => cancel("protect")}>Cancel packing</button>
@@ -343,6 +435,20 @@ export function ProtectionPanel({
       </> : null}
     </div>
   </section>;
+}
+
+/** What the panel changes about one registered control. */
+type ControlAction = "register" | "rotate" | "retire";
+
+/** What a rotation or a retirement did to one control, or its refusal. A
+ * retirement is not revocation, and the sentence says so. */
+function ControlChange({ action, name, result }: { action: Exclude<ControlAction, "register">; name: string; result: ProtectionResult | undefined }) {
+  if (!result) return action === "retire" ? <p>Retiring {name}.</p> : null;
+  if (result.reason) return <p>{result.reason}</p>;
+  if (!result.document) return null;
+  return action === "retire"
+    ? <p>Retired {name}: it writes no new package and still opens the packages it wrote. Retirement is not revocation: a recipient who already has a package keeps it.</p>
+    : <p>Recorded a rotation of {name}. readmit never read the previous key, so a recorded rotation is an assertion, not a verification.</p>;
 }
 
 /** One package as its descriptor declares it, without a key. The packed names

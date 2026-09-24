@@ -1,5 +1,32 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The privacy panel's support bundle steps and the protection panel's Retire
+  are driven end to end through the facade (#309), which turned up faults in
+  both panels. The protection panel kept showing the document as it was first
+  read, so a retired control still read as active, still offered Retire and
+  was still offered to write a package, and a rotation still showed its old
+  generation; every registration, rotation and retirement now shows the
+  document it wrote. A rotation or a retirement was reported as "Registered.";
+  each now says what it did. A protection document could only be selected,
+  never named, so a folder without one could never register its first control
+  from the window; a new document is now named, reads as empty, and is written
+  by its first registration. Retiring cannot be undone, so it now asks first,
+  and Keep it active or `Escape` changes nothing. In the privacy panel, a
+  sharing policy the decoder refused showed nothing, a policy saved there
+  showed the reading of the policy selected before it, and choosing another
+  policy left the preview of the previous one on screen with its approval
+  still typed; the refusal is now named, the saved policy is shown as written,
+  and another policy withdraws the preview and the approval. A dismissed or
+  unavailable save dialog now says so, a bundle can be verified again after it
+  changed on disk, and choosing a destination or verifying no longer labels
+  other controls as authoring or publishing. The journeys retire a control,
+  keep opening the package it wrote, publish into a natively named folder
+  after a dismissed dialog and an existing folder are refused, and refuse a
+  bundle changed after publication, each as `readmit protect retire`, `readmit
+  share` and `readmit share verify` decide; Go parity tests hold the window to
+  those commands, including their refusals. No `readmit-*` document, command,
+  bound method or machine output changes.
+
 - The reproducer panel's build, undo, register and compare controls are
   driven end to end (#300); no test pressed them through the facade before,
   and pressing them showed several faults. A registration was reported as done

@@ -4,7 +4,11 @@
 // states its limitations; the packet is verified read-only, exported with its
 // offline renderings as a portable review that reopens read-only with its
 // report text revealed only on purpose, and summarized into a value-free
-// support bundle published only under the exact identity its preview showed.
+// support bundle published only under the exact identity its preview showed,
+// into a new folder named natively: a policy its decoder refuses, a dismissed
+// dialog and a folder that already exists publish nothing, and a bundle changed
+// after publication is refused when verified again, exactly as `readmit share`
+// and `readmit share verify` refuse them.
 // A planted example goes through privacy review: a policy that leaves
 // findings unresolved blocks the review, and the handled policy's review is
 // exported only under its exact identity. The command line verifies every
@@ -146,10 +150,30 @@ test("the failing and fixed runs become a sealed packet, a portable review that 
   // the panel's own controls, a preview, a refused approval that names some
   // other identity, and the exact one.
   const support = privacy();
+  // A colleague extended a policy with a member the sharing contract does not
+  // have. It declares the contract, so the folder lists it once read again.
+  journey.writeFile(
+    `${PROJECT}/extended-sharing.json`,
+    '{"schema":"readmit-sharing-policy/v1","support":true,"destinations":["local-file"],"max_bytes":4096,"recipient":"vendor"}\n',
+  );
   await enter(user, support.getByLabelText("New policy document"), "sharing.json");
   await press(user, support.getByRole("button", { name: "Save sharing policy" }));
   expect(await line(support, /^Saved sharing\.json: /)).toBe("Saved sharing.json: support allowed, local-file, 4096 bytes.");
   await support.findByRole("option", { name: "sharing.json" });
+  // The extended policy is refused by the contract's own decoder: the window
+  // names the refusal and shows no reading, and `readmit share` prepares
+  // nothing under it either.
+  const refused = "readmit: sharing refused; source, policy, destination or exact approval unavailable\n";
+  await support.findByRole("option", { name: "extended-sharing.json" });
+  await user.selectOptions(support.getByLabelText("Sharing policy"), "extended-sharing.json");
+  expect(await support.findByText("that entry is not a sharing policy this release prepares with")).toBeTruthy();
+  expect(support.queryByText(byContent(/^Support allowed · /))).toBeNull();
+  const extended = await journey.commandLine([
+    "share", `${PROJECT}/reschedule-review`, "--kind", "portable-review", "--policy", `${PROJECT}/extended-sharing.json`,
+  ]);
+  expect(extended.code).toBe(1);
+  expect(extended.stdout).toBe("");
+  expect(extended.stderr.endsWith(refused)).toBe(true);
   await user.selectOptions(support.getByLabelText("Sharing policy"), "sharing.json");
   expect(await line(support, /^Support allowed · /)).toBe("Support allowed · local-file · 4096 bytes.");
   await user.selectOptions(support.getByLabelText("Source to summarize"), "reschedule-review");
@@ -165,7 +189,36 @@ test("the failing and fixed runs become a sealed packet, a portable review that 
   ).toBeTruthy();
   expect(journey.callsTo("PublishSupportSummary").at(-1)?.result).toMatchObject({ state: "failed" });
   await enter(user, support.getByLabelText("Approve by naming the exact preview identity"), identity);
-  await journey.nameNewFolder(journey.path(PROJECT, "support-for-vendor"), "Choose a new folder for the reviewed support bundle");
+  // Dismissing the save dialog names nothing, and the panel says so.
+  const destination = "Choose a new folder for the reviewed support bundle";
+  await journey.dismissDialog("save", destination);
+  await press(user, support.getByRole("button", { name: "Choose destination…" }));
+  expect(await support.findByText("no new folder was named")).toBeTruthy();
+  expect((support.getByLabelText("New support folder") as HTMLInputElement).value).toBe("");
+  // A folder that already exists, which the save dialog returns once the
+  // person confirms replacing it, is refused by the writer and nothing is
+  // written into it; `readmit share` refuses it the same way.
+  journey.writeFile("outbox/for-vendor/kept.txt", "a file the person kept here\n");
+  await journey.nameNewFolder(journey.path("outbox/for-vendor"), destination);
+  await press(user, support.getByRole("button", { name: "Choose destination…" }));
+  await waitFor(() => expect((support.getByLabelText("New support folder") as HTMLInputElement).value).toBe(journey.path("outbox/for-vendor")));
+  expect(support.queryByText("no new folder was named")).toBeNull();
+  await press(user, support.getByRole("button", { name: "Publish support bundle" }));
+  expect(
+    await support.findByText(
+      "the publication was refused; an incomplete directory has no completion marker and recovery is a new destination with a fresh review",
+    ),
+  ).toBeTruthy();
+  const occupied = await journey.commandLine([
+    "share", `${PROJECT}/reschedule-review`, "--kind", "portable-review", "--policy", `${PROJECT}/sharing.json`,
+    "--approve", identity, "--output", "outbox/for-vendor",
+  ]);
+  expect(occupied.code).toBe(1);
+  expect(occupied.stdout).toBe("");
+  expect(occupied.stderr.endsWith(refused)).toBe(true);
+  expect(journey.readFile("outbox/for-vendor/kept.txt")).toBe("a file the person kept here\n");
+  expect(() => journey.readFile("outbox/for-vendor/support.json")).toThrow();
+  await journey.nameNewFolder(journey.path(PROJECT, "support-for-vendor"), destination);
   await press(user, support.getByRole("button", { name: "Choose destination…" }));
   await waitFor(() =>
     expect((support.getByLabelText("New support folder") as HTMLInputElement).value).toBe(journey.path(PROJECT, "support-for-vendor")),
@@ -190,6 +243,24 @@ test("the failing and fixed runs become a sealed packet, a portable review that 
     expect(shared.stdout).not.toContain(value);
     expect(journey.readFile(`${PROJECT}/support-for-vendor/support.json`)).not.toContain(value);
   }
+
+  // Something rewrites the published summary after it was verified. Verified
+  // again, the window refuses the bundle and shows no identity for it, and
+  // `readmit share verify` refuses it the same way.
+  const summaryFile = `${PROJECT}/support-for-vendor/support.json`;
+  const publishedSummary = journey.readFile(summaryFile);
+  const alteredSummary = publishedSummary.replace('"outcome":"pass"', '"outcome":"fail"');
+  expect(alteredSummary).not.toBe(publishedSummary);
+  journey.changeFile(summaryFile, alteredSummary);
+  await press(user, support.getByRole("button", { name: "Verify again" }));
+  expect(
+    await support.findByText(
+      "this directory is not a complete support bundle this release verifies; a bundle missing, holding or hiding anything beyond its three members is refused",
+    ),
+  ).toBeTruthy();
+  expect(support.queryByText(byContent(/^Verified bundle identity: /))).toBeNull();
+  expect((support.getByLabelText("Verify a support bundle") as HTMLSelectElement).value).toBe("support-for-vendor");
+  expect(await journey.commandLine(["share", "verify", `${PROJECT}/support-for-vendor`])).toEqual({ code: 1, stdout: "", stderr: refused });
 
   // Assembling, exporting, reviewing and sharing sent nothing.
   expect(downstream.received()).toHaveLength(sent);
