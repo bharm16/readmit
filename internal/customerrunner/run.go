@@ -289,10 +289,10 @@ func Serve(ctx context.Context, c Config, inbox string) error {
 			if err != nil {
 				return err
 			}
-			if _, err = os.Lstat(filepath.Join(c.Root, job.ID)); err == nil {
+			if retained, err := Retained(c.Root, job.ID); err != nil {
+				return err
+			} else if retained {
 				continue
-			} else if !os.IsNotExist(err) {
-				return ErrRefused
 			}
 			if _, err = Run(ctx, c, job); err != nil {
 				return err
@@ -304,6 +304,21 @@ func Serve(ctx context.Context, c Config, inbox string) error {
 		case <-time.After(time.Second):
 		}
 	}
+}
+
+// Retained reports whether the runner root already holds id: Run reserves an
+// admitted job's id there permanently, whatever became of the job, so a
+// retained id never runs again. A root that cannot be read is refused rather
+// than reported free.
+func Retained(root, id string) (bool, error) {
+	_, err := os.Lstat(filepath.Join(root, id))
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, ErrRefused
 }
 
 // entries bounds allocation before enumeration, including an attacker-filled inbox.

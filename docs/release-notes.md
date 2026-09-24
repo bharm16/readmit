@@ -1,5 +1,23 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The runner panel verifies a staged runner update, and journeys drive its
+  configuration, grant, job and schedule controls (#313). Verify staged
+  update checks a manifest and candidate against the deployment key and
+  approved build the named configuration pins, as `readmit runner
+  verify-update` does. It reads the candidate without running it, refuses an
+  unsigned candidate or another authority's in the command's own words, and
+  withdraws its answer when another file is named. A preflight now refuses a
+  job id the runner root on this machine already holds, because the runner
+  never runs it again, and a saved grant revision is shown as written.
+  Interaction journeys drive the configuration from a refused preview to a
+  keyboard save, the verification, job documents and their preflight, a
+  schedule policy reopened with its entries and identity, and, on a real hub,
+  a grant revision replacing a stale grant, a job cancelled while its delivery
+  waits and its occupied job id refused by the window and the command line.
+  The command line's runner reads every document the window wrote. No
+  `readmit-*` document or command changes; the window's update result gains
+  the approved build.
+
 - The customer-hub panel searches the team's review history and your
   notifications, and its uploads and support-export downloads are checked end
   to end against a real hub (#311). The history and notification searches were

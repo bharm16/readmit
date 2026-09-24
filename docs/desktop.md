@@ -2843,7 +2843,11 @@ configuration is selected, and it says so rather than offering a fake flow.
 - **Hub runner grant** (`readmit-runner-policy/v1`): one grant is added to, or
   replaced in, the operator's policy and the whole revision is validated through
   the admission protocol's own strict reader. An empty engine names the running
-  build's pin; installation on the hub stays the administrator's action.
+  build's pin; installation on the hub stays the administrator's action. The
+  revision is written to a new file and shown as written. A grant the existing
+  policy holds for the same project and environment, such as one still pinned
+  to a build the runner no longer runs, is replaced rather than joined, and the
+  existing policy file is left as it was.
 - **Job documents** (`readmit-runner-job/v1`): the job id and absolute spec path
   are validated before anything is written. A retained job id is never reused,
   and the panel never generates a new attempt automatically.
@@ -2896,10 +2900,30 @@ disagreement, a leased environment, exhausted capacity). **Execution** asks the
 existing explicit operation approval and then runs through the runner's own
 lease, quota, state-isolation and duplicate-admission rules, which the panel
 does not widen; a preflighted input identity is bound to the execution, so a
-changed spec is refused before admission. Cancellation names its own operation
-and retains uncertain delivery exactly as `run start` does; the result display
-offers no resend. **Recovery** is a read: acknowledged, uncertain and
-not-attempted deliveries, never a resume, a reset or a send.
+changed spec is refused before admission. A preflight whose job id the runner
+root on this machine already holds is refused and names the id rather than a
+pin: the runner reserves an id permanently, whatever became of its job, and
+refuses to run it again by its own rule. While a job
+runs, Execute is disabled and the focus moves to Cancel, which names its own
+operation and retains uncertain delivery exactly as `run start` does; the
+result display offers no resend. **Recovery** is a read: acknowledged,
+uncertain and not-attempted deliveries, never a resume, a reset or a send.
+
+### Staged runner updates
+
+The runner view checks a staged update against the configuration named in its
+configuration path, as `readmit runner verify-update MANIFEST BINARY --config
+CONFIG` checks it (see [deployment and updates](customer-runner.md#deployment-and-updates)).
+The private `readmit-runner-update/v1` manifest must be signed by the Ed25519
+deployment key the configuration pins and name the build its `update_engine`
+approves and this platform, and the candidate's bytes must be the ones the
+manifest names. The check reads the candidate and never runs it. A verified
+candidate is reported with the build it approves; any other is refused with the
+runner's own sentence, the one the command line prints. Naming another
+manifest, candidate or configuration withdraws the answer, which described only
+the files it checked at that moment. Stopping the service, installing the
+verified bytes and changing the hub's approved engine remain the
+administrator's actions.
 
 ### Retained CI results and gate policies
 

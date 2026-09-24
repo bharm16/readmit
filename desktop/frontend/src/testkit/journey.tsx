@@ -25,6 +25,8 @@ import { inject } from "vitest";
 import App from "../App";
 import type { Facade } from "../bindings";
 import { startDownstream } from "./downstream.js";
+import { deploymentAuthority } from "./deployment.js";
+import type { DeploymentAuthority } from "./deployment.js";
 import { startHub } from "./hub.js";
 import type { Hub, HubGrant } from "./hub.js";
 import type { Downstream, DownstreamMode } from "./downstream.js";
@@ -246,9 +248,11 @@ export class Journey {
   }
 
   /** Places a file on this person's machine before the application reads it:
-   * their own evidence, exported from somewhere the application never saw. */
-  writeFile(relative: string, content: string | Uint8Array): string {
-    return writeInRoot(this.root, relative, content);
+   * their own evidence, exported from somewhere the application never saw. It
+   * is private to this account unless a mode says otherwise, such as 0o700
+   * for a program an administrator staged. */
+  writeFile(relative: string, content: string | Uint8Array, mode?: number): string {
+    return writeInRoot(this.root, relative, content, mode);
   }
 
   /** Something outside the application rewrites a file already on this
@@ -311,6 +315,13 @@ export class Journey {
     const downstream = await startDownstream({ exportPath: pathInRoot(this.root, exportFile), ...(mode ? { mode } : {}) });
     this.downstreams.push(downstream);
     return downstream;
+  }
+
+  /** A customer deployment authority with a key of its own, generated for
+   * this journey and kept in memory: the public key a runner configuration
+   * pins and the manifests it signs over a staged candidate's bytes. */
+  deploymentAuthority(): DeploymentAuthority {
+    return deploymentAuthority();
   }
 
   /** Whether this run can start a real hub: the global setup found a

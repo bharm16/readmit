@@ -1,6 +1,7 @@
 package hub_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
@@ -248,6 +249,27 @@ func TestRunnerScreenPreparesConfiguresAndExecutesThroughExistingContracts(t *te
 		t.Fatalf("duplicate submission: %+v", duplicate)
 	}
 
+	// The executed job's id is occupied from now on. The window's preflight
+	// names it rather than a pin, by the rule the runner's service skips it
+	// by, and the command line's runner refuses the same document over the
+	// same configuration, as the window's execution did.
+	if retained, err := customerrunner.Retained(root, "screen-001"); err != nil || !retained {
+		t.Fatalf("the runner does not hold the executed id: %v %v", retained, err)
+	}
+	if occupied := screen.InspectRunnerJob(configPath, jobPath); occupied.State != desktop.Failed || occupied.InputIdentity != "" ||
+		!strings.Contains(occupied.Reason, "job id screen-001 is already retained in this runner's root") {
+		t.Fatalf("occupied preflight: %+v", occupied)
+	}
+	again := exec.Command(cliBinary, "--operation-policy", testlicense.New(t), "runner", "execute", jobPath, "--config", configPath, "--send")
+	if output, err := again.CombinedOutput(); err == nil || string(output) != "readmit: "+customerrunner.ErrRefused.Error()+"\n" {
+		t.Fatalf("the command line's runner ran an occupied job id: %v %s", err, output)
+	}
+	select {
+	case <-attempts:
+		t.Fatal("an occupied job id was sent again")
+	default:
+	}
+
 	// The panel reads recovery and the retained state offline, exactly as the
 	// CLI does, and it does not resend.
 	recovery := screen.ReadRunnerRecovery(configPath, "screen-001")
@@ -383,5 +405,56 @@ func TestRunnerScreenPreparesConfiguresAndExecutesThroughExistingContracts(t *te
 	}
 	if inspected := screen.ReadRunnerConfig(configPath); inspected.State != desktop.Completed || inspected.Health == nil || inspected.Health.Jobs != 2 {
 		t.Fatalf("inspect after disconnect: %+v", inspected)
+	}
+}
+
+// The schedule policy the window reopens names the identity the hub binds its
+// journal to: over the revision the window saved, the hub's own reader and
+// one-time initialization record the identity the window shows, and a policy
+// a later release wrote is refused by both.
+func TestTheWindowReopensAScheduleRevisionWithTheIdentityTheHubJournals(t *testing.T) {
+	screen := screenApp(t)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "schedules.json")
+	entry := desktop.ScheduleEntryInput{
+		ID: "nightly", Zone: "America/Chicago", At: "02:30", WindowSeconds: 600,
+		Runner: filepath.Join(dir, "runner.json"), Spec: filepath.Join(dir, "spec.json"),
+		Input: strings.Repeat("b", 64), Route: "https://alerts.example/", Approved: true,
+	}
+	saved := screen.SaveSchedulePolicy(desktop.SchedulePolicyRequest{Output: path, Entries: []desktop.ScheduleEntryInput{entry}})
+	if saved.State != desktop.Completed {
+		t.Fatalf("save: %+v", saved)
+	}
+	raw := mustRead(t, path)
+	policy, err := hub.DecodeSchedules(raw)
+	if err != nil {
+		t.Fatalf("the hub refuses the window's revision: %v", err)
+	}
+	journal := filepath.Join(dir, "journal")
+	if err := hub.InitializeSchedules(journal, policy, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	var history struct {
+		Policy string `json:"policy_sha256"`
+	}
+	if err := json.Unmarshal(mustRead(t, filepath.Join(journal, "history.json")), &history); err != nil || len(history.Policy) != 64 {
+		t.Fatalf("the hub's journal: %+v %v", history, err)
+	}
+	opened := screen.OpenSchedulePolicy(path)
+	if opened.State != desktop.Completed || opened.Identity != history.Policy || opened.Identity != saved.Identity ||
+		len(opened.Entries) != 1 || opened.Entries[0].Entry != entry {
+		t.Fatalf("the window reopened the revision as %+v; the hub journals %s", opened, history.Policy)
+	}
+
+	later := filepath.Join(dir, "schedules-v2.json")
+	if err := os.WriteFile(later, bytes.Replace(raw, []byte("readmit-hub-schedules/v1"), []byte("readmit-hub-schedules/v2"), 1), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := hub.DecodeSchedules(mustRead(t, later)); err == nil {
+		t.Fatal("the hub read a policy a later release wrote")
+	}
+	if refused := screen.OpenSchedulePolicy(later); refused.State != desktop.Failed || refused.Identity != "" ||
+		refused.Reason != "the schedule policy could not be read through its own strict reader" {
+		t.Fatalf("the window reopened a policy a later release wrote: %+v", refused)
 	}
 }

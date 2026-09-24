@@ -167,7 +167,10 @@ and binary digest together. The verifier refuses other platforms, the current
 build, any build other than `update_engine`, untrusted signatures, symlinks,
 changed bytes and candidates larger than 256 MiB. The signing authority attests
 that those exact bytes implement that engine identity; verification does not
-execute an untrusted candidate to inspect its version.
+execute an untrusted candidate to inspect its version. The desktop
+application's runner panel makes the same check against the configuration it
+names and refuses what this command refuses, in the same words; see [the
+desktop shell](desktop.md#staged-runner-updates).
 
 The operator must explicitly change `update_engine` to approve an upgrade or a
 rollback; there is no implicit downgrade or automatic updater. Stop the service,

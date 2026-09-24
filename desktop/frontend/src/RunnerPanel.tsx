@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./runner.css";
 import {
   previewRunnerConfig,
@@ -10,6 +10,7 @@ import {
   inspectRunnerJob,
   executeRunnerJob,
   readRunnerRecovery,
+  verifyRunnerUpdate,
   openSchedulePolicy,
   previewSchedulePolicy,
   saveSchedulePolicy,
@@ -25,6 +26,7 @@ import {
   type RunnerJobPreviewResult,
   type RunnerExecutionResult,
   type RunnerRecoveryResult,
+  type RunnerUpdateResult,
   type ScheduleEntryInput,
   type SchedulePreviewResult,
   type CIHandoffRequest,
@@ -114,8 +116,12 @@ function RunnerSection() {
   const [expected, setExpected] = useState("");
   const [execution, setExecution] = useState<RunnerExecutionResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [executing, setExecuting] = useState(false);
+  const cancelControl = useRef<HTMLButtonElement>(null);
   const [recoveryJob, setRecoveryJob] = useState("");
   const [recovery, setRecovery] = useState<RunnerRecoveryResult | null>(null);
+  const [update, setUpdate] = useState({ manifest: "", candidate: "" });
+  const [updateCheck, setUpdateCheck] = useState<RunnerUpdateResult | null>(null);
 
   async function handlePreview() {
     setBusy(true);
@@ -202,14 +208,24 @@ function RunnerSection() {
 
   async function handleExecute() {
     setBusy(true);
+    setExecuting(true);
     setExecution(null);
     try {
       setExecution(await executeRunnerJob({ config_path: configPath, job_path: jobPath, expected_identity: expected }));
       void handleInspect();
     } finally {
       setBusy(false);
+      setExecuting(false);
     }
   }
+
+  // Execute is disabled while its job runs, so the focus moves to Cancel, the
+  // one action the running job offers, rather than being left on nothing.
+  useEffect(() => {
+    if (executing) {
+      cancelControl.current?.focus();
+    }
+  }, [executing]);
 
   async function handleRecovery() {
     setBusy(true);
@@ -218,6 +234,22 @@ function RunnerSection() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleVerifyUpdate() {
+    setBusy(true);
+    setUpdateCheck(null);
+    try {
+      setUpdateCheck(await verifyRunnerUpdate(configPath, update.manifest, update.candidate));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // An answer describes the files it checked; naming others withdraws it.
+  function changeUpdate(change: Partial<typeof update>) {
+    setUpdate({ ...update, ...change });
+    setUpdateCheck(null);
   }
 
   const configured = inspection?.state === "completed" && inspection.config !== undefined;
@@ -282,6 +314,7 @@ function RunnerSection() {
         </button>
       </div>
       <ResultLine result={grantResult} done={grantResult?.output ? `Saved to ${grantResult.output}. Installing it on the hub is the administrator's action.` : undefined} />
+      {grantResult?.document ? <pre className="runner-document">{grantResult.document}</pre> : null}
 
       <h4>Authorized runner</h4>
       <p className="runner-note">
@@ -290,7 +323,14 @@ function RunnerSection() {
         before any new action is offered.
       </p>
       <div className="runner-form">
-        <Field label="Configuration path" value={configPath} onChange={setConfigPath} />
+        <Field
+          label="Configuration path"
+          value={configPath}
+          onChange={(path) => {
+            setConfigPath(path);
+            setUpdateCheck(null);
+          }}
+        />
       </div>
       <div className="runner-actions">
         <button type="button" disabled={busy || configPath === ""} onClick={() => void handleInspect()}>
@@ -380,7 +420,7 @@ function RunnerSection() {
           Execute job
         </button>
         {busy ? (
-          <button type="button" onClick={() => cancelRunner()}>
+          <button type="button" ref={cancelControl} onClick={() => cancelRunner()}>
             Cancel
           </button>
         ) : null}
@@ -433,6 +473,32 @@ function RunnerSection() {
           </p>
         )
       ) : null}
+
+      <h4>Staged runner update</h4>
+      <p className="runner-note">
+        A staged candidate is checked against the deployment key and the approved update engine the
+        selected configuration pins, as <code>readmit runner verify-update</code> checks it: the
+        manifest's signature, this platform and the candidate's exact bytes. The candidate is read,
+        never run. Stopping the service, installing the verified bytes and changing the hub's
+        approved engine remain the administrator's actions.
+      </p>
+      <div className="runner-form">
+        <Field label="Update manifest" value={update.manifest} onChange={(manifest) => changeUpdate({ manifest })} />
+        <Field label="Staged candidate" value={update.candidate} onChange={(candidate) => changeUpdate({ candidate })} />
+      </div>
+      <div className="runner-actions">
+        <button
+          type="button"
+          disabled={busy || configPath === "" || update.manifest === "" || update.candidate === ""}
+          onClick={() => void handleVerifyUpdate()}
+        >
+          Verify staged update
+        </button>
+      </div>
+      <ResultLine
+        result={updateCheck}
+        done={`Verified: the staged candidate is the approved build ${updateCheck?.engine ?? ""} for this platform, signed by the pinned deployment key. It was not run; installing it is the administrator's action.`}
+      />
     </section>
   );
 }

@@ -170,6 +170,37 @@ test("cancellation keeps uncertain delivery and recovery reads without sending",
   uninstallFacade();
 });
 
+test("a running job takes the focus to Cancel, and Enter there cancels only the runner's operation", async () => {
+  const user = userEvent.setup();
+  const parked = new Parked();
+  const facade = installFacade({
+    Cancel: async () => {},
+    ExecuteRunnerJob: () => parked.arrive() as Promise<RunnerExecutionResult>,
+    ReadRunnerConfig: async () => inspection({ state: "failed", reason: "the selected file must be a private regular file" }),
+  });
+  render(<RunnerPanel />);
+  await user.type(await screen.findByLabelText("Job document"), "/srv/jobs/nightly-001.json");
+  // From the job document: the pin, then Preflight, then Execute.
+  await user.tab();
+  await user.tab();
+  await user.tab();
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Execute job" }));
+  await user.keyboard("{Enter}");
+  const cancel = await screen.findByRole("button", { name: "Cancel" });
+  expect(document.activeElement).toBe(cancel);
+  await user.keyboard("{Enter}");
+  expect(facade.oneCall("Cancel")).toEqual(["runner"]);
+  parked.resolve({
+    state: "completed",
+    job_id: "nightly-001",
+    summary: { schema: "readmit-job/v1", state: "delivery_uncertain", stop_reason: "cancelled", delivery_uncertain: true },
+  } as RunnerExecutionResult);
+  const finished = "Job nightly-001 finished: delivery_uncertain. Delivery stayed uncertain; nothing will be resent from here.";
+  expect(await screen.findByText((_, element) => element?.tagName === "P" && element.textContent === finished)).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /retry|resend|run again/i })).toBeNull();
+  uninstallFacade();
+});
+
 test("schedule revisions show effective timing, missed and overlap semantics", async () => {
   const user = userEvent.setup();
   const preview: SchedulePreviewResult = {

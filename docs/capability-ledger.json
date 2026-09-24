@@ -1591,7 +1591,9 @@
       "inputs": ["readmit-runner/v1", "readmit-runner-update/v1"],
       "outputs": ["readmit-runner-update-check/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/runner-documents.journey.tsx", "name": "a staged runner update is verified against the pinned deployment key without being run, and an unsigned or a foreign candidate is refused as the command line refuses it"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowVerifiesAStagedRunnerUpdateAsTheCommandLineDoes"},
+      "implemented": true
     },
     {
       "id": "cli.sample.capture",
@@ -5281,7 +5283,9 @@
       "inputs": [],
       "outputs": ["readmit-runner/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/runner-documents.journey.tsx", "name": "a runner configuration is refused while the runner would refuse it, previewed, saved once from the keyboard and read unchanged by the command line's runner"},
+      "parity_test": {"package": "tests", "name": "TestTheRunnerConfigurationTheWindowSavesIsTheOneTheCommandLinesRunnerReads"},
+      "implemented": true
     },
     {
       "id": "desktop.SaveRunnerConfig",
@@ -5295,8 +5299,8 @@
       "inputs": [],
       "outputs": ["readmit-runner/v1"],
       "prerequisites": ["author"],
-      "gui_test": {"file": "desktop/frontend/src/journeys/runner.journey.tsx", "name": "an enrolled runner executes the saved test once against the downstream system through the real hub, to the verdict the window's own run and the command line's runner reach"},
-      "parity_test": {"package": "hub", "name": "TestRunnerScreenPreparesConfiguresAndExecutesThroughExistingContracts"},
+      "gui_test": {"file": "desktop/frontend/src/journeys/runner-documents.journey.tsx", "name": "a runner configuration is refused while the runner would refuse it, previewed, saved once from the keyboard and read unchanged by the command line's runner"},
+      "parity_test": {"package": "tests", "name": "TestTheRunnerConfigurationTheWindowSavesIsTheOneTheCommandLinesRunnerReads"},
       "implemented": true
     },
     {
@@ -5311,7 +5315,7 @@
       "inputs": ["readmit-runner-policy/v1"],
       "outputs": ["readmit-runner-policy/v1"],
       "prerequisites": ["author"],
-      "gui_test": {"file": "desktop/frontend/src/journeys/runner.journey.tsx", "name": "an enrolled runner executes the saved test once against the downstream system through the real hub, to the verdict the window's own run and the command line's runner reach"},
+      "gui_test": {"file": "desktop/frontend/src/journeys/runner.journey.tsx", "name": "a runner whose hub grant went stale is refused until the window's grant revision is installed, a job cancelled while its delivery is unacknowledged stays uncertain, and its occupied job id is never run again by the window or the command line"},
       "parity_test": {"package": "hub", "name": "TestRunnerScreenPreparesConfiguresAndExecutesThroughExistingContracts"},
       "implemented": true
     },
@@ -5327,7 +5331,7 @@
       "inputs": [],
       "outputs": ["readmit-runner-job/v1"],
       "prerequisites": ["author"],
-      "gui_test": {"file": "desktop/frontend/src/journeys/runner.journey.tsx", "name": "an enrolled runner executes the saved test once against the downstream system through the real hub, to the verdict the window's own run and the command line's runner reach"},
+      "gui_test": {"file": "desktop/frontend/src/journeys/runner-documents.journey.tsx", "name": "a job document is saved once, preflighted to the prepared inputs and environment it pins and refused under another runner's environment, and a saved schedule policy reopens with its entries and identity"},
       "parity_test": {"package": "hub", "name": "TestRunnerScreenPreparesConfiguresAndExecutesThroughExistingContracts"},
       "implemented": true
     },
@@ -5375,7 +5379,7 @@
       "inputs": ["readmit-runner/v1", "readmit-runner-job/v1", "readmit-test/v1"],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/journeys/runner.journey.tsx", "name": "an enrolled runner executes the saved test once against the downstream system through the real hub, to the verdict the window's own run and the command line's runner reach"},
+      "gui_test": {"file": "desktop/frontend/src/journeys/runner-documents.journey.tsx", "name": "a job document is saved once, preflighted to the prepared inputs and environment it pins and refused under another runner's environment, and a saved schedule policy reopens with its entries and identity"},
       "parity_test": {"package": "hub", "name": "TestRunnerScreenPreparesConfiguresAndExecutesThroughExistingContracts"},
       "implemented": true
     },
@@ -5423,7 +5427,9 @@
       "inputs": ["readmit-runner/v1", "readmit-runner-update/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/runner-documents.journey.tsx", "name": "a staged runner update is verified against the pinned deployment key without being run, and an unsigned or a foreign candidate is refused as the command line refuses it"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowVerifiesAStagedRunnerUpdateAsTheCommandLineDoes"},
+      "implemented": true
     },
     {
       "id": "desktop.OpenSchedulePolicy",
@@ -5437,8 +5443,8 @@
       "inputs": ["readmit-hub-schedules/v1", "readmit-test/v1"],
       "outputs": ["readmit-hub-alert/v1"],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/journeys/runner.journey.tsx", "name": "an enrolled runner executes the saved test once against the downstream system through the real hub, to the verdict the window's own run and the command line's runner reach"},
-      "parity_test": {"package": "internal/desktop", "name": "TestSaveSchedulePolicyWritesRevisionAndRefusesStalePin"},
+      "gui_test": {"file": "desktop/frontend/src/journeys/runner-documents.journey.tsx", "name": "a job document is saved once, preflighted to the prepared inputs and environment it pins and refused under another runner's environment, and a saved schedule policy reopens with its entries and identity"},
+      "parity_test": {"package": "hub", "name": "TestTheWindowReopensAScheduleRevisionWithTheIdentityTheHubJournals"},
       "implemented": true
     },
     {
