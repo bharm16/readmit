@@ -327,14 +327,16 @@ def application_bundle(declaration, binary, version, output):
     return bundle
 
 
-def create_disk_image(declaration, staged, image):
-    """Write the .dmg from the staged payload, or refuse in hdiutil's own words.
+def run_on_payload(command, staged, refusal):
+    """Run hdiutil or pkgbuild over the staged payload, in the tool's own words.
 
-    The staging folder is the one path outside the build that hdiutil is given,
-    a temporary directory on the build machine, so what hdiutil wrote is carried
-    with that folder named `<payload>`.
+    The staging folder is the one path outside the build that either tool is
+    given, a temporary directory on the build machine, so what the tool wrote
+    is carried with that folder named `<payload>`. It returns the result and
+    how the tool exited with what it wrote; a tool that does not finish in ten
+    minutes is refused as `refusal`.
     """
-    def hdiutil_wrote(stderr, stdout):
+    def wrote(stderr, stdout):
         streams = []
         for name, text in (("stderr", stderr), ("stdout", stdout)):
             text = text.decode(errors="replace") if isinstance(text, bytes) else text or ""
@@ -344,18 +346,50 @@ def create_disk_image(declaration, staged, image):
             streams.append(f"{name} {text.strip()!r}")
         return ", ".join(streams)
 
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=600)
+    except subprocess.TimeoutExpired as hung:
+        # Its own text is the command line, staging path and all.
+        raise Refused(f"{refusal}: {command[0]} did not finish in {hung.timeout} seconds, "
+                      f"{wrote(hung.stderr, hung.stdout)}") from None
+    return result, f"{command[0]} exited {result.returncode}, {wrote(result.stderr, result.stdout)}"
+
+
+def release_created_image(image, before):
+    """Detach what a create left attached of the image it wrote, and nothing else.
+
+    `hdiutil create` attaches the image it writes while it fills it, and can
+    return, having succeeded or not, with that image still attached and
+    unmounted, held by a diskimages-helper that outlives the build. Devices of
+    the path the create wrote that were not attached before it began are the
+    create's, the way a failed attach's devices of the private copy are
+    `mounted()`'s, and they are released with the same checks. hdiutil chose
+    where to mount it, so a mount point of those devices is theirs. As after a
+    failed attach, the create's own result stands and a cleanup that could not
+    finish is reported beside it.
+    """
+    try:
+        release_own_devices(image.resolve(), None, before, "create")
+    except Exception as leaked:
+        print(f"{image.name}: {leaked}", file=sys.stderr)
+
+
+def create_disk_image(declaration, staged, image):
+    """Write the .dmg from the staged payload, or refuse in hdiutil's own words.
+
+    Each create, whatever it returned, is followed by releasing what it left
+    attached, so no attempt leaves the machine holding the image.
+    """
     command = ["hdiutil", "create", "-volname", declaration["display_name"],
                "-srcfolder", str(staged), "-ov", "-format", "UDZO", str(image)]
     for attempt in range(1, CREATE_ATTEMPTS + 1):
+        before = attached_images()
         try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=600)
-        except subprocess.TimeoutExpired as hung:
-            # Its own text is the command line, staging path and all.
-            raise Refused(f"{image.name} was not created: hdiutil did not finish in {hung.timeout} "
-                          f"seconds, {hdiutil_wrote(hung.stderr, hung.stdout)}") from None
+            result, failure = run_on_payload(command, staged, f"{image.name} was not created")
+        finally:
+            release_created_image(image, before)
         if result.returncode == 0:
             return
-        failure = f"hdiutil exited {result.returncode}, {hdiutil_wrote(result.stderr, result.stdout)}"
         if BUSY_CREATE not in (line.strip() for line in result.stderr.splitlines()):
             raise Refused(f"{image.name} was not created: {failure}")
         if attempt == CREATE_ATTEMPTS:
@@ -363,6 +397,16 @@ def create_disk_image(declaration, staged, image):
         print(f"{image.name} was not created (attempt {attempt} of {CREATE_ATTEMPTS}): {failure}; "
               f"trying again in {CREATE_RETRY_SECONDS} seconds", file=sys.stderr)
         time.sleep(CREATE_RETRY_SECONDS)
+
+
+def build_installer_package(declaration, staged, package, version):
+    """Write the .pkg from the staged payload, or refuse in pkgbuild's own words."""
+    result, failure = run_on_payload([
+        "pkgbuild", "--root", str(staged), "--identifier", declaration["bundle_identifier"],
+        "--version", version, "--install-location", "/Applications", str(package),
+    ], staged, f"{package.name} was not built")
+    if result.returncode != 0:
+        raise Refused(f"{package.name} was not built: {failure}")
 
 
 def build_macos(declaration, binary, version, target, output):
@@ -380,10 +424,7 @@ def build_macos(declaration, binary, version, target, output):
             built.append((name, "dmg"))
         if "pkg" in target["formats"]:
             name = package_name(declaration, version, target, "pkg")
-            subprocess.run([
-                "pkgbuild", "--root", str(staged), "--identifier", declaration["bundle_identifier"],
-                "--version", numeric, "--install-location", "/Applications", str(output / name),
-            ], check=True, capture_output=True, timeout=600)
+            build_installer_package(declaration, staged, output / name, numeric)
             built.append((name, "pkg"))
     return built
 
@@ -537,14 +578,32 @@ def attached_images():
         raise Refused("cannot inspect disk images: invalid hdiutil inventory") from error
 
 
-def cleanup_failed_attach(image, volume, before):
-    """Detach only new, still-associated devices of our private image copy."""
+def release_own_devices(image, volume, before, step):
+    """Detach only new, still-associated devices of an image only this invocation wrote.
+
+    The inventory alone never says whose an attachment is. The resolved path
+    `image` is one this invocation wrote, and `before` is what was attached
+    before its attach or create began, so an attachment of that path that
+    `before` did not hold, on devices no other image had or shares, is this
+    invocation's; anything less certain is refused rather than detached.
+    `volume` is the mount point this tool asked for, which a mounted device
+    must match, or None where hdiutil chose it. `step` names what is cleaned
+    up after in a refusal.
+    """
+    def devices_of(entry):
+        return {entity["dev-entry"] for entity in entry["system-entities"] if "dev-entry" in entity}
+
     existing = {entity.get("dev-entry", "") for entry in before for entity in entry["system-entities"]}
+    # Another invocation's attachment of the same path, such as an earlier build
+    # into a folder since deleted and made again, is not this one's to release.
+    earlier = [devices_of(entry) for entry in before if Path(entry["image-path"]).resolve() == image]
     for entry in attached_images():
         if Path(entry["image-path"]).resolve() != image:
             continue
         entities = entry["system-entities"]
-        devices = {entity["dev-entry"] for entity in entities if "dev-entry" in entity}
+        devices = devices_of(entry)
+        if devices in earlier:
+            continue
         roots = [entity["dev-entry"] for entity in entities
                  if re.fullmatch(r"/dev/disk[0-9]+", entity.get("dev-entry", ""))]
 
@@ -554,9 +613,9 @@ def cleanup_failed_attach(image, volume, before):
         if (not roots or len(roots) != len(set(roots)) or
                 any(belongs(device) for device in existing) or
                 any(not belongs(device) for device in devices) or
-                any("mount-point" in entity and Path(entity["mount-point"]).resolve() != volume
-                    for entity in entities)):
-            raise Refused("failed attach cleanup refused: ambiguous device or mount association")
+                any("mount-point" in entity and volume is not None and
+                    Path(entity["mount-point"]).resolve() != volume for entity in entities)):
+            raise Refused(f"{step} cleanup refused: ambiguous device or mount association")
         # APFS can list a backing disk and a synthesized disk for one image.
         # Detaching the backing disk normally removes both. Recheck the entire
         # association before each detach and skip groups already removed.
@@ -567,8 +626,8 @@ def cleanup_failed_attach(image, volume, before):
             if not owners:
                 break
             if owners != [entry]:
-                raise Refused("failed attach cleanup refused: device association changed")
-            run_tool(["hdiutil", "detach", "-force", root], "failed attach device did not detach")
+                raise Refused(f"{step} cleanup refused: device association changed")
+            run_tool(["hdiutil", "detach", "-force", root], f"{step} device did not detach")
 
 
 @contextmanager
@@ -592,7 +651,7 @@ def mounted(image):
             )
         except BaseException:
             try:
-                cleanup_failed_attach(private_image, volume, before)
+                release_own_devices(private_image, volume, before, "failed attach")
             except Exception as leaked:
                 print(f"{image.name}: {leaked}", file=sys.stderr)
             raise

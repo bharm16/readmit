@@ -1,5 +1,16 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- Building the macOS packages no longer leaves the disk image it created
+  attached, and a failed `pkgbuild` now says why (#353). `hdiutil create` can
+  return, having succeeded or not, with the image it wrote still attached;
+  after every create the build detaches only the devices that create left of
+  the path it wrote, checked as verification checks an attach that failed, and
+  never an image it did not create. A cleanup that cannot prove or finish a
+  detach says so on stderr, naming the image, and leaves the create's result
+  as it was. A `pkgbuild` failure is refused with what pkgbuild wrote and the
+  temporary staging folder named `<payload>`, where it was an exit status and
+  a command line. The packages, their names and their manifest are unchanged.
+
 - The privacy status now shows when an operator-declared program is running
   (#356). Testing, rotating or scanning a credential reference runs the
   locator program the reference declares, and a hub configuration's key
