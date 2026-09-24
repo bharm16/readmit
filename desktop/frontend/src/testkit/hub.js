@@ -52,7 +52,8 @@ function base64url(value) {
 }
 
 /** The customer identity provider: an access token endpoint on loopback that
- * answers each authorization code the journey issued, once. */
+ * answers each authorization code the journey issued, once, with a token valid
+ * for the lifetime it was issued with. */
 function startIdentityProvider() {
   const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   const jwk = publicKey.export({ format: "jwk" });
@@ -91,7 +92,7 @@ function startIdentityProvider() {
         return;
       }
       response.writeHead(200, { "Content-Type": "application/json" });
-      response.end(JSON.stringify({ access_token: issued, token_type: "Bearer", expires_in: 300 }));
+      response.end(JSON.stringify({ access_token: issued.token, token_type: "Bearer", expires_in: issued.lifetimeSeconds }));
     });
   });
   const listening = new Promise((resolve, reject) => {
@@ -101,8 +102,8 @@ function startIdentityProvider() {
   return listening.then((port) => ({
     port,
     key: { kid: "journey", n: jwk.n, e: jwk.e },
-    issue(code, subject) {
-      codes.set(code, token(subject));
+    issue(code, subject, lifetimeSeconds = 300) {
+      codes.set(code, { token: token(subject, lifetimeSeconds), lifetimeSeconds });
     },
     close: () => new Promise((resolve) => server.close(() => resolve())),
   }));
@@ -319,13 +320,14 @@ export async function startHub({ hubBinary, bridgeBinary, postgresBin, root, fol
       },
       /** Completes a sign-in the window started, as the person's browser and
        * the identity provider do: the provider authenticates subject and
-       * redirects to the window's loopback callback with a fresh code. */
-      async signIn(authorizationURL, subject) {
+       * redirects to the window's loopback callback with a fresh code, for a
+       * session of lifetimeSeconds (five minutes unless given). */
+      async signIn(authorizationURL, subject, lifetimeSeconds) {
         const authorization = new URL(authorizationURL);
         const redirect = new URL(authorization.searchParams.get("redirect_uri") ?? "");
         if (redirect.hostname !== "127.0.0.1") throw new Error("the sign-in redirects somewhere other than loopback");
         const code = randomBytes(16).toString("hex");
-        provider.issue(code, subject);
+        provider.issue(code, subject, lifetimeSeconds);
         redirect.searchParams.set("code", code);
         redirect.searchParams.set("state", authorization.searchParams.get("state") ?? "");
         return visit(redirect.toString());

@@ -3979,7 +3979,7 @@
       "outputs": ["readmit-desktop-hub-selection/v1"],
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/journeys/hub.journey.tsx", "name": "two people review the same evidence on a real hub: the decision made against a stale history is refused as a conflict and recorded once renewed"},
-      "parity_test": {"package": "internal/desktop", "name": "TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice"},
+      "parity_test": {"package": "internal/desktop", "name": "TestChoosingAHubConfigurationFindsTheOperatorsFileAndRefusesAFolderWithoutOne"},
       "implemented": true
     },
     {
@@ -3988,13 +3988,12 @@
       "kind": "desktop",
       "capability": "selectHubConfig application operation",
       "owner": "bharm16/readmit#311",
-      "screen": "the customer-hub panel of the application",
-      "action": "select an absolute customer hub configuration path explicitly",
       "backend": {"package": "internal/hubclient", "name": "ReadConfig"},
       "inputs": ["readmit-hub-client/v1"],
       "outputs": ["readmit-desktop-hub-selection/v1"],
       "prerequisites": [],
-      "implemented": false
+      "implemented": false,
+      "disposition": {"kind": "superseded", "reason": "no component calls this binding: the customer-hub panel chooses its configuration through the host's dialog with desktop.App.ChooseHubConfig, which makes and remembers the same selection; the binding stays for a caller that already holds the path", "successor": "desktop.App.ChooseHubConfig"}
     },
     {
       "id": "desktop.DiagnoseHub",
@@ -4136,8 +4135,8 @@
       "inputs": [],
       "outputs": [],
       "prerequisites": ["author", "hub:evidence.write"],
-      "gui_test": {"file": "desktop/frontend/src/journeys/hub.journey.tsx", "name": "two people review the same evidence on a real hub: the decision made against a stale history is refused as a conflict and recorded once renewed"},
-      "parity_test": {"package": "hub", "name": "TestPostgresTwoDesktopUsersEnforceRolesConflictsRevocationAndExpiry"},
+      "gui_test": {"file": "desktop/frontend/src/journeys/hub.journey.tsx", "name": "publishing to a real hub needs an activated license and a role that may write, and a damaged stored copy, an expired session, a stopped hub and a disconnection are each reported, never retried"},
+      "parity_test": {"package": "internal/desktop", "name": "TestPublishingEvidenceNeedsAuthorAdmissionAndASessionAndStoresTheExactBytes"},
       "implemented": true
     },
     {
@@ -4168,7 +4167,9 @@
       "inputs": ["readmit-hub-review-history/v2"],
       "outputs": ["readmit-hub-review-query/v1"],
       "prerequisites": ["hub:evidence.read"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/hub.journey.tsx", "name": "a support summary the team approved downloads from a real hub byte for byte, and the person's notifications and searches read what the hub recorded"},
+      "parity_test": {"package": "internal/desktop", "name": "TestHistoryAndNotificationSearchesCarryThePersonsQueryToTheV2Routes"},
+      "implemented": true
     },
     {
       "id": "desktop.ListHubNotifications",
@@ -4182,7 +4183,9 @@
       "inputs": ["readmit-hub-review-history/v2"],
       "outputs": [],
       "prerequisites": ["hub:evidence.read"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/hub.journey.tsx", "name": "a support summary the team approved downloads from a real hub byte for byte, and the person's notifications and searches read what the hub recorded"},
+      "parity_test": {"package": "internal/desktop", "name": "TestHistoryAndNotificationSearchesCarryThePersonsQueryToTheV2Routes"},
+      "implemented": true
     },
     {
       "id": "desktop.SearchHubNotifications",
@@ -4196,7 +4199,9 @@
       "inputs": ["readmit-hub-review-history/v2"],
       "outputs": ["readmit-hub-review-query/v1"],
       "prerequisites": ["hub:evidence.read"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/hub.journey.tsx", "name": "a support summary the team approved downloads from a real hub byte for byte, and the person's notifications and searches read what the hub recorded"},
+      "parity_test": {"package": "internal/desktop", "name": "TestHistoryAndNotificationSearchesCarryThePersonsQueryToTheV2Routes"},
+      "implemented": true
     },
     {
       "id": "desktop.PostHubReview",
@@ -4290,7 +4295,9 @@
       "inputs": ["readmit-support-summary/v1"],
       "outputs": ["readmit-support-summary/v1"],
       "prerequisites": ["hub:export"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/hub.journey.tsx", "name": "a support summary the team approved downloads from a real hub byte for byte, and the person's notifications and searches read what the hub recorded"},
+      "parity_test": {"package": "internal/desktop", "name": "TestDownloadingAnApprovedSupportExportWritesOnlyTheVerifiedBytes"},
+      "implemented": true
     },
     {
       "id": "desktop.SaveHubOfflineDraft",
@@ -4841,7 +4848,7 @@
       "inputs": [],
       "outputs": [],
       "prerequisites": ["hub:evidence.write", "author"],
-      "gui_test": {"file": "desktop/frontend/src/journeys/hub.journey.tsx", "name": "two people review the same evidence on a real hub: the decision made against a stale history is refused as a conflict and recorded once renewed"},
+      "gui_test": {"file": "desktop/frontend/src/journeys/hub.journey.tsx", "name": "publishing to a real hub needs an activated license and a role that may write, and a damaged stored copy, an expired session, a stopped hub and a disconnection are each reported, never retried"},
       "parity_test": {"package": "hub", "name": "TestPostgresTeamIsolationRevocationAndBackup"},
       "implemented": true
     },
@@ -4929,13 +4936,12 @@
       "kind": "hub",
       "capability": "Search the review history under the v1 contract",
       "owner": "bharm16/readmit#311",
-      "screen": "the customer-hub team collaboration panel of the application, whose history search reaches the capability through hub POST /v2/projects/{project}/history",
-      "action": "search team collaboration review history",
       "backend": {"package": "hub", "name": "Store.reviewRequest"},
       "inputs": ["readmit-hub-review-query/v1", "readmit-hub-review-event/v1"],
       "outputs": ["readmit-hub-review-history/v1"],
       "prerequisites": ["hub:evidence.read"],
-      "implemented": false
+      "implemented": false,
+      "disposition": {"kind": "superseded", "reason": "kept for clients of the v1 review contract, which answers 409 once support reviews exist; the application searches history through hub POST /v2/projects/{project}/history", "successor": "hub POST /v2/projects/{project}/history"}
     },
     {
       "id": "hub.team.GET./v1/projects/{project}/notifications",
@@ -4943,13 +4949,12 @@
       "kind": "hub",
       "capability": "Read the caller's notifications under the v1 contract",
       "owner": "bharm16/readmit#311",
-      "screen": "the customer-hub team collaboration panel of the application, whose notification list reaches the capability through hub GET /v2/projects/{project}/notifications",
-      "action": "read team collaboration notifications",
       "backend": {"package": "hub", "name": "Store.reviewRequest"},
       "inputs": ["readmit-hub-review-event/v1"],
       "outputs": ["readmit-hub-review-history/v1"],
       "prerequisites": ["hub:evidence.read"],
-      "implemented": false
+      "implemented": false,
+      "disposition": {"kind": "superseded", "reason": "kept for clients of the v1 review contract, which answers 409 once support reviews exist; the application reads notifications through hub GET /v2/projects/{project}/notifications", "successor": "hub GET /v2/projects/{project}/notifications"}
     },
     {
       "id": "hub.team.POST./v1/projects/{project}/notifications",
@@ -4957,13 +4962,12 @@
       "kind": "hub",
       "capability": "Search the caller's notifications under the v1 contract",
       "owner": "bharm16/readmit#311",
-      "screen": "the customer-hub team collaboration panel of the application, whose notification search reaches the capability through hub POST /v2/projects/{project}/notifications",
-      "action": "search team collaboration notifications",
       "backend": {"package": "hub", "name": "Store.reviewRequest"},
       "inputs": ["readmit-hub-review-query/v1", "readmit-hub-review-event/v1"],
       "outputs": ["readmit-hub-review-history/v1"],
       "prerequisites": ["hub:evidence.read"],
-      "implemented": false
+      "implemented": false,
+      "disposition": {"kind": "superseded", "reason": "kept for clients of the v1 review contract, which answers 409 once support reviews exist; the application searches notifications through hub POST /v2/projects/{project}/notifications", "successor": "hub POST /v2/projects/{project}/notifications"}
     },
     {
       "id": "hub.team.GET./v1/projects/{project}/lifecycle",
@@ -5006,7 +5010,9 @@
       "inputs": ["readmit-hub-review-event/v2", "readmit-sharing-policy/v1", "readmit-support-summary/v1"],
       "outputs": ["readmit-support-summary/v1"],
       "prerequisites": ["hub:export"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/hub.journey.tsx", "name": "a support summary the team approved downloads from a real hub byte for byte, and the person's notifications and searches read what the hub recorded"},
+      "parity_test": {"package": "hub", "name": "TestPostgresReviewedSupportIdentityPolicyAndRecovery"},
+      "implemented": true
     },
     {
       "id": "hub.team.POST./v2/projects/{project}/reviews",
@@ -5052,7 +5058,9 @@
       "inputs": ["readmit-hub-review-query/v1", "readmit-hub-review-event/v1", "readmit-hub-review-event/v2"],
       "outputs": ["readmit-hub-review-history/v2"],
       "prerequisites": ["hub:evidence.read"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/hub.journey.tsx", "name": "a support summary the team approved downloads from a real hub byte for byte, and the person's notifications and searches read what the hub recorded"},
+      "parity_test": {"package": "hub", "name": "TestPostgresReviewSearchAndNotificationsReadOnlyWhatTheCallerMaySee"},
+      "implemented": true
     },
     {
       "id": "hub.team.GET./v2/projects/{project}/notifications",
@@ -5066,7 +5074,9 @@
       "inputs": ["readmit-hub-review-event/v1", "readmit-hub-review-event/v2"],
       "outputs": ["readmit-hub-review-history/v2"],
       "prerequisites": ["hub:evidence.read"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/hub.journey.tsx", "name": "a support summary the team approved downloads from a real hub byte for byte, and the person's notifications and searches read what the hub recorded"},
+      "parity_test": {"package": "hub", "name": "TestPostgresReviewSearchAndNotificationsReadOnlyWhatTheCallerMaySee"},
+      "implemented": true
     },
     {
       "id": "hub.team.POST./v2/projects/{project}/notifications",
@@ -5080,7 +5090,9 @@
       "inputs": ["readmit-hub-review-query/v1", "readmit-hub-review-event/v1", "readmit-hub-review-event/v2"],
       "outputs": ["readmit-hub-review-history/v2"],
       "prerequisites": ["hub:evidence.read"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/hub.journey.tsx", "name": "a support summary the team approved downloads from a real hub byte for byte, and the person's notifications and searches read what the hub recorded"},
+      "parity_test": {"package": "hub", "name": "TestPostgresReviewSearchAndNotificationsReadOnlyWhatTheCallerMaySee"},
+      "implemented": true
     },
     {
       "id": "hub.team.GET./v2/projects/{project}/lifecycle",

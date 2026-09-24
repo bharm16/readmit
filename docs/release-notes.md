@@ -1,5 +1,26 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The customer-hub panel searches the team's review history and your
+  notifications, and its uploads and support-export downloads are checked end
+  to end against a real hub (#311). The history and notification searches were
+  bound but no control called them, and a notification list the hub refused
+  showed nothing at all. A search form now asks the hub's v2 routes with the
+  text, evidence digest and sequence the person typed, only when they search,
+  and says how many events matched; a query the hub's query contract cannot
+  carry is refused before anything is sent. Loading notifications says when
+  nothing is addressed to you and why a read was refused. Journeys through
+  the window against a real hub now show publishing refused before anything
+  is sent with no activated license and under an expired session, a role that
+  may not write, a stored copy that no longer matches its digest and a support
+  summary digest no approval names refused by the hub, the approved summary
+  downloaded byte for byte, and a stopped hub reported rather than retried.
+  The configuration is chosen through the host's dialog only:
+  `SelectHubConfig` stays bound for a caller that already holds the path, and
+  the capability ledger records it as superseded, as it does the v1 search
+  and notification addresses, which refuse once a project carries a support
+  command. No `readmit-*` document, `readmit` command, bound method or hub
+  route changes.
+
 - The test authoring panel's review of proposed expectations and the
   assertion-set panel's Import and Export are driven end to end (#302); no test
   pressed them before. A review is now recorded against the request that

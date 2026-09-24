@@ -101,12 +101,16 @@ a delivered license is installed, activated and released, an expired term is
 renewed and a term in grace still admits work, beside the commercial portal's
 destination. On a real customer hub over a disposable PostgreSQL cluster, two
 people review the same evidence and meet a conflict, a released test version
-is requested and approved by the team, and an enrolled runner executes the
-saved test and a recurring schedule for it is installed. A project's settings
-are stored from the keyboard, refused, cancelled and left alone when another
-release wrote the document, and its editable document is read as `project show`
-prints it; recent folders are reopened after a restart and forgotten only when
-confirmed; named filters are saved, listed and selected, each drawing what
+is requested and approved by the team, evidence is published only under an
+activated license and a role that may write, through a damaged stored copy, an
+expired session, a stopped hub and a disconnection, an approved support summary
+is downloaded and the person's notifications and searches read what the hub
+recorded, and an enrolled runner executes the saved test and a recurring
+schedule for it is installed. A project's settings are stored from the
+keyboard, refused, cancelled and left alone when another release wrote the
+document, and its editable document is read as `project show` prints it;
+recent folders are reopened after a restart and forgotten only when confirmed;
+named filters are saved, listed and selected, each drawing what
 `readmit index search` finds; and the guided sample imports the frozen receiver
 fixtures as the case `readmit sample capture` writes. They run in jsdom,
 not the native webview, so they are evidence about the application over real
@@ -2614,6 +2618,12 @@ selected via native file dialog. The configuration file specifies:
 - `idp`: The customer's OpenID Connect / OAuth 2.0 Identity Provider configuration, including `issuer`, `authorization_endpoint`, `token_endpoint`, `client_id`, `audience`, and required scopes.
 - `authorized_projects`: List of declared project identifiers expected to be available to the client.
 
+The panel chooses the configuration through the host's folder dialog: the
+chosen folder's `hub-client.json`, or its `hub.json` where the operator named
+the file that way. There is no typed-path field. `SelectHubConfig` makes the
+same selection for a caller that already holds the path; no component calls
+it, and the capability ledger records it as superseded by the dialog.
+
 The application remembers the selected configuration file path in local desktop
 state across sessions as `readmit-desktop-hub-selection/v1`, retained beside the
 operation selection. The configuration file itself is never copied into
@@ -2711,6 +2721,13 @@ Users can list and transfer authorized project artifacts:
 - Every download displays and enforces the permanent custody warning:
   `"Downloaded copies remain under local custody and cannot be revoked."`
 - **Uploading** an artifact requires local author admission (`run(..., writes: true)`) before transmitting to the hub, verifies the computed SHA-256 hash, and checks write capability.
+  The checks run in order and each refusal is shown with its reason: with no
+  activated license the window's own admission refuses, then an expired or
+  missing session and a token without `evidence.write` are refused by the
+  window, all before anything is sent. A role the hub refuses is permission
+  denied and bytes the hub finds do not match their digest fail; each is asked
+  once and never retried. The hub stores exactly the chosen file's bytes under
+  their SHA-256 digest.
 
 ### Session revocation and recovery
 
@@ -2738,9 +2755,27 @@ assignment remain customer-admin access-policy operations; the application does
 not accept raw policy JSON as the ordinary path and does not invent an implicit
 administrator. Deleting a server grant or removing a user refuses new authorized
 requests; already-downloaded files and local authorized exports remain under
-local custody and cannot be revoked. Support-export download is available for
-authorized digests; the full privacy-review and sharing-approval journey is
-completed when those surfaces land.
+local custody and cannot be revoked. Support-export download serves only a
+digest the recorded approval chain names, as the sharing journey below
+describes.
+
+**Load notifications** lists the events the hub recorded as addressed to the
+signed-in subject by the issuer that authenticated them; an empty list says
+nothing in the project is addressed to you, and a refusal shows its reason in
+place of the list. The search form below it asks the hub's v2 routes with one
+`readmit-hub-review-query/v1` document: text the recorded text contains
+(case-insensitive, at most 256 bytes), evidence named by its whole SHA-256
+digest, and the sequence to search after. **Search history** searches the
+project's whole review history (`POST /v2/projects/P/history`) and **Search
+notifications** only what is addressed to you (`POST /v2/projects/P/notifications`);
+each result says how many events matched and the history's head. Nothing is
+searched until the person searches. A sequence that is not a whole number is
+refused in the panel, and a query the contract cannot carry — a negative
+sequence, longer text, text holding a NUL or evidence that is not a whole
+digest — is refused by the hub client before anything is sent; the hub remains
+the authority for the query and for what it finds. The v1 addresses of these reads stay served for
+v1 clients and answer 409 once the project carries a support command; the
+application reads only through v2.
 
 The same `PostHubReview` facade method carries both review command families the
 hub defines. `comment`, `assignment`, `review-request` and `approval` ride
@@ -2774,6 +2809,11 @@ signed-in identity. The hub's export route then serves those exact bytes to an
 authorized download, which the same block reaches with `DownloadHubExport` —
 server-side gated on the recorded approval chain and the sharing policy's
 `customer-hub-download` destination, with the custody notice on every result.
+The approved summary digest is filled by the request or approval the panel
+recorded, and can be named for a teammate's approval. A digest no approval
+names is refused as permission denied, bytes that do not match the digest are
+never written, and the approved bytes are written whole, owner-only, at the
+destination the person named.
 The privacy screens' local approval inputs stay deliberate acts over local
 identities: a team approval never fills them, and a local approval never stands
 in for the team's.

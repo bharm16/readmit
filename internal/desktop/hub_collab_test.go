@@ -384,7 +384,9 @@ func TestDesktopHubCollaborationConflictAndAdmin(t *testing.T) {
 // exact bytes, a published value-free summary is requested for team review by
 // its support.json member, and the asked reviewer approves the request naming
 // the same bytes — with the refusals the journey promises before anything is
-// sent and the privacy panels' local approval inputs untouched.
+// sent and the privacy panels' local approval inputs untouched. The export
+// route then serves the summary only once an approval names it, and the
+// window downloads exactly those bytes.
 func TestDesktopHubSupportSharingJourney(t *testing.T) {
 	policy := sharing.Policy{Schema: sharing.PolicySchema, Support: true,
 		Destinations: []string{"customer-hub-download", "local-file"}, MaxBytes: 65536}
@@ -495,6 +497,17 @@ func TestDesktopHubSupportSharingJourney(t *testing.T) {
 		_ = json.MarshalWrite(w, event)
 	})
 
+	hubMux.HandleFunc("/v2/projects/cardio-study/exports/", func(w http.ResponseWriter, r *http.Request) {
+		digest := filepath.Base(r.URL.Path)
+		for _, event := range events {
+			if command := event["command"].(map[string]any); command["kind"] == "support-approval" && command["evidence"] == digest {
+				_, _ = w.Write(uploaded[digest])
+				return
+			}
+		}
+		http.Error(w, "exact reviewed support unavailable", http.StatusForbidden)
+	})
+
 	app := newAuthenticatedHubApp(t, hubMux, "author@hospital.org",
 		[]string{"evidence.read", "evidence.write", "approval", "export"}).app
 
@@ -556,6 +569,11 @@ func TestDesktopHubSupportSharingJourney(t *testing.T) {
 	if string(uploaded[sharing.Digest(summaryBytes)]) != string(summaryBytes) {
 		t.Fatalf("the hub must hold the exact summary bytes")
 	}
+	exportTo := filepath.Join(t.TempDir(), "support.json")
+	export := desktop.HubDownloadRequest{Project: "cardio-study", Digest: sharing.Digest(summaryBytes), DestinationPath: exportTo}
+	if early := app.DownloadHubExport(export); early.State != desktop.PermissionDenied {
+		t.Fatalf("a requested summary downloaded before its approval: %+v", early)
+	}
 
 	approval := app.PostHubSupportReview(desktop.HubSupportReviewRequest{
 		Project: "cardio-study", Workspace: workspace, Entry: "support-bundle",
@@ -566,6 +584,9 @@ func TestDesktopHubSupportSharingJourney(t *testing.T) {
 	}
 	if approval.Events[0].Parent != "sup-request-1" {
 		t.Fatalf("approval should chain to the content-matched request: %+v", approval.Events[0])
+	}
+	if exported := app.DownloadHubExport(export); exported.State != desktop.Completed || string(mustRead(t, exportTo)) != string(summaryBytes) {
+		t.Fatalf("the approved summary did not download as the approved bytes: %+v", exported)
 	}
 }
 

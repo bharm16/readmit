@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 )
@@ -58,6 +60,24 @@ type ReviewQuery struct {
 	After    int    `json:"after"`
 	Text     string `json:"text"`
 	Evidence string `json:"evidence"`
+}
+
+// refusal is the early refusal of a query the hub's query contract
+// (readmit-hub-review-query/v1) cannot carry: a sequence below zero, text
+// beyond 256 bytes or holding a NUL, or evidence that is not one whole SHA-256
+// digest. Nothing is sent for it, so a mistyped search says what to fix rather
+// than returning the hub's bare refusal; the hub remains the authority for the
+// query's shape and for what it finds.
+func (q ReviewQuery) refusal() error {
+	switch {
+	case q.After < 0:
+		return errors.New("search after a sequence of 0 or more")
+	case len(q.Text) > 256 || !utf8.ValidString(q.Text) || strings.ContainsRune(q.Text, 0):
+		return errors.New("search for at most 256 bytes of text, with no NUL character")
+	case q.Evidence != "" && !validDigest(q.Evidence):
+		return errors.New("name the evidence by its whole SHA-256 digest: 64 lowercase hexadecimal characters")
+	}
+	return nil
 }
 
 // LifecycleCommand is the complete strict document posted to project lifecycle.
@@ -364,6 +384,9 @@ func (c *Client) readReviewRoute(ctx context.Context, project, route string, que
 	var body []byte
 	method := http.MethodGet
 	if query != nil {
+		if err := query.refusal(); err != nil {
+			return zero, err
+		}
 		method = http.MethodPost
 		if query.Schema == "" {
 			query.Schema = "readmit-hub-review-query/v1"

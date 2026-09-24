@@ -220,7 +220,11 @@ func (a *App) ChooseHubConfig() HubResult {
 	})
 }
 
-// SelectHubConfig validates and stores the explicit path to a customer hub client configuration.
+// SelectHubConfig validates and stores the explicit path to a customer hub
+// client configuration. No component calls it: the hub panel chooses a
+// configuration through ChooseHubConfig's native dialog, which makes the same
+// selection (selectHubConfig); this binding stays for a caller that already
+// holds the path.
 func (a *App) SelectHubConfig(path string) HubResult {
 	return run(a, false, false, func(context.Context) HubResult { return a.selectHubConfig(path) })
 }
