@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -16,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/bharm16/readmit/internal/hubprotocol"
 )
 
 // Session holds an active authenticated identity in memory. Following ADR-0006,
@@ -305,7 +306,10 @@ func ExchangeCode(ctx context.Context, c Config, code, verifier, redirectURI str
 	return ValidateAccessToken(tokenResp.AccessToken, c.IdP, time.Now())
 }
 
-// ValidateAccessToken parses and validates an RFC 9068 access token structure and claims.
+// ValidateAccessToken parses an RFC 9068 access token's header and applies the
+// team hub's claim rule (hubprotocol.ReadAccessClaims) to its claims. It is
+// claims-only: the signature is the hub's to verify on every request, so a
+// session here says what the token claims, never that the hub accepts it.
 func ValidateAccessToken(token string, idp IdPConfig, now time.Time) (*Session, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
@@ -332,65 +336,19 @@ func ValidateAccessToken(token string, idp IdPConfig, now time.Time) (*Session, 
 		return nil, errors.New("invalid JWT payload encoding")
 	}
 
-	var claims struct {
-		Issuer   string         `json:"iss"`
-		Subject  string         `json:"sub"`
-		Audience jsontext.Value `json:"aud"`
-		Client   string         `json:"client_id"`
-		ID       string         `json:"jti"`
-		Exp      *int64         `json:"exp"`
-		Iat      *int64         `json:"iat"`
-		Nbf      *int64         `json:"nbf"`
-		Scope    string         `json:"scope"`
+	claims, err := hubprotocol.ReadAccessClaims(bodyBytes, hubprotocol.ClaimPolicy{
+		Issuer: idp.Issuer, Audience: idp.Audience, Clients: []string{idp.ClientID},
+	}, now)
+	if err != nil {
+		return nil, err
 	}
-	if json.Unmarshal(bodyBytes, &claims) != nil {
-		return nil, errors.New("invalid token claims")
-	}
-
-	if claims.Issuer != idp.Issuer {
-		return nil, fmt.Errorf("token issuer %q does not match configured issuer %q", claims.Issuer, idp.Issuer)
-	}
-	if claims.Client != idp.ClientID {
-		return nil, fmt.Errorf("token client_id %q does not match configured client_id %q", claims.Client, idp.ClientID)
-	}
-	if claims.Subject == "" || len(claims.Subject) > 256 {
-		return nil, errors.New("invalid token subject")
-	}
-	if claims.Exp == nil || claims.Iat == nil {
-		return nil, errors.New("token missing exp or iat")
-	}
-
-	nowSec := now.Unix()
-	if *claims.Iat > nowSec || *claims.Exp <= nowSec || *claims.Exp <= *claims.Iat {
-		return nil, errors.New("token is expired or not yet valid")
-	}
-	if *claims.Exp-*claims.Iat > 3600 {
-		return nil, errors.New("token lifetime exceeds 1 hour limit")
-	}
-	if claims.Nbf != nil && *claims.Nbf > nowSec {
-		return nil, errors.New("token not valid before nbf")
-	}
-
-	var audience string
-	if json.Unmarshal(claims.Audience, &audience) != nil {
-		var list []string
-		if json.Unmarshal(claims.Audience, &list) != nil || len(list) != 1 {
-			return nil, errors.New("token audience must match configured audience")
-		}
-		audience = list[0]
-	}
-	if audience != idp.Audience {
-		return nil, fmt.Errorf("token audience %q does not match configured audience %q", audience, idp.Audience)
-	}
-
-	scopes := strings.Fields(claims.Scope)
 	return &Session{
 		token:           token,
 		Subject:         claims.Subject,
 		Issuer:          claims.Issuer,
-		Audience:        audience,
-		Scopes:          scopes,
-		Expires:         time.Unix(*claims.Exp, 0),
+		Audience:        claims.Audience,
+		Scopes:          claims.Scopes,
+		Expires:         time.Unix(claims.Expires, 0),
 		AuthenticatedAt: now,
 	}, nil
 }

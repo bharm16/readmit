@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/bharm16/readmit/internal/hubprotocol"
 )
 
 // TeamHandler has no legacy unscoped evidence route. mTLS admits a connection;
@@ -168,7 +170,7 @@ func (s *Store) teamRequest(w http.ResponseWriter, r *http.Request, access *Acce
 		}
 	}
 	if r.Method == "GET" {
-		w.Header().Set("Readmit-Custody-Warning", "Downloaded copies remain under local custody and cannot be revoked.")
+		w.Header().Set(hubprotocol.CustodyHeader, hubprotocol.CustodyWarning)
 	}
 	s.artifactRequest(w, r, ctx, d, project)
 }

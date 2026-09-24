@@ -173,11 +173,6 @@ func (s *Store) Ready(ctx context.Context) error {
 	return nil
 }
 
-func validDigest(d string) bool {
-	b, e := hex.DecodeString(d)
-	return e == nil && len(b) == 32 && hex.EncodeToString(b) == d
-}
-
 // Put verifies every uploaded byte before publishing an immutable content object.
 // A crash between publication and catalogue commit can leave an unreferenced
 // object; a retry verifies and adopts it. Unreferenced objects are never served.

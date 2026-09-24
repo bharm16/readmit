@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/hubprotocol"
 	"github.com/bharm16/readmit/internal/secret"
 	"github.com/bharm16/readmit/internal/strictdoc"
 )
@@ -96,19 +97,6 @@ var configDoc = strictdoc.Document{
 	Requires:    "a hub client configuration declares all required members",
 }
 
-func requireExactMembers(data []byte, names ...string) error {
-	var m map[string]jsontext.Value
-	if json.Unmarshal(data, &m) != nil || len(m) != len(names) {
-		return ErrRefused
-	}
-	for _, n := range names {
-		if v, ok := m[n]; !ok || string(v) == "null" {
-			return ErrRefused
-		}
-	}
-	return nil
-}
-
 // DecodeConfig reads and validates a strict hub client configuration document.
 func DecodeConfig(data []byte) (Config, error) {
 	var c Config
@@ -122,10 +110,10 @@ func DecodeConfig(data []byte) (Config, error) {
 	if json.Unmarshal(data, &raw) != nil {
 		return c, ErrRefused
 	}
-	if requireExactMembers(raw.Key, "command", "arguments") != nil {
+	if hubprotocol.RequireExactMembers(raw.Key, "command", "arguments") != nil {
 		return c, ErrRefused
 	}
-	if requireExactMembers(raw.IdP, "issuer", "client_id", "audience", "authorize_endpoint", "token_endpoint", "scopes") != nil {
+	if hubprotocol.RequireExactMembers(raw.IdP, "issuer", "client_id", "audience", "authorize_endpoint", "token_endpoint", "scopes") != nil {
 		return c, ErrRefused
 	}
 	if err := Validate(c); err != nil {
@@ -184,7 +172,7 @@ func Validate(c Config) error {
 	}
 	seen := make(map[string]bool, len(c.Projects))
 	for _, p := range c.Projects {
-		if !validProject(p) {
+		if !hubprotocol.ValidProject(p) {
 			return errors.New("invalid project identifier: " + p)
 		}
 		if seen[p] {
@@ -251,16 +239,4 @@ func validateIdP(idp IdPConfig) error {
 
 func isLoopback(host string) bool {
 	return host == "127.0.0.1" || host == "localhost" || host == "::1"
-}
-
-func validProject(s string) bool {
-	if len(s) == 0 || len(s) > 64 {
-		return false
-	}
-	for _, c := range s {
-		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
-			return false
-		}
-	}
-	return true
 }

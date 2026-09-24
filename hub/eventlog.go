@@ -6,6 +6,8 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"reflect"
+
+	"github.com/bharm16/readmit/internal/hubprotocol"
 )
 
 // One append-only command log per project backs collaboration and lifecycle.
@@ -31,7 +33,7 @@ type eventLog[C any, E any] struct {
 
 var reviewLog = eventLog[ReviewCommand, ReviewEvent]{
 	table:    "readmit_hub_reviews",
-	max:      maxReviews,
+	max:      hubprotocol.MaxReviews,
 	id:       func(c ReviewCommand) string { return c.ID },
 	expected: func(c ReviewCommand) int { return c.Expected },
 	equal:    func(a, b ReviewCommand) bool { return a == b },
@@ -43,7 +45,7 @@ var reviewLog = eventLog[ReviewCommand, ReviewEvent]{
 
 var lifecycleLog = eventLog[LifecycleCommand, LifecycleEvent]{
 	table:    "readmit_hub_lifecycle",
-	max:      maxLifecycle,
+	max:      hubprotocol.MaxLifecycle,
 	id:       func(c LifecycleCommand) string { return c.ID },
 	expected: func(c LifecycleCommand) int { return c.Expected },
 	equal:    func(a, b LifecycleCommand) bool { return reflect.DeepEqual(a, b) },

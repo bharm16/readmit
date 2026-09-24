@@ -3417,7 +3417,8 @@ sent to the hub; signing in again starts a new flow with a new listener,
 verifier and state.
 
 Access tokens and session state are held strictly **in memory** within the Go
-engine (`internal/hubclient.Session`). No token, secret, or session cookie is ever
+engine (`internal/hubclient.Connection`, which owns the window's one hub session
+from the configuration selected to the sign-out). No token, secret, or session cookie is ever
 written to disk, saved in browser storage (localStorage, sessionStorage, IndexedDB),
 or logged.
 
@@ -3606,8 +3607,8 @@ The sharing journey with #260's screens runs from the hub panel directly above
 them. `PostHubSupportReview` carries the three v2 support kinds: announcing the
 project's sharing policy uploads the policy entry's exact bytes and posts
 `support-policy`; requesting approval uploads a published bundle's `support.json`
-and posts `support-request` bound to the policy in force, which the hub panel
-reads from the project's own history; and `support-approval` approves the
+and posts `support-request` bound to the policy in force, which the hub client
+derives from the project's own history exactly as the hub does; and `support-approval` approves the
 outstanding request naming the same summary bytes, under the asked reviewer's
 signed-in identity. The hub's export route then serves those exact bytes to an
 authorized download, which the same block reaches with `DownloadHubExport` —

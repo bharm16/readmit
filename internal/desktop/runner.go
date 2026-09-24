@@ -662,10 +662,8 @@ func readRunnerJob(jobPath string) (customerrunner.Job, refusal) {
 // path applies unchanged. A session that cannot establish the administration
 // state refuses new runner work: an unknown authority is not a pass.
 func (a *App) runnerAdministrationGate(ctx context.Context, project, action string) refusal {
-	a.hubMu.Lock()
-	client, session := a.hubClient, a.hubSession
-	a.hubMu.Unlock()
-	if client == nil || session == nil || session.IsExpired(time.Now()) {
+	client, session, err := a.hub.SignedIn()
+	if err != nil {
 		return refusal{}
 	}
 	if !session.Allows(action) {

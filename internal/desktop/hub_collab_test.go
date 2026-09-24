@@ -20,6 +20,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/expectation"
+	"github.com/bharm16/readmit/internal/hubprotocol"
 	"github.com/bharm16/readmit/internal/profileversion"
 	"github.com/bharm16/readmit/internal/sharing"
 	"github.com/bharm16/readmit/internal/testlicense"
@@ -163,102 +164,96 @@ func TestDesktopHubCollaborationConflictAndAdmin(t *testing.T) {
 	hubMux.HandleFunc("/health/ready", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	hubMux.HandleFunc("/v1/projects/cardio-study/lifecycle", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.MarshalWrite(w, map[string]any{
-			"schema": "readmit-hub-lifecycle-history/v1", "head": lifeHead, "events": []any{},
-			"tips": tips, "warning": "Downloaded copies remain under local custody and cannot be revoked.",
+		_ = json.MarshalWrite(w, hubprotocol.LifecycleHistory{
+			Schema: hubprotocol.LifecycleHistorySchema, Head: lifeHead, Events: []hubprotocol.LifecycleEvent{},
+			Tips: tips, Warning: hubprotocol.CustodyWarning,
 		})
 	})
 	hubMux.HandleFunc("/v2/projects/cardio-study/history", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.MarshalWrite(w, map[string]any{
-			"schema": "readmit-hub-review-history/v2", "head": reviewHead,
-			"events": []map[string]any{{
-				"schema": "readmit-hub-review-event/v1", "project": "cardio-study", "sequence": 1,
-				"issuer": "https://idp.hospital.org", "actor": "doctor@hospital.org", "at": "2026-09-21T12:00:00Z",
-				"command": map[string]any{
-					"schema": "readmit-hub-review-command/v1", "id": "assign-1", "expected": 0, "kind": "assignment",
-					"evidence": evidence, "parent": "", "recipient": "reviewer@hospital.org",
-					"text": "Assigned for review", "release": "",
+		_ = json.MarshalWrite(w, hubprotocol.ReviewHistory{
+			Schema: hubprotocol.ReviewHistoryV2, Head: reviewHead,
+			Events: []hubprotocol.ReviewEvent{{
+				Schema: hubprotocol.ReviewEventV1, Project: "cardio-study", Sequence: 1,
+				Issuer: "https://idp.hospital.org", Actor: "doctor@hospital.org", At: "2026-09-21T12:00:00Z",
+				Command: hubprotocol.ReviewCommand{
+					Schema: hubprotocol.ReviewCommandV1, ID: "assign-1", Kind: "assignment",
+					Evidence: evidence, Recipient: "reviewer@hospital.org", Text: "Assigned for review",
 				},
 			}},
 		})
 	})
 	hubMux.HandleFunc("/v2/projects/cardio-study/notifications", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.MarshalWrite(w, map[string]any{"schema": "readmit-hub-review-history/v2", "head": reviewHead, "events": []any{}})
+		_ = json.MarshalWrite(w, hubprotocol.ReviewHistory{Schema: hubprotocol.ReviewHistoryV2, Head: reviewHead, Events: []hubprotocol.ReviewEvent{}})
 	})
 	hubMux.HandleFunc("/v2/projects/cardio-study/reviews", func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(io.LimitReader(r.Body, 8192))
-		var cmd map[string]any
+		var cmd hubprotocol.ReviewCommand
 		if json.Unmarshal(body, &cmd) != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		expected := int(cmd["expected"].(float64))
-		if expected != reviewHead {
+		if cmd.Expected != reviewHead {
 			w.WriteHeader(http.StatusConflict)
 			return
 		}
 		reviewHead++
-		postedSchema, _ = cmd["schema"].(string)
-		eventSchema := "readmit-hub-review-event/v1"
-		if strings.HasPrefix(postedSchema, "readmit-hub-review-command/v2") {
-			eventSchema = "readmit-hub-review-event/v2"
+		postedSchema = cmd.Schema
+		eventSchema := hubprotocol.ReviewEventV1
+		if hubprotocol.IsSupport(cmd) {
+			eventSchema = hubprotocol.ReviewEventV2
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		_ = json.MarshalWrite(w, map[string]any{
-			"schema": eventSchema, "project": "cardio-study", "sequence": reviewHead,
-			"issuer": "https://idp.hospital.org", "actor": "doctor@hospital.org", "at": time.Now().UTC().Format(time.RFC3339Nano),
-			"command": cmd,
+		_ = json.MarshalWrite(w, hubprotocol.ReviewEvent{
+			Schema: eventSchema, Project: "cardio-study", Sequence: reviewHead,
+			Issuer: "https://idp.hospital.org", Actor: "doctor@hospital.org", At: time.Now().UTC().Format(time.RFC3339Nano),
+			Command: cmd,
 		})
 	})
 	hubMux.HandleFunc("/v2/projects/cardio-study/lifecycle", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.MarshalWrite(w, map[string]any{
-				"schema": "readmit-hub-lifecycle-history/v1", "head": lifeHead, "events": []any{},
-				"tips": tips, "warning": "Downloaded copies remain under local custody and cannot be revoked.",
+			_ = json.MarshalWrite(w, hubprotocol.LifecycleHistory{
+				Schema: hubprotocol.LifecycleHistorySchema, Head: lifeHead, Events: []hubprotocol.LifecycleEvent{},
+				Tips: tips, Warning: hubprotocol.CustodyWarning,
 			})
 			return
 		}
 		body, _ := io.ReadAll(io.LimitReader(r.Body, 8192))
-		var cmd map[string]any
+		var cmd hubprotocol.LifecycleCommand
 		if json.Unmarshal(body, &cmd) != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		expected := int(cmd["expected"].(float64))
-		if expected != lifeHead {
+		if cmd.Expected != lifeHead {
 			w.WriteHeader(http.StatusConflict)
 			return
 		}
 		lifeHead++
-		id, _ := cmd["id"].(string)
-		kind, _ := cmd["kind"].(string)
-		resource, _ := cmd["resource"].(string)
-		if kind == "revision" {
-			tips[resource] = append(tips[resource], id)
+		if cmd.Kind == "revision" {
+			tips[cmd.Resource] = append(tips[cmd.Resource], cmd.ID)
 		}
-		if kind == "resolve" {
-			tips[resource] = []string{id}
+		if cmd.Kind == "resolve" {
+			tips[cmd.Resource] = []string{cmd.ID}
 		}
-		if kind == "audit-export" {
+		if cmd.Kind == "audit-export" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			_ = json.MarshalWrite(w, map[string]any{
-				"schema": "readmit-hub-audit/v1", "project": "cardio-study",
-				"lifecycle": []any{}, "review_head": reviewHead, "reviews": []any{},
-				"warning": "Downloaded copies remain under local custody and cannot be revoked.",
+			_ = json.MarshalWrite(w, hubprotocol.AuditExport{
+				Schema: hubprotocol.AuditV1, Project: "cardio-study",
+				Lifecycle: []hubprotocol.LifecycleEvent{}, ReviewHead: reviewHead, Reviews: []hubprotocol.ReviewEvent{},
+				Warning: hubprotocol.CustodyWarning,
 			})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		_ = json.MarshalWrite(w, map[string]any{
-			"schema": "readmit-hub-lifecycle-event/v1", "project": "cardio-study", "sequence": lifeHead,
-			"issuer": "https://idp.hospital.org", "actor": "doctor@hospital.org", "at": time.Now().UTC().Format(time.RFC3339Nano),
-			"command": cmd,
+		_ = json.MarshalWrite(w, hubprotocol.LifecycleEvent{
+			Schema: hubprotocol.LifecycleEventSchema, Project: "cardio-study", Sequence: lifeHead,
+			Issuer: "https://idp.hospital.org", Actor: "doctor@hospital.org", At: time.Now().UTC().Format(time.RFC3339Nano),
+			Command: cmd,
 		})
 	})
 
@@ -428,7 +423,7 @@ func TestDesktopHubSupportSharingJourney(t *testing.T) {
 
 	var reviewHead int
 	var uploaded map[string][]byte = map[string][]byte{}
-	var events []map[string]any = []map[string]any{}
+	var events []hubprotocol.ReviewEvent = []hubprotocol.ReviewEvent{}
 	var policyCmdID string
 	var requestCmdID string
 
@@ -443,53 +438,39 @@ func TestDesktopHubSupportSharingJourney(t *testing.T) {
 	})
 	hubMux.HandleFunc("/v2/projects/cardio-study/history", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.MarshalWrite(w, map[string]any{
-			"schema": "readmit-hub-review-history/v2", "head": reviewHead, "events": events,
-		})
+		_ = json.MarshalWrite(w, hubprotocol.ReviewHistory{Schema: hubprotocol.ReviewHistoryV2, Head: reviewHead, Events: events})
 	})
 	hubMux.HandleFunc("/v2/projects/cardio-study/reviews", func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(io.LimitReader(r.Body, 8192))
-		var cmd map[string]any
-		if json.Unmarshal(body, &cmd) != nil {
+		cmd, err := hubprotocol.DecodeReviewCommand(body)
+		if err != nil || cmd.Expected != reviewHead || !hubprotocol.IsSupport(cmd) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		if int(cmd["expected"].(float64)) != reviewHead || cmd["text"] != "support" || cmd["schema"] != "readmit-hub-review-command/v2" {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		kind, _ := cmd["kind"].(string)
-		evidence, _ := cmd["evidence"].(string)
-		switch kind {
+		switch cmd.Kind {
 		case "support-policy":
-			if cmd["release"] != "" || cmd["parent"] != "" || cmd["recipient"] != "" || string(uploaded[evidence]) != string(policyBytes) {
+			if string(uploaded[cmd.Evidence]) != string(policyBytes) {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
-			policyCmdID, _ = cmd["id"].(string)
+			policyCmdID = cmd.ID
 		case "support-request":
-			if cmd["release"] != policyDigest || cmd["parent"] != policyCmdID ||
-				cmd["recipient"] == "" || string(uploaded[evidence]) != string(summaryBytes) {
+			if cmd.Release != policyDigest || cmd.Parent != policyCmdID || string(uploaded[cmd.Evidence]) != string(summaryBytes) {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
-			requestCmdID, _ = cmd["id"].(string)
+			requestCmdID = cmd.ID
 		case "support-approval":
-			if cmd["release"] != policyDigest || cmd["parent"] == "" ||
-				cmd["parent"] != requestCmdID || cmd["recipient"] != "" ||
-				evidence != sharing.Digest(summaryBytes) {
+			if cmd.Release != policyDigest || cmd.Parent != requestCmdID || cmd.Evidence != sharing.Digest(summaryBytes) {
 				w.WriteHeader(http.StatusForbidden)
 				return
 			}
-		default:
-			w.WriteHeader(http.StatusBadRequest)
-			return
 		}
 		reviewHead++
-		event := map[string]any{
-			"schema": "readmit-hub-review-event/v2", "project": "cardio-study", "sequence": reviewHead,
-			"issuer": "https://idp.hospital.org", "actor": "author@hospital.org", "at": time.Now().UTC().Format(time.RFC3339Nano),
-			"command": cmd,
+		event := hubprotocol.ReviewEvent{
+			Schema: hubprotocol.ReviewEventV2, Project: "cardio-study", Sequence: reviewHead,
+			Issuer: "https://idp.hospital.org", Actor: "author@hospital.org", At: time.Now().UTC().Format(time.RFC3339Nano),
+			Command: cmd,
 		}
 		events = append(events, event)
 		w.Header().Set("Content-Type", "application/json")
@@ -500,7 +481,7 @@ func TestDesktopHubSupportSharingJourney(t *testing.T) {
 	hubMux.HandleFunc("/v2/projects/cardio-study/exports/", func(w http.ResponseWriter, r *http.Request) {
 		digest := filepath.Base(r.URL.Path)
 		for _, event := range events {
-			if command := event["command"].(map[string]any); command["kind"] == "support-approval" && command["evidence"] == digest {
+			if hubprotocol.IsSupportApproval(event.Command) && event.Command.Evidence == digest {
 				_, _ = w.Write(uploaded[digest])
 				return
 			}
@@ -624,7 +605,7 @@ func TestDesktopHubReleaseReviewJourney(t *testing.T) {
 
 	var reviewHead int
 	var uploaded map[string][]byte = map[string][]byte{}
-	var requestedID, requestedRelease, requestedEvidence, requestedRecipient string
+	var requested hubprotocol.ReviewCommand
 	approveRefusal := "no review request names this exact release content"
 
 	hubMux := http.NewServeMux()
@@ -637,39 +618,30 @@ func TestDesktopHubReleaseReviewJourney(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 	})
 	hubMux.HandleFunc("/v2/projects/cardio-study/history", func(w http.ResponseWriter, r *http.Request) {
-		events := []any{}
-		if requestedID != "" {
-			events = append(events, map[string]any{
-				"schema": "readmit-hub-review-event/v1", "project": "cardio-study", "sequence": 1,
-				"issuer": "https://idp.hospital.org", "actor": "author@hospital.org", "at": "2026-09-21T12:00:00Z",
-				"command": map[string]any{
-					"schema": "readmit-hub-review-command/v1", "id": requestedID, "expected": 0, "kind": "review-request",
-					"evidence": requestedEvidence, "parent": "", "recipient": requestedRecipient,
-					"text": "Review exact release", "release": requestedRelease,
-				},
+		events := []hubprotocol.ReviewEvent{}
+		if requested.ID != "" {
+			events = append(events, hubprotocol.ReviewEvent{
+				Schema: hubprotocol.ReviewEventV1, Project: "cardio-study", Sequence: 1,
+				Issuer: "https://idp.hospital.org", Actor: "author@hospital.org", At: "2026-09-21T12:00:00Z",
+				Command: requested,
 			})
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.MarshalWrite(w, map[string]any{
-			"schema": "readmit-hub-review-history/v2", "head": reviewHead, "events": events,
-		})
+		_ = json.MarshalWrite(w, hubprotocol.ReviewHistory{Schema: hubprotocol.ReviewHistoryV2, Head: reviewHead, Events: events})
 	})
 	hubMux.HandleFunc("/v2/projects/cardio-study/reviews", func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(io.LimitReader(r.Body, 8192))
-		var cmd map[string]any
-		if json.Unmarshal(body, &cmd) != nil {
+		cmd, err := hubprotocol.DecodeReviewCommand(body)
+		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		if int(cmd["expected"].(float64)) != reviewHead {
+		if cmd.Expected != reviewHead {
 			w.WriteHeader(http.StatusConflict)
 			return
 		}
-		kind, _ := cmd["kind"].(string)
-		if kind == "review-request" {
-			if cmd["schema"] != "readmit-hub-review-command/v1" ||
-				cmd["recipient"] == "" || cmd["parent"] != "" ||
-				cmd["release"] != releaseDigest || cmd["evidence"] != releaseDigest {
+		if cmd.Kind == "review-request" {
+			if cmd.Release != releaseDigest || cmd.Evidence != releaseDigest {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
@@ -677,16 +649,10 @@ func TestDesktopHubReleaseReviewJourney(t *testing.T) {
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
-			requestedID, _ = cmd["id"].(string)
-			requestedRelease, _ = cmd["release"].(string)
-			requestedEvidence, _ = cmd["evidence"].(string)
-			requestedRecipient, _ = cmd["recipient"].(string)
+			requested = cmd
 		}
-		if kind == "approval" {
-			if cmd["schema"] != "readmit-hub-review-command/v1" ||
-				cmd["recipient"] != "" || cmd["parent"] == "" ||
-				cmd["parent"] != requestedID || cmd["release"] != requestedRelease ||
-				cmd["evidence"] != requestedEvidence {
+		if cmd.Kind == "approval" {
+			if cmd.Parent != requested.ID || cmd.Release != requested.Release || cmd.Evidence != requested.Evidence {
 				w.WriteHeader(http.StatusForbidden)
 				return
 			}
@@ -694,10 +660,10 @@ func TestDesktopHubReleaseReviewJourney(t *testing.T) {
 		reviewHead++
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		_ = json.MarshalWrite(w, map[string]any{
-			"schema": "readmit-hub-review-event/v1", "project": "cardio-study", "sequence": reviewHead,
-			"issuer": "https://idp.hospital.org", "actor": "author@hospital.org", "at": time.Now().UTC().Format(time.RFC3339Nano),
-			"command": cmd,
+		_ = json.MarshalWrite(w, hubprotocol.ReviewEvent{
+			Schema: hubprotocol.ReviewEventV1, Project: "cardio-study", Sequence: reviewHead,
+			Issuer: "https://idp.hospital.org", Actor: "author@hospital.org", At: time.Now().UTC().Format(time.RFC3339Nano),
+			Command: cmd,
 		})
 	})
 

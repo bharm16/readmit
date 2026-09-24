@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
-	"errors"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -16,6 +15,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/bharm16/readmit/internal/hubprotocol"
 )
 
 // AccessPolicy is customer-controlled admission configuration, never evidence.
@@ -52,21 +53,8 @@ type ScopedToken struct {
 	Kind        string   `json:"kind"`
 }
 
-var errAccess = errors.New("access refused")
 var actions = []string{"evidence.read", "evidence.write", "execution", "approval", "export", "enrollment", "admin", "ownership"}
 
-func requireExactMembers(data []byte, names ...string) error {
-	var m map[string]jsontext.Value
-	if json.Unmarshal(data, &m) != nil || len(m) != len(names) {
-		return errAccess
-	}
-	for _, n := range names {
-		if v, ok := m[n]; !ok || string(v) == "null" {
-			return errAccess
-		}
-	}
-	return nil
-}
 func ReadAccessPolicy(data []byte) (AccessPolicy, error) {
 	var p AccessPolicy
 	if len(data) > 1<<20 || requireExactMembers(data, "schema", "issuer", "audience", "clients", "keys", "grants", "tokens") != nil {
@@ -146,17 +134,6 @@ func ReadAccessPolicy(data []byte) (AccessPolicy, error) {
 		}
 	}
 	return p, nil
-}
-func validProject(s string) bool {
-	if len(s) == 0 || len(s) > 64 {
-		return false
-	}
-	for _, c := range s {
-		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
-			return false
-		}
-	}
-	return true
 }
 func (k AccessKey) public() (*rsa.PublicKey, error) {
 	n, e := base64.RawURLEncoding.Strict().DecodeString(k.N)
@@ -322,36 +299,11 @@ func (p AccessPolicy) accessToken(token string, now time.Time) (string, []string
 	if e != nil {
 		return "", nil, errAccess
 	}
-	// External RFC claims are extensible, unlike Readmit's own strict documents.
-	// json/v2 still rejects duplicate keys and malformed Unicode throughout.
-	var c struct {
-		Issuer   string         `json:"iss"`
-		Subject  string         `json:"sub"`
-		Audience jsontext.Value `json:"aud"`
-		Client   string         `json:"client_id"`
-		ID       string         `json:"jti"`
-		Exp      *int64         `json:"exp"`
-		Iat      *int64         `json:"iat"`
-		Nbf      *int64         `json:"nbf"`
-		Scope    string         `json:"scope"`
-	}
-	if json.Unmarshal(body, &c) != nil || c.Issuer != p.Issuer || c.Subject == "" || len(c.Subject) > 256 || c.ID == "" || !slices.Contains(p.Clients, c.Client) || c.Exp == nil || c.Iat == nil {
+	// The claims are the protocol's one access-token claim rule; this profile
+	// also requires a jti.
+	claims, e := hubprotocol.ReadAccessClaims(body, hubprotocol.ClaimPolicy{Issuer: p.Issuer, Audience: p.Audience, Clients: p.Clients, RequireID: true}, now)
+	if e != nil {
 		return "", nil, errAccess
 	}
-	t := now.Unix()
-	if *c.Iat <= 0 || *c.Iat > t || *c.Exp <= t || *c.Exp <= *c.Iat || *c.Exp-*c.Iat > 3600 || (c.Nbf != nil && *c.Nbf > t) {
-		return "", nil, errAccess
-	}
-	var audience string
-	if json.Unmarshal(c.Audience, &audience) != nil {
-		var list []string
-		if json.Unmarshal(c.Audience, &list) != nil || len(list) != 1 {
-			return "", nil, errAccess
-		}
-		audience = list[0]
-	}
-	if audience != p.Audience {
-		return "", nil, errAccess
-	}
-	return c.Subject, strings.Fields(c.Scope), nil
+	return claims.Subject, claims.Scopes, nil
 }

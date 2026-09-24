@@ -4,6 +4,8 @@ import (
 	"context"
 	"log"
 	"net/http"
+
+	"github.com/bharm16/readmit/internal/hubprotocol"
 )
 
 func (s *Store) supportArtifact(ctx context.Context, project, digest string) ([]byte, error) {
@@ -38,7 +40,7 @@ func (s *Store) supportExport(w http.ResponseWriter, r *http.Request, a *Access,
 		http.Error(w, "sharing unavailable", 503)
 		return
 	}
-	data, e := deriveReviews(events).approved(digest, func(d string) ([]byte, error) { return s.supportArtifact(r.Context(), project, d) })
+	data, e := hubprotocol.DeriveReviews(events).Approved(digest, func(d string) ([]byte, error) { return s.supportArtifact(r.Context(), project, d) })
 	if e != nil {
 		http.Error(w, "exact reviewed support unavailable", 403)
 		return

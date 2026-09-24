@@ -1,8 +1,6 @@
 package desktop
 
-import (
-	"time"
-)
+import ()
 
 // The disclosure states. The privacy region's per-operation table is declared
 // statically by the shell; this file answers the live half of it — whether each
@@ -263,24 +261,22 @@ func slotDisclosure(activity slotActivity, holder string) DisclosureState {
 // either mode a hub operation refuses before it reaches anything, so it is
 // not active.
 func (a *App) hubDisclosure(holder string) DisclosureState {
-	a.hubMu.Lock()
-	cfg := a.hubConfig
-	client := a.hubClient
-	session := a.hubSession
+	status := a.hub.Status()
+	a.hubOperatorMu.Lock()
 	operatorCfg := a.hubOperatorConfig
 	operatorClient := a.hubOperatorClient
-	a.hubMu.Unlock()
+	a.hubOperatorMu.Unlock()
 	active, operating := holding(hubOperations, holder)
 	switch {
-	case cfg == nil && operatorCfg == nil:
+	case status.Config == nil && operatorCfg == nil:
 		return DisclosureState{ID: "hub", State: disclosureNotConfigured,
 			Detail: "No hub configuration is selected. Every hub operation is unavailable and nothing is connected."}
 	case operating:
 		return DisclosureState{ID: "hub", State: disclosureActive, Detail: active}
-	case client != nil && session != nil && !session.IsExpired(time.Now()):
+	case status.SignedIn():
 		return DisclosureState{ID: "hub", State: disclosureConnected,
 			Detail: "Connected to the configured hub, with a current sign-in session."}
-	case client != nil:
+	case status.Client != nil:
 		return DisclosureState{ID: "hub", State: disclosureConnected,
 			Detail: "Connected to the configured hub; not signed in."}
 	case operatorClient != nil:

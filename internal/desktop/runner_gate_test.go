@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/hubprotocol"
 	"github.com/bharm16/readmit/internal/testlicense"
 )
 
@@ -68,15 +69,17 @@ func newRunnerGateFixture(t *testing.T, subject string, scopes []string) *runner
 			http.Error(w, "metadata unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		events := ""
+		history := hubprotocol.LifecycleHistory{Schema: hubprotocol.LifecycleHistorySchema, Events: []hubprotocol.LifecycleEvent{}, Tips: map[string][]string{}, Warning: hubprotocol.CustodyWarning}
 		if removed, ok := removedSubject.Load().(string); ok && removed != "" {
-			events = fmt.Sprintf(`{"schema":"readmit-hub-lifecycle-event/v1","project":"cardio-study","sequence":1,`+
-				`"issuer":"https://idp.hospital.org","actor":"an-admin","at":"2026-09-01T00:00:00Z",`+
-				`"command":{"schema":"readmit-hub-lifecycle-command/v1","id":"remove-1","expected":0,`+
-				`"kind":"remove-user","resource":"","artifact":"","parents":[],"subject":%q,"until":"","reason":"offboarding"}}`, removed)
+			history.Events = append(history.Events, hubprotocol.LifecycleEvent{
+				Schema: hubprotocol.LifecycleEventSchema, Project: "cardio-study", Sequence: 1,
+				Issuer: "https://idp.hospital.org", Actor: "an-admin", At: "2026-09-01T00:00:00Z",
+				Command: hubprotocol.LifecycleCommand{Schema: hubprotocol.LifecycleCommandSchema, ID: "remove-1",
+					Kind: "remove-user", Parents: []string{}, Subject: removed, Reason: "offboarding"},
+			})
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"schema":"readmit-hub-lifecycle-history/v1","head":0,"events":[` + events + `],"tips":{},"warning":"custody"}`))
+		_ = json.MarshalWrite(w, history)
 	})
 
 	serverPair, err := tls.X509KeyPair(serverCert, serverKey)

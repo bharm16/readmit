@@ -12,11 +12,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/expectation"
 	"github.com/bharm16/readmit/internal/hubclient"
+	"github.com/bharm16/readmit/internal/hubprotocol"
 	"github.com/bharm16/readmit/internal/operationguard"
 	"github.com/bharm16/readmit/internal/sharing"
 )
@@ -180,8 +180,8 @@ func (a *App) SearchHubReviews(request HubReviewQueryRequest) HubReviewsResult {
 		if errRes != nil {
 			return *errRes
 		}
-		history, err := client.SearchHistory(ctx, request.Project, hubclient.ReviewQuery{
-			Schema: "readmit-hub-review-query/v1", After: request.After, Text: request.Text, Evidence: request.Evidence,
+		history, err := client.SearchHistory(ctx, request.Project, hubprotocol.ReviewQuery{
+			Schema: hubprotocol.ReviewQuerySchema, After: request.After, Text: request.Text, Evidence: request.Evidence,
 		})
 		return mapReviewHistory(request.Project, history, err)
 	})
@@ -206,33 +206,21 @@ func (a *App) SearchHubNotifications(request HubReviewQueryRequest) HubReviewsRe
 		if errRes != nil {
 			return *errRes
 		}
-		history, err := client.SearchNotifications(ctx, request.Project, hubclient.ReviewQuery{
-			Schema: "readmit-hub-review-query/v1", After: request.After, Text: request.Text, Evidence: request.Evidence,
+		history, err := client.SearchNotifications(ctx, request.Project, hubprotocol.ReviewQuery{
+			Schema: hubprotocol.ReviewQuerySchema, After: request.After, Text: request.Text, Evidence: request.Evidence,
 		})
 		return mapReviewHistory(request.Project, history, err)
 	})
-}
-
-// hubReviewCommandSchemas maps the review kinds the hub's collaboration
-// contract accepts onto the command version that carries each family. The
-// support kinds are the #260 sharing workflow and ride v2; every other kind
-// rides v1. This is an early refusal of an unpostable command only — the hub
-// remains the authority for shape, roles and permission.
-var hubReviewCommandSchemas = map[string]string{
-	"comment":          "readmit-hub-review-command/v1",
-	"assignment":       "readmit-hub-review-command/v1",
-	"review-request":   "readmit-hub-review-command/v1",
-	"approval":         "readmit-hub-review-command/v1",
-	"support-policy":   "readmit-hub-review-command/v2",
-	"support-request":  "readmit-hub-review-command/v2",
-	"support-approval": "readmit-hub-review-command/v2",
 }
 
 // PostHubReview records a collaboration decision. Identity comes from the
 // authenticated hub session; a local reviewer text field cannot substitute.
 func (a *App) PostHubReview(request HubReviewCommandRequest) HubReviewsResult {
 	return runNamed[HubReviewsResult, *HubReviewsResult](a, profiles["PostHubReview"], func(ctx context.Context) HubReviewsResult {
-		schema, supported := hubReviewCommandSchemas[request.Kind]
+		// An unpostable kind is refused before anything is sent; the kind
+		// names the command version that carries it, and the hub remains the
+		// authority for shape, roles and permission.
+		schema, supported := hubprotocol.CommandSchema(request.Kind)
 		if !supported {
 			return HubReviewsResult{
 				State: Failed, Project: request.Project,
@@ -243,7 +231,7 @@ func (a *App) PostHubReview(request HubReviewCommandRequest) HubReviewsResult {
 		if errRes != nil {
 			return *errRes
 		}
-		event, replay, err := client.PostReview(ctx, request.Project, hubclient.ReviewCommand{
+		event, replay, err := client.PostReview(ctx, request.Project, hubprotocol.ReviewCommand{
 			Schema: schema,
 			ID:     request.ID, Expected: request.Expected, Kind: request.Kind,
 			Evidence: request.Evidence, Parent: request.Parent, Recipient: request.Recipient,
@@ -284,7 +272,7 @@ func (a *App) PostHubReleaseReview(request HubReleaseReviewRequest) HubReviewsRe
 	return runNamed[HubReviewsResult, *HubReviewsResult](a, profiles["PostHubReleaseReview"], func(ctx context.Context) HubReviewsResult {
 		if request.Kind != "review-request" && request.Kind != "approval" {
 			return HubReviewsResult{State: Failed, Project: request.Project,
-				Reason: "a release review posts review-request or approval"}
+				Reason: hubclient.ErrReleaseReviewKind.Error()}
 		}
 		if strings.TrimSpace(request.ID) == "" {
 			return HubReviewsResult{State: Failed, Project: request.Project,
@@ -311,49 +299,15 @@ func (a *App) PostHubReleaseReview(request HubReleaseReviewRequest) HubReviewsRe
 				Reason: "the entry is not a released expectation the hub can verify: " + err.Error()}
 		}
 		sum := sha256.Sum256(data)
-		digest := hex.EncodeToString(sum[:])
 		client, errRes := a.requireHubSession()
 		if errRes != nil {
 			return *errRes
 		}
-		history, err := client.ListHistory(ctx, request.Project)
-		if err != nil {
-			return mapReviewHistory(request.Project, history, err)
-		}
-		command := hubclient.ReviewCommand{
-			Schema: "readmit-hub-review-command/v1",
-			ID:     request.ID, Expected: history.Head, Kind: request.Kind,
-			Evidence: digest, Release: digest, Text: request.Text,
-		}
-		if request.Kind == "approval" {
-			parent := (*hubclient.ReviewEvent)(nil)
-			for i := range history.Events {
-				event := &history.Events[i]
-				if event.Command.Kind == "review-request" && event.Command.Release == digest {
-					parent = event
-				}
-			}
-			if parent == nil {
-				return HubReviewsResult{State: Failed, Project: request.Project, Warning: custodyNotice,
-					Reason: "no review request names this exact release content; ask the author to request review, then approve the new request"}
-			}
-			command.Parent = parent.Command.ID
-			command.Evidence = parent.Command.Evidence
-		} else {
-			command.Recipient = request.Recipient
-			transfer, err := client.UploadArtifact(ctx, request.Project, filepath.Join(root, request.Entry))
-			if err != nil {
-				if errors.Is(err, hubclient.ErrAccessDenied) || errors.Is(err, hubclient.ErrExpired) {
-					return HubReviewsResult{State: PermissionDenied, Project: request.Project, Reason: err.Error(), Warning: custodyNotice}
-				}
-				return HubReviewsResult{State: Failed, Project: request.Project, Reason: err.Error(), Warning: custodyNotice}
-			}
-			if transfer.Digest != digest {
-				return HubReviewsResult{State: Failed, Project: request.Project, Warning: custodyNotice,
-					Reason: "the uploaded release does not name the reviewed bytes; nothing was requested"}
-			}
-		}
-		event, replay, err := client.PostReview(ctx, request.Project, command)
+		event, replay, err := client.PostReleaseReview(ctx, hubclient.ReleaseReview{
+			Project: request.Project, ID: request.ID, Kind: request.Kind,
+			Release: hex.EncodeToString(sum[:]), Path: filepath.Join(root, request.Entry),
+			Recipient: request.Recipient, Text: request.Text,
+		})
 		if err != nil {
 			return mapReviewError(request.Project, err)
 		}
@@ -363,7 +317,7 @@ func (a *App) PostHubReleaseReview(request HubReleaseReviewRequest) HubReviewsRe
 
 // reviewWriteResult carries one recorded review decision with its session
 // actor and the custody notice every collaboration result repeats.
-func reviewWriteResult(project string, event hubclient.ReviewEvent, replay bool) HubReviewsResult {
+func reviewWriteResult(project string, event hubprotocol.ReviewEvent, replay bool) HubReviewsResult {
 	view := mapReviewEvent(event)
 	return HubReviewsResult{
 		State: Completed, Project: project, Head: event.Sequence,
@@ -404,7 +358,7 @@ func (a *App) PostHubSupportReview(request HubSupportReviewRequest) HubReviewsRe
 		case "support-policy", "support-request", "support-approval":
 		default:
 			return HubReviewsResult{State: Failed, Project: request.Project,
-				Reason: "a sharing decision posts support-policy, support-request or support-approval"}
+				Reason: hubclient.ErrSupportReviewKind.Error()}
 		}
 		if strings.TrimSpace(request.ID) == "" {
 			return HubReviewsResult{State: Failed, Project: request.Project,
@@ -443,91 +397,24 @@ func (a *App) PostHubSupportReview(request HubSupportReviewRequest) HubReviewsRe
 			summary, document = parsed, data
 		}
 		sum := sha256.Sum256(document)
-		digest := hex.EncodeToString(sum[:])
 		client, errRes := a.requireHubSession()
 		if errRes != nil {
 			return *errRes
 		}
-		history, err := client.ListHistory(ctx, request.Project)
-		if err != nil {
-			return mapReviewHistory(request.Project, history, err)
+		upload := filepath.Join(root, request.Entry)
+		if request.Kind != "support-policy" {
+			upload = artifactpath.JoinReference(upload, "support.json")
 		}
-		// The policy in force is the last support-policy command the project's
-		// history records, exactly as the hub derives it; its evidence is the
-		// digest of the policy bytes that were uploaded when it was announced.
-		policy := (*hubclient.ReviewEvent)(nil)
-		for i := range history.Events {
-			event := &history.Events[i]
-			if event.Command.Kind == "support-policy" {
-				policy = event
-			}
-		}
-		command := hubclient.ReviewCommand{
-			Schema: "readmit-hub-review-command/v2",
-			ID:     request.ID, Expected: history.Head, Kind: request.Kind,
-			Evidence: digest, Text: "support",
-		}
-		if request.Kind == "support-policy" {
-			transfer, err := client.UploadArtifact(ctx, request.Project, filepath.Join(root, request.Entry))
-			if err != nil {
-				return supportUploadRefusal(request.Project, err)
-			}
-			if transfer.Digest != digest {
-				return HubReviewsResult{State: Failed, Project: request.Project, Warning: custodyNotice,
-					Reason: "the uploaded policy does not name the reviewed bytes; nothing was announced"}
-			}
-		}
-		if request.Kind == "support-request" {
-			if policy == nil {
-				return HubReviewsResult{State: Failed, Project: request.Project, Warning: custodyNotice,
-					Reason: "the project has no sharing policy in force; announce it with support-policy before requesting approval"}
-			}
-			if summary.PolicyIdentity != policy.Command.Evidence {
-				return HubReviewsResult{State: Failed, Project: request.Project, Warning: custodyNotice,
-					Reason: "this summary names another sharing policy; announce the policy it names, or publish under the policy in force"}
-			}
-			command.Release = policy.Command.Evidence
-			command.Parent = policy.Command.ID
-			command.Recipient = request.Recipient
-			transfer, err := client.UploadArtifact(ctx, request.Project, artifactpath.JoinReference(filepath.Join(root, request.Entry), "support.json"))
-			if err != nil {
-				return supportUploadRefusal(request.Project, err)
-			}
-			if transfer.Digest != digest {
-				return HubReviewsResult{State: Failed, Project: request.Project, Warning: custodyNotice,
-					Reason: "the uploaded summary does not name the reviewed bytes; nothing was requested"}
-			}
-		}
-		if request.Kind == "support-approval" {
-			parent := (*hubclient.ReviewEvent)(nil)
-			for i := range history.Events {
-				event := &history.Events[i]
-				if event.Command.Kind == "support-request" && event.Command.Evidence == digest {
-					parent = event
-				}
-			}
-			if parent == nil {
-				return HubReviewsResult{State: Failed, Project: request.Project, Warning: custodyNotice,
-					Reason: "no support request names this exact summary; ask the publisher to request review, then approve the new request"}
-			}
-			command.Parent = parent.Command.ID
-			command.Release = parent.Command.Release
-		}
-		event, replay, err := client.PostReview(ctx, request.Project, command)
+		event, replay, err := client.PostSupportReview(ctx, hubclient.SupportReview{
+			Project: request.Project, ID: request.ID, Kind: request.Kind,
+			Digest: hex.EncodeToString(sum[:]), Path: upload,
+			Recipient: request.Recipient, SummaryPolicy: summary.PolicyIdentity,
+		})
 		if err != nil {
 			return mapReviewError(request.Project, err)
 		}
 		return reviewWriteResult(request.Project, event, replay)
 	})
-}
-
-// supportUploadRefusal maps an upload failure on a sharing journey to the one
-// state each cause earns, with the custody notice every result repeats.
-func supportUploadRefusal(project string, err error) HubReviewsResult {
-	if errors.Is(err, hubclient.ErrAccessDenied) || errors.Is(err, hubclient.ErrExpired) {
-		return HubReviewsResult{State: PermissionDenied, Project: project, Reason: err.Error(), Warning: custodyNotice}
-	}
-	return HubReviewsResult{State: Failed, Project: project, Reason: err.Error(), Warning: custodyNotice}
 }
 
 // workspaceSummary reads one published support bundle's support.json member:
@@ -601,8 +488,8 @@ func (a *App) postHubLifecycle(profile operationguard.Profile, request HubLifecy
 		if parents == nil {
 			parents = []string{}
 		}
-		result, err := client.PostLifecycle(ctx, request.Project, hubclient.LifecycleCommand{
-			Schema: "readmit-hub-lifecycle-command/v1",
+		result, err := client.PostLifecycle(ctx, request.Project, hubprotocol.LifecycleCommand{
+			Schema: hubprotocol.LifecycleCommandSchema,
 			ID:     request.ID, Expected: request.Expected, Kind: request.Kind,
 			Resource: request.Resource, Artifact: request.Artifact, Parents: parents,
 			Subject: request.Subject, Until: request.Until, Reason: request.Reason,
@@ -682,21 +569,20 @@ func (a *App) ReconcileHubOfflineDraft(request HubLifecycleCommandRequest) HubLi
 	return a.postHubLifecycle(profiles["ReconcileHubOfflineDraft"], request)
 }
 
+// requireHubSession is the connection's session gate as the window reports
+// it: no connection fails, and no current session is permission denied.
 func (a *App) requireHubSession() (*hubclient.Client, *HubReviewsResult) {
-	a.hubMu.Lock()
-	client := a.hubClient
-	session := a.hubSession
-	a.hubMu.Unlock()
-	if client == nil {
-		return nil, &HubReviewsResult{State: Failed, Reason: "not connected to customer hub"}
-	}
-	if session == nil || session.IsExpired(time.Now()) {
-		return nil, &HubReviewsResult{State: PermissionDenied, Reason: "sign-in required or session expired"}
+	client, _, err := a.hub.SignedIn()
+	switch {
+	case errors.Is(err, hubclient.ErrNotConnected):
+		return nil, &HubReviewsResult{State: Failed, Reason: err.Error()}
+	case err != nil:
+		return nil, &HubReviewsResult{State: PermissionDenied, Reason: err.Error()}
 	}
 	return client, nil
 }
 
-func mapReviewHistory(project string, history hubclient.ReviewHistory, err error) HubReviewsResult {
+func mapReviewHistory(project string, history hubprotocol.ReviewHistory, err error) HubReviewsResult {
 	if err != nil {
 		return mapReviewError(project, err)
 	}
@@ -710,7 +596,7 @@ func mapReviewHistory(project string, history hubclient.ReviewHistory, err error
 	}
 }
 
-func mapReviewEvent(e hubclient.ReviewEvent) HubReviewEventView {
+func mapReviewEvent(e hubprotocol.ReviewEvent) HubReviewEventView {
 	return HubReviewEventView{
 		Schema: e.Schema, Project: e.Project, Sequence: e.Sequence,
 		Issuer: e.Issuer, Actor: e.Actor, At: e.At,
@@ -729,7 +615,7 @@ func mapReviewError(project string, err error) HubReviewsResult {
 	}
 }
 
-func mapLifecycleEvent(e hubclient.LifecycleEvent) HubLifecycleEventView {
+func mapLifecycleEvent(e hubprotocol.LifecycleEvent) HubLifecycleEventView {
 	return HubLifecycleEventView{
 		Schema: e.Schema, Project: e.Project, Sequence: e.Sequence,
 		Issuer: e.Issuer, Actor: e.Actor, At: e.At, ReviewHead: e.ReviewHead,

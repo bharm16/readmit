@@ -51,11 +51,11 @@ func (a *App) ChooseOperatorHubConfig() HubResult {
 		if err != nil {
 			return HubResult{State: Failed, Reason: err.Error()}
 		}
-		a.hubMu.Lock()
+		a.hubOperatorMu.Lock()
 		a.hubOperatorConfigPath = files[0]
 		a.hubOperatorConfig = &cfg
 		a.hubOperatorClient = nil
-		a.hubMu.Unlock()
+		a.hubOperatorMu.Unlock()
 		return HubResult{State: Completed, ConfigPath: files[0], HubURL: cfg.Hub}
 	})
 }
@@ -65,9 +65,9 @@ func (a *App) ChooseOperatorHubConfig() HubResult {
 // probes. Connecting reads and stores nothing.
 func (a *App) ConnectOperatorHub() HubResult {
 	return runNamed[HubResult, *HubResult](a, profiles["ConnectOperatorHub"], func(ctx context.Context) HubResult {
-		a.hubMu.Lock()
+		a.hubOperatorMu.Lock()
 		cfg, path := a.hubOperatorConfig, a.hubOperatorConfigPath
-		a.hubMu.Unlock()
+		a.hubOperatorMu.Unlock()
 		if cfg == nil {
 			return HubResult{State: Failed, Reason: "no operator-only hub configuration selected"}
 		}
@@ -78,9 +78,9 @@ func (a *App) ConnectOperatorHub() HubResult {
 		if err := client.CheckHealth(ctx); err != nil {
 			return HubResult{State: Failed, Reason: fmt.Sprintf("hub connection failed: %v", err), ConfigPath: path, HubURL: cfg.Hub}
 		}
-		a.hubMu.Lock()
+		a.hubOperatorMu.Lock()
 		a.hubOperatorClient = client
-		a.hubMu.Unlock()
+		a.hubOperatorMu.Unlock()
 		return HubResult{State: Completed, Connected: true, ConfigPath: path, HubURL: cfg.Hub, CustodyWarning: custodyNotice}
 	})
 }
@@ -89,13 +89,13 @@ func (a *App) ConnectOperatorHub() HubResult {
 // custody notice: copies already read stay where they were saved.
 func (a *App) DisconnectOperatorHub() HubResult {
 	return run(a, false, false, func(context.Context) HubResult {
-		a.hubMu.Lock()
+		a.hubOperatorMu.Lock()
 		a.hubOperatorClient = nil
 		path, hubURL := a.hubOperatorConfigPath, ""
 		if a.hubOperatorConfig != nil {
 			hubURL = a.hubOperatorConfig.Hub
 		}
-		a.hubMu.Unlock()
+		a.hubOperatorMu.Unlock()
 		return HubResult{State: Completed, ConfigPath: path, HubURL: hubURL, CustodyWarning: custodyNotice}
 	})
 }
@@ -185,7 +185,7 @@ func (a *App) StoreOperatorHubArtifact() HubTransferResult {
 }
 
 func (a *App) operatorHubClient() *hubclient.OperatorClient {
-	a.hubMu.Lock()
-	defer a.hubMu.Unlock()
+	a.hubOperatorMu.Lock()
+	defer a.hubOperatorMu.Unlock()
 	return a.hubOperatorClient
 }

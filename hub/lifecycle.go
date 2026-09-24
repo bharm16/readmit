@@ -2,171 +2,16 @@ package hub
 
 import (
 	"context"
-	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
-	"slices"
-	"strings"
 	"time"
+
+	"github.com/bharm16/readmit/internal/hubprotocol"
 )
 
-const maxLifecycle = 1024
-
-// LifecycleCommand is a new contract; review commands and approved releases keep
-// their existing meaning. Parents name immutable revision event IDs, not paths.
-type LifecycleCommand struct {
-	Schema   string   `json:"schema"`
-	ID       string   `json:"id"`
-	Expected int      `json:"expected"`
-	Kind     string   `json:"kind"`
-	Resource string   `json:"resource"`
-	Artifact string   `json:"artifact"`
-	Parents  []string `json:"parents"`
-	Subject  string   `json:"subject"`
-	Until    string   `json:"until"`
-	Reason   string   `json:"reason"`
-}
-type LifecycleEvent struct {
-	Schema     string           `json:"schema"`
-	Project    string           `json:"project"`
-	Sequence   int              `json:"sequence"`
-	Issuer     string           `json:"issuer"`
-	Actor      string           `json:"actor"`
-	At         string           `json:"at"`
-	ReviewHead int              `json:"review_head"`
-	Command    LifecycleCommand `json:"command"`
-}
-
-func decodeLifecycle(data []byte) (LifecycleCommand, error) {
-	var c LifecycleCommand
-	if len(data) > 8192 || requireExactMembers(data, "schema", "id", "expected", "kind", "resource", "artifact", "parents", "subject", "until", "reason") != nil || json.Unmarshal(data, &c, json.RejectUnknownMembers(true)) != nil {
-		return c, errAccess
-	}
-	if c.Schema != "readmit-hub-lifecycle-command/v1" || !validProject(c.ID) || c.Expected < 0 || c.Expected >= maxLifecycle || !reviewText(c.Reason, 2048) || strings.TrimSpace(c.Reason) == "" {
-		return c, errAccess
-	}
-	switch c.Kind {
-	case "revision", "resolve":
-		if !validProject(c.Resource) || !validDigest(c.Artifact) || c.Subject != "" || c.Until != "" || len(c.Parents) > 64 || (c.Kind == "revision" && len(c.Parents) > 1) || (c.Kind == "resolve" && len(c.Parents) < 2) {
-			return c, errAccess
-		}
-	case "remove-user", "retention", "retire", "audit-export":
-		if c.Resource != "" || len(c.Parents) != 0 {
-			return c, errAccess
-		}
-		switch c.Kind {
-		case "remove-user":
-			if c.Subject == "" || !reviewText(c.Subject, 256) || c.Artifact != "" || c.Until != "" {
-				return c, errAccess
-			}
-		case "retention":
-			if !validDigest(c.Artifact) || c.Subject != "" {
-				return c, errAccess
-			}
-			if _, e := time.Parse(time.RFC3339Nano, c.Until); e != nil {
-				return c, errAccess
-			}
-		case "retire":
-			if !validDigest(c.Artifact) || c.Subject != "" || c.Until != "" {
-				return c, errAccess
-			}
-		case "audit-export":
-			if c.Artifact != "" || c.Subject != "" || c.Until != "" {
-				return c, errAccess
-			}
-		}
-	default:
-		return c, errAccess
-	}
-	previous := ""
-	for _, p := range c.Parents {
-		if !validProject(p) || p <= previous {
-			return c, errAccess
-		}
-		previous = p
-	}
-	return c, nil
-}
 func (s *Store) lifecycleEvents(ctx context.Context, project string) ([]LifecycleEvent, error) {
 	return lifecycleLog.read(ctx, s.db, project)
-}
-func revisionTips(events []LifecycleEvent) map[string][]string {
-	tips := map[string][]string{}
-	for _, e := range events {
-		c := e.Command
-		if c.Kind != "revision" && c.Kind != "resolve" {
-			continue
-		}
-		p := tips[c.Resource]
-		p = slices.DeleteFunc(p, func(id string) bool { return slices.Contains(c.Parents, id) })
-		p = append(p, c.ID)
-		slices.Sort(p)
-		tips[c.Resource] = p
-	}
-	return tips
-}
-func validateLifecycle(c LifecycleCommand, events []LifecycleEvent, load func(string) ([]byte, error), at time.Time) error {
-	if c.Artifact != "" {
-		for _, event := range events {
-			if event.Command.Kind == "retire" && event.Command.Artifact == c.Artifact {
-				return ErrConflict
-			}
-		}
-		if _, e := load(c.Artifact); e != nil {
-			return e
-		}
-	}
-	switch c.Kind {
-	case "remove-user", "audit-export":
-		return nil
-	case "retention", "retire":
-		var until time.Time
-		for _, e := range events {
-			if e.Command.Artifact == c.Artifact {
-				if e.Command.Kind == "retire" {
-					return ErrConflict
-				}
-				if e.Command.Kind == "retention" {
-					until, _ = time.Parse(time.RFC3339Nano, e.Command.Until)
-				}
-			}
-		}
-		if c.Kind == "retire" {
-			if until.IsZero() || at.Before(until) {
-				return ErrConflict
-			}
-		} else {
-			next, _ := time.Parse(time.RFC3339Nano, c.Until)
-			if next.Before(until) {
-				return ErrConflict
-			}
-		}
-		return nil
-	}
-	tips := revisionTips(events)[c.Resource]
-	if c.Kind == "revision" && len(tips) >= 64 && (len(c.Parents) == 0 || !slices.Contains(tips, c.Parents[0])) {
-		return ErrLimit
-	}
-	if c.Kind == "resolve" && !slices.Equal(c.Parents, tips) {
-		return ErrConflict
-	}
-	if len(c.Parents) == 0 && len(tips) > 0 {
-		return ErrConflict
-	}
-	for _, parent := range c.Parents {
-		found := false
-		for _, event := range events {
-			p := event.Command
-			if p.ID == parent && p.Resource == c.Resource && (p.Kind == "revision" || p.Kind == "resolve") {
-				found = true
-			}
-		}
-		if !found {
-			return ErrConflict
-		}
-	}
-	return nil
 }
 
 // lifecycleAdmission is the lifecycle route's one declaration of how a
@@ -211,12 +56,12 @@ func (s *Store) lifecycleRequest(w http.ResponseWriter, r *http.Request, a *Acce
 	}
 	var c LifecycleCommand
 	if r.Method == "POST" {
-		data, e := io.ReadAll(io.LimitReader(r.Body, 8193))
+		data, e := io.ReadAll(io.LimitReader(r.Body, hubprotocol.MaxCommandBytes+1))
 		if e != nil {
 			http.Error(w, "incomplete command", 400)
 			return
 		}
-		c, e = decodeLifecycle(data)
+		c, e = hubprotocol.DecodeLifecycleCommand(data)
 		if e != nil {
 			http.Error(w, "invalid command", 400)
 			return
@@ -239,13 +84,7 @@ func (s *Store) lifecycleRequest(w http.ResponseWriter, r *http.Request, a *Acce
 		return
 	}
 	if r.Method == "GET" {
-		sendReview(w, 200, struct {
-			Schema  string              `json:"schema"`
-			Head    int                 `json:"head"`
-			Events  []LifecycleEvent    `json:"events"`
-			Tips    map[string][]string `json:"tips"`
-			Warning string              `json:"warning"`
-		}{"readmit-hub-lifecycle-history/v1", len(events), events, revisionTips(events), "Downloaded copies remain under local custody and cannot be revoked."})
+		sendReview(w, 200, hubprotocol.LifecycleHistory{Schema: hubprotocol.LifecycleHistorySchema, Head: len(events), Events: events, Tips: hubprotocol.DeriveLifecycle(events).Tips(), Warning: hubprotocol.CustodyWarning})
 		return
 	}
 	total, e := lifecycleLog.total(r.Context(), s.db)
@@ -274,7 +113,7 @@ func (s *Store) lifecycleRequest(w http.ResponseWriter, r *http.Request, a *Acce
 		}
 	}
 	now := time.Now().UTC()
-	if e = validateLifecycle(c, events, func(d string) ([]byte, error) {
+	if e = hubprotocol.DeriveLifecycle(events).Validate(c, func(d string) ([]byte, error) {
 		if !s.linked(r.Context(), project, d) {
 			return nil, ErrMissing
 		}
@@ -283,7 +122,7 @@ func (s *Store) lifecycleRequest(w http.ResponseWriter, r *http.Request, a *Acce
 		http.Error(w, "lifecycle conflict", 409)
 		return
 	}
-	event := LifecycleEvent{"readmit-hub-lifecycle-event/v1", project, len(events) + 1, p.Issuer, p.Subject, now.Format(time.RFC3339Nano), 0, c}
+	event := LifecycleEvent{Schema: hubprotocol.LifecycleEventSchema, Project: project, Sequence: len(events) + 1, Issuer: p.Issuer, Actor: p.Subject, At: now.Format(time.RFC3339Nano), Command: c}
 	if c.Kind == "audit-export" {
 		reviews, e := s.reviewEvents(r.Context(), project)
 		if e != nil {
@@ -310,7 +149,7 @@ func (s *Store) authorize(a *Access, r *http.Request, project, action string) (P
 	if e != nil {
 		return Principal{}, errAccess
 	}
-	if deriveLifecycle(events).isRemoved(p.Issuer, p.Subject) {
+	if hubprotocol.DeriveLifecycle(events).Removed(p.Issuer, p.Subject) {
 		return Principal{}, errAccess
 	}
 	return p, nil
@@ -320,7 +159,7 @@ func (s *Store) retired(ctx context.Context, project, digest string) (bool, erro
 	if e != nil {
 		return false, e
 	}
-	return deriveLifecycle(events).isRetired(digest), nil
+	return hubprotocol.DeriveLifecycle(events).Retired(digest), nil
 }
 func (s *Store) sendLifecycle(w http.ResponseWriter, r *http.Request, status int, event LifecycleEvent, events []LifecycleEvent) {
 	if event.Command.Kind != "audit-export" {
@@ -340,12 +179,5 @@ func (s *Store) sendLifecycle(w http.ResponseWriter, r *http.Request, status int
 	reviews = reviews[:event.ReviewHead]
 	prefix := events[:event.Sequence]
 	w.Header().Set("Content-Disposition", `attachment; filename="audit.json"`)
-	sendReview(w, status, struct {
-		Schema     string           `json:"schema"`
-		Project    string           `json:"project"`
-		Lifecycle  []LifecycleEvent `json:"lifecycle"`
-		ReviewHead int              `json:"review_head"`
-		Reviews    []ReviewEvent    `json:"reviews"`
-		Warning    string           `json:"warning"`
-	}{deriveReviews(reviews).auditSchema(), event.Project, prefix, len(reviews), reviews, "Downloaded copies remain under local custody and cannot be revoked."})
+	sendReview(w, status, hubprotocol.AuditExport{Schema: hubprotocol.DeriveReviews(reviews).AuditSchema(), Project: event.Project, Lifecycle: prefix, ReviewHead: len(reviews), Reviews: reviews, Warning: hubprotocol.CustodyWarning})
 }
