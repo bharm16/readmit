@@ -2,6 +2,7 @@
 
 from contextlib import redirect_stderr
 import copy
+import hashlib
 import io
 import json
 import os
@@ -232,8 +233,57 @@ class PackagingTests(unittest.TestCase):
         with patch.object(packaging.shutil, "which", return_value="wix"), patch.object(packaging.subprocess, "run", side_effect=wix):
             manifest = packaging.build(self.declaration, self.binary, "1.2.3", self.target(("windows", "amd64")), output)
         self.assertEqual(len(commands), 1)
+        self.assertEqual((output / manifest["packages"][0]["name"]).read_bytes(), b"an installer database")
+        self.assertEqual(manifest["packages"][0]["format"], "msi")
+        self.assertEqual(manifest["packages"][0]["sha256"],
+                         hashlib.sha256(b"an installer database").hexdigest())
         self.assertEqual(sorted(entry.name for entry in output.iterdir()),
                          sorted([packaging.MANIFEST_NAME] + [package["name"] for package in manifest["packages"]]))
+
+    def test_a_wix_failure_is_refused_in_its_own_words_without_the_staging_path(self):
+        for reason in ("exit", "timeout"):
+            with self.subTest(reason=reason):
+                commands = []
+
+                def wix(args, **kwargs):
+                    commands.append((list(args), kwargs))
+                    staged = next(value.removeprefix("BuildDir=") for value in args
+                                  if value.startswith("BuildDir="))
+                    stdout = f"wix: compiling {staged}/legal.wxs\n"
+                    stderr = f"wix: error: cannot read {Path(staged).resolve()}/readmit-desktop.exe\n"
+                    if reason == "timeout":
+                        raise subprocess.TimeoutExpired(args, 600, stdout.encode(), stderr.encode())
+                    return subprocess.CompletedProcess(args, 1, stdout, stderr)
+
+                output = self.work / f"windows-{reason}"
+                with patch.object(packaging.shutil, "which", return_value="wix"), \
+                        patch.object(packaging.subprocess, "run", side_effect=wix):
+                    with self.assertRaises(packaging.Refused) as refused:
+                        packaging.build(self.declaration, self.binary, "1.2.3",
+                                        self.target(("windows", "amd64")), output)
+
+                self.assertEqual(len(commands), 1, "no retry")
+                command, options = commands[0]
+                self.assertEqual(command[:5], ["wix", "build", "-nologo", "-arch", "x64"])
+                staged = next(value.removeprefix("BuildDir=") for value in command
+                              if value.startswith("BuildDir="))
+                self.assertEqual(command[-4:], ["-o", str(output / "readmit-desktop_1.2.3_x64.msi"),
+                                                str(packaging.WIX_SOURCE),
+                                                str(Path(staged) / "legal.wxs")])
+                self.assertEqual(command[command.index("-pdb") + 1],
+                                 str(Path(staged) / "readmit-desktop_1.2.3_x64.msi.wixpdb"))
+                self.assertEqual(options, {"capture_output": True, "text": True, "timeout": 600})
+                message = str(refused.exception)
+                outcome = "did not finish in 600 seconds" if reason == "timeout" else "wix exited 1"
+                for expected in ("readmit-desktop_1.2.3_x64.msi was not built", outcome,
+                                 "wix: compiling <payload>/legal.wxs",
+                                 "wix: error: cannot read <payload>/readmit-desktop.exe"):
+                    self.assertIn(expected, message)
+                for private in (staged, str(Path(staged).resolve()), "readmit-desktop-package-"):
+                    self.assertNotIn(private, message)
+                self.assertFalse((output / packaging.MANIFEST_NAME).exists())
+                if reason == "timeout":
+                    self.assertTrue(refused.exception.__suppress_context__)
 
     def test_a_declaration_written_by_another_release_is_refused(self):
         document = json.loads(packaging.DECLARATION.read_bytes())

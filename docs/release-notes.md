@@ -12,6 +12,11 @@ Unsigned preview of local HL7 incident reproduction and regression workflows.
   automatic multi-host pipeline decision end to end. No artifact format or
   command output changes.
 
+- A failed or timed-out Windows MSI build now reports WiX's own output (#390),
+  with the temporary staging folder named `<payload>`. It uses the same
+  packaging-tool refusal as `hdiutil create` and `pkgbuild`; MSI bytes, names
+  and `readmit-desktop-package/v1` manifests remain unchanged.
+
 - The privacy panel reexecutes an approved review against the target its
   actual original run recorded, as `readmit redact reexecute` does (#310).
   Until now the privacy review stated `external_equivalence: declined` but
