@@ -250,7 +250,9 @@
       "inputs": ["hl7", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-run/v1", "readmit-result/v1"],
       "outputs": ["readmit-diff/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/comparison.journey.tsx", "name": "two collections are compared and paged exactly as readmit diff reports them, a mismatched pair is refused with the key to declare, and collections this release cannot compare are refused as the command line refuses them"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowRefusesTheCollectionsReadmitDiffRefuses"},
+      "implemented": true
     },
     {
       "id": "cli.drift",
@@ -720,7 +722,9 @@
       "inputs": ["readmit-normalization-policy/v1", "hl7", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-run/v1", "readmit-result/v1"],
       "outputs": ["readmit-normalization/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/comparison.journey.tsx", "name": "a comparison is read under a retained normalization policy exactly as readmit normalize reads it, the policy is opened, extended and saved as a new entry the command line reads, and undecodable policies and a cancelled open change nothing"},
+      "parity_test": {"package": "tests", "name": "TestDesktopNormalizationRefusesThePolicyTheCommandLineRefuses"},
+      "implemented": true
     },
     {
       "id": "cli.observe.collect",
@@ -3936,7 +3940,9 @@
       "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5"],
       "outputs": ["readmit-diff/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/comparison.journey.tsx", "name": "two collections are compared and paged exactly as readmit diff reports them, a mismatched pair is refused with the key to declare, and collections this release cannot compare are refused as the command line refuses them"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowPagesTheComparisonReadmitDiffReports"},
+      "implemented": true
     },
     {
       "id": "desktop.Guide",
@@ -5883,7 +5889,9 @@
       "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-normalization-policy/v1"],
       "outputs": ["readmit-normalization/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/comparison.journey.tsx", "name": "a comparison is read under a retained normalization policy exactly as readmit normalize reads it, the policy is opened, extended and saved as a new entry the command line reads, and undecodable policies and a cancelled open change nothing"},
+      "parity_test": {"package": "tests", "name": "TestDesktopNormalizationMatchesTheCommandLineOverTheSamePolicy"},
+      "implemented": true
     },
     {
       "id": "desktop.OpenCorrelationRules",
@@ -5955,7 +5963,9 @@
       "inputs": ["readmit-normalization-policy/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/comparison.journey.tsx", "name": "a comparison is read under a retained normalization policy exactly as readmit normalize reads it, the policy is opened, extended and saved as a new entry the command line reads, and undecodable policies and a cancelled open change nothing"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowOpensThePolicyReadmitNormalizeApplies"},
+      "implemented": true
     },
     {
       "id": "desktop.OpenRunEvidence",

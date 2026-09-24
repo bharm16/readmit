@@ -1,5 +1,28 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The comparison panel's Compare, its normalization preview and its policy
+  editor's Open are driven end to end through the facade (#296); until now a
+  test only called the panel's own callbacks. The label of the editor's
+  Retained policy document picker pointed at the preview's policy picker,
+  because both used one element ID, so the editor's picker had no label of its
+  own; each now has its own. Preview under this policy read whatever
+  collection and keys the comparison form held, which could be another pair
+  than the comparison on screen; it now reads the comparison shown, and a
+  comparison of another pair, or a refused one, withdraws the reading below
+  it. Opening a retained policy only replaced the exact document, so the next
+  rule added in the controls replaced the opened policy with the controls'
+  earlier rules; its rules now become the editor's rules, and the window names
+  the entry and the SHA-256 of the bytes it read. Opening a policy over rules
+  changed since they were last opened or saved asks first, and Keep these
+  rules or `Escape` reads nothing. The editor's own open and save now say they
+  are running and hold its controls until they answer, where a second press
+  could be refused as busy over the first. Two interaction journeys compare,
+  page and normalize two captured feeds, and open, extend and save a policy,
+  and the command line reads each result the same way; Go parity tests hold the
+  panel to `readmit diff` and `readmit normalize`, including their refusals
+  and a case the native window retained in September. No `readmit-*`
+  document, command, bound method or machine output changes.
+
 - This computer's license is handled the way any software purchase is
   (#315). The `readmit license import`, `show`, `renew`, `export` and
   `release` commands had no screen, and the window's license pane installed a

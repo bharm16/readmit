@@ -126,7 +126,7 @@ import {
   type Theme,
   type WorkspaceResult,
 } from "./bindings";
-import { Comparison, COMPARISON_WINDOW } from "./Comparison";
+import { Comparison, COMPARISON_WINDOW, readsComparison } from "./Comparison";
 import { Review, REVIEW_WINDOW } from "./Review";
 import { GuidedSample } from "./GuidedSample";
 import { Sequence, SEQUENCE_WINDOW } from "./Sequence";
@@ -868,24 +868,28 @@ export default function App() {
   // A comparison is bound to the identity the window verified for the open
   // case, so one is never shown beside counts from evidence that has changed.
   // Asking for the next window is another comparison: both collections are
-  // read and aligned again rather than a row list being held here.
+  // read and aligned again rather than a row list being held here. A
+  // normalization reading stays below it only while it reads the comparison
+  // shown: a refused comparison, or one of another pair, withdraws it.
   const compareCollections = useCallback(
     async (right: string, keys: string[], fields: string[], offset: number) => {
       const open = evidence?.case;
       if (!root || !open) return;
       await operate("comparison", async () => {
         setComparisonResult(null);
-        setComparisonResult(
-          await compare({
-            workspace: root,
-            left: open.name,
-            identity: open.identity,
-            right,
-            keys,
-            fields,
-            offset,
-            limit: COMPARISON_WINDOW,
-          }),
+        const compared = await compare({
+          workspace: root,
+          left: open.name,
+          identity: open.identity,
+          right,
+          keys,
+          fields,
+          offset,
+          limit: COMPARISON_WINDOW,
+        });
+        setComparisonResult(compared);
+        setNormalizeResult((reading) =>
+          readsComparison(reading?.normalization, compared.comparison) ? reading : null,
         );
       });
     },

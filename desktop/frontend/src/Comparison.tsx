@@ -61,6 +61,27 @@ const NORMALIZATION_OUTCOMES: Record<string, string> = {
   unaddressed: "No rule addresses this position",
 };
 
+/** Whether a normalization reads the comparison shown above it: the same
+ * collection, paired on the same keys and narrowed to the same fields, all as
+ * the engine echoed them. Any other reading is not a reading of that
+ * comparison, so it is not kept beside it. */
+export function readsComparison(
+  normalization: Normalization | undefined,
+  comparison: ComparisonView | undefined,
+): boolean {
+  return (
+    normalization !== undefined &&
+    comparison !== undefined &&
+    normalization.right === comparison.right &&
+    sameTerms(normalization.keys, comparison.keys) &&
+    sameTerms(normalization.fields, comparison.fields)
+  );
+}
+
+function sameTerms(one: string[], other: string[]): boolean {
+  return one.length === other.length && one.every((term, index) => term === other[index]);
+}
+
 function describe(table: Record<string, string>, code: string): string {
   return table[code] ?? code;
 }
@@ -402,20 +423,23 @@ export function Comparison({
         <section className="normalization" aria-label="Comparison under a normalization policy">
           <h4>Normalization</h4>
           <p className="hint">
-            A separate reading of the same comparison under a declared policy. The raw comparison
-            above stays complete and unchanged; every difference a rule suppresses is listed here
-            beside the rule that suppressed it, and no source byte is ever changed. Execution drift
-            is reported by the retained-executions panel, not here.
+            A separate reading of the comparison above under a declared policy: the same two
+            collections, paired on the same fields. The raw comparison stays complete and
+            unchanged; every difference a rule suppresses is listed here beside the rule that
+            suppressed it, and no source byte is ever changed. Execution drift is reported by the
+            retained-executions panel, not here.
           </p>
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              onNormalize(right, policy, terms(keys), terms(fields), 0);
+              if (comparison) {
+                onNormalize(comparison.right, policy, comparison.keys, comparison.fields, 0);
+              }
             }}
           >
-            <label htmlFor="normalization-policy-entry">Normalization policy</label>
+            <label htmlFor="normalization-preview-policy">Normalization policy</label>
             <select
-              id="normalization-policy-entry"
+              id="normalization-preview-policy"
               value={policy}
               disabled={busy || policyEntries.length === 0}
               onChange={(event) => setPolicy(event.target.value)}
@@ -427,7 +451,7 @@ export function Comparison({
                 </option>
               ))}
             </select>
-            <button type="submit" disabled={busy || right === "" || policy === ""}>
+            <button type="submit" disabled={busy || !comparison || policy === ""}>
               Preview under this policy
             </button>
           </form>
