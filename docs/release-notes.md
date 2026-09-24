@@ -1,5 +1,32 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The project maintenance screen lists a project's document recovery copies
+  and recovers a selected one, and its staged-upgrade check and rollback
+  archive are the command line's (#314). Until now no screen listed a recovery
+  copy, so `RecoverProjectDocument` was bound and unreachable. A new
+  **Recovery copies** section lists every copy `readmit project recover` can
+  select, by the file it is retained in, with its length and whether it is
+  readable, damaged or unreadable, marks the one holding the document as it
+  stands, and recovers a selected readable copy through the same operation;
+  a copy damaged after it was listed is refused in the command's words, and
+  the window reads the project again after a recovery. The staged-upgrade
+  section now shows each staged package's state and each reviewed project's
+  readability, as the plan records them. Driving every control through the
+  facade found defects, each fixed with a test: a destination named for one
+  writer was offered to every other — a folder named for a restore became the
+  rollback archive's destination — and one section's report stayed on screen
+  in the others; a delete's confirmation carried over to a new preview after
+  the first was refused as stale; the administrator's approval and the plan
+  stayed on screen after another candidate was chosen; and a completed delete
+  left its preview and delete button beside a project that no longer exists.
+  Interaction journeys recover a document, check and prepare a staged
+  candidate, and refuse an archive, a delete and a rollback archive on a full
+  disk with the project kept. Go parity tests hold the window's upgrade plan,
+  rollback archive, recovery, migration plan, quota, archive and delete to
+  what `readmit upgrade` and `readmit project` print and write, refusals
+  included. No `readmit-*` document, command, exit status or machine output
+  changes; one bound method is added.
+
 - The privacy panel's support bundle steps and the protection panel's Retire
   are driven end to end through the facade (#309), which turned up faults in
   both panels. The protection panel kept showing the document as it was first

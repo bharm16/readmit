@@ -35,3 +35,22 @@ func TestProjectWritesSeparatePermissionFromFailure(t *testing.T) {
 		t.Fatalf("a settings write into an unwritable project was not permission denied: %+v", refused)
 	}
 }
+
+// A project folder this account cannot list has its recovery copies refused
+// as a permission the account lacks rather than as a failure, so the window
+// says what to do about it.
+func TestRecoveryCopiesSeparatePermissionFromFailure(t *testing.T) {
+	app := newApp(t, &chooser{folder: t.TempDir()})
+	root := sampleProject(t, app)
+	if os.Geteuid() == 0 {
+		t.Skip("root reads every folder")
+	}
+	if err := os.Chmod(root, 0o300); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(root, 0o700) })
+	listed := app.ListProjectRecoveryCopies(root)
+	if listed.State != desktop.PermissionDenied || len(listed.Copies) != 0 {
+		t.Fatalf("an unlistable project folder: %+v", listed)
+	}
+}

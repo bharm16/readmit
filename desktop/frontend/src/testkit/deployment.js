@@ -16,7 +16,7 @@ const GOOS = { darwin: "darwin", linux: "linux", win32: "windows" };
 const GOARCH = { arm64: "arm64", x64: "amd64" };
 
 /** This machine's platform as a manifest names it. */
-function platform() {
+export function platform() {
   const os = GOOS[process.platform];
   const arch = GOARCH[process.arch];
   if (!os || !arch) throw new Error(`no Go platform name for ${process.platform}/${process.arch}`);

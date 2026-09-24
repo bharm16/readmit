@@ -1013,7 +1013,7 @@
       "outputs": ["readmit-backup/v1"],
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/journeys/maintenance.journey.tsx", "name": "a project is backed up, held to a quota, reindexed, archived, refused a stale delete, deleted and restored through the window"},
-      "parity_test": {"package": "internal/desktop", "name": "TestCancelledMaintenancePathAndStaleDelete"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowsArchiveDeleteMigrationAndQuotaAreTheCommandLines"},
       "implemented": true
     },
     {
@@ -1029,7 +1029,7 @@
       "outputs": ["readmit-backup/v1"],
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/journeys/maintenance.journey.tsx", "name": "a project is backed up, held to a quota, reindexed, archived, refused a stale delete, deleted and restored through the window"},
-      "parity_test": {"package": "tests", "name": "TestProjectLifecyclePublicWorkflow"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowsArchiveDeleteMigrationAndQuotaAreTheCommandLines"},
       "implemented": true
     },
     {
@@ -1061,7 +1061,7 @@
       "outputs": ["readmit-project-migration-preview/v1"],
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/journeys/maintenance.journey.tsx", "name": "a project is backed up, held to a quota, reindexed, archived, refused a stale delete, deleted and restored through the window"},
-      "parity_test": {"package": "tests", "name": "TestProjectLifecyclePublicWorkflow"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowsArchiveDeleteMigrationAndQuotaAreTheCommandLines"},
       "implemented": true
     },
     {
@@ -1108,7 +1108,9 @@
       "inputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-project-quota/v1"],
       "outputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-project-quota/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/maintenance.journey.tsx", "name": "a project's earlier settings are recovered from the copy the window lists, and a copy damaged since is refused, as readmit project recover restores and refuses them"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowsRecoveryCopiesAreTheOnesProjectRecoverRestores"},
+      "implemented": true
     },
     {
       "id": "cli.project.revise",
@@ -2145,7 +2147,9 @@
       "inputs": ["readmit-desktop-package/v1", "readmit-project/v1", "readmit-revisions/v1", "readmit-project-quota/v1", "readmit-index/v1", "readmit-engine/v1"],
       "outputs": ["readmit-upgrade-plan/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/maintenance.journey.tsx", "name": "a staged candidate is checked and its rollback archive taken once approved, and refused when dismissed, misplaced or not staged whole, as readmit upgrade check and prepare answer"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowsUpgradeCheckIsTheCommandLinesPlan"},
+      "implemented": true
     },
     {
       "id": "cli.upgrade.prepare",
@@ -2159,7 +2163,9 @@
       "inputs": ["readmit-desktop-package/v1", "readmit-project/v1", "readmit-revisions/v1", "readmit-project-quota/v1", "readmit-index/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5"],
       "outputs": ["readmit-upgrade-plan/v1", "readmit-backup/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/maintenance.journey.tsx", "name": "a staged candidate is checked and its rollback archive taken once approved, and refused when dismissed, misplaced or not staged whole, as readmit upgrade check and prepare answer"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowsRollbackArchiveIsTheOneUpgradePrepareTakes"},
+      "implemented": true
     },
     {
       "id": "desktop.ArchiveOrDeleteProject",
@@ -2174,7 +2180,7 @@
       "outputs": ["readmit-backup/v1"],
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/journeys/maintenance.journey.tsx", "name": "a project is backed up, held to a quota, reindexed, archived, refused a stale delete, deleted and restored through the window"},
-      "parity_test": {"package": "internal/desktop", "name": "TestCancelledMaintenancePathAndStaleDelete"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowsArchiveDeleteMigrationAndQuotaAreTheCommandLines"},
       "implemented": true
     },
     {
@@ -2237,7 +2243,9 @@
       "inputs": ["readmit-desktop-package/v1", "readmit-project/v1", "readmit-revisions/v1", "readmit-project-quota/v1", "readmit-index/v1", "readmit-engine/v1"],
       "outputs": ["readmit-upgrade-plan/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/maintenance.journey.tsx", "name": "a staged candidate is checked and its rollback archive taken once approved, and refused when dismissed, misplaced or not staged whole, as readmit upgrade check and prepare answer"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowsUpgradeCheckIsTheCommandLinesPlan"},
+      "implemented": true
     },
     {
       "id": "desktop.ChooseMaintenancePath",
@@ -2425,7 +2433,9 @@
       "inputs": ["readmit-desktop-package/v1", "readmit-project/v1", "readmit-revisions/v1", "readmit-project-quota/v1", "readmit-index/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5"],
       "outputs": ["readmit-upgrade-plan/v1", "readmit-backup/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/maintenance.journey.tsx", "name": "a staged candidate is checked and its rollback archive taken once approved, and refused when dismissed, misplaced or not staged whole, as readmit upgrade check and prepare answer"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowsRollbackArchiveIsTheOneUpgradePrepareTakes"},
+      "implemented": true
     },
     {
       "id": "desktop.ChooseInspectionPath",
@@ -2552,7 +2562,7 @@
       "outputs": ["readmit-project-migration-preview/v1"],
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/journeys/maintenance.journey.tsx", "name": "a project is backed up, held to a quota, reindexed, archived, refused a stale delete, deleted and restored through the window"},
-      "parity_test": {"package": "internal/desktop", "name": "TestQuotaMigrationAndUpgradeHandoff"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowsArchiveDeleteMigrationAndQuotaAreTheCommandLines"},
       "implemented": true
     },
     {
@@ -2588,6 +2598,22 @@
       "implemented": true
     },
     {
+      "id": "desktop.ListProjectRecoveryCopies",
+      "source": "desktop.App.ListProjectRecoveryCopies",
+      "kind": "desktop",
+      "capability": "list a project's document recovery copies and what reading each found",
+      "owner": "bharm16/readmit#314",
+      "screen": "a project maintenance screen",
+      "action": "recover a selected project document recovery copy",
+      "backend": {"package": "internal/project", "name": "RecoveryCopies"},
+      "inputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-project-quota/v1"],
+      "outputs": [],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/journeys/maintenance.journey.tsx", "name": "a project's earlier settings are recovered from the copy the window lists, and a copy damaged since is refused, as readmit project recover restores and refuses them"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowsRecoveryCopiesAreTheOnesProjectRecoverRestores"},
+      "implemented": true
+    },
+    {
       "id": "desktop.RecoverProjectDocument",
       "source": "desktop.App.RecoverProjectDocument",
       "kind": "desktop",
@@ -2599,7 +2625,9 @@
       "inputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-project-quota/v1"],
       "outputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-project-quota/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/maintenance.journey.tsx", "name": "a project's earlier settings are recovered from the copy the window lists, and a copy damaged since is refused, as readmit project recover restores and refuses them"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowsRecoveryCopiesAreTheOnesProjectRecoverRestores"},
+      "implemented": true
     },
     {
       "id": "desktop.RestoreProjectBackup",
@@ -2990,7 +3018,7 @@
       "outputs": ["readmit-project-quota/v1"],
       "prerequisites": ["author"],
       "gui_test": {"file": "desktop/frontend/src/journeys/maintenance.journey.tsx", "name": "a project is backed up, held to a quota, reindexed, archived, refused a stale delete, deleted and restored through the window"},
-      "parity_test": {"package": "internal/desktop", "name": "TestQuotaMigrationAndUpgradeHandoff"},
+      "parity_test": {"package": "tests", "name": "TestTheWindowsArchiveDeleteMigrationAndQuotaAreTheCommandLines"},
       "implemented": true
     },
     {

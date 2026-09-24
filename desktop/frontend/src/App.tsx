@@ -2060,6 +2060,15 @@ export default function App() {
                 void openProjectOverview(path).then((result) => setInvestigation(result));
               });
             }}
+            onProjectChanged={(path) => {
+              // Only the project still open takes the answer: a person who
+              // moved on before it arrived keeps what they moved to.
+              void openProjectOverview(path).then((answer) =>
+                setInvestigation((held) =>
+                  held?.overview?.root !== path ? held : answer.overview ? answer : { ...answer, overview: held.overview },
+                ),
+              );
+            }}
             onClose={() => setMaintaining(false)}
           />
         ) : importing && root ? (

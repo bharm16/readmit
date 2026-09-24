@@ -8,9 +8,11 @@ import {
   createProjectBackup,
   describeIndex,
   inspectProjectQuota,
+  listProjectRecoveryCopies,
   prepareStagedUpgrade,
   previewProjectMigration,
   previewProjectRetirement,
+  recoverProjectDocument,
   restoreProjectBackup,
   setProjectQuota,
   verifyProjectBackup,
@@ -20,13 +22,21 @@ import {
   type IndexResult,
   type MigrationPreviewResult,
   type ProjectQuotaResult,
+  type ProjectRecoveryCopiesResult,
+  type ProjectRecoveryCopy,
   type RetirementPreview,
   type UpgradeResult,
 } from "./bindings";
 import type { Indicators } from "./shell";
 import { Report } from "./shell";
 
-type Tab = "backup" | "restore" | "storage" | "lifecycle" | "upgrade";
+type Tab = "backup" | "restore" | "storage" | "lifecycle" | "recovery" | "upgrade";
+
+/** A recovery copy is named by the file it is retained in, which is what
+ * `readmit project recover` selects it by. */
+function copyName(copy: ProjectRecoveryCopy): string {
+  return `${copy.document}.recovery-${copy.digest}`;
+}
 
 function InventoryList({ title, entries }: { title: string; entries: BackupInventoryEntry[] }) {
   if (entries.length === 0) {
@@ -74,7 +84,10 @@ function BackupReport({ result }: { result: BackupResult | null }) {
   );
 }
 
-/** Workspace maintenance: backup, restore, quota, rebuild, archive/delete, migration, upgrade. */
+/** Workspace maintenance: backup, restore, quota, rebuild, archive/delete,
+ * migration, document recovery and staged upgrade. Each new folder is named
+ * for the one writer that asked for it, and what an action reported stays
+ * beside the section that took it. */
 export function MaintenancePanel({
   workspace,
   project,
@@ -82,6 +95,7 @@ export function MaintenancePanel({
   indicators,
   initialTab = "backup",
   onReopen,
+  onProjectChanged,
   onClose,
 }: {
   workspace: string;
@@ -90,14 +104,20 @@ export function MaintenancePanel({
   indicators: Indicators;
   initialTab?: Tab;
   onReopen: (path: string) => void;
+  /** A document of the open project was replaced, so what the window shows of
+   * the project is read again. */
+  onProjectChanged: (path: string) => void;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<Tab>(initialTab);
   const [localBusy, setLocalBusy] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [backupPath, setBackupPath] = useState("");
-  const [destination, setDestination] = useState("");
-  const [backupResult, setBackupResult] = useState<BackupResult | null>(null);
+  const [backupDestination, setBackupDestination] = useState("");
+  const [restoreDestination, setRestoreDestination] = useState("");
+  const [archiveDestination, setArchiveDestination] = useState("");
+  const [rollbackDestination, setRollbackDestination] = useState("");
+  const [report, setReport] = useState<{ tab: Tab; result: BackupResult } | null>(null);
   const [quota, setQuota] = useState<ProjectQuotaResult | null>(null);
   const [maxBytes, setMaxBytes] = useState("500000000");
   const [maxFiles, setMaxFiles] = useState("20000");
@@ -110,8 +130,12 @@ export function MaintenancePanel({
   const [candidate, setCandidate] = useState("");
   const [upgrade, setUpgrade] = useState<UpgradeResult | null>(null);
   const [approve, setApprove] = useState(false);
+  const [copies, setCopies] = useState<ProjectRecoveryCopiesResult | null>(null);
+  const [selectedCopy, setSelectedCopy] = useState("");
   const blocked = busy || localBusy;
   const root = project ?? workspace;
+  const shownReport = report?.tab === tab ? report.result : null;
+  const chosenCopy = copies?.copies?.find((copy) => copyName(copy) === selectedCopy) ?? null;
 
   const pick = useCallback(async (kind: string, setter: (path: string) => void) => {
     setLocalBusy(true);
@@ -127,6 +151,44 @@ export function MaintenancePanel({
       setLocalBusy(false);
     }
   }, []);
+
+  // A plan and an approval belong to the candidate they were given for, so
+  // choosing another withdraws both.
+  const chooseCandidate = useCallback((path: string) => {
+    setCandidate(path);
+    setUpgrade(null);
+    setApprove(false);
+    setReport((held) => (held?.tab === "upgrade" ? null : held));
+  }, []);
+
+  // A delete is confirmed against the one preview a person read, so a new
+  // preview, or none, needs the confirmation given again.
+  const showPreview = useCallback((next: RetirementPreview | null) => {
+    setPreview(next);
+    setConfirmDelete(false);
+  }, []);
+
+  const readCopies = useCallback(async (path: string) => {
+    const listed = await listProjectRecoveryCopies(path);
+    setCopies(listed);
+    setSelectedCopy((held) =>
+      listed.copies?.some((copy) => copyName(copy) === held && copy.state === "readable" && !copy.current) ? held : "",
+    );
+  }, []);
+
+  const refreshCopies = useCallback(async () => {
+    if (!project) {
+      setCopies(null);
+      setSelectedCopy("");
+      return;
+    }
+    setLocalBusy(true);
+    try {
+      await readCopies(project);
+    } finally {
+      setLocalBusy(false);
+    }
+  }, [project, readCopies]);
 
   const refreshQuota = useCallback(async () => {
     if (!project) {
@@ -145,6 +207,12 @@ export function MaintenancePanel({
       void refreshQuota();
     }
   }, [tab, project, refreshQuota]);
+
+  useEffect(() => {
+    if (tab === "recovery") {
+      void refreshCopies();
+    }
+  }, [tab, refreshCopies]);
 
   return (
     <div className="maintenance" aria-label="Project maintenance">
@@ -165,6 +233,7 @@ export function MaintenancePanel({
             ["restore", "Restore"],
             ["storage", "Storage and indexes"],
             ["lifecycle", "Archive and migrate"],
+            ["recovery", "Recovery copies"],
             ["upgrade", "Staged upgrade"],
           ] as const
         ).map(([id, label]) => (
@@ -174,7 +243,12 @@ export function MaintenancePanel({
             role="tab"
             aria-selected={tab === id}
             disabled={blocked}
-            onClick={() => setTab(id)}
+            onClick={() => {
+              if (id !== tab) {
+                setTab(id);
+                setFeedback(null);
+              }
+            }}
           >
             {label}
           </button>
@@ -185,20 +259,20 @@ export function MaintenancePanel({
       {tab === "backup" ? (
         <section aria-label="Create and verify a backup">
           {!project ? <p className="hint">Open a project before creating a backup.</p> : null}
-          <button type="button" disabled={blocked || !project} onClick={() => void pick("backup-destination", setDestination)}>
+          <button type="button" disabled={blocked || !project} onClick={() => void pick("backup-destination", setBackupDestination)}>
             Choose backup destination…
           </button>
-          <p className="hint">{destination || "No destination chosen."}</p>
+          <p className="hint">{backupDestination || "No destination chosen."}</p>
           <button
             type="button"
-            disabled={blocked || !project || !destination}
+            disabled={blocked || !project || !backupDestination}
             onClick={() => {
               void (async () => {
                 setLocalBusy(true);
                 setFeedback(null);
                 try {
-                  const result = await createProjectBackup({ project: project!, destination });
-                  setBackupResult(result);
+                  const result = await createProjectBackup({ project: project!, destination: backupDestination });
+                  setReport({ tab: "backup", result });
                   if (result.report?.root) {
                     setBackupPath(result.report.root);
                   }
@@ -223,7 +297,7 @@ export function MaintenancePanel({
                 setLocalBusy(true);
                 try {
                   const result = await verifyProjectBackup(backupPath);
-                  setBackupResult(result);
+                  setReport({ tab: "backup", result });
                   setFeedback(result.reason ?? (result.state === "completed" ? "Backup verified." : null));
                 } finally {
                   setLocalBusy(false);
@@ -233,7 +307,7 @@ export function MaintenancePanel({
           >
             Verify backup
           </button>
-          <BackupReport result={backupResult} />
+          <BackupReport result={shownReport} />
         </section>
       ) : null}
 
@@ -243,19 +317,19 @@ export function MaintenancePanel({
             Choose backup…
           </button>
           <p className="hint">{backupPath || "No backup chosen."}</p>
-          <button type="button" disabled={blocked} onClick={() => void pick("restore-destination", setDestination)}>
+          <button type="button" disabled={blocked} onClick={() => void pick("restore-destination", setRestoreDestination)}>
             Choose new restore destination…
           </button>
-          <p className="hint">{destination || "No destination chosen."}</p>
+          <p className="hint">{restoreDestination || "No destination chosen."}</p>
           <button
             type="button"
-            disabled={blocked || !backupPath || !destination}
+            disabled={blocked || !backupPath || !restoreDestination}
             onClick={() => {
               void (async () => {
                 setLocalBusy(true);
                 try {
-                  const result = await restoreProjectBackup({ backup: backupPath, destination });
-                  setBackupResult(result);
+                  const result = await restoreProjectBackup({ backup: backupPath, destination: restoreDestination });
+                  setReport({ tab: "restore", result });
                   if (result.state === "completed" && result.report?.root) {
                     setFeedback("Restored. Reopening the project.");
                     onReopen(result.report.root);
@@ -270,7 +344,7 @@ export function MaintenancePanel({
           >
             Restore into new destination and reopen
           </button>
-          <BackupReport result={backupResult} />
+          <BackupReport result={shownReport} />
         </section>
       ) : null}
 
@@ -410,7 +484,7 @@ export function MaintenancePanel({
                 setLocalBusy(true);
                 try {
                   const result = await previewProjectRetirement(project!);
-                  setPreview(result.preview ?? null);
+                  showPreview(result.preview ?? null);
                   setFeedback(result.reason ?? null);
                 } finally {
                   setLocalBusy(false);
@@ -427,24 +501,24 @@ export function MaintenancePanel({
               </p>
               <p className="hint">{preview.explain}</p>
               <p className="hint warning">{preview.not_erasure}</p>
-              <button type="button" disabled={blocked} onClick={() => void pick("archive-destination", setDestination)}>
+              <button type="button" disabled={blocked} onClick={() => void pick("archive-destination", setArchiveDestination)}>
                 Choose recovery archive destination…
               </button>
-              <p className="hint">{destination || "No archive destination chosen."}</p>
+              <p className="hint">{archiveDestination || "No archive destination chosen."}</p>
               <button
                 type="button"
-                disabled={blocked || !destination || !preview.selection}
+                disabled={blocked || !archiveDestination || !preview.selection}
                 onClick={() => {
                   void (async () => {
                     setLocalBusy(true);
                     try {
                       const result = await archiveOrDeleteProject({
                         project: project!,
-                        destination,
+                        destination: archiveDestination,
                         selection: preview.selection,
                         delete: false,
                       });
-                      setBackupResult(result);
+                      setReport({ tab: "lifecycle", result });
                       setFeedback(result.reason ?? (result.state === "completed" ? "Archive created; source kept." : null));
                     } finally {
                       setLocalBusy(false);
@@ -465,20 +539,25 @@ export function MaintenancePanel({
               </label>
               <button
                 type="button"
-                disabled={blocked || !destination || !preview.selection || !confirmDelete}
+                disabled={blocked || !archiveDestination || !preview.selection || !confirmDelete}
                 onClick={() => {
                   void (async () => {
                     setLocalBusy(true);
                     try {
                       const result = await archiveOrDeleteProject({
                         project: project!,
-                        destination,
+                        destination: archiveDestination,
                         selection: preview.selection,
                         delete: true,
                         confirm: true,
                       });
-                      setBackupResult(result);
+                      setReport({ tab: "lifecycle", result });
                       setFeedback(result.reason ?? null);
+                      if (result.state === "completed") {
+                        // The project it previewed is gone, so nothing is
+                        // left for that preview to delete.
+                        showPreview(null);
+                      }
                     } finally {
                       setLocalBusy(false);
                     }
@@ -489,7 +568,79 @@ export function MaintenancePanel({
               </button>
             </div>
           ) : null}
-          <BackupReport result={backupResult} />
+          <BackupReport result={shownReport} />
+        </section>
+      ) : null}
+
+      {tab === "recovery" ? (
+        <section aria-label="Recover a project document">
+          {!project ? <p className="hint">Open a project to list the recovery copies of its documents.</p> : null}
+          <p className="hint">
+            Every replacement of project.json, revisions.json or quota.json keeps the exact earlier bytes beside it as a
+            recovery copy named by their SHA-256, the name readmit project recover selects it by. Recovering a copy keeps the
+            document it replaces as another copy; it does not rewind the other documents or rewrite evidence or indexes.
+            Copies record neither authors nor times.
+          </p>
+          <Report indicators={indicators} progress={null} result={copies} />
+          {copies?.state === "empty" ? (
+            <p className="hint">No document of this project has been replaced, so it holds no recovery copies.</p>
+          ) : null}
+          {copies?.copies && copies.copies.length > 0 ? (
+            <fieldset className="maintenance-copies">
+              <legend>Recovery copies</legend>
+              {copies.copies.map((copy) => {
+                const name = copyName(copy);
+                return (
+                  <label key={name}>
+                    <input
+                      type="radio"
+                      name="recovery-copy"
+                      value={name}
+                      checked={selectedCopy === name}
+                      disabled={blocked || copy.state !== "readable" || copy.current === true}
+                      onChange={() => setSelectedCopy(name)}
+                    />{" "}
+                    <span className="name">{name}</span> · {copy.size} bytes · {copy.state}
+                    {copy.current ? " · the document as it stands" : ""}
+                  </label>
+                );
+              })}
+            </fieldset>
+          ) : null}
+          <button
+            type="button"
+            disabled={blocked || !project || !chosenCopy}
+            onClick={() => {
+              if (!chosenCopy) return;
+              void (async () => {
+                setLocalBusy(true);
+                setFeedback(null);
+                try {
+                  const result = await recoverProjectDocument({
+                    project: project!,
+                    document: chosenCopy.document,
+                    digest: chosenCopy.digest,
+                  });
+                  setFeedback(
+                    result.state === "completed"
+                      ? `Recovered ${chosenCopy.document} from ${copyName(chosenCopy)}; the document it replaced is kept as a recovery copy.`
+                      : (result.reason ?? null),
+                  );
+                  // What the copies are now, whether or not the recovery
+                  // happened: a refused copy may have changed since it was
+                  // listed.
+                  await readCopies(project!);
+                  if (result.state === "completed") {
+                    onProjectChanged(project!);
+                  }
+                } finally {
+                  setLocalBusy(false);
+                }
+              })();
+            }}
+          >
+            Recover the selected copy
+          </button>
         </section>
       ) : null}
 
@@ -499,7 +650,7 @@ export function MaintenancePanel({
             Stage packages yourself. Opening this tab never checks a network, downloads anything, elevates, or
             interrupts a service.
           </p>
-          <button type="button" disabled={blocked} onClick={() => void pick("upgrade-candidate", setCandidate)}>
+          <button type="button" disabled={blocked} onClick={() => void pick("upgrade-candidate", chooseCandidate)}>
             Choose staged candidate folder…
           </button>
           <p className="hint">{candidate || "No candidate chosen."}</p>
@@ -527,10 +678,32 @@ export function MaintenancePanel({
               <p className="hint">{upgrade.view.installer_handoff}</p>
               <p className="hint">{upgrade.view.signing_deferred}</p>
               {upgrade.view.plan ? (
-                <p className="reason">
-                  installed {upgrade.view.plan.installed} → candidate {upgrade.view.plan.candidate} · signed=
-                  {String(upgrade.view.plan.signed_for_distribution)} · {upgrade.view.plan.state}
-                </p>
+                <>
+                  <p className="reason">
+                    installed {upgrade.view.plan.installed} → candidate {upgrade.view.plan.candidate} · signed=
+                    {String(upgrade.view.plan.signed_for_distribution)} · {upgrade.view.plan.state}
+                  </p>
+                  <section className="maintenance-inventory" aria-label="Staged packages">
+                    <h4>Staged packages</h4>
+                    <ul>
+                      {upgrade.view.plan.staged.map((staged) => (
+                        <li key={staged.name}>
+                          {staged.name} · {staged.format} · {staged.state}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                  <section className="maintenance-inventory" aria-label="Reviewed on this machine">
+                    <h4>Reviewed on this machine</h4>
+                    <ul>
+                      {upgrade.view.plan.retained.map((retained) => (
+                        <li key={`${retained.kind}-${retained.name}`}>
+                          {retained.name} · {retained.kind} · {retained.state}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                </>
               ) : null}
             </div>
           ) : null}
@@ -538,13 +711,13 @@ export function MaintenancePanel({
             <input type="checkbox" checked={approve} disabled={blocked} onChange={(e) => setApprove(e.target.checked)} />{" "}
             Administrator approves taking a rollback archive (installing still uses the native installer)
           </label>
-          <button type="button" disabled={blocked} onClick={() => void pick("archive-destination", setDestination)}>
+          <button type="button" disabled={blocked} onClick={() => void pick("archive-destination", setRollbackDestination)}>
             Choose rollback archive destination…
           </button>
-          <p className="hint">{destination || "No rollback destination chosen."}</p>
+          <p className="hint">{rollbackDestination || "No rollback destination chosen."}</p>
           <button
             type="button"
-            disabled={blocked || !candidate || !project || !destination || !approve}
+            disabled={blocked || !candidate || !project || !rollbackDestination || !approve}
             onClick={() => {
               void (async () => {
                 setLocalBusy(true);
@@ -552,16 +725,19 @@ export function MaintenancePanel({
                   const result = await prepareStagedUpgrade({
                     project: project!,
                     candidate,
-                    destination,
+                    destination: rollbackDestination,
                     approve: true,
                   });
                   setUpgrade(result);
-                  setBackupResult(
+                  setReport(
                     result.report
                       ? {
-                          state: result.state,
-                          ...(result.reason ? { reason: result.reason } : {}),
-                          report: result.report,
+                          tab: "upgrade",
+                          result: {
+                            state: result.state,
+                            ...(result.reason ? { reason: result.reason } : {}),
+                            report: result.report,
+                          },
                         }
                       : null,
                   );
@@ -575,7 +751,7 @@ export function MaintenancePanel({
             Prepare rollback archive
           </button>
           <Report indicators={indicators} progress={null} result={upgrade} />
-          <BackupReport result={backupResult} />
+          <BackupReport result={shownReport} />
         </section>
       ) : null}
     </div>

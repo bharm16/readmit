@@ -9,12 +9,24 @@
 // Every folder is chosen through the host's own dialogs — an existing one in
 // its folder dialog, a new one named in its save dialog — and the command line
 // reads every backup, archive and project the window wrote.
+//
+// A project's earlier settings are recovered from the recovery copy the window
+// lists, and a copy damaged after it was listed is refused, as `readmit
+// project recover` restores and refuses them. A staged upgrade candidate is
+// checked and its rollback archive taken after the administrator's approval,
+// and refused while its package is not staged whole, when the folder dialog is
+// dismissed and when the archive would land inside the project, as `readmit
+// upgrade check` and `prepare` answer. On a full disk, an archive, a delete
+// and a rollback archive are each refused with the project kept, and the
+// delete completes once the disk has room again.
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UserEvent } from "@testing-library/user-event";
+import type { UpgradeResult } from "../bindings";
 import { byContent, enter, Journey, press, region } from "../testkit/journey";
-import { runOnce, savedAckTest } from "./steps";
+import { platform } from "../testkit/deployment.js";
+import { activateLicense, createProject, licensedProject, runOnce, savedAckTest } from "./steps";
 
 let journey: Journey;
 
@@ -167,11 +179,16 @@ test("a project is backed up, held to a quota, reindexed, archived, refused a st
   expect(await lifecycle.findByText("the project changed since the retirement preview; nothing was deleted")).toBeTruthy();
   expect((await journey.commandLine(["project", "show", PROJECT])).code).toBe(0);
 
-  // Previewed again, and deleted only once confirmed: the source is unlinked
-  // after a verified archive, which is kept.
+  // Previewed again, and deleted only once confirmed against that preview:
+  // the confirmation given for the stale one does not carry over. The source
+  // is unlinked after a verified archive, which is kept.
   lifecycle = await section(user, "Archive and migrate", "Archive, delete and migration");
   await press(user, lifecycle.getByRole("button", { name: "Preview archive or delete" }));
   await nameNew(user, lifecycle, "Choose recovery archive destination…", "backups/archive-deleted", "Choose a new folder for the recovery archive");
+  const confirmation = lifecycle.getByLabelText(/I understand delete unlinks the source/) as HTMLInputElement;
+  expect(confirmation.checked).toBe(false);
+  expect((lifecycle.getByRole("button", { name: "Delete after verified archive" }) as HTMLButtonElement).disabled).toBe(true);
+  await user.click(confirmation);
   await press(user, lifecycle.getByRole("button", { name: "Delete after verified archive" }));
   expect(await lifecycle.findByText("Project unlinked; recovery archive retained. This is not secure erasure.")).toBeTruthy();
   const gone = await journey.commandLine(["project", "show", PROJECT]);
@@ -194,4 +211,243 @@ test("a project is backed up, held to a quota, reindexed, archived, refused a st
   expect(restored.stdout).toMatch(/^ {2}reschedule-feed evidence=verified /m);
   const rerun = await journey.commandLine(["run", "status", "investigations/scheduling-restored/run-fixed", "--json"]);
   expect(JSON.parse(rerun.stdout)).toMatchObject({ schema: "readmit-job/v1", state: "passed" });
+});
+
+const INTERFACE = "investigations/interface";
+
+/** A radio of the recovery copies the window lists, by the file it is
+ * retained in, its state and whether it is the document as it stands. */
+function recoveryCopy(scope: ReturnType<typeof within>, digest: string, tail: string) {
+  return scope.findByRole("radio", { name: new RegExp(`^project\\.json\\.recovery-${digest} · \\d+ bytes · ${tail}$`) });
+}
+
+test("a project's earlier settings are recovered from the copy the window lists, and a copy damaged since is refused, as readmit project recover restores and refuses them", async () => {
+  const user = userEvent.setup();
+  await licensedProject(journey, user);
+  const evidence = within(region("Evidence"));
+  // Replacing the project document keeps the bytes it replaced as a copy
+  // named by their SHA-256.
+  const original = journey.digest(`${INTERFACE}/project.json`);
+  await press(user, evidence.getByRole("button", { name: "Edit settings…" }));
+  const settings = within(evidence.getByRole("form", { name: "Project settings" }));
+  await enter(user, settings.getByLabelText("Title"), "Renamed by mistake");
+  await press(user, settings.getByRole("button", { name: "Store these settings" }));
+  expect(await evidence.findByRole("heading", { name: "Renamed by mistake" })).toBeTruthy();
+  const renamed = journey.digest(`${INTERFACE}/project.json`);
+
+  await press(user, evidence.getByRole("button", { name: "Maintain this workspace…" }));
+  let recovery = await section(user, "Recovery copies", "Recover a project document");
+  await press(user, await recoveryCopy(recovery, original, "readable"));
+  await press(user, recovery.getByRole("button", { name: "Recover the selected copy" }));
+  expect(
+    await feedback(`Recovered project.json from project.json.recovery-${original}; the document it replaced is kept as a recovery copy.`),
+  ).toBeTruthy();
+  expect(journey.digest(`${INTERFACE}/project.json`)).toBe(original);
+  // The recovered copy is the document as it stands, and the document it
+  // replaced is a copy of its own.
+  expect(await recoveryCopy(recovery, original, "readable · the document as it stands")).toBeTruthy();
+  expect(await recoveryCopy(recovery, renamed, "readable")).toBeTruthy();
+  const shown = await journey.commandLine(["project", "show", INTERFACE]);
+  expect(shown.code).toBe(0);
+  expect(shown.stdout).toMatch(/^Project: Scheduling interface\n/);
+  await press(user, maintenance().getByRole("button", { name: "Close maintenance" }));
+  expect(await evidence.findByRole("heading", { name: "Scheduling interface" })).toBeTruthy();
+
+  // Another program damages the copy after the window listed it: the window
+  // refuses to recover it in the command line's words, changes nothing, and
+  // lists it as damaged.
+  await press(user, evidence.getByRole("button", { name: "Maintain this workspace…" }));
+  recovery = await section(user, "Recovery copies", "Recover a project document");
+  await press(user, await recoveryCopy(recovery, renamed, "readable"));
+  journey.changeFile(`${INTERFACE}/project.json.recovery-${renamed}`, "damaged after it was listed\n");
+  await press(user, recovery.getByRole("button", { name: "Recover the selected copy" }));
+  expect(await feedback("recovery copy is damaged")).toBeTruthy();
+  expect(journey.digest(`${INTERFACE}/project.json`)).toBe(original);
+  expect(((await recoveryCopy(recovery, renamed, "damaged")) as HTMLInputElement).disabled).toBe(true);
+  const refused = await journey.commandLine(["project", "recover", INTERFACE, "--document", "project.json", "--digest", renamed]);
+  expect(refused.code).not.toBe(0);
+  expect(refused.stderr).toBe("readmit: recovery copy is damaged\n");
+  expect(journey.digest(`${INTERFACE}/project.json`)).toBe(original);
+});
+
+/** Stages an upgrade candidate in folder as an administrator puts one on this
+ * machine: one package and the readmit-desktop-package/v1 manifest the
+ * packaging tool writes beside it, recording that package's SHA-256, for this
+ * machine's platform and — like every package this repository builds — not
+ * signed for distribution. Returns the package's file name. */
+function stageCandidate(folder: string, version: string): string {
+  const { os, arch } = platform();
+  const name = `readmit-desktop_${version}_${arch}.pkg`;
+  journey.writeFile(`${folder}/${name}`, "the bytes of a package this journey never installs\n");
+  journey.writeFile(
+    `${folder}/manifest.json`,
+    JSON.stringify({
+      schema: "readmit-desktop-package/v1",
+      version,
+      os,
+      arch,
+      signed_for_distribution: false,
+      packages: [{ name, format: "pkg", sha256: journey.digest(`${folder}/${name}`) }],
+    }),
+  );
+  return name;
+}
+
+const DEVELOPMENT_PREVIEW =
+  "the staged candidate records that it is not signed for distribution, so it is a development preview and not an upgrade this release installs";
+const NOT_STAGED =
+  "a staged package is not the package the candidate manifest recorded; stage the candidate again before installing anything";
+
+test("a staged candidate is checked and its rollback archive taken once approved, and refused when dismissed, misplaced or not staged whole, as readmit upgrade check and prepare answer", async () => {
+  const user = userEvent.setup();
+  await licensedProject(journey, user);
+  const pkg = stageCandidate("staged/readmit-9.9.9", "9.9.9");
+  journey.makeFolder("backups");
+  const installed = (await journey.commandLine(["--version"])).stdout.trim().replace(/^readmit version /, "");
+
+  // The palette opens the staged-upgrade section.
+  await user.keyboard("{Control>}k{/Control}");
+  await user.type(screen.getByLabelText("Type a command"), "staged upgrade{Enter}");
+  const upgrade = within(await screen.findByRole("region", { name: "Staged upgrade check and rollback archive" }));
+
+  // Dismissing the folder dialog chooses nothing, and nothing can be checked.
+  await journey.dismissDialog("folder", "Choose the staged upgrade package folder");
+  await press(user, upgrade.getByRole("button", { name: "Choose staged candidate folder…" }));
+  expect(await feedback("no folder was chosen")).toBeTruthy();
+  expect((upgrade.getByRole("button", { name: "Check staged upgrade" }) as HTMLButtonElement).disabled).toBe(true);
+
+  await choose(user, upgrade, "Choose staged candidate folder…", "staged/readmit-9.9.9", "Choose the staged upgrade package folder");
+  await press(user, upgrade.getByRole("button", { name: "Check staged upgrade" }));
+  expect(await upgrade.findByText(`installed ${installed} → candidate 9.9.9 · signed=false · refused`)).toBeTruthy();
+  expect(upgrade.getByText(`${pkg} · pkg · intact`)).toBeTruthy();
+  expect(upgrade.getByText("interface · project · readable")).toBeTruthy();
+  expect(await feedback(DEVELOPMENT_PREVIEW)).toBeTruthy();
+  const checked = await journey.commandLine(["upgrade", "check", "--candidate", "staged/readmit-9.9.9", "--project", INTERFACE]);
+  expect(checked.code).toBe(2);
+  expect(checked.stderr).toBe(`readmit: ${DEVELOPMENT_PREVIEW}\n`);
+  // The plan the window showed is the document the command line prints.
+  expect(JSON.parse(checked.stdout)).toEqual((journey.callsTo("CheckStagedUpgrade").at(-1)?.result as UpgradeResult).view?.plan);
+  expect(JSON.parse(checked.stdout)).toMatchObject({
+    installed,
+    candidate: "9.9.9",
+    signed_for_distribution: false,
+    staged: [{ name: pkg, format: "pkg", state: "intact" }],
+    retained: [{ name: "interface", kind: "project", state: "readable" }],
+    state: "refused",
+  });
+
+  // With the administrator's approval, an archive that would land inside the
+  // project is refused and writes nothing; one in a new folder beside it is
+  // the rollback point, and installing is still refused.
+  const project = journey.digest(`${INTERFACE}/project.json`);
+  await user.click(upgrade.getByRole("checkbox", { name: /Administrator approves taking a rollback archive/ }));
+  await nameNew(user, upgrade, "Choose rollback archive destination…", `${INTERFACE}/rollback`, "Choose a new folder for the recovery archive");
+  await press(user, upgrade.getByRole("button", { name: "Prepare rollback archive" }));
+  expect(await feedback("output must be outside the immutable input case")).toBeTruthy();
+  expect((await journey.commandLine(["backup", "verify", `${INTERFACE}/rollback`])).code).not.toBe(0);
+  expect(journey.digest(`${INTERFACE}/project.json`)).toBe(project);
+  await nameNew(user, upgrade, "Choose rollback archive destination…", "backups/rollback", "Choose a new folder for the recovery archive");
+  await press(user, upgrade.getByRole("button", { name: "Prepare rollback archive" }));
+  expect(await feedback(`Rollback point taken. Installing this candidate is still refused: ${DEVELOPMENT_PREVIEW}`)).toBeTruthy();
+  expect(
+    maintenance().getByText(byContent(new RegExp(`^Complete · \\d+ files · \\d+ bytes · ${journey.path("backups/rollback")}$`))),
+  ).toBeTruthy();
+  const verified = await journey.commandLine(["backup", "verify", "backups/rollback"]);
+  expect(verified.code).toBe(0);
+  expect(verified.stdout).toContain("Complete: yes");
+  const prepared = await journey.commandLine([
+    "upgrade", "prepare", INTERFACE, "--candidate", "staged/readmit-9.9.9", "--output", "backups/rollback-command", "--approve",
+  ]);
+  expect(prepared.code).toBe(0);
+  expect(prepared.stdout).toContain(`Installing this candidate is still refused: ${DEVELOPMENT_PREVIEW}\n`);
+  // The window's rollback archive records what the command line's does.
+  expect(journey.digest("backups/rollback/backup.json")).toBe(journey.digest("backups/rollback-command/backup.json"));
+  expect(journey.digest(`${INTERFACE}/project.json`)).toBe(project);
+
+  // A download that stopped partway: the check reports the package altered
+  // beside the first refusal, which is still the development preview, and no
+  // rollback point is taken for a candidate that was not staged whole.
+  journey.changeFile(`staged/readmit-9.9.9/${pkg}`, "a download that stopped partway");
+  await press(user, upgrade.getByRole("button", { name: "Check staged upgrade" }));
+  expect(await upgrade.findByText(`${pkg} · pkg · altered`)).toBeTruthy();
+  expect(await feedback(DEVELOPMENT_PREVIEW)).toBeTruthy();
+  await nameNew(user, upgrade, "Choose rollback archive destination…", "backups/rollback-partway", "Choose a new folder for the recovery archive");
+  await press(user, upgrade.getByRole("button", { name: "Prepare rollback archive" }));
+  expect(await feedback(NOT_STAGED)).toBeTruthy();
+  expect(maintenance().queryByText(byContent(/^Complete · /))).toBeNull();
+  const partway = await journey.commandLine([
+    "upgrade", "prepare", INTERFACE, "--candidate", "staged/readmit-9.9.9", "--output", "backups/rollback-partway", "--approve",
+  ]);
+  expect(partway.code).not.toBe(0);
+  expect(partway.stderr).toBe(`readmit: ${NOT_STAGED}\n`);
+  expect((await journey.commandLine(["backup", "verify", "backups/rollback-partway"])).stderr).toBe(
+    "readmit: a backup must be an existing directory that is not a symbolic link\n",
+  );
+});
+
+const DISK_FULL = "cannot write a file of the destination; an incomplete backup is retained";
+
+test("on a full disk an archive, a delete and a rollback archive are refused with the project kept, and the delete completes once there is room", async () => {
+  const user = userEvent.setup();
+  // The application runs on a disk with no room for a file past 64 KiB.
+  await journey.launch({ fileSizeLimit: 64 << 10 });
+  await activateLicense(user, journey);
+  await createProject(user, journey, "investigations", "interface", "Scheduling interface");
+  // A capture the person kept in the project is larger than the room left.
+  journey.writeFile(`${INTERFACE}/capture.bin`, "x".repeat(256 << 10));
+  const capture = journey.digest(`${INTERFACE}/capture.bin`);
+  journey.makeFolder("backups");
+  stageCandidate("staged/readmit-9.9.9", "9.9.9");
+  const evidence = within(region("Evidence"));
+  await press(user, evidence.getByRole("button", { name: "Maintain this workspace…" }));
+
+  const lifecycle = await section(user, "Archive and migrate", "Archive, delete and migration");
+  await press(user, lifecycle.getByRole("button", { name: "Preview archive or delete" }));
+  expect(await lifecycle.findByText(byContent(/^\d+ files · \d+ bytes · compatible=true$/))).toBeTruthy();
+  await nameNew(user, lifecycle, "Choose recovery archive destination…", "backups/archive-full", "Choose a new folder for the recovery archive");
+  await press(user, lifecycle.getByRole("button", { name: "Archive (keep source)" }));
+  expect(await feedback(DISK_FULL)).toBeTruthy();
+  // The incomplete archive is kept for inspection and is refused as one.
+  const incomplete = await journey.commandLine(["backup", "verify", "backups/archive-full"]);
+  expect(incomplete.code).not.toBe(0);
+  expect(incomplete.stderr).toContain("backup is incomplete");
+
+  await nameNew(user, lifecycle, "Choose recovery archive destination…", "backups/delete-full", "Choose a new folder for the recovery archive");
+  expect(maintenance().queryByText(DISK_FULL, { selector: "p[role=status]" })).toBeNull();
+  await user.click(lifecycle.getByLabelText(/I understand delete unlinks the source/));
+  // Naming the folder cleared the archive's refusal, so this one is the delete's.
+  await press(user, lifecycle.getByRole("button", { name: "Delete after verified archive" }));
+  expect(await feedback(DISK_FULL)).toBeTruthy();
+  expect((await journey.commandLine(["project", "show", INTERFACE])).code).toBe(0);
+  expect(journey.digest(`${INTERFACE}/capture.bin`)).toBe(capture);
+
+  const upgrade = await section(user, "Staged upgrade", "Staged upgrade check and rollback archive");
+  await choose(user, upgrade, "Choose staged candidate folder…", "staged/readmit-9.9.9", "Choose the staged upgrade package folder");
+  await user.click(upgrade.getByRole("checkbox", { name: /Administrator approves taking a rollback archive/ }));
+  await nameNew(user, upgrade, "Choose rollback archive destination…", "backups/rollback-full", "Choose a new folder for the recovery archive");
+  await press(user, upgrade.getByRole("button", { name: "Prepare rollback archive" }));
+  expect(await feedback(DISK_FULL)).toBeTruthy();
+  expect((await journey.commandLine(["backup", "verify", "backups/rollback-full"])).stderr).toContain("backup is incomplete");
+  expect((await journey.commandLine(["project", "show", INTERFACE])).code).toBe(0);
+
+  // Once the disk has room again, the reopened window deletes the project
+  // after a verified archive of everything it held, the capture included.
+  await journey.close();
+  await journey.launch();
+  const navigation = within(region("Project navigation"));
+  await press(user, await navigation.findByRole("button", { name: journey.path(INTERFACE) }));
+  await press(user, await navigation.findByRole("button", { name: "Read the project" }));
+  await press(user, await within(region("Evidence")).findByRole("button", { name: "Maintain this workspace…" }));
+  const again = await section(user, "Archive and migrate", "Archive, delete and migration");
+  await press(user, again.getByRole("button", { name: "Preview archive or delete" }));
+  expect(await again.findByText(byContent(/^\d+ files · \d+ bytes · compatible=true$/))).toBeTruthy();
+  await nameNew(user, again, "Choose recovery archive destination…", "backups/delete-with-room", "Choose a new folder for the recovery archive");
+  await user.click(again.getByLabelText(/I understand delete unlinks the source/));
+  await press(user, again.getByRole("button", { name: "Delete after verified archive" }));
+  expect(await again.findByText("Project unlinked; recovery archive retained. This is not secure erasure.")).toBeTruthy();
+  const archived = await journey.commandLine(["backup", "verify", "backups/delete-with-room"]);
+  expect(archived.code).toBe(0);
+  expect(archived.stdout).toContain("Complete: yes");
+  expect(journey.digest("backups/delete-with-room/files/capture.bin")).toBe(capture);
+  expect((await journey.commandLine(["project", "show", INTERFACE])).code).not.toBe(0);
 });

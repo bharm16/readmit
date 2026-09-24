@@ -12,3 +12,7 @@ export interface DeploymentAuthority {
 }
 
 export function deploymentAuthority(): DeploymentAuthority;
+
+/** This machine's platform as a Go build names it, which a staged manifest
+ * states and a verifier compares with its own. */
+export function platform(): { os: string; arch: string };

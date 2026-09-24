@@ -174,12 +174,14 @@ export class Journey {
   }
 
   /** Starts the application and mounts its window, then waits for the window
-   * to draw its regions from the facade's own shell description. */
-  async launch(): Promise<void> {
+   * to draw its regions from the facade's own shell description. Given a
+   * file size limit, the application runs on a disk that is full for any file
+   * larger than that many bytes; launched again without one, it has room. */
+  async launch(options: { fileSizeLimit?: number } = {}): Promise<void> {
     if (this.bridge) {
       throw new Error("the application is already running");
     }
-    this.bridge = startBridge(this.binary, this.root);
+    this.bridge = startBridge(this.binary, this.root, options.fileSizeLimit);
     window.go = { desktop: { App: this.facade(this.bridge) } };
     render(
       <StrictMode>

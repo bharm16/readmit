@@ -181,9 +181,11 @@ export function runScriptInRoot(root, script, variables) {
   );
 }
 
-/** Starts the bridge over root, in the isolated environment. */
-export function startBridge(binary, root) {
-  const child = spawn(binary, ["--root", root], {
+/** Starts the bridge over root, in the isolated environment. With a file
+ * size limit, the running application's disk is full past that many bytes. */
+export function startBridge(binary, root, fileSizeLimit) {
+  const limit = fileSizeLimit ? ["--file-size-limit", String(fileSizeLimit)] : [];
+  const child = spawn(binary, ["--root", root, ...limit], {
     stdio: ["pipe", "pipe", "pipe"],
     env: isolated(root),
   });

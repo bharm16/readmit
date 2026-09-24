@@ -662,6 +662,7 @@ export interface Facade {
   PreviewProjectMigration(path: string): Promise<MigrationPreviewResult>;
   PreviewProjectRetirement(path: string): Promise<RetirementPreviewResult>;
   ArchiveOrDeleteProject(request: ProjectArchiveRequest): Promise<BackupResult>;
+  ListProjectRecoveryCopies(path: string): Promise<ProjectRecoveryCopiesResult>;
   RecoverProjectDocument(request: ProjectRecoverRequest): Promise<ProjectRecoverResult>;
   CheckStagedUpgrade(request: UpgradeCheckRequest): Promise<UpgradeResult>;
   PrepareStagedUpgrade(request: UpgradePrepareRequest): Promise<UpgradeResult>;
@@ -1067,6 +1068,20 @@ export interface ProjectArchiveRequest {
   confirm?: boolean;
 }
 
+export interface ProjectRecoveryCopy {
+  document: string;
+  digest: string;
+  size: number;
+  state: string;
+  current?: boolean;
+}
+
+export interface ProjectRecoveryCopiesResult {
+  state: State;
+  reason?: string;
+  copies?: ProjectRecoveryCopy[];
+}
+
 export interface ProjectRecoverRequest {
   project: string;
   document: string;
@@ -1165,6 +1180,11 @@ export function previewProjectRetirement(path: string): Promise<RetirementPrevie
 
 export function archiveOrDeleteProject(request: ProjectArchiveRequest): Promise<BackupResult> {
   return guard(() => facade().ArchiveOrDeleteProject(request), { state: "failed" });
+}
+
+/** The recovery copies the maintenance screen reads as its section opens. */
+export function listProjectRecoveryCopies(path: string): Promise<ProjectRecoveryCopiesResult> {
+  return retryingRead(() => facade().ListProjectRecoveryCopies(path), { state: "failed" });
 }
 
 export function recoverProjectDocument(request: ProjectRecoverRequest): Promise<ProjectRecoverResult> {
