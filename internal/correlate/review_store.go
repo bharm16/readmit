@@ -2,6 +2,7 @@ package correlate
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -85,16 +86,27 @@ func SaveReview(path string, opened *bundle.Bundle, report Report, r ReviewRevis
 	if len(machine) > maxMachineBytes {
 		return errors.New("machine report exceeds correlation review size limit")
 	}
-	files := map[string][]byte{"machine.json": machine, "decisions.json": reviewBytes(r)}
-	_, err := artifactdir.Write(path, artifactdir.WriteOptions{Completion: []byte(r.Identity() + "\n")}, files)
-	if errors.Is(err, artifactdir.ErrCreateDirectory) {
-		return errors.New("correlation review destination must be new and its parent readable and writable")
-	}
-	if errors.Is(err, artifactdir.ErrSyncDirectory) {
-		return errors.New("cannot sync correlation review directory; the review was written in full but a power loss could still lose it")
-	}
-	if err != nil {
-		return errors.New("cannot complete correlation review; incomplete directory retained")
-	}
-	return nil
+	files := map[string][]byte{"machine.json": machine, "decisions.json": reviewBytes(r), "identity.sha256": []byte(r.Identity() + "\n")}
+	_, err := artifactdir.Write(context.Background(), path, reviewFamily, artifactdir.Durable, files)
+	return err
 }
+
+// reviewFamily is a correlation review: the machine report and the decision
+// history, completed by the revision's own identity, which commits to both.
+var reviewFamily = artifactdir.Family{
+	Seal: artifactdir.CompletionRecord("identity.sha256", ""),
+	Layout: artifactdir.Layout{
+		AllowFile: func(name string) bool {
+			return name == "machine.json" || name == "decisions.json" || name == "identity.sha256"
+		},
+	},
+	Errors: artifactdir.Errors{
+		Destination: errIncompleteReview,
+		Reserve:     errors.New("correlation review destination must be new and its parent readable and writable"),
+		Open:        errIncompleteReview,
+		Write:       errIncompleteReview,
+		Sync:        errors.New("cannot sync correlation review directory; the review was written in full but a power loss could still lose it"),
+	},
+}
+
+var errIncompleteReview = errors.New("cannot complete correlation review; incomplete directory retained")

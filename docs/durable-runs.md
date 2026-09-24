@@ -409,8 +409,8 @@ stops execution before the next record is written, retaining the readable
 prefix and possible-delivery state; no oversized completed job is produced.
 
 File writes are flushed at each boundary. POSIX directory entries are also
-synced before sends and journal acknowledgements: `intended/`, the job and its
-entry in the folder holding it before `running`, and the result, its run and
+synced before sends and journal acknowledgements: `intended/`, `sent/`, the job
+and its entry in the folder holding it before `running`, and the result, its run and
 the result's entry in the job before `finished` names that result. A folder
 readmit cannot open is refused before anything is created. Windows uses file
 `FlushFileBuffers`; Go does not expose a directory flush through `os.Root`, so

@@ -14,6 +14,7 @@ import (
 	"time"
 	_ "time/tzdata"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/runnerprotocol"
 )
@@ -101,7 +102,10 @@ func InitializeSchedules(directory string, p SchedulePolicy, now time.Time) erro
 		return ErrSchedule
 	}
 	defer parent.Close()
-	return durablerun.SyncDirectory(parent, ".")
+	if artifactdir.SyncDirectory(parent, ".") != nil {
+		return durablerun.ErrSyncDirectory
+	}
+	return nil
 }
 
 // OpenScheduler requires the caller to hold the hub database lease for its
@@ -232,7 +236,10 @@ func writeScheduleHistory(root *os.Root, h ScheduleHistory) error {
 	if root.Rename(name, "history.json") != nil {
 		return ErrSchedule
 	}
-	return durablerun.SyncDirectory(root, ".")
+	if artifactdir.SyncDirectory(root, ".") != nil {
+		return durablerun.ErrSyncDirectory
+	}
+	return nil
 }
 
 // Tick persists occurrence claims before dispatch. It serializes execution and

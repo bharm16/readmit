@@ -6,13 +6,14 @@ import (
 	"path/filepath"
 	"slices"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/exportreview"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
 // Late proof/diagnosis/scan refusals retain a located private attempt review.
 // They never produce a completed public export or silently lose the findings.
-func blockedAttempt(stage string, review *Review, findings []exportreview.Finding, scan exportreview.Scan) error {
+func blockedAttempt(stage *artifactdir.Writer, review *Review, findings []exportreview.Finding, scan exportreview.Scan) error {
 	value := struct {
 		Schema         string                 `json:"schema"`
 		State          string                 `json:"state"`
@@ -25,7 +26,7 @@ func blockedAttempt(stage string, review *Review, findings []exportreview.Findin
 	if err != nil {
 		return err
 	}
-	if err := writeFile(stage, "attempt-review.json", raw); err != nil {
+	if err := stage.WriteFile("attempt-review.json", raw); err != nil {
 		return err
 	}
 	return errors.New("generated artifact review blocked; located attempt-review.json and proof remain in local-state; no export written")

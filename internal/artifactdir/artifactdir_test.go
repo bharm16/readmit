@@ -3,7 +3,6 @@ package artifactdir_test
 import (
 	"context"
 	"errors"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -88,16 +87,22 @@ func TestWriteFileIsExclusiveAndReadRefusesUnexpectedOrLinkedFiles(t *testing.T)
 func TestWriteCreatesIdentityLastArtifact(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "artifact")
 	files := map[string][]byte{"manifest.json": []byte("{}\n"), "payloads/one.bin": []byte("one")}
-	identity, err := artifactdir.Write(path, artifactdir.WriteOptions{Domain: "readmit-example/v1", Directories: []string{"payloads"}}, files)
+	identity, err := artifactdir.Write(context.Background(), path, example(artifactdir.DirectoryHash("readmit-example/v1")), artifactdir.Durable, files)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if identity != artifactdir.Identity("readmit-example/v1", files) {
+		t.Fatalf("identity %s is not the directory identity of what was written", identity)
 	}
 	marker, err := os.ReadFile(filepath.Join(path, "identity.sha256"))
 	if err != nil || string(marker) != identity+"\n" {
 		t.Fatalf("marker=%q err=%v", marker, err)
 	}
-	if _, err := artifactdir.Write(path, artifactdir.WriteOptions{Domain: "readmit-example/v1"}, files); err == nil {
-		t.Fatal("existing artifact overwritten")
+	if info, err := os.Lstat(filepath.Join(path, "payloads", "deep")); err != nil || !info.IsDir() {
+		t.Fatalf("a directory the family lists was not made because no file is written in it: %v", err)
+	}
+	if _, err := artifactdir.Write(context.Background(), path, example(artifactdir.DirectoryHash("readmit-example/v1")), artifactdir.Durable, files); !errors.Is(err, errReserve) {
+		t.Fatalf("existing artifact overwritten: %v", err)
 	}
 }
 
@@ -122,12 +127,12 @@ func (c *countdown) Err() error {
 // stays exactly as written and carries no completion marker, so every reader
 // refuses it; a cancellation that arrives before anything is created creates
 // nothing.
-func TestWriteContextStopsBetweenFilesAndRetainsNoCompletionMarker(t *testing.T) {
+func TestWriteStopsBetweenFilesAndRetainsNoCompletionMarker(t *testing.T) {
 	files := map[string][]byte{"manifest.json": []byte("{}\n"), "payloads/a.bin": []byte("a"), "payloads/b.bin": []byte("b"), "payloads/c.bin": []byte("c")}
-	options := artifactdir.WriteOptions{Domain: "readmit-example/v1", Directories: []string{"payloads"}}
+	family := example(artifactdir.DirectoryHash("readmit-example/v1"))
 
 	before := filepath.Join(t.TempDir(), "before")
-	if _, err := artifactdir.WriteContext(&countdown{Context: context.Background()}, before, options, files); !errors.Is(err, artifactdir.ErrCancelled) {
+	if _, err := artifactdir.Write(&countdown{Context: context.Background()}, before, family, artifactdir.Durable, files); !errors.Is(err, errCancelled) {
 		t.Fatalf("a write cancelled before it began answered %v", err)
 	}
 	if _, err := os.Lstat(before); !os.IsNotExist(err) {
@@ -135,7 +140,7 @@ func TestWriteContextStopsBetweenFilesAndRetainsNoCompletionMarker(t *testing.T)
 	}
 
 	partway := filepath.Join(t.TempDir(), "partway")
-	if _, err := artifactdir.WriteContext(&countdown{Context: context.Background(), checks: 3}, partway, options, files); !errors.Is(err, artifactdir.ErrCancelled) {
+	if _, err := artifactdir.Write(&countdown{Context: context.Background(), checks: 3}, partway, family, artifactdir.Durable, files); !errors.Is(err, errCancelled) {
 		t.Fatalf("a write cancelled part way answered %v", err)
 	}
 	if _, err := os.Lstat(filepath.Join(partway, "identity.sha256")); !os.IsNotExist(err) {
@@ -148,8 +153,17 @@ func TestWriteContextStopsBetweenFilesAndRetainsNoCompletionMarker(t *testing.T)
 	if _, err := os.Lstat(filepath.Join(partway, "payloads", "c.bin")); !os.IsNotExist(err) {
 		t.Fatalf("a write kept writing after it was cancelled: %v", err)
 	}
-	if _, err := artifactdir.Write(partway, options, files); err == nil {
+	if _, err := artifactdir.Write(context.Background(), partway, family, artifactdir.Durable, files); err == nil {
 		t.Fatal("an incomplete artifact was overwritten")
+	}
+
+	family.Incomplete = artifactdir.RemoveIncomplete
+	removed := filepath.Join(t.TempDir(), "removed")
+	if _, err := artifactdir.Write(&countdown{Context: context.Background(), checks: 3}, removed, family, artifactdir.Durable, files); !errors.Is(err, errCancelled) {
+		t.Fatalf("a write cancelled part way answered %v", err)
+	}
+	if _, err := os.Lstat(removed); !os.IsNotExist(err) {
+		t.Fatalf("a family that removes what it did not complete left it: %v", err)
 	}
 }
 
@@ -187,55 +201,6 @@ func TestWriteFileSyncChecksForAShortWriteBeforeSyncing(t *testing.T) {
 	failing := &recordingFile{n: 4, syncErr: os.ErrInvalid}
 	if err := artifactdir.WriteFileSync(failing, []byte("abcd")); err == nil {
 		t.Fatal("a failed sync reported as complete")
-	}
-}
-
-func TestPublishReplacesACompleteRecordAndRefusesAStaleIncomplete(t *testing.T) {
-	root, err := os.OpenRoot(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer root.Close()
-	if err := artifactdir.Publish(root, ".record.incomplete", "record.json", []byte("{}\n")); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := root.Stat(".record.incomplete"); err == nil {
-		t.Fatal("incomplete file retained after a completed publish")
-	}
-	data, err := root.OpenFile("record.json", os.O_RDONLY, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer data.Close()
-	read, err := io.ReadAll(data)
-	if err != nil || string(read) != "{}\n" {
-		t.Fatalf("record.json = %q, %v", read, err)
-	}
-	stale, err := root.OpenFile(".record.incomplete", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		t.Fatal(err)
-	}
-	stale.Close()
-	err = artifactdir.Publish(root, ".record.incomplete", "other.json", []byte("{}\n"))
-	if !errors.Is(err, artifactdir.ErrCreateFile) {
-		t.Fatalf("publish over a stale incomplete file = %v", err)
-	}
-	if _, err := root.Stat("other.json"); err == nil {
-		t.Fatal("a refused publish still renamed its record into place")
-	}
-}
-
-func TestPublishRetainsTheIncompleteFileWhenTheRenameFails(t *testing.T) {
-	root, err := os.OpenRoot(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer root.Close()
-	if err := artifactdir.Publish(root, ".record.incomplete", "missing/record.json", []byte("{}\n")); err == nil {
-		t.Fatal("a rename into a missing directory reported as complete")
-	}
-	if _, err := root.Stat(".record.incomplete"); err != nil {
-		t.Fatal("incomplete file removed when the caller owns the removal policy")
 	}
 }
 
@@ -389,32 +354,30 @@ func TestAScratchWriteMakesTheSameArtifactAndSyncsNothing(t *testing.T) {
 		return nil
 	}))
 	contents := map[string][]byte{"manifest.json": []byte("{}\n"), "payloads/one.bin": []byte("one")}
-	layout := artifactdir.Layout{AllowedDirectories: []string{"payloads"}, AllowFile: func(string) bool { return true }, MaxFiles: 8, MaxFileBytes: 128, MaxBytes: 512}
-	options := artifactdir.WriteOptions{Domain: "readmit-example/v1", Directories: []string{"payloads"}}
+	family := example(artifactdir.DirectoryHash("readmit-example/v1"))
 	durablePath := filepath.Join(caseFolder(t), "durable")
-	durable, err := artifactdir.Write(durablePath, options, contents)
+	durable, err := artifactdir.Write(context.Background(), durablePath, family, artifactdir.Durable, contents)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(files) != 3 || len(directories) != 3 {
-		t.Fatalf("a durable write synced %d files and %d directories, want its 3 files and payloads/, itself and its folder", len(files), len(directories))
+	if len(files) != 3 || len(directories) != 4 {
+		t.Fatalf("a durable write synced %d files and %d directories, want its 3 files and payloads/, payloads/deep/, itself and its folder", len(files), len(directories))
 	}
 
 	files, directories = nil, nil
-	options.Durability = artifactdir.Scratch
 	scratchPath := filepath.Join(caseFolder(t), "scratch")
-	scratch, err := artifactdir.Write(scratchPath, options, contents)
+	scratch, err := artifactdir.Write(context.Background(), scratchPath, family, artifactdir.Scratch, contents)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(files) != 0 || len(directories) != 0 {
 		t.Fatalf("a scratch write synced %q and %q", files, directories)
 	}
-	wrote, err := artifactdir.Read(scratchPath, layout)
+	wrote, err := artifactdir.Read(scratchPath, family.Layout)
 	if err != nil {
 		t.Fatal(err)
 	}
-	kept, err := artifactdir.Read(durablePath, layout)
+	kept, err := artifactdir.Read(durablePath, family.Layout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -427,29 +390,35 @@ func TestAScratchWriteMakesTheSameArtifactAndSyncsNothing(t *testing.T) {
 		}
 	}
 
-	root, err := os.OpenRoot(scratchPath)
+	stream, err := artifactdir.Create(filepath.Join(caseFolder(t), "stream"), example(artifactdir.CompletionRecord("record.json", ".record.incomplete")), artifactdir.Scratch)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer root.Close()
-	if err := artifactdir.Scratch.WriteFile(root, "manifest.json", []byte("changed")); !errors.Is(err, artifactdir.ErrCreateFile) {
-		t.Fatalf("a scratch write replaced an existing file: %v", err)
-	}
-	if err := artifactdir.Scratch.Publish(root, ".record.incomplete", "record.json", []byte("{}\n")); err != nil {
+	defer stream.Close()
+	if err := stream.WriteFile("manifest.json", []byte("{}\n")); err != nil {
 		t.Fatal(err)
 	}
-	if published, err := root.ReadFile("record.json"); err != nil || string(published) != "{}\n" {
-		t.Fatalf("a scratch publish left record.json = %q, %v", published, err)
+	if err := stream.WriteFile("manifest.json", []byte("changed")); !errors.Is(err, errCreate) {
+		t.Fatalf("a scratch write replaced an existing file: %v", err)
 	}
-	log, err := root.OpenFile("events.jsonl", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	log, err := stream.Open("payloads/events.jsonl")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer log.Close()
-	if err := artifactdir.Scratch.Sync(log); err != nil || len(files) != 0 || len(directories) != 0 {
-		t.Fatalf("scratch syncs reached the device: %q %q %v", files, directories, err)
+	if err := artifactdir.WriteFileSync(log, []byte("{}\n")); err != nil {
+		t.Fatal(err)
 	}
-	if err := artifactdir.Durable.Sync(log); err != nil || len(files) != 1 {
-		t.Fatalf("a durable sync of a log was not made: %q %v", files, err)
+	if err := stream.Replace("manifest.json", ".manifest.pending", []byte("{\"state\":\"complete\"}\n")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stream.Seal([]byte("{}\n")); err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 0 || len(directories) != 0 {
+		t.Fatalf("scratch syncs reached the device: %q %q", files, directories)
+	}
+	if record, err := os.ReadFile(filepath.Join(stream.Path(), "record.json")); err != nil || string(record) != "{}\n" {
+		t.Fatalf("a scratch completion record is %q, %v", record, err)
 	}
 }

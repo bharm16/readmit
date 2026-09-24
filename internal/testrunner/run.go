@@ -29,15 +29,15 @@ func RunWithDurability(ctx context.Context, specPath, output string, durability 
 	if err == nil {
 		return Execute(ctx, plan, output)
 	}
-	parent, dir, err := reserve(output, nil)
+	writer, err := artifactdir.Create(output, resultFamily, durability)
 	if err != nil {
 		return nil, err
 	}
-	defer parent.Close()
+	defer writer.Close()
 	result := emptyResult()
 	result.ErrorClass = "configuration"
 	if raw, err := readLocal(specPath, MaxSpecBytes); err == nil {
-		ref, err := retain(dir, "spec.json", raw, durability)
+		ref, err := retain(writer, "spec.json", raw)
 		if err != nil {
 			return nil, err
 		}
@@ -48,7 +48,7 @@ func RunWithDurability(ctx context.Context, specPath, output string, durability 
 			result.Assertions = pending(spec)
 		}
 	}
-	return finish(parent, dir, result, durability)
+	return finish(writer, result)
 }
 
 // Execute opens a network connection only after reserving new local evidence
@@ -63,13 +63,17 @@ func ExecuteObserved(ctx context.Context, plan *Plan, output string, observer re
 	if plan == nil || plan.replay == nil {
 		return nil, errors.New("test requires a prepared plan")
 	}
-	parent, dir, err := reserve(output, plan.sourceInfo)
+	// The result is made outside the case it sends, and the folder holding it
+	// is synced last, so one this result cannot open is refused before
+	// anything is created or sent.
+	writer, err := artifactdir.Create(output, resultFamily, plan.durability, plan.sourceInfo)
 	if err != nil {
 		return nil, err
 	}
-	defer parent.Close()
+	defer writer.Close()
+	dir := writer.Path()
 	result := emptyResult()
-	result.Spec, err = retain(dir, "spec.json", plan.raw, plan.durability)
+	result.Spec, err = retain(writer, "spec.json", plan.raw)
 	if err != nil {
 		return nil, err
 	}
@@ -83,17 +87,17 @@ func ExecuteObserved(ctx context.Context, plan *Plan, output string, observer re
 	currentSpec, err := readLocal(plan.specPath, MaxSpecBytes)
 	if err != nil || !bytes.Equal(currentSpec, plan.raw) {
 		result.ErrorClass = "configuration_changed"
-		return plan.named(finish(parent, dir, result, plan.durability))
+		return plan.named(finish(writer, result))
 	}
 	var initial, final *observation.Snapshot
 	if plan.Boundary() == LedgerBoundary {
-		result.InitialObservation, initial, err = collectObservation(dir, "initial-observation.json", plan.observationPath, plan.durability)
+		result.InitialObservation, initial, err = collectObservation(writer, "initial-observation.json", plan.observationPath)
 		if err != nil {
 			return nil, err
 		}
 		if !initialState(initial) {
 			result.ErrorClass = "initial_observation"
-			return plan.named(finish(parent, dir, result, plan.durability))
+			return plan.named(finish(writer, result))
 		}
 	}
 	run, err := replay.ExecuteObserved(ctx, plan.replay, filepath.Join(dir, "run"), nil, func(decision sendpolicy.Decision) error {
@@ -106,7 +110,7 @@ func ExecuteObserved(ctx context.Context, plan *Plan, output string, observer re
 	}
 	result.Run = &RunReference{Path: "run", Identity: run.Identity}
 	if plan.Boundary() == LedgerBoundary {
-		result.FinalObservation, final, err = collectObservation(dir, "observation.json", plan.observationPath, plan.durability)
+		result.FinalObservation, final, err = collectObservation(writer, "observation.json", plan.observationPath)
 		if err != nil {
 			return nil, err
 		}
@@ -115,7 +119,7 @@ func ExecuteObserved(ctx context.Context, plan *Plan, output string, observer re
 	if result.Status != ExecutionError && final != nil {
 		result.ReceiverSessionID, result.ReceiverMode = final.SessionID, final.Mode
 	}
-	return plan.named(finish(parent, dir, result, plan.durability))
+	return plan.named(finish(writer, result))
 }
 
 // named records the environment an execution was pointed at on the artifact it
@@ -136,12 +140,12 @@ func emptyResult() Result {
 
 // A bounded partial/invalid snapshot is retained as diagnostic evidence. Missing
 // and oversized files have no descriptor. Either case evaluates to an error.
-func collectObservation(dir, name, path string, durability artifactdir.Durability) (*bundle.Payload, *observation.Snapshot, error) {
+func collectObservation(writer *artifactdir.Writer, name, path string) (*bundle.Payload, *observation.Snapshot, error) {
 	raw, err := readLocal(path, observation.MaxBytes)
 	if err != nil {
 		return nil, nil, nil
 	}
-	ref, err := retain(dir, name, raw, durability)
+	ref, err := retain(writer, name, raw)
 	if err != nil {
 		return nil, nil, err
 	}

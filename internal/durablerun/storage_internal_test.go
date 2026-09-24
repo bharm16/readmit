@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/mllp"
@@ -48,8 +49,8 @@ func (f *fullDisk) Write(b []byte) (int, error) {
 func limitFile(t *testing.T, name string, limit int, observe func([]byte)) {
 	t.Helper()
 	previous := openEvidence
-	openEvidence = func(root *os.Root, n string) (evidenceFile, error) {
-		f, err := root.OpenFile(n, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	openEvidence = func(job *artifactdir.Writer, n string) (evidenceFile, error) {
+		f, err := previous(job, n)
 		if err != nil || n != name {
 			return f, err
 		}

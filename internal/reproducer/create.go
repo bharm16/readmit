@@ -20,6 +20,22 @@ import (
 // asking; this one may mean the account cannot write where it was pointed.
 var ErrCannotWrite = errors.New("cannot create reproducer; destination must be new and parent readable and writable")
 
+// family is a reproducer: the derived case, sealed by itself, and the
+// transformation manifest beside it, written last as its completion record.
+var family = artifactdir.Family{
+	Layout: artifactdir.Layout{
+		Nested:    []string{CaseName},
+		AllowFile: func(name string) bool { return name == ManifestName },
+	},
+	Seal: artifactdir.CompletionRecord(ManifestName, ""),
+	Errors: artifactdir.Errors{
+		Reserve: ErrCannotWrite,
+		Create:  errors.New("cannot create the reproducer manifest; incomplete reproducer retained"),
+		Write:   errors.New("cannot write the reproducer manifest; incomplete reproducer retained"),
+		Sync:    errors.New("cannot sync reproducer directory; the reproducer was written in full but a power loss could still lose it"),
+	},
+}
+
 // Create writes one reproducer: a new derived case holding the occurrences the
 // plan retained, and the transformation manifest beside it.
 //
@@ -51,12 +67,11 @@ func Create(source *bundle.Bundle, casePath string, plan Plan, output string) (*
 	if err != nil {
 		return nil, err
 	}
-	parent, root, err := artifactdir.Reserve(destination)
+	written, err := artifactdir.Create(destination, family, artifactdir.Durable)
 	if err != nil {
-		return nil, ErrCannotWrite
+		return nil, err
 	}
-	defer parent.Close()
-	defer root.Close()
+	defer written.Close()
 	derived, err := bundle.Write(filepath.Join(destination, CaseName), inputs, bundle.Provenance{Mode: bundle.Derived, Derivation: Derivation})
 	if err != nil {
 		return nil, err
@@ -85,15 +100,12 @@ func Create(source *bundle.Bundle, casePath string, plan Plan, output string) (*
 	if err != nil {
 		return nil, errors.New("cannot record this transformation")
 	}
-	if err := writeDocument(filepath.Join(destination, ManifestName), document); err != nil {
-		return nil, err
-	}
 	// The case synced its own entry here. The manifest's entry and the
 	// reproducer's own entry in the folder holding it are synced before it is
 	// reported; every file is by then, so a failure leaves a reproducer that
 	// may open and says so.
-	if artifactdir.SyncEntries(root, parent, nil) != nil {
-		return nil, errors.New("cannot sync reproducer directory; the reproducer was written in full but a power loss could still lose it")
+	if _, err := written.Seal(document); err != nil {
+		return nil, err
 	}
 	// The reproducer is reported from what was actually written, so a manifest
 	// this release cannot read back is a failed build rather than a result.
@@ -231,21 +243,6 @@ func encode(value any) ([]byte, error) {
 		return nil, err
 	}
 	return append(data, '\n'), nil
-}
-
-func writeDocument(path string, data []byte) error {
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return errors.New("cannot create the reproducer manifest; incomplete reproducer retained")
-	}
-	_, writeErr := file.Write(data)
-	if writeErr == nil {
-		writeErr = file.Sync()
-	}
-	if closeErr := file.Close(); writeErr != nil || closeErr != nil {
-		return errors.New("cannot write the reproducer manifest; incomplete reproducer retained")
-	}
-	return nil
 }
 
 func readDocument(path string, limit int) ([]byte, error) {

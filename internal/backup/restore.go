@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"strings"
 	"time"
 
@@ -211,7 +212,18 @@ func Restore(ctx context.Context, backupPath, destination string, at time.Time) 
 // checks what landed against what the manifest records for it, so the bytes in
 // the restored project are the bytes the manifest stands behind.
 func restore(ctx context.Context, source, target *os.Root, file File) error {
-	size, digest, err := copyFile(ctx, source, target, FilesDirectory+"/"+file.Path, file.Path)
+	size, digest, err := copyFile(ctx, source, func(name string) (copied, error) {
+		if parent := path.Dir(name); parent != "." {
+			if err := target.MkdirAll(parent, 0700); err != nil {
+				return nil, errors.New("cannot create a directory of the destination")
+			}
+		}
+		out, err := target.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err != nil {
+			return nil, errors.New("cannot create a file of the destination")
+		}
+		return out, nil
+	}, FilesDirectory+"/"+file.Path, file.Path)
 	if err != nil {
 		return errors.New(err.Error() + "; an incomplete restore is retained")
 	}

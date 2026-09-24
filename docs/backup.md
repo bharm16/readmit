@@ -133,6 +133,18 @@ The incomplete directory is retained rather than deleted, exactly as an
 incomplete case bundle is, so nothing disappears while somebody works out what
 happened. It is never restored, and no part of it is.
 
+Every stored file, the manifest and the marker are synced as they are written,
+and once the marker is, the directory entries naming them — each directory
+below `files/`, `files/` itself, the backup and its entry in the folder that
+holds it — are synced before the backup is reported. So a
+[`project delete`](project-lifecycle.md) that retires its source after the
+backup verifies never outlives the only copy. A backup whose directories cannot
+be synced is written in full but not confirmed: readmit says so and exits
+non-zero, and `project delete` keeps the source. The folder that will hold a
+backup must be one readmit can open; one it cannot is refused before anything
+is written. Windows is the exception: Go does not expose a directory flush
+through `os.Root` there, so every file is flushed but no directory is.
+
 A backup that finished but whose bytes no longer match the manifest sealed over
 them is refused the same way, **before the destination is created**. A restore
 that wrote the files it could still read and stopped would leave a directory
@@ -264,6 +276,8 @@ the part that did not fit.
 | The project document cannot be read | Refuses: a backup records what a project registers |
 | The project holds a symbolic link, device or socket | Refuses: following one copies bytes from outside the project, skipping one hides part of it |
 | The destination exists | Refuses: creation is exclusive |
+| The folder that would hold the backup cannot be opened | Refuses before anything is written: it is synced last |
+| The backup's directories cannot be synced | Reports it written in full but not confirmed against a power loss, and exits non-zero |
 | The destination is inside the project, or inside the backup | Refuses: `artifactpath` reserves it against both |
 | The destination is inside retained evidence | Refuses |
 | A backup carries no completion marker | Refuses: it was interrupted |

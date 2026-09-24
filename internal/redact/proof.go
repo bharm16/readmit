@@ -10,6 +10,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/observation"
@@ -96,10 +97,26 @@ func fixtureReceiver(mode observation.Mode, dir string, messages int) receiver.C
 // in a sender whose own storage stalls.
 var executeFixture = testrunner.Run
 
+// sessionFamily is one fixture proof session: the target and spec it sends,
+// beside the receiver's case and ledger and the result the runner writes. It
+// is a workspace, so it writes no completion record.
+var sessionFamily = artifactdir.Family{
+	Layout: artifactdir.Layout{
+		AllowFile: func(name string) bool { return name == "target.json" || name == "spec.json" },
+	},
+	Errors: artifactdir.Errors{
+		Reserve: errors.New("cannot reserve fixture proof session"),
+		Create:  errCreateFile,
+		Write:   errWriteFile,
+	},
+}
+
 func runFixture(ctx context.Context, spec testrunner.Spec, caseReference, dir string, mode observation.Mode) (*testrunner.Artifact, error) {
-	if err := os.Mkdir(dir, 0700); err != nil {
-		return nil, errors.New("cannot reserve fixture proof session")
+	session, err := artifactdir.Create(dir, sessionFamily, artifactdir.Durable)
+	if err != nil {
+		return nil, err
 	}
+	defer session.Close()
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		return nil, errors.New("cannot bind local proof receiver")
@@ -130,10 +147,10 @@ func runFixture(ctx context.Context, spec testrunner.Spec, caseReference, dir st
 	if err != nil {
 		return nil, err
 	}
-	if err := writeFile(dir, "target.json", targetBytes); err != nil {
+	if err := session.WriteFile("target.json", targetBytes); err != nil {
 		return nil, err
 	}
-	if err := writeFile(dir, "spec.json", specBytes); err != nil {
+	if err := session.WriteFile("spec.json", specBytes); err != nil {
 		return nil, err
 	}
 	executed, err := executeFixture(proofCtx, filepath.Join(dir, "spec.json"), filepath.Join(dir, "result"))

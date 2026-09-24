@@ -8,10 +8,10 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"path"
 	"slices"
 	"strings"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/index"
@@ -152,15 +152,12 @@ func Create(ctx context.Context, projectPath, destination string) (Report, error
 	if err != nil {
 		return Report{}, err
 	}
-	if err := os.Mkdir(target, 0700); err != nil {
-		return Report{}, errors.New("cannot create backup; destination must be new and parent writable")
-	}
-	held, err := os.OpenRoot(target)
+	held, err := artifactdir.Create(target, family, artifactdir.Durable)
 	if err != nil {
-		return Report{}, errors.New("cannot open new backup directory")
+		return Report{}, err
 	}
 	defer held.Close()
-	if err := held.Mkdir(FilesDirectory, 0700); err != nil {
+	if held.Mkdir(FilesDirectory) != nil {
 		return Report{}, errors.New("cannot create backup file directory; an incomplete backup is retained")
 	}
 	files, copied, err := copyAll(ctx, source, held, names)
@@ -395,7 +392,7 @@ func recipesFor(candidates []candidate, registered map[string]string) []Index {
 
 // copyAll stores every file of the project in a backup directory that has
 // already been created, and records what it wrote.
-func copyAll(ctx context.Context, source, target *os.Root, names []string) ([]File, int64, error) {
+func copyAll(ctx context.Context, source *os.Root, target *artifactdir.Writer, names []string) ([]File, int64, error) {
 	files := make([]File, 0, len(names))
 	total := int64(0)
 	for i, name := range names {
@@ -433,44 +430,68 @@ func inspectCopy(stored string) ([]Artifact, map[string]string, error) {
 	return entries, registered, nil
 }
 
+// family is a backup: the stored copy of the project under files/, the
+// manifest naming every stored file, and the completion marker written last,
+// the digest of the manifest under the backup schema. Every file and every
+// directory naming one is synced before a backup is reported, so a retirement
+// that deletes the source after it never outlives the only copy.
+var family = artifactdir.Family{
+	Layout: artifactdir.Layout{
+		Nested:    []string{FilesDirectory},
+		AllowFile: func(name string) bool { return name == DocumentName || name == MarkerName },
+	},
+	Seal: artifactdir.ManifestHash(Schema, DocumentName, MarkerName),
+	Errors: artifactdir.Errors{
+		Reserve:   errors.New("cannot create backup; destination must be new and parent writable"),
+		Open:      errors.New("cannot open new backup directory"),
+		Directory: errors.New("cannot create a directory of the destination"),
+		Create:    errors.New("cannot create a file of the destination"),
+		Write:     errors.New("cannot write a file of the destination"),
+		Complete:  errors.New("cannot complete the backup; an incomplete backup is retained"),
+		Sync:      errors.New("cannot sync the backup directory; the backup was written in full but a power loss could still lose it"),
+	},
+}
+
 // seal writes the manifest and then the completion marker, after every stored
 // file, so every way a backup can stop leaves a directory that carries no
 // marker and is refused rather than restored.
-func seal(target *os.Root, document Document) error {
+func seal(target *artifactdir.Writer, document Document) error {
 	data, err := Encode(document)
 	if err != nil {
 		return err
 	}
-	if err := target.WriteFile(DocumentName, data, 0600); err != nil {
+	if target.WriteFile(DocumentName, data) != nil {
 		return errors.New("cannot write the backup document; an incomplete backup is retained")
 	}
-	if err := target.WriteFile(MarkerName, []byte(identityFor(data)+"\n"), 0600); err != nil {
-		return errors.New("cannot complete the backup; an incomplete backup is retained")
-	}
-	return nil
+	_, err = target.Seal(nil)
+	return err
 }
 
 // copyInto stores one file of the project and records what was written.
-func copyInto(ctx context.Context, source, target *os.Root, name string) (File, error) {
-	size, digest, err := copyFile(ctx, source, target, name, FilesDirectory+"/"+name)
+func copyInto(ctx context.Context, source *os.Root, target *artifactdir.Writer, name string) (File, error) {
+	size, digest, err := copyFile(ctx, source, func(name string) (copied, error) { return target.Open(name) }, name, FilesDirectory+"/"+name)
 	if err != nil {
 		return File{}, errors.New(err.Error() + "; an incomplete backup is retained")
 	}
 	return File{Path: name, Size: size, SHA256: digest}, nil
 }
 
+// copied is the new file one copy writes: a stored file of a backup, or a file
+// of a restored project.
+type copied interface {
+	io.Writer
+	Sync() error
+	Close() error
+}
+
 // copyFile streams one file from one artifact directory into another and
 // returns the length and digest of what it wrote, hashing the bytes it wrote
 // rather than the ones it read. Taking a backup and restoring one are the same
-// copy in opposite directions, so they share it: the caller decides whether the
-// answer is a record to keep or a claim to check, and adds which of the two
-// incomplete artifacts its failure leaves behind.
-func copyFile(ctx context.Context, source, target *os.Root, from, to string) (int64, string, error) {
-	if parent := path.Dir(to); parent != "." {
-		if err := target.MkdirAll(parent, 0700); err != nil {
-			return 0, "", errors.New("cannot create a directory of the destination")
-		}
-	}
+// copy in opposite directions, so they share it: the caller creates the new
+// file, reporting a directory or file it cannot create in the words both use,
+// decides whether the answer is a record to keep or a claim to check, and adds
+// which of the two incomplete artifacts its failure leaves behind.
+func copyFile(ctx context.Context, source *os.Root, create func(string) (copied, error), from, to string) (int64, string, error) {
 	in, err := source.Open(from)
 	if err != nil {
 		return 0, "", errors.New("cannot read a file of the source")
@@ -480,9 +501,9 @@ func copyFile(ctx context.Context, source, target *os.Root, from, to string) (in
 	if err != nil || !info.Mode().IsRegular() {
 		return 0, "", errors.New("only a regular file is copied")
 	}
-	out, err := target.OpenFile(to, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	out, err := create(to)
 	if err != nil {
-		return 0, "", errors.New("cannot create a file of the destination")
+		return 0, "", err
 	}
 	sum := sha256.New()
 	written, copyErr := io.Copy(io.MultiWriter(out, sum), io.LimitReader(contextReader{ctx, in}, MaxFileBytes+1))

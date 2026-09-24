@@ -1,5 +1,23 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- A backup, and so the recovery archive `project delete` writes before it
+  retires a project, is now reported only once its manifest, its completion
+  marker and every directory entry naming a stored file are synced (#472).
+  Before, the manifest and marker were written without a sync and no directory
+  was synced, so a power loss after the source was deleted could leave neither
+  copy. A backup whose directories cannot be synced now says it was written in
+  full but not confirmed and exits non-zero, and `project delete` keeps the
+  source. Backups, support bundles and transfer packages also refuse a folder
+  readmit cannot open before writing anything, and sync their directories as
+  every other sealed evidence directory does: a support publication whose
+  directories cannot be synced is refused, and a transfer package whose
+  directories cannot be synced is kept and reported as written in full but not
+  confirmed. Every bounded evidence reader now also refuses a file replaced
+  between being listed and being read. Runs, results, jobs, reports,
+  reproducers, synthetic families, redaction outputs, backups, support bundles
+  and transfer packages are now written through one sealed-directory writer;
+  no contract, identity or persisted byte changes.
+
 - `readmit import`, `import engine`, `listen`, `collect`, `source diagnose|collect`
   and `observe collect|explain` now run the operations the desktop window runs
   (#464), so rules that had drifted are decided once. An import refuses an

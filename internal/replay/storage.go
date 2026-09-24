@@ -20,20 +20,40 @@ import (
 )
 
 type runWriter struct {
-	// parent is the folder holding the run, opened before the run is made in
-	// it and synced once the run is complete.
-	parent     *os.Root
-	root       *os.Root
-	events     *os.File
-	durability artifactdir.Durability
+	run    *artifactdir.Writer
+	events *artifactdir.Member
 }
 
 func (w *runWriter) Close() {
 	if w.events != nil {
 		_ = w.events.Close()
 	}
-	_ = w.root.Close()
-	_ = w.parent.Close()
+	w.run.Close()
+}
+
+// runFamily is a run bundle: the manifest, one event per occurrence, four
+// payloads for each, and the ADR-0002 identity written last.
+var runFamily = artifactdir.Family{
+	Layout: artifactdir.Layout{
+		Noun:               "run",
+		AllowedDirectories: []string{"payloads"},
+		RequiredFiles:      []string{"manifest.json", "events.jsonl", "identity.sha256"},
+		AllowFile: func(name string) bool {
+			return name == "manifest.json" || name == "events.jsonl" || name == "identity.sha256" || strings.HasPrefix(name, "payloads/")
+		},
+		MaxFiles:     4*MaxMessages + 3,
+		MaxFileBytes: maxFileBytes,
+		MaxBytes:     maxRunBytes,
+	},
+	Seal: artifactdir.DirectoryHash(Schema),
+	Errors: artifactdir.Errors{
+		Reserve: errors.New("cannot create run; destination must be new and parent readable and writable"),
+		Create:  errors.New("cannot create run file; incomplete evidence retained"),
+		Write:   errors.New("cannot write run file; incomplete evidence retained"),
+		Replace: errors.New("cannot finalize run manifest"),
+		Verify:  errors.New("cannot verify run event file"),
+		Sync:    errors.New("cannot sync run directory; the run was written in full but a power loss could still lose it"),
+	},
 }
 
 func begin(plan *Plan, path string) (*Run, *runWriter, error) {
@@ -68,32 +88,32 @@ func begin(plan *Plan, path string) (*Run, *runWriter, error) {
 	}
 	// The folder holding the run is synced last, so one this run cannot open
 	// is refused here, before anything is created or sent.
-	parent, root, err := artifactdir.Reserve(path)
+	run, err := artifactdir.Create(path, runFamily, plan.options.Durability)
 	if err != nil {
-		return nil, nil, errors.New("cannot create run; destination must be new and parent readable and writable")
+		return nil, nil, err
 	}
-	w := &runWriter{parent: parent, root: root, durability: plan.options.Durability}
+	w := &runWriter{run: run}
 	ok := false
 	defer func() {
 		if !ok {
 			w.Close()
 		}
 	}()
-	if err := root.Mkdir("payloads", 0700); err != nil {
+	if err := run.Mkdir("payloads"); err != nil {
 		return nil, nil, errors.New("cannot create run payload directory")
 	}
 	initial, _ := json.Marshal(r.Manifest, json.Deterministic(true))
-	if err := w.writeFile("manifest.json", append(initial, '\n')); err != nil {
+	if err := run.WriteFile("manifest.json", append(initial, '\n')); err != nil {
 		return nil, nil, err
 	}
 	for _, e := range r.Events {
 		for _, payload := range []bundle.Payload{e.Source, e.Intended} {
-			if err := w.writeFile(payload.Path, r.payloads[payload.Path]); err != nil {
+			if err := run.WriteFile(payload.Path, r.payloads[payload.Path]); err != nil {
 				return nil, nil, err
 			}
 		}
 	}
-	w.events, err = root.OpenFile("events.jsonl", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	w.events, err = run.Open("events.jsonl")
 	if err != nil {
 		return nil, nil, errors.New("cannot initialize run event file")
 	}
@@ -130,7 +150,7 @@ func (w *runWriter) record(r *Run, index int, sent, received []byte) error {
 	e.Sent = r.addPayload(e.OutboundOccurrence, "sent", sent)
 	e.Received = r.addPayload(e.OutboundOccurrence, "received", received)
 	for _, payload := range []bundle.Payload{e.Sent, e.Received} {
-		if err := w.writeFile(payload.Path, r.payloads[payload.Path]); err != nil {
+		if err := w.run.WriteFile(payload.Path, r.payloads[payload.Path]); err != nil {
 			return err
 		}
 	}
@@ -138,15 +158,17 @@ func (w *runWriter) record(r *Run, index int, sent, received []byte) error {
 	if err != nil {
 		return errors.New("cannot encode run event")
 	}
-	if _, err = w.events.Write(append(data, '\n')); err == nil {
-		err = w.durability.Sync(w.events)
-	}
-	if err != nil {
+	if err = artifactdir.WriteFileSync(w.events, append(data, '\n')); err != nil {
 		return errors.New("cannot write run event; incomplete evidence retained")
 	}
 	return nil
 }
 
+// finish records the complete manifest in place of the in-progress one and
+// seals the run. It answers only once every name the run is found through,
+// payloads/, the run and its entry in the folder holding it, is synced; a
+// failure after the identity is written leaves a run that may open and says
+// so.
 func (w *runWriter) finish(r *Run) error {
 	if err := w.events.Close(); err != nil {
 		return errors.New("cannot finalize run event file")
@@ -157,44 +179,11 @@ func (w *runWriter) finish(r *Run) error {
 	if err != nil {
 		return errors.New("cannot encode run manifest")
 	}
-	manifest = append(manifest, '\n')
-	if err := w.writeFile("manifest.pending", manifest); err != nil {
+	if err := w.run.Replace("manifest.json", "manifest.pending", append(manifest, '\n')); err != nil {
 		return err
 	}
-	if err := w.root.Rename("manifest.pending", "manifest.json"); err != nil {
-		return errors.New("cannot finalize run manifest")
-	}
-	events, err := w.root.ReadFile("events.jsonl")
-	if err != nil {
-		return errors.New("cannot verify run event file")
-	}
-	files := map[string][]byte{"manifest.json": manifest, "events.jsonl": events}
-	for path, raw := range r.payloads {
-		files[path] = raw
-	}
-	r.Identity = identityFor(files)
-	if err := w.writeFile("identity.sha256", []byte(r.Identity+"\n")); err != nil {
-		return err
-	}
-	// The run is found through payloads/, its own directory and its entry in
-	// the folder holding it, so it is reported complete only once all three
-	// are synced. Every file is synced by then, so a failure here leaves a run
-	// that may open and says so.
-	if w.durability.SyncEntries(w.root, w.parent, []string{"payloads"}) != nil {
-		return errors.New("cannot sync run directory; the run was written in full but a power loss could still lose it")
-	}
-	return nil
-}
-
-func (w *runWriter) writeFile(path string, data []byte) error {
-	err := w.durability.WriteFile(w.root, path, data)
-	if errors.Is(err, artifactdir.ErrCreateFile) {
-		return errors.New("cannot create run file; incomplete evidence retained")
-	}
-	if err != nil {
-		return errors.New("cannot write run file; incomplete evidence retained")
-	}
-	return nil
+	r.Identity, err = w.run.Seal(nil)
+	return err
 }
 
 // Open verifies completion, content identity, occurrence mappings, exact payload
@@ -393,17 +382,7 @@ func validDigest(value string) bool {
 }
 
 func readFiles(path string) (map[string][]byte, error) {
-	return artifactdir.Read(path, artifactdir.Layout{
-		Noun:               "run",
-		AllowedDirectories: []string{"payloads"},
-		RequiredFiles:      []string{"manifest.json", "events.jsonl", "identity.sha256"},
-		AllowFile: func(name string) bool {
-			return name == "manifest.json" || name == "events.jsonl" || name == "identity.sha256" || strings.HasPrefix(name, "payloads/")
-		},
-		MaxFiles:     4*MaxMessages + 3,
-		MaxFileBytes: maxFileBytes,
-		MaxBytes:     maxRunBytes,
-	})
+	return artifactdir.Read(path, runFamily.Layout)
 }
 
 // Identity uses ADR-0002's domain prefix and sorted, length-delimited relative

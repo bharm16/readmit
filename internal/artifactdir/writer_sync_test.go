@@ -2,51 +2,130 @@ package artifactdir_test
 
 import (
 	"context"
-	"encoding/json/v2"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
-	"fmt"
 	"io/fs"
-	"net"
 	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
-	"github.com/bharm16/readmit/internal/bundle"
-	"github.com/bharm16/readmit/internal/correlate"
-	"github.com/bharm16/readmit/internal/durablerun"
-	"github.com/bharm16/readmit/internal/hl7"
-	"github.com/bharm16/readmit/internal/mllp"
-	"github.com/bharm16/readmit/internal/redact"
-	"github.com/bharm16/readmit/internal/replay"
-	"github.com/bharm16/readmit/internal/report"
-	"github.com/bharm16/readmit/internal/reproducer"
-	"github.com/bharm16/readmit/internal/synth"
-	"github.com/bharm16/readmit/internal/testrunner"
 )
 
-// writerSyncs records, for each directory a writer syncs, the names it held at
-// its latest sync. A receiver writes beside the sender, so it is locked.
-type writerSyncs struct {
-	mu   sync.Mutex
-	held map[string][]string
+// The sentences an example family reports its failures in. The writer answers
+// them exactly, so each is compared by identity.
+var (
+	errReserve   = errors.New("cannot create example; destination must be new and parent readable and writable")
+	errDirectory = errors.New("cannot create example directory")
+	errCreate    = errors.New("cannot create example member")
+	errWrite     = errors.New("cannot write example member; incomplete example retained")
+	errSync      = errors.New("cannot sync example; the example was written in full but a power loss could still lose it")
+	errCancelled = errors.New("example write cancelled; incomplete example retained")
+)
+
+// example is a family sealed by seal: a manifest, payloads one and two
+// directories deep, a nested packet another writer makes under nested/, and
+// whatever completion record seal makes.
+func example(seal artifactdir.Seal) artifactdir.Family {
+	return artifactdir.Family{
+		Layout: artifactdir.Layout{
+			Noun:               "example",
+			AllowedDirectories: []string{"payloads", "payloads/deep"},
+			Nested:             []string{"nested"},
+			RequiredFiles:      []string{"manifest.json"},
+			AllowFile: func(name string) bool {
+				return name == "manifest.json" || name == "record.json" || name == "identity.sha256" || name == "manifest.sha256" || strings.HasPrefix(name, "payloads/")
+			},
+			MaxFiles:     64,
+			MaxFileBytes: 1 << 16,
+			MaxBytes:     1 << 20,
+		},
+		Seal:   seal,
+		Errors: artifactdir.Errors{Reserve: errReserve, Directory: errDirectory, Create: errCreate, Write: errWrite, Sync: errSync, Cancelled: errCancelled},
+	}
 }
 
-// observeWriterSyncs records every directory sync started afterwards. A sync
-// of a directory failing answers true for is refused instead, as a failed
-// sync.
-func observeWriterSyncs(t *testing.T, failing func(directory string) bool) *writerSyncs {
+// rule is one member of the closed set of completion rules: the seal, the
+// file its record is written to, the file that is synced holding it (a
+// staged record is synced before it is renamed), and the identity it states
+// for a manifest.
+type rule struct {
+	name     string
+	seal     artifactdir.Seal
+	record   string
+	synced   string
+	identity func(files map[string][]byte) string
+}
+
+var rules = []rule{
+	{"directory hash", artifactdir.DirectoryHash("readmit-example/v1"), "identity.sha256", "identity.sha256", func(files map[string][]byte) string {
+		return artifactdir.Identity("readmit-example/v1", files)
+	}},
+	{"manifest hash", artifactdir.ManifestHash("", "manifest.json", "manifest.sha256"), "manifest.sha256", "manifest.sha256", func(files map[string][]byte) string {
+		sum := sha256.Sum256(files["manifest.json"])
+		return hex.EncodeToString(sum[:])
+	}},
+	{"manifest hash in a domain", artifactdir.ManifestHash("readmit-example/v1", "manifest.json", "identity.sha256"), "identity.sha256", "identity.sha256", func(files map[string][]byte) string {
+		sum := sha256.Sum256(append([]byte("readmit-example/v1\n"), files["manifest.json"]...))
+		return hex.EncodeToString(sum[:])
+	}},
+	{"completion record", artifactdir.CompletionRecord("record.json", ""), "record.json", "record.json", nil},
+	{"staged completion record", artifactdir.CompletionRecord("record.json", ".record.incomplete"), "record.json", ".record.incomplete", nil},
+}
+
+// recordFor is the completion record a rule's family makes itself, and nil
+// for a rule whose record the writer makes.
+func (r rule) recordFor() []byte {
+	if r.identity == nil {
+		return []byte("{\"complete\":true}\n")
+	}
+	return nil
+}
+
+// syncLog records every sync a writer makes, in order: each file with the
+// bytes it held and each directory with the names it held.
+type syncLog struct {
+	mu          sync.Mutex
+	made        int
+	files       map[string]fileSync
+	directories map[string]directorySync
+}
+
+type fileSync struct {
+	at   int
+	data []byte
+}
+
+type directorySync struct {
+	at    int
+	names []string
+}
+
+// observeSyncs records every sync started afterwards. A file or directory
+// failing answers true for is refused instead, as a failed sync.
+func observeSyncs(t *testing.T, failFile, failDirectory func(string) bool) *syncLog {
 	t.Helper()
-	record := &writerSyncs{held: map[string][]string{}}
+	log := &syncLog{files: map[string]fileSync{}, directories: map[string]directorySync{}}
+	t.Cleanup(artifactdir.ObserveFileSyncsForTest(func(path string) error {
+		path = filepath.Clean(path)
+		if failFile != nil && failFile(path) {
+			return errors.New("injected file sync failure")
+		}
+		data, err := os.ReadFile(path)
+		log.mu.Lock()
+		defer log.mu.Unlock()
+		log.made++
+		log.files[path] = fileSync{log.made, data}
+		return err
+	}))
 	t.Cleanup(artifactdir.ObserveDirectorySyncsForTest(func(directory string) error {
 		directory = filepath.Clean(directory)
-		if failing != nil && failing(directory) {
+		if failDirectory != nil && failDirectory(directory) {
 			return errors.New("injected directory sync failure")
 		}
 		entries, err := os.ReadDir(directory)
@@ -57,480 +136,325 @@ func observeWriterSyncs(t *testing.T, failing func(directory string) bool) *writ
 		for _, entry := range entries {
 			names = append(names, entry.Name())
 		}
-		record.mu.Lock()
-		defer record.mu.Unlock()
-		record.held[directory] = names
+		log.mu.Lock()
+		defer log.mu.Unlock()
+		log.made++
+		log.directories[directory] = directorySync{log.made, names}
 		return nil
 	}))
-	return record
+	return log
 }
 
-// requireSynced fails for every entry in folder or below it that the latest
-// sync of the directory holding it did not hold. folder is new to the writer
-// under test, so every entry in it is one that writer made and reported: the
-// output's own entry, each name below it and anything it keeps beside it.
-func (r *writerSyncs) requireSynced(t *testing.T, folder string) {
-	t.Helper()
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	entries := 0
-	err := filepath.WalkDir(folder, func(name string, entry fs.DirEntry, err error) error {
-		if err != nil || name == folder {
-			return err
-		}
-		entries++
-		if directory := filepath.Dir(name); !slices.Contains(r.held[directory], entry.Name()) {
-			relative, _ := filepath.Rel(folder, name)
-			t.Errorf("reported written before the entry naming %s was synced", filepath.ToSlash(relative))
-		}
-		return nil
-	})
+// wholeMap writes the example's files in one call.
+func wholeMap(t *testing.T, path string, r rule) (string, error) {
+	files := map[string][]byte{"manifest.json": []byte("{\"state\":\"complete\"}\n"), "payloads/a.bin": []byte("a"), "payloads/deep/b.bin": []byte("b")}
+	if record := r.recordFor(); record != nil {
+		files[r.record] = record
+	}
+	return artifactdir.Write(context.Background(), path, example(r.seal), artifactdir.Durable, files)
+}
+
+// stream writes the example member by member, as a run or a job does: a
+// payload, a nested packet another writer makes inside it, a log appended to
+// twice, and a manifest written in progress and replaced once complete.
+func stream(t *testing.T, path string, r rule) (string, error) {
+	w, err := artifactdir.Create(path, example(r.seal), artifactdir.Durable)
 	if err != nil {
+		return "", err
+	}
+	defer w.Close()
+	if err := w.Mkdir("payloads"); err != nil {
+		return "", err
+	}
+	if err := w.WriteFile("manifest.json", []byte("{\"state\":\"in_progress\"}\n")); err != nil {
+		return "", err
+	}
+	if err := w.WriteFile("payloads/a.bin", []byte("a")); err != nil {
+		return "", err
+	}
+	if _, err := artifactdir.Write(context.Background(), filepath.Join(w.Path(), "nested"), example(artifactdir.DirectoryHash("readmit-nested/v1")), artifactdir.Durable, map[string][]byte{"manifest.json": []byte("{}\n")}); err != nil {
 		t.Fatal(err)
 	}
-	if entries == 0 {
-		t.Fatal("the writer left nothing in its folder")
-	}
-}
-
-// ackPeer accepts every message it receives with an AA acknowledgement naming
-// the one control ID ackSpec sends, and counts the connections it accepted.
-func ackPeer(t *testing.T) (string, *atomic.Int32) {
-	t.Helper()
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	log, err := w.Open("payloads/deep/log.jsonl")
 	if err != nil {
-		t.Fatal(err)
+		return "", err
 	}
-	t.Cleanup(func() { listener.Close() })
-	var accepted atomic.Int32
-	go func() {
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				return
-			}
-			accepted.Add(1)
-			go func() {
-				defer conn.Close()
-				conn.SetDeadline(time.Now().Add(10 * time.Second))
-				reader, _ := mllp.NewReader(conn, 1<<20)
-				for {
-					if _, err := reader.ReadFrame(); err != nil {
-						return
-					}
-					fmt.Fprint(conn, "\x0bMSH|^~\\&|FIXTURE|LAB|READMIT|TEST|20260101120000||ACK|ACK-1|P|2.5.1\rMSA|AA|LISTEN-BOOK\r\x1c\r")
-				}
-			}()
+	for _, line := range []string{"{\"n\":1}\n", "{\"n\":2}\n"} {
+		if err := artifactdir.WriteFileSync(log, []byte(line)); err != nil {
+			log.Close()
+			return "", err
 		}
-	}()
-	return listener.Addr().String(), &accepted
+	}
+	if err := log.Close(); err != nil {
+		return "", err
+	}
+	if err := w.Replace("manifest.json", ".manifest.pending", []byte("{\"state\":\"complete\"}\n")); err != nil {
+		return "", err
+	}
+	return w.Seal(r.recordFor())
 }
 
-// ackSpec writes, in a folder of its own, a case holding one SIU message, a
-// plain loopback target for address and an ACK-boundary spec sending that
-// message, and answers the spec's path and the case's.
-func ackSpec(t *testing.T, address string) (string, string) {
-	t.Helper()
-	inputs := caseFolder(t)
-	raw, err := os.ReadFile("../../testdata/fixtures/listen-s12.hl7")
-	if err != nil {
-		t.Fatal(err)
-	}
-	casePath := filepath.Join(inputs, "case")
-	if _, err := bundle.Write(casePath, []bundle.Input{{Data: raw, Options: hl7.Options{Format: hl7.Raw}}}, bundle.Provenance{Mode: bundle.Generated, Generator: &bundle.GeneratorInputs{BaseTime: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), GeneratorVersion: "fixture", ProfileVersion: "fixture"}}); err != nil {
-		t.Fatal(err)
-	}
-	accepted := "AA"
-	spec := testrunner.Spec{Schema: testrunner.SpecSchema, Name: "ACK", Input: testrunner.Input{Case: "case", Messages: []string{"s0001-e000001"}}, Target: "target.json", Setup: testrunner.Setup{InitialState: "operator-declared", ResetInstructions: "reset fixture"}, Observation: testrunner.Observation{Boundary: testrunner.ACKBoundary}, Assertions: []testrunner.Assertion{{ID: "accepted", Operator: "ack_field_equals", Message: "s0001-e000001", Selector: "MSA-1", Expected: testrunner.Value{Field: &testrunner.FieldValue{State: hl7.Present, Text: &accepted}}}}}
-	for name, document := range map[string]any{"target.json": ackTarget(address), "spec.json": spec} {
-		encoded, err := json.Marshal(document)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(inputs, name), encoded, 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	return filepath.Join(inputs, "spec.json"), casePath
-}
-
-func ackTarget(address string) replay.Target {
-	return replay.Target{Schema: replay.TargetSchema, TestEndpoint: true, Address: address, Transport: "plain", ConnectTimeout: "2s", MessageTimeout: "5s", MaxACKBytes: 4096}
-}
-
-// executeRun replays the one message of a case written by ackSpec to address.
-func executeRun(t *testing.T, casePath, address, output string) (*replay.Run, error) {
-	t.Helper()
-	plan, err := replay.Prepare(casePath, ackTarget(address), replay.Options{Occurrences: []string{"s0001-e000001"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return replay.Execute(t.Context(), plan, output)
-}
-
-var synthInputs = bundle.GeneratorInputs{Seed: 0, BaseTime: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC), GeneratorVersion: "readmit-synth-v1", ProfileVersion: "readmit-siu-v1"}
-
-// createReproducer writes a case of eight occurrences in a folder of its own
-// and a reproducer of its first one at output.
-func createReproducer(t *testing.T, output string) (*reproducer.Manifest, error) {
-	t.Helper()
-	casePath := filepath.Join(caseFolder(t), "case")
-	source, err := writeCase(t, casePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	plan, err := reproducer.NewPlan(source.Identity)
-	if err == nil {
-		plan, err = reproducer.Append(plan, reproducer.Step{Operator: reproducer.SelectOccurrence, Occurrence: "s0001-e000001"})
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	return reproducer.Create(source, casePath, plan, output)
-}
-
-// redactRequest writes the redaction fixture's case, spec, policy and
-// inventory in a folder of their own, and asks for the review and its private
-// state in folder.
-func redactRequest(t *testing.T, folder string) redact.Request {
-	t.Helper()
-	inputs := caseFolder(t)
-	var sources []bundle.Input
-	for _, name := range []string{"booking", "reschedule"} {
-		raw, err := os.ReadFile("../../testdata/fixtures/redact-" + name + ".mllp")
-		if err != nil {
-			t.Fatal(err)
-		}
-		sources = append(sources, bundle.Input{Path: name + ".mllp", Data: raw, Options: hl7.Options{Format: hl7.MLLP}})
-	}
-	importedAt := time.Date(2030, 3, 4, 5, 6, 7, 0, time.UTC)
-	casePath := filepath.Join(inputs, "original.case")
-	if _, err := bundle.Write(casePath, sources, bundle.Provenance{Mode: bundle.Imported, ImportedAt: &importedAt}); err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range []string{"spec", "policy", "inventory"} {
-		raw, err := os.ReadFile("../../testdata/fixtures/redact-" + name + ".json")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(inputs, name+".json"), raw, 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	return redact.Request{CasePath: casePath, SpecPath: filepath.Join(inputs, "spec.json"), PolicyPath: filepath.Join(inputs, "policy.json"), InventoryPath: filepath.Join(inputs, "inventory.json"), Output: filepath.Join(folder, "review"), LocalState: filepath.Join(folder, "private")}
-}
-
-// A run bundle, a test result and a durable run each send over the network
-// and record what happened; each is found through names in several
-// directories, the folder that holds it among them. Before any of them is
-// reported written, the latest sync of every one of those directories held
-// every name the output left there: payloads/, the run, the result holding it,
-// the send-policy decision beside the result, the job, and each output's entry
-// in its folder.
-func TestSentEvidenceIsReportedWrittenOnlyOnceEveryDirectoryEntryItDependsOnIsSynced(t *testing.T) {
-	address, _ := ackPeer(t)
-	specPath, casePath := ackSpec(t, address)
-
-	t.Run("run bundle", func(t *testing.T) {
-		synced := observeWriterSyncs(t, nil)
-		folder := caseFolder(t)
-		if _, err := executeRun(t, casePath, address, filepath.Join(folder, "run")); err != nil {
-			t.Fatal(err)
-		}
-		synced.requireSynced(t, folder)
-	})
-	t.Run("test result", func(t *testing.T) {
-		synced := observeWriterSyncs(t, nil)
-		folder := caseFolder(t)
-		artifact, err := testrunner.Run(t.Context(), specPath, filepath.Join(folder, "result"))
-		if err != nil || artifact.Result.Status != testrunner.Pass {
-			t.Fatalf("the test did not pass: %v", err)
-		}
-		if _, err := os.Stat(filepath.Join(folder, "result.decision.json")); err != nil {
-			t.Fatalf("the test kept no send-policy decision beside its result: %v", err)
-		}
-		synced.requireSynced(t, folder)
-	})
-	t.Run("durable run", func(t *testing.T) {
-		synced := observeWriterSyncs(t, nil)
-		folder := caseFolder(t)
-		summary, err := durablerun.Start(t.Context(), specPath, filepath.Join(folder, "job"))
-		if err != nil || summary.State != durablerun.Passed || summary.ResultIdentity == "" {
-			t.Fatalf("the durable run did not pass with a result: %+v %v", summary, err)
-		}
-		synced.requireSynced(t, folder)
-	})
-}
-
-// synth, reproducer and redaction each make a folder to hold a case beside
-// what they record about it; a report assembles, exports and prepares copies
-// of evidence. Before any of them is reported written, the latest sync of every
-// directory holding one of its names held that name, down to the folder
-// holding the output. A redaction review is reported with the private state its
-// export reads, the original proof among it, so that is synced too.
-func TestDerivedOutputsAreReportedWrittenOnlyOnceEveryDirectoryEntryTheyDependOnIsSynced(t *testing.T) {
-	t.Run("synth", func(t *testing.T) {
-		synced := observeWriterSyncs(t, nil)
-		folder := caseFolder(t)
-		if _, err := synth.Write(filepath.Join(folder, "family"), synthInputs); err != nil {
-			t.Fatal(err)
-		}
-		synced.requireSynced(t, folder)
-	})
-	t.Run("reproducer", func(t *testing.T) {
-		synced := observeWriterSyncs(t, nil)
-		folder := caseFolder(t)
-		if _, err := createReproducer(t, filepath.Join(folder, "reproducer")); err != nil {
-			t.Fatal(err)
-		}
-		synced.requireSynced(t, folder)
-	})
-	t.Run("redact", func(t *testing.T) {
-		synced := observeWriterSyncs(t, nil)
-		folder := caseFolder(t)
-		request := redactRequest(t, folder)
-		review, err := redact.Create(t.Context(), request)
-		if err != nil || review.State != "ready-for-approval" {
-			t.Fatalf("the review is not ready for approval: %v", err)
-		}
-		if _, err := os.Stat(filepath.Join(request.LocalState, "original-proof")); err != nil {
-			t.Fatalf("the review kept no original proof: %v", err)
-		}
-		synced.requireSynced(t, folder)
-
-		exported := caseFolder(t)
-		if _, err := redact.Export(t.Context(), redact.ExportRequest{ReviewPath: request.Output, LocalState: request.LocalState, Approval: review.Identity, Output: filepath.Join(exported, "packet")}); err != nil {
-			t.Fatal(err)
-		}
-		synced.requireSynced(t, exported)
-	})
-	t.Run("report", func(t *testing.T) {
-		isolateWorkspace(t)
-		packet := filepath.Join(caseFolder(t), "packet")
-		if _, err := report.Create(t.Context(), report.Scenario, packet); err != nil {
-			t.Fatal(err)
-		}
-		synced := observeWriterSyncs(t, nil)
-		prepared := caseFolder(t)
-		if _, err := report.Prepare(packet, filepath.Join(prepared, "rerun"), "127.0.0.1:2575"); err != nil {
-			t.Fatal(err)
-		}
-		synced.requireSynced(t, prepared)
-		assembled := caseFolder(t)
-		retained := filepath.Join(assembled, "retained")
-		if _, err := report.Assemble(t.Context(), report.RetainedInput{Case: filepath.Join(packet, "reproducer"), Spec: filepath.Join(packet, "spec.json"), Current: filepath.Join(packet, "post-fix"), Baseline: filepath.Join(packet, "baseline")}, retained); err != nil {
-			t.Fatal(err)
-		}
-		synced.requireSynced(t, assembled)
-		exported := caseFolder(t)
-		if _, err := report.ExportReview(t.Context(), retained, filepath.Join(exported, "review")); err != nil {
-			t.Fatal(err)
-		}
-		synced.requireSynced(t, exported)
-	})
-}
-
-// derivedSources is what the report and export writers start from: a report
-// packet, a retained packet assembled from it and a redaction review ready
-// for approval, each written once in a folder of its own.
-type derivedSources struct {
-	packet, retained string
-	review           redact.Request
-	approval         string
-}
-
-func writeDerivedSources(t *testing.T) derivedSources {
-	t.Helper()
-	isolateWorkspace(t)
-	sources := derivedSources{packet: filepath.Join(caseFolder(t), "packet"), retained: filepath.Join(caseFolder(t), "retained")}
-	if _, err := report.Create(t.Context(), report.Scenario, sources.packet); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := report.Assemble(t.Context(), sources.retainedInput(), sources.retained); err != nil {
-		t.Fatal(err)
-	}
-	sources.review = redactRequest(t, caseFolder(t))
-	review, err := redact.Create(t.Context(), sources.review)
-	if err != nil || review.State != "ready-for-approval" {
-		t.Fatalf("the review is not ready for approval: %v", err)
-	}
-	sources.approval = review.Identity
-	return sources
-}
-
-func (s derivedSources) retainedInput() report.RetainedInput {
-	return report.RetainedInput{Case: filepath.Join(s.packet, "reproducer"), Spec: filepath.Join(s.packet, "spec.json"), Current: filepath.Join(s.packet, "post-fix"), Baseline: filepath.Join(s.packet, "baseline")}
-}
-
-// outputWriter is one writer under test: what it writes at output, and how
-// the reader of that output opens it.
-type outputWriter struct {
+var modes = []struct {
 	name  string
-	write func(t *testing.T, output string) error
-	open  func(output string) error
-}
+	write func(*testing.T, string, rule) (string, error)
+}{{"whole map", wholeMap}, {"stream", stream}}
 
-// outputWriters lists every writer this change syncs, each writing a new
-// output of its own. A redaction review keeps its private state beside the
-// review, in the same folder.
-func outputWriters(t *testing.T, address, specPath, casePath string, sources derivedSources) []outputWriter {
-	correlated := filepath.Join(caseFolder(t), "case")
-	opened, err := writeCase(t, correlated)
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw, err := os.ReadFile("../../testdata/fixtures/correlate-rules.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	rules, err := correlate.ParseRules(raw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	correlation, err := correlate.Run(correlated, rules)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return []outputWriter{{
-		name:  "case",
-		write: func(t *testing.T, output string) error { _, err := writeCase(t, output); return err },
-		open:  func(output string) error { _, err := bundle.Open(output); return err },
-	}, {
-		name: "correlation review",
-		write: func(t *testing.T, output string) error {
-			revision, _, err := correlate.Review(opened, correlation, nil, false)
-			if err != nil {
-				t.Fatal(err)
-			}
-			return correlate.SaveReview(output, opened, correlation, revision)
-		},
-		open: func(output string) error { _, err := correlate.ReadReview(output, opened, correlation); return err },
-	}, {
-		name: "run bundle",
-		write: func(t *testing.T, output string) error {
-			_, err := executeRun(t, casePath, address, output)
-			return err
-		},
-		open: func(output string) error { _, err := replay.Open(output); return err },
-	}, {
-		name: "test result",
-		write: func(t *testing.T, output string) error {
-			_, err := testrunner.Run(t.Context(), specPath, output)
-			return err
-		},
-		open: func(output string) error { _, err := testrunner.Open(output); return err },
-	}, {
-		name: "durable run",
-		write: func(t *testing.T, output string) error {
-			_, err := durablerun.Start(t.Context(), specPath, output)
-			return err
-		},
-		open: func(output string) error { _, err := durablerun.Open(output); return err },
-	}, {
-		name:  "synth",
-		write: func(t *testing.T, output string) error { _, err := synth.Write(output, synthInputs); return err },
-		open: func(output string) error {
-			for _, variant := range []string{"regression", "cancellation", "invalid"} {
-				if _, err := bundle.Open(filepath.Join(output, variant)); err != nil {
-					return err
+// A sealed directory is found through names: its own in the folder holding
+// it, each member's in the directory holding it. So before a write reports a
+// directory written, every file is synced holding the bytes it keeps, the
+// completion record after every other file, and every directory is synced
+// holding every name it keeps: each the writer made, the directory itself and
+// the folder holding it after the completion record. Each rule states the
+// identity its family's reader verifies.
+func TestASealedDirectoryIsReportedWrittenOnlyOnceEveryEntryIsSyncedAfterItsCompletionRecord(t *testing.T) {
+	for _, mode := range modes {
+		for _, r := range rules {
+			t.Run(mode.name+"/"+r.name, func(t *testing.T) {
+				log := observeSyncs(t, nil, nil)
+				folder := caseFolder(t)
+				path := filepath.Join(folder, "example")
+				identity, err := mode.write(t, path, r)
+				if err != nil {
+					t.Fatal(err)
 				}
-			}
-			_, err := os.Stat(filepath.Join(output, "family.json"))
-			return err
-		},
-	}, {
-		name:  "reproducer",
-		write: func(t *testing.T, output string) error { _, err := createReproducer(t, output); return err },
-		open:  func(output string) error { _, err := reproducer.Open(output); return err },
-	}, {
-		name: "redaction review",
-		write: func(t *testing.T, output string) error {
-			request := redactRequest(t, filepath.Dir(output))
-			request.Output = output
-			_, err := redact.Create(t.Context(), request)
-			return err
-		},
-		open: func(output string) error { _, err := redact.OpenReview(output); return err },
-	}, {
-		name: "redaction export",
-		write: func(t *testing.T, output string) error {
-			_, err := redact.Export(t.Context(), redact.ExportRequest{ReviewPath: sources.review.Output, LocalState: sources.review.LocalState, Approval: sources.approval, Output: output})
-			return err
-		},
-		open: func(output string) error { _, err := redact.OpenExport(output); return err },
-	}, {
-		name: "report preparation",
-		write: func(t *testing.T, output string) error {
-			_, err := report.Prepare(sources.packet, output, "127.0.0.1:2575")
-			return err
-		},
-		open: func(output string) error { _, err := os.Stat(filepath.Join(output, "preparation.sha256")); return err },
-	}, {
-		name: "retained report",
-		write: func(t *testing.T, output string) error {
-			_, err := report.Assemble(t.Context(), sources.retainedInput(), output)
-			return err
-		},
-		open: func(output string) error { _, err := report.OpenRetained(context.Background(), output); return err },
-	}, {
-		name: "report review",
-		write: func(t *testing.T, output string) error {
-			_, err := report.ExportReview(t.Context(), sources.retained, output)
-			return err
-		},
-		open: func(output string) error { _, err := report.OpenReview(context.Background(), output); return err },
-	}}
-}
-
-// The last sync each writer makes is of the folder holding its output, after
-// its completion record: every file is written and synced by then. A writer
-// whose last sync fails does not report success, and does not say it left an
-// incomplete output either; it says the output was written in full but may
-// not survive a power loss, and the output does open. A durable run syncs its
-// folder before its first send instead, which the tests below cover.
-func TestALateDirectorySyncFailureReportsAnOutputWrittenInFull(t *testing.T) {
-	address, _ := ackPeer(t)
-	specPath, casePath := ackSpec(t, address)
-	for _, writer := range outputWriters(t, address, specPath, casePath, writeDerivedSources(t)) {
-		if writer.name == "durable run" {
-			continue
+				files, err := artifactdir.Read(path, example(r.seal).Layout)
+				if err != nil {
+					t.Fatalf("the written directory does not read back through its layout: %v", err)
+				}
+				if _, err := os.Lstat(filepath.Join(path, ".record.incomplete")); !os.IsNotExist(err) {
+					t.Fatalf("a staged completion record was left under its staging name: %v", err)
+				}
+				if _, err := os.Lstat(filepath.Join(path, ".manifest.pending")); !os.IsNotExist(err) {
+					t.Fatalf("a replaced member was left under its staging name: %v", err)
+				}
+				if r.identity != nil {
+					if want := r.identity(files); identity != want || string(files[r.record]) != want+"\n" {
+						t.Fatalf("identity %s, record %q, want %s", identity, files[r.record], want)
+					}
+				} else if identity != "" || string(files[r.record]) != string(r.recordFor()) {
+					t.Fatalf("a completion record family answered %q and recorded %q", identity, files[r.record])
+				}
+				completed, ok := log.files[filepath.Join(path, r.synced)]
+				if !ok || string(completed.data) != string(files[r.record]) {
+					t.Fatal("the completion record was not synced holding its bytes")
+				}
+				err = filepath.WalkDir(folder, func(name string, entry fs.DirEntry, err error) error {
+					if err != nil {
+						return err
+					}
+					relative, _ := filepath.Rel(folder, name)
+					relative = filepath.ToSlash(relative)
+					if entry.IsDir() {
+						synced, ok := log.directories[name]
+						entries, readErr := os.ReadDir(name)
+						if readErr != nil {
+							return readErr
+						}
+						for _, entry := range entries {
+							if !ok || !slices.Contains(synced.names, entry.Name()) {
+								t.Errorf("reported written before the entry naming %s in %s was synced", entry.Name(), relative)
+							}
+						}
+						if !strings.HasPrefix(relative, "example/nested") && (!ok || synced.at < completed.at) {
+							t.Errorf("the directory %s was not synced after the completion record", relative)
+						}
+						return nil
+					}
+					data, err := os.ReadFile(name)
+					if err != nil {
+						return err
+					}
+					// A member renamed into place was synced under its staging
+					// name, holding the bytes it keeps.
+					staged := map[string]string{"manifest.json": ".manifest.pending", r.record: r.synced}
+					synced, ok := log.files[name]
+					if base, err := filepath.Rel(path, name); err == nil && staged[filepath.ToSlash(base)] != "" && (!ok || string(synced.data) != string(data)) {
+						synced, ok = log.files[filepath.Join(path, staged[filepath.ToSlash(base)])]
+					}
+					if !ok || string(synced.data) != string(data) {
+						t.Errorf("reported written before %s was synced holding its bytes", relative)
+					}
+					if name != filepath.Join(path, r.record) && ok && synced.at > completed.at {
+						t.Errorf("%s was synced after the completion record", relative)
+					}
+					return nil
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+			})
 		}
-		t.Run(writer.name, func(t *testing.T) {
-			folder := caseFolder(t)
-			observeWriterSyncs(t, func(directory string) bool { return directory == folder })
-			output := filepath.Join(folder, "output")
-			err := writer.write(t, output)
-			if err == nil {
-				t.Fatal("a write whose folder could not be synced reported success")
-			}
-			if !strings.Contains(err.Error(), "written in full but a power loss could still lose") || strings.Contains(err.Error(), "incomplete") {
-				t.Fatalf("a write that failed only its last directory sync did not say what it left: %v", err)
-			}
-			if err := writer.open(output); err != nil {
-				t.Fatalf("the output said to be written in full does not open: %v", err)
-			}
-		})
 	}
 }
 
-// Each writer syncs the folder holding its output last, so a folder it can
-// create in but cannot open is refused before it writes anything into it, and
-// a writer that sends refuses before it connects.
-func TestWritersRefuseAFolderTheyCannotSyncBeforeWritingOrSendingAnything(t *testing.T) {
+// The last syncs a write makes follow its completion record, when every file
+// is written and synced. A write one of them fails for does not report
+// success, and does not say it left an incomplete directory either: it says,
+// in its family's sentence, that the directory was written in full but may not
+// survive a power loss, and the directory does read back.
+func TestALateDirectorySyncFailureSaysTheDirectoryWasWrittenInFull(t *testing.T) {
+	for _, mode := range modes {
+		for _, failing := range []string{"payloads/deep", "example", "folder"} {
+			t.Run(mode.name+"/"+failing, func(t *testing.T) {
+				folder := caseFolder(t)
+				path := filepath.Join(folder, "example")
+				unsyncable := map[string]string{"payloads/deep": filepath.Join(path, "payloads", "deep"), "example": path, "folder": folder}[failing]
+				var completed bool
+				observeSyncs(t, nil, func(directory string) bool {
+					if _, err := os.Stat(filepath.Join(path, "identity.sha256")); err == nil {
+						completed = true
+					}
+					return directory == unsyncable && completed
+				})
+				_, err := mode.write(t, path, rules[0])
+				if !errors.Is(err, errSync) {
+					t.Fatalf("a write whose last syncs failed answered %v, want its family's written-in-full sentence", err)
+				}
+				if _, err := artifactdir.Read(path, example(rules[0].seal).Layout); err != nil {
+					t.Fatalf("the directory said to be written in full does not read back: %v", err)
+				}
+			})
+		}
+	}
+}
+
+// A family that removes what it did not complete still keeps a directory
+// whose last syncs failed: its completion record is written, so what it keeps
+// is written in full, and the write says so.
+func TestALateDirectorySyncFailureKeepsWhatAFamilyThatRemovesIncompleteOutputWrote(t *testing.T) {
+	folder := caseFolder(t)
+	path := filepath.Join(folder, "example")
+	observeSyncs(t, nil, func(directory string) bool { return directory == folder })
+	family := example(rules[0].seal)
+	family.Incomplete = artifactdir.RemoveIncomplete
+	if _, err := artifactdir.Write(context.Background(), path, family, artifactdir.Durable, map[string][]byte{"manifest.json": []byte("{}\n")}); !errors.Is(err, errSync) {
+		t.Fatalf("a write whose last sync failed answered %v", err)
+	}
+	if _, err := artifactdir.Read(path, family.Layout); err != nil {
+		t.Fatalf("the directory written in full was not kept: %v", err)
+	}
+}
+
+// Replace renames a member written in full under its staging name onto the
+// member, so the member never holds a partial write. A staging name another
+// write left behind is refused rather than reused, and a rename that fails
+// keeps what was staged and says, in the family's sentence, that it could not
+// be put in place.
+func TestReplaceRefusesAStaleStagingNameAndKeepsWhatItStagedWhenTheRenameFails(t *testing.T) {
+	errReplace := errors.New("cannot put example member in place")
+	family := example(rules[0].seal)
+	family.Errors.Replace = errReplace
+	family.Layout.AllowedDirectories = append(family.Layout.AllowedDirectories, "payloads/slot")
+	w, err := artifactdir.Create(filepath.Join(caseFolder(t), "example"), family, artifactdir.Durable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	if err := w.WriteFile("manifest.json", []byte("{\"state\":\"in_progress\"}\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Replace("manifest.json", ".manifest.pending", []byte("{\"state\":\"complete\"}\n")); err != nil {
+		t.Fatal(err)
+	}
+	if manifest, err := os.ReadFile(filepath.Join(w.Path(), "manifest.json")); err != nil || string(manifest) != "{\"state\":\"complete\"}\n" {
+		t.Fatalf("the replaced member holds %q, %v", manifest, err)
+	}
+	if err := os.WriteFile(filepath.Join(w.Path(), ".stale.pending"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Replace("manifest.json", ".stale.pending", []byte("{}\n")); !errors.Is(err, errCreate) {
+		t.Fatalf("a replacement reused a staging name another write left: %v", err)
+	}
+	if err := w.WriteFile("payloads/slot/member.bin", []byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Replace("payloads/slot", "payloads/.slot.pending", []byte("x")); !errors.Is(err, errReplace) {
+		t.Fatalf("a rename onto a directory answered %v", err)
+	}
+	if staged, err := os.ReadFile(filepath.Join(w.Path(), "payloads", ".slot.pending")); err != nil || string(staged) != "x" {
+		t.Fatalf("a failed rename did not keep what it staged: %q %v", staged, err)
+	}
+}
+
+// Read admits a nested packet whole by its prefix, an evidence tree through
+// its directory and file rules, and refuses an empty directory its layout
+// does not accept. A reader whose refusals predate Read reports them in its
+// own sentences.
+func TestReadAdmitsNestedPacketsAndRefusesInTheReadersOwnSentences(t *testing.T) {
+	dir := caseFolder(t)
+	for name, data := range map[string]string{"manifest.json": "{}\n", "nested/deep/inner.bin": "inner", "tree/a/b.bin": "b"} {
+		if err := os.MkdirAll(filepath.Join(dir, filepath.Dir(filepath.FromSlash(name))), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(name)), []byte(data), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	errEmpty, errLink, errFiles, errSize := errors.New("empty"), errors.New("link"), errors.New("files"), errors.New("size")
+	layout := artifactdir.Layout{
+		Nested:         []string{"nested"},
+		AllowDirectory: func(name string) bool { return strings.HasPrefix(name+"/", "tree/") },
+		AllowFile:      func(name string) bool { return name == "manifest.json" || strings.HasPrefix(name, "tree/") },
+		AllowEmpty:     func(directory string, _ map[string][]byte) bool { return directory == "tree/allowed" },
+		MaxFiles:       3,
+		MaxFileBytes:   8,
+		MaxBytes:       64,
+		Refusals:       artifactdir.Refusals{Empty: errEmpty, Link: errLink, Files: errFiles, Size: errSize},
+	}
+	files, err := artifactdir.Read(dir, layout)
+	if err != nil || string(files["nested/deep/inner.bin"]) != "inner" || string(files["tree/a/b.bin"]) != "b" {
+		t.Fatalf("read %v: %v", files, err)
+	}
+	for _, step := range []struct {
+		name   string
+		change func() error
+		want   error
+	}{
+		{"an accepted empty directory", func() error { return os.Mkdir(filepath.Join(dir, "tree", "allowed"), 0700) }, nil},
+		{"an empty directory", func() error { return os.Mkdir(filepath.Join(dir, "tree", "empty"), 0700) }, errEmpty},
+		{"a link", func() error {
+			if err := os.Remove(filepath.Join(dir, "tree", "empty")); err != nil {
+				return err
+			}
+			return os.Symlink("b.bin", filepath.Join(dir, "tree", "a", "link.bin"))
+		}, errLink},
+		{"a file past the limit", func() error {
+			if err := os.Remove(filepath.Join(dir, "tree", "a", "link.bin")); err != nil {
+				return err
+			}
+			return os.WriteFile(filepath.Join(dir, "tree", "a", "c.bin"), []byte("c"), 0600)
+		}, errFiles},
+		{"a file past its size", func() error {
+			if err := os.Remove(filepath.Join(dir, "tree", "a", "c.bin")); err != nil {
+				return err
+			}
+			return os.WriteFile(filepath.Join(dir, "tree", "a", "b.bin"), []byte("too large"), 0600)
+		}, errSize},
+	} {
+		if err := step.change(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := artifactdir.Read(dir, layout); err != step.want {
+			t.Fatalf("%s: read answered %v, want %v", step.name, err, step.want)
+		}
+	}
+}
+
+// A writer syncs the folder holding its directory last, so a folder it can
+// create in but cannot open is refused before it creates anything.
+func TestAWriterRefusesAFolderItCannotSyncBeforeCreatingAnything(t *testing.T) {
 	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
 		t.Skip("needs a folder its owner can create in but not open")
 	}
-	address, accepted := ackPeer(t)
-	specPath, casePath := ackSpec(t, address)
-	for _, writer := range outputWriters(t, address, specPath, casePath, writeDerivedSources(t)) {
-		t.Run(writer.name, func(t *testing.T) {
+	for _, mode := range modes {
+		t.Run(mode.name, func(t *testing.T) {
 			folder := caseFolder(t)
 			if err := os.Chmod(folder, 0300); err != nil {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { os.Chmod(folder, 0700) })
-			if err := writer.write(t, filepath.Join(folder, "output")); err == nil {
-				t.Fatal("an output was reported written into a folder that cannot be synced")
+			if _, err := mode.write(t, filepath.Join(folder, "example"), rules[0]); !errors.Is(err, errReserve) {
+				t.Fatalf("a write into a folder that cannot be synced answered %v", err)
 			}
 			if err := os.Chmod(folder, 0700); err != nil {
 				t.Fatal(err)
@@ -538,51 +462,209 @@ func TestWritersRefuseAFolderTheyCannotSyncBeforeWritingOrSendingAnything(t *tes
 			if left, err := os.ReadDir(folder); err != nil || len(left) != 0 {
 				t.Fatalf("a refused write left %d entries behind: %v", len(left), err)
 			}
-			if accepted.Load() != 0 {
-				t.Fatal("a writer connected before refusing a folder it cannot sync")
-			}
 		})
 	}
 }
 
-// A durable run syncs its job's entry in the folder holding it before its
-// first send, so one whose folder cannot be synced sends nothing.
-func TestADurableRunWhoseFolderCannotBeSyncedSendsNothing(t *testing.T) {
-	address, accepted := ackPeer(t)
-	specPath, _ := ackSpec(t, address)
-	folder := caseFolder(t)
-	observeWriterSyncs(t, func(directory string) bool { return directory == folder })
-	if _, err := durablerun.Start(context.Background(), specPath, filepath.Join(folder, "job")); err == nil || !strings.Contains(err.Error(), "cannot sync durable evidence directory") {
-		t.Fatalf("a durable run whose folder could not be synced was not refused: %v", err)
-	}
-	if accepted.Load() != 0 {
-		t.Fatal("a durable run sent before its job's entry in its folder was synced")
+// A member that cannot be synced stops the write before its completion
+// record, so what was written is never read as complete. A family that
+// retains incomplete output leaves it; one that removes it leaves nothing.
+func TestAMemberThatCannotBeSyncedStopsTheWriteBeforeItsCompletionRecord(t *testing.T) {
+	for _, mode := range modes {
+		for incomplete, name := range map[artifactdir.Incomplete]string{artifactdir.RetainIncomplete: "retained", artifactdir.RemoveIncomplete: "removed"} {
+			t.Run(mode.name+"/"+name, func(t *testing.T) {
+				path := filepath.Join(caseFolder(t), "example")
+				observeSyncs(t, func(file string) bool { return file == filepath.Join(path, "payloads", "a.bin") }, nil)
+				family := example(rules[0].seal)
+				family.Incomplete = incomplete
+				var err error
+				if mode.name == "whole map" {
+					_, err = artifactdir.Write(context.Background(), path, family, artifactdir.Durable, map[string][]byte{"manifest.json": []byte("{}\n"), "payloads/a.bin": []byte("a")})
+				} else {
+					var w *artifactdir.Writer
+					if w, err = artifactdir.Create(path, family, artifactdir.Durable); err != nil {
+						t.Fatal(err)
+					}
+					if err = w.WriteFile("manifest.json", []byte("{}\n")); err == nil {
+						err = w.WriteFile("payloads/a.bin", []byte("a"))
+					}
+					w.Close()
+				}
+				if !errors.Is(err, errWrite) {
+					t.Fatalf("a write whose member could not be synced answered %v", err)
+				}
+				_, err = os.Lstat(path)
+				switch incomplete {
+				case artifactdir.RetainIncomplete:
+					if err != nil {
+						t.Fatalf("the incomplete directory was not retained: %v", err)
+					}
+					if _, err := os.Lstat(filepath.Join(path, "identity.sha256")); !os.IsNotExist(err) {
+						t.Fatalf("an incomplete directory carries a completion record: %v", err)
+					}
+				case artifactdir.RemoveIncomplete:
+					if !os.IsNotExist(err) {
+						t.Fatalf("the incomplete directory was not removed: %v", err)
+					}
+				}
+			})
+		}
 	}
 }
 
-// A durable run's result syncs its own entries and its entry in the job last,
-// before the job records how it finished. When that sync fails the result is
-// written in full but not confirmed, so the job names no result, records that
-// the run stopped with an execution error, and tells its caller why.
-func TestADurableRunWhoseResultCannotBeSyncedNamesNoResultAndSaysWhy(t *testing.T) {
-	address, _ := ackPeer(t)
-	specPath, _ := ackSpec(t, address)
-	job := filepath.Join(caseFolder(t), "job")
-	observeWriterSyncs(t, func(directory string) bool {
-		_, err := os.Stat(filepath.Join(job, "result", "identity.sha256"))
-		return directory == job && err == nil
-	})
-	summary, err := durablerun.Start(context.Background(), specPath, job)
-	if err == nil || !strings.Contains(err.Error(), "the result was written in full but a power loss could still lose it") {
-		t.Fatalf("a durable run whose result could not be synced did not say so: %v", err)
+// A completion record that cannot be written is reported in the family's own
+// sentence for it when it declares one, and as any member otherwise.
+func TestACompletionRecordThatCannotBeSyncedIsReportedInItsFamilysSentence(t *testing.T) {
+	errComplete := errors.New("cannot complete example; incomplete example retained")
+	for _, declared := range []error{nil, errComplete} {
+		path := filepath.Join(caseFolder(t), "example")
+		observeSyncs(t, func(file string) bool { return filepath.Base(file) == "identity.sha256" }, nil)
+		family := example(rules[0].seal)
+		family.Errors.Complete = declared
+		_, err := artifactdir.Write(context.Background(), path, family, artifactdir.Durable, map[string][]byte{"manifest.json": []byte("{}\n")})
+		want := errWrite
+		if declared != nil {
+			want = errComplete
+		}
+		if !errors.Is(err, want) {
+			t.Fatalf("a completion record that could not be synced answered %v, want %v", err, want)
+		}
 	}
-	if summary.ResultIdentity != "" || summary.State != durablerun.ExecutionError {
-		t.Fatalf("a durable run named a result it could not confirm: %+v", summary)
+}
+
+// A writer makes only what its family's layout admits, never writes the
+// completion record as a member, never writes into a directory another writer
+// made, and writes nothing once it is complete.
+func TestAWriterWritesOnlyTheLayoutItsFamilyDeclares(t *testing.T) {
+	w, err := artifactdir.Create(filepath.Join(caseFolder(t), "example"), example(rules[0].seal), artifactdir.Durable)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if reopened, err := durablerun.Open(job); err != nil || reopened.ResultIdentity != "" || reopened.State != durablerun.ExecutionError {
-		t.Fatalf("the job's journal does not record a run that stopped without a result: %+v %v", reopened, err)
+	defer w.Close()
+	for name, err := range map[string]error{
+		"unexpected.txt":  w.WriteFile("unexpected.txt", []byte("x")),
+		"identity.sha256": w.WriteFile("identity.sha256", []byte("x\n")),
+		"../escape.bin":   w.WriteFile("../escape.bin", []byte("x")),
+		"other/":          w.Mkdir("other"),
+	} {
+		if err == nil {
+			t.Errorf("%s was written although the family does not admit it", name)
+		}
 	}
-	if _, err := testrunner.Open(filepath.Join(job, "result")); err != nil {
-		t.Fatalf("the result said to be written in full does not open: %v", err)
+	if _, err := artifactdir.Write(context.Background(), filepath.Join(w.Path(), "nested"), example(artifactdir.DirectoryHash("readmit-nested/v1")), artifactdir.Durable, map[string][]byte{"manifest.json": []byte("{}\n")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.WriteFile("nested/extra.bin", []byte("x")); !errors.Is(err, errDirectory) {
+		t.Fatalf("a writer wrote into a directory another writer made: %v", err)
+	}
+	if err := w.WriteFile("manifest.json", []byte("{}\n")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Seal(nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.WriteFile("payloads/late.bin", []byte("x")); err == nil {
+		t.Fatal("a member was written after the completion record")
+	}
+	if _, err := w.Complete(nil); err == nil {
+		t.Fatal("a directory was completed twice")
+	}
+	entries, err := os.ReadDir(w.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+	if !slices.Equal(names, []string{"identity.sha256", "manifest.json", "nested"}) {
+		t.Fatalf("the writer left %q", names)
+	}
+
+	// A family that declares only Write reports every member failure in it.
+	bare := artifactdir.Family{Layout: example(rules[0].seal).Layout, Seal: rules[0].seal, Errors: artifactdir.Errors{Write: errWrite}}
+	fallback, err := artifactdir.Create(filepath.Join(caseFolder(t), "example"), bare, artifactdir.Durable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fallback.Close()
+	if err := fallback.Mkdir("other"); !errors.Is(err, errWrite) {
+		t.Fatalf("a directory the family does not admit answered %v", err)
+	}
+	if err := fallback.WriteFile("unexpected.txt", nil); !errors.Is(err, errWrite) {
+		t.Fatalf("a member the family does not admit answered %v", err)
+	}
+	if _, err := artifactdir.Write(context.Background(), filepath.Join(caseFolder(t), "unsealed"), artifactdir.Family{Layout: bare.Layout}, artifactdir.Durable, map[string][]byte{"manifest.json": nil}); err == nil {
+		t.Fatal("a family that writes no completion record was written as a sealed directory")
+	}
+}
+
+// A writer that has not completed can checkpoint: every directory it made,
+// the directory itself and the folder holding it are synced holding the
+// names it made so far, and a directory another writer made inside it, such
+// as a nested packet's, is synced when asked. A failed checkpoint is the
+// family's sync sentence.
+func TestACheckpointSyncsWhatTheWriterMadeBeforeItCompletes(t *testing.T) {
+	log := observeSyncs(t, nil, nil)
+	folder := caseFolder(t)
+	w, err := artifactdir.Create(filepath.Join(folder, "example"), example(artifactdir.ManifestHash("", "manifest.json", "manifest.sha256")), artifactdir.Durable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	if err := w.WriteFile("payloads/deep/a.bin", []byte("a")); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	for directory, name := range map[string]string{folder: "example", w.Path(): "payloads", filepath.Join(w.Path(), "payloads"): "deep", filepath.Join(w.Path(), "payloads", "deep"): "a.bin"} {
+		if !slices.Contains(log.directories[directory].names, name) {
+			t.Errorf("a checkpoint did not sync the entry naming %s", name)
+		}
+	}
+	if _, err := artifactdir.Write(context.Background(), filepath.Join(w.Path(), "nested"), example(artifactdir.DirectoryHash("readmit-nested/v1")), artifactdir.Durable, map[string][]byte{"manifest.json": []byte("{}\n")}); err != nil {
+		t.Fatal(err)
+	}
+	before := log.directories[filepath.Join(w.Path(), "nested")].at
+	if err := w.SyncDirectories("nested"); err != nil {
+		t.Fatal(err)
+	}
+	if log.directories[filepath.Join(w.Path(), "nested")].at <= before {
+		t.Fatal("a directory another writer made was not synced when asked")
+	}
+	observeSyncs(t, nil, func(string) bool { return true })
+	if err := w.Sync(); !errors.Is(err, errSync) {
+		t.Fatalf("a failed checkpoint answered %v", err)
+	}
+	if err := w.SyncDirectories("nested"); !errors.Is(err, errSync) {
+		t.Fatalf("a failed directory sync answered %v", err)
+	}
+}
+
+// CreateTemp makes a new directory named by its pattern and a random number
+// each time, for a workspace whose name only has to be new, and refuses a
+// folder that does not exist rather than making it.
+func TestCreateTempMakesANewWorkspaceEachTime(t *testing.T) {
+	folder := caseFolder(t)
+	workspace := artifactdir.Family{Layout: artifactdir.Layout{AllowFile: func(name string) bool { return name == "note.txt" }}, Errors: artifactdir.Errors{Reserve: errReserve, Write: errWrite}}
+	seen := map[string]bool{}
+	for range 2 {
+		w, err := artifactdir.CreateTemp(folder, "attempt-", workspace, artifactdir.Durable)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := w.WriteFile("note.txt", []byte("x")); err != nil {
+			t.Fatal(err)
+		}
+		w.Close()
+		name := filepath.Base(w.Path())
+		if !strings.HasPrefix(name, "attempt-") || filepath.Dir(w.Path()) != folder || seen[name] {
+			t.Fatalf("a workspace was made as %s", w.Path())
+		}
+		seen[name] = true
+	}
+	if _, err := artifactdir.CreateTemp(filepath.Join(folder, "missing"), "attempt-", workspace, artifactdir.Durable); err == nil {
+		t.Fatal("a workspace was made in a folder that does not exist")
 	}
 }

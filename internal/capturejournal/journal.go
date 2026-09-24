@@ -235,13 +235,9 @@ func Create(path string, capture Capture) (*Writer, error) {
 	}
 	// Directory entries reach stable storage before any byte is accepted, so a
 	// crash cannot leave a journal whose own name was never persisted.
-	if err := durablerun.SyncDirectory(root, "received"); err != nil {
+	if artifactdir.SyncDirectory(root, "received") != nil || artifactdir.SyncDirectory(root, ".") != nil {
 		w.Close()
-		return nil, err
-	}
-	if err := durablerun.SyncDirectory(root, "."); err != nil {
-		w.Close()
-		return nil, err
+		return nil, durablerun.ErrSyncDirectory
 	}
 	w.summary.State, w.summary.StopReason = durablerun.Running, durablerun.Running
 	return w, nil
@@ -268,9 +264,9 @@ func (w *Writer) Received(session, occurrence, controlID string, raw []byte) err
 		w.failed = err
 		return err
 	}
-	if err := durablerun.SyncDirectory(w.root, "received"); err != nil {
-		w.failed = err
-		return err
+	if artifactdir.SyncDirectory(w.root, "received") != nil {
+		w.failed = durablerun.ErrSyncDirectory
+		return durablerun.ErrSyncDirectory
 	}
 	w.retained += len(raw)
 	if err := w.appendLocked(entry{Kind: "received", Session: session, Occurrence: occurrence, ControlID: controlID,

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/runresult"
@@ -83,12 +84,13 @@ func ExportReview(ctx context.Context, source, output string) (*Review, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	parent, dir, err := reserve(output)
+	review, err := artifactdir.Create(output, reviewFamily, artifactdir.Durable)
 	if err != nil {
 		return nil, err
 	}
-	defer parent.Close()
-	if err := copyFiles(nested, "", dir); err != nil {
+	defer review.Close()
+	dir := review.Path()
+	if err := copyFiles(review, nested, "", ""); err != nil {
 		return nil, err
 	}
 	packet, err := OpenRetained(ctx, filepath.Join(dir, "packet"))
@@ -116,20 +118,17 @@ func ExportReview(ctx context.Context, source, output string) (*Review, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if err := writeFile(dir, name, data); err != nil {
+		if err := review.WriteFile(name, data); err != nil {
 			return nil, err
 		}
 	}
-	if err := writeFile(dir, "manifest.json", raw); err != nil {
+	if err := review.WriteFile("manifest.json", raw); err != nil {
 		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := writeFile(dir, "identity.sha256", nested["identity.sha256"]); err != nil {
-		return nil, err
-	}
-	if err := syncEntries(parent, dir, nested); err != nil {
+	if _, err := review.Seal(nil); err != nil {
 		return nil, err
 	}
 	return OpenReview(ctx, dir)

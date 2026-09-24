@@ -6,9 +6,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"io"
-	"io/fs"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -68,80 +66,58 @@ func destination(path string, protected []string) (string, error) {
 	return resolved, nil
 }
 
-func writeFile(dir, name string, raw []byte) error {
-	root, err := os.OpenRoot(dir)
-	if err != nil {
-		return errors.New("cannot create redaction artifact file")
-	}
-	defer root.Close()
-	if err := artifactdir.WriteFile(root, filepath.ToSlash(name), raw); errors.Is(err, artifactdir.ErrCreateFile) {
-		return errors.New("cannot create redaction artifact file")
-	} else if err != nil {
-		return errors.New("cannot write redaction artifact file; incomplete output retained")
-	}
-	return nil
-}
+var (
+	errCreateFile = errors.New("cannot create redaction artifact file")
+	errWriteFile  = errors.New("cannot write redaction artifact file; incomplete output retained")
+)
 
+// tree reads every file of a redaction artifact or workspace: bounded regular
+// files with bounded names, no empty directory and no link. It refuses in the
+// sentences redaction has always used.
 func tree(dir string) (map[string][]byte, error) {
 	dir, err := artifactpath.Directory(dir)
 	if err != nil {
 		return nil, err
 	}
-
-	files := map[string][]byte{}
-	directories := []string{}
-	total := 0
-	err = filepath.WalkDir(dir, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return errors.New("cannot inspect artifact directory")
+	var refused error
+	named := func(name string) bool {
+		if len(name) > 256 {
+			refused = errors.New("artifact path exceeds limit")
+			return false
 		}
-		if path == dir {
-			return nil
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return errors.New("artifact cannot contain symlinks")
-		}
-		rel, err := filepath.Rel(dir, path)
-		if err != nil {
-			return errors.New("cannot resolve artifact relative path")
-		}
-		if len(rel) > 256 {
-			return errors.New("artifact path exceeds limit")
-		}
-		if entry.IsDir() {
-			if len(directories) >= 1024 {
-				return errors.New("artifact exceeds directory limit")
+		return true
+	}
+	directories := 0
+	files, err := artifactdir.Read(dir, artifactdir.Layout{
+		AllowDirectory: func(name string) bool {
+			if !named(name) {
+				return false
 			}
-			directories = append(directories, filepath.ToSlash(rel))
-			return nil
-		}
-		if len(files) >= maxPacketFiles {
-			return errors.New("artifact exceeds file limit")
-		}
-		raw, err := readLocal(path, min(maxReviewBytes, maxPacketBytes-total))
-		if err != nil {
-			return err
-		}
-		total += len(raw)
-		if total > maxPacketBytes {
-			return errors.New("artifact exceeds byte limit")
-		}
-		files[filepath.ToSlash(rel)] = raw
-		return nil
+			if directories >= 1024 {
+				refused = errors.New("artifact exceeds directory limit")
+				return false
+			}
+			directories++
+			return true
+		},
+		AllowFile:    named,
+		AllowEmpty:   func(string, map[string][]byte) bool { return false },
+		MaxFiles:     maxPacketFiles,
+		MaxFileBytes: maxReviewBytes,
+		MaxBytes:     maxPacketBytes,
+		Refusals: artifactdir.Refusals{
+			Directory: errors.New("cannot inspect artifact directory"),
+			File:      errors.New("cannot read redaction input"),
+			Link:      errors.New("artifact cannot contain symlinks"),
+			Special:   errors.New("redaction input must be a bounded regular file, without symlinks"),
+			Irregular: errors.New("redaction input must be regular"),
+			Files:     errors.New("artifact exceeds file limit"),
+			Size:      errors.New("redaction input must be a bounded regular file, without symlinks"),
+			Empty:     errors.New("unexpected empty artifact directory"),
+		},
 	})
-	if err == nil {
-		for _, dir := range directories {
-			populated := false
-			for name := range files {
-				if strings.HasPrefix(name, dir+"/") {
-					populated = true
-					break
-				}
-			}
-			if !populated {
-				return nil, errors.New("unexpected empty artifact directory")
-			}
-		}
+	if refused != nil {
+		return nil, refused
 	}
 	return files, err
 }
