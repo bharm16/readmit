@@ -485,7 +485,7 @@ Pin the current patch release and bump through reviewed pull requests, never dur
 | --- | --- |
 | Go toolchain | go1.27.1 (`tools/toolchain.py` resolves the `toolchain` directive for setup-go; `GOTOOLCHAIN=local` in CI) |
 | Cobra | v1.10.2 |
-| Wails | v2.16.0 (desktop module only) |
+| Wails | v2.16.0 (desktop module only), with its go-webview2 v1.0.22; before bumping either, see why the shell guards the Windows window's focus in [the desktop shell](desktop.md#building-it) |
 | React and React DOM | 19.3.0 (with `@types/react` and `@types/react-dom` 19.3.0) |
 | Vite | 8.3.0 (with `@vitejs/plugin-react` 6.1.1) |
 | Vitest | 5.0.1 with `@testing-library/react` 16.3.3, `@testing-library/user-event` 14.6.7, `@testing-library/dom` 10.4.2 and `jsdom` 30.1.0 (desktop frontend tests only; never bundled) |

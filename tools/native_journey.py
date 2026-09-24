@@ -410,15 +410,6 @@ class Application:
             raise Refused("the application did not end when its window closed") from error
         return how
 
-    def crashed_on_focus(self):
-        """Whether the application ended with the WebView2 focus refusal of
-        KNOWN_CRASH, as its own output records it."""
-        if self.process is None or self.process.poll() != 1 or not self.launches:
-            return False
-        self.launches[-1].flush()
-        output = Path(self.launches[-1].name).read_bytes()
-        return b"[WebView2 Error]" in output and b"Chromium).Focus" in output
-
     def stop(self):
         if self.process and self.process.poll() is None:
             self.process.kill()
@@ -647,26 +638,15 @@ def staged_upgrade(app, work, command, bridge, candidate, version, record):
     record["cli"] = "check refused (same build, unsigned preview); rollback archive taken and verified; partial staging refused"
 
 
-# Wails' Windows window hands its focus to WebView2 whenever it gains it, and
-# the go-webview2 release it pins ends the process when WebView2 refuses that
-# focus, which it can while a host folder dialog is opening. The application
-# then exits 1 with the refusal in its output. The journey is not the cause
-# and cannot prevent it; the receipt keeps every occurrence, and a journey is
-# taken at most this many times.
-KNOWN_CRASH = "the application ended when WebView2 refused focus as a host folder dialog opened"
-CRASH_ATTEMPTS = 3
-
-
-def run_journey(journey, attempt, system, base, args):
+def run_journey(journey, system, base, args):
     """Takes one journey once, from a fresh folder, and returns its record."""
-    root = base / f"{journey}-{attempt}"
+    root = base / journey
     state = root / "shell-state"
     state.mkdir(parents=True)
-    suffix = "" if attempt == 1 else f"-attempt-{attempt}"
-    log = (args.evidence / f"{journey}{suffix}-backend.log").open("w", encoding="utf-8")
+    log = (args.evidence / f"{journey}-backend.log").open("w", encoding="utf-8")
     backend = Backend(backend_command(system, base), log)
-    app = Application(system, backend, args.desktop.resolve(), state, args.evidence / f"{journey}{suffix}")
-    record = {"started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "attempt": attempt}
+    app = Application(system, backend, args.desktop.resolve(), state, args.evidence / journey)
+    record = {"started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     began = time.monotonic()
     try:
         if journey == "guided-sample":
@@ -678,8 +658,6 @@ def run_journey(journey, attempt, system, base, args):
     except Exception as error:  # noqa: BLE001 - every failure ends in the receipt
         record["result"] = "failed"
         record["reason"] = str(error) if isinstance(error, Refused) else f"{type(error).__name__}: {error}"
-        if app.crashed_on_focus():
-            record["crash"] = KNOWN_CRASH
         try:
             app.checkpoint("at-failure")
         except Exception:  # noqa: BLE001 - the failure itself is what is reported
@@ -718,18 +696,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="readmit-native-journey-") as directory:
         base = Path(directory).resolve()
         for journey in journeys:
-            record = run_journey(journey, 1, system, base, args)
-            # To be removed with the fix for the go-webview2 focus crash (filed from #376).
-            for attempt in range(2, CRASH_ATTEMPTS + 1):
-                if record["result"] == "passed" or record.get("crash") != KNOWN_CRASH:
-                    break
-                # The one crash opening a folder dialog can cause on Windows,
-                # outside this repository's code: it is kept in the receipt and
-                # announced, and the journey is taken again from the start.
-                print(f"::warning::{journey}: {KNOWN_CRASH}; taking the journey again from the start")
-                retried = run_journey(journey, attempt, system, base, args)
-                retried["earlier_attempt"] = record
-                record = retried
+            record = run_journey(journey, system, base, args)
             failed = failed or record["result"] != "passed"
             receipt["journeys"][journey] = record
             print(f"{'PASS' if record['result'] == 'passed' else 'FAIL'}: {journey} on {system}/{machine()} "

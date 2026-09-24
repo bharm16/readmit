@@ -219,7 +219,8 @@ beside its build would pass there.
 The macOS shell job also executes the frontend behavior tests and the
 interaction journeys and publishes their output as an artifact, so a failing
 component test or journey fails the `desktop` aggregate rather than only a
-developer's local run.
+developer's local run. The Windows package job runs the shell's own Go tests
+on Windows, where its Windows-only code runs.
 An install job can also drive the application it installed through the
 platform's accessibility API with `tools/native_journey.py`, before removing
 it, and publish the receipt and the accessibility tree at each checkpoint as

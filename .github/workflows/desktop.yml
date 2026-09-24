@@ -208,6 +208,13 @@ jobs:
             # standard output, which is how its identity is read back.
             windows) go build -tags production -trimpath -ldflags "-H windowsgui $stamp" -o build/readmit-desktop.exe . ;;
           esac
+      # The shell's Windows-only code, the webview focus guard, is tested on
+      # the platform it runs on; desktop-shell tests the rest on macOS.
+      - name: Test the shell's Windows-only code
+        if: matrix.os == 'windows'
+        working-directory: desktop
+        shell: bash
+        run: go test -tags production .
       - name: Build the command line from the same commit and the same stamp
         shell: bash
         env:

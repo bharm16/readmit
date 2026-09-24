@@ -1,5 +1,19 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- The Windows application no longer ends as a host dialog opens (#378). Wails
+  hands the window's focus to WebView2 whenever the window receives it, and
+  the go-webview2 release it pins ends the process when WebView2 refuses;
+  WebView2 refuses while a dialog the window owns has disabled it, and the
+  window can still receive the focus then. About one Windows staged-upgrade
+  journey in ten ended that way as its folder dialog opened, and a person
+  would have lost the window and anything it had not stored. No Wails 2 or
+  go-webview2 release handles the refusal, so the shell withholds the focus
+  while its window is disabled; when the dialog closes, the window is enabled
+  and focused again as before. The native journey no longer takes a journey
+  again after that exit, so a recurrence fails the Windows install check. No
+  dependency, `readmit-*` document, facade result or `readmit` command
+  changes.
+
 - The project maintenance screen lists a project's document recovery copies
   and recovers a selected one, and its staged-upgrade check and rollback
   archive are the command line's (#314). Until now no screen listed a recovery

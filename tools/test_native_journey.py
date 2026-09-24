@@ -220,20 +220,6 @@ class Driver(unittest.TestCase):
         with self.assertRaisesRegex(native_journey.Refused, "the field 'Expectation name' holds '', not what was entered"):
             app.fill("Expectation name", "one-appointment", timeout=1, settle=1)
 
-    def test_only_the_webview2_focus_crash_is_recognized_as_that_crash(self):
-        app = self.application("windows", [[node(0, "Window")]])
-        output = (self.root / "application-1.log").open("wb")
-        self.addCleanup(output.close)
-        app.launches.append(output)
-        output.write(b"[WebView2 Error] The parameter is incorrect.\n1: github.com/wailsapp/go-webview2/pkg/edge.(*Chromium).Focus\n")
-        app.process.returncode = 1
-        self.assertTrue(app.crashed_on_focus())
-        # Another exit status, or another failure, is not that crash.
-        app.process.returncode = 2
-        self.assertFalse(app.crashed_on_focus())
-        app.process.returncode = None
-        self.assertFalse(app.crashed_on_focus())
-
     def test_a_backend_refusal_is_the_journey_s_refusal(self):
         app = self.application("darwin", [[node(0, "AXWindow")]])
         with self.assertRaisesRegex(native_journey.Refused, "refuse: the element went away"):

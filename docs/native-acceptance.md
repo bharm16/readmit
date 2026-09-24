@@ -280,16 +280,17 @@ What driving the installed packages found:
    journeys' scripted dialogs now give only what a host dialog gives, and the
    native journeys take a backup, a rollback archive and a portable review
    through the installed window.
-3. Not fixed here: on Windows the installed application can end, with exit
-   status 1, as a host folder dialog opens. Wails hands the window's focus to
-   WebView2 whenever the window gains it, WebView2 can refuse that while the
-   dialog is opening, and the go-webview2 release the shell pins ends the
-   process on any refusal. It happened in roughly one Windows staged-upgrade
-   journey in ten, each of which opens five dialogs; a person would lose the
-   window and anything it had not stored. The fix is a dependency decision,
-   so the Windows journey records each such exit in its receipt and a
-   warning and takes the journey again from the start, at most three times in
-   all; any other failure fails it at once.
+3. On Windows the installed application could end, with exit status 1, as a
+   host folder dialog opened. Wails hands the window's focus to WebView2
+   whenever the window gains it; a dialog the window owns disables it while
+   it is open, the window can still gain the focus then, WebView2 refuses the
+   focus of a disabled window, and the go-webview2 release the shell pins ends
+   the process on any refusal. It happened in roughly one Windows
+   staged-upgrade journey in ten, each of which opens five dialogs; a person
+   would have lost the window and anything it had not stored. No Wails 2 or
+   go-webview2 release handles the refusal, so the shell withholds that focus
+   while its window is disabled (#378), and the native journey no longer
+   takes a journey again after that exit: every failure fails it at once.
 4. How the platforms read the same page differs, and the retained trees record
    it: a stylesheet's capitals are what macOS and Windows read out (region
    names such as `EVIDENCE`, statuses such as `ASSERTION_FAILURE`), Windows

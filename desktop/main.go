@@ -152,6 +152,14 @@ func runShell(arguments []string) error {
 		}
 	}
 	folders := &dialog{}
+	// Wails has created its window by the time it starts the application.
+	var guarded atomic.Bool
+	started := make(chan struct{})
+	startup := func(ctx context.Context) {
+		guarded.Store(guardWebviewFocus())
+		folders.start(ctx)
+		close(started)
+	}
 	application := &options.App{
 		Title:       "readmit",
 		Width:       1100,
@@ -159,7 +167,7 @@ func runShell(arguments []string) error {
 		MinWidth:    640,
 		MinHeight:   480,
 		AssetServer: &assetserver.Options{Assets: assets},
-		OnStartup:   folders.start,
+		OnStartup:   startup,
 		Bind:        []any{desktop.NewWithInstalledLicense(folders, recent, filters, session, drafts, operationSelection, license)},
 		// The shell adds no logging of its own, reports no telemetry, no crash
 		// reports and no update checks, and sends nothing to a network. The
@@ -176,6 +184,8 @@ func runShell(arguments []string) error {
 		})
 		defer timer.Stop()
 		application.OnDomReady = func(ctx context.Context) {
+			// Startup has placed the focus guard, or found it cannot.
+			<-started
 			ready.Store(true)
 			runtime.Quit(ctx)
 		}
@@ -186,6 +196,9 @@ func runShell(arguments []string) error {
 	if startupCheck {
 		if !ready.Load() {
 			return errors.New("readmit: native webview did not become ready")
+		}
+		if !guarded.Load() {
+			return errors.New("readmit: the webview focus guard is not in place")
 		}
 		fmt.Println("readmit-desktop native webview ready")
 	}
