@@ -345,8 +345,6 @@ var supportStatus = Support{
 		"select an absolute policy path explicitly",
 		"select the operation policy through the native chooser",
 		"stop a control writing new packages while it still opens what it wrote",
-		"validate an observation source document locally without collecting",
-		"validate an observation window document locally without collecting",
 		"write the reproducer as a new derived case folder and offer register/compare/test handoffs",
 	},
 }

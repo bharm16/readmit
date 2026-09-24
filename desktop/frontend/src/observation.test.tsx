@@ -246,3 +246,213 @@ test("a v1 source the facade answered with every transport member is saved again
   ).toBeTruthy();
   expect(screen.queryByText(/^Saved through shared Go writers/)).toBeNull();
 });
+
+/** The innermost element whose whole text matches: a line the panel composes
+ * from several elements. */
+function byContent(pattern: RegExp): (content: string, element: Element | null) => boolean {
+  return (_content, element) =>
+    element !== null &&
+    pattern.test(element.textContent ?? "") &&
+    !Array.from(element.children).some((child) => pattern.test(child.textContent ?? ""));
+}
+
+async function tabTo(user: ReturnType<typeof userEvent.setup>, target: HTMLElement) {
+  for (let step = 0; step < 200 && document.activeElement !== target; step++) await user.tab();
+  expect(document.activeElement).toBe(target);
+}
+
+async function openObservationSetup(user: ReturnType<typeof userEvent.setup>) {
+  const evidence = screen.getByRole("region", { name: "Evidence" });
+  await user.click(within(evidence).getByRole("button", { name: "Set up observation…" }));
+  return within(await screen.findByRole("region", { name: "Observation setup" }));
+}
+
+test("each saved document is validated on its own from the keyboard, with its identity or the reader's refusal", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user);
+  facade.reply({
+    ValidateObservationSource: (): Promise<ObservationSourceResult> =>
+      Promise.resolve({
+        state: "completed",
+        source: {
+          schema: "readmit-observation-source/v1",
+          source: { kind: "file-export", identity: "scheduling-archive", scope: "appointments" },
+          enabled: true,
+          freshness: { max_age: "1h" },
+          extraction: { envelope: "csv", encoding: "utf-8", record_key: ["appointment"] },
+          file: { path: "export.csv", max_bytes: 65536 },
+          http: null,
+          capture: null,
+        },
+        source_file: "observation-source.json",
+        identity: "saved-source-identity",
+      }),
+    ValidateObservationWindow: (): Promise<ObservationWindowResult> =>
+      Promise.resolve({ state: "failed", reason: "a window whose quiet period outlasts its deadline can never complete" }),
+  });
+  const panel = await openObservationSetup(user);
+
+  await tabTo(user, panel.getByRole("button", { name: "Validate source document" }));
+  await user.keyboard("{Enter}");
+  expect(
+    await panel.findByText(
+      "Source document observation-source.json: valid readmit-observation-source/v1, identity saved-source-identity. Nothing was collected.",
+    ),
+  ).toBeTruthy();
+  await tabTo(user, panel.getByRole("button", { name: "Validate window document" }));
+  await user.keyboard(" ");
+  expect(
+    await panel.findByText(
+      "Window document observation-window.json refused: a window whose quiet period outlasts its deadline can never complete",
+    ),
+  ).toBeTruthy();
+  // Each action read the document its own field names, and nothing else.
+  expect(facade.callsTo("ValidateObservationSource").map((call) => call.args)).toEqual([[WORKSPACE_ROOT, "observation-source.json"]]);
+  expect(facade.callsTo("ValidateObservationWindow").map((call) => call.args)).toEqual([[WORKSPACE_ROOT, "observation-window.json"]]);
+  expect(facade.callsTo("ValidateObservationPair")).toHaveLength(0);
+  expect(facade.callsTo("CollectObservation")).toHaveLength(0);
+});
+
+test("a refused source save leaves the window as it was saved, and a refused window save says the source was saved", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user);
+  facade.reply({
+    SaveObservationSource: (): Promise<ObservationSourceResult> =>
+      Promise.resolve({ state: "failed", reason: "cannot write an observation source here" }),
+    SaveObservationWindow: (request): Promise<ObservationWindowResult> =>
+      Promise.resolve({ state: "completed", window: request.window!, identity: "window-identity-2" }),
+  });
+  const panel = await openObservationSetup(user);
+  await user.click(panel.getByRole("button", { name: "Save source and window" }));
+  expect(
+    await panel.findByText("Not saved: cannot write an observation source here. A collection reads the documents saved before."),
+  ).toBeTruthy();
+  expect(panel.getByText("Source document observation-source.json not saved: cannot write an observation source here")).toBeTruthy();
+  expect(facade.callsTo("SaveObservationWindow")).toHaveLength(0);
+  expect(panel.getByText(byContent(/^Pinned identities/)).textContent).toBe(
+    "Pinned identities — source: source-identity; window: window-identity",
+  );
+
+  facade.reply({
+    SaveObservationSource: (request): Promise<ObservationSourceResult> =>
+      Promise.resolve({ state: "completed", source: request.source!, identity: "source-identity-2" }),
+    SaveObservationWindow: (): Promise<ObservationWindowResult> =>
+      Promise.resolve({ state: "permission_denied", reason: "authoring requires an active license" }),
+  });
+  await tabTo(user, panel.getByRole("button", { name: "Save source and window" }));
+  await user.keyboard("{Enter}");
+  expect(
+    await panel.findByText(
+      "Window not saved: authoring requires an active license. The source was saved; a collection reads the window saved before.",
+    ),
+  ).toBeTruthy();
+  expect(panel.getByText("Source document observation-source.json: saved readmit-observation-source/v1, identity source-identity-2.")).toBeTruthy();
+  expect(panel.getByText("Window document observation-window.json not saved: authoring requires an active license")).toBeTruthy();
+  expect(panel.getByText(byContent(/^Pinned identities/)).textContent).toBe(
+    "Pinned identities — source: source-identity-2; window: window-identity",
+  );
+});
+
+test("a document the reader refuses is said to be refused on opening, and naming one document never reads the other again", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user);
+  const panel = await openObservationSetup(user);
+  await waitFor(() => expect(facade.callsTo("OpenObservationWindow").length).toBeGreaterThan(0));
+  facade.reply({
+    OpenObservationWindow: (_workspace, windowFile): Promise<ObservationWindowResult> =>
+      Promise.resolve(
+        windowFile === "later.json"
+          ? { state: "failed", reason: "an observation window must declare readmit-observation-window/v1" }
+          : {
+              state: "completed",
+              window: {
+                schema: "readmit-observation-window/v1",
+                source: { kind: "file-export", identity: "scheduling-archive", scope: "appointments" },
+                watermark: { kind: "none", position: "" },
+                pre_existing_state: { declaration: "declared-empty", baseline_identity: "" },
+                completion: { deadline: "30s", quiet_period: "2s", stable_samples: 3, max_records: 100, max_samples: 16 },
+              },
+              identity: "window-identity",
+            },
+      ),
+  });
+  const sourceReads = facade.callsTo("OpenObservationSource").length;
+  await user.clear(panel.getByLabelText("Export path"));
+  await user.type(panel.getByLabelText("Export path"), "exports/appointments.csv");
+  await user.clear(panel.getByLabelText("Window document"));
+  await user.type(panel.getByLabelText("Window document"), "later.json");
+  expect(
+    await panel.findByText("Window document later.json not opened: an observation window must declare readmit-observation-window/v1"),
+  ).toBeTruthy();
+  expect(panel.getByText(byContent(/^Pinned identities/)).textContent).toBe("Pinned identities — source: source-identity; window: unsaved");
+  // The source was not read again, so what was typed into it stands.
+  expect(facade.callsTo("OpenObservationSource")).toHaveLength(sourceReads);
+  expect((panel.getByLabelText("Export path") as HTMLInputElement).value).toBe("exports/appointments.csv");
+  // The refused window is never replaced by what the editor holds.
+  expect((panel.getByRole("button", { name: "Save source and window" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(panel.getByText(/^Saving is closed while a named document is refused/)).toBeTruthy();
+  await user.clear(panel.getByLabelText("Window document"));
+  await user.type(panel.getByLabelText("Window document"), "observation-window.json");
+  await waitFor(() => expect((panel.getByRole("button", { name: "Save source and window" }) as HTMLButtonElement).disabled).toBe(false));
+  expect(panel.queryByText(/^Saving is closed/)).toBeNull();
+  expect(facade.callsTo("SaveObservationSource")).toHaveLength(0);
+  expect(facade.callsTo("SaveObservationWindow")).toHaveLength(0);
+});
+
+test("an edit abandoned by closing the panel from the keyboard writes nothing, and the panel opened again reads the saved document", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user);
+  let panel = await openObservationSetup(user);
+  await waitFor(() => expect((panel.getByLabelText("Export path") as HTMLInputElement).disabled).toBe(false));
+  await user.clear(panel.getByLabelText("Export path"));
+  await user.type(panel.getByLabelText("Export path"), "exports/elsewhere.csv");
+  const reads = facade.callsTo("OpenObservationSource").length;
+  // Close is above the editor: Shift+Tab reaches it from the field.
+  const close = panel.getByRole("button", { name: "Close" });
+  for (let step = 0; step < 80 && document.activeElement !== close; step++) await user.tab({ shift: true });
+  expect(document.activeElement).toBe(close);
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(screen.queryByRole("region", { name: "Observation setup" })).toBeNull());
+  expect(facade.callsTo("SaveObservationSource")).toHaveLength(0);
+  expect(facade.callsTo("SaveObservationWindow")).toHaveLength(0);
+  panel = await openObservationSetup(user);
+  await waitFor(() => expect(facade.callsTo("OpenObservationSource").length).toBeGreaterThan(reads));
+  await waitFor(() => expect((panel.getByLabelText("Export path") as HTMLInputElement).value).toBe("export.csv"));
+  expect(panel.getByText(byContent(/^Pinned identities/)).textContent).toBe("Pinned identities — source: source-identity; window: window-identity");
+});
+
+test("the editor stays closed while a document is read, so a late read never replaces what was typed", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user);
+  const reading = facade.park("OpenObservationSource");
+  const panel = await openObservationSetup(user);
+  await waitFor(() => expect(reading.size).toBeGreaterThan(0));
+  const exportPath = panel.getByLabelText("Export path") as HTMLInputElement;
+  // Nothing can be typed, saved or validated while the document it would
+  // replace is being read; the document's name can still be typed.
+  expect(exportPath.disabled).toBe(true);
+  expect((panel.getByRole("button", { name: "Save source and window" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((panel.getByRole("button", { name: "Validate source document" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((panel.getByLabelText("Source document") as HTMLInputElement).disabled).toBe(false);
+  const answer: ObservationSourceResult = {
+    state: "completed",
+    source: {
+      schema: "readmit-observation-source/v1",
+      source: { kind: "file-export", identity: "scheduling-archive", scope: "appointments" },
+      enabled: true,
+      freshness: { max_age: "1h" },
+      extraction: { envelope: "csv", encoding: "utf-8", record_key: ["appointment"] },
+      file: { path: "exports/appointments.csv", max_bytes: 65536 },
+      http: null,
+      capture: null,
+    },
+    identity: "source-identity",
+  };
+  // Every read the panel started answers, and the last one fills the editor.
+  await waitFor(() => {
+    while (reading.size > 0) reading.resolve(answer);
+    expect(exportPath.value).toBe("exports/appointments.csv");
+  });
+  await waitFor(() => expect(exportPath.disabled).toBe(false));
+  expect(exportPath.value).toBe("exports/appointments.csv");
+});

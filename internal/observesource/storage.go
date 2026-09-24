@@ -144,35 +144,45 @@ func DecodeSource(data []byte) (Source, error) {
 // lives in, never the caller's working directory: the declared form is what the
 // file holds, and this is what reading it means.
 func ReadSource(path string) (Source, error) {
+	_, resolved, err := ReadDeclaredSource(path)
+	return resolved, err
+}
+
+// ReadDeclaredSource is ReadSource returning both forms of the one document
+// it read: the source as the document declares it, with its paths as written,
+// and the source ReadSource resolves. The declared form is what an editor
+// edits and what the source's identity names, so a document declaring a path
+// relative to its own folder keeps one identity wherever that folder is.
+func ReadDeclaredSource(path string) (declared, resolved Source, err error) {
 	info, err := os.Stat(path)
 	if err != nil || !info.Mode().IsRegular() {
-		return Source{}, errors.New("an observation source must be a readable regular file")
+		return Source{}, Source{}, errors.New("an observation source must be a readable regular file")
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return Source{}, errors.New("cannot open observation source file")
+		return Source{}, Source{}, errors.New("cannot open observation source file")
 	}
 	defer file.Close()
 	info, err = file.Stat()
 	if err != nil || !info.Mode().IsRegular() {
-		return Source{}, errors.New("an observation source must be a regular file")
+		return Source{}, Source{}, errors.New("an observation source must be a regular file")
 	}
 	data, err := io.ReadAll(io.LimitReader(file, int64(MaxSourceBytes)+1))
 	if err != nil {
-		return Source{}, errors.New("cannot read observation source file")
+		return Source{}, Source{}, errors.New("cannot read observation source file")
 	}
 	if len(data) > MaxSourceBytes {
-		return Source{}, errors.New("observation source exceeds size limit")
+		return Source{}, Source{}, errors.New("observation source exceeds size limit")
 	}
 	source, err := DecodeSource(data)
 	if err != nil {
-		return Source{}, err
+		return Source{}, Source{}, err
 	}
-	resolved, err := artifactpath.Resolve(path)
+	document, err := artifactpath.Resolve(path)
 	if err != nil {
-		return Source{}, errors.New("cannot resolve the observation source document")
+		return Source{}, Source{}, errors.New("cannot resolve the observation source document")
 	}
-	return anchor(source, filepath.Dir(resolved)), nil
+	return source, anchor(source, filepath.Dir(document)), nil
 }
 
 // anchor resolves the paths a source declares against the directory the

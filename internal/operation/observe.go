@@ -87,20 +87,14 @@ func SaveObservationWindow(path string, window observewindow.Window) (observewin
 	if path == "" {
 		return observewindow.Window{}, "", errors.New("observation window path must not be empty")
 	}
-	if dir := filepath.Dir(path); dir != "" && dir != "." {
-		_ = os.MkdirAll(dir, 0755)
-	}
+	makeDocumentFolder(path)
 	if window.Schema == "" {
 		window.Schema = observewindow.WindowSchema
 	}
 	if err := observewindow.WriteWindow(path, window); err != nil {
 		return observewindow.Window{}, "", err
 	}
-	read, err := observewindow.ReadWindow(path)
-	if err != nil {
-		return observewindow.Window{}, "", err
-	}
-	return read, read.Identity(), nil
+	return ValidateObservationWindow(path)
 }
 
 // ValidateObservationWindow reads and validates without observing anything.
@@ -112,7 +106,9 @@ func ValidateObservationWindow(path string) (observewindow.Window, string, error
 	return window, window.Identity(), nil
 }
 
-// OpenOrNewObservationSource reads a source to edit, or returns defaults.
+// OpenOrNewObservationSource reads a source to edit, or returns defaults. It
+// answers the source as the document declares it, so what an editor saves
+// back keeps the paths the document declared rather than this machine's.
 func OpenOrNewObservationSource(path string) (observesource.Source, error) {
 	if path == "" {
 		return observesource.Source{}, errors.New("observation source path must not be empty")
@@ -120,7 +116,8 @@ func OpenOrNewObservationSource(path string) (observesource.Source, error) {
 	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
 		return DefaultObservationSource(), nil
 	}
-	return observesource.ReadSource(path)
+	source, _, err := ValidateObservationSource(path)
+	return source, err
 }
 
 // CaptureObservationBinding is the navigation handoff from a retained capture
@@ -188,35 +185,53 @@ func SourceFromCaptureBinding(binding CaptureObservationBinding, relativeCase st
 	return source, nil
 }
 
-// SaveObservationSource writes one source atomically and reads it back.
+// SaveObservationSource writes one source atomically and reads it back the way
+// ValidateObservationSource reads it, so a save and a later validation of the
+// same document report one identity.
 func SaveObservationSource(path string, source observesource.Source) (observesource.Source, string, error) {
 	if path == "" {
 		return observesource.Source{}, "", errors.New("observation source path must not be empty")
 	}
-	if dir := filepath.Dir(path); dir != "" && dir != "." {
-		_ = os.MkdirAll(dir, 0755)
-	}
-	identity := source.Identity()
+	makeDocumentFolder(path)
 	if err := observesource.WriteSource(path, source); err != nil {
 		return observesource.Source{}, "", err
 	}
-	read, err := observesource.ReadSource(path)
-	if err != nil {
-		return observesource.Source{}, "", err
-	}
-	if identity == "" {
-		identity = read.Identity()
-	}
-	return read, identity, nil
+	return ValidateObservationSource(path)
 }
 
-// ValidateObservationSource reads and validates without collecting.
+// ValidateObservationSource reads and validates without collecting, through
+// the reader `readmit observe collect` reads a source with. It answers the
+// source as the document declares it and that declaration's identity, the
+// digest of the canonical form the window writes: the paths a document
+// declares relative to its own folder are resolved only where it is
+// collected, so its identity does not depend on where the folder is.
 func ValidateObservationSource(path string) (observesource.Source, string, error) {
-	source, err := observesource.ReadSource(path)
+	source, _, err := observesource.ReadDeclaredSource(path)
 	if err != nil {
 		return observesource.Source{}, "", err
 	}
 	return source, source.Identity(), nil
+}
+
+// makeDocumentFolder creates the folder a declared document is saved into,
+// but only where the shared output reservation allows the first folder it
+// would create. Inside retained evidence it creates nothing, and the writer
+// then refuses the document in its own words, so a refused save leaves no
+// folder behind either.
+func makeDocumentFolder(path string) {
+	missing := ""
+	for dir := filepath.Dir(path); ; dir = filepath.Dir(dir) {
+		if _, err := os.Lstat(dir); err == nil || filepath.Dir(dir) == dir {
+			break
+		}
+		missing = dir
+	}
+	if missing == "" {
+		return
+	}
+	if _, err := artifactpath.Destination(missing); err == nil {
+		_ = os.MkdirAll(filepath.Dir(path), 0755)
+	}
 }
 
 // ValidateObservationPair checks that a source and window agree locally without
