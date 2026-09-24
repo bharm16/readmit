@@ -144,3 +144,72 @@ test("selecting an inspected field does not auto-add an assertion", async () => 
 
   uninstallFacade();
 });
+
+// An import the reader refuses changes nothing the structured draft holds and
+// says why; an export over an entry that already exists is refused, claims no
+// identity, and leaves the reviewed text to be exported to a new name. Both
+// forms answer Enter.
+test("a refused import leaves the draft and an occupied export destination is refused, from the keyboard", async () => {
+  const user = userEvent.setup();
+  const refusedByReader = "the operator record_count reads a collection subject";
+  const occupied = "that name is already an entry of this workspace; an assertion set is written to a new entry";
+  const imported: AssertionSetDraftDocument = {
+    schema: "readmit-assertion-set-draft/v1",
+    name: "Received expectations",
+    assertions: [
+      {
+        id: "booking-accepted",
+        operator: "field_equals",
+        subject: { field: { scope: "observed", message: "s0001-e000001", selector: "MSA-1" } },
+        when: null,
+        expected: { field: { state: "present", text: "AA" } },
+      },
+    ],
+  };
+  const facade = installFacade({
+    ImportAssertionSet: async (_workspace, entry) =>
+      entry === "refused-assertions.json" ? { state: "failed", reason: refusedByReader } : setResult(imported),
+    ExportAssertionSet: async (request): Promise<CanonicalAssertionResult> =>
+      request.output === "received-assertions.json"
+        ? { state: "failed", reason: occupied }
+        : { state: "completed", document: request.document, output: request.output, identity: "exported-assertion-identity" },
+    SaveEditorDraft: async () => ({ state: "completed", drafts: [] }),
+    DiscardEditorDraft: async () => ({ state: "completed", drafts: [] }),
+  });
+  render(<AssertionSetAuthoring workspace={WORKSPACE_ROOT} drafts={[]} busy={false} inspected={null} />);
+
+  await user.type(screen.getByLabelText("Assertion set entry"), "refused-assertions.json{Enter}");
+  expect(await screen.findByText(refusedByReader)).toBeTruthy();
+  expect((screen.getByLabelText("Assertion set name") as HTMLInputElement).value).toBe("");
+  expect(screen.queryByRole("button", { name: /^Remove / })).toBeNull();
+
+  await user.clear(screen.getByLabelText("Assertion set entry"));
+  await user.type(screen.getByLabelText("Assertion set entry"), "received-assertions.json{Enter}");
+  expect(await screen.findByRole("button", { name: "Remove booking-accepted" })).toBeTruthy();
+  expect((screen.getByLabelText("Assertion set name") as HTMLInputElement).value).toBe("Received expectations");
+  expect(screen.queryByText(refusedByReader)).toBeNull();
+  expect(facade.callsTo("ImportAssertionSet").map((call) => call.args)).toEqual([
+    [WORKSPACE_ROOT, "refused-assertions.json"],
+    [WORKSPACE_ROOT, "received-assertions.json"],
+  ]);
+
+  await user.click(screen.getByRole("button", { name: "Advanced JSON" }));
+  await user.click(screen.getByLabelText("Complete assertion set"));
+  await user.paste('{"schema":"readmit-assertion-set/v1"}');
+  await user.type(screen.getByLabelText("New assertion set entry"), "received-assertions.json");
+  await user.click(screen.getByRole("button", { name: "Export new assertion set" }));
+  expect(await screen.findByText(occupied)).toBeTruthy();
+  expect(screen.queryByText(/^Written to /)).toBeNull();
+  expect((screen.getByLabelText("Complete assertion set") as HTMLTextAreaElement).value).toBe('{"schema":"readmit-assertion-set/v1"}');
+
+  await user.clear(screen.getByLabelText("New assertion set entry"));
+  await user.type(screen.getByLabelText("New assertion set entry"), "reviewed-assertions.json");
+  await user.tab();
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Export new assertion set" }));
+  await user.keyboard("{Enter}");
+  expect(await screen.findByText(/^Written to reviewed-assertions\.json · identity/)).toBeTruthy();
+  expect(screen.getByText("exported-assertion-identity")).toBeTruthy();
+  expect(screen.queryByText(occupied)).toBeNull();
+
+  uninstallFacade();
+});

@@ -3682,7 +3682,9 @@
       "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-test-draft/v1", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-result/v1", "readmit-run/v1", "readmit-observation/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/expectation-review.journey.tsx", "name": "expectations proposed from a reviewed run are recorded only as a person approves them, a failed run proposes nothing, a cancelled review records nothing, and the command line runs what was approved"},
+      "parity_test": {"package": "internal/desktop", "name": "TestTheWindowSuggestsFromTheRetainedRunTheCommandLineReads"},
+      "implemented": true
     },
     {
       "id": "desktop.ApproveExpectations",
@@ -3696,7 +3698,9 @@
       "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-test-draft/v1", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-result/v1", "readmit-run/v1", "readmit-observation/v1"],
       "outputs": ["readmit-test-draft/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/expectation-review.journey.tsx", "name": "expectations proposed from a reviewed run are recorded only as a person approves them, a failed run proposes nothing, a cancelled review records nothing, and the command line runs what was approved"},
+      "parity_test": {"package": "internal/desktop", "name": "TestApprovedSuggestionsWriteTheSpecTheRetainedRunExecuted"},
+      "implemented": true
     },
     {
       "id": "desktop.AuthorAssertionSet",
@@ -3742,7 +3746,9 @@
       "inputs": ["readmit-assertion-set/v1"],
       "outputs": ["readmit-assertion-set-draft/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/expectation-review.journey.tsx", "name": "an assertion set is imported into the structured draft, an undecodable one is refused in the command line's words, and reviewed bytes are exported exactly to a new entry the command line reads"},
+      "parity_test": {"package": "internal/desktop", "name": "TestAnAssertionSetImportedInTheWindowIsTheSetTheCommandLineReads"},
+      "implemented": true
     },
     {
       "id": "desktop.ValidateAssertionSet",
@@ -3772,7 +3778,9 @@
       "inputs": ["readmit-assertion-set/v1"],
       "outputs": ["readmit-assertion-set/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/journeys/expectation-review.journey.tsx", "name": "an assertion set is imported into the structured draft, an undecodable one is refused in the command line's words, and reviewed bytes are exported exactly to a new entry the command line reads"},
+      "parity_test": {"package": "internal/desktop", "name": "TestAnAssertionSetExportedFromTheWindowIsReadUnchangedByTheCommandLine"},
+      "implemented": true
     },
     {
       "id": "desktop.OpenBaseline",
