@@ -380,6 +380,11 @@ type RevisionRegistration struct {
 // disk. When Source names a built reproducer folder, the derived case inside it
 // is copied into Name first; an entry that already exists is refused rather
 // than replaced. Original evidence is never touched.
+//
+// A copy this call placed is removed again when the project refuses to record
+// it, so a refused registration leaves the workspace exactly as it was and the
+// same name can be used again once the refusal is dealt with. Nothing else is
+// ever removed: the copy was created by this call and recorded nowhere.
 func (a *App) RegisterRevision(request RevisionRegistration) ProjectOverviewResult {
 	return run(a, false, true, func(context.Context) ProjectOverviewResult {
 		root, declined := resolveFolder(request.Workspace)
@@ -389,49 +394,68 @@ func (a *App) RegisterRevision(request RevisionRegistration) ProjectOverviewResu
 		if request.Parent == "" {
 			return ProjectOverviewResult{State: Failed, Reason: "a revision names the registered case or revision it was derived from"}
 		}
+		placed := ""
 		if request.Source != "" {
-			if err := placeDerivedCase(root, request.Source, request.Name); err != nil {
+			copied, err := placeDerivedCase(root, request.Source, request.Name)
+			if err != nil {
 				if errors.Is(err, fs.ErrPermission) {
 					return ProjectOverviewResult{State: PermissionDenied, Reason: "this account cannot write into the open workspace"}
 				}
 				return ProjectOverviewResult{State: Failed, Reason: err.Error()}
 			}
+			placed = copied
 		}
 		if _, err := operation.RegisterRevision(root, request.Name, request.Parent); err != nil {
-			return refusedOverview(root, err)
+			refused := refusedOverview(root, err)
+			if placed != "" {
+				refused.Reason = withdrawn(placed, refused.Reason)
+			}
+			return refused
 		}
 		return a.refreshOverview(root)
 	})
 }
 
 // placeDerivedCase copies the derived case out of a built reproducer folder
-// into one new entry of the project. The build folder itself stays where it is.
-func placeDerivedCase(root, source, destination string) error {
+// into one new entry of the project and returns where it placed it. The build
+// folder itself stays where it is, and an entry it created is removed again
+// when the copy does not verify.
+func placeDerivedCase(root, source, destination string) (string, error) {
 	built, err := artifactpath.Child(root, source)
 	if err != nil {
-		return errors.New("a built reproducer must be named by one directory entry of the open workspace")
+		return "", errors.New("a built reproducer must be named by one directory entry of the open workspace")
 	}
 	if err := artifactpath.EntryName(destination); err != nil {
-		return errors.New("a revision must be named by one directory entry of the project")
+		return "", errors.New("a revision must be named by one directory entry of the project")
 	}
 	from := filepath.Join(built, reproducer.CaseName)
 	if _, err := bundle.Open(from); err != nil {
-		return errors.New("the built reproducer's derived case could not be verified as complete, unmodified evidence")
+		return "", errors.New("the built reproducer's derived case could not be verified as complete, unmodified evidence")
 	}
 	to := artifactpath.JoinReference(root, destination)
 	if _, err := os.Lstat(to); err == nil {
-		return errors.New("that name is already an entry of this workspace")
+		return "", errors.New("that name is already an entry of this workspace")
 	} else if !errors.Is(err, fs.ErrNotExist) {
-		return errors.New("the revision folder could not be created in the open workspace")
+		return "", errors.New("the revision folder could not be created in the open workspace")
 	}
 	if err := os.Mkdir(to, 0700); err != nil {
-		return err
+		return "", err
 	}
 	if err := os.CopyFS(to, os.DirFS(from)); err != nil {
-		return errors.New("the derived case could not be placed beside the project evidence")
+		return "", errors.New(withdrawn(to, "the derived case could not be placed beside the project evidence"))
 	}
 	if _, err := bundle.Open(to); err != nil {
-		return errors.New("the placed derived case could not be verified as complete, unmodified evidence")
+		return "", errors.New(withdrawn(to, "the placed derived case could not be verified as complete, unmodified evidence"))
 	}
-	return nil
+	return to, nil
+}
+
+// withdrawn removes an entry this call placed and the project does not hold,
+// and returns the refusal it was placed for. A copy that could not be removed
+// is named in the refusal rather than left behind unmentioned.
+func withdrawn(placed, reason string) string {
+	if err := os.RemoveAll(placed); err != nil {
+		return reason + "; the derived case placed for it could not be removed and is still an entry of the workspace"
+	}
+	return reason
 }

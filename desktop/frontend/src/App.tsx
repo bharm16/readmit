@@ -133,7 +133,7 @@ import { GuidedSample } from "./GuidedSample";
 import { Sequence, SEQUENCE_WINDOW } from "./Sequence";
 import { Inspector } from "./Inspector";
 import { Reproducer } from "./Reproducer";
-import { RevisionComparison } from "./RevisionComparison";
+import { RevisionComparison, type ComparisonSeed } from "./RevisionComparison";
 import { AssertionSetAuthoring } from "./AssertionSetAuthoring";
 import { CanonicalTestEditor } from "./CanonicalTestEditor";
 import { ProfileEditor } from "./ProfileEditor";
@@ -213,6 +213,8 @@ export default function App() {
   const [runSpecPath, setRunSpecPath] = useState<string | undefined>(undefined);
   const [comparisonResult, setComparisonResult] = useState<CompareResult | null>(null);
   const [revisionResult, setRevisionResult] = useState<ReproducerComparisonResult | null>(null);
+  // The build the reproducer panel last handed to the revision comparison.
+  const [comparisonSeed, setComparisonSeed] = useState<ComparisonSeed | null>(null);
   const [guideResult, setGuideResult] = useState<GuideResult | null>(null);
   const [practiceResult, setPracticeResult] = useState<PracticeResult | null>(null);
   const [sampleCapture, setSampleCapture] = useState<CaseResult | null>(null);
@@ -475,6 +477,7 @@ export default function App() {
     setComparisonResult(null);
     setSequenceResult(null);
     setRevisionResult(null);
+    setComparisonSeed(null);
     setTransformResult(null);
     setReviewResult(null);
     setDiagnosisResult(null);
@@ -1187,9 +1190,13 @@ export default function App() {
     [evidence, operate, root],
   );
 
+  // The project's answer goes back to the reproducer panel as well as to the
+  // overview, so a refused registration is reported beside the build it was
+  // for rather than read there as registered.
   const registerBuiltRevision = useCallback(
     async (source: string, name: string, parent: string) => {
-      if (!root) return;
+      if (!root) return null;
+      const answered: { result: ProjectOverviewResult | null } = { result: null };
       await operate("project", async () => {
         const result = await registerRevision({
           workspace: root,
@@ -1197,12 +1204,21 @@ export default function App() {
           name,
           parent,
         });
+        answered.result = result;
         settleProject(result);
         setWorkspace(await openWorkspace(root));
       });
+      return answered.result;
     },
     [operate, root, settleProject],
   );
+
+  // A build handed to the revision comparison becomes its later revision; the
+  // comparison on screen belonged to other revisions, so it is withdrawn.
+  const compareBuild = useCallback((built: string) => {
+    setRevisionResult(null);
+    setComparisonSeed((held) => ({ later: built, serial: (held?.serial ?? 0) + 1 }));
+  }, []);
 
 
   // An export review is read again on every call, including for the next window
@@ -2267,11 +2283,11 @@ export default function App() {
                 }),
               )
             }
-            onRegister={(source, name, parent) => void registerBuiltRevision(source, name, parent)}
+            onRegister={registerBuiltRevision}
             onOpenRevision={(name) => {
               if (root) void verifyCase(root, name);
             }}
-            onCompareRevision={(built, registered) => void compareRevisions(built, registered, "", "")}
+            onCompareRevision={compareBuild}
             onCreateTest={(name) => {
               // Open the revision as its own case. An existing test draft stays
               // bound to the original case identity and is not retargeted.
@@ -2476,6 +2492,7 @@ export default function App() {
         {verified ? (
           <RevisionComparison
             entries={(opened?.artifacts ?? []).map((artifact) => artifact.name)}
+            seed={comparisonSeed}
             result={revisionResult}
             busy={busy}
             progress={running === "revisions" ? "Comparing these revisions." : null}

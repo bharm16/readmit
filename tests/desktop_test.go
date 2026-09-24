@@ -1045,6 +1045,64 @@ func TestDesktopRevisionProofNamesWhatItCannotCallProof(t *testing.T) {
 	}
 }
 
+// The proof the window shows for two revisions is the command line's reading of
+// the same two runs. Each side names the result identity and outcome `readmit
+// diff` reads out of that run's directory and the case identity the run
+// recorded as its input, and each expectation carries the verdict the result
+// reader re-derives from what that run retained, in the order the test
+// declared them. The window decides none of it.
+func TestRevisionProofIsWhatTheCommandLineReadsFromEachRun(t *testing.T) {
+	app, workspace, original, transformed, _ := revisionWorkspace(t)
+	spec := rescheduleSpec(t)
+	failing := runRevision(t, workspace, original, "failing-run", "defective", spec, 1)
+	fixed := runRevision(t, workspace, transformed, "fixed-run", "fixed", spec, 0)
+
+	compared := app.CompareReproducers(desktop.ReproducerComparisonRequest{
+		Workspace: workspace, Left: original, Right: transformed,
+		LeftResult: failing, RightResult: fixed,
+	})
+	if compared.State != desktop.Completed || compared.Comparison == nil || compared.Comparison.Proof.State != reproducer.ProofCompared {
+		t.Fatalf("two revisions with runs of the same test were not compared: %+v", compared)
+	}
+	proof := compared.Comparison.Proof
+	report, _ := diffJSON(t, filepath.Join(workspace, failing), filepath.Join(workspace, fixed), "--key", "MSH-10")
+	for _, side := range []struct {
+		run    string
+		window *reproducer.ProofSide
+		read   diff.InputSummary
+	}{{failing, proof.Left, report.Left}, {fixed, proof.Right, report.Right}} {
+		retained, err := testrunner.Open(filepath.Join(workspace, side.run))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if side.read.Kind != "result" || side.window.Identity != side.read.Identity || side.window.Status != side.read.ResultStatus ||
+			side.window.Case != retained.Result.InputBundleIdentity {
+			t.Fatalf("the window names %s as %+v; readmit diff read %+v and the run recorded input %s",
+				side.run, side.window, side.read, retained.Result.InputBundleIdentity)
+		}
+	}
+	left, err := testrunner.Open(filepath.Join(workspace, failing))
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := testrunner.Open(filepath.Join(workspace, fixed))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(proof.Assertions) != len(left.Result.Assertions) || len(proof.Assertions) != len(right.Result.Assertions) {
+		t.Fatalf("the window reported %d expectations of runs that evaluated %d and %d",
+			len(proof.Assertions), len(left.Result.Assertions), len(right.Result.Assertions))
+	}
+	for i, assertion := range proof.Assertions {
+		declared := left.Result.Assertions[i].Assertion
+		if assertion.Assertion != declared.ID || assertion.Operator != declared.Operator ||
+			assertion.LeftVerdict != left.Result.Assertions[i].Status || assertion.RightVerdict != right.Result.Assertions[i].Status {
+			t.Fatalf("expectation %d reads %+v in the window; the runs recorded %s and %s for %s",
+				i, assertion, left.Result.Assertions[i].Status, right.Result.Assertions[i].Status, declared.ID)
+		}
+	}
+}
+
 // The whole disclosure-review delivery, across both entry points. The command
 // line derives a reviewed extract from a synthetic planted-identifier corpus;
 // the window reads that review back, inventories every export surface it found,
