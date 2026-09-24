@@ -6,7 +6,6 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -39,7 +38,8 @@ type Issue struct {
 	Term Term
 }
 
-// CreateIssues writes one activated folder per issue, as Create writes one.
+// CreateIssues writes one activated folder per issue, as Create writes one,
+// through the operation guard's activation-folder creation.
 // Every issue is signed with the same newly generated key and trusted by the
 // same trust document, so a later issue installs as a renewal of an earlier
 // one; the key is discarded when CreateIssues returns. It returns each
@@ -74,16 +74,9 @@ func CreateIssues(issues []Issue) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		policy := operationguard.Policy{Schema: "readmit-operation-policy/v1", Entitlement: filepath.Join(dir, "entitlement.json"), Trust: filepath.Join(dir, "trust.json"), State: filepath.Join(dir, "clock.json"), Author: "test-author", Device: "test-device", Authority: "test-runner", Admissions: filepath.Join(dir, "admissions.json")}
-		data, err := operationguard.EncodePolicy(policy)
+		path, err := operationguard.CreateActivation(dir, grant, trust, "test-author", "test-device", "test-runner", now)
 		if err != nil {
 			return nil, err
-		}
-		path := filepath.Join(dir, "operation-policy.json")
-		for name, content := range map[string][]byte{policy.Entitlement: grant, policy.Trust: trust, path: data} {
-			if err := os.WriteFile(name, content, 0600); err != nil {
-				return nil, err
-			}
 		}
 		if err := operationguard.Activate(path); err != nil {
 			return nil, err

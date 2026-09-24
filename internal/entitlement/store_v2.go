@@ -125,6 +125,20 @@ func (s *StoreV2) Export(destination string) (string, error) {
 	return create(destination, s.signed)
 }
 
+// Renews refuses an issue that cannot renew the installed one: another
+// organization's entitlement, or an issue no later than it. Every v2 renewal
+// orders itself by this rule, of a store and of an operation activation
+// folder alike, before checking what was activated.
+func (c ClaimsV2) Renews(installed ClaimsV2) error {
+	if c.Organization != installed.Organization {
+		return ErrDifferentOrganization
+	}
+	if c.Sequence <= installed.Sequence {
+		return ErrSuperseded
+	}
+	return nil
+}
+
 // Renew installs a later issue of the same organization's v2 entitlement that
 // still assigns this device to this author. A reissue that moves the author
 // to other devices, or the device to another author, is a transfer: it is
@@ -137,11 +151,8 @@ func (s *StoreV2) Renew(data []byte, trust Trust) error {
 	if err != nil {
 		return err
 	}
-	if grant.Claims.Organization != s.Claims.Organization {
-		return ErrDifferentOrganization
-	}
-	if grant.Claims.Sequence <= s.Claims.Sequence {
-		return ErrSuperseded
+	if err := grant.Claims.Renews(s.Claims); err != nil {
+		return err
 	}
 	if err := grant.Assigned(s.Activation.Author, s.Activation.Device); err != nil {
 		return err
