@@ -9,7 +9,7 @@ authority and a date-handling rule. It sits **beside** a
 upstream metadata, a local profile is what a site decided — and it pins the
 exact pack it was authored against.
 
-This page is the contract, read and edited by `internal/localprofile`. It is
+This page is the contract, read and written by `internal/localprofile`. It is
 the R06.2 delivery: modelling local fields and interface constraints, and
 showing which rules come from the pinned profile and which were overridden or
 invented locally.
@@ -155,33 +155,28 @@ A date rule is a `precision` (`year` through `fraction`) and a `timezone` rule
 (`required`, `optional` or `forbidden`). A rule with no time of day cannot
 require an offset, because an offset states nothing about such a value.
 
-## Editing
+## The canonical document
 
-`localprofile.Editor` is the typed editing surface a graphical or programmatic
-editor drives. Every operation is a typed change to one named part of the
-document, and **every operation is checked against the whole contract before it
-is kept**: a refused change leaves the profile exactly as it was, so a
-half-applied edit is not a state this surface has.
+`localprofile.Canonical` is the one way a profile becomes bytes. It holds the
+profile to the whole contract, puts its parts in one order — segments by
+identifier, fields by position, terminology sets, authorities and date rules by
+id — and writes it deterministically, members in the order the table above
+declares them, indented by two spaces, with a final newline. The order of those
+parts is not meaning in this contract, so the same rules are always the same
+bytes whatever order they were written or added in, and the fixture read and
+written again is the fixture byte for byte. A code table's codes and a
+condition's values keep the order they were written in.
 
 ```go
-editor, err := localprofile.NewEditor(identity, base) // or localprofile.Open(profile)
-err = editor.SetSegment(segment)                     // add or replace, Z-segment or standard
-err = editor.SetField("ZPD", field)                  // add or replace one position
-err = editor.SetTerminology(set)                     // and SetAuthority, SetDate
-err = editor.RemoveTerminology("local-visit-reason")
-editor.Revert()                                      // discard every change
-document, err := editor.Encode()                     // the bytes Decode accepts
+ordered, document, err := localprofile.Canonical(profile) // refuses what Decode refuses
 ```
 
-| Call | Behaviour |
-| --- | --- |
-| `NewEditor(identity, base)` | An empty profile for one pinned pack and combination, refused here if the identity or the pinned combination could never be written. It constrains no segment yet, so it is not a document: `Encode` refuses it by name until one is added. |
-| `Open(profile)` | Begins from a profile the whole contract already accepts, so an editor never opens a document a reader would have refused. |
-| `Set*` | Adds the named part or replaces the one with the same identity. The list is kept in its canonical order, so the order edits arrived in is not visible in the result. |
-| `Remove*` | Removes one part. A terminology set, authority or date rule a field still names cannot be removed, and neither can the only position a segment constrains: the refusal says to remove the segment instead. |
-| `Revert`, `Changed` | Reverting is this surface's cancel. Nothing was written anywhere, so abandoning the changes restores exactly what was opened and undoes nothing outside the editor. |
-| `Encode` | Holds the profile to the whole contract and writes it deterministically: segments in identifier order, fields in position order, declared sets in id order. The same profile is always the same bytes, and the fixture read and written again is the fixture byte for byte. |
-| `Profile` | A copy. A caller that keeps it and changes it cannot reach back into the editor through a shared slice. |
+It answers the profile in that order beside the document and changes nothing it
+was given. Sealing a version ([profile versions](profile-versions.md)),
+packaging a profile ([profile packages](profile-packages.md)) and opening,
+validating and saving one in the desktop application all write a profile
+through it, so what a version was sealed over, what a package carries and what
+the window saved are one document.
 
 `Decode` and `Profile.Validate` are the same check: a profile assembled in Go
 is held to exactly what a profile read from a file is held to, so the refusals

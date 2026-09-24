@@ -58,7 +58,7 @@ type Content struct {
 // Version is one local profile sealed at one version.
 //
 // The digest is taken over the profile's **canonical** document, the bytes
-// localprofile.Editor.Encode writes, not over whatever file happened to be on
+// localprofile.Canonical writes, not over whatever file happened to be on
 // disk. Reformatting a profile does not change a single rule it declares, so a
 // version that changed because somebody reindented the file would report a
 // change that is not one. What this seal detects is a changed rule.
@@ -111,11 +111,7 @@ func Seal(profile localprofile.Profile) (Version, error) {
 // version stands for a document, and a document nothing can read back is not one
 // a saved test could ever be held to.
 func canonical(profile localprofile.Profile) (localprofile.Profile, Version, error) {
-	editor, err := localprofile.Open(profile)
-	if err != nil {
-		return localprofile.Profile{}, Version{}, err
-	}
-	document, err := editor.Encode()
+	ordered, document, err := localprofile.Canonical(profile)
 	if err != nil {
 		return localprofile.Profile{}, Version{}, err
 	}
@@ -123,7 +119,7 @@ func canonical(profile localprofile.Profile) (localprofile.Profile, Version, err
 		return localprofile.Profile{}, Version{}, errors.New("a local profile whose canonical document exceeds the 4 MiB a reader accepts is not sealed")
 	}
 	sum := sha256.Sum256(document)
-	return editor.Profile(), Version{
+	return ordered, Version{
 		Schema:  VersionSchema,
 		Profile: profile.Identity,
 		Content: Content{Bytes: len(document), SHA256: hex.EncodeToString(sum[:])},

@@ -1,6 +1,7 @@
 package profileversion_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -9,51 +10,30 @@ import (
 	"github.com/bharm16/readmit/internal/profileversion"
 )
 
-// revised is the fixture profile evolved into version 2 through the typed
-// editor, so the profile being compared is one a reader would also accept. It
-// relaxes a constrained position, stops constraining another, constrains a new
-// one, tightens a date rule and adds a site-defined segment.
+// revised is the fixture profile evolved into version 2. It relaxes a
+// constrained position, stops constraining another, constrains a new one,
+// tightens a date rule and adds a site-defined segment, each where it stands
+// rather than in canonical order: Compare holds the profile to its whole
+// contract and orders it before anything is compared.
 func revised(t *testing.T) localprofile.Profile {
 	t.Helper()
-	editor, err := localprofile.Open(profile(t))
-	if err != nil {
-		t.Fatalf("open the profile: %v", err)
-	}
-	changed := editor.Profile()
+	changed := relaxed(t)
 	changed.Identity.Version = "2"
-	editor, err = localprofile.Open(changed)
-	if err != nil {
-		t.Fatalf("reopen at the new version: %v", err)
-	}
-	if err := editor.SetField("SCH", localprofile.Field{
-		Position:    1,
-		Name:        "Placer appointment number",
-		Usage:       localprofile.UsageRequiredOrEmpty,
-		Cardinality: &localprofile.Cardinality{Min: 0, Max: "1"},
-		Type:        "EI",
-	}); err != nil {
-		t.Fatalf("relax SCH-1: %v", err)
-	}
-	if err := editor.RemoveField("ZPD", 4); err != nil {
-		t.Fatalf("stop constraining ZPD-4: %v", err)
-	}
-	if err := editor.SetField("ZPD", localprofile.Field{
+	zpd := constrained(t, &changed, "ZPD")
+	zpd.Fields = slices.DeleteFunc(zpd.Fields, func(field localprofile.Field) bool { return field.Position == 4 })
+	zpd.Fields = append(zpd.Fields, localprofile.Field{
 		Position: 6,
 		Name:     "Local escalation contact",
 		Usage:    localprofile.UsageRequiredOrEmpty,
 		Type:     "XCN",
-	}); err != nil {
-		t.Fatalf("constrain ZPD-6: %v", err)
-	}
-	if err := editor.SetDate(localprofile.DateHandling{
+	})
+	changed.Dates = []localprofile.DateHandling{{
 		ID:          "appointment-instant",
 		Description: "Appointment times are sent to the minute and always carry an offset.",
 		Precision:   localprofile.PrecisionSecond,
 		TimeZone:    localprofile.TimeZoneRequired,
-	}); err != nil {
-		t.Fatalf("tighten the date rule: %v", err)
-	}
-	if err := editor.SetSegment(localprofile.Segment{
+	}}
+	changed.Segments = append(changed.Segments, localprofile.Segment{
 		ID:          "ZIN",
 		Description: "The site-defined insurance extension this interface added.",
 		Cardinality: &localprofile.Cardinality{Min: 0, Max: "1"},
@@ -62,10 +42,8 @@ func revised(t *testing.T) localprofile.Profile {
 			Name:     "Local plan identifier",
 			Usage:    localprofile.UsageRequired,
 		}},
-	}); err != nil {
-		t.Fatalf("add ZIN: %v", err)
-	}
-	return editor.Profile()
+	})
+	return changed
 }
 
 // revisedPin is the sealed pin of that version 2, so a test upgrades a saved
@@ -125,49 +103,40 @@ func TestCompareNamesEveryPartThatDiffers(t *testing.T) {
 func TestCompareNamesTheRemainingParts(t *testing.T) {
 	for _, change := range []struct {
 		name     string
-		revise   func(t *testing.T, editor *localprofile.Editor)
+		revise   func(t *testing.T, changed *localprofile.Profile)
 		expected profileversion.Change
 	}{
-		{"a segment's own cardinality", func(t *testing.T, editor *localprofile.Editor) {
+		{"a segment's own cardinality", func(t *testing.T, changed *localprofile.Profile) {
 			t.Helper()
-			segment := constrained(t, editor.Profile(), "ZPD")
-			segment.Cardinality = &localprofile.Cardinality{Min: 1, Max: "2"}
-			if err := editor.SetSegment(segment); err != nil {
-				t.Fatalf("change the segment cardinality: %v", err)
-			}
+			constrained(t, changed, "ZPD").Cardinality = &localprofile.Cardinality{Min: 1, Max: "2"}
 		}, profileversion.Change{Part: profileversion.PartSegment, Kind: profileversion.KindChanged, Subject: "ZPD", Detail: "the cardinality differs"}},
-		{"a removed segment", func(t *testing.T, editor *localprofile.Editor) {
+		{"a removed segment", func(t *testing.T, changed *localprofile.Profile) {
 			t.Helper()
-			if err := editor.RemoveSegment("SCH"); err != nil {
-				t.Fatalf("remove SCH: %v", err)
-			}
+			changed.Segments = slices.DeleteFunc(changed.Segments, func(segment localprofile.Segment) bool { return segment.ID == "SCH" })
 		}, profileversion.Change{Part: profileversion.PartSegment, Kind: profileversion.KindRemoved, Subject: "SCH", Detail: "a standard segment constraining 3 positions"}},
-		{"a local code table", func(t *testing.T, editor *localprofile.Editor) {
+		{"a local code table", func(t *testing.T, changed *localprofile.Profile) {
 			t.Helper()
-			if err := editor.SetTerminology(localprofile.TerminologySet{
+			changed.Terminology = []localprofile.TerminologySet{{
 				ID:          "local-visit-reason",
 				Description: "The reason codes this site sends, hand-authored for the fixture.",
 				Binding:     localprofile.BindingSuggested,
 				Codes:       []localprofile.Code{{Code: "ROUTINE", Display: "Routine appointment"}},
-			}); err != nil {
-				t.Fatalf("change the code table: %v", err)
-			}
+			}}
 		}, profileversion.Change{Part: profileversion.PartTerminology, Kind: profileversion.KindChanged, Subject: "local-visit-reason", Detail: "the binding and the codes differ"}},
-		{"an assigning authority", func(t *testing.T, editor *localprofile.Editor) {
+		{"an assigning authority", func(t *testing.T, changed *localprofile.Profile) {
 			t.Helper()
-			if err := editor.SetAuthority(localprofile.Authority{
+			changed.Authorities = []localprofile.Authority{{
 				ID:          "local-mrn-authority",
 				Description: "The assigning authority this site issues its medical record numbers under.",
 				Namespace:   "FIXTURECARE2",
-			}); err != nil {
-				t.Fatalf("change the authority: %v", err)
-			}
+			}}
 		}, profileversion.Change{Part: profileversion.PartAuthority, Kind: profileversion.KindChanged, Subject: "local-mrn-authority", Detail: "the namespace, the universal id and the universal id type differ"}},
 	} {
 		t.Run(change.name, func(t *testing.T) {
-			editor := reopened(t)
-			change.revise(t, editor)
-			comparison, err := profileversion.Compare(profile(t), editor.Profile())
+			changed := profile(t)
+			changed.Identity.Version = "2"
+			change.revise(t, &changed)
+			comparison, err := profileversion.Compare(profile(t), changed)
 			if err != nil {
 				t.Fatalf("compare: %v", err)
 			}
@@ -216,7 +185,7 @@ func TestCompareRefusesWhatIsNotAComparison(t *testing.T) {
 	// The same version carrying two different documents is the state a saved
 	// test's pin could not survive, so it is refused by name rather than
 	// reported as a list of differences.
-	_, err = profileversion.Compare(profile(t), relaxed(t, profile(t)))
+	_, err = profileversion.Compare(profile(t), relaxed(t))
 	if err == nil {
 		t.Fatal("one version standing for two documents compared")
 	}
@@ -236,26 +205,16 @@ func TestCompareRefusesWhatIsNotAComparison(t *testing.T) {
 	}
 }
 
-func reopened(t *testing.T) *localprofile.Editor {
+// constrained is the segment p constrains under id, to change where it stands.
+func constrained(t *testing.T, p *localprofile.Profile, id string) *localprofile.Segment {
 	t.Helper()
-	changed := profile(t)
-	changed.Identity.Version = "2"
-	editor, err := localprofile.Open(changed)
-	if err != nil {
-		t.Fatalf("open at the new version: %v", err)
-	}
-	return editor
-}
-
-func constrained(t *testing.T, p localprofile.Profile, id string) localprofile.Segment {
-	t.Helper()
-	for _, segment := range p.Segments {
-		if segment.ID == id {
-			return segment
+	for i := range p.Segments {
+		if p.Segments[i].ID == id {
+			return &p.Segments[i]
 		}
 	}
 	t.Fatalf("the profile does not constrain %s", id)
-	return localprofile.Segment{}
+	return nil
 }
 
 func contains(changes []profileversion.Change, wanted profileversion.Change) bool {
